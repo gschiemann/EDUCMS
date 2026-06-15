@@ -1,6 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { SYSTEM_TEMPLATE_PRESETS } from '../../../apps/api/src/templates/system-presets';
+// Phase 2 sports stats: the global milestone catalog. Imported raw via the
+// same relative-source pattern the system-presets import uses (tsx resolves
+// the TS directly — no dependency on @cms/api-types' built dist/).
+import { MILESTONE_DEFS } from '../../api-types/src/sports';
 
 const prisma = new PrismaClient();
 
@@ -199,6 +203,70 @@ async function main() {
   }
 
   console.log(`  Templates: ${SYSTEM_TEMPLATE_PRESETS.length} system presets seeded`);
+
+  // ─────────────────────────────────────────────────────
+  // Seed global stat-milestone definitions (Phase 2 sports)
+  // ─────────────────────────────────────────────────────
+  // Upsert the GLOBAL (tenantId = null) milestone catalog from
+  // @cms/api-types MILESTONE_DEFS. Tenant rows can shadow these later;
+  // here we only own the platform defaults.
+  //
+  // Idempotent: StatMilestoneDef has no compound unique index, so we
+  // can't use prisma.upsert directly. Instead we match on the stable
+  // logical key — (tenantId=null, sport, statKey, kind, threshold) —
+  // and update-if-present / create-if-absent. Re-running the seed
+  // therefore never duplicates rows; it just refreshes label/cue/emoji
+  // for any def whose copy changed upstream.
+  console.log('Seeding global stat-milestone definitions...');
+  let milestonesCreated = 0;
+  let milestonesUpdated = 0;
+  for (const def of MILESTONE_DEFS) {
+    // `threshold` is optional (RECORD rows have none). Prisma treats
+    // `undefined` as "no filter", so coalesce to `null` to match the
+    // nullable column precisely and keep the key stable.
+    const threshold = def.threshold ?? null;
+    const existing = await prisma.statMilestoneDef.findFirst({
+      where: {
+        tenantId: null,
+        sport: def.sport,
+        statKey: def.statKey,
+        kind: def.kind,
+        threshold,
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      await prisma.statMilestoneDef.update({
+        where: { id: existing.id },
+        data: {
+          label: def.label,
+          cueKey: def.cueKey,
+          emoji: def.emoji ?? null,
+          active: true,
+        },
+      });
+      milestonesUpdated += 1;
+    } else {
+      await prisma.statMilestoneDef.create({
+        data: {
+          tenantId: null,
+          sport: def.sport,
+          statKey: def.statKey,
+          kind: def.kind,
+          threshold,
+          label: def.label,
+          cueKey: def.cueKey,
+          emoji: def.emoji ?? null,
+          active: true,
+        },
+      });
+      milestonesCreated += 1;
+    }
+  }
+  console.log(
+    `  Milestones: ${MILESTONE_DEFS.length} global defs ensured ` +
+      `(${milestonesCreated} created, ${milestonesUpdated} refreshed)`,
+  );
 
   console.log('Seed completed successfully!');
   console.log(`  District: ${district.name}`);

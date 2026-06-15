@@ -13,12 +13,14 @@
  */
 
 import { useRef, useState } from 'react';
-import { UserPlus, Upload, Pencil, Trash2, Loader2, X, ImageIcon, Download } from 'lucide-react';
+import { UserPlus, Upload, Pencil, Trash2, Loader2, X, ImageIcon, Download, Link2, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useGameRoster, useRosterMutations, type RosterPlayer } from '@/hooks/use-api';
 import { AssetPicker } from '@/components/assets/AssetPicker';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
+import { apiFetch } from '@/lib/api-client';
+import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 
 type Editing =
   | { mode: 'add'; team: 'home' | 'away' }
@@ -143,6 +145,7 @@ export function RosterPanel({
 
       <div className="grid md:grid-cols-2 gap-4">
         <TeamColumn
+          gameId={gameId}
           label={homeTeam || 'Home'}
           players={home}
           onAdd={() => setEditing({ mode: 'add', team: 'home' })}
@@ -150,6 +153,7 @@ export function RosterPanel({
           onDelete={(p) => m.remove.mutate(p.id)}
         />
         <TeamColumn
+          gameId={gameId}
           label={awayTeam || 'Away'}
           players={away}
           onAdd={() => setEditing({ mode: 'add', team: 'away' })}
@@ -180,12 +184,14 @@ export function RosterPanel({
 }
 
 function TeamColumn({
+  gameId,
   label,
   players,
   onAdd,
   onEdit,
   onDelete,
 }: {
+  gameId: string;
   label: string;
   players: RosterPlayer[];
   onAdd: () => void;
@@ -211,6 +217,7 @@ function TeamColumn({
           {players.map((p) => (
             <PlayerRow
               key={p.id}
+              gameId={gameId}
               player={p}
               onEdit={() => onEdit(p)}
               onDelete={() => onDelete(p)}
@@ -223,10 +230,12 @@ function TeamColumn({
 }
 
 function PlayerRow({
+  gameId,
   player,
   onEdit,
   onDelete,
 }: {
+  gameId: string;
   player: RosterPlayer;
   onEdit: () => void;
   onDelete: () => void;
@@ -267,6 +276,9 @@ function PlayerRow({
           )}
         </div>
       </div>
+      {isFeatureEnabled(FLAGS.SPORTS_PLAYER_STATS) && (
+        <LinkAthleteButton gameId={gameId} player={player} />
+      )}
       <button
         onClick={onEdit}
         className="p-1.5 text-slate-400 hover:text-slate-700 shrink-0"
@@ -282,6 +294,78 @@ function PlayerRow({
         <Trash2 className="h-3.5 w-3.5" />
       </button>
     </div>
+  );
+}
+
+/**
+ * "Link to athlete" — one-tap binding of this per-game roster row to a
+ * persistent `SportsPerson`. THIS is what makes finalize-time season /
+ * career stat aggregation actually populate: the server attaches the
+ * roster player to a durable person, so stats accrued this game roll up
+ * into that athlete's season + career totals.
+ *
+ * V1 is deliberately one-tap simple — we send the player's existing name
+ * and let the server find-or-create the matching person. No modal, no
+ * typeahead; the operator just confirms "this is a real athlete." Gated
+ * behind FLAGS.SPORTS_PLAYER_STATS at the call site (PlayerRow).
+ *
+ * The endpoint (`POST /sports/games/:gameId/roster/:rosterPlayerId/link`,
+ * built by a sibling agent) returns `{ personId }`. We don't have a
+ * `linkedPersonId` field on RosterPlayer yet, so we latch a local
+ * "Linked" state for immediate feedback rather than reading it back off
+ * the roster query.
+ */
+function LinkAthleteButton({ gameId, player }: { gameId: string; player: RosterPlayer }) {
+  const [busy, setBusy] = useState(false);
+  const [linked, setLinked] = useState(false);
+  const [err, setErr] = useState('');
+
+  const link = async () => {
+    if (busy || linked) return;
+    setBusy(true);
+    setErr('');
+    try {
+      // V1: send the player's existing name; the server does find-or-create.
+      // `teamId` is omitted for V1 (team is a free-text label on the game,
+      // not yet a persistent Team id) — the endpoint treats it as optional.
+      await apiFetch(`/sports/games/${gameId}/roster/${player.id}/link`, {
+        method: 'POST',
+        body: JSON.stringify({ fullName: player.name }),
+      });
+      setLinked(true);
+    } catch (e: any) {
+      setErr(e?.message || 'Could not link this player to an athlete.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={link}
+      disabled={busy || linked}
+      className={
+        'p-1.5 shrink-0 ' +
+        (linked
+          ? 'text-emerald-600'
+          : 'text-slate-400 hover:text-indigo-600 disabled:opacity-50')
+      }
+      aria-label={linked ? 'Linked to athlete' : 'Link to a persistent athlete (season + career stats)'}
+      title={
+        err ||
+        (linked
+          ? 'Linked — this game’s stats roll up into this athlete’s season + career totals'
+          : 'Link to a persistent athlete so season + career stats accrue')
+      }
+    >
+      {busy ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : linked ? (
+        <Check className="h-3.5 w-3.5" />
+      ) : (
+        <Link2 className="h-3.5 w-3.5" />
+      )}
+    </button>
   );
 }
 
