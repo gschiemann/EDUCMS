@@ -60,6 +60,7 @@ import {
 import { findSport, formatScore, parseScoreInput, PLAYER_STATS } from '@cms/api-types';
 import type { SportDefinition, SportStatField } from '@cms/api-types';
 import { computeCtsStatus, type CtsStatus } from '@/lib/cts-merge';
+import QRCode from 'qrcode';
 import { RosterPanel } from './RosterPanel';
 // CtsCuePanel kept in the repo (./CtsCuePanel.tsx) but no longer
 // rendered as its own tab — the existing Celebrations panel inside
@@ -75,6 +76,30 @@ import { AssetPicker } from '@/components/assets/AssetPicker';
 import { RecentEventsBar } from './RecentEventsBar';
 
 // ── constants ──────────────────────────────────────────────────
+
+/**
+ * Role-view QR — generated CLIENT-SIDE via the bundled `qrcode` lib (same
+ * pure-client pattern as the screen-pairing QR in screens/page.tsx and the
+ * MFA card). We do NOT round-trip the URL through a third-party QR image
+ * service: the role link carries the tenant slug + game id, and the repo is
+ * public — keep it local + privacy-preserving.
+ */
+function RoleViewQr({ url, label }: { url: string; label: string }) {
+  const [dataUrl, setDataUrl] = useState('');
+  useEffect(() => {
+    let alive = true;
+    QRCode.toDataURL(url, { width: 180, margin: 1 })
+      .then((d) => { if (alive) setDataUrl(d); })
+      .catch(() => { if (alive) setDataUrl(''); });
+    return () => { alive = false; };
+  }, [url]);
+  // eslint-disable-next-line @next/next/no-img-element
+  return dataUrl ? (
+    <img src={dataUrl} alt={`QR code to open the ${label} view`} className="h-[72px] w-[72px] shrink-0 rounded-md bg-white" />
+  ) : (
+    <div className="h-[72px] w-[72px] shrink-0 rounded-md bg-slate-100" aria-hidden />
+  );
+}
 
 const GAME_STATUSES: { key: string; label: string }[] = [
   { key: 'SCHEDULED', label: 'Scheduled' },
@@ -1243,9 +1268,9 @@ function RunMode({
       {/* ── SEND TO DEVICE sheet ──────────────────────────────────
           A second operator opens one of these role-scoped URLs on their
           own phone and instantly joins the same live game in the right
-          role. We render a tap-to-copy link + a QR (via a public QR
-          image service, same as a paired-screen QR elsewhere) for each
-          view. Backdrop click / ✕ closes. */}
+          role. We render a tap-to-copy link + a QR (generated client-side
+          via the bundled qrcode lib — see RoleViewQr) for each view.
+          Backdrop click / ✕ closes. */}
       {shareOpen && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 p-3 sm:items-center sm:p-4"
@@ -1278,20 +1303,12 @@ function RunMode({
                 const base =
                   typeof window !== 'undefined' ? window.location.origin + window.location.pathname : '';
                 const url = p.key ? `${base}?view=${p.key}` : base;
-                const qr = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=8&data=${encodeURIComponent(
-                  url,
-                )}`;
                 return (
                   <div
                     key={p.key || 'full'}
                     className="flex items-center gap-3 rounded-xl border border-slate-200 p-2.5"
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={qr}
-                      alt={`QR code to open the ${p.label} view`}
-                      className="h-[72px] w-[72px] shrink-0 rounded-md bg-white"
-                    />
+                    <RoleViewQr url={url} label={p.label} />
                     <div className="min-w-0 flex-1">
                       <div className="text-[13px] font-bold text-slate-900">{p.label}</div>
                       <div className="truncate text-[11px] text-slate-400">{p.title}</div>
