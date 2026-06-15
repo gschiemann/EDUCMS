@@ -62,6 +62,8 @@ import type { SportDefinition, SportStatField } from '@cms/api-types';
 import { computeCtsStatus, type CtsStatus } from '@/lib/cts-merge';
 import QRCode from 'qrcode';
 import { RosterPanel } from './RosterPanel';
+import { LeadersPanel } from './LeadersPanel';
+import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 // CtsCuePanel kept in the repo (./CtsCuePanel.tsx) but no longer
 // rendered as its own tab — the existing Celebrations panel inside
 // Run-game mode now drives the CTS orchestrator via the cue feed.
@@ -712,6 +714,17 @@ function GameControl() {
             <Section title="Pregame intro">
               <PregameIntroPanel gameId={gameId} ctl={ctl} game={g} />
             </Section>
+
+            {/* Leaders — read-only stat leaders + auto player-of-the-game,
+                computed server-side off the roster (single source of truth:
+                GET /sports/board/:id). One-tap "Spotlight this player" reuses
+                the console spotlight mutation. Gated behind SPORTS_PLAYER_STATS;
+                sits next to the roster it derives from. */}
+            {isFeatureEnabled(FLAGS.SPORTS_PLAYER_STATS) && (
+              <Section title="Leaders &amp; player of the game">
+                <LeadersPanel gameId={gameId} homeTeam={g.homeTeam} awayTeam={g.awayTeam} />
+              </Section>
+            )}
 
             {/* ── 3. DISPLAYS ─────────────────────────────────────
                 Everything about what's actually showing on screens:
