@@ -6,6 +6,8 @@ export const FLAGS = {
   EMERGENCY_NEW_UI: 'emergency_new_ui',
   TEMPLATE_BUILDER_V2: 'template_builder_v2',
   SIS_INTEGRATION: 'sis_integration',
+  SPORTS_PLAYER_STATS: 'sports_player_stats',
+  SPORTS_RECORDS_MILESTONES: 'sports_records_milestones',
 } as const;
 
 export type FlagKey = (typeof FLAGS)[keyof typeof FLAGS];

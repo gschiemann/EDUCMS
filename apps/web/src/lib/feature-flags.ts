@@ -5,6 +5,8 @@ export const FLAGS = {
   TEMPLATE_BUILDER_V2: 'template_builder_v2',
   SIS_INTEGRATION: 'sis_integration',
   AUTO_BRANDING: 'auto_branding',
+  SPORTS_PLAYER_STATS: 'sports_player_stats',
+  SPORTS_RECORDS_MILESTONES: 'sports_records_milestones',
 } as const;
 
 export type FlagKey = (typeof FLAGS)[keyof typeof FLAGS];
@@ -18,6 +20,8 @@ const FLAG_DEFAULTS: Record<string, boolean> = {
   [FLAGS.AUTO_BRANDING]: true,
   [FLAGS.EMERGENCY_NEW_UI]: false,
   [FLAGS.SIS_INTEGRATION]: false,
+  [FLAGS.SPORTS_PLAYER_STATS]: false,
+  [FLAGS.SPORTS_RECORDS_MILESTONES]: false,
 };
 
 /**
@@ -58,6 +62,10 @@ export function isFeatureEnabled(flag: FlagKey): boolean {
       return true;
     case FLAGS.SIS_INTEGRATION:
       return process.env.NEXT_PUBLIC_FF_SIS_INTEGRATION === 'true';
+    case FLAGS.SPORTS_PLAYER_STATS:
+      return process.env.NEXT_PUBLIC_FF_SPORTS_PLAYER_STATS === 'true';
+    case FLAGS.SPORTS_RECORDS_MILESTONES:
+      return process.env.NEXT_PUBLIC_FF_SPORTS_RECORDS_MILESTONES === 'true';
     case FLAGS.AUTO_BRANDING:
       // Default-on in development (NODE_ENV === 'development') so the
       // demo works out-of-the-box on localhost. Prod requires explicit opt-in.
