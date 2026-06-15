@@ -31,6 +31,10 @@ import {
 import type { SportDefinition } from '@cms/api-types';
 import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
 import { makeFeedToken } from './sports-feed-token';
+// Phase 1-A player-stats engine — PURE leaders + player-of-the-game
+// computed from the roster already in the board payload (no DB query).
+import { computePlayerSurfaces } from './sports-stats.service';
+import { FeatureFlagsService, FLAGS } from '../feature-flags/feature-flags.service';
 
 /**
  * VenueOS Sports — Sprint 13. The game engine service.
@@ -134,6 +138,10 @@ export class SportsService {
     private readonly signer: WebsocketSignerService,
     @Inject(forwardRef(() => SponsorsService))
     private readonly sponsorsService: SponsorsService,
+    // Phase 1-A — gates the player-stats surfaces (leaders / POTG) on
+    // the board payload. FeatureFlagsModule is @Global() so this
+    // resolves without listing it in SportsModule providers.
+    private readonly flags: FeatureFlagsService,
   ) {}
 
   // ── helpers ──────────────────────────────────────────────────
@@ -527,7 +535,7 @@ export class SportsService {
       }),
     ]);
 
-    return {
+    const board = {
       id: game.id,
       sport: game.sport,
       status: game.status,
@@ -598,6 +606,37 @@ export class SportsService {
         };
       })(),
     };
+
+    // Phase 1-A — player-stats surfaces (stat leaders + auto
+    // player-of-the-game). Computed from the `roster` already loaded
+    // above (NO new DB query) inside the ~1s board cache build, ONLY
+    // when the SPORTS_PLAYER_STATS flag is ON for this tenant. The keys
+    // are OMITTED ENTIRELY when the flag is off or the result is empty,
+    // so the flag-off payload is byte-identical to before this change.
+    // Fail-open: computePlayerSurfaces never throws; a flag-eval error
+    // is caught here and the keys are simply omitted.
+    try {
+      if (
+        await this.flags.isEnabledAsync(FLAGS.SPORTS_PLAYER_STATS, {
+          tenantId: game.tenantId,
+        })
+      ) {
+        const surfaces = computePlayerSurfaces(game.sport, roster);
+        if (surfaces.leaders.length > 0) {
+          (board as typeof board & { leaders: typeof surfaces.leaders }).leaders =
+            surfaces.leaders;
+        }
+        if (surfaces.playerOfGame) {
+          (
+            board as typeof board & { playerOfGame: typeof surfaces.playerOfGame }
+          ).playerOfGame = surfaces.playerOfGame;
+        }
+      }
+    } catch {
+      // Never let stats compute / flag eval break the board.
+    }
+
+    return board;
   }
 
   // ── writes ───────────────────────────────────────────────────
