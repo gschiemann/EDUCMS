@@ -233,6 +233,33 @@ export function applyCtsOverlay<T extends CtsMergeInput>(input: T): T {
     };
   }
 
+  // CTS shot-clock data seam (2026-06-15): the real water-polo/basketball
+  // bridge POSTs only per-side homeShotClock/awayShotClock, but the board's
+  // main shot-clock projector (and the ribbon) read the single-side
+  // `stats.shotClock`. Without this the big-board shot clock stays dark/frozen
+  // on a live CTS game — the marquee game-night failure for the first customer.
+  // Derive a single-side shotClock from whichever per-side is ACTIVE (water
+  // polo / basketball only ever run one shot clock at a time): prefer the
+  // running side, else the side with time on it, else home. Only when the
+  // legacy single-side field wasn't already provided above.
+  if (!stats.shotClock && (cts.homeShotClock || cts.awayShotClock)) {
+    const h = cts.homeShotClock && typeof cts.homeShotClock === 'object' ? cts.homeShotClock : null;
+    const a = cts.awayShotClock && typeof cts.awayShotClock === 'object' ? cts.awayShotClock : null;
+    const active =
+      (h && (h.running || (Number(h.ms) || 0) > 0)) ? h :
+      (a && (a.running || (Number(a.ms) || 0) > 0)) ? a :
+      (h || a);
+    if (active) {
+      statsMutated = true;
+      stats.shotClock = {
+        ms: Math.max(0, Number(active.ms) || 0),
+        running: !!active.running,
+        len: typeof active.len === 'number' ? active.len : undefined,
+        at: active.at || ctsAt,
+      };
+    }
+  }
+
   // T2-1: exclusions.  Write the CTS-sourced exclusion arrays into
   // stats so scoreboard widgets (e.g. water polo penalty display) can
   // render them.  We keep the full 3-slot array (with nulls) so the
