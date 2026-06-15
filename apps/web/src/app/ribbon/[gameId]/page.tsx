@@ -57,6 +57,15 @@ import { API_URL } from '@/lib/api-url';
 // uses; the template's canvas size differentiates ribbon from
 // scoreboard (operator picks 11520×192 or similar for the ribbon).
 import { CustomScoreboardScene } from '../../board/[gameId]/CustomScoreboardScene';
+// 2026-06-15 sports-pro polish — shared crowd-surface motion + vector marks.
+// SCORE-POP: the pinned scores pop on change (the instant the bowl looks up).
+// Vector marks replace emoji-as-iconography (consumer-grade tell at distance).
+import {
+  SCORE_MOTION_KEYFRAMES,
+  SCORE_POP_ANIM,
+  useScoreFlip,
+} from '@/components/sports/score-motion';
+import { SportMark, PossessionGlyph, ServeGlyph } from '@/components/sports/SportGlyph';
 import {
   findSport,
   defaultRibbonPresets,
@@ -237,8 +246,11 @@ interface BoardData {
 
 // 750ms — sub-second sync, kept in step with the board + scorebug.
 const POLL_MS = 750;
-const DEFAULT_HOME = '#4f46e5';
-const DEFAULT_AWAY = '#dc2626';
+// 2026-06-15 — neutral athletic defaults for the LED ribbon (was an app-UI
+// indigo/red). A board with no team colors should read like a venue scorebug,
+// not a SaaS dashboard: deep navy + crimson.
+const DEFAULT_HOME = '#1e3a5f';
+const DEFAULT_AWAY = '#9b1c2e';
 
 /** This is the ribbon surface — it plays RIBBON- and ALL-targeted
  *  cues (and legacy untargeted ones); a scoreboard-only cue is
@@ -680,6 +692,42 @@ function ribbonSituational(def: SportDefinition, stats: Record<string, unknown>)
     .filter((x): x is string => x !== null)
     .slice(0, 4);
   return chips.length ? chips.join(SEP) : null;
+}
+
+/**
+ * 2026-06-15 — the vector glyph that LEADS the situational look, replacing
+ * emoji-as-iconography on this surface (consumer-grade at distance / on a
+ * livestream). Rally sports (volleyball / pickleball) get a serve dot, sports
+ * with a live possession side get a directional chevron, everything else gets
+ * the sport's drawn mark (which itself falls back to the sport emoji when we
+ * have no vector). Returns null when there's no live situation to mark, so the
+ * look stays text-only rather than showing a dangling icon.
+ */
+function ribbonSituationalGlyph(
+  def: SportDefinition,
+  stats: Record<string, unknown>,
+  size: number,
+  color: string,
+): ReactNode {
+  const side = (v: unknown): 'home' | 'away' | null => {
+    const s = String(v || '').trim().toLowerCase();
+    if (s === 'home' || s === 'h') return 'home';
+    if (s === 'away' || s === 'a') return 'away';
+    return null;
+  };
+  // Rally sports — serve dot.
+  if (def.key === 'volleyball' || def.key === 'pickleball') {
+    return String(stats.serving || '').trim()
+      ? <ServeGlyph size={size} color={color} title="Serving" />
+      : null;
+  }
+  // Possession sports — directional chevron toward the team with the ball.
+  if (def.key === 'football' || def.key === 'basketball') {
+    const poss = side(stats.possession);
+    return poss ? <PossessionGlyph dir={poss} size={size} color={color} title="Possession" /> : null;
+  }
+  // Everyone else — the drawn sport mark (vector, emoji fallback baked in).
+  return <SportMark sport={def.key} fallbackEmoji={def.emoji} size={size} color={color} />;
 }
 
 // ── content looks ──────────────────────────────────────────────
@@ -1321,6 +1369,7 @@ export default function RibbonPage() {
 @keyframes rbnSweep{0%{opacity:0;transform:translateX(-1600px) skewX(-14deg)}5%{opacity:0.85}24%{opacity:0.85}34%{opacity:0;transform:translateX(1600px) skewX(-14deg)}100%{opacity:0;transform:translateX(1600px) skewX(-14deg)}}
 @keyframes rbnSlam{0%{opacity:0;transform:scale(1.5)}10%{opacity:1;transform:scale(0.93)}16%{transform:scale(1.05)}22%{transform:scale(1)}90%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.03)}}
 @keyframes rbnMarquee{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+${SCORE_MOTION_KEYFRAMES}
       `}</style>
 
       {/* [score | content] units, recurring around the ribbon so a
@@ -1706,6 +1755,73 @@ function RibbonMediaScroll({
 // ── score zone ─────────────────────────────────────────────────
 
 /**
+ * 2026-06-15 — the pinned-anchor shot clock. Shot-clock sports (basketball,
+ * water polo, lacrosse, …) carry `def.shotClock`; the live value rides
+ * `stats.shotClock = { ms, running, len?, at }`, populated by
+ * applyCtsOverlay's CTS derivation (cts-merge.ts). The board's plain
+ * fmtShotClock reads the snapshot int; here we project it FORWARD between the
+ * 750ms polls so the digit counts down smoothly, the way a venue board does.
+ *
+ * Returns null for sports with no shot clock OR when it's parked/empty (so the
+ * ribbon never shows a dead ":00" badge). `secs` drives the ≤5s red treatment.
+ * Format: a sub-60 shot clock reads as bare seconds ("24", or "4.5" under 5s) —
+ * the venue convention; we keep MM:SS only as a guard for an oversized `len`.
+ */
+function useRibbonShotClock(
+  def: SportDefinition,
+  data: BoardData,
+): { text: string; secs: number } | null {
+  const sc =
+    def.shotClock && data.stats && typeof data.stats === 'object'
+      ? ((data.stats as Record<string, unknown>).shotClock as
+          | { ms?: number; running?: boolean; len?: number; at?: string }
+          | undefined)
+      : undefined;
+  const anchorMs = sc ? Math.max(0, Number(sc.ms) || 0) : 0;
+  const running = !!sc?.running;
+  const at = sc?.at;
+  const [ms, setMs] = useState(anchorMs);
+
+  useEffect(() => {
+    if (!sc) {
+      setMs(0);
+      return;
+    }
+    if (!running) {
+      setMs(anchorMs);
+      return;
+    }
+    const skew = data.serverTime - Date.now();
+    const anchorAt = at ? new Date(at).getTime() : Date.now() + skew;
+    const project = () => setMs(Math.max(0, anchorMs - (Date.now() + skew - anchorAt)));
+    project();
+    const t = setInterval(project, 100);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sc, running, anchorMs, at, data.serverTime]);
+
+  if (!sc) return null;
+  // Falls back to def.shotClock.full when `len` is missing (per the brief) —
+  // lets us suppress a board that's only ever shown a 0-length parked clock.
+  const len = Number(sc.len) || def.shotClock?.full || 0;
+  if (len <= 0 && anchorMs <= 0) return null;
+  const secs = ms / 1000;
+  let text: string;
+  if (ms >= 60000) {
+    // Guard for an unusually long configured length — MM:SS.
+    const total = Math.ceil(ms / 1000);
+    text = `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+  } else if (ms <= 0) {
+    text = '0';
+  } else if (ms <= 5000) {
+    text = secs.toFixed(1); // sub-5s: tenths, like a real shot clock
+  } else {
+    text = String(Math.ceil(secs));
+  }
+  return { text, secs };
+}
+
+/**
  * The persistent scorebug — score, segment, clock — pinned to one end
  * of the ribbon. It never participates in the content rotation; the
  * digits just update in place as the game runs.
@@ -1738,6 +1854,14 @@ function ScoreZone({
   const homeInk = readableInk(homeColor);
   const awayInk = readableInk(awayColor);
   const live = data.status === 'LIVE';
+  // 2026-06-15 SCORE-POP — pop the digit on change (the bowl's "look up"
+  // instant). First paint never pops (dir = null). Transform-only → Taurus-safe.
+  const homeFlip = useScoreFlip(data.homeScore);
+  const awayFlip = useScoreFlip(data.awayScore);
+  // 2026-06-15 — shot clock in the pinned anchor (was rendered NOWHERE on the
+  // ribbon). stats.shotClock is populated by applyCtsOverlay's CTS derivation.
+  // We project it forward when running so it counts down between 750ms polls.
+  const shotClock = useRibbonShotClock(def, data);
   const seg = segmentLabel(def, data);
   // 2026-05-27 — `clock` and `segment` are toggleable presets in
   // `Ribbon content`. We honor them here so flipping them OFF actually
@@ -1827,26 +1951,32 @@ function ScoreZone({
       <div style={{ display: 'flex', alignItems: 'center' }}>
         {mark(data.homeLogoUrl, homeColor)}
         <span
+          key={homeFlip.flipKey}
           style={{
+            display: 'inline-block',
             fontSize: score,
             fontWeight: 900,
             color: '#fff',
             margin: `0 ${Math.round(u * 0.06)}px 0 ${Math.round(u * 0.1)}px`,
             fontVariantNumeric: 'tabular-nums',
             lineHeight: 1,
+            animation: homeFlip.dir ? SCORE_POP_ANIM : undefined,
           }}
         >
           {homeScoreText}
         </span>
         <span style={{ fontSize: dash, fontWeight: 800, color: '#475569' }}>–</span>
         <span
+          key={awayFlip.flipKey}
           style={{
+            display: 'inline-block',
             fontSize: score,
             fontWeight: 900,
             color: '#fff',
             margin: `0 ${Math.round(u * 0.1)}px 0 ${Math.round(u * 0.06)}px`,
             fontVariantNumeric: 'tabular-nums',
             lineHeight: 1,
+            animation: awayFlip.dir ? SCORE_POP_ANIM : undefined,
           }}
         >
           {awayScoreText}
@@ -1899,6 +2029,46 @@ function ScoreZone({
         >
           {statusText}
         </span>
+        {/* 2026-06-15 — pinned shot clock (shot-clock sports only, live only).
+            Compact pill: an orange "SC" tag + the count; turns red ≤5s. */}
+        {live && shotClock && (
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              marginRight: Math.round(su * (live ? 0.1 : 0.16)),
+              padding: `${Math.round(status * 0.18)}px ${Math.round(status * 0.4)}px`,
+              borderRadius: Math.round(status * 0.4),
+              background: shotClock.secs <= 5 ? 'rgba(239,68,68,0.22)' : 'rgba(255,255,255,0.06)',
+              border: `1px solid ${
+                shotClock.secs <= 5 ? 'rgba(239,68,68,0.85)' : 'rgba(255,255,255,0.16)'
+              }`,
+              lineHeight: 1,
+            }}
+          >
+            <span
+              style={{
+                fontSize: Math.round(status * 0.66),
+                fontWeight: 900,
+                letterSpacing: 1,
+                color: shotClock.secs <= 5 ? '#fca5a5' : '#94a3b8',
+                marginRight: Math.round(status * 0.28),
+              }}
+            >
+              SC
+            </span>
+            <span
+              style={{
+                fontSize: status,
+                fontWeight: 900,
+                color: shotClock.secs <= 5 ? '#ef4444' : '#fff',
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {shotClock.text}
+            </span>
+          </span>
+        )}
         <span
           style={{
             fontSize: code,
@@ -2216,11 +2386,17 @@ function LookUnit({
     // Split on digit runs so NUMBERS render in a bright accent and pop
     // out of the label text (e.g. "HOME SHOTS 12" — the 12 reads as a
     // distinct figure).
-    const sit = ribbonSituational(def, effectiveStatsWithPossession((data.stats || {}) as Record<string, unknown>, (data as any).possession)) || '';
+    const effStats = effectiveStatsWithPossession((data.stats || {}) as Record<string, unknown>, (data as any).possession);
+    const sit = ribbonSituational(def, effStats) || '';
     const parts = sit.split(/(\d+)/);
+    // 2026-06-15 — lead with a vector glyph (serve/possession/sport mark)
+    // tinted to the situational accent, replacing emoji iconography.
+    const glyph = ribbonSituationalGlyph(def, effStats, cu * 0.42, '#38bdf8');
     return (
       <div
         style={{
+          display: 'flex',
+          alignItems: 'center',
           whiteSpace: 'nowrap',
           fontSize: cu * 0.34,
           fontWeight: 900,
@@ -2228,11 +2404,14 @@ function LookUnit({
           fontVariantNumeric: 'tabular-nums',
         }}
       >
-        {parts.map((part, i) => (
-          <span key={i} style={{ color: /^\d+$/.test(part) ? '#fde047' : '#38bdf8' }}>
-            {part}
-          </span>
-        ))}
+        {glyph ? <span style={{ display: 'inline-flex', marginRight: cu * 0.16 }}>{glyph}</span> : null}
+        <span>
+          {parts.map((part, i) => (
+            <span key={i} style={{ color: /^\d+$/.test(part) ? '#fde047' : '#38bdf8' }}>
+              {part}
+            </span>
+          ))}
+        </span>
       </div>
     );
   }
@@ -3369,7 +3548,10 @@ function CueBurst({
           animation: 'rbnSweep 3.9s ease-out forwards',
         }}
       />
-      {/* emoji + slammed label + the frozen score */}
+      {/* sport mark + slammed label + the frozen score.
+          2026-06-15 — vector SportMark (tinted with the cue energy color)
+          replaces the platform-dependent emoji; falls back to the cue's emoji
+          when we have no vector for that sport, so it never reads worse. */}
       <div
         style={{
           position: 'absolute',
@@ -3385,13 +3567,17 @@ function CueBurst({
       >
         <span
           style={{
-            fontSize: ch * 0.5,
             lineHeight: 1,
             marginRight: ch * 0.16,
             filter: `drop-shadow(0 ${ch * 0.04}px ${ch * 0.1}px ${hexA(energy, 0.7)})`,
           }}
         >
-          {cue.emoji || '🎉'}
+          <SportMark
+            sport={sportDef?.key}
+            fallbackEmoji={cue.emoji || '🎉'}
+            size={ch * 0.5}
+            color={energy}
+          />
         </span>
         <span
           style={{
