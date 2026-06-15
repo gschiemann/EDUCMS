@@ -108,6 +108,39 @@ export interface Spotlight {
   lines?: { label: string; value: string }[];
 }
 
+/**
+ * Phase 1 (P1-C) — in-game stat leaders computed from the game's roster on the
+ * server (NO new fetch, NO migration). Present only when the SPORTS_PLAYER_STATS
+ * flag is on AND there's at least one non-empty leader; the key is omitted
+ * entirely otherwise, so the overlay renders exactly as today when absent.
+ * Mirrors the `getBoardFresh` payload delta in the stats-engine spec.
+ */
+export interface Leader {
+  statKey: string;
+  label: string;
+  team: 'home' | 'away';
+  playerName: string;
+  playerNumber: string | null;
+  photoUrl: string | null;
+  value: string;
+}
+
+/**
+ * Phase 1 (P1-C) — the auto Player-of-the-Game, a weighted top-performer over
+ * the game's roster (server-computed). Same gate as `leaders` (flag-on +
+ * non-empty); `null` / absent otherwise. On the stream it falls back into the
+ * `SpotlightLowerThird` as a "PLAYER OF THE GAME" lower-third whenever there is
+ * no manual spotlight visible — a manual operator spotlight always wins.
+ */
+export interface PlayerOfGame {
+  name: string;
+  number: string | null;
+  team: 'home' | 'away';
+  photoUrl: string | null;
+  headline: string;
+  lines: { label: string; value: string }[];
+}
+
 export interface BoardData {
   id: string;
   sport: string;
@@ -133,6 +166,12 @@ export interface BoardData {
   sponsorSpotSeconds?: number;
   // Broadcast lower-third — featured player / promo (board parity).
   spotlight?: Spotlight | null;
+  // Phase 1 (P1-C) — server-computed in-game stat leaders + auto
+  // Player-of-the-Game, from the already-loaded roster (no new fetch). Present
+  // only when the SPORTS_PLAYER_STATS flag is on + non-empty; omitted otherwise,
+  // so the overlay is byte-identical to today when the flag is off.
+  leaders?: Leader[];
+  playerOfGame?: PlayerOfGame | null;
   // T2-5 — active live-game text overlay (penalty / review / timeout /
   // injury), null when none. Rendered as a broadcast strap. Same shape the
   // board's LiveOverlayRenderer consumes.
@@ -637,6 +676,24 @@ function useStreamSponsorRotation(view: BoardData | null, clean: boolean): Spons
   return active;
 }
 
+/**
+ * A paused-while-clean rotating index over `count` items, advancing every
+ * `everyMs`. Resets to 0 when the list shrinks/grows or the feed goes clean, so
+ * the LEADERS strap never lands on a stale index. No-op (stays 0) for ≤1 item.
+ */
+function useRotatingIndex(count: number, everyMs: number, paused: boolean): number {
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    if (paused || count <= 1) {
+      setIdx(0);
+      return;
+    }
+    const t = setInterval(() => setIdx((i) => (i + 1) % count), everyMs);
+    return () => clearInterval(t);
+  }, [count, everyMs, paused]);
+  return idx;
+}
+
 // ── stream extras: sponsor strap + lower-thirds ─────────────────
 
 export interface ScorebugExtrasProps {
@@ -666,8 +723,29 @@ export function ScorebugExtras({ view, def, pos, scale, clean = false }: Scorebu
   const strapH = pos.v === 'bottom' ? (pos.h === 'left' ? 'right' : 'left') : pos.h;
   const showStrap = sponsorSlot.kind === 'sponsor';
   const spot = view.spotlight;
-  const showSpotlight = !!(spot && spot.visible && spot.title);
+  const manualSpotlightUp = !!(spot && spot.visible && spot.title);
+  // Lower-third source: a MANUAL operator spotlight ALWAYS wins. Only when none
+  // is visible do we fall back to the auto Player-of-the-Game (P1-C) — rendered
+  // through the same broadcast lower-third with a "PLAYER OF THE GAME" eyebrow.
+  const potg = view.playerOfGame || null;
+  const lowerThird: { spot: Spotlight; eyebrow: string } | null = manualSpotlightUp
+    ? { spot: spot as Spotlight, eyebrow: 'SPOTLIGHT' }
+    : potg && potg.name
+      ? { spot: spotFromPotg(potg), eyebrow: 'PLAYER OF THE GAME' }
+      : null;
   const overlay = view.liveOverlay || null;
+  // Compact rotating LEADERS strap — a slim broadcast strip cycling the top
+  // performer per stat (top scorer, etc.). Rides the SAME bottom corner as the
+  // sponsor strap; only shown when the sponsor strap isn't (they share the slot
+  // so neither crowds the bug). Hidden on a clean feed and when no leaders.
+  const leaders = useMemo(
+    () => (view.leaders || []).filter((l) => l && l.playerName && l.value),
+    [view.leaders],
+  );
+  const leaderIdx = useRotatingIndex(leaders.length, 6000, clean);
+  const activeLeader = leaders.length > 0 ? leaders[leaderIdx % leaders.length] : null;
+  // Don't fight the sponsor strap for the corner: sponsor wins when it's up.
+  const showLeaders = !clean && !showStrap && !!activeLeader;
 
   return (
     <>
@@ -704,9 +782,35 @@ export function ScorebugExtras({ view, def, pos, scale, clean = false }: Scorebu
         </div>
       )}
 
-      {/* broadcast lower-third — featured player / promo. Bottom-center,
-          above any docked corner content. Hidden on clean feed. */}
-      {!clean && showSpotlight && spot && (
+      {/* compact rotating LEADERS strap (P1-C) — top performer per stat,
+          cycling. Shares the sponsor corner; only shows when the sponsor strap
+          isn't up so the two never crowd the bug. Hidden on clean feed. */}
+      {showLeaders && activeLeader && (
+        <div
+          key={`${activeLeader.statKey}:${activeLeader.playerName}`}
+          style={{
+            position: 'absolute',
+            bottom: 0,
+            [strapH]: 0,
+            margin: 32,
+            transform: `scale(${scale})`,
+            transformOrigin: pos.v === 'bottom' ? `bottom ${strapH}` : `top ${strapH}`,
+            animation: 'sbStrapIn 0.45s ease-out forwards',
+            willChange: 'transform, opacity',
+            pointerEvents: 'none',
+          }}
+        >
+          <LeadersStrap
+            leader={activeLeader}
+            accent={(activeLeader.team === 'home' ? view.homeColor : view.awayColor) || DEFAULT_HOME}
+          />
+        </div>
+      )}
+
+      {/* broadcast lower-third — manual spotlight (operator-pushed) OR the auto
+          Player-of-the-Game fallback. Bottom-center, above any docked corner
+          content. Manual spotlight always wins; hidden on a clean feed. */}
+      {!clean && lowerThird && (
         <div
           style={{
             position: 'absolute',
@@ -718,7 +822,7 @@ export function ScorebugExtras({ view, def, pos, scale, clean = false }: Scorebu
             pointerEvents: 'none',
           }}
         >
-          <SpotlightLowerThird spot={spot} />
+          <SpotlightLowerThird spot={lowerThird.spot} eyebrow={lowerThird.eyebrow} />
         </div>
       )}
 
@@ -819,11 +923,124 @@ function SponsorStrap({ sponsor }: { sponsor: Sponsor }) {
 }
 
 /**
+ * Compact broadcast LEADERS strap (P1-C) — one cycling top-performer chip:
+ * a small stat overline (e.g. "PTS LEADER"), the player's name + number, and
+ * the value, on the same dark pill family as the sponsor strap. Team color
+ * tints the rule + label. Slim by design so it rides the bug's corner without
+ * fighting it. Taurus note doesn't strictly apply on the stream (OBS CEF), but
+ * we keep flex `gap`-free + longhand sides as cheap insurance, matching the
+ * rest of this file.
+ */
+function LeadersStrap({ leader, accent }: { leader: Leader; accent: string }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        background: 'linear-gradient(135deg, rgba(11,15,26,0.94), rgba(5,7,13,0.94))',
+        border: `1.5px solid ${accent}66`,
+        borderRadius: 12,
+        padding: '8px 16px',
+        boxShadow: '0 6px 26px rgba(0,0,0,0.6)',
+        fontFamily: 'Inter, system-ui, sans-serif',
+        maxWidth: 460,
+      }}
+    >
+      {leader.photoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={leader.photoUrl}
+          alt=""
+          style={{
+            width: 40,
+            height: 40,
+            objectFit: 'cover',
+            borderRadius: 9,
+            border: '2px solid #1e2638',
+            background: '#05070d',
+            marginRight: 12,
+            flex: 'none',
+          }}
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.display = 'none';
+          }}
+        />
+      ) : null}
+      <div style={{ minWidth: 0, marginRight: 16 }}>
+        <div
+          style={{
+            fontSize: 10,
+            fontWeight: 800,
+            letterSpacing: 3,
+            color: accent,
+            lineHeight: 1,
+            marginBottom: 3,
+          }}
+        >
+          {(leader.label || 'LEADER').toUpperCase()}
+        </div>
+        <div
+          style={{
+            fontSize: 18,
+            fontWeight: 900,
+            color: '#fff',
+            lineHeight: 1.05,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            maxWidth: 280,
+          }}
+        >
+          {leader.playerNumber ? (
+            <span style={{ color: '#94a3b8', marginRight: 6 }}>#{leader.playerNumber}</span>
+          ) : null}
+          {leader.playerName}
+        </div>
+      </div>
+      <div
+        style={{
+          fontSize: 28,
+          fontWeight: 900,
+          color: '#fff',
+          lineHeight: 1,
+          fontVariantNumeric: 'tabular-nums',
+          flex: 'none',
+          marginLeft: 'auto',
+        }}
+      >
+        {leader.value}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Map the auto Player-of-the-Game (P1-C) into the `Spotlight` shape the
+ * broadcast lower-third already renders, so the POTG fallback reuses one
+ * presentational component (no second layout to drift). The number rides into
+ * the subtitle line ("#23 — top performer"); the headline becomes the title's
+ * supporting text and the weighted stat `lines[]` carry straight through.
+ */
+export function spotFromPotg(potg: PlayerOfGame): Spotlight {
+  const numTag = potg.number ? `#${potg.number}` : '';
+  const subtitle = [numTag, potg.headline].filter(Boolean).join('  ·  ');
+  return {
+    visible: true,
+    title: potg.name,
+    photoUrl: potg.photoUrl,
+    subtitle: subtitle || undefined,
+    lines: potg.lines,
+  };
+}
+
+/**
  * The spotlight rendered as a broadcast lower-third — photo + name + up to
  * three stat columns. Animates up from below. Same `Spotlight` data the big
- * board's SpotlightBand reads; compact broadcast proportions here.
+ * board's SpotlightBand reads; compact broadcast proportions here. The
+ * `eyebrow` overline reads "SPOTLIGHT" for a manual push and
+ * "PLAYER OF THE GAME" for the auto POTG fallback.
  */
-function SpotlightLowerThird({ spot }: { spot: Spotlight }) {
+function SpotlightLowerThird({ spot, eyebrow = 'SPOTLIGHT' }: { spot: Spotlight; eyebrow?: string }) {
   const lines = (spot.lines || []).filter((l) => l && (l.label || l.value)).slice(0, 3);
   return (
     <div
@@ -865,7 +1082,7 @@ function SpotlightLowerThird({ spot }: { spot: Spotlight }) {
       ) : null}
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 3, color: '#818cf8' }}>
-          SPOTLIGHT
+          {eyebrow}
         </div>
         <div
           style={{
