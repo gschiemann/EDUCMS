@@ -1386,10 +1386,17 @@ function RunMode({
         </div>
       )}
 
-      {/* ── Score / Full views — scrollable scoreboard + ribbon ── */}
+      {/* ── Score / Full views — scoreboard fills, control rows pinned ──
+          2026-06-15 — this wrapper was missing `flex-1` (its PA/Show-view
+          siblings above have it), so it sized to its CONTENT instead of the
+          remaining height and pushed the pinned roster/cues/tray rows off the
+          bottom of the viewport — THE reason the operator had to scroll
+          up/down mid-game. With flex-1 + min-h-0 the scoreboard claims exactly
+          the leftover space and the control rows stay pinned + always visible;
+          only the scoreboard area itself scrolls, and only if it can't fit. */}
       {!showPaSpotlight && !showSurfacePreviews && (
         <>
-          <div className="min-h-0 overflow-y-auto">
+          <div className="flex-1 min-h-0 overflow-y-auto">
             {showScoreboard && (
               <RunInteractiveScoreboard
                 g={g}

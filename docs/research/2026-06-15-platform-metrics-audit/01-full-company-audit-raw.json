@@ -1,0 +1,946 @@
+{
+  "summary": "Professional-grade operational audit across every app surface, with live-metric grounding",
+  "agentCount": 29,
+  "logs": [],
+  "result": {
+    "surfaceGrades": [
+      {
+        "surface": "mobile",
+        "grade": "B",
+        "summary": "The mobile web surface is genuinely solid and has clearly been through several real-operator-driven hardening passes — the three named in-flight bugs (media-picker overlay occlusion, screen-settings drawer clipping, address-picker coverage) are all addressed in current code via a clean systemic overlay-lock pattern, viewport-clamped popovers, and a server-side geocode path. The remaining gaps are efficiency/cost (redundant 10s background fleet polling + direct third-party geocode calls from the browser) and touch-target/iOS-zoom polish in the AssetPicker toolbar, not broken layouts. Strong life-safety panic page. No P0s; the cost issue (P1) matters given Vercel edge requests are already at 88% of plan.",
+        "strengths": [
+          "Panic page (apps/web/src/app/panic/page.tsx) is professional-grade life-safety UX: 3s hold-to-trigger with setPointerCapture so finger-drift doesn't reset the timer (L234-243), keyboard-equivalent hold for motor-impaired users (L249-260), aria-live + Web Speech announcements (L78-96), explicit misconfigured/unauthorized/error phases that tell the operator 'NOTIFY SECURITY MANUALLY — your alert was NOT broadcast' instead of lying, and a dedicated layout that locks zoom (panic/layout.tsx L20-25) so a pinch can't cancel the gesture. This is the right way to build a safety control.",
+          "The overlay-lock pattern (hooks/use-overlay-lock.ts) is the correct systemic fix for the 'footer button hidden under the bottom tab bar' class — a reference-counted store so stacked overlays (picker-in-upload, confirm-in-modal) keep the MobileTabBar hidden until the LAST one closes (MobileTabBar.tsx L57, L88). Far better than per-modal padding hacks.",
+          "Screen-row list (screens/page.tsx L1892-2063) is carefully reflowed for mobile: a desktop flex row dissolves into a stacked card via three `sm:contents` wrappers, with status pills wrapping onto their own line and 44px-target action buttons (h-11 / h-11 w-11). This is real responsive engineering, not a desktop layout crammed onto a phone.",
+          "Screen-settings popover positioning (screens/page.tsx L874-911) clamps the menu fully on-screen at any viewport width and flips above/below based on available space — directly fixing the off-left-edge bug, rendered via createPortal to document.body (L1298) so no overflow-hidden ancestor clips it.",
+          "Address picker has a server-first geocode (lib/geocode.ts geocodeViaApi) keeping the Google Maps key server-side, with non-blocking geolocation region-bias that degrades gracefully on denial.",
+          "Leaflet fleet map is dynamically imported with ssr:false and a height-matched skeleton (ScreenMapClient.tsx) and list — not map — is the default view on the screens page (L1382), so phones don't pay the map's JS/tile cost unless asked.",
+          "Root viewport keeps userScalable:true with maximumScale:5 on the dashboard (layout.tsx L99-104) for low-vision admins, while panic/player lock zoom in their own layouts — the correct per-route a11y nuance.",
+          "Mobile drawer (Sidebar.tsx L321-327) uses w-72 max-w-[85vw] with a proper translate/backdrop and h-dvh, and the tab bar respects env(safe-area-inset-bottom) (MobileTabBar.tsx L224) for iPhone home-indicator clearance."
+        ],
+        "findingCount": 4
+      },
+      {
+        "surface": "player",
+        "grade": "B+",
+        "summary": "The player surface is genuinely well-engineered on reliability, offline resilience, and Taurus/Chromium-83 safety — multi-transport emergency delivery (WS → SSE → adaptive HTTP poll), a thoughtfully-versioned service worker with SHA-256 verify and cache-forward-on-upgrade, exponential-backoff-with-jitter reconnect, and a fail-loud emergency overlay that's correctly stripped of inset/gap/blur. The one serious, quantified defect is telemetry write-amplification: the cache-status and render-proof POSTs each fire an unconditional Screen row UPDATE every 30s with no debounce and (for cache-status) no throttle, which the LIVE pg_stat_statements attributes to ~59% of all DB time — and the fix (the existing shouldSkipLastPingWrite debounce, already applied to the ping/manifest paths) is sitting right next to the offending code. Secondary issues are redundant overlapping heartbeats (3 GET /status loops per playing kiosk feeding the Vercel edge-request pressure) and a 7,875-line / 391 KB single-file player page that is a real maintainability liability.",
+        "strengths": [
+          "Emergency path is defense-in-depth and correct: WS primary, SSE middle tier, and an independent adaptive HTTP poll (5s when emergency active or WS degraded, 10s idle) at apps/web/src/app/player/page.tsx:4185-4196 — life-safety never rides a single transport. EmergencyOverlay (apps/web/src/components/player/EmergencyOverlay.tsx) is aria-live=assertive, fails LOUD on a 401/403 poll (lines 105-113, fixing a prior silent-swallow bug), and device-JWT-authed.",
+          "Taurus/Chromium-83 safety is handled systematically, not ad-hoc. The global inset polyfill in apps/web/src/app/player/layout.tsx:199-215 force-applies longhand sides to any inline inset:0, neutralizing the entire class; EmergencyOverlay explicitly drops gap/blur on the life-safety surface with documented rationale (EmergencyOverlay.tsx:149-159). The dual-declared shorthand+longhand callsites (page.tsx:7678, KioskSplash) follow the documented safe pattern.",
+          "The service worker (apps/web/public/sw-player.js) is professional: two cache tiers with a never-evicted emergency floor, real SHA-256 body verification before caching (lines 509-529), cache-forward of emergency/meta/playlist on VERSION bump to avoid fleet-wide re-download (lines 105-165), stable-key dedup that survives Supabase signed-URL token rotation (lines 677-695), and 206-Range synthesis so cached video actually plays offline (lines 181-216).",
+          "Reliability hardening shows hard-won field experience: exponential backoff with full jitter capped at 30s (page.tsx:436), WS dead-connection detection at 60s (page.tsx:3808), render-proof via a requestAnimationFrame paint counter that correctly stays SILENT when the compositor is wedged (page.tsx:2508-2513) so a frozen kiosk goes RED instead of falsely green, and bundle-drift self-reload that defers during emergencies and mid-playback (page.tsx:3533-3572).",
+          "Server-side write-amplification was already taken seriously on the hot paths: the manifest + status heartbeat both use the 25s shouldSkipLastPingWrite debounce and collapsed 3 round-trips to 1-2 (screens.controller.ts:630-675, manifest-hot-cache.ts) — the infrastructure to fix the remaining telemetry endpoints already exists in-repo.",
+          "Preview-mode guards are consistently applied across every telemetry write (cache-status, render-proof, always-on heartbeat) so an admin's browser preview can never write lastPingAt/lastRenderedAt on the real paired device's row — a subtle correctness trap that was clearly anticipated."
+        ],
+        "findingCount": 4
+      },
+      {
+        "surface": "web-dashboard (apps/web — operator-facing Next.js 16 App Router)",
+        "grade": "B",
+        "summary": "A maturely-engineered dashboard whose hard-won reliability fixes (favicon-crash class, stale-bundle self-heal, per-tab auth isolation, smart retry/CSRF api-client, honest a11y ratchet) are genuinely professional-grade and battle-scarred in the right way. But it leaves real performance on the table: the entire ~127k-LOC widget tree is eager-loaded on the Templates gallery (the dynamic split is defeated by one static import), nearly every page is a monolithic 'use client' route with almost no code-splitting, and several global-shell queries poll in the background indefinitely — feeding the 88%-of-quota Vercel edge-request problem. Solid B: reliability and code-quality are strong, performance/efficiency and tech-currency drag it down.",
+        "strengths": [
+          "The favicon / React-owned-node crash class is correctly and durably fixed: BrandStyleInjector.setBrandFavicon (BrandStyleInjector.tsx:167-197) mutates the Next-emitted <link rel=icon> nodes in place instead of .remove()-ing them, with an extensive comment explaining the WebKit commitDeletion crash. The remaining removeChild calls (screens/page.tsx:800, client-logger.ts:144, flex-gap-polyfill.ts:43) all operate on nodes the code itself created — not React-owned. This is exactly right.",
+          "StaleBundleWatcher (StaleBundleWatcher.tsx) is a thoughtful piece of fleet hygiene: polls /api/build-info every 5min, and freshReload() (line 49) calls registration.update() + deletes only edu-shell-* CacheStorage entries before reloading — solving the 'reload doesn't help, I have to clear cache' SW-staleness bug without wiping the kiosk player's offline store.",
+          "The api-client (api-client.ts) is genuinely senior-grade: 5xx retry only on idempotent methods + login (never double-submits mutations, line 112-114), CSRF token auto-attached on mutations, a 401-storm guard (sessionLogoutFired, line 57), an api-status event bus for reconnect banners, and a deliberate decision NOT to force cache:'no-store' (line 83-90) so GETs honor server Cache-Control while React Query owns invalidation.",
+          "Per-tab auth isolation via sessionStorage (ui-store.ts:5-25) with a one-time localStorage→sessionStorage migration directly fixes a real multi-tenant identity-bleed across tabs. The reasoning is documented and correct.",
+          "React Query defaults (providers.tsx) are well-tuned: 5min staleTime, refetchOnWindowFocus, and an explicit, commented prohibition on a global refetchInterval — showing the team learned from the 2026-04-19 'polling storm' perf incident.",
+          "The a11y baseline (scripts/a11y-warning-baseline.json) is honest and DOWN-only ratcheted to a real locked count of 1 warning, with a forthright coverage caveat that the CI harness runs unauthenticated. That intellectual honesty is rare and valuable.",
+          "Security headers are set globally in next.config.ts (X-Frame-Options, frame-ancestors, nosniff, Referrer-Policy, HSTS) with a documented, defensible reason for deferring a full content CSP. Player/SW cache-control headers are correct and per-route.",
+          "Tech stack is near-current: Next 16.2.6, React 19.2.4, Tailwind 4 — and optimizePackageImports is correctly configured for lucide-react, Base UI, dnd-kit, react-query, date-fns to kill barrel-import bloat."
+        ],
+        "findingCount": 6
+      },
+      {
+        "surface": "database",
+        "grade": "B",
+        "summary": "A well-engineered Prisma/Postgres layer with disciplined migrations, RLS on all 66 tables, smart in-process caching on the hot manifest and board paths, and an explicit history of fixing N+1/egress issues — clearly maintained by someone who reads query plans. It is held back from an A by one concrete, live-confirmed efficiency defect: ~59% of all DB time is spent on undebounced player-telemetry writes (cache-status + render-proof) that fire every 30s per screen and bypass the very debounce pattern the codebase already uses for lastPingAt. A latent game_events index gap is real but well-mitigated by a 1s board cache.",
+        "strengths": [
+          "Migration discipline is professional-grade: 73 tracked migrations under prisma/migrations, migration_lock.toml committed, `prisma migrate deploy` runs in the boot wrapper (Dockerfile:101 / scripts/railway-start.sh) — no `prisma db push` anywhere in the production path. Schema is the single source of truth.",
+          "The manifest hot path is genuinely well-optimized: apps/api/src/screens/manifest-hot-cache.ts implements a 25s in-process lastPingAt write-debounce (shouldSkipLastPingWrite) + a 2s tenant emergency-state read cache, dropping ~100 writes/sec at 500 screens to ~2.5/min/screen. The heartbeat write is wrapped in withDbRetry and uses a tight OTA_SELECT (screens.controller.ts:647-674).",
+          "The 750ms board poll — the obvious egress/DB bomb — is defused by a 1s in-process board cache with explicit per-write invalidation (sports.service.ts:421-444, invalidateBoardCache on every record()), so a 50-viewer game hits the DB ~once/sec, not 50×750ms. getBoardFresh also uses an explicit column `select` rather than `SELECT *` (sports.service.ts:451-461).",
+          "The ~8 board sub-queries are parallelized via a single Promise.all (sports.service.ts:494-542) — one round-trip latency, not 8 sequential RTTs.",
+          "Hot telemetry columns (last_cache_report_at, last_rendered_at) are deliberately NOT indexed (schema.prisma:700-727), which preserves Postgres HOT-update optimization and avoids index write-amplification on every telemetry POST.",
+          "Evidence of real query-plan-driven tuning in comments and migrations: 20260423_hot_path_indexes, the emergency-asset query collapsed from 2 RTTs to 1 via include (screens.controller.ts:3335-3342), the emergency-audit-log debounce bumped 15min→6h to cut ~4,800→200 rows/day (manifest-hot-cache.ts:103-107). Multi-pod boot race handled correctly with a Postgres advisory lock that IS released (ensure-system-presets.ts:323/647).",
+          "Connection pool is correctly sized per CLAUDE.md (connection_limit=10 + pool_timeout=20 on DATABASE_URL), and a withDbRetry wrapper handles transient pgbouncer hiccups (prisma/with-db-retry.ts). Live metric (28/60 connections, 100% cache hit, 99.98% commit) confirms the pool is healthy."
+        ],
+        "findingCount": 4
+      },
+      {
+        "surface": "api",
+        "grade": "B",
+        "summary": "A genuinely well-engineered NestJS backend with strong error-envelope normalization, thoughtful DB-retry/resilience primitives, multi-replica-safe billing reconciliation, and disciplined secret-handling — clearly the product of many hardening passes. It loses a full grade to two concrete launch-class defects (user-deletion 500 via unhandled FK Restrict; the two highest-frequency telemetry writes are unprotected and un-coalesced, accounting for ~59% of all DB time) plus systemic gaps: validation is wired on only ~12 of ~30 controllers, the error-envelope discipline (task #57) is still violated by 200-with-{error} returns, and the background-job/cron fleet is only single-replica safe — a horizontal-scaling landmine. Solid B; reaches A- once the two P0s and validation coverage close.",
+        "strengths": [
+          "AllExceptionsFilter (common/all-exceptions.filter.ts) is professional-grade: a STATUS_CODE_LABELS map gives every HTTP status a stable machine `code`, Prisma P2002/P2025 are mapped to 409/404, stack traces are scrubbed in prod, HttpException messages are author-vetted and exposed, and 5xx (only) are captured to Sentry with route/method/user tags and a traceId returned to the client.",
+          "withDbRetry (prisma/with-db-retry.ts) is a genuinely good resilience primitive — transient-only classification by both Prisma code AND message-fragment, exponential backoff with ±20% jitter (explicitly to de-correlate 1000-kiosk retry storms), a 600ms hard wall-clock deadline so heartbeats stay subsecond, and it correctly NEVER retries logic errors (P2002/P2025). Backed by with-db-retry.spec.ts.",
+          "PrismaService (prisma/prisma.service.ts) does fire-and-forget $connect with a 5s timeout so a DB blip at boot can't crashloop the container — the right call, and it pairs with /health always-200 liveness.",
+          "Multi-replica-safe billing reconciliation: license-reconcile.cron.ts uses an AuditLog-row-as-lease dedup (findFirst for a LICENSE_RECONCILED row today before acting) after explicitly abandoning an unreliable Redis SETNX lock — exactly the right pattern, and Stripe webhooks are idempotent via a processed_stripe_events ledger keyed on evt_* id.",
+          "Secret handling: required-secret.ts fails LOUD and FAST in production for missing/empty JWT/SESSION/DEVICE secrets (no more `|| 'default_secret'` fallbacks), and Sentry (sentry.ts) scrubs Authorization/Cookie headers and any secret|token|key|password body/header field before transmit.",
+          "trust-proxy is set to exactly 1 hop (main.ts ~line 56) with a detailed comment showing the team understood per-IP throttle degradation to GLOBAL throttle behind a proxy — and per-endpoint @Throttle decorators tighten login/register/ota-state/crash-report beyond the 600/min default.",
+          "Zod validation via a custom ZodValidationPipe is wired into the security-sensitive controllers (auth, mfa, emergency, ai, integrations, playlists, schedules, submissions, templates) — the boundaries that matter most are covered.",
+          "EfficiencyInterceptor is O(1) per request (Content-Length read, no body serialization, fire-and-forget Redis HINCRBY) — observability without a latency tax."
+        ],
+        "findingCount": 8
+      },
+      {
+        "surface": "vercel-edge (apps/web/vercel.json, apps/web/src/app/cdn/**, apps/web/src/app/api/** cron-keepwarm/build-info, next.config images/headers/runtimes)",
+        "grade": "B",
+        "summary": "The edge/CDN layer is competently built — the SSRF-locked asset proxy that fixed the 5.79 GB Supabase egress incident, content-hashed static caching with explicit no-store on SW + player shell, and security headers are genuinely professional-grade. But the layer carries real cost and reliability debt: the 750 ms polling architecture (no WebSocket on board/ribbon/scorebug) is the structural cost driver, the production NEXT_PUBLIC_API_URL→Railway-direct wiring that makes the whole thing work is undocumented and one careless edit away from killing the WS tier fleet-wide, the keepwarm route is orphaned dead code with a lying docstring, and the edge asset proxy has no fetch timeout. The prior audit's claim that the /api/v1/* rewrite drives the 887K edge bill is not supported by the code — polls go direct to Railway.",
+        "strengths": [
+          "SSRF-safe edge asset proxy (cdn/assets/[...path]/route.ts) is genuinely well-engineered: hard-locked to one Supabase bucket via a fixed prefix + per-segment encodeURIComponent (no arbitrary-URL fetch), strips Range so responses are cacheable 200s not 206s, overrides Supabase's no-cache with immutable s-maxage=31536000 — this is the real fix for the documented 98 MB→5.79 GB egress incident and it's done correctly with edge runtime to dodge the 4.5 MB serverless cap.",
+          "Cache-Control discipline is correct and intentional: content-hashed /_next/static chunks keep long max-age while the player shell HTML, /sw.js and /sw-player.js are explicitly no-store (next.config.ts:57-96) — this is exactly right for OTA freshness on locked-firmware Android Webview kiosks, and the comments document the real 2026-06-08 stale-SW incident that motivated it.",
+          "Security headers on every route (next.config.ts:48-55): X-Frame-Options SAMEORIGIN, frame-ancestors 'self', nosniff, strict-origin-when-cross-origin, HSTS with includeSubDomains — a sensible baseline, with an honest comment explaining why a full content CSP is deferred (pervasive inline widget styles need a nonce rollout) rather than shipping a broken one.",
+          "apiFetch (api-client.ts) has mature resilience: 502/503/504 retry with 1s/3s/7s backoff, CSRF token on mutations, a single-fire session-logout guard against 401 storms, and a deliberate decision NOT to force cache:'no-store' so React Query + HTTP caches can layer (documented against the 2026-04-19 perf audit).",
+          "productionBrowserSourceMaps:false + optimizePackageImports for lucide/base-ui/dnd-kit/react-query/date-fns trims first-paint bundle on the heavy dashboard routes — correct, measured optimizations with rationale.",
+          "build-info route is a clean, correct mechanism for stale-bundle detection: server-rendered from the live deployment so old kiosks polling it always see the new SHA, no-store header, graceful null fallback off-Vercel."
+        ],
+        "findingCount": 6
+      },
+      {
+        "surface": "security",
+        "grade": "A-",
+        "summary": "This is a genuinely mature, heavily-audited security surface — the kind of defense-in-depth you'd expect from a senior team, not a pre-launch startup. Authentication (Argon2id + timing-equalizer, fail-closed JWT verification, dual-secret device/user split, per-user mass revocation), SSRF (connect-time DNS-rebind pin), CSRF (enforce-by-default), audit-log DB-level immutability, and the emergency authorization gate are all implemented to a professional standard with honest, accurate code comments. The remaining gaps are mostly operational/config (rotate weak prod secrets, move floor-plans to a private bucket) plus two real code-level fail-open seams in the JWT-revocation path that contradict the \"fail-closed\" comments. Not an A because of those revocation seams, the public floor-plan bucket, and a permissive CSP/CORS.",
+        "strengths": [
+          "SSRF defense is best-in-class: apps/api/src/branding/safe-fetch.ts closes the DNS-rebind TOCTOU with a connect-time `lookup` pin (ssrfSafeLookup) that re-validates every resolved address at socket-connect, not just up front — and it deliberately uses node:http(s) instead of global fetch precisely to get that hook. Redirects are re-validated, byte-capped, and webhook POSTs refuse to follow 3xx. This is the single most-commonly-botched control in SaaS and it's done right.",
+          "Emergency authorization is rigorous: resolveScopeTenant (emergency.controller.ts:267) resolves the OWNING tenant from the DB row for every scope (tenant/group/device) and denies cross-tenant before any mutation; the override playlistId is independently re-verified against the owning tenant (line 376) to block pasting another tenant's playlist UUID; state-mutation + AuditLog are wrapped in one $transaction so you can never get a CRITICAL status with no forensic trail.",
+          "Audit-log immutability is enforced at the storage layer, not just the app: migration 20260531000000 installs a BEFORE UPDATE OR DELETE trigger that blocks all deletes and all content updates, permitting ONLY the FK ON-DELETE-SET-NULL anonymization — and the migration comment correctly explains the user-hard-delete interaction that a naive blanket block would have broken.",
+          "Login is timing-safe against email enumeration: auth.service.ts computes a module-load Argon2id dummy hash and verifies against it on user-miss AND on non-ACTIVE-user, equalizing the response time across all three branches (lines 22-27, 61-66, 79-82).",
+          "WS emergency fan-out is HMAC-gated server-side at the Redis chokepoint (redis.service.ts:137 verifyWsHmac) with a constant-time compare + freshness window, and the team honestly removed the dead verifyMessage() 'audit theater' rather than leaving a safeguard with zero callers (websocket-signer.service.ts:24-56).",
+          "Boot-time fail-closed posture: required-secret.ts throws in production on any missing/short secret; main.ts refuses to boot without ALLOWED_ORIGINS and validates the DATABASE_URL pool config. No `process.env.X || 'default'` fallbacks remain.",
+          "The passport-saml CVE-2025-54419 'launch blocker' is already well-mitigated at the dependency level: the package is NOT installed (absent from package.json and node_modules), the require() sites fall through to an honest 503, and the unauthenticated SAML callback is hard-gated on an enabled config (sso.service.ts:316) — exposure is 0 enabled tenants. OIDC enforces state+nonce (sso.service.ts:401).",
+          "No secret-in-log leakage: a targeted scan of every console.* call for password/token/secret/bearer found only the harmless randomBytes example string in required-secret.ts. SSO config read-path returns hasSecret booleans, never plaintext (toSafeConfig). SOS location input is CR/LF/TAB-stripped to prevent log-injection (emergency.controller.ts:860)."
+        ],
+        "findingCount": 6
+      },
+      {
+        "surface": "tech-currency",
+        "grade": "B+",
+        "summary": "Dependency health is genuinely good for a solo-led startup: a recent, actively-remediated lockfile (passport-saml + tar chain removed in e8de8f96, transitive CVE floors enforced via pnpm.overrides, Dependabot configured monorepo-wide), no abandoned direct deps, and a CI pipeline that is well above typical — it builds the exact Railway Docker image and boot-smokes it. The grade is held below A- by three things: the production runtime still carries deprecated Multer 1.x (directly imported in 3 controllers) alongside the patched 2.x, the platform runs on EOL Node 20 with no version pin anywhere, and major-version currency (Prisma 5, Express 4) is lagging with no staging environment to de-risk those upgrades. None are launch-blocking, but they're the difference between \"professional\" and \"best-in-class.\"",
+        "strengths": [
+          "Lockfile is actively maintained and security-conscious: pnpm.overrides (package.json:62-69) pins transitive CVE floors (undici>=6.24.0, basic-ftp, fast-uri, fast-xml-parser/builder, tmp>=0.2.6) with a clear comment explaining they're dev-toolchain-only and don't ship to prod. node-fetch@2.7.0 and form-data@4.0.5 resolve to patched versions.",
+          "CVE remediation is recent and real, not theater: commit e8de8f96 removed passport-saml (critical CVE-2025-54419) and the tar chain via an argon2 bump; tar is fully gone from the lockfile (0 entries). The SAML critical is correctly mitigated by NOT installing the package — apps/api/src/sso/sso.service.ts:13 documents the intentional require()-fallthrough until task #199 migrates to @node-saml/passport-saml.",
+          "CI/CD pipeline is materially above startup norm. deploy-reliability.yml docker-build job (line 179) builds the identical Railway image, runs a 60s boot smoke test with full diagnostic dump on failure, and curls /api/v1/health. Plus lockfile-drift gate, taurus-safety Chromium-83 ratchet, WebKit favicon-crash canary (prod-smoke.yml:97), gitleaks secret scan, and a jsx-a11y baseline ratchet that only goes down.",
+          "Dependabot is configured across all 9 package.json directories + GitHub Actions with a deliberate, documented noise policy (.github/dependabot.yml): grouped minor/patch PRs, majors ignored (because argon2/prisma/eslint majors break builds) BUT security updates explicitly bypass the ignore. This is a mature, intentional posture, not neglect.",
+          "Core framework stack is current and on supported majors: Next 16.2.6, React 19.2.4, NestJS 11, Tailwind 4, TypeScript 5.7/5.9, Zod 4, Zustand 5, React Query 5, PostgreSQL 17. No legacy EOL libraries as direct deps (no request/moment/node-sass).",
+          "Trivy action is supply-chain-hardened: pinned to an immutable commit SHA (ci.yml:216, aquasecurity/trivy-action@ed142fd...v0.36.0) rather than a moveable @master/tag ref, with a comment explaining why."
+        ],
+        "findingCount": 5
+      }
+    ],
+    "allFindings": [
+      {
+        "title": "Screens page double-polls the whole fleet every 10s in the background — redundant DB load + mobile battery/data drain, against an 88%-full Vercel edge budget",
+        "severity": "P1",
+        "evidence": [
+          "apps/web/src/app/[schoolId]/screens/page.tsx:1374-1375",
+          "apps/web/src/hooks/use-api.ts:22-38",
+          "apps/web/src/hooks/use-api.ts:124-142"
+        ],
+        "fix": "The screens page mounts BOTH useScreenGroups() (10s, refetchIntervalInBackground:true, staleTime:0) and useScreens() (10s, refetchIntervalInBackground:true, staleTime:0) — two full fleet fetches every 10s, each ~150 rows. On a phone these fire even when the tab is backgrounded / the screen is off, burning battery, cellular data, and Vercel edge requests (already 88% of plan per the live metrics). Pick ONE source of truth for the list (the page renders status from group.screens[] per the comment at L26-28, so useScreens may be entirely redundant here), drop refetchIntervalInBackground for the mobile case (or gate it on document.visibilityState), and raise staleTime above 0 so focus/reconnect refetches don't stack on the interval. Long-term this is the same 750ms-poll-instead-of-WebSocket pattern flagged in the live metrics — fleet status is a prime candidate for the existing signed-WS channel.",
+        "surface": "mobile"
+      },
+      {
+        "title": "Address picker still makes direct browser calls to Nominatim + Photon — third-party data leak, OSM ToS violation, and flaky/CORS-fragile on locked-down networks",
+        "severity": "P1",
+        "evidence": [
+          "apps/web/src/components/screens/ScreenLocationModal.tsx:199-216",
+          "apps/web/src/components/screens/ScreenLocationModal.tsx:260-262"
+        ],
+        "fix": "After the server-side geocodeViaApi() path, the modal falls back to fetching photon.komoot.io and nominatim.openstreetmap.org DIRECTLY from the browser on every keystroke (debounced 300ms). This (a) leaks the operator's typed building address + their IP to two third parties on every search, (b) violates Nominatim's usage policy, which explicitly forbids autocomplete/keystroke querying and an unset Referer/UA from a public app, so it will get rate-limited or blocked at scale, and (c) is the most likely root cause of the 'address picker not finding US addresses' report — these endpoints are frequently blocked by school/corporate firewalls and CORS proxies, and they fail silently to setNoMatch. Move BOTH providers behind the existing /api/v1/geocode proxy (server-side, with a proper User-Agent and the merge/dedupe logic that already exists in the modal) so the only origin the browser talks to is your own API. That also unifies the 'no match' behavior and lets you cache repeat lookups.",
+        "surface": "mobile"
+      },
+      {
+        "title": "AssetPicker toolbar controls are sub-44px and the folder <select> is 12px text — fails touch-target minimum and triggers iOS Safari auto-zoom on focus",
+        "severity": "P2",
+        "evidence": [
+          "apps/web/src/components/assets/AssetPicker.tsx:198-211",
+          "apps/web/src/components/assets/AssetPicker.tsx:223-235"
+        ],
+        "fix": "Unlike the screen rows, the AssetPicker's mobile toolbar was never reflowed. The folder <select> (text-xs + py-1.5 ≈ 28px tall) and the 'Upload new' button (py-1.5 ≈ 28px) are both well under the 44px target and sit in a single cramped non-wrapping flex row. Worse, text-xs (12px) on the <select> is below iOS Safari's 16px threshold, so tapping it auto-zooms the viewport and the operator has to pinch back out — exactly the kind of friction the 30-second-happy-path rule targets, and this picker is the entry point for nearly every image/logo/sponsor upload. Bump the select + button to min-h-[44px] and set the select's font to text-base/16px on mobile (text-base sm:text-xs), and let the toolbar wrap on narrow widths.",
+        "surface": "mobile"
+      },
+      {
+        "title": "Template builder is hard-gated off all phones with a 'larger screen required' wall, undercutting the 'run the whole show from your phone' promise",
+        "severity": "P2",
+        "evidence": [
+          "apps/web/src/components/layout/DashboardLayout.tsx:52-74"
+        ],
+        "fix": "Any /templates/builder/* route renders a full-screen 'needs at least 1024px' block on <lg viewports with no mobile fallback at all. That's a defensible call for the drag-and-drop canvas, but it means a sports/QSR operator who is told the product needs 'no laptop' literally cannot touch a template from their phone — not even to fix a typo. Consider a read-only / text-only mobile editing mode (the field-level PropertiesPanel edits don't need the canvas), or at minimum soften the wall on tablet-portrait (768-1024px) where the builder is closer to usable. Not launch-blocking, but it contradicts the stated positioning.",
+        "surface": "mobile"
+      },
+      {
+        "title": "cache-status + render-proof telemetry do an unconditional Screen UPDATE every 30s with no debounce — ~59% of all DB time",
+        "severity": "P1",
+        "evidence": [
+          "apps/api/src/screens/screens.controller.ts:3242-3248 (reportCacheStatus: unconditional screen.update of lastCacheReport JSON + lastCacheReportAt every call, no shouldSkipLastPingWrite, no @Throttle)",
+          "apps/api/src/screens/screens.controller.ts:3302-3309 (reportRenderProof: unconditional screen.update of lastRenderedAt every call; @Throttle 10/min exists but does not reduce the steady-state 30s write)",
+          "apps/web/src/app/player/page.tsx:2413 (cache-status POST every 30_000ms)",
+          "apps/web/src/app/player/page.tsx:2531 (render-proof POST every 30_000ms)",
+          "apps/api/src/screens/manifest-hot-cache.ts:82-94 (shouldSkipLastPingWrite/markLastPingWritten debounce that the ping+manifest paths use but these two endpoints do NOT)",
+          "LIVE pg_stat_statements: UPDATE screens last_cache_report = 41.6% of DB time / 180826 calls; UPDATE screens last_rendered_at = 17.4% / 161168 calls"
+        ],
+        "fix": "The cache-status payload is identical on ~99% of polls (cache contents rarely change) and render-proof only needs server-clock freshness, so both are writing the same value every 30s. (1) cache-status: gate the write behind a same-as-last-value check (compare the new JSON to the stored lastCacheReport; skip the update when unchanged, OR add a 5-minute debounce keyed by screenId in manifest-hot-cache.ts — admin visibility tolerates 5-min staleness fine) and raise the client cadence to 5 min. (2) render-proof: apply the existing 25s shouldSkipLastPingWrite-style debounce (a fresh-enough lastRenderedAt does not need re-writing every 30s; a 60-90s debounce keeps the render-STALE threshold accurate) and/or use a raw `UPDATE ... SET last_rendered_at = now() WHERE id = $1` to avoid Prisma's full-row rewrite. Either change alone removes the bulk of the 59% DB-time spend with zero behavioral regression.",
+        "surface": "player"
+      },
+      {
+        "title": "Three overlapping GET /screens/status heartbeats per playing kiosk (web 30s + web 45s + native 30s) — redundant network + Vercel edge-request pressure",
+        "severity": "P1",
+        "evidence": [
+          "apps/web/src/app/player/page.tsx:3476 (always-on heartbeat, setInterval 30_000)",
+          "apps/web/src/app/player/page.tsx:3625 (playing-phase httpHeartbeat, setInterval 45_000 — runs concurrently with the always-on loop once phase==='playing')",
+          "apps/player/app/src/main/java/com/educms/player/heartbeat/HeartbeatService.kt:181-184 (native Android HeartbeatService also hits /screens/status every 30s)",
+          "LIVE Vercel: Edge Requests 887K/1M (88%) — every /api/v1/* is rewritten through Vercel edge"
+        ],
+        "fix": "In the playing phase the always-on 30s loop already covers liveness, so the additional 45s playing-phase ping at page.tsx:3617-3625 is pure duplication — remove it (the always-on loop's handleHeartbeatOta already processes the OTA fields). For the APK, the native HeartbeatService duplicates the WebView heartbeat; pick ONE (prefer the native one since it survives a wedged WebView) and have the web side skip its own /status ping when running inside the APK (the EduCmsNative bridge is already detected elsewhere). Net: ~3 status GETs/min/kiosk → 1, directly trimming both Vercel edge requests and pooled DB read load at fleet scale.",
+        "surface": "player"
+      },
+      {
+        "title": "player/page.tsx is a 7,875-line / 391 KB single client component — maintainability and bundle-size liability",
+        "severity": "P2",
+        "evidence": [
+          "apps/web/src/app/player/page.tsx (7875 lines, 391 KB)",
+          "Dozens of independent concerns in one file: pairing poll, WS connect, SSE fallback, HTTP fallback, 3 heartbeat loops, cache-status, render-proof, rAF paint counter, bundle-drift reloader, emergency cache refresh, slide cycler, OTA handling"
+        ],
+        "fix": "This file ships in full to every kiosk's first paint. Extract the cohesive subsystems into hooks/modules (useEmergencyTransport, useTelemetry, useOtaHeartbeat, useBundleDrift, useSlideCycle) — they already communicate via refs so the boundaries are clean. Beyond readability/test-surface, splitting lets Next code-split the rarely-hit paths (pairing, OTA) out of the steady-state playback bundle, shrinking the cold-start payload on low-spec Taurus/Goodview WebViews.",
+        "surface": "player"
+      },
+      {
+        "title": "rAF paint-counter loop runs forever even when no operator content is rendering",
+        "severity": "P2",
+        "evidence": [
+          "apps/web/src/app/player/page.tsx:2486-2497 (requestAnimationFrame loop with no gate on render state; comment at 2482-2485 explicitly says it is intentionally always-on)"
+        ],
+        "fix": "Low impact (a modulo increment per frame), but on a battery-less always-on kiosk it keeps the compositor scheduling rAF callbacks even on the pairing/connecting splash. Optional: pause the loop (return without re-scheduling) when phase is not 'playing'/'emergency', resuming it from the render-state effect. Leave as-is if the team prefers a continuous liveness signal — flagging for awareness, not as a defect.",
+        "surface": "player"
+      },
+      {
+        "title": "Templates gallery eager-loads the entire ~127k-LOC widget tree, defeating the dynamic split that exists elsewhere",
+        "severity": "P1",
+        "evidence": [
+          "apps/web/src/app/[schoolId]/templates/page.tsx:28 — `import { WidgetPreview } from '@/components/widgets/WidgetRenderer'` (STATIC import)",
+          "apps/web/src/components/widgets/WidgetRenderer.tsx — 156 static `./` widget imports (every theme, every sport widget, every portrait variant)",
+          "apps/web/src/components/templates/ScaledTemplateThumbnail.tsx:29-30 — the SAME WidgetPreview is correctly lazy-loaded via `dynamic(() => import('@/components/widgets/WidgetRenderer'))`, with a comment explaining it exists to avoid 'dragging that entire bundle in'",
+          "apps/web/src/components/widgets — 126,876 LOC total"
+        ],
+        "fix": "Replace the static `import { WidgetPreview }` on templates/page.tsx:28 with the same `next/dynamic` wrapper ScaledTemplateThumbnail already uses (ssr:false, a small loading skeleton). The gallery renders thumbnails via ScaledTemplateThumbnail (already split) and only needs the heavy WidgetPreview for the live full-size preview modal/pane — load it on demand. This removes the largest first-paint chunk from the most-visited operator route.",
+        "surface": "web-dashboard (apps/web — operator-facing Next.js 16 App Router)"
+      },
+      {
+        "title": "Background polling on the global shell + per-page hooks runs indefinitely in hidden tabs, feeding the 88%-of-quota Vercel edge-request problem",
+        "severity": "P1",
+        "evidence": [
+          "apps/web/src/hooks/use-api.ts:15-17 — useTenantStatus polls /tenants every 30s with `refetchIntervalInBackground: true`; this hook mounts in the global shell (Sidebar.tsx:54, TopToolbar.tsx:30, DashboardLayout.tsx:24)",
+          "apps/web/src/hooks/use-api.ts:33-34 — useScreenGroups polls every 10s with `refetchIntervalInBackground: true` and `staleTime: 0`",
+          "apps/web/src/hooks/use-api.ts:137-138, 3261 — additional 10s / 2s background polls",
+          "Every /api/v1/* request is rewritten through Vercel edge (per session metrics: 887K/1M edge requests, 88%) — each background poll is an edge request even when the operator's tab is hidden all day"
+        ],
+        "fix": "Drop `refetchIntervalInBackground: true` on the dashboard hooks (keep it only where genuinely needed, e.g. the live sports board). A backgrounded operator tab does not need a 10-30s emergency-status fallback poll — the foreground refetchOnWindowFocus already covers the moment they return. Combined with moving board/ribbon's 750ms poll (board/[gameId]/page.tsx:192) to the WebSocket push path that already exists, this is the highest-leverage edge-cost reduction available.",
+        "surface": "web-dashboard (apps/web — operator-facing Next.js 16 App Router)"
+      },
+      {
+        "title": "`export const dynamic = 'force-dynamic'` on the [schoolId] layout opts EVERY authenticated route out of static optimization",
+        "severity": "P2",
+        "evidence": [
+          "apps/web/src/app/[schoolId]/layout.tsx:17 — `export const dynamic = 'force-dynamic'`",
+          "The layout is `'use client'` (line 1) and gates all chrome behind a `mounted` flag (line 71-83), so there is no server data to render anyway — the force-dynamic was added to silence a Next 16 useParams()-in-client-layout 500 (documented line 8-17)"
+        ],
+        "fix": "This is a defensible band-aid, but it means the shell HTML is regenerated per request with no caching benefit. Longer term: move the `useParams()`-driven tenant-id read out of the layout (pass schoolId down from a thin server layout, or read it in a client child), then drop force-dynamic so the authed shell can be statically shipped and hydrated. Low urgency given the shell renders an empty placeholder server-side, but it's the kind of thing a perf-conscious team revisits.",
+        "surface": "web-dashboard (apps/web — operator-facing Next.js 16 App Router)"
+      },
+      {
+        "title": "JWT is stored in JS-readable sessionStorage and sent as a Bearer header — XSS-exposed, and contradicts the CLAUDE.md 'HttpOnly cookies' claim",
+        "severity": "P2",
+        "evidence": [
+          "apps/web/src/store/ui-store.ts:27,43 — token persisted in sessionStorage under `edu_cms_token`",
+          "apps/web/src/lib/api-client.ts:69,106 — token read from the store and attached as `Authorization: Bearer ${token}`",
+          "apps/web/src/lib/api-client.ts:102 — `credentials: 'include'` IS set, so cookies are also sent (defense in depth exists), but the Bearer token remains independently exfiltratable by any XSS"
+        ],
+        "fix": "This is a deliberate tradeoff for per-tab multi-tenant isolation (documented in ui-store.ts:5-25), so it's not a hair-on-fire issue given credentials:'include' already rides cookies. But: (a) update CLAUDE.md / docs to stop claiming the dashboard auth is HttpOnly-cookie-only — it's cookie + JS-readable Bearer; (b) since cookies are already sent, evaluate dropping the sessionStorage token entirely and relying on the HttpOnly cookie for the dashboard (keep Bearer only where a cookie can't ride, e.g. cross-origin), which closes the XSS-token-theft surface without losing per-tab isolation (use a non-sensitive per-tab tenant id instead).",
+        "surface": "web-dashboard (apps/web — operator-facing Next.js 16 App Router)"
+      },
+      {
+        "title": "No cutting-edge Next 16 / React 19 perf features adopted (PPR, React Compiler, dynamicIO/cacheComponents)",
+        "severity": "P2",
+        "evidence": [
+          "apps/web/next.config.ts:99-115 — experimental block contains only optimizePackageImports; no `ppr`, `reactCompiler`, `dynamicIO`/`cacheComponents`",
+          "apps/web/package.json — no `babel-plugin-react-compiler` dependency",
+          "apps/web/next.config.ts — React 19.2.4 + Next 16.2.6 are current enough to opt into the React Compiler (auto-memoization) and PPR"
+        ],
+        "fix": "Given the dashboard is almost entirely 'use client' with large components (PropertiesPanel.tsx is 10,336 LOC, WidgetRenderer 4,226), the React Compiler is the single highest-value adoption: enable `experimental.reactCompiler` to get automatic memoization across the heavy builder/widget trees without hand-writing useMemo/useCallback. PPR has lower ROI here because the authed shell is force-dynamic and client-gated — note it as a candidate only after the force-dynamic layout cleanup above.",
+        "surface": "web-dashboard (apps/web — operator-facing Next.js 16 App Router)"
+      },
+      {
+        "title": "App-router pages are overwhelmingly 'use client' monoliths with almost no per-route code-splitting",
+        "severity": "P2",
+        "evidence": [
+          "25 of 34 [schoolId] page.tsx files are top-line 'use client' (full route trees ship to the browser)",
+          "apps/web/src/app/[schoolId]/templates/page.tsx — 3,344 LOC single client file; playlists/page.tsx 3,056; screens/page.tsx 2,383; settings/page.tsx 1,427",
+          "Only 3 `next/dynamic` usages exist across 433 .tsx files (CustomScoreboardScene, ScreenMapClient, ScaledTemplateThumbnail) — code-splitting is the exception, not the norm",
+          "31 raw `<img>` tags in app pages vs 1 `next/image` import — no automatic image optimization/lazy-loading on operator pages"
+        ],
+        "fix": "Split the heaviest interactive surfaces behind next/dynamic where they're conditionally rendered (e.g. the PlaylistCreateWizard, the template preview modal, the PropertiesPanel sub-editors load only when a panel opens). For the 'use client' sprawl, peel the static framing of a few large pages into server components and keep only the interactive islands client-side. Migrate raw `<img>` to next/image (or at minimum add loading='lazy' + width/height) on gallery/asset surfaces to cut layout shift and bytes.",
+        "surface": "web-dashboard (apps/web — operator-facing Next.js 16 App Router)"
+      },
+      {
+        "title": "Player telemetry writes (cache-status + render-proof) are undebounced — 59% of all DB time",
+        "severity": "P1",
+        "evidence": [
+          "apps/api/src/screens/screens.controller.ts:3242-3248 (cache-status: unconditional screen.update on every 30s POST, no debounce, no withDbRetry)",
+          "apps/api/src/screens/screens.controller.ts:3302-3309 (render-proof: same — unconditional update, no debounce)",
+          "apps/web/src/app/player/page.tsx:2413 (cache-status setInterval 30_000)",
+          "apps/web/src/app/player/page.tsx:2519 (render-proof POST, ~30s cadence)",
+          "apps/api/src/screens/manifest-hot-cache.ts:82-94 (the shouldSkipLastPingWrite debounce that lastPingAt uses but these two endpoints do NOT)"
+        ],
+        "fix": "These two endpoints write the same `screens` row that lastPingAt already keeps fresh, but with zero coalescing — live pg_stat_statements shows them at 41.6% (180,826 calls, 19.84ms mean) and 17.4% (161,168 calls, 9.33ms mean) of total DB time. Apply the existing debounce pattern: gate both writes behind a per-screen `shouldSkip*Write(id)` check (e.g. 60-120s window for cache-status, which only feeds an admin visibility pill, and ~90s for render-proof, whose staleness threshold is minutes not seconds). Keep the freshest in-memory value and flush on the debounce boundary. This is a ~5-10× reduction on the two hottest queries with no loss of signal fidelity, mirroring the lastPingAt fix already shipped. Also wrap both in withDbRetry for parity with the heartbeat path. The 9-20ms mean on a single-row update of a 76-column table also points at lock contention from these concurrent same-row writers — debouncing directly relieves it.",
+        "surface": "database"
+      },
+      {
+        "title": "game_events index omits `type` — every board sub-query is a per-type scan+sort (33.5% seq scans)",
+        "severity": "P1",
+        "evidence": [
+          "packages/database/prisma/schema.prisma (GameEvent: only `@@index([gameId, createdAt])`)",
+          "apps/api/src/sports/sports.service.ts:317-390 (5 latest* helpers, each WHERE gameId=? AND type=? ORDER BY createdAt DESC)",
+          "apps/api/src/sports/sports.service.ts:500-541 (board fan-out: CUE/LIVE_OVERLAY type-filtered reads)",
+          "apps/api/src/sports/sports.service.ts:3200, 4641, 4813 (more type-filtered findFirst by gameId)"
+        ],
+        "fix": "The composite index `(gameId, createdAt)` cannot serve the `type` predicate, so Postgres reads all events for the game and filters/sorts in memory — confirmed by the live 33.5% seq-scan ratio on game_events. Add `@@index([gameId, type, createdAt])` so the latest-of-type lookups become an index range scan with no sort. This is currently well-mitigated by the 1s board cache (sports.service.ts:421-444) so it only bites on live-game writes, but the event log grows unbounded per game (append-only undo rail + cue history), so the scan cost rises over a long game / season. Cheap, additive migration; do it before the cache ever has to be loosened. Consider also a retention/compaction job for closed games' event logs.",
+        "surface": "database"
+      },
+      {
+        "title": "screens table is a 76-column wide row absorbing high-frequency single-field telemetry updates",
+        "severity": "P2",
+        "evidence": [
+          "packages/database/prisma/schema.prisma:700-727 (last_cache_report Json, last_rendered_at, last_rendered_frames, last_rendered_hash and ~70 other columns on Screen)",
+          "apps/api/src/screens/screens.controller.ts:3242 + 3302 (telemetry writes target this wide row)"
+        ],
+        "fix": "Mixing slow-changing config (name, resolution, brand, OTA state, geo, board surface) with high-churn telemetry (lastPingAt, lastCacheReport(At), lastRendered*) on one row means every telemetry POST rewrites a wide tuple and competes for the same row lock. The HOT-update optimization (no index on the churn columns — already done correctly) helps, but the long-term fix is to split high-frequency liveness/telemetry into a narrow `screen_telemetry` sidecar table (1:1 with Screen) so config reads/writes never contend with the 30s telemetry firehose. Lower priority than the debounce — debouncing first removes most of the write volume — but this is the structurally correct shape at fleet scale (the architecture targets 'thousands of screens').",
+        "surface": "database"
+      },
+      {
+        "title": "listGames / listActive-style reads lack pagination and pull full rows",
+        "severity": "P2",
+        "evidence": [
+          "apps/api/src/sports/sports.service.ts:303-307 (listGames: findMany by tenantId, no take/skip, no select — returns every column of every game ever created for the tenant)"
+        ],
+        "fix": "listGames returns all games for a tenant ordered by createdAt desc with no `take` limit and no field projection. For a venue running daily games this is unbounded growth on an admin list view. Add a default `take` (e.g. 50) + cursor pagination and an explicit `select` of only the columns the list UI renders. Same projection discipline that getBoardFresh already models (sports.service.ts:451-461) should be applied to the other findMany list endpoints. Verify the `(tenantId, status)`/`(tenantId, createdAt)` index covers the order-by to avoid a sort.",
+        "surface": "database"
+      },
+      {
+        "title": "User deletion 500s on any tenant with real history — unhandled FK Restrict (P2003)",
+        "severity": "P0",
+        "evidence": [
+          "apps/api/src/users/users.controller.ts:462-473 (tx: auditLog.create then tx.user.delete)",
+          "packages/database/prisma/schema.prisma:960 (Asset.uploadedBy User — required, default Restrict)",
+          "packages/database/prisma/schema.prisma:1083 (AuditLog.user User? — default Restrict)",
+          "packages/database/prisma/schema.prisma:1178 (Template.createdBy — default Restrict)",
+          "packages/database/prisma/schema.prisma:1372 (Submission.submittedBy User — required, default Restrict)",
+          "packages/database/prisma/schema.prisma:517 (UserInvite.invitedBy User — default Restrict)",
+          "apps/api/src/common/all-exceptions.filter.ts:107-126 (P2003 absent from switch → falls to DATABASE_ERROR 500)"
+        ],
+        "fix": "Seven User relations have no onDelete and default to Restrict, so user.delete throws Prisma P2003 the moment the user authored an audit log, uploaded an asset, created a template, or submitted for review (i.e. essentially every real admin). The just-created AuditLog row in the same tx ALSO points at the actor, so it can fail even on a 'clean' user. Two-part fix: (1) decide reassign-vs-null per relation and set onDelete (SetNull for Asset.uploadedByUserId/Template.createdById/Submission.submittedById after making them nullable, or block deletion with a clear 409 if the user owns assets) and add a migration; (2) map P2003 in all-exceptions.filter.ts to HTTP 409 CONFLICT with a `code:'FK_CONSTRAINT'` so it never surfaces as an opaque 500. Add a users.service spec that deletes a user with audit/asset/template history.",
+        "surface": "api"
+      },
+      {
+        "title": "The two highest-frequency writes (cache-status, render-proof) are unprotected by withDbRetry and un-coalesced — ~59% of all DB time",
+        "severity": "P0",
+        "evidence": [
+          "apps/api/src/screens/screens.controller.ts:3240-3248 (cache-status: findUnique + screen.update, no withDbRetry)",
+          "apps/api/src/screens/screens.controller.ts:3300-3306 (render-proof: screen.update, no withDbRetry)",
+          "apps/api/src/prisma/with-db-retry.ts:7-17 (header: 'bad for the high-frequency, kiosk-driven endpoints (status heartbeat, manifest fetch) where a 500 cascade can flip a fleet to OFFLINE')",
+          "LIVE METRIC: UPDATE screens last_cache_report = 41.6% of DB time / 180826 calls / 19.84ms mean; UPDATE screens last_rendered_at = 17.4% / 161168 calls / 9.33ms mean"
+        ],
+        "fix": "These are the exact endpoints withDbRetry was built to protect, yet only the status heartbeat (screens.controller.ts:545) and pairing got wrapped — cache-status and render-proof did not. Two issues: (1) wrap both update calls in withDbRetry so a transient pgbouncer blip doesn't 500 a frozen-screen alert; (2) the write amplification itself is the cost driver — each kiosk POSTs cache-status + render-proof on a fixed cadence and each does a full-row UPDATE on the wide `screens` table (plus cache-status does a redundant findUnique first). Coalesce telemetry into a separate narrow `screen_telemetry` table (or use updateMany with a select to drop the findUnique round-trip), and debounce server-side (only write if >N seconds since last, or batch via a short in-memory flush window). Cutting these two writes would reclaim the majority of DB time per the pg_stat_statements profile.",
+        "surface": "api"
+      },
+      {
+        "title": "Error-envelope discipline (task #57) still violated — controllers return HTTP 200 with bare {error} bodies",
+        "severity": "P1",
+        "evidence": [
+          "apps/api/src/playlists/playlists.controller.ts:195,216,355 (return { error: 'Not found' } — HTTP 200, no code/message envelope)",
+          "apps/api/src/screen-groups/screen-groups.controller.ts:139,153,173 (same pattern)",
+          "apps/api/src/users/users.controller.ts:446-449 (comment documents this exact class: 'error responses were returning 200 with { error } bodies, which let callers swallow the failure')"
+        ],
+        "fix": "These bare returns are SUCCESSFUL handler returns, so they never reach AllExceptionsFilter — they emit HTTP 200 with `{error:'Not found'}` and no `code`. A client checking status sees success; a client reading `.code` gets undefined. This is the precise defect task #57 tracks and that users.controller.ts already fixed locally. Replace every `return { error: ... }` with `throw new NotFoundException(...)` / appropriate HttpException so the filter normalizes status + the stable `code`. Grep `return.*{ *error:` across all *.controller.ts (hits in at least playlists, screen-groups, screens, templates, asset-files) and fix each.",
+        "surface": "api"
+      },
+      {
+        "title": "Validation coverage is partial — no global ValidationPipe, ~18 controllers accept raw @Body() with no schema",
+        "severity": "P1",
+        "evidence": [
+          "apps/api/src/app.module.ts:219-222 (global APP_PIPE is SanitizationPipe, not ValidationPipe)",
+          "apps/api/src/main.ts (no useGlobalPipes(ValidationPipe))",
+          "ZodValidationPipe wired on only 12 controllers (ai, auth, mfa, bugs, emergency, integrations, onboarding, playlists, schedules, screen-groups, submissions, templates)",
+          "0 class-validator DTOs in apps/api/src (grep @IsString/@IsNotEmpty → 0 hits)",
+          "apps/api/src/screens/screens.controller.ts:3234 (cache-status @Body() body: {...} cast as any, no schema)"
+        ],
+        "fix": "Security-critical boundaries (auth, emergency, billing) are covered, but ~18 controllers (screens telemetry, tenants, users mutations, stats, hardware, floor-plans, etc.) take untyped @Body() and cast `as any`. The SanitizationPipe HTML-sanitizes strings but does NOT validate shape/types — a malformed body reaches Prisma and surfaces as a 500. Define a Zod schema per mutating endpoint and apply ZodValidationPipe (the infra already exists), prioritizing device-public endpoints (cache-status, ota-state, crash-report, register/pair) since those take unauthenticated-adjacent input. Consider this the close-out of the validation half of task #57.",
+        "surface": "api"
+      },
+      {
+        "title": "Background services + pos/clever crons are only single-replica safe — horizontal-scaling landmine",
+        "severity": "P1",
+        "evidence": [
+          "apps/api/src/notifications/offline-screen-scanner.ts:33 (setInterval, in-process `running` guard only)",
+          "apps/api/src/player-ota/canary-auto-promote.ts:49 (setInterval, in-process guard only — writes AuditLog + flips canary on promote)",
+          "apps/api/src/pos/pos-sync.cron.ts:31,42-44 (in-memory lastRunBucket dedup — per-replica)",
+          "apps/api/src/integrations/clever/clever-sync.cron.ts:25,44-46 (in-memory lastRunYmd dedup — per-replica)",
+          "railway.json: numReplicas: 1 (currently masks this)",
+          "Contrast: apps/api/src/billing/license-reconcile.cron.ts:207-215 (DB-row lease — the CORRECT cross-replica pattern, already in the codebase)"
+        ],
+        "fix": "Currently moot at numReplicas:1, but the moment the team scales to 2 replicas (a one-line change), offline-scanner, canary-auto-promote, pos-sync, and clever-sync all double-fire — canary-auto-promote would race two replicas promoting the same tenant and writing duplicate AuditLog rows. license-reconcile.cron.ts already demonstrates the fix in-repo: gate each tick behind a DB-row-as-lease (or a pg advisory lock like ensure-system-presets.ts:323 uses at boot). Port that pattern to all four interval jobs before ever bumping numReplicas. Low effort now, prevents a silent data-integrity bug at scale.",
+        "surface": "api"
+      },
+      {
+        "title": "Two global exception filters registered — redundant Sentry capture + ambiguous ordering",
+        "severity": "P2",
+        "evidence": [
+          "apps/api/src/main.ts:62 (app.useGlobalFilters(new AllExceptionsFilter()))",
+          "apps/api/src/app.module.ts:211-214 (APP_FILTER → SentryGlobalFilter)",
+          "apps/api/src/common/all-exceptions.filter.ts:138-145 (AllExceptionsFilter ALREADY captures 5xx to Sentry)"
+        ],
+        "fix": "AllExceptionsFilter already does Sentry capture for 5xx, so the additional SentryGlobalFilter (APP_FILTER) is redundant and creates two @Catch-all filters in the chain with non-obvious precedence. Pick one: either drop the SentryGlobalFilter provider and keep AllExceptionsFilter as the sole normalizer (preferred — it owns the envelope), or remove the manual Sentry.captureException from AllExceptionsFilter and let SentryGlobalFilter handle capture while AllExceptionsFilter only normalizes. As-is it works but risks double-reporting the same exception to Sentry and confuses future maintainers about which filter shapes the response.",
+        "surface": "api"
+      },
+      {
+        "title": "requireSecret validates length only, not entropy — weak prod secret passes the boot gate",
+        "severity": "P2",
+        "evidence": [
+          "apps/api/src/security/required-secret.ts:25-28 (returns raw if trim().length >= minLength, default 16)",
+          "MEMORY/known-items: 'weak prod JWT/SESSION secrets need rotation' (still open)"
+        ],
+        "fix": "The boot gate only checks length >= 16, so a dictionary-ish 16-char string passes and the documented weak prod JWT/SESSION secret stays in place. Add a low-entropy reject (e.g. require >= 32 chars for JWT/SESSION/DEVICE secrets, reject if it matches the dev-fallback constants, optionally a Shannon-entropy floor). This is config remediation, not a code rewrite — but the gate that's supposed to catch it currently won't.",
+        "surface": "api"
+      },
+      {
+        "title": "Prisma 5.12 is a full major behind (6.x GA) and ~10 minors stale within 5.x",
+        "severity": "P2",
+        "evidence": [
+          "packages/database/package.json:15,21 (@prisma/client + prisma ^5.12.1)",
+          "LIVE METRIC laggards: Prisma 5.12 (6 is out), Express 4 (5 GA), Node 20 (22 LTS)"
+        ],
+        "fix": "Prisma 5.12.1 misses ~10 patch/perf releases within 5.x (5.22 is current 5.x) and is a major behind 6.x, which ships query-engine perf improvements and the driver-adapter path relevant to the pgbouncer setup. Bump to latest 5.x first (low-risk, captures perf + bugfixes), then plan the 6.x major behind a branch with the full test suite. Pair with the Express 4→5 and Node 20→22 upgrades tracked in the metrics. Not urgent, but a real product accrues these as tech debt.",
+        "surface": "api"
+      },
+      {
+        "title": "Production NEXT_PUBLIC_API_URL→Railway-direct is the load-bearing config that makes the edge cost AND the WS tier work, yet it's undocumented in vercel.json and one edit from a fleet-wide outage",
+        "severity": "P1",
+        "evidence": [
+          "apps/web/vercel.json:3-8 (rewrites ALL /api/v1/* to Railway, but this is a fallback path only)",
+          "/Users/gschiemann/Desktop/EDU CMS/.env:18 (prod NEXT_PUBLIC_API_URL=\"https://api-production-39a1.up.railway.app/api/v1\" — direct origin)",
+          "apps/web/src/lib/api-url.ts:16 (API_URL = NEXT_PUBLIC_API_URL || localhost; all apiFetch + board/ribbon/scorebug polls use this DIRECT url, NOT the rewrite)",
+          "docs/research/2026-06-09-prelaunch-final-audit/01-emergency-realtime.md:75 (documents that pointing the env at the venue-os.app proxy would silently kill the WS tier fleet-wide — SSE/poll would mask it)"
+        ],
+        "fix": "Add a top comment in vercel.json stating the rewrite is a fallback only and that production MUST set NEXT_PUBLIC_API_URL to the DIRECT Railway origin (never the venue-os.app proxy) or WS upgrades 404 and every poll floods the edge. Add a prod-smoke probe that asserts wss://<api-origin>/realtime returns 101 and that the deployed bundle's baked API URL is the Railway host, failing the deploy if it regressed to the proxy domain.",
+        "surface": "vercel-edge (apps/web/vercel.json, apps/web/src/app/cdn/**, apps/web/src/app/api/** cron-keepwarm/build-info, next.config images/headers/runtimes)"
+      },
+      {
+        "title": "750 ms fixed polling on board/ribbon/scorebug is the structural cost/reliability driver — 3 surfaces × ~80 polls/min/game, no WebSocket push, no backoff when idle",
+        "severity": "P1",
+        "evidence": [
+          "apps/web/src/app/board/[gameId]/page.tsx:192 (POLL_MS=750) + :3969 (setInterval(load, POLL_MS))",
+          "apps/web/src/app/ribbon/[gameId]/page.tsx:248 (POLL_MS=750) + :1022",
+          "apps/web/src/components/sports/ScorebugSurface.tsx:188 (POLL_MS=750) + :510",
+          "apps/web/src/components/widgets/sports/GameStateContext.tsx:70 (POLL_MS=750)"
+        ],
+        "fix": "These polls hit Railway directly (good — they don't touch the edge), so the cost lands on the API/DB, not Vercel. But 750 ms unconditional polling is wasteful when nothing's changing and it correlates with the DB write-amplification noted in the live metrics. Move live game-state to the existing WS tier with the 750 ms poll as a fallback only, or at minimum back off to 3-5 s when the game clock is stopped / status is PRE/FINAL. A single shared poller (one fetch fanned out to board+ribbon+scorebug on the same machine) instead of three independent setIntervals would cut redundant requests 3x where surfaces share an origin.",
+        "surface": "vercel-edge (apps/web/vercel.json, apps/web/src/app/cdn/**, apps/web/src/app/api/** cron-keepwarm/build-info, next.config images/headers/runtimes)"
+      },
+      {
+        "title": "Orphaned keepwarm route with a docstring that lies about how it's scheduled — dead code that will mislead the next engineer",
+        "severity": "P2",
+        "evidence": [
+          "apps/web/src/app/api/cron/keepwarm/route.ts:11-13 (docstring: \"Scheduled by vercel.json (crons section)\")",
+          "apps/web/vercel.json (NO crons key exists)",
+          "git commit 0066bc7a \"fix(deploy): move keep-warm cron from Vercel to GitHub Actions\"",
+          "/Users/gschiemann/Desktop/EDU CMS/.github/workflows/keep-warm.yml:8-10,25 (the REAL keepwarm: GHA cron */5 curls Railway /health directly, never touches this Vercel route)"
+        ],
+        "fix": "Either delete apps/web/src/app/api/cron/keepwarm/route.ts (the GHA workflow fully replaces it and curls Railway directly) or, if kept as a manual probe, rewrite the docstring to say it is NOT scheduled by Vercel and that warming is owned by .github/workflows/keep-warm.yml. As-is it's a serverless function that exists but never runs on schedule.",
+        "surface": "vercel-edge (apps/web/vercel.json, apps/web/src/app/cdn/**, apps/web/src/app/api/** cron-keepwarm/build-info, next.config images/headers/runtimes)"
+      },
+      {
+        "title": "Edge asset proxy has no fetch timeout — a slow/hung Supabase origin can pin an edge invocation until the platform hard-limit",
+        "severity": "P2",
+        "evidence": [
+          "apps/web/src/app/cdn/assets/[...path]/route.ts:45 (res = await fetch(upstream, {...}) with no AbortController/signal)",
+          "apps/web/src/app/cdn/assets/[...path]/route.ts:30-64 (proxy() has try/catch on connect failure but nothing bounds a slow-streaming or stalled upstream)"
+        ],
+        "fix": "Wrap the upstream fetch in an AbortController with a bounded timeout (the keepwarm route at apps/web/src/app/api/cron/keepwarm/route.ts:44-45 already shows the pattern — 12s abort) so a degraded Supabase Storage can't hold edge invocations open. Keep it generous (e.g. 20-30s) since large videos legitimately stream, but cap it.",
+        "surface": "vercel-edge (apps/web/vercel.json, apps/web/src/app/cdn/**, apps/web/src/app/api/** cron-keepwarm/build-info, next.config images/headers/runtimes)"
+      },
+      {
+        "title": "Latent double /api/v1 prefix bug in the Clever integration page — those calls build https://...railway.app/api/v1/api/v1/... and will 404",
+        "severity": "P2",
+        "evidence": [
+          "apps/web/src/lib/api-client.ts (fullUrl = `${API_URL}${path}`, and API_URL already ends in /api/v1 in prod)",
+          "apps/web/src/app/[schoolId]/settings/integrations/clever/page.tsx:55,70,79,90,101 (apiFetch('/api/v1/integrations/clever/...') — every other apiFetch caller passes a bare path like '/screens', so these 5 are anomalous and resolve to a doubled prefix)"
+        ],
+        "fix": "Strip the '/api/v1' prefix from all five apiFetch calls in clever/page.tsx so they match the repo-wide convention (bare resource path). Add an apiFetch dev-time assertion that warns if a path starts with '/api/v1' (a strong signal of this exact mistake).",
+        "surface": "vercel-edge (apps/web/vercel.json, apps/web/src/app/cdn/**, apps/web/src/app/api/** cron-keepwarm/build-info, next.config images/headers/runtimes)"
+      },
+      {
+        "title": "183 raw <img> tags vs next/image used once — Next/Vercel image optimization is effectively unused, so no automatic WebP/AVIF, responsive srcset, or CDN image resizing on dashboard imagery",
+        "severity": "P2",
+        "evidence": [
+          "next.config.ts:19-24 (images.remotePatterns configured for cdn.educms.io + *.supabase.co — but no formats/deviceSizes tuning)",
+          "grep: 1 file imports next/image vs 183 <img usages across src",
+          "apps/web/src/lib/asset-cdn.ts referenced in only ~5 call sites (the immutable proxy covers player/signage media, but dashboard thumbnails/logos largely use raw <img>)"
+        ],
+        "fix": "This is partly defensible — player/kiosk media MUST be raw <img>/<video> for Chromium-83 + the edge proxy already handles their caching, and next/image's optimizer would add per-request edge cost. But dashboard-only surfaces (asset library thumbnails, branding logos, template gallery previews) would benefit from next/image's AVIF/WebP + responsive sizing. Audit the dashboard-only <img> sites and migrate those (NOT player/widget ones) to next/image, or accept the tradeoff explicitly and document why raw <img> is the deliberate default for the player target.",
+        "surface": "vercel-edge (apps/web/vercel.json, apps/web/src/app/cdn/**, apps/web/src/app/api/** cron-keepwarm/build-info, next.config images/headers/runtimes)"
+      },
+      {
+        "title": "Weak production JWT/SESSION secrets still in use (config blocker) — boot guard validates length, not entropy",
+        "severity": "P0",
+        "evidence": [
+          "apps/api/src/security/required-secret.ts:24 (minLength default 16, no entropy check)",
+          "apps/api/src/auth/jwt.strategy.ts:13",
+          "apps/api/src/main.ts:111 (SESSION_SECRET)",
+          "LIVE METRICS: 'weak prod JWT/SESSION secrets need rotation'"
+        ],
+        "fix": "This is an operational blocker the code cannot self-detect: requireSecret() only enforces presence + >=16 chars, so a weak-but-long secret passes. Rotate JWT_SECRET, SESSION_SECRET, DEVICE_SECRET_KEY, DEVICE_JWT_SECRET on Railway to fresh 64-char hex (`node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"`). Rotating JWT_SECRET invalidates all live user sessions (acceptable). Optionally raise the bar in code: pass `minLength: 32` for these four and/or add a Shannon-entropy / dictionary check so a weak value fails boot too.",
+        "surface": "security"
+      },
+      {
+        "title": "JWT revocation check fails OPEN when Redis is down, contradicting the 'fail-closed' guard comment",
+        "severity": "P1",
+        "evidence": [
+          "apps/api/src/auth/jwt-auth.guard.ts:97-126 (comment: 'Now we fail CLOSED ... if we can't confirm the token isn't revoked, we deny')",
+          "apps/api/src/realtime/redis.service.ts:172-183 (sismember returns false on !connected, logs 'fail-open')",
+          "apps/api/src/realtime/redis.service.ts:240-252 (getTokenInvalidBefore returns null when no publisher)"
+        ],
+        "fix": "The guard's try/catch only fails-closed on THROWN errors, but sismember() swallows the Redis-down case and returns false (= 'not revoked'), and getTokenInvalidBefore() returns null (= 'no mass-revocation marker') — so when Redis is unavailable, a logged-out or demoted user's token keeps working. That directly contradicts the documented intent. Decide the posture explicitly: either make sismember/getTokenInvalidBefore throw a distinguishable RedisUnavailableError when `!connected` so the guard's existing catch fails closed (it already maps to 'Auth check unavailable; please retry'), or keep fail-open but update the guard comment to stop claiming fail-closed. For a life-safety/multi-tenant product, failing closed on revocation is the correct call.",
+        "surface": "security"
+      },
+      {
+        "title": "Floor-plan images stored in a PUBLIC Supabase bucket; signed-URL read path is a fig leaf",
+        "severity": "P1",
+        "evidence": [
+          "apps/api/src/floor-plans/floor-plans.controller.ts:463-468 (comment 'if it ever escapes the public bucket', `publicUrl = await this.storage.upload(...)`)",
+          "apps/api/src/floor-plans/floor-plans.controller.ts:242 (read uses createSignedUrl with short TTL)",
+          "task #200 still pending: 'Move floor-plan objects to a PRIVATE Supabase bucket (full F-1 fix)'"
+        ],
+        "fix": "Floor plans are sensitive (building layouts used for emergency/lockdown response). They upload to a public bucket, so the createSignedUrl TTL on the read path provides no real confidentiality — the object is reachable by anyone with the public URL (leaked via logs, referrer, browser history, or path-guessing within the tenant prefix). Move floor-plan storage to a private bucket and serve exclusively via short-TTL signed URLs (the read path already does this). The tenant-scoped path only mitigates blind guessing, not URL leakage.",
+        "surface": "security"
+      },
+      {
+        "title": "CSRF is bypassed for ALL Bearer-token requests — safe today, but a latent footgun if any cookie-auth mutation route is added",
+        "severity": "P2",
+        "evidence": [
+          "apps/api/src/security/csrf.middleware.ts:199-202 (any `Authorization: Bearer` request skips CSRF entirely)",
+          "apps/api/src/security/csrf.middleware.ts:137-144 (CSRF cookie is httpOnly:false by necessity for the double-submit pattern)"
+        ],
+        "fix": "The Bearer-bypass reasoning is correct (browsers don't auto-attach Bearer headers cross-site, so those requests aren't CSRF-able) and it solves the real Safari-ITP third-party-cookie problem. The latent risk: the dashboard ALSO runs an express-session cookie (main.ts:108) — if any future mutation route is protected by that cookie alone (no Bearer), and the client happens to send a Bearer too, CSRF silently won't apply. Add a CI/lint assertion that no mutation route relies on the session cookie for authz, or document that session cookies are non-authoritative for mutations. Low risk now; flagging so it isn't forgotten.",
+        "surface": "security"
+      },
+      {
+        "title": "Helmet CSP and dev CORS are broad: script/frame/img allow http:+https: and dev CORS allows any *.vercel.app",
+        "severity": "P2",
+        "evidence": [
+          "apps/api/src/main.ts:86-94 (frameSrc/imgSrc/mediaSrc allow 'http:' and 'https:'; CSP has no upgrade-insecure-requests)",
+          "apps/api/src/main.ts:186-201 (dev CORS fallback allows any origin ending in .vercel.app / .ngrok / .trycloudflare)"
+        ],
+        "fix": "The wide CSP is partly justified (iframe template previews, cross-origin images), and scriptSrc is correctly locked to 'self' (no unsafe-inline/eval) which is the part that matters most for XSS. Two tightenings worth making: (1) drop 'http:' from frameSrc/imgSrc/mediaSrc in production and add `upgrade-insecure-requests` so mixed content can't downgrade; (2) the dev-only CORS `.vercel.app` wildcard is gated behind `!ALLOWED_ORIGINS` and main.ts:145 throws in prod if ALLOWED_ORIGINS is unset, so prod is safe — but confirm no preview/staging deploy runs with NODE_ENV!=production AND a real DB, which would expose the wildcard against live data.",
+        "surface": "security"
+      },
+      {
+        "title": "API-key verification uses a non-constant-time hash compare (acknowledged, academic)",
+        "severity": "P2",
+        "evidence": [
+          "apps/api/src/api-keys/api-keys.service.ts:175-180 (comment concedes timingSafeEqual 'would be ideal'; uses `incomingHash !== row.hashedSecret`)"
+        ],
+        "fix": "Genuinely low risk and the code comment reasons it correctly: the lookup is by unique prefix, the compared values are SHA-256 hashes of high-entropy 32-hex secrets, and the attacker has no way to iterate toward a hash they don't know. Still, the fix is two lines and removes the asterisk: `crypto.timingSafeEqual(Buffer.from(incomingHash), Buffer.from(row.hashedSecret))` (lengths are always equal for SHA-256 hex). Worth doing for hygiene/audit-cleanliness rather than exploitability.",
+        "surface": "security"
+      },
+      {
+        "title": "Deprecated Multer 1.x ships to production runtime alongside patched 2.x",
+        "severity": "P1",
+        "evidence": [
+          "apps/api/package.json:57 (\"multer\": \"^1.4.5-lts.1\")",
+          "pnpm-lock.yaml:6949 (deprecated: Multer 1.x is impacted by a number of vulnerabilities, which have been patched in 2.x)",
+          "apps/api/src/assets/assets.controller.ts:6 (import { memoryStorage } from 'multer')",
+          "apps/api/src/imports/imports.controller.ts:65",
+          "apps/api/src/floor-plans/floor-plans.controller.ts:51",
+          "pnpm-lock.yaml:10979 (@nestjs/platform-express bundles multer: 2.1.1)"
+        ],
+        "fix": "The API pins multer ^1.4.5-lts.1 (resolves to the deprecated 1.4.5-lts.2) and imports memoryStorage from it in 3 upload controllers, while @nestjs/platform-express@11.1.19 already bundles the patched multer@2.1.1 — so the dependency tree carries both and the operator-facing upload config path runs on the vulnerable 1.x. Bump apps/api/package.json multer to ^2.0.0, run pnpm install, and verify the FileInterceptor/memoryStorage call sites still type-check (the 1.x→2.x API for memoryStorage/limits is compatible). This collapses the tree to a single patched multer and clears the deprecation warning.",
+        "surface": "tech-currency"
+      },
+      {
+        "title": "Production runs on EOL Node 20 with no version pin anywhere in the repo",
+        "severity": "P1",
+        "evidence": [
+          "Dockerfile:2 (FROM node:20-alpine AS builder)",
+          "Dockerfile:54 (FROM node:20-alpine AS runner)",
+          ".github/workflows/ci.yml:29 (node-version: 20)",
+          ".github/workflows/deploy-reliability.yml:97/113 (node-version: 20)",
+          "no .nvmrc and no \"engines\" field in any package.json (verified absent)"
+        ],
+        "fix": "Node 20 is in maintenance/EOL territory (active LTS ended; 22 is the current LTS, 24 the new active line). Plan a deliberate bump to node:22-alpine across the Dockerfile (both stages) and all workflow node-version fields, and ADD a single source of truth — either an \"engines\": { \"node\": \">=22 <23\" } in root package.json or a committed .nvmrc — so contributor machines, CI, and the Docker image can't drift. Test argon2/bcrypt native compile on node:22-alpine first (their build requirements have changed across majors per CLAUDE.md), ideally via the existing docker-build smoke job on a branch.",
+        "surface": "tech-currency"
+      },
+      {
+        "title": "No staging environment — the live production deploy is the first integration test",
+        "severity": "P1",
+        "evidence": [
+          "railway.json:24-27 (single deploy target, numReplicas: 1, no environment split)",
+          ".github/workflows/prod-smoke.yml:71-72 (PROD_SMOKE_BASE: https://venue-os.app — smoke runs against LIVE prod, post-deploy)",
+          "task #221 [pending] Staging environment + promote-to-prod workflow",
+          "apps/edge/wrangler.toml:52 has an [env.staging] for the edge worker only — the API/web have no equivalent"
+        ],
+        "fix": "There is no dev→staging→prod promotion gate; pushes to master deploy straight to the customer-facing Railway API + Vercel web, and prod-smoke.yml only validates AFTER the live deploy is already serving real tenants (Chardon HS, AGC, the water-polo pilot). For a life-safety/emergency product with active pilots this is the single biggest ops-maturity gap. Stand up a Railway 'staging' environment (Railway supports multiple environments natively) + a Vercel preview/staging alias, point a copy of prod-smoke at it, and gate master→prod promotion on staging-smoke-green. This de-risks the very Prisma 5→6 / Node 20→22 / Express 4→5 major upgrades that are currently blocked precisely because there's nowhere safe to test them.",
+        "surface": "tech-currency"
+      },
+      {
+        "title": "Container CVE scan (Trivy) and API Jest suite are both non-blocking in the deploy pipeline",
+        "severity": "P2",
+        "evidence": [
+          ".github/workflows/ci.yml:217 (Trivy: continue-on-error: true — CRITICAL/HIGH OS+library CVEs in the prod image do not fail CI)",
+          ".github/workflows/deploy-reliability.yml:138 (API tests: continue-on-error: true — argon2 native binding not built on the raw runner)"
+        ],
+        "fix": "Two gates that look protective but can't actually block a bad merge. (1) Trivy is intentionally non-blocking because the CRITICAL/HIGH backlog was never confirmed clean in a real CI run (per the inline comment); run it once against node:22-alpine after the Node bump, triage to empty, then drop continue-on-error so a future base-image CVE turns the build red. (2) The deploy-reliability API-test step is decorative because argon2.node isn't compiled by the frozen-lockfile install on the ubuntu runner — add a build-script allowlist or explicit `pnpm rebuild argon2` step so the binding exists, then drop the flag (the ci.yml build-and-test job already runs these tests blocking, so this is the redundant copy — either fix it or remove it to avoid a false sense of coverage).",
+        "surface": "tech-currency"
+      },
+      {
+        "title": "Major-version laggards: Prisma 5, plus type/runtime skew (@types/express@5 over Express 4)",
+        "severity": "P2",
+        "evidence": [
+          "packages/database/package.json:15,21 (@prisma/client + prisma ^5.12.1 → resolves 5.22.0; Prisma 6 GA, 7 in progress)",
+          "apps/api/package.json:81 (@types/express ^5.0.0) vs runtime express@4.22.1 via @nestjs/platform-express",
+          ".github/dependabot.yml:29-31 (all majors ignored, so these never auto-surface)"
+        ],
+        "fix": "The ignore-all-majors Dependabot policy is sound for noise, but it means major currency is entirely manual and is silently slipping. (1) Prisma 5.22 → 6 is a worthwhile maintenance bump (perf + better connection handling, relevant given the screens-telemetry write-amplification noted in DB metrics); schedule it on a branch once staging exists. (2) apps/api devDep @types/express is pinned to ^5 while the actual running Express is 4.x (NestJS 11 still ships Express 4) — the type definitions don't match the runtime API surface and can mask or invent signature errors. Pin @types/express to ^4.17.x to match, or move the whole API to Express 5 deliberately once NestJS platform support is confirmed. Add a quarterly 'major-bump review' line to the existing hygiene/preflight discipline so laggards get a scheduled look instead of drifting indefinitely.",
+        "surface": "tech-currency"
+      }
+    ],
+    "confirmedCritical": [
+      {
+        "title": "Screens page double-polls the whole fleet every 10s in the background — redundant DB load + mobile battery/data drain, against an 88%-full Vercel edge budget",
+        "severity": "P1",
+        "evidence": [
+          "apps/web/src/app/[schoolId]/screens/page.tsx:1374-1375",
+          "apps/web/src/hooks/use-api.ts:22-38",
+          "apps/web/src/hooks/use-api.ts:124-142"
+        ],
+        "fix": "The screens page mounts BOTH useScreenGroups() (10s, refetchIntervalInBackground:true, staleTime:0) and useScreens() (10s, refetchIntervalInBackground:true, staleTime:0) — two full fleet fetches every 10s, each ~150 rows. On a phone these fire even when the tab is backgrounded / the screen is off, burning battery, cellular data, and Vercel edge requests (already 88% of plan per the live metrics). Pick ONE source of truth for the list (the page renders status from group.screens[] per the comment at L26-28, so useScreens may be entirely redundant here), drop refetchIntervalInBackground for the mobile case (or gate it on document.visibilityState), and raise staleTime above 0 so focus/reconnect refetches don't stack on the interval. Long-term this is the same 750ms-poll-instead-of-WebSocket pattern flagged in the live metrics — fleet status is a prime candidate for the existing signed-WS channel.",
+        "surface": "mobile",
+        "verdict": {
+          "confirmed": true,
+          "adjustedSeverity": "P2",
+          "reasoning": "The core technical claim is REAL and reachable. The Screens page (apps/web/src/app/[schoolId]/screens/page.tsx:1374-1375) mounts BOTH useScreenGroups() and useScreens(). These are distinct React Query keys (['screen-groups'] vs ['screens']) hitting distinct endpoints, so RQ does NOT dedupe them — both fire on independent 10s intervals. Verified in use-api.ts:22-39 and 122-143: each hook has refetchInterval: 10_000, refetchIntervalInBackground: true, staleTime: 0. So yes, two full-fleet fetches every 10s, and they keep polling while the mobile tab is backgrounded/screen off — a legitimate battery/cellular-data drain.\n\nBut several specifics are WRONG or INFLATED, which drops it from P1 to P2:\n\n1. \"useScreens may be entirely redundant here\" — FALSE. flatScreens (from useScreens) is load-bearing on this page: it drives FleetSummaryStrip counters (L1693), the fleet map's effectiveLatitude/effectiveLongitude/effectiveAddress/geoSource/lastCacheReport (L1706-1721), and ungroupedScreens (L1455). The nested group.screens[] from /screen-groups (a) is computed without the effective* geo fields (those exist ONLY in screens.controller.ts list()), and (b) by definition can't contain UNGROUPED screens. The proposed \"pick ONE source of truth (drop useScreens)\" fix would break the map and the ungrouped list. The two payloads are NOT equivalent — /screen-groups is actually the HEAVIER one (~25-field nested select per screen incl. OTA/crash/version fields, screen-groups.controller.ts:53-90).\n\n2. The \"88%-full Vercel edge budget\" tie-in is inaccurate. apiFetch targets the Railway API directly via NEXT_PUBLIC_API_URL (api-url.ts, api-client.ts:82) — these polls never hit Vercel edge; they consume Railway DB/API load. The headline's resource framing is wrong.\n\n3. Severity: this is a pure efficiency/battery optimization on ONE admin-only page (Screens), not a correctness bug, crash, data loss, or customer-facing/always-mounted surface. The global-shell poller (useTenantStatus) is already correctly throttled to 30s. The genuinely actionable fix is gating refetchIntervalInBackground on document.visibilityState and raising staleTime above 0 to coalesce focus/reconnect refetches — minor mobile polish, not a P1 blocker. No correctness impact, limited blast radius (admin on one page), and the most impactful proposed remedy (dropping useScreens) is itself incorrect."
+        }
+      },
+      {
+        "title": "Address picker still makes direct browser calls to Nominatim + Photon — third-party data leak, OSM ToS violation, and flaky/CORS-fragile on locked-down networks",
+        "severity": "P1",
+        "evidence": [
+          "apps/web/src/components/screens/ScreenLocationModal.tsx:199-216",
+          "apps/web/src/components/screens/ScreenLocationModal.tsx:260-262"
+        ],
+        "fix": "After the server-side geocodeViaApi() path, the modal falls back to fetching photon.komoot.io and nominatim.openstreetmap.org DIRECTLY from the browser on every keystroke (debounced 300ms). This (a) leaks the operator's typed building address + their IP to two third parties on every search, (b) violates Nominatim's usage policy, which explicitly forbids autocomplete/keystroke querying and an unset Referer/UA from a public app, so it will get rate-limited or blocked at scale, and (c) is the most likely root cause of the 'address picker not finding US addresses' report — these endpoints are frequently blocked by school/corporate firewalls and CORS proxies, and they fail silently to setNoMatch. Move BOTH providers behind the existing /api/v1/geocode proxy (server-side, with a proper User-Agent and the merge/dedupe logic that already exists in the modal) so the only origin the browser talks to is your own API. That also unifies the 'no match' behavior and lets you cache repeat lookups.",
+        "surface": "mobile",
+        "verdict": {
+          "confirmed": true,
+          "adjustedSeverity": "P2",
+          "reasoning": "CONFIRMED REAL but SEVERITY INFLATED (P1 -> P2). The cited code exists: apps/web/src/components/screens/ScreenLocationModal.tsx:199-216 builds and fetches photon.komoot.io + nominatim.openstreetmap.org directly from the browser, and lines 260-262 do a second direct Nominatim call on Save. The same duplicated pattern lives in apps/web/src/components/ui/AddressAutocomplete.tsx:201-216. So the third-party direct-call code is real and reachable.\n\nHowever the audit's framing materially overstates the exposure on two points:\n\n1. NOT \"on every keystroke.\" The client-side direct-fetch block runs ONLY when the server proxy geocodeViaApi(q) returns an empty array OR throws (ScreenLocationModal.tsx:174-192 returns early when apiHits.length is truthy). The server proxy (apps/api/src/geocoding/geocoding.service.ts:57-77) ALREADY falls back to Nominatim server-side even when GOOGLE_MAPS_API_KEY is unset (it skips Google and `return this.nominatim(...)`), with a proper User-Agent ('VenueOS-Geocoder/1.0 (+https://venue-os.app)') via safeFetch (DNS-pinned, timeout, byte-capped). So in the normal/default deployment the browser talks ONLY to the own-origin /api/v1/geocode; the direct Photon/Nominatim fetch fires only on the subset of queries the server couldn't resolve, or when the own-origin API itself is unreachable. The IP/typed-address leak and OSM-ToS-violation concerns are genuine but narrow, not per-keystroke.\n\n2. The \"most likely root cause of address-picker-not-finding-US-addresses\" diagnosis is weak/likely wrong. The proxy is the PRIMARY path and runs Google's authoritative US house-number coverage; the file header comments document that the proxy was added specifically to fix the US-coverage gaps the direct OSM path had. The most probable cause of \"not finding addresses\" is whether GOOGLE_MAPS_API_KEY is configured server-side, not the browser-side backstop.\n\n3. The proposed fix is partly already implemented. \"Move BOTH providers behind the existing /api/v1/geocode proxy\" — the proxy exists and already serves Google -> Nominatim. The legitimate RESIDUAL gaps: (a) the client still carries dead-end direct-fetch fallback code that should be deleted, and (b) the server merge does NOT consult Photon at all (geocoding.service.ts only has google() + nominatim()), so the Photon autocomplete coverage the client comments rely on is lost when routed through the proxy — folding Photon into the server merge would be the real improvement.\n\nNet: a real, worthwhile cleanup (remove the client direct fetches in both files; optionally add Photon to the server-side merge), but the privacy/ToS exposure is conditional and infrequent and the picker works via own-origin proxy in the common case, so this is not a mobile launch-blocker. Downgrade to P2. Relevant files: /Users/gschiemann/Desktop/EDU CMS/apps/web/src/components/screens/ScreenLocationModal.tsx, /Users/gschiemann/Desktop/EDU CMS/apps/web/src/components/ui/AddressAutocomplete.tsx, /Users/gschiemann/Desktop/EDU CMS/apps/web/src/lib/geocode.ts, /Users/gschiemann/Desktop/EDU CMS/apps/api/src/geocoding/geocoding.service.ts, /Users/gschiemann/Desktop/EDU CMS/apps/api/src/geocoding/geocoding.controller.ts."
+        }
+      },
+      {
+        "title": "cache-status + render-proof telemetry do an unconditional Screen UPDATE every 30s with no debounce — ~59% of all DB time",
+        "severity": "P1",
+        "evidence": [
+          "apps/api/src/screens/screens.controller.ts:3242-3248 (reportCacheStatus: unconditional screen.update of lastCacheReport JSON + lastCacheReportAt every call, no shouldSkipLastPingWrite, no @Throttle)",
+          "apps/api/src/screens/screens.controller.ts:3302-3309 (reportRenderProof: unconditional screen.update of lastRenderedAt every call; @Throttle 10/min exists but does not reduce the steady-state 30s write)",
+          "apps/web/src/app/player/page.tsx:2413 (cache-status POST every 30_000ms)",
+          "apps/web/src/app/player/page.tsx:2531 (render-proof POST every 30_000ms)",
+          "apps/api/src/screens/manifest-hot-cache.ts:82-94 (shouldSkipLastPingWrite/markLastPingWritten debounce that the ping+manifest paths use but these two endpoints do NOT)",
+          "LIVE pg_stat_statements: UPDATE screens last_cache_report = 41.6% of DB time / 180826 calls; UPDATE screens last_rendered_at = 17.4% / 161168 calls"
+        ],
+        "fix": "The cache-status payload is identical on ~99% of polls (cache contents rarely change) and render-proof only needs server-clock freshness, so both are writing the same value every 30s. (1) cache-status: gate the write behind a same-as-last-value check (compare the new JSON to the stored lastCacheReport; skip the update when unchanged, OR add a 5-minute debounce keyed by screenId in manifest-hot-cache.ts — admin visibility tolerates 5-min staleness fine) and raise the client cadence to 5 min. (2) render-proof: apply the existing 25s shouldSkipLastPingWrite-style debounce (a fresh-enough lastRenderedAt does not need re-writing every 30s; a 60-90s debounce keeps the render-STALE threshold accurate) and/or use a raw `UPDATE ... SET last_rendered_at = now() WHERE id = $1` to avoid Prisma's full-row rewrite. Either change alone removes the bulk of the 59% DB-time spend with zero behavioral regression.",
+        "surface": "player",
+        "verdict": {
+          "confirmed": true,
+          "adjustedSeverity": "P1",
+          "reasoning": "REAL and reachable. Both endpoints do an unconditional, un-debounced full-row Prisma screen.update every 30s on every paired screen:\n- cache-status: screens.controller.ts:3242-3248 writes lastCacheReport(JSON) + lastCacheReportAt with no shouldSkipLastPingWrite and no @Throttle.\n- render-proof: screens.controller.ts:3302-3309 writes lastRenderedAt every call; the @Throttle(10/60s) is a flood ceiling, not a steady-state reducer — at 30s cadence the player only hits 2/min, so the throttle never engages.\n- Client cadences confirmed unconditional setInterval(post,30_000) at player/page.tsx:2413 (cache-status) and :2531 (render-proof). (render-proof has a client-side frames===lastReportedFrames skip, but that only suppresses writes during an actual freeze; steady-state the frame counter advances every poll, so it writes every 30s.)\n- The debounce infra (shouldSkipLastPingWrite/markLastPingWritten, 25s) exists in manifest-hot-cache.ts:82-94 and IS wired into the ping/manifest paths (controller 662-666, 2493-2494) but NOT these two endpoints — exactly as evidenced. The pg_stat_statements split (41.6%+17.4%≈59%) is consistent with the cited call counts. Confirmed P1.\n\nCAVEAT — the proposed cache-status remedy is UNSAFE as written and the fix author missed a dependency: ScreenWedgeDetectorCron (screen-wedge-detector.cron.ts:160,176; CACHE_REPORT_STALE_MS = 5*60_000) uses a continuously-fresh lastCacheReportAt as a LOAD-BEARING liveness proof — a still-pinging screen whose lastCacheReportAt goes >5min stale is classified as renderer-wedged and gets a forced REFRESH_WEB. Therefore (a) 'skip the write when the JSON is unchanged' would leave lastCacheReportAt stale on healthy screens (cache contents rarely change — the audit's own premise) → false wedge detection → spurious full-page reloads on healthy kiosks; and (b) 'raise client cadence to 5min' parks the timestamp on the 5-min stale boundary → intermittent false fires. The safe fix keeps the timestamp moving on every poll (sub-5-min debounce, e.g. ~2min, or a raw UPDATE ... SET last_cache_report_at=now() that still stamps the time but skips the JSON-blob rewrite), never skip-on-unchanged.\n\nThe render-proof half is sound but the debounce must be capped BELOW the 90s STALE threshold (render-proof.ts:38, RENDER_PROOF_STALE_MS = 90*1000): the suggested '60-90s' must be ~60s, since a 90s debounce races the threshold and would false-RED a healthy screen. The raw-SQL timestamp-only UPDATE suggestion is correct.\n\nNet: confirmed real P1 (DB-time spend is genuine and the missing debounce is the cause), but the remediation cannot be applied verbatim — the skip-on-unchanged cache-status variant would introduce a behavioral regression (false kiosk reloads + false RED render health) via the wedge-detector and render-stale thresholds."
+        }
+      },
+      {
+        "title": "Three overlapping GET /screens/status heartbeats per playing kiosk (web 30s + web 45s + native 30s) — redundant network + Vercel edge-request pressure",
+        "severity": "P1",
+        "evidence": [
+          "apps/web/src/app/player/page.tsx:3476 (always-on heartbeat, setInterval 30_000)",
+          "apps/web/src/app/player/page.tsx:3625 (playing-phase httpHeartbeat, setInterval 45_000 — runs concurrently with the always-on loop once phase==='playing')",
+          "apps/player/app/src/main/java/com/educms/player/heartbeat/HeartbeatService.kt:181-184 (native Android HeartbeatService also hits /screens/status every 30s)",
+          "LIVE Vercel: Edge Requests 887K/1M (88%) — every /api/v1/* is rewritten through Vercel edge"
+        ],
+        "fix": "In the playing phase the always-on 30s loop already covers liveness, so the additional 45s playing-phase ping at page.tsx:3617-3625 is pure duplication — remove it (the always-on loop's handleHeartbeatOta already processes the OTA fields). For the APK, the native HeartbeatService duplicates the WebView heartbeat; pick ONE (prefer the native one since it survives a wedged WebView) and have the web side skip its own /status ping when running inside the APK (the EduCmsNative bridge is already detected elsewhere). Net: ~3 status GETs/min/kiosk → 1, directly trimming both Vercel edge requests and pooled DB read load at fleet scale.",
+        "surface": "player",
+        "verdict": {
+          "confirmed": true,
+          "adjustedSeverity": "P2",
+          "reasoning": "The core factual claim is REAL and reachable. On a playing APK kiosk, three independent /screens/status GET loops fire concurrently: (1) the always-on 30s loop at apps/web/src/app/player/page.tsx:3457-3478, (2) the playing-phase 45s httpHeartbeat at page.tsx:3605-3625, and (3) the native Kotlin HeartbeatService 30s loop at HeartbeatService.kt:171-186. All three are gated ONLY by isPreviewMode() / fingerprint presence — none is gated by isAndroidWebView() — so inside the APK all three run. The web playing-phase ping (3617-3625) is genuinely pure duplication: it await-fetches /status and DISCARDS the response, whereas the always-on loop (3470) already calls handleHeartbeatOta on the same response. Removing 3617-3625 is correct and safe. (Note: actual per-kiosk rate is ~5.3 GETs/min, not the \"3/min\" the FIX text states.)\n\nBUT the severity is INFLATED to P1, and the headline cost driver is a MISATTRIBUTION:\n\n1. Vercel edge requests — the claim's strongest \"evidence\" (Edge Requests 887K/1M, \"every /api/v1/* is rewritten through Vercel edge\") does NOT apply to this traffic. The player fetches via getApiRoot() (page.tsx:547-561) which returns NEXT_PUBLIC_API_URL — the Railway API origin — DIRECTLY. The vercel.json rewrite (/api/v1/:path* → Railway) only fires for requests to the Vercel ORIGIN; the player and the native Kotlin loop both hit api-production-39a1.up.railway.app directly, bypassing Vercel edge entirely (this was the explicit subject of completed task #212 / AUDIT-P0-4 \"player route bypasses CDN proxy\"). So these heartbeats consume ZERO Vercel edge requests. The 887K figure is unrelated dashboard/browser traffic.\n\n2. DB load — every /status GET is one indexed findUnique READ, but the lastPingAt WRITE is debounced server-side to once/25s/screen via shouldSkipLastPingWrite + LAST_PING_DEBOUNCE_MS (manifest-hot-cache.ts:35,82-86; wired at screens.controller.ts:662-675). The real write-amplification P0 here (3s polling × 3 round-trips ≈ 43M queries/day) was already fixed (controller comment 630-646). Residual is a few extra cheap reads, not pool contention.\n\n3. The recommended fix (\"pick ONE, prefer native\") collides with intentional design: the native HeartbeatService exists to survive a wedged WebView (its docstring), and screen-wedge-detector.cron.ts deliberately cross-checks the native vs web ping timers as a liveness signal — collapsing to one timer would weaken that detector.\n\nVerdict: real, low-grade efficiency redundancy; the duplicate 45s web ping at 3617-3625 is a safe removal. But it's a P2 cleanup, not a P1 — the Vercel-edge amplifier is misattributed, the DB-write cost is already debounced, and the native/web overlap is partly intentional."
+        }
+      },
+      {
+        "title": "Player telemetry writes (cache-status + render-proof) are undebounced — 59% of all DB time",
+        "severity": "P1",
+        "evidence": [
+          "apps/api/src/screens/screens.controller.ts:3242-3248 (cache-status: unconditional screen.update on every 30s POST, no debounce, no withDbRetry)",
+          "apps/api/src/screens/screens.controller.ts:3302-3309 (render-proof: same — unconditional update, no debounce)",
+          "apps/web/src/app/player/page.tsx:2413 (cache-status setInterval 30_000)",
+          "apps/web/src/app/player/page.tsx:2519 (render-proof POST, ~30s cadence)",
+          "apps/api/src/screens/manifest-hot-cache.ts:82-94 (the shouldSkipLastPingWrite debounce that lastPingAt uses but these two endpoints do NOT)"
+        ],
+        "fix": "These two endpoints write the same `screens` row that lastPingAt already keeps fresh, but with zero coalescing — live pg_stat_statements shows them at 41.6% (180,826 calls, 19.84ms mean) and 17.4% (161,168 calls, 9.33ms mean) of total DB time. Apply the existing debounce pattern: gate both writes behind a per-screen `shouldSkip*Write(id)` check (e.g. 60-120s window for cache-status, which only feeds an admin visibility pill, and ~90s for render-proof, whose staleness threshold is minutes not seconds). Keep the freshest in-memory value and flush on the debounce boundary. This is a ~5-10× reduction on the two hottest queries with no loss of signal fidelity, mirroring the lastPingAt fix already shipped. Also wrap both in withDbRetry for parity with the heartbeat path. The 9-20ms mean on a single-row update of a 76-column table also points at lock contention from these concurrent same-row writers — debouncing directly relieves it.",
+        "surface": "database",
+        "verdict": {
+          "confirmed": true,
+          "adjustedSeverity": "P1",
+          "reasoning": "CONFIRMED — real, reachable, and correctly P1. Verified against code:\n\n(1) cache-status (apps/api/src/screens/screens.controller.ts:3242-3248): unconditional `prisma.client.screen.update` on every POST. No debounce, no withDbRetry, AND no @Throttle decorator at all (uncapped even at the rate-limit layer).\n\n(2) render-proof (3302-3309): same unconditional `screen.update`, no debounce, no withDbRetry. The audit omitted that it DOES carry @Throttle({limit:10, ttl:60_000}), but at the ~30s player cadence (≤2 POST/min) that throttle never engages, so it's not a meaningful mitigation of write volume. (Player does skip the POST when the rAF frame counter is frozen, line 2513 — but in normal operation it writes every 30s.)\n\n(3) Player cadence confirmed: cache-status setInterval(30_000) at apps/web/src/app/player/page.tsx:2413; render-proof setInterval(30_000) at 2531; both also fire once on mount.\n\n(4) The debounce infra it should use is real and already wired into the two SIBLING write paths: shouldSkipLastPingWrite/markLastPingWritten (manifest-hot-cache.ts:82-94, 25s window) gate the heartbeat write (controller:662-666) and the manifest lastPingAt write. These two telemetry endpoints write the SAME `screens` row that lastPingAt already keeps fresh, but bypass the debounce entirely. The architectural inconsistency and the proposed fix (mirror the lastPingAt debounce + wrap in withDbRetry) are exactly right and follow an established in-repo pattern.\n\nNO mitigating guard exists. Minor inaccuracies that don't change severity: render-proof has an (ineffective-at-this-cadence) throttle the audit didn't mention; the row is ~81 columns, not 76 (if anything understated — wider row = more write cost). The pg_stat_statements percentages (41.6%/17.4%, 59% combined) come from a live DB snapshot I can't verify from source, but they are fully consistent with the code: two undebounced 30s-cadence writers to a wide single row across a fleet will dominate write time, and concurrent same-row writers explain the 9-20ms mean on a single-row update (lock contention). This is an efficiency/scalability issue (not correctness or life-safety), so P1 — not P0 — is correct."
+        }
+      },
+      {
+        "title": "game_events index omits `type` — every board sub-query is a per-type scan+sort (33.5% seq scans)",
+        "severity": "P1",
+        "evidence": [
+          "packages/database/prisma/schema.prisma (GameEvent: only `@@index([gameId, createdAt])`)",
+          "apps/api/src/sports/sports.service.ts:317-390 (5 latest* helpers, each WHERE gameId=? AND type=? ORDER BY createdAt DESC)",
+          "apps/api/src/sports/sports.service.ts:500-541 (board fan-out: CUE/LIVE_OVERLAY type-filtered reads)",
+          "apps/api/src/sports/sports.service.ts:3200, 4641, 4813 (more type-filtered findFirst by gameId)"
+        ],
+        "fix": "The composite index `(gameId, createdAt)` cannot serve the `type` predicate, so Postgres reads all events for the game and filters/sorts in memory — confirmed by the live 33.5% seq-scan ratio on game_events. Add `@@index([gameId, type, createdAt])` so the latest-of-type lookups become an index range scan with no sort. This is currently well-mitigated by the 1s board cache (sports.service.ts:421-444) so it only bites on live-game writes, but the event log grows unbounded per game (append-only undo rail + cue history), so the scan cost rises over a long game / season. Cheap, additive migration; do it before the cache ever has to be loosened. Consider also a retention/compaction job for closed games' event logs.",
+        "surface": "database",
+        "verdict": {
+          "confirmed": true,
+          "adjustedSeverity": "P1",
+          "reasoning": "CONFIRMED — real, reachable, and correctly rated P1.\n\nSCHEMA: packages/database/prisma/schema.prisma:2184-2195 — GameEvent has exactly one index, @@index([gameId, createdAt]); the `type` column (line 2187) is in no index. Confirmed at the migration level: migrations/20260516000000_add_sports_games/migration.sql:50 creates only game_events_game_id_created_at_idx on (game_id, created_at), and no later migration (including today's 20260615093709_add_sports_stats_engine, which added indexes to other new tables) adds a type index.\n\nQUERY PATTERN: All cited callsites in apps/api/src/sports/sports.service.ts confirmed as WHERE gameId=? AND type=? ORDER BY createdAt DESC — the 5 ribbon latest* helpers (317-390), the board fan-out CUE findMany (500-501) + LIVE_OVERLAY findFirst (537-538), plus 1575, 3120-3124 (CUE mutex), 3200 (AUTO_CELEBRATE), 4641-4645 (SCORE), 4205 (CTS_CUE). The (gameId, createdAt) composite cannot serve the `type` equality predicate, so Postgres scans all of a game's events and filters/sorts in memory. The proposed (gameId, type, createdAt) index converts each to an index range scan with no sort — diagnosis and fix are both correct.\n\nSEVERITY: P1 is right, not inflated. Two mitigations confirmed in-code: (1) the 1s boardCache (sports.service.ts:421-444) shields the hot poll path so the 7-query board fan-out hits the DB ~once/sec/game regardless of viewer count; (2) the pain is the write path (record() invalidates the cache → next poll re-runs the fan-out) against an unbounded append-only event log — verified there are ZERO gameEvent.delete/deleteMany calls, so no retention/compaction exists and scan cost rises over a long game/season. This is a single additive, zero-risk index that should land before the cache is ever loosened. Not P0 (no correctness/security/outage impact, well-mitigated today). The external '33.5% seq-scan' live-DB metric can't be verified from code, but the mechanism that produces it is exactly as described."
+        }
+      },
+      {
+        "title": "User deletion 500s on any tenant with real history — unhandled FK Restrict (P2003)",
+        "severity": "P0",
+        "evidence": [
+          "apps/api/src/users/users.controller.ts:462-473 (tx: auditLog.create then tx.user.delete)",
+          "packages/database/prisma/schema.prisma:960 (Asset.uploadedBy User — required, default Restrict)",
+          "packages/database/prisma/schema.prisma:1083 (AuditLog.user User? — default Restrict)",
+          "packages/database/prisma/schema.prisma:1178 (Template.createdBy — default Restrict)",
+          "packages/database/prisma/schema.prisma:1372 (Submission.submittedBy User — required, default Restrict)",
+          "packages/database/prisma/schema.prisma:517 (UserInvite.invitedBy User — default Restrict)",
+          "apps/api/src/common/all-exceptions.filter.ts:107-126 (P2003 absent from switch → falls to DATABASE_ERROR 500)"
+        ],
+        "fix": "Seven User relations have no onDelete and default to Restrict, so user.delete throws Prisma P2003 the moment the user authored an audit log, uploaded an asset, created a template, or submitted for review (i.e. essentially every real admin). The just-created AuditLog row in the same tx ALSO points at the actor, so it can fail even on a 'clean' user. Two-part fix: (1) decide reassign-vs-null per relation and set onDelete (SetNull for Asset.uploadedByUserId/Template.createdById/Submission.submittedById after making them nullable, or block deletion with a clear 409 if the user owns assets) and add a migration; (2) map P2003 in all-exceptions.filter.ts to HTTP 409 CONFLICT with a `code:'FK_CONSTRAINT'` so it never surfaces as an opaque 500. Add a users.service spec that deletes a user with audit/asset/template history.",
+        "surface": "api",
+        "verdict": {
+          "confirmed": true,
+          "adjustedSeverity": "P1",
+          "reasoning": "CONFIRMED real and reachable. Verified against cited code:\n\n1. apps/api/src/users/users.controller.ts:462-473 — remove() does tx.auditLog.create() then a raw `tx.user.delete({ where: { id } })` with NO pre-delete cleanup of dependent rows.\n2. schema.prisma relations defaulting to Restrict (no onDelete, not Cascade/SetNull): Asset.uploadedBy (line 960, REQUIRED), Submission.submittedBy (line 1372, REQUIRED), UserInvite.invitedBy (line 517, REQUIRED), AuditLog.user (1083, nullable), Template.createdBy (1178, nullable), Submission.decidedBy (1373, nullable), Notification.user (1107, nullable — same class, claim missed it). The three required FKs are non-nullable scalars so SetNull is impossible — they MUST be Restrict. Relations that ARE protected: PasswordResetToken (Cascade), Passkey (Cascade), UserInvite.user (SetNull), Playlist.createdBy (SetNull), Bug reporter/approver (SetNull). So a user with any asset/submission/invite/template/audit history → Prisma P2003 on delete.\n3. all-exceptions.filter.ts:107-126 — switch handles only P2002 and P2025; P2003 falls through to default → HTTP 500 DATABASE_ERROR. grep confirms ZERO P2003 handling anywhere in apps/api/src.\n4. Reachable from the operator UI: apps/web/src/hooks/use-api.ts:1491 issues DELETE /users/:id. No soft-delete alternative — it's a hard delete. SUPER_ADMIN-gated, self-delete blocked.\n5. No test covers remove() with history; the only spec (users.controller.spec.ts) covers updateRole / setCanTriggerPanic token revocation.\n\nONE EVIDENCE CORRECTION (does not change the verdict): the claim's parenthetical that the just-created in-tx AuditLog row \"ALSO points at the actor, so it can fail even on a clean user\" is WRONG. That row's userId = req.user.id (the deleting admin), and self-delete is blocked (controller line 451-453), so actor != target — that row never references the deleted user and never blocks. But historical rows authored by the TARGET still block, so the bug stands for essentially every real admin/contributor.\n\nSEVERITY ADJUSTED P0 -> P1. It's a guaranteed 500 on a real, reachable admin action with an opaque error envelope and it blocks a legitimate offboarding workflow — a genuine defect worth fixing before launch. But it is data-SAFE (the tx rolls back cleanly; no corruption), confined to the SUPER_ADMIN-only user-deletion endpoint, does not touch the emergency/life-safety path, does not cascade to other endpoints, and has a workaround. It lacks the breaks-the-demo / data-loss / life-safety character of a true P0. Fix is exactly as prescribed: set onDelete per relation (SetNull after nullable, or 409-block when the user owns assets) + migration, and map P2003 -> 409 CONFLICT code:'FK_CONSTRAINT' in the filter, plus a remove()-with-history spec."
+        }
+      },
+      {
+        "title": "The two highest-frequency writes (cache-status, render-proof) are unprotected by withDbRetry and un-coalesced — ~59% of all DB time",
+        "severity": "P0",
+        "evidence": [
+          "apps/api/src/screens/screens.controller.ts:3240-3248 (cache-status: findUnique + screen.update, no withDbRetry)",
+          "apps/api/src/screens/screens.controller.ts:3300-3306 (render-proof: screen.update, no withDbRetry)",
+          "apps/api/src/prisma/with-db-retry.ts:7-17 (header: 'bad for the high-frequency, kiosk-driven endpoints (status heartbeat, manifest fetch) where a 500 cascade can flip a fleet to OFFLINE')",
+          "LIVE METRIC: UPDATE screens last_cache_report = 41.6% of DB time / 180826 calls / 19.84ms mean; UPDATE screens last_rendered_at = 17.4% / 161168 calls / 9.33ms mean"
+        ],
+        "fix": "These are the exact endpoints withDbRetry was built to protect, yet only the status heartbeat (screens.controller.ts:545) and pairing got wrapped — cache-status and render-proof did not. Two issues: (1) wrap both update calls in withDbRetry so a transient pgbouncer blip doesn't 500 a frozen-screen alert; (2) the write amplification itself is the cost driver — each kiosk POSTs cache-status + render-proof on a fixed cadence and each does a full-row UPDATE on the wide `screens` table (plus cache-status does a redundant findUnique first). Coalesce telemetry into a separate narrow `screen_telemetry` table (or use updateMany with a select to drop the findUnique round-trip), and debounce server-side (only write if >N seconds since last, or batch via a short in-memory flush window). Cutting these two writes would reclaim the majority of DB time per the pg_stat_statements profile.",
+        "surface": "api",
+        "verdict": {
+          "confirmed": true,
+          "adjustedSeverity": "P1",
+          "reasoning": "The code-level claim is REAL and reachable. Confirmed at apps/api/src/screens/screens.controller.ts: reportCacheStatus (POST :id/cache-status, line 3242) and reportRenderProof (POST :id/render-proof, line 3302) call screen.update directly with NO withDbRetry wrapper, while every other hot kiosk path IS wrapped (status heartbeat 545/667, manifest 2493, pairing 1180, seat-tx 1168). The with-db-retry.ts header (lines 9-11) literally names \"the high-frequency, kiosk-driven endpoints ... where a 500 cascade can flip a fleet to OFFLINE\" as the reason it exists, so missing these two is a genuine consistency gap.\n\nThe write-amplification half is also valid: (a) both endpoints do a redundant findUnique existence-check immediately before the update (3240+3242, 3291+3302) — the audit's updateMany suggestion is correct; (b) neither uses the existing in-process debounce (shouldSkipLastPingWrite/markLastPingWritten, 25s TTL in manifest-hot-cache.ts) that the same module already applies to lastPingAt writes precisely to cut pgbouncer write pressure; (c) the player POSTs both on a fixed setInterval(30_000) per kiosk (player/page.tsx:2413), so at 150-500+ screens the write rate is real. cache-status additionally has NO @Throttle (render-proof at least has @Throttle 10/60s). So the coalescing fix is sound and follows the house pattern.\n\nWHY NOT P0 (severity inflated): the reliability framing (\"a 500 cascade can flip a fleet OFFLINE\" / \"500s a frozen-screen alert\") does not apply to THESE two writes. The OFFLINE signal is lastPingAt, written by the SEPARATE status heartbeat, which IS retry-wrapped. Both of these writes are explicitly best-effort: the player wraps each fetch in catch{} (\"best-effort — admin visibility, not safety-critical\", player/page.tsx:2410) and the server comment + deriveRenderHealth (render-proof.ts:99-101) guarantee a missing/failed render-proof yields UNKNOWN, never falsely RED. A transient 500 here only briefly delays a dashboard visibility signal; the next 30s tick recovers it, and the wedge detector alerts off lastCacheReportAt staleness against a 5-minute threshold that one dropped write per hour-of-flake does not move. No emergency-path, no data-loss, no false-OFFLINE. The pg_stat_statements \"59% of DB time / 180826 calls\" metric is the audit's own live measurement and is not verifiable from code, but is internally plausible for a full-row UPDATE on a wide table at that call volume.\n\nNet: a real, reachable efficiency + minor-reliability/consistency gap worth fixing (wrap in withDbRetry, drop the findUnique via updateMany, reuse the existing debounce / add a throttle to cache-status), but the impact is DB cost + brief dashboard lag, not a fleet-safety or outage-detection failure. P1, not P0."
+        }
+      },
+      {
+        "title": "Error-envelope discipline (task #57) still violated — controllers return HTTP 200 with bare {error} bodies",
+        "severity": "P1",
+        "evidence": [
+          "apps/api/src/playlists/playlists.controller.ts:195,216,355 (return { error: 'Not found' } — HTTP 200, no code/message envelope)",
+          "apps/api/src/screen-groups/screen-groups.controller.ts:139,153,173 (same pattern)",
+          "apps/api/src/users/users.controller.ts:446-449 (comment documents this exact class: 'error responses were returning 200 with { error } bodies, which let callers swallow the failure')"
+        ],
+        "fix": "These bare returns are SUCCESSFUL handler returns, so they never reach AllExceptionsFilter — they emit HTTP 200 with `{error:'Not found'}` and no `code`. A client checking status sees success; a client reading `.code` gets undefined. This is the precise defect task #57 tracks and that users.controller.ts already fixed locally. Replace every `return { error: ... }` with `throw new NotFoundException(...)` / appropriate HttpException so the filter normalizes status + the stable `code`. Grep `return.*{ *error:` across all *.controller.ts (hits in at least playlists, screen-groups, screens, templates, asset-files) and fix each.",
+        "surface": "api",
+        "verdict": {
+          "confirmed": true,
+          "adjustedSeverity": "P1",
+          "reasoning": "REAL, reachable, and correctly P1-rated. Verified by reading the cited code plus the full request path.\n\nCONFIRMED:\n1. Bare returns exist exactly as cited: playlists.controller.ts:195,216,355 and screen-groups.controller.ts:139,153,173 all `if (!x) return { error: 'Not found' };`. (Audit actually under-counted — templates.controller.ts has 5 more at 488/1133/1333/1389/1478.)\n2. They emit HTTP 200: all are @Put/@Delete handlers with NO @HttpCode override (verified via grep), so NestJS defaults to 200. They are SUCCESSFUL handler returns, so AllExceptionsFilter (apps/api/src/common/all-exceptions.filter.ts) is never reached — that filter only runs on the exception path and is the only thing that emits the stable {error,code,message,traceId} envelope.\n3. No global interceptor rescues them: efficiency.interceptor.ts and request-log.interceptor.ts are pure observability (read content-length, never rewrite status/body).\n4. Harm is reachable on the client: apps/web/src/lib/api-client.ts:192 gates ALL error handling on `!res.ok`. A 200 + {error:'Not found'} passes that gate, is JSON-parsed at line 226, and returned as a successful T. Caller gets no thrown error and err.code is undefined — exactly the documented 'callers swallow the failure' defect.\n5. Self-documented known defect: users.controller.ts:446-449 carries the auth-BUG-013 comment describing this exact class ('error responses were returning 200 with { error: ... } bodies, which let callers' status-code-only checks swallow the failure') and was already migrated to throw new HttpException. Task #57 is still pending.\n\nEVIDENCE INACCURACIES (minor, do not refute): the audit claims hits in 'screens' and 'asset-files' controllers — grep shows NONE there. Real hit set is playlists, screen-groups, templates only. The fix-grep guidance overshoots but the core defect is fully real.\n\nSEVERITY: P1 is right. Correctness/contract bug on mutating endpoints (rename/reorder/delete playlist, update/assign/delete screen-group, template ops) where a not-found is silently reported to the operator as success. Not P0 — auth and tenant-scoping (RequireRoles + findFirst({tenantId})) run BEFORE these checks, so it's not a security/isolation hole and not data loss. But it defeats the platform's own error-envelope discipline and silently misleads operators, which is above P2. Fix: replace each bare return with throw new NotFoundException(...) / appropriate HttpException so the filter normalizes status + the stable code."
+        }
+      },
+      {
+        "title": "Validation coverage is partial — no global ValidationPipe, ~18 controllers accept raw @Body() with no schema",
+        "severity": "P1",
+        "evidence": [
+          "apps/api/src/app.module.ts:219-222 (global APP_PIPE is SanitizationPipe, not ValidationPipe)",
+          "apps/api/src/main.ts (no useGlobalPipes(ValidationPipe))",
+          "ZodValidationPipe wired on only 12 controllers (ai, auth, mfa, bugs, emergency, integrations, onboarding, playlists, schedules, screen-groups, submissions, templates)",
+          "0 class-validator DTOs in apps/api/src (grep @IsString/@IsNotEmpty → 0 hits)",
+          "apps/api/src/screens/screens.controller.ts:3234 (cache-status @Body() body: {...} cast as any, no schema)"
+        ],
+        "fix": "Security-critical boundaries (auth, emergency, billing) are covered, but ~18 controllers (screens telemetry, tenants, users mutations, stats, hardware, floor-plans, etc.) take untyped @Body() and cast `as any`. The SanitizationPipe HTML-sanitizes strings but does NOT validate shape/types — a malformed body reaches Prisma and surfaces as a 500. Define a Zod schema per mutating endpoint and apply ZodValidationPipe (the infra already exists), prioritizing device-public endpoints (cache-status, ota-state, crash-report, register/pair) since those take unauthenticated-adjacent input. Consider this the close-out of the validation half of task #57.",
+        "surface": "api",
+        "verdict": {
+          "confirmed": true,
+          "adjustedSeverity": "P2",
+          "reasoning": "The audit's FACTUAL claims are all accurate and verified: global APP_PIPE is SanitizationPipe not ValidationPipe (app.module.ts:219-222); main.ts has no useGlobalPipes(ValidationPipe); ZodValidationPipe is wired on exactly the 12 controllers named; zero class-validator DTOs (@IsString/@IsNotEmpty grep → 0); SanitizationPipe only HTML-sanitizes strings and passes non-strings through untouched (read sanitization.pipe.ts — no shape/type validation); and ~30 controllers (audit undercounted as \"~18\") take untyped @Body(). So the validation-coverage gap is real.\n\nBut the SEVERITY-DRIVING inference — \"a malformed body reaches Prisma and surfaces as a 500\" on the prioritized device-public endpoints — does NOT hold against the actual code. The codebase's consistent pattern is manual hand-validation inside each handler, which mitigates the claimed risk:\n- cache-status (the audit's flagship example, line 3234) writes `body as any` into lastCacheReport, which is a Json? column (schema.prisma:700). A JSON column accepts arbitrary shape — a malformed body CANNOT produce a Prisma type error here. The cited example is the weakest case.\n- render-proof (very next endpoint) explicitly clamps/coerces every field \"so a misbehaving / hostile device can't bloat the row.\"\n- ota-state: ALLOWED enum set → 400; String()/Number.isFinite()/clamp/slice(500) before Prisma.\n- crash-report: source enum check → 400.\n- register / pair: explicit `if (!field) throw 400` guards; only .trim()-coerced values written to typed columns.\n- users.create (most sensitive untyped mutation): email-validity + password-policy + role-escalation gate + name type/length coercion all before Prisma.\nAuth boundary is also intact: global JwtAuthGuard + RbacGuard (app.module.ts) + @RequireRoles on the mutations.\n\nThis is a legitimate defense-in-depth / architectural-consistency gap (declarative validation would be more robust than per-handler hand-rolling) and a fair close-out item for task #57. But there is no demonstrated reachable crash or security impact on any endpoint the audit itself prioritizes, and the worst realistic case is a one-off 500 on a less-trafficked authed mutation — not a systemic vuln. Severity is inflated; P2 is the honest rating."
+        }
+      },
+      {
+        "title": "Background services + pos/clever crons are only single-replica safe — horizontal-scaling landmine",
+        "severity": "P1",
+        "evidence": [
+          "apps/api/src/notifications/offline-screen-scanner.ts:33 (setInterval, in-process `running` guard only)",
+          "apps/api/src/player-ota/canary-auto-promote.ts:49 (setInterval, in-process guard only — writes AuditLog + flips canary on promote)",
+          "apps/api/src/pos/pos-sync.cron.ts:31,42-44 (in-memory lastRunBucket dedup — per-replica)",
+          "apps/api/src/integrations/clever/clever-sync.cron.ts:25,44-46 (in-memory lastRunYmd dedup — per-replica)",
+          "railway.json: numReplicas: 1 (currently masks this)",
+          "Contrast: apps/api/src/billing/license-reconcile.cron.ts:207-215 (DB-row lease — the CORRECT cross-replica pattern, already in the codebase)"
+        ],
+        "fix": "Currently moot at numReplicas:1, but the moment the team scales to 2 replicas (a one-line change), offline-scanner, canary-auto-promote, pos-sync, and clever-sync all double-fire — canary-auto-promote would race two replicas promoting the same tenant and writing duplicate AuditLog rows. license-reconcile.cron.ts already demonstrates the fix in-repo: gate each tick behind a DB-row-as-lease (or a pg advisory lock like ensure-system-presets.ts:323 uses at boot). Port that pattern to all four interval jobs before ever bumping numReplicas. Low effort now, prevents a silent data-integrity bug at scale.",
+        "surface": "api",
+        "verdict": {
+          "confirmed": true,
+          "adjustedSeverity": "P2",
+          "reasoning": "The claim is factually ACCURATE on every cited point — I read all six files:\n\nVERIFIED FACTS:\n- offline-screen-scanner.ts:21,46 — only an in-process `running` boolean overlap guard. No cross-replica dedup.\n- canary-auto-promote.ts:38,61 — same in-process `running` guard. The promote at :137-159 does tenant.update({canaryFleetPercent:100, canarySetAt:null}) followed by auditLog.create() with NO existence check (contrast license-reconcile.cron.ts:207-215 which queries for an existing LICENSE_RECONCILED row before writing).\n- pos-sync.cron.ts:21,42-44 — `lastRunBucket` is a per-instance field; the hour-bucket dedup is per-replica memory only.\n- clever-sync.cron.ts:18,42-43 — `lastRunYmd` is per-instance memory; per-replica only.\n- license-reconcile.cron.ts:198-234 — confirmed as the correct in-repo cross-replica pattern (AuditLog-row-as-lease).\n- ensure-system-presets.ts:323 — confirmed pg_advisory_lock(424242) is the boot-time advisory-lock pattern.\n- railway.json:27 — numReplicas: 1, confirmed.\n\nThe double-fire risk is real and reachable AT 2+ REPLICAS. The architectural inconsistency is genuine: two cron jobs (license-reconcile, ensure-system-presets) correctly use cross-replica guards while four others rely on per-process memory.\n\nWHY SEVERITY IS INFLATED (P1 → P2):\n1. NOT REACHABLE TODAY. railway.json hard-pins numReplicas:1. The bug requires a deliberate future config change. A P1 should be a real, present-state defect; this is a latent landmine gated behind an unmade decision. The claim itself concedes it is \"currently moot\" and \"low effort now.\"\n2. BLAST RADIUS IS SMALL even when triggered. Analyzing the actual non-idempotent effects:\n   - canary-auto-promote: the tenant.update sets fixed values (canaryFleetPercent=100, canarySetAt=null) — fully idempotent, no race corruption. The ONLY duplicated side effect is a redundant CANARY_AUTO_PROMOTED AuditLog row (best-effort, .catch swallowed). Duplicate read-only forensic rows, not data corruption — the same \"harmless\" category license-reconcile's own comment (lines 46-50) explicitly accepts for its own racing pods.\n   - pos-sync: re-running syncConnection is a catalog delta-pull; double-pull is wasteful but the connector writes are upsert-shaped, not destructive.\n   - clever-sync: roster sync is idempotent upsert work; double-run is wasted API calls, not corruption.\n   - offline-screen-scanner: the header comment (lines 8-10) states scanOfflineScreens is internally dedupe-keyed, so duplicate notifications are already suppressed at the service layer — double-fire is largely absorbed.\n   So the worst real-world outcome is duplicate audit rows + wasted compute/API quota, not a \"data-integrity bug.\" The claim's strongest assertion (\"canary-auto-promote would race two replicas... writing duplicate AuditLog rows\") is true but the impact is cosmetic forensics, not integrity.\n\nThis is a legitimate, well-evidenced pre-scaling hygiene item worth fixing before bumping numReplicas — but it is not a present-state P1. It is correctly a P2: real, documented, low-effort, but currently masked by config and low-blast-radius even when unmasked."
+        }
+      },
+      {
+        "title": "Production NEXT_PUBLIC_API_URL→Railway-direct is the load-bearing config that makes the edge cost AND the WS tier work, yet it's undocumented in vercel.json and one edit from a fleet-wide outage",
+        "severity": "P1",
+        "evidence": [
+          "apps/web/vercel.json:3-8 (rewrites ALL /api/v1/* to Railway, but this is a fallback path only)",
+          "/Users/gschiemann/Desktop/EDU CMS/.env:18 (prod NEXT_PUBLIC_API_URL=\"https://api-production-39a1.up.railway.app/api/v1\" — direct origin)",
+          "apps/web/src/lib/api-url.ts:16 (API_URL = NEXT_PUBLIC_API_URL || localhost; all apiFetch + board/ribbon/scorebug polls use this DIRECT url, NOT the rewrite)",
+          "docs/research/2026-06-09-prelaunch-final-audit/01-emergency-realtime.md:75 (documents that pointing the env at the venue-os.app proxy would silently kill the WS tier fleet-wide — SSE/poll would mask it)"
+        ],
+        "fix": "Add a top comment in vercel.json stating the rewrite is a fallback only and that production MUST set NEXT_PUBLIC_API_URL to the DIRECT Railway origin (never the venue-os.app proxy) or WS upgrades 404 and every poll floods the edge. Add a prod-smoke probe that asserts wss://<api-origin>/realtime returns 101 and that the deployed bundle's baked API URL is the Railway host, failing the deploy if it regressed to the proxy domain.",
+        "surface": "vercel-edge (apps/web/vercel.json, apps/web/src/app/cdn/**, apps/web/src/app/api/** cron-keepwarm/build-info, next.config images/headers/runtimes)",
+        "verdict": {
+          "confirmed": true,
+          "adjustedSeverity": "P1",
+          "reasoning": "VERIFIED REAL and reachable across every cited point — I tried to refute it and could not.\n\nARCHITECTURE CONFIRMED:\n- apps/web/vercel.json:3-8 rewrites ALL /api/v1/* → Railway origin, with NO comment documenting it's a fallback-only path.\n- /Users/gschiemann/Desktop/EDU CMS/.env:18 — prod NEXT_PUBLIC_API_URL = \"https://api-production-39a1.up.railway.app/api/v1\" (DIRECT Railway origin, not the venue-os.app proxy). .github/workflows/deploy-reliability.yml:176 bakes the same direct URL into the web build.\n- apps/web/src/lib/api-url.ts:16 — API_URL = NEXT_PUBLIC_API_URL || localhost. Confirmed that all dashboard apiFetch AND the board/ribbon/scorebug polls use this DIRECT url, not the rewrite: board/[gameId]/page.tsx:3930, ribbon/[gameId]/page.tsx:987, LeadersPanel.tsx:71 all fetch `${API_URL}/sports/board/...`.\n- The WS tier is the load-bearing case the audit names: player/page.tsx:3767 builds `wsUrl = getApiRoot().replace(/^http/, 'ws') + '/realtime'`, and getApiRoot() (line 559) derives from NEXT_PUBLIC_API_URL. So if prod env were \"simplified\" to the venue-os.app proxy, the WS upgrade would hit the Vercel rewrite (which does not proxy WS upgrades) → wss://venue-os.app/realtime 404s → every kiosk silently falls to SSE/HTTP-poll fleet-wide, masking the outage. This matches docs/research/2026-06-09-prelaunch-final-audit/01-emergency-realtime.md:75 verbatim, which itself recommends exactly the two mitigations the audit proposes.\n\nGUARDRAIL GAP CONFIRMED: the recommended mitigations do not exist. vercel.json has no fallback/direct-origin comment. prod-smoke.yml (the post-deploy smoke that runs against https://venue-os.app) has no /realtime, wss, or 101-upgrade probe and no assertion that the deployed bundle's baked API URL is the Railway host — verified by grepping all .github/workflows (only emergency-path.yml/deploy-reliability.yml reference the env, neither probes the WS upgrade against the live deploy).\n\nSEVERITY — kept at P1, not downgraded. This is a LATENT config footgun, not an active defect: current prod state is correct and CI bakes the right URL, so nothing is broken today. That argues against P0 (the audit didn't claim P0). But the blast radius is the whole fleet, the failure mode is SILENT (SSE/poll masks it so monitoring stays green while real-time emergency fan-out degrades), and the trigger is a single plausible env edit by someone \"simplifying\" to the prettier proxy domain — with zero doc warning and zero automated catch. A high-blast-radius, silent-failure, one-keystroke-away gap on the emergency real-time tier with no guardrail is correctly P1. The \"one edit from a fleet-wide outage\" framing is accurate for blast radius; the only nuance is it's latent (nothing wrong now), which I'd note in the fix PR but doesn't drop it below P1. The proposed fix (vercel.json comment + prod-smoke 101 probe + baked-URL assertion) is sound and additive."
+        }
+      },
+      {
+        "title": "750 ms fixed polling on board/ribbon/scorebug is the structural cost/reliability driver — 3 surfaces × ~80 polls/min/game, no WebSocket push, no backoff when idle",
+        "severity": "P1",
+        "evidence": [
+          "apps/web/src/app/board/[gameId]/page.tsx:192 (POLL_MS=750) + :3969 (setInterval(load, POLL_MS))",
+          "apps/web/src/app/ribbon/[gameId]/page.tsx:248 (POLL_MS=750) + :1022",
+          "apps/web/src/components/sports/ScorebugSurface.tsx:188 (POLL_MS=750) + :510",
+          "apps/web/src/components/widgets/sports/GameStateContext.tsx:70 (POLL_MS=750)"
+        ],
+        "fix": "These polls hit Railway directly (good — they don't touch the edge), so the cost lands on the API/DB, not Vercel. But 750 ms unconditional polling is wasteful when nothing's changing and it correlates with the DB write-amplification noted in the live metrics. Move live game-state to the existing WS tier with the 750 ms poll as a fallback only, or at minimum back off to 3-5 s when the game clock is stopped / status is PRE/FINAL. A single shared poller (one fetch fanned out to board+ribbon+scorebug on the same machine) instead of three independent setIntervals would cut redundant requests 3x where surfaces share an origin.",
+        "surface": "vercel-edge (apps/web/vercel.json, apps/web/src/app/cdn/**, apps/web/src/app/api/** cron-keepwarm/build-info, next.config images/headers/runtimes)",
+        "verdict": {
+          "confirmed": true,
+          "adjustedSeverity": "P2",
+          "reasoning": "The factual core is real and reachable: all four cited locations confirm POLL_MS=750 with an unconditional setInterval(load, POLL_MS) — board/[gameId]/page.tsx:192+3969, ribbon/[gameId]/page.tsx:248+1022, ScorebugSurface.tsx:188+510, GameStateContext.tsx:70+112. There is NO visibilitychange/document.hidden guard, NO PRE/FINAL or clock-stopped backoff, and NO WebSocket tier (grep for websocket/socket.io on these paths = 0 hits). The 100ms intervals in these files are pure local clock projection, not network calls, so they don't add load. The polls hit ${API_URL}/sports/board/:id where API_URL=process.env.NEXT_PUBLIC_API_URL (the Railway API) with cache:'no-store'.\n\nHowever, the severity is inflated for two reasons the claim missed:\n\n1) On the surface this audit scopes (vercel-edge), the claim itself concedes the cost is OFF-surface: \"these polls hit Railway directly (good — they don't touch the edge).\" So there is no vercel-edge cost or reliability impact at all — by the claim's own logic this doesn't belong as a P1 on this surface.\n\n2) The DB-cost / \"write-amplification\" assertion is substantially mitigated by code the claim didn't account for. getBoard() (sports.service.ts:435) sits behind an in-memory server-side response cache (boardCache, BOARD_CACHE_TTL_MS=1000, lines 421-443) explicitly designed so \"a 50-viewer game serving the same payload for ~750ms hits the DB once, not 50×.\" All three surfaces on one game collapse to ~1 DB read/sec/game per replica regardless of poll count. Moreover getBoardFresh is strictly READ-ONLY (no .update/.create/.upsert/.delete in the path), so it cannot be a write-amplification source — that part of the claim is simply wrong. The findUnique also uses an explicit field select (Lane-4 P0 fix) to bound egress.\n\nNet: the polling pattern and the suggested optimizations (visibility/idle backoff, single shared poller, optional WS push) are legitimate efficiency/UX improvements, but on the audited (edge) surface the issue is self-admittedly off-surface, the DB cost is capped by a 1s server cache, and the write-amplification correlation is unsupported. That makes it a real-but-mitigated nice-to-have (P2), not a P1 structural cost/reliability driver."
+        }
+      },
+      {
+        "title": "Weak production JWT/SESSION secrets still in use (config blocker) — boot guard validates length, not entropy",
+        "severity": "P0",
+        "evidence": [
+          "apps/api/src/security/required-secret.ts:24 (minLength default 16, no entropy check)",
+          "apps/api/src/auth/jwt.strategy.ts:13",
+          "apps/api/src/main.ts:111 (SESSION_SECRET)",
+          "LIVE METRICS: 'weak prod JWT/SESSION secrets need rotation'"
+        ],
+        "fix": "This is an operational blocker the code cannot self-detect: requireSecret() only enforces presence + >=16 chars, so a weak-but-long secret passes. Rotate JWT_SECRET, SESSION_SECRET, DEVICE_SECRET_KEY, DEVICE_JWT_SECRET on Railway to fresh 64-char hex (`node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"`). Rotating JWT_SECRET invalidates all live user sessions (acceptable). Optionally raise the bar in code: pass `minLength: 32` for these four and/or add a Shannon-entropy / dictionary check so a weak value fails boot too.",
+        "surface": "security",
+        "verdict": {
+          "confirmed": true,
+          "adjustedSeverity": "P0",
+          "reasoning": "CONFIRMED — real, reachable, correctly rated P0. Tried to refute on three fronts; all failed.\n\nCODE: required-secret.ts:24 sets `minLength = opts.minLength ?? 16` and the only gate (line 26) is `raw.trim().length >= minLength` — no Shannon-entropy, dictionary, or character-class check. A long-but-guessable secret passes boot. All four cited secrets route through this default path with NO stricter bar: JWT_SECRET (jwt.strategy.ts:13, auth.module.ts:25, jwt-auth.guard.ts:79, mfa.controller.ts:451), SESSION_SECRET (main.ts:111), DEVICE_SECRET_KEY (websocket-signer.service.ts:59, redis.service.ts:19, sports-feed-token.ts:60), DEVICE_JWT_SECRET (jwt-auth.guard.ts:78, screens/gpio/devices controllers, sse.controller.ts:55). The ONLY callsite passing an explicit minLength is the unrelated SSO_ENCRYPTION_KEY (sso.crypto.ts:35, minLength:16). No centralized boot validator and no entropy check exist anywhere in apps/api/src (grep for entropy/Shannon/dictionary/weak-secret returns only unrelated API-key/TOTP comments).\n\nOPERATIONAL REALITY (not speculative): the 2026-06-08 launch-readiness audit records the ACTUAL prod values — docs/research/2026-06-08-launch-readiness-audit/06-launch-deploy-billing.md:86 quotes `JWT_SECRET=super_secure_beta_jwt_secret_2026_xYz` and `SESSION_SECRET=super_secure_beta_session_secret_2026_xYz`. These satisfy >=16 chars but are human-readable, low-entropy, guessable patterns — not 64-hex random. Same finding is in 00-MASTER-SYNTHESIS.md (listed as a P0 blocker) and persisted in MEMORY.md. So the 'weak prod JWT/SESSION secrets need rotation' live-metric is grounded in observed config, not a guess.\n\nIMPACT: forged JWT_SECRET = cross-tenant account takeover on a live multi-tenant emergency-alert CMS with a paying pilot; forged DEVICE_SECRET_KEY = forged HMAC-signed emergency WS messages (the load-bearing safety system). Repo is PUBLIC and the secrets follow a predictable naming scheme.\n\nREFUTATION RESULT: No guard/config mitigates it. The only true nuance — that this is a config blocker the code cannot self-detect — is exactly what the audit says and does NOT lower severity; an unrotated account-takeover-class secret in prod stays P0. The suggested code hardening (minLength:32 + entropy/dictionary check for these four) is a valid defense-in-depth follow-up but the rotation is the required fix.\n\nRelevant files: /Users/gschiemann/Desktop/EDU CMS/apps/api/src/security/required-secret.ts; /Users/gschiemann/Desktop/EDU CMS/apps/api/src/auth/jwt.strategy.ts; /Users/gschiemann/Desktop/EDU CMS/apps/api/src/auth/auth.module.ts; /Users/gschiemann/Desktop/EDU CMS/apps/api/src/auth/jwt-auth.guard.ts; /Users/gschiemann/Desktop/EDU CMS/apps/api/src/main.ts; /Users/gschiemann/Desktop/EDU CMS/apps/api/src/security/websocket-signer.service.ts; /Users/gschiemann/Desktop/EDU CMS/docs/research/2026-06-08-launch-readiness-audit/06-launch-deploy-billing.md"
+        }
+      },
+      {
+        "title": "JWT revocation check fails OPEN when Redis is down, contradicting the 'fail-closed' guard comment",
+        "severity": "P1",
+        "evidence": [
+          "apps/api/src/auth/jwt-auth.guard.ts:97-126 (comment: 'Now we fail CLOSED ... if we can't confirm the token isn't revoked, we deny')",
+          "apps/api/src/realtime/redis.service.ts:172-183 (sismember returns false on !connected, logs 'fail-open')",
+          "apps/api/src/realtime/redis.service.ts:240-252 (getTokenInvalidBefore returns null when no publisher)"
+        ],
+        "fix": "The guard's try/catch only fails-closed on THROWN errors, but sismember() swallows the Redis-down case and returns false (= 'not revoked'), and getTokenInvalidBefore() returns null (= 'no mass-revocation marker') — so when Redis is unavailable, a logged-out or demoted user's token keeps working. That directly contradicts the documented intent. Decide the posture explicitly: either make sismember/getTokenInvalidBefore throw a distinguishable RedisUnavailableError when `!connected` so the guard's existing catch fails closed (it already maps to 'Auth check unavailable; please retry'), or keep fail-open but update the guard comment to stop claiming fail-closed. For a life-safety/multi-tenant product, failing closed on revocation is the correct call.",
+        "surface": "security",
+        "verdict": {
+          "confirmed": true,
+          "adjustedSeverity": "P2",
+          "reasoning": "REAL and reachable, but severity is inflated from P1 to P2. I traced every path.\n\nTHE CONTRADICTION IS REAL. jwt-auth.guard.ts:97-126 wraps the two revocation reads in a try/catch that only fails CLOSED on a THROWN error. But redis.service.ts:172-176 (`sismember`) returns `false` without throwing when `!this.connected || !this.publisher`, and :240-247 (`getTokenInvalidBefore`) returns `null` without throwing when `!this.publisher`. So when Redis is NOT configured (publisher===null — a deploy mode CLAUDE.md explicitly supports: \"Redis missing → API boots anyway\"), neither read throws, the guard's catch never fires, and a demoted/logged-out user's token keeps its claim for up to 30d. That directly contradicts the guard comment (\"Now we fail CLOSED\") and the users.controller.ts:81-84 comment (\"the guard itself fails CLOSED on Redis errors, so a Redis outage can't be the thing that lets a stale token through\"). The jwt-auth.guard.spec.ts tests only the mocked-THROW case (sismemberThrows/invalidBeforeThrows) — they never exercise the real RedisService !connected/!publisher branches, so the fail-open is untested.\n\nWHY THE CLAIM IS PARTLY IMPRECISE / SEVERITY IS INFLATED:\n1. The claim says blanket fail-open \"when Redis is unavailable.\" That's only true in the Redis-NOT-CONFIGURED mode (publisher===null). When Redis IS configured but DOWN (publisher!==null, stream not writeable), getTokenInvalidBefore's unguarded `.get()` at line 248 actually REJECTS — I verified ioredis@5.10.1 with enableOfflineQueue:false throws \"Stream isn't writeable and enableOfflineQueue options is false\" (built/Redis.js:364-365). That rejection propagates to the guard's catch → fails CLOSED for user tokens. So a real mid-life Redis outage on a Redis-configured deploy fails closed for the mass-revocation (privilege-tightening) path; only the sismember single-token logout path fails open.\n2. In Redis-less mode, logout itself returns 503 (auth.controller.ts:169-174) and markUserTokensInvalid throws (redis.service.ts:220-221), so \"a logged-out token keeps working\" is largely moot — the logout never registers. The real residual exposure is the DEMOTION path: revokeUserTokens (users.controller.ts:88-97) swallows the throw, reports success, and the stale elevated/canTriggerPanic claim survives up to 30d.\n3. DB row remains the durable source of truth; this is a token-staleness window, not an auth bypass.\n\nDECISIVE EVIDENCE FOR P2: the codebase's own prior audits already found this exact issue and rated it P2. docs/research/2026-06-09-prelaunch-final-audit/07-auth-identity.md:50-52 documents it and states verbatim: \"Live reality check: prod /health currently shows redis:'ok', so the window is latent, not active today. That's why this is P2, not P1.\" The 2026-06-08 synthesis logged the same finding (P1-8) but the later dedicated auth audit explicitly downgraded it to P2 on the basis that production runs with REDIS_URL set and healthy. Given prod Redis is present/healthy (latent window), the narrow blast radius (Redis-less prod OR a configured-Redis outage hitting only the logout-token path), and the DB staying source-of-truth, P2 is correct, not P1. The recommended fix matches the claim and prior audits: add a strict throwing variant (or correct the comment) AND boot-WARN when REDIS_URL is unset + re-read canTriggerPanic/role from the live DB inside the @AllowPanicBypass branch so the emergency path can't fire on a stale claim."
+        }
+      },
+      {
+        "title": "Floor-plan images stored in a PUBLIC Supabase bucket; signed-URL read path is a fig leaf",
+        "severity": "P1",
+        "evidence": [
+          "apps/api/src/floor-plans/floor-plans.controller.ts:463-468 (comment 'if it ever escapes the public bucket', `publicUrl = await this.storage.upload(...)`)",
+          "apps/api/src/floor-plans/floor-plans.controller.ts:242 (read uses createSignedUrl with short TTL)",
+          "task #200 still pending: 'Move floor-plan objects to a PRIVATE Supabase bucket (full F-1 fix)'"
+        ],
+        "fix": "Floor plans are sensitive (building layouts used for emergency/lockdown response). They upload to a public bucket, so the createSignedUrl TTL on the read path provides no real confidentiality — the object is reachable by anyone with the public URL (leaked via logs, referrer, browser history, or path-guessing within the tenant prefix). Move floor-plan storage to a private bucket and serve exclusively via short-TTL signed URLs (the read path already does this). The tenant-scoped path only mitigates blind guessing, not URL leakage.",
+        "surface": "security",
+        "verdict": {
+          "confirmed": true,
+          "adjustedSeverity": "P1",
+          "reasoning": "CONFIRMED — real, reachable, and correctly severity-rated. Verified against the cited code and the storage layer:\n\n1. The single Supabase bucket `assets` is created AND updated with `public: true` (apps/api/src/storage/supabase-storage.service.ts:81 and :96). No SQL migration / RLS policy gates it — I grepped packages/database and apps/api/src/storage; the only \"policy\" references are the bucket-level MIME/size allowlist, not row-level access control. So every object in this bucket is world-readable by anyone holding (or able to derive) its URL, with no auth.\n\n2. Floor plans upload to that same public bucket: apps/api/src/floor-plans/floor-plans.controller.ts:467-470 builds path `${tenantId}/floor-plans/${Date.now()}-${rand6}.${ext}` and calls `this.storage.upload(...)`, which returns `${url}/storage/v1/object/public/${BUCKET}/${filePath}` (supabase-storage.service.ts:237). That permanent public URL is persisted to the DB `imageUrl` column (controller:498). The upload comment itself concedes \"if it ever escapes the public bucket.\"\n\n3. The read path (`withSignedImageUrl`, controller:238-243, used by list/getOne/create) re-derives the path and issues a short-TTL `createSignedUrl` (default TTL constant ~300s), so clients only ever receive the signed form, never the permanent public URL. This is the genuine mitigation the claim acknowledges — and it is exactly a fig leaf for confidentiality: a signed URL is just the same object plus `?token=`; an attacker who captures a signed URL (logs, referrer, browser history, proxy) can strip the token and hit the permanent `…/object/public/…` form, which the public bucket serves forever regardless of TTL. The TTL only limits replay of the signed link, not the underlying object's public reachability.\n\n4. Task #200 (\"Move floor-plan objects to a PRIVATE Supabase bucket (full F-1 fix)\") is genuinely still pending in the task list. The fix the claim prescribes (private bucket + signed-only serving; read path already exists) is exactly the right and unimplemented remediation.\n\nSeverity: P1 is defensible and I'm keeping it. The data is K-12 building layouts with per-screen pin locations used for lockdown/evacuation response — high-sensitivity operational-security data; the prior infra audit (docs/research/2026-05-28-opus48-audit/37) rated this F-1 as a P1 launch-blocker \"IF floor plans are in launch scope.\" Two caveats that pull it toward the P1/P2 boundary, which I note rather than downgrade on: (a) the permanent public URL never leaves the server (clients get the signed form), so there is no direct referrer/history leak of the permanent URL — the exposure requires a captured signed URL as a precondition; and (b) blind path enumeration is effectively infeasible (tenant UUID + 13-digit ms timestamp + 36^6 random suffix). A later audit (2026-06-09 sonnet-baseline) rated the same finding P2 for these reasons. Net: it is a real, unfixed confidentiality control gap on sensitive emergency-response data, with a meaningful (signed-URL-leak) attack path; P1 is appropriate, sitting at the upper edge given the precondition."
+        }
+      },
+      {
+        "title": "Deprecated Multer 1.x ships to production runtime alongside patched 2.x",
+        "severity": "P1",
+        "evidence": [
+          "apps/api/package.json:57 (\"multer\": \"^1.4.5-lts.1\")",
+          "pnpm-lock.yaml:6949 (deprecated: Multer 1.x is impacted by a number of vulnerabilities, which have been patched in 2.x)",
+          "apps/api/src/assets/assets.controller.ts:6 (import { memoryStorage } from 'multer')",
+          "apps/api/src/imports/imports.controller.ts:65",
+          "apps/api/src/floor-plans/floor-plans.controller.ts:51",
+          "pnpm-lock.yaml:10979 (@nestjs/platform-express bundles multer: 2.1.1)"
+        ],
+        "fix": "The API pins multer ^1.4.5-lts.1 (resolves to the deprecated 1.4.5-lts.2) and imports memoryStorage from it in 3 upload controllers, while @nestjs/platform-express@11.1.19 already bundles the patched multer@2.1.1 — so the dependency tree carries both and the operator-facing upload config path runs on the vulnerable 1.x. Bump apps/api/package.json multer to ^2.0.0, run pnpm install, and verify the FileInterceptor/memoryStorage call sites still type-check (the 1.x→2.x API for memoryStorage/limits is compatible). This collapses the tree to a single patched multer and clears the deprecation warning.",
+        "surface": "tech-currency",
+        "verdict": {
+          "confirmed": true,
+          "adjustedSeverity": "P2",
+          "reasoning": "PARTIALLY CONFIRMED but SEVERITY INFLATED — downgrade P1→P2.\n\nWhat's TRUE (verified):\n- apps/api/package.json:57 pins multer ^1.4.5-lts.1; pnpm-lock.yaml:185-187 resolves it to the deprecated 1.4.5-lts.2 (lock line 6949 carries the \"Multer 1.x is impacted by a number of vulnerabilities\" deprecation notice). apps/api/node_modules/multer is symlinked to multer@1.4.5-lts.2 — so the app's `import { memoryStorage } from 'multer'` in assets.controller.ts:6, imports.controller.ts:65, floor-plans.controller.ts:51 DOES bind to the deprecated 1.x.\n- Both versions coexist in the tree: @nestjs/platform-express@11.1.19 bundles multer@2.1.1 (lock line 10979). The fix (bump to ^2.0.0, collapse to one patched copy, clear the warning) is correct and low-risk; 1.x→2.x memoryStorage/limits API is compatible.\n\nWhat's WRONG (the severity-inflating claim): the report asserts \"the operator-facing upload config path runs on the vulnerable 1.x.\" That is misleading. I traced the actual runtime path: NestJS FileInterceptor (node_modules/.pnpm/@nestjs+platform-express@11.1.19.../@nestjs/platform-express/multer/interceptors/file.interceptor.js:6) does `const multer = require(\"multer\")` and at line 18 instantiates it — and that require resolves to platform-express's OWN bundled multer@2.1.1 (verified: its node_modules/multer symlinks to ../../multer@2.1.1). So ALL multipart request parsing — the busboy/field-count/malformed-multipart DoS surface where every multer CVE actually lives — runs on the PATCHED 2.1.1 instance. The only thing the app's 1.x import contributes is the `memoryStorage()` storage-engine object (a trivial _handleFile/_removeFile pair that buffers the stream); the storage engine is not where any multer vulnerability resides, and 1.x vs 2.x memoryStorage are functionally identical. The vulnerable parser is NOT the 1.x copy.\n\nReachability is also authenticated-only: all three call sites sit behind JwtAuthGuard + @RequireRoles (SUPER_ADMIN/DISTRICT_ADMIN/SCHOOL_ADMIN, +CONTRIBUTOR on imports) — not an unauthenticated surface.\n\nNet: real dependency-hygiene/deprecation issue worth fixing, but effectively zero exploitable security exposure because the CVE-bearing code path runs on the patched 2.1.1. That is P2 tech-currency cleanup, not a P1 reachable vulnerability.\n\nRelevant files: /Users/gschiemann/Desktop/EDU CMS/apps/api/package.json (line 57); /Users/gschiemann/Desktop/EDU CMS/apps/api/src/assets/assets.controller.ts (lines 6, 522, 835); /Users/gschiemann/Desktop/EDU CMS/apps/api/src/imports/imports.controller.ts (lines 65, 174); /Users/gschiemann/Desktop/EDU CMS/apps/api/src/floor-plans/floor-plans.controller.ts (lines 51, 356)."
+        }
+      },
+      {
+        "title": "Production runs on EOL Node 20 with no version pin anywhere in the repo",
+        "severity": "P1",
+        "evidence": [
+          "Dockerfile:2 (FROM node:20-alpine AS builder)",
+          "Dockerfile:54 (FROM node:20-alpine AS runner)",
+          ".github/workflows/ci.yml:29 (node-version: 20)",
+          ".github/workflows/deploy-reliability.yml:97/113 (node-version: 20)",
+          "no .nvmrc and no \"engines\" field in any package.json (verified absent)"
+        ],
+        "fix": "Node 20 is in maintenance/EOL territory (active LTS ended; 22 is the current LTS, 24 the new active line). Plan a deliberate bump to node:22-alpine across the Dockerfile (both stages) and all workflow node-version fields, and ADD a single source of truth — either an \"engines\": { \"node\": \">=22 <23\" } in root package.json or a committed .nvmrc — so contributor machines, CI, and the Docker image can't drift. Test argon2/bcrypt native compile on node:22-alpine first (their build requirements have changed across majors per CLAUDE.md), ideally via the existing docker-build smoke job on a branch.",
+        "surface": "tech-currency",
+        "verdict": {
+          "confirmed": true,
+          "adjustedSeverity": "P2",
+          "reasoning": "FACTUAL BASE — fully verified true. Dockerfile:2 (`FROM node:20-alpine AS builder`) and Dockerfile:54 (`FROM node:20-alpine AS runner`), ci.yml:29 (`node-version: 20`, plus lines 74 and 244), and deploy-reliability.yml:97/113 (`node-version: 20`, plus line 152) all match the evidence. I confirmed via find/grep that there is NO `.nvmrc`, NO `.node-version`, NO `engines` field in any package.json, and NO Volta pin anywhere in the repo (root package.json only declares `packageManager: pnpm@9.0.0` and a soft `@types/node: ^20.10.4` devDep). The drift surface is in fact LARGER than cited: prod-smoke.yml, emergency-path.yml, lighthouse.yml, a11y.yml, cross-browser.yml, and taurus-safety.yml all also pin node-version 20. The Dockerfile is the real Railway production artifact, so node:20-alpine genuinely runs in prod — the claim is real and reachable, not theoretical.\n\nTiming: Node 20 reached EOL in April 2026 and the current env date is mid-June 2026, so the \"EOL / maintenance territory\" framing is accurate; 22 is current LTS.\n\nWHY SEVERITY IS INFLATED (P1 → P2): I could not refute the existence of the issue, but the P1 rating overstates impact. This is a maintainability/tech-currency hygiene gap, not a defect: (1) node:20-alpine still pulls the latest 20.x patch and Alpine still ships OS-level security patches on each build, so there is no demonstrated security hole or broken functionality — nothing user-facing, no emergency-path, auth, data-integrity, or availability impact is shown; (2) every consumer is currently CONSISTENT on 20, so the \"no single source of truth → drift\" risk is latent/future, not an active failure — a classic low-consequence P2 risk; (3) the proposed fix itself carries the argon2/bcrypt native-recompile regression risk that CLAUDE.md explicitly calls out as a known break class, which argues for a deliberately scheduled bump rather than an urgent P1. Genuinely worth fixing (add an engines pin / .nvmrc + plan the 22-LTS bump through the existing docker-build smoke job), but it is routine cleanup with no demonstrated functional/security/availability consequence — P2."
+        }
+      },
+      {
+        "title": "No staging environment — the live production deploy is the first integration test",
+        "severity": "P1",
+        "evidence": [
+          "railway.json:24-27 (single deploy target, numReplicas: 1, no environment split)",
+          ".github/workflows/prod-smoke.yml:71-72 (PROD_SMOKE_BASE: https://venue-os.app — smoke runs against LIVE prod, post-deploy)",
+          "task #221 [pending] Staging environment + promote-to-prod workflow",
+          "apps/edge/wrangler.toml:52 has an [env.staging] for the edge worker only — the API/web have no equivalent"
+        ],
+        "fix": "There is no dev→staging→prod promotion gate; pushes to master deploy straight to the customer-facing Railway API + Vercel web, and prod-smoke.yml only validates AFTER the live deploy is already serving real tenants (Chardon HS, AGC, the water-polo pilot). For a life-safety/emergency product with active pilots this is the single biggest ops-maturity gap. Stand up a Railway 'staging' environment (Railway supports multiple environments natively) + a Vercel preview/staging alias, point a copy of prod-smoke at it, and gate master→prod promotion on staging-smoke-green. This de-risks the very Prisma 5→6 / Node 20→22 / Express 4→5 major upgrades that are currently blocked precisely because there's nowhere safe to test them.",
+        "surface": "tech-currency",
+        "verdict": {
+          "confirmed": true,
+          "adjustedSeverity": "P1",
+          "reasoning": "CONFIRMED — every cited fact verified true, and corroborated by the repo's own docs.\n\nEVIDENCE VERIFIED:\n- railway.json:22-30 — single deploy target, numReplicas:1, no environment split. Railway auto-deploys on every master push (watchPatterns cover apps/api/**, packages/**, Dockerfile). scripts/railway-start.sh runs `prisma migrate deploy` directly against the prod DB on every boot — migrations hit prod with no prior staging apply.\n- prod-smoke.yml:71-72 — PROD_SMOKE_BASE=https://venue-os.app, PROD_SMOKE_API=...railway.app; triggered on push:[master], so it runs AFTER the deploy is already live. Its own header comment says it catches \"I just shipped a regression.\" Post-deploy validation, not a pre-promotion gate.\n- apps/edge/wrangler.toml:52 — [env.staging] exists ONLY for the edge worker (edu-cms-edge-staging, workers.dev). API/web have no equivalent. vercel.json is a bare rewrite proxy, no preview/staging alias.\n- task #221 [pending] — \"Staging environment + promote-to-prod workflow\" confirmed still pending.\n- No promotion gate anywhere: grep found zero deployment_status/workflow_run gating and no `needs: deploy`. The only staging/preview hits in workflows are in the APK (player release-channel) workflow, unrelated.\n\nINDEPENDENT CORROBORATION: docs/SLO_AND_ONCALL.md:71 states verbatim \"No staging environment. push-to-master = production.\" docs/research/2026-05-29-rules-review/01-governance-review.md:26 labels the CI_CD_PLAN's dev→staging→prod promise \"100% fiction.\"\n\nREFUTATION ATTEMPT FAILED: The strongest mitigation is the pre-deploy CI fleet (deploy-reliability docker-build+boot-smoke, web typecheck/build, lockfile, secret-scan, a11y, plus a blocking API jest gate in ci.yml). These catch build-breakage classes before Railway/Vercel build. But the docker-build boot smoke uses a FAKE DATABASE_URL with SKIP_MIGRATE=true, so it never exercises the real DB, real migrations, or real integration paths. Nothing validates the code against a live data-backed environment before customer traffic hits it. CI mitigates *build* failures, not *integration/runtime/migration* failures against real data — the core claim stands.\n\nSEVERITY (P1, retained): This is a process/ops-maturity gap, not a live exploitable defect, and it's partially mitigated by the strong pre-deploy CI and idempotent/additive-only migration discipline — that argues against P0 (nothing is currently broken). But for an active-pilot life-safety product (Chardon HS, AGC, water-polo pilot) where `prisma migrate deploy` runs straight against the prod DB on boot, \"the live deploy is the first integration test\" is a material risk with high blast radius, and it concretely blocks the deferred Prisma 5→6 / Node 20→22 / Express 4→5 upgrades. Too high-impact to be P2. P1 is correct."
+        }
+      }
+    ]
+  }
+}

@@ -1094,12 +1094,19 @@ export function CtsCelebrationWidget({ config, live: liveSurface }: { config?: C
   // Fire on goal-delta. Refs hold the previous value so the SAME
   // snapshot arriving twice (from server replays) doesn't re-fire.
   useEffect(() => {
-    if (snap.homeScore > lastHomeRef.current) {
-      setActive({ team: 'home', until: Date.now() + activeMs });
-    } else if (snap.awayScore > lastAwayRef.current) {
-      setActive({ team: 'away', until: Date.now() + activeMs });
-    } else if (hornTriggers && snap.horn && !lastHornRef.current) {
-      setActive({ team: 'horn', until: Date.now() + activeMs });
+    // 2026-06-15 DOUBLE-FIRE FIX — when this widget sits on a custom template
+    // rendered by the LIVE board/ribbon route, that route's own CueOverlay
+    // already plays the cue; firing here too animates every goal TWICE. Stand
+    // down on a live surface (refs still track score so we never mis-fire on a
+    // later context). Builder previews don't set the flag → still animate.
+    if (!surfaceHandlesCues()) {
+      if (snap.homeScore > lastHomeRef.current) {
+        setActive({ team: 'home', until: Date.now() + activeMs });
+      } else if (snap.awayScore > lastAwayRef.current) {
+        setActive({ team: 'away', until: Date.now() + activeMs });
+      } else if (hornTriggers && snap.horn && !lastHornRef.current) {
+        setActive({ team: 'horn', until: Date.now() + activeMs });
+      }
     }
     lastHomeRef.current = snap.homeScore;
     lastAwayRef.current = snap.awayScore;
@@ -1366,6 +1373,21 @@ const DEFAULT_CUE_DECK: Required<OrchestratorCueDeck> = {
 };
 
 /**
+ * True while a LIVE board/ribbon route (which mounts its own CueOverlay /
+ * RibbonCueOverlay) is on screen. Set by those routes; read by the embedded
+ * celebration widgets so they DON'T also auto-fire the same cue — the
+ * 2026-06-15 double-fire fix. Function declaration → hoisted, usable by every
+ * widget in this module regardless of definition order.
+ */
+function surfaceHandlesCues(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    !!(window as Window & { __VENUEOS_SURFACE_HANDLES_CUES?: boolean })
+      .__VENUEOS_SURFACE_HANDLES_CUES
+  );
+}
+
+/**
  * CtsCelebrationOrchestratorWidget — full-coverage overlay that fires
  * a cinematic celebration scene whenever the CTS feed shows a
  * goal-delta, horn, or period change. Idle = invisible
@@ -1461,6 +1483,11 @@ export function CtsCelebrationOrchestratorWidget({ config, live: liveSurface }: 
 
   const fire = useCallback((deck: CtsCueId[], idxRef: { current: number }, team: 'home' | 'away' | 'horn', source: 'auto' | 'preview' | 'manual' = 'auto') => {
     if (!deck.length) return;
+    // 2026-06-15 DOUBLE-FIRE FIX — on a live board/ribbon route the surface's
+    // own overlay already plays auto + feed cues; firing here too animates
+    // every goal TWICE. Only operator PREVIEW (test buttons / Stream-Deck cue)
+    // should fire from inside an embedded widget on a live surface.
+    if (source !== 'preview' && surfaceHandlesCues()) return;
     const cueId = deck[idxRef.current % deck.length] as CtsCueId;
     // Dedup: if this exact cue fired within the cooldown, skip it.
     const now = Date.now();

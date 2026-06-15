@@ -21,6 +21,8 @@
   #index a{display:inline-block;margin:0 8px 8px 0;padding:8px 12px;border:1px solid #243049;border-radius:8px;background:#0c1322;color:#cfe0ff;text-decoration:none;font-size:13px;font-weight:700;}
   #index a:hover{background:#16203a;}
 </style>
+<!-- synthesized stadium SFX (air-horn + impact boom) — referenced by the engine -->
+<script src="celebration-sound.js"></script>
 </head>
 <body>
   <div id="stage"><canvas id="c" width="1920" height="1080"></canvas></div>
@@ -44,66 +46,103 @@
   // lower-third + brand-shim). Marquee scoring plays live in their own files.
   var CUES={
     // ── SOCCER ──
-    'soccer-penalty':{scene:'grass',headline:'PENALTY!',sub1:'HUNTINGTON BEACH  2  —  1  NEWPORT',sub2:"78'  ·  PENALTY  ·  #9 RIVERA",burst:'fire',projectile:{ball:'soccer',from:[430,772],t0:600,t1:1000,arc:130,r:30,shrink:true}},
-    'soccer-yellow':{scene:'grass',headline:'YELLOW CARD',headSize:150,sub1:'CAUTION',sub2:"58'  ·  #6 DELACRUZ",burst:'none',motif:'card',motifColor:'#ffd21a',shake:6},
-    'soccer-red':{scene:'grass',headline:'RED CARD',headSize:160,sub1:'SENT OFF',sub2:"71'  ·  #4 BANKS",burst:'none',motif:'card',motifColor:'#e6362b',shake:6},
+    'soccer-penalty':{scene:'grass',headline:'PENALTY!',sub1:'HOME  2  —  1  AWAY',sub2:"78'  ·  PENALTY  ·  #9",burst:'fire',projectile:{ball:'soccer',from:[430,772],t0:600,t1:1000,arc:130,r:30,shrink:true}},
+    'soccer-yellow':{scene:'grass',headline:'YELLOW CARD',headSize:150,sub1:'CAUTION',sub2:"58'  ·  #6",burst:'none',motif:'card',motifColor:'#ffd21a',shake:6},
+    'soccer-red':{scene:'grass',headline:'RED CARD',headSize:160,sub1:'SENT OFF',sub2:"71'  ·  #4",burst:'none',motif:'card',motifColor:'#e6362b',shake:6},
     // ── WATER POLO ──
-    'waterpolo-save':{scene:'pool',headline:'SAVE!',sub1:'NEWPORT HARBOR  9  —  8  CORONA DEL MAR',sub2:'3RD  ·  BIG SAVE  ·  #1 GK',burst:'water',save:'x',impactPt:function(){return{x:1440,y:592};},projectile:{ball:'waterpolo',from:[-180,772],t0:540,t1:1000,arc:180,r:30,deflect:[-1.1,-0.7]}},
-    'waterpolo-exclusion':{scene:'pool',headline:'EXCLUSION',headSize:160,sub1:'MAN UP  —  6 ON 5',sub2:'2ND  ·  #7 EXCLUDED  ·  :20',burst:'energy',motif:'whistle'},
+    'waterpolo-save':{scene:'pool',headline:'SAVE!',sub1:'HOME  9  —  8  AWAY',sub2:'3RD  ·  BIG SAVE  ·  #1 GK',burst:'water',save:'x',impactPt:function(){return{x:1440,y:592};},projectile:{ball:'waterpolo',from:[-180,772],t0:540,t1:1000,arc:180,r:30,deflect:[-1.1,-0.7]}},
+    'waterpolo-exclusion':{scene:'pool',headline:'EXCLUSION',headSize:160,sub1:'MAN UP  —  6 ON 5',sub2:'2ND  ·  #7  ·  :20',burst:'energy',motif:'whistle'},
     'waterpolo-powerplay':{scene:'pool',headline:'POWER PLAY',headSize:150,sub1:'MAN ADVANTAGE',sub2:'6 ON 5',burst:'energy',motif:'plus1',motifText:'6v5'},
     // ── BASKETBALL ──
-    'basketball-dunk':{scene:'court',headline:'SLAM!',headSize:240,sub1:'MATER DEI  61  —  58  SANTA MARGARITA',sub2:'4TH  ·  DUNK  ·  #23 OKAFOR',burst:'fire',projectile:{ball:'basketball',from:[1500,110],t0:640,t1:1000,arc:0,r:34}},
-    'basketball-buzzer':{scene:'court',headline:'BUZZER BEATER!',headSize:140,sub1:'AT THE HORN — WIN',sub2:'4TH  ·  0:00  ·  #3 REYES',burst:'fire',motif:'clock0',projectile:{ball:'basketball',from:[1080,715],t0:560,t1:1000,arc:320,r:32}},
-    'basketball-steal':{scene:'court',headline:'STEAL!',sub1:'TAKEAWAY  —  FAST BREAK',sub2:'3RD  ·  #5 CHEN',burst:'energy',motif:'swirl'},
+    'basketball-dunk':{scene:'court',headline:'SLAM!',headSize:240,sub1:'HOME  61  —  58  AWAY',sub2:'4TH  ·  DUNK  ·  #23',burst:'fire',projectile:{ball:'basketball',from:[1500,110],t0:640,t1:1000,arc:0,r:34}},
+    'basketball-buzzer':{scene:'court',headline:'BUZZER BEATER!',headSize:140,sub1:'AT THE HORN — WIN',sub2:'4TH  ·  0:00  ·  #3',burst:'fire',motif:'clock0',projectile:{ball:'basketball',from:[1080,715],t0:560,t1:1000,arc:320,r:32}},
+    'basketball-steal':{scene:'court',headline:'STEAL!',sub1:'TAKEAWAY  —  FAST BREAK',sub2:'3RD  ·  #5',burst:'energy',motif:'swirl'},
     // ── HOCKEY ──
     'hockey-powerplay':{scene:'ice',headline:'POWER PLAY',headSize:150,sub1:'MAN ADVANTAGE',sub2:'2ND  ·  5 ON 4',burst:'energy',motif:'plus1',motifText:'5v4'},
     'hockey-penaltykill':{scene:'ice',headline:'PENALTY KILL',headSize:140,sub1:'KILLED IT OFF',sub2:'2ND  ·  SHORTHANDED',burst:'energy',motif:'shield'},
-    'hockey-hattrick':{scene:'ice',headline:'HAT TRICK!',headSize:160,sub1:'ICEHAWKS  4  —  2  TITANS',sub2:'3RD  ·  3 GOALS  ·  #17 NOVAK',burst:'energy',motif:'hats',projectile:{ball:'puck',from:[-200,700],t0:660,t1:1000,arc:40,r:30}},
-    'hockey-save':{scene:'ice',headline:'SAVE!',sub1:'ICEHAWKS  2  —  2  TITANS',sub2:'3RD  ·  GLOVE SAVE  ·  #30',burst:'ice',save:'x',impactPt:function(){return{x:1470,y:606};},projectile:{ball:'puck',from:[-240,900],t0:600,t1:1000,arc:40,r:26,ease:'lin',deflect:[-1.2,-0.5]}},
+    'hockey-hattrick':{scene:'ice',headline:'HAT TRICK!',headSize:160,sub1:'HOME  4  —  2  AWAY',sub2:'3RD  ·  3 GOALS  ·  #17',burst:'energy',motif:'hats',projectile:{ball:'puck',from:[-200,700],t0:660,t1:1000,arc:40,r:30}},
+    'hockey-save':{scene:'ice',headline:'SAVE!',sub1:'HOME  2  —  2  AWAY',sub2:'3RD  ·  GLOVE SAVE  ·  #30',burst:'ice',save:'x',impactPt:function(){return{x:1470,y:606};},projectile:{ball:'puck',from:[-240,900],t0:600,t1:1000,arc:40,r:26,ease:'lin',deflect:[-1.2,-0.5]}},
     // ── BASEBALL ──
-    'baseball-grandslam':{scene:'ballpark',headline:'GRAND SLAM!',headSize:150,sub1:'RIVER CATS  8  —  4  RAILRIDERS',sub2:'BOT 6TH  ·  4-RUN SLAM  ·  #24 CRUZ',burst:'fireworks',impactPt:function(){return{x:1320,y:300};},projectile:{ball:'baseball',from:[560,980],t0:520,t1:1000,arc:300,r:30,shrink:true}},
-    'baseball-strikeout':{scene:'plate',headline:'STRIKEOUT!',headSize:150,sub1:'EAGLES  3  —  1  BULLDOGS',sub2:'TOP 7TH  ·  K  ·  #21 PARK',burst:'energy',motif:'bigK',projectile:{ball:'baseball',from:[280,300],t0:640,t1:980,arc:0,r:26,ease:'lin'}},
+    'baseball-grandslam':{scene:'ballpark',headline:'GRAND SLAM!',headSize:150,sub1:'HOME  8  —  4  AWAY',sub2:'BOT 6TH  ·  4-RUN SLAM  ·  #24',burst:'fireworks',impactPt:function(){return{x:1320,y:300};},projectile:{ball:'baseball',from:[560,980],t0:520,t1:1000,arc:300,r:30,shrink:true}},
+    'baseball-strikeout':{scene:'plate',headline:'STRIKEOUT!',headSize:150,sub1:'HOME  3  —  1  AWAY',sub2:'TOP 7TH  ·  K  ·  #21',burst:'energy',motif:'bigK',projectile:{ball:'baseball',from:[280,300],t0:640,t1:980,arc:0,r:26,ease:'lin'}},
     'baseball-doubleplay':{scene:'plate',headline:'DOUBLE PLAY!',headSize:140,sub1:'TWO OUTS — INNING OVER',sub2:'4-6-3',burst:'energy',motif:'plus1',motifText:'4-6-3'},
     // ── FOOTBALL ──
-    'football-firstdown':{scene:'turf',headline:'FIRST DOWN!',headSize:150,sub1:'MOVE THE CHAINS',sub2:'1ST & 10  ·  #11 SOTO',burst:'energy',motif:'arrowFD'},
-    'football-sack':{scene:'turf',headline:'SACK!',sub1:'QB DOWN — LOSS OF 8',sub2:'3RD & LONG  ·  #55 OKAFOR',burst:'fire',impactPt:function(){return{x:960,y:600};}},
-    'football-turnover':{scene:'turf',headline:'TURNOVER!',sub1:'TAKEAWAY — BALL HAWK',sub2:'#21 RECOVERS',burst:'energy',motif:'swirl'},
+    'football-firstdown':{scene:'turf',headline:'FIRST DOWN!',headSize:150,sub1:'MOVE THE CHAINS',sub2:'1ST & 10  ·  #11',burst:'energy',motif:'arrowFD'},
+    'football-sack':{scene:'turf',headline:'SACK!',sub1:'QB DOWN — LOSS OF 8',sub2:'3RD & LONG  ·  #55',burst:'fire',impactPt:function(){return{x:960,y:600};}},
+    'football-turnover':{scene:'turf',headline:'TURNOVER!',sub1:'TAKEAWAY — BALL HAWK',sub2:'#21',burst:'energy',motif:'swirl'},
     // ── VOLLEYBALL ──
-    'volleyball-ace':{scene:'gym',headline:'ACE!',sub1:'MARINA  25  —  23  LAGUNA',sub2:'SET 5  ·  ACE  ·  #1 PARK',burst:'dust',projectile:{ball:'volleyball',from:[300,340],t0:620,t1:1000,arc:0,r:30}},
-    'volleyball-block':{scene:'gym',headline:'BLOCK!',sub1:'STUFFED AT THE NET',sub2:'SET 3  ·  #12 RUIZ',burst:'energy',impactPt:function(){return{x:960,y:560};},projectile:{ball:'volleyball',from:[760,330],t0:640,t1:1000,arc:0,r:30}},
-    'volleyball-setwon':{scene:'gym',headline:'SET WON!',headSize:150,sub1:'MARINA TAKES SET 4',sub2:'25  —  22',burst:'confetti',motif:'plus1',motifText:'SET'},
-    'volleyball-kill':{scene:'gym',headline:'KILL!',headSize:240,sub1:'TERMINATED AT THE NET',sub2:'SET 4  ·  KILL  ·  #7 NGUYEN',burst:'fire',impactPt:function(P){return P.net||{x:960,y:760};},projectile:{ball:'volleyball',from:[820,200],t0:600,t1:1000,arc:0,r:32,ease:'lin'}},
+    'volleyball-ace':{scene:'gym',headline:'ACE!',sub1:'HOME  25  —  23  AWAY',sub2:'SET 5  ·  ACE  ·  #1',burst:'dust',projectile:{ball:'volleyball',from:[300,340],t0:620,t1:1000,arc:0,r:30}},
+    'volleyball-block':{scene:'gym',headline:'BLOCK!',sub1:'STUFFED AT THE NET',sub2:'SET 3  ·  #12',burst:'energy',impactPt:function(){return{x:960,y:560};},projectile:{ball:'volleyball',from:[760,330],t0:640,t1:1000,arc:0,r:30}},
+    'volleyball-setwon':{scene:'gym',headline:'SET WON!',headSize:150,sub1:'HOME TEAM TAKES SET 4',sub2:'25  —  22',burst:'confetti',motif:'plus1',motifText:'SET'},
+    'volleyball-kill':{scene:'gym',headline:'KILL!',headSize:240,sub1:'TERMINATED AT THE NET',sub2:'SET 4  ·  KILL  ·  #7',burst:'fire',impactPt:function(P){return P.net||{x:960,y:760};},projectile:{ball:'volleyball',from:[820,200],t0:600,t1:1000,arc:0,r:32,ease:'lin'}},
     // ── PICKLEBALL ──
     // The signature dink rally: a soft, controlled exchange just over
     // the net in the non-volley zone (the "kitchen"). Reuses the gym
     // net-court scene; a low, slow arc over the net sells the touch shot.
     'pickleball-dink':{scene:'gym',headline:'DINK RALLY!',headSize:160,sub1:'KITCHEN BATTLE  —  SOFT HANDS',sub2:'GAME 3  ·  WON AT THE NET',burst:'energy',impactPt:function(P){return P.net||{x:960,y:760};},projectile:{ball:'volleyball',from:[420,560],t0:600,t1:1000,arc:60,r:24}},
     // ── FIELD HOCKEY ── (2026-06-13 — was generic burst only)
-    'fieldhockey-goal':{scene:'grass',headline:'GOAL!',headSize:240,sub1:'WARRIORS  2  —  1  HAWKS',sub2:'Q3  ·  FIELD GOAL  ·  #11 PATEL',burst:'fire',projectile:{ball:'soccer',from:[380,760],t0:600,t1:1000,arc:90,r:26,shrink:true}},
+    'fieldhockey-goal':{scene:'grass',headline:'GOAL!',headSize:240,sub1:'HOME  2  —  1  AWAY',sub2:'Q3  ·  FIELD GOAL  ·  #11',burst:'fire',projectile:{ball:'soccer',from:[380,760],t0:600,t1:1000,arc:90,r:26,shrink:true}},
     'fieldhockey-save':{scene:'grass',headline:'SAVE!',sub1:'KEEPER STANDS TALL',sub2:'Q2  ·  BIG SAVE  ·  #1 GK',burst:'energy',motif:'glove',impactPt:function(){return{x:960,y:540};},projectile:{ball:'soccer',from:[-160,700],t0:600,t1:1000,arc:90,r:26}},
     // ── LACROSSE ── (2026-06-13 — console→board path had nothing)
-    'lacrosse-goal':{scene:'grass',headline:'GOAL!',headSize:240,sub1:'EAGLES  6  —  4  RAMS',sub2:'Q3  ·  GOAL  ·  #7 BRENNAN',burst:'fire',projectile:{ball:'soccer',from:[400,740],t0:600,t1:1000,arc:110,r:26,shrink:true}},
+    'lacrosse-goal':{scene:'grass',headline:'GOAL!',headSize:240,sub1:'HOME  6  —  4  AWAY',sub2:'Q3  ·  GOAL  ·  #7',burst:'fire',projectile:{ball:'soccer',from:[400,740],t0:600,t1:1000,arc:110,r:26,shrink:true}},
     'lacrosse-save':{scene:'grass',headline:'SAVE!',sub1:'DENIED AT THE CREASE',sub2:'Q2  ·  BIG SAVE  ·  #30 GK',burst:'energy',motif:'glove',impactPt:function(){return{x:960,y:540};},projectile:{ball:'soccer',from:[-160,720],t0:600,t1:1000,arc:90,r:26}},
     // ── GYMNASTICS ── (2026-06-13 — judged floor sport; spotlit-floor scene)
-    'gymnastics-perfectscore':{scene:'mat',headline:'PERFECT 10!',headSize:200,sub1:'FLAWLESS ROUTINE',sub2:'FLOOR  ·  10.000  ·  #4 REYES',burst:'fireworks',motif:'plus1',motifText:'10',impactPt:function(){return{x:960,y:680};}},
-    'gymnastics-sticklanding':{scene:'mat',headline:'STUCK IT!',headSize:180,sub1:'STUCK THE LANDING',sub2:'VAULT  ·  NO STEP  ·  #9 KIM',burst:'energy',motif:'plus1',motifText:'★',impactPt:function(){return{x:960,y:700};}},
-    'gymnastics-allaround':{scene:'mat',headline:'ALL-AROUND!',headSize:160,sub1:'ALL-AROUND LEAD',sub2:'MEET  ·  TOP SCORE  ·  #11 NOVAK',burst:'confetti',motif:'plus1',motifText:'AA',impactPt:function(){return{x:960,y:680};}},
+    'gymnastics-perfectscore':{scene:'mat',headline:'PERFECT 10!',headSize:200,sub1:'FLAWLESS ROUTINE',sub2:'FLOOR  ·  10.000  ·  #4',burst:'fireworks',motif:'plus1',motifText:'10',impactPt:function(){return{x:960,y:680};}},
+    'gymnastics-sticklanding':{scene:'mat',headline:'STUCK IT!',headSize:180,sub1:'STUCK THE LANDING',sub2:'VAULT  ·  NO STEP  ·  #9',burst:'energy',motif:'plus1',motifText:'★',impactPt:function(){return{x:960,y:700};}},
+    'gymnastics-allaround':{scene:'mat',headline:'ALL-AROUND!',headSize:160,sub1:'ALL-AROUND LEAD',sub2:'MEET  ·  TOP SCORE  ·  #11',burst:'confetti',motif:'plus1',motifText:'AA',impactPt:function(){return{x:960,y:680};}},
     // ── COMPETITIVE CHEER ── (2026-06-13 — judged routine sport)
     'cheer-fullout':{scene:'mat',headline:'FULL OUT!',headSize:200,sub1:'HIT ZERO — FLAWLESS RUN',sub2:'FINALS  ·  CLEAN ROUTINE',burst:'fireworks',motif:'plus1',motifText:'★',impactPt:function(){return{x:960,y:680};}},
     'cheer-perfectstunt':{scene:'mat',headline:'PERFECT STUNT!',headSize:150,sub1:'HIT AND HELD',sub2:'ROUND 2  ·  FLAWLESS',burst:'energy',motif:'plus1',motifText:'★',impactPt:function(){return{x:960,y:700};}},
     'cheer-roundwin':{scene:'mat',headline:'ROUND WIN!',headSize:160,sub1:'TAKES THE ROUND',sub2:'ROUND  ·  TOP SCORE',burst:'confetti',motif:'plus1',motifText:'WIN',impactPt:function(){return{x:960,y:680};}},
     // ── WRESTLING ──
-    'wrestling-pin':{scene:'mat',headline:'PIN!',headSize:260,sub1:'MISSION VIEJO  def.  EDISON',sub2:'2ND PD  ·  FALL  ·  113 LBS',burst:'energy',motif:'whistle',shake:22,impactPt:function(){return{x:960,y:680};}},
-    'wrestling-takedown':{scene:'mat',headline:'TAKEDOWN!',headSize:150,sub1:'TWO POINTS',sub2:'1ST PD  ·  #145 LOPEZ',burst:'energy',motif:'plus1',motifText:'+2',impactPt:function(){return{x:960,y:680};}},
+    'wrestling-pin':{scene:'mat',headline:'PIN!',headSize:260,sub1:'HOME  def.  AWAY',sub2:'2ND PD  ·  FALL  ·  113 LBS',burst:'energy',motif:'whistle',shake:22,impactPt:function(){return{x:960,y:680};}},
+    'wrestling-takedown':{scene:'mat',headline:'TAKEDOWN!',headSize:150,sub1:'TWO POINTS',sub2:'1ST PD  ·  #145',burst:'energy',motif:'plus1',motifText:'+2',impactPt:function(){return{x:960,y:680};}},
     'wrestling-nearfall':{scene:'mat',headline:'NEAR FALL!',headSize:150,sub1:'BACK POINTS',sub2:'3RD PD  ·  #160',burst:'energy',motif:'plus1',motifText:'+3',impactPt:function(){return{x:960,y:680};}},
-    'wrestling-techfall':{scene:'mat',headline:'TECH FALL!',headSize:150,sub1:'15-POINT LEAD — MATCH OVER',sub2:'#132 WARREN',burst:'energy',motif:'plus1',motifText:'15',impactPt:function(){return{x:960,y:680};}}
+    'wrestling-techfall':{scene:'mat',headline:'TECH FALL!',headSize:150,sub1:'15-POINT LEAD — MATCH OVER',sub2:'#132',burst:'energy',motif:'plus1',motifText:'15',impactPt:function(){return{x:960,y:680};}},
+    // ── UNIVERSAL ── (fired across every sport — start of period, end of game)
+    // Plays the synthesized stadium air-horn (celebration-sound.js); the
+    // klaxon + sound-wave motif is the visual. Live data fills the scoreline.
+    'horn':{scene:'arena',headline:'',sub1:'',sub2:'',burst:'energy',horn:true,motif:'soundwave',shake:8,impactPt:function(){return{x:960,y:520};}}
   };
-  var GROUPS={Soccer:['soccer-penalty','soccer-yellow','soccer-red'],'Water polo':['waterpolo-save','waterpolo-exclusion','waterpolo-powerplay'],Basketball:['basketball-dunk','basketball-buzzer','basketball-steal'],Hockey:['hockey-powerplay','hockey-penaltykill','hockey-hattrick','hockey-save'],Baseball:['baseball-grandslam','baseball-strikeout','baseball-doubleplay'],Football:['football-firstdown','football-sack','football-turnover'],Volleyball:['volleyball-ace','volleyball-block','volleyball-kill','volleyball-setwon'],Pickleball:['pickleball-dink'],'Field hockey':['fieldhockey-goal','fieldhockey-save'],Lacrosse:['lacrosse-goal','lacrosse-save'],Gymnastics:['gymnastics-perfectscore','gymnastics-sticklanding','gymnastics-allaround'],'Competitive cheer':['cheer-fullout','cheer-perfectstunt','cheer-roundwin'],Wrestling:['wrestling-pin','wrestling-takedown','wrestling-nearfall','wrestling-techfall']};
+  var GROUPS={Soccer:['soccer-penalty','soccer-yellow','soccer-red'],'Water polo':['waterpolo-save','waterpolo-exclusion','waterpolo-powerplay'],Basketball:['basketball-dunk','basketball-buzzer','basketball-steal'],Hockey:['hockey-powerplay','hockey-penaltykill','hockey-hattrick','hockey-save'],Baseball:['baseball-grandslam','baseball-strikeout','baseball-doubleplay'],Football:['football-firstdown','football-sack','football-turnover'],Volleyball:['volleyball-ace','volleyball-block','volleyball-kill','volleyball-setwon'],Pickleball:['pickleball-dink'],'Field hockey':['fieldhockey-goal','fieldhockey-save'],Lacrosse:['lacrosse-goal','lacrosse-save'],Gymnastics:['gymnastics-perfectscore','gymnastics-sticklanding','gymnastics-allaround'],'Competitive cheer':['cheer-fullout','cheer-perfectstunt','cheer-roundwin'],Wrestling:['wrestling-pin','wrestling-takedown','wrestling-nearfall','wrestling-techfall'],Universal:['horn']};
 
   var q=new URLSearchParams(location.search), cue=q.get('cue');
+
+  // ── live game data (2026-06-15) ──────────────────────────────
+  // The board/ribbon now pass `?d=<base64url(JSON)>` carrying the REAL
+  // teams / score / scorer (same contract as the v2 launcher). When present
+  // we overwrite the cue's design-time sub-lines so a fired celebration
+  // shows the actual game — not "Newport Harbor 9–8 / #9 Rivera".
+  function decodeLive(){
+    var d=q.get('d'); if(!d) return null;
+    try{ var b64=d.replace(/-/g,'+').replace(/_/g,'/');
+      return JSON.parse(decodeURIComponent(escape(atob(b64)))); }
+    catch(e){ return null; }
+  }
+  function applyLive(cfg,L){
+    if(!L) return cfg;
+    var ha=(L.ha||L.home||'').toString().toUpperCase();
+    var aa=(L.aa||L.away||'').toString().toUpperCase();
+    var hs=(L.hs!=null?L.hs:''), as=(L.as!=null?L.as:'');
+    // Scoreline from the real teams (falls back to the cue's own sub1 if the
+    // fire carried no team names — never the baked placeholder).
+    if(ha||aa){
+      cfg.sub1=ha+'  '+hs+(hs!==''||as!==''?'  —  '+as:'')+'  '+aa;
+    } else { cfg.sub1=''; }
+    // Featured player + context. `player` is null when the operator fired
+    // without picking one → show context only, never a placeholder name.
+    var pl=(L.player&&L.player.name)?((L.player.number?('#'+L.player.number+'  '):'')+L.player.name):'';
+    cfg.sub2=[pl, (L.context||'')].filter(Boolean).join('  ·  ');
+    return cfg;
+  }
+  var LIVE=decodeLive();
+  var FORMAT=q.get('format')||'scoreboard';
+
   if(cue&&CUES[cue]){
     document.querySelector('[data-label]').textContent='VenueOS · '+cue;
-    VENUE.run(CUES[cue]);
+    var cfg=applyLive(CUES[cue], LIVE);
+    cfg.format=FORMAT;
+    VENUE.run(cfg);
   } else {
     // show the index
     document.getElementById('stage').style.display='none';

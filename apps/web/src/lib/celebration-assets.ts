@@ -122,6 +122,11 @@ export function celebrationAsset(
   pack: CelebrationPack = 'v1',
 ): string | null {
   if (!sport || !cueKey) return null;
+  // The horn is a UNIVERSAL cue (period start / end-of-game) fired across every
+  // sport — route it to the shared deck horn cue (klaxon visual + synthesized
+  // air-horn). 2026-06-15: previously unmapped → fell through to the generic
+  // emoji+label, so it just said "HORN" with no sound.
+  if (cueKey === 'horn') return `/celebrations/deck.html?cue=horn`;
   const k = `${sport}/${cueKey}`;
   if (pack === 'v2' && V2_KEYS[k]) {
     return `/celebrations/v2/launcher.html?cue=${encodeURIComponent(V2_KEYS[k])}`;
@@ -240,9 +245,11 @@ export function celebrationLiveDataFromCue(
 }
 
 /** Full iframe src for a celebration, branded to a team hex color (optional).
- *  `format` only affects v2 — that pack has separate scoreboard / ribbon
- *  render paths in a single launcher. v1 ignores it. `data` injects the live
- *  game state + scorer into the v2 cinematic (ignored by v1 art). */
+ *  `format` (scoreboard | ribbon) selects the render layout — v2 has always
+ *  honored it, and as of 2026-06-15 the v1 deck reads it too (ribbon = a
+ *  short/wide band instead of the 16:9 scene, so it no longer squishes).
+ *  `data` injects the live game state + scorer into the cinematic — BOTH
+ *  packs read it now, so a fired cue shows the real teams, not placeholders. */
 export function celebrationSrc(
   sport: string | null | undefined,
   cueKey: string | null | undefined,
@@ -257,8 +264,13 @@ export function celebrationSrc(
   const params: string[] = [];
   if (hex) params.push('team=' + encodeURIComponent(hex));
   if (format) params.push('format=' + encodeURIComponent(format));
-  // Live data is only understood by the v2 launcher — don't bloat v1 URLs.
-  if (data && base.includes('/v2/launcher.html')) {
+  // Live data injects the REAL teams / score / scorer into the cinematic.
+  // 2026-06-15 — both the v2 launcher AND the v1 deck/marquee art now read
+  // `d`, so a fired cue NEVER shows the design-time placeholder names
+  // ("Newport Harbor 9–8", "#9 Rivera"). Previously this was gated to the
+  // v2 launcher only, which is why every v1 celebration looked like test
+  // HTML. The base64url payload is a few hundred bytes — negligible.
+  if (data) {
     params.push('d=' + encodeLive(data));
   }
   if (params.length === 0) return base;

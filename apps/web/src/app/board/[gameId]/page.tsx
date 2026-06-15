@@ -3298,18 +3298,24 @@ function FinalScene({ data, def }: { data: BoardData; def: SportDefinition }) {
             flexShrink: 0,
           }}
         >
-          <div
-            style={{
-              fontSize: tie ? 34 : 40,
-              fontWeight: 900,
-              letterSpacing: 6,
-              color: tie ? '#64748b' : '#e2e8f0',
-              marginBottom: 14,
-              textShadow: tie ? 'none' : '0 4px 18px rgba(0,0,0,0.6)',
-            }}
-          >
-            {tie ? 'TIE' : 'FINAL'}
-          </div>
+          {/* 2026-06-15 — only the "TIE" wordmark here. The old "FINAL" word
+              was leftover clutter: the header pill already reads FINAL and the
+              "★ WINNER <TEAM>" banner names the result, so a third "FINAL" in
+              the center just crowded the winner banner. On a tie there's no
+              banner, so "TIE" stays as the result label. */}
+          {tie && (
+            <div
+              style={{
+                fontSize: 34,
+                fontWeight: 900,
+                letterSpacing: 6,
+                color: '#64748b',
+                marginBottom: 14,
+              }}
+            >
+              TIE
+            </div>
+          )}
           <div style={{ fontSize: 80, fontWeight: 900, color: '#334155', lineHeight: 1 }}>–</div>
         </div>
 
@@ -3490,6 +3496,11 @@ function CueOverlay({
           src={celebUrl}
           title="celebration"
           scrolling="no"
+          // 2026-06-15 — allow the synthesized stadium air-horn / impact SFX
+          // (celebration-sound.js) to play. Kiosks run Chromium with autoplay
+          // enabled, so a fired cue is audible; without this the Permissions
+          // Policy blocks the iframe's AudioContext output.
+          allow="autoplay"
           // Lane-8 P1: sandbox the celebration iframe even though src is
           // always a same-origin static file under /celebrations/. `allow-scripts`
           // lets the canvas engine run; omitting `allow-same-origin` blocks
@@ -3876,12 +3887,13 @@ export default function ScoreboardPage() {
     }
     // A custom cue holds for its own duration; a cinematic celebration runs
     // ~4.3s, so hold it 4.8s; a plain text cue holds 3.9s.
+    // A custom-media cue holds for its own duration; every other cue is a
+    // cinematic celebration → hold the full ~4.8s. (Was gated on
+    // celebrationSrc(data?.sport,…) but `data` here is the stale closure value
+    // from the polling effect — always null — so EVERY celebration was being
+    // cut to 3.9s and unmounted before its payoff. 2026-06-15.)
     const holdMs =
-      next.mediaUrl && next.durationMs && next.durationMs > 0
-        ? next.durationMs
-        : celebrationSrc(data?.sport, next.key, null)
-          ? 4800
-          : 3900;
+      next.mediaUrl && next.durationMs && next.durationMs > 0 ? next.durationMs : 4800;
     cueTimer.current = setTimeout(() => {
       stopCueAudio();
       setActiveCue(null);
@@ -3960,6 +3972,20 @@ export default function ScoreboardPage() {
       clearInterval(t);
     };
   }, [gameId]);
+
+  // 2026-06-15 — DOUBLE-FIRE FIX. This board route is the single celebration
+  // authority for the scoreboard: <CueOverlay> plays every fired cue. A custom
+  // scoreboard template can ALSO embed a CtsCelebration / CtsCelebration
+  // Orchestrator widget that independently auto-fires the SAME cue feed on a
+  // score delta — with no dedup between the two engines, every goal animated
+  // TWICE. This flag tells those embedded widgets to stand down while they're
+  // on the live board (operator test/preview, which never sets it, still
+  // animates). The ribbon route sets the same flag for its own surface.
+  useEffect(() => {
+    const w = window as Window & { __VENUEOS_SURFACE_HANDLES_CUES?: boolean };
+    w.__VENUEOS_SURFACE_HANDLES_CUES = true;
+    return () => { w.__VENUEOS_SURFACE_HANDLES_CUES = false; };
+  }, []);
 
   const def = useMemo(() => (data ? findSport(data.sport) : undefined), [data]);
   const scale = Math.min(vp.w / 1920, vp.h / 1080);
@@ -4159,9 +4185,16 @@ export default function ScoreboardPage() {
             cue={activeCue}
             sport={data?.sport}
             pack={
-              ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v1'
-                ? 'v1'
-                : 'v2') as 'v1' | 'v2'
+              // 2026-06-15 — default to the BOLD v1 deck/marquee art. The v2
+              // water-polo cinematic is a slow, dark build (ball drifts in over
+              // ~4s; the "GOAL!" payoff lands after the board's hold window) so
+              // the crowd saw dark water and called it "not firing." v1 slams a
+              // bright "GOAL!/SLAM!" + live scoreline + burst immediately, and
+              // now carries live data + team color + the air-horn. v2 is still
+              // available as an explicit opt-in (celebrationPack === 'v2').
+              ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v2'
+                ? 'v2'
+                : 'v1') as 'v1' | 'v2'
             }
           />
         )}
@@ -4232,9 +4265,16 @@ export default function ScoreboardPage() {
             // falls back to v1 art for sports without v2 cues yet, so
             // defaulting to v2 has zero downside.
             pack={
-              ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v1'
-                ? 'v1'
-                : 'v2') as 'v1' | 'v2'
+              // 2026-06-15 — default to the BOLD v1 deck/marquee art. The v2
+              // water-polo cinematic is a slow, dark build (ball drifts in over
+              // ~4s; the "GOAL!" payoff lands after the board's hold window) so
+              // the crowd saw dark water and called it "not firing." v1 slams a
+              // bright "GOAL!/SLAM!" + live scoreline + burst immediately, and
+              // now carries live data + team color + the air-horn. v2 is still
+              // available as an explicit opt-in (celebrationPack === 'v2').
+              ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v2'
+                ? 'v2'
+                : 'v1') as 'v1' | 'v2'
             }
           />
         )}

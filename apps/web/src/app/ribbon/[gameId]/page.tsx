@@ -1026,6 +1026,16 @@ export default function RibbonPage() {
     };
   }, [gameId]);
 
+  // 2026-06-15 — DOUBLE-FIRE FIX (ribbon surface). RibbonCueOverlay is the
+  // single celebration authority here; an embedded CtsCelebration/Orchestrator
+  // widget on a custom ribbon template must NOT also auto-fire the same cue.
+  // See the matching flag on the board route.
+  useEffect(() => {
+    const w = window as Window & { __VENUEOS_SURFACE_HANDLES_CUES?: boolean };
+    w.__VENUEOS_SURFACE_HANDLES_CUES = true;
+    return () => { w.__VENUEOS_SURFACE_HANDLES_CUES = false; };
+  }, []);
+
   const def = useMemo(() => (data ? findSport(data.sport) : undefined), [data]);
 
   // Sprint 13 — CTS source-of-truth merge. When the CTS console is
@@ -1274,9 +1284,11 @@ export default function RibbonPage() {
             // engine from commit 87da542). v2 already falls back to v1
             // art for sports without v2 cues, so this is a strict upgrade.
             pack={
-              ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v1'
-                ? 'v1'
-                : 'v2') as 'v1' | 'v2'
+              // 2026-06-15 — default to v1 (ribbon-native strip, no squish);
+              // v2 only when explicitly opted in. See board route for why.
+              ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v2'
+                ? 'v2'
+                : 'v1') as 'v1' | 'v2'
             }
           />
         )}
@@ -1430,9 +1442,10 @@ ${SCORE_MOTION_KEYFRAMES}
           segWf={vp.w}
           sport={data?.sport}
           pack={
-            ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v1'
-              ? 'v1'
-              : 'v2') as 'v1' | 'v2'
+            // 2026-06-15 — default to v1 (ribbon-native strip, no squish).
+            ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v2'
+              ? 'v2'
+              : 'v1') as 'v1' | 'v2'
           }
         />
       )}
@@ -3302,7 +3315,13 @@ function RibbonCueOverlay({
       'ribbon',
       celebrationLiveDataFromCue(cue as Parameters<typeof celebrationLiveDataFromCue>[0]),
     );
-    if (v2Url) {
+    // 2026-06-15 — THE SQUISH FIX. Only use the v2 iframe when there is a REAL
+    // v2 launcher cue for this (sport, cueKey): that file sizes its canvas to a
+    // true ribbon aspect (2400×256). When v2 has no art it falls back to the
+    // 16:9 deck/marquee URL — stuffing THAT into a short ribbon segment is what
+    // stretched/squished the celebration. In that case fall through to the
+    // ribbon-native RibbonCelebrationStrip (DOM, fits any ribbon shape).
+    if (v2Url && v2Url.includes('/v2/launcher.html')) {
       return (
         <div
           style={{
@@ -3333,6 +3352,9 @@ function RibbonCueOverlay({
                 src={v2Url}
                 title="celebration v2"
                 scrolling="no"
+                // 2026-06-15 — allow the synthesized SFX to play on kiosks
+                // (matches the board route).
+                allow="autoplay"
                 // Same sandbox model as the board route — static file
                 // under /celebrations/v2/, scripts allowed, no
                 // same-origin / cookies / storage.

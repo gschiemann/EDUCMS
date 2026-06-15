@@ -125,7 +125,10 @@
     plate:function(t,P){nightTop(560);crowd(560);grassFloor(560);
       // batter's box + home plate, lower-centre
       ctx.fillStyle='#7a4a25';ctx.fillRect(0,820,W,H-820);ctx.strokeStyle='rgba(255,255,255,0.6)';ctx.lineWidth=4;ctx.strokeRect(820,900,120,150);ctx.strokeRect(1000,900,120,150);
-      ctx.fillStyle='#fff';ctx.beginPath();ctx.moveTo(940,1010);ctx.lineTo(990,1010);ctx.lineTo(990,1040);ctx.lineTo(965,1060);ctx.lineTo(940,1040);ctx.closePath();ctx.fill();P.zone={x:965,y:560};}
+      ctx.fillStyle='#fff';ctx.beginPath();ctx.moveTo(940,1010);ctx.lineTo(990,1010);ctx.lineTo(990,1040);ctx.lineTo(965,1060);ctx.lineTo(940,1040);ctx.closePath();ctx.fill();P.zone={x:965,y:560};},
+    // Neutral arena — sport-agnostic dark stands + floor glow. Used by the
+    // horn cue (fired at period start/end across every sport).
+    arena:function(t,P){nightTop(640);crowd(640);var g=ctx.createLinearGradient(0,640,0,H);g.addColorStop(0,'#0a121e');g.addColorStop(1,'#05070d');ctx.fillStyle=g;ctx.fillRect(0,640,W,H-640);ctx.strokeStyle=rgba(TRGB,0.25);ctx.lineWidth=3;ctx.shadowColor=TEAM;ctx.shadowBlur=14;ctx.beginPath();ctx.moveTo(0,648);ctx.lineTo(W,648);ctx.stroke();ctx.shadowBlur=0;P.up={x:W/2,y:540};}
   };
   function polyF(pts,fill){ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);for(var i=1;i<pts.length;i++)ctx.lineTo(pts[i][0],pts[i][1]);ctx.closePath();ctx.fillStyle=fill;ctx.fill();}
 
@@ -140,7 +143,17 @@
     shield:function(t,T,o){var p=easeOutBack(seg(t,300,820));ctx.save();ctx.translate(W/2,540);ctx.scale(p,p);ctx.fillStyle=rgba(TRGB,0.85);ctx.strokeStyle='#fff';ctx.lineWidth=8;ctx.shadowColor=TEAM;ctx.shadowBlur=30;ctx.beginPath();ctx.moveTo(0,-130);ctx.lineTo(110,-80);ctx.lineTo(95,70);ctx.quadraticCurveTo(0,160,0,160);ctx.quadraticCurveTo(0,160,-95,70);ctx.lineTo(-110,-80);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();},
     plus1:function(t,T,o){var p=easeOutBack(seg(t,300,820));ctx.save();ctx.translate(W/2,540);ctx.scale(p,p);ctx.font='900 220px Arial Black';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#fff';ctx.shadowColor=TEAM;ctx.shadowBlur=34;ctx.fillText(o.motifText||'+1',0,0);ctx.restore();},
     arrowFD:function(t,T,o){var p=seg(t,300,860);ctx.save();ctx.translate(lerp(W*0.5-260,W*0.5,easeOutCubic(p)),540);ctx.globalAlpha=p;ctx.fillStyle='#ffd21a';ctx.shadowColor='#ffd21a';ctx.shadowBlur=26;ctx.beginPath();ctx.moveTo(-160,-40);ctx.lineTo(80,-40);ctx.lineTo(80,-90);ctx.lineTo(190,0);ctx.lineTo(80,90);ctx.lineTo(80,40);ctx.lineTo(-160,40);ctx.closePath();ctx.fill();ctx.restore();},
-    swirl:function(t,T,o){var p=seg(t,300,900);ctx.save();ctx.translate(W/2,540);ctx.rotate(p*6);ctx.globalAlpha=clamp(p*1.3,0,1);ctx.strokeStyle=rgba(TLT,1);ctx.lineWidth=18;ctx.lineCap='round';ctx.shadowColor=TEAM;ctx.shadowBlur=26;for(var k=0;k<3;k++){ctx.beginPath();ctx.arc(0,0,90+k*30,k*2,k*2+4);ctx.stroke();}ctx.restore();}
+    swirl:function(t,T,o){var p=seg(t,300,900);ctx.save();ctx.translate(W/2,540);ctx.rotate(p*6);ctx.globalAlpha=clamp(p*1.3,0,1);ctx.strokeStyle=rgba(TLT,1);ctx.lineWidth=18;ctx.lineCap='round';ctx.shadowColor=TEAM;ctx.shadowBlur=26;for(var k=0;k<3;k++){ctx.beginPath();ctx.arc(0,0,90+k*30,k*2,k*2+4);ctx.stroke();}ctx.restore();},
+    // Klaxon + emanating sound arcs — the visual for the `horn` cue (paired
+    // with the synthesized air-horn in celebration-sound.js).
+    soundwave:function(t,T,o){var cx=W/2,cy=520;var p=easeOutBack(seg(t,260,760));
+      ctx.save();ctx.translate(cx-30,cy);ctx.scale(p,p);ctx.shadowColor=TEAM;ctx.shadowBlur=34;
+      ctx.fillStyle=rgba(TLT,1);ctx.strokeStyle='#fff';ctx.lineWidth=7;
+      ctx.beginPath();ctx.moveTo(-150,-30);ctx.lineTo(-50,-30);ctx.lineTo(30,-120);ctx.lineTo(30,120);ctx.lineTo(-50,30);ctx.lineTo(-150,30);ctx.closePath();ctx.fill();ctx.stroke();
+      ctx.fillStyle='#0a0e16';rrect(-210,-40,70,80,10);ctx.fill();ctx.stroke();ctx.restore();ctx.shadowBlur=0;
+      ctx.save();ctx.translate(cx+60,cy);ctx.lineCap='round';
+      for(var k=0;k<4;k++){var ap=seg(t,360+k*200,360+k*200+1000);if(ap<=0||ap>=1)continue;var r=lerp(60,520,ap);ctx.globalAlpha=(1-ap)*0.95;ctx.strokeStyle=rgba(TLT,1);ctx.lineWidth=18*(1-ap)+4;ctx.shadowColor=TEAM;ctx.shadowBlur=22;ctx.beginPath();ctx.arc(0,0,r,-0.62,0.62);ctx.stroke();}
+      ctx.restore();ctx.globalAlpha=1;ctx.shadowBlur=0;}
   };
 
   // ── goalie saves: the shot is STOPPED in front of the goal (never scored) ──
@@ -157,7 +170,18 @@
 
   // ── main run ──────────────────────────────────────────────────
   var startMs=0,rafId=0,prevMs=0,fired=false,CFG=null;
-  function reset(){cancelAnimationFrame(rafId);TRGB=hexToRgb(TEAM);TLT=lighten(TRGB,0.5);startMs=0;fired=false;parts=[];shells=[];rafId=requestAnimationFrame(frame);}
+  // Schedule the synthesized SFX at the cue's impact moment: a sustained
+  // air-horn for the `horn` cue, an impact boom under every scoring cue
+  // (cue.sound:false opts a cue out). Skipped while paused (screenshot mode).
+  function playCueSound(){
+    if(PAUSE!=null||!CFG||typeof window==='undefined'||!window.CELSOUND)return;
+    var s=window.CELSOUND, base=s.now();
+    if(!base)return; // AudioContext blocked (no gesture yet) — stay silent, don't throw
+    var impactSec=base+((CFG.T&&CFG.T.impact?CFG.T.impact:1000)/1000)-0.05;
+    if(CFG.horn){s.horn(impactSec,{dur:1.1});}
+    else if(CFG.sound!==false){s.boom(impactSec);}
+  }
+  function reset(){cancelAnimationFrame(rafId);TRGB=hexToRgb(TEAM);TLT=lighten(TRGB,0.5);startMs=0;fired=false;parts=[];shells=[];playCueSound();rafId=requestAnimationFrame(frame);}
   function frame(ms){
     if(!startMs){startMs=ms;prevMs=ms;}
     var t=ms-startMs,dt=Math.min(0.05,(ms-prevMs)/1000);prevMs=ms;var T=CFG.T;

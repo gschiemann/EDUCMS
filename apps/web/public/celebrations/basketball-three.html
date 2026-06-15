@@ -31,6 +31,10 @@
   "use strict";
   var cv=document.getElementById('c'),ctx=cv.getContext('2d'),W=1920,H=1080;
   var _q=new URLSearchParams(location.search);
+  // ── live game data (2026-06-15) — real teams/score/scorer from ?d ──
+  var LIVE=(function(){try{var d=_q.get('d');if(!d)return null;return JSON.parse(decodeURIComponent(escape(atob(d.replace(/-/g,'+').replace(/_/g,'/')))));}catch(e){return null;}})();
+  function lvScore(fb){if(LIVE&&(LIVE.ha||LIVE.home||LIVE.aa||LIVE.away)){var ha=(LIVE.ha||LIVE.home||'').toString().toUpperCase(),aa=(LIVE.aa||LIVE.away||'').toString().toUpperCase(),hs=(LIVE.hs!=null?LIVE.hs:''),as=(LIVE.as!=null?LIVE.as:'');return ha+'  '+hs+(hs!==''||as!==''?'  —  '+as:'')+'  '+aa;}return fb;}
+  function lvSub(fb){if(LIVE){var pl=(LIVE.player&&LIVE.player.name)?((LIVE.player.number?('#'+LIVE.player.number+'  '):'')+LIVE.player.name):'';var s=[pl,(LIVE.context||'')].filter(Boolean).join('  ·  ');return s||fb;}return fb;}
   var PAUSE=_q.has('pause')?parseFloat(_q.get('pause')):null;
   var TEAM=_q.get('team')?'#'+_q.get('team').replace('#',''):'#21e6ff';
 
@@ -194,8 +198,8 @@
       var bg=ctx.createLinearGradient(0,bandY,0,bandY+bandH);bg.addColorStop(0,'rgba(6,5,12,0)');bg.addColorStop(0.32,'rgba(6,5,12,0.86)');bg.addColorStop(0.7,'rgba(6,5,12,0.86)');bg.addColorStop(1,'rgba(6,5,12,0)');ctx.fillStyle=bg;ctx.fillRect(0,bandY,W,bandH);
       ctx.strokeStyle=rgba(TLT,0.7);ctx.lineWidth=3;ctx.shadowColor=TEAM;ctx.shadowBlur=12;ctx.beginPath();ctx.moveTo(W/2-380,bandY+34);ctx.lineTo(W/2+380,bandY+34);ctx.stroke();ctx.shadowBlur=0;
       ctx.textAlign='center';ctx.textBaseline='alphabetic';var ty=bandY+96+(1-easeOutCubic(lp))*26;
-      ctx.font='800 60px Arial';ctx.fillStyle='#eef2ff';ctx.shadowColor='rgba(0,0,0,0.85)';ctx.shadowBlur=14;ctx.fillText('MATER DEI  61  —  58  SANTA MARGARITA',W/2,ty);
-      ctx.font='700 30px Arial';ctx.fillStyle=rgba(TLT,0.95);ctx.shadowBlur=0;ctx.fillText('4TH  ·  3-POINTER  ·  #3 REYES',W/2,ty+42);
+      ctx.font='800 60px Arial';ctx.fillStyle='#eef2ff';ctx.shadowColor='rgba(0,0,0,0.85)';ctx.shadowBlur=14;ctx.fillText(lvScore('HOME  61  —  58  AWAY'),W/2,ty);
+      ctx.font='700 30px Arial';ctx.fillStyle=rgba(TLT,0.95);ctx.shadowBlur=0;ctx.fillText(lvSub('4TH  ·  3-POINTER  ·  #3'),W/2,ty+42);
       ctx.restore();
     }
     ctx.shadowBlur=0;
