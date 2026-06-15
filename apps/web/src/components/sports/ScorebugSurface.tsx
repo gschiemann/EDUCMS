@@ -41,6 +41,16 @@ import {
   SituationalRow,
   hasSituational,
 } from '@/components/widgets/v2/_shared/sports-situational';
+import {
+  LiveOverlayRenderer,
+  type LiveOverlayData,
+} from '@/components/widgets/sports/overlays/LiveOverlayWidgets';
+import {
+  SCORE_MOTION_KEYFRAMES,
+  SCORE_POP_ANIM,
+  useScoreFlip,
+} from '@/components/sports/score-motion';
+import { SportMark } from '@/components/sports/SportGlyph';
 import { API_URL } from '@/lib/api-url';
 import { findSport, formatScore } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
@@ -67,6 +77,37 @@ export function cuePlaysHere(target?: string): boolean {
   return target !== 'RIBBON';
 }
 
+/**
+ * A sponsor look the board response carries (T2-9). The scorebug renders the
+ * SAME frequency-capped rotation the in-venue board does — so an off-site
+ * stream viewer counts as a real, logged sponsor impression. Mirrors the
+ * `Sponsor` interface in app/board/[gameId]/page.tsx (one data model).
+ */
+export interface Sponsor {
+  id: string;
+  name: string;
+  logoUrl?: string | null;
+  tagline?: string | null;
+  color?: string | null;
+  weight?: number;
+  // T2-9: frequency-cap enforcement + flight-window re-check at render time.
+  frequencyCapPerHour?: number | null;
+  flightEndAt?: string | null;
+}
+
+/**
+ * The featured-player / promo spotlight the operator pushes (same `spotlight`
+ * field the big board reads). On the stream it renders as an animated
+ * broadcast lower-third. `visible` gates it exactly as on the board.
+ */
+export interface Spotlight {
+  visible?: boolean;
+  title?: string;
+  photoUrl?: string | null;
+  subtitle?: string;
+  lines?: { label: string; value: string }[];
+}
+
 export interface BoardData {
   id: string;
   sport: string;
@@ -86,6 +127,16 @@ export interface BoardData {
   stats: Record<string, unknown>;
   cues: Cue[];
   serverTime: number;
+  // T2-9 — rotating, frequency-capped sponsor looks. Same payload the big
+  // board rotates in its footer; the stream renders a slim sponsor strap.
+  sponsors?: Sponsor[];
+  sponsorSpotSeconds?: number;
+  // Broadcast lower-third — featured player / promo (board parity).
+  spotlight?: Spotlight | null;
+  // T2-5 — active live-game text overlay (penalty / review / timeout /
+  // injury), null when none. Rendered as a broadcast strap. Same shape the
+  // board's LiveOverlayRenderer consumes.
+  liveOverlay?: LiveOverlayData | null;
   // Sprint 13 — operator-picked custom layouts.
   scoreboardTemplateId?: string | null;
   ribbonTemplateId?: string | null;
@@ -218,6 +269,15 @@ export interface ScorebugQuery {
   awayOverride: string | null;
   /** ?theme token (brand-shim hook) — reserved for a future accent pass. */
   theme: string | null;
+  /**
+   * Clean-feed switch. `?clean=1` (or `true`) hides the bug, sponsor strap,
+   * and lower-thirds so a producer can cut to a clean program feed for a
+   * replay / interview / sideline reporter — without taking the whole
+   * browser-source OFF (which would kill the sponsor-impression story).
+   * The surface animates the package out/in as this flips. Reconciles
+   * live, so toggling the URL param in OBS updates within one poll.
+   */
+  clean: boolean;
 }
 
 /**
@@ -228,6 +288,13 @@ export interface ScorebugQuery {
  * broadcast scorebug convention). The first paint (pre-effect) uses
  * the default; the effect reconciles to the URL on mount.
  */
+/** `?clean=1` / `?clean=true` → clean feed (package hidden). Anything else
+ *  (absent, `0`, `false`) keeps the package up. */
+function parseClean(v: string | null): boolean {
+  const s = String(v || '').trim().toLowerCase();
+  return s === '1' || s === 'true' || s === 'yes' || s === 'on';
+}
+
 export function useScorebugQuery(defaultPos: CornerKey): ScorebugQuery {
   const [q, setQ] = useState<ScorebugQuery>(() => ({
     pos: POS[defaultPos],
@@ -235,19 +302,35 @@ export function useScorebugQuery(defaultPos: CornerKey): ScorebugQuery {
     homeOverride: null,
     awayOverride: null,
     theme: null,
+    clean: false,
   }));
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const sp = new URLSearchParams(window.location.search);
-    const posKey = (sp.get('pos') || defaultPos) as CornerKey;
-    const scaleRaw = parseFloat(String(sp.get('scale') || '1'));
-    setQ({
-      pos: POS[posKey] || POS[defaultPos],
-      scale: Number.isFinite(scaleRaw) ? Math.min(4, Math.max(0.4, scaleRaw)) : 1,
-      homeOverride: sp.get('home') || null,
-      awayOverride: sp.get('away') || null,
-      theme: sp.get('theme') || null,
-    });
+    const read = () => {
+      const sp = new URLSearchParams(window.location.search);
+      const posKey = (sp.get('pos') || defaultPos) as CornerKey;
+      const scaleRaw = parseFloat(String(sp.get('scale') || '1'));
+      setQ({
+        pos: POS[posKey] || POS[defaultPos],
+        scale: Number.isFinite(scaleRaw) ? Math.min(4, Math.max(0.4, scaleRaw)) : 1,
+        homeOverride: sp.get('home') || null,
+        awayOverride: sp.get('away') || null,
+        theme: sp.get('theme') || null,
+        clean: parseClean(sp.get('clean')),
+      });
+    };
+    read();
+    // A producer flips ?clean= live in OBS (some browser-sources reload the
+    // query without a full navigation); re-read on the events that fire and
+    // poll as a cheap backstop so the cut to a clean feed lands within ~1s.
+    window.addEventListener('popstate', read);
+    window.addEventListener('hashchange', read);
+    const t = setInterval(read, 1000);
+    return () => {
+      window.removeEventListener('popstate', read);
+      window.removeEventListener('hashchange', read);
+      clearInterval(t);
+    };
   }, [defaultPos]);
   return q;
 }
@@ -421,6 +504,437 @@ export interface ScorebugBugProps {
   /** Optional team-code overrides. */
   homeOverride?: string | null;
   awayOverride?: string | null;
+  /** Clean feed — animate the whole bug + situational strip out (producers
+   *  cut to a clean program feed for replays / interviews). Defaults false. */
+  clean?: boolean;
+}
+
+/**
+ * Live shot-clock projection — a second countdown read from `stats.shotClock`
+ * (the CTS-populated `{ len, ms, at, running }` anchor) and ticked locally the
+ * same way the game clock is. Returns `{ ms, len }`; `len <= 0` means the sport
+ * has no shot clock / it's off, so the bug hides it. Identical math to the big
+ * board's shot-clock effect — single source of truth, no drift.
+ */
+function useShotClock(view: BoardData | null): { ms: number; len: number } {
+  const [ms, setMs] = useState(0);
+  const scRaw = (view?.stats as Record<string, unknown> | undefined)?.shotClock;
+  const sc = scRaw && typeof scRaw === 'object' ? (scRaw as Record<string, unknown>) : null;
+  const len = Number(sc?.len) || 0;
+  const anchorMs = Math.max(0, Number(sc?.ms) || 0);
+  const anchorAt = String(sc?.at || '');
+  const running = !!sc?.running;
+  const serverTime = view?.serverTime || Date.now();
+  useEffect(() => {
+    if (len <= 0) {
+      setMs(0);
+      return;
+    }
+    const skew = serverTime - Date.now();
+    const at = new Date(anchorAt).getTime();
+    const project = () => {
+      if (!running || !Number.isFinite(at)) {
+        setMs(anchorMs);
+        return;
+      }
+      setMs(Math.max(0, anchorMs - (Date.now() + skew - at)));
+    };
+    project();
+    if (!running) return;
+    const t = setInterval(project, 100);
+    return () => clearInterval(t);
+  }, [anchorMs, anchorAt, running, len, serverTime]);
+  return { ms, len };
+}
+
+// ── sponsor rotation (stream proof-of-play) ─────────────────────
+
+type SponsorSlot = { kind: 'sponsor'; sponsor: Sponsor } | { kind: 'idle' };
+
+/**
+ * The rotating, frequency-capped sponsor look for the STREAM surface — the
+ * SAME rotation + cap + flight-window logic the in-venue board footer uses
+ * (app/board/[gameId]/page.tsx), and the SAME impression POST, just tagged
+ * `surfaceKind:'stream'`. A logo on every off-site view = doubled sponsor
+ * value + per-stream proof-of-play.
+ *
+ * Returns the active slot (a sponsor look or an `idle` gap so the strap can
+ * fade fully out between looks — a stream bug shouldn't carry a permanent
+ * sponsor band). Pauses while `clean` (clean feed) so we never log an
+ * impression no viewer can see.
+ */
+function useStreamSponsorRotation(view: BoardData | null, clean: boolean): SponsorSlot {
+  const sponsors = useMemo(() => view?.sponsors || [], [view?.sponsors]);
+  const spotSeconds = Math.max(3, view?.sponsorSpotSeconds || 8);
+  const gameId = view?.id || '';
+  const sponsorKey = useMemo(() => JSON.stringify(sponsors), [sponsors]);
+
+  // Frequency-cap bookkeeping — per sponsor, sliding 60-min window. Same as
+  // the board's shownTimestamps map.
+  const shownTimestamps = useRef<Map<string, number[]>>(new Map());
+
+  // Build the weighted slot list (one slot per weight unit), plus an `idle`
+  // gap between cycles. Re-derives only when the sponsor set changes.
+  const slots = useMemo<SponsorSlot[]>(() => {
+    const now = Date.now();
+    const oneHourAgo = now - 3_600_000;
+    const out: SponsorSlot[] = [];
+    for (const sp of sponsors) {
+      if (sp.flightEndAt && new Date(sp.flightEndAt).getTime() <= now) continue;
+      if (sp.frequencyCapPerHour !== null && sp.frequencyCapPerHour !== undefined) {
+        const recent = (shownTimestamps.current.get(sp.id) || []).filter((t) => t > oneHourAgo);
+        shownTimestamps.current.set(sp.id, recent);
+        if (recent.length >= sp.frequencyCapPerHour) continue;
+      }
+      const w = Math.max(1, Math.min(10, sp.weight || 1));
+      for (let i = 0; i < w; i++) out.push({ kind: 'sponsor', sponsor: sp });
+    }
+    // A short idle gap so the strap breathes between sponsor looks.
+    if (out.length > 0) out.push({ kind: 'idle' });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sponsorKey]);
+
+  const [slotIdx, setSlotIdx] = useState(0);
+  useEffect(() => {
+    if (clean || slots.length <= 1) {
+      setSlotIdx(0);
+      return;
+    }
+    const t = setInterval(() => {
+      setSlotIdx((i) => (i + 1) % slots.length);
+    }, spotSeconds * 1000);
+    return () => clearInterval(t);
+  }, [slots.length, spotSeconds, clean]);
+
+  const active: SponsorSlot =
+    slots.length === 0 || clean ? { kind: 'idle' } : slots[slotIdx % slots.length] || { kind: 'idle' };
+
+  // Impression: when a sponsor look becomes active, record it locally (cap
+  // enforcement) and fire-and-forget the SAME endpoint the board uses,
+  // tagged surfaceKind:'stream'. Throttled to once per look.
+  const lastPingedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (active.kind !== 'sponsor') {
+      lastPingedRef.current = null;
+      return;
+    }
+    const sp = active.sponsor;
+    if (lastPingedRef.current === sp.id) return;
+    lastPingedRef.current = sp.id;
+    const prev = shownTimestamps.current.get(sp.id) || [];
+    prev.push(Date.now());
+    shownTimestamps.current.set(sp.id, prev);
+    if (gameId) {
+      fetch(`${API_URL}/sports/sponsors/${sp.id}/impression`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId, surfaceKind: 'stream' }),
+      }).catch(() => {}); // best-effort, never fail the overlay
+    }
+  }, [active, gameId]);
+
+  return active;
+}
+
+// ── stream extras: sponsor strap + lower-thirds ─────────────────
+
+export interface ScorebugExtrasProps {
+  view: BoardData;
+  def: SportDefinition;
+  /** Corner the score bug occupies — the sponsor strap docks the OPPOSITE
+   *  bottom corner from the bug so the two never fight. */
+  pos: { v: 'top' | 'bottom'; h: 'left' | 'right'; origin: string };
+  scale: number;
+  /** Clean feed — hide the sponsor strap + lower-thirds (animate out). */
+  clean?: boolean;
+}
+
+/**
+ * The broadcast PACKAGE that rides ALONGSIDE the score bug: a slim rotating
+ * sponsor strap (opposite corner) + the spotlight lower-third + the T2-5
+ * live-game overlay (penalty / review / timeout). All driven by the SAME
+ * `/sports/board/:id` payload the bug already polls — no second fetch, no
+ * new operator workflow. Hidden entirely on a clean feed.
+ */
+export function ScorebugExtras({ view, def, pos, scale, clean = false }: ScorebugExtrasProps) {
+  const sponsorSlot = useStreamSponsorRotation(view, clean);
+  // Sponsor strap docks the bottom corner OPPOSITE the bug's horizontal side
+  // (bug bottom-left ⇒ strap bottom-right) so they never overlap. When the
+  // bug is in a TOP corner, the strap still rides the bottom (broadcast
+  // convention) on the same side as the bug for visual balance.
+  const strapH = pos.v === 'bottom' ? (pos.h === 'left' ? 'right' : 'left') : pos.h;
+  const showStrap = sponsorSlot.kind === 'sponsor';
+  const spot = view.spotlight;
+  const showSpotlight = !!(spot && spot.visible && spot.title);
+  const overlay = view.liveOverlay || null;
+
+  return (
+    <>
+      <style>{`
+        @keyframes sbStrapIn {
+          from { opacity: 0; transform: translateY(12px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes sbLowerThirdIn {
+          from { opacity: 0; transform: translateY(24px); }
+          10%  { opacity: 1; transform: translateY(0); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+
+      {/* rotating sponsor strap — slim, opposite the bug, frequency-capped,
+          impression-logged (surfaceKind:'stream'). Hidden on clean feed. */}
+      {!clean && showStrap && sponsorSlot.kind === 'sponsor' && (
+        <div
+          key={sponsorSlot.sponsor.id}
+          style={{
+            position: 'absolute',
+            bottom: 0,
+            [strapH]: 0,
+            margin: 32,
+            transform: `scale(${scale})`,
+            transformOrigin: pos.v === 'bottom' ? `bottom ${strapH}` : `top ${strapH}`,
+            animation: 'sbStrapIn 0.45s ease-out forwards',
+            willChange: 'transform, opacity',
+            pointerEvents: 'none',
+          }}
+        >
+          <SponsorStrap sponsor={sponsorSlot.sponsor} />
+        </div>
+      )}
+
+      {/* broadcast lower-third — featured player / promo. Bottom-center,
+          above any docked corner content. Hidden on clean feed. */}
+      {!clean && showSpotlight && spot && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 170,
+            display: 'flex',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+          }}
+        >
+          <SpotlightLowerThird spot={spot} />
+        </div>
+      )}
+
+      {/* T2-5 live-game overlay (penalty / review / timeout / injury) — the
+          SAME dispatcher the board uses, driven by the SAME operator controls.
+          It pins itself (lower-third / top-pill); hidden on a clean feed. */}
+      {!clean && overlay ? <LiveOverlayRenderer overlay={overlay} /> : null}
+    </>
+  );
+}
+
+/**
+ * Slim broadcast sponsor strap — logo + name on a dark pill. Compact so it
+ * rides a stream corner without fighting the score bug. Logo on natural
+ * aspect (width auto) so wide marks aren't crushed; color monogram fallback.
+ */
+function SponsorStrap({ sponsor }: { sponsor: Sponsor }) {
+  const color = sponsor.color || '#4f46e5';
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        background: 'linear-gradient(135deg, rgba(11,15,26,0.94), rgba(5,7,13,0.94))',
+        border: `1.5px solid ${color}66`,
+        borderRadius: 12,
+        padding: '8px 16px',
+        boxShadow: '0 6px 26px rgba(0,0,0,0.6)',
+        fontFamily: 'Inter, system-ui, sans-serif',
+        maxWidth: 420,
+      }}
+    >
+      {sponsor.logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={sponsor.logoUrl}
+          alt=""
+          style={{
+            height: 38,
+            width: 'auto',
+            maxWidth: 160,
+            objectFit: 'contain',
+            marginRight: 12,
+          }}
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.display = 'none';
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            height: 38,
+            width: 38,
+            borderRadius: 9,
+            background: color,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 22,
+            fontWeight: 900,
+            color: '#fff',
+            marginRight: 12,
+          }}
+        >
+          {sponsor.name.charAt(0).toUpperCase()}
+        </div>
+      )}
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 10,
+            fontWeight: 800,
+            letterSpacing: 3,
+            color,
+            lineHeight: 1,
+            marginBottom: 3,
+          }}
+        >
+          SPONSORED BY
+        </div>
+        <div
+          style={{
+            fontSize: 18,
+            fontWeight: 900,
+            color: '#fff',
+            lineHeight: 1.05,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            maxWidth: 240,
+          }}
+        >
+          {sponsor.name}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The spotlight rendered as a broadcast lower-third — photo + name + up to
+ * three stat columns. Animates up from below. Same `Spotlight` data the big
+ * board's SpotlightBand reads; compact broadcast proportions here.
+ */
+function SpotlightLowerThird({ spot }: { spot: Spotlight }) {
+  const lines = (spot.lines || []).filter((l) => l && (l.label || l.value)).slice(0, 3);
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        height: 92,
+        minWidth: 520,
+        maxWidth: 1280,
+        background: 'linear-gradient(135deg, rgba(11,16,32,0.96), rgba(5,7,13,0.96))',
+        borderLeft: '6px solid #6366f1',
+        borderRadius: 10,
+        padding: '0 26px 0 22px',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+        fontFamily: 'Inter, system-ui, sans-serif',
+        animation: 'sbLowerThirdIn 0.5s cubic-bezier(.16,1,.3,1) forwards',
+        willChange: 'transform, opacity',
+      }}
+    >
+      {spot.photoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={spot.photoUrl}
+          alt=""
+          style={{
+            width: 64,
+            height: 64,
+            objectFit: 'cover',
+            borderRadius: 10,
+            border: '2px solid #1e2638',
+            background: '#05070d',
+            marginRight: 18,
+            flex: 'none',
+          }}
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.display = 'none';
+          }}
+        />
+      ) : null}
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 3, color: '#818cf8' }}>
+          SPOTLIGHT
+        </div>
+        <div
+          style={{
+            fontSize: 30,
+            fontWeight: 900,
+            color: '#fff',
+            lineHeight: 1.25,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {spot.title}
+        </div>
+        {spot.subtitle ? (
+          <div
+            style={{
+              fontSize: 15,
+              fontWeight: 600,
+              color: '#94a3b8',
+              lineHeight: 1.1,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {spot.subtitle}
+          </div>
+        ) : null}
+      </div>
+      {lines.length > 0 ? (
+        <div style={{ display: 'flex', alignItems: 'center', flex: 'none', marginLeft: 22 }}>
+          {lines.map((l, i) => (
+            <div
+              key={i}
+              style={{
+                textAlign: 'center',
+                padding: '0 18px',
+                borderLeft: i > 0 ? '2px solid #1e2638' : undefined,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 30,
+                  fontWeight: 900,
+                  color: '#fff',
+                  lineHeight: 1,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {l.value || '—'}
+              </div>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: 2,
+                  color: '#64748b',
+                  marginTop: 4,
+                }}
+              >
+                {(l.label || '').toUpperCase()}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 /**
@@ -438,6 +952,7 @@ export function ScorebugBug({
   scale,
   homeOverride = null,
   awayOverride = null,
+  clean = false,
 }: ScorebugBugProps) {
   const homeColor = view.homeColor || DEFAULT_HOME;
   const awayColor = view.awayColor || DEFAULT_AWAY;
@@ -448,19 +963,44 @@ export function ScorebugBug({
   // Meet sports (no clock) surface the live event/apparatus/hole context
   // in the center column under the segment label.
   const meetCtx = meetContextLabel(def, view);
+  // Shot clock — read from the CTS-populated stats.shotClock anchor, length
+  // falls back to the sport's configured full reset. Only shot-clock sports
+  // (def.shotClock present) with an armed clock (len > 0) render it.
+  const { ms: shotMs, len: shotLen } = useShotClock(view);
+  const showShotClock = !!def.shotClock && shotLen > 0;
+  // Score-pop — animate the digit on every change (board/ribbon parity).
+  const homeFlip = useScoreFlip(view.homeScore);
+  const awayFlip = useScoreFlip(view.awayScore);
 
   return (
     <>
       <style>{`
+        ${SCORE_MOTION_KEYFRAMES}
         @keyframes sbCueIn {
           0% { opacity: 0; transform: translateY(${cueAbove ? '14px' : '-14px'}) scale(0.9); }
           12% { opacity: 1; transform: translateY(0) scale(1); }
           86% { opacity: 1; transform: translateY(0) scale(1); }
           100% { opacity: 0; transform: translateY(${cueAbove ? '-6px' : '6px'}) scale(1); }
         }
+        @keyframes sbCleanOut { from { opacity: 1; } to { opacity: 0; } }
+        @keyframes sbCleanIn  { from { opacity: 0; } to { opacity: 1; } }
       `}</style>
 
-      <div style={{ transform: `scale(${scale})`, transformOrigin: pos.origin }}>
+      {/* Clean-feed wrapper — fades the whole package OUT (opacity only, so it
+          never fights the inner scale transform) when the producer cuts to a
+          clean program feed (?clean=1) and back IN on resume. Scale lives on
+          the inner div so a `?scale=` multiplier survives the animation. */}
+      <div
+        style={{
+          opacity: clean ? 0 : 1,
+          animation: clean
+            ? 'sbCleanOut 0.4s ease-in-out forwards'
+            : 'sbCleanIn 0.4s ease-in-out forwards',
+          willChange: 'opacity',
+          pointerEvents: 'none',
+        }}
+      >
+       <div style={{ transform: `scale(${scale})`, transformOrigin: pos.origin }}>
         {/* celebration toast */}
         {activeCue && (
           <div
@@ -480,7 +1020,17 @@ export function ScorebugBug({
               animation: 'sbCueIn 3.6s ease-in-out forwards',
             }}
           >
-            <span style={{ fontSize: 30, marginRight: 10 }}>{activeCue.emoji || '🎉'}</span>
+            {/* Vector sport mark (theme-tinted), emoji fallback — never raw
+                emoji as the primary iconography (cross-platform tell). */}
+            <span style={{ marginRight: 10, display: 'flex', alignItems: 'center' }}>
+              <SportMark
+                sport={def.key}
+                fallbackEmoji={activeCue.emoji || '🎉'}
+                size={30}
+                color="#fbbf24"
+                title={def.name}
+              />
+            </span>
             <span
               style={{
                 fontSize: 22,
@@ -513,6 +1063,8 @@ export function ScorebugBug({
             color={homeColor}
             logoUrl={view.homeLogoUrl}
             side="home"
+            flipKey={homeFlip.flipKey}
+            popping={homeFlip.dir !== null}
           />
 
           {/* center — clock + segment */}
@@ -553,6 +1105,41 @@ export function ScorebugBug({
             >
               {segmentLabel(def, view)}
             </div>
+            {/* Shot clock — broadcast convention: a small amber/red second
+                countdown under the segment label for basketball / lacrosse /
+                water polo. Reads stats.shotClock (CTS-populated). */}
+            {showShotClock && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  marginTop: 3,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 800,
+                    letterSpacing: 2,
+                    color: '#64748b',
+                    marginRight: 5,
+                  }}
+                >
+                  SHOT
+                </span>
+                <span
+                  style={{
+                    fontSize: 20,
+                    fontWeight: 900,
+                    lineHeight: 1,
+                    fontVariantNumeric: 'tabular-nums',
+                    color: shotMs <= 5000 ? '#ef4444' : '#e2e8f0',
+                  }}
+                >
+                  {shotMs <= 5000 ? (shotMs / 1000).toFixed(1) : Math.ceil(shotMs / 1000)}
+                </span>
+              </div>
+            )}
             {meetCtx && (
               <div
                 style={{
@@ -580,6 +1167,8 @@ export function ScorebugBug({
             color={awayColor}
             logoUrl={view.awayLogoUrl}
             side="away"
+            flipKey={awayFlip.flipKey}
+            popping={awayFlip.dir !== null}
           />
         </div>
 
@@ -609,6 +1198,7 @@ export function ScorebugBug({
             />
           </div>
         )}
+       </div>
       </div>
     </>
   );
@@ -621,6 +1211,8 @@ function TeamBlock({
   color,
   logoUrl,
   side,
+  flipKey = 0,
+  popping = false,
 }: {
   code: string;
   /** Raw scaled score — kept for parity; never rendered when
@@ -631,6 +1223,12 @@ function TeamBlock({
   color: string;
   logoUrl: string | null;
   side: 'home' | 'away';
+  /** Incrementing key from useScoreFlip — remounts the digit so the CSS
+   *  score-pop replays on every change. */
+  flipKey?: number;
+  /** Whether the score has changed at least once (suppresses the pop on the
+   *  cold-boot first paint). */
+  popping?: boolean;
 }) {
   const name = (
     <div
@@ -689,12 +1287,16 @@ function TeamBlock({
       }}
     >
       <span
+        key={flipKey}
         style={{
           fontSize: 46,
           fontWeight: 900,
           color: '#fff',
           fontVariantNumeric: 'tabular-nums',
           lineHeight: 1,
+          display: 'inline-block',
+          animation: popping ? SCORE_POP_ANIM : undefined,
+          willChange: 'transform',
         }}
       >
         {scoreText ?? score}
@@ -744,6 +1346,11 @@ export interface BroadcastOverlayProps {
    *  future theme pass — currently only used to tint the canvas guide
    *  in dev. */
   accent?: string | null;
+  /** Clean feed — hide the whole package (bug + sponsor + lower-thirds),
+   *  animated, so a producer can cut to a clean program feed for replays /
+   *  interviews WITHOUT taking the browser-source off (which would also kill
+   *  the sponsor-impression story). Driven by the route's `?clean=1`. */
+  clean?: boolean;
 }
 
 /**
@@ -766,6 +1373,7 @@ export function BroadcastOverlay({
   scale,
   homeOverride = null,
   awayOverride = null,
+  clean = false,
 }: BroadcastOverlayProps) {
   const { data, def, view, liveMs, activeCue } = useScorebugData(gameId);
   const [vp, setVp] = useState({ w: 1920, h: 1080 });
@@ -810,6 +1418,11 @@ export function BroadcastOverlay({
           transformOrigin: 'center center',
         }}
       >
+        {/* The PACKAGE that rides the canvas edges: rotating sponsor strap +
+            spotlight lower-third + T2-5 live overlay. Same payload, no second
+            fetch. Pins itself to the canvas, so it sits OUTSIDE the bug's
+            corner-padded box. Hidden on a clean feed. */}
+        <ScorebugExtras view={view} def={def} pos={pos} scale={scale} clean={clean} />
         <div style={padded}>
           <ScorebugBug
             view={view}
@@ -820,6 +1433,7 @@ export function BroadcastOverlay({
             scale={scale}
             homeOverride={homeOverride}
             awayOverride={awayOverride}
+            clean={clean}
           />
         </div>
       </div>

@@ -26,6 +26,10 @@
  *                     lower-right is the broadcast scorebug convention).
  *   ?scale=1.4        size multiplier on the bug         (default 1).
  *   ?theme=<token>    brand-shim theme token             (reserved).
+ *   ?clean=1          clean program feed — hide the whole package (bug +
+ *                     sponsor strap + lower-thirds), animated, WITHOUT
+ *                     taking the browser-source off (default 0). Lets a
+ *                     producer cut to clean for replays / interviews.
  *   ?home=LIN ?away=CEN  override team codes             (default: first
  *                     word of each team name).
  *
@@ -51,7 +55,8 @@ export default function StreamOverlayPage() {
 
   // Lower-right is the standard broadcast scorebug corner; default to
   // it (the corner-bug route defaults to lower-left). ?pos= overrides.
-  const { pos, scale, homeOverride, awayOverride, theme } = useScorebugQuery('br');
+  // `?clean=1` cuts to a clean program feed (hides the whole package).
+  const { pos, scale, homeOverride, awayOverride, theme, clean } = useScorebugQuery('br');
 
   return (
     <BroadcastOverlay
@@ -61,6 +66,7 @@ export default function StreamOverlayPage() {
       homeOverride={homeOverride}
       awayOverride={awayOverride}
       accent={theme}
+      clean={clean}
     />
   );
 }

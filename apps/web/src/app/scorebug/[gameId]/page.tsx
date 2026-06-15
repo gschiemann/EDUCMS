@@ -12,6 +12,9 @@
  * Query params (all optional):
  *   ?pos=tl|tr|bl|br   corner to dock in        (default bl)
  *   ?scale=1.4         size multiplier          (default 1)
+ *   ?clean=1           clean program feed — hide the whole package
+ *                      (bug + sponsor strap + lower-thirds), animated
+ *                      (default 0)
  *   ?home=LIN ?away=CEN  override team codes    (default: first word)
  *
  * This route docks the bug to the live browser-source VIEWPORT edges.
@@ -35,6 +38,7 @@
 import { useParams } from 'next/navigation';
 import {
   ScorebugBug,
+  ScorebugExtras,
   ScorebugTransparentCss,
   useScorebugData,
   useScorebugQuery,
@@ -49,7 +53,8 @@ export default function ScorebugPage() {
   const gameId = String(params?.gameId || '');
 
   // Corner-bug convention: dock lower-left by default. ?pos= overrides.
-  const { pos, scale, homeOverride, awayOverride } = useScorebugQuery('bl');
+  // `?clean=1` cuts to a clean program feed (hides the whole package).
+  const { pos, scale, homeOverride, awayOverride, clean } = useScorebugQuery('bl');
 
   const { data, def, view, liveMs, activeCue } = useScorebugData(gameId);
 
@@ -78,6 +83,23 @@ export default function ScorebugPage() {
   return (
     <>
       {ScorebugTransparentCss}
+      {/* The broadcast PACKAGE that rides alongside the bug — rotating
+          sponsor strap + spotlight lower-third + T2-5 live overlay — pinned
+          to the VIEWPORT edges (full-screen fixed positioning context). Same
+          payload the bug already polls; no second fetch. Hidden on clean. */}
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+          zIndex: 2147482000,
+          pointerEvents: 'none',
+        }}
+      >
+        <ScorebugExtras view={view} def={def} pos={pos} scale={scale} clean={clean} />
+      </div>
       <div
         style={{
           position: 'fixed',
@@ -96,6 +118,7 @@ export default function ScorebugPage() {
           scale={scale}
           homeOverride={homeOverride}
           awayOverride={awayOverride}
+          clean={clean}
         />
       </div>
     </>

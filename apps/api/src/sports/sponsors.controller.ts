@@ -136,7 +136,11 @@ export class SponsorsController {
     recent.push(now);
     this.impressionHits.set(body.gameId, recent);
 
-    const surfaceKind = ['board', 'ribbon', 'scorebug'].includes(body.surfaceKind ?? '')
+    // 'stream' is the broadcast stream-overlay surface (/overlay + /scorebug
+    // sponsor strap) — kept distinct from 'scorebug' so the per-surface
+    // proof-of-play report attributes off-site stream impressions correctly
+    // instead of clamping them into the in-venue 'board' bucket.
+    const surfaceKind = ['board', 'ribbon', 'scorebug', 'stream'].includes(body.surfaceKind ?? '')
       ? (body.surfaceKind as string)
       : 'board';
     // Fire-and-forget — never await, never fail the response.
