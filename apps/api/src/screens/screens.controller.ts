@@ -33,6 +33,10 @@ import {
   markLastPingWritten,
   shouldSkipEmergencyAudit,
   markEmergencyAuditWritten,
+  shouldSkipCacheReportWrite,
+  markCacheReportWritten,
+  shouldSkipRenderProofWrite,
+  markRenderProofWritten,
 } from './manifest-hot-cache';
 // 2026-05-27 — Goodview EP6N GPIO state. Surfaced on every manifest
 // branch (emergency / sports / normal) so the player applies the
@@ -3237,15 +3241,24 @@ export class ScreensController {
     if (!authResult.ok) {
       throw new HttpException(`Device auth required (${authResult.reason})`, HttpStatus.UNAUTHORIZED);
     }
+    // DB-efficiency (2026-06-15): coalesce the every-30s identical cache report.
+    // Same payload within 120s → no DB at all (was ~42% of total DB time). A
+    // content change or the 120s window elapsing writes through; the 5-min
+    // wedge detector tolerates the gap.
+    const sig = JSON.stringify(body ?? {});
+    if (shouldSkipCacheReportWrite(id, sig)) return { ok: true };
     const screen = await this.prisma.client.screen.findUnique({ where: { id }, select: { id: true } });
     if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
-    await this.prisma.client.screen.update({
-      where: { id },
-      data: {
-        lastCacheReport: body as any,
-        lastCacheReportAt: new Date(),
-      },
-    });
+    await withDbRetry(() =>
+      this.prisma.client.screen.update({
+        where: { id },
+        data: {
+          lastCacheReport: body as any,
+          lastCacheReportAt: new Date(),
+        },
+      }),
+    );
+    markCacheReportWritten(id, sig);
     return { ok: true };
   }
 
@@ -3288,6 +3301,11 @@ export class ScreensController {
     if (!authResult.ok) {
       throw new HttpException(`Device auth required (${authResult.reason})`, HttpStatus.UNAUTHORIZED);
     }
+    // DB-efficiency (2026-06-15): coalesce the every-30s render-proof write to
+    // ≤1 per 40s (was ~17% of total DB time). lastRenderedAt stays < ~60s old
+    // so a healthy screen never false-REDs (STALE window is 90s); a real freeze
+    // stops the POSTs entirely, so this never masks one.
+    if (shouldSkipRenderProofWrite(id)) return { ok: true };
     const screen = await this.prisma.client.screen.findUnique({ where: { id }, select: { id: true } });
     if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
 
@@ -3299,14 +3317,17 @@ export class ScreensController {
         : null;
     const hash = body?.hash ? String(body.hash).slice(0, 128) : null;
 
-    await this.prisma.client.screen.update({
+    await withDbRetry(() =>
+      this.prisma.client.screen.update({
       where: { id },
       data: {
         lastRenderedAt: new Date(),
         ...(frames != null ? { lastRenderedFrames: frames } : {}),
         ...(hash != null ? { lastRenderedHash: hash } : {}),
       } as any,
-    });
+      }),
+    );
+    markRenderProofWritten(id);
     return { ok: true };
   }
 

@@ -93,6 +93,53 @@ export function markLastPingWritten(screenId: string): void {
     }
 }
 
+// ── cache-status write debounce (DB efficiency — 2026-06-15) ────────────────
+// The player POSTs /cache-status every 30s and the payload is unchanged on
+// ~99% of posts. Live pg_stat_statements showed this UPDATE was ~42% of ALL
+// DB time (180k calls, 19.84ms mean — write contention on the screens row).
+// The wedge detector only needs lastCacheReportAt fresher than CACHE_REPORT_
+// STALE_MS (5 min), so we coalesce identical reports to at most one write per
+// 120s (2.5 writes inside the 5-min window — never trips the wedge detector)
+// AND write immediately whenever the report content changes (bytes/counts stay
+// accurate). Net: the single largest DB write drops ~4x. In-memory per replica,
+// same pattern as lastPingWrites above (numReplicas=1 today).
+const CACHE_REPORT_DEBOUNCE_MS = 120_000;
+const cacheReportWrites = new Map<string, { at: number; sig: string }>();
+export function shouldSkipCacheReportWrite(screenId: string, sig: string): boolean {
+    const last = cacheReportWrites.get(screenId);
+    if (!last) return false;
+    if (last.sig !== sig) return false; // content changed → always write
+    return Date.now() - last.at < CACHE_REPORT_DEBOUNCE_MS;
+}
+export function markCacheReportWritten(screenId: string, sig: string): void {
+    cacheReportWrites.set(screenId, { at: Date.now(), sig });
+    if (cacheReportWrites.size > 50_000) {
+        const oldest = cacheReportWrites.keys().next().value;
+        if (oldest) cacheReportWrites.delete(oldest);
+    }
+}
+
+// ── render-proof write debounce ────────────────────────────────────────────
+// Player POSTs render-proof every ~30s; renderHealth flags STALE at 90s
+// (RENDER_PROOF_STALE_MS). Coalescing to one write per 40s keeps a healthy
+// screen's lastRenderedAt < ~60s old (never false-RED) while halving the
+// write (was ~17% of DB time). A real freeze STOPS the POSTs entirely, so
+// debouncing the healthy path can never mask a freeze.
+const RENDER_PROOF_DEBOUNCE_MS = 40_000;
+const renderProofWrites = new Map<string, number>();
+export function shouldSkipRenderProofWrite(screenId: string): boolean {
+    const last = renderProofWrites.get(screenId);
+    if (!last) return false;
+    return Date.now() - last < RENDER_PROOF_DEBOUNCE_MS;
+}
+export function markRenderProofWritten(screenId: string): void {
+    renderProofWrites.set(screenId, Date.now());
+    if (renderProofWrites.size > 50_000) {
+        const oldest = renderProofWrites.keys().next().value;
+        if (oldest) renderProofWrites.delete(oldest);
+    }
+}
+
 // Same idea as lastPingWrites but for the emergency-asset audit log.
 // Player pre-caches emergency assets on its own 5-minute cadence; we
 // were writing a fresh AuditLog row on every fetch, which (at 50

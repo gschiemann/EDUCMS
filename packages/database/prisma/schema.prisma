@@ -2191,6 +2191,11 @@ model GameEvent {
   game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@index([gameId, createdAt])
+  // 2026-06-15 — the board reads the cue/event feed per TYPE (WHERE gameId AND
+  // type ORDER BY createdAt); the (gameId, createdAt) index can't serve the
+  // type predicate, so Postgres was scanning all events for the game and
+  // filtering in memory (live 33.5% seq scans). This serves the per-type path.
+  @@index([gameId, type, createdAt])
   @@map("game_events")
 }
 
