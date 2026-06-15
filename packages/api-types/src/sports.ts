@@ -1438,3 +1438,521 @@ export function ribbonScoreRepeatCount(v: unknown): number {
   const key = sanitizeRibbonScoreRepeat(v);
   return key === 'auto' ? 0 : Number(key);
 }
+
+// ════════════════════════════════════════════════════════════════
+// PHASE 0 — Stat semantics, value parsing, career thresholds, and
+// milestone seed defs for the Player-Stats / Records / Milestone
+// engine. (Locked spec: docs/research/2026-06-15-sports-pro-gap-
+// analysis/01-STATS-ENGINE-SPEC.md, "PHASE 0".)
+//
+// PURE TYPES-PACKAGE ADDITION — nothing reads this yet. Every later
+// phase (leader computation, season/career aggregation, record
+// detection, milestone cinematics) depends on knowing whether a stat
+// SUMS across games (PTS, GOALS) or must be RECOMPUTED from its
+// components (AVG, FG%, ERA), whether higher is better (false for
+// golf strokes / race times / ERA), and how to parse a display
+// string ("19", ".312", "1:52.31", "142-06") into a comparable
+// number.
+//
+// These live as a SIBLING map to `SportStatField` / `PLAYER_STATS`,
+// NOT as fields on them — `SportStatField` is the operator stat-entry
+// control contract for the live console, and adding aggregation
+// metadata there risks that load-bearing surface (conflict C4 in the
+// locked spec).
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * The aggregation + comparison semantics for one player-stat key.
+ *
+ * `kind`:
+ *   - `'counting'` — sums across games (PTS, GOALS, AST, REB, TKL…).
+ *     Career/season totals are the SUM of per-game values.
+ *   - `'rate'` — a derived value that must be RECOMPUTED from its
+ *     components, never summed (AVG, FG%, ERA, a gymnastics apparatus
+ *     score). Summing a batting average across games is meaningless,
+ *     so aggregation pipelines must skip these for SUM and recompute
+ *     from raw components when they have them.
+ *
+ * `higherBetter` — true for almost everything (more points/goals is
+ * better); false for golf strokes, race/swim TIMEs, finishing PLACE,
+ * losses (L), penalty minutes (PIM), exclusions (EXC), ERA — where a
+ * LOWER number is the better performance.
+ *
+ * `decimals` — display precision hint (AVG → 3, a gymnastics score →
+ * 3, percentages → 1). Omitted = integer.
+ *
+ * `timeMark` — true for "M:SS.cc" / ":SS.c" track-and-swim time marks
+ * that `parseStatValue` converts to total CENTISECONDS for comparison
+ * (lower = faster = better, paired with `higherBetter: false`).
+ */
+export interface StatSemantic {
+  /** Matches an entry in `PLAYER_STATS[sport]`. */
+  key: string;
+  /** Sum across games (`counting`) vs recompute-from-components (`rate`). */
+  kind: 'counting' | 'rate';
+  /** false for golf strokes, race/swim TIME, ERA, place, losses. */
+  higherBetter: boolean;
+  /** Display precision (e.g. AVG → 3). Omitted = integer. */
+  decimals?: number;
+  /** "1:52.31" → centiseconds parse (track/swim time marks). */
+  timeMark?: boolean;
+}
+
+/**
+ * Stat semantics for EVERY key in `PLAYER_STATS`, all 18 sports. One
+ * row per `PLAYER_STATS[sport][*]` key — a missing row breaks leader
+ * computation downstream, so `sports-semantics.spec.ts` iterates
+ * `PLAYER_STATS` and asserts full coverage (catches drift when a new
+ * stat key is added to a sport).
+ *
+ * Classification notes for the non-obvious rows:
+ *   - baseball/softball `AVG` is the lone `rate` (batting average,
+ *     recompute from H/AB, never sum); all other batting counts sum.
+ *   - golf `STR` (strokes) + `PAR` (over/under par) → `higherBetter:
+ *     false`. `HOLE` / `W` (holes/matches won) sum, higher is better.
+ *   - track/field/swim/XC `PL` (finishing place) → lower is better;
+ *     `MK` (mark/result) is a free-form text result (distances like
+ *     "142-06", heights, times of varied format) → treated as a
+ *     non-summable `rate` and left to `parseStatValue` to interpret
+ *     (often unparseable → null, which is correct: you can't rank a
+ *     field mark and a swim time on one scale). `PR` (personal-record
+ *     flag/count) is a `rate` marker, not a running total.
+ *   - cross_country `TIME` is a true `timeMark` ("18:42.5") → lower is
+ *     better.
+ *   - gymnastics apparatus scores (VT/UB/BB/FX) + overall `PTS` are
+ *     judged `rate` scores (averaged/recomputed, 3-decimal), not sums.
+ *   - competitive_cheer `PTS` is a judged routine score (`rate`); `RND`
+ *     (round number) and `PL` (place) are positional.
+ *   - hockey `PIM` (penalty minutes) sums but lower is better.
+ *   - water_polo `EXC` (exclusions/ejections) sums but lower is better.
+ *   - wrestling/pickleball `L` (losses) sums but lower is better.
+ */
+export const STAT_SEMANTICS: Record<string, StatSemantic[]> = {
+  football: [
+    { key: 'YDS', kind: 'counting', higherBetter: true },
+    { key: 'TD', kind: 'counting', higherBetter: true },
+    { key: 'REC', kind: 'counting', higherBetter: true },
+    { key: 'TKL', kind: 'counting', higherBetter: true },
+    { key: 'INT', kind: 'counting', higherBetter: true },
+  ],
+  basketball: [
+    { key: 'PTS', kind: 'counting', higherBetter: true },
+    { key: 'REB', kind: 'counting', higherBetter: true },
+    { key: 'AST', kind: 'counting', higherBetter: true },
+    { key: 'STL', kind: 'counting', higherBetter: true },
+    { key: 'BLK', kind: 'counting', higherBetter: true },
+  ],
+  baseball: [
+    { key: 'AVG', kind: 'rate', higherBetter: true, decimals: 3 },
+    { key: 'HR', kind: 'counting', higherBetter: true },
+    { key: 'RBI', kind: 'counting', higherBetter: true },
+    { key: 'H', kind: 'counting', higherBetter: true },
+    { key: 'R', kind: 'counting', higherBetter: true },
+    { key: 'SB', kind: 'counting', higherBetter: true },
+  ],
+  softball: [
+    { key: 'AVG', kind: 'rate', higherBetter: true, decimals: 3 },
+    { key: 'HR', kind: 'counting', higherBetter: true },
+    { key: 'RBI', kind: 'counting', higherBetter: true },
+    { key: 'H', kind: 'counting', higherBetter: true },
+    { key: 'R', kind: 'counting', higherBetter: true },
+    { key: 'SB', kind: 'counting', higherBetter: true },
+  ],
+  soccer: [
+    { key: 'G', kind: 'counting', higherBetter: true },
+    { key: 'A', kind: 'counting', higherBetter: true },
+    { key: 'SH', kind: 'counting', higherBetter: true },
+    { key: 'SV', kind: 'counting', higherBetter: true },
+  ],
+  volleyball: [
+    { key: 'K', kind: 'counting', higherBetter: true },
+    { key: 'AST', kind: 'counting', higherBetter: true },
+    { key: 'DIG', kind: 'counting', higherBetter: true },
+    { key: 'BLK', kind: 'counting', higherBetter: true },
+    { key: 'ACE', kind: 'counting', higherBetter: true },
+  ],
+  wrestling: [
+    { key: 'W', kind: 'counting', higherBetter: true },
+    { key: 'L', kind: 'counting', higherBetter: false },
+    { key: 'PIN', kind: 'counting', higherBetter: true },
+    { key: 'TD', kind: 'counting', higherBetter: true },
+  ],
+  hockey: [
+    { key: 'G', kind: 'counting', higherBetter: true },
+    { key: 'A', kind: 'counting', higherBetter: true },
+    { key: 'PTS', kind: 'counting', higherBetter: true },
+    { key: 'PIM', kind: 'counting', higherBetter: false },
+    { key: 'SOG', kind: 'counting', higherBetter: true },
+  ],
+  lacrosse: [
+    { key: 'G', kind: 'counting', higherBetter: true },
+    { key: 'A', kind: 'counting', higherBetter: true },
+    { key: 'GB', kind: 'counting', higherBetter: true },
+    { key: 'SH', kind: 'counting', higherBetter: true },
+  ],
+  field_hockey: [
+    { key: 'G', kind: 'counting', higherBetter: true },
+    { key: 'A', kind: 'counting', higherBetter: true },
+    { key: 'SH', kind: 'counting', higherBetter: true },
+    { key: 'SV', kind: 'counting', higherBetter: true },
+  ],
+  water_polo: [
+    { key: 'G', kind: 'counting', higherBetter: true },
+    { key: 'A', kind: 'counting', higherBetter: true },
+    { key: 'ST', kind: 'counting', higherBetter: true },
+    { key: 'EXC', kind: 'counting', higherBetter: false },
+  ],
+  pickleball: [
+    { key: 'W', kind: 'counting', higherBetter: true },
+    { key: 'L', kind: 'counting', higherBetter: false },
+    { key: 'PTS', kind: 'counting', higherBetter: true },
+  ],
+  track_and_field: [
+    { key: 'PTS', kind: 'counting', higherBetter: true },
+    { key: 'PL', kind: 'rate', higherBetter: false },
+    { key: 'PR', kind: 'rate', higherBetter: true },
+    { key: 'MK', kind: 'rate', higherBetter: true },
+  ],
+  swimming_diving: [
+    { key: 'PTS', kind: 'counting', higherBetter: true },
+    { key: 'PL', kind: 'rate', higherBetter: false },
+    { key: 'PR', kind: 'rate', higherBetter: true },
+    { key: 'MK', kind: 'rate', higherBetter: false, timeMark: true },
+  ],
+  cross_country: [
+    { key: 'PTS', kind: 'counting', higherBetter: false },
+    { key: 'PL', kind: 'rate', higherBetter: false },
+    { key: 'TIME', kind: 'rate', higherBetter: false, timeMark: true },
+    { key: 'PR', kind: 'rate', higherBetter: true },
+  ],
+  gymnastics: [
+    { key: 'PTS', kind: 'rate', higherBetter: true, decimals: 3 },
+    { key: 'VT', kind: 'rate', higherBetter: true, decimals: 3 },
+    { key: 'UB', kind: 'rate', higherBetter: true, decimals: 3 },
+    { key: 'BB', kind: 'rate', higherBetter: true, decimals: 3 },
+    { key: 'FX', kind: 'rate', higherBetter: true, decimals: 3 },
+  ],
+  golf: [
+    { key: 'STR', kind: 'counting', higherBetter: false },
+    { key: 'PAR', kind: 'rate', higherBetter: false },
+    { key: 'HOLE', kind: 'counting', higherBetter: true },
+    { key: 'W', kind: 'counting', higherBetter: true },
+  ],
+  competitive_cheer: [
+    { key: 'PTS', kind: 'rate', higherBetter: true, decimals: 2 },
+    { key: 'PL', kind: 'rate', higherBetter: false },
+    { key: 'RND', kind: 'rate', higherBetter: true },
+  ],
+};
+
+/**
+ * Look up the `StatSemantic` for a (sport, statKey) pair, or
+ * `undefined` if the sport/key isn't classified. Convenience helper
+ * so callers don't re-scan `STAT_SEMANTICS[sport]` by hand.
+ */
+export function statSemantic(
+  sport: string,
+  key: string,
+): StatSemantic | undefined {
+  return STAT_SEMANTICS[sport]?.find((s) => s.key === key);
+}
+
+/**
+ * Parse a `RosterPlayer.stats` display value into a comparable number
+ * for ranking/aggregation, or `null` when the value can't be reduced
+ * to a single scalar (a field mark like "142-06", "DNP", "—", "").
+ *
+ * NEVER throws — any unparseable input returns `null` so the live
+ * game path can't be wedged by a malformed stat (fail-open, spec §4).
+ *
+ * Handled forms:
+ *   - plain integers           "19"        → 19
+ *   - decimals (leading-dot)   ".312"      → 0.312
+ *   - decimals                 "9.85"      → 9.85
+ *   - signed / over-par        "-3" "+2"   → -3 / 2
+ *   - thousands separators     "1,250"     → 1250
+ *   - time marks (sem.timeMark):
+ *         "1:52.31"            → 11231     (centiseconds)
+ *         ":45.2"              → 4520
+ *         "18:42"              → 112200
+ *   - distance/place strings that aren't a single scalar
+ *     ("142-06", "5-10", "DNP", "DNF", "DQ", "—", "-", "")  → null
+ *
+ * The `sem` arg only changes behavior for time marks — without
+ * `sem.timeMark`, a "1:52.31"-shaped string is ambiguous (could be a
+ * mark, could be a "made-attempted" pair) and returns `null` rather
+ * than guessing.
+ */
+export function parseStatValue(
+  raw: string | number,
+  sem?: StatSemantic,
+): number | null {
+  // Already a number — accept only finite values.
+  if (typeof raw === 'number') {
+    return Number.isFinite(raw) ? raw : null;
+  }
+  if (typeof raw !== 'string') return null;
+
+  const s = raw.trim();
+  if (s === '') return null;
+
+  // Time mark: "M:SS.cc" / "MM:SS" / ":SS.c" → total centiseconds.
+  // Only when the semantic explicitly marks this key as a time.
+  if (sem?.timeMark) {
+    return parseTimeMarkToCentis(s);
+  }
+
+  // A bare "1:52.31" outside a timeMark context is ambiguous; refuse it.
+  if (s.includes(':')) return null;
+
+  // Dashed pairs ("142-06", "5-10", "12-3") are not a single scalar —
+  // null. A leading minus sign ("-3") is a signed number, NOT a pair,
+  // so only treat an INTERIOR dash as a pair separator.
+  if (/[0-9]-[0-9]/.test(s)) return null;
+
+  // Strip thousands separators, then require a clean numeric shape:
+  // optional sign, optional digits, optional single decimal point.
+  const cleaned = s.replace(/,/g, '');
+  if (!/^[+-]?(\d+\.?\d*|\.\d+)$/.test(cleaned)) return null;
+
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Parse a "M:SS.cc" / "MM:SS" / ":SS.c" time mark to total
+ * centiseconds (1/100 s). Returns `null` on anything malformed.
+ *   "1:52.31" → 1*6000 + 52*100 + 31 = 11231
+ *   ":45.2"   → 45*100 + 20         = 4520
+ *   "18:42"   → 18*6000 + 42*100    = 112200
+ *   "52.31"   → 52*100 + 31         = 5231   (no colon, seconds-only)
+ */
+function parseTimeMarkToCentis(s: string): number | null {
+  // Split optional minutes from "ss.cc".
+  let minutesPart = '';
+  let secondsPart = s;
+  const colon = s.indexOf(':');
+  if (colon !== -1) {
+    minutesPart = s.slice(0, colon);
+    secondsPart = s.slice(colon + 1);
+  }
+
+  // Minutes: empty (":45.2") counts as 0; else whole digits only.
+  let minutes = 0;
+  if (minutesPart !== '') {
+    if (!/^\d+$/.test(minutesPart)) return null;
+    minutes = Number(minutesPart);
+  }
+
+  // Seconds: "SS" or "SS.cc" — seconds whole, optional centis fraction.
+  const m = /^(\d{1,2})(?:\.(\d{1,2}))?$/.exec(secondsPart);
+  if (!m) return null;
+  const seconds = Number(m[1]);
+  if (seconds >= 60) return null;
+  // Pad/truncate the fraction to exactly 2 digits of centiseconds.
+  const centis = m[2] ? Number((m[2] + '00').slice(0, 2)) : 0;
+
+  return minutes * 6000 + seconds * 100 + centis;
+}
+
+/**
+ * Career milestone thresholds, per sport, per COUNTING stat. The
+ * engine fires a `CEL_MILESTONE_CAREER` cinematic when an athlete's
+ * running career total crosses one of these marks. Focus is on the
+ * marquee per-sport counting stat (basketball PTS, soccer G, etc.);
+ * supporting stats carry sensible-but-lighter ladders. Rate stats
+ * (AVG, judged scores) and lower-is-better stats (golf STR, race
+ * TIME) have NO career threshold — you don't celebrate accumulating
+ * strokes or losses.
+ *
+ * Tenant rows can shadow these defaults in Phase 2's
+ * `StatMilestoneDef` table; this map is the seed.
+ */
+export const CAREER_THRESHOLDS: Record<string, Record<string, number[]>> = {
+  football: {
+    YDS: [1000, 2500, 5000, 7500, 10000],
+    TD: [10, 25, 50, 75, 100],
+    TKL: [50, 100, 200, 300],
+  },
+  basketball: {
+    PTS: [500, 1000, 1500, 2000, 2500, 3000],
+    REB: [250, 500, 1000, 1500],
+    AST: [250, 500, 1000],
+    STL: [100, 200, 300],
+    BLK: [100, 200, 300],
+  },
+  baseball: {
+    H: [25, 50, 100, 150, 200],
+    HR: [10, 25, 50, 75, 100],
+    RBI: [25, 50, 100, 150],
+  },
+  softball: {
+    H: [25, 50, 100, 150, 200],
+    HR: [10, 25, 50, 75, 100],
+    RBI: [25, 50, 100, 150],
+  },
+  soccer: {
+    G: [10, 25, 50, 75, 100],
+    A: [10, 25, 50],
+  },
+  volleyball: {
+    K: [100, 250, 500, 1000],
+    DIG: [100, 250, 500, 1000],
+    ACE: [50, 100, 200],
+    AST: [250, 500, 1000],
+  },
+  wrestling: {
+    W: [25, 50, 100, 150, 200],
+    PIN: [10, 25, 50, 75, 100],
+  },
+  hockey: {
+    G: [10, 25, 50, 100],
+    A: [10, 25, 50, 100],
+    PTS: [25, 50, 100, 150, 200],
+  },
+  lacrosse: {
+    G: [25, 50, 100, 150, 200],
+    A: [25, 50, 100],
+    GB: [50, 100, 200],
+  },
+  field_hockey: {
+    G: [10, 25, 50, 75, 100],
+    A: [10, 25, 50],
+  },
+  water_polo: {
+    G: [25, 50, 100, 150, 200],
+    A: [25, 50, 100],
+    ST: [25, 50, 100],
+  },
+  pickleball: {
+    W: [10, 25, 50, 100],
+    PTS: [100, 250, 500, 1000],
+  },
+  track_and_field: {
+    PTS: [50, 100, 250, 500],
+  },
+  swimming_diving: {
+    PTS: [50, 100, 250, 500],
+  },
+  cross_country: {
+    // PTS in XC is lower-is-better team scoring; no career ladder.
+  },
+  gymnastics: {
+    // All-judged rate scores; no counting milestone.
+  },
+  golf: {
+    W: [5, 10, 25, 50],
+    HOLE: [100, 250, 500, 1000],
+  },
+  competitive_cheer: {
+    // Judged routine scores; no counting milestone.
+  },
+};
+
+/**
+ * One milestone definition — a celebratable achievement slot the
+ * engine watches for. `kind`:
+ *   - `'THRESHOLD'` — a fixed career/season mark (the 1,000th point);
+ *     `threshold` is set. Fires `CEL_MILESTONE_CAREER`.
+ *   - `'RECORD'`    — a new school/program record for `statKey`
+ *     (no fixed number — beats the standing record). Fires
+ *     `CEL_MILESTONE_RECORD`.
+ *   - `'NTH'`       — an Nth-of-something occurrence (Phase 3b live
+ *     deltas, e.g. "100th career goal AS IT HAPPENS"); `threshold`
+ *     is the N.
+ *
+ * `cueKey` points at the celebration cinematic in `CTS_CINEMATIC_
+ * CUE_IDS` / the client `CUE_CATALOG`:
+ *   - records  → 'CEL_MILESTONE_RECORD'
+ *   - career   → 'CEL_MILESTONE_CAREER'
+ */
+export interface MilestoneDef {
+  sport: string;
+  statKey: string;
+  kind: 'THRESHOLD' | 'RECORD' | 'NTH';
+  /** The mark (THRESHOLD) or the N (NTH); absent for RECORD. */
+  threshold?: number;
+  /** Operator-/board-facing headline, e.g. "1,000 Career Points". */
+  label: string;
+  /** Celebration cinematic id (see `CTS_CINEMATIC_CUE_IDS`). */
+  cueKey: string;
+  emoji?: string;
+}
+
+/** The career-milestone cue id (1,000th point, 100th goal, …). */
+export const CUE_MILESTONE_CAREER = 'CEL_MILESTONE_CAREER';
+/** The new-record cue id (NEW SCHOOL RECORD). */
+export const CUE_MILESTONE_RECORD = 'CEL_MILESTONE_RECORD';
+
+/** Human label for a stat key, falling back to the key itself. */
+function statKeyLabel(sport: string, key: string): string {
+  const LABELS: Record<string, string> = {
+    PTS: 'Points',
+    YDS: 'Yards',
+    TD: 'Touchdowns',
+    TKL: 'Tackles',
+    REC: 'Receptions',
+    INT: 'Interceptions',
+    REB: 'Rebounds',
+    AST: 'Assists',
+    STL: 'Steals',
+    BLK: 'Blocks',
+    H: 'Hits',
+    HR: 'Home Runs',
+    RBI: 'RBI',
+    G: 'Goals',
+    A: 'Assists',
+    SOG: 'Shots on Goal',
+    K: 'Kills',
+    DIG: 'Digs',
+    ACE: 'Aces',
+    W: 'Wins',
+    PIN: 'Pins',
+    GB: 'Ground Balls',
+    ST: 'Steals',
+    HOLE: 'Holes Won',
+  };
+  return LABELS[key] ?? key;
+}
+
+/**
+ * Seeded milestone definitions for all 18 sports, derived from
+ * `CAREER_THRESHOLDS`:
+ *   - one `THRESHOLD` row per (sport, counting-stat, threshold mark)
+ *     → `CEL_MILESTONE_CAREER`
+ *   - one generic `RECORD` row per (sport, counting-stat) that has a
+ *     threshold ladder (the marquee stats) → `CEL_MILESTONE_RECORD`
+ *
+ * Phase 2 seeds these into the `StatMilestoneDef` table (idempotent,
+ * `tenantId=null` defaults; tenant rows can shadow).
+ */
+export const MILESTONE_DEFS: MilestoneDef[] = (() => {
+  const defs: MilestoneDef[] = [];
+  for (const [sport, byStat] of Object.entries(CAREER_THRESHOLDS)) {
+    for (const [statKey, marks] of Object.entries(byStat)) {
+      const noun = statKeyLabel(sport, statKey);
+      // Career-threshold rows.
+      for (const threshold of marks) {
+        defs.push({
+          sport,
+          statKey,
+          kind: 'THRESHOLD',
+          threshold,
+          label: `${threshold.toLocaleString('en-US')} Career ${noun}`,
+          cueKey: CUE_MILESTONE_CAREER,
+          emoji: '⭐',
+        });
+      }
+      // One generic record row per marquee counting stat.
+      defs.push({
+        sport,
+        statKey,
+        kind: 'RECORD',
+        label: `New ${noun} Record`,
+        cueKey: CUE_MILESTONE_RECORD,
+        emoji: '🏆',
+      });
+    }
+  }
+  return defs;
+})();
