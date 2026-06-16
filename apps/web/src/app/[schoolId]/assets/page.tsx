@@ -702,7 +702,7 @@ export default function AssetsPage() {
         role="button"
         tabIndex={isViewer ? -1 : 0}
         aria-disabled={isViewer || undefined}
-        aria-label={isViewer ? 'Upload disabled — viewer role' : 'Upload files'}
+        aria-label={isViewer ? 'Upload disabled — viewer role' : 'Upload files — drag and drop or press Enter to browse'}
         title={isViewer ? 'Read-only — viewer role' : undefined}
         onDragOver={e => { if (isViewer) return; e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => { if (isViewer) return; setDragOver(false); }}
@@ -717,29 +717,18 @@ export default function AssetsPage() {
         }}
         onClick={() => { if (isViewer) return; setPendingFiles([]); setShowFolderPicker('upload'); }}
         onKeyDown={e => { if (isViewer) return; if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPendingFiles([]); setShowFolderPicker('upload'); } }}
-        // 2026-06-16 mobile-UX: on a phone you can't drag-and-drop files, so the
-        // tall p-8 dashed dropzone was wasted height with misleading copy.
-        // Mobile (< md) → a compact, solid, tappable "Upload files" button.
-        // Desktop (md+) → the full dashed drag-and-drop zone, unchanged.
-        className={`rounded-2xl md:rounded-3xl transition-all group flex items-center justify-center
-          p-3.5 md:p-8
-          md:border-2 md:border-dashed
-          ${isViewer
-            ? 'opacity-50 cursor-not-allowed bg-slate-100 md:bg-slate-50/30 md:border-slate-200'
-            : `cursor-pointer bg-indigo-600 text-white active:bg-indigo-700 md:text-slate-700 ${
-                dragOver
-                  ? 'md:bg-indigo-50/50 md:border-indigo-400 md:scale-[1.01]'
-                  : 'md:bg-slate-50/30 md:border-slate-200 md:hover:border-indigo-300'
-              }`}`}
+        // 2026-06-16 mobile-UX: DESKTOP-ONLY (hidden md:flex). You can't
+        // drag-and-drop on a phone, and the header already has an "Upload"
+        // button — a second full-width upload control on mobile was redundant
+        // ("two upload buttons"). Mobile uses the header button; this dashed
+        // drag-and-drop zone is a desktop affordance only.
+        className={`hidden md:flex border-2 border-dashed rounded-3xl p-8 items-center justify-center transition-all group ${isViewer ? 'opacity-50 cursor-not-allowed border-slate-200 bg-slate-50/30' : `cursor-pointer ${dragOver ? 'border-indigo-400 bg-indigo-50/50 scale-[1.01]' : 'border-slate-200 hover:border-indigo-300 bg-slate-50/30'}`}`}
       >
-        <div className="flex items-center gap-2.5 md:gap-4">
-          <div className={`w-9 h-9 md:w-11 md:h-11 rounded-xl flex items-center justify-center transition-all bg-white/20 md:bg-indigo-50 ${dragOver ? 'md:bg-indigo-100 md:scale-110' : 'md:group-hover:scale-105'}`}>
-            <UploadCloud className="w-5 h-5 text-white md:text-indigo-500" />
+        <div className="flex items-center gap-4">
+          <div className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all ${dragOver ? 'bg-indigo-100 scale-110' : 'bg-indigo-50 group-hover:scale-105'}`}>
+            <UploadCloud className="w-5 h-5 text-indigo-500" />
           </div>
-          {/* Mobile: compact one-line button label */}
-          <span className="md:hidden text-sm font-bold">Upload files</span>
-          {/* Desktop: full drag-and-drop copy */}
-          <div className="hidden md:block text-left">
+          <div className="text-left">
             <p className="text-xs font-bold text-slate-700">{dragOver ? 'Drop files to pick a folder' : 'Drag & drop files or click to browse'}</p>
             <p className="text-[10px] text-slate-400 mt-0.5">Choose a folder (or root) next — images, video, audio, PDF, up to 500 MB</p>
           </div>
