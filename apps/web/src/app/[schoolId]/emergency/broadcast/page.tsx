@@ -13,6 +13,9 @@ import { useParams } from 'next/navigation';
 import { useAppStore } from '@/lib/store';
 import { useUIStore } from '@/store/ui-store';
 import { API_URL } from '@/lib/api-url';
+// LIFE-SAFETY (2026-06-16): bound every broadcast-console fetch so a stalled
+// connection can't hang the operator mid-incident (status poll, send, clear).
+import { fetchWithTimeout } from '@/lib/fetch-timeout';
 import { AlertTriangle, Megaphone, ShieldAlert, Send, Loader2, X, Image as ImageIcon, Volume2 } from 'lucide-react';
 import * as Sentry from '@sentry/nextjs';
 import { useEmergencyAnnouncer } from '@/components/emergency/EmergencyLiveRegion';
@@ -66,9 +69,11 @@ export default function BroadcastPage() {
 
   const fetchActive = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/emergency/status?tenantId=${encodeURIComponent(schoolId)}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await fetchWithTimeout(
+        `${API_URL}/emergency/status?tenantId=${encodeURIComponent(schoolId)}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+        4000, // < 5s poll interval — a stalled poll aborts before the next fires
+      );
       if (!res.ok) return;
       const json = await res.json();
       setActive(json.active || []);
@@ -161,15 +166,19 @@ export default function BroadcastPage() {
             durationMs: durationMin * 60 * 1000,
           };
 
-      const res = await fetch(`${API_URL}/emergency/${endpoint}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      const res = await fetchWithTimeout(
+        `${API_URL}/emergency/${endpoint}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify(body),
+          credentials: 'include',
         },
-        body: JSON.stringify(body),
-        credentials: 'include',
-      });
+        12000, // hung send must fail loudly ("alert was NOT sent"), not hang forever
+      );
       if (!res.ok) throw new Error(`Send failed: ${res.status}`);
       setPhase('sent');
       announce('Broadcast dispatched to all displays.');
@@ -188,11 +197,15 @@ export default function BroadcastPage() {
 
   const clearMessage = async (id: string) => {
     try {
-      const res = await fetch(`${API_URL}/emergency/messages/${id}/all-clear`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        credentials: 'include',
-      });
+      const res = await fetchWithTimeout(
+        `${API_URL}/emergency/messages/${id}/all-clear`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          credentials: 'include',
+        },
+        12000, // hung clear must fail loudly ("may still be active"), not hang
+      );
       if (!res.ok) throw new Error(`Clear failed: ${res.status}`);
       announce('Broadcast cleared.');
       fetchActive();

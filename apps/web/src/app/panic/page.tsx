@@ -10,6 +10,12 @@ import { broadcastEmergency } from '@/actions/trigger-emergency';
 // the page can detect the misconfiguration to show an explicit error
 // instead of silently failing the 5s all-clear poll.
 import { API_URL, warnIfMisconfigured, isLikelyMisconfigured } from '@/lib/api-url';
+// LIFE-SAFETY (2026-06-16): bound the session-verify + all-clear-poll fetches
+// so a HUNG api (not just a refused one) can't strand the operator forever on
+// "Verifying authorization…". On timeout these throw; the existing catch
+// blocks fall back gracefully (verify → show the grid w/ cached user; poll →
+// ignore + retry next tick).
+import { fetchWithTimeout } from '@/lib/fetch-timeout';
 
 // Roles that inherently carry emergency-trigger authority — mirrored from
 // the API's @RequireRoles on /emergency/trigger (apps/api/src/emergency/
@@ -136,9 +142,12 @@ export default function MobilePanicPage() {
     let cancelled = false;
     const check = async () => {
       try {
-        const r = await fetch(
+        const r = await fetchWithTimeout(
           `${API_URL}/emergency/status?tenantId=${encodeURIComponent(verifiedUser.tenantId)}`,
           { headers: { Authorization: `Bearer ${verifiedToken}` }, cache: 'no-store' },
+          // 4s < the 5s poll interval, so a stalled poll is aborted before the
+          // next one fires — no pile-up of hung requests.
+          4000,
         );
         if (!r.ok || cancelled) return;
         const data = await r.json();
@@ -195,7 +204,14 @@ export default function MobilePanicPage() {
         // reach the trigger grid (2026-06-09 Fable mobile audit, life-safety).
         // /users/me also returns the LIVE role + canTriggerPanic, so the
         // authority gate reflects the current DB row, not a stale JWT/store.
-        const res = await fetch(`${API_URL}/users/me`, { headers: { Authorization: `Bearer ${token}` } });
+        const res = await fetchWithTimeout(
+          `${API_URL}/users/me`,
+          { headers: { Authorization: `Bearer ${token}` } },
+          // 6s — generous for a slow cellular uplink, but bounded so a hung
+          // API falls through to the catch (→ gate on cached user, show grid)
+          // instead of leaving the operator stuck on the loading spinner.
+          6000,
+        );
         if (res.ok) {
           const me = await res.json().catch(() => null);
           const liveUser = me && typeof me === 'object' ? { ...storeUser, ...me } : storeUser;
@@ -347,8 +363,8 @@ export default function MobilePanicPage() {
           <span className="absolute h-16 w-16 rounded-2xl bg-white/[0.04] ring-1 ring-white/10" />
           <ShieldAlert className="relative w-7 h-7 text-white/80" />
         </div>
-        <Loader2 className="w-6 h-6 text-white/40 animate-spin mb-3" />
-        <p className="text-white/40 text-xs uppercase tracking-[0.2em] font-semibold">Verifying authorization</p>
+        <Loader2 className="w-6 h-6 text-white/60 animate-spin mb-3" />
+        <p className="text-white/60 text-xs uppercase tracking-[0.2em] font-semibold">Verifying authorization</p>
       </div>
     );
   }
@@ -371,7 +387,7 @@ export default function MobilePanicPage() {
         <p className="text-white/80 mb-3 max-w-[300px] text-center text-sm font-bold">
           Emergency trigger is unavailable on this deploy.
         </p>
-        <p className="text-white/45 mb-8 max-w-[300px] text-center text-xs leading-relaxed">
+        <p className="text-white/65 mb-8 max-w-[300px] text-center text-xs leading-relaxed">
           The server URL is missing from this build (NEXT_PUBLIC_API_URL not set).
           NOTIFY SECURITY MANUALLY for any emergency — DO NOT rely on this app
           until your admin fixes the deploy configuration.
@@ -398,7 +414,7 @@ export default function MobilePanicPage() {
         <p className="text-white/80 mb-3 max-w-[300px] text-center text-sm font-bold">
           Your account doesn&rsquo;t have emergency-trigger authority.
         </p>
-        <p className="text-white/45 mb-8 max-w-[300px] text-center text-xs leading-relaxed">
+        <p className="text-white/65 mb-8 max-w-[300px] text-center text-xs leading-relaxed">
           NOTIFY SECURITY MANUALLY for any emergency. Ask a district or school admin
           to grant trigger authority if you should have it.
         </p>
@@ -430,10 +446,10 @@ export default function MobilePanicPage() {
         <p className="text-white/80 mb-3 max-w-[300px] text-center text-sm font-bold">
           Your alert was NOT broadcast.
         </p>
-        <p className="text-white/45 mb-6 max-w-[300px] text-center text-xs leading-relaxed">
+        <p className="text-white/65 mb-6 max-w-[300px] text-center text-xs leading-relaxed">
           NOTIFY SECURITY MANUALLY for the actual incident, then try again here.
         </p>
-        <p className="text-white/35 mb-8 max-w-[280px] text-center text-xs italic">{errorMsg}</p>
+        <p className="text-white/55 mb-8 max-w-[280px] text-center text-xs italic">{errorMsg}</p>
         <div className="flex flex-col gap-3 w-full max-w-xs">
           <button
             onClick={() => { setPhase('idle'); setErrorMsg(''); setFiredType(null); }}
@@ -472,7 +488,7 @@ export default function MobilePanicPage() {
             <CheckCircle2 className="w-20 h-20 relative z-10" style={{ color: '#34d399' }} />
           </div>
           <h1 className="text-3xl font-black mb-2 uppercase tracking-tight text-center" style={{ color: '#34d399' }}>All Clear</h1>
-          <p className="text-white/50 max-w-[260px] mx-auto text-center text-sm leading-relaxed">
+          <p className="text-white/65 max-w-[260px] mx-auto text-center text-sm leading-relaxed">
             An administrator cleared the {fired.name.toLowerCase()} alert. Returning to the trigger panel.
           </p>
         </div>
@@ -497,7 +513,7 @@ export default function MobilePanicPage() {
         <p className="text-white/55 mb-8 max-w-[260px] mx-auto text-center text-sm leading-relaxed">
           All screens are now locked to the emergency profile.
         </p>
-        <p className="absolute bottom-8 italic text-white/35 text-xs text-center w-full px-8 leading-relaxed">
+        <p className="absolute bottom-8 italic text-white/55 text-xs text-center w-full px-8 leading-relaxed">
           Waiting for an administrator to clear from a secure terminal. This screen will
           return to the trigger panel automatically once that happens.
         </p>
@@ -519,7 +535,7 @@ export default function MobilePanicPage() {
           </span>
           <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-white/55">VenueOS</span>
         </div>
-        <span className="text-[10px] font-semibold uppercase tracking-widest truncate max-w-[55%] text-right text-white/40 rounded-full bg-white/[0.04] ring-1 ring-white/10 px-3 py-1.5">
+        <span className="text-[10px] font-semibold uppercase tracking-widest truncate max-w-[55%] text-right text-white/60 rounded-full bg-white/[0.04] ring-1 ring-white/10 px-3 py-1.5">
           {verifiedUser?.email || 'AUTHORIZED'}
         </span>
       </div>
@@ -530,7 +546,7 @@ export default function MobilePanicPage() {
             say "1.5 seconds" but HOLD_DURATION_MS is 3000 (cycle-1 fix
             restoring the CLAUDE.md "Key Safeguards #5" 3-second hold).
             Updated to match actual timer so operators see truthful UX. */}
-        <p className="text-white/40 text-[11px] mt-1">Press and hold any button for 3 seconds to broadcast.</p>
+        <p className="text-white/60 text-[11px] mt-1">Press and hold any button for 3 seconds to broadcast.</p>
       </div>
 
       {/* 2x3 grid — generous spacing so adjacent buttons aren't easy to fat-finger */}

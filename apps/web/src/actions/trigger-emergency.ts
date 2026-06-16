@@ -1,5 +1,14 @@
 "use server";
 
+import { fetchWithTimeout } from '@/lib/fetch-timeout';
+
+// LIFE-SAFETY (2026-06-16): a hung API used to leave the operator stuck on
+// "Sending alert to all screens…" forever. Bound every emergency POST so a
+// stalled connection fails loudly instead. 12s is long enough to tolerate a
+// slow-but-working cellular uplink (aborting too early would falsely report a
+// trigger that actually landed) and short enough that it can't hang the
+// life-safety moment indefinitely.
+const EMERGENCY_FETCH_TIMEOUT_MS = 12000;
 
 interface EmergencyPayload {
   schoolId: string;
@@ -12,18 +21,33 @@ interface EmergencyPayload {
 export async function broadcastEmergency(payload: EmergencyPayload) {
   const API_URL = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
-  const res = await fetch(`${API_URL}/emergency/trigger`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(payload.token ? { Authorization: `Bearer ${payload.token}` } : {})
-    },
-    body: JSON.stringify({
-      scopeType: 'tenant',
-      scopeId: payload.schoolId,
-      overridePayload: { severity: 'CRITICAL', type: payload.type, playlistId: payload.playlistId },
-    }),
-  });
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(
+      `${API_URL}/emergency/trigger`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(payload.token ? { Authorization: `Bearer ${payload.token}` } : {})
+        },
+        body: JSON.stringify({
+          scopeType: 'tenant',
+          scopeId: payload.schoolId,
+          overridePayload: { severity: 'CRITICAL', type: payload.type, playlistId: payload.playlistId },
+        }),
+      },
+      EMERGENCY_FETCH_TIMEOUT_MS,
+    );
+  } catch (err) {
+    // Hung or unreachable API. No DB state is mutated until the API returns,
+    // so an abort here cannot leave an orphan trigger. Return a connectivity-
+    // flavored error (contains "network"/"fetch") so the /panic page routes to
+    // the "NOT broadcast — NOTIFY SECURITY MANUALLY" branch and the desktop
+    // modal surfaces its loud red "alert was NOT sent" banner.
+    const msg = err instanceof Error ? err.message : String(err);
+    return { success: false, error: `Network error reaching the server (fetch): ${msg}` };
+  }
 
   if (!res.ok) {
     return { success: false, error: `Emergency broadcast failed: ${res.status}` };
@@ -68,17 +92,27 @@ export async function allClearEmergency(payload: {
       ? payload.overrideId
       : `clear_${crypto.randomUUID()}`;
 
-  const res = await fetch(`${API_URL}/emergency/${encodeURIComponent(overrideIdForUrl)}/all-clear`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(payload.token ? { Authorization: `Bearer ${payload.token}` } : {})
-    },
-    body: JSON.stringify({
-      scopeType: 'tenant',
-      scopeId: payload.schoolId,
-    }),
-  });
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(
+      `${API_URL}/emergency/${encodeURIComponent(overrideIdForUrl)}/all-clear`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(payload.token ? { Authorization: `Bearer ${payload.token}` } : {})
+        },
+        body: JSON.stringify({
+          scopeType: 'tenant',
+          scopeId: payload.schoolId,
+        }),
+      },
+      EMERGENCY_FETCH_TIMEOUT_MS,
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { success: false, error: `Network error reaching the server (fetch): ${msg}` };
+  }
 
   if (!res.ok) {
     return { success: false, error: `All clear failed: ${res.status}` };
