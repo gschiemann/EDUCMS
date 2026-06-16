@@ -543,13 +543,26 @@
 
     // setTimeout-based render loop (rAF is throttled in unfocused iframes,
     // unacceptable for a stadium player and breaks our dev preview too).
-    // Auto-loops with a brief gap so the deck plays continuously.
+    // 2026-06-15 — plays the cinematic ONCE by default. The board + ribbon
+    // embed this launcher and hold each cue for a FIXED window, then unmount
+    // the iframe. The old auto-loop restarted the scene here, so a goal cue
+    // began a SECOND play that the hold window then cut off mid-air — the
+    // operator's exact report: "starts playing a second time then cuts off
+    // real quick." Only an explicit ?loop=1 (design gallery / a continuous-
+    // deck preview) loops; otherwise we stop ticking and freeze the final
+    // (faded-out) frame until the parent surface removes the iframe.
+    var doLoop = query.get('loop') === '1';
     function tick(){
       var ms = performance.now();
       frame(ms);
       var t = ms - (startMs||ms);
-      if(t >= T.end + 800){
-        // restart loop
+      if(!doLoop){
+        // Play ONCE: run to the hold/peak, then STOP. frame() clamps time at
+        // T.hold below, so the last painted frame is the HERO frame (ball in
+        // net + GOAL) — it stays frozen until the parent surface removes the
+        // iframe, instead of fading out and sitting dark, or restarting.
+        if(t >= T.hold){ clearTimeout(rafId); rafId = 0; return; }
+      } else if(t >= T.end + 800){
         startMs = 0; fired = false; ps = new ParticleSystem();
       }
       rafId = setTimeout(tick, 16);
@@ -558,6 +571,10 @@
     function frame(ms){
       if(!startMs){ startMs = ms; prevMs = ms; }
       var t = ms - startMs;
+      // Live one-shot: never advance past the hold/peak, so the cinematic
+      // holds its hero frame (no authored fade-out, which only made sense for
+      // the old auto-loop's gap-then-restart). ?loop=1 keeps the full cycle.
+      if(!doLoop && t > T.hold) t = T.hold;
       var dt = Math.min(0.05, (ms-prevMs)/1000);
       prevMs = ms;
 
@@ -658,11 +675,21 @@
     var fired = false;
     var impactPt = cfg.ribbonImpactPoint ? cfg.ribbonImpactPoint(W,H) : { x: W*0.72, y: H*0.55 };
 
+    // Plays ONCE by default — same fix as runScoreboard (2026-06-15). The
+    // ribbon's loop gap was even shorter (+500ms) and the ribbon holds each
+    // cue for 4500ms vs the cinematic's ~3200ms, so a goal cue re-fired at
+    // ~3700ms and got cut off — the operator's exact report. ?loop=1 opts
+    // into the continuous-deck preview loop.
+    var doLoop = query.get('loop') === '1';
     function tick(){
       var ms = performance.now();
       frame(ms);
       var t = ms - (startMs||ms);
-      if(t >= T.end + 500){
+      if(!doLoop){
+        // Play ONCE → run to hold/peak then STOP, freezing the hero frame
+        // (clamped in frame() below) until the parent removes the iframe.
+        if(t >= T.hold){ clearTimeout(rafId); rafId = 0; return; }
+      } else if(t >= T.end + 500){
         startMs = 0; fired = false; ps = new ParticleSystem();
       }
       rafId = setTimeout(tick, 16);
@@ -671,6 +698,8 @@
     function frame(ms){
       if(!startMs){ startMs = ms; prevMs = ms; }
       var t = ms - startMs;
+      // Live one-shot: freeze at the hold/peak (no authored fade-out / loop).
+      if(!doLoop && t > T.hold) t = T.hold;
       var dt = Math.min(0.05, (ms-prevMs)/1000);
       prevMs = ms;
 
