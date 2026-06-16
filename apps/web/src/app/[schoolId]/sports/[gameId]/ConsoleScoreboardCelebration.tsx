@@ -140,6 +140,14 @@ export function ConsoleScoreboardCelebration({
         background: '#05070d',
         pointerEvents: 'none',
         overflow: 'hidden',
+        // 2026-06-16 — CENTER the cinematic and LOCK its aspect. The console's
+        // scoreboard zone is wide-and-short (control tiles), so a width:100%
+        // height:100% iframe stretched the 16:9 board cinematic into a squished
+        // "wrong resolution." Now it renders as a proper 16:9 box, fit to the
+        // zone's height, centered — exactly the 1920×1080 board, just scaled.
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
       }}
     >
       {cue.mediaUrl ? (
@@ -147,7 +155,7 @@ export function ConsoleScoreboardCelebration({
         <img
           src={cue.mediaUrl}
           alt=""
-          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
         />
       ) : url ? (
         <iframe
@@ -157,13 +165,10 @@ export function ConsoleScoreboardCelebration({
           allow="autoplay"
           sandbox="allow-scripts"
           style={{
-            position: 'absolute',
-            top: 0,
-            right: 0,
-            bottom: 0,
-            left: 0,
-            width: '100%',
+            // 16:9 board, fit to the zone height, never stretched.
             height: '100%',
+            aspectRatio: '16 / 9',
+            maxWidth: '100%',
             border: 0,
             display: 'block',
           }}
