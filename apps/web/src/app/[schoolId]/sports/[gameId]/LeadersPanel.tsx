@@ -74,7 +74,10 @@ export function LeadersPanel({
     },
     enabled: !!gameId,
     refetchInterval: 4000,
-    refetchIntervalInBackground: true,
+    // A LIVE-GAME panel (leaders / Player-of-the-Game) shown on the board — it
+    // must keep refreshing even if the operator briefly tabs away mid-game,
+    // unlike the dashboard/nav chrome the mobile-perf standard governs.
+    refetchIntervalInBackground: true, // perf-allow: live-game board data (see CLAUDE.md "Mobile performance standard")
   });
 
   const ctl = useGameControl(gameId);

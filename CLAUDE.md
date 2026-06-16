@@ -345,6 +345,49 @@ Safari for months. Local dev was Chrome-only so we never saw it.
    Chrome" ≠ correct — Rule #1 (test WebKit before done) applies to
    INTERACTIVITY, not just rendering.
 
+## Mobile performance standard — non-negotiable (2026-06-16)
+
+The operator runs the whole product from an **iPhone**. On 2026-06-16 the
+mobile bottom-nav + "More" sheet had major tap lag — and since the "More"
+sheet is a pure local-`useState` toggle (no fetch, no navigation), its lag
+proved the **main thread / GPU was busy at tap time**: app-wide contention,
+not the tab bar. Two root-cause classes, both now fixed and **locked in by CI**
+(`Mobile Perf` workflow → `node apps/web/tools/check-mobile-perf.cjs`, also
+`pnpm mobile-perf-guard`). Full write-up:
+`docs/research/2026-06-16-mobile-perf-deepdive/`.
+
+**The standard the guard enforces (every new feature must keep these):**
+
+1. **Never poll a backgrounded tab.** No `refetchIntervalInBackground: true`
+   anywhere under `apps/web/src` — a phone the operator isn't looking at must
+   not run timers. Poll only while visible (`refetchInterval`); refresh on
+   return via per-hook `refetchOnWindowFocus`. (A live *display/board* surface
+   that must keep updating off-focus is the one legit exception — mark the line
+   `// perf-allow: <reason>`, reviewed in PR. See `LeadersPanel.tsx`.)
+2. **No global focus-refetch storm.** The QueryClient default
+   `refetchOnWindowFocus` stays **false** (`providers.tsx`). A global `true`
+   fires a refetch sweep across every mounted query on every app-switch — the
+   burst lands as the operator taps the nav and the tap queues. Opt in
+   per-hook only where freshness-on-return genuinely matters.
+3. **No GPU-expensive blur on always-mounted mobile chrome.** On the persistent
+   chrome (`DashboardLayout`, `MobileTabBar`, `TopToolbar`, `Sidebar`):
+   `backdrop-blur*` must be breakpoint-gated (`md:backdrop-blur-xl`, mobile gets
+   `backdrop-blur-none` / a solid bg), and any big decorative `blur-[…]` must be
+   `hidden md:block` (desktop-only). `backdrop-filter` re-samples everything
+   behind it on every repaint frame — brutal on a phone GPU, and it's paid on
+   every interaction because this chrome is always mounted.
+4. **Keep the global chrome cheap.** Don't mount new pollers in the chrome
+   (`MobileTabBar`/`TopToolbar`/`Sidebar`) without justification; don't combine
+   multiple Zustand selectors into one object literal without `useShallow` (it
+   re-renders every time — the opposite of the goal); promote slide/overlay
+   animations with `will-change`/`contain` so the first frame doesn't stall.
+
+**Escape hatch:** a genuinely-justified exception gets `perf-allow` in a comment
+on the offending line (the guard skips it; the PR reviewer sees why).
+
+Run `pnpm mobile-perf-guard` before pushing mobile/chrome/data-hook changes;
+CI runs it on every push + PR and blocks merge on red.
+
 ## Deploy reliability (Railway + Vercel)
 
 Every Railway redeploy must come up without hand-holding. Below is how to verify and recover.

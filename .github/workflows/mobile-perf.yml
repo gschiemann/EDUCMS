@@ -1,0 +1,26 @@
+# Mobile-performance regression guard.
+#
+# 2026-06-16: operator reported major lag tapping the mobile bottom nav (esp.
+# the "More" sheet). Root causes: background-tab polling + a global
+# refetch-on-focus storm hammering the main thread, and GPU-expensive blur on
+# the always-mounted mobile chrome. Fixed + documented in
+# docs/research/2026-06-16-mobile-perf-deepdive/. This gate LOCKS IT IN so the
+# next feature can't silently regress it. Fast (<1 min), grep-only, no install.
+name: Mobile Perf
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  mobile-perf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check mobile-perf standard (no bg polling / focus storm / mobile-chrome blur)
+        run: node apps/web/tools/check-mobile-perf.cjs

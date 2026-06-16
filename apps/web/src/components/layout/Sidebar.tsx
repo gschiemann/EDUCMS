@@ -310,7 +310,10 @@ export function Sidebar() {
           type="button"
           aria-label="Close navigation menu"
           onClick={() => setMobileSidebarOpen(false)}
-          className="md:hidden fixed inset-0 z-30 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-150"
+          // 2026-06-16 mobile-perf: dropped backdrop-blur-sm. This backdrop is
+          // mobile-only (md:hidden) so the blur was pure phone-GPU cost while
+          // the drawer is open; the slate-900/40 scrim alone dims the page.
+          className="md:hidden fixed inset-0 z-30 bg-slate-900/40 animate-in fade-in duration-150"
         />
       )}
 
