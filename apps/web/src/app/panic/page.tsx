@@ -31,14 +31,33 @@ function hasPanicAuthority(user: { role?: string; canTriggerPanic?: boolean } | 
 const HOLD_DURATION_MS = 3000;
 
 // Full SRP — same id strings + order as the dashboard EmergencyTriggerModal.
+// 2026-06-15 redesign: dropped the six fully-saturated rainbow circles for the
+// VenueOS premium-dark control board. Each type keeps its semantic SRP color
+// (life-safety meaning is preserved + the page still reads as "emergency"),
+// but renders as a dark-glass control with that color as a GLOW ACCENT at rest
+// that fully ignites to a solid fill on hold. `accent` = the live color, `dark`
+// = the bottom of the hold-fill gradient, `rgb` = the same color as a raw
+// triplet for rgba() glow/tint composition in inline styles (Tailwind can't
+// build class names from runtime values, so the per-type look is inline).
 const TYPES = [
-  { id: 'hold',     name: 'Hold',     icon: Hand,           color: 'bg-yellow-500',  hold: 'bg-yellow-600',  ring: 'stroke-yellow-300',  text: 'text-yellow-400' },
-  { id: 'secure',   name: 'Secure',   icon: Lock,           color: 'bg-blue-600',    hold: 'bg-blue-700',    ring: 'stroke-blue-300',    text: 'text-blue-400' },
-  { id: 'lockdown', name: 'Lockdown', icon: ShieldAlert,    color: 'bg-red-600',     hold: 'bg-red-700',     ring: 'stroke-red-300',     text: 'text-red-400' },
-  { id: 'evacuate', name: 'Evacuate', icon: Megaphone,      color: 'bg-orange-500',  hold: 'bg-orange-600',  ring: 'stroke-orange-300',  text: 'text-orange-400' },
-  { id: 'weather',  name: 'Shelter',  icon: CloudLightning, color: 'bg-amber-500',   hold: 'bg-amber-600',   ring: 'stroke-amber-300',   text: 'text-amber-400' },
-  { id: 'medical',  name: 'Medical',  icon: HeartPulse,     color: 'bg-emerald-600', hold: 'bg-emerald-700', ring: 'stroke-emerald-300', text: 'text-emerald-400' },
+  { id: 'hold',     name: 'Hold',     icon: Hand,           accent: '#f5a623', dark: '#b9791a', rgb: '245,166,35'  },
+  { id: 'secure',   name: 'Secure',   icon: Lock,           accent: '#3b82f6', dark: '#1d4ed8', rgb: '59,130,246'  },
+  { id: 'lockdown', name: 'Lockdown', icon: ShieldAlert,    accent: '#ef4444', dark: '#b91c1c', rgb: '239,68,68'   },
+  { id: 'evacuate', name: 'Evacuate', icon: Megaphone,      accent: '#f97316', dark: '#c2410c', rgb: '249,115,22'  },
+  { id: 'weather',  name: 'Shelter',  icon: CloudLightning, accent: '#22d3ee', dark: '#0e7490', rgb: '34,211,238'  },
+  { id: 'medical',  name: 'Medical',  icon: HeartPulse,     accent: '#10b981', dark: '#047857', rgb: '16,185,129'  },
 ];
+
+// Shared premium-dark page surface — a deep VenueOS navy radial that matches
+// the dashboard's oklch(0.14 0.03 260) dark token (vs the old flat bg-slate-950).
+// Every phase screen uses this so loading / triggered / error / idle feel like
+// one product, not a stranded slate sub-page.
+const PAGE_STYLE: React.CSSProperties = {
+  background:
+    'radial-gradient(135% 90% at 50% -10%, #16203b 0%, #0b1124 46%, #070a13 100%)',
+};
+const PAGE_CLS =
+  'fixed top-0 right-0 bottom-0 left-0 text-white flex flex-col overscroll-none select-none';
 
 export default function MobilePanicPage() {
   const router = useRouter();
@@ -322,10 +341,14 @@ export default function MobilePanicPage() {
 
   if (phase === 'loading') {
     return (
-      <div className="fixed top-0 right-0 bottom-0 left-0 bg-slate-950 text-white flex flex-col items-center justify-center">
+      <div className={`${PAGE_CLS} items-center justify-center`} style={PAGE_STYLE}>
         {LiveRegion}
-        <Loader2 className="w-12 h-12 text-red-500 animate-spin mb-4" />
-        <p className="text-slate-400 text-sm">Verifying authorization...</p>
+        <div className="relative mb-5 flex items-center justify-center">
+          <span className="absolute h-16 w-16 rounded-2xl bg-white/[0.04] ring-1 ring-white/10" />
+          <ShieldAlert className="relative w-7 h-7 text-white/80" />
+        </div>
+        <Loader2 className="w-6 h-6 text-white/40 animate-spin mb-3" />
+        <p className="text-white/40 text-xs uppercase tracking-[0.2em] font-semibold">Verifying authorization</p>
       </div>
     );
   }
@@ -335,14 +358,20 @@ export default function MobilePanicPage() {
   // the page is working.
   if (phase === 'misconfigured') {
     return (
-      <div className="fixed top-0 right-0 bottom-0 left-0 bg-slate-950 text-white flex flex-col items-center justify-center p-6">
+      <div className={`${PAGE_CLS} items-center justify-center p-6`} style={PAGE_STYLE}>
         {LiveRegion}
-        <AlertTriangle className="w-24 h-24 text-red-500 mb-6" />
-        <h1 className="text-3xl font-black mb-2 text-red-500 uppercase text-center">Not Configured</h1>
-        <p className="text-slate-300 mb-3 max-w-[300px] text-center text-sm font-bold">
+        <div className="relative mb-6 flex items-center justify-center">
+          <span
+            className="absolute h-24 w-24 rounded-3xl"
+            style={{ background: 'rgba(239,68,68,0.10)', boxShadow: '0 0 48px rgba(239,68,68,0.30)' }}
+          />
+          <AlertTriangle className="relative w-12 h-12" style={{ color: '#ef4444' }} />
+        </div>
+        <h1 className="text-2xl font-black mb-2 uppercase tracking-tight text-center" style={{ color: '#f87171' }}>Not Configured</h1>
+        <p className="text-white/80 mb-3 max-w-[300px] text-center text-sm font-bold">
           Emergency trigger is unavailable on this deploy.
         </p>
-        <p className="text-slate-400 mb-8 max-w-[300px] text-center text-xs">
+        <p className="text-white/45 mb-8 max-w-[300px] text-center text-xs leading-relaxed">
           The server URL is missing from this build (NEXT_PUBLIC_API_URL not set).
           NOTIFY SECURITY MANUALLY for any emergency — DO NOT rely on this app
           until your admin fixes the deploy configuration.
@@ -356,20 +385,26 @@ export default function MobilePanicPage() {
   // know not to rely on this surface during a real incident.
   if (phase === 'unauthorized') {
     return (
-      <div className="fixed top-0 right-0 bottom-0 left-0 bg-slate-950 text-white flex flex-col items-center justify-center p-6">
+      <div className={`${PAGE_CLS} items-center justify-center p-6`} style={PAGE_STYLE}>
         {LiveRegion}
-        <ShieldOff className="w-24 h-24 text-amber-500 mb-6" />
-        <h1 className="text-2xl font-black mb-2 text-amber-400 uppercase text-center">No Trigger Authority</h1>
-        <p className="text-slate-300 mb-3 max-w-[300px] text-center text-sm font-bold">
+        <div className="relative mb-6 flex items-center justify-center">
+          <span
+            className="absolute h-24 w-24 rounded-3xl"
+            style={{ background: 'rgba(245,166,35,0.10)', boxShadow: '0 0 48px rgba(245,166,35,0.28)' }}
+          />
+          <ShieldOff className="relative w-12 h-12" style={{ color: '#f5a623' }} />
+        </div>
+        <h1 className="text-2xl font-black mb-2 uppercase tracking-tight text-center" style={{ color: '#fbbf24' }}>No Trigger Authority</h1>
+        <p className="text-white/80 mb-3 max-w-[300px] text-center text-sm font-bold">
           Your account doesn&rsquo;t have emergency-trigger authority.
         </p>
-        <p className="text-slate-400 mb-8 max-w-[300px] text-center text-xs">
+        <p className="text-white/45 mb-8 max-w-[300px] text-center text-xs leading-relaxed">
           NOTIFY SECURITY MANUALLY for any emergency. Ask a district or school admin
           to grant trigger authority if you should have it.
         </p>
         <button
           onClick={() => router.push('/login?redirect=/panic')}
-          className="px-8 py-3 bg-slate-900 border border-slate-700 rounded-full font-bold uppercase tracking-wider text-sm flex items-center justify-center gap-2 min-h-[44px]"
+          className="px-8 py-3 rounded-2xl font-bold uppercase tracking-wider text-sm flex items-center justify-center gap-2 min-h-[48px] bg-white/[0.04] border border-white/10 text-white/85 active:bg-white/[0.08] transition-colors"
         >
           <LogIn className="w-4 h-4" /> Switch Account
         </button>
@@ -379,25 +414,38 @@ export default function MobilePanicPage() {
 
   if (phase === 'error') {
     return (
-      <div className="fixed top-0 right-0 bottom-0 left-0 bg-slate-950 text-white flex flex-col items-center justify-center p-6">
+      <div className={`${PAGE_CLS} items-center justify-center p-6`} style={PAGE_STYLE}>
         {LiveRegion}
-        <AlertTriangle className="w-24 h-24 text-red-500 mb-6" />
-        <h1 className="text-3xl font-black mb-2 text-red-500">FAILED</h1>
+        <div className="relative mb-6 flex items-center justify-center">
+          <span
+            className="absolute h-24 w-24 rounded-3xl"
+            style={{ background: 'rgba(239,68,68,0.12)', boxShadow: '0 0 56px rgba(239,68,68,0.40)' }}
+          />
+          <AlertTriangle className="relative w-12 h-12" style={{ color: '#ef4444' }} />
+        </div>
+        <h1 className="text-3xl font-black mb-2 tracking-tight" style={{ color: '#f87171' }}>FAILED</h1>
         {/* LIFE-SAFETY (audit P1 #7): error copy now spells out the
             "alert was NOT broadcast — notify security manually" guidance
             explicitly, then surfaces the technical reason. */}
-        <p className="text-slate-300 mb-3 max-w-[300px] text-center text-sm font-bold">
+        <p className="text-white/80 mb-3 max-w-[300px] text-center text-sm font-bold">
           Your alert was NOT broadcast.
         </p>
-        <p className="text-slate-400 mb-6 max-w-[300px] text-center text-xs">
+        <p className="text-white/45 mb-6 max-w-[300px] text-center text-xs leading-relaxed">
           NOTIFY SECURITY MANUALLY for the actual incident, then try again here.
         </p>
-        <p className="text-slate-500 mb-8 max-w-[280px] text-center text-xs italic">{errorMsg}</p>
+        <p className="text-white/35 mb-8 max-w-[280px] text-center text-xs italic">{errorMsg}</p>
         <div className="flex flex-col gap-3 w-full max-w-xs">
-          <button onClick={() => { setPhase('idle'); setErrorMsg(''); setFiredType(null); }} className="px-8 py-3 bg-slate-800 rounded-full font-bold uppercase tracking-wider text-sm min-h-[44px]">
+          <button
+            onClick={() => { setPhase('idle'); setErrorMsg(''); setFiredType(null); }}
+            className="px-8 py-3 rounded-2xl font-bold uppercase tracking-wider text-sm min-h-[48px] text-white transition-transform active:scale-[0.98]"
+            style={{ background: 'linear-gradient(160deg, #ef4444, #b91c1c)', boxShadow: '0 0 32px rgba(239,68,68,0.35)' }}
+          >
             Try Again
           </button>
-          <button onClick={() => router.push('/login?redirect=/panic')} className="px-8 py-3 bg-slate-900 border border-slate-700 rounded-full font-bold uppercase tracking-wider text-sm flex items-center justify-center gap-2 min-h-[44px]">
+          <button
+            onClick={() => router.push('/login?redirect=/panic')}
+            className="px-8 py-3 rounded-2xl font-bold uppercase tracking-wider text-sm flex items-center justify-center gap-2 min-h-[48px] bg-white/[0.04] border border-white/10 text-white/85 active:bg-white/[0.08] transition-colors"
+          >
             <LogIn className="w-4 h-4" /> Re-Login
           </button>
         </div>
@@ -413,14 +461,18 @@ export default function MobilePanicPage() {
     // us back to idle so staff see the resolution land.
     if (justCleared) {
       return (
-        <div className="fixed top-0 right-0 bottom-0 left-0 bg-slate-950 text-white flex flex-col items-center justify-center p-6">
+        <div className={`${PAGE_CLS} items-center justify-center p-6`} style={PAGE_STYLE}>
           {LiveRegion}
-          <div className="relative mb-6">
-            <div className="absolute top-0 right-0 bottom-0 left-0 bg-emerald-500 rounded-full animate-ping opacity-20 scale-150" />
-            <CheckCircle2 className="w-24 h-24 text-emerald-400 relative z-10" />
+          <div className="relative mb-6 flex items-center justify-center">
+            <span className="absolute h-28 w-28 rounded-full bg-emerald-400/20 animate-ping" />
+            <span
+              className="absolute h-28 w-28 rounded-full"
+              style={{ boxShadow: '0 0 64px rgba(16,185,129,0.45)' }}
+            />
+            <CheckCircle2 className="w-20 h-20 relative z-10" style={{ color: '#34d399' }} />
           </div>
-          <h1 className="text-3xl font-black mb-2 text-emerald-400 uppercase text-center">All Clear</h1>
-          <p className="text-slate-400 max-w-[260px] mx-auto text-center text-sm">
+          <h1 className="text-3xl font-black mb-2 uppercase tracking-tight text-center" style={{ color: '#34d399' }}>All Clear</h1>
+          <p className="text-white/50 max-w-[260px] mx-auto text-center text-sm leading-relaxed">
             An administrator cleared the {fired.name.toLowerCase()} alert. Returning to the trigger panel.
           </p>
         </div>
@@ -428,17 +480,24 @@ export default function MobilePanicPage() {
     }
 
     return (
-      <div className="fixed top-0 right-0 bottom-0 left-0 bg-slate-950 text-white flex flex-col items-center justify-center p-6">
+      <div className={`${PAGE_CLS} items-center justify-center p-6`} style={PAGE_STYLE}>
         {LiveRegion}
-        <div className="relative mb-6">
-          <div className="absolute top-0 right-0 bottom-0 left-0 bg-red-600 rounded-full animate-ping opacity-20 scale-150" />
-          <CheckCircle2 className="w-24 h-24 text-red-500 relative z-10" />
+        <div className="relative mb-6 flex items-center justify-center">
+          <span
+            className="absolute h-28 w-28 rounded-full animate-ping"
+            style={{ background: `rgba(${fired.rgb},0.22)` }}
+          />
+          <span
+            className="absolute h-28 w-28 rounded-full"
+            style={{ boxShadow: `0 0 72px rgba(${fired.rgb},0.50)` }}
+          />
+          <CheckCircle2 className="w-20 h-20 relative z-10" style={{ color: fired.accent }} />
         </div>
-        <h1 className="text-3xl font-black mb-2 text-red-500 uppercase text-center">{fired.name}<br/>Broadcasted</h1>
-        <p className="text-slate-400 mb-8 max-w-[260px] mx-auto text-center text-sm">
+        <h1 className="text-3xl font-black mb-2 uppercase tracking-tight text-center" style={{ color: fired.accent }}>{fired.name}<br/>Broadcasted</h1>
+        <p className="text-white/55 mb-8 max-w-[260px] mx-auto text-center text-sm leading-relaxed">
           All screens are now locked to the emergency profile.
         </p>
-        <p className="absolute bottom-8 italic text-slate-500 text-xs text-center w-full px-8">
+        <p className="absolute bottom-8 italic text-white/35 text-xs text-center w-full px-8 leading-relaxed">
           Waiting for an administrator to clear from a secure terminal. This screen will
           return to the trigger panel automatically once that happens.
         </p>
@@ -446,32 +505,49 @@ export default function MobilePanicPage() {
     );
   }
 
-  // Main grid — 6 circles, 2 rows × 3 columns, each press-and-hold triggers
+  // Main grid — 6 dark-glass controls, 2 rows × 3 columns, each press-and-hold
+  // triggers. Premium-dark VenueOS board: each control keeps its semantic SRP
+  // color as a glow accent at rest, then fully ignites to a solid fill on hold.
   return (
-    <div className="fixed top-0 right-0 bottom-0 left-0 bg-slate-950 text-white flex flex-col overscroll-none select-none">
+    <div className={PAGE_CLS} style={PAGE_STYLE}>
       {LiveRegion}
-      {/* Header */}
-      <div className="flex justify-between items-center px-5 pt-5 pb-3 opacity-60">
-        <ShieldAlert className="w-5 h-5" />
-        <span className="text-[10px] font-bold uppercase tracking-widest truncate max-w-[60%] text-right">{verifiedUser?.email || 'AUTHORIZED'}</span>
+      {/* Header — brand mark + authorized identity pill */}
+      <div className="flex justify-between items-center px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-3">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] ring-1 ring-white/10">
+            <ShieldAlert className="w-[18px] h-[18px] text-white/80" />
+          </span>
+          <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-white/55">VenueOS</span>
+        </div>
+        <span className="text-[10px] font-semibold uppercase tracking-widest truncate max-w-[55%] text-right text-white/40 rounded-full bg-white/[0.04] ring-1 ring-white/10 px-3 py-1.5">
+          {verifiedUser?.email || 'AUTHORIZED'}
+        </span>
       </div>
 
       <div className="px-5 pb-2 text-center">
-        <h1 className="text-xl font-black tracking-tight">EMERGENCY TRIGGER</h1>
+        <h1 className="text-[1.35rem] font-black tracking-tight text-white">Emergency Trigger</h1>
         {/* 2026-05-03 BUG FIX (cycle 4 emergency-BUG-013) — copy used to
             say "1.5 seconds" but HOLD_DURATION_MS is 3000 (cycle-1 fix
             restoring the CLAUDE.md "Key Safeguards #5" 3-second hold).
             Updated to match actual timer so operators see truthful UX. */}
-        <p className="text-slate-500 text-[11px] mt-1">Press and hold any button for 3 seconds to broadcast.</p>
+        <p className="text-white/40 text-[11px] mt-1">Press and hold any button for 3 seconds to broadcast.</p>
       </div>
 
       {/* 2x3 grid — generous spacing so adjacent buttons aren't easy to fat-finger */}
-      <div className="flex-1 grid grid-cols-2 grid-rows-3 gap-x-6 gap-y-5 px-6 pb-6 pt-2 place-items-center">
+      <div className="flex-1 grid grid-cols-2 grid-rows-3 gap-x-5 gap-y-4 px-5 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))] place-items-center">
         {TYPES.map((type) => {
           const isHolding = holdingId === type.id;
           const isTriggering = phase === 'triggering' && firedType === type.id;
           const dim = phase === 'triggering' && !isTriggering;
           const Icon = type.icon;
+          // Rest = dark-glass control with the semantic color as a faint
+          // inner glow + ring. Hold = the color fully ignites (solid radial
+          // fill) and the whole control depresses (scale-95) — the "punch"
+          // that signals an emergency is being armed.
+          const restBg =
+            `radial-gradient(120% 90% at 50% 22%, rgba(${type.rgb},0.18) 0%, rgba(255,255,255,0.015) 55%),` +
+            ' linear-gradient(180deg, rgba(22,28,46,0.92) 0%, rgba(11,16,28,0.96) 100%)';
+          const holdBg = `radial-gradient(115% 90% at 50% 18%, ${type.accent} 0%, ${type.dark} 78%)`;
           return (
             <button
               key={type.id}
@@ -491,19 +567,28 @@ export default function MobilePanicPage() {
               onContextMenu={(e) => e.preventDefault()}
               aria-label={`Trigger ${type.id} emergency. Hold for 3 seconds to broadcast.`}
               disabled={phase === 'triggering'}
-              className={`relative aspect-square w-full max-w-[160px] rounded-full flex flex-col items-center justify-center
-                shadow-[inset_0_-6px_0_rgba(0,0,0,0.25)] transition-all duration-150 outline-none
+              className={`relative aspect-square w-full max-w-[156px] rounded-full flex flex-col items-center justify-center
+                transition-all duration-150 outline-none
                 ${dim ? 'opacity-30' : ''}
-                ${isHolding ? `${type.hold} scale-95` : type.color}
+                ${isHolding ? 'scale-95' : ''}
               `}
-              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'none' }}
+              style={{
+                WebkitTapHighlightColor: 'transparent',
+                touchAction: 'none',
+                background: isHolding ? holdBg : restBg,
+                border: `1px solid ${isHolding ? type.accent : `rgba(${type.rgb},0.40)`}`,
+                boxShadow: isHolding
+                  ? `0 0 44px rgba(${type.rgb},0.55), inset 0 -7px 0 rgba(0,0,0,0.28)`
+                  : `0 0 0 1px rgba(${type.rgb},0.10), 0 12px 30px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05)`,
+              }}
             >
               {/* Progress ring */}
               <svg className="absolute top-0 right-0 bottom-0 left-0 w-full h-full -rotate-90 pointer-events-none" viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="46" className="stroke-black/20" strokeWidth="3" fill="none" />
+                <circle cx="50" cy="50" r="46" stroke="rgba(255,255,255,0.10)" strokeWidth="3" fill="none" />
                 <circle
                   cx="50" cy="50" r="46"
-                  className={`${type.ring} transition-[stroke-dashoffset] duration-75`}
+                  className="transition-[stroke-dashoffset] duration-75"
+                  stroke={isHolding ? '#ffffff' : type.accent}
                   strokeWidth="4" fill="none"
                   strokeDasharray="289"
                   strokeDashoffset={isHolding ? 289 - (289 * progress) / 100 : 289}
@@ -515,8 +600,14 @@ export default function MobilePanicPage() {
                 <Loader2 className="w-10 h-10 text-white animate-spin" />
               ) : (
                 <>
-                  <Icon className="w-10 h-10 text-white/95 drop-shadow-md mb-1" />
-                  <span className="font-bold text-white/95 uppercase tracking-wider text-xs drop-shadow-md">
+                  <Icon
+                    className="w-9 h-9 mb-1.5 drop-shadow-md transition-colors"
+                    style={{ color: isHolding ? '#ffffff' : type.accent }}
+                  />
+                  <span
+                    className="font-bold uppercase tracking-wider text-xs drop-shadow-md transition-colors"
+                    style={{ color: isHolding ? '#ffffff' : 'rgba(255,255,255,0.92)' }}
+                  >
                     {isHolding ? 'Hold…' : type.name}
                   </span>
                 </>
