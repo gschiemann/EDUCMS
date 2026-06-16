@@ -214,6 +214,67 @@
     return waterY;
   }
 
+  // ── basketball arena: dark bowl + glowing hardwood floor ──────
+  // 2026-06-16 — court scene for the v2 basketball pack so the SAME engine
+  // (and its ribbon renderer) plays a real ball-through-hoop cinematic, not
+  // the flat text strip. Mirrors drawPoolAtmos's shape: void above, lit
+  // surface below, team underglow.
+  function drawCourtAtmos(ctx, t, W, H, team){
+    var floorY = H * 0.70;
+    // upper bowl — deep arena dark
+    var g = ctx.createLinearGradient(0,0,0,floorY);
+    g.addColorStop(0, '#04060d');
+    g.addColorStop(1, '#0b0f1c');
+    ctx.fillStyle = g; ctx.fillRect(0,0,W,floorY);
+    // arena spotlights, upper third
+    ctx.globalCompositeOperation = 'lighter';
+    for(var i=0;i<9;i++){
+      var lx = (i+0.5) * (W/9), ly = 46 + ((i*53)%70);
+      var gg = ctx.createRadialGradient(lx,ly,0,lx,ly,150);
+      gg.addColorStop(0,'rgba(220,232,255,0.10)'); gg.addColorStop(1,'rgba(220,232,255,0)');
+      ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(lx,ly,150,0,Math.PI*2); ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    // hardwood floor — warm maple with team-tinted sheen
+    var wg = ctx.createLinearGradient(0,floorY,0,H);
+    wg.addColorStop(0, '#7a4a1e');
+    wg.addColorStop(0.45,'#5a3414');
+    wg.addColorStop(1, '#1c0f06');
+    ctx.fillStyle = wg; ctx.fillRect(0,floorY,W,H-floorY);
+    // plank lines receding toward the floor edge
+    ctx.globalCompositeOperation = 'lighter';
+    for(var c=0;c<7;c++){
+      var yy = floorY + 12 + c*((H-floorY-12)/7);
+      ctx.strokeStyle = 'rgba(255,206,140,'+(0.05+0.02*Math.sin(t*0.001+c))+')';
+      ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(0,yy); ctx.lineTo(W,yy); ctx.stroke();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    // bright floor edge (baseline)
+    var surf = ctx.createLinearGradient(0,floorY-2,0,floorY+3);
+    surf.addColorStop(0,'rgba(0,0,0,0)'); surf.addColorStop(0.5,'rgba(255,228,180,0.55)'); surf.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle = surf; ctx.fillRect(0,floorY-2,W,5);
+    // team-color reflection on the boards
+    ctx.globalCompositeOperation = 'lighter';
+    var ug = ctx.createLinearGradient(0,floorY,0,floorY+110);
+    ug.addColorStop(0, rgba(team,0.16)); ug.addColorStop(1, rgba(team,0));
+    ctx.fillStyle = ug; ctx.fillRect(0,floorY,W,110);
+    ctx.globalCompositeOperation = 'source-over';
+    return floorY;
+  }
+  function drawCourtRibbonAtmos(ctx, t, W, H, team){
+    var floorY = H * 0.62;
+    var g = ctx.createLinearGradient(0,0,0,floorY);
+    g.addColorStop(0, '#04060d'); g.addColorStop(1, '#0b0f1c');
+    ctx.fillStyle = g; ctx.fillRect(0,0,W,floorY);
+    var wg = ctx.createLinearGradient(0,floorY,0,H);
+    wg.addColorStop(0, '#7a4a1e'); wg.addColorStop(0.5,'#5a3414'); wg.addColorStop(1, '#1c0f06');
+    ctx.fillStyle = wg; ctx.fillRect(0,floorY,W,H-floorY);
+    var surf = ctx.createLinearGradient(0,floorY-1,0,floorY+2);
+    surf.addColorStop(0,'rgba(0,0,0,0)'); surf.addColorStop(0.5,'rgba(255,228,180,0.55)'); surf.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle = surf; ctx.fillRect(0,floorY-1,W,3);
+    ctx.fillStyle = rgba(team, 0.9); ctx.fillRect(0, 0, W, 2);
+  }
+
   // Vignette + scanline overlay applied last for broadcast feel.
   function drawVignette(ctx, W, H){
     var g = ctx.createRadialGradient(W*0.5, H*0.5, Math.min(W,H)*0.35, W*0.5, H*0.5, Math.max(W,H)*0.7);
@@ -585,7 +646,7 @@
       ctx.translate((Math.random()-0.5)*shake, (Math.random()-0.5)*shake);
 
       // background
-      if(cfg.scene === 'pool') drawPoolAtmos(ctx, t, W, H, team);
+      if(cfg.scene === 'court') drawCourtAtmos(ctx, t, W, H, team);
       else drawPoolAtmos(ctx, t, W, H, team);
 
       // cue-specific scene composition (goal+net, props, etc.)
@@ -710,7 +771,8 @@
       ctx.translate((Math.random()-0.5)*shake, (Math.random()-0.5)*shake);
 
       // base — dark + waterline at lower third
-      drawRibbonAtmos(ctx, t, W, H, team);
+      if(cfg.scene === 'court') drawCourtRibbonAtmos(ctx, t, W, H, team);
+      else drawRibbonAtmos(ctx, t, W, H, team);
 
       // cue-specific scene (ribbon-tuned)
       if(cfg.drawRibbonScene) cfg.drawRibbonScene(ctx, t, T, W, H, team, impactPt);

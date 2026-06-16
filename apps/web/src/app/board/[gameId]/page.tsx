@@ -4192,7 +4192,12 @@ export default function ScoreboardPage() {
               // bright "GOAL!/SLAM!" + live scoreline + burst immediately, and
               // now carries live data + team color + the air-horn. v2 is still
               // available as an explicit opt-in (celebrationPack === 'v2').
+              // 2026-06-16 — basketball defaults to v2: its new cinematic
+              // (ball through the hoop, cues-basketball.js) is bright + fast,
+              // not the slow dark water-polo build that made v1 the default.
+              // Other sports keep v1 unless the operator opts into v2.
               ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v2'
+                || data?.sport === 'basketball'
                 ? 'v2'
                 : 'v1') as 'v1' | 'v2'
             }
@@ -4272,7 +4277,12 @@ export default function ScoreboardPage() {
               // bright "GOAL!/SLAM!" + live scoreline + burst immediately, and
               // now carries live data + team color + the air-horn. v2 is still
               // available as an explicit opt-in (celebrationPack === 'v2').
+              // 2026-06-16 — basketball defaults to v2: its new cinematic
+              // (ball through the hoop, cues-basketball.js) is bright + fast,
+              // not the slow dark water-polo build that made v1 the default.
+              // Other sports keep v1 unless the operator opts into v2.
               ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v2'
+                || data?.sport === 'basketball'
                 ? 'v2'
                 : 'v1') as 'v1' | 'v2'
             }

@@ -1286,7 +1286,11 @@ export default function RibbonPage() {
             pack={
               // 2026-06-15 — default to v1 (ribbon-native strip, no squish);
               // v2 only when explicitly opted in. See board route for why.
+              // 2026-06-16 — basketball defaults to v2: its hoop cinematic
+              // (cues-basketball.js) renders ribbon-native, replacing the flat
+              // text strip every basketball cue used to get.
               ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v2'
+                || data?.sport === 'basketball'
                 ? 'v2'
                 : 'v1') as 'v1' | 'v2'
             }
@@ -1443,7 +1447,9 @@ ${SCORE_MOTION_KEYFRAMES}
           sport={data?.sport}
           pack={
             // 2026-06-15 — default to v1 (ribbon-native strip, no squish).
+            // 2026-06-16 — basketball defaults to v2 (ribbon-native hoop cinematic).
             ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v2'
+              || data?.sport === 'basketball'
               ? 'v2'
               : 'v1') as 'v1' | 'v2'
           }

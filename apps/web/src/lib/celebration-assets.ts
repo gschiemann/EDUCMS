@@ -111,6 +111,11 @@ const V2_KEYS: Record<string, string> = {
   'water_polo/penalty':   'waterpolo-penalty',
   'water_polo/powerPlay': 'waterpolo-powerplay',
   'water_polo/hatTrick':  'waterpolo-hattrick',
+  // basketball (2026-06-16) — the ball-through-hoop cinematic, NOT a text
+  // strip. Same engine as water polo, so the ribbon plays the real animation
+  // too (cues-basketball.js registers these two keys).
+  'basketball/threePointer': 'basketball-three',
+  'basketball/dunk':         'basketball-dunk',
 };
 
 export type CelebrationPack = 'v1' | 'v2';
