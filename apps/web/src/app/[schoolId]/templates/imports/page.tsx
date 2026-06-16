@@ -212,7 +212,9 @@ export default function DesignImportsPage() {
               fileInputRef.current?.click();
             }
           }}
-          className={`border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+          /* 2026-06-16 mobile-UX: p-5 on phones (was p-12 everywhere) — you
+             can't drag-drop on iPhone, so the tall dropzone was wasted height. */
+          className={`border-2 border-dashed rounded-2xl p-5 md:p-12 text-center cursor-pointer transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
             dragOver
               ? 'bg-[color-mix(in_srgb,var(--brand-primary,#4f46e5)_8%,transparent)]'
               : 'bg-white hover:bg-slate-50'
@@ -234,19 +236,20 @@ export default function DesignImportsPage() {
               if (f) onFileChosen(f);
             }}
           />
-          <div className="flex flex-col items-center gap-3">
+          <div className="flex flex-col items-center gap-2 md:gap-3">
             <div
-              className="w-16 h-16 rounded-2xl flex items-center justify-center"
+              className="w-12 h-12 md:w-16 md:h-16 rounded-2xl flex items-center justify-center"
               style={{
                 background: 'color-mix(in srgb, var(--brand-primary, #4f46e5) 12%, transparent)',
               }}
             >
               <FileUp
-                className="w-7 h-7"
+                className="w-6 h-6 md:w-7 md:h-7"
                 style={{ color: 'var(--brand-primary, #4f46e5)' }}
               />
             </div>
-            <p className="text-base font-bold text-slate-800">Drop your file</p>
+            {/* Mobile can't drag — neutral "Upload" label; desktop keeps the drop hint */}
+            <p className="text-base font-bold text-slate-800"><span className="md:hidden">Upload a file</span><span className="hidden md:inline">Drop your file</span></p>
             <p className="text-xs text-slate-500">PowerPoint, PDF, PNG, JPG, WEBP up to 50 MB</p>
           </div>
         </div>
