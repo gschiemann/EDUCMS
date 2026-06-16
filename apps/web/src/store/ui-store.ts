@@ -26,6 +26,15 @@ import { clog } from '@/lib/client-logger';
 
 const TOKEN_KEY = 'edu_cms_token';
 const USER_KEY = 'edu_cms_user';
+// 2026-06-16 — "Keep me logged in". When the operator opts into persistence
+// at login we ALSO write the token to localStorage (durable across app/tab
+// close) and set this marker. Without it the token lived in sessionStorage
+// only, which a phone wipes when the PWA/tab closes — so remember-me never
+// survived a relaunch (the server already issues a 30-day JWT for it). The
+// marker tells bootstrap to KEEP the localStorage copy instead of treating it
+// as a legacy token to migrate-and-wipe. Default (unchecked) is unchanged:
+// sessionStorage-only, per-tab multi-tenant isolation.
+const REMEMBER_KEY = 'edu_cms_remember';
 
 function safeSession(): Storage | null {
   try { return typeof window !== 'undefined' ? window.sessionStorage : null; } catch { return null; }
@@ -43,8 +52,14 @@ function bootstrapAuth(): { token: string | null; user: any | null } {
   let token = ss?.getItem(TOKEN_KEY) || null;
   let userRaw = ss?.getItem(USER_KEY) || null;
 
-  // One-time migration from legacy localStorage. After this, LS is
-  // wiped so new tabs never inherit a stale identity.
+  // localStorage fallback. Two cases:
+  //   • remember-me ON (REMEMBER_KEY === '1'): the operator chose to stay
+  //     logged in — load from localStorage AND KEEP it so the session
+  //     survives the next app/tab close. Mirror into this tab's sessionStorage
+  //     for fast per-tab reads.
+  //   • otherwise: a legacy (pre-remember-me) localStorage token — migrate it
+  //     into sessionStorage once, then WIPE localStorage so new tabs never
+  //     inherit a stale identity (the original per-tab-isolation behavior).
   if (!token && ls) {
     const lsToken = ls.getItem(TOKEN_KEY);
     const lsUser = ls.getItem(USER_KEY);
@@ -55,10 +70,12 @@ function bootstrapAuth(): { token: string | null; user: any | null } {
         ss?.setItem(TOKEN_KEY, lsToken);
         if (lsUser) ss?.setItem(USER_KEY, lsUser);
       } catch { /* storage full — accept the in-memory-only session */ }
-      try {
-        ls.removeItem(TOKEN_KEY);
-        ls.removeItem(USER_KEY);
-      } catch {}
+      if (ls.getItem(REMEMBER_KEY) !== '1') {
+        try {
+          ls.removeItem(TOKEN_KEY);
+          ls.removeItem(USER_KEY);
+        } catch {}
+      }
     }
   }
 
@@ -132,7 +149,7 @@ interface AppState {
   activeEmergencyOverrideId: string | null;
 
   // Auth actions
-  login: (token: string, user: any) => void;
+  login: (token: string, user: any, remember?: boolean) => void;
   logout: () => void;
 
   // UI actions
@@ -161,20 +178,33 @@ export const useUIStore = create<AppState>((set) => ({
   activeEmergencyOverrideId: null,
 
   // Auth actions
-  login: (token, user) => {
+  login: (token, user, remember) => {
     const ss = safeSession();
     if (ss) {
       ss.setItem(TOKEN_KEY, token);
       ss.setItem(USER_KEY, JSON.stringify(user));
     }
-    // Belt-and-suspenders: always purge localStorage on login so no
-    // legacy copy can leak back into a sibling tab.
     const ls = safeLocal();
     if (ls) {
-      ls.removeItem(TOKEN_KEY);
-      ls.removeItem(USER_KEY);
+      if (remember) {
+        // "Keep me logged in" — persist durably so the session survives the
+        // next app/tab close (the server pairs this with a 30-day JWT). This
+        // trades the strict per-tab isolation for cross-restart persistence,
+        // which is exactly what the operator opted into.
+        try {
+          ls.setItem(TOKEN_KEY, token);
+          ls.setItem(USER_KEY, JSON.stringify(user));
+          ls.setItem(REMEMBER_KEY, '1');
+        } catch { /* storage full — sessionStorage still holds this tab's session */ }
+      } else {
+        // Default: per-tab only. Purge any durable copy so no legacy/remembered
+        // token can leak back into a sibling tab.
+        ls.removeItem(TOKEN_KEY);
+        ls.removeItem(USER_KEY);
+        ls.removeItem(REMEMBER_KEY);
+      }
     }
-    clog.info('auth', 'Login success', { userId: user?.id, role: user?.role, tenantId: user?.tenantId });
+    clog.info('auth', 'Login success', { userId: user?.id, role: user?.role, tenantId: user?.tenantId, remember: !!remember });
     set({ token, user, activeTenant: user.tenantSlug || user.tenantId });
   },
   logout: () => {
@@ -187,6 +217,7 @@ export const useUIStore = create<AppState>((set) => ({
     if (ls) {
       ls.removeItem(TOKEN_KEY);
       ls.removeItem(USER_KEY);
+      ls.removeItem(REMEMBER_KEY);
       // 2026-05-03 — cross-tenant bleed fix. The SchoolSwitcher caches
       // the last-selected tenant slug here so the dashboard remembers
       // which child school an admin was inside. On logout we clear it

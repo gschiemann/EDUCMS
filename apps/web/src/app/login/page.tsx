@@ -85,7 +85,10 @@ function LoginContent() {
       }
     } catch { /* best-effort */ }
     clog.info('auth', 'EULA accepted', { version: EULA_VERSION, userId: data.user?.id });
-    login(data.access_token, data.user);
+    // Pass the "Keep me logged in" choice so the store persists the token
+    // durably (localStorage) instead of session-only — otherwise the 30-day
+    // token the server issues for rememberMe is discarded on app/tab close.
+    login(data.access_token, data.user, rememberMe);
     // 2026-05-03 — cross-tenant bleed fix. Only honor `redirectTarget`
     // if it points within the authenticated user's own tenant slug;
     // otherwise hard-redirect to their home dashboard.
