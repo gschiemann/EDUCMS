@@ -1542,6 +1542,7 @@ export class SportsService {
       clockRunning,
       now,
       clockMs,
+      def.shotClock?.full,
     );
     if (shotStats) mergedStats = shotStats;
     // T2-7 — Football play clock slaves to game clock (mirrors shot clock).
@@ -1821,6 +1822,13 @@ export class SportsService {
      * clamp (callers that don't have the game-clock value handy).
      */
     gameClockMs?: number,
+    /**
+     * The sport's full shot-clock seconds (def.shotClock.full). When the
+     * stored shot clock is unconfigured (len 0) and the game clock is
+     * STARTING, we arm it to this so the operator never has to find a
+     * separate "configure" step. Undefined / 0 → sport has no shot clock.
+     */
+    shotClockFull?: number,
   ): Record<string, unknown> | null {
     if (!clockMutated) return null;
     if (!rawStats || typeof rawStats !== 'object') return null;
@@ -1828,9 +1836,25 @@ export class SportsService {
     const prev = (stats.shotClock && typeof stats.shotClock === 'object')
       ? (stats.shotClock as Record<string, unknown>)
       : null;
-    if (!prev) return null;
-    const len = Number(prev.len) || 0;
-    if (len <= 0) return null; // shot clock OFF — nothing to slave
+    const len = Number(prev?.len) || 0;
+    if (len <= 0) {
+      // 2026-06-16 — AUTO-ARM an unconfigured shot clock to the sport's full
+      // length when the game clock STARTS. This was the root cause of "the
+      // shot clock doesn't start": a fresh game's shotClock sits at len=0
+      // until the operator hunts down a 'configure' step, so Start was a
+      // silent no-op and the clock never appeared. Now starting the game
+      // clock arms it automatically (basketball 24s, water polo 30s, lacrosse
+      // 80s, …) and clamps it to the game-clock remaining. Pausing while
+      // unconfigured stays a clean no-op (shot clock genuinely OFF).
+      if (running && shotClockFull && shotClockFull > 0) {
+        let armed = shotClockFull * 1000;
+        if (gameClockMs !== undefined && gameClockMs >= 0) armed = Math.min(armed, gameClockMs);
+        stats.shotClock = { len: shotClockFull, ms: armed, at: now.toISOString(), running: true };
+        return stats;
+      }
+      return null; // shot clock OFF for this sport — nothing to slave
+    }
+    if (!prev) return null; // unreachable once len>0; narrows the type for TS
     // Project current live ms from the prior anchor (same math as
     // setShotClock + the UI projection in RunShotClockMini).
     let ms = Math.max(0, Number(prev.ms) || 0);
