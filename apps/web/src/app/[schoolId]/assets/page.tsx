@@ -84,11 +84,21 @@ function typeIcon(mime: string, size = 'w-5 h-5') {
   return <File className={`${size} text-slate-400`} />;
 }
 
-function typeBadge(mime: string) {
+function typeBadge(mime: string, opts?: { onImage?: boolean }) {
   const ext = mime?.split('/')[1]?.toUpperCase() || 'FILE';
   const short = ext === 'JPEG' ? 'JPG' : ext === 'QUICKTIME' ? 'MOV' : ext === 'MPEG' ? 'MP3' : ext.substring(0, 4);
+  const type = getAssetType(mime);
+  // 2026-06-16 — `onImage` variant: a translucent tint (bg-*/10 + *-600 text)
+  // is unreadable when the badge sits OVER a thumbnail (the grid tile). There
+  // it uses a dark scrim + a light type-tinted ink — legible on ANY image and
+  // visually consistent with the resolution badge's dark pill. The default
+  // (translucent tint) is kept for the list view, which is on a white row.
+  if (opts?.onImage) {
+    const ink: Record<string, string> = { images: 'text-sky-300', videos: 'text-violet-300', audio: 'text-amber-300', urls: 'text-emerald-300', documents: 'text-rose-300' };
+    return <span className={`text-[9px] font-black px-1.5 py-0.5 rounded bg-black/55 backdrop-blur-sm ${ink[type] || 'text-slate-200'}`}>{short}</span>;
+  }
   const c: Record<string, string> = { images: 'bg-sky-500/10 text-sky-600', videos: 'bg-violet-500/10 text-violet-600', audio: 'bg-amber-500/10 text-amber-600', urls: 'bg-emerald-500/10 text-emerald-600', documents: 'bg-rose-500/10 text-rose-600' };
-  return <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${c[getAssetType(mime)] || 'bg-slate-100 text-slate-500'}`}>{short}</span>;
+  return <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${c[type] || 'bg-slate-100 text-slate-500'}`}>{short}</span>;
 }
 
 function fmtSize(bytes: number | null | undefined) {
@@ -1113,7 +1123,17 @@ export default function AssetsPage() {
                   ) : (
                     typeIcon(a.mimeType, 'w-8 h-8')
                   )}
-                  <div className="absolute top-1.5 right-1.5 group-hover:opacity-0 transition-opacity">{typeBadge(a.mimeType)}</div>
+                  {/* 2026-06-16 — type tag moved to the BOTTOM-LEFT corner.
+                      It used to sit top-right (top-1.5 right-1.5) where it
+                      collided with the always-on-touch delete trash (top-2.5
+                      right-2.5): on a phone both rendered in the same corner
+                      and, because each file type's badge is a different width,
+                      the red delete square appeared shoved to a different spot
+                      on every tile ("delete icons all over"). Four clean
+                      corners now: ☐ select TL · 🗑 delete TR · tag BL · res BR.
+                      No hover-hide needed — it no longer contends with the
+                      trash, so the tag stays consistently visible. */}
+                  <div className="absolute bottom-1.5 left-1.5">{typeBadge(a.mimeType, { onImage: true })}</div>
                   {thumb && (
                     <span data-res="" className="absolute bottom-1.5 right-1.5 text-[9px] font-bold text-white bg-black/50 backdrop-blur-sm px-1.5 py-0.5 rounded" />
                   )}
