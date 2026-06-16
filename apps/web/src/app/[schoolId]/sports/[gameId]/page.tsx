@@ -73,6 +73,7 @@ import { RibbonPanel } from './RibbonPanel';
 import { RibbonPresetsPanel } from './RibbonPresetsPanel';
 import { RibbonImagesPanel } from './RibbonImagesPanel';
 import { SurfacePreview } from './SurfacePreview';
+import { ConsoleScoreboardCelebration } from './ConsoleScoreboardCelebration';
 import { SurfaceHealthPills } from './SurfaceHealthPills';
 import { AssetPicker } from '@/components/assets/AssetPicker';
 import { RecentEventsBar } from './RecentEventsBar';
@@ -1398,14 +1399,28 @@ function RunMode({
         <>
           <div className="flex-1 min-h-0 overflow-y-auto">
             {showScoreboard && (
-              <RunInteractiveScoreboard
-                g={g}
-                def={def}
-                liveMs={liveMs}
-                homeColor={homeColor}
-                awayColor={awayColor}
-                ctl={ctl}
-              />
+              // relative wrapper so the celebration overlay can sit ON the
+              // interactive scoreboard — the operator sees a fired cue play
+              // right here, not only on the ribbon preview / popped-out board.
+              <div className="relative">
+                <RunInteractiveScoreboard
+                  g={g}
+                  def={def}
+                  liveMs={liveMs}
+                  homeColor={homeColor}
+                  awayColor={awayColor}
+                  ctl={ctl}
+                />
+                <ConsoleScoreboardCelebration
+                  gameId={gameId}
+                  sport={def.key}
+                  pack={
+                    g?.stats?.celebrationPack === 'v2' || def.key === 'basketball'
+                      ? 'v2'
+                      : 'v1'
+                  }
+                />
+              </div>
             )}
             {/* Meet results / per-apparatus grid. Leaderboard sports have
                 no team-tile scoring worth touching during a meet — finish
