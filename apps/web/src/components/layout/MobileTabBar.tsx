@@ -180,7 +180,15 @@ export function MobileTabBar() {
             onClick={() => setMoreOpen(false)}
             className="absolute top-0 right-0 bottom-0 left-0 bg-slate-900/40 animate-in fade-in duration-150"
           />
-          <div className="absolute bottom-0 right-0 left-0 bg-white rounded-t-2xl shadow-[0_-8px_30px_rgba(0,0,0,0.14)] pb-[calc(64px+env(safe-area-inset-bottom))] animate-in slide-in-from-bottom duration-200">
+          <div
+            // 2026-06-16 mobile-perf: will-change hints the compositor to
+            // promote the sheet to its own layer up-front so the slide-up
+            // animation runs on the GPU without a layout/paint stall on the
+            // first frame ("doesn't pop up right away"). contain:paint isolates
+            // its repaint from the rest of the page.
+            style={{ willChange: 'transform', contain: 'paint' }}
+            className="absolute bottom-0 right-0 left-0 bg-white rounded-t-2xl shadow-[0_-8px_30px_rgba(0,0,0,0.14)] pb-[calc(64px+env(safe-area-inset-bottom))] animate-in slide-in-from-bottom duration-200"
+          >
             <div className="flex items-center justify-between px-5 pt-4 pb-1.5">
               <span className="text-sm font-bold text-slate-800">More</span>
               <button
@@ -221,7 +229,11 @@ export function MobileTabBar() {
         // Hidden above the md breakpoint where the sidebar takes over.
         // pb-safe respects the iOS home indicator inset so the labels
         // don't get cut off on iPhone X+ devices.
-        className="md:hidden fixed bottom-0 right-0 left-0 z-[60] bg-white/95 backdrop-blur-md border-t border-slate-200 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_20px_rgba(0,0,0,0.04)]"
+        // 2026-06-16 mobile-perf: was `bg-white/95 backdrop-blur-md`. The bar
+        // is already opaque, so the backdrop-blur was an imperceptible but
+        // real per-repaint GPU cost on a position:fixed element that repaints
+        // on every scroll/animation frame. Solid bg-white, no backdrop-filter.
+        className="md:hidden fixed bottom-0 right-0 left-0 z-[60] bg-white border-t border-slate-200 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_20px_rgba(0,0,0,0.04)]"
         aria-label="Primary"
       >
         <div className="flex items-stretch justify-around">

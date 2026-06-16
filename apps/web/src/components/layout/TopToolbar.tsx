@@ -51,7 +51,11 @@ export function TopToolbar() {
 
   return (
     <>
-      <header className="h-[73px] bg-white/60 backdrop-blur-xl px-4 sm:px-8 flex items-center justify-between sticky top-0 z-20 transition-all duration-300">
+      {/* 2026-06-16 mobile-perf: backdrop-blur-xl is one of the most expensive
+          mobile composites (it re-samples + blurs everything behind the sticky
+          header on every repaint). On phones use a near-opaque solid bg and NO
+          backdrop-filter; keep the premium glass on md+ where it's cheap. */}
+      <header className="h-[73px] bg-white/90 backdrop-blur-none md:bg-white/60 md:backdrop-blur-xl px-4 sm:px-8 flex items-center justify-between sticky top-0 z-20 transition-all duration-300">
         {/* Left — hamburger on mobile, spacer on desktop */}
         <div className="flex-1 flex items-center">
           <button

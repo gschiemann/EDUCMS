@@ -13,7 +13,13 @@ export function useTenantStatus() {
     // rare case a client loses WS. 5s was overkill and was hammering the
     // API on every page because this hook mounts in the global shell.
     refetchInterval: 30_000,
-    refetchIntervalInBackground: true,
+    // 2026-06-16 mobile-perf: do NOT poll while the tab/app is backgrounded —
+    // it's pure main-thread + battery drain on a phone the operator isn't even
+    // looking at, and a poll landing as they tap back in queues the tap. WS is
+    // the load-bearing emergency path; on return we re-check immediately via
+    // refetchOnWindowFocus (cheap, one call) instead of polling in the dark.
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -31,7 +37,11 @@ export function useScreenGroups() {
     // without requiring a hard refresh or window-focus event. staleTime
     // 0 so every interval hits the network — fleet state changes fast.
     refetchInterval: 10_000,
-    refetchIntervalInBackground: true,
+    // 2026-06-16 mobile-perf: stop polling a backgrounded tab (drain + tap-
+    // queue jank on mobile). The documented "pill flips while the tab isn't
+    // focused" intent is preserved by refetchOnWindowFocus — on return we
+    // refetch immediately; while visible the 10s interval still runs.
+    refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
     staleTime: 0,
@@ -135,7 +145,10 @@ export function useScreens() {
     // device dies → server marks OFFLINE on next list call → dashboard
     // picks it up within 10s = ~55s total lag.
     refetchInterval: 10_000,
-    refetchIntervalInBackground: true,
+    // 2026-06-16 mobile-perf: no background-tab polling (see useScreenGroups).
+    // Visible = 10s live fleet status; backgrounded = paused; on return =
+    // immediate refetch via refetchOnWindowFocus.
+    refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
     staleTime: 0,
@@ -807,7 +820,10 @@ export function usePendingAssets(enabled: boolean = true) {
     queryKey: ['assets', 'pending'],
     queryFn: () => apiFetch<any[]>('/assets/pending'),
     refetchInterval: 30_000,
-    refetchOnWindowFocus: true,
+    // 2026-06-16 mobile-perf: no focus-burst — the 30s interval keeps the
+    // reviewer badge fresh while the tab is visible; firing an extra refetch
+    // on every app-switch just adds tap-time contention on mobile.
+    refetchOnWindowFocus: false,
     // Off-switch so non-admin tabs (CONTRIBUTOR / RESTRICTED_VIEWER)
     // don't fire a recurring 403 every 30s when the sidebar wants a
     // badge count — keep the query dormant until we know the caller
@@ -1582,9 +1598,13 @@ export function useNotifications() {
   return useQuery<{ items: Array<any>; unreadCount: number }>({
     queryKey: ['notifications'],
     queryFn: () => apiFetch('/notifications?limit=20'),
-    // Light-weight polling per CLAUDE.md guidance: 30s, also refetch on window focus
+    // 30s poll keeps the bell/badge fresh while visible. 2026-06-16 mobile-
+    // perf: dropped refetchOnWindowFocus — this hook mounts in the global
+    // MobileTabBar, so a focus-burst on every app-switch re-rendered the whole
+    // bottom nav right as the operator was tapping it. The 30s interval is
+    // enough; the bell isn't time-critical.
     refetchInterval: 30_000,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
   });
 }
 

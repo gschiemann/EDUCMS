@@ -131,14 +131,20 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               tenant's color, falls back to indigo when no brand.
             • Top blob pushed to `top-[100px]` so it sits BELOW the
               73px topbar, no more bleed into the menu zone. */}
+      {/* 2026-06-16 mobile-perf: `hidden md:block`. These are decorative
+          ambient-glow blobs with blur-[100px]/[120px] — on a phone GPU a blur
+          radius that large relative to the viewport is a heavy per-frame
+          composite, and it sits BEHIND the toolbar's backdrop-blur, so every
+          repaint (a tab tap, the More sheet sliding up) re-blurs them. They're
+          imperceptible decoration on a 390px screen; desktop keeps the ambiance. */}
       <div
-        className="absolute top-[100px] right-0 w-96 h-96 rounded-full blur-[100px] pointer-events-none -z-0"
+        className="hidden md:block absolute top-[100px] right-0 w-96 h-96 rounded-full blur-[100px] pointer-events-none -z-0"
         style={{
           background: 'color-mix(in srgb, var(--brand-primary, #6366f1) 12%, transparent)',
         }}
       />
       <div
-        className="absolute bottom-0 left-64 w-[500px] h-[500px] rounded-full blur-[120px] pointer-events-none -z-0"
+        className="hidden md:block absolute bottom-0 left-64 w-[500px] h-[500px] rounded-full blur-[120px] pointer-events-none -z-0"
         style={{
           background: 'color-mix(in srgb, var(--brand-primary, #10b981) 8%, transparent)',
         }}
