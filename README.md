@@ -1,108 +1,138 @@
-# EDU CMS — Local Development Setup
+<div align="center">
 
-## Prerequisites
+# VenueOS
 
-- **Docker Desktop** (for PostgreSQL + Redis)
-- **Node.js 18+** 
-- **pnpm** (`npm install -g pnpm`)
+### One platform for every screen a school or venue runs.
 
-## Quick Start (3 commands)
+**Everyday signage · native life-safety alerts · live sports presentation — on the same displays.**
 
-```powershell
-# 1. Start PostgreSQL + Redis via Docker
+[Quickstart](#quickstart) · [Architecture](#architecture) · [Documentation map](#documentation-map) · [Deploy &amp; health](#deploy--health) · [Contributing](./CONTRIBUTING.md)
+
+</div>
+
+---
+
+## What this is
+
+VenueOS is a secure, real-time signage **and emergency-alert** CMS. It started in K-12 — interactive displays, digital signage, and life-safety lockdown / weather / evacuation alerts across thousands of screens — and is now **multi-vertical**: school districts, live **sports venues** (scoreboards, ribbon boards, full game presentation), and QSR / restaurant / retail / worship / corporate.
+
+The wedge is simple: **one platform that runs everyday signage *and* native life-safety *and* (in sports) full game presentation on the same screens** — so the board earns its keep five days a week, not just on Friday night.
+
+Three things make it more than a slideshow player:
+
+- **Life-safety is load-bearing, not a feature.** A single trigger fans a signed, audited lockdown / weather / evacuate alert to every screen in scope over WebSockets, with an HTTP-polling fallback when Redis is down. Every trigger and all-clear is immutably logged. See [`docs/spec/THREAT_MODEL.md`](./docs/spec/THREAT_MODEL.md) and the emergency-system section of [`CLAUDE.md`](./CLAUDE.md).
+- **Real-time at fleet scale.** Signed pub/sub over Redis, per-event dedup, canary rollouts, offline-tolerant kiosk players (down to Chromium 83 on NovaStar Taurus LED controllers).
+- **The operator does the work in seconds, not with a consultant.** Auto-detecting integration concierge, brandable templates, one-click game presentation.
+
+> **New here?** Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) first — it lists the five docs to read in order. The code-verified status of what is *actually shipped* lives in [`docs/research/2026-05-28-opus48-audit/00-MASTER-SYNTHESIS.md`](./docs/research/2026-05-28-opus48-audit/00-MASTER-SYNTHESIS.md).
+
+---
+
+## Tech stack
+
+| Layer | Choice |
+|---|---|
+| **Backend** | NestJS 11 + Express · Prisma ORM · PostgreSQL 17 (Supabase) · Redis |
+| **Frontend** | Next.js 16 (App Router) · React 19 · Zustand · Tailwind CSS 4 · shadcn/Base UI · React Query |
+| **Player** | Android kiosk (offline-first, USB sneakernet ingest) |
+| **Monorepo** | Turborepo + pnpm |
+| **Auth** | Argon2id · JWT + HttpOnly cookies · express-session |
+| **Realtime** | Signed WebSocket messages over Redis pub/sub, HTTP-polling fallback |
+| **Storage** | Supabase (Postgres + object storage) |
+| **Testing** | Jest (API) · Playwright (E2E + cross-browser) |
+| **Deploy** | Railway (API) · Vercel (web) — push to `master` ships to production |
+
+---
+
+## Quickstart
+
+**Prerequisites:** Node.js 20+, [pnpm](https://pnpm.io) (`pnpm@9`), and a Postgres + Redis you can reach. The fastest local path uses the bundled `docker-compose.yml`.
+
+```bash
+# 1. Install dependencies
+pnpm install
+
+# 2. Configure env (copy the template, fill in DATABASE_URL etc.)
+cp .env.example .env
+
+# 3a. Local DB via Docker (optional — skip if you point .env at Supabase)
 docker compose up db redis -d
 
-# 2. Push schema and seed the database
-pnpm run db:setup
+# 4. Push the Prisma schema and seed test data
+pnpm db:setup            # = db:push && db:seed
 
-# 3. Start both API + Frontend in dev mode
-pnpm run dev:api    # Terminal 1 — NestJS on :8080
-pnpm run dev:web    # Terminal 2 — Next.js on :3000
+# 5. Run the API + web dashboard together (watch mode)
+pnpm dev                 # API on :8080, web on :3000
 ```
 
-## Login
+Then open **http://localhost:3000/login**. The seed creates a Super Admin and a Contributor for the demo school (`00000000-0000-0000-0000-000000000002`) — credentials are printed by `pnpm db:seed`.
 
-Open **http://localhost:3000/login**
+Run one side alone with `pnpm dev:api` / `pnpm dev:web`. See [`CLAUDE.md` → How to Run](./CLAUDE.md) for the full command set (build, migrate, test, lint).
 
-| Email | Password | Role |
-|---|---|---|
-| `admin@springfield.edu` | `admin123` | Super Admin |
-| `teacher@springfield.edu` | `admin123` | Contributor |
+> ⚠️ **`DATABASE_URL` gotcha:** when using the Supabase pooler you **must** append `&connection_limit=10&pool_timeout=20`. Prisma's default under pgBouncer is **1 connection**, which makes every concurrent request time out. This has bitten us repeatedly — the full env-var reference is in [`CLAUDE.md`](./CLAUDE.md).
 
-## Available Pages
-
-| Route | Description |
-|---|---|
-| `/login` | Authentication |
-| `/{schoolId}/dashboard` | Live stats, audit feed, device health |
-| `/{schoolId}/screens` | Screen groups with create + online/offline |
-| `/{schoolId}/playlists` | Playlist list, drag-drop timeline |
-| `/{schoolId}/assets` | File upload with progress + approve/reject |
-| `/{schoolId}/announcements` | Announcement composer with HTML sanitization |
-| `/{schoolId}/settings` | School profile + user management CRUD |
-
-The seed school ID is `00000000-0000-0000-0000-000000000002`.
-
-## API Endpoints
-
-All endpoints require JWT auth (`Authorization: Bearer <token>`).
-
-```
-POST   /api/v1/auth/login         — Login (returns JWT + user)
-GET    /api/v1/stats/overview      — Dashboard stats
-GET    /api/v1/audit/recent        — Recent audit logs
-GET    /api/v1/screen-groups       — List screen groups with screens
-POST   /api/v1/screen-groups       — Create group
-GET    /api/v1/playlists           — List playlists with items
-POST   /api/v1/playlists           — Create playlist
-DELETE /api/v1/playlists/:id       — Delete playlist
-GET    /api/v1/assets              — List all assets
-POST   /api/v1/assets/upload       — Upload file (multipart/form-data)
-PUT    /api/v1/assets/:id/approve  — Approve pending asset
-PUT    /api/v1/assets/:id/reject   — Reject pending asset
-GET    /api/v1/users               — List users
-POST   /api/v1/users               — Create user (Argon2id hashed)
-PUT    /api/v1/users/:id/role      — Update user role
-DELETE /api/v1/users/:id           — Delete user
-GET    /api/v1/schedules           — List schedules
-POST   /api/v1/schedules           — Create schedule
-DELETE /api/v1/schedules/:id       — Delete schedule
-POST   /api/v1/emergency/trigger   — Trigger emergency broadcast
-```
+---
 
 ## Architecture
 
 ```
 EDU CMS/
 ├── apps/
-│   ├── api/          — NestJS 11 backend (port 8080)
-│   └── web/          — Next.js 16 frontend (port 3000)
+│   ├── api/          NestJS 11 API server         (port 8080)
+│   ├── web/          Next.js 16 dashboard + player routes (port 3000)
+│   └── player/       Android kiosk player
 ├── packages/
-│   ├── database/     — Prisma schema + seed + AppRole enum
-│   ├── api-types/    — Shared TypeScript API types
-│   ├── auth-core/    — Auth utilities
-│   └── ws-events/    — WebSocket event types
-├── docker-compose.yml
-└── .env
+│   ├── database/     Prisma schema + @prisma/client + seed
+│   ├── api-types/    Shared TypeScript API contracts
+│   ├── auth-core/    JWT / Argon2 / session helpers
+│   ├── ws-events/    WebSocket event types + signed-message helpers
+│   └── scoreboard-cts/  Sports console / game-state engine
+└── docs/             Specs, design, research, archive, roadmap
 ```
 
-## Troubleshooting
+The domain model (Tenant → Screen / ScreenGroup / Playlist / Schedule / Asset / Template / AuditLog), the 5-role RBAC matrix, the emergency endpoints, and the template/widget system are all documented in [`CLAUDE.md`](./CLAUDE.md) and [`docs/spec/DOMAIN_MODEL.md`](./docs/spec/DOMAIN_MODEL.md).
 
-**"ECONNREFUSED" on API start:** Docker containers aren't running.
-```powershell
-docker compose up db redis -d
-```
+---
 
-**"relation does not exist":** Schema hasn't been pushed.
-```powershell
-pnpm run db:push
-```
+## Documentation map
 
-**"Invalid credentials" on login:** Database needs seeding.
-```powershell
-pnpm run db:seed
-```
+The repo root is intentionally small — four files. Everything else lives under `docs/`.
 
-**Redis connection warning:** This is fine — the API runs without Redis, you just won't have realtime WebSocket or token revocation features.
+| Where | What | Read it when |
+|---|---|---|
+| **[`CLAUDE.md`](./CLAUDE.md)** | **The source of truth.** Architecture, env vars, conventions, emergency safeguards, hard-won rules (render-tree #9, Chromium-83/Taurus CSS #10), the 21-section Standard Audit Surface, agent-dispatch protocol. | Before touching anything. |
+| [`AGENTS.md`](./AGENTS.md) | The same developer guide, in the standard `AGENTS.md` filename for non-Claude agent tools. | You're using Codex/Cursor/etc. |
+| [`CONTRIBUTING.md`](./CONTRIBUTING.md) | The 5-doc reading list, preflight, verify-before-claim, parallel-agent worktree discipline, conventions. | First contribution. |
+| [`docs/research/INDEX.md`](./docs/research/INDEX.md) | Navigable index of every audit & deep-dive session. The **canonical app status** is the [2026-05-28 master synthesis](./docs/research/2026-05-28-opus48-audit/00-MASTER-SYNTHESIS.md). | You need ground truth on what's actually shipped. |
+| [`docs/spec/`](./docs/spec/) | The engineering specs — RBAC, realtime, sync protocol, threat model, device provisioning, failure modes, test strategy, and more. | Implementing or changing a subsystem. |
+| [`docs/roadmap/ROADMAP.md`](./docs/roadmap/ROADMAP.md) | Forward-looking sprint plan and the multi-vertical / safety-platform vision. | Planning new work. |
+| [`docs/OBSERVABILITY.md`](./docs/OBSERVABILITY.md) · [`docs/FEATURE_FLAGS.md`](./docs/FEATURE_FLAGS.md) · [`docs/BACKUP_AND_ROLLBACK.md`](./docs/BACKUP_AND_ROLLBACK.md) | How we watch, gate, and roll back. | Shipping anything risky. |
+| [`docs/design/`](./docs/design/) · [`docs/template-finalization/`](./docs/template-finalization/) | Template standards and the design pipeline. | Building or redoing a template. |
+| [`docs/archive/`](./docs/archive/) | Pre-launch April-2026 design docs + beta-testing logs. **Historical only — they describe a system that diverged from what shipped.** | Provenance only. Do not treat as current. |
 
-**OneDrive symlink errors during pnpm install:** OneDrive locks files. Pause OneDrive sync, run `pnpm install`, then resume.
+---
+
+## Deploy &amp; health
+
+Push to `master` deploys the API to **Railway** and the web app to **Vercel**. Always wait for green CI (`Deploy Reliability`) before considering anything shipped — `pnpm preflight` runs the same non-Docker checks locally in ~90 seconds.
+
+Health endpoints (all under `/api/v1`):
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | Liveness — always 200, even when DB/Redis degraded. Railway healthcheck uses this. |
+| `GET /health/ready` | Readiness — 503 when DB unreachable. For monitoring, not Railway. |
+| `GET /health/emergency-path` | Verifies DB + WS signer chain before a life-safety drill. |
+
+Recovery runbooks (Railway redeploys, Vercel env, Supabase pooler, Redis fallback) are in [`CLAUDE.md` → Deploy reliability](./CLAUDE.md).
+
+---
+
+## A few non-negotiables
+
+- **The repo is public** (`github.com/gschiemann/EDUCMS`). Never commit `.env*`, API keys, or PII — secrets live in env vars only.
+- **Never weaken emergency safeguards** (the `@AllowPanicBypass` decorator, the immutable audit log, signed WS messages) without explicit review.
+- **Cross-browser is mandatory.** Every customer-facing surface must work in Safari/WebKit; player surfaces must also survive Chromium 83–87 (Taurus LED). Never use the CSS `inset` shorthand or Tailwind `inset-*` in widget/player styles.
+- **Migrations are additive-only** while a live pilot tenant is in production.
+
+Full rationale for each — and the scars that earned them — is in [`CLAUDE.md`](./CLAUDE.md).
