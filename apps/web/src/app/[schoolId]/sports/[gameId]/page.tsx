@@ -1861,6 +1861,58 @@ function PaRosterPicker({
  *
  *  Replaces the old RunLivePreview (side-by-side iframes) — the
  *  ribbon preview moves to its own row below this. */
+/** Manual game-clock entry — type an exact M:SS to set/correct the clock,
+ *  like every pro scoreboard console. We only had ±1s nudges before; the
+ *  operator asked to "type exactly how much time left to fix it." Uses the
+ *  same `set` action the nudges use; parseClock accepts M:SS … MMM:SS. */
+function ClockTypeIn({ liveMs, onSet }: { liveMs: number; onSet: (ms: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const begin = () => { setText(fmtClock(liveMs)); setOpen(true); };
+  const commit = () => {
+    const ms = parseClock(text);
+    if (ms != null) onSet(ms);
+    setOpen(false);
+  };
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={begin}
+        className="min-h-[44px] px-3 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 font-bold text-sm transition-colors border border-slate-700"
+        title="Type an exact time (M:SS) to correct the clock"
+      >
+        ⌨ Set time
+      </button>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <input
+        autoFocus
+        type="text"
+        inputMode="numeric"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit();
+          if (e.key === 'Escape') setOpen(false);
+        }}
+        placeholder="M:SS"
+        aria-label="Set clock time, minutes colon seconds"
+        className="w-20 min-h-[44px] text-center text-xl font-black tabular-nums rounded-lg bg-slate-950 border border-amber-500 text-white outline-none"
+      />
+      <button
+        type="button"
+        onClick={commit}
+        className="min-h-[44px] px-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-black text-sm"
+      >
+        Set
+      </button>
+    </span>
+  );
+}
+
 function RunInteractiveScoreboard({
   g,
   def,
@@ -1997,6 +2049,11 @@ function RunInteractiveScoreboard({
                 >
                   +1s
                 </button>
+                {/* Manual time entry — type an exact M:SS to correct the clock. */}
+                <ClockTypeIn
+                  liveMs={liveMs}
+                  onSet={(ms) => ctl.clock.mutate({ action: 'set', ms })}
+                />
               </div>
             </>
           ) : (
@@ -6171,17 +6228,17 @@ function LayoutsPanel({
   // sport-celebration animations played instead of the cinematic
   // CEL_* library. Filtering surfaces only RIBBON templates in the
   // RIBBON dropdown so they can't miss it.
+  // 2026-06-16 — filter STRICTLY by sports category, NOT aspect ratio. The
+  // old `ratio < 3` scoreboard catch-all swept in every vertical's 1920×1080
+  // template (Touch Kiosk, QSR menus, Worship, Healthcare, …) — the operator
+  // saw "Touch Kiosk — Veterinary Check-In" in the scoreboard dropdown. Only
+  // sports-board categories belong on a sports surface.
+  const SCOREBOARD_CATS = new Set(['SCOREBOARD', 'SPORTS', 'GAMEDAY', 'ATHLETICS', 'EVENTS']);
   function aspectMatches(t: typeof list[number], surface: 'scoreboard' | 'ribbon' | 'scorebug'): boolean {
-    const w = t.screenWidth || 1920;
-    const h = t.screenHeight || 1080;
-    const ratio = w / Math.max(h, 1);
-    // Honor explicit category first.
     const cat = (t.category || '').toUpperCase();
-    if (surface === 'ribbon')    return cat === 'RIBBON'    || ratio >= 5;
-    if (surface === 'scorebug')  return cat === 'SCOREBUG'  || (ratio >= 3 && ratio < 5);
-    // Scoreboard = everything else: 16:9 video walls, custom-canvas
-    // boards, plus operator-created mixed-aspect designs.
-    return cat === 'SCOREBOARD' || ratio < 3;
+    if (surface === 'ribbon')   return cat === 'RIBBON';
+    if (surface === 'scorebug') return cat === 'SCOREBUG' || cat === 'SPONSOR';
+    return SCOREBOARD_CATS.has(cat);
   }
 
   const ROW: Array<{
