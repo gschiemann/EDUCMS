@@ -136,10 +136,20 @@
   if (!cueKey || !window.VENUE) return;
 
   if (format === 'ribbon') {
-    cv.width = 2400;
-    cv.height = 256;
+    // 2026-06-16 — size the ribbon canvas to the ACTUAL ribbon surface
+    // (any length × its REAL height, e.g. ~328px), not a fixed 2400×256.
+    // The <iframe> is already sized to the ribbon by the route's CSS, so
+    // window.inner{Width,Height} = the real strip in CSS px; ×dpr gives a
+    // native-resolution, NON-stretched render at any length. runRibbon lays
+    // out proportionally to W/H, so it adapts to any ribbon aspect.
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var rw = Math.round((window.innerWidth || 2400) * dpr);
+    var rh = Math.round((window.innerHeight || 256) * dpr);
+    cv.width = Math.max(640, Math.min(rw || 2400, 5120));
+    cv.height = Math.max(120, rh || 256);
     VENUE.runRibbon(cv, cueKey);
   } else {
+    // Scoreboard — fixed 16:9 board buffer (1080p), CSS-scaled to fit.
     cv.width = 1920;
     cv.height = 1080;
     VENUE.runScoreboard(cv, cueKey);
