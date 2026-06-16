@@ -192,7 +192,7 @@ export class PlaylistsController {
     const playlist = await this.prisma.client.playlist.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!playlist) return { error: 'Not found' };
+    if (!playlist) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
 
     const res = await this.prisma.client.playlist.update({
       where: { id },
@@ -213,7 +213,7 @@ export class PlaylistsController {
     const playlist = await this.prisma.client.playlist.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!playlist) return { error: 'Not found' };
+    if (!playlist) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
 
     // HIGH-1 audit fix: validate every assetId in the body actually
     // belongs to the caller's tenant. Without this, a user could insert
@@ -352,7 +352,7 @@ export class PlaylistsController {
     const playlist = await this.prisma.client.playlist.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!playlist) return { error: 'Not found' };
+    if (!playlist) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
 
     // Refuse to delete a protected (emergency) playlist. The settings
     // page manages these; deleting one would silently break a future

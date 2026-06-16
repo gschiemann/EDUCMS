@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Res, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Res, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
@@ -136,7 +136,7 @@ export class ScreenGroupsController {
     const group = await this.prisma.client.screenGroup.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!group) return { error: 'Not found' };
+    if (!group) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
 
     return this.prisma.client.screenGroup.update({
       where: { id },
@@ -150,7 +150,7 @@ export class ScreenGroupsController {
     const group = await this.prisma.client.screenGroup.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!group) return { error: 'Not found' };
+    if (!group) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
 
     // Assign screens to this group (tenant-scoped)
     await this.prisma.client.screen.updateMany({
@@ -170,7 +170,7 @@ export class ScreenGroupsController {
     const group = await this.prisma.client.screenGroup.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!group) return { error: 'Not found' };
+    if (!group) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
 
     // 2026-05-23 launch audit P1: deleting a screen group orphans
     // every Schedule that targeted it (those rows still exist but

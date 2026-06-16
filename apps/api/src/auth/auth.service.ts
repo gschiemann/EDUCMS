@@ -51,7 +51,11 @@ export class AuthService {
    * then auto-upgrades the hash.
    */
   async validateUser(email: string, pass: string): Promise<any> {
-    const user = await this.prisma.client.user.findUnique({ where: { email } });
+    const found = await this.prisma.client.user.findUnique({ where: { email } });
+    // 2026-06-16 — a soft-deleted user must never authenticate. The delete
+    // path also anonymizes the email, but defend in depth: treat a deletedAt
+    // row as no-user so the timing-equalized dummy-verify branch still runs.
+    const user = found && !(found as any).deletedAt ? found : null;
     if (!user) {
       // auth-BUG-006: even though we have nothing to verify, run a
       // dummy argon2.verify so the response time matches the

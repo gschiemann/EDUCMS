@@ -370,6 +370,13 @@ model User {
   email                String               @unique
   passwordHash         String               @map("password_hash")
   role                 String
+  // 2026-06-16 — soft-delete (Wave 2). Hard delete 500'd on any user with
+  // history: 3 required User relations default to FK Restrict and the
+  // audit_logs userId relation can't SetNull because the audit table has an
+  // immutability trigger. Soft-delete sets this, anonymizes the email to free
+  // the @unique slot, and revokes sessions — every FK reference + the audit
+  // trail stays intact. The user list + login filter on deletedAt IS NULL.
+  deletedAt            DateTime?            @map("deleted_at")
   // 2026-05-11 — user profile names. Operator: "let's say Hi Greg
   // not gschiemann." Nullable so legacy rows keep loading; display
   // logic falls back to email-prefix when null. Two columns instead

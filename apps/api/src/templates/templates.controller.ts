@@ -485,7 +485,7 @@ export class TemplatesController {
         createdBy: { select: { id: true, email: true, role: true } },
       } as any,
     });
-    if (!template) return { error: 'Not found' };
+    if (!template) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
     return mapTemplate(template);
   }
 
@@ -1130,7 +1130,7 @@ export class TemplatesController {
       },
       include: { zones: { orderBy: { sortOrder: 'asc' } } },
     });
-    if (!source) return { error: 'Not found' };
+    if (!source) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
 
     // Resolve canvas size: explicit body overrides win, otherwise inherit
     // the source's dimensions. Cap inputs at sane bounds — anything
@@ -1330,7 +1330,7 @@ export class TemplatesController {
     const template = await this.prisma.client.template.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!template) return { error: 'Not found' };
+    if (!template) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
     if (template.isSystem) {
       throw new HttpException('Cannot modify system templates. Duplicate it first.', HttpStatus.FORBIDDEN);
     }
@@ -1386,7 +1386,7 @@ export class TemplatesController {
     const template = await this.prisma.client.template.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!template) return { error: 'Not found' };
+    if (!template) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
     if (template.isSystem) {
       throw new HttpException('Cannot modify system templates. Duplicate it first.', HttpStatus.FORBIDDEN);
     }
@@ -1475,7 +1475,7 @@ export class TemplatesController {
     const template = await this.prisma.client.template.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!template) return { error: 'Not found' };
+    if (!template) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
     if (template.isSystem) {
       throw new HttpException('Cannot delete system templates', HttpStatus.FORBIDDEN);
     }

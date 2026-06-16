@@ -101,7 +101,7 @@ export class UsersController {
   async list(@Request() req: any) {
     const tenantId = req.user.tenantId;
     const users = await this.prisma.client.user.findMany({
-      where: { tenantId },
+      where: { tenantId, deletedAt: null } as any,
       // 2026-05-11 — return firstName/lastName so the team list can
       // show real names instead of email prefixes.
       select: { id: true, email: true, role: true, createdAt: true, firstName: true, lastName: true } as any,
@@ -453,12 +453,17 @@ export class UsersController {
     }
 
     const user = await this.prisma.client.user.findFirst({
-      where: { id, tenantId },
+      where: { id, tenantId, deletedAt: null } as any,
     });
     if (!user) throw new HttpException('User not found', HttpStatus.NOT_FOUND);
 
-    // Delete + audit atomically so an account deletion always leaves a record
-    // (captured BEFORE the row is gone, in the same transaction).
+    // Soft-delete + audit atomically. A hard delete 500'd on any user with
+    // history (3 required User relations default to FK Restrict, and the
+    // audit_logs userId relation can't SetNull because audit_logs has an
+    // immutability trigger). Soft-delete retains the row so every FK reference
+    // and the audit trail stay intact; we anonymize the email to free the
+    // @unique slot for re-invite and stamp deletedAt so the list + login
+    // exclude it. (Wave 2 — full-company audit P1.)
     await this.prisma.client.$transaction(async (tx: any) => {
       await tx.auditLog.create({
         data: {
@@ -470,8 +475,24 @@ export class UsersController {
           details: JSON.stringify({ email: user.email, role: user.role }),
         },
       });
-      await tx.user.delete({ where: { id } });
+      await tx.user.update({
+        where: { id },
+        data: {
+          deletedAt: new Date(),
+          email: `deleted+${id}@deleted.local`,
+        } as any,
+      });
     });
+    // Burn the deleted user's live sessions immediately. Best-effort: the row
+    // is already soft-deleted and the email freed, so they cannot re-login even
+    // if this Redis call can't run.
+    try {
+      await this.redis.markUserTokensInvalid(id);
+    } catch (e) {
+      this.logger.warn(
+        `markUserTokensInvalid failed for deleted user ${id}: ${e instanceof Error ? e.message : e}`,
+      );
+    }
     return { deleted: true };
   }
 }
