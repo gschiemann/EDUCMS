@@ -144,6 +144,7 @@
   function frame(ms){
     if(!startMs){startMs=ms;prevMs=ms;}
     var t=ms-startMs,dt=Math.min(0.05,(ms-prevMs)/1000);prevMs=ms;
+    var rawT=t; if(PAUSE==null&&t>T.hold)t=T.hold; /* 2026-06-15 play-once: hold hero frame at peak, skip fade-out (matches v2 engine) */
     ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,W,H);
     drawBackground(t);
     updateBall(t,dt);drawBall(t);
@@ -152,8 +153,8 @@
     drawType(t);
     if(t<T.fadeIn){ctx.fillStyle='rgba(4,10,18,'+(1-t/T.fadeIn)+')';ctx.fillRect(0,0,W,H);}
     if(t>T.hold){var fo=seg(t,T.hold,T.end);ctx.fillStyle='rgba(4,10,18,'+fo+')';ctx.fillRect(0,0,W,H);}
-    if(PAUSE!=null&&t>=PAUSE)return;
-    if(t<T.end)rafId=requestAnimationFrame(frame);
+    if(PAUSE!=null&&rawT>=PAUSE)return;
+    if(PAUSE!=null?rawT<T.end:rawT<T.hold)rafId=requestAnimationFrame(frame);
   }
   document.getElementById('replay').addEventListener('click',reset);
   var sw=document.querySelectorAll('.sw');

@@ -219,6 +219,7 @@
   function frame(ms){
     if(!startMs){startMs=ms;prevMs=ms;}
     var t=ms-startMs,dt=Math.min(0.05,(ms-prevMs)/1000);prevMs=ms;
+    var rawT=t; if(PAUSE==null&&t>T.hold)t=T.hold; /* 2026-06-15 play-once: hold hero frame at peak, skip fade-out (matches v2 engine) */
     var shake=(t>=T.impact&&t<T.impact+500)?(1-(t-T.impact)/500)*20:0;
     var ox=(Math.random()-0.5)*shake,oy=(Math.random()-0.5)*shake;
     ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,W,H);ctx.save();ctx.translate(ox,oy);
@@ -235,8 +236,8 @@
     if(t>T.hold){var fo=seg(t,T.hold,T.end);ctx.fillStyle='rgba(4,8,16,'+fo+')';ctx.fillRect(-50,-50,W+100,H+100);}
     drawFlash(t);
     ctx.restore();
-    if(PAUSE!=null&&t>=PAUSE)return;
-    if(t<T.end)rafId=requestAnimationFrame(frame);
+    if(PAUSE!=null&&rawT>=PAUSE)return;
+    if(PAUSE!=null?rawT<T.end:rawT<T.hold)rafId=requestAnimationFrame(frame);
   }
 
   document.getElementById('replay').addEventListener('click',reset);

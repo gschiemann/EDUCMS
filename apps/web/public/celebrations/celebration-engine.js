@@ -185,6 +185,7 @@
   function frame(ms){
     if(!startMs){startMs=ms;prevMs=ms;}
     var t=ms-startMs,dt=Math.min(0.05,(ms-prevMs)/1000);prevMs=ms;var T=CFG.T;
+    var rawT=t; if(PAUSE==null&&t>T.hold)t=T.hold; /* 2026-06-15 play-once: hold hero frame */
     var shake=(t>=T.impact&&t<T.impact+460)?(1-(t-T.impact)/460)*(CFG.shake||16):0;
     ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,W,H);ctx.save();ctx.translate((Math.random()-0.5)*shake,(Math.random()-0.5)*shake);
     var P={};
@@ -206,8 +207,8 @@
     if(t<T.fadeIn){ctx.fillStyle='rgba(5,9,16,'+(1-t/T.fadeIn)+')';ctx.fillRect(-60,-60,W+120,H+120);}
     if(t>T.hold){var fo=seg(t,T.hold,T.end);ctx.fillStyle='rgba(5,9,16,'+fo+')';ctx.fillRect(-60,-60,W+120,H+120);}
     ctx.restore();
-    if(PAUSE!=null&&t>=PAUSE)return;
-    if(t<T.end)rafId=requestAnimationFrame(frame);
+    if(PAUSE!=null&&rawT>=PAUSE)return;
+    if(PAUSE!=null?rawT<T.end:rawT<T.hold)rafId=requestAnimationFrame(frame);
   }
 
   window.VENUE={
