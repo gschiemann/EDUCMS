@@ -1290,7 +1290,7 @@ export default function RibbonPage() {
               // (cues-basketball.js) renders ribbon-native, replacing the flat
               // text strip every basketball cue used to get.
               ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v2'
-                || data?.sport === 'basketball'
+                || data?.sport === 'basketball' || data?.sport === 'water_polo' || data?.sport === 'water-polo'
                 ? 'v2'
                 : 'v1') as 'v1' | 'v2'
             }
@@ -1449,7 +1449,7 @@ ${SCORE_MOTION_KEYFRAMES}
             // 2026-06-15 — default to v1 (ribbon-native strip, no squish).
             // 2026-06-16 — basketball defaults to v2 (ribbon-native hoop cinematic).
             ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v2'
-              || data?.sport === 'basketball'
+              || data?.sport === 'basketball' || data?.sport === 'water_polo' || data?.sport === 'water-polo'
               ? 'v2'
               : 'v1') as 'v1' | 'v2'
           }

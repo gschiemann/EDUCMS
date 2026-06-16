@@ -4198,6 +4198,7 @@ export default function ScoreboardPage() {
               // Other sports keep v1 unless the operator opts into v2.
               ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v2'
                 || data?.sport === 'basketball'
+                || data?.sport === 'water_polo' || data?.sport === 'water-polo'
                 ? 'v2'
                 : 'v1') as 'v1' | 'v2'
             }
@@ -4283,6 +4284,7 @@ export default function ScoreboardPage() {
               // Other sports keep v1 unless the operator opts into v2.
               ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v2'
                 || data?.sport === 'basketball'
+                || data?.sport === 'water_polo' || data?.sport === 'water-polo'
                 ? 'v2'
                 : 'v1') as 'v1' | 'v2'
             }

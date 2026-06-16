@@ -1415,7 +1415,10 @@ function RunMode({
                   gameId={gameId}
                   sport={def.key}
                   pack={
-                    g?.stats?.celebrationPack === 'v2' || def.key === 'basketball'
+                    g?.stats?.celebrationPack === 'v2' ||
+                    def.key === 'basketball' ||
+                    def.key === 'water_polo' ||
+                    def.key === 'water-polo'
                       ? 'v2'
                       : 'v1'
                   }
