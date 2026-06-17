@@ -34,7 +34,6 @@ import {
   RectangleHorizontal,
   ImageIcon,
   Volume2,
-  Radio,
   Keyboard,
   Copy,
 } from 'lucide-react';
@@ -597,7 +596,6 @@ function GameControl() {
               ctl={ctl}
               view={view}
               onViewChange={setView}
-              onShowCues={() => setShowCues(true)}
               onHighlights={() => setShowHighlights(true)}
               onPenalties={() => setShowPenalties(true)}
             />
@@ -1092,7 +1090,6 @@ function RunMode({
   ctl,
   view,
   onViewChange,
-  onShowCues,
   onHighlights,
   onPenalties,
 }: {
@@ -1105,7 +1102,6 @@ function RunMode({
   ctl: ReturnType<typeof useGameControl>;
   view: ConsoleView;
   onViewChange: (v: ConsoleView) => void;
-  onShowCues: () => void;
   onHighlights: () => void;
   onPenalties: () => void;
 }) {
@@ -1210,19 +1206,11 @@ function RunMode({
 
         {/* ── Live action rail (right) ──────────────────────────── */}
         <div className="ml-auto flex items-center gap-1.5 shrink-0">
-          {/* CUES — the full cue launchpad. The onShowCues callback was
-              passed into RunMode but never invoked anywhere in its body,
-              so the launchpad popup was unreachable from Run mode. Wired
-              here as a discoverable button. (2026-06-15 console-UX P0) */}
-          <button
-            type="button"
-            onClick={onShowCues}
-            title="Open the cue launchpad — fire celebrations, replays, sponsor reads"
-            className="min-h-[44px] px-3.5 py-1.5 rounded-full text-[13px] font-bold transition-colors shrink-0 flex items-center gap-1.5 bg-white border border-slate-200 text-slate-600 hover:border-indigo-400 hover:text-indigo-700"
-          >
-            <Radio className="h-4 w-4" />
-            <span className="hidden sm:inline">Cues</span>
-          </button>
+          {/* Cues live inline where they're needed — the Full view has the
+              inline cue bar and Show Caller has the always-on launchpad;
+              Scorekeeper/PA intentionally hide cues. The old top-level
+              "Cues" button duplicated all of that, so it was removed
+              (2026-06-16, operator feedback). */}
 
           {/* SPOTLIGHT — the custom promo / player Spotlight. Same orphan
               as Cues: onHighlights was passed in but never invoked. This
@@ -1438,11 +1426,15 @@ function RunMode({
                 judged={isJudgedResults}
               />
             )}
-            {showRibbonPreview && <RunRibbonPreview gameId={gameId} />}
           </div>
 
-          {/* Pinned bottom: roster + cues + sport-specific tray */}
+          {/* Pinned bottom (always visible, no scroll): ribbon preview FIRST
+              so the operator always sees what's on the LED ribbon, then the
+              collapsible roster + cues + sport tray. Moving the ribbon out of
+              the scrolling region is what lets the scoreboard AND the ribbon
+              both stay on screen without scrolling. (2026-06-16 operator fb) */}
           <div className="shrink-0">
+            {showRibbonPreview && <RunRibbonPreview gameId={gameId} />}
             {showRosterBar && (
               <RunInlineRosterBar
                 gameId={gameId}
@@ -3063,6 +3055,12 @@ function RunInlineRosterBar({
   const sp = g?.spotlight && typeof g.spotlight === 'object' ? g.spotlight : {};
   const onAirTitle = sp.visible && typeof sp.title === 'string' ? sp.title.trim().toLowerCase() : '';
   const [activePlayer, setActivePlayer] = useState<any | null>(null);
+  // Roster is COLLAPSED by default — like every pro console. Daktronics/CTS
+  // show no roster on the control surface at all; GameChanger/ScoreVision
+  // open it on demand. A 24-player wall pinned open shoved the ribbon below
+  // the fold and forced scrolling. Collapsed → the scoreboard + ribbon fit
+  // with no scroll; the operator expands to one-tap spotlight. (2026-06-16)
+  const [expanded, setExpanded] = useState(false);
 
   if (players.length === 0) {
     return (
@@ -3078,21 +3076,33 @@ function RunInlineRosterBar({
     list: any[],
     isHome: boolean,
   ) => (
-    <div className="flex items-center gap-3 px-4 py-1.5">
-      <div className="flex flex-col leading-tight shrink-0 w-20">
+    <div className="flex items-start gap-3 px-4 py-2">
+      <div className="flex flex-col leading-tight shrink-0 w-24 pt-1">
         <span
           className="text-[10px] font-black uppercase tracking-widest"
           style={{ color }}
         >
           {isHome ? 'HOME' : 'AWAY'}
         </span>
-        <span className="text-[10px] text-slate-500 truncate">{label}</span>
+        <span className="text-[11px] font-semibold text-slate-600 truncate" title={label}>
+          {label}
+        </span>
       </div>
-      <div className="flex gap-1.5 flex-wrap overflow-x-auto">
-        {list.length === 0 ? (
-          <span className="text-[11px] text-slate-400 italic">No roster yet</span>
-        ) : (
-          list.map((p) => {
+      {list.length === 0 ? (
+        <span className="text-[11px] text-slate-400 italic pt-1.5">No roster yet</span>
+      ) : (
+        // Tidy aligned grid (auto-fill columns) instead of a ragged
+        // full-width wrap of wide name-pills — the cap number is a solid
+        // team-colored badge, the name truncates, every chip is the same
+        // size, so 12+ players read as an organised roster, not a wall.
+        // (2026-06-16 operator feedback — "teams look a mess"). This is the
+        // console (operator browser), not a Taurus player surface, so the
+        // CSS grid + gap are fine here.
+        <div
+          className="grid flex-1 gap-1.5"
+          style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}
+        >
+          {list.map((p) => {
             const playerName = String(p.name || '').trim();
             const onAir = playerName.toLowerCase() === onAirTitle;
             return (
@@ -3102,41 +3112,91 @@ function RunInlineRosterBar({
                 onClick={() => setActivePlayer(p)}
                 disabled={ctl.spotlight.isPending || ctl.cue.isPending}
                 title={onAir ? 'On air — tap for actions' : `Tap to spotlight or celebrate ${p.name}`}
-                className={
+                className={`flex items-center gap-2 rounded-lg border py-1 pl-1 pr-2 text-left transition-colors disabled:opacity-50 ${
                   onAir
-                    ? 'flex items-center gap-1 rounded-md border-2 px-2 py-1 ring-2 transition-colors disabled:opacity-50 shrink-0 bg-amber-50 ring-amber-300'
-                    : 'flex items-center gap-1 rounded-md border bg-white px-2 py-1 transition-colors hover:bg-slate-50 disabled:opacity-50 shrink-0'
-                }
-                style={onAir ? { borderColor: '#f59e0b' } : { borderColor: color }}
+                    ? 'border-amber-400 bg-amber-50 ring-2 ring-amber-300'
+                    : 'border-slate-200 bg-white hover:bg-slate-50'
+                }`}
               >
-                {onAir && <span className="text-[9px] font-black text-amber-700">●</span>}
-                {p.number ? (
-                  <span className="text-[10px] font-black" style={{ color }}>
-                    #{p.number}
-                  </span>
-                ) : null}
                 <span
-                  className={
-                    onAir
-                      ? 'text-xs font-bold text-amber-900'
-                      : 'text-xs font-semibold text-slate-700'
-                  }
+                  className="flex h-[26px] min-w-[26px] shrink-0 items-center justify-center rounded-md px-1 text-[12px] font-black tabular-nums text-white"
+                  style={{ backgroundColor: onAir ? '#f59e0b' : color }}
                 >
-                  {p.name}
+                  {p.number ?? '–'}
                 </span>
+                <span
+                  className={`truncate text-[12px] font-semibold ${
+                    onAir ? 'text-amber-900' : 'text-slate-700'
+                  }`}
+                >
+                  {playerName || 'Player'}
+                </span>
+                {onAir && (
+                  <span className="ml-auto shrink-0 text-[9px] font-black uppercase tracking-wide text-amber-600">
+                    On air
+                  </span>
+                )}
               </button>
             );
-          })
-        )}
-      </div>
+          })}
+        </div>
+      )}
     </div>
   );
 
   return (
     <div className="border-t border-slate-200 bg-slate-50">
-      {renderRow(g.homeTeam || 'Home', homeColor, home, true)}
-      <div className="border-t border-slate-100" />
-      {renderRow(g.awayTeam || 'Away', awayColor, away, false)}
+      {/* Thin header bar — collapsed by default. Tap to reveal the roster
+          grid for one-tap spotlight; collapse again to give the scoreboard
+          + ribbon the full height (no scroll). When collapsed we still show
+          a peek of the home cap numbers so it doesn't feel empty. */}
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        className="flex w-full items-center gap-2 px-4 py-2 text-left transition-colors hover:bg-slate-100/70"
+      >
+        <svg
+          className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${expanded ? 'rotate-90' : ''}`}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2.5}
+        >
+          <path d="M9 6l6 6-6 6" />
+        </svg>
+        <span className="text-[11px] font-black uppercase tracking-widest text-slate-500 shrink-0">
+          Players
+        </span>
+        <span className="text-[11px] font-semibold text-slate-400 shrink-0">
+          {players.length} on roster · tap to spotlight
+        </span>
+        {!expanded && (
+          <span className="ml-auto hidden items-center gap-1.5 overflow-hidden sm:flex">
+            {home.slice(0, 8).map((p) => (
+              <span
+                key={p.id}
+                className="flex h-5 min-w-[20px] items-center justify-center rounded px-1 text-[10px] font-black tabular-nums text-white"
+                style={{ backgroundColor: homeColor }}
+              >
+                {p.number ?? '–'}
+              </span>
+            ))}
+            {home.length > 8 && (
+              <span className="text-[10px] font-bold text-slate-400">
+                +{home.length - 8}
+              </span>
+            )}
+          </span>
+        )}
+      </button>
+      {expanded && (
+        <div className="border-t border-slate-100">
+          {renderRow(g.homeTeam || 'Home', homeColor, home, true)}
+          <div className="border-t border-slate-100" />
+          {renderRow(g.awayTeam || 'Away', awayColor, away, false)}
+        </div>
+      )}
       {activePlayer && (
         <PlayerActionMenu
           player={activePlayer}
