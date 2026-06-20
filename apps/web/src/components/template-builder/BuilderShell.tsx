@@ -29,6 +29,7 @@ import { LayersPanel } from './LayersPanel';
 import { ScenesPanel } from './ScenesPanel';
 import { PropertiesPanel, CanvasBackdropSection } from './PropertiesPanel';
 import { BrandKitPanel } from './BrandKitPanel';
+import { SuggestionsPanel } from './SuggestionsPanel';
 import { BackgroundPanel } from './BackgroundPanel';
 import { TemplatePreviewModal } from './TemplatePreviewModal';
 import { useUpdateTemplate, useUpdateTemplateZones, useCreateTemplate, useDeleteTemplate } from '@/hooks/use-api';
@@ -42,7 +43,7 @@ interface Props {
   onSaved: (t: Template) => void;
 }
 
-type PanelKey = 'widgets' | 'background' | 'layers' | 'scenes' | 'properties' | 'brand';
+type PanelKey = 'widgets' | 'background' | 'layers' | 'scenes' | 'properties' | 'brand' | 'review';
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 const AUTO_SAVE_IDLE_MS = 15_000;
@@ -555,6 +556,9 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
     { key: 'scenes', label: 'Scenes', icon: Layers3 },
     { key: 'properties', label: 'Properties', icon: Settings2 },
     { key: 'brand', label: 'Brand', icon: Palette },
+    // Flagship Slice 1a — deterministic "Review" checks (off-screen, tap
+    // targets, hairline elements) with one-tap, undoable fixes.
+    { key: 'review', label: 'Review', icon: Sparkles },
   ];
 
   const handleDragStart = (event: any) => {
@@ -696,6 +700,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
               {panel === 'scenes' && <ScenesPanel />}
               {panel === 'properties' && <PropertiesPanel />}
               {panel === 'brand' && <BrandKitPanel />}
+              {panel === 'review' && <SuggestionsPanel />}
             </div>
             <div className="border-t border-slate-100 p-2">
               <button
