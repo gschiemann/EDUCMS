@@ -737,8 +737,17 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
   // the hook-count rationale (lives below the early return).
   const setAllDurations = (seconds: number) => {
     const clamped = Math.max(1, Math.min(600, isFinite(seconds) ? seconds : 10));
+    const lib = (assets as any[]) || [];
     setSelectedAssetItems((prev) =>
-      prev.map((i) => ({ ...i, durationMs: clamped * 1000 })),
+      prev.map((i) => {
+        // Video / audio play their own full length, then the playlist
+        // advances (or loops) — "Set all" is an image-duration control
+        // and must NOT clobber a clip's natural length. (2026-06-16)
+        const a = lib.find((x) => x.id === i.assetId);
+        const mime = typeof a?.mimeType === 'string' ? a.mimeType : '';
+        if (mime.startsWith('video/') || mime.startsWith('audio/')) return i;
+        return { ...i, durationMs: clamped * 1000 };
+      }),
     );
   };
 
@@ -1656,7 +1665,7 @@ function SelectedMediaDrawer({
             type="button"
             onClick={() => onSetAll(bulkSeconds)}
             className="ml-1 inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
-            title="Apply this duration to every item below"
+            title="Apply this duration to every image/page below — videos & audio keep their full length"
           >
             Apply
           </button>
@@ -1718,6 +1727,12 @@ function SortableMediaRow({
   const Icon = mimeIcon(asset.mimeType);
   const seconds = Math.round((item.durationMs || 0) / 1000);
   const isVideo = asset.mimeType?.startsWith('video/');
+  const isAudio = asset.mimeType?.startsWith('audio/');
+  // Video & audio play their full length, then advance/loop — the operator
+  // can't truncate them, so the per-item row shows a read-only "Full length"
+  // instead of an editable seconds box. (2026-06-16 operator feedback)
+  const isAV = isVideo || isAudio;
+  const mmss = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 
   return (
     <li
@@ -1751,10 +1766,10 @@ function SortableMediaRow({
           <p className="text-[11px] font-semibold text-slate-700 truncate">
             {asset.originalName || asset.title || 'Untitled'}
           </p>
-          {isVideo && (
+          {isAV && (
             <span
               className="ml-1.5 text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-sm px-1 leading-tight"
-              title="Auto-detected from video metadata"
+              title="Plays its full length — duration auto-detected from the file"
             >
               auto
             </span>
@@ -1762,21 +1777,35 @@ function SortableMediaRow({
         </div>
       </div>
       <div className="flex items-center mr-1">
-        <input
-          type="number"
-          min={1}
-          max={600}
-          value={seconds || 1}
-          onChange={(e) => {
-            const n = parseInt(e.target.value, 10);
-            if (!isNaN(n)) onDuration(item.assetId, n);
-          }}
-          aria-label={`Duration in seconds for ${asset.originalName || 'item'}`}
-          className="w-12 text-xs text-right px-1.5 py-2 border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
-        />
-        <span className="text-[10px] font-bold text-slate-400 ml-1 uppercase tracking-wider">
-          sec
-        </span>
+        {isAV ? (
+          // Read-only: a clip plays in full, the playlist then advances or
+          // loops — there's no operator-set duration to edit.
+          <span
+            className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-slate-100 px-2 py-1.5 text-[11px] font-semibold text-slate-500"
+            title="Video & audio play their full length, then the playlist advances (or loops). The length is set by the file and can't be changed here."
+          >
+            Full length
+            <span className="text-[10px] tabular-nums text-slate-400">{mmss}</span>
+          </span>
+        ) : (
+          <>
+            <input
+              type="number"
+              min={1}
+              max={600}
+              value={seconds || 1}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                if (!isNaN(n)) onDuration(item.assetId, n);
+              }}
+              aria-label={`Duration in seconds for ${asset.originalName || 'item'}`}
+              className="w-12 text-xs text-right px-1.5 py-2 border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            />
+            <span className="text-[10px] font-bold text-slate-400 ml-1 uppercase tracking-wider">
+              sec
+            </span>
+          </>
+        )}
       </div>
       <button
         type="button"

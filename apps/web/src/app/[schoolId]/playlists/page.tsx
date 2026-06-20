@@ -265,7 +265,10 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
             doesn't take focus often enough for the zoom-stuck UX
             issue to bite here, and the larger floor would balloon
             the row past one line. */}
-        {item.asset?.mimeType?.startsWith('video/') ? (
+        {(item.asset?.mimeType?.startsWith('video/') || item.asset?.mimeType?.startsWith('audio/')) ? (
+          // Video & audio play their full length, then the playlist
+          // advances/loops — read-only "Auto", no editable seconds.
+          // (2026-06-16 — extended to audio to match the New-Playlist wizard.)
           <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 md:px-3 py-1 rounded-md uppercase tracking-wide shrink-0">Auto</span>
         ) : (
           <>
