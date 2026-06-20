@@ -40,6 +40,12 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
 const MIN_TAP_PX = 44; // WCAG / Apple HIG minimum touch target
 const TAP_TARGET_PX = 48; // grow targets to a comfortable 48 (a hair over the floor)
 const TINY_PCT = 3; // below this in either dimension is almost always a mistake
+// Text-bearing widgets. Overlap between two of these is the classic signage
+// layout fire (copy rendered on top of copy → unreadable). We only flag
+// text-on-text so we never nag about intentional layering — text on a
+// background panel, a logo over a photo, a badge in a corner.
+const TEXT_WIDGETS = new Set(['TEXT', 'RICH_TEXT', 'ANNOUNCEMENT', 'TICKER', 'QUOTE', 'HEADLINE']);
+const OVERLAP_MIN_RATIO = 0.35; // intersection ≥35% of the smaller block = a real collision
 
 function zoneLabel(z: Zone): string {
   const n = (z.name || '').trim();
@@ -135,6 +141,39 @@ export function computeSuggestions(input: SuggestionInput): Suggestion[] {
           },
         },
       });
+    }
+  }
+
+  // ── 4. OVERLAPPING TEXT — two text blocks sitting on top of each other.
+  //    The #1 non-touch layout fire (and a touch one too): unreadable copy.
+  //    Text-on-text only, ≥35% of the smaller block, so intentional layering
+  //    (text on a background, logo on a photo) is never flagged. Informational
+  //    — selecting jumps to the top block so the operator can nudge it. ──
+  const textZones = zones.filter(
+    (z) => !z.locked && TEXT_WIDGETS.has(String(z.widgetType || '').toUpperCase()),
+  );
+  for (let i = 0; i < textZones.length; i++) {
+    for (let j = i + 1; j < textZones.length; j++) {
+      const a = textZones[i];
+      const b = textZones[j];
+      const ax = Number(a.x) || 0, ay = Number(a.y) || 0, aw = Number(a.width) || 0, ah = Number(a.height) || 0;
+      const bx = Number(b.x) || 0, by = Number(b.y) || 0, bw = Number(b.width) || 0, bh = Number(b.height) || 0;
+      const ix = Math.max(0, Math.min(ax + aw, bx + bw) - Math.max(ax, bx));
+      const iy = Math.max(0, Math.min(ay + ah, by + bh) - Math.max(ay, by));
+      const interArea = ix * iy;
+      if (interArea <= 0) continue;
+      const minArea = Math.min(aw * ah, bw * bh);
+      if (minArea > 0 && interArea / minArea >= OVERLAP_MIN_RATIO) {
+        const top = (Number(a.zIndex) || 0) >= (Number(b.zIndex) || 0) ? a : b;
+        const other = top === a ? b : a;
+        out.push({
+          id: `overlap:${[a.id, b.id].sort().join('~')}`,
+          severity: 'warn',
+          zoneId: top.id,
+          title: `Overlapping text: ${zoneLabel(top)}`,
+          detail: `“${zoneLabel(top)}” and “${zoneLabel(other)}” sit on top of each other — the text will be hard to read. Move one apart.`,
+        });
+      }
     }
   }
 
