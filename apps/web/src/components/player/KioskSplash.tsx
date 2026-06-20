@@ -513,20 +513,22 @@ function KioskDiagnostics({
       return false;
     }
   });
-  // 2026-05-27 — Hardware models whose viewport IS the display (LCD /
-  // standard HDMI). The "LED canvas not set" banner is meaningless on
-  // these — they render at native panel resolution, no daisy-chain
-  // math required. Models where the banner IS meaningful: novastar-
-  // taurus (LED controller), goodview-ecbox3576 (legacy LED ribbon
-  // install path), unknown (default — show until operator picks a
-  // hardware model in the dashboard).
-  const lcdHardware = !!hardwareModel && [
-    'goodview-ep6n',
-    'pi5',
-    'generic-android',
-    'web',
+  // 2026-06-16 — the "LED canvas not set" banner is ONLY meaningful on
+  // hardware that drives a multi-panel LED canvas (the player IS the LED
+  // controller and needs the panel count to size the canvas): NovaStar
+  // Taurus and the Goodview ECBox LED-ribbon box. Every other model —
+  // EP6N / Pi / generic-Android / web — renders at native resolution, AND
+  // an unpaired or unknown screen (hardwareModel null) is a plain display
+  // too, so the banner is just noise there. This was previously inverted
+  // ("show unless a known LCD"), which put the LED prompt on standard TVs
+  // and the pairing screen (operator: "why are we showing this LED poster
+  // menu on a standard screen"). Source of truth for the ids:
+  // packages/api-types/src/hardware-models.ts.
+  const isLedCanvasHardware = !!hardwareModel && [
+    'novastar-taurus',
+    'goodview-ecbox3576',
   ].includes(hardwareModel);
-  const showLedBanner = !lcdHardware && !bannerDismissed;
+  const showLedBanner = isLedCanvasHardware && !bannerDismissed;
   const [dims, setDims] = useState<{
     vw: number; vh: number; ledW: string; ledH: string; narrow: boolean; cfg: boolean;
   } | null>(null);
