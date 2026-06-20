@@ -21,7 +21,7 @@
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { AiService, sanitizeRewriteText } from './ai.service';
+import { AiService, sanitizeRewriteText, validateChatEditDiff, resolveChatColor } from './ai.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 
@@ -413,5 +413,89 @@ describe('AiService — Slice 1d inline rewrite', () => {
     expect(r.options[0].text).not.toContain('<');
     expect(r.options[0].text).not.toContain('http');
     expect(r.options[0].text).toContain('Sale today');
+  });
+});
+
+// ── Slice 2a (2026-06-16) — chat-to-edit ──
+// resolveChatEdit turns NL → a server-VALIDATED field-mutation diff. The
+// load-bearing tests are on validateChatEditDiff (the untrusted-input spine):
+// drop unknown zoneIds, clamp numerics, resolve brand tokens, reject CSS
+// injection. Plus end-to-end (cap/spend, 422 when nothing maps).
+describe('AiService — Slice 2a chat-to-edit', () => {
+  beforeEach(() => {
+    delete process.env.AI_FREE_TIER_CAP;
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    tenantsById.clear();
+    auditRows.length = 0;
+    dispatchMock.mockReset();
+    tenantsById.set('t1', { id: 't1', aiProvider: null, aiKeyEncrypted: null, aiModel: null });
+  });
+
+  it('resolveChatColor: brand keywords → var() tokens; hex passes; junk → null', () => {
+    expect(resolveChatColor('brand red')?.value).toBe('var(--brand-primary)');
+    expect(resolveChatColor('accent')?.value).toBe('var(--brand-accent)');
+    expect(resolveChatColor('#0A2540')?.value).toBe('#0a2540');
+    expect(resolveChatColor('navy')).toBeNull(); // model must convert names to hex
+    expect(resolveChatColor('red; background:url(http://evil)')).toBeNull(); // CSS injection
+  });
+
+  it('validateChatEditDiff: clamps size, resolves brand color, sanitizes text, keeps unresolved', () => {
+    const zones = [{ id: 'z1', widgetType: 'TEXT', defaultConfig: { content: 'Welcome', fontSize: 80 } }];
+    const r = validateChatEditDiff(
+      { edits: [{ zoneId: 'z1', text: 'Friday Night Lights', fontSize: 9999, color: 'brand red' }], unresolved: ['make it sparkle'] },
+      zones,
+    );
+    expect(r.diff.length).toBe(1);
+    expect(r.diff[0].zoneId).toBe('z1');
+    expect(r.diff[0].patch.defaultConfig.content).toBe('Friday Night Lights');
+    expect(r.diff[0].patch.defaultConfig.fontSize).toBe(400); // clamped to max
+    expect(r.diff[0].patch.defaultConfig.color).toBe('var(--brand-primary)');
+    expect(r.unresolved).toContain('make it sparkle');
+  });
+
+  it('validateChatEditDiff: drops edits for zoneIds not in the selection (no escalation)', () => {
+    const zones = [{ id: 'z1', widgetType: 'TEXT', defaultConfig: {} }];
+    const r = validateChatEditDiff({ edits: [{ zoneId: 'NOT_SELECTED', fontSize: 50 }] }, zones);
+    expect(r.diff.length).toBe(0);
+  });
+
+  it('validateChatEditDiff: rejects an injected CSS color value (zone dropped if no other key)', () => {
+    const zones = [{ id: 'z1', widgetType: 'TEXT', defaultConfig: {} }];
+    const r = validateChatEditDiff({ edits: [{ zoneId: 'z1', color: 'red; background:url(http://evil)' }] }, zones);
+    expect(r.diff.length).toBe(0);
+  });
+
+  it('validateChatEditDiff: text on a non-text widget (CLOCK) is dropped', () => {
+    const r = validateChatEditDiff({ edits: [{ zoneId: 'c1', text: 'hi' }] }, [{ id: 'c1', widgetType: 'CLOCK' }]);
+    expect(r.diff.length).toBe(0);
+  });
+
+  it('resolveChatEdit: applies a validated diff + records one slot', async () => {
+    dispatchMock.mockResolvedValue({ raw: JSON.stringify({ edits: [{ zoneId: 'z1', text: 'Go Team', fontSize: 100, color: 'brand-primary' }] }) });
+    const fake = makeFakeRedisClient();
+    const { service } = buildService(fake);
+    const r = await service.resolveChatEdit({
+      tenantId: 't1',
+      instruction: 'say Go Team, bigger, in our brand red',
+      zones: [{ id: 'z1', widgetType: 'TEXT', defaultConfig: { content: 'x', fontSize: 80 } }],
+    });
+    expect(r.diff.length).toBe(1);
+    expect(r.diff[0].patch.defaultConfig.color).toBe('var(--brand-primary)');
+    expect(fake.zadd.mock.calls.filter((c) => c[0] === 'ai:rl:gen:t1').length).toBe(1);
+  });
+
+  it('resolveChatEdit: 422 NO_RESOLVABLE_EDITS when nothing maps', async () => {
+    dispatchMock.mockResolvedValue({ raw: JSON.stringify({ edits: [{ zoneId: 'UNKNOWN', fontSize: 50 }], unresolved: ['make it sparkle'] }) });
+    const { service } = buildService(makeFakeRedisClient());
+    await expect(
+      service.resolveChatEdit({ tenantId: 't1', instruction: 'do magic', zones: [{ id: 'z1', widgetType: 'TEXT', defaultConfig: {} }] }),
+    ).rejects.toMatchObject({ response: expect.objectContaining({ code: 'NO_RESOLVABLE_EDITS' }) });
+  });
+
+  it('resolveChatEdit: rejects empty instruction and empty selection', async () => {
+    const { service } = buildService(makeFakeRedisClient());
+    await expect(service.resolveChatEdit({ tenantId: 't1', instruction: '   ', zones: [{ id: 'z1', widgetType: 'TEXT' }] })).rejects.toBeTruthy();
+    await expect(service.resolveChatEdit({ tenantId: 't1', instruction: 'x', zones: [] })).rejects.toBeTruthy();
+    expect(dispatchMock).not.toHaveBeenCalled();
   });
 });

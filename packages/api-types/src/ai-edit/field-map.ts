@@ -53,6 +53,17 @@ export function hasRewriteableText(widgetType: string): boolean {
   return !!list && list.some((f) => f.kind !== 'list');
 }
 
+/**
+ * The PRIMARY editable text field for a widget — the first non-list field.
+ * Chat-to-edit (2a) maps a free-text "change it to …" onto this key.
+ * Returns undefined for widgets with no plain/rich text (CLOCK, IMAGE, …)
+ * or list-only widgets (TICKER).
+ */
+export function primaryTextFieldKey(widgetType: string): string | undefined {
+  const list = TEXT_FIELDS[String(widgetType || '').toUpperCase()];
+  return list?.find((f) => f.kind !== 'list')?.key;
+}
+
 /** The inline-rewrite operations the /ai/text/rewrite endpoint understands. */
 export const REWRITE_OPS = [
   'rewrite',

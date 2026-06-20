@@ -58,6 +58,21 @@ const AiRewriteSchema = z.object({
 }).passthrough();
 type AiRewriteBody = z.infer<typeof AiRewriteSchema>;
 
+// Slice 2a (2026-06-16) — chat-to-edit. NL instruction + the selected
+// zones' current state → a validated field-mutation diff. The model output
+// is re-validated server-side (validateChatEditDiff), so this schema only
+// bounds the inputs (cap the zones array so a tampered client can't DoS).
+const AiChatEditSchema = z.object({
+  instruction: z.string().min(1).max(500),
+  zones: z.array(z.object({
+    id: z.string().min(1).max(128),
+    widgetType: z.string().min(1).max(64),
+    defaultConfig: z.record(z.string(), z.any()).optional(),
+  }).passthrough()).min(1).max(12),
+  vertical: z.string().min(1).max(40).optional(),
+}).passthrough();
+type AiChatEditBody = z.infer<typeof AiChatEditSchema>;
+
 @UseGuards(JwtAuthGuard, RbacGuard)
 @Controller('api/v1/ai')
 export class AiController {
@@ -96,6 +111,26 @@ export class AiController {
     @Body(new ZodValidationPipe(AiRewriteSchema)) body: AiRewriteBody,
   ) {
     return this.ai.rewriteText({
+      ...body,
+      tenantId: req.user.tenantId,
+      userId: req.user.id,
+    });
+  }
+
+  // Slice 2a (2026-06-16) — chat-to-edit. Returns a server-validated diff;
+  // the FE shows a review card and applies it as one undoable commit.
+  @Post('edit/resolve')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  async resolveChatEdit(
+    @Request() req: any,
+    @Body(new ZodValidationPipe(AiChatEditSchema)) body: AiChatEditBody,
+  ) {
+    return this.ai.resolveChatEdit({
       ...body,
       tenantId: req.user.tenantId,
       userId: req.user.id,

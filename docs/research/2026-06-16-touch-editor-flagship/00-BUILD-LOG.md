@@ -67,9 +67,17 @@
 - [ ] 1e. (small) Drag rotate-HANDLE on zones (rotation is numeric-only today).
 
 ### Slice 2 — Flagship
-- [ ] 2a. **Chat-to-edit agent** (React-zone): NL + current zone JSON → field-mutation DIFF → apply via
-      `updateZone(commit)` (undoable). 2-mode UX (preview-then-apply for ambiguous, apply-then-confirm for clear).
-      **Optimistic-apply + streamed** (iPad latency). Haiku for edit-resolution. Tier-2 BYOK.
+- [x] 2a. **Chat-to-edit (MVP) — SHIPPED** (CI watch pending). "Edit with words" box in PropertiesPanel for
+      editable text widgets: NL instruction + selected zone JSON → `POST /ai/edit/resolve` →
+      `AiService.resolveChatEdit` → Haiku → **`validateChatEditDiff` (the untrusted-input spine)** re-validates the
+      model diff (drop unknown zoneIds, clamp fontSize 8-400, `resolveChatColor` brand-token/hex only, reject CSS
+      injection, sanitize text) → returns `{diff:[{zoneId,patch,summary[]}], unresolved[]}` → FE review card →
+      **Apply = one `updateZone(...,commit:true)`** (merges onto live config; one undo step). 9 new unit tests.
+      MVP scope = single-zone, text+fontSize+color. **2a-full fast-follow:** geometry/zIndex/weight/align/leading,
+      multi-zone `updateZones`, canvas ghost-preview, refine-loop. Files: field-map (`primaryTextFieldKey`),
+      ai.service (`resolveChatEdit` + `validateChatEditDiff` + `resolveChatColor`), ai.controller (`/ai/edit/resolve`),
+      `ChatToEditBox.tsx`.
+- [ ] 2a-old. ~~Chat-to-edit agent~~ (superseded by the shipped MVP above + the spec).
 - [ ] 2b. Chat-to-edit extended to EXTERNAL_HTML via the field-click shim (needs an inbound apply path; harder).
 
 ### Slice 3 — Big bets
@@ -92,31 +100,25 @@
 - Verify the FULL loop (generate → edit → resize → schedule → render on real screen) on WebKit + Taurus before claiming done.
 
 ## STATUS
-- **Slice 1a SHIPPED & CI-GREEN (10/10):** `12cdc8e`. **1a-ext SHIPPED & GREEN:** `dd46bc1` (overlap-text).
-- **Slice 1c SHIPPED:** `81ed6d7` (CI watch in flight at write-time — confirm green before next slice). 3-candidate
-  pick-a-winner + Touch/Display toggle (serves non-touch). Local: api+web tsc clean, 12/12 ai.service unit tests.
-- **REORDER DECISION (2026-06-16):** Brand voice (1b) needs a Prisma migration on `TenantBranding` (it's a typed
-  table with Json columns: `palette/heroImages/confidenceScores/rawSnapshot` — no voice field). A migration on the
-  LIVE pilot can't be run/verified in this sandbox, so do the **migration-free** slices first and treat 1b as a
-  deliberate, verified slice. Order: ~~1c~~ → **1d (inline sparkle tone chips) → 1b (brand voice + migration) →
-  Slice 2 chat-to-edit → big bets**.
-- **NEXT = 1d — inline sparkle tone chips.** Plan: on the sparkle/AI text button (`AiGenerateButton.tsx` +
-  `PropertiesPanel` mount sites + `StyleableField`), add quick one-tap chips that rewrite the CLICKED element's
-  text in place — Rewrite / Shorter / More formal / More playful / Translate. Reuse the existing `generate()` text
-  path (intent + tone + vertical) — likely a small new intent or a `rewrite` mode that takes the current text as
-  context. Tier-2 BYOK (everyday creative). No DB. Verify the chip actually replaces the field value via the store
-  commit path (undoable). Files: `AiGenerateButton.tsx`, `PropertiesPanel.tsx`/`StyleableField`, maybe a small
-  `ai.service` `rewrite` intent + controller/dto + a `use-api` hook.
-- **1d/2a DESIGN WORKFLOW running (wf_51b71c88-d19):** 7-product competitive teardown → synthesis → completeness
-  critic → implementation-ready spec for inline rewrite chips (1d) + chat-to-edit (2a). When it returns, PERSIST
-  the spec to `docs/research/2026-06-16-touch-editor-flagship/03-IN-EDITOR-AI-EDITING-SPEC.md` before implementing.
-- **1d integration surface (recon done):** backend AI controller = `apps/api/src/ai/ai.controller.ts`, single
-  `POST /api/v1/ai/generate` (Zod `AiGenerateSchema`; roles ADMIN+CONTRIBUTOR). Add a sibling `POST /api/v1/ai/rewrite`
-  + `AiService.rewriteText({text, op, targetLang?, tone?, vertical?})` reusing the SAME caps/provider/audit path
-  (Tier-2 BYOK; Haiku; 30/hr + monthly). FE: `apps/web/src/components/ai/AiGenerateButton.tsx` already mounts next
-  to text fields (props `intent/onPick/defaultContext`) and has the 3-state gate (none→"Set up AI" link / configured
-  →sparkle). The inline chips attach HERE — when the clicked field has existing text, render one-tap chips that call
-  `/ai/rewrite` and `onPick(rewritten)` (undoable via the existing field setter → `updateZone(...,commit:true)`).
+- **SHIPPED & CI-GREEN (10/10) this run:** 1a `12cdc8e` · 1a-ext `dd46bc1` (overlap) · **1c `81ed6d7`**
+  (3-candidate pick-a-winner + Touch/Display) · **1d `ab17a94`** (inline rewrite chips). Design spec for 1d/2a:
+  `03-IN-EDITOR-AI-EDITING-SPEC.md` (from workflow wf_51b71c88-d19).
+- **2a chat-to-edit (MVP) SHIPPED** (CI watch pending at write-time — confirm green before next slice). Local:
+  api+web tsc clean, 63/63 ai+template tests (incl. 9 chat-edit: validator spine, brand-token, injection-reject,
+  clamp, 422-when-nothing-maps).
+- **REORDER DECISION (2026-06-16):** Brand voice (1b) needs a Prisma migration on `TenantBranding` (typed table,
+  Json columns, no voice field) — can't be run/verified in this sandbox, so do migration-free slices first and treat
+  1b as a deliberate verified slice. Order: ~~1c~~ → ~~1d~~ → ~~2a-MVP~~ → **2a-full OR 1b → big bets (magic-resize /
+  real-data autofill / build-it-for-me) → Slice 4 (translate/TTS, image-gen, multiplayer, component library)**.
+- **NEXT (pick one — both teed up):**
+  - **2a-FULL** (migration-free, builds on what's shipped): extend `validateChatEditDiff` to geometry
+    (x/y/width/height with semantic anchors bottom→y=100-height etc.) + zIndex + fontWeight/textAlign/lineHeight;
+    multi-zone (`updateZones` one-commit); canvas ghost-preview before Apply; refine-loop. The validator + endpoint
+    + box already exist — this is extending the allow-list + the FE scope.
+  - **1b BRAND VOICE** (needs migration — do as a deliberate verified slice): additive `brandVoice String?` on
+    `TenantBranding` + migration; settings input; thread on top of `VERTICAL_VOICE` in `composeSystemPrompt()` +
+    the touch-template/rewrite/chat-edit prompts; fast-follow = auto-infer from scraped homepage. VERIFY the
+    migration applies before claiming done.
 - **1b plan (when done):** additive `brandVoice String?` on `TenantBranding` + migration; settings input to set it;
   thread tenant brandVoice on top of `VERTICAL_VOICE` in `composeSystemPrompt()` (used by `generate()`) AND in the
   `generateTouchTemplate` system prompt; fast-follow = auto-infer voice from scraped homepage at brand-adopt; defer

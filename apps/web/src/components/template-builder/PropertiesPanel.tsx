@@ -30,6 +30,7 @@ import { ColorPickerField } from '@/components/ui/color-picker';
 import { THEMED_WIDGET_FIELDS } from './themed-widget-defaults';
 import { AiGenerateButton } from '@/components/ai/AiGenerateButton';
 import { InlineRewriteChips } from '@/components/ai/InlineRewriteChips';
+import { ChatToEditBox } from '@/components/ai/ChatToEditBox';
 // 2026-05-03 — Time formatting helpers. The BellScheduleEditor uses
 // the native `<input type="time">` picker (so the operator gets the
 // browser's familiar AM/PM toggle and HH:MM typing). We read existing
@@ -6151,6 +6152,9 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         <span className="text-sm font-bold text-slate-800 truncate" title={zone.name}>{zone.name ? (/^[A-Z0-9_]+$/.test(zone.name) ? prettyTitle(zone.name) : zone.name) : widgetLabel(zone.widgetType)}</span>
         <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[9px] font-bold uppercase tracking-wide shrink-0">{widgetLabel(zone.widgetType)}</span>
       </div>
+      {/* Slice 2a — chat-to-edit. Self-hides when not an editable text widget,
+          locked, or no AI key. Edits commit through updateZone (one undo step). */}
+      <ChatToEditBox zone={zone} updateZone={updateZone} />
       <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Content</h3>
       <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-100 shadow-sm space-y-3">
         {fields.map((field, i) => {
