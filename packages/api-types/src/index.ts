@@ -1,3 +1,6 @@
+// In-editor AI editing (Slice 1d/2a) — field-resolution map shared by API + web.
+export * from './ai-edit/field-map';
+
 export interface MediaAsset {
   id: string;
   status: "PENDING_REVIEW" | "APPROVED" | "REJECTED" | "READY" | "INVALID";

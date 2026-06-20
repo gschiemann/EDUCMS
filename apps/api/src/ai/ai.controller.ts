@@ -41,6 +41,23 @@ const AiGenerateSchema = z.object({
   vertical: z.string().min(1).max(40).optional(),
 }).passthrough();
 
+// Slice 1d (2026-06-16) — inline text rewrite. Transforms ONE widget
+// field's text. All bounds mirror the service's downstream validation
+// (field-map allow-list, op-specific required params); this is the API
+// boundary so a malformed body never reaches the model.
+const AiRewriteSchema = z.object({
+  widgetType: z.string().min(1).max(64),
+  fieldKey: z.string().min(1).max(64),
+  currentText: z.string().min(1).max(2000),
+  op: z.enum(['rewrite', 'shorten', 'expand', 'fit_to_zone', 'punch', 'fix_grammar', 'translate', 'custom']),
+  targetLang: z.string().max(40).optional(),
+  instruction: z.string().max(400).optional(),
+  zonePx: z.object({ w: z.number(), h: z.number() }).optional(),
+  fontSize: z.number().optional(),
+  vertical: z.string().min(1).max(40).optional(),
+}).passthrough();
+type AiRewriteBody = z.infer<typeof AiRewriteSchema>;
+
 @UseGuards(JwtAuthGuard, RbacGuard)
 @Controller('api/v1/ai')
 export class AiController {
@@ -61,6 +78,27 @@ export class AiController {
       ...body,
       tenantId: req.user.tenantId,
       userId: req.user.id, // 2026-05-26 audit AI-P0-4 — required for AuditLog
+    });
+  }
+
+  // Slice 1d (2026-06-16) — inline rewrite chips. Same roles as generate
+  // (ADMIN+ + CONTRIBUTOR; below RESTRICTED_VIEWER). The service validates
+  // the field against the shared TEXT_FIELDS map + sanitizes the output.
+  @Post('text/rewrite')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  async rewriteText(
+    @Request() req: any,
+    @Body(new ZodValidationPipe(AiRewriteSchema)) body: AiRewriteBody,
+  ) {
+    return this.ai.rewriteText({
+      ...body,
+      tenantId: req.user.tenantId,
+      userId: req.user.id,
     });
   }
 }

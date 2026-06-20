@@ -56,7 +56,14 @@
       bad draft doesn't sink the batch; all-fail surfaces the real error. 6 new unit tests (12/12 green), api+web
       tsc clean. Files: ai.service.ts (+helper+candidates), templates.controller.ts (2 endpoints + persist helper),
       api-types index.ts (2 schemas), use-api.ts (2 hooks + AiTemplateCandidate), templates/page.tsx (2-phase modal).
-- [ ] 1d. (small) Sparkle → inline tone chips (Rewrite / Shorter / More formal / Translate) on the clicked element.
+- [x] 1d. **Inline rewrite chips** — SHIPPED (CI watch pending). One-tap Rewrite / Shorten / Fit-to-zone on the
+      clicked TEXT/ANNOUNCEMENT field → up to 3 AI options → pick (preview-then-apply, undoable). New shared
+      field-map (`packages/api-types/src/ai-edit/field-map.ts`), `POST /ai/text/rewrite` + `AiService.rewriteText`
+      (reuses provider/cap/audit + a new shared `dispatchRawOrThrow`; output sanitized — tags/URLs/script stripped),
+      `InlineRewriteChips.tsx` mounted in PropertiesPanel (gates: empty/locked/no-key/list → hidden; a11y aria-live +
+      role=dialog; touch-tap not hover; `contain` no-blur for mobile-perf). 9 new unit tests. Full op set
+      (Expand/Punch/Fix/Translate/custom) + streaming + ghost-preview = 1d-full fast-follow. Spec:
+      `03-IN-EDITOR-AI-EDITING-SPEC.md`.
 - [ ] 1e. (small) Drag rotate-HANDLE on zones (rotation is numeric-only today).
 
 ### Slice 2 — Flagship
@@ -100,6 +107,16 @@
   context. Tier-2 BYOK (everyday creative). No DB. Verify the chip actually replaces the field value via the store
   commit path (undoable). Files: `AiGenerateButton.tsx`, `PropertiesPanel.tsx`/`StyleableField`, maybe a small
   `ai.service` `rewrite` intent + controller/dto + a `use-api` hook.
+- **1d/2a DESIGN WORKFLOW running (wf_51b71c88-d19):** 7-product competitive teardown → synthesis → completeness
+  critic → implementation-ready spec for inline rewrite chips (1d) + chat-to-edit (2a). When it returns, PERSIST
+  the spec to `docs/research/2026-06-16-touch-editor-flagship/03-IN-EDITOR-AI-EDITING-SPEC.md` before implementing.
+- **1d integration surface (recon done):** backend AI controller = `apps/api/src/ai/ai.controller.ts`, single
+  `POST /api/v1/ai/generate` (Zod `AiGenerateSchema`; roles ADMIN+CONTRIBUTOR). Add a sibling `POST /api/v1/ai/rewrite`
+  + `AiService.rewriteText({text, op, targetLang?, tone?, vertical?})` reusing the SAME caps/provider/audit path
+  (Tier-2 BYOK; Haiku; 30/hr + monthly). FE: `apps/web/src/components/ai/AiGenerateButton.tsx` already mounts next
+  to text fields (props `intent/onPick/defaultContext`) and has the 3-state gate (none→"Set up AI" link / configured
+  →sparkle). The inline chips attach HERE — when the clicked field has existing text, render one-tap chips that call
+  `/ai/rewrite` and `onPick(rewritten)` (undoable via the existing field setter → `updateZone(...,commit:true)`).
 - **1b plan (when done):** additive `brandVoice String?` on `TenantBranding` + migration; settings input to set it;
   thread tenant brandVoice on top of `VERTICAL_VOICE` in `composeSystemPrompt()` (used by `generate()`) AND in the
   `generateTouchTemplate` system prompt; fast-follow = auto-infer voice from scraped homepage at brand-adopt; defer

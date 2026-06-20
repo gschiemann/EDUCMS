@@ -29,6 +29,7 @@ import { useCustomData } from '@/lib/data/use-custom-data';
 import { ColorPickerField } from '@/components/ui/color-picker';
 import { THEMED_WIDGET_FIELDS } from './themed-widget-defaults';
 import { AiGenerateButton } from '@/components/ai/AiGenerateButton';
+import { InlineRewriteChips } from '@/components/ai/InlineRewriteChips';
 // 2026-05-03 — Time formatting helpers. The BellScheduleEditor uses
 // the native `<input type="time">` picker (so the operator gets the
 // browser's familiar AM/PM toggle and HH:MM typing). We read existing
@@ -2160,6 +2161,14 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
   // on unrelated meta changes (name / bg / resolution).
   const templateDataSource = useBuilderStore((s) => s.meta.dataSource ?? 'NONE');
   const setTemplateMeta = useBuilderStore((s) => s.setMeta);
+  // Canvas dims for the inline-rewrite "Fit to zone" chip (Slice 1d) — the
+  // rewrite endpoint needs the zone's rendered px box to target a length.
+  const canvasW = useBuilderStore((s) => s.meta.screenWidth);
+  const canvasH = useBuilderStore((s) => s.meta.screenHeight);
+  const zonePx = {
+    w: Math.round(((Number(zone.width) || 0) / 100) * (canvasW || 1920)),
+    h: Math.round(((Number(zone.height) || 0) / 100) * (canvasH || 1080)),
+  };
 
   // Shape-based themes bake their own palette + typography and ignore
   // generic style knobs like text color, font size, and background.
@@ -2505,6 +2514,20 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
           />
         </div>
       );
+      // Slice 1d — one-tap rewrite of the EXISTING text (Rewrite / Shorten /
+      // Fit to zone). Self-hides when the field is empty / locked / no AI key.
+      fields.push(
+        <InlineRewriteChips
+          key="ai-text-rewrite"
+          text={(cfg.content as string) || (cfg.title as string) || ''}
+          widgetType={zone.widgetType}
+          fieldKey="content"
+          fontSize={Number(cfg.fontSize) || 48}
+          zonePx={zonePx}
+          locked={!!zone.locked}
+          onPick={(text) => setField({ content: text, title: text })}
+        />,
+      );
       // 2026-05-03 — v2 HEADLINE_* variants (NeonMarquee, PaperPress,
       // CrayonBanner, SlabHero, BriefMemo) live under the TEXT widget
       // type and read `c.title` instead of `c.content`. Mirror BOTH so
@@ -2599,6 +2622,19 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       );
       fields.push(<TextField key="title" label="Title" value={cfg.title || ''} placeholder="Big news…" onChange={(v) => setField({ title: v })} />);
       fields.push(<TextAreaField key="message" label="Message" value={cfg.message || cfg.body || ''} placeholder="Details…" onChange={(v) => setField({ message: v, body: undefined })} rows={3} />);
+      // Slice 1d — one-tap rewrite of the announcement message.
+      fields.push(
+        <InlineRewriteChips
+          key="ai-announcement-rewrite"
+          text={(cfg.message as string) || (cfg.body as string) || (cfg.title as string) || ''}
+          widgetType={zone.widgetType}
+          fieldKey="message"
+          fontSize={Number(cfg.fontSize) || 48}
+          zonePx={zonePx}
+          locked={!!zone.locked}
+          onPick={(text) => setField({ message: text, body: undefined })}
+        />,
+      );
       if (!isShapeTheme) {
         // 2026-05-03 — v2 ANN_* widgets (NeonAlert, BulletinPin, RainbowBubble,
         // GlassToast, OpsDispatch) read `c.label` for the badge eyebrow.

@@ -21,7 +21,7 @@
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { AiService } from './ai.service';
+import { AiService, sanitizeRewriteText } from './ai.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 
@@ -330,5 +330,88 @@ describe('AiService — Slice 1c 3-candidate generation', () => {
     // No usable candidate → no success slot burned.
     const successAdds = fake.zadd.mock.calls.filter((c) => c[0] === 'ai:rl:gen:t1');
     expect(successAdds.length).toBe(0);
+  });
+});
+
+// ── Slice 1d (2026-06-16) — inline text rewrite ──
+// rewriteText transforms ONE widget field's text and returns 1-3 options
+// (preview-then-apply). Pins: field-map allow-list, op-specific required
+// params, density rule, spend accounting, and output sanitization (the
+// security spine — no HTML/URL/script ever reaches the operator).
+describe('AiService — Slice 1d inline rewrite', () => {
+  beforeEach(() => {
+    delete process.env.AI_FREE_TIER_CAP;
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    tenantsById.clear();
+    auditRows.length = 0;
+    dispatchMock.mockReset();
+    tenantsById.set('t1', { id: 't1', aiProvider: null, aiKeyEncrypted: null, aiModel: null });
+  });
+
+  it('sanitizeRewriteText: plain strips ALL tags + URLs + script blocks', () => {
+    expect(sanitizeRewriteText('<script>bad()</script>Hello <b>hi</b> http://evil.com', 'plain')).toBe('Hello hi');
+    expect(sanitizeRewriteText('click javascript:alert(1) now', 'plain')).not.toContain('javascript:');
+  });
+
+  it('sanitizeRewriteText: rich keeps a whitelist + drops attributes', () => {
+    expect(sanitizeRewriteText('Hello <b>hi</b> <span onclick="x()">y</span>', 'rich')).toBe('Hello <b>hi</b> <span>y</span>');
+    expect(sanitizeRewriteText('<div class="evil">x</div>', 'rich')).toBe('x'); // div not whitelisted
+  });
+
+  it('rejects empty text', async () => {
+    const { service } = buildService(makeFakeRedisClient());
+    await expect(
+      service.rewriteText({ tenantId: 't1', widgetType: 'TEXT', fieldKey: 'content', currentText: '   ', op: 'rewrite' }),
+    ).rejects.toBeTruthy();
+  });
+
+  it('rejects a non-text widget field with FIELD_NOT_TEXT_EDITABLE', async () => {
+    const { service } = buildService(makeFakeRedisClient());
+    await expect(
+      service.rewriteText({ tenantId: 't1', widgetType: 'CLOCK', fieldKey: 'content', currentText: 'hi', op: 'rewrite' }),
+    ).rejects.toMatchObject({ response: expect.objectContaining({ code: 'FIELD_NOT_TEXT_EDITABLE' }) });
+  });
+
+  it('rejects a list (TICKER) field — excluded from inline-rewrite v1', async () => {
+    const { service } = buildService(makeFakeRedisClient());
+    await expect(
+      service.rewriteText({ tenantId: 't1', widgetType: 'TICKER', fieldKey: 'messages', currentText: 'hi', op: 'rewrite' }),
+    ).rejects.toMatchObject({ response: expect.objectContaining({ code: 'FIELD_NOT_TEXT_EDITABLE' }) });
+  });
+
+  it('translate without a target language → 400', async () => {
+    const { service } = buildService(makeFakeRedisClient());
+    await expect(
+      service.rewriteText({ tenantId: 't1', widgetType: 'TEXT', fieldKey: 'content', currentText: 'hi', op: 'translate' }),
+    ).rejects.toBeTruthy();
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+
+  it('density rule: short input → up to 3 options, long input → 1', async () => {
+    dispatchMock.mockResolvedValue({ raw: JSON.stringify([{ text: 'a' }, { text: 'b' }, { text: 'c' }]) });
+    const { service } = buildService(makeFakeRedisClient());
+    const short = await service.rewriteText({ tenantId: 't1', widgetType: 'TEXT', fieldKey: 'content', currentText: 'short text', op: 'rewrite' });
+    expect(short.options.length).toBe(3);
+    const long = await service.rewriteText({ tenantId: 't1', widgetType: 'TEXT', fieldKey: 'content', currentText: 'x'.repeat(160), op: 'rewrite' });
+    expect(long.options.length).toBe(1);
+  });
+
+  it('records one slot + bumps one platform credit on success', async () => {
+    dispatchMock.mockResolvedValue({ raw: JSON.stringify([{ text: 'Game night!' }]) });
+    const fake = makeFakeRedisClient();
+    const { service } = buildService(fake);
+    await service.rewriteText({ tenantId: 't1', widgetType: 'ANNOUNCEMENT', fieldKey: 'message', currentText: 'game', op: 'punch' });
+    const adds = fake.zadd.mock.calls.filter((c) => c[0] === 'ai:rl:gen:t1');
+    expect(adds.length).toBe(1);
+    expect(tenantsById.get('t1').aiPlatformUsageCount).toBe(1);
+  });
+
+  it('sanitizes model option text (strips script + URL, keeps the copy)', async () => {
+    dispatchMock.mockResolvedValue({ raw: JSON.stringify([{ text: '<script>x()</script>Sale today http://evil.com' }]) });
+    const { service } = buildService(makeFakeRedisClient());
+    const r = await service.rewriteText({ tenantId: 't1', widgetType: 'TEXT', fieldKey: 'content', currentText: 'sale', op: 'rewrite' });
+    expect(r.options[0].text).not.toContain('<');
+    expect(r.options[0].text).not.toContain('http');
+    expect(r.options[0].text).toContain('Sale today');
   });
 });
