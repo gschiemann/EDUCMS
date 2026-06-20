@@ -570,6 +570,43 @@ export const TemplateGenerateTouchSchema = z
   .passthrough();
 export type TemplateGenerateTouchInput = z.infer<typeof TemplateGenerateTouchSchema>;
 
+// Slice 1c (2026-06-16) — 3-candidate generation. Same inputs as the
+// single-shot generator, plus `interactive` (touch vs passive signage)
+// and `count` (capped 1..3 server-side too). Returns drafts, NOT a
+// persisted template.
+export const TemplateGenerateTouchCandidatesSchema = z
+  .object({
+    prompt: BoundedText(8000),
+    screenWidth: z.number().optional(),
+    screenHeight: z.number().optional(),
+    vertical: BoundedText(40).optional(),
+    interactive: z.boolean().optional(),
+    count: z.number().int().min(1).max(3).optional(),
+  })
+  .passthrough();
+export type TemplateGenerateTouchCandidatesInput = z.infer<typeof TemplateGenerateTouchCandidatesSchema>;
+
+// The operator's chosen candidate round-trips back to be persisted. The
+// candidate JSON is RE-SANITIZED server-side (sanitizeTouchTemplate) — so
+// this schema only needs to bound the shape (cap the zones/scenes arrays
+// so a tampered client can't DoS the sanitizer). Never trust these fields.
+export const TemplateCreateFromCandidateSchema = z
+  .object({
+    candidate: z
+      .object({
+        name: BoundedText(200).optional(),
+        description: BoundedText(2000).optional(),
+        zones: z.array(z.any()).max(50),
+        scenes: z.array(z.any()).max(20).optional(),
+      })
+      .passthrough(),
+    screenWidth: z.number().optional(),
+    screenHeight: z.number().optional(),
+    interactive: z.boolean().optional(),
+  })
+  .passthrough();
+export type TemplateCreateFromCandidateInput = z.infer<typeof TemplateCreateFromCandidateSchema>;
+
 export const TemplateDuplicateSchema = z
   .object({
     name: BoundedText(200).optional(),

@@ -1,6 +1,7 @@
 import {
   Controller, Get, Post, Put, Delete, Body, Param, Query,
   UseGuards, Request, HttpException, HttpStatus, Header, Logger,
+  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -10,13 +11,15 @@ import { AppRole } from '@cms/database';
 import { SYSTEM_TEMPLATE_PRESETS } from './system-presets';
 import { FITNESS_TEMPLATE_PRESETS } from './fitness-presets';
 import { verticalMatchOr } from './ensure-system-presets';
-import { AiService } from '../ai/ai.service';
+import { AiService, sanitizeTouchTemplate } from '../ai/ai.service';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import {
   TemplateNameOnlySchema, type TemplateNameOnlyInput,
   TemplateSceneUpdateSchema, type TemplateSceneUpdateInput,
   TemplateCreateSchema, type TemplateCreateInput,
   TemplateGenerateTouchSchema, type TemplateGenerateTouchInput,
+  TemplateGenerateTouchCandidatesSchema, type TemplateGenerateTouchCandidatesInput,
+  TemplateCreateFromCandidateSchema, type TemplateCreateFromCandidateInput,
   TemplateDuplicateSchema, type TemplateDuplicateInput,
   TemplateUpdateSchema, type TemplateUpdateInput,
   TemplateReplaceZonesSchema, type TemplateReplaceZonesInput,
@@ -865,8 +868,117 @@ export class TemplatesController {
 
     const screenWidth = body.screenWidth || 1920;
     const screenHeight = body.screenHeight || 1080;
+
+    // Single-shot generate-touch is always interactive (touch). The
+    // shared persist helper (Slice 1c) also backs create-from-candidate.
+    const created = await this.persistGeneratedTemplate(
+      req,
+      result.parsed,
+      screenWidth,
+      screenHeight,
+      true,
+    );
+
+    await this.audit(req, 'TEMPLATE_CREATED', created?.id ?? null, {
+      name: created?.name,
+      zoneCount: created?.zones?.length ?? 0,
+      via: 'ai-touch',
+      aiSource: result.source,
+    });
+
+    return {
+      template: mapTemplate(created),
+      ai: {
+        source: result.source,
+        usage: result.usage,
+      },
+    };
+  }
+
+  // ───────────────────────────────────────────────────────
+  // CREATE FROM AI — 3-candidate fan-out + pick-a-winner (Slice 1c, 2026-06-16)
+  // ───────────────────────────────────────────────────────
+  // generate-touch/candidates returns up to 3 sanitized DRAFTS (NOT
+  // persisted) so the operator picks the winner; create-from-candidate
+  // persists the chosen one (re-sanitized — client JSON is never trusted).
+  // Serves BOTH touch templates and passive (non-touch) signage via the
+  // `interactive` flag (operator demand 2026-06-16: touch AND non-touch).
+
+  @Post('generate-touch/candidates')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async generateTouchCandidates(
+    @Request() req: any,
+    @Body(new ZodValidationPipe(TemplateGenerateTouchCandidatesSchema)) body: TemplateGenerateTouchCandidatesInput,
+  ) {
+    const result = await this.ai.generateTouchTemplateCandidates({
+      tenantId: req.user.tenantId,
+      userId: req.user.id,
+      prompt: body.prompt,
+      screenWidth: body.screenWidth,
+      screenHeight: body.screenHeight,
+      vertical: body.vertical,
+      interactive: body.interactive !== false,
+      count: body.count,
+    });
+    // Candidates are returned UNPERSISTED — the FE renders pick-cards and
+    // the operator's choice round-trips through create-from-candidate.
+    return {
+      candidates: result.candidates,
+      ai: { source: result.source, usage: result.usage },
+    };
+  }
+
+  @Post('create-from-candidate')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async createFromCandidate(
+    @Request() req: any,
+    @Body(new ZodValidationPipe(TemplateCreateFromCandidateSchema)) body: TemplateCreateFromCandidateInput,
+  ) {
+    // SECURITY — the candidate round-tripped through the browser, so never
+    // trust it. Re-run the SAME server-side sanitizer the generator used
+    // (clamps coords, allowlists widget types + touch actions, scrubs
+    // configs + SSRF targets). Anything tampered with client-side is dropped.
+    const parsed = sanitizeTouchTemplate(body.candidate);
+    if (!parsed.zones.length) {
+      throw new BadRequestException('That option had no usable content. Generate again.');
+    }
+    const screenWidth = body.screenWidth || 1920;
+    const screenHeight = body.screenHeight || 1080;
+    const interactive = body.interactive !== false;
+
+    const created = await this.persistGeneratedTemplate(
+      req,
+      parsed,
+      screenWidth,
+      screenHeight,
+      interactive,
+    );
+
+    await this.audit(req, 'TEMPLATE_CREATED', created?.id ?? null, {
+      name: created?.name,
+      zoneCount: created?.zones?.length ?? 0,
+      via: 'ai-candidate',
+      interactive,
+    });
+
+    return { template: mapTemplate(created) };
+  }
+
+  /**
+   * Shared persist for AI-generated templates (Slice 1c). Creates the
+   * Template + scenes + zones in one transaction with tenant-brand
+   * inheritance and goto-scene target resolution. Used by BOTH the
+   * single-shot generate-touch AND create-from-candidate. `interactive`
+   * sets isTouchEnabled (true = touch kiosk, false = passive signage).
+   */
+  private async persistGeneratedTemplate(
+    req: any,
+    parsed: { name: string; description?: string; zones: any[]; scenes?: Array<{ name: string }> },
+    screenWidth: number,
+    screenHeight: number,
+    interactive: boolean,
+  ): Promise<any> {
     const orientation = screenHeight > screenWidth ? 'PORTRAIT' : 'LANDSCAPE';
-    const parsed = result.parsed;
 
     // Auto-inherit tenant brand like the regular POST / route. The AI
     // already proposes a description + initial palette via widget
@@ -875,7 +987,7 @@ export class TemplatesController {
 
     // Create the template + initial scenes in a transaction so a
     // half-built draft can't survive a failure mid-write.
-    const created = await this.prisma.client.$transaction(async (tx) => {
+    return this.prisma.client.$transaction(async (tx) => {
       const tpl = await tx.template.create({
         data: {
           tenantId: req.user.tenantId,
@@ -885,16 +997,17 @@ export class TemplatesController {
           orientation,
           screenWidth,
           screenHeight,
-          isTouchEnabled: true, // AI-generated templates are touch by definition
+          isTouchEnabled: interactive,
           bgColor: brand.surface || null,
           brandKit: brand.brandKit ?? undefined,
           createdById: req.user.id,
         } as any,
       });
 
-      // Scenes (optional). If the AI returned scene names, create
-      // them and resolve scene-name targets in zone touchActions to
-      // the real scene ids below. Default scene = first one returned.
+      // Scenes (optional). If the AI returned scene names, create them
+      // and resolve scene-name targets in zone touchActions to the real
+      // scene ids below. Default scene = first one returned. Passive
+      // signage emits no scenes → a single default "Main" scene.
       const sceneNameToId = new Map<string, string>();
       const scenesToCreate = parsed.scenes && parsed.scenes.length
         ? parsed.scenes
@@ -913,17 +1026,10 @@ export class TemplatesController {
       }
       const defaultSceneId = Array.from(sceneNameToId.values())[0];
 
-      // Resolve scene-name targets in goto-scene touch actions to
-      // actual scene ids. If the AI emitted a name we never created,
-      // fall back to the default scene (still navigable, just not the
-      // scene the AI imagined).
-      //
-      // sanitizeAction in AiService already DROPS actions whose
-      // required target was missing after string-trim — so anything
-      // landing here as `{type:'goto-scene', target: undefined}` is
-      // already gone. We still defensively guard here in case a future
-      // sanitizer change loosens that contract; better to coerce to
-      // defaultSceneId than to persist a tap that does nothing.
+      // Resolve scene-name targets in goto-scene touch actions to actual
+      // scene ids. If the AI emitted a name we never created, fall back to
+      // the default scene. sanitizeAction already DROPS actions with a
+      // missing required target — this is a defensive guard.
       const resolveActionTarget = (a: any): any => {
         if (!a || typeof a !== 'object') return null;
         if (a.type === 'goto-scene') {
@@ -935,9 +1041,6 @@ export class TemplatesController {
         return a;
       };
 
-      // Zones — assign to default scene unless we can map the AI's
-      // sceneId hint (it doesn't really emit them, so default scene
-      // is the common path).
       for (let i = 0; i < parsed.zones.length; i++) {
         const z = parsed.zones[i];
         const cfg = this.applyBrandToZoneConfig(z.defaultConfig, brand, z.widgetType);
@@ -968,21 +1071,6 @@ export class TemplatesController {
       });
       return fresh;
     });
-
-    await this.audit(req, 'TEMPLATE_CREATED', created?.id ?? null, {
-      name: created?.name,
-      zoneCount: created?.zones?.length ?? 0,
-      via: 'ai-touch',
-      aiSource: result.source,
-    });
-
-    return {
-      template: mapTemplate(created),
-      ai: {
-        source: result.source,
-        usage: result.usage,
-      },
-    };
   }
 
   // ───────────────────────────────────────────────────────

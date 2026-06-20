@@ -790,85 +790,10 @@ export class AiService {
       'Return ONLY a JSON object matching the schema. No preamble, no markdown fences, no commentary.',
     ].join('\n');
 
-    let raw: string;
-    try {
-      const out = await dispatchAi(resolved.provider, {
-        apiKey: resolved.apiKey,
-        model: resolved.model,
-        system,
-        userPrompt,
-        // Higher cap than the text-snippet path because a 6-zone
-        // template with touch actions is ~1.5KB JSON. 1500 keeps spend
-        // bounded (~$0.02/call on Haiku) but leaves headroom.
-        maxTokens: 1500,
-      });
-      if (out.errorStatus) {
-        // 2026-05-26 audit AI-P0-1 — out-of-credit disambiguation on
-        // the touch-template path too. Same shared helper as the
-        // text-snippet generate(), same FE handling.
-        const quotaErr = mapProviderQuotaError(resolved.provider, out.errorStatus, out.errorBody);
-        if (quotaErr) {
-          throw new HttpException(
-            {
-              message: quotaErr.message,
-              code: quotaErr.code,
-              provider: quotaErr.provider,
-              keySource: resolved.source,
-            },
-            HttpStatus.PAYMENT_REQUIRED,
-          );
-        }
-        const keyRejected =
-          out.errorStatus === 401 ||
-          out.errorStatus === 403 ||
-          (out.errorStatus === 400 && /api[_ ]?key|API_KEY_INVALID|PERMISSION_DENIED/i.test(out.errorBody || ''));
-        if (keyRejected && resolved.source === 'tenant') {
-          throw new ServiceUnavailableException(
-            `Your ${providerDisplayName(resolved.provider)} API key was rejected (${out.errorStatus}). Re-enter it in Settings → Integrations.`,
-          );
-        }
-        if (out.errorStatus === 429) {
-          throw new ServiceUnavailableException('AI service rate-limited the request. Try again in a moment.');
-        }
-        throw new ServiceUnavailableException(`AI service responded ${out.errorStatus}.`);
-      }
-      raw = out.raw;
-    } catch (err: any) {
-      // Same fix as the content-generate path: re-throw ANY HttpException
-      // (incl. the structured 402 AI_PROVIDER_OUT_OF_CREDIT thrown above)
-      // instead of only ServiceUnavailableException, which downgraded it to
-      // the generic 503 here (2026-06-09 Fable audit — second dead-code site).
-      if (err instanceof HttpException) throw err;
-      this.logger.error(`AI touch-template dispatch failed: ${err?.message}`);
-      throw new ServiceUnavailableException('AI service unreachable.');
-    }
-
-    // Empty (but non-error) reply — e.g. a thinking model that exhausted
-    // its output budget, or a provider that returned no content. Give an
-    // actionable message instead of letting JSON.parse('') throw a cryptic
-    // "unparseable" error.
-    if (!raw || !raw.trim()) {
-      throw new ServiceUnavailableException(
-        'The AI model returned an empty response — it may have run out of output budget. Try a shorter prompt, or switch to a faster model like Gemini Flash in Settings → AI provider.',
-      );
-    }
-
-    const stripped = raw
-      .replace(/^```(?:json)?\n?/, '')
-      .replace(/\n?```$/, '')
-      .trim();
-    let parsed: any;
-    try {
-      parsed = JSON.parse(stripped);
-    } catch (e: any) {
-      this.logger.warn(`AI returned non-JSON for touch template: ${stripped.slice(0, 200)}`);
-      throw new ServiceUnavailableException('AI returned an unparseable response. Try rephrasing your prompt.');
-    }
-
-    const sanitized = sanitizeTouchTemplate(parsed);
-    if (!sanitized.zones.length) {
-      throw new ServiceUnavailableException('AI returned no usable zones. Try a more specific prompt.');
-    }
+    // Slice 1c (2026-06-16) — dispatch + provider-error-map + parse +
+    // sanitize extracted to dispatchTouchTemplate() so the single-shot
+    // path here and the 3-candidate fan-out below share identical logic.
+    const sanitized = await this.dispatchTouchTemplate(resolved, system, userPrompt);
 
     // Bump rate-limit + monthly counter only AFTER a successful, usable
     // result. Same leak-fix pattern as generate(). P1-14 — Redis-backed.
@@ -904,6 +829,270 @@ export class AiService {
       },
     }).catch(() => { /* audit best-effort */ });
     return { parsed: sanitized, source: resolved.source, usage };
+  }
+
+  /**
+   * Shared dispatch + parse + sanitize for the touch/signage-template
+   * path. Extracted (2026-06-16, Slice 1c) so BOTH the single-shot
+   * generateTouchTemplate AND the 3-candidate fan-out reuse identical
+   * provider-error mapping, empty-reply handling, and JSON sanitizing.
+   *
+   * Throws (HttpException for structured 402s / ServiceUnavailableException
+   * for everything else) on any failure; returns the sanitized template
+   * (guaranteed ≥1 zone) on success. Deliberately does NOT touch the
+   * rate-limit / usage counters — the caller owns that, so a 3-candidate
+   * batch can record per-successful-candidate (honest spend accounting).
+   */
+  private async dispatchTouchTemplate(
+    resolved: { provider: AiProvider; apiKey: string; model: string; source: 'tenant' | 'platform' },
+    system: string,
+    userPrompt: string,
+  ): Promise<ReturnType<typeof sanitizeTouchTemplate>> {
+    let raw: string;
+    try {
+      const out = await dispatchAi(resolved.provider, {
+        apiKey: resolved.apiKey,
+        model: resolved.model,
+        system,
+        userPrompt,
+        // Higher cap than the text-snippet path because a 6-zone
+        // template with touch actions is ~1.5KB JSON. 1500 keeps spend
+        // bounded (~$0.02/call on Haiku) but leaves headroom.
+        maxTokens: 1500,
+      });
+      if (out.errorStatus) {
+        // 2026-05-26 audit AI-P0-1 — out-of-credit disambiguation.
+        const quotaErr = mapProviderQuotaError(resolved.provider, out.errorStatus, out.errorBody);
+        if (quotaErr) {
+          throw new HttpException(
+            {
+              message: quotaErr.message,
+              code: quotaErr.code,
+              provider: quotaErr.provider,
+              keySource: resolved.source,
+            },
+            HttpStatus.PAYMENT_REQUIRED,
+          );
+        }
+        const keyRejected =
+          out.errorStatus === 401 ||
+          out.errorStatus === 403 ||
+          (out.errorStatus === 400 && /api[_ ]?key|API_KEY_INVALID|PERMISSION_DENIED/i.test(out.errorBody || ''));
+        if (keyRejected && resolved.source === 'tenant') {
+          throw new ServiceUnavailableException(
+            `Your ${providerDisplayName(resolved.provider)} API key was rejected (${out.errorStatus}). Re-enter it in Settings → Integrations.`,
+          );
+        }
+        if (out.errorStatus === 429) {
+          throw new ServiceUnavailableException('AI service rate-limited the request. Try again in a moment.');
+        }
+        throw new ServiceUnavailableException(`AI service responded ${out.errorStatus}.`);
+      }
+      raw = out.raw;
+    } catch (err: any) {
+      // Re-throw ANY HttpException (incl. the structured 402
+      // AI_PROVIDER_OUT_OF_CREDIT) untouched; only raw network failures
+      // become "unreachable" (2026-06-09 Fable audit dead-code fix).
+      if (err instanceof HttpException) throw err;
+      this.logger.error(`AI touch-template dispatch failed: ${err?.message}`);
+      throw new ServiceUnavailableException('AI service unreachable.');
+    }
+
+    // Empty (but non-error) reply — e.g. a thinking model that exhausted
+    // its output budget. Actionable message instead of a cryptic parse error.
+    if (!raw || !raw.trim()) {
+      throw new ServiceUnavailableException(
+        'The AI model returned an empty response — it may have run out of output budget. Try a shorter prompt, or switch to a faster model like Gemini Flash in Settings → AI provider.',
+      );
+    }
+
+    const stripped = raw
+      .replace(/^```(?:json)?\n?/, '')
+      .replace(/\n?```$/, '')
+      .trim();
+    let parsed: any;
+    try {
+      parsed = JSON.parse(stripped);
+    } catch {
+      this.logger.warn(`AI returned non-JSON for touch template: ${stripped.slice(0, 200)}`);
+      throw new ServiceUnavailableException('AI returned an unparseable response. Try rephrasing your prompt.');
+    }
+
+    const sanitized = sanitizeTouchTemplate(parsed);
+    if (!sanitized.zones.length) {
+      throw new ServiceUnavailableException('AI returned no usable zones. Try a more specific prompt.');
+    }
+    return sanitized;
+  }
+
+  /**
+   * Slice 1c (2026-06-16) — fan out N (default 3) template drafts from
+   * ONE prompt, each with a different DESIGN DIRECTION seed, so the
+   * operator picks the winner instead of editing whatever single layout
+   * the model happened to return ("pick-a-winner" panel). Serves BOTH
+   * the touch editor AND the non-touch signage maker — pass
+   * interactive:false for a passive display board (operator demand
+   * 2026-06-16: "touch AND non-touch the best & easiest in the market").
+   *
+   * Candidates are NOT persisted here — returned as sanitized JSON; the
+   * operator's chosen one round-trips back through
+   * POST /templates/create-from-candidate, which RE-SANITIZES before
+   * persisting (client JSON is never trusted).
+   *
+   * COST (3-tier model): each candidate is a real provider call, so we
+   * record one hourly slot AND bump one platform credit PER SUCCESSFUL
+   * candidate — honest about spend (CLAUDE.md: never silently spend
+   * platform budget; the FE labels it "uses N credits"). Caps are
+   * checked up-front (need headroom for ≥1); per-candidate recording can
+   * overshoot by ≤N-1, the same documented race policy as the single shot.
+   */
+  async generateTouchTemplateCandidates(opts: {
+    tenantId: string;
+    userId?: string;
+    prompt: string;
+    screenWidth?: number;
+    screenHeight?: number;
+    vertical?: string;
+    interactive?: boolean;
+    count?: number;
+  }): Promise<{
+    candidates: Array<ReturnType<typeof sanitizeTouchTemplate>>;
+    source: 'tenant' | 'platform';
+    usage: { used: number; cap: number; resetAt: string } | null;
+  }> {
+    await this.checkFailureCap(opts.tenantId);
+    try {
+      return await this.generateTouchTemplateCandidatesInner(opts);
+    } catch (e) {
+      await this.recordFailure(opts.tenantId);
+      throw e;
+    }
+  }
+
+  private async generateTouchTemplateCandidatesInner(opts: {
+    tenantId: string;
+    userId?: string;
+    prompt: string;
+    screenWidth?: number;
+    screenHeight?: number;
+    vertical?: string;
+    interactive?: boolean;
+    count?: number;
+  }): Promise<any> {
+    const resolved = await this.resolveProviderKey(opts.tenantId);
+    if (!resolved) {
+      throw new ServiceUnavailableException(
+        'AI is not configured. Add your provider API key in Settings → Integrations, or contact your admin.',
+      );
+    }
+    const prompt = (opts.prompt || '').trim();
+    if (!prompt) throw new BadRequestException('Tell the AI what kind of template to build.');
+    if (prompt.length > 2000) {
+      throw new BadRequestException('Prompt too long. Keep it under 2000 characters.');
+    }
+    // NOTE: vertical is NOT hard-validated here (matches the single-shot
+    // generateTouchTemplate path). It's bounded to 40 chars by the Zod
+    // schema and only drives the voice-clause lookup (unknown keys fall
+    // through to the bare prompt) + one interpolated user-prompt line. The
+    // FE sends a lowercase vertical or the 'venue' fallback, neither of
+    // which should 400.
+    const interactive = opts.interactive !== false; // default: touch
+    const count = Math.min(Math.max(opts.count ?? 3, 1), 3);
+
+    // Up-front caps — need headroom for at least one. Same shared Redis
+    // hourly window + monthly platform cap as the single-shot path.
+    if ((await this.windowCount(this.RL_SUCCESS_PREFIX, opts.tenantId)) >= this.HOURLY_CAP) {
+      throw new BadRequestException(
+        `Hit the hourly AI cap (${this.HOURLY_CAP} generations/hour). Try again later.`,
+      );
+    }
+    if (resolved.source === 'platform') {
+      const u = await this.readPlatformUsage(opts.tenantId);
+      if (u.used >= u.cap) {
+        throw new HttpException(
+          {
+            message: `Hit the monthly free AI cap (${u.cap} generations). Add your own provider key in Settings → AI provider for unlimited.`,
+            code: 'AI_CAP_REACHED',
+            cap: u.cap,
+            used: u.used,
+            resetAt: u.resetAt,
+          },
+          HttpStatus.PAYMENT_REQUIRED,
+        );
+      }
+    }
+
+    // Voice clause (per-vertical tone) + base schema prompt (interactive
+    // touch vs passive signage). Same composition as the single-shot path.
+    const voiceKey = (opts.vertical || '').trim().toUpperCase();
+    const voiceClause = voiceKey ? VERTICAL_VOICE[voiceKey] : undefined;
+    const basePrompt = interactive ? TOUCH_TEMPLATE_SYSTEM_PROMPT : SIGNAGE_TEMPLATE_SYSTEM_PROMPT;
+    const system = voiceClause ? `${voiceClause}\n\n${basePrompt}` : basePrompt;
+    const directives = TOUCH_CANDIDATE_DIRECTIVES.slice(0, count);
+    const sw = opts.screenWidth || 1920;
+    const sh = opts.screenHeight || 1080;
+
+    const userPromptFor = (directive: string) => [
+      `Operator description: ${prompt}`,
+      `Vertical: ${opts.vertical || 'venue'}`,
+      `Canvas: ${sw} × ${sh} px (${sh > sw ? 'portrait' : 'landscape'}).`,
+      '',
+      directive,
+      '',
+      'Return ONLY a JSON object matching the schema. No preamble, no markdown fences, no commentary.',
+    ].join('\n');
+
+    // Fan out. One bad candidate must not sink the batch, so each call is
+    // independently settled; keep the successes and only surface an error
+    // if EVERY candidate failed (then the operator sees a real message —
+    // out of credit, bad key, etc.).
+    const settled = await Promise.allSettled(
+      directives.map((directive) =>
+        this.dispatchTouchTemplate(resolved, system, userPromptFor(directive)),
+      ),
+    );
+    const candidates = settled
+      .filter((s): s is PromiseFulfilledResult<any> => s.status === 'fulfilled')
+      .map((s) => s.value);
+    if (!candidates.length) {
+      const firstRej = settled.find((s) => s.status === 'rejected') as PromiseRejectedResult | undefined;
+      if (firstRej?.reason instanceof HttpException) throw firstRej.reason;
+      throw new ServiceUnavailableException('AI could not generate any usable options. Try rephrasing your prompt.');
+    }
+
+    // Record spend per SUCCESSFUL candidate (honest 3-tier accounting).
+    for (let i = 0; i < candidates.length; i++) {
+      await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
+      if (resolved.source === 'platform') {
+        try { await this.bumpPlatformUsage(opts.tenantId); }
+        catch (e: any) { this.logger.warn(`Platform usage bump failed: ${e?.message}`); }
+      }
+    }
+    let usage: { used: number; cap: number; resetAt: string } | null = null;
+    if (resolved.source === 'platform') {
+      const u = await this.readPlatformUsage(opts.tenantId);
+      usage = { used: u.used, cap: u.cap, resetAt: u.resetAt };
+    }
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'AI_TEMPLATE_CANDIDATES',
+        targetType: 'tenant',
+        targetId: opts.tenantId,
+        tenantId: opts.tenantId,
+        userId: opts.userId || null,
+        details: JSON.stringify({
+          vertical: opts.vertical || null,
+          interactive,
+          requested: count,
+          returned: candidates.length,
+          provider: resolved.provider,
+          model: resolved.model,
+          source: resolved.source,
+        }),
+      },
+    }).catch(() => { /* audit best-effort */ });
+
+    return { candidates, source: resolved.source, usage };
   }
 }
 
@@ -998,6 +1187,74 @@ RULES:
 Return JSON ONLY. No markdown fences, no prose, no apology. If the
 operator's prompt is unsuitable for a touch template, return a minimal
 valid template explaining the issue in the description field.`;
+
+/**
+ * Slice 1c — three DESIGN DIRECTION seeds that diversify the candidate
+ * fan-out so the operator gets genuinely different layouts to choose
+ * from (not three near-identical drafts). Appended per-candidate to the
+ * user prompt; the system schema is unchanged. Order = the order the
+ * cards render in, so #1 is the safe default.
+ */
+const TOUCH_CANDIDATE_DIRECTIVES: string[] = [
+  'DESIGN DIRECTION: a balanced, classic layout — clear visual hierarchy, a prominent title, generous whitespace, evenly-spaced elements. Safe, legible, professional.',
+  'DESIGN DIRECTION: a bold, hero-led layout — ONE large dominant focal element (a big headline, featured image, or primary action) with a few small supporting zones. Fewer, larger zones. High impact, readable from across a room.',
+  'DESIGN DIRECTION: an information-rich grid — more zones arranged in a tidy grid for a busy space where viewers want many options or facts at a glance. Organized and aligned, never cluttered.',
+];
+
+/**
+ * Sibling of TOUCH_TEMPLATE_SYSTEM_PROMPT for PASSIVE (non-touch) digital
+ * signage. Same strict output schema + the SAME sanitizer (touchAction is
+ * optional, so a board with none validates cleanly) — but the model is
+ * told to design a display board with no tap targets. This is what lets
+ * the 3-candidate generator serve the non-touch template maker too
+ * (operator demand 2026-06-16). Kept at module scope alongside its touch
+ * sibling so both stay in sync when the widget allowlist changes.
+ */
+const SIGNAGE_TEMPLATE_SYSTEM_PROMPT = `You design digital-signage display boards (NON-interactive — nobody taps
+them). The operator describes what they want; you return a JSON object the
+template builder can render directly.
+
+OUTPUT SCHEMA (strict — no extra fields):
+{
+  "name": string,                     // ≤ 60 chars
+  "description": string,              // ≤ 200 chars, optional
+  "zones": [
+    {
+      "name": string,                 // ≤ 30 chars, e.g. "Welcome headline"
+      "widgetType": one of: TEXT, RICH_TEXT, ANNOUNCEMENT, TICKER, CLOCK,
+                            WEATHER, COUNTDOWN, CALENDAR, IMAGE,
+                            IMAGE_CAROUSEL, VIDEO, LOGO, BELL_SCHEDULE,
+                            LUNCH_MENU, STAFF_SPOTLIGHT, WEBPAGE, QUOTE,
+                            DECORATION
+      "x":      0–100,                // percent of canvas width
+      "y":      0–100,                // percent of canvas height
+      "width":  3–100,                // percent
+      "height": 3–100,                // percent
+      "defaultConfig": { ... }        // widget-specific config; common keys:
+                                      //   TEXT/RICH_TEXT:   { content }
+                                      //   ANNOUNCEMENT:     { message }
+                                      //   TICKER:           { messages: string[] }
+                                      //   COUNTDOWN:        { label, targetDate }
+                                      //   QUOTE:            { quote, author }
+                                      //   STAFF_SPOTLIGHT:  { staffName, role }
+                                      //   WEBPAGE:          { url }
+    }
+  ]
+}
+
+RULES:
+- 3-8 zones. Don't crowd the canvas; whitespace is good.
+- This is a PASSIVE display — do NOT add touchAction fields; nobody taps it.
+- No two zones should overlap by more than 10%.
+- Type must read from across a room — make headline/title zones large.
+- Lean on motion-friendly, self-updating widgets where they fit: TICKER
+  for rolling info, IMAGE_CAROUSEL for rotating photos, CLOCK / WEATHER /
+  COUNTDOWN for always-fresh glanceable data.
+- TEXT / ANNOUNCEMENT / QUOTE widgets must have populated content fields —
+  meaningful placeholder copy on first load, never empty defaultConfig.
+- Pick zones that fit a 1920×1080 landscape canvas unless told otherwise.
+
+Return JSON ONLY. No markdown fences, no prose, no apology.`;
 
 /**
  * Strip every field that doesn't match the schema. Soft on individual

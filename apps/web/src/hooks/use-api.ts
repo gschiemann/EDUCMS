@@ -1301,6 +1301,84 @@ export function useGenerateTouchTemplate() {
   });
 }
 
+// ─── Slice 1c (2026-06-16) — 3-candidate generation ──────────────
+//
+// POST /templates/generate-touch/candidates → up to 3 sanitized DRAFTS
+// (not persisted) so the operator picks a winner. Then
+// POST /templates/create-from-candidate persists the chosen one. Serves
+// both touch templates and passive (non-touch) signage via `interactive`.
+
+/** A single AI draft. Shape mirrors the server sanitizer output. */
+export interface AiTemplateCandidate {
+  name: string;
+  description?: string;
+  zones: Array<{
+    name?: string;
+    widgetType: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    defaultConfig?: Record<string, any>;
+    touchAction?: any;
+  }>;
+  scenes?: Array<{ name: string }>;
+}
+
+export interface AiGenerateCandidatesResponse {
+  candidates: AiTemplateCandidate[];
+  ai: {
+    source: 'tenant' | 'platform';
+    usage: { used: number; cap: number; resetAt: string } | null;
+  };
+}
+
+export function useGenerateTouchCandidates() {
+  // No list invalidation here — candidates aren't persisted until the
+  // operator picks one (useCreateFromCandidate does the invalidation).
+  return useMutation<
+    AiGenerateCandidatesResponse,
+    Error,
+    {
+      prompt: string;
+      screenWidth?: number;
+      screenHeight?: number;
+      vertical?: string;
+      interactive?: boolean;
+      count?: number;
+    }
+  >({
+    mutationFn: (body) =>
+      apiFetch<AiGenerateCandidatesResponse>('/templates/generate-touch/candidates', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+  });
+}
+
+export function useCreateFromCandidate() {
+  const qc = useQueryClient();
+  return useMutation<
+    { template: any },
+    Error,
+    {
+      candidate: AiTemplateCandidate;
+      screenWidth?: number;
+      screenHeight?: number;
+      interactive?: boolean;
+    }
+  >({
+    mutationFn: (body) =>
+      apiFetch<{ template: any }>('/templates/create-from-candidate', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['templates'] });
+    },
+  });
+}
+
 // ─── Template scenes (Phase D2.5) ───────────────────────────────
 //
 // Wraps the /templates/:id/scenes CRUD endpoints. All four mutations

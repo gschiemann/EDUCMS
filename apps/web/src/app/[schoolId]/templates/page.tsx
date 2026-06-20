@@ -24,6 +24,7 @@ import {
   useAssets, usePlaylists, useAssetFolders,
   useTenantBranding, useApplyBrandToTemplates,
   useGenerateTouchTemplate, useExportTemplate, useImportTemplate,
+  useGenerateTouchCandidates, useCreateFromCandidate, type AiTemplateCandidate,
 } from '@/hooks/use-api';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
@@ -49,6 +50,41 @@ import { transformedImageUrl } from '@/lib/asset-image';
 // VERTICAL_TEMPLATE_CATEGORIES from packages/api-types/src/verticals.ts
 // resolved via useTenantCopy().templateCategories. This const is kept
 // only as the K12 fallback for any non-tenant-aware caller.
+/**
+ * Map an AI error (structured `code` first, message patterns as a legacy
+ * fallback) to one operator-friendly line. Shared by the generate + pick
+ * phases of the AI template modal (Slice 1c) so both speak the same
+ * language. Mirrors the structured-code handling in AiGenerateButton.tsx.
+ */
+function friendlyAiError(e: any): string {
+  const code = String(e?.code || '');
+  const status = Number(e?.status || 0);
+  const raw = (e?.message || '').toLowerCase();
+  if (code === 'AI_PROVIDER_OUT_OF_CREDIT') {
+    return e?.body?.message || e?.message || 'Your AI provider is out of credit. Add credits with your provider and try again.';
+  }
+  if (code === 'AI_CAP_REACHED' || status === 402) {
+    return 'Monthly free AI quota used up. Add your own provider key in Settings → AI provider, or wait until next month.';
+  }
+  if (code === 'AI_FAILURE_CAP_REACHED') {
+    return 'Too many failed AI requests in the last hour. Wait an hour, or contact support if you think this is wrong.';
+  }
+  if (raw.includes('not configured')) {
+    return "AI isn't enabled for this site. Ask your administrator to add an API key in Settings → AI provider.";
+  }
+  if (raw.includes('rejected') || raw.includes('re-enter')) return e.message;
+  if (status === 429 || raw.includes('hourly') || raw.includes('rate-limit')) {
+    return "You've hit this hour's AI generation limit. Try again in a few minutes.";
+  }
+  if (raw.includes('empty response')) return e.message;
+  if (raw.includes('unparseable') || raw.includes('no usable') || raw.includes('any usable options')) {
+    return 'The AI returned something unusable. Try rephrasing your prompt with more concrete details.';
+  }
+  if (raw.includes('unreachable')) return 'Could not reach the AI service. Check your connection or retry.';
+  if (status === 503 && e?.message) return e.message;
+  return 'Generation failed. Try rephrasing or try again later.';
+}
+
 const CATEGORY_TABS = [
   { key: '',          label: 'All' },
   { key: 'KIOSK',     label: 'Touch Kiosks' },
@@ -346,6 +382,14 @@ export default function TemplatesPage() {
   const [showAiGenerate, setShowAiGenerate] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiError, setAiError] = useState<string | null>(null);
+  // Slice 1c (2026-06-16) — 3-candidate "pick-a-winner" flow. The modal
+  // has two phases: 'prompt' (type + options) → 'pick' (choose 1 of 3).
+  // aiInteractive toggles touch (default) vs passive signage, so the same
+  // generator serves BOTH the touch editor and the non-touch maker.
+  const [aiPhase, setAiPhase] = useState<'prompt' | 'pick'>('prompt');
+  const [aiCandidates, setAiCandidates] = useState<AiTemplateCandidate[]>([]);
+  const [aiInteractive, setAiInteractive] = useState(true);
+  const [aiPicking, setAiPicking] = useState<number | null>(null);
   // Esc-to-close — wired only when the modal is open so dashboard
   // keyboard shortcuts elsewhere aren't shadowed. Disabled while a
   // generation is in flight so the operator doesn't accidentally
@@ -353,7 +397,16 @@ export default function TemplatesPage() {
   useEffect(() => {
     if (!showAiGenerate) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !generateTouch?.isPending) setShowAiGenerate(false);
+      // Don't let Esc abort an in-flight generate / candidate fan-out / pick.
+      if (
+        e.key === 'Escape' &&
+        !generateTouch?.isPending &&
+        !generateCandidates?.isPending &&
+        aiPicking === null
+      ) {
+        setShowAiGenerate(false);
+        resetAiModal();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -457,8 +510,81 @@ export default function TemplatesPage() {
   const duplicateTemplate = useDuplicateTemplate();
   const deleteTemplate = useDeleteTemplate();
   const generateTouch = useGenerateTouchTemplate();
+  const generateCandidates = useGenerateTouchCandidates();
+  const createFromCandidate = useCreateFromCandidate();
   const exportTemplate = useExportTemplate();
   const importTemplate = useImportTemplate();
+
+  // Reset the AI modal back to a clean 'prompt' phase. Called on
+  // open/close so a stale candidate grid never flashes on reopen.
+  const resetAiModal = useCallback(() => {
+    setAiPhase('prompt');
+    setAiCandidates([]);
+    setAiError(null);
+    setAiPicking(null);
+  }, []);
+
+  const closeAiModal = useCallback(() => {
+    setShowAiGenerate(false);
+    resetAiModal();
+  }, [resetAiModal]);
+
+  // Phase 1 → 2: fan out 3 candidate drafts from the prompt. Reused by
+  // both the initial Generate button and the "Regenerate" button in the
+  // pick grid. Errors stay inline in the modal (never a toast).
+  const runGenerateCandidates = useCallback(async () => {
+    setAiError(null);
+    const prompt = aiPrompt.trim();
+    if (!prompt) {
+      setAiError('Tell the AI what to build.');
+      return;
+    }
+    try {
+      const res = await generateCandidates.mutateAsync({
+        prompt,
+        vertical: (tenantCopy.vertical || 'venue').toLowerCase(),
+        interactive: aiInteractive,
+        count: 3,
+      });
+      const cands = res?.candidates || [];
+      if (!cands.length) {
+        setAiError('The AI returned no options. Try rephrasing your prompt with more concrete details.');
+        return;
+      }
+      setAiCandidates(cands);
+      setAiPhase('pick');
+    } catch (e: any) {
+      setAiError(friendlyAiError(e));
+    }
+  }, [aiPrompt, aiInteractive, tenantCopy.vertical, generateCandidates]);
+
+  // Phase 2 → done: persist the chosen candidate (re-sanitized server-
+  // side) and open it in the builder. The sub-1024px mobile handoff is
+  // handled by openInBuilder (toast + stay on gallery).
+  const pickCandidate = useCallback(async (index: number) => {
+    const candidate = aiCandidates[index];
+    if (!candidate) return;
+    setAiError(null);
+    setAiPicking(index);
+    try {
+      const res = await createFromCandidate.mutateAsync({
+        candidate,
+        interactive: aiInteractive,
+      });
+      const created = res?.template;
+      if (created?.id) {
+        closeAiModal();
+        setAiPrompt('');
+        openInBuilder(created as unknown as Template);
+      } else {
+        setAiError('That option could not be created. Pick another or regenerate.');
+        setAiPicking(null);
+      }
+    } catch (e: any) {
+      setAiError(friendlyAiError(e));
+      setAiPicking(null);
+    }
+  }, [aiCandidates, aiInteractive, createFromCandidate, closeAiModal, openInBuilder]);
 
   const q = searchQuery.trim().toLowerCase();
   const filtered = (templates || []).filter((t: Template) => {
@@ -749,10 +875,11 @@ export default function TemplatesPage() {
                   });
                   return;
                 }
+                resetAiModal();
                 setShowAiGenerate(true);
               }}
               disabled={isViewer}
-              title={isViewer ? 'Read-only — viewer role' : 'Describe a touch template, get a working draft'}
+              title={isViewer ? 'Read-only — viewer role' : 'Describe a template, pick from 3 AI drafts'}
               className="px-4 py-3 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white font-bold text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed max-md:flex-1 max-md:basis-[calc(50%-0.25rem)] max-md:hover:scale-100"
             >
               <Sparkles className="w-5 h-5" /> Generate with AI
@@ -785,12 +912,12 @@ export default function TemplatesPage() {
           // the backdrop element itself, not a bubbled selection.
           onClick={(e) => {
             if (e.target !== e.currentTarget) return;
-            if (generateTouch.isPending) return;
-            setShowAiGenerate(false);
+            if (generateCandidates.isPending || aiPicking !== null) return;
+            closeAiModal();
           }}
         >
           <div
-            className="bg-white rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-2xl p-5 md:p-6 space-y-4 max-h-[90vh] overflow-y-auto pb-[env(safe-area-inset-bottom)] md:pb-6"
+            className="bg-white rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-3xl p-5 md:p-6 space-y-4 max-h-[90vh] overflow-y-auto pb-[env(safe-area-inset-bottom)] md:pb-6"
             onClick={e => e.stopPropagation()}
           >
             <div className="md:hidden flex justify-center -mt-2 mb-2" aria-hidden>
@@ -802,13 +929,19 @@ export default function TemplatesPage() {
                   <Sparkles className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <h2 id="ai-gen-title" className="text-lg font-bold text-slate-800">Generate a touch template</h2>
-                  <p className="text-xs text-slate-500">Describe what you want. Claude drafts the layout, scenes, and tap actions.</p>
+                  <h2 id="ai-gen-title" className="text-lg font-bold text-slate-800">
+                    {aiPhase === 'pick' ? 'Pick your favorite' : 'Generate a template with AI'}
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    {aiPhase === 'pick'
+                      ? 'Three takes on your idea — choose one to open and fine-tune.'
+                      : 'Describe what you want — Claude drafts three different layouts to choose from.'}
+                  </p>
                 </div>
               </div>
               <button
-                onClick={() => !generateTouch.isPending && setShowAiGenerate(false)}
-                disabled={generateTouch.isPending}
+                onClick={() => { if (!generateCandidates.isPending && aiPicking === null) closeAiModal(); }}
+                disabled={generateCandidates.isPending || aiPicking !== null}
                 className="text-slate-400 hover:text-slate-600 disabled:opacity-40"
                 aria-label="Close"
               >
@@ -816,150 +949,187 @@ export default function TemplatesPage() {
               </button>
             </div>
 
-            <textarea
-              autoFocus
-              value={aiPrompt}
-              onChange={(e) => {
-                setAiPrompt(e.target.value);
-                // Clear a stale error the moment the operator starts
-                // typing a new prompt — otherwise an old red banner
-                // keeps shouting at them while they iterate.
-                if (aiError) setAiError(null);
-              }}
-              placeholder={`e.g. Lobby check-in kiosk with three tap buttons: "Sign in," "Visiting hours," and "Wi-Fi info." Use the brand colors. Each button opens its own scene.`}
-              maxLength={1800}
-              rows={5}
-              disabled={generateTouch.isPending}
-              className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent placeholder:text-slate-400 disabled:opacity-60"
-            />
+            {aiPhase === 'pick' ? (
+              /* ── PHASE 2: pick 1 of 3 AI drafts ── */
+              <>
+                {aiError && (
+                  <div
+                    role="alert"
+                    aria-live="polite"
+                    className="text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2.5"
+                  >
+                    {aiError}
+                  </div>
+                )}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {aiCandidates.map((c, i) => {
+                    const label = ['Balanced', 'Bold', 'Detailed'][i] || `Option ${i + 1}`;
+                    const picking = aiPicking === i;
+                    return (
+                      <div
+                        key={i}
+                        className="rounded-xl border-2 border-slate-200 hover:border-violet-400 transition-colors overflow-hidden flex flex-col bg-white"
+                      >
+                        <div className="relative bg-slate-100" style={{ aspectRatio: '16 / 9' }}>
+                          <ScaledTemplateThumbnail
+                            zones={c.zones as any}
+                            screenWidth={1920}
+                            screenHeight={1080}
+                            bgColor="#ffffff"
+                            maxHeight={160}
+                            freeze
+                          />
+                          <span className="absolute top-1.5 left-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-600 text-white shadow">
+                            {label}
+                          </span>
+                        </div>
+                        <div className="p-2.5 flex flex-col gap-2 grow">
+                          <div>
+                            <p className="text-xs font-bold text-slate-800 truncate" title={c.name}>{c.name}</p>
+                            <p className="text-[10px] text-slate-400">
+                              {c.zones.length} element{c.zones.length === 1 ? '' : 's'}
+                              {c.scenes && c.scenes.length > 1 ? ` · ${c.scenes.length} scenes` : ''}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => pickCandidate(i)}
+                            disabled={aiPicking !== null}
+                            className="mt-auto w-full px-3 py-2 text-xs font-bold rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                          >
+                            {picking && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                            {picking ? 'Opening…' : 'Use this'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center justify-between pt-1">
+                  <button
+                    onClick={() => { setAiPhase('prompt'); setAiError(null); }}
+                    disabled={aiPicking !== null}
+                    className="px-4 py-2 text-sm font-bold rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    ← Back
+                  </button>
+                  <button
+                    onClick={runGenerateCandidates}
+                    disabled={generateCandidates.isPending || aiPicking !== null}
+                    className="px-4 py-2 text-sm font-bold rounded-xl bg-white border border-violet-200 text-violet-700 hover:bg-violet-50 disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    {generateCandidates.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+                    {generateCandidates.isPending ? 'Generating…' : 'Regenerate'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              /* ── PHASE 1: prompt + options ── */
+              <>
+                {/* Touch vs Display — same generator serves both surfaces. */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-semibold text-slate-500">Type:</span>
+                  <div className="inline-flex rounded-xl bg-slate-100 p-1">
+                    <button
+                      type="button"
+                      onClick={() => setAiInteractive(true)}
+                      disabled={generateCandidates.isPending}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${aiInteractive ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      Touch (interactive)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAiInteractive(false)}
+                      disabled={generateCandidates.isPending}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${!aiInteractive ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      Display (no touch)
+                    </button>
+                  </div>
+                </div>
 
-            <div className="flex flex-wrap gap-2">
-              {[
-                'Wi-Fi info screen with QR code and password',
-                'Cafeteria menu with tap-to-see-allergens',
-                'Library map with tap on each section',
-                'After-school programs picker',
-                'Front-desk visitor sign-in kiosk',
-              ].map((suggestion) => (
-                <button
-                  key={suggestion}
-                  type="button"
-                  onClick={() => setAiPrompt(suggestion)}
-                  disabled={generateTouch.isPending}
-                  className="text-[11px] px-3 py-1.5 rounded-full bg-violet-50 text-violet-700 font-semibold hover:bg-violet-100 transition-colors disabled:opacity-50"
-                >
-                  {suggestion}
-                </button>
-              ))}
-            </div>
-
-            {aiError && (
-              <div
-                role="alert"
-                aria-live="polite"
-                className="text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2.5"
-              >
-                {aiError}
-              </div>
-            )}
-
-            <div className="flex items-center justify-between pt-1">
-              <p className="text-[10px] text-slate-400">
-                Drafts are editable. Always review before publishing to a screen.
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowAiGenerate(false)}
-                  disabled={generateTouch.isPending}
-                  className="px-4 py-2 text-sm font-bold rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={async () => {
-                    setAiError(null);
-                    const prompt = aiPrompt.trim();
-                    if (!prompt) {
-                      setAiError('Tell the AI what to build.');
-                      return;
-                    }
-                    try {
-                      const res = await generateTouch.mutateAsync({
-                        prompt,
-                        vertical: (tenantCopy.vertical || 'venue').toLowerCase(),
-                      });
-                      const generated = res?.template;
-                      if (generated?.id) {
-                        setShowAiGenerate(false);
-                        setAiPrompt('');
-                        // Route through openInBuilder so the sub-1024px
-                        // mobile handoff (toast + stay on gallery) applies
-                        // here too — the generated template already shows
-                        // in the gallery (the mutation invalidates
-                        // ['templates']). On desktop this still opens the
-                        // V2 builder, same as before.
-                        openInBuilder(generated as unknown as Template);
-                      } else {
-                        setAiError('Generation succeeded but returned no template id. Try again?');
-                      }
-                    } catch (e: any) {
-                      // 2026-05-26 audit AI-P0-2 — was matching on
-                      // the human error string (e.g. `raw.includes(
-                      // 'monthly free')`), which breaks the moment an
-                      // i18n pass or copy edit touches the message.
-                      // The sparkle button (AiGenerateButton.tsx) was
-                      // migrated to STRUCTURED `code` checks back in
-                      // 2026-05-25 (audit-W8). This modal was missed.
-                      // Branch on the code first, fall back to message
-                      // patterns only for legacy paths.
-                      const code = String(e?.code || '');
-                      const status = Number(e?.status || 0);
-                      const raw = (e?.message || '').toLowerCase();
-                      let friendly = 'Generation failed. Try rephrasing or try again later.';
-                      if (code === 'AI_PROVIDER_OUT_OF_CREDIT') {
-                        // Server-shipped message is already operator-
-                        // actionable (includes the right billing URL
-                        // for whichever provider).
-                        friendly = e?.body?.message || e?.message || 'Your AI provider is out of credit. Add credits with your provider and try again.';
-                      } else if (code === 'AI_CAP_REACHED' || status === 402) {
-                        friendly = 'Monthly free AI quota used up. Add your own provider key in Settings → AI provider, or wait until next month.';
-                      } else if (code === 'AI_FAILURE_CAP_REACHED') {
-                        friendly = 'Too many failed AI requests in the last hour. Wait an hour, or contact support if you think this is wrong.';
-                      } else if (raw.includes('not configured')) {
-                        // The ONLY true "no key on file" case — the backend
-                        // message is literally "AI is not configured…". (Was
-                        // previously `status === 503 || …`, which mislabeled
-                        // EVERY downstream 503 — bad key, empty/truncated
-                        // response, provider 4xx — as "not enabled", hiding
-                        // the real, fixable error from the operator.)
-                        friendly = "AI isn't enabled for this site. Ask your administrator to add an API key in Settings → AI provider.";
-                      } else if (raw.includes('rejected') || raw.includes('re-enter')) {
-                        friendly = e.message; // BYOK key invalid/expired — server msg is actionable
-                      } else if (status === 429 || raw.includes('hourly') || raw.includes('rate-limit')) {
-                        friendly = "You've hit this hour's AI generation limit. Try again in a few minutes.";
-                      } else if (raw.includes('empty response')) {
-                        friendly = e.message; // model truncated — server msg says how to fix (switch model / shorten)
-                      } else if (raw.includes('unparseable') || raw.includes('no usable')) {
-                        friendly = 'The AI returned something unusable. Try rephrasing your prompt with more concrete details.';
-                      } else if (raw.includes('unreachable')) {
-                        friendly = 'Could not reach the AI service. Check your connection or retry.';
-                      } else if (status === 503 && e?.message) {
-                        // Any other backend 503: surface the server's own
-                        // (operator-friendly) message rather than a misleading
-                        // generic — e.g. "AI service responded 404."
-                        friendly = e.message;
-                      }
-                      setAiError(friendly);
-                    }
+                <textarea
+                  autoFocus
+                  value={aiPrompt}
+                  onChange={(e) => {
+                    setAiPrompt(e.target.value);
+                    // Clear a stale error the moment the operator starts
+                    // typing a new prompt — otherwise an old red banner
+                    // keeps shouting at them while they iterate.
+                    if (aiError) setAiError(null);
                   }}
-                  disabled={generateTouch.isPending || !aiPrompt.trim()}
-                  className="px-5 py-2 text-sm font-bold rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  {generateTouch.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                  {generateTouch.isPending ? 'Generating…' : 'Generate'}
-                </button>
-              </div>
-            </div>
+                  placeholder={aiInteractive
+                    ? `e.g. Lobby check-in kiosk with three tap buttons: "Sign in," "Visiting hours," and "Wi-Fi info." Use the brand colors. Each button opens its own scene.`
+                    : `e.g. Welcome lobby board: big school name, today's date and weather, a rolling ticker of announcements, and a rotating photo strip along the bottom.`}
+                  maxLength={1800}
+                  rows={5}
+                  disabled={generateCandidates.isPending}
+                  className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent placeholder:text-slate-400 disabled:opacity-60"
+                />
+
+                <div className="flex flex-wrap gap-2">
+                  {(aiInteractive
+                    ? [
+                        'Wi-Fi info screen with QR code and password',
+                        'Cafeteria menu with tap-to-see-allergens',
+                        'Library map with tap on each section',
+                        'After-school programs picker',
+                        'Front-desk visitor sign-in kiosk',
+                      ]
+                    : [
+                        'Welcome lobby board with logo, clock and weather',
+                        'Daily announcements ticker with photo strip',
+                        'Event countdown with a big hero image',
+                        'Cafeteria menu of the day',
+                        'Staff spotlight with rotating quotes',
+                      ]
+                  ).map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => setAiPrompt(suggestion)}
+                      disabled={generateCandidates.isPending}
+                      className="text-[11px] px-3 py-1.5 rounded-full bg-violet-50 text-violet-700 font-semibold hover:bg-violet-100 transition-colors disabled:opacity-50"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+
+                {aiError && (
+                  <div
+                    role="alert"
+                    aria-live="polite"
+                    className="text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2.5"
+                  >
+                    {aiError}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between pt-1 gap-3">
+                  <p className="text-[10px] text-slate-400">
+                    Creates 3 drafts to choose from — uses up to 3 of your monthly AI credits. All drafts are editable.
+                  </p>
+                  <div className="flex gap-2 shrink-0">
+                    <button
+                      onClick={closeAiModal}
+                      disabled={generateCandidates.isPending}
+                      className="px-4 py-2 text-sm font-bold rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={runGenerateCandidates}
+                      disabled={generateCandidates.isPending || !aiPrompt.trim()}
+                      className="px-5 py-2 text-sm font-bold rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {generateCandidates.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                      {generateCandidates.isPending ? 'Generating 3…' : 'Generate 3 options'}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -235,3 +235,100 @@ describe('AiService — P1-14 Redis-backed rate limits', () => {
     });
   });
 });
+
+// ── Slice 1c (2026-06-16) — 3-candidate "pick-a-winner" generation ──
+// generateTouchTemplateCandidates fans out N drafts with diversified
+// design-direction seeds, returns sanitized drafts (NOT persisted), and
+// records spend PER SUCCESSFUL candidate (honest 3-tier accounting). One
+// bad draft must not sink the batch; an all-fail surfaces a real error.
+describe('AiService — Slice 1c 3-candidate generation', () => {
+  // A minimal valid touch-template JSON (≥1 sanitizable zone).
+  const tpl = () =>
+    JSON.stringify({
+      name: 'Lobby kiosk',
+      zones: [
+        { widgetType: 'ANNOUNCEMENT', x: 10, y: 10, width: 80, height: 30, defaultConfig: { message: 'Welcome' } },
+        { widgetType: 'TEXT', x: 10, y: 50, width: 40, height: 20, defaultConfig: { content: 'Sign in' }, touchAction: { type: 'goto-scene', target: 'main' } },
+      ],
+    });
+
+  beforeEach(() => {
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.AI_FREE_TIER_CAP;
+    tenantsById.clear();
+    auditRows.length = 0;
+    dispatchMock.mockReset();
+    tenantsById.set('t1', { id: 't1', aiProvider: null, aiKeyEncrypted: null, aiModel: null });
+  });
+
+  it('fans out 3 drafts and records one slot + one monthly credit PER successful candidate', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const fake = makeFakeRedisClient();
+    dispatchMock.mockResolvedValue({ raw: tpl() });
+    const { service } = buildService(fake);
+
+    const res = await service.generateTouchTemplateCandidates({ tenantId: 't1', prompt: 'lobby check-in kiosk' });
+
+    expect(res.candidates.length).toBe(3);
+    expect(dispatchMock).toHaveBeenCalledTimes(3); // one provider call per candidate
+    const successAdds = fake.zadd.mock.calls.filter((c) => c[0] === 'ai:rl:gen:t1');
+    expect(successAdds.length).toBe(3); // honest hourly accounting
+    expect(tenantsById.get('t1').aiPlatformUsageCount).toBe(3); // 3 monthly credits
+  });
+
+  it('keeps the successful drafts when one generation fails (batch not sunk)', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const fake = makeFakeRedisClient();
+    dispatchMock
+      .mockResolvedValueOnce({ raw: tpl() })
+      .mockResolvedValueOnce({ raw: '', errorStatus: 500, errorBody: 'boom' })
+      .mockResolvedValueOnce({ raw: tpl() });
+    const { service } = buildService(fake);
+
+    const res = await service.generateTouchTemplateCandidates({ tenantId: 't1', prompt: 'lobby kiosk' });
+
+    expect(res.candidates.length).toBe(2); // 2 of 3 survived
+    const successAdds = fake.zadd.mock.calls.filter((c) => c[0] === 'ai:rl:gen:t1');
+    expect(successAdds.length).toBe(2); // only the 2 successes burned a slot
+  });
+
+  it('uses the passive-signage system prompt when interactive=false (serves the non-touch maker)', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const fake = makeFakeRedisClient();
+    dispatchMock.mockResolvedValue({ raw: tpl() });
+    const { service } = buildService(fake);
+
+    await service.generateTouchTemplateCandidates({ tenantId: 't1', prompt: 'lobby board', interactive: false });
+
+    // dispatchAi(provider, { system, ... }) — system is the 2nd arg.
+    const systems = dispatchMock.mock.calls.map((c) => String(c[1].system));
+    expect(systems.length).toBe(3);
+    expect(systems.every((s) => /NON-interactive/i.test(s))).toBe(true);
+  });
+
+  it('uses the interactive touch system prompt by default', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const fake = makeFakeRedisClient();
+    dispatchMock.mockResolvedValue({ raw: tpl() });
+    const { service } = buildService(fake);
+
+    await service.generateTouchTemplateCandidates({ tenantId: 't1', prompt: 'lobby kiosk' });
+
+    const systems = dispatchMock.mock.calls.map((c) => String(c[1].system));
+    expect(systems.every((s) => /interactive touch-screen templates/i.test(s))).toBe(true);
+  });
+
+  it('throws (surfacing the provider error) when EVERY candidate fails', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const fake = makeFakeRedisClient();
+    dispatchMock.mockResolvedValue({ raw: '', errorStatus: 500, errorBody: 'boom' });
+    const { service } = buildService(fake);
+
+    await expect(
+      service.generateTouchTemplateCandidates({ tenantId: 't1', prompt: 'x' }),
+    ).rejects.toBeTruthy();
+    // No usable candidate → no success slot burned.
+    const successAdds = fake.zadd.mock.calls.filter((c) => c[0] === 'ai:rl:gen:t1');
+    expect(successAdds.length).toBe(0);
+  });
+});
