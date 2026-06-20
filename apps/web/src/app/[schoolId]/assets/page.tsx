@@ -1062,27 +1062,20 @@ export default function AssetsPage() {
                 >
                 <div className="aspect-video bg-slate-50 flex items-center justify-center relative overflow-hidden">
                   {thumb && isVideo(a) ? (
-                    // 2026-05-30 — EGRESS FIX: preload="none" so video tiles
-                    // don't auto-download bytes on page mount. Show a dark
-                    // placeholder with play icon; preload metadata + seek on
-                    // hover so a real first frame appears without autoplay.
+                    // 2026-06-16 — show a real first-frame POSTER on load
+                    // (operator: "videos dont have previews"). The old
+                    // preload="none" left tiles blank until hover. preload
+                    // "metadata" + a #t=0.1 media fragment paints the first
+                    // frame with a SMALL fetch (moov atom + first GOP), not
+                    // the whole file — renders a poster in Safari + Chrome.
+                    // Hover still plays a live scrub preview.
                     <video
-                      src={thumb}
+                      src={`${thumb}#t=0.1`}
                       muted
                       playsInline
-                      preload="none"
+                      preload="metadata"
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      onMouseEnter={(e) => {
-                        const v = e.currentTarget;
-                        if (v.readyState === 0) {
-                          v.preload = 'metadata';
-                          v.load();
-                          v.addEventListener('loadedmetadata', () => {
-                            try { v.currentTime = 0.1; } catch { /* ignore */ }
-                          }, { once: true });
-                        }
-                        try { v.play(); } catch { /* ignore */ }
-                      }}
+                      onMouseEnter={(e) => { try { e.currentTarget.play(); } catch { /* ignore */ } }}
                       onMouseLeave={(e) => { try { e.currentTarget.pause(); e.currentTarget.currentTime = 0.1; } catch {} }}
                     />
                   ) : thumb ? (
@@ -1186,13 +1179,15 @@ export default function AssetsPage() {
                 >
                   <div className="w-12 h-12 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
                     {thumb && isVideo(a) ? (
-                      // 2026-05-30 — EGRESS FIX: preload="none" for list-view
-                      // video thumbnails to avoid fetching video bytes.
+                      // 2026-06-16 — first-frame poster via preload="metadata"
+                      // + #t=0.1 media fragment (small fetch, not the whole
+                      // file) so list-view video rows show a real thumbnail
+                      // instead of a blank box.
                       <video
-                        src={thumb}
+                        src={`${thumb}#t=0.1`}
                         muted
                         playsInline
-                        preload="none"
+                        preload="metadata"
                         className="w-full h-full object-cover"
                       />
                     ) : thumb ? (
