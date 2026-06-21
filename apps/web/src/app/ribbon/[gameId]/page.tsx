@@ -779,12 +779,19 @@ function buildLooks(data: BoardData, def: SportDefinition): Look[] {
     const sit = ribbonSituational(def, effectiveStatsWithPossession((data.stats || {}) as Record<string, unknown>, (data as any).possession));
     if (sit) situational.push({ kind: 'situational', id: 'situational', dwellMs: 8000 });
   }
+  // item F (2026-06-21) — the operator controls how long each image holds on
+  // the ribbon (was a hardcoded 8.5s). Read the per-game setting from stats,
+  // clamped to a sane 2–60s; fall back to 8.5s when unset.
+  const slideDwellMs = (() => {
+    const v = Number((data.stats as Record<string, unknown> | undefined)?.ribbonSlideDwellMs);
+    return Number.isFinite(v) && v >= 2000 && v <= 60000 ? v : 8500;
+  })();
   const slides: Look[] = enabled.has('slides')
     ? (data.ribbonSlides || []).map((url) => ({
         kind: 'slide' as const,
         id: `slide:${url}`,
         url,
-        dwellMs: 8500,
+        dwellMs: slideDwellMs,
       }))
     : [];
   const sponsors: Look[] = enabled.has('sponsors')

@@ -100,6 +100,12 @@ wrong). Do AFTER the touch/template editor flagship work.
   roster has players (with a "add players above first" tooltip). Frontend-only, web tsc clean.
   Deferred (needs a small backend add — the `/cue` endpoint doesn't accept inline `mediaUrl`): a
   standalone "takeover graphic" upload separate from the per-player lineup.
+- **Item F (ribbon-image dwell — safe part) — DONE.** The ribbon hardcoded each slide to 8.5s;
+  `RibbonImagesPanel` now has an "Each image shows for ___ seconds" control (2–60s) stored in stats
+  (`ribbonSlideDwellMs`), and the public `/ribbon` route reads it for the slide dwell (fallback 8.5s).
+  Additive (no data migration). Deferred (needs the operator's visual review on the real ribbon, and
+  a `string[]`→objects data-shape change): per-IMAGE entrance/exit animations (slide/fade) + per-image
+  (vs global) dwell.
 
 **QUEUED (per the spec build order — lead does these sequentially; the Setup page is one 7k-line
 file so it isn't safely parallelizable across agents):**
