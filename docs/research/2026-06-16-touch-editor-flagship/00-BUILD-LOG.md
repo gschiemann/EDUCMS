@@ -103,18 +103,17 @@
 - **SHIPPED & CI-GREEN (10/10) this run:** 1a `12cdc8e` · 1a-ext `dd46bc1` (overlap) · **1c `81ed6d7`**
   (3-candidate pick-a-winner + Touch/Display) · **1d `ab17a94`** (inline rewrite chips). Design spec for 1d/2a:
   `03-IN-EDITOR-AI-EDITING-SPEC.md` (from workflow wf_51b71c88-d19).
-- **2a chat-to-edit (MVP) SHIPPED** (CI watch pending at write-time — confirm green before next slice). Local:
-  api+web tsc clean, 63/63 ai+template tests (incl. 9 chat-edit: validator spine, brand-token, injection-reject,
-  clamp, 422-when-nothing-maps).
+- **2a chat-to-edit SHIPPED:** MVP `7a0b3a2` (CI-GREEN 10/10) + **2a-full** (geometry move/resize/layer + bold/
+  align/lineHeight; `validateChatEditDiff` patch now carries zone-level keys; FE sends + applies geometry) —
+  CI watch pending at write-time. Local: api+web tsc clean, 66/66 ai+template tests.
 - **REORDER DECISION (2026-06-16):** Brand voice (1b) needs a Prisma migration on `TenantBranding` (typed table,
   Json columns, no voice field) — can't be run/verified in this sandbox, so do migration-free slices first and treat
   1b as a deliberate verified slice. Order: ~~1c~~ → ~~1d~~ → ~~2a-MVP~~ → **2a-full OR 1b → big bets (magic-resize /
   real-data autofill / build-it-for-me) → Slice 4 (translate/TTS, image-gen, multiplayer, component library)**.
-- **NEXT (pick one — both teed up):**
-  - **2a-FULL** (migration-free, builds on what's shipped): extend `validateChatEditDiff` to geometry
-    (x/y/width/height with semantic anchors bottom→y=100-height etc.) + zIndex + fontWeight/textAlign/lineHeight;
-    multi-zone (`updateZones` one-commit); canvas ghost-preview before Apply; refine-loop. The validator + endpoint
-    + box already exist — this is extending the allow-list + the FE scope.
+- **NEXT (pick one):**
+  - **2a-full+ remainder** (migration-free): MULTI-ZONE chat-edit (when `selectedIds.length>1`, send all zones →
+    `updateZones` ONE commit; needs the multi-select PropertiesPanel surface) + canvas GHOST-PREVIEW before Apply +
+    refine-loop + add/delete-zone intent message. Single-zone geometry/style is DONE (2a-full this run).
   - **1b BRAND VOICE** (needs migration — do as a deliberate verified slice): additive `brandVoice String?` on
     `TenantBranding` + migration; settings input; thread on top of `VERTICAL_VOICE` in `composeSystemPrompt()` +
     the touch-template/rewrite/chat-edit prompts; fast-follow = auto-infer from scraped homepage. VERIFY the

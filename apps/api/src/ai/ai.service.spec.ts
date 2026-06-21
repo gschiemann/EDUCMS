@@ -499,3 +499,30 @@ describe('AiService — Slice 2a chat-to-edit', () => {
     expect(dispatchMock).not.toHaveBeenCalled();
   });
 });
+
+// ── Slice 2a-full — chat-to-edit geometry + style ──
+describe('AiService — Slice 2a-full chat-to-edit geometry/style', () => {
+  it('validateChatEditDiff: geometry clamps + returns ZONE-LEVEL patch keys', () => {
+    const zones = [{ id: 'z1', widgetType: 'TEXT', x: 5, y: 8, width: 60, height: 18, zIndex: 2, defaultConfig: {} }];
+    const r = validateChatEditDiff({ edits: [{ zoneId: 'z1', y: 200, width: 150, zIndex: 9999 }] }, zones);
+    expect(r.diff.length).toBe(1);
+    expect(r.diff[0].patch.y).toBe(100);     // clamped 0–100
+    expect(r.diff[0].patch.width).toBe(100); // clamped ≤100
+    expect(r.diff[0].patch.zIndex).toBe(999);// clamped ≤999
+    expect(r.diff[0].patch.defaultConfig).toBeUndefined(); // geometry-only → no config key
+  });
+
+  it('validateChatEditDiff: bold / align / lineHeight map onto config keys', () => {
+    const zones = [{ id: 'z1', widgetType: 'TEXT', defaultConfig: {} }];
+    const r = validateChatEditDiff({ edits: [{ zoneId: 'z1', bold: true, align: 'center', lineHeight: 5 }] }, zones);
+    expect(r.diff[0].patch.defaultConfig.bold).toBe(true);
+    expect(r.diff[0].patch.defaultConfig.alignment).toBe('center');
+    expect(r.diff[0].patch.defaultConfig.lineHeight).toBe(3); // clamped 0.8–3
+  });
+
+  it('validateChatEditDiff: an invalid align value is ignored (zone dropped if nothing else)', () => {
+    const zones = [{ id: 'z1', widgetType: 'TEXT', defaultConfig: {} }];
+    const r = validateChatEditDiff({ edits: [{ zoneId: 'z1', align: 'diagonal' }] }, zones);
+    expect(r.diff.length).toBe(0);
+  });
+});

@@ -67,6 +67,11 @@ const AiChatEditSchema = z.object({
   zones: z.array(z.object({
     id: z.string().min(1).max(128),
     widgetType: z.string().min(1).max(64),
+    x: z.number().optional(),
+    y: z.number().optional(),
+    width: z.number().optional(),
+    height: z.number().optional(),
+    zIndex: z.number().optional(),
     defaultConfig: z.record(z.string(), z.any()).optional(),
   }).passthrough()).min(1).max(12),
   vertical: z.string().min(1).max(40).optional(),

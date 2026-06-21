@@ -24,7 +24,8 @@ import { getAiStatusSource } from '@/components/ai/AiGenerateButton';
 
 interface DiffEntry {
   zoneId: string;
-  patch: { defaultConfig: Record<string, any> };
+  /** zone-level keys (x/y/width/height/zIndex) + optional defaultConfig. */
+  patch: Record<string, any>;
   summary: string[];
 }
 
@@ -51,7 +52,13 @@ export function ChatToEditBox({
   updateZone,
   vertical,
 }: {
-  zone: { id: string; widgetType: string; defaultConfig?: Record<string, any>; locked?: boolean };
+  zone: {
+    id: string;
+    widgetType: string;
+    x?: number; y?: number; width?: number; height?: number; zIndex?: number;
+    defaultConfig?: Record<string, any>;
+    locked?: boolean;
+  };
   /** updateZone(id, patch, commit) — the undo-committing store setter. */
   updateZone: (id: string, patch: Record<string, any>, commit?: boolean) => void;
   vertical?: string;
@@ -87,7 +94,12 @@ export function ChatToEditBox({
     try {
       const body: Record<string, any> = {
         instruction: text,
-        zones: [{ id: zone.id, widgetType: zone.widgetType, defaultConfig: zone.defaultConfig || {} }],
+        zones: [{
+          id: zone.id,
+          widgetType: zone.widgetType,
+          x: zone.x, y: zone.y, width: zone.width, height: zone.height, zIndex: zone.zIndex,
+          defaultConfig: zone.defaultConfig || {},
+        }],
       };
       if (vertical) body.vertical = vertical;
       const res = await apiFetch<{ diff: DiffEntry[]; unresolved: string[] }>('/ai/edit/resolve', {
@@ -108,9 +120,13 @@ export function ChatToEditBox({
     if (!review) return;
     const entry = review.diff.find((d) => d.zoneId === zone.id);
     if (!entry) { setReview(null); return; }
-    // Merge the changed keys onto the LIVE zone config (handles a stale
-    // diff if the operator nudged the zone meanwhile) — one undo step.
-    updateZone(zone.id, { defaultConfig: { ...(zone.defaultConfig || {}), ...entry.patch.defaultConfig } }, true);
+    // Build the zone patch: zone-level keys (x/y/width/height/zIndex) pass
+    // through; defaultConfig changes merge onto the LIVE config (handles a
+    // stale diff if the operator nudged the zone meanwhile). One undo step.
+    const { defaultConfig: cfgPatch, ...zoneKeys } = entry.patch;
+    const merged: Record<string, any> = { ...zoneKeys };
+    if (cfgPatch) merged.defaultConfig = { ...(zone.defaultConfig || {}), ...cfgPatch };
+    updateZone(zone.id, merged, true);
     setReview(null);
     setInstruction('');
   }
