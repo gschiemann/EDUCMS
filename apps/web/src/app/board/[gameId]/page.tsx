@@ -42,6 +42,9 @@ import {
   useScoreFlip,
 } from '@/components/sports/score-motion';
 import { SportMark, PossessionGlyph } from '@/components/sports/SportGlyph';
+// item L (2026-06-16) — the team name auto-fits to one line so long real
+// school names never clip on a 4K board (was a fixed 54px that overflowed).
+import { FitOneLine } from '@/components/widgets/sports/FitOneLine';
 // Sprint 13 — custom-template scoreboard renderer. Used iff
 // Game.scoreboardTemplateId is non-null; otherwise the legacy
 // BoardScene + status-aware scenes below render unchanged.
@@ -621,18 +624,24 @@ function TeamPanel({
             <PossessionGlyph dir={side} size={40} color={color} title="Possession" />
           </span>
         )}
-        <div
-          style={{
-            fontSize: 54,
-            fontWeight: 800,
-            letterSpacing: 1,
-            color: '#fff',
-            textAlign: 'center',
-            lineHeight: 1.05,
-            textShadow: '0 4px 18px rgba(0,0,0,0.6)',
-          }}
-        >
-          {name}
+        {/* item L (2026-06-16) — auto-fit to ONE line: short names render at the
+            full 54px (unchanged look); long real school names shrink to fit
+            instead of clipping/colliding on a 4K board. FitOneLine downscales
+            only (crisp), Chromium-83 / Taurus safe. Fixed box keeps the panel
+            layout stable regardless of name length. */}
+        <div style={{ width: hasPossession ? 600 : 640, height: 86 }}>
+          <FitOneLine
+            maxFontPx={54}
+            align="center"
+            style={{
+              fontWeight: 800,
+              letterSpacing: 1,
+              color: '#fff',
+              textShadow: '0 4px 18px rgba(0,0,0,0.6)',
+            }}
+          >
+            {name}
+          </FitOneLine>
         </div>
       </div>
       <div

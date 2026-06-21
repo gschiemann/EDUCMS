@@ -3,6 +3,74 @@
 import * as React from 'react';
 
 /**
+ * scheduleFit — the shared, hardened re-measure scheduler for FitOneLine +
+ * FitBox. Both primitives compute scale from the box vs. the (unscaled,
+ * base-font) content dimensions; the ONLY thing that ever made them clip was
+ * measuring at the WRONG MOMENT.
+ *
+ * The failure mode (2026-06-16, item L — "team names cut off on a 4K TV"):
+ * the first synchronous measure can land BEFORE the large base font has fully
+ * laid out, or before a webfont has painted, on a cold 4K Android WebView /
+ * Taurus. That reads a too-small content width → computes a too-LARGE scale →
+ * the text overflows and the zone's `overflow:hidden` CLIPS it. The old code
+ * only re-measured on a BOX resize (ResizeObserver + a box-only 500ms poll) and
+ * `fonts.ready`; a late-loading font changes the CONTENT size without touching
+ * the box, so the box-only poll never re-fired and the bad scale stuck.
+ *
+ * Hardening (all downscale-only — every re-measure can only SHRINK to fit, so
+ * there is zero regression risk and no feedback loop):
+ *   1. measure now, on the next two animation frames, AND at 80/300/1200ms —
+ *      so the final scale always reflects fully-settled layout + fonts.
+ *   2. ResizeObserver on the box (unchanged) for live canvas resizes.
+ *   3. a 500ms poll that watches BOTH the box AND the content dimensions, so a
+ *      webfont that lands late (changing content width, not the box) re-fits.
+ *   4. `document.fonts.ready` + window `load` re-measures.
+ *
+ * Returns an array of cleanup fns the caller invokes on unmount.
+ * Chromium-83 / Taurus safe — pure measurement, no new CSS.
+ */
+function scheduleFit(
+  box: HTMLElement,
+  content: HTMLElement,
+  measure: () => void,
+): Array<() => void> {
+  const cleanups: Array<() => void> = [];
+  measure();
+  const raf1 = requestAnimationFrame(() => {
+    measure();
+    const raf2 = requestAnimationFrame(measure);
+    cleanups.push(() => cancelAnimationFrame(raf2));
+  });
+  cleanups.push(() => cancelAnimationFrame(raf1));
+  for (const d of [80, 300, 1200]) {
+    const id = setTimeout(measure, d);
+    cleanups.push(() => clearTimeout(id));
+  }
+  const ro = new ResizeObserver(measure);
+  ro.observe(box);
+  cleanups.push(() => ro.disconnect());
+  let lw = 0, lh = 0, lcw = 0, lch = 0;
+  const poll = setInterval(() => {
+    const w = box.clientWidth, h = box.clientHeight;
+    const cw = content.scrollWidth, ch = content.scrollHeight;
+    if (w !== lw || h !== lh || cw !== lcw || ch !== lch) {
+      lw = w; lh = h; lcw = cw; lch = ch;
+      measure();
+    }
+  }, 500);
+  cleanups.push(() => clearInterval(poll));
+  if (typeof document !== 'undefined' && (document as { fonts?: { ready?: Promise<unknown> } }).fonts?.ready) {
+    (document as { fonts: { ready: Promise<unknown> } }).fonts.ready.then(measure).catch(() => {});
+  }
+  if (typeof window !== 'undefined') {
+    const onLoad = () => measure();
+    window.addEventListener('load', onLoad);
+    cleanups.push(() => window.removeEventListener('load', onLoad));
+  }
+  return cleanups;
+}
+
+/**
  * Fill-the-zone one-liner — the STANDARD auto-fit primitive for every
  * sport scoreboard text/number element (team name, score, clock, segment,
  * stat, …). Shared so all of them shrink-to-fit identically.
@@ -51,19 +119,8 @@ export function FitOneLine({
       if (!bw || !bh || !tw || !th) return;
       setScale(autoShrink ? Math.min(1, (bw * 0.96) / tw, (bh * 0.94) / th) : 1);
     };
-    measure();
-    const raf = requestAnimationFrame(measure);
-    const ro = new ResizeObserver(measure);
-    ro.observe(box);
-    let lastW = 0, lastH = 0;
-    const poll = setInterval(() => {
-      const w = box.clientWidth, h = box.clientHeight;
-      if (w !== lastW || h !== lastH) { lastW = w; lastH = h; measure(); }
-    }, 500);
-    if (typeof document !== 'undefined' && (document as { fonts?: { ready?: Promise<unknown> } }).fonts?.ready) {
-      (document as { fonts: { ready: Promise<unknown> } }).fonts.ready.then(measure).catch(() => {});
-    }
-    return () => { cancelAnimationFrame(raf); ro.disconnect(); clearInterval(poll); };
+    const cleanups = scheduleFit(box, txt, measure);
+    return () => { for (const c of cleanups) c(); };
   }, [children, maxFontPx, autoShrink]);
   const justify = align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center';
   const origin = align === 'left' ? 'left center' : align === 'right' ? 'right center' : 'center center';
@@ -125,19 +182,8 @@ export function FitBox({
       if (!bw || !bh || !cw || !ch) return;
       setScale(autoShrink ? Math.min(1, (bw * 0.96) / cw, (bh * 0.94) / ch) : 1);
     };
-    measure();
-    const raf = requestAnimationFrame(measure);
-    const ro = new ResizeObserver(measure);
-    ro.observe(box);
-    let lastW = 0, lastH = 0;
-    const poll = setInterval(() => {
-      const w = box.clientWidth, h = box.clientHeight;
-      if (w !== lastW || h !== lastH) { lastW = w; lastH = h; measure(); }
-    }, 500);
-    if (typeof document !== 'undefined' && (document as { fonts?: { ready?: Promise<unknown> } }).fonts?.ready) {
-      (document as { fonts: { ready: Promise<unknown> } }).fonts.ready.then(measure).catch(() => {});
-    }
-    return () => { cancelAnimationFrame(raf); ro.disconnect(); clearInterval(poll); };
+    const cleanups = scheduleFit(box, inner, measure);
+    return () => { for (const c of cleanups) c(); };
   }, [children, baseFontPx, autoShrink]);
   const justify = align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center';
   const origin = align === 'left' ? 'left center' : align === 'right' ? 'right center' : 'center center';

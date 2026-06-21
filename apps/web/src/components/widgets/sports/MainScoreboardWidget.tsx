@@ -40,6 +40,7 @@ import { useEffect, useRef, useState } from 'react';
 import { findSport, formatScore } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import { useGameState, fmtClock, type GameSnapshot } from './GameStateContext';
+import { FitOneLine } from './FitOneLine';
 import { liveNeutral } from './cts-fields';
 import type { BaseCfg, WidgetProps } from '../v2/_shared/types';
 
@@ -281,25 +282,36 @@ export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainSc
       overflow: 'hidden',
     } as React.CSSProperties;
   };
-  const nameStyle = (which: 'home' | 'away'): React.CSSProperties => ({
+  // item L (2026-06-16) — the name is a BOUNDED BOX; FitOneLine shrinks a long
+  // real school name to one line that fills the box, instead of the old fixed
+  // 90px + `textOverflow:ellipsis` that literally CUT OFF long names on a 4K
+  // board. Short names still render at the full 90px (downscale-only).
+  const nameBox = (which: 'home' | 'away'): React.CSSProperties => ({
     position: 'absolute', top: 360,
     [which === 'home' ? 'left' : 'right']: 0,
-    width: BLOCK_W, textAlign: 'center', fontWeight: 800, fontSize: 90, lineHeight: 0.95,
-    color: '#fff', letterSpacing: 1, textShadow: '0 6px 0 rgba(0,0,0,0.28)',
-    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', padding: '0 24px', boxSizing: 'border-box',
+    width: BLOCK_W, height: 116, padding: '0 24px', boxSizing: 'border-box',
   } as React.CSSProperties);
+  const nameTextStyle: React.CSSProperties = {
+    fontWeight: 800, color: '#fff', letterSpacing: 1, textShadow: '0 6px 0 rgba(0,0,0,0.28)',
+  };
   const tagStyle = (which: 'home' | 'away'): React.CSSProperties => ({
     position: 'absolute', top: 478,
     [which === 'home' ? 'left' : 'right']: 0,
     width: BLOCK_W, textAlign: 'center', fontWeight: 600, fontSize: 34, letterSpacing: 12, color: accent,
   } as React.CSSProperties);
-  const scoreStyle = (which: 'home' | 'away'): React.CSSProperties => ({
+  // item L — the hero score is also a bounded box: a 3-digit basketball score
+  // (e.g. "100") at the old fixed 440px overflowed the 620px block into the
+  // center column. FitOneLine keeps a 1–2 digit score at the full 440px and
+  // shrinks a 3-digit one to fit. (decimals for judged sports too.)
+  const scoreBox = (which: 'home' | 'away'): React.CSSProperties => ({
     position: 'absolute', top: 552,
     [which === 'home' ? 'left' : 'right']: 0,
-    width: BLOCK_W, textAlign: 'center', fontWeight: 800, fontSize: 440, lineHeight: 0.8,
-    color: '#fff', fontVariantNumeric: 'tabular-nums',
-    textShadow: '0 14px 0 rgba(0,0,0,0.30), 0 0 70px rgba(255,255,255,0.22)',
+    width: BLOCK_W, height: 360,
   } as React.CSSProperties);
+  const scoreTextStyle: React.CSSProperties = {
+    fontWeight: 800, color: '#fff', fontVariantNumeric: 'tabular-nums',
+    textShadow: '0 14px 0 rgba(0,0,0,0.30), 0 0 70px rgba(255,255,255,0.22)',
+  };
   const pip = (on: boolean, color: string): React.CSSProperties => ({
     width: 30, height: 30, borderRadius: '50%', marginLeft: 12,
     background: on ? color : 'transparent', border: `3px solid ${on ? color : 'rgba(255,255,255,0.5)'}`, display: 'inline-block',
@@ -326,9 +338,13 @@ export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainSc
             <img src={homeLogoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
           ) : homeInitial}
         </div>
-        <div style={nameStyle('home')}>{homeName.toUpperCase()}</div>
+        <div style={nameBox('home')}>
+          <FitOneLine maxFontPx={90} align="center" style={nameTextStyle}>{homeName.toUpperCase()}</FitOneLine>
+        </div>
         <div style={tagStyle('home')}>HOME</div>
-        <div style={scoreStyle('home')}>{fmtScoreVal(homeScore)}</div>
+        <div style={scoreBox('home')}>
+          <FitOneLine maxFontPx={440} align="center" style={scoreTextStyle}>{fmtScoreVal(homeScore)}</FitOneLine>
+        </div>
 
         {/* AWAY side */}
         <div style={sideBlock('away')} />
@@ -338,9 +354,13 @@ export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainSc
             <img src={awayLogoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
           ) : awayInitial}
         </div>
-        <div style={nameStyle('away')}>{awayName.toUpperCase()}</div>
+        <div style={nameBox('away')}>
+          <FitOneLine maxFontPx={90} align="center" style={nameTextStyle}>{awayName.toUpperCase()}</FitOneLine>
+        </div>
         <div style={tagStyle('away')}>AWAY</div>
-        <div style={scoreStyle('away')}>{fmtScoreVal(awayScore)}</div>
+        <div style={scoreBox('away')}>
+          <FitOneLine maxFontPx={440} align="center" style={scoreTextStyle}>{fmtScoreVal(awayScore)}</FitOneLine>
+        </div>
 
         {/* CENTER COLUMN */}
         <div style={{ position: 'absolute', top: 0, left: BLOCK_W, width: 680, height: 1080 }}>

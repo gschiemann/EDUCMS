@@ -2231,7 +2231,14 @@ function LookView({
     // and the marquee visibly jumps every cycle. Round up to even.
     const rawCopies = Math.max(2, Math.ceil((w * 2) / Math.max(1, cardW)));
     const copies = rawCopies % 2 === 0 ? rawCopies : rawCopies + 1;
-    const scrollSecs = Math.max(8, (cardW * copies) / 120);
+    // item E1 (2026-06-16) — the operator's Slow/Normal/Fast/Very-fast control
+    // (data.ribbonSpeed) was IGNORED here: scrollSecs used a hardcoded /120, so
+    // the sponsor-marquee crawl never changed speed (the main ticker already
+    // honored it). Scale the whole duration by 1/speedMult so a higher speed →
+    // shorter duration → faster crawl, and the floor scales too. Geometry
+    // (copies / -50% loop point) is untouched, so the seamless loop is intact.
+    const speedMult = ribbonSpeedMultiplier(data.ribbonSpeed) || 1;
+    const scrollSecs = Math.max(8, (cardW * copies) / 120) / speedMult;
     return (
       <div
         style={{
