@@ -1514,6 +1514,22 @@ function RunMode({
               the scrolling region is what lets the scoreboard AND the ribbon
               both stay on screen without scrolling. (2026-06-16 operator fb) */}
           <div className="shrink-0">
+            {/* Phone-only thumb dock — the hot actions (HOME score · clock ·
+                AWAY score + segment/reset) always in the thumb zone so the
+                operator runs the game one-handed without scrolling. First in
+                the pinned cluster so it's guaranteed visible even if the
+                secondary bars below overflow. Desktop unaffected (md:hidden).
+                (2026-06-21 — "run the game from an iPhone") */}
+            {showScoreboard && (
+              <MobileScoreDock
+                g={g}
+                def={def}
+                liveMs={liveMs}
+                homeColor={homeColor}
+                awayColor={awayColor}
+                ctl={ctl}
+              />
+            )}
             {showRibbonPreview && <RunRibbonPreview gameId={gameId} />}
             {showRosterBar && (
               <RunInlineRosterBar
@@ -1985,6 +2001,256 @@ function ClockTypeIn({ liveMs, onSet }: { liveMs: number; onSet: (ms: number) =>
   );
 }
 
+/**
+ * MobileScoreMirror — md:hidden glanceable scoreboard (2026-06-21 mobile console).
+ *
+ * On a phone the full operable ScoreTile grid doesn't fit 3-across, so the
+ * desktop tiles are hidden (`hidden md:grid`) and the operator instead GLANCES
+ * the live state here (top) and ACTS from the thumb dock pinned at the bottom.
+ * Read-only — purely the board mirror, no controls. Integer scores only (judged
+ * sports use the leaderboard grid, not this path).
+ */
+function MobileScoreMirror({
+  g,
+  def,
+  liveMs,
+  homeColor,
+  awayColor,
+}: {
+  g: any;
+  def: SportDefinition;
+  liveMs: number;
+  homeColor: string;
+  awayColor: string;
+}) {
+  const running = !!g.clockRunning;
+  const hasClock = def.clock.type !== 'none';
+  return (
+    <div className="md:hidden flex items-stretch gap-2 text-white">
+      {/* HOME */}
+      <div className="flex-1 min-w-0 flex flex-col items-center justify-center rounded-xl bg-slate-950 border border-slate-800 px-2 py-2">
+        <span className="text-[10px] font-black tracking-widest text-slate-500">HOME</span>
+        <span className="max-w-full truncate text-xs font-bold text-slate-200" title={g.homeTeam}>
+          {g.homeTeam || '—'}
+        </span>
+        <span
+          className="mt-0.5 text-5xl font-black tabular-nums leading-none"
+          style={{ color: homeColor }}
+        >
+          {g.homeScore ?? 0}
+        </span>
+      </div>
+      {/* CLOCK + SEGMENT */}
+      <div className="flex min-w-[92px] flex-col items-center justify-center rounded-xl bg-slate-950 border border-slate-800 px-2 py-2">
+        <span className="text-[10px] font-black uppercase tracking-widest text-amber-400">
+          {segmentText(def, g)}
+        </span>
+        {hasClock && (
+          <span
+            className={`mt-0.5 text-3xl font-black tabular-nums leading-none ${
+              running ? 'text-amber-400' : 'text-white'
+            }`}
+          >
+            {fmtClock(liveMs)}
+          </span>
+        )}
+      </div>
+      {/* AWAY */}
+      <div className="flex-1 min-w-0 flex flex-col items-center justify-center rounded-xl bg-slate-950 border border-slate-800 px-2 py-2">
+        <span className="text-[10px] font-black tracking-widest text-slate-500">AWAY</span>
+        <span className="max-w-full truncate text-xs font-bold text-slate-200" title={g.awayTeam}>
+          {g.awayTeam || '—'}
+        </span>
+        <span
+          className="mt-0.5 text-5xl font-black tabular-nums leading-none"
+          style={{ color: awayColor }}
+        >
+          {g.awayScore ?? 0}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * MobileScoreDock — md:hidden thumb-zone control dock (2026-06-21 mobile console).
+ *
+ * Greg: "we need to be able to run the game from an iPhone." The desktop tiles
+ * stack vertically on a phone, forcing a scroll to reach each team's +score and
+ * pushing the clock off-screen. This dock puts the three hot actions — HOME
+ * score · clock Start/Stop · AWAY score — always-visible in the thumb zone, with
+ * segment ± and reset in the centre column. Reuses the exact `ctl` mutations the
+ * desktop tiles use (no data-layer change); desktop is unaffected (md:hidden).
+ *
+ * Lives in the console's existing pinned-bottom flex flow (which already clears
+ * the global MobileTabBar) — NOT a naive position:fixed overlay that would
+ * double-stack. Score buttons are slate with a thick TEAM-COLOUR border (white
+ * +N stays legible on any team colour, light or dark); the score number echoes
+ * the team colour for at-a-glance identity. iOS: extra bottom padding via
+ * env(safe-area-inset-bottom); no haptics (navigator.vibrate is a no-op on iOS).
+ */
+function MobileScoreDock({
+  g,
+  def,
+  liveMs,
+  homeColor,
+  awayColor,
+  ctl,
+}: {
+  g: any;
+  def: SportDefinition;
+  liveMs: number;
+  homeColor: string;
+  awayColor: string;
+  ctl: ReturnType<typeof useGameControl>;
+}) {
+  const running = !!g.clockRunning;
+  const hasClock = def.clock.type !== 'none';
+  const increments = def.score.increments || [];
+  const isInning = def.segment.name === 'Inning';
+  // Judged / leaderboard sports have no +N increments — they use the results
+  // grid, not a tap-to-score dock. Render nothing rather than an empty column.
+  if (!increments.length) return null;
+
+  const TeamCol = ({
+    side,
+    team,
+    color,
+    score,
+  }: {
+    side: 'home' | 'away';
+    team: string;
+    color: string;
+    score: number;
+  }) => (
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <div className="flex items-baseline justify-between px-0.5">
+        <span className="text-[10px] font-black tracking-widest text-slate-500">
+          {side === 'home' ? 'HOME' : 'AWAY'}
+        </span>
+        <span className="text-base font-black tabular-nums" style={{ color }}>
+          {score ?? 0}
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {increments.map((inc) => (
+          <button
+            key={inc}
+            type="button"
+            onClick={() => ctl.score.mutate({ team: side, delta: inc })}
+            className="min-h-[56px] flex-1 basis-[44px] rounded-xl border-2 bg-slate-800 text-xl font-black text-white transition active:brightness-125"
+            style={{ borderColor: color }}
+            title={`Add ${inc} to ${team || side}`}
+          >
+            +{inc}
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={() => ctl.score.mutate({ team: side, delta: -1 })}
+        className="min-h-[44px] rounded-lg border border-slate-700 bg-slate-900 text-sm font-bold text-slate-400 transition active:bg-slate-700"
+        aria-label={`Subtract one from ${team || side}`}
+      >
+        −1
+      </button>
+    </div>
+  );
+
+  return (
+    <div
+      className="md:hidden border-t-2 border-slate-800 bg-slate-950 px-2 pt-2"
+      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 0.5rem)' }}
+    >
+      <div className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-2">
+        <TeamCol side="home" team={g.homeTeam} color={homeColor} score={g.homeScore} />
+
+        {/* CENTRE — segment ± / clock / Start-Stop / reset */}
+        <div className="flex min-w-[116px] flex-col items-center gap-1.5">
+          <div className="flex items-center gap-1">
+            <HoldChip
+              label="−"
+              ariaLabel="Previous segment"
+              onConfirm={() =>
+                isInning ? retreatBaseballHalf(def, g, ctl) : ctl.segment.mutate({ delta: -1 })
+              }
+              className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded-lg border border-slate-700 bg-slate-800 text-lg font-bold text-slate-300 active:bg-slate-600"
+            />
+            <span className="min-w-[52px] text-center text-xs font-black uppercase tracking-widest text-amber-400">
+              {segmentText(def, g)}
+            </span>
+            <HoldChip
+              label="+"
+              ariaLabel="Next segment"
+              onConfirm={() =>
+                isInning ? advanceBaseballHalf(def, g, ctl) : ctl.segment.mutate({ delta: 1 })
+              }
+              className="flex min-h-[36px] min-w-[36px] items-center justify-center rounded-lg border border-slate-700 bg-slate-800 text-lg font-bold text-slate-300 active:bg-slate-600"
+            />
+          </div>
+          {hasClock ? (
+            <>
+              <div
+                className={`text-3xl font-black tabular-nums leading-none ${
+                  running ? 'text-amber-400' : 'text-white'
+                }`}
+              >
+                {fmtClock(liveMs)}
+              </div>
+              <button
+                type="button"
+                onClick={() => ctl.clock.mutate({ action: running ? 'pause' : 'start' })}
+                className={`flex w-full min-h-[56px] items-center justify-center gap-1.5 rounded-xl text-lg font-black transition active:brightness-110 ${
+                  running ? 'bg-amber-500 text-amber-950' : 'bg-emerald-500 text-emerald-950'
+                }`}
+                title={running ? 'Stop clock' : 'Start clock'}
+              >
+                {running ? (
+                  <>
+                    <Pause className="h-5 w-5" /> Stop
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-5 w-5" /> Start
+                  </>
+                )}
+              </button>
+              <HoldChip
+                ariaLabel="Reset clock to segment start"
+                onConfirm={() => ctl.clock.mutate({ action: 'reset' })}
+                className="flex min-h-[36px] w-full items-center justify-center rounded-lg border border-slate-700 bg-slate-800 text-slate-400 active:bg-slate-600"
+              >
+                <RotateCcw className="h-4 w-4" />
+              </HoldChip>
+            </>
+          ) : (
+            // Clockless sports (e.g. volleyball/tennis sets) — the centre column
+            // offers timeouts instead of a clock so the dock isn't half-empty.
+            <div className="flex w-full flex-col gap-1.5">
+              <button
+                type="button"
+                onClick={() => ctl.callTimeout.mutate({ team: 'home' })}
+                className="min-h-[44px] rounded-lg border border-slate-700 bg-slate-800 text-xs font-bold text-slate-200 active:bg-slate-600"
+              >
+                Timeout · Home
+              </button>
+              <button
+                type="button"
+                onClick={() => ctl.callTimeout.mutate({ team: 'away' })}
+                className="min-h-[44px] rounded-lg border border-slate-700 bg-slate-800 text-xs font-bold text-slate-200 active:bg-slate-600"
+              >
+                Timeout · Away
+              </button>
+            </div>
+          )}
+        </div>
+
+        <TeamCol side="away" team={g.awayTeam} color={awayColor} score={g.awayScore} />
+      </div>
+    </div>
+  );
+}
+
 function RunInteractiveScoreboard({
   g,
   def,
@@ -2018,7 +2284,17 @@ function RunInteractiveScoreboard({
     (def.key === 'basketball' || def.key === 'football');
   return (
     <div className="bg-black px-3 py-4 border-b-2 border-slate-800">
-      <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-3 items-stretch max-w-6xl mx-auto">
+      {/* Phone: the full operable tiles below don't fit 3-across, so they're
+          desktop-only and the operator GLANCES this compact mirror up top +
+          ACTS from the thumb dock pinned at the bottom. (2026-06-21 mobile) */}
+      <MobileScoreMirror
+        g={g}
+        def={def}
+        liveMs={liveMs}
+        homeColor={homeColor}
+        awayColor={awayColor}
+      />
+      <div className="hidden md:grid md:grid-cols-[1fr_auto_1fr] gap-3 items-stretch max-w-6xl mx-auto">
         {/* HOME tile — looks like the actual scoreboard rendering */}
         <ScoreTile
           team={g.homeTeam}
