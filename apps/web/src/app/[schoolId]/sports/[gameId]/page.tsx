@@ -5576,6 +5576,21 @@ function PregameIntroPanel({
   const [fired, setFired] = useState<'home' | 'away' | null>(null);
   const firedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // item B (2026-06-21) — answer the operator's "where's the photo?": the
+  // intro content IS the roster. Surface per-team readiness (player + photo
+  // counts) so it's obvious the content exists + where it comes from. Shared
+  // React Query cache with RosterPanel, so no extra fetch.
+  const rosterQ = useGameRoster(gameId);
+  const roster: Array<{ team?: string; photoUrl?: string | null }> = Array.isArray(rosterQ.data)
+    ? (rosterQ.data as Array<{ team?: string; photoUrl?: string | null }>)
+    : [];
+  const teamStats = (team: 'home' | 'away') => {
+    const players = roster.filter((p) => p.team === team);
+    return { count: players.length, photos: players.filter((p) => !!p.photoUrl).length };
+  };
+  const homeStats = teamStats('home');
+  const awayStats = teamStats('away');
+
   // Query-param trigger — ?intro=home|away fires on mount (tablet UX).
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -5607,17 +5622,49 @@ function PregameIntroPanel({
 
   return (
     <div>
-      <p className="text-xs text-slate-500 mb-3">
-        Takes over the scoreboard with a per-player slot (photo + name + number + stats). Add players in Team Rosters first.
+      {/* item B (2026-06-21) — explain WHAT it is, WHEN it fires, and WHERE the
+          content comes from (the roster). This answers "where's the photo?". */}
+      <p className="text-xs text-slate-500 mb-1">
+        Takes over the scoreboard with one full-screen slide per starter —{' '}
+        <span className="font-semibold text-slate-600">photo, name, number and stats</span> — then
+        auto-returns to the scoreboard when it finishes.
+      </p>
+      <p className="text-[11px] text-slate-400 mb-3">
+        The photos and names come from the <span className="font-semibold text-slate-500">roster
+        you build above</span> — that&rsquo;s where you add each player&rsquo;s headshot.
       </p>
 
+      {/* Per-team readiness — so it's obvious the content exists (and what's missing). */}
+      <div className="grid grid-cols-2 gap-2 mb-2">
+        {(['home', 'away'] as const).map((side) => {
+          const st = side === 'home' ? homeStats : awayStats;
+          const name = side === 'home' ? game.homeTeam : game.awayTeam;
+          return (
+            <div
+              key={side}
+              className={`rounded-lg border px-2.5 py-1.5 text-[11px] ${
+                st.count === 0
+                  ? 'border-amber-200 bg-amber-50 text-amber-800'
+                  : 'border-slate-200 bg-slate-50 text-slate-600'
+              }`}
+            >
+              <span className="font-bold text-slate-700">{name}</span>{' '}
+              {st.count === 0
+                ? '— no players yet, add them above'
+                : `— ${st.count} player${st.count === 1 ? '' : 's'} · ${st.photos} with photos`}
+            </div>
+          );
+        })}
+      </div>
+
       <div className="flex" style={{ marginBottom: 8 }}>
-        {/* Home intro button */}
+        {/* Home intro button — disabled until the home roster has players. */}
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || homeStats.count === 0}
+          title={homeStats.count === 0 ? 'Add home players in the roster above first' : undefined}
           onClick={() => fire('home')}
-          className={`flex-1 rounded-l-xl border-y border-l px-4 py-3 text-sm font-bold transition-colors ${
+          className={`flex-1 rounded-l-xl border-y border-l px-4 py-3 text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
             succeeded('home')
               ? 'border-green-500 bg-green-500 text-white'
               : 'border-indigo-300 bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800'
@@ -5626,12 +5673,13 @@ function PregameIntroPanel({
           {succeeded('home') ? '✓ Sent!' : `🎤 ${game.homeTeam} Intro`}
         </button>
 
-        {/* Away intro button */}
+        {/* Away intro button — disabled until the away roster has players. */}
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || awayStats.count === 0}
+          title={awayStats.count === 0 ? 'Add away players in the roster above first' : undefined}
           onClick={() => fire('away')}
-          className={`flex-1 rounded-r-xl border-y border-r px-4 py-3 text-sm font-bold transition-colors ${
+          className={`flex-1 rounded-r-xl border-y border-r px-4 py-3 text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
             succeeded('away')
               ? 'border-green-500 bg-green-500 text-white'
               : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100 active:bg-slate-200'
@@ -5641,6 +5689,9 @@ function PregameIntroPanel({
           {succeeded('away') ? '✓ Sent!' : `🎤 ${game.awayTeam} Intro`}
         </button>
       </div>
+      <p className="text-[11px] text-slate-400" style={{ marginBottom: 8 }}>
+        Firing an intro shows it on the scoreboard now (a live preview is in the Displays section above).
+      </p>
 
       {/* Audio URL toggle — collapsed by default to keep the panel clean */}
       <button

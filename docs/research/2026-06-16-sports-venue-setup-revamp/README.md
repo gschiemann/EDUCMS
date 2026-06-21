@@ -93,6 +93,13 @@ wrong). Do AFTER the touch/template editor flagship work.
   Resolution stamped; "Open on screen" deep-link carries `?canvas=` for the ribbon. Frontend-only,
   verified (ribbon `?canvas=` regex confirmed). Deferred: pull the operator's REAL per-screen
   `canvasW×canvasH` from the manifest into the presets.
+- **Item B (Pregame Intro clarity) — DONE.** Answers the operator's "where's the photo?": the intro
+  content IS the roster. `PregameIntroPanel` now (a) explains what it is, that it auto-returns, and
+  that photos/names come from the roster above; (b) shows per-team readiness (player + photo counts,
+  amber if 0) via the shared `useGameRoster` cache; (c) disables a team's Intro button until that
+  roster has players (with a "add players above first" tooltip). Frontend-only, web tsc clean.
+  Deferred (needs a small backend add — the `/cue` endpoint doesn't accept inline `mediaUrl`): a
+  standalone "takeover graphic" upload separate from the per-player lineup.
 
 **QUEUED (per the spec build order — lead does these sequentially; the Setup page is one 7k-line
 file so it isn't safely parallelizable across agents):**
