@@ -84,6 +84,15 @@ wrong). Do AFTER the touch/template editor flagship work.
     "Ready" (so optional sections don't read as required). web tsc + mobile-perf guard clean.
   - Deferred (needs Greg's visual review on real surfaces): collapsible cards, full section reorder
     to the spec's 6-card order, per-section completion for roster/ribbon.
+- **Item D (per-target real-resolution preview) — DONE.** `SurfacePreview` gains a resolution picker
+  (Fit · 1080p · 4K · wide ribbon 3840×256 · tall ribbon · portrait · Custom W×H). A chosen resolution
+  sets the preview box's true aspect AND — for the ribbon (which renders at native window size) — forces
+  the scene canvas via the route's existing `?canvas=WxH` override, so the in-app preview clips/sizes
+  IDENTICALLY to the screen (closes the "verify on the real surface" gap). Board is a fixed 1920×1080
+  contain-scaled scene → same at any 16:9 res; a non-16:9 target correctly pillar/letterboxes.
+  Resolution stamped; "Open on screen" deep-link carries `?canvas=` for the ribbon. Frontend-only,
+  verified (ribbon `?canvas=` regex confirmed). Deferred: pull the operator's REAL per-screen
+  `canvasW×canvasH` from the manifest into the presets.
 
 **QUEUED (per the spec build order — lead does these sequentially; the Setup page is one 7k-line
 file so it isn't safely parallelizable across agents):**

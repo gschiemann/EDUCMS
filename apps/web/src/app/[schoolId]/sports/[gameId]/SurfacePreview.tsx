@@ -35,14 +35,68 @@ const SURFACES: Surface[] = [
   { key: 'scorebug', label: 'Scorebug', path: 'scorebug', aspect: '16 / 9' },
 ];
 
+// item D (2026-06-21) — preview at a SPECIFIC target resolution. The operator
+// tests on a real 4K TV / a wide LED ribbon, where auto-fit + ticker issues
+// only show at the true pixel shape. "Fit" keeps the old behavior; a preset (or
+// custom W×H) sets the preview box to that exact aspect AND — for the ribbon,
+// which renders at its native window size — forces the scene's canvas via the
+// route's existing ?canvas=WxH override, so the in-app preview clips/sizes
+// IDENTICALLY to the screen. (The board/scorebug are a fixed 1920×1080 scene
+// that contain-scales, so they look the same at any 16:9 resolution — picking
+// 4K vs 1080p just relabels; a non-16:9 target correctly pillar/letterboxes.)
+interface ResPreset {
+  key: string;
+  label: string;
+  w: number;
+  h: number;
+}
+const RES_PRESETS: ResPreset[] = [
+  { key: '1080', label: '1080p · 1920×1080', w: 1920, h: 1080 },
+  { key: '4k', label: '4K · 3840×2160', w: 3840, h: 2160 },
+  { key: 'ribbon-wide', label: 'Wide ribbon · 3840×256', w: 3840, h: 256 },
+  { key: 'ribbon-tall', label: 'Tall ribbon · 1920×360', w: 1920, h: 360 },
+  { key: 'portrait', label: 'Portrait · 1080×1920', w: 1080, h: 1920 },
+];
+
 export function SurfacePreview({ gameId }: { gameId: string }) {
   const [key, setKey] = useState('board');
+  // resolution: '' = Fit (old behavior); 'custom' = the two number inputs;
+  // otherwise a preset key.
+  const [resKey, setResKey] = useState('');
+  const [customW, setCustomW] = useState('');
+  const [customH, setCustomH] = useState('');
   const surface = SURFACES.find((s) => s.key === key) || SURFACES[0];
-  const src = `/${surface.path}/${gameId}`;
+
+  const preset = RES_PRESETS.find((r) => r.key === resKey) || null;
+  const cw = Math.round(Number(customW));
+  const ch = Math.round(Number(customH));
+  const customValid = resKey === 'custom' && cw >= 64 && cw <= 8192 && ch >= 64 && ch <= 8192;
+  const res =
+    preset != null
+      ? { w: preset.w, h: preset.h }
+      : customValid
+        ? { w: cw, h: ch }
+        : null;
+
+  // The ribbon route honors ?canvas=WxH (renders at that fixed pixel canvas,
+  // letterboxed); the board contain-scales to its container so it needs no
+  // query. So only the ribbon carries the canvas override.
+  const src =
+    res && surface.key === 'ribbon'
+      ? `/${surface.path}/${gameId}?canvas=${res.w}x${res.h}`
+      : `/${surface.path}/${gameId}`;
+
+  // Box geometry: a chosen resolution sets the true aspect; otherwise the
+  // surface's own default (16:9 board / a ribbon strip).
+  const boxStyle: React.CSSProperties = res
+    ? { aspectRatio: `${res.w} / ${res.h}` }
+    : surface.aspect
+      ? { aspectRatio: surface.aspect }
+      : { height: surface.height };
 
   return (
     <div>
-      <div className="mb-2 flex items-center justify-between gap-2">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="flex gap-1.5">
           {SURFACES.map((s) => (
             <button
@@ -59,23 +113,60 @@ export function SurfacePreview({ gameId }: { gameId: string }) {
             </button>
           ))}
         </div>
-        <a
-          href={src}
-          target="_blank"
-          rel="noreferrer"
-          className="flex shrink-0 items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700"
-        >
-          Full screen <ExternalLink className="h-3.5 w-3.5" />
-        </a>
+        <div className="flex items-center gap-2">
+          {/* item D — resolution picker */}
+          <label className="sr-only" htmlFor="surface-res">Preview resolution</label>
+          <select
+            id="surface-res"
+            value={resKey}
+            onChange={(e) => setResKey(e.target.value)}
+            className="rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 bg-white cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-400"
+            title="Preview at a specific screen resolution"
+          >
+            <option value="">Fit to panel</option>
+            {RES_PRESETS.map((r) => (
+              <option key={r.key} value={r.key}>{r.label}</option>
+            ))}
+            <option value="custom">Custom…</option>
+          </select>
+          <a
+            href={src}
+            target="_blank"
+            rel="noreferrer"
+            className="flex shrink-0 items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+          >
+            Open on screen <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        </div>
       </div>
+
+      {resKey === 'custom' && (
+        <div className="mb-2 flex items-center gap-1.5 text-xs text-slate-500">
+          <span>Custom px:</span>
+          <input
+            type="number" min={64} max={8192} value={customW}
+            onChange={(e) => setCustomW(e.target.value)} placeholder="W"
+            className="w-20 rounded border border-slate-200 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          />
+          <span>×</span>
+          <input
+            type="number" min={64} max={8192} value={customH}
+            onChange={(e) => setCustomH(e.target.value)} placeholder="H"
+            className="w-20 rounded border border-slate-200 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          />
+          {!customValid && (customW || customH) && (
+            <span className="text-[11px] text-amber-600">64–8192 each</span>
+          )}
+        </div>
+      )}
 
       <div
         className="overflow-hidden rounded-lg border border-slate-200 bg-slate-950"
-        style={surface.aspect ? { aspectRatio: surface.aspect } : { height: surface.height }}
+        style={boxStyle}
       >
         {/* the real public surface — a live mirror of the screen */}
         <iframe
-          key={key}
+          key={`${key}:${src}`}
           src={src}
           title={`${surface.label} preview`}
           className="h-full w-full"
@@ -84,9 +175,18 @@ export function SurfacePreview({ gameId }: { gameId: string }) {
       </div>
 
       <p className="mt-1.5 text-xs text-slate-400">
-        Live preview — reflects sponsors, images, messages, presets and the score
-        within ~1s as you edit. Load everything in, watch it here, then push it to
-        your screens below.
+        {res ? (
+          <>
+            Previewing at <span className="font-semibold text-slate-500">{res.w}×{res.h}</span>
+            {surface.key !== 'ribbon' && ' (16:9 looks identical at any resolution — a different shape pillar/letterboxes)'}
+            . Live — reflects every edit within ~1s.
+          </>
+        ) : (
+          <>
+            Live preview — reflects sponsors, images, messages, presets and the score within
+            ~1s as you edit. Pick a resolution above to check the exact shape your screen shows.
+          </>
+        )}
       </p>
 
       {/* Streaming a game on NFHS Network / Hudl / OBS? The Scorebug
