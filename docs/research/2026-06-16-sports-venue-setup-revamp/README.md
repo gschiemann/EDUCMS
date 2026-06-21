@@ -48,6 +48,17 @@ wrong). Do AFTER the touch/template editor flagship work.
   display + section copy de-jargoned to match. (Proof-of-play already shows measured plays + airtime,
   no fabricated impressions — left as-is.) Deferred to a later slice: fold the two sponsor cards into
   one, `caption`/`creatives[]` (net-new, cut per critique).
+- **Items J + K + C/E2/F/M (clarity pass) — DONE.**
+  - **J (shot clock):** `ShotClockSetup` keeps its sport-specific presets + hints and gains a Custom
+    input (1–90s) + Set; a non-preset live value shows as "Using Ns". The configure mutation already
+    accepted any value — this just exposes it.
+  - **K (CTS):** plain explainer above the CTS console pill so a non-CTS venue isn't staring at a
+    cryptic status. (Sport-gating deferred — needs a real capability flag; hiding it could remove a
+    control a first-time CTS venue needs. "Copy feed URL" already had a good explainer.)
+  - **C/E2/F/M:** plain helper lines under the cryptic Setup section headers — "Displays & layouts"
+    intro, "The design each screen shows" (was "Templates per surface"), "What rides the reel & how
+    fast" (was "Content & scroll speed"), "Crowd messages", "Your graphics & logos" (with the
+    paid-vs-unpaid note pointing sponsors to their own section).
 
 **QUEUED (per the spec build order — lead does these sequentially; the Setup page is one 7k-line
 file so it isn't safely parallelizable across agents):**

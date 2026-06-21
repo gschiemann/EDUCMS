@@ -740,11 +740,21 @@ function GameControl() {
                 Layouts and preview are co-located — pick the layout,
                 see it immediately in the preview below it. */}
             <Section title="Displays &amp; layouts">
+              {/* item C (2026-06-16) — plain-English intro so "per-surface
+                  template" stops being jargon. */}
+              <p className="text-xs text-slate-400 mb-3">
+                Every screen at your venue can show a different design — your main
+                Scoreboard, the LED Ribbon, or a broadcast Scorebug. Below: choose what
+                shows on each screen, pick the design it uses, and preview it live.
+              </p>
               <div className="space-y-5">
                 {/* Screen push — assign each physical display */}
                 <div>
                   <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">
                     Screen assignment
+                  </p>
+                  <p className="text-xs text-slate-400 mb-2">
+                    Which physical display shows what — the Scoreboard, the Ribbon, or off.
                   </p>
                   <ScreenPushPanel gameId={gameId} />
                 </div>
@@ -752,7 +762,11 @@ function GameControl() {
                 {/* Layout picker — scoreboard / ribbon / scorebug templates */}
                 <div>
                   <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">
-                    Templates per surface
+                    The design each screen shows
+                  </p>
+                  <p className="text-xs text-slate-400 mb-2">
+                    Pick a look for each surface — a Scoreboard design, a Ribbon design,
+                    and (if you livestream) a Scorebug overlay.
                   </p>
                   <LayoutsPanel g={g} ctl={ctl} />
                 </div>
@@ -778,22 +792,41 @@ function GameControl() {
                 between them. Now it is one mental model: "what the
                 ribbon shows and how". */}
             <Section title="Ribbon">
+              {/* item E2/F (2026-06-16) — explain what the ribbon shows and how. */}
+              <p className="text-xs text-slate-400 mb-3">
+                The LED ribbon is the long, thin board that loops content around your venue.
+                Below: choose what rides the loop and how fast, add crowd shout-outs, and
+                drop in your own graphics.
+              </p>
               <div className="space-y-6">
                 <div>
                   <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">
-                    Content &amp; scroll speed
+                    What rides the reel &amp; how fast
+                  </p>
+                  <p className="text-xs text-slate-400 mb-2">
+                    Turn each tile on or off — score, clock, the sport situation, messages,
+                    sponsors — and set how fast the loop scrolls.
                   </p>
                   <RibbonPresetsPanel gameId={gameId} />
                 </div>
                 <div>
                   <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">
-                    Custom messages
+                    Crowd messages
+                  </p>
+                  <p className="text-xs text-slate-400 mb-2">
+                    Shout-outs that scroll on the ribbon — e.g. &ldquo;Welcome Parents,
+                    Section 104!&rdquo; or &ldquo;Senior Night — thank you, Class of 2026.&rdquo;
                   </p>
                   <RibbonPanel gameId={gameId} />
                 </div>
                 <div>
                   <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">
-                    Full-bleed image slides
+                    Your graphics &amp; logos
+                  </p>
+                  <p className="text-xs text-slate-400 mb-2">
+                    Full-screen slides of your OWN images — school logo, &ldquo;Go Tigers&rdquo;,
+                    senior-night photos. Paid sponsor ads live in the Sponsors section below so
+                    we can track plays for billing.
                   </p>
                   <RibbonImagesPanel gameId={gameId} />
                 </div>
@@ -888,6 +921,14 @@ function GameControl() {
                 <div>
                   <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">
                     CTS scoreboard console
+                  </p>
+                  {/* item K (2026-06-16) — plain-English explainer so a non-CTS
+                      venue isn't staring at a cryptic status pill. */}
+                  <p className="text-xs text-slate-400 mb-2">
+                    Optional. If you have a physical scoreboard console (a CTS box) wired
+                    to VenueOS, it feeds live score &amp; clock here automatically — no
+                    typing. Most venues leave this off and run the game from this screen;
+                    the pill below just shows whether a console is currently sending.
                   </p>
                   <CtsConsoleStatus
                     stats={(g.stats as Record<string, unknown> | undefined) || {}}
@@ -5417,6 +5458,13 @@ function ShotClockSetup({
   // basketball set so an undefined config never empties the picker.
   const opts = config?.options ?? [0, 24, 30, 35];
   const OPTS = opts.map((v) => ({ v, label: v === 0 ? 'Off' : `${v}s`, hint: HINTS[v] ?? `${v}s shot clock.` }));
+  // item J (2026-06-16) — a custom length for leagues whose shot clock isn't
+  // one of the presets. The configure mutation already accepts any value;
+  // this just exposes it. A non-preset live value counts as "custom".
+  const isCustom = len > 0 && !opts.includes(len);
+  const [custom, setCustom] = useState(isCustom ? String(len) : '');
+  const customNum = Math.round(Number(custom));
+  const customValid = Number.isFinite(customNum) && customNum >= 1 && customNum <= 90;
   return (
     <div>
       <p className="text-xs text-slate-400 mb-2">
@@ -5440,8 +5488,35 @@ function ShotClockSetup({
           </button>
         ))}
       </div>
+      {/* item J — custom length. Shows the active custom value highlighted. */}
+      <div className="mt-2 flex items-center gap-2">
+        <span className="text-[11px] font-semibold text-slate-500 shrink-0">Custom</span>
+        <input
+          type="number"
+          min={1}
+          max={90}
+          value={custom}
+          onChange={(e) => setCustom(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && customValid) ctl.shotClock.mutate({ action: 'configure', value: customNum });
+          }}
+          placeholder="sec"
+          className="w-20 px-2 py-1.5 text-sm bg-white border border-slate-300 rounded-md text-slate-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!customValid || customNum === len}
+          onClick={() => ctl.shotClock.mutate({ action: 'configure', value: customNum })}
+        >
+          Set
+        </Button>
+        {isCustom && (
+          <span className="text-[11px] font-semibold text-indigo-600">Using {len}s</span>
+        )}
+      </div>
       <p className="mt-2 text-[11px] text-slate-400">
-        {OPTS.find((o) => o.v === len)?.hint}
+        {isCustom ? `${len}s custom shot clock.` : OPTS.find((o) => o.v === len)?.hint}
       </p>
     </div>
   );
