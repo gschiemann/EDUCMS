@@ -42,6 +42,7 @@ import {
 } from '@/hooks/use-api';
 import { AssetPicker } from '@/components/assets/AssetPicker';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
+import { FREQ_TIERS, FREQ_TIER_WEIGHT, weightToTier } from './sponsor-frequency';
 
 interface Sponsor {
   id: string;
@@ -111,8 +112,8 @@ export function SponsorPanel() {
 
       {sponsors.length > 0 && (
         <p className="text-[11px] text-slate-400 mt-2">
-          {activeCount} of {sponsors.length} active on the ribbon. Higher rotation
-          weight = a brand comes around more often per loop.
+          {activeCount} of {sponsors.length} active on the ribbon. Set how often each
+          brand appears in its editor — Occasionally, Normal, or Often.
         </p>
       )}
 
@@ -179,7 +180,7 @@ function SponsorRow({
         <div className="text-[11px] text-slate-500 truncate">
           {s.tier ? <span className="font-semibold text-slate-600">{s.tier}</span> : null}
           {s.tier ? '  ·  ' : ''}
-          rotation &times;{s.weight}
+          shows {FREQ_TIERS.find((t) => t.value === weightToTier(s.weight))?.label.toLowerCase()}
           {s.tagline ? `  ·  ${s.tagline}` : ''}
         </div>
       </div>
@@ -380,21 +381,33 @@ function SponsorEditorModal({
             </Field>
           </div>
 
+          {/* item G (2026-06-16) — plain "how often" instead of the
+              "rotation weight 1–10" slider. `weight` stays the source of
+              truth; the buttons just pick it. */}
           <div>
             <label className="text-xs font-semibold text-slate-500">
-              Rotation weight — {weight}
+              How often it appears
             </label>
-            <input
-              type="range"
-              min={1}
-              max={10}
-              step={1}
-              value={weight}
-              onChange={(e) => setWeight(Number(e.target.value))}
-              className="w-full mt-1 accent-indigo-600 cursor-pointer"
-            />
-            <p className="text-[11px] text-slate-400">
-              Higher = this brand comes around more often on the ribbon loop.
+            <div className="mt-1 flex rounded-lg border border-slate-200 overflow-hidden">
+              {FREQ_TIERS.map((t) => {
+                const on = weightToTier(weight) === t.value;
+                return (
+                  <button
+                    key={t.value}
+                    type="button"
+                    title={t.help}
+                    onClick={() => setWeight(FREQ_TIER_WEIGHT[t.value])}
+                    className={`flex-1 px-2 py-1.5 text-xs font-bold transition-colors ${
+                      on ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1">
+              {FREQ_TIERS.find((t) => t.value === weightToTier(weight))?.help}
             </p>
           </div>
 

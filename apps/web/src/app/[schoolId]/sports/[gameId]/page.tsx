@@ -68,6 +68,13 @@ import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 // Run-game mode now drives the CTS orchestrator via the cue feed.
 import { CueLaunchpad } from './CueLaunchpad';
 import { SponsorPanel } from './SponsorPanel';
+import {
+  FREQ_TIERS,
+  FREQ_TIER_WEIGHT,
+  weightToTier,
+  CAP_PRESETS,
+  capLabel,
+} from './sponsor-frequency';
 import { RibbonPanel } from './RibbonPanel';
 import { RibbonPresetsPanel } from './RibbonPresetsPanel';
 import { RibbonImagesPanel } from './RibbonImagesPanel';
@@ -5856,8 +5863,8 @@ function SponsorSchedulingInner() {
   return (
     <>
       <p className="text-xs text-slate-400 mb-3">
-        Set flight windows and per-hour frequency caps for each sponsor. Higher rotation weight
-        means the brand comes around more often per loop.
+        For each sponsor: how often it appears, a limit on repeats, and the date range it runs.
+        Everything auto-starts and auto-stops — set it once before the game.
       </p>
       <div className="space-y-2">
         {sponsors.map((s) => (
@@ -5944,38 +5951,59 @@ function SponsorScheduleRow({
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+        {/* item G (2026-06-16) — plain "how often" instead of "rotation
+            weight 5/2/10". The numeric `weight` stays the single source of
+            truth; the buttons just pick it. */}
         <div>
-          <label className="font-semibold text-slate-500">Rotation weight — {weight}</label>
-          <input
-            type="range"
-            min={1}
-            max={10}
-            step={1}
-            value={weight}
-            onChange={(e) => {
-              setWeight(Number(e.target.value));
-              mark();
-            }}
-            className="w-full mt-1 accent-indigo-600 cursor-pointer"
-          />
+          <label className="font-semibold text-slate-500">How often it appears</label>
+          <div className="mt-1 flex rounded-lg border border-slate-200 overflow-hidden">
+            {FREQ_TIERS.map((t) => {
+              const on = weightToTier(weight) === t.value;
+              return (
+                <button
+                  key={t.value}
+                  type="button"
+                  title={t.help}
+                  onClick={() => {
+                    setWeight(FREQ_TIER_WEIGHT[t.value]);
+                    mark();
+                  }}
+                  className={`flex-1 px-2 py-1.5 text-[11px] font-bold transition-colors ${
+                    on ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
+        {/* item G — "don't show more than" dropdown, not a raw number box
+            labelled "Uncapped". Stored as frequencyCapPerHour. */}
         <div>
-          <label className="font-semibold text-slate-500">Max per hour</label>
-          <Input
-            type="number"
-            className="mt-1"
-            value={freqCap}
-            min={1}
-            placeholder="Uncapped"
+          <label className="font-semibold text-slate-500">Don&rsquo;t show more than</label>
+          <select
+            value={freqCap === '' ? '' : freqCap}
             onChange={(e) => {
               setFreqCap(e.target.value);
               mark();
             }}
-          />
-          <p className="text-[11px] text-slate-400 mt-0.5">Leave blank for uncapped.</p>
+            className="mt-1 w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+          >
+            {CAP_PRESETS.map((p) => (
+              <option key={p.label} value={p.perHour == null ? '' : String(p.perHour)}>
+                {p.label}
+              </option>
+            ))}
+            {/* preserve a pre-existing non-preset value so nothing is lost */}
+            {freqCap !== '' && !CAP_PRESETS.some((p) => String(p.perHour ?? '') === freqCap) && (
+              <option value={freqCap}>{capLabel(Number(freqCap))}</option>
+            )}
+          </select>
         </div>
+        {/* item G — "Flight start/end" ad-jargon → plain "Show from / until". */}
         <div>
-          <label className="font-semibold text-slate-500">Flight start</label>
+          <label className="font-semibold text-slate-500">Show from</label>
           <input
             type="date"
             value={flightStart}
@@ -5987,7 +6015,7 @@ function SponsorScheduleRow({
           />
         </div>
         <div>
-          <label className="font-semibold text-slate-500">Flight end</label>
+          <label className="font-semibold text-slate-500">Show until</label>
           <input
             type="date"
             value={flightEnd}
@@ -5997,6 +6025,9 @@ function SponsorScheduleRow({
             }}
             className="mt-1 w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
           />
+          <p className="text-[11px] text-slate-400 mt-0.5 sm:col-span-2">
+            Auto-starts and auto-stops. Leave blank to always show.
+          </p>
         </div>
       </div>
 
