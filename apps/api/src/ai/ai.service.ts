@@ -161,11 +161,36 @@ const VERTICAL_VOICE: Record<string, string> = {
  * verticals → the bare intent prompt (current behavior), so this is a
  * pure additive enhancement with no regression for the default path.
  */
-function composeSystemPrompt(intent: AiIntent, vertical?: string): string {
-  const base = SYSTEM_PROMPTS[intent];
+/**
+ * Slice 1b (2026-06-16) — per-tenant BRAND VOICE clause. The operator
+ * describes how their copy should sound (TenantBranding.brandVoice); we
+ * prepend it to every AI copy surface ON TOP OF the per-vertical voice.
+ * Bounded to 600 chars (settings input caps it too).
+ */
+function brandVoiceClause(v?: string | null): string {
+  const s = (v || '').trim();
+  if (!s) return '';
+  return `BRAND VOICE — this venue's copy should sound like this: "${s.slice(0, 600)}". Honor that voice.`;
+}
+
+/**
+ * Compose a system prompt by prepending the per-vertical voice clause AND
+ * the per-tenant brand-voice clause (when present) to a base prompt. Both
+ * are optional; absent → the bare base, identical to prior behavior.
+ */
+function prependVoices(base: string, vertical?: string, brandVoice?: string | null): string {
+  const parts: string[] = [];
   const key = (vertical || '').trim().toUpperCase();
-  const voice = key ? VERTICAL_VOICE[key] : undefined;
-  return voice ? `${voice}\n\n${base}` : base;
+  const v = key ? VERTICAL_VOICE[key] : undefined;
+  if (v) parts.push(v);
+  const b = brandVoiceClause(brandVoice);
+  if (b) parts.push(b);
+  parts.push(base);
+  return parts.join('\n\n');
+}
+
+function composeSystemPrompt(intent: AiIntent, vertical?: string, brandVoice?: string | null): string {
+  return prependVoices(SYSTEM_PROMPTS[intent], vertical, brandVoice);
 }
 
 @Injectable()
@@ -404,6 +429,25 @@ export class AiService {
     return null;
   }
 
+  /**
+   * Slice 1b — read this tenant's saved AI brand voice (TenantBranding.
+   * brandVoice). Best-effort: returns null on any error or when unset, so a
+   * missing column / row never breaks generation (the prompt just omits the
+   * brand-voice clause). Cheap single-column lookup.
+   */
+  private async tenantBrandVoice(tenantId: string): Promise<string | null> {
+    try {
+      const b = await this.prisma.client.tenantBranding.findUnique({
+        where: { tenantId },
+        select: { brandVoice: true } as any,
+      }) as any;
+      const v = b?.brandVoice;
+      return typeof v === 'string' && v.trim() ? v.trim() : null;
+    } catch {
+      return null;
+    }
+  }
+
   async generate(opts: AiGenerateRequest & { tenantId: string; userId?: string }): Promise<AiGenerateResponse> {
     // Audit-W1 wrap: any throw out of the rest of this method
     // (bad input, provider 4xx/5xx, cap-reached, decryption fail)
@@ -528,7 +572,7 @@ export class AiService {
         // intent prompt with the vertical's voice clause so a SPORTS vs
         // SCHOOL vs RESTAURANT announcement is tonally distinct, not
         // just a one-line user-prompt hint the model can ignore.
-        system: composeSystemPrompt(opts.intent, opts.vertical),
+        system: composeSystemPrompt(opts.intent, opts.vertical, await this.tenantBrandVoice(opts.tenantId)),
         userPrompt,
         maxTokens: 300,
       });
@@ -784,11 +828,7 @@ export class AiService {
     // zones reads in the right tone (a SPORTS kiosk vs a HEALTHCARE
     // check-in screen). The structural schema rules below are unchanged;
     // unknown/absent verticals fall through to the bare schema prompt.
-    const voiceKey = (opts.vertical || '').trim().toUpperCase();
-    const voiceClause = voiceKey ? VERTICAL_VOICE[voiceKey] : undefined;
-    const system = voiceClause
-      ? `${voiceClause}\n\n${TOUCH_TEMPLATE_SYSTEM_PROMPT}`
-      : TOUCH_TEMPLATE_SYSTEM_PROMPT;
+    const system = prependVoices(TOUCH_TEMPLATE_SYSTEM_PROMPT, opts.vertical, await this.tenantBrandVoice(opts.tenantId));
     const userPrompt = [
       `Operator description: ${prompt}`,
       `Vertical: ${opts.vertical || 'venue'}`,
@@ -1069,9 +1109,7 @@ export class AiService {
     const wantMany = opts.op !== 'translate' && opts.op !== 'fix_grammar' && currentText.length < 150;
     const count = wantMany ? 3 : 1;
 
-    const voiceKey = (opts.vertical || '').trim().toUpperCase();
-    const voiceClause = voiceKey ? VERTICAL_VOICE[voiceKey] : undefined;
-    const system = voiceClause ? `${voiceClause}\n\n${REWRITE_SYSTEM_PROMPT}` : REWRITE_SYSTEM_PROMPT;
+    const system = prependVoices(REWRITE_SYSTEM_PROMPT, opts.vertical, await this.tenantBrandVoice(opts.tenantId));
     const userPrompt = buildRewriteUserPrompt({
       op: opts.op,
       currentText,
@@ -1215,9 +1253,7 @@ export class AiService {
       }
     }
 
-    const voiceKey = (opts.vertical || '').trim().toUpperCase();
-    const voiceClause = voiceKey ? VERTICAL_VOICE[voiceKey] : undefined;
-    const system = voiceClause ? `${voiceClause}\n\n${CHAT_EDIT_SYSTEM_PROMPT}` : CHAT_EDIT_SYSTEM_PROMPT;
+    const system = prependVoices(CHAT_EDIT_SYSTEM_PROMPT, opts.vertical, await this.tenantBrandVoice(opts.tenantId));
     const userPrompt = buildChatEditUserPrompt(instruction, zones);
 
     const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, 600);
@@ -1235,12 +1271,19 @@ export class AiService {
     // fields, clamps numerics, resolves brand tokens, rejects CSS injection.
     const { diff, unresolved } = validateChatEditDiff(parsed, zones);
     if (!diff.length) {
+      // Critique P1-9 — don't dead-end an add/delete request with a generic
+      // "couldn't map." Classify the intent and point the operator at the
+      // real action (palette / Delete key) instead.
+      const lower = instruction.toLowerCase();
+      const wantsAdd = /\b(add|insert|create|put\s+(a|an)|new\s+(text|image|photo|button|widget|element|countdown|clock|logo|ticker))\b/.test(lower);
+      const wantsDelete = /\b(delete|remove|get\s+rid\s+of|take\s+out|erase)\b/.test(lower);
+      const message = wantsAdd
+        ? 'Chat can edit the elements you select, but it can’t add new elements yet — drag a widget from the palette on the left.'
+        : wantsDelete
+          ? 'Chat can edit the elements you select, but it can’t remove elements yet — select the element and press Delete.'
+          : 'I couldn’t turn that into an edit. Try naming the change — e.g. “make the title bigger” or “use the brand color.”';
       throw new HttpException(
-        {
-          message: 'I couldn’t turn that into an edit. Try naming the change — e.g. “make the title bigger” or “use the brand color.”',
-          code: 'NO_RESOLVABLE_EDITS',
-          unresolved,
-        },
+        { message, code: 'NO_RESOLVABLE_EDITS', unresolved },
         HttpStatus.UNPROCESSABLE_ENTITY,
       );
     }
@@ -1376,10 +1419,8 @@ export class AiService {
 
     // Voice clause (per-vertical tone) + base schema prompt (interactive
     // touch vs passive signage). Same composition as the single-shot path.
-    const voiceKey = (opts.vertical || '').trim().toUpperCase();
-    const voiceClause = voiceKey ? VERTICAL_VOICE[voiceKey] : undefined;
     const basePrompt = interactive ? TOUCH_TEMPLATE_SYSTEM_PROMPT : SIGNAGE_TEMPLATE_SYSTEM_PROMPT;
-    const system = voiceClause ? `${voiceClause}\n\n${basePrompt}` : basePrompt;
+    const system = prependVoices(basePrompt, opts.vertical, await this.tenantBrandVoice(opts.tenantId));
     const directives = TOUCH_CANDIDATE_DIRECTIVES.slice(0, count);
     const sw = opts.screenWidth || 1920;
     const sh = opts.screenHeight || 1080;
@@ -2078,5 +2119,5 @@ function scrubConfigLeaves(value: any, depth = 0): any {
   return undefined;
 }
 
-// Export the sanitizers + validators for unit testing.
-export { sanitizeTouchTemplate, scrubConfigLeaves, sanitizeRewriteText, validateChatEditDiff, resolveChatColor };
+// Export the sanitizers + validators + voice helpers for unit testing.
+export { sanitizeTouchTemplate, scrubConfigLeaves, sanitizeRewriteText, validateChatEditDiff, resolveChatColor, brandVoiceClause, prependVoices };

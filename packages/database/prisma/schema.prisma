@@ -311,6 +311,12 @@ model TenantBranding {
   // Human-readable product name for this tenant ("Lincoln HS Signage").
   displayName      String?   @map("display_name")
   tagline          String?
+  // Per-tenant AI BRAND VOICE (Slice 1b, 2026-06-16). One or two sentences
+  // describing how this venue's copy should sound ("warm, plainspoken, a
+  // little playful; never corporate"). Prepended to the system prompt of
+  // every AI copy surface (generate / touch-template / rewrite / chat-edit)
+  // on top of the per-vertical voice clause. Nullable + additive.
+  brandVoice       String?   @map("brand_voice")
   // Logo assets — all re-hosted in Supabase so we never hotlink the
   // source. logoSvgInline holds inline SVG markup for pixel-perfect
   // rendering when the source is SVG.

@@ -636,6 +636,36 @@ export class BrandingController {
     return { ok: true };
   }
 
+  // ── AI brand voice (Slice 1b, 2026-06-16) ──────────────────────
+  // Narrow update of just TenantBranding.brandVoice — the per-tenant tone
+  // every AI copy surface honors. Doesn't touch palette/logo (unlike the
+  // heavy /me/manual adopt). Empty string clears it back to null.
+  @Post('me/voice')
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  async setBrandVoice(@Request() req: any, @Body() body: { brandVoice?: string }) {
+    const tenantId = req.user.tenantId;
+    if (!tenantId) throw new HttpException('No tenant scope on session', HttpStatus.FORBIDDEN);
+    const voice = typeof body?.brandVoice === 'string' ? body.brandVoice.trim().slice(0, 600) : '';
+    await this.prisma.client.tenantBranding.upsert({
+      where: { tenantId },
+      update: { brandVoice: voice || null } as any,
+      create: { tenantId, brandVoice: voice || null } as any,
+    });
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'BRANDING_VOICE_UPDATED',
+        targetType: 'tenant',
+        targetId: tenantId,
+        tenantId,
+        userId: req.user.id,
+        details: JSON.stringify({ set: !!voice, length: voice.length }),
+      },
+    }).catch(() => { /* audit best-effort */ });
+    return { ok: true, brandVoice: voice || null };
+  }
+
   // ── Palette math only (used by manual tweaker) ──────────────────
   @Post('derive-palette')
   @UseGuards(JwtAuthGuard)

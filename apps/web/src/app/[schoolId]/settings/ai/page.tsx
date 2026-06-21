@@ -18,6 +18,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { ArrowLeft, Sparkles } from 'lucide-react';
 import { AiKeyCard } from '@/components/settings/AiKeyCard';
+import { BrandVoiceCard } from '@/components/settings/BrandVoiceCard';
 import { RoleGate } from '@/components/RoleGate';
 
 export default function SettingsAiPage() {
@@ -58,6 +59,7 @@ export default function SettingsAiPage() {
         }
       >
         <AiKeyCard />
+        <BrandVoiceCard />
       </RoleGate>
     </div>
   );

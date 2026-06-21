@@ -44,8 +44,12 @@
       external-mutation→commit→undo contract chat-to-edit rides on. FAST-FOLLOW (deferred from v1, needs confirmed
       widget-config keys): WCAG contrast on brand palette, 8-ft font-size floor (use exported `measureZoneFontSize`),
       Taurus inset/gap lint, logo-found-on-site, no-emergency-fallback (screen-level, may live in screen settings not builder).
-- [ ] 1b. **Persist per-tenant brand voice** (Prisma field) + infer once from scraped homepage copy + feed into
-      every generate/chat call (layer on top of the hardcoded per-vertical VOICE clauses).
+- [x] 1b. **Per-tenant brand voice — SHIPPED** (CI watch pending). Additive `brandVoice String?` on TenantBranding
+      (`tenant_branding.brand_voice`, migration `20260620000000_add_brand_voice`, auto-applies via
+      `prisma migrate deploy` in railway-start.sh). New `prependVoices()` helper stacks vertical-voice + brand-voice
+      onto the base prompt; threaded into ALL AI copy surfaces (generate / touch / signage / candidates / rewrite /
+      chat-edit) via `this.tenantBrandVoice(tenantId)`. Narrow `POST /branding/me/voice` endpoint + a
+      `BrandVoiceCard` on the AI settings page. 5 new tests. (Fast-follow: auto-infer voice from scraped homepage.)
 - [x] 1c. **3-candidate generation** — SHIPPED `81ed6d7` (CI watch in flight). Fan-out (Promise.allSettled) of a
       new shared `dispatchTouchTemplate()` helper 3× with 3 design-direction seeds (Balanced/Bold/Detailed) →
       pick-a-winner grid of `ScaledTemplateThumbnail` cards. **Serves non-touch too** via a Touch/Display toggle +

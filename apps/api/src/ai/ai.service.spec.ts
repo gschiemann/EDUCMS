@@ -21,7 +21,7 @@
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { AiService, sanitizeRewriteText, validateChatEditDiff, resolveChatColor } from './ai.service';
+import { AiService, sanitizeRewriteText, validateChatEditDiff, resolveChatColor, brandVoiceClause, prependVoices } from './ai.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 
@@ -36,6 +36,7 @@ const dispatchMock = dispatchAi as unknown as jest.Mock;
 
 // ── In-memory Prisma stub ───────────────────────────────────────────
 const tenantsById = new Map<string, any>();
+const brandingByTenant = new Map<string, any>(); // Slice 1b — brand voice rows
 const auditRows: Array<any> = [];
 const prismaMock: any = {
   client: {
@@ -60,6 +61,9 @@ const prismaMock: any = {
       }),
     },
     auditLog: { create: jest.fn(async ({ data }: any) => { auditRows.push(data); return data; }) },
+    tenantBranding: {
+      findUnique: jest.fn(async ({ where }: any) => brandingByTenant.get(where.tenantId) ?? null),
+    },
   },
 };
 
@@ -539,5 +543,61 @@ describe('AiService — Slice 2a-multi chat-to-edit multi-zone', () => {
     // fontSize on the TEXT zone, width (geometry) on the IMAGE zone.
     expect(r.diff.find((d) => d.zoneId === 'a')!.patch.defaultConfig.fontSize).toBe(60);
     expect(r.diff.find((d) => d.zoneId === 'b')!.patch.width).toBe(40);
+  });
+});
+
+// ── Slice 1b — per-tenant brand voice + chat-edit add/delete intent ──
+describe('AiService — Slice 1b brand voice + add/delete intent', () => {
+  beforeEach(() => {
+    delete process.env.AI_FREE_TIER_CAP;
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    tenantsById.clear();
+    brandingByTenant.clear();
+    auditRows.length = 0;
+    dispatchMock.mockReset();
+    tenantsById.set('t1', { id: 't1', aiProvider: null, aiKeyEncrypted: null, aiModel: null });
+  });
+
+  it('prependVoices stacks vertical voice + brand voice on top of the base', () => {
+    const out = prependVoices('BASE', 'SPORTS', 'warm and a little playful');
+    expect(out).toContain('AUDIENCE');        // SPORTS vertical clause
+    expect(out).toContain('BRAND VOICE');
+    expect(out).toContain('warm and a little playful');
+    expect(out.endsWith('BASE')).toBe(true);
+    expect(prependVoices('BASE', 'SPORTS', null)).not.toContain('BRAND VOICE');
+    expect(brandVoiceClause('')).toBe('');
+  });
+
+  it("threads the tenant's brand voice into generate()'s system prompt", async () => {
+    brandingByTenant.set('t1', { brandVoice: 'plainspoken and warm' });
+    dispatchMock.mockResolvedValue({ raw: JSON.stringify([{ text: 'Hi' }]) });
+    const { service } = buildService(makeFakeRedisClient());
+    await service.generate({ tenantId: 't1', intent: 'announcement', context: 'open house' });
+    const system = String(dispatchMock.mock.calls[0][1].system);
+    expect(system).toContain('BRAND VOICE');
+    expect(system).toContain('plainspoken and warm');
+  });
+
+  it('omits the brand-voice clause when the tenant has none set', async () => {
+    dispatchMock.mockResolvedValue({ raw: JSON.stringify([{ text: 'Hi' }]) });
+    const { service } = buildService(makeFakeRedisClient());
+    await service.generate({ tenantId: 't1', intent: 'announcement', context: 'open house' });
+    expect(String(dispatchMock.mock.calls[0][1].system)).not.toContain('BRAND VOICE');
+  });
+
+  it('chat-edit → helpful ADD message when the instruction wants a new element', async () => {
+    dispatchMock.mockResolvedValue({ raw: JSON.stringify({ edits: [] }) });
+    const { service } = buildService(makeFakeRedisClient());
+    await expect(
+      service.resolveChatEdit({ tenantId: 't1', instruction: 'add a countdown next to the title', zones: [{ id: 'z1', widgetType: 'TEXT', defaultConfig: {} }] }),
+    ).rejects.toMatchObject({ response: expect.objectContaining({ code: 'NO_RESOLVABLE_EDITS', message: expect.stringMatching(/palette/i) }) });
+  });
+
+  it('chat-edit → helpful DELETE message when the instruction wants removal', async () => {
+    dispatchMock.mockResolvedValue({ raw: JSON.stringify({ edits: [] }) });
+    const { service } = buildService(makeFakeRedisClient());
+    await expect(
+      service.resolveChatEdit({ tenantId: 't1', instruction: 'delete the sponsor bar', zones: [{ id: 'z1', widgetType: 'TEXT', defaultConfig: {} }] }),
+    ).rejects.toMatchObject({ response: expect.objectContaining({ message: expect.stringMatching(/Delete/i) }) });
   });
 });
