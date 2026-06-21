@@ -19,17 +19,32 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Sparkles, Loader2, Wand2, Scissors, Maximize2, X, RefreshCw } from 'lucide-react';
+import { Sparkles, Loader2, Wand2, Scissors, Maximize2, X, RefreshCw, Zap, Languages, Pencil, Check, MoreHorizontal } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { getTextFieldDescriptor } from '@cms/api-types';
 import { getAiStatusSource } from '@/components/ai/AiGenerateButton';
 
-type RewriteOp = 'rewrite' | 'shorten' | 'fit_to_zone';
+type RewriteOp = 'rewrite' | 'shorten' | 'fit_to_zone' | 'expand' | 'punch' | 'fix_grammar' | 'translate' | 'custom';
 
-const CHIPS: { op: RewriteOp; label: string; Icon: typeof Wand2 }[] = [
+type ChipExtra = { targetLang?: string; instruction?: string };
+
+// Always-visible chips. `fit_to_zone` only shows when we know the px box.
+const PRIMARY_CHIPS: { op: RewriteOp; label: string; Icon: typeof Wand2 }[] = [
   { op: 'rewrite', label: 'Rewrite', Icon: Wand2 },
   { op: 'shorten', label: 'Shorten', Icon: Scissors },
   { op: 'fit_to_zone', label: 'Fit to zone', Icon: Maximize2 },
+];
+// Behind the "more" (⋯) toggle to keep the bar phone-friendly.
+const MORE_CHIPS: { op: RewriteOp; label: string; Icon: typeof Wand2 }[] = [
+  { op: 'expand', label: 'Expand', Icon: Sparkles },
+  { op: 'punch', label: 'Punch it up', Icon: Zap },
+  { op: 'fix_grammar', label: 'Fix grammar', Icon: Check },
+];
+// Common US-school languages for the Translate submenu.
+const LANGS: Array<[string, string]> = [
+  ['Spanish', 'Spanish'], ['French', 'French'], ['Chinese', 'Chinese'],
+  ['Vietnamese', 'Vietnamese'], ['Arabic', 'Arabic'], ['Portuguese', 'Portuguese'],
+  ['Tagalog', 'Tagalog'], ['German', 'German'],
 ];
 
 /** Compact, structured-code-first friendly error mapping (mirrors AiGenerateButton). */
@@ -79,6 +94,12 @@ export function InlineRewriteChips({
   const [openOp, setOpenOp] = useState<RewriteOp | null>(null);
   const [options, setOptions] = useState<Array<{ text: string }>>([]);
   const [error, setError] = useState<string | null>(null);
+  const [showMore, setShowMore] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customText, setCustomText] = useState('');
+  // Remember the last op + extras so "Try again" repeats the same request.
+  const lastRunRef = useRef<{ op: RewriteOp; extra?: ChipExtra } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -97,19 +118,24 @@ export function InlineRewriteChips({
   if (aiSource === null || aiSource === 'none') return null;
 
   const canFit = !!fontSize && fontSize > 0 && !!zonePx && zonePx.w > 0 && zonePx.h > 0;
-  const chips = CHIPS.filter((c) => c.op !== 'fit_to_zone' || canFit);
+  const primary = PRIMARY_CHIPS.filter((c) => c.op !== 'fit_to_zone' || canFit);
 
-  async function run(op: RewriteOp) {
+  async function run(op: RewriteOp, extra?: ChipExtra) {
+    lastRunRef.current = { op, extra };
     setError(null);
     setBusyOp(op);
     setOpenOp(op);
     setOptions([]);
+    setLangOpen(false);
+    setCustomOpen(false);
     abortRef.current?.abort();
     abortRef.current = new AbortController();
     try {
       const body: Record<string, any> = { widgetType, fieldKey, currentText: trimmed, op };
       if (vertical) body.vertical = vertical;
       if (op === 'fit_to_zone') { body.fontSize = fontSize; body.zonePx = zonePx; }
+      if (extra?.targetLang) body.targetLang = extra.targetLang;
+      if (extra?.instruction) body.instruction = extra.instruction;
       const res = await apiFetch<{ options: Array<{ text: string }> }>('/ai/text/rewrite', {
         method: 'POST',
         body: JSON.stringify(body),
@@ -139,7 +165,7 @@ export function InlineRewriteChips({
         <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-violet-500">
           <Sparkles className="w-3 h-3" /> AI
         </span>
-        {chips.map(({ op, label, Icon }) => (
+        {primary.map(({ op, label, Icon }) => (
           <button
             key={op}
             type="button"
@@ -153,7 +179,97 @@ export function InlineRewriteChips({
             {label}
           </button>
         ))}
+        {/* Translate → language submenu */}
+        <button
+          type="button"
+          onClick={() => { setLangOpen((v) => !v); setCustomOpen(false); }}
+          disabled={busyOp !== null}
+          aria-haspopup="menu"
+          aria-expanded={langOpen}
+          className="inline-flex items-center gap-1 text-[10px] font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 disabled:opacity-50 px-2 py-1 rounded-full transition-colors"
+        >
+          {busyOp === 'translate' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Languages className="w-3 h-3" />}
+          Translate
+        </button>
+        {/* Tell me → free-text instruction */}
+        <button
+          type="button"
+          onClick={() => { setCustomOpen((v) => !v); setLangOpen(false); }}
+          disabled={busyOp !== null}
+          aria-expanded={customOpen}
+          className="inline-flex items-center gap-1 text-[10px] font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 disabled:opacity-50 px-2 py-1 rounded-full transition-colors"
+        >
+          <Pencil className="w-3 h-3" /> Tell me
+        </button>
+        {/* More → Expand / Punch / Fix grammar */}
+        <button
+          type="button"
+          onClick={() => setShowMore((v) => !v)}
+          disabled={busyOp !== null}
+          aria-label="More rewrite options"
+          aria-expanded={showMore}
+          className="inline-flex items-center text-[10px] font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 px-2 py-1 rounded-full transition-colors"
+        >
+          <MoreHorizontal className="w-3 h-3" />
+        </button>
+        {showMore && MORE_CHIPS.map(({ op, label, Icon }) => (
+          <button
+            key={op}
+            type="button"
+            onClick={() => run(op)}
+            disabled={busyOp !== null}
+            aria-haspopup="dialog"
+            aria-expanded={openOp === op}
+            className="inline-flex items-center gap-1 text-[10px] font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 disabled:opacity-50 px-2 py-1 rounded-full transition-colors"
+          >
+            {busyOp === op ? <Loader2 className="w-3 h-3 animate-spin" /> : <Icon className="w-3 h-3" />}
+            {label}
+          </button>
+        ))}
       </div>
+
+      {/* Translate language submenu */}
+      {langOpen && (
+        <div role="menu" aria-label="Translate to" className="mt-1.5 flex flex-wrap gap-1" style={{ contain: 'layout paint' }}>
+          {LANGS.map(([code, label]) => (
+            <button
+              key={code}
+              role="menuitem"
+              type="button"
+              onClick={() => run('translate', { targetLang: code })}
+              disabled={busyOp !== null}
+              className="text-[10px] font-semibold text-violet-700 bg-violet-50 hover:bg-violet-100 disabled:opacity-50 px-2 py-1 rounded-full transition-colors"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Custom free-text instruction */}
+      {customOpen && (
+        <div className="mt-1.5 flex items-center gap-1.5" style={{ contain: 'layout paint' }}>
+          <input
+            type="text"
+            value={customText}
+            onChange={(e) => setCustomText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && customText.trim()) { e.preventDefault(); void run('custom', { instruction: customText.trim() }); } }}
+            placeholder="e.g. make it rhyme"
+            maxLength={200}
+            disabled={busyOp !== null}
+            aria-label="Describe the change to make"
+            className="flex-1 px-2 py-1 rounded-md bg-white border border-slate-200 text-[11px] focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-60"
+          />
+          <button
+            type="button"
+            onClick={() => customText.trim() && run('custom', { instruction: customText.trim() })}
+            disabled={busyOp !== null || !customText.trim()}
+            className="text-[10px] font-bold text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-50 px-2.5 py-1 rounded-md"
+          >
+            Go
+          </button>
+        </div>
+      )}
 
       {/* SR-only live region so screen readers hear the result state. */}
       <span aria-live="polite" className="sr-only">
@@ -192,7 +308,7 @@ export function InlineRewriteChips({
           ))}
           <button
             type="button"
-            onClick={() => run(openOp)}
+            onClick={() => { const last = lastRunRef.current; if (last) void run(last.op, last.extra); else void run(openOp); }}
             disabled={busyOp !== null}
             className="w-full inline-flex items-center justify-center gap-1 text-[10px] font-semibold text-violet-600 hover:text-violet-700 disabled:opacity-50 px-2 py-1"
           >

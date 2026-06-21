@@ -61,9 +61,12 @@
       field-map (`packages/api-types/src/ai-edit/field-map.ts`), `POST /ai/text/rewrite` + `AiService.rewriteText`
       (reuses provider/cap/audit + a new shared `dispatchRawOrThrow`; output sanitized — tags/URLs/script stripped),
       `InlineRewriteChips.tsx` mounted in PropertiesPanel (gates: empty/locked/no-key/list → hidden; a11y aria-live +
-      role=dialog; touch-tap not hover; `contain` no-blur for mobile-perf). 9 new unit tests. Full op set
-      (Expand/Punch/Fix/Translate/custom) + streaming + ghost-preview = 1d-full fast-follow. Spec:
+      role=dialog; touch-tap not hover; `contain` no-blur for mobile-perf). 9 new unit tests. Spec:
       `03-IN-EDITOR-AI-EDITING-SPEC.md`.
+- [x] 1d-full. **All 8 rewrite ops in the UI** (FE-only — backend already supported them). Added Expand / Punch it
+      up / Fix grammar (behind a ⋯ "more" toggle), **Translate** (language submenu: Spanish/French/Chinese/
+      Vietnamese/Arabic/Portuguese/Tagalog/German), and **"Tell me"** (free-text custom). "Try again" repeats the
+      last op+extras. Streaming + ghost-preview still deferred. (`InlineRewriteChips.tsx` only.)
 - [ ] 1e. (small) Drag rotate-HANDLE on zones (rotation is numeric-only today).
 
 ### Slice 2 — Flagship
