@@ -80,7 +80,29 @@ async function login(page) {
   try {
     log(`WebKit nav smoke → ${BASE} (tenant: ${TENANT})`);
     await login(page);
-    await page.goto(`${BASE}/${TENANT}/dashboard`, { waitUntil: 'networkidle', timeout: 30_000 });
+    // Robust dashboard load (2026-06-21 — stop false-alarm Prod Smoke emails):
+    //   • use `domcontentloaded`, NOT `networkidle` — the live dashboard polls
+    //     (fleet status, etc.) so it may never reach networkidle within 30s; and
+    //   • TOLERATE "interrupted by another navigation to the same URL" — Next's
+    //     App Router does a client-side replace to the same path on first mount,
+    //     which rejects a strict goto. That self-redirect is benign (a real
+    //     crash is caught by CRASH_RE; a real full-reload is caught by the
+    //     __navMarker check in the click loop below). Retry a couple times, then
+    //     confirm we actually landed on the dashboard.
+    for (let a = 1; a <= 3; a++) {
+      try {
+        await page.goto(`${BASE}/${TENANT}/dashboard`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+        break;
+      } catch (e) {
+        const m = String((e && e.message) || e);
+        if (a < 3 && /interrupted by another navigation|frame was detached|navigation/i.test(m)) {
+          await page.waitForTimeout(1500);
+          continue;
+        }
+        if (a === 3) throw e;
+      }
+    }
+    await page.waitForURL(/\/dashboard\b/, { timeout: 15_000 }).catch(() => {});
     // Let BrandStyleInjector apply branding (it runs setBrandFavicon).
     await page.waitForTimeout(2500);
 
