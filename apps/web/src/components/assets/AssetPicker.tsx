@@ -21,13 +21,13 @@
 
 import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { X, Upload, Loader2, ImageIcon, FolderOpen } from 'lucide-react';
+import { X, Upload, Loader2, ImageIcon, FolderOpen, Music } from 'lucide-react';
 import { useAssets, useAssetFolders } from '@/hooks/use-api';
 import { apiFetch } from '@/lib/api-client';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
 
-export type AssetKind = 'image' | 'video' | 'all';
+export type AssetKind = 'image' | 'video' | 'audio' | 'all';
 
 /** Relative asset paths → absolute for <img>/<video> display. Absolute
  *  (Supabase / data) URLs pass through untouched. */
@@ -45,7 +45,8 @@ function matchesKind(mime: string | undefined, kind: AssetKind): boolean {
   const m = (mime || '').toLowerCase();
   if (kind === 'image') return m.startsWith('image/');
   if (kind === 'video') return m.startsWith('video/');
-  return m.startsWith('image/') || m.startsWith('video/');
+  if (kind === 'audio') return m.startsWith('audio/');
+  return m.startsWith('image/') || m.startsWith('video/') || m.startsWith('audio/');
 }
 
 export function AssetPicker({
@@ -84,7 +85,9 @@ export function AssetPicker({
       ? 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/avif'
       : kind === 'video'
         ? 'video/mp4,video/webm'
-        : 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/avif,video/mp4,video/webm';
+        : kind === 'audio'
+          ? 'audio/mpeg,audio/wav,audio/ogg,audio/mp4'
+          : 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/avif,video/mp4,video/webm,audio/mpeg,audio/wav,audio/ogg,audio/mp4';
 
   const upload = async (file: File) => {
     setErr('');
@@ -258,7 +261,9 @@ export function AssetPicker({
               {list.map((a) => {
                 const url = String(a.fileUrl || '');
                 const abs = resolveAssetUrl(url);
-                const isVideo = String(a.mimeType || '').toLowerCase().startsWith('video/');
+                const mt = String(a.mimeType || '').toLowerCase();
+                const isVideo = mt.startsWith('video/');
+                const isAudio = mt.startsWith('audio/');
                 const name = String(a.originalName || url.split('/').pop() || 'file');
                 return (
                   <button
@@ -272,6 +277,10 @@ export function AssetPicker({
                       // 2026-05-30 — EGRESS FIX: preload="none" so picker
                       // grid tiles don't auto-download video bytes.
                       <video src={abs} muted preload="none" className="w-full h-full object-cover" />
+                    ) : isAudio ? (
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-violet-100 to-indigo-100">
+                        <Music className="h-7 w-7 text-indigo-400" />
+                      </div>
                     ) : (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img

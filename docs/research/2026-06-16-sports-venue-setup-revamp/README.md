@@ -59,6 +59,12 @@ wrong). Do AFTER the touch/template editor flagship work.
     intro, "The design each screen shows" (was "Templates per surface"), "What rides the reel & how
     fast" (was "Content & scroll speed"), "Crowd messages", "Your graphics & logos" (with the
     paid-vs-unpaid note pointing sponsors to their own section).
+- **Item I (MP3 horn UPLOAD) — DONE.** The backend already accepted `audio/mpeg|wav|ogg|mp4` (3 mime
+  caps already in sync: `supabase-storage.service.ts` + `assets.controller.ts`). Added an `'audio'`
+  kind to `AssetPicker` (filter + accept + a Music-icon tile so audio doesn't render a broken
+  `<img>`), and wired the celebration-sound field in `PresentationSettingsSection` to an **Upload MP3**
+  button + a ▶ inline `<audio>` preview + Remove (URL paste still works). Uploads return absolute
+  Supabase URLs, so playback on `/board`/`/ribbon` is unchanged.
 
 **QUEUED (per the spec build order — lead does these sequentially; the Setup page is one 7k-line
 file so it isn't safely parallelizable across agents):**

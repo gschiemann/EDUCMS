@@ -36,6 +36,7 @@ import {
   Volume2,
   Keyboard,
   Copy,
+  Upload,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { RoleGate } from '@/components/RoleGate';
@@ -5773,6 +5774,7 @@ function PresentationSettingsSection({
     : [];
 
   const [audioUrl, setAudioUrl] = useState('');
+  const [soundPickerOpen, setSoundPickerOpen] = useState(false); // item I
   const [sponsorId, setSponsorId] = useState('');
   const [target, setTarget] = useState<'ALL' | 'BOARD' | 'RIBBON'>('ALL');
   const [fired, setFired] = useState<string | null>(null);
@@ -5864,22 +5866,61 @@ function PresentationSettingsSection({
         <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
           Celebration settings
         </p>
+        {/* item I (2026-06-16) — UPLOAD an MP3 (not URL-only). The assets
+            upload chain already accepts audio/mpeg + audio/wav; this just
+            surfaces it + a ▶ preview so the operator hears it before the game. */}
         <div>
           <label className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
             <Volume2 className="h-3.5 w-3.5" />
-            Celebration sound URL
+            Celebration sound
           </label>
           <Input
             className="mt-1"
             value={audioUrl}
             onChange={(e) => setAudioUrl(e.target.value)}
-            placeholder="https://example.com/airhorn.mp3"
+            placeholder="Paste a sound URL, or upload below"
             maxLength={2048}
           />
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              onClick={() => setSoundPickerOpen(true)}
+            >
+              <Upload className="h-3.5 w-3.5" />
+              Upload MP3
+            </Button>
+            {audioUrl.trim() && (
+              // eslint-disable-next-line jsx-a11y/media-has-caption
+              <audio src={audioUrl.trim()} controls preload="none" className="h-8 max-w-[220px]" />
+            )}
+            {audioUrl.trim() && (
+              <button
+                type="button"
+                onClick={() => setAudioUrl('')}
+                className="text-[11px] text-slate-400 hover:text-rose-600 font-semibold"
+              >
+                Remove
+              </button>
+            )}
+          </div>
           <p className="text-[11px] text-slate-400 mt-1">
-            A sound clip URL (mp3/ogg). Played on every fired celebration — leave blank for no
-            sound.
+            Played on every fired celebration. Upload an MP3/WAV (or paste a URL) — leave blank for
+            no sound.
           </p>
+          {soundPickerOpen && (
+            <AssetPicker
+              kind="audio"
+              title="Choose celebration sound"
+              onPick={(url) => {
+                setAudioUrl(url);
+                setSoundPickerOpen(false);
+              }}
+              onClose={() => setSoundPickerOpen(false)}
+            />
+          )}
         </div>
         <div>
           <label className="text-xs font-semibold text-slate-500">Co-brand celebrations with</label>
