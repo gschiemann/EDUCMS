@@ -66,10 +66,27 @@ wrong). Do AFTER the touch/template editor flagship work.
   button + a ▶ inline `<audio>` preview + Remove (URL paste still works). Uploads return absolute
   Supabase URLs, so playback on `/board`/`/ribbon` is unchanged.
 
+- **Items A + 0 (IA restructure) — DONE.** Grounded + designed via an 8-agent workflow, then
+  **adversarially reviewed** (4 lenses → verdict **ship**, 2 false positives dropped: the
+  `react/no-unescaped-entities` "build break" — `→`/`—` live in `{...}` string expressions, not JSX
+  text; and "PRE_GAME orphaned" — it's server-set + intentionally one pre-live tier, board renders
+  PRE_GAME == SCHEDULED).
+  - **Caught what the spec missed:** Run mode had NO status control at all (`StateBar` is dead code),
+    so this is a **relocation**, not a deletion. New `RunStatusControl` in Run (always-visible,
+    before `SurfaceHealthPills`, in every view) gives the live game-state transitions
+    (Go Live / Halftime / Resume / Final-hold / Reopen-hold), reusing `ctl.status.mutate` (T1-1) so
+    the cinematics+horn (T1-5) + durable undo (T1-2) fire for free.
+  - **Setup** drops the dead 5-state stepper → a read-only "Tonight's game" status chip (aria-live) +
+    a bottom **Go Live** CTA (`GoLiveBar`) that runs Scheduled→LIVE via the same mutation then opens
+    Run. `Section` gained a positive-only "Configured ✓" badge (Displays/Sponsors), and a one-shot
+    ref-guarded effect lands pre-live games in Setup / live games in Run.
+  - Two review nits applied: Reopen-from-Final is now hold-to-confirm; badge says "Configured" not
+    "Ready" (so optional sections don't read as required). web tsc + mobile-perf guard clean.
+  - Deferred (needs Greg's visual review on real surfaces): collapsible cards, full section reorder
+    to the spec's 6-card order, per-section completion for roster/ribbon.
+
 **QUEUED (per the spec build order — lead does these sequentially; the Setup page is one 7k-line
 file so it isn't safely parallelizable across agents):**
-- Phase 2 — IA spine: item 0 (`<SetupCard>` checklist shell) + A (reframe the Setup state stepper →
-  read-only status + single Go-Live, via the T1-1 mutation path).
 - Phase 3 — clarity: C/D (named surface cards + per-target real-res preview), B (pregame content
   slots), F (paid/unpaid split + entrance/dwell/exit).
 - Phase 4 — sponsor model + polish: G (de-jargon `SponsorPanel.tsx`: weight→plain, max-per-hour

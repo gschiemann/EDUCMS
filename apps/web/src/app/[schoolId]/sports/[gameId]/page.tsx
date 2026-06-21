@@ -111,13 +111,9 @@ function RoleViewQr({ url, label }: { url: string; label: string }) {
   );
 }
 
-const GAME_STATUSES: { key: string; label: string }[] = [
-  { key: 'SCHEDULED', label: 'Scheduled' },
-  { key: 'PRE_GAME', label: 'Pre-game' },
-  { key: 'LIVE', label: 'Live' },
-  { key: 'HALFTIME', label: 'Halftime' },
-  { key: 'FINAL', label: 'Final' },
-];
+// item A (2026-06-20) — GAME_STATUSES removed: the old Setup stepper that mapped
+// it is gone. Live state transitions now live in RunStatusControl (which inlines
+// its own per-state button set), and Setup shows a read-only status chip.
 
 type ConsoleMode = 'run' | 'setup';
 
@@ -284,6 +280,21 @@ function GameControl() {
   // extra fetches.
   const { data: recentEvents } = useGameEvents(gameId);
   const undoEvent = useUndoGameEvent(gameId);
+
+  // item 0 (2026-06-20) — sponsors power the Setup-checklist "Ready" badge.
+  // Shared React Query cache with SponsorPanel, so no extra fetch.
+  const { data: sponsorsList } = useSponsors();
+
+  // item A/0 — land a SCHEDULED/PRE-GAME game in Setup and a live game in Run,
+  // ONCE on first load (a ref guards it so it never fights manual tab clicks).
+  // Before this, every game opened in Run regardless of state.
+  const didInitMode = useRef(false);
+  useEffect(() => {
+    const st = (game as any)?.status;
+    if (didInitMode.current || !st) return;
+    didInitMode.current = true;
+    setMode(st === 'SCHEDULED' || st === 'PRE_GAME' ? 'setup' : 'run');
+  }, [game]);
 
   useEffect(() => {
     if (mode !== 'run') return;
@@ -467,6 +478,23 @@ function GameControl() {
   const homeColor = g.homeColor || '#4f46e5';
   const awayColor = g.awayColor || '#dc2626';
   const isLive = g.status === 'LIVE';
+
+  // item A/0 — the single primary action: go live (Scheduled→LIVE via the same
+  // unified status mutation the old stepper used) THEN open Run; once live, it
+  // just opens Run. Routing on mutation success so the operator never lands in
+  // Run before the state actually flipped.
+  const onLive = () => {
+    if (g.status === 'SCHEDULED' || g.status === 'PRE_GAME') {
+      ctl.status.mutate({ status: 'LIVE' }, { onSuccess: () => setMode('run') });
+    } else {
+      setMode('run');
+    }
+  };
+  // item 0 — positive "Ready ✓" badges for the two Setup sections with a clear
+  // signal (a custom layout chosen; an active sponsor). Optional sections never
+  // show a "needs attention" state — a game only needs two teams to go live.
+  const displaysReady = !!(g.scoreboardTemplateId || g.ribbonTemplateId);
+  const sponsorsReady = Array.isArray(sponsorsList) && sponsorsList.some((s: any) => s?.active);
 
   return (
     // 2026-05-27 — Single pane of glass. DashboardLayout wraps every
@@ -662,40 +690,32 @@ function GameControl() {
                 between SCHEDULED → PRE_GAME → LIVE → HALFTIME →
                 FINAL. FINAL requires a hold-to-confirm (destructive:
                 ends all real-time mutations). */}
-            <Section title="Game basics">
-              <p className="text-xs text-slate-400 mb-3">
-                Set the game state — this controls what the scoreboard shows and which controls are active in Run mode.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {GAME_STATUSES.map((s) =>
-                  /* Destructive: FINAL ends real-time mutations — hold-to-confirm */
-                  s.key === 'FINAL' ? (
-                    <HoldChip
-                      key={s.key}
-                      label={s.label}
-                      ariaLabel="Mark game Final — ends real-time scoring"
-                      onConfirm={() => ctl.status.mutate({ status: s.key })}
-                      className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
-                        g.status === s.key
-                          ? 'bg-indigo-600 text-white'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                    />
-                  ) : (
-                    <button
-                      key={s.key}
-                      onClick={() => ctl.status.mutate({ status: s.key })}
-                      className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
-                        g.status === s.key
-                          ? 'bg-indigo-600 text-white'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      {s.label}
-                    </button>
-                  )
-                )}
+            {/* item A/0 (2026-06-20) — Setup is a pre-game checklist now. The
+                old 5-state stepper is GONE from here (Setup is always
+                "Scheduled", so it was a dead/confusing control); a read-only
+                status chip sits here, the single Go-Live action is at the
+                bottom, and live state changes (Halftime/Final) live in Run. */}
+            <Section title="Tonight&rsquo;s game">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-base">
+                  <span className="font-extrabold text-slate-900">{g.homeTeam}</span>
+                  <span className="text-slate-400 text-sm">vs</span>
+                  <span className="font-extrabold text-slate-900">{g.awayTeam}</span>
+                </div>
+                <span
+                  aria-live="polite"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-widest border bg-slate-100 text-slate-600 border-slate-200 shrink-0"
+                >
+                  <span className="w-2 h-2 rounded-full bg-slate-400" />
+                  {String(g.status || 'SCHEDULED').replace(/_/g, ' ')}
+                </span>
               </div>
+              <p className="text-xs text-slate-400 mt-2.5">
+                Set everything below before the game, then tap{' '}
+                <span className="font-semibold text-slate-500">Go Live</span> at the bottom.
+                During the game, change states (Halftime, Final) from the{' '}
+                <span className="font-semibold text-slate-500">Run game</span> tab.
+              </p>
             </Section>
 
             {/* ── 2. TEAMS ────────────────────────────────────────
@@ -740,7 +760,7 @@ function GameControl() {
                   • live preview of the scoreboard + ribbon together
                 Layouts and preview are co-located — pick the layout,
                 see it immediately in the preview below it. */}
-            <Section title="Displays &amp; layouts">
+            <Section title="Displays &amp; layouts" done={displaysReady}>
               {/* item C (2026-06-16) — plain-English intro so "per-surface
                   template" stops being jargon. */}
               <p className="text-xs text-slate-400 mb-3">
@@ -843,7 +863,7 @@ function GameControl() {
                 Previously SponsorPanel was "Ribbon sponsors" and
                 SponsorSchedulingSection was a separate "Sponsor ad
                 scheduling" card — same data, two places. */}
-            <Section title="Sponsors">
+            <Section title="Sponsors" done={sponsorsReady}>
               <div className="space-y-6">
                 <div>
                   <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">
@@ -975,6 +995,11 @@ function GameControl() {
                 </div>
               </div>
             </Section>
+
+            {/* item A/0 — the checklist's single primary action. Go-Live runs
+                the Scheduled→LIVE transition via the same unified status
+                mutation, then opens Run. */}
+            <GoLiveBar g={g} onLive={onLive} />
 
           </div>
         </div>
@@ -1397,6 +1422,12 @@ function RunMode({
           </div>
         </div>
       )}
+
+      {/* item A (2026-06-20) — the live game-state control lives HERE in Run
+          (state changes belong with the live game). Reuses the unified status
+          mutation, so the status cinematics + horn (T1-5) and durable undo
+          (T1-2) fire on every transition. Setup no longer carries a stepper. */}
+      <RunStatusControl g={g} ctl={ctl} />
 
       {/* T1-6 — Per-surface health pill row. Always visible regardless
           of view — status is universal information. */}
@@ -6307,11 +6338,138 @@ function HoldChip({
 
 // ── helpers ────────────────────────────────────────────────────
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+// item 0 (2026-06-20) — Section gains an optional "Ready ✓" completion badge so
+// Setup reads as a pre-game checklist. The badge is POSITIVE-only (shown when a
+// section is configured); an empty optional section shows NO badge, so the
+// operator is never nagged about things a game doesn't need to go live.
+function Section({
+  title,
+  children,
+  done,
+  hint,
+}: {
+  title: string;
+  children: React.ReactNode;
+  done?: boolean;
+  hint?: string;
+}) {
   return (
     <div className="rounded-2xl bg-white ring-1 ring-slate-200 p-5">
-      <h2 className="text-sm font-bold text-slate-900 mb-3">{title}</h2>
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <h2 className="text-sm font-bold text-slate-900">{title}</h2>
+        {done && (
+          // Positive-only "Configured" (not "Ready") so an optional section's
+          // badge never reads as a required step the operator missed (review nit).
+          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0">
+            <Check className="h-3 w-3" /> Configured
+          </span>
+        )}
+      </div>
+      {hint && <p className="text-[11px] text-slate-400 -mt-1.5 mb-3">{hint}</p>}
       {children}
+    </div>
+  );
+}
+
+/** item A (2026-06-20) — the LIVE game-state control. Setup no longer carries
+ *  the 5-state stepper (it was always "Scheduled" there); state changes belong
+ *  HERE in Run, where the status cinematics + horn (T1-5) fire. Reuses the SAME
+ *  unified status mutation (T1-1) the old stepper used — so durable undo (T1-2)
+ *  + the cinematics come for free, with no new handler and no hook edit. */
+function RunStatusControl({ g, ctl }: { g: any; ctl: ReturnType<typeof useGameControl> }) {
+  const status = String(g?.status || 'SCHEDULED');
+  const go = (s: string) => ctl.status.mutate({ status: s });
+  const META: Record<string, { label: string; chip: string; dot: string }> = {
+    SCHEDULED: { label: 'Scheduled', chip: 'bg-slate-100 text-slate-600 border-slate-200', dot: 'bg-slate-400' },
+    PRE_GAME: { label: 'Pre-game', chip: 'bg-amber-50 text-amber-700 border-amber-200', dot: 'bg-amber-500' },
+    LIVE: { label: 'Live', chip: 'bg-red-50 text-red-700 border-red-200', dot: 'bg-red-500 animate-pulse' },
+    HALFTIME: { label: 'Halftime', chip: 'bg-blue-50 text-blue-700 border-blue-200', dot: 'bg-blue-500' },
+    FINAL: { label: 'Final', chip: 'bg-slate-800 text-white border-slate-700', dot: 'bg-slate-400' },
+  };
+  const m = META[status] || META.SCHEDULED;
+  const btn = 'min-h-[40px] px-3.5 py-1.5 rounded-lg text-sm font-bold border transition-colors shrink-0';
+  return (
+    <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-200 bg-white overflow-x-auto">
+      <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400 shrink-0">Game state</span>
+      <span
+        aria-live="polite"
+        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-widest border ${m.chip} shrink-0`}
+      >
+        <span className={`w-2 h-2 rounded-full ${m.dot}`} />
+        {m.label}
+      </span>
+      <div className="flex items-center gap-1.5 ml-auto shrink-0">
+        {(status === 'SCHEDULED' || status === 'PRE_GAME') && (
+          <button type="button" onClick={() => go('LIVE')} className={`${btn} border-green-600 bg-green-600 text-white hover:bg-green-700`}>
+            ● Go Live
+          </button>
+        )}
+        {status === 'LIVE' && (
+          <>
+            <button type="button" onClick={() => go('HALFTIME')} className={`${btn} border-blue-300 text-blue-700 hover:bg-blue-50`}>
+              Halftime
+            </button>
+            <HoldChip
+              label="Final"
+              ariaLabel="Mark game Final — hold to confirm; ends real-time scoring"
+              onConfirm={() => go('FINAL')}
+              className={`${btn} border-slate-300 text-slate-600 hover:bg-slate-100`}
+            />
+          </>
+        )}
+        {status === 'HALFTIME' && (
+          <>
+            <button type="button" onClick={() => go('LIVE')} className={`${btn} border-green-600 bg-green-600 text-white hover:bg-green-700`}>
+              Resume
+            </button>
+            <HoldChip
+              label="Final"
+              ariaLabel="Mark game Final — hold to confirm; ends real-time scoring"
+              onConfirm={() => go('FINAL')}
+              className={`${btn} border-slate-300 text-slate-600 hover:bg-slate-100`}
+            />
+          </>
+        )}
+        {status === 'FINAL' && (
+          // Reopening a finalized game resumes live scoring — deliberate, so
+          // hold-to-confirm like the other significant transitions (review nit).
+          <HoldChip
+            label="Reopen game"
+            ariaLabel="Reopen game — hold to confirm; resumes live scoring"
+            onConfirm={() => go('LIVE')}
+            className={`${btn} border-slate-300 text-slate-600 hover:bg-slate-100`}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** item A/0 — the Setup checklist's single primary action. `onLive` (in the
+ *  parent) performs the Scheduled→LIVE transition via the same unified mutation
+ *  then routes to Run; once live it just opens Run. */
+function GoLiveBar({ g, onLive }: { g: any; onLive: () => void }) {
+  const status = String(g?.status || 'SCHEDULED');
+  const pre = status === 'SCHEDULED' || status === 'PRE_GAME';
+  return (
+    <div className="rounded-2xl bg-slate-900 text-white p-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+      <div className="flex-1">
+        <div className="text-sm font-bold">
+          {pre ? 'Ready when you are' : status === 'LIVE' ? 'Game is live' : status === 'HALFTIME' ? 'Halftime' : 'Game is final'}
+        </div>
+        <p className="text-[13px] text-slate-300 mt-0.5">
+          {pre
+            ? 'Going live starts the game on every screen and opens the Run console — where you score the game and change states.'
+            : 'Switch to Run game to control the live game.'}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onLive}
+        className="min-h-[48px] px-6 py-2.5 rounded-xl text-base font-black bg-green-500 hover:bg-green-400 text-slate-900 shrink-0"
+      >
+        {pre ? '● Go Live' : 'Open Run console →'}
+      </button>
     </div>
   );
 }
