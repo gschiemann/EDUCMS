@@ -660,6 +660,7 @@ export function PropertiesPanel() {
            {selectedIds.length} zones selected
         </div>
         <p className="leading-relaxed opacity-90">Use the alignment buttons below to distribute the selection. Arrow keys nudge everything together (hold <kbd className="px-1 py-0.5 bg-slate-100 rounded text-[10px]">Shift</kbd> for 10&times; steps).</p>
+        <MultiZoneChatEdit />
         <MultiAlignButtons />
       </div>
     );
@@ -1943,6 +1944,33 @@ function TapActionEditor({
         )}
       </div>
     </section>
+  );
+}
+
+// Slice 2a-multi — chat-to-edit across the WHOLE selection ("make them all
+// smaller and use our brand color"). Applies the validated multi-zone diff
+// as ONE updateZones transaction → a single undo step for the sentence.
+function MultiZoneChatEdit() {
+  const zones = useBuilderStore((s) => s.zones);
+  const selectedIds = useBuilderStore((s) => s.selectedIds);
+  const updateZones = useBuilderStore((s) => s.updateZones);
+  const selected = zones.filter((z) => selectedIds.includes(z.id));
+  if (selected.length < 2) return null;
+  return (
+    <ChatToEditBox
+      zones={selected as any}
+      onApply={(diff) => {
+        const byId = new Map(diff.map((d) => [d.zoneId, d.patch]));
+        updateZones(selectedIds, (z: any) => {
+          const p = byId.get(z.id);
+          if (!p) return {};
+          const { defaultConfig: cfgPatch, ...zoneKeys } = p;
+          const merged: Record<string, any> = { ...zoneKeys };
+          if (cfgPatch) merged.defaultConfig = { ...(z.defaultConfig || {}), ...cfgPatch };
+          return merged;
+        }, true);
+      }}
+    />
   );
 }
 
@@ -6152,9 +6180,19 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         <span className="text-sm font-bold text-slate-800 truncate" title={zone.name}>{zone.name ? (/^[A-Z0-9_]+$/.test(zone.name) ? prettyTitle(zone.name) : zone.name) : widgetLabel(zone.widgetType)}</span>
         <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[9px] font-bold uppercase tracking-wide shrink-0">{widgetLabel(zone.widgetType)}</span>
       </div>
-      {/* Slice 2a — chat-to-edit. Self-hides when not an editable text widget,
-          locked, or no AI key. Edits commit through updateZone (one undo step). */}
-      <ChatToEditBox zone={zone} updateZone={updateZone} />
+      {/* Slice 2a — chat-to-edit. Self-hides when locked or no AI key. The
+          chosen diff commits through updateZone (one undo step). */}
+      <ChatToEditBox
+        zones={[zone as any]}
+        onApply={(diff) => {
+          const e = diff.find((d) => d.zoneId === zone.id);
+          if (!e) return;
+          const { defaultConfig: cfgPatch, ...zoneKeys } = e.patch;
+          const merged: Record<string, any> = { ...zoneKeys };
+          if (cfgPatch) merged.defaultConfig = { ...(zone.defaultConfig || {}), ...cfgPatch };
+          updateZone(zone.id, merged, true);
+        }}
+      />
       <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Content</h3>
       <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-100 shadow-sm space-y-3">
         {fields.map((field, i) => {

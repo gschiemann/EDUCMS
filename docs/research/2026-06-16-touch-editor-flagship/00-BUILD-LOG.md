@@ -113,10 +113,13 @@
   Json columns, no voice field) — can't be run/verified in this sandbox, so do migration-free slices first and treat
   1b as a deliberate verified slice. Order: ~~1c~~ → ~~1d~~ → ~~2a-MVP~~ → **2a-full OR 1b → big bets (magic-resize /
   real-data autofill / build-it-for-me) → Slice 4 (translate/TTS, image-gen, multiplayer, component library)**.
+- **2a-MULTI SHIPPED** (CI watch pending): multi-zone chat-edit. `ChatToEditBox` generalized to `zones[]` + an
+  `onApply(diff)` callback; `MultiZoneChatEdit` in the multi-select panel applies the diff via ONE `updateZones`
+  transaction (single undo step for the whole sentence). 33 tests.
 - **NEXT (pick one):**
-  - **2a-full+ remainder** (migration-free): MULTI-ZONE chat-edit (when `selectedIds.length>1`, send all zones →
-    `updateZones` ONE commit; needs the multi-select PropertiesPanel surface) + canvas GHOST-PREVIEW before Apply +
-    refine-loop + add/delete-zone intent message. Single-zone geometry/style is DONE (2a-full this run).
+  - **2a remainder** (migration-free): canvas GHOST-PREVIEW before Apply + refine-loop + add/delete-zone intent
+    message (critique P1-9: classify add/delete instructions → helpful "drag from palette / select+Delete" msg
+    instead of generic NO_RESOLVABLE_EDITS). Single + multi-zone + geometry/style all DONE.
   - **1b BRAND VOICE** (needs migration — do as a deliberate verified slice): additive `brandVoice String?` on
     `TenantBranding` + migration; settings input; thread on top of `VERTICAL_VOICE` in `composeSystemPrompt()` +
     the touch-template/rewrite/chat-edit prompts; fast-follow = auto-infer from scraped homepage. VERIFY the

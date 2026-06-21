@@ -526,3 +526,18 @@ describe('AiService — Slice 2a-full chat-to-edit geometry/style', () => {
     expect(r.diff.length).toBe(0);
   });
 });
+
+describe('AiService — Slice 2a-multi chat-to-edit multi-zone', () => {
+  it('validateChatEditDiff: returns one diff entry per edited zone', () => {
+    const zones = [
+      { id: 'a', widgetType: 'TEXT', defaultConfig: { fontSize: 80 } },
+      { id: 'b', widgetType: 'IMAGE', defaultConfig: {} },
+    ];
+    const r = validateChatEditDiff({ edits: [{ zoneId: 'a', fontSize: 60 }, { zoneId: 'b', width: 40 }] }, zones);
+    expect(r.diff.length).toBe(2);
+    expect(r.diff.map((d) => d.zoneId).sort()).toEqual(['a', 'b']);
+    // fontSize on the TEXT zone, width (geometry) on the IMAGE zone.
+    expect(r.diff.find((d) => d.zoneId === 'a')!.patch.defaultConfig.fontSize).toBe(60);
+    expect(r.diff.find((d) => d.zoneId === 'b')!.patch.width).toBe(40);
+  });
+});
