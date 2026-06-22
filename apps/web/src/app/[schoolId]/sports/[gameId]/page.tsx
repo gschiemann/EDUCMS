@@ -18,6 +18,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useConsoleFit, FIT, type FitTier } from './use-console-fit';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
@@ -1241,6 +1242,13 @@ function RunMode({
     showClockControls &&
     (isBaseballSoftball || def.key === 'football' || isBasketball || isWaterPolo);
 
+  // Auto-fit the desktop scoreboard to the available pane so the clock control
+  // row never clips / needs scrolling on a laptop (2026-06-21). Self-correcting
+  // density downshift; enabled only when the team-tile scoreboard is shown (not
+  // the leaderboard grid / PA / Show views). Inert on mobile (md:hidden tiles).
+  const scoreFitRef = useRef<HTMLDivElement>(null);
+  const fitTier = useConsoleFit(scoreFitRef, showScoreboard && !showResultsGrid);
+
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
 
@@ -1465,7 +1473,7 @@ function RunMode({
           only the scoreboard area itself scrolls, and only if it can't fit. */}
       {!showPaSpotlight && !showSurfacePreviews && (
         <>
-          <div className="flex-1 min-h-0 overflow-y-auto">
+          <div ref={scoreFitRef} className="flex-1 min-h-0 overflow-y-auto">
             {showScoreboard && (
               // relative wrapper so the celebration overlay can sit ON the
               // interactive scoreboard — the operator sees a fired cue play
@@ -1478,6 +1486,7 @@ function RunMode({
                   homeColor={homeColor}
                   awayColor={awayColor}
                   ctl={ctl}
+                  tier={fitTier}
                 />
                 <ConsoleScoreboardCelebration
                   gameId={gameId}
@@ -2258,6 +2267,7 @@ function RunInteractiveScoreboard({
   homeColor,
   awayColor,
   ctl,
+  tier = 'normal',
 }: {
   g: any;
   def: SportDefinition;
@@ -2265,6 +2275,7 @@ function RunInteractiveScoreboard({
   homeColor: string;
   awayColor: string;
   ctl: ReturnType<typeof useGameControl>;
+  tier?: FitTier;
 }) {
   const stats: Record<string, unknown> = g.stats || {};
   const running = !!g.clockRunning;
@@ -2309,13 +2320,14 @@ function RunInteractiveScoreboard({
           stats={stats}
           onStat={(s) => ctl.stats.mutate({ stats: s })}
           onTimeout={() => ctl.callTimeout.mutate({ team: 'home' })}
+          tier={tier}
         />
 
         {/* CLOCK + SEGMENT tile — looks like the center column of a
             real scoreboard (segment label up top, big clock, subtle
             controls underneath). No green/red traffic-light start
             button; just a slim chip. */}
-        <div className="flex flex-col items-center justify-between bg-slate-950 border border-slate-800 rounded-xl px-4 pt-5 pb-3 min-h-[280px] min-w-[240px]">
+        <div className={`flex flex-col items-center justify-between bg-slate-950 border border-slate-800 rounded-xl px-4 min-w-[240px] transition-[min-height,padding] duration-150 ${FIT.clockTile[tier]}`}>
           <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest">
             {/* Destructive: resets clock to segment start — hold-to-confirm.
                 For Inning sports (baseball / softball) the chips walk the
@@ -2350,7 +2362,7 @@ function RunInteractiveScoreboard({
           {hasClock ? (
             <>
               <div
-                className={`text-7xl sm:text-8xl font-black tabular-nums leading-none my-3 ${
+                className={`${FIT.clockText[tier]} font-black tabular-nums leading-none ${
                   running ? 'text-amber-400' : 'text-white'
                 }`}
               >
@@ -2360,7 +2372,7 @@ function RunInteractiveScoreboard({
                   primary control so it's the widest; all are ≥44px so the
                   operator can't fat-finger Reset (hold-to-confirm) when they
                   meant Stop. (2026-06-15 console-UX P0) */}
-              <div className="flex items-center gap-1.5 mt-1 flex-wrap justify-center">
+              <div className={`flex items-center flex-wrap justify-center ${FIT.ctrlRow[tier]}`}>
                 <button
                   type="button"
                   onClick={() => ctl.clock.mutate({ action: running ? 'pause' : 'start' })}
@@ -2440,6 +2452,7 @@ function RunInteractiveScoreboard({
           stats={stats}
           onStat={(s) => ctl.stats.mutate({ stats: s })}
           onTimeout={() => ctl.callTimeout.mutate({ team: 'away' })}
+          tier={tier}
         />
       </div>
 
@@ -2763,6 +2776,7 @@ function ScoreTile({
   stats,
   onStat,
   onTimeout,
+  tier = 'normal',
 }: {
   team: string;
   color: string;
@@ -2781,6 +2795,7 @@ function ScoreTile({
   /** When provided, renders a dedicated Timeout button next to the
    *  timeout count — fires callTimeout instead of raw stat edit. */
   onTimeout?: (type?: 'full' | 'short') => void;
+  tier?: FitTier;
 }) {
   // Judged sports carry a decimal team total (gymnastics 195.825, cheer
   // 285.5) stored as a scaled int. The +/- chips can't reach a decimal,
@@ -2816,15 +2831,15 @@ function ScoreTile({
   const shortLabel = (label: string) =>
     label.replace(/^(Home|Away)\s+/i, '').replace(/Timeouts/i, 'T.O.');
   return (
-    <div className="flex flex-col items-center justify-between bg-slate-950 border border-slate-800 rounded-xl px-4 pt-3 pb-2 min-h-[220px]">
+    <div className={`flex flex-col items-center justify-between bg-slate-950 border border-slate-800 rounded-xl px-4 transition-[min-height,padding] duration-150 ${FIT.teamTile[tier]}`}>
       {/* Team logo — large, centered (matches BoardScene proportion) */}
-      <div className="flex items-center justify-center h-20 w-20">
+      <div className={`flex items-center justify-center transition-[width,height] duration-150 ${FIT.teamLogo[tier]}`}>
         {logoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={logoUrl}
             alt=""
-            className="max-h-20 max-w-20 object-contain"
+            className={`${FIT.teamLogoImg[tier]} object-contain`}
             onError={(e) => {
               (e.currentTarget as HTMLImageElement).style.display = 'none';
             }}
@@ -2832,7 +2847,7 @@ function ScoreTile({
         ) : null}
       </div>
       {/* Team name + side caption — white text, side small-caps muted */}
-      <div className="flex flex-col items-center mt-3">
+      <div className={`flex flex-col items-center ${FIT.teamName[tier]}`}>
         <span className="text-xl font-bold text-white truncate max-w-full" title={team}>
           {team || '—'}
         </span>
@@ -2843,7 +2858,7 @@ function ScoreTile({
       {/* Big score number — focal point, in team color. Compressed
           slightly so the tile fits in viewport without scroll. */}
       <div
-        className="text-6xl sm:text-7xl font-black tabular-nums leading-none my-2"
+        className={`${FIT.scoreText[tier]} font-black tabular-nums leading-none`}
         style={{ color }}
       >
         {liveScoreText}
@@ -2909,7 +2924,7 @@ function ScoreTile({
           Timeout rows get an additional "T.O." chip that fires
           callTimeout (pause clock + decrement + CUE) atomically. */}
       {sideStats.length > 0 && (
-        <div className="w-full mt-3 pt-3 border-t border-slate-800 space-y-1">
+        <div className={`w-full border-t border-slate-800 space-y-1 ${FIT.statRows[tier]}`}>
           {sideStats.map((s) => {
             const min = s.min ?? 0;
             const max = s.max ?? 99;
