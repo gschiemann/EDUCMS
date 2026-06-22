@@ -3000,20 +3000,51 @@ function ScoreTile({
               );
             }
 
-            // ── wide-range number type-in ──
+            // ── counter stat: −/value/+ stepper (value is tap-to-edit) ──
+            // Shots / exclusions / saves etc. are EVENT COUNTERS the operator
+            // taps up by one as each happens — NOT totals you type into a blank
+            // box. The old wide-range "type-in field" read as "fill this in" and
+            // looked broken to operators (2026-06-21). Now every numeric stat
+            // gets the SAME stepper as Timeouts, so it's obviously a count you
+            // bump up; the value stays tap-to-type so a big miscount is still a
+            // one-tap correction (not 30 taps). Ride time stays its mm:ss field.
             if (wideRange) {
+              const canDec = value > min;
+              const canInc = value < max;
               return (
-                <div key={s.key} className="flex items-center justify-between text-xs gap-2">
-                  <span className="font-black uppercase tracking-widest text-slate-500 text-[10px] shrink-0 flex items-center">
+                <div key={s.key} className="flex items-center justify-between text-xs">
+                  <span className="font-black uppercase tracking-widest text-slate-500 text-[10px] flex items-center">
                     {shortLabel(s.label)}
                     {BonusChip}
                   </span>
-                  <SideNumberTypeIn
-                    value={value}
-                    min={min}
-                    max={max}
-                    onCommit={(n) => onStat({ [s.key]: n })}
-                  />
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onStat({ [s.key]: Math.max(min, value - 1) })}
+                      disabled={!canDec}
+                      className="min-h-[44px] min-w-[44px] rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 text-lg font-bold border border-slate-700 disabled:opacity-30"
+                      title={`−1 ${s.label}`}
+                      aria-label={`Decrease ${s.label}`}
+                    >
+                      −
+                    </button>
+                    <SideNumberTypeIn
+                      value={value}
+                      min={min}
+                      max={max}
+                      onCommit={(n) => onStat({ [s.key]: n })}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => onStat({ [s.key]: Math.min(max, value + 1) })}
+                      disabled={!canInc}
+                      className="min-h-[44px] min-w-[44px] rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 text-lg font-bold border border-slate-700 disabled:opacity-30"
+                      title={`+1 ${s.label}`}
+                      aria-label={`Increase ${s.label}`}
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
               );
             }
@@ -3166,7 +3197,9 @@ function SideNumberTypeIn({
           e.currentTarget.blur();
         }
       }}
-      className="min-h-[44px] w-14 rounded-lg bg-slate-800 border border-slate-700 px-2 text-sm font-black text-white tabular-nums text-center outline-none focus:border-indigo-500"
+      title="Tap to type a correction"
+      aria-label="Stat value (tap to type)"
+      className="min-h-[44px] w-9 rounded-lg bg-transparent border border-transparent hover:border-slate-700 focus:bg-slate-800 focus:border-indigo-500 px-1 text-base font-black text-white tabular-nums text-center outline-none cursor-text"
     />
   );
 }
