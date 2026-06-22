@@ -4492,6 +4492,7 @@ function StatNumberField({
 }) {
   const live =
     value === undefined || value === null || value === '' ? '' : String(value);
+  const cur = Number.isFinite(parseInt(live, 10)) ? parseInt(live, 10) : 0;
   const [text, setText] = useState('');
   const [editing, setEditing] = useState(false);
   const commit = () => {
@@ -4505,28 +4506,55 @@ function StatNumberField({
       <span className="text-[9px] font-black tracking-widest text-slate-400 uppercase">
         {label}
       </span>
-      <input
-        type="text"
-        inputMode="numeric"
-        value={editing ? text : live}
-        onFocus={() => {
-          setText(live);
-          setEditing(true);
-        }}
-        onChange={(e) => setText(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            commit();
-            e.currentTarget.blur();
-          } else if (e.key === 'Escape') {
-            setEditing(false);
-            e.currentTarget.blur();
-          }
-        }}
-        placeholder="—"
-        className="w-12 bg-transparent text-center text-lg font-black text-slate-900 tabular-nums leading-tight outline-none"
-      />
+      {/* −/value/+ stepper: tap to step a game counter (next hole, next bout,
+          ball-on yard, added time), or tap the number to type a value directly.
+          This was a bare type-in box that read as an empty form field to
+          operators (2026-06-21 — same fix as the per-team stat steppers). */}
+      <div className="flex items-center gap-0.5">
+        <button
+          type="button"
+          onClick={() => onCommit(Math.max(min, cur - 1))}
+          disabled={cur <= min}
+          aria-label={`Decrease ${label}`}
+          title={`−1 ${label}`}
+          className="h-8 w-8 rounded-lg text-slate-500 text-xl font-bold leading-none hover:bg-slate-100 active:bg-slate-200 disabled:opacity-25"
+        >
+          −
+        </button>
+        <input
+          type="text"
+          inputMode="numeric"
+          value={editing ? text : live}
+          onFocus={() => {
+            setText(live);
+            setEditing(true);
+          }}
+          onChange={(e) => setText(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              commit();
+              e.currentTarget.blur();
+            } else if (e.key === 'Escape') {
+              setEditing(false);
+              e.currentTarget.blur();
+            }
+          }}
+          placeholder="—"
+          title="Tap to type a value"
+          className="w-10 bg-transparent text-center text-lg font-black text-slate-900 tabular-nums leading-tight outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => onCommit(Math.min(max, cur + 1))}
+          disabled={cur >= max}
+          aria-label={`Increase ${label}`}
+          title={`+1 ${label}`}
+          className="h-8 w-8 rounded-lg text-slate-500 text-xl font-bold leading-none hover:bg-slate-100 active:bg-slate-200 disabled:opacity-25"
+        >
+          +
+        </button>
+      </div>
     </div>
   );
 }
