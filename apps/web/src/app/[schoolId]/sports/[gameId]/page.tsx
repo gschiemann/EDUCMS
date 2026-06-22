@@ -19,6 +19,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useConsoleFit, FIT, type FitTier } from './use-console-fit';
+import { ShowControlPanel } from './ShowControlPanel';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
@@ -1440,6 +1441,12 @@ function RunMode({
       {/* T1-6 — Per-surface health pill row. Always visible regardless
           of view — status is universal information. */}
       <SurfaceHealthPills gameId={gameId} />
+
+      {/* T3-3 — Show Control: one-tap recall of a full-screen gameday scene
+          (Halftime / Lineup / Sponsors / This Week / Countdown) to the board,
+          with auto-revert + an always-available Back-to-Live. (2026-06-22 —
+          "how would I even trigger that halftime template?") */}
+      <ShowControlPanel g={g} ctl={ctl} />
 
       {/* ── PA / Announcer view ───────────────────────────────── */}
       {showPaSpotlight && (

@@ -2975,6 +2975,30 @@ export function useGameControl(gameId: string) {
   });
   // ────────────────────────────────────────────────────────────────
 
+  // ── T3-3 Show Control — recall a full-screen GAMEDAY scene to the
+  // board (Halftime Board / Starting Lineup / Sponsors / …) for holdMs,
+  // then it auto-reverts server-side. The board polls independently, so
+  // no cache invalidation needed; the recall response carries expiresAt
+  // for the console countdown chip. ──────────────────────────────────
+  const scene = useMutation({
+    mutationFn: (body: { templateId: string; holdMs?: number }) =>
+      apiFetch(`/sports/games/${gameId}/scene`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+  });
+  const sceneClear = useMutation({
+    mutationFn: () =>
+      apiFetch(`/sports/games/${gameId}/scene/clear`, { method: 'POST' }),
+  });
+  const sceneExtend = useMutation({
+    mutationFn: (body?: { holdMs?: number }) =>
+      apiFetch(`/sports/games/${gameId}/scene/extend`, {
+        method: 'POST',
+        body: JSON.stringify(body ?? {}),
+      }),
+  });
+
 
   const setPossession = useMutation({
     // T2-8: Possession arrow — tap to flip between home and away.
@@ -3014,6 +3038,9 @@ export function useGameControl(gameId: string) {
     details,
     liveOverlay,
     clearLiveOverlay,
+    scene,
+    sceneClear,
+    sceneExtend,
   };
 }
 
