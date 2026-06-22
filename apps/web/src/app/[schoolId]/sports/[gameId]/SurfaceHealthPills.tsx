@@ -349,7 +349,17 @@ function PillDrawer({
  * - Zero screens → renders nothing (gracefully handles unpaired tenants).
  * - Click any pill → opens the PillDrawer with a live preview.
  */
-export function SurfaceHealthPills({ gameId }: { gameId: string }) {
+export function SurfaceHealthPills({
+  gameId,
+  summary = false,
+}: {
+  gameId: string;
+  /** Compact mode for the command bar: render a single status nub
+   *  (worst-state dot + healthy/total) that opens the full pill row in a
+   *  popover. Default false = the original always-expanded row.
+   *  (2026-06-22 console elegance — collapse the screens strip into the bar.) */
+  summary?: boolean;
+}) {
   const { data, isLoading } = useGameScreens(gameId);
   // The fleet list carries the SERVER's render-proof verdict per screen
   // (renderHealth / renderStale / renderStaleSeconds). Same 10 s poll cadence
@@ -362,6 +372,8 @@ export function SurfaceHealthPills({ gameId }: { gameId: string }) {
   // freshly-polled list below so the open drawer reflects a freeze that
   // happens WHILE it's open (instead of a stale click-time snapshot).
   const [activeId, setActiveId] = useState<string | null>(null);
+  // Summary-nub popover open state (command-bar mode only).
+  const [summaryOpen, setSummaryOpen] = useState(false);
 
   // screenId → render-proof signal, from the fleet list.
   const proofById = new Map<string, RenderProofSignal>();
@@ -400,7 +412,7 @@ export function SurfaceHealthPills({ gameId }: { gameId: string }) {
   // Nothing to show — don't waste vertical space
   if (isLoading || screens.length === 0) return null;
 
-  return (
+  const fullRow = (
     <>
       {/* Pill row */}
       <div
@@ -462,4 +474,44 @@ export function SurfaceHealthPills({ gameId }: { gameId: string }) {
       )}
     </>
   );
+
+  // Command-bar mode: a single status nub (worst-state dot + healthy/total)
+  // that opens the full pill row in a popover. Glanceable health without a
+  // whole bar; the dark full row drops in on tap (and the PillDrawer preview
+  // still works inside it).
+  if (summary) {
+    const problem = screens.filter((s) => s.status === 'frozen' || s.status === 'offline').length;
+    const other = screens.filter((s) => s.status === 'showing-other').length;
+    const healthy = screens.length - problem - other;
+    const dot = problem > 0 ? 'bg-red-500' : other > 0 ? 'bg-amber-400' : 'bg-green-500';
+    return (
+      <div className="relative shrink-0">
+        <button
+          type="button"
+          onClick={() => setSummaryOpen((v) => !v)}
+          aria-expanded={summaryOpen}
+          title="Screen health — tap to see every paired display"
+          className="flex items-center gap-1.5 min-h-[40px] px-2.5 rounded-lg text-[12px] font-bold text-slate-600 hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-colors"
+        >
+          <span className={`w-2 h-2 rounded-full ${dot}`} />
+          <span className="hidden sm:inline tabular-nums">{healthy}/{screens.length}</span>
+          <Monitor className="h-4 w-4 sm:hidden" aria-label="Screens" />
+        </button>
+        {summaryOpen && (
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              aria-hidden="true"
+              onClick={() => setSummaryOpen(false)}
+            />
+            <div className="absolute right-0 top-full mt-1 z-50 w-[min(92vw,560px)] rounded-xl border border-slate-700 shadow-2xl overflow-hidden">
+              {fullRow}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  return fullRow;
 }

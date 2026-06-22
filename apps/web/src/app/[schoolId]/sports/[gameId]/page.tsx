@@ -20,6 +20,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useConsoleFit, FIT, type FitTier } from './use-console-fit';
 import { ShowControlPanel } from './ShowControlPanel';
+import { RunCommandBar } from './RunCommandBar';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
@@ -1253,102 +1254,27 @@ function RunMode({
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
 
-      {/* ── View-role switcher + live action rail ─────────────────
-          The switcher pills changed a tablet's role (Scorekeeper /
-          Show Caller / PA). The right-hand rail carries the
-          always-available live actions every operator reaches for
-          mid-game: Cues (the full launchpad), Spotlight (the sponsor-
-          activation moment), the penalty box, and "Send to device"
-          (hand a role view to a second operator's phone). All targets
-          are ≥44px so a wet-fingered volunteer can't fat-finger them. */}
-      <div className="flex items-center gap-1.5 px-3 sm:px-4 py-2 border-b border-slate-200 bg-slate-50 shrink-0 overflow-x-auto">
-        {/* Clearer than the old tiny 11px "VIEW" — an icon + an
-            explicit verb so a first-timer knows this row switches roles. */}
-        <span
-          className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500 mr-1 shrink-0"
-          title="Switch what this device shows — hand each role to a different operator"
-        >
-          <Tv className="h-4 w-4 text-slate-400" />
-          <span className="hidden sm:inline">Switch view</span>
-        </span>
-        {VIEW_PILLS.map((p) => (
-          <button
-            key={p.key}
-            type="button"
-            title={p.title}
-            onClick={() => onViewChange(p.key)}
-            className={`min-h-[44px] px-3.5 py-1.5 rounded-full text-[13px] font-bold transition-colors shrink-0 ${
-              view === p.key
-                ? 'bg-indigo-600 text-white'
-                : 'bg-white border border-slate-200 text-slate-600 hover:border-indigo-400 hover:text-indigo-700'
-            }`}
-          >
-            {p.label}
-          </button>
-        ))}
+      {/* ── Command bar — ONE slim bar replacing the old view/action rail,
+          game-state strip, and screens-health strip (2026-06-22 elegance
+          redesign). The status-transition buttons + the screens-health nub are
+          passed in as elements (no circular import; all mutation/role logic is
+          unchanged — just regrouped with hierarchy). */}
+      <RunCommandBar
+        gameName={`${g.homeTeam || 'Home'} vs ${g.awayTeam || 'Away'}`}
+        status={String(g?.status || 'SCHEDULED')}
+        pills={VIEW_PILLS}
+        view={view}
+        onView={(k) => onViewChange(k as ConsoleView)}
+        showSpotlight
+        onSpotlight={onHighlights}
+        penaltyLabel={def.penaltyBox ? def.penaltyBox.label : null}
+        penaltyCount={penaltyCount}
+        onPenalty={onPenalties}
+        onShare={() => setShareOpen(true)}
+        statusButtons={<RunStatusControl g={g} ctl={ctl} embedded />}
+        screensNub={<SurfaceHealthPills gameId={gameId} summary />}
+      />
 
-        {/* ── Live action rail (right) ──────────────────────────── */}
-        <div className="ml-auto flex items-center gap-1.5 shrink-0">
-          {/* Cues live inline where they're needed — the Full view has the
-              inline cue bar and Show Caller has the always-on launchpad;
-              Scorekeeper/PA intentionally hide cues. The old top-level
-              "Cues" button duplicated all of that, so it was removed
-              (2026-06-16, operator feedback). */}
-
-          {/* SPOTLIGHT — the custom promo / player Spotlight. Same orphan
-              as Cues: onHighlights was passed in but never invoked. This
-              is the sponsor-activation moment ADs sell, so it gets a
-              first-class trigger. (2026-06-15 console-UX P1) */}
-          <button
-            type="button"
-            onClick={onHighlights}
-            title="Spotlight a player or sponsor on the scoreboard AND the ribbon"
-            className="min-h-[44px] px-3.5 py-1.5 rounded-full text-[13px] font-bold transition-colors shrink-0 flex items-center gap-1.5 bg-white border border-slate-200 text-slate-600 hover:border-amber-400 hover:text-amber-700"
-          >
-            <Star className="h-4 w-4" />
-            <span className="hidden sm:inline">Spotlight</span>
-          </button>
-
-          {/* Penalty-box (exclusion) manager — open the box list to release
-              a player early (power-play goal), add, or clear. Gated to sports
-              that have a box (water polo / hockey / lacrosse). The onPenalties
-              callback wiring landed 2026-06-11 (sports-venue audit P0). */}
-          {def.penaltyBox && (
-            <button
-              type="button"
-              title={`${def.penaltyBox.label} — add / release early / clear exclusions`}
-              onClick={onPenalties}
-              className={`min-h-[44px] px-3.5 py-1.5 rounded-full text-[13px] font-bold transition-colors shrink-0 flex items-center gap-1.5 ${
-                penaltyCount > 0
-                  ? 'bg-amber-500 text-amber-950 hover:bg-amber-400'
-                  : 'bg-white border border-slate-200 text-slate-600 hover:border-amber-400 hover:text-amber-700'
-              }`}
-            >
-              <span aria-hidden>⏱</span>
-              <span className="hidden sm:inline">{def.penaltyBox.label}</span>
-              {penaltyCount > 0 && (
-                <span className="inline-flex items-center justify-center min-w-[18px] h-5 px-1 rounded-full bg-amber-950 text-amber-50 text-[11px] tabular-nums">
-                  {penaltyCount}
-                </span>
-              )}
-            </button>
-          )}
-
-          {/* SEND TO DEVICE — the multi-operator differentiator. Opens a
-              sheet with a copy-link + QR for each role view so a second
-              operator (PA in the booth, a kid on the ribbon) joins from
-              their own phone without typing a URL. (2026-06-15 console-UX) */}
-          <button
-            type="button"
-            onClick={() => setShareOpen(true)}
-            title="Send a role view (Scorekeeper / Show Caller / PA) to another phone or tablet"
-            className="min-h-[44px] px-3.5 py-1.5 rounded-full text-[13px] font-bold transition-colors shrink-0 flex items-center gap-1.5 bg-white border border-slate-200 text-slate-600 hover:border-indigo-400 hover:text-indigo-700"
-          >
-            <ExternalLink className="h-4 w-4" />
-            <span className="hidden sm:inline">Send to device</span>
-          </button>
-        </div>
-      </div>
 
       {/* ── SEND TO DEVICE sheet ──────────────────────────────────
           A second operator opens one of these role-scoped URLs on their
@@ -1432,15 +1358,9 @@ function RunMode({
         </div>
       )}
 
-      {/* item A (2026-06-20) — the live game-state control lives HERE in Run
-          (state changes belong with the live game). Reuses the unified status
-          mutation, so the status cinematics + horn (T1-5) and durable undo
-          (T1-2) fire on every transition. Setup no longer carries a stepper. */}
-      <RunStatusControl g={g} ctl={ctl} />
-
-      {/* T1-6 — Per-surface health pill row. Always visible regardless
-          of view — status is universal information. */}
-      <SurfaceHealthPills gameId={gameId} />
+      {/* Game-state transitions + per-surface screen health now live in the
+          command bar above (RunStatusControl embedded + SurfaceHealthPills
+          summary nub) — no longer two separate strips. (2026-06-22 elegance) */}
 
       {/* T3-3 — Show Control: one-tap recall of a full-screen gameday scene
           (Halftime / Lineup / Sponsors / This Week / Countdown) to the board,
@@ -6793,7 +6713,18 @@ function Section({
  *  HERE in Run, where the status cinematics + horn (T1-5) fire. Reuses the SAME
  *  unified status mutation (T1-1) the old stepper used — so durable undo (T1-2)
  *  + the cinematics come for free, with no new handler and no hook edit. */
-function RunStatusControl({ g, ctl }: { g: any; ctl: ReturnType<typeof useGameControl> }) {
+function RunStatusControl({
+  g,
+  ctl,
+  embedded = false,
+}: {
+  g: any;
+  ctl: ReturnType<typeof useGameControl>;
+  /** When true, render ONLY the state-transition buttons (no strip wrapper,
+   *  no "Game state" label, no chip) — for hosting inside the command bar,
+   *  which shows its own status chip. (2026-06-22 console elegance) */
+  embedded?: boolean;
+}) {
   const status = String(g?.status || 'SCHEDULED');
   const go = (s: string) => ctl.status.mutate({ status: s });
   const META: Record<string, { label: string; chip: string; dot: string }> = {
@@ -6805,17 +6736,8 @@ function RunStatusControl({ g, ctl }: { g: any; ctl: ReturnType<typeof useGameCo
   };
   const m = META[status] || META.SCHEDULED;
   const btn = 'min-h-[40px] px-3.5 py-1.5 rounded-lg text-sm font-bold border transition-colors shrink-0';
-  return (
-    <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-200 bg-white overflow-x-auto">
-      <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400 shrink-0">Game state</span>
-      <span
-        aria-live="polite"
-        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-widest border ${m.chip} shrink-0`}
-      >
-        <span className={`w-2 h-2 rounded-full ${m.dot}`} />
-        {m.label}
-      </span>
-      <div className="flex items-center gap-1.5 ml-auto shrink-0">
+  const buttons = (
+      <div className={`flex items-center gap-1.5 shrink-0 ${embedded ? '' : 'ml-auto'}`}>
         {(status === 'SCHEDULED' || status === 'PRE_GAME') && (
           <button type="button" onClick={() => go('LIVE')} className={`${btn} border-green-600 bg-green-600 text-white hover:bg-green-700`}>
             ● Go Live
@@ -6858,6 +6780,22 @@ function RunStatusControl({ g, ctl }: { g: any; ctl: ReturnType<typeof useGameCo
           />
         )}
       </div>
+  );
+
+  // Embedded in the command bar → just the transition buttons (the bar shows
+  // its own status chip). Standalone → the original labelled strip.
+  if (embedded) return buttons;
+  return (
+    <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-200 bg-white overflow-x-auto">
+      <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400 shrink-0">Game state</span>
+      <span
+        aria-live="polite"
+        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-widest border ${m.chip} shrink-0`}
+      >
+        <span className={`w-2 h-2 rounded-full ${m.dot}`} />
+        {m.label}
+      </span>
+      {buttons}
     </div>
   );
 }
