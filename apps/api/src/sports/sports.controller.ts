@@ -650,6 +650,57 @@ export class SportsController {
     return this.sports.clearLiveOverlay(req.user.tenantId, id, req?.user?.id);
   }
 
+  // ── T3-3: Show Control — recall a full-screen GAMEDAY scene ──────────
+  // Push a scene template (Starting Lineup / Halftime Board / Sponsors / …)
+  // to the board for `holdMs`, then auto-revert to the live scoreboard.
+
+  @Post('games/:id/scene')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  recallScene(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { templateId?: string; holdMs?: number },
+  ) {
+    return this.sports.recallScene(
+      req.user.tenantId,
+      id,
+      body?.templateId ?? '',
+      body?.holdMs,
+      req?.user?.id,
+    );
+  }
+
+  @Post('games/:id/scene/clear')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  clearScene(@Request() req: any, @Param('id') id: string) {
+    return this.sports.clearScene(req.user.tenantId, id, req?.user?.id);
+  }
+
+  @Post('games/:id/scene/extend')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  extendScene(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { holdMs?: number },
+  ) {
+    return this.sports.extendScene(req.user.tenantId, id, body?.holdMs, req?.user?.id);
+  }
+
   /** Read the AUTO-celebrate toggle — whether a live score feed should
    *  auto-fire the matching celebration on a score jump. */
   @Get('games/:id/auto-celebrate')

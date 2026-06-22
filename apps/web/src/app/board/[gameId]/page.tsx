@@ -152,6 +152,12 @@ interface BoardData {
   scoreboardTemplateId?: string | null;
   ribbonTemplateId?: string | null;
   scorebugTemplateId?: string | null;
+  // T3-3 Show Control — a recalled full-screen GAMEDAY scene (Halftime Board,
+  // Starting Lineup, Sponsors, …) that takes over the board until it expires
+  // server-side, then auto-reverts. NULL → no scene (render the scoreboard as
+  // usual). `template` is the resolved Template, bundled like scoreboardTemplate
+  // so the public board needs no second auth-gated fetch.
+  scene?: { templateId: string; template: unknown; expiresAt: number } | null;
   // Phase 1 (sports-pro stats engine, P1-B) — auto stat-leaders +
   // Player-of-the-Game, computed server-side from the already-shipped
   // per-game roster. Present ONLY when the `sports_player_stats` flag is
@@ -4159,6 +4165,41 @@ export default function ScoreboardPage() {
   // and scales the template's NATIVE canvas (e.g. 960×1080 narrow LED)
   // to fit the viewport. NULL → legacy hardcoded scenes below render
   // unchanged (zero regression).
+  // T3-3 Show Control — a recalled GAMEDAY scene takes over the board until it
+  // expires server-side (getBoard returns scene=null once past expiresAt), then
+  // the board auto-reverts to the live scoreboard on the next 750ms poll. This
+  // branch sits ABOVE the persistent-scoreboardTemplateId branch so a recalled
+  // scene wins while it's on-air; when scene is null (every game until the
+  // operator recalls one) this is skipped and the board renders exactly as
+  // before. Same wrapper + CueOverlay as the scoreboardTemplateId path so a
+  // fired celebration still plays over the scene.
+  if (data.scene?.template && data.scene.templateId) {
+    return (
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
+        {keyframes}
+        <CustomScoreboardScene
+          templateId={data.scene.templateId}
+          gameId={gameId}
+          initial={displayData ?? data}
+          embedded={data.scene.template as any}
+        />
+        {activeCue && (
+          <CueOverlay
+            cue={activeCue}
+            sport={data?.sport}
+            pack={
+              ((data?.stats as Record<string, unknown> | undefined)?.celebrationPack === 'v2'
+                || data?.sport === 'basketball'
+                || data?.sport === 'water_polo' || data?.sport === 'water-polo'
+                ? 'v2'
+                : 'v1') as 'v1' | 'v2'
+            }
+          />
+        )}
+      </div>
+    );
+  }
+
   if (data.scoreboardTemplateId) {
     // BoardData is structurally a superset of GameSnapshot (id, sport,
     // status, segment, homeTeam, awayTeam, homeScore, awayScore,

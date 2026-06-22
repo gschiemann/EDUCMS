@@ -495,7 +495,7 @@ export class SportsService {
       cues, sponsors, roster, ribbonMessages, ribbonPresets,
       ribbonSpeed, ribbonSlides, ribbonScoreRepeat,
       scoreboardTemplate, ribbonTemplate, scorebugTemplate,
-      latestLiveOverlayEvent,
+      latestLiveOverlayEvent, latestSceneEvent,
     ] = await Promise.all([
       this.prisma.client.gameEvent.findMany({
         where: { gameId: id, type: 'CUE', createdAt: { gte: since } },
@@ -539,7 +539,32 @@ export class SportsService {
         orderBy: { createdAt: 'desc' },
         select: { id: true, payload: true, createdAt: true },
       }),
+      // T3-3 Show Control: latest recalled-scene event (latest-wins, like the
+      // overlay above). `kind: 'clear'` or an expired `expiresAt` → no scene.
+      this.prisma.client.gameEvent.findFirst({
+        where: { gameId: id, type: 'SCENE' },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, payload: true, createdAt: true },
+      }),
     ]);
+
+    // T3-3 Show Control: resolve the latest SCENE with a SERVER-AUTHORITATIVE
+    // expiry — the board never even sees an expired scene, so it auto-reverts
+    // to the live scoreboard on its own (a closed operator laptop can't strand
+    // it). One extra template lookup, and only while a scene is on-air.
+    let scene: { templateId: string; template: unknown; expiresAt: number } | null = null;
+    if (latestSceneEvent) {
+      const sp = (latestSceneEvent.payload as Record<string, unknown>) ?? {};
+      const expiresAt = typeof sp.expiresAt === 'number' ? sp.expiresAt : 0;
+      if (
+        sp.kind !== 'clear' &&
+        typeof sp.templateId === 'string' &&
+        (!expiresAt || Date.now() < expiresAt)
+      ) {
+        const tpl = await resolveTemplate(sp.templateId);
+        if (tpl) scene = { templateId: sp.templateId, template: tpl, expiresAt };
+      }
+    }
 
     const board = {
       id: game.id,
@@ -611,6 +636,10 @@ export class SportsService {
           createdAt: latestLiveOverlayEvent.createdAt,
         };
       })(),
+      // T3-3 Show Control: the recalled GAMEDAY scene currently on-air, with
+      // its resolved template bundled (like scoreboardTemplate) so the public
+      // board needs no second auth-gated fetch. null = none / cleared / expired.
+      scene,
     };
 
     // Phase 1-A — player-stats surfaces (stat leaders + auto
@@ -3950,6 +3979,107 @@ export class SportsService {
       });
     } catch { /* best-effort */ }
     return { cleared: true, eventId: event.id };
+  }
+
+  // ── T3-3: Show Control — recall a full-screen GAMEDAY scene ────────
+  // Mirrors the LIVE_OVERLAY pattern (latest-wins GameEvent resolved in
+  // getBoard, surfaced on the 750ms board poll) so it needs ZERO schema
+  // change. A SCENE event carries { templateId, expiresAt, holdMode }; the
+  // board renders that template until `expiresAt` passes, then auto-reverts
+  // to the live scoreboard — server-authoritative, so a closed operator
+  // laptop can never strand the board. `{ kind: 'clear' }` ends the scene.
+
+  /** Clamp an operator-supplied hold to a sane window (3s..1h); default 20s. */
+  private sceneHoldMs(holdMs?: number): number {
+    return Number.isFinite(holdMs) && (holdMs as number) > 0
+      ? Math.min(Math.max(holdMs as number, 3000), 3_600_000)
+      : 20_000;
+  }
+
+  /**
+   * Recall a GAMEDAY scene template (Starting Lineup / Halftime Board /
+   * Sponsors / …) to the board for `holdMs`, then auto-revert. Validates the
+   * template is system OR owned by this game's tenant (same gate as the
+   * per-surface layout templates) so a foreign/unknown id is rejected.
+   */
+  async recallScene(
+    tenantId: string,
+    id: string,
+    templateId: string,
+    holdMs: number | undefined,
+    actorUserId?: string,
+  ) {
+    const game = await this.owned(tenantId, id);
+    const tpl = (templateId || '').trim();
+    if (!tpl) throw new BadRequestException('templateId required');
+    const owned = await this.prisma.client.template.findFirst({
+      where: { id: tpl, OR: [{ tenantId: game.tenantId }, { isSystem: true }] },
+      select: { id: true },
+    });
+    if (!owned) throw new BadRequestException('Unknown or inaccessible template');
+    const expiresAt = Date.now() + this.sceneHoldMs(holdMs);
+    const event = await this.record(id, 'SCENE', { templateId: tpl, expiresAt, holdMode: 'auto' });
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorUserId || null,
+          action: 'SPORTS_SCENE_RECALLED',
+          targetType: 'Game',
+          targetId: id,
+          details: JSON.stringify({ templateId: tpl, expiresAt, eventId: event.id }),
+        },
+      });
+    } catch { /* best-effort */ }
+    return { recalled: true, templateId: tpl, expiresAt, eventId: event.id };
+  }
+
+  /** End the active scene now — the board reverts to live on the next poll. */
+  async clearScene(tenantId: string, id: string, actorUserId?: string) {
+    await this.owned(tenantId, id);
+    const event = await this.record(id, 'SCENE', { kind: 'clear' });
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorUserId || null,
+          action: 'SPORTS_SCENE_CLEARED',
+          targetType: 'Game',
+          targetId: id,
+          details: JSON.stringify({ eventId: event.id }),
+        },
+      });
+    } catch { /* best-effort */ }
+    return { cleared: true, eventId: event.id };
+  }
+
+  /**
+   * Hold/extend the current scene by re-stamping its expiry (keeps the same
+   * template, so the operator needn't re-pick). No-op if no scene is active.
+   */
+  async extendScene(
+    tenantId: string,
+    id: string,
+    holdMs: number | undefined,
+    _actorUserId?: string,
+  ) {
+    await this.owned(tenantId, id);
+    const latest = await this.prisma.client.gameEvent.findFirst({
+      where: { gameId: id, type: 'SCENE' },
+      orderBy: { createdAt: 'desc' },
+      select: { payload: true },
+    });
+    const p = (latest?.payload as Record<string, unknown>) ?? {};
+    if (!latest || p.kind === 'clear' || typeof p.templateId !== 'string') {
+      return { extended: false };
+    }
+    const expiresAt = Date.now() + this.sceneHoldMs(holdMs);
+    const event = await this.record(id, 'SCENE', {
+      templateId: p.templateId,
+      expiresAt,
+      holdMode: 'held',
+    });
+    return { extended: true, templateId: p.templateId, expiresAt, eventId: event.id };
   }
 
   /**
