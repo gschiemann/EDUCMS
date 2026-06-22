@@ -1472,8 +1472,15 @@ function RunMode({
           the leftover space and the control rows stay pinned + always visible;
           only the scoreboard area itself scrolls, and only if it can't fit. */}
       {!showPaSpotlight && !showSurfacePreviews && (
-        <>
-          <div ref={scoreFitRef} className="flex-1 min-h-0 overflow-y-auto">
+        // Phone: ONE full-bleed scrolling deck — score+clock at top, then
+        // ribbon / roster / cues / tray stacked, with NO dead middle void
+        // (nothing is flex-1 on mobile, so the column is content-height and the
+        // whole deck scrolls as one). Desktop (md+): `md:contents` dissolves this
+        // wrapper so the original `flex-1` scroll region + `shrink-0` pinned
+        // bottom split is byte-identical. (2026-06-21 — "take up the entire
+        // display, no wasted space"; operator picked the no-tabs scrolling deck.)
+        <div className="flex flex-col flex-1 min-h-0 overflow-y-auto md:contents">
+          <div ref={scoreFitRef} className="overflow-y-auto md:flex-1 md:min-h-0">
             {showScoreboard && (
               // relative wrapper so the celebration overlay can sit ON the
               // interactive scoreboard — the operator sees a fired cue play
@@ -1595,7 +1602,7 @@ function RunMode({
               </div>
             )}
           </div>
-        </>
+        </div>
       )}
     </div>
   );

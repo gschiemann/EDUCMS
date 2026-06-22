@@ -28,24 +28,26 @@ transform wrapper added). At `tier='normal'` the classes are byte-identical to b
 unchanged. Competitor basis: OES/Daktronics/vMix keep a fixed, always-visible control surface (one pane,
 no navigation). **STATUS: implemented, tsc+mobile-perf clean — shipping first.**
 
-## MOBILE — chosen: full-bleed three-band console (NEW md:hidden subtree)
-Sticky compact header (HOME score · clock+seg · AWAY score + game-state chip + ⋮ overflow sheet for
-role-switch / status / surfaces / send-to-device) → segmented tab strip (Score | Celebrate | Roster |
-Ribbon, tabs gated by the existing role booleans) → `flex-1` tab body (Score = the promoted full-height
-`MobileScoreDock` score columns + celebration overlay, or `MeetResultsSection` for judged/leaderboard;
-Celebrate = `RunInlineCuesBar`; Roster = `RunInlineRosterBar` default-expanded; Ribbon = `RunRibbonPreview`)
-→ persistent bottom dock (clock Start/Stop + segment ± + reset + sport-tray macros) always visible in every
-tab. Fills 100% of the screen, zero void, every function ≤2 taps. App basis: GameChanger's fullscreen
-simplified controls, edge-anchored primary actions.
+## MOBILE — chosen by Greg: NO-TABS single scrolling deck (minimal responsive reflow)
+The workflow synthesis proposed a tabbed three-band console; I mocked it + offered Greg the shape choice and
+**he picked "no tabs — one scrolling deck."** So the SHIPPED approach is the far-lower-risk reflow, not the
+tab restructure: on phones the Full/Score branch becomes ONE full-bleed scrolling column (score+clock at top,
+then ribbon/roster/cues/tray stacked) with NO dead middle void; the existing components are reused IN PLACE
+(no new tab tree, no chrome-row gating, no double-mount).
 
-**KEY correction the synthesis caught:** `RunRibbonPreview` / `RunInlineRosterBar` / `RunInlineCuesBar`
-(page.tsx:1533-1546) render in the SHARED cluster (gated by VIEW role, NOT breakpoint). So the safe move is
-to ADD a `md:hidden` mobile tab tree and gate the EXISTING tree `hidden md:*` — the shared bars render twice
-(one hidden), zero data-layer change. Hard merge point with the desktop fix: gating the 3 chrome rows +
-splitting the 1466-1590 branch into `hidden md:*` desktop + new `md:hidden` mobile. Refactor `MobileScoreDock`
-into `DockTeamCols` (Score tab) + `DockClockStrip` (bottom dock) WITHOUT rewriting the operator-validated
-56px targets / team-color borders / safe-area. **STATUS: speced, build next (separate commit) — mockup +
-adversarial review + operator device sign-off before/at ship.**
+**Implementation (2 edits at page.tsx:1474):** wrap the `flex-1` scoreboard region + the `shrink-0` pinned
+cluster in `<div className="flex flex-col flex-1 min-h-0 overflow-y-auto md:contents">`, and change the
+scoreboard region's base classes to `overflow-y-auto md:flex-1 md:min-h-0`. The root-cause of the void was
+that the scoreboard region is `flex-1` on mobile while its only mobile content is the ~90px mirror (desktop
+tiles are `hidden md:grid`) → a tall empty flex region. Dropping `flex-1` on mobile makes the column
+content-height so the deck stacks + scrolls as one, no gap. **`md:contents` dissolves the wrapper at md+** so
+the desktop `flex-1` scroll + `shrink-0` pinned split (and the desktop fit hook's `scoreFitRef`) are
+byte-identical — zero desktop regression. **STATUS: implemented, tsc+mobile-perf clean, adversarial review +
+CI before claiming done; operator confirms on his iPhone.**
+
+(Deferred — the bigger full-bleed tab console from the synthesis — `MobileScoreDock`→`DockTeamCols`+
+`DockClockStrip`, header ⋮ sheet, Score/Celebrate/Roster/Ribbon tabs — is preserved in `mobile-raw-workflow.json`
+if Greg later wants the tabbed version over the scrolling deck.)
 
 ## Verification (both)
 The authed console can't render under `next dev` (Fredoka font bug, task #205), so: tsc · `pnpm
