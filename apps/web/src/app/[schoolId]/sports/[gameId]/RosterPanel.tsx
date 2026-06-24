@@ -13,7 +13,7 @@
  */
 
 import { useRef, useState } from 'react';
-import { UserPlus, Upload, Pencil, Trash2, Loader2, X, ImageIcon, Download, Link2, Check } from 'lucide-react';
+import { UserPlus, Upload, Pencil, Trash2, Loader2, X, ImageIcon, Download, Link2, Check, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useGameRoster, useRosterMutations, type RosterPlayer } from '@/hooks/use-api';
@@ -279,6 +279,9 @@ function PlayerRow({
       {isFeatureEnabled(FLAGS.SPORTS_PLAYER_STATS) && (
         <LinkAthleteButton gameId={gameId} player={player} />
       )}
+      {isFeatureEnabled(FLAGS.SPORTS_PLAYER_STATS) && player.personId && (
+        <ShareAthleteButton player={player} />
+      )}
       <button
         onClick={onEdit}
         className="p-1.5 text-slate-400 hover:text-slate-700 shrink-0"
@@ -369,6 +372,76 @@ function LinkAthleteButton({ gameId, player }: { gameId: string; player: RosterP
         <Check className="h-3.5 w-3.5" />
       ) : (
         <Link2 className="h-3.5 w-3.5" />
+      )}
+    </button>
+  );
+}
+
+/**
+ * S1 — turn an athlete's PUBLIC stats page on + copy the shareable link. Only
+ * shown once a row is LINKED to a persistent athlete (player.personId set). One
+ * tap = privacy opt-in for a minor (the server issues an unguessable token,
+ * isPublic→true) + copies the /athlete/:token link a parent can open. Tracks
+ * the issued token locally so a second tap just re-copies (no token rotation).
+ */
+function ShareAthleteButton({ player }: { player: RosterPlayer }) {
+  const [busy, setBusy] = useState(false);
+  const [token, setToken] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [err, setErr] = useState('');
+
+  const share = async () => {
+    if (busy || !player.personId) return;
+    setErr('');
+    try {
+      let t = token;
+      if (!t) {
+        setBusy(true);
+        const res = await apiFetch(`/sports/athletes/${player.personId}/share`, { method: 'POST' });
+        t = (res as { token?: string })?.token ?? null;
+        setToken(t);
+      }
+      if (t && typeof window !== 'undefined') {
+        const url = `${window.location.origin}/athlete/${t}`;
+        try {
+          await navigator.clipboard?.writeText(url);
+        } catch {
+          /* clipboard blocked (insecure ctx) — the link still exists */
+        }
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1800);
+      }
+    } catch (e: any) {
+      setErr(e?.message || 'Could not create a share link.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={share}
+      disabled={busy}
+      className={
+        'p-1.5 shrink-0 ' +
+        (token ? 'text-indigo-600' : 'text-slate-400 hover:text-indigo-600 disabled:opacity-50')
+      }
+      aria-label={token ? 'Copy this athlete’s public stats link' : 'Create a public stats link for this athlete'}
+      title={
+        err ||
+        (copied
+          ? 'Link copied!'
+          : token
+            ? 'Public stats on — tap to copy the link again'
+            : 'Share this athlete’s stats — creates a public link a parent can open')
+      }
+    >
+      {busy ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : copied ? (
+        <Check className="h-3.5 w-3.5" />
+      ) : (
+        <Share2 className="h-3.5 w-3.5" />
       )}
     </button>
   );

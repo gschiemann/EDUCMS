@@ -1079,6 +1079,35 @@ export class SportsController {
     return result;
   }
 
+  // ── S1: shareable public athlete profile (operator share controls) ──
+  /**
+   * Turn an athlete's public stats page ON (privacy opt-in for a minor) —
+   * issues/rotates the unguessable share token and returns it so the console
+   * can build the /athlete/:token link. Audited.
+   */
+  @Post('athletes/:id/share')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  shareAthlete(@Request() req: any, @Param('id') id: string) {
+    return this.sports.setAthleteShare(req.user.tenantId, id, req?.user?.id);
+  }
+
+  /** Turn an athlete's public stats page OFF — the link 404s immediately. */
+  @Delete('athletes/:id/share')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  unshareAthlete(@Request() req: any, @Param('id') id: string) {
+    return this.sports.unsetAthleteShare(req.user.tenantId, id, req?.user?.id);
+  }
+
   // ── Undo rail ─────────────────────────────────────────────────
 
   /**

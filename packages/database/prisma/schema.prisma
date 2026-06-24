@@ -2434,6 +2434,12 @@ model SportsPerson {
   normalizedKey String   @map("normalized_key") // lowercased/trimmed name → dedup
   externalRef   String?  @map("external_ref") // GameChanger/MaxPreps id (future)
   active        Boolean  @default(true)
+  // 2026-06-22 — player-stats S1: shareable public athlete profile. OFF by
+  // default (a minor is never exposed until an operator opts in). Access is by
+  // the unguessable token, NOT the person id (no enumeration); revoke = set
+  // isPublic false; rotate = re-issue the token. Both additive + nullable.
+  isPublic         Boolean @default(false) @map("is_public")
+  publicShareToken String? @unique @map("public_share_token")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
 

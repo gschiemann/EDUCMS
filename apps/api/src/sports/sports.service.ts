@@ -8,6 +8,7 @@ import {
   forwardRef,
   Inject,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
@@ -38,6 +39,7 @@ import {
   finalizeGameStats,
   getStatLeaders,
   getAthleteCareer,
+  getPublicAthleteProfile,
   linkRosterPlayerToPerson,
 } from './sports-stats.service';
 import { FeatureFlagsService, FLAGS } from '../feature-flags/feature-flags.service';
@@ -3410,6 +3412,70 @@ export class SportsService {
   /** One athlete's full season + career stat line for the career page. */
   async getAthleteCareer(args: { tenantId: string; personId: string }) {
     return getAthleteCareer(this.prisma.client, args);
+  }
+
+  // ── S1: shareable public athlete profile ─────────────────────────────
+  /** Public, privacy-minimal athlete profile by share token (null if off). */
+  async getPublicAthleteProfile(token: string) {
+    return getPublicAthleteProfile(this.prisma.client, token);
+  }
+
+  /**
+   * Turn an athlete's public share ON: verify the person is this tenant's,
+   * (re)issue an unguessable token, flip isPublic, audit. Returns the token so
+   * the console can build the /athlete/:token link. Re-calling rotates the
+   * token (orphaning any previously-shared link).
+   */
+  async setAthleteShare(tenantId: string, personId: string, actorUserId?: string) {
+    const person = await this.prisma.client.sportsPerson.findFirst({
+      where: { id: personId, tenantId },
+      select: { id: true },
+    });
+    if (!person) throw new NotFoundException('Athlete not found');
+    const token = randomUUID().replace(/-/g, '');
+    await this.prisma.client.sportsPerson.update({
+      where: { id: personId },
+      data: { isPublic: true, publicShareToken: token },
+    });
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorUserId || null,
+          action: 'SPORTS_ATHLETE_SHARED',
+          targetType: 'SportsPerson',
+          targetId: personId,
+          details: JSON.stringify({ token }),
+        },
+      });
+    } catch { /* best-effort */ }
+    return { shared: true, token };
+  }
+
+  /** Turn an athlete's public share OFF — the existing link 404s immediately. */
+  async unsetAthleteShare(tenantId: string, personId: string, actorUserId?: string) {
+    const person = await this.prisma.client.sportsPerson.findFirst({
+      where: { id: personId, tenantId },
+      select: { id: true },
+    });
+    if (!person) throw new NotFoundException('Athlete not found');
+    await this.prisma.client.sportsPerson.update({
+      where: { id: personId },
+      data: { isPublic: false },
+    });
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorUserId || null,
+          action: 'SPORTS_ATHLETE_UNSHARED',
+          targetType: 'SportsPerson',
+          targetId: personId,
+          details: '{}',
+        },
+      });
+    } catch { /* best-effort */ }
+    return { shared: false };
   }
 
   /** Link a per-game roster row to a persistent SportsPerson. */

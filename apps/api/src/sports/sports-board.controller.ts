@@ -42,6 +42,35 @@ export class SportsBoardController {
   }
 
   /**
+   * S1 (2026-06-22) — PUBLIC athlete profile by unguessable share token. The
+   * "so a parent can see their kid's stats after the game" surface. 404 unless
+   * the athlete exists AND the operator opted into sharing (isPublic) — so a
+   * revoked / never-shared athlete is invisible and there is NO person-id
+   * enumeration path. Minimal PII (only what the operator chose to share).
+   * Rate-limited via the feed window so a leaked link can't be mass-scraped.
+   * Two-segment path (`board/athletes/:token`) so it never collides with the
+   * single-segment `board/:id` above.
+   */
+  @Get('athletes/:token')
+  async athleteProfile(@Param('token') token: string) {
+    const now = Date.now();
+    const key = `athlete:${token}`;
+    const recent = (this.feedHits.get(key) || []).filter(
+      (t) => t > now - SportsBoardController.FEED_WINDOW_MS,
+    );
+    if (recent.length >= SportsBoardController.FEED_MAX_PER_WINDOW) {
+      this.feedHits.set(key, recent);
+      throw new HttpException('Rate limit exceeded', HttpStatus.TOO_MANY_REQUESTS);
+    }
+    recent.push(now);
+    this.feedHits.set(key, recent);
+
+    const profile = await this.sports.getPublicAthleteProfile(token);
+    if (!profile) throw new HttpException('Athlete not found', HttpStatus.NOT_FOUND);
+    return profile;
+  }
+
+  /**
    * Sprint 13 — CTS celebration audit log.
    *
    * The CTS orchestrator runs on the kiosk player. When it picks a cue

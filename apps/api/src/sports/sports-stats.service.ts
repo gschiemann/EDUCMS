@@ -414,13 +414,21 @@ function formatStatValue(value: number, sem?: StatSemantic): string {
 export function deriveSeason(game: {
   startedAt?: Date | null;
   createdAt?: Date | null;
+  season?: string | null;
 }): string {
-  const d = game.startedAt ?? game.createdAt ?? new Date();
-  const year =
-    d instanceof Date && !Number.isNaN(d.getTime())
-      ? d.getFullYear()
-      : new Date().getFullYear();
-  return String(year);
+  // S3 (2026-06-22): prefer an explicit season if a caller ever sets one; else
+  // derive an ACADEMIC "YYYY-YY" string (Aug→Jul) so a winter sport played
+  // Dec–Mar stays in ONE season bucket instead of splitting across the New
+  // Year. Same signature contract: a finalize and re-finalize derive the SAME
+  // season string, and leaderboards filter by it.
+  if (game.season && String(game.season).trim()) return String(game.season).trim();
+  const raw = game.startedAt ?? game.createdAt ?? new Date();
+  const d = raw instanceof Date && !Number.isNaN(raw.getTime()) ? raw : new Date();
+  // getMonth() is 0-indexed; >= 7 means August or later → the academic year
+  // that STARTS this calendar year. Jan–Jul belongs to the year that started
+  // the previous August.
+  const startYear = d.getMonth() >= 7 ? d.getFullYear() : d.getFullYear() - 1;
+  return `${startYear}-${String((startYear + 1) % 100).padStart(2, '0')}`;
 }
 
 /**
@@ -912,6 +920,146 @@ export async function getAthleteCareer(
       displayValue: r.displayValue ?? null,
       gamesPlayed: r.gamesPlayed,
     })),
+  };
+}
+
+/** One chronological row in an athlete's game log (S2). */
+export interface AthleteGameLogEntry {
+  gameId: string;
+  date: string | null; // ISO of game start (or createdAt fallback)
+  sport: string;
+  opponent: string;
+  homeAway: 'home' | 'away';
+  teamScore: number | null;
+  opponentScore: number | null;
+  result: 'W' | 'L' | 'T' | null;
+  /** This game's stat line for the athlete (the persisted per-game JSON). */
+  stats: Record<string, string>;
+}
+
+/**
+ * S2 — an athlete's recent game-by-game log, rebuilt from the per-game
+ * RosterPlayer appearances (already persisted forever). Newest first, capped.
+ * Two queries (rows, then their games by id) so it needs no relation field.
+ */
+export async function getAthleteGameLog(
+  prisma: PrismaClient,
+  args: { tenantId: string; personId: string; limit?: number },
+): Promise<AthleteGameLogEntry[]> {
+  const { tenantId, personId } = args;
+  if (!tenantId || !personId) return [];
+  const limit = Math.min(Math.max(args.limit ?? 25, 1), 100);
+  const rows = await withDbRetry(
+    () =>
+      prisma.rosterPlayer.findMany({
+        where: { tenantId, personId },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        select: { gameId: true, team: true, stats: true },
+      }),
+    { label: 'sports-stats.gamelog.rows' },
+  );
+  if (rows.length === 0) return [];
+  const gameIds = [...new Set(rows.map((r) => r.gameId))];
+  const games = await withDbRetry(
+    () =>
+      prisma.game.findMany({
+        // tenantId here is defense-in-depth: gameIds already come only from
+        // this tenant's roster rows above, but on a public minors' route we
+        // scope the join too so a future refactor can't widen it.
+        where: { id: { in: gameIds }, tenantId },
+        select: {
+          id: true, sport: true, homeTeam: true, awayTeam: true,
+          homeScore: true, awayScore: true, startedAt: true, createdAt: true,
+        },
+      }),
+    { label: 'sports-stats.gamelog.games' },
+  );
+  const gameById = new Map(games.map((g) => [g.id, g]));
+  const out: AthleteGameLogEntry[] = [];
+  for (const r of rows) {
+    const g = gameById.get(r.gameId);
+    if (!g) continue;
+    const homeAway: 'home' | 'away' = r.team === 'away' ? 'away' : 'home';
+    const teamScore = homeAway === 'home' ? g.homeScore : g.awayScore;
+    const oppScore = homeAway === 'home' ? g.awayScore : g.homeScore;
+    const opponent = (homeAway === 'home' ? g.awayTeam : g.homeTeam) ?? '';
+    let result: 'W' | 'L' | 'T' | null = null;
+    if (typeof teamScore === 'number' && typeof oppScore === 'number') {
+      result = teamScore > oppScore ? 'W' : teamScore < oppScore ? 'L' : 'T';
+    }
+    const d = g.startedAt ?? g.createdAt ?? null;
+    out.push({
+      gameId: r.gameId,
+      date: d instanceof Date ? d.toISOString() : null,
+      sport: g.sport,
+      opponent,
+      homeAway,
+      teamScore: teamScore ?? null,
+      opponentScore: oppScore ?? null,
+      result,
+      stats: (r.stats as Record<string, string>) ?? {},
+    });
+  }
+  return out;
+}
+
+/** The public, privacy-minimal athlete profile (S1) served by the token route. */
+export interface PublicAthleteProfile {
+  fullName: string;
+  number: string | null;
+  position: string | null;
+  photoUrl: string | null;
+  gradYear: number | null;
+  teamName: string | null;
+  career: AthleteCareer['career'];
+  season: AthleteCareer['season'];
+  gameLog: AthleteGameLogEntry[];
+}
+
+/**
+ * S1 — resolve a SHARED athlete profile by its unguessable token. Returns null
+ * unless the athlete exists AND isPublic (operator opted in) — so a revoked or
+ * never-shared athlete 404s, and there is no person-id enumeration path. Only
+ * the minimal PII the operator chose to share is included.
+ */
+export async function getPublicAthleteProfile(
+  prisma: PrismaClient,
+  token: string,
+): Promise<PublicAthleteProfile | null> {
+  if (!token || typeof token !== 'string') return null;
+  const person = await withDbRetry(
+    () =>
+      prisma.sportsPerson.findFirst({
+        where: { publicShareToken: token, isPublic: true },
+        select: {
+          id: true, tenantId: true, fullName: true, number: true,
+          position: true, photoUrl: true, gradYear: true, teamId: true,
+        },
+      }),
+    { label: 'sports-stats.public.person' },
+  );
+  if (!person) return null;
+  const [career, gameLog, team] = await Promise.all([
+    getAthleteCareer(prisma, { tenantId: person.tenantId, personId: person.id }),
+    getAthleteGameLog(prisma, { tenantId: person.tenantId, personId: person.id, limit: 25 }),
+    person.teamId
+      ? withDbRetry(
+          () => prisma.team.findFirst({ where: { id: person.teamId! }, select: { name: true } }),
+          { label: 'sports-stats.public.team' },
+        )
+      : Promise.resolve(null),
+  ]);
+  return {
+    fullName: person.fullName,
+    number: person.number ?? null,
+    position: person.position ?? null,
+    photoUrl: person.photoUrl ?? null,
+    gradYear: person.gradYear ?? null,
+    teamName: team?.name ?? null,
+    career: career?.career ?? [],
+    season: career?.season ?? [],
+    gameLog,
   };
 }
 
