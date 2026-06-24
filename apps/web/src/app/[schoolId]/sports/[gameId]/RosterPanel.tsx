@@ -317,8 +317,13 @@ function PlayerRow({
  */
 function LinkAthleteButton({ gameId, player }: { gameId: string; player: RosterPlayer }) {
   const [busy, setBusy] = useState(false);
-  const [linked, setLinked] = useState(false);
+  // S0 (2026-06-22): the roster query now returns `personId`, so linked state
+  // is PERSISTENT (survives refresh) and reflects the auto-link that runs at
+  // CSV import. `justLinked` only covers the instant between a manual tap and
+  // the roster refetch. Home rosters imported via CSV come in pre-linked.
+  const [justLinked, setJustLinked] = useState(false);
   const [err, setErr] = useState('');
+  const linked = !!player.personId || justLinked;
 
   const link = async () => {
     if (busy || linked) return;
@@ -332,7 +337,7 @@ function LinkAthleteButton({ gameId, player }: { gameId: string; player: RosterP
         method: 'POST',
         body: JSON.stringify({ fullName: player.name }),
       });
-      setLinked(true);
+      setJustLinked(true);
     } catch (e: any) {
       setErr(e?.message || 'Could not link this player to an athlete.');
     } finally {

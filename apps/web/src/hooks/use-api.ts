@@ -3184,6 +3184,9 @@ export interface RosterPlayer {
   position: string | null;
   photoUrl: string | null;
   stats: Record<string, string>;
+  /** Persistent athlete this appearance is linked to (season/career rollup).
+   *  null = unlinked one-off. Set by the link route or auto-link at import. */
+  personId?: string | null;
 }
 
 export function useGameRoster(gameId: string | undefined) {

@@ -1311,7 +1311,7 @@ export class SportsService {
    * Imported players are appended; existing roster is kept.
    */
   async importRosterCsv(tenantId: string, gameId: string, csvText: string) {
-    await this.owned(tenantId, gameId);
+    const game = await this.owned(tenantId, gameId);
     const lines = String(csvText || '')
       .split(/\r?\n/)
       .map((l) => l.trim())
@@ -1371,6 +1371,34 @@ export class SportsService {
       throw new BadRequestException('No valid player rows found in the CSV.');
     }
     await this.prisma.client.rosterPlayer.createMany({ data: rows });
+
+    // S0 (2026-06-22) — auto-link the HOME roster to persistent athletes so
+    // season + career stats accumulate WITHOUT the operator hand-linking every
+    // row every game (the adoption blocker: finalizeGameStats only rolls up
+    // LINKED rows). Find-or-create by name within the home team. HOME ONLY —
+    // never opponents, so a typo/visitor can't pollute the persistent tables.
+    // Best-effort + per-row try/catch: linking must NEVER fail the import.
+    try {
+      const homeRows = await this.prisma.client.rosterPlayer.findMany({
+        where: { gameId, team: 'home', personId: null },
+        select: { id: true, name: true },
+      });
+      for (const rp of homeRows) {
+        try {
+          await linkRosterPlayerToPerson(this.prisma.client, {
+            tenantId,
+            rosterPlayerId: rp.id,
+            fullName: rp.name,
+            teamId: game.homeTeamId ?? undefined,
+          });
+        } catch {
+          /* one unmatchable name never blocks the rest of the import */
+        }
+      }
+    } catch {
+      /* auto-link is additive convenience — import already succeeded */
+    }
+
     return this.listRoster(tenantId, gameId);
   }
 
