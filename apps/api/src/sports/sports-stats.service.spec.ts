@@ -397,10 +397,10 @@ describe('finalizeGameStats', () => {
     expect(res.aggregated).toBe(2);
     expect(res.skipped).toBeUndefined();
 
-    // p-1 season PTS = 24, career PTS = 24 (season "2025" from startedAt).
-    const sPts = seasonRows.get('p-1|2025|PTS');
+    // p-1 season PTS = 24, career PTS = 24 (academic season "2025-26" from a Dec startedAt).
+    const sPts = seasonRows.get('p-1|2025-26|PTS');
     expect(sPts?.statValue).toBe(24);
-    expect(sPts?.season).toBe('2025');
+    expect(sPts?.season).toBe('2025-26');
     expect(sPts?.gamesPlayed).toBe(1);
     expect(sPts?.displayValue).toBe('24');
     const cPts = careerRows.get('p-1|PTS');
@@ -408,7 +408,7 @@ describe('finalizeGameStats', () => {
     expect(cPts?.gamesPlayed).toBe(1);
 
     // p-2 PTS rolled too.
-    expect(seasonRows.get('p-2|2025|PTS')?.statValue).toBe(12);
+    expect(seasonRows.get('p-2|2025-26|PTS')?.statValue).toBe(12);
     expect(careerRows.get('p-2|PTS')?.statValue).toBe(12);
 
     // The game's idempotency marker is now stamped.
@@ -437,9 +437,9 @@ describe('finalizeGameStats', () => {
       ],
     });
     // Seed combined with game-1's already-finalized season/career rows.
-    combined.seasonRows.set('p-1|2025|PTS', {
+    combined.seasonRows.set('p-1|2025-26|PTS', {
       tenantId: T, personId: 'p-1', teamId: null, sport: 'basketball',
-      season: '2025', statKey: 'PTS', statValue: 20, gamesPlayed: 1,
+      season: '2025-26', statKey: 'PTS', statValue: 20, gamesPlayed: 1,
       displayValue: '20', lastGameId: 'game-1',
     });
     combined.careerRows.set('p-1|PTS', {
@@ -450,8 +450,8 @@ describe('finalizeGameStats', () => {
     const res = await finalizeGameStats(combined.client, T, 'game-2');
     expect(res.aggregated).toBe(1);
     // Season PTS now 20 + 15 = 35 over 2 games; career mirrors it.
-    expect(combined.seasonRows.get('p-1|2025|PTS')?.statValue).toBe(35);
-    expect(combined.seasonRows.get('p-1|2025|PTS')?.gamesPlayed).toBe(2);
+    expect(combined.seasonRows.get('p-1|2025-26|PTS')?.statValue).toBe(35);
+    expect(combined.seasonRows.get('p-1|2025-26|PTS')?.gamesPlayed).toBe(2);
     expect(combined.careerRows.get('p-1|PTS')?.statValue).toBe(35);
     expect(combined.careerRows.get('p-1|PTS')?.gamesPlayed).toBe(2);
   });
@@ -470,11 +470,11 @@ describe('finalizeGameStats', () => {
     await finalizeGameStats(client, T, 'game-1');
 
     // Counting stats present.
-    expect(seasonRows.get('p-1|2025|H')?.statValue).toBe(3);
-    expect(seasonRows.get('p-1|2025|HR')?.statValue).toBe(1);
-    expect(seasonRows.get('p-1|2025|RBI')?.statValue).toBe(2);
+    expect(seasonRows.get('p-1|2025-26|H')?.statValue).toBe(3);
+    expect(seasonRows.get('p-1|2025-26|HR')?.statValue).toBe(1);
+    expect(seasonRows.get('p-1|2025-26|RBI')?.statValue).toBe(2);
     // AVG (rate) must NOT have produced any aggregate row.
-    expect(seasonRows.get('p-1|2025|AVG')).toBeUndefined();
+    expect(seasonRows.get('p-1|2025-26|AVG')).toBeUndefined();
   });
 
   it('is idempotent — re-running finalize on the same game is a NO-OP (no double count)', async () => {
@@ -486,7 +486,7 @@ describe('finalizeGameStats', () => {
 
     const first = await finalizeGameStats(client, T, 'game-1');
     expect(first.aggregated).toBe(1);
-    expect(seasonRows.get('p-1|2025|PTS')?.statValue).toBe(30);
+    expect(seasonRows.get('p-1|2025-26|PTS')?.statValue).toBe(30);
 
     // Re-FINAL — the marker is set, so this must do nothing.
     const second = await finalizeGameStats(client, T, 'game-1');
@@ -494,7 +494,7 @@ describe('finalizeGameStats', () => {
     expect(second.skipped).toBe('already-finalized');
 
     // Totals UNCHANGED — no double count.
-    expect(seasonRows.get('p-1|2025|PTS')?.statValue).toBe(30);
+    expect(seasonRows.get('p-1|2025-26|PTS')?.statValue).toBe(30);
     expect(careerRows.get('p-1|PTS')?.statValue).toBe(30);
   });
 
@@ -512,8 +512,8 @@ describe('finalizeGameStats', () => {
     const res = await finalizeGameStats(client, T, 'game-1');
     expect(res.aggregated).toBe(1);
     // The unparseable PTS produced no row; REB did.
-    expect(seasonRows.get('p-1|2025|PTS')).toBeUndefined();
-    expect(seasonRows.get('p-1|2025|REB')?.statValue).toBe(7);
+    expect(seasonRows.get('p-1|2025-26|PTS')).toBeUndefined();
+    expect(seasonRows.get('p-1|2025-26|REB')?.statValue).toBe(7);
   });
 
   it('ignores unlinked roster players (personId null)', async () => {
@@ -529,7 +529,7 @@ describe('finalizeGameStats', () => {
     const res = await finalizeGameStats(client, T, 'game-1');
     // Only the one linked player aggregated.
     expect(res.aggregated).toBe(1);
-    expect(seasonRows.get('p-1|2025|PTS')?.statValue).toBe(18);
+    expect(seasonRows.get('p-1|2025-26|PTS')?.statValue).toBe(18);
     // No row for the unlinked 99-point opponent.
     expect([...seasonRows.values()].some((r) => r.statValue === 99)).toBe(false);
   });
@@ -557,21 +557,21 @@ describe('getStatLeaders', () => {
     const game = fakeGame();
     const { client, seasonRows } = makePrisma({ game, roster: [] });
     // Seed three season PTS rows directly (materialized table).
-    seasonRows.set('p-1|2025|PTS', {
-      tenantId: T, personId: 'p-1', teamId: null, sport: 'basketball', season: '2025',
+    seasonRows.set('p-1|2025-26|PTS', {
+      tenantId: T, personId: 'p-1', teamId: null, sport: 'basketball', season: '2025-26',
       statKey: 'PTS', statValue: 100, gamesPlayed: 5, displayValue: '100', lastGameId: 'g',
     });
-    seasonRows.set('p-2|2025|PTS', {
-      tenantId: T, personId: 'p-2', teamId: null, sport: 'basketball', season: '2025',
+    seasonRows.set('p-2|2025-26|PTS', {
+      tenantId: T, personId: 'p-2', teamId: null, sport: 'basketball', season: '2025-26',
       statKey: 'PTS', statValue: 250, gamesPlayed: 5, displayValue: '250', lastGameId: 'g',
     });
-    seasonRows.set('p-3|2025|PTS', {
-      tenantId: T, personId: 'p-3', teamId: null, sport: 'basketball', season: '2025',
+    seasonRows.set('p-3|2025-26|PTS', {
+      tenantId: T, personId: 'p-3', teamId: null, sport: 'basketball', season: '2025-26',
       statKey: 'PTS', statValue: 175, gamesPlayed: 5, displayValue: '175', lastGameId: 'g',
     });
 
     const leaders = await getStatLeaders(client, {
-      tenantId: T, sport: 'basketball', season: '2025', statKey: 'PTS', scope: 'SEASON', limit: 10,
+      tenantId: T, sport: 'basketball', season: '2025-26', statKey: 'PTS', scope: 'SEASON', limit: 10,
     });
     // PTS higherBetter → descending.
     expect(leaders.map((l) => l.statValue)).toEqual([250, 175, 100]);
