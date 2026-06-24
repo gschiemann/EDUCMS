@@ -2407,10 +2407,25 @@ export class ScreensController {
     // its own scene to fit either way. Default to 1080p landscape.
     let w = 1920;
     let h = 1080;
-    const m = String(screen.resolution || '').trim().match(/^(\d+)\s*[x×]\s*(\d+)$/i);
-    if (m) {
-      w = parseInt(m[1], 10);
-      h = parseInt(m[2], 10);
+    // Prefer the operator's explicit LED canvas dims (canvasW/canvasH) over the
+    // device resolution. A narrow LED poster (e.g. 960×1080) reports its DEVICE
+    // resolution as 1920×1080 but only physically shows the top-left
+    // canvasW×canvasH region the LED controller maps; sizing the synthetic
+    // scoreboard template to the canvas (not the resolution) is what makes the
+    // /board surface FIT the panel instead of rendering 1920-wide and getting
+    // cut off. Falls back to the parsed resolution, then 1080p. (2026-06-24 —
+    // live water-polo install: scoreboard cut off on a 960×1080 LED poster.)
+    const cwN = Number((screen as any).canvasW);
+    const chN = Number((screen as any).canvasH);
+    if (cwN > 0 && chN > 0) {
+      w = Math.floor(cwN);
+      h = Math.floor(chN);
+    } else {
+      const m = String(screen.resolution || '').trim().match(/^(\d+)\s*[x×]\s*(\d+)$/i);
+      if (m) {
+        w = parseInt(m[1], 10);
+        h = parseInt(m[2], 10);
+      }
     }
     // Which sports surface this screen renders. The operator picks it
     // per-screen (BOARD full scoreboard / RIBBON LED strip / SCOREBUG
@@ -2897,6 +2912,15 @@ export class ScreensController {
           generatedAt: new Date().toISOString(),
           // 2026-05-24 — orientation lock for sports-mode screens too.
           orientation: (screen as any).orientation || 'LANDSCAPE',
+          // 2026-06-24 — carry the LED canvas dims + tile-repeat on the
+          // SCOREBOARD manifest too (the normal playlist branch already does).
+          // Without these the player's TemplateScaler keeps a stale/empty
+          // canvas and renders the board at the device resolution (1920) →
+          // cut off on a narrow LED poster (960×1080). Pairs with the
+          // canvas-aware synthetic-template sizing in buildScoreboardManifest.
+          canvasW: (screen as any).canvasW ?? null,
+          canvasH: (screen as any).canvasH ?? null,
+          repeats: (screen as any).repeats ?? 1,
           // 2026-05-27 — EP6N GPIO output state (status lamp / horn).
           // Same shape across every manifest branch.
           gpio: (() => {
