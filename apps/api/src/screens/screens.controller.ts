@@ -2622,6 +2622,13 @@ export class ScreensController {
         // unparseable we default to landscape (safe: the original
         // emergencyPlaylistId is what every tenant already has wired up).
         const isPortrait = (() => {
+          // Prefer the operator's explicit LED canvas dims: a 960×1080 poster
+          // reports DEVICE resolution 1920×1080 (landscape) but is physically
+          // portrait — same precedence the scoreboard manifest + board page use.
+          // Fall back to stored resolution when no canvas is configured.
+          const cw = Number((screen as any).canvasW);
+          const ch = Number((screen as any).canvasH);
+          if (Number.isFinite(cw) && Number.isFinite(ch) && cw > 0 && ch > 0) return ch > cw;
           const r = (screen.resolution || '').trim();
           const m = r.match(/^(\d+)\s*[x×]\s*(\d+)$/i);
           if (!m) return false;
@@ -2877,6 +2884,15 @@ export class ScreensController {
             ? Math.floor(new Date(activeScreenOverride.expiresAt).getTime() / 1000)
             : null,
           orientation: isPortrait ? 'portrait' : 'landscape',
+          // 2026-06-25 — carry the LED canvas dims + tile-repeat on the
+          // EMERGENCY manifest too (scoreboard + normal playlist branches
+          // already do). Without these the player's TemplateScaler renders the
+          // emergency playlist at device resolution (1920) → the alert is cut
+          // off on a narrow LED poster (e.g. the live 960×1080 water-polo wall).
+          // Life-safety: an alert that doesn't fit is an alert unseen.
+          canvasW: (screen as any).canvasW ?? null,
+          canvasH: (screen as any).canvasH ?? null,
+          repeats: (screen as any).repeats ?? 1,
           // 2026-05-27 — EP6N GPIO output state. The player applies
           // these to the Phoenix terminal's relay outputs. Emergency
           // branch must carry the same state as the normal branch so
