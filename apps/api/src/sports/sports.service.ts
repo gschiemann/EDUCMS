@@ -1215,14 +1215,14 @@ export class SportsService {
       position?: string; photoUrl?: string; stats?: unknown;
     },
   ) {
-    await this.owned(tenantId, gameId);
+    const game = await this.owned(tenantId, gameId);
     const name = this.cleanText(dto.name, 80);
     if (!name) throw new BadRequestException('Player name is required.');
     const team = this.cleanTeam(dto.team);
     const sortOrder = await this.prisma.client.rosterPlayer.count({
       where: { gameId, team },
     });
-    return this.prisma.client.rosterPlayer.create({
+    const created = await this.prisma.client.rosterPlayer.create({
       data: {
         tenantId,
         gameId,
@@ -1235,6 +1235,12 @@ export class SportsService {
         sortOrder,
       },
     });
+    // 2026-06-25 — link the moment a HOME player is added so stats accumulate
+    // (and the Share/athlete page works) without a CSV import or hand-linking.
+    if (created.team === 'home') {
+      await this.autoLinkHomeRoster(tenantId, gameId, (game as { homeTeamId?: string | null }).homeTeamId);
+    }
+    return created;
   }
 
   /** Resolve a player within a tenant-owned game, or 404. */
@@ -1312,6 +1318,50 @@ export class SportsService {
    * other column becomes a stat keyed by its (upper-cased) header.
    * Imported players are appended; existing roster is kept.
    */
+  /**
+   * Auto-link the HOME roster to persistent athletes (find-or-create by name)
+   * so finalize can roll up season + career stats WITHOUT the operator hand-
+   * linking every row. HOME ONLY — never opponents, so a visitor/typo can't
+   * pollute the persistent athlete tables. Best-effort + per-row try/catch:
+   * linking must NEVER throw into the caller. Returns how many rows it linked.
+   *
+   * 2026-06-25 — extracted from importRosterCsv so EVERY roster-build path
+   * links, not just CSV import. The live water-polo install had 28 home roster
+   * players, 0 linked (built manually, not via CSV), so finalize had nothing to
+   * roll up. Now: add a player → it links; finalize a game → unlinked home rows
+   * self-link first (back-fills any roster, however it was built).
+   */
+  private async autoLinkHomeRoster(
+    tenantId: string,
+    gameId: string,
+    homeTeamId?: string | null,
+  ): Promise<number> {
+    let linked = 0;
+    try {
+      const homeRows = await this.prisma.client.rosterPlayer.findMany({
+        where: { gameId, team: 'home', personId: null },
+        select: { id: true, name: true },
+      });
+      for (const rp of homeRows) {
+        if (!rp.name || !rp.name.trim()) continue;
+        try {
+          await linkRosterPlayerToPerson(this.prisma.client, {
+            tenantId,
+            rosterPlayerId: rp.id,
+            fullName: rp.name,
+            teamId: homeTeamId ?? undefined,
+          });
+          linked++;
+        } catch {
+          /* one unmatchable name never blocks the rest */
+        }
+      }
+    } catch {
+      /* auto-link is additive convenience — caller already succeeded */
+    }
+    return linked;
+  }
+
   async importRosterCsv(tenantId: string, gameId: string, csvText: string) {
     const game = await this.owned(tenantId, gameId);
     const lines = String(csvText || '')
@@ -1375,31 +1425,10 @@ export class SportsService {
     await this.prisma.client.rosterPlayer.createMany({ data: rows });
 
     // S0 (2026-06-22) — auto-link the HOME roster to persistent athletes so
-    // season + career stats accumulate WITHOUT the operator hand-linking every
-    // row every game (the adoption blocker: finalizeGameStats only rolls up
-    // LINKED rows). Find-or-create by name within the home team. HOME ONLY —
-    // never opponents, so a typo/visitor can't pollute the persistent tables.
-    // Best-effort + per-row try/catch: linking must NEVER fail the import.
-    try {
-      const homeRows = await this.prisma.client.rosterPlayer.findMany({
-        where: { gameId, team: 'home', personId: null },
-        select: { id: true, name: true },
-      });
-      for (const rp of homeRows) {
-        try {
-          await linkRosterPlayerToPerson(this.prisma.client, {
-            tenantId,
-            rosterPlayerId: rp.id,
-            fullName: rp.name,
-            teamId: game.homeTeamId ?? undefined,
-          });
-        } catch {
-          /* one unmatchable name never blocks the rest of the import */
-        }
-      }
-    } catch {
-      /* auto-link is additive convenience — import already succeeded */
-    }
+    // season + career stats accumulate without hand-linking every row. Shared
+    // helper (2026-06-25) so CSV import, manual add, and finalize all link the
+    // same way.
+    await this.autoLinkHomeRoster(tenantId, gameId, game.homeTeamId);
 
     return this.listRoster(tenantId, gameId);
   }
@@ -3371,6 +3400,21 @@ export class SportsService {
           { tenantId },
         );
         if (statsOn) {
+          // 2026-06-25 — self-link any unlinked HOME roster players BEFORE the
+          // roll-up. finalizeGameStats only aggregates LINKED rows, so a roster
+          // built any way (not just CSV import) would otherwise accumulate
+          // nothing. This also back-fills pre-existing unlinked rosters
+          // automatically on their next finalize.
+          const linked = await this.autoLinkHomeRoster(
+            tenantId,
+            id,
+            (updated as { homeTeamId?: string | null }).homeTeamId,
+          );
+          if (linked > 0) {
+            this.logger.log(
+              `finalize self-linked ${linked} home roster player(s) game=${id} tenant=${tenantId}`,
+            );
+          }
           const result = await finalizeGameStats(this.prisma.client, tenantId, id);
           this.logger.log(
             `finalizeGameStats game=${id} tenant=${tenantId} aggregated=${result.aggregated}${
