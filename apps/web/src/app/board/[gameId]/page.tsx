@@ -3845,6 +3845,138 @@ function CueOverlay({
   );
 }
 
+// ── Portrait / tall-canvas board (multi-poster LED, e.g. 3×320 = 960×1080) ──
+// When the render canvas is TALLER than it is wide (a single portrait poster or
+// a column of joined posters), the 16:9 BoardScene can only letterbox into a
+// strip. This renders the SAME live data re-flowed into three full-height
+// columns — Home · Clock/Shot · Away — one per physical poster. The page
+// auto-selects it whenever the viewport is portrait; no custom template needed.
+// Chromium-83 / NovaStar-Taurus safe: NO `inset` shorthand, NO flex `gap`
+// (margins only), NO backdrop-filter.
+export function PortraitBoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
+  // Game clock — projected from the stored anchor (same math as BoardScene).
+  const [clockMs, setClockMs] = useState(data.clockMs);
+  useEffect(() => {
+    const skew = data.serverTime - Date.now();
+    const anchorAt = new Date(data.clockUpdatedAt).getTime();
+    const project = () => {
+      if (!data.clockRunning || def.clock.type === 'none') { setClockMs(data.clockMs); return; }
+      const elapsed = Date.now() + skew - anchorAt;
+      if (def.clock.type === 'countup') setClockMs(data.clockMs + elapsed);
+      else setClockMs(Math.max(0, data.clockMs - elapsed));
+    };
+    project();
+    if (!data.clockRunning || def.clock.type === 'none') return;
+    const t = setInterval(project, 100);
+    return () => clearInterval(t);
+  }, [data.clockMs, data.clockRunning, data.clockUpdatedAt, data.serverTime, def]);
+
+  // Shot clock — projected from stats.shotClock (same math as BoardScene).
+  const [shotMs, setShotMs] = useState(0);
+  const scRaw = (data.stats as Record<string, unknown> | undefined)?.shotClock;
+  const sc = scRaw && typeof scRaw === 'object' ? (scRaw as Record<string, unknown>) : null;
+  const scLen = Number(sc?.len) || 0;
+  const shotLen = sc ? (scLen > 0 ? scLen : Number((def as any).shotClock?.full) || 0) : 0;
+  const shotAnchorMs = Math.max(0, Number(sc?.ms) || 0);
+  const shotAnchorAt = String(sc?.at || '');
+  const shotRunning = !!sc?.running;
+  useEffect(() => {
+    if (shotLen <= 0) { setShotMs(0); return; }
+    const skew = data.serverTime - Date.now();
+    const at = new Date(shotAnchorAt).getTime();
+    const project = () => {
+      if (!shotRunning || !Number.isFinite(at)) { setShotMs(shotAnchorMs); return; }
+      setShotMs(Math.max(0, shotAnchorMs - (Date.now() + skew - at)));
+    };
+    project();
+    if (!shotRunning) return;
+    const t = setInterval(project, 100);
+    return () => clearInterval(t);
+  }, [shotAnchorMs, shotAnchorAt, shotRunning, shotLen, data.serverTime]);
+
+  const stats = (data.stats || {}) as Record<string, unknown>;
+  const homeColor = data.homeColor || DEFAULT_HOME;
+  const awayColor = data.awayColor || DEFAULT_AWAY;
+  const hasClock = def.clock.type !== 'none';
+  const showShot = shotLen > 0;
+  const st = STATUS_STYLE[data.status] || STATUS_STYLE.SCHEDULED;
+  const sportTitle = String(data.sport || '').replace(/[_-]+/g, ' ').toUpperCase();
+  const num = (k: string): number => { const v = Number(stats[k]); return Number.isFinite(v) ? v : 0; };
+
+  // Per-team stat rows — only the keys this sport actually tracks (home/away
+  // split, defensive: rendered only when the key is present on the game).
+  const rowsFor = (side: 'home' | 'away'): { label: string; value: number }[] => {
+    const out: { label: string; value: number }[] = [];
+    if (`${side}Shots` in stats) out.push({ label: 'SHOTS', value: num(`${side}Shots`) });
+    if (`${side}Exclusions` in stats) out.push({ label: 'EXCL', value: num(`${side}Exclusions`) });
+    if (`${side}Fouls` in stats) out.push({ label: 'FOULS', value: num(`${side}Fouls`) });
+    if (`${side}Timeouts` in stats) out.push({ label: 'T.O.', value: num(`${side}Timeouts`) });
+    return out;
+  };
+
+  const teamCol = (side: 'home' | 'away') => {
+    const name = side === 'home' ? data.homeTeam : data.awayTeam;
+    const score = side === 'home' ? data.homeScore : data.awayScore;
+    const color = side === 'home' ? homeColor : awayColor;
+    const logo = side === 'home' ? data.homeLogoUrl : data.awayLogoUrl;
+    const r = rowsFor(side);
+    return (
+      <div style={{ width: 320, height: '100%', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', paddingTop: 44, paddingBottom: 44, boxSizing: 'border-box', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 380, background: `linear-gradient(180deg, ${color}40, transparent)`, pointerEvents: 'none' }} />
+        <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          {logo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logo} alt="" style={{ width: 130, height: 130, objectFit: 'contain', marginBottom: 16 }} />
+          ) : (
+            <div style={{ width: 130, height: 130, borderRadius: '50%', background: color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 68, fontWeight: 800, marginBottom: 16 }}>
+              {(name || '?').slice(0, 1).toUpperCase()}
+            </div>
+          )}
+          <div style={{ color: '#fff', fontSize: 34, fontWeight: 800, textAlign: 'center', lineHeight: 1.02, maxWidth: 296, letterSpacing: -0.5 }}>{name || (side === 'home' ? 'HOME' : 'AWAY')}</div>
+          <div style={{ color, fontSize: 18, fontWeight: 800, letterSpacing: 4, marginTop: 12 }}>{side === 'home' ? 'HOME' : 'AWAY'}</div>
+        </div>
+        <div style={{ position: 'relative', color: '#fff', fontSize: 150, fontWeight: 800, lineHeight: 0.85, fontVariantNumeric: 'tabular-nums' }}>{formatScore(def, score)}</div>
+        <div style={{ position: 'relative', width: '100%', paddingLeft: 30, paddingRight: 30, boxSizing: 'border-box' }}>
+          {r.map((row) => (
+            <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderTop: '1px solid rgba(255,255,255,0.12)', paddingTop: 12, paddingBottom: 12 }}>
+              <span style={{ color: '#94a3b8', fontSize: 22, fontWeight: 700, letterSpacing: 1 }}>{row.label}</span>
+              <span style={{ color: '#fff', fontSize: 30, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{row.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const shotSecs = Math.ceil(Math.max(0, shotMs) / 1000);
+
+  return (
+    <div style={{ position: 'absolute', top: 0, left: 0, width: 960, height: 1080, background: '#05070d', display: 'flex', flexDirection: 'column', overflow: 'hidden', fontFamily: 'Inter, system-ui, sans-serif' }}>
+      <div style={{ height: 80, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', borderBottom: '1px solid rgba(255,255,255,0.10)' }}>
+        <span style={{ color: '#cbd5e1', fontSize: 26, fontWeight: 800, letterSpacing: 6 }}>{sportTitle}</span>
+        <span style={{ position: 'absolute', right: 22, top: 22, display: 'inline-flex', alignItems: 'center', background: st.bg, color: '#fff', fontSize: 18, fontWeight: 800, letterSpacing: 2, paddingTop: 6, paddingBottom: 6, paddingLeft: 14, paddingRight: 14, borderRadius: 999 }}>
+          {st.pulse && <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#fff', marginRight: 8, animation: 'venuePulse 1.4s ease-in-out infinite' }} />}
+          {st.label}
+        </span>
+      </div>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0 }}>
+        {teamCol('home')}
+        <div style={{ width: 320, height: '100%', borderLeft: '1px solid rgba(255,255,255,0.10)', borderRight: '1px solid rgba(255,255,255,0.10)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box', paddingLeft: 8, paddingRight: 8 }}>
+          <div style={{ color: '#94a3b8', fontSize: 30, fontWeight: 800, letterSpacing: 4, marginBottom: 30 }}>{segmentLabel(def, data)}</div>
+          {hasClock && <div style={{ color: '#fff', fontSize: 92, fontWeight: 800, lineHeight: 0.9, fontVariantNumeric: 'tabular-nums', marginBottom: showShot ? 40 : 0 }}>{fmtClock(clockMs)}</div>}
+          {showShot && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <div style={{ color: '#f59e0b', fontSize: 66, fontWeight: 800, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{shotSecs}</div>
+              <div style={{ color: '#b45309', fontSize: 20, fontWeight: 800, letterSpacing: 3, marginTop: 6 }}>SHOT</div>
+            </div>
+          )}
+        </div>
+        {teamCol('away')}
+      </div>
+    </div>
+  );
+}
+
 // ── page ───────────────────────────────────────────────────────
 
 export default function ScoreboardPage() {
@@ -4278,37 +4410,55 @@ export default function ScoreboardPage() {
   // shell that dropped a giant emoji where the clock would sit.
   const isLeaderboard = def.mode === 'LEADERBOARD';
 
+  // Tall-canvas (portrait) detection. When the render viewport is taller than
+  // it is wide — a portrait LED poster or a column of joined posters like the
+  // operator's 3×320 = 960×1080 wall — the 16:9 landscape scenes can only
+  // letterbox into a strip. Render the dedicated PortraitBoardScene at a
+  // 960×1080 base instead so the DEFAULT board FILLS the canvas — no custom
+  // template required. Leaderboard meets keep the landscape scene for now.
+  const portrait = vp.w < vp.h && !isLeaderboard;
+  const baseW = portrait ? 960 : 1920;
+  const fitScale = Math.min(vp.w / baseW, vp.h / 1080);
+
   return (
     <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
       {keyframes}
       <div
         style={{
           position: 'absolute',
-          width: 1920,
+          width: baseW,
           height: 1080,
           left: '50%',
           top: '50%',
-          transform: `translate(-50%, -50%) scale(${scale})`,
+          transform: `translate(-50%, -50%) scale(${fitScale})`,
           transformOrigin: 'center center',
         }}
       >
-        {isLive &&
-          (isLeaderboard ? (
-            <LeaderboardScene data={view} def={def} />
-          ) : (
-            <BoardScene data={view} def={def} />
-          ))}
-        {isPreGame && <PreGameScene data={view} def={def} />}
-        {isHalftime && <HalftimeScene data={view} def={def} />}
-        {isFinal && <FinalScene data={view} def={def} />}
-        {/* Fallback for any unexpected status — use the live board (the
-            meet board for LEADERBOARD sports). */}
-        {!isLive && !isPreGame && !isHalftime && !isFinal &&
-          (isLeaderboard ? (
-            <LeaderboardScene data={view} def={def} />
-          ) : (
-            <BoardScene data={view} def={def} />
-          ))}
+        {portrait ? (
+          // The portrait board is status-aware (shows the status chip + live
+          // score/clock), so it replaces the entire landscape scene block.
+          <PortraitBoardScene data={view} def={def} />
+        ) : (
+          <>
+            {isLive &&
+              (isLeaderboard ? (
+                <LeaderboardScene data={view} def={def} />
+              ) : (
+                <BoardScene data={view} def={def} />
+              ))}
+            {isPreGame && <PreGameScene data={view} def={def} />}
+            {isHalftime && <HalftimeScene data={view} def={def} />}
+            {isFinal && <FinalScene data={view} def={def} />}
+            {/* Fallback for any unexpected status — use the live board (the
+                meet board for LEADERBOARD sports). */}
+            {!isLive && !isPreGame && !isHalftime && !isFinal &&
+              (isLeaderboard ? (
+                <LeaderboardScene data={view} def={def} />
+              ) : (
+                <BoardScene data={view} def={def} />
+              ))}
+          </>
+        )}
         {activeCue && (
           <CueOverlay
             cue={activeCue}
