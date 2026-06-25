@@ -407,7 +407,7 @@ describe('EmergencyController', () => {
     expect(signerService.signMessage).toHaveBeenCalledWith('MEDIA_ALERT', expect.any(Object));
   });
 
-  it('all-clear on a message marks it cleared, audit-logs, and publishes ALL_CLEAR', async () => {
+  it('all-clear on a message marks it cleared, audit-logs, and publishes ALL_CLEAR_MESSAGE', async () => {
     // Message belongs to 't1' (default mock) — caller must be on same tenant
     const req = { user: { id: 'admin1', tenantId: 't1' } };
     const res = await controller.clearMessage('msg_1', req);
@@ -419,7 +419,11 @@ describe('EmergencyController', () => {
     expect(prismaService.client.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ action: 'CLEAR_EMERGENCY_MESSAGE' }) }),
     );
-    expect(signerService.signMessage).toHaveBeenCalledWith('ALL_CLEAR', expect.objectContaining({ messageId: 'msg_1' }));
+    // Must publish ALL_CLEAR_MESSAGE (not bare ALL_CLEAR) — that's the type the
+    // player listens for to drop a pushed SOS/broadcast/media overlay. Bare
+    // ALL_CLEAR is the OVERRIDE-lockdown manifest-refetch path and never clears
+    // a pushed message, which left overlays stuck on screen.
+    expect(signerService.signMessage).toHaveBeenCalledWith('ALL_CLEAR_MESSAGE', expect.objectContaining({ messageId: 'msg_1' }));
   });
 
   it('HTTP polling /status returns active (uncleared, unexpired) emergency messages', async () => {
