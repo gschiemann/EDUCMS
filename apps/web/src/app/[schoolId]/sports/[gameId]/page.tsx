@@ -526,12 +526,6 @@ function GameControl() {
           for the CTS-driven water polo install; the CtsBridge IS the
           score feed. Both endpoints stay in the API so they can be
           re-surfaced when a streaming customer needs them. */}
-      {/* SETUP-mode header only (2026-06-24 broadcast-desk redesign). In RUN
-          mode this whole bar is gone — RunCommandBar is the single top bar there
-          (Back + game id + status + role + actions + the Ribbon/Scoreboard/
-          Stream/Keys launchers + a Set-up jump all folded into ONE row). Setup
-          keeps Back + the Run/Set-up tabs + the Ribbon/Scoreboard launchers. */}
-      {mode === 'setup' && (
       <div className="flex items-center gap-3 px-4 py-2 border-b border-slate-200 bg-white">
         <button
           onClick={() => router.push(`/${schoolId}/sports`)}
@@ -591,12 +585,33 @@ function GameControl() {
             <ExternalLink className="h-4 w-4" />
             <span className="hidden sm:inline">Scoreboard</span>
           </Button>
-          {/* Stream-overlay + keyboard-shortcuts launchers moved into the Run
-              command bar (RunCommandBar) — they were run-only and Setup no longer
-              hosts them. (2026-06-24 broadcast desk) */}
+          {mode === 'run' && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={copyOverlayUrl}
+              title="Copy the transparent stream-overlay URL — add it as a Browser Source in OBS / vMix / Hudl (1920×1080). Same live game state as the in-venue board."
+            >
+              {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+              <span className="hidden sm:inline">{copied ? 'Copied!' : 'Stream'}</span>
+            </Button>
+          )}
+          {mode === 'run' && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setShowShortcuts(true)}
+              title="Keyboard shortcuts (?)"
+              aria-label="Show keyboard shortcuts"
+            >
+              <Keyboard className="h-4 w-4" />
+              <span className="hidden sm:inline">Keys</span>
+            </Button>
+          )}
         </div>
       </div>
-      )}
 
       {/* ── mode panels ───────────────────────────────────────── */}
 
@@ -622,18 +637,6 @@ function GameControl() {
               onViewChange={setView}
               onHighlights={() => setShowHighlights(true)}
               onPenalties={() => setShowPenalties(true)}
-              onBack={() => router.push(`/${schoolId}/sports`)}
-              onSetup={() => {
-                setMode('setup');
-                setShowCues(false);
-                setShowHighlights(false);
-                setShowPenalties(false);
-              }}
-              onRibbon={() => window.open(`/ribbon/${gameId}`, '_blank')}
-              onScoreboard={() => window.open(`/board/${gameId}`, '_blank')}
-              onStream={copyOverlayUrl}
-              streamCopied={copied}
-              onShortcuts={() => setShowShortcuts(true)}
             />
           </div>
           {/* Hidden in show / pa views where the strip would crowd the
@@ -1166,13 +1169,6 @@ function RunMode({
   onViewChange,
   onHighlights,
   onPenalties,
-  onBack,
-  onSetup,
-  onRibbon,
-  onScoreboard,
-  onStream,
-  streamCopied,
-  onShortcuts,
 }: {
   gameId: string;
   g: any;
@@ -1185,13 +1181,6 @@ function RunMode({
   onViewChange: (v: ConsoleView) => void;
   onHighlights: () => void;
   onPenalties: () => void;
-  onBack: () => void;
-  onSetup: () => void;
-  onRibbon: () => void;
-  onScoreboard: () => void;
-  onStream: () => void;
-  streamCopied: boolean;
-  onShortcuts: () => void;
 }) {
   const isBaseballSoftball = def.key === 'baseball' || def.key === 'softball';
   const stats: Record<string, unknown> = g.stats || {};
@@ -1283,15 +1272,7 @@ function RunMode({
         onPenalty={onPenalties}
         onShare={() => setShareOpen(true)}
         statusButtons={<RunStatusControl g={g} ctl={ctl} embedded />}
-        statusOnBoard={showScoreboard}
         screensNub={<SurfaceHealthPills gameId={gameId} summary />}
-        onBack={onBack}
-        onSetup={onSetup}
-        onRibbon={onRibbon}
-        onScoreboard={onScoreboard}
-        onStream={onStream}
-        streamCopied={streamCopied}
-        onShortcuts={onShortcuts}
       />
 
 
@@ -1377,11 +1358,15 @@ function RunMode({
         </div>
       )}
 
-      {/* Game-state transitions render on the scoreboard's top-right corner
-          (desktop) / in the command bar (mobile); per-surface screen health is
-          the command-bar nub. Show Control (scene recall + the always-available
-          Back-to-Live) moved into the Presentation column of the broadcast desk
-          below. (2026-06-24 broadcast desk) */}
+      {/* Game-state transitions + per-surface screen health now live in the
+          command bar above (RunStatusControl embedded + SurfaceHealthPills
+          summary nub) — no longer two separate strips. (2026-06-22 elegance) */}
+
+      {/* T3-3 — Show Control: one-tap recall of a full-screen gameday scene
+          (Halftime / Lineup / Sponsors / This Week / Countdown) to the board,
+          with auto-revert + an always-available Back-to-Live. (2026-06-22 —
+          "how would I even trigger that halftime template?") */}
+      <ShowControlPanel g={g} ctl={ctl} />
 
       {/* ── PA / Announcer view ───────────────────────────────── */}
       {showPaSpotlight && (
@@ -1421,13 +1406,7 @@ function RunMode({
         // wrapper so the original `flex-1` scroll region + `shrink-0` pinned
         // bottom split is byte-identical. (2026-06-21 — "take up the entire
         // display, no wasted space"; operator picked the no-tabs scrolling deck.)
-        <div className="flex flex-col flex-1 min-h-0 overflow-y-auto md:grid md:grid-cols-[minmax(0,1.6fr)_minmax(340px,1fr)] md:overflow-hidden">
-          {/* LEFT — Game control. Mobile: `contents` dissolves this column into
-              the single scrolling deck (mobile order preserved); desktop (md+):
-              a flex column where the scoreboard fills and the dock+sport-tray
-              stay pinned at the bottom. `useConsoleFit` measures scoreFitRef,
-              which keeps its md:flex-1 here. (2026-06-24 broadcast desk) */}
-          <div className="contents md:flex md:flex-col md:min-h-0 md:overflow-hidden md:border-r md:border-slate-200">
+        <div className="flex flex-col flex-1 min-h-0 overflow-y-auto md:contents">
           <div ref={scoreFitRef} className="overflow-y-auto md:flex-1 md:min-h-0">
             {showScoreboard && (
               // relative wrapper so the celebration overlay can sit ON the
@@ -1455,16 +1434,6 @@ function RunMode({
                       : 'v1'
                   }
                 />
-                {/* Game-state transitions fused to the board's top-right corner
-                    (desktop only — md:block). A white pill carries the light
-                    transition buttons so they read on the dark board without
-                    covering the centered clock/score. On mobile these stay in
-                    the command bar (RunCommandBar statusButtons). (2026-06-24) */}
-                <div className="hidden md:block absolute top-2 right-2 z-10">
-                  <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white/95 p-1 shadow-sm">
-                    <RunStatusControl g={g} ctl={ctl} embedded />
-                  </div>
-                </div>
               </div>
             )}
             {/* Meet results / per-apparatus grid. Leaderboard sports have
@@ -1503,6 +1472,20 @@ function RunMode({
                 awayColor={awayColor}
                 ctl={ctl}
               />
+            )}
+            {showRibbonPreview && <RunRibbonPreview gameId={gameId} />}
+            {showRosterBar && (
+              <RunInlineRosterBar
+                gameId={gameId}
+                g={g}
+                def={def}
+                ctl={ctl}
+                homeColor={homeColor}
+                awayColor={awayColor}
+              />
+            )}
+            {showInlineCues && (
+              <RunInlineCuesBar gameId={gameId} g={g} def={def} ctl={ctl} />
             )}
             {showBottomTray && (
               <div className="flex flex-wrap items-stretch gap-2 px-4 py-3 border-t border-slate-200 bg-slate-50">
@@ -1544,30 +1527,6 @@ function RunMode({
                   </>
                 )}
               </div>
-            )}
-          </div>
-          </div>
-
-          {/* RIGHT — Presentation. Mobile: `contents` stacks these into the one
-              scrolling deck (after the game-control block); desktop (md+): a
-              scrolling column beside the board. Show Control's always-available
-              Back-to-Live sits at the very top, one tap away. The strips already
-              degrade to overflow-x-auto in a narrow column. (2026-06-24 desk) */}
-          <div className="contents md:flex md:flex-col md:min-h-0 md:overflow-y-auto">
-            <ShowControlPanel g={g} ctl={ctl} />
-            {showRibbonPreview && <RunRibbonPreview gameId={gameId} />}
-            {showRosterBar && (
-              <RunInlineRosterBar
-                gameId={gameId}
-                g={g}
-                def={def}
-                ctl={ctl}
-                homeColor={homeColor}
-                awayColor={awayColor}
-              />
-            )}
-            {showInlineCues && (
-              <RunInlineCuesBar gameId={gameId} g={g} def={def} ctl={ctl} />
             )}
           </div>
         </div>
