@@ -104,18 +104,35 @@ export class SchedulesController {
     // live. A saved-draft schedule should not knock the currently-
     // running one off the screen; it's a plan, not a go-live.
     if (willBeActive && body.mode !== 'append') {
-       // Replace mode: disable all existing active schedules for this target
-       await this.prisma.client.schedule.updateMany({
-         where: {
-           tenantId: req.user.tenantId,
-           isActive: true,
-           OR: [
-             body.screenId ? { screenId: body.screenId } : {},
-             body.screenGroupId ? { screenGroupId: body.screenGroupId } : {},
-           ].filter(x => Object.keys(x).length > 0)
-         },
-         data: { isActive: false }
-       });
+       // Replace mode: disable all existing active schedules that overlap
+       // THIS target's screens.
+       //
+       // 2026-06-26 — the "publish reaches only 1 of N posters" bug. The old
+       // query only matched the SAME target (screenId→screenId, group→group),
+       // so publishing a playlist to a GROUP deactivated old GROUP schedules
+       // but LEFT every member screen's per-screen pin active. The manifest
+       // then returned both the new group schedule AND the stale per-screen
+       // one, so each poster kept whatever was individually pinned to it —
+       // the operator saw the new playlist on at most one screen. Fix:
+       // publishing to a group also supersedes the per-screen pins on all of
+       // its member screens, so the single group schedule cleanly wins.
+       const replaceOr: any[] = [];
+       if (body.screenId) replaceOr.push({ screenId: body.screenId });
+       if (body.screenGroupId) {
+         replaceOr.push({ screenGroupId: body.screenGroupId });
+         const members = await this.prisma.client.screen.findMany({
+           where: { tenantId: req.user.tenantId, screenGroupId: body.screenGroupId },
+           select: { id: true },
+         });
+         const memberIds = members.map((m) => m.id);
+         if (memberIds.length) replaceOr.push({ screenId: { in: memberIds } });
+       }
+       if (replaceOr.length) {
+         await this.prisma.client.schedule.updateMany({
+           where: { tenantId: req.user.tenantId, isActive: true, OR: replaceOr },
+           data: { isActive: false },
+         });
+       }
     }
 
     // Validate and normalize mode
