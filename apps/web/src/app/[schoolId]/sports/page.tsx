@@ -90,8 +90,9 @@ function SportsHub() {
 
   return (
     <div className="max-w-6xl mx-auto px-1 py-2">
-      {/* header */}
-      <div className="flex items-center justify-between mb-6">
+      {/* header — stacks on phones so the action buttons never clip at the
+          viewport edge (mobile audit P1); side-by-side from sm+ up. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div className="flex items-center gap-3">
           <div className="h-11 w-11 rounded-xl bg-indigo-600 text-white flex items-center justify-center">
             <Trophy className="h-6 w-6" />
