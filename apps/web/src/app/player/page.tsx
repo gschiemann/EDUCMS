@@ -5845,9 +5845,20 @@ function PlayerPage() {
       // positioned ancestor to fill.
       style={{
         position: 'fixed',
-        top: 0, left: 0, right: 0, bottom: 0,
-        width: '100vw',
-        height: '100vh',
+        top: 0, left: 0,
+        // 2026-06-26 — size the playlist content area to the LED CANVAS
+        // (--led-w/--led-h, set from the screen's canvasW/canvasH), pinned
+        // TOP-LEFT, so a published image/video FILLS the region the LED
+        // controller maps. Bug: raw 100vw = the full 1920 device frame, so a
+        // custom 960×1080 image centered in 1920 and a narrow LED (which maps
+        // only the top-left canvas region) showed just the left slice on one
+        // panel. The /board route already fills because it's a canvas-sized
+        // iframe; plain media didn't. Falls back to 100vw/100vh on browsers /
+        // screens with no canvas configured — unchanged there. `right/bottom:
+        // auto` so the explicit width/height win over the fixed-inset shorthand.
+        right: 'auto', bottom: 'auto',
+        width: 'var(--led-w, 100vw)',
+        height: 'var(--led-h, 100vh)',
         background: '#000',
         overflow: 'hidden',
         cursor: isPlaylistInteractive ? undefined : 'none',
