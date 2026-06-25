@@ -371,6 +371,9 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
 
   // Step 3 — screens
   const [selectedScreenIds, setSelectedScreenIds] = useState<Set<string>>(new Set());
+  // Groups explicitly picked → each becomes ONE group-scoped schedule that
+  // fans out to every member (fixes "publish reaches only 1 of N screens").
+  const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(new Set());
   const [screenSearch, setScreenSearch] = useState('');
 
   // Step 4 — publish
@@ -423,6 +426,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
     setTemplateFilter('all');
     setTemplateSearch('');
     setSelectedScreenIds(new Set());
+    setSelectedGroupIds(new Set());
     setScreenSearch('');
     setActivateImmediately(true);
     setSchedStartDate('');
@@ -751,13 +755,25 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
     );
   };
 
-  const toggleScreen = (id: string) =>
+  const toggleScreen = (id: string) => {
     setSelectedScreenIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+    // Hand-editing a member of a picked group downgrades that group to
+    // per-screen selection (the operator is now curating screens directly),
+    // so we don't publish a whole-group schedule that ignores their edit.
+    setSelectedGroupIds((prev) => {
+      if (!prev.size) return prev;
+      const next = new Set(prev);
+      for (const g of (screenGroups || [])) {
+        if (next.has(g.id) && (g.screens || []).some((s: any) => s?.id === id)) next.delete(g.id);
+      }
+      return next.size === prev.size ? prev : next;
+    });
+  };
 
   const toggleDay = (day: string) =>
     setSchedDays((prev) => (prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]));
@@ -836,7 +852,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
       //    - If no screens picked: skip schedule creation (operator chose
       //      to assign later from the playlist detail view).
       let draftScheduleIds: string[] = [];
-      if (selectedScreenIds.size > 0) {
+      if (selectedScreenIds.size > 0 || selectedGroupIds.size > 0) {
         const computeStartTime = (): string => {
           if (!schedStartDate) return new Date().toISOString();
           const tod = activateImmediately ? '00:00' : schedTimeStart || '00:00';
@@ -847,9 +863,8 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
           const tod = activateImmediately ? '23:59' : schedTimeEnd || '23:59';
           return new Date(`${schedEndDate}T${tod}:59`).toISOString();
         };
-        const schedules = Array.from(selectedScreenIds).map((screenId) => ({
+        const base = {
           playlistId,
-          screenId,
           startTime: computeStartTime(),
           endTime: computeEndTime(),
           daysOfWeek: !activateImmediately ? schedDays.join(',') : undefined,
@@ -857,8 +872,26 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
           timeEnd: !activateImmediately ? schedTimeEnd : undefined,
           priority: 0,
           mode: 'replace' as const,
-          isActive: activateImmediately,
-        }));
+          // A windowed schedule is still ACTIVE — startTime/endTime + the
+          // day/time fields gate WHEN it plays. isActive:false would disable it
+          // entirely (the "scheduled a window but it never plays" bug). An
+          // Editor's rows are still staged inactive server-side by the
+          // publish-review gate regardless of this flag.
+          isActive: true,
+        };
+        // Screens covered by a picked group publish via the GROUP schedule, so
+        // don't ALSO emit a per-screen row for them (avoids double-scheduling).
+        const coveredScreenIds = new Set<string>();
+        for (const g of (screenGroups || [])) {
+          if (selectedGroupIds.has(g.id)) {
+            (g.screens || []).forEach((s: any) => { if (s?.id) coveredScreenIds.add(s.id); });
+          }
+        }
+        const groupSchedules = Array.from(selectedGroupIds).map((screenGroupId) => ({ ...base, screenGroupId }));
+        const screenSchedules = Array.from(selectedScreenIds)
+          .filter((screenId) => !coveredScreenIds.has(screenId))
+          .map((screenId) => ({ ...base, screenId }));
+        const schedules = [...groupSchedules, ...screenSchedules];
         // Run in parallel — schedules are independent, no cross-row deps.
         // For an Editor these are staged INACTIVE server-side (the publish
         // gate); capture their ids to bundle into the review submission.
@@ -1070,11 +1103,20 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
                 if (!ids.length) return;
                 // If every screen in the group is already selected → toggle off.
                 // Otherwise → select all members. Operator gets one-click "all".
+                const turningOff = ids.every((id) => selectedScreenIds.has(id));
                 setSelectedScreenIds((prev) => {
-                  const allSelected = ids.every((id) => prev.has(id));
                   const next = new Set(prev);
-                  if (allSelected) ids.forEach((id) => next.delete(id));
+                  if (turningOff) ids.forEach((id) => next.delete(id));
                   else ids.forEach((id) => next.add(id));
+                  return next;
+                });
+                // Track the GROUP itself so handleCreate emits ONE group-scoped
+                // schedule (the manifest fans it out to every member) instead of
+                // N per-screen rows that drift apart — the 1-of-N publish bug.
+                setSelectedGroupIds((prev) => {
+                  const next = new Set(prev);
+                  if (turningOff) next.delete(group.id);
+                  else next.add(group.id);
                   return next;
                 });
               }}

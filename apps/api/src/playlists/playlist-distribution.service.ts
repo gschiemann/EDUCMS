@@ -163,7 +163,7 @@ export class PlaylistDistributionService {
         uploadedByUserId: actorUserId,
         fileUrl: parentAsset.fileUrl,
         mimeType: parentAsset.mimeType,
-        status: 'APPROVED', // corporate-pushed content is pre-approved
+        status: 'PUBLISHED', // corporate-pushed content is pre-approved (PUBLISHED is the ONLY status the manifest/playback serve; 'APPROVED' was an orphan value that silently never played)
         fileSize: parentAsset.fileSize ?? null,
         originalName: parentAsset.originalName ?? null,
         fileHash: parentAsset.fileHash ?? null,
