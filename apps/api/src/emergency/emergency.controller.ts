@@ -1146,7 +1146,12 @@ export class EmergencyController {
     ]);
 
     const channel = `${existing.scopeType}:${existing.scopeId}`;
-    const signedMessage = this.signer.signMessage('ALL_CLEAR', {
+    // Pushed SOS/TEXT_BROADCAST/MEDIA_ALERT overlays are cleared on the player
+    // by the ALL_CLEAR_MESSAGE type (setPushedEmergencyMessage(null)); the bare
+    // ALL_CLEAR type only triggers a manifest re-fetch (the secure path for
+    // OVERRIDE lockdowns) and never drops a pushed message — so signing
+    // ALL_CLEAR here left the overlay stuck on screen with no way to clear it.
+    const signedMessage = this.signer.signMessage('ALL_CLEAR_MESSAGE', {
       messageId,
       clearedBy: user.id || 'admin_system',
     });
