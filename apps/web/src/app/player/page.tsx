@@ -728,10 +728,9 @@ function PlayerVideoSlide({
         top: 0, left: 0, right: 0, bottom: 0,
         width: '100%',
         height: '100%',
-        // 2026-06-25 — honor the LED canvas fit mode (see the image render).
-        // --led-fit='cover' fills operator-configured canvas screens; unset
-        // elsewhere → 'contain'. Inline overrides the object-contain class.
-        objectFit: 'var(--led-fit, contain)' as any,
+        // 2026-06-26 — auto-fit: stretch the video to fill the screen (see the
+        // image render). Inline overrides the object-fill class.
+        objectFit: 'fill',
         background: '#000',
       }}
       muted={isMuted}
@@ -2996,23 +2995,6 @@ function PlayerPage() {
             }
             const meta = document.querySelector('meta[name="viewport"]') as HTMLMetaElement | null;
             if (meta) meta.content = `width=${cw}, height=${ch}, initial-scale=1, user-scalable=no`;
-          }
-          // 2026-06-25 — LED content fit. Operator-configured canvas screens
-          // FILL by default (object-fit:cover) like other CMS; a per-screen
-          // override rides on manifest.contentFit ('contain'|'cover'|'fill').
-          // Set OUTSIDE the width/repeats change-gate so a fit-only change
-          // (same canvas dims) still applies. The plain image/video render
-          // reads --led-fit; non-canvas screens never reach this branch → the
-          // var stays unset → 'contain' (unchanged for every regular kiosk).
-          {
-            const cf = (manifest as any).contentFit;
-            if (cf === 'contain' || cf === 'cover' || cf === 'fill') {
-              root.style.setProperty('--led-fit', cf);
-            } else {
-              // No explicit operator choice → default to 'contain' (whole
-              // media, never clips) via the var fallback on the img/video.
-              root.style.removeProperty('--led-fit');
-            }
           }
         } catch { /* localStorage / DOM mutation guards */ }
       }
@@ -5959,7 +5941,7 @@ function PlayerPage() {
 
             // Compute physics class limits
             const trans = item.transitionType || 'FADE';
-            let classes = "absolute top-0 right-0 bottom-0 left-0 w-full h-full object-contain transition-all duration-[1000ms] ease-in-out ";
+            let classes = "absolute top-0 right-0 bottom-0 left-0 w-full h-full object-fill transition-all duration-[1000ms] ease-in-out ";
             if (trans === 'FADE') classes += isActive ? "opacity-100 z-10" : "opacity-0 z-0";
             else if (trans === 'SLIDE_LEFT') classes += isActive ? "translate-x-0 z-10" : "translate-x-full z-0";
             else if (trans === 'SLIDE_RIGHT') classes += isActive ? "translate-x-0 z-10" : "-translate-x-full z-0";
@@ -6092,74 +6074,32 @@ function PlayerPage() {
               />;
             }
             return (
-              // 2026-06-25 — FULL-BLEED FIT, the "looks great like every CMS"
-              // render. Two layers: (1) a blurred, zoomed COVER copy that fills
-              // the whole screen so there are never black letterbox bars, and
-              // (2) the sharp image on top in the operator's fit mode
-              // (--led-fit, default 'contain' = the WHOLE image, never cropped).
-              // This reconciles the two requirements that look contradictory —
-              // "don't cut anything off" AND "fill the screen edge-to-edge" —
-              // exactly how polished signage CMS handle off-aspect content.
-              // Taurus-safe: filter:blur + objectFit + transform:scale are all
-              // Chromium-53+ (LED floor is 83); no inset / gap / backdrop-filter.
-              // The blur layer renders for the ACTIVE slide only to keep the
-              // Taurus GPU light. When the fit is 'cover'/'fill' the sharp layer
-              // covers the whole screen and the blur is simply hidden behind it.
-              <div
+              <img
                 key={item.id}
+                src={resUrl}
+                alt=""
                 className={classes}
+                // 2026-06-26 — auto-fit: stretch the image to exactly fill the
+                // screen (object-fit: fill). A correctly-sized image looks
+                // perfect; a wrong aspect looks stretched/shrunk. No per-screen
+                // setting, no letterbox, no crop, no blur — the operator's model.
+                // Inline overrides the object-fill class; belt-and-suspenders
+                // for Taurus WebViews where Tailwind utilities may not apply.
                 style={{
                   position: 'absolute',
                   top: 0, left: 0, right: 0, bottom: 0,
                   width: '100%',
                   height: '100%',
-                  overflow: 'hidden',
-                  background: '#000',
+                  objectFit: 'fill',
                   opacity: isActive ? 1 : 0,
                   zIndex: isActive ? 10 : 0,
                   transition: trans === 'NONE' ? 'none' : 'opacity 1000ms ease-in-out',
                 }}
-              >
-                {isActive && (
-                  <img
-                    src={resUrl}
-                    alt=""
-                    aria-hidden="true"
-                    style={{
-                      position: 'absolute',
-                      top: 0, left: 0, right: 0, bottom: 0,
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover',
-                      // Dimmed + softened so the sharp image is the clear hero
-                      // and the fill reads as an intentional backdrop, not a
-                      // second copy. Still fills the screen (never black bars).
-                      filter: 'blur(36px) brightness(0.4)',
-                      transform: 'scale(1.18)',
-                      zIndex: 0,
-                    }}
-                  />
-                )}
-                <img
-                  src={resUrl}
-                  alt=""
-                  // 2026-05-13 — inline-style belt-and-suspenders so the image
-                  // renders even if Tailwind utilities fail to apply on a Taurus
-                  // WebView. Honors the fit mode via --led-fit (default contain).
-                  style={{
-                    position: 'absolute',
-                    top: 0, left: 0, right: 0, bottom: 0,
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'var(--led-fit, contain)' as any,
-                    zIndex: 1,
-                  }}
-                  onError={() => {
-                    console.warn('[Player] image error, skipping:', resUrl);
-                    if (isActive) setCurrentIndex(prev => prev + 1);
-                  }}
-                />
-              </div>
+                onError={() => {
+                  console.warn('[Player] image error, skipping:', resUrl);
+                  if (isActive) setCurrentIndex(prev => prev + 1);
+                }}
+              />
             );
           })}
         </div>

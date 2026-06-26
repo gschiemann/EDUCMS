@@ -1423,11 +1423,6 @@ export class ScreensController {
                          //   ('cts-gen6' | 'cts-wttc' | 'daktronics-allsport').
                          //   CtsBridge reads it (via the manifest) to pick
                          //   the serial settings + default tty + decoder.
-      'contentFit',      // 2026-06-25 — how published images/videos sit on a
-                         //   custom LED canvas: 'contain' (whole media, may
-                         //   letterbox) | 'cover' (FILL, may crop) | 'fill'
-                         //   (stretch). Surfaced on the manifest → player
-                         //   --led-fit CSS var. Null/unset → 'contain'.
       'gpioState',       // GPIO OUT live state (Agent C) — server-driven
                          //                                  but allowed
                          //                                  here for
@@ -1450,18 +1445,6 @@ export class ScreensController {
           : {};
         for (const [key, value] of Object.entries(body.config)) {
           if (!CONFIG_ALLOW_LIST.has(key)) continue;
-          if (
-            key === 'contentFit' &&
-            value !== null &&
-            value !== 'contain' &&
-            value !== 'cover' &&
-            value !== 'fill'
-          ) {
-            throw new HttpException(
-              "config.contentFit must be 'contain' | 'cover' | 'fill' (or null to clear)",
-              HttpStatus.BAD_REQUEST,
-            );
-          }
           if (value === null) {
             delete current[key];
           } else {
@@ -3192,15 +3175,6 @@ export class ScreensController {
       // the new value within ~150ms of the operator's tap.
       canvasW: (screen as any).canvasW ?? null,
       canvasH: (screen as any).canvasH ?? null,
-      // 2026-06-25 — how published media fits the LED canvas: 'contain'
-      // (whole media, may letterbox) | 'cover' (FILL, may crop) | 'fill'
-      // (stretch). From Screen.config.contentFit; the player applies it via
-      // the --led-fit CSS var on the image/video. Null → player default
-      // 'contain' (whole media, never clips).
-      contentFit: ((screen as any).config && typeof (screen as any).config === 'object'
-        && !Array.isArray((screen as any).config)
-        && typeof (screen as any).config.contentFit === 'string')
-        ? (screen as any).config.contentFit : null,
       // 2026-05-26 — content tile-repeat count for ribbons. Default 1
       // = no tiling. > 1 = player wraps content in flex grid with N
       // children, each rendering same template at canvasW/repeats.

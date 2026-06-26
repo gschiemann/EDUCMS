@@ -433,59 +433,6 @@ export function useSetScreenConsoleProfile() {
   });
 }
 
-/**
- * 2026-06-25 — set how published images/videos sit on a custom LED canvas.
- * Persists to `Screen.config.contentFit` (allow-listed server-side); the
- * manifest surfaces it and the player applies it via the --led-fit CSS var
- * on the image/video. 'contain' = whole media (may letterbox) · 'cover' =
- * FILL (may crop) · 'fill' = stretch. `null` clears it (back to the player
- * default 'contain'). Mirrors useSetScreenConsoleProfile's optimistic merge
- * so we don't clobber sibling config like `wiring` / `consoleProfile`.
- */
-export function useSetScreenContentFit() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, contentFit }: { id: string; contentFit: 'contain' | 'cover' | 'fill' | null }) =>
-      apiFetch(`/screens/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ config: { contentFit } }),
-      }),
-    onMutate: async ({ id, contentFit }) => {
-      await Promise.all([
-        qc.cancelQueries({ queryKey: ['screens'] }),
-        qc.cancelQueries({ queryKey: ['screen-groups'] }),
-      ]);
-      const prevScreens = qc.getQueryData<any>(['screens']);
-      const prevGroups = qc.getQueryData<any>(['screen-groups']);
-      const apply = (s: any) =>
-        s?.id === id
-          ? { ...s, config: { ...(s.config && typeof s.config === 'object' ? s.config : {}), contentFit } }
-          : s;
-      qc.setQueryData<any>(['screens'], (old: any) => {
-        if (Array.isArray(old)) return old.map(apply);
-        if (Array.isArray(old?.screens)) return { ...old, screens: old.screens.map(apply) };
-        return old;
-      });
-      qc.setQueryData<any>(['screen-groups'], (old: any) => {
-        if (!Array.isArray(old)) return old;
-        return old.map((g: any) => ({
-          ...g,
-          screens: Array.isArray(g?.screens) ? g.screens.map(apply) : g?.screens,
-        }));
-      });
-      return { prevScreens, prevGroups };
-    },
-    onError: (_e, _v, ctx) => {
-      if (ctx?.prevScreens !== undefined) qc.setQueryData(['screens'], ctx.prevScreens);
-      if (ctx?.prevGroups !== undefined) qc.setQueryData(['screen-groups'], ctx.prevGroups);
-    },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ['screens'] });
-      qc.invalidateQueries({ queryKey: ['screen-groups'] });
-    },
-  });
-}
-
 export function useUpdateScreen() {
   const qc = useQueryClient();
   return useMutation({

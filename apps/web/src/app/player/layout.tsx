@@ -155,11 +155,6 @@ export default function PlayerLayout({
             // read --led-w / --led-h.
             document.documentElement.style.setProperty('--led-w',effW+'px');
             document.documentElement.style.setProperty('--led-h',effH+'px');
-            // 2026-06-25 — LED content fit is operator-controlled per screen
-            // (Screen.config.contentFit → manifest → --led-fit, applied by the
-            // runtime handler). We intentionally do NOT force a fit at boot:
-            // an unset --led-fit falls back to 'contain' (whole media, never
-            // clips) until the manifest supplies the operator's choice.
             // 2026-05-26 — narrow-LED hint for the splash CSS. A
             // 320×1080 portrait LED panel pinned via canvasW/canvasH
             // would set effW=320; we flag it so the splash stacks
