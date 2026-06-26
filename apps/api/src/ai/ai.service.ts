@@ -1511,8 +1511,11 @@ export class AiService {
    *
    *   - OpenAI (provider==='openai'): POST /v1/images/generations with
    *     gpt-image-1 (falls back to dall-e-3 if the account lacks
-   *     gpt-image-1 access), n:1, base64 output. Sizes: 1024x1024
-   *     (default) / 1792x1024 (landscape) / 1024x1792 (portrait).
+   *     gpt-image-1 access), n:1, base64 output. The orientation enum
+   *     (square/landscape/portrait) is carried as the dall-e-3 size
+   *     vocabulary; callOpenAiImage re-maps it to the TARGET model's
+   *     sizes (gpt-image-1 wants 1536x1024 / 1024x1536, NOT the dall-e-3
+   *     1792x1024 / 1024x1792 — sending those to gpt-image-1 400s).
    *   - Google (provider==='google'): Imagen via the Generative Language
    *     API (models/imagen-3.0-generate-002:predict), base64 output.
    *   - Anthropic / platform-fallback: Anthropic has NO image model →
@@ -1792,12 +1795,29 @@ export class AiService {
     prompt: string,
     size: '1024x1024' | '1792x1024' | '1024x1792',
   ): Promise<Buffer> {
+    // The two OpenAI image models speak DIFFERENT size vocabularies, and
+    // they do NOT overlap on the non-square sizes:
+    //   gpt-image-1: 1024x1024 | 1536x1024 (landscape) | 1024x1536 (portrait)
+    //   dall-e-3:    1024x1024 | 1792x1024 (landscape) | 1024x1792 (portrait)
+    // The FE/enum carries the orientation as the DALL-E vocabulary
+    // (1792x1024 / 1024x1792). Sending those verbatim to gpt-image-1 makes
+    // it 400 with "Invalid size '1792x1024'…" — the live beta bug. So map
+    // the requested orientation to the size the TARGET model accepts.
+    const sizeForModel = (model: string): string => {
+      const landscape = size === '1792x1024';
+      const portrait = size === '1024x1792';
+      if (model === 'gpt-image-1') {
+        return landscape ? '1536x1024' : portrait ? '1024x1536' : '1024x1024';
+      }
+      // dall-e-3 — the incoming enum is already its vocabulary.
+      return size;
+    };
     const attempt = async (model: string): Promise<{ ok: true; buf: Buffer } | { ok: false; status: number; body: string }> => {
       const body: Record<string, any> = {
         model,
         prompt,
         n: 1,
-        size,
+        size: sizeForModel(model),
         // gpt-image-1 ALWAYS returns b64_json and rejects response_format;
         // dall-e-3 needs it explicitly to avoid a temporary URL.
         ...(model === 'dall-e-3' ? { response_format: 'b64_json' } : {}),
