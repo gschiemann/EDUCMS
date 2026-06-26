@@ -9,7 +9,6 @@ import { MobileTabBar } from './MobileTabBar';
 import { InstallPromptBanner } from './InstallPromptBanner';
 import { ServiceWorkerRegistrar } from './ServiceWorkerRegistrar';
 import { TopToolbar } from './TopToolbar';
-import { SuperAdminBanner } from './SuperAdminBanner';
 import { EmergencyOverlay } from './EmergencyOverlay';
 import { AuthExpirationGuard } from './AuthExpirationGuard';
 import { StaleBundleWatcher } from './StaleBundleWatcher';
@@ -151,7 +150,11 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       />
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0 relative">
-        <SuperAdminBanner />
+        {/* 2026-06-26 — the full-width amber "Super Admin Mode" banner was
+            removed from the top of every page (operator: "remove the huge super
+            admin banner from on top of the page, just leave it on the bottom
+            left under the username"). The role indicator lives in the Sidebar
+            user card; that badge now links to the Owner Console. */}
         <TopToolbar />
         <main
           id="main-content"

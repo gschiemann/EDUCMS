@@ -675,10 +675,17 @@ export function Sidebar() {
                 <p className="text-[9px] text-slate-400 truncate">{user.email}</p>
               )}
               {mounted && user?.role === 'SUPER_ADMIN' ? (
-                <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-[1px] rounded bg-amber-500 text-amber-950 text-[8px] font-bold uppercase tracking-wider">
+                // 2026-06-26 — the only super-admin indicator now (the full-width
+                // top banner was removed). Links to the Owner Console so /super
+                // stays reachable from the chrome.
+                <Link
+                  href="/super"
+                  title="Open the Owner Console (cross-tenant god mode)"
+                  className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-[1px] rounded bg-amber-500 text-amber-950 text-[8px] font-bold uppercase tracking-wider hover:bg-amber-400 transition-colors"
+                >
                   <Crown className="w-2.5 h-2.5" aria-hidden="true" />
                   Super Admin
-                </span>
+                </Link>
               ) : (
                 <p className="text-[9px] text-slate-400">{mounted ? (tenantCopyForBrand.roleLabel(user?.role || '') || 'Role') : '\u00A0'}</p>
               )}
