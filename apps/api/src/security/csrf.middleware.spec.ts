@@ -70,6 +70,18 @@ describe('isCsrfExempt', () => {
     expect(isCsrfExempt('POST', '/api/v1/sports/sponsors')).toBe(false);
     expect(isCsrfExempt('DELETE', '/api/v1/sports/sponsors/sp-123')).toBe(false);
   });
+
+  it('exempts POS inbound webhooks (Square HMAC + custom-webhook secret) — final-beta P0', () => {
+    // External POS systems POST machine-to-machine with no session; each
+    // receiver self-authenticates (Square HMAC sig / X-Webhook-Secret).
+    // These were never exempted → every POST 403'd before its own auth ran.
+    expect(isCsrfExempt('POST', '/api/v1/pos/webhook/square')).toBe(true);
+    expect(isCsrfExempt('POST', '/api/v1/pos/webhook/custom-webhook')).toBe(true);
+    // Sanity — the GUARDED POS routes (OAuth start/callback, sync, settings)
+    // are NOT exempt; only the /webhook/<provider> receivers are.
+    expect(isCsrfExempt('POST', '/api/v1/pos/sync')).toBe(false);
+    expect(isCsrfExempt('POST', '/api/v1/pos/connect')).toBe(false);
+  });
 });
 
 describe('CsrfMiddleware', () => {

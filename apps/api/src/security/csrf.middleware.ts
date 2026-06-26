@@ -122,6 +122,19 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   // recordImpression. (Audit 37-infra R-1/R-2 — exempt + throttle land
   // TOGETHER so the exemption doesn't open an unthrottled write path.)
   (p) => /^\/api\/v1\/sports\/sponsors\/[^/]+\/impression$/.test(p),
+  // POS inbound webhooks (Square + custom-webhook bring-your-own POS).
+  // External POS systems POST catalog/inventory/order events here
+  // machine-to-machine — no browser, no session cookie — so a CSRF token
+  // round-trip is impossible. Authenticity is each receiver's OWN auth:
+  //   - /pos/webhook/square → Square HMAC signature (verifySquareSignature)
+  //   - /pos/webhook/{custom-webhook} → X-Webhook-Secret matched to the
+  //     PosProviderConnection (any other providerId 404s in-controller).
+  // CSRF's ambient-cookie threat model does not apply — same argument as
+  // the Stripe/billing webhook and the sports /feed + /cts-snapshot above.
+  // Found 2026-06-26 final-beta audit: these routes were NEVER exempted, so
+  // EVERY external POS POST got 403 CsrfError before its own auth ran —
+  // bricking the only no-credential POS path AND the Square inbound webhook.
+  (p) => /^\/api\/v1\/pos\/webhook\/[^/]+$/.test(p),
 ];
 
 export function isCsrfExempt(method: string, path: string): boolean {
