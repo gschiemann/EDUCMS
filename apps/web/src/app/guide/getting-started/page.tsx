@@ -163,8 +163,8 @@ function CoverPage() {
           <span className="guide-cover-grad">in one sitting.</span>
         </h1>
         <p className="guide-cover-lead">
-          A printable walkthrough for new K-12 districts. Everything you need
-          to go from a fresh login to a hallway display rotating real content.
+          A printable walkthrough for new VenueOS operators. Everything you need
+          to go from a fresh login to a live display rotating real content.
         </p>
         <div className="guide-cover-footer">
           <span>Version 1.0</span>
@@ -198,7 +198,7 @@ function Welcome() {
           <ul>
             <li>A laptop and a stable internet connection</li>
             <li>One screen with a browser (any Smart TV, Chromebook, or kiosk)</li>
-            <li>Your district&rsquo;s admin login from the welcome email</li>
+            <li>Your admin login from the welcome email</li>
             <li>A few images, videos, or PDFs to show on the screen</li>
           </ul>
         </div>
@@ -304,7 +304,7 @@ function Chapter1Pair() {
         behaves as a real screen — anything you publish from the dashboard
         plays in it within a few seconds. It&rsquo;s the fastest way to
         rehearse the upload → playlist → publish flow before any
-        actual hardware lands at the school.
+        actual hardware lands at your venue.
       </Tip>
 
       <Tip>
@@ -501,7 +501,7 @@ function Chapter5Emergency() {
       <PageHeader chapter="Chapter 5" title="Emergency alerts" />
       <p className="guide-lede">
         VenueOS can flash a lockdown, weather, or evacuation message
-        across every screen in the district within seconds. The same
+        across every screen in your venue within seconds. The same
         infrastructure that pushes daily content carries the alerts —
         no extra hardware, no separate app to install.
       </p>
@@ -534,7 +534,7 @@ function Chapter5Emergency() {
       <p className="guide-disclaimer">
         Important: VenueOS emergency features are a <em>communications
         layer</em>, not a replacement for fire alarms, PA systems, 911
-        dispatch, or NFPA 72 / UL 2572 certified equipment. Every district
+        dispatch, or NFPA 72 / UL 2572 certified equipment. Every venue
         should run drills with their primary safety systems first; treat
         VenueOS as a high-reliability secondary channel.
       </p>
@@ -550,8 +550,8 @@ function SupportPage() {
     <section className="guide-page">
       <PageHeader chapter="Support" title="Need a hand?" />
       <p className="guide-lede">
-        We&rsquo;re a phone call away. Pilot districts get direct access to
-        the engineering team — most replies under an hour during school
+        We&rsquo;re a phone call away. Pilot customers get direct access to
+        the engineering team — most replies under an hour during business
         hours.
       </p>
 
@@ -563,7 +563,7 @@ function SupportPage() {
         </div>
         <div className="guide-support-card">
           <h3>Email Support</h3>
-          <p>Get a real human, not a ticket bot. Most replies within the school day.</p>
+          <p>Get a real human, not a ticket bot. Most replies within the business day.</p>
           <p className="guide-support-link">support@venue-os.app</p>
         </div>
         <div className="guide-support-card">
@@ -579,8 +579,8 @@ function SupportPage() {
       </div>
 
       <p className="guide-thanks">
-        Thank you for choosing VenueOS. We built this for every district
-        that ever wished their school&rsquo;s signage just <em>worked</em>.
+        Thank you for choosing VenueOS. We built this for every operator
+        that ever wished their venue&rsquo;s signage just <em>worked</em>.
       </p>
     </section>
   );

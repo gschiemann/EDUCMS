@@ -114,7 +114,7 @@ export function BrandingLivePreview({ branding }: BrandingLivePreviewProps) {
           <div className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
         </div>
         <div className="flex-1 px-3 py-0.5 rounded-md bg-white border border-slate-200 text-[11px] text-slate-500 font-mono">
-          edusignage.app/{(name || '').toLowerCase().replace(/\s+/g, '-').slice(0, 20)}/dashboard
+          venue-os.app/{(name || '').toLowerCase().replace(/\s+/g, '-').slice(0, 20)}/dashboard
         </div>
       </div>
 
@@ -223,9 +223,11 @@ export function BrandingLivePreview({ branding }: BrandingLivePreviewProps) {
             <Kpi label="Emergency drills" value="4" trend="+1" positive />
           </div>
 
-          {/* Chip row */}
+          {/* Chip row — vertical-neutral location labels. The old
+              "Hallways / Cafeteria / Auditorium" set was K-12-specific
+              and bled into Gym / Retail / Sports tenant previews. */}
           <div className="flex gap-2 mb-4 flex-wrap">
-            {['All','Hallways','Cafeteria','Auditorium','Entry'].map((t, i) => (
+            {['All','Lobby','Entrance','Main Floor','Back of House'].map((t, i) => (
               <span key={t} className={cn('px-2.5 py-1 rounded-full text-[10px] font-medium', i === 0 ? 'preview-chip' : 'bg-slate-100 text-slate-600')}>{t}</span>
             ))}
           </div>

@@ -10,6 +10,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { BrandingWizard } from '@/components/branding/BrandingWizard';
 import { useAppStore } from '@/lib/store';
+import { useTenant } from '@/hooks/use-api';
 import Link from 'next/link';
 import { Check } from 'lucide-react';
 
@@ -17,6 +18,12 @@ export default function OnboardingBrandingPage() {
   const router = useRouter();
   const user = useAppStore((s) => s.user);
   const activeTenant = useAppStore((s) => s.activeTenant);
+  // 2026-06-26 — pass the tenant's vertical so the wizard shows
+  // industry-appropriate sample URLs + placeholder (Equinox/Chipotle/MLB
+  // for gym/QSR/sports) instead of leaking K-12 chrome ("Try: Lincoln
+  // County / Harvard / Stanford", placeholder "yourschool.org") to every
+  // vertical on the operator's first-impression onboarding screen.
+  const { data: tenant } = useTenant();
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -40,6 +47,7 @@ export default function OnboardingBrandingPage() {
 
       <BrandingWizard
         mode="authed"
+        vertical={(tenant as any)?.vertical || 'K12'}
         onAdopted={() => {
           // Bounce home with a short success flash
           router.push(activeTenant ? `/${activeTenant}/dashboard?branded=1` : '/');

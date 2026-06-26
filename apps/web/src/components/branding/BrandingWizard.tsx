@@ -195,9 +195,35 @@ function examplesForVertical(vertical?: string | null): SampleUrl[] {
   return EXAMPLES_BY_VERTICAL[key] || EXAMPLES_BY_VERTICAL.K12;
 }
 
+// Vertical-aware placeholder for the URL input. K12 keeps "yourschool.org";
+// every other vertical gets industry-appropriate copy so the operator's
+// first impression isn't a school product. Unknown → vertical-neutral.
+const PLACEHOLDER_BY_VERTICAL: Record<string, string> = {
+  K12: 'https://www.yourschool.org',
+  GYM: 'https://www.yourgym.com',
+  RETAIL: 'https://www.yourstore.com',
+  FASHION: 'https://www.yourboutique.com',
+  CORPORATE: 'https://www.yourcompany.com',
+  QSR: 'https://www.yourrestaurant.com',
+  RESTAURANT: 'https://www.yourrestaurant.com',
+  BAR: 'https://www.yourbar.com',
+  HEALTHCARE: 'https://www.yourpractice.com',
+  HOSPITALITY: 'https://www.yourhotel.com',
+  SPORTS: 'https://www.yourteam.com',
+  WORSHIP: 'https://www.yourchurch.org',
+};
+function placeholderForVertical(vertical?: string | null): string {
+  const key = (vertical || 'K12').toUpperCase();
+  return PLACEHOLDER_BY_VERTICAL[key] || 'https://www.yourwebsite.com';
+}
+
 export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingWizardProps) {
   const router = useRouter();
   const examples = useMemo(() => examplesForVertical(vertical), [vertical]);
+  // Vertical-aware placeholder so the URL input doesn't read "yourschool.org"
+  // to a gym / restaurant / retail / sports operator. Falls back to a
+  // vertical-neutral hint for K12 / unknown verticals.
+  const urlPlaceholder = useMemo(() => placeholderForVertical(vertical), [vertical]);
   // 2026-05-25 — operator: "i can only select the primary color from
   // [the swatches] and not the secondary, that can only be selected
   // from the picker and not from the main colors we find and present."
@@ -325,8 +351,16 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
         ? (res as Response).ok ? await (res as Response).json() : await (async () => { throw new Error((await (res as Response).text()) || 'Scrape failed'); })()
         : await (res as any).json();
       setPreview(data);
-      setDisplayName(data.displayName || '');
-      setTagline(data.tagline || '');
+      // 2026-06-26 — NEVER silently clobber an operator-entered name/tagline
+      // with scraped marketing copy. Beta operators type "Acme Stores" then
+      // scrape starbucks.com and watch their name get replaced by
+      // "Starbucks Coffee Company" + an og:description tagline. Only fill
+      // these fields from the scrape when the operator left them EMPTY;
+      // otherwise keep what they typed. (The scraped value is still in
+      // `data.displayName`/`data.tagline` and surfaces as the placeholder /
+      // adopt fallback, so it's offered as a suggestion, never forced.)
+      setDisplayName((prev) => (prev && prev.trim() ? prev : data.displayName || ''));
+      setTagline((prev) => (prev && prev.trim() ? prev : data.tagline || ''));
       setSelectedLogoIdx(0);
       const p = data.palette?.primary || data.colors?.[0]?.hex || '#4f46e5';
       const a = data.palette?.accent || data.colors?.[1]?.hex;
@@ -536,7 +570,7 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
               <Input
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://www.yourschool.org"
+                placeholder={urlPlaceholder}
                 className="pl-9"
                 disabled={scraping}
                 autoFocus
