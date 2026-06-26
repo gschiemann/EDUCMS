@@ -103,6 +103,27 @@ describe('computePlayerSurfaces', () => {
     expect(t?.value).toBe('17:05.2');
   });
 
+  it('resolves long/lowercase stored stat keys to short codes (CSV/seed rosters)', () => {
+    // Rosters seeded or CSV-imported store the LONG label form
+    // ('goals'/'assists'/'steals') instead of the PLAYER_STATS short
+    // codes ('G'/'A'/'ST'); the board must still find them so leaders +
+    // auto Player-of-Game aren't silently empty. (This is the live
+    // water-polo board bug — 2026-06-25.)
+    const roster = [
+      row({ name: 'Sniper', team: 'home', stats: { goals: '44', assists: '9', steals: '14', drawn: '41' } }),
+      row({ name: 'Playmaker', team: 'away', stats: { goals: '15', assists: '26', steals: '24', drawn: '12' } }),
+    ];
+    const { leaders, playerOfGame } = computePlayerSurfaces('water_polo', roster);
+    expect(leaders.find((l) => l.statKey === 'G')).toMatchObject({ playerName: 'Sniper', value: '44' });
+    expect(leaders.find((l) => l.statKey === 'A')).toMatchObject({ playerName: 'Playmaker', value: '26' });
+    expect(leaders.find((l) => l.statKey === 'ST')).toMatchObject({ playerName: 'Playmaker', value: '24' });
+    // SAFETY: 'drawn' (exclusions DRAWN) must NOT be mis-read as 'EXC'
+    // (exclusions COMMITTED — a different, inverted-semantics stat). A
+    // mismatch must stay null, never resolve to another stat's value.
+    expect(leaders.find((l) => l.statKey === 'EXC')).toBeUndefined();
+    expect(playerOfGame).not.toBeNull();
+  });
+
   it('computes a weighted player-of-the-game shaped for the SpotlightBand', () => {
     const roster = [
       // Scorer: 30 pts.

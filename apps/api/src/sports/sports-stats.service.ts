@@ -164,10 +164,42 @@ function normTeam(team: string): 'home' | 'away' {
   return team === 'away' ? 'away' : 'home';
 }
 
-/** Safe accessor for a player's display string for a stat key. */
+/**
+ * Safe accessor for a player's display string for a stat key.
+ *
+ * 2026-06-25 — alias-aware lookup. PLAYER_STATS carries SHORT codes
+ * (e.g. 'G','A','ST') but rosters seeded/imported via CSV store the
+ * LONG, lowercased label form (e.g. 'goals','assists','steals'); a
+ * direct lookup then misses every stat and the board's leaders +
+ * auto Player-of-Game come back empty. We resolve the short key to
+ * its stored form via the stat's OWN human label (STAT_LABELS) plus a
+ * case/space/underscore-insensitive scan, so 'G' also finds 'goals'.
+ *
+ * SAFETY: candidates are derived ONLY from the key itself and its own
+ * label — never a cross-stat synonym — so a genuine mismatch yields
+ * null (the prior behavior), never another stat's value. (E.g. water
+ * polo stores 'drawn' = exclusions DRAWN, a different stat than the
+ * model's 'EXC' = exclusions committed; it correctly stays unmatched
+ * rather than showing a wrong, inverted-semantics leader.) Rosters
+ * that already store the short key hit the fast exact path first.
+ */
 function rawStat(stats: unknown, key: string): string | null {
   if (!stats || typeof stats !== 'object') return null;
-  const v = (stats as Record<string, unknown>)[key];
+  const obj = stats as Record<string, unknown>;
+  let v = obj[key];
+  if (v == null) {
+    const cands = new Set<string>([key.toLowerCase()]);
+    const label = STAT_LABELS[key];
+    if (label) {
+      const l = label.toLowerCase();
+      cands.add(l);
+      cands.add(l.replace(/[\s_]+/g, ''));
+    }
+    for (const [k, val] of Object.entries(obj)) {
+      const kl = k.toLowerCase();
+      if (cands.has(kl) || cands.has(kl.replace(/[\s_]+/g, ''))) { v = val; break; }
+    }
+  }
   if (v == null) return null;
   if (typeof v === 'string') return v;
   if (typeof v === 'number' && Number.isFinite(v)) return String(v);
