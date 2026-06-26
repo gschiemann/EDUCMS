@@ -178,6 +178,21 @@ export class SchedulesController {
     // time-window-per-schedule, so multi-window-on-same-target
     // isn't a supported workflow; collapsing to a single row is
     // strictly cleaner.
+    //
+    // 2026-06-26 — content-integrity data-loss guard. A DRAFT/pending
+    // submission (every CONTRIBUTOR stage, plus any saved-draft) must
+    // NEVER hard-delete a DIFFERENT actor's LIVE (isActive=true)
+    // schedule for the same (playlist, target). Without this scope a
+    // low-privilege Editor could silently wipe an admin's published
+    // schedule just by drafting a competing one for the same screen.
+    // So: when THIS write is staged as a draft (willBeActive=false),
+    // restrict the upsert-cleanup to other DRAFT rows only — the live
+    // schedule survives untouched until the draft is approved and goes
+    // live through the normal publish path. When THIS write IS going
+    // live (an admin publish, or an approval flipping a draft active),
+    // the displacement step above has already deactivated competing
+    // actives, so collapsing every prior (playlist, target) row to one
+    // is the intended publish behavior and stays unrestricted.
     if (body.playlistId && (body.screenId || body.screenGroupId)) {
       await this.prisma.client.schedule.deleteMany({
         where: {
@@ -189,6 +204,10 @@ export class SchedulesController {
           ...(body.screenGroupId
             ? { screenGroupId: body.screenGroupId }
             : { screenGroupId: null }),
+          // Draft staging only ever cleans up other drafts — never a
+          // live schedule (which may belong to an admin). Live publishes
+          // collapse everything as before.
+          ...(willBeActive ? {} : { isActive: false }),
         },
       });
     }

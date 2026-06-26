@@ -125,6 +125,68 @@ describe('Content-approval gate — (c) flag OFF leaves publishing unchanged', (
   });
 });
 
+// ── Content-integrity: a draft must never delete an admin's LIVE schedule ──
+//
+// 2026-06-26 P1 data-loss fix. The "collapse prior (playlist, target) rows to
+// one" upsert step used to delete EVERY matching row regardless of isActive or
+// who owned it. A CONTRIBUTOR drafting a competing schedule for the same
+// (playlistId, screenId) therefore silently HARD-DELETED an admin's published
+// (isActive=true) schedule. The guard: when the new row is staged as a draft
+// (willBeActive=false), the cleanup is scoped to isActive:false — the live row
+// survives. When an admin publishes live, the cleanup stays unrestricted.
+describe('Content-integrity — a DRAFT never hard-deletes a different actor LIVE schedule', () => {
+  it('a CONTRIBUTOR draft for (P,S) scopes the upsert-cleanup to isActive:false (admin LIVE row survives)', async () => {
+    const { controller, schedule } = makeScheduleController({ requireContentApproval: false });
+
+    // Simulate the DB holding an admin's LIVE schedule for the same
+    // (playlist, screen). deleteMany only removes rows that match its WHERE —
+    // so we assert the WHERE the controller builds can NEVER match a live row.
+    const adminLive = {
+      id: 'admin-live',
+      tenantId: 't1',
+      playlistId: 'pl1',
+      screenId: 'scr1',
+      screenGroupId: null,
+      isActive: true,
+    };
+    schedule.deleteMany.mockImplementation(async ({ where }: any) => {
+      // Reproduce Prisma's filter semantics over our one stored live row.
+      const matches =
+        where.tenantId === adminLive.tenantId &&
+        where.playlistId === adminLive.playlistId &&
+        (where.screenId === undefined || where.screenId === adminLive.screenId) &&
+        (where.screenGroupId === undefined || where.screenGroupId === adminLive.screenGroupId) &&
+        (where.isActive === undefined || where.isActive === adminLive.isActive);
+      return { count: matches ? 1 : 0 };
+    });
+
+    const req = { user: { id: 'c1', userId: 'c1', role: AppRole.CONTRIBUTOR, tenantId: 't1' } };
+    await controller.create(req as any, { ...baseBody } as any);
+
+    // The cleanup ran, but its WHERE was scoped to drafts only.
+    expect(schedule.deleteMany).toHaveBeenCalledTimes(1);
+    const where = schedule.deleteMany.mock.calls[0][0].where;
+    expect(where.isActive).toBe(false); // <-- the guard
+
+    // And it deleted ZERO rows — the admin's LIVE schedule survived untouched.
+    const deletedCount = await schedule.deleteMany.mock.results[0].value;
+    expect(deletedCount.count).toBe(0);
+  });
+
+  it('an ADMIN live publish for (P,S) leaves the cleanup UNRESTRICTED (no isActive filter — true upsert)', async () => {
+    const { controller, schedule } = makeScheduleController({ requireContentApproval: false });
+    const req = { user: { id: 'a1', userId: 'a1', role: AppRole.SCHOOL_ADMIN, tenantId: 't1' } };
+
+    await controller.create(req as any, { ...baseBody } as any);
+
+    expect(schedule.deleteMany).toHaveBeenCalledTimes(1);
+    const where = schedule.deleteMany.mock.calls[0][0].where;
+    // Admin publish collapses every prior (playlist, target) row to one — the
+    // legitimate publish-replace path is intentionally NOT scoped by isActive.
+    expect(where.isActive).toBeUndefined();
+  });
+});
+
 // ── Tenants controller harness — toggle endpoint ─────────────────────
 function makeTenantController() {
   const tenant = { findUnique: jest.fn(), update: jest.fn() };
