@@ -89,6 +89,8 @@ import { EfficiencyModule } from './efficiency/efficiency.module';
 import { EfficiencyInterceptor } from './efficiency/efficiency.interceptor';
 import { ScreenWedgeDetectorCron } from './screens/screen-wedge-detector.cron';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { RedisThrottlerStorage } from './realtime/redis-throttler-storage';
+import { RedisService } from './realtime/redis.service';
 import { APP_FILTER, APP_GUARD, APP_PIPE, APP_INTERCEPTOR } from '@nestjs/core';
 import { SanitizationPipe } from './security/sanitization.pipe';
 import { RequestLogInterceptor } from './security/request-log.interceptor';
@@ -155,27 +157,31 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     // brute-force or abuse is the actual risk. Health endpoints are
     // explicitly @SkipThrottle()'d so the recovery probe is never
     // gated by ANY of these.
-    // STORAGE IS IN-MEMORY (default ThrottlerStorageService) — every
-    // @Throttle limit (login brute-force, register, ota-state, branding
-    // scrape, geocode, …) is counted PER REPLICA. That is correct and
-    // effectively global at our committed numReplicas:1 (railway.json).
-    // The one cap where per-replica would actually cost money — the AI
-    // hourly cap — is already Redis-backed with fail-open separately
-    // (ai/ai-hourly-cap.ts), so it is NOT affected by this storage.
+    // STORAGE IS REDIS-BACKED (RedisThrottlerStorage) — every @Throttle
+    // limit (login brute-force 10/min, register 5/min, password-reset 3/hr,
+    // invite 20/min, branding scrape, geocode, …) is now counted in ONE
+    // SHARED Redis counter across every Railway replica (security P1,
+    // 2026-06-26). Before this, storage was the default IN-MEMORY
+    // ThrottlerStorageService, which is per-replica — so with multiple
+    // replicas each kept its own bucket and no single bucket ever reached
+    // the limit: the brute-force caps NEVER fired 429. RedisThrottlerStorage
+    // reuses the EXISTING ioredis client (RedisService.publisher — no new
+    // npm dep) and FAILS OPEN to an in-memory bucket when Redis is
+    // unavailable, so the API still boots/serves with Redis down (CLAUDE.md
+    // "Redis missing → API boots anyway") and a Redis blip never locks out
+    // logins. The AI hourly cap remains separately Redis-backed
+    // (ai/ai-hourly-cap.ts) — unaffected by this storage.
     //
-    // ⚠️ BEFORE bumping numReplicas > 1: this MUST migrate to a
-    // Redis-backed ThrottlerStorage, or every limit silently multiplies
-    // by the replica count (a 5/min login limit becomes 5×N). The
-    // migration is a custom ThrottlerStorage over the existing ioredis
-    // client (no new dep) that FAILS OPEN to this in-memory storage when
-    // Redis is unavailable — the API must still boot/serve with Redis
-    // down (CLAUDE.md "Redis missing → API boots anyway"). Deliberately
-    // NOT done now: at 1 replica it changes nothing and would route
-    // every request through a new Redis dependency for zero benefit.
-    ThrottlerModule.forRoot([{
-      ttl: 60000,
-      limit: 600,
-    }]),
+    // forRootAsync so the storage can inject RedisService (provided +
+    // exported @Global by RealtimeModule). Limits/TTLs are unchanged from
+    // the previous forRoot config.
+    ThrottlerModule.forRootAsync({
+      inject: [RedisService],
+      useFactory: (redis: RedisService) => ({
+        throttlers: [{ ttl: 60000, limit: 600 }],
+        storage: new RedisThrottlerStorage(redis),
+      }),
+    }),
   ],
   controllers: [
     AppController,
