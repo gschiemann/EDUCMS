@@ -42,6 +42,7 @@ import {
   Plus,
   X,
   Settings,
+  Timer,
 } from 'lucide-react';
 import type { ViewPill } from './RunCommandBar';
 import type { useShowControl } from './useShowControl';
@@ -89,6 +90,9 @@ function MenuRow({
 export function RunMoreMenu({
   gameId,
   onSetup,
+  penaltyLabel,
+  penaltyCount,
+  onPenalties,
   pills,
   view,
   onView,
@@ -102,6 +106,9 @@ export function RunMoreMenu({
 }: {
   gameId: string;
   onSetup: () => void;
+  penaltyLabel: string | null;
+  penaltyCount: number;
+  onPenalties: () => void;
   pills: ViewPill[];
   view: string;
   onView: (key: string) => void;
@@ -163,6 +170,21 @@ export function RunMoreMenu({
               hint="teams · roster · displays"
               onClick={run(onSetup)}
             />
+            {penaltyLabel && (
+              <MenuRow
+                icon={<Timer className="h-[18px] w-[18px]" />}
+                label={penaltyLabel}
+                hint="release early · clear"
+                trailing={
+                  penaltyCount > 0 ? (
+                    <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-amber-500 text-amber-950 text-[11px] font-bold tabular-nums">
+                      {penaltyCount}
+                    </span>
+                  ) : undefined
+                }
+                onClick={run(onPenalties)}
+              />
+            )}
 
             {show.scenes.length > 0 && (
               <>

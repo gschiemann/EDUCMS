@@ -1236,14 +1236,14 @@ function RunMode({
       <RunCommandBar
         gameName={`${g.homeTeam || 'Home'} vs ${g.awayTeam || 'Away'}`}
         status={String(g?.status || 'SCHEDULED')}
-        penaltyLabel={def.penaltyBox ? def.penaltyBox.label : null}
-        penaltyCount={penaltyCount}
-        onPenalty={onPenalties}
         statusButtons={<RunStatusControl g={g} ctl={ctl} embedded />}
         moreMenu={
           <RunMoreMenu
             gameId={gameId}
             onSetup={onSetup}
+            penaltyLabel={def.penaltyBox ? def.penaltyBox.label : null}
+            penaltyCount={penaltyCount}
+            onPenalties={onPenalties}
             pills={VIEW_PILLS}
             view={view}
             onView={(k) => onViewChange(k as ConsoleView)}

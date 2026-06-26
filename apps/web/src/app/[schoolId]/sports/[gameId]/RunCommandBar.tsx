@@ -9,11 +9,15 @@
  * fucking tabs and buttons… impossible to know what I'm supposed to do." So the
  * bar is now stripped to ONLY the live-essential glance + actions:
  *
- *   [matchup · LIVE chip]  ········  [status transitions] [exclusions ②] [More]
+ *   [matchup · LIVE chip]  ········  [status transitions] [More]
  *
- * The role switcher, spotlight, screens health, send-to-device, and the surface
- * launchers all moved into the single `moreMenu` (RunMoreMenu) — passed in as an
- * element so there's no circular import and the mutation/role logic is unchanged.
+ * The role switcher, spotlight, screens health, send-to-device, the surface
+ * launchers, AND the penalty/exclusion box manager all moved into the single
+ * `moreMenu` (RunMoreMenu) — passed in as an element so there's no circular
+ * import and the mutation/role logic is unchanged. (2026-06-26: the exclusions
+ * nub left too — adding exclusions is the celebrate deck's "Exclusion" tile and
+ * counts are the inline per-player stepper, so the bar nub only duplicated that
+ * plus the rarely-used release-early manager, now one tap away under More.)
  * Solid white bg (no backdrop-blur) so the always-mounted chrome can't trip the
  * mobile-perf GPU guard.
  */
@@ -32,17 +36,11 @@ export type ViewPill = { key: string; label: string; title: string };
 export function RunCommandBar({
   gameName,
   status,
-  penaltyLabel,
-  penaltyCount,
-  onPenalty,
   statusButtons,
   moreMenu,
 }: {
   gameName: string;
   status: string;
-  penaltyLabel: string | null;
-  penaltyCount: number;
-  onPenalty: () => void;
   statusButtons: ReactNode;
   moreMenu: ReactNode;
 }) {
@@ -64,31 +62,10 @@ export function RunCommandBar({
       </div>
 
       {/* Right cluster: the only live-essential actions — game-state
-          transitions for the current status, the live exclusions count, and
-          the single More affordance for everything else. */}
+          transitions for the current status, and the single More affordance
+          for everything else. */}
       <div className="ml-auto flex items-center gap-1.5 shrink-0">
         {statusButtons}
-
-        {penaltyLabel && (
-          <button
-            type="button"
-            onClick={onPenalty}
-            title={`${penaltyLabel} — add / release early / clear exclusions`}
-            className={`flex items-center gap-1 min-h-[40px] px-2.5 rounded-lg text-[13px] font-bold transition-colors ${
-              penaltyCount > 0
-                ? 'bg-amber-500 text-amber-950 hover:bg-amber-400'
-                : 'text-slate-500 hover:bg-amber-50 hover:text-amber-700'
-            }`}
-          >
-            <span aria-hidden>⏱</span>
-            {penaltyCount > 0 && (
-              <span className="inline-flex items-center justify-center min-w-[18px] h-5 px-1 rounded-full bg-amber-950 text-amber-50 text-[11px] tabular-nums">
-                {penaltyCount}
-              </span>
-            )}
-          </button>
-        )}
-
         {moreMenu}
       </div>
     </div>
