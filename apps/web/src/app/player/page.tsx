@@ -728,7 +728,10 @@ function PlayerVideoSlide({
         top: 0, left: 0, right: 0, bottom: 0,
         width: '100%',
         height: '100%',
-        objectFit: 'contain',
+        // 2026-06-25 — honor the LED canvas fit mode (see the image render).
+        // --led-fit='cover' fills operator-configured canvas screens; unset
+        // elsewhere → 'contain'. Inline overrides the object-contain class.
+        objectFit: 'var(--led-fit, contain)' as any,
         background: '#000',
       }}
       muted={isMuted}
@@ -2993,6 +2996,20 @@ function PlayerPage() {
             }
             const meta = document.querySelector('meta[name="viewport"]') as HTMLMetaElement | null;
             if (meta) meta.content = `width=${cw}, height=${ch}, initial-scale=1, user-scalable=no`;
+          }
+          // 2026-06-25 — LED content fit. Operator-configured canvas screens
+          // FILL by default (object-fit:cover) like other CMS; a per-screen
+          // override rides on manifest.contentFit ('contain'|'cover'|'fill').
+          // Set OUTSIDE the width/repeats change-gate so a fit-only change
+          // (same canvas dims) still applies. The plain image/video render
+          // reads --led-fit; non-canvas screens never reach this branch → the
+          // var stays unset → 'contain' (unchanged for every regular kiosk).
+          {
+            const cf = (manifest as any).contentFit;
+            root.style.setProperty(
+              '--led-fit',
+              cf === 'contain' || cf === 'fill' || cf === 'cover' ? cf : 'cover',
+            );
           }
         } catch { /* localStorage / DOM mutation guards */ }
       }
@@ -6091,7 +6108,11 @@ function PlayerPage() {
                   top: 0, left: 0, right: 0, bottom: 0,
                   width: '100%',
                   height: '100%',
-                  objectFit: 'contain',
+                  // 2026-06-25 — honor the LED canvas fit mode. --led-fit is
+                  // 'cover' on operator-configured canvas screens (FILL the
+                  // panel, like other CMS); unset elsewhere → 'contain'. Inline
+                  // style overrides the object-contain Tailwind class above.
+                  objectFit: 'var(--led-fit, contain)' as any,
                   opacity: isActive ? 1 : 0,
                   zIndex: isActive ? 10 : 0,
                   transition: trans === 'NONE' ? 'none' : 'opacity 1000ms ease-in-out',

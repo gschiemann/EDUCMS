@@ -155,6 +155,12 @@ export default function PlayerLayout({
             // read --led-w / --led-h.
             document.documentElement.style.setProperty('--led-w',effW+'px');
             document.documentElement.style.setProperty('--led-h',effH+'px');
+            // 2026-06-25 — operator-configured LED canvas defaults published
+            // images/videos to FILL the panel (object-fit:cover) like every
+            // other signage CMS. Viewport-fallback screens (no custom canvas)
+            // leave --led-fit unset → 'contain' (unchanged). The manifest can
+            // override per-screen via contentFit on the next poll.
+            if(canvasW>0||canvasH>0){document.documentElement.style.setProperty('--led-fit','cover');}
             // 2026-05-26 — narrow-LED hint for the splash CSS. A
             // 320×1080 portrait LED panel pinned via canvasW/canvasH
             // would set effW=320; we flag it so the splash stacks
