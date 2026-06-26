@@ -365,10 +365,13 @@ export function TouchNavOverlay({
       <button
         type="button"
         onClick={onBack}
-        className="absolute top-8 left-8 z-10 inline-flex items-center gap-2 px-6 py-4 rounded-full bg-slate-900/70 hover:bg-slate-900/85 text-white text-2xl font-bold backdrop-blur-md transition-colors min-w-[160px] justify-center"
+        className="absolute top-8 left-8 z-10 inline-flex items-center px-6 py-4 rounded-full bg-slate-900/70 hover:bg-slate-900/85 text-white text-2xl font-bold backdrop-blur-md transition-colors min-w-[160px] justify-center"
         aria-label="Return to main display"
       >
-        <span aria-hidden>←</span>
+        {/* Taurus-safety (CLAUDE.md rule #10): flex `gap-*` needs Chromium
+            84+ and silently collapses on the Chromium-83 LED floor. Use an
+            explicit margin on the spacing child instead of `gap-2`. */}
+        <span aria-hidden className="mr-2">←</span>
         Back
       </button>
 

@@ -257,7 +257,7 @@ export default function SettingsPage() {
               </div>
               <div>
                 <div className="text-sm font-bold text-slate-800">Streaming providers</div>
-                <div className="text-[11px] text-slate-500">Connect Atmosphere, public broadcasters, YouTube, Twitch, custom HLS — pick channels for the streaming widget.</div>
+                <div className="text-[11px] text-slate-500 hidden sm:block">Connect Atmosphere, public broadcasters, YouTube, Twitch, custom HLS — pick channels for the streaming widget.</div>
               </div>
             </div>
             <span className="text-xs text-violet-600 font-bold">Manage →</span>
@@ -283,7 +283,7 @@ export default function SettingsPage() {
               </div>
               <div>
                 <div className="text-sm font-bold text-slate-800">POS catalog sync</div>
-                <div className="text-[11px] text-slate-500">Connect Square / Toast / Clover / Shopify / Stripe / MINDBODY — menu boards auto-update from your live catalog.</div>
+                <div className="text-[11px] text-slate-500 hidden sm:block">Connect Square / Toast / Clover / Shopify / Stripe / MINDBODY — menu boards auto-update from your live catalog.</div>
               </div>
             </div>
             <span className="text-xs text-amber-600 font-bold">Connect →</span>
@@ -299,7 +299,7 @@ export default function SettingsPage() {
               </div>
               <div>
                 <div className="text-sm font-bold text-slate-800">Monetize your screens</div>
-                <div className="text-[11px] text-slate-500">Programmatic DOOH — Hivestack, Vistar, Place Exchange. Earn per impression, full content controls.</div>
+                <div className="text-[11px] text-slate-500 hidden sm:block">Programmatic DOOH — Hivestack, Vistar, Place Exchange. Earn per impression, full content controls.</div>
               </div>
             </div>
             <span className="text-xs text-emerald-600 font-bold">Earn →</span>
@@ -319,7 +319,7 @@ export default function SettingsPage() {
               </div>
               <div>
                 <div className="text-sm font-bold text-slate-800">Design imports</div>
-                <div className="text-[11px] text-slate-500">Drop a PDF / PPTX / image from Canva, Google Slides, PowerPoint, Figma, or Adobe Express. We turn it into a screen-ready playlist.</div>
+                <div className="text-[11px] text-slate-500 hidden sm:block">Drop a PDF / PPTX / image from Canva, Google Slides, PowerPoint, Figma, or Adobe Express. We turn it into a screen-ready playlist.</div>
               </div>
             </div>
             <span className="text-xs text-emerald-600 font-bold">Import →</span>
@@ -339,7 +339,7 @@ export default function SettingsPage() {
               </div>
               <div>
                 <div className="text-sm font-bold text-slate-800">Test integrations</div>
-                <div className="text-[11px] text-slate-500">One-click sample data for streaming / POS / ads — demo every feature without vendor sandbox accounts.</div>
+                <div className="text-[11px] text-slate-500 hidden sm:block">One-click sample data for streaming / POS / ads — demo every feature without vendor sandbox accounts.</div>
               </div>
             </div>
             <span className="text-xs text-pink-600 font-bold">Try →</span>
@@ -358,7 +358,7 @@ export default function SettingsPage() {
               </div>
               <div>
                 <div className="text-sm font-bold text-slate-800">Audit log</div>
-                <div className="text-[11px] text-slate-500">Immutable activity history — every emergency trigger, login, and admin action, with who and when.</div>
+                <div className="text-[11px] text-slate-500 hidden sm:block">Immutable activity history — every emergency trigger, login, and admin action, with who and when.</div>
               </div>
             </div>
             <span className="text-xs text-slate-600 font-bold">View →</span>
@@ -380,7 +380,7 @@ export default function SettingsPage() {
               </div>
               <div>
                 <div className="text-sm font-bold text-slate-800">Developer</div>
-                <div className="text-[11px] text-slate-500">API endpoints, integrations, REST tokens + webhooks (coming next release), and SDK documentation.</div>
+                <div className="text-[11px] text-slate-500 hidden sm:block">API endpoints, integrations, REST tokens + webhooks (coming next release), and SDK documentation.</div>
               </div>
             </div>
             <span className="text-xs text-indigo-600 font-bold">Open →</span>

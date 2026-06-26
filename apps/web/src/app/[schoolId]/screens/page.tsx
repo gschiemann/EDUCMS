@@ -891,11 +891,19 @@ function ScreenSettingsMenu({
     // worse and had no clear close; clamping is all the popover needed.
     // `right` is measured from the viewport's RIGHT edge (CSS `right` px).
     let right = vw - r.right;
-    // Clamp: ensure left edge = vw - right - MENU_WIDTH >= MARGIN
-    const maxRight = vw - MENU_WIDTH - MARGIN;
-    if (right > maxRight) right = maxRight;
-    // Also keep the right edge at least MARGIN from the viewport right.
-    if (right < MARGIN) right = MARGIN;
+    if (vw < 500) {
+      // Phone width (~390px) — gear-anchored right-alignment leaves the 256px
+      // panel partly off-screen even after edge-clamping. Center-ish anchor it
+      // so it always reads fully on-screen no matter where the gear sits in
+      // the action row (2026-06-26).
+      right = Math.max(MARGIN, Math.min(vw / 2, vw - MENU_WIDTH - MARGIN));
+    } else {
+      // Clamp: ensure left edge = vw - right - MENU_WIDTH >= MARGIN
+      const maxRight = vw - MENU_WIDTH - MARGIN;
+      if (right > maxRight) right = maxRight;
+      // Also keep the right edge at least MARGIN from the viewport right.
+      if (right < MARGIN) right = MARGIN;
+    }
 
     const spaceBelow = window.innerHeight - r.bottom - GAP - MARGIN;
     const spaceAbove = r.top - GAP - MARGIN;
