@@ -477,6 +477,39 @@ describe('finalizeGameStats', () => {
     expect(combined.careerRows.get('p-1|PTS')?.gamesPlayed).toBe(2);
   });
 
+  it('rolls up LONG/lowercase stored stat keys (CSV/seed rosters) into season + career', async () => {
+    // CSV-imported / seeded rosters store the LONG label form
+    // ('goals'/'assists'/'steals') instead of the PLAYER_STATS short codes
+    // ('G'/'A'/'ST'); finalize must resolve them via the SAME alias-aware
+    // accessor the live board uses, or career/season totals roll up EMPTY.
+    // (Live water-polo bug — 2026-06-25, the matching half of the board fix.)
+    const game = fakeGame({ sport: 'water_polo' });
+    const roster: FakeRoster[] = [
+      {
+        id: 'rp-1', tenantId: T, gameId: 'game-1', personId: 'p-1', teamId: 'team-1',
+        stats: { goals: '4', assists: '2', steals: '3', drawn: '5' },
+      },
+    ];
+    const { client, seasonRows, careerRows } = makePrisma({ game, roster });
+
+    const res = await finalizeGameStats(client, T, 'game-1');
+    expect(res.aggregated).toBe(1);
+
+    // The long-key counting stats resolved to their short codes and rolled
+    // up to NON-ZERO season + career totals (the bug = these were empty).
+    expect(seasonRows.get('p-1|2025-26|G')?.statValue).toBe(4);
+    expect(seasonRows.get('p-1|2025-26|A')?.statValue).toBe(2);
+    expect(seasonRows.get('p-1|2025-26|ST')?.statValue).toBe(3);
+    expect(careerRows.get('p-1|G')?.statValue).toBe(4);
+    expect(careerRows.get('p-1|A')?.statValue).toBe(2);
+    expect(careerRows.get('p-1|ST')?.statValue).toBe(3);
+    // SAFETY: 'drawn' (exclusions DRAWN) must NOT be mis-read as 'EXC'
+    // (exclusions COMMITTED — a different, inverted-semantics stat); it stays
+    // unmatched, never resolving to another stat's value.
+    expect(seasonRows.get('p-1|2025-26|EXC')).toBeUndefined();
+    expect(careerRows.get('p-1|EXC')).toBeUndefined();
+  });
+
   it('does NOT sum rate stats (baseball AVG is per-game, never aggregated)', async () => {
     const game = fakeGame({ sport: 'baseball' });
     const roster: FakeRoster[] = [

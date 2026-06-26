@@ -654,11 +654,6 @@ export async function finalizeGameStats(
           const personId = rp.personId;
           if (!personId) continue; // narrow (where already guards)
 
-          const rpStats =
-            rp.stats && typeof rp.stats === 'object' && !Array.isArray(rp.stats)
-              ? (rp.stats as Record<string, unknown>)
-              : {};
-
           // Build this player's parsed COUNTING deltas for this game.
           const deltas: Array<{ statKey: string; delta: number; sem?: StatSemantic }> = [];
           for (const key of PLAYER_STATS[sport] ?? []) {
@@ -666,9 +661,17 @@ export async function finalizeGameStats(
             // ONLY counting stats accumulate. Rate stats (AVG, judged
             // scores, PAR, marks) are per-game — never summed.
             if (sem?.kind !== 'counting') continue;
-            const rawVal = rpStats[key];
+            // Alias-aware read (2026-06-25 parity with the live board): the
+            // model carries SHORT codes (e.g. 'G','A','ST') but CSV/seed
+            // rosters store the LONG lowercased label form ('goals',
+            // 'assists','steals'). A direct `rp.stats[key]` then misses every
+            // stat and career/season totals roll up empty. Route through the
+            // SAME `rawStat` accessor `computePlayerSurfaces` uses so both
+            // surfaces resolve identically. SAFETY: `rawStat` only matches the
+            // key or its own label, never a cross-stat synonym — worst case is
+            // a miss (prior behavior), never another stat's value.
+            const rawVal = rawStat(rp.stats, key);
             if (rawVal == null) continue;
-            if (typeof rawVal !== 'string' && typeof rawVal !== 'number') continue;
             const parsed = parseStatValue(rawVal, sem);
             if (parsed == null) continue; // unparseable → skip, never throw
             deltas.push({ statKey: key, delta: parsed, sem });
