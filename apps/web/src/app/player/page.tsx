@@ -3479,6 +3479,36 @@ function PlayerPage() {
     return () => { cancelled = true; clearInterval(iv); };
   }, [handleHeartbeatOta]);
 
+  // ─── Missed-event self-heal: periodic manifest reconcile ───
+  // While a HEALTHY WebSocket is connected, the player only re-fetches the
+  // manifest when a WS event (OVERRIDE / ALL_CLEAR / SYNC) arrives — there
+  // is NO periodic content poll on a live socket (the 5s HTTP poll engages
+  // only when the WS is DOWN; the 30s/45s heartbeats ping status, they do
+  // not fetchContent). So if a single event is dropped in transit on a
+  // still-open socket (proxy blip, transient loss), the player never
+  // reconciles: a missed ALL_CLEAR strands the screen on a stale lockdown
+  // overlay indefinitely, and a missed OVERRIDE misses a real alert until
+  // the next event. The 60s silent-reconnect doesn't help because the WS
+  // is still exchanging HEARTBEAT pongs.
+  //
+  // Fix: reconcile against the manifest on a slow steady cadence during
+  // playback, INDEPENDENT of WS / SSE / fallback state. The manifest is the
+  // SOLE arbiter of emergency state (see the fetchContent block ~L3080), so
+  // this can ONLY ever converge the player toward server truth — it can
+  // never drop a real emergency (the manifest reports it) nor raise a false
+  // one (the manifest reports NONE). It is strictly gentler than the 5s
+  // WS-down fallback and re-uses the exact same fetchContent() reconcile
+  // path, so it introduces no new behavior class — only a bounded
+  // (<=RECONCILE_MS) worst-case window for any missed real-time event.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const RECONCILE_MS = 30_000;
+    const iv = setInterval(() => {
+      if (phaseRef.current === 'playing') fetchContent();
+    }, RECONCILE_MS);
+    return () => clearInterval(iv);
+  }, [fetchContent]);
+
   // ─── Sprint 11 Phase B4 — stale-bundle auto-detection ───
   // Companion to B1 (REFRESH_WEB push from dashboard). This is the
   // kiosk-driven half: every ~5 min the kiosk fetches /api/build-info,
