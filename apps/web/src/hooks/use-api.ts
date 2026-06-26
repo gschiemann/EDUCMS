@@ -1917,6 +1917,35 @@ export function useToggleAutoUpdatePlayer() {
   });
 }
 
+// ─── Org-wide "Require approval before content goes live" gate ──────
+// (Appspace-parity enterprise control, 2026-06-26). OFF by default. When
+// ON, a CONTRIBUTOR's publish is routed through the submit-for-review
+// queue instead of going live directly. Read by any admin; flipped only
+// by DISTRICT_ADMIN / SUPER_ADMIN (server-enforced).
+export function useContentApprovalConfig() {
+  return useQuery<{ enabled: boolean }>({
+    queryKey: ['content-approval-config'],
+    queryFn: () => apiFetch('/tenants/me/content-approval'),
+  });
+}
+export function useToggleContentApproval() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) =>
+      apiFetch('/tenants/me/content-approval', { method: 'PUT', body: JSON.stringify({ enabled }) }),
+    onMutate: async (enabled) => {
+      await qc.cancelQueries({ queryKey: ['content-approval-config'] });
+      const prev = qc.getQueryData<any>(['content-approval-config']);
+      qc.setQueryData(['content-approval-config'], { enabled });
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev !== undefined) qc.setQueryData(['content-approval-config'], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['content-approval-config'] }),
+  });
+}
+
 // Sprint 11 Phase A — OTA maintenance window.
 // Operator: "we cant have screens flashing all the time".
 // Tenant configures the daily window when APK installs are allowed

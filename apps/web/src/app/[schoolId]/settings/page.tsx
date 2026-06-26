@@ -20,6 +20,7 @@ import { EmbeddedFloorPlanView } from '@/components/floor-plans/EmbeddedFloorPla
 import { BrandingSettingsCard } from '@/components/settings/BrandingSettingsCard';
 import { AiProviderRow } from '@/components/settings/AiProviderRow';
 import { DistrictSchoolsCard } from '@/components/settings/DistrictSchoolsCard';
+import { ContentApprovalCard } from '@/components/settings/ContentApprovalCard';
 import { VerticalSwitcherCard } from '@/components/settings/VerticalSwitcherCard';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
@@ -237,6 +238,13 @@ export default function SettingsPage() {
         {/* District-level: list + create child schools (Sprint 12 — district hierarchy UI) */}
         <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN']}>
           <DistrictSchoolsCard />
+        </RoleGate>
+
+        {/* Org-wide "Require approval before content goes live" gate
+            (2026-06-26). DISTRICT_ADMIN / SUPER_ADMIN only — it's an
+            org-wide policy, not a per-school setting. Off by default. */}
+        <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN']}>
+          <ContentApprovalCard />
         </RoleGate>
 
         {/* License & Billing (Sprint 7E) — current tier, seats used, expiry */}

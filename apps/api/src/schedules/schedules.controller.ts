@@ -2,6 +2,7 @@ import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, Ht
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
@@ -18,7 +19,8 @@ export class SchedulesController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redisService: RedisService,
-    private readonly signer: WebsocketSignerService
+    private readonly signer: WebsocketSignerService,
+    private readonly notify: NotificationsService,
   ) {}
 
   private async notifySync(tenantId: string) {
@@ -99,6 +101,22 @@ export class SchedulesController {
     // (or directly). Everyone else honors the requested isActive flag.
     const isContributor = req.user?.role === AppRole.CONTRIBUTOR;
     const willBeActive = !isContributor && body.isActive !== false;
+
+    // Org-wide "Require approval before any content goes live" gate
+    // (2026-06-26). When the tenant flag is ON and the actor is a
+    // CONTRIBUTOR, this publish is FORCED through the submit-for-review
+    // queue: the schedule is staged as a draft (already guaranteed above)
+    // AND a Submission review record is auto-created below so an admin
+    // must approve it before it goes live. Admins bypass — they ARE the
+    // approvers, so we never even look up the flag for them.
+    let routeThroughReview = false;
+    if (isContributor) {
+      const t = await this.prisma.client.tenant.findUnique({
+        where: { id: req.user.tenantId },
+        select: { requireContentApproval: true } as any,
+      }) as any;
+      routeThroughReview = !!t?.requireContentApproval;
+    }
 
     // Only displace other active schedules when THIS schedule is going
     // live. A saved-draft schedule should not knock the currently-
@@ -204,7 +222,89 @@ export class SchedulesController {
     if (willBeActive) {
       this.notifySync(req.user.tenantId);
     }
+
+    // Org-wide approval gate: when ON and the actor is a CONTRIBUTOR,
+    // auto-create a Submission so the staged draft actually lands in the
+    // admin review queue (instead of sitting as an orphan draft the
+    // contributor would have to manually "Send for review"). This is the
+    // forced-approval enforcement — it reuses the existing submit-for-
+    // review module (the same Submission table whose approval flow flips
+    // isActive→true), so we never built a parallel review system.
+    if (routeThroughReview) {
+      await this.routeScheduleThroughReview(req, res);
+      // Signal the UI to message "sent for review" instead of "published."
+      return { ...res, pendingReview: true };
+    }
+
     return res;
+  }
+
+  /**
+   * Bundle a freshly-staged draft schedule into a Submission and notify
+   * every admin in the tenant so it can't sit unseen in the queue. Mirrors
+   * submissions.controller.ts create() (auto-notify-all-admins branch).
+   * Best-effort notifications; the submission + audit row are the
+   * load-bearing writes.
+   */
+  private async routeScheduleThroughReview(req: any, schedule: any) {
+    const tenantId = req.user.tenantId as string;
+    const userId = req.user.userId as string;
+
+    const admins = await this.prisma.client.user.findMany({
+      where: {
+        tenantId,
+        role: { in: [AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN] },
+      },
+      select: { id: true },
+    });
+    const reviewerIds = admins.map((a) => a.id);
+
+    const submission = await this.prisma.client.submission.create({
+      data: {
+        tenantId,
+        submittedById: userId,
+        status: 'PENDING',
+        note: null,
+        // CSV columns (see submissions.controller.ts shape/fromCsv).
+        notifyUserIds: reviewerIds.join(','),
+        assetIds: '',
+        playlistIds: schedule.playlistId || '',
+        scheduleIds: schedule.id,
+      },
+    });
+
+    await this.prisma.client.auditLog
+      .create({
+        data: {
+          tenantId,
+          userId,
+          action: 'SUBMISSION_CREATED',
+          targetType: 'Submission',
+          targetId: submission.id,
+          details: JSON.stringify({
+            via: 'content_approval_gate',
+            scheduleId: schedule.id,
+            playlistId: schedule.playlistId || null,
+          }),
+        },
+      })
+      .catch(() => {});
+
+    for (const reviewerId of reviewerIds) {
+      this.notify
+        .notify({
+          tenantId,
+          userId: reviewerId,
+          kind: 'INFO',
+          title: 'New submission awaiting your review',
+          body: 'A schedule was submitted for approval before it can go live.',
+          link: `/reviews?id=${submission.id}`,
+          dedupeKey: `sub-create-${submission.id}-${reviewerId}`,
+        })
+        .catch(() => {});
+    }
+
+    return submission;
   }
 
   @Put(':id')

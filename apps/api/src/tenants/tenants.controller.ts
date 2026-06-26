@@ -439,9 +439,66 @@ export class TenantsController {
         panicLockdownPlaylistId: true,
         panicWeatherPlaylistId: true,
         panicEvacuatePlaylistId: true,
+        // Org-wide "require approval before content goes live" gate. Exposed
+        // here so the settings page can render the current toggle state.
+        requireContentApproval: true,
       } as any,
     });
     return tenant;
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Org-wide "Require approval before any content goes live" gate
+  // (Appspace-parity enterprise control, 2026-06-26).
+  //
+  // OFF (default): a CONTRIBUTOR can stage + send content for review via
+  // the explicit "Send for review" flow, but nothing forces it — single-
+  // operator tenants keep today's behavior.
+  //
+  // ON: every CONTRIBUTOR publish/schedule is routed through the existing
+  // submit-for-review queue instead of going live directly (enforced in
+  // schedules.controller.ts). Admins bypass — they ARE the approvers.
+  //
+  // The flag itself is settable ONLY by DISTRICT_ADMIN / SUPER_ADMIN
+  // (SCHOOL_ADMIN can read but not flip — it's an org-wide policy). Every
+  // change writes an immutable AuditLog row.
+  // ──────────────────────────────────────────────────────────────────
+  @Get('me/content-approval')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async getContentApprovalConfig(@Request() req: any) {
+    const t = await this.prisma.client.tenant.findUnique({
+      where: { id: req.user.tenantId },
+      select: { requireContentApproval: true } as any,
+    }) as any;
+    if (!t) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    return { enabled: !!t.requireContentApproval };
+  }
+
+  @Put('me/content-approval')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN)
+  async setContentApprovalEnabled(@Request() req: any, @Body() body: { enabled?: boolean }) {
+    const enabled = !!body?.enabled;
+    const updated = await this.prisma.client.$transaction(async (tx) => {
+      const t = await tx.tenant.update({
+        where: { id: req.user.tenantId },
+        data: { requireContentApproval: enabled } as any,
+        select: { requireContentApproval: true } as any,
+      }) as any;
+      await tx.auditLog.create({
+        data: {
+          tenantId: req.user.tenantId,
+          // Match the rest of this controller — req.user.userId is the
+          // canonical id field on the JWT payload.
+          userId: req.user.userId,
+          action: 'tenant.content_approval.toggled',
+          targetType: 'Tenant',
+          targetId: req.user.tenantId,
+          details: JSON.stringify({ enabled }),
+        },
+      });
+      return t;
+    });
+    return { ok: true, enabled: !!updated.requireContentApproval };
   }
 
   @Put('panic-settings')

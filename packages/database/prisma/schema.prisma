@@ -176,6 +176,17 @@ model Tenant {
   branding                        TenantBranding?
   // Submit-for-review workflow (Sprint 1.5).
   submissions                     Submission[]
+  // Org-wide "require approval before any content goes live" gate
+  // (Appspace-parity enterprise control, 2026-06-26). OFF by default —
+  // single-operator tenants keep today's behavior (a CONTRIBUTOR
+  // staging a schedule uses the explicit "Send for review" flow only
+  // when they choose to). When ON, a CONTRIBUTOR who publishes/schedules
+  // content is FORCED through the existing submit-for-review queue: the
+  // schedule is staged as a draft AND a Submission review record is
+  // auto-created so an admin must approve it before it goes live.
+  // Admins (SCHOOL_ADMIN / DISTRICT_ADMIN / SUPER_ADMIN) bypass the gate —
+  // they ARE the approvers. Settable only by DISTRICT_ADMIN / SUPER_ADMIN.
+  requireContentApproval          Boolean            @default(false) @map("require_content_approval")
   // Floor plans (Sprint 8b indoor map).
   floorPlans                      FloorPlan[]
   // Phase D5 touch analytics.
