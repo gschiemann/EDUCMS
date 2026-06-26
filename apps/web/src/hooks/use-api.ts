@@ -841,6 +841,26 @@ export function useAddWebUrl() {
   });
 }
 
+/**
+ * AI image generation (2026-06-26) — type a prompt → get a custom,
+ * on-brand image saved into the asset library. POST /ai/image returns
+ * the created Asset; we invalidate ['assets'] so it appears immediately.
+ * Errors (no image-capable provider → AI_IMAGE_UNAVAILABLE, out of
+ * credit, cap reached) surface via apiFetch's structured error (e.code /
+ * e.status) so the modal can branch the same way the sparkle button does.
+ */
+export function useGenerateImage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { prompt: string; size?: '1024x1024' | '1792x1024' | '1024x1792' }) =>
+      apiFetch<{ id: string; fileUrl: string; name: string; status: string; provider: string }>(
+        '/ai/image',
+        { method: 'POST', body: JSON.stringify(data) },
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['assets'] }),
+  });
+}
+
 export function useDeleteAsset() {
   const qc = useQueryClient();
   return useMutation({

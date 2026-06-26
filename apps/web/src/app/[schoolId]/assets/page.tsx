@@ -10,6 +10,7 @@ import { useUIStore } from '@/store/ui-store';
 import { clog } from '@/lib/client-logger';
 import { FolderPicker } from '@/components/assets/FolderPicker';
 import { PdfHoverThumb } from '@/components/assets/PdfHoverThumb';
+import { AiImageGenerateButton } from '@/components/ai/AiImageGenerateButton';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
 
@@ -636,6 +637,12 @@ export default function AssetsPage() {
               </button>
             </>
           )}
+          {/* 2026-06-26 — AI image generation. Hidden entirely when no AI
+              provider is configured (the button self-gates via the same
+              getAiStatusSource() the sparkle button uses). On success the
+              hook invalidates ['assets'] so the new image appears in the
+              library. */}
+          <AiImageGenerateButton disabled={isViewer} />
           <button
             onClick={() => setShowUrlForm(!showUrlForm)}
             disabled={isViewer}

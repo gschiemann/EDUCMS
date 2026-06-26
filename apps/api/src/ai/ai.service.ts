@@ -27,15 +27,22 @@
  */
 
 import { Injectable, Logger, BadRequestException, ServiceUnavailableException, HttpException, HttpStatus } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
-import { dispatchAi, mapProviderQuotaError, type AiProvider, coerceProvider } from './ai-providers';
+import { SupabaseStorageService } from '../storage/supabase-storage.service';
+import { dispatchAi, mapProviderQuotaError, type AiProvider, coerceProvider, defaultModelFor } from './ai-providers';
 import {
   aiWindowCount,
   aiRecordEvent,
   AI_RL_SUCCESS_PREFIX,
   AI_HOURLY_WINDOW_MS,
 } from './ai-hourly-cap';
+import {
+  aiImageWindowCount,
+  aiImageRecordEvent,
+  imageHourlyCap,
+} from './ai-image-cap';
 import { openAiKey } from './ai-key-cipher';
 import {
   isVertical,
@@ -200,6 +207,9 @@ export class AiService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
+    // 2026-06-26 — AI image generation persists the decoded image as a
+    // normal Asset via the same Supabase storage path as a regular upload.
+    private readonly storage: SupabaseStorageService,
   ) {}
 
   // P1-14 (2026-05-28 audit) — both per-tenant hourly caps moved from
@@ -222,6 +232,10 @@ export class AiService {
   private readonly HOURLY_CAP = 30;
   private readonly HOURLY_FAILURE_CAP = 200;
   private readonly WINDOW_MS = AI_HOURLY_WINDOW_MS;
+  // Image generation is slower than text (a 1024² render is seconds, not
+  // hundreds of ms). Give it a 60s AbortSignal — long enough for a slow
+  // OpenAI/Imagen render, short enough not to pile up Express handlers.
+  private readonly IMAGE_FETCH_TIMEOUT_MS = 60_000;
   // Redis key prefixes. Tenant id is appended. Kept distinct from any
   // realtime/pubsub keyspace so a tenant scan can't collide.
   //
@@ -1486,6 +1500,437 @@ export class AiService {
     }).catch(() => { /* audit best-effort */ });
 
     return { candidates, source: resolved.source, usage };
+  }
+
+  /**
+   * AI IMAGE GENERATION (2026-06-26) — type a prompt, get a custom,
+   * on-brand image saved straight into the asset library. The #1
+   * competitive gap vs Appspace: every text leg of our AI already
+   * exists (sparkle / touch-template / rewrite / alt-text); this is the
+   * missing image leg.
+   *
+   *   - OpenAI (provider==='openai'): POST /v1/images/generations with
+   *     gpt-image-1 (falls back to dall-e-3 if the account lacks
+   *     gpt-image-1 access), n:1, base64 output. Sizes: 1024x1024
+   *     (default) / 1792x1024 (landscape) / 1024x1792 (portrait).
+   *   - Google (provider==='google'): Imagen via the Generative Language
+   *     API (models/imagen-3.0-generate-002:predict), base64 output.
+   *   - Anthropic / platform-fallback: Anthropic has NO image model →
+   *     graceful AI_IMAGE_UNAVAILABLE (NOT a 500). The whole point is it
+   *     degrades exactly like the text features do.
+   *
+   * Brand-aware: we weave a SHORT "on-brand for {name}; palette {hexes};
+   * style {brandVoice}" hint into the prompt so the output matches the
+   * venue without bloating it.
+   *
+   * Persistence: the decoded PNG buffer goes to Supabase via the SAME
+   * storage path as a normal upload, then an Asset row is created
+   * (mimeType image/png, the role-aware status, tenantId,
+   * uploadedByUserId, a sensible "AI: <prompt>" name). Returns the
+   * created asset {id, fileUrl, name, status}.
+   *
+   * Cost guardrails: tighter 15/hr/tenant IMAGE cap (images cost ~$0.04+
+   * each vs ~$0.005 for text) on a SEPARATE Redis window; the shared
+   * failure-cap wrapper; the monthly platform cap for platform-paid
+   * tenants; a 60s AbortSignal (image gen is slower than text); and an
+   * AuditLog row on BOTH success and failure (AI-P0-4).
+   */
+  async generateImage(opts: {
+    tenantId: string;
+    userId?: string;
+    role?: string;
+    prompt: string;
+    size?: '1024x1024' | '1792x1024' | '1024x1792';
+  }): Promise<{ id: string; fileUrl: string; name: string; status: string; provider: AiProvider }> {
+    // Same failure-cap wrapper as every other AI surface — sustained
+    // failures from one tenant are blocked at the door, and any throw
+    // out of the inner method counts against the per-tenant failure cap.
+    await this.checkFailureCap(opts.tenantId);
+    try {
+      return await this.generateImageInner(opts);
+    } catch (e) {
+      await this.recordFailure(opts.tenantId);
+      throw e;
+    }
+  }
+
+  private async generateImageInner(opts: {
+    tenantId: string;
+    userId?: string;
+    role?: string;
+    prompt: string;
+    size?: '1024x1024' | '1792x1024' | '1024x1792';
+  }): Promise<{ id: string; fileUrl: string; name: string; status: string; provider: AiProvider }> {
+    const resolved = await this.resolveProviderKey(opts.tenantId);
+    if (!resolved) {
+      throw new ServiceUnavailableException(
+        'AI is not configured. Add your provider API key in Settings → AI provider, or contact your admin.',
+      );
+    }
+
+    const prompt = (opts.prompt || '').trim();
+    if (!prompt) {
+      throw new BadRequestException('Describe the image you want the AI to create.');
+    }
+    if (prompt.length > 1000) {
+      throw new BadRequestException('Prompt too long. Keep it under 1000 characters.');
+    }
+    const size = opts.size && ['1024x1024', '1792x1024', '1024x1792'].includes(opts.size)
+      ? opts.size
+      : '1024x1024';
+
+    // Anthropic + the platform fallback (which is always Anthropic) can't
+    // generate images. Surface a friendly, stable code — NEVER a 500 — so
+    // the FE can show the same "add an OpenAI or Google key" message the
+    // alt-text path uses. This is the graceful-degradation contract.
+    if (resolved.provider === 'anthropic') {
+      throw new HttpException(
+        {
+          code: 'AI_IMAGE_UNAVAILABLE',
+          message:
+            resolved.source === 'platform'
+              ? 'Image generation needs an OpenAI or Google API key. Add one in Settings → AI provider.'
+              : 'Anthropic doesn’t generate images yet. Switch your provider to OpenAI or Google in Settings → AI provider to create images.',
+          provider: 'anthropic',
+        },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+
+    // Tighter IMAGE hourly cap (15/hr) on a SEPARATE Redis window —
+    // images cost ~10× a text gen, so they don't share the 30/hr text
+    // budget. Fails open on Redis loss (helper returns 0). Checked BEFORE
+    // the upstream call; the slot is only recorded AFTER a usable result
+    // (same leak-fix discipline as generate()).
+    const imgCap = imageHourlyCap();
+    if ((await aiImageWindowCount(this.redis.publisher, opts.tenantId)) >= imgCap) {
+      throw new HttpException(
+        {
+          message: `Hit the hourly AI image cap (${imgCap} images/hour). Try again later, or contact sales for a higher tier.`,
+          code: 'AI_IMAGE_CAP_REACHED',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    // Monthly platform cap (Canva-style free tier) — only platform-paid
+    // tenants. BYOK bypasses entirely (their cost, their unlimited).
+    if (resolved.source === 'platform') {
+      const u = await this.readPlatformUsage(opts.tenantId);
+      if (u.used >= u.cap) {
+        throw new HttpException(
+          {
+            message: `Hit the monthly free AI cap (${u.cap} generations). Connect your own provider key in Settings → AI provider for unlimited, or wait until it resets at ${u.resetAt}.`,
+            code: 'AI_CAP_REACHED',
+            cap: u.cap,
+            used: u.used,
+            resetAt: u.resetAt,
+          },
+          HttpStatus.PAYMENT_REQUIRED,
+        );
+      }
+    }
+
+    // Brand-aware prompt — a light touch. Weave the venue name, up to two
+    // brand hexes, and the brand voice (if any) so the output matches the
+    // venue. Kept short so it doesn't drown out the operator's prompt.
+    const brandHint = await this.buildImageBrandHint(opts.tenantId);
+    const finalPrompt = brandHint ? `${prompt}. ${brandHint}` : prompt;
+
+    // Dispatch to the right provider. Each returns the decoded PNG bytes.
+    const png =
+      resolved.provider === 'openai'
+        ? await this.callOpenAiImage(resolved.apiKey, finalPrompt, size)
+        : await this.callGoogleImage(resolved.apiKey, resolved.model, finalPrompt, size);
+
+    // Persist as a normal Asset — same Supabase path + Asset row shape as
+    // a regular image upload, so it shows up in the library, the player
+    // manifest, playlists, etc. with zero special-casing.
+    const storagePath = `${opts.tenantId}/${randomUUID()}.png`;
+    let fileUrl: string;
+    try {
+      fileUrl = await this.storage.upload(storagePath, png, 'image/png');
+    } catch (e: any) {
+      this.logger.error(`AI image upload failed (${opts.tenantId}): ${e?.message}`);
+      throw new ServiceUnavailableException(
+        'The image was generated but could not be saved to your library. Try again.',
+      );
+    }
+
+    // Role-aware status — mirror assets.controller.initialAssetStatus:
+    // admins auto-publish; contributors land in the review queue. Default
+    // to PENDING_APPROVAL when the role is unknown (safer: never auto-
+    // publish unreviewed AI content).
+    const status = this.imageAssetStatus(opts.role);
+    const name = `AI: ${prompt.slice(0, 40)}${prompt.length > 40 ? '…' : ''}`;
+
+    let asset: { id: string; fileUrl: string; status: string };
+    try {
+      asset = await this.prisma.client.asset.create({
+        data: {
+          tenantId: opts.tenantId,
+          uploadedByUserId: opts.userId || null,
+          fileUrl,
+          mimeType: 'image/png',
+          fileSize: png.length,
+          originalName: name,
+          status,
+        } as any,
+      }) as any;
+    } catch (e: any) {
+      // Roll back the orphaned storage object if the row write failed.
+      await this.storage.delete(storagePath).catch(() => undefined);
+      this.logger.error(`AI image asset row failed (${opts.tenantId}): ${e?.message}`);
+      throw new ServiceUnavailableException('Could not save the generated image. Try again.');
+    }
+
+    // Record the image slot + bump the platform counter ONLY after a
+    // usable, persisted result (a failed gen / upload must not burn the
+    // cap). Best-effort writes — never fail the response on them.
+    await aiImageRecordEvent(this.redis.publisher, opts.tenantId);
+    if (resolved.source === 'platform') {
+      try { await this.bumpPlatformUsage(opts.tenantId); }
+      catch (e: any) { this.logger.warn(`Platform usage bump failed (${opts.tenantId}): ${e?.message}`); }
+    }
+
+    // AI-P0-4 — audit on success. No prompt content (operator free text
+    // could carry PII); promptLen + dimensions + provider are the
+    // privacy-safe forensic fields. assetId ties it to the created row.
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'AI_IMAGE_GENERATED',
+        targetType: 'asset',
+        targetId: asset.id,
+        tenantId: opts.tenantId,
+        userId: opts.userId || null,
+        details: JSON.stringify({
+          provider: resolved.provider,
+          model: resolved.model || null,
+          source: resolved.source,
+          size,
+          promptLen: prompt.length,
+          bytes: png.length,
+          assetId: asset.id,
+          brandHint: !!brandHint,
+        }),
+      },
+    }).catch(() => { /* audit best-effort — never fail the gen on a log error */ });
+
+    return {
+      id: asset.id,
+      fileUrl: asset.fileUrl,
+      name,
+      status: asset.status,
+      provider: resolved.provider,
+    };
+  }
+
+  /**
+   * Role-aware initial status for an AI-generated image asset. Mirrors
+   * AssetsController.initialAssetStatus so AI content flows through the
+   * SAME review gate as a manual upload — admins auto-publish, everyone
+   * else (incl. unknown role) goes to the review queue.
+   */
+  private imageAssetStatus(role: string | undefined): 'PUBLISHED' | 'PENDING_APPROVAL' {
+    if (role === 'SUPER_ADMIN' || role === 'DISTRICT_ADMIN' || role === 'SCHOOL_ADMIN') {
+      return 'PUBLISHED';
+    }
+    return 'PENDING_APPROVAL';
+  }
+
+  /**
+   * Build a SHORT brand hint for image prompts. Pulls TenantBranding
+   * (displayName, palette primary/accent hexes, brandVoice) and renders
+   * one clause. Best-effort: any error / missing row → '' (the prompt is
+   * just the operator's text, unbranded). Kept under ~200 chars so it
+   * never dominates the prompt.
+   */
+  private async buildImageBrandHint(tenantId: string): Promise<string> {
+    try {
+      const b = await this.prisma.client.tenantBranding.findUnique({
+        where: { tenantId },
+        select: { displayName: true, brandVoice: true, palette: true } as any,
+      }) as any;
+      if (!b) return '';
+      const parts: string[] = [];
+      const name = typeof b.displayName === 'string' ? b.displayName.trim().slice(0, 80) : '';
+      if (name) parts.push(`On-brand for "${name}"`);
+      // Extract up to two valid hex colors from the palette JSON.
+      const hexes: string[] = [];
+      const palette = b.palette && typeof b.palette === 'object' ? b.palette : null;
+      if (palette) {
+        for (const key of ['primary', 'accent']) {
+          const v = (palette as any)[key];
+          if (typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.trim())) {
+            hexes.push(v.trim());
+          }
+        }
+      }
+      if (hexes.length) parts.push(`use a palette around ${hexes.join(' and ')}`);
+      const voice = typeof b.brandVoice === 'string' ? b.brandVoice.trim() : '';
+      if (voice) parts.push(`style: ${voice.slice(0, 100)}`);
+      if (!parts.length) return '';
+      return parts.join('; ') + '.';
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * OpenAI image generation. POST /v1/images/generations with
+   * gpt-image-1 (the current image model); on a 404/400 that signals the
+   * account lacks gpt-image-1 access (it's gated behind org
+   * verification), fall back to dall-e-3 ONCE so an older account still
+   * works. Requests base64 (`response_format: b64_json`) so we never have
+   * to round-trip a temporary URL. 60s timeout — image gen is slow.
+   *
+   * Throws the SHARED provider-error mapping (out-of-credit 402, BYOK
+   * key-rejected, 429, generic) so the FE branches identically to text.
+   */
+  private async callOpenAiImage(
+    apiKey: string,
+    prompt: string,
+    size: '1024x1024' | '1792x1024' | '1024x1792',
+  ): Promise<Buffer> {
+    const attempt = async (model: string): Promise<{ ok: true; buf: Buffer } | { ok: false; status: number; body: string }> => {
+      const body: Record<string, any> = {
+        model,
+        prompt,
+        n: 1,
+        size,
+        // gpt-image-1 ALWAYS returns b64_json and rejects response_format;
+        // dall-e-3 needs it explicitly to avoid a temporary URL.
+        ...(model === 'dall-e-3' ? { response_format: 'b64_json' } : {}),
+      };
+      const res = await fetch('https://api.openai.com/v1/images/generations', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(this.IMAGE_FETCH_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => '');
+        return { ok: false, status: res.status, body: errBody };
+      }
+      const json = (await res.json()) as any;
+      const b64 = json?.data?.[0]?.b64_json;
+      if (typeof b64 !== 'string' || !b64) {
+        return { ok: false, status: 502, body: 'OpenAI returned no image data.' };
+      }
+      return { ok: true, buf: Buffer.from(b64, 'base64') };
+    };
+
+    let out = await attempt('gpt-image-1');
+    // Fallback: account doesn't have gpt-image-1 (org unverified) → 403/404,
+    // or the model id is rejected → 400 with a model-related message.
+    if (!out.ok && (out.status === 404 || out.status === 403 ||
+        (out.status === 400 && /model|gpt-image-1|not.*(found|exist|access)/i.test(out.body)))) {
+      this.logger.warn(`OpenAI gpt-image-1 unavailable (${out.status}); falling back to dall-e-3.`);
+      out = await attempt('dall-e-3');
+    }
+    if (!out.ok) {
+      this.throwImageProviderError('openai', out.status, out.body);
+    }
+    return out.buf;
+  }
+
+  /**
+   * Google Imagen image generation via the Generative Language API.
+   *
+   *   POST …/v1beta/models/<imagen-model>:predict
+   *   body: { instances: [{ prompt }], parameters: { sampleCount, aspectRatio } }
+   *   → predictions[0].bytesBase64Encoded
+   *
+   * The tenant's saved gemini-* model is a TEXT model, so we don't use it
+   * for image gen — we pin the current Imagen model
+   * (imagen-3.0-generate-002). Imagen exposes aspect ratios (1:1, 16:9,
+   * 9:16) rather than pixel sizes, so we map our size enum to the nearest
+   * ratio. Key goes in the x-goog-api-key HEADER (never the URL — Google
+   * echoes the URL in error bodies).
+   */
+  private async callGoogleImage(
+    apiKey: string,
+    _model: string,
+    prompt: string,
+    size: '1024x1024' | '1792x1024' | '1024x1792',
+  ): Promise<Buffer> {
+    const aspectRatio = size === '1792x1024' ? '16:9' : size === '1024x1792' ? '9:16' : '1:1';
+    const imagenModel = 'imagen-3.0-generate-002';
+    const url =
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(imagenModel)}:predict`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        instances: [{ prompt }],
+        parameters: { sampleCount: 1, aspectRatio },
+      }),
+      signal: AbortSignal.timeout(this.IMAGE_FETCH_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      let body = await res.text().catch(() => '');
+      // Belt-and-suspenders: redact any key=… echoed in a forwarded error.
+      body = body.replace(/[?&]key=[^&\s"']+/g, '&key=REDACTED');
+      this.throwImageProviderError('google', res.status, body);
+    }
+    const json = (await res.json()) as any;
+    const b64 =
+      json?.predictions?.[0]?.bytesBase64Encoded ??
+      json?.predictions?.[0]?.image?.bytesBase64Encoded;
+    if (typeof b64 !== 'string' || !b64) {
+      // Imagen blocks unsafe prompts with an empty predictions array +
+      // a filter reason. Surface something actionable.
+      const reason =
+        json?.predictions?.[0]?.raiFilteredReason ||
+        json?.error?.message ||
+        'no image returned';
+      throw new ServiceUnavailableException(
+        `Google Imagen returned no image (${String(reason).slice(0, 160)}). Try rephrasing your prompt.`,
+      );
+    }
+    return Buffer.from(b64, 'base64');
+  }
+
+  /**
+   * Map an image-provider non-2xx through the SHARED mapProviderQuotaError
+   * helper (out-of-credit → structured 402) and the same BYOK-key-rejected
+   * / 429 / generic branches the text path uses. Throws — never returns.
+   */
+  private throwImageProviderError(provider: AiProvider, status: number, body: string): never {
+    const quotaErr = mapProviderQuotaError(provider, status, body);
+    if (quotaErr) {
+      throw new HttpException(
+        { message: quotaErr.message, code: quotaErr.code, provider: quotaErr.provider },
+        HttpStatus.PAYMENT_REQUIRED,
+      );
+    }
+    const label = provider === 'openai' ? 'OpenAI' : provider === 'google' ? 'Google' : 'Anthropic';
+    const keyRejected =
+      status === 401 ||
+      status === 403 ||
+      (status === 400 && /api[_ ]?key|API_KEY_INVALID|PERMISSION_DENIED/i.test(body));
+    if (keyRejected) {
+      throw new ServiceUnavailableException(
+        `Your ${label} API key was rejected (${status}). Re-enter it in Settings → AI provider.`,
+      );
+    }
+    if (status === 429) {
+      throw new ServiceUnavailableException(`${label} rate-limited the image request. Try again in a moment.`);
+    }
+    // Content-policy / bad-request — surface a trimmed body so the operator
+    // can see "your prompt was rejected for X" rather than a bare code.
+    if (status === 400) {
+      throw new BadRequestException(
+        `${label} rejected the image prompt: ${(body || '').slice(0, 200) || 'bad request'}.`,
+      );
+    }
+    throw new ServiceUnavailableException(`${label} image service responded ${status}.`);
   }
 }
 

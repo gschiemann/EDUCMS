@@ -64,6 +64,12 @@ const prismaMock: any = {
     tenantBranding: {
       findUnique: jest.fn(async ({ where }: any) => brandingByTenant.get(where.tenantId) ?? null),
     },
+    // 2026-06-26 — AI image generation persists the decoded image as an
+    // Asset row. Stub returns a deterministic id so the test can assert
+    // the controller-facing shape + the AuditLog targetId.
+    asset: {
+      create: jest.fn(async ({ data }: any) => ({ id: 'asset_generated_1', ...data })),
+    },
   },
 };
 
@@ -98,11 +104,23 @@ function makeFakeRedisClient() {
   };
 }
 
-function buildService(publisher: any): { service: AiService } {
+// 2026-06-26 — storage stub for AI image generation. `upload` returns a
+// public URL; `delete` is a no-op rollback. Recreated per buildService so
+// each test gets fresh call counts.
+function makeStorageMock() {
+  return {
+    upload: jest.fn(async (path: string, _buf: any, _ct: string) =>
+      `https://example.supabase.co/storage/v1/object/public/assets/${path}`),
+    delete: jest.fn(async () => undefined),
+  };
+}
+
+function buildService(publisher: any, storage?: any): { service: AiService; storage: any } {
   const redisMock = { publisher } as unknown as RedisService;
+  const storageMock = storage ?? makeStorageMock();
   // Synchronous construct — no Nest container needed, but use it for parity.
-  const service = new AiService(prismaMock as PrismaService, redisMock);
-  return { service };
+  const service = new AiService(prismaMock as PrismaService, redisMock, storageMock as any);
+  return { service, storage: storageMock };
 }
 
 describe('AiService — P1-14 Redis-backed rate limits', () => {
@@ -599,5 +617,165 @@ describe('AiService — Slice 1b brand voice + add/delete intent', () => {
     await expect(
       service.resolveChatEdit({ tenantId: 't1', instruction: 'delete the sponsor bar', zones: [{ id: 'z1', widgetType: 'TEXT', defaultConfig: {} }] }),
     ).rejects.toMatchObject({ response: expect.objectContaining({ message: expect.stringMatching(/Delete/i) }) });
+  });
+});
+
+// ── AI image generation (2026-06-26) ────────────────────────────────
+// generateImage() calls the provider's IMAGE endpoint via the global
+// `fetch` (NOT dispatchAi — that's text-only), decodes the base64 image,
+// uploads it via the storage mock, and creates an Asset row. These pin:
+//   (a) anthropic/platform tenant → graceful AI_IMAGE_UNAVAILABLE (503,
+//       NOT a 500 stack)
+//   (b) openai tenant → calls the OpenAI images endpoint + persists an
+//       Asset (storage.upload + asset.create both fire)
+//   (c) an AuditLog row (AI_IMAGE_GENERATED) is written on success
+//   (d) the tight 15/hr image cap is enforced from Redis
+//   (e) Google (Imagen) tenant hits the :predict endpoint and persists
+const TINY_PNG_B64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+function okJson(body: any) {
+  return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) } as any;
+}
+function errResp(status: number, body: string) {
+  return { ok: false, status, json: async () => JSON.parse(body || '{}'), text: async () => body } as any;
+}
+
+describe('AiService — AI image generation', () => {
+  let fetchSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.AI_FREE_TIER_CAP;
+    delete process.env.AI_IMAGE_HOURLY_CAP;
+    tenantsById.clear();
+    brandingByTenant.clear();
+    auditRows.length = 0;
+    dispatchMock.mockReset();
+    (prismaMock.client.asset.create as jest.Mock).mockClear();
+    fetchSpy = jest.spyOn(global, 'fetch' as any);
+  });
+
+  afterEach(() => {
+    fetchSpy.mockRestore();
+  });
+
+  it('(a) anthropic/platform tenant → graceful AI_IMAGE_UNAVAILABLE, not a 500', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform'; // platform fallback = anthropic
+    const { service, storage } = buildService(makeFakeRedisClient());
+    let caught: any;
+    try {
+      await service.generateImage({ tenantId: 't1', userId: 'u1', role: 'SCHOOL_ADMIN', prompt: 'a blue mascot' });
+    } catch (e) { caught = e; }
+    expect(caught).toBeDefined();
+    // 503 ServiceUnavailable with a stable code — NEVER a 500 stack.
+    expect(caught.getStatus()).toBe(503);
+    expect(caught.getResponse()).toMatchObject({ code: 'AI_IMAGE_UNAVAILABLE' });
+    // No provider call, no upload, no asset row.
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(storage.upload).not.toHaveBeenCalled();
+    expect(prismaMock.client.asset.create).not.toHaveBeenCalled();
+  });
+
+  it('(b)+(c) openai tenant → calls OpenAI images endpoint, persists an Asset, writes an AuditLog row', async () => {
+    // BYOK OpenAI tenant.
+    tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'gpt-4o-mini' });
+    // ai-key-cipher.openAiKey decrypts the stored blob — stub it so the
+    // fake 'enc' resolves to a usable key without real crypto.
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-test');
+    fetchSpy.mockResolvedValue(okJson({ data: [{ b64_json: TINY_PNG_B64 }] }));
+
+    const { service, storage } = buildService(makeFakeRedisClient());
+    const res = await service.generateImage({ tenantId: 't1', userId: 'u1', role: 'SCHOOL_ADMIN', prompt: 'a friendly blue lion mascot' });
+
+    // (b) the OpenAI images endpoint was hit.
+    expect(fetchSpy).toHaveBeenCalled();
+    const calledUrl = String(fetchSpy.mock.calls[0][0]);
+    expect(calledUrl).toBe('https://api.openai.com/v1/images/generations');
+    // Asset persisted via storage + prisma; admin role → PUBLISHED.
+    expect(storage.upload).toHaveBeenCalledTimes(1);
+    expect(storage.upload.mock.calls[0][2]).toBe('image/png');
+    expect(prismaMock.client.asset.create).toHaveBeenCalledTimes(1);
+    expect(res).toMatchObject({ id: 'asset_generated_1', provider: 'openai', status: 'PUBLISHED' });
+    expect(res.fileUrl).toContain('/object/public/assets/');
+    expect(res.name).toMatch(/^AI: a friendly blue lion mascot/);
+
+    // (c) AuditLog row written on success.
+    const auditRow = auditRows.find((r) => r.action === 'AI_IMAGE_GENERATED');
+    expect(auditRow).toBeDefined();
+    expect(auditRow.targetId).toBe('asset_generated_1');
+    const details = JSON.parse(auditRow.details);
+    expect(details).toMatchObject({ provider: 'openai', source: 'tenant', assetId: 'asset_generated_1' });
+    // Privacy: prompt CONTENT is never logged, only its length.
+    expect(auditRow.details).not.toContain('lion mascot');
+    expect(details.promptLen).toBeGreaterThan(0);
+  });
+
+  it('CONTRIBUTOR role → generated image lands in the review queue (PENDING_APPROVAL)', async () => {
+    tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'gpt-4o-mini' });
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-test');
+    fetchSpy.mockResolvedValue(okJson({ data: [{ b64_json: TINY_PNG_B64 }] }));
+    const { service } = buildService(makeFakeRedisClient());
+    const res = await service.generateImage({ tenantId: 't1', userId: 'u1', role: 'CONTRIBUTOR', prompt: 'hero banner' });
+    expect(res.status).toBe('PENDING_APPROVAL');
+  });
+
+  it('(d) image cap (15/hr) enforced — over cap → AI_IMAGE_CAP_REACHED, no provider call', async () => {
+    process.env.AI_IMAGE_HOURLY_CAP = '2';
+    tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'gpt-4o-mini' });
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-test');
+    fetchSpy.mockResolvedValue(okJson({ data: [{ b64_json: TINY_PNG_B64 }] }));
+    const redis = makeFakeRedisClient();
+    const { service } = buildService(redis);
+    await service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'one' });
+    await service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'two' });
+    fetchSpy.mockClear();
+    let caught: any;
+    try {
+      await service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'three' });
+    } catch (e) { caught = e; }
+    expect(caught).toBeDefined();
+    expect(caught.getStatus()).toBe(429);
+    expect(caught.getResponse()).toMatchObject({ code: 'AI_IMAGE_CAP_REACHED' });
+    expect(fetchSpy).not.toHaveBeenCalled(); // door-check, never hits the provider
+  });
+
+  it('(e) Google (BYOK) tenant → hits the Imagen :predict endpoint and persists', async () => {
+    tenantsById.set('t1', { id: 't1', aiProvider: 'google', aiKeyEncrypted: 'enc', aiModel: 'gemini-2.5-flash' });
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('AIzaTestKey');
+    fetchSpy.mockResolvedValue(okJson({ predictions: [{ bytesBase64Encoded: TINY_PNG_B64 }] }));
+    const { service, storage } = buildService(makeFakeRedisClient());
+    const res = await service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'sunset over a stadium', size: '1792x1024' });
+    const calledUrl = String(fetchSpy.mock.calls[0][0]);
+    expect(calledUrl).toContain('imagen-3.0-generate-002:predict');
+    // Aspect ratio mapped from the landscape size.
+    const reqBody = JSON.parse(String(fetchSpy.mock.calls[0][1].body));
+    expect(reqBody.parameters.aspectRatio).toBe('16:9');
+    expect(storage.upload).toHaveBeenCalledTimes(1);
+    expect(res).toMatchObject({ provider: 'google', id: 'asset_generated_1' });
+  });
+
+  it('out-of-credit OpenAI → structured 402 AI_PROVIDER_OUT_OF_CREDIT (no asset persisted)', async () => {
+    tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'gpt-4o-mini' });
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-test');
+    fetchSpy.mockResolvedValue(errResp(429, JSON.stringify({ error: { type: 'insufficient_quota' } })));
+    const { service, storage } = buildService(makeFakeRedisClient());
+    let caught: any;
+    try {
+      await service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'x' });
+    } catch (e) { caught = e; }
+    expect(caught.getStatus()).toBe(402);
+    expect(caught.getResponse()).toMatchObject({ code: 'AI_PROVIDER_OUT_OF_CREDIT' });
+    expect(storage.upload).not.toHaveBeenCalled();
+    expect(prismaMock.client.asset.create).not.toHaveBeenCalled();
+  });
+
+  it('empty prompt → BadRequest, no provider call', async () => {
+    tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'gpt-4o-mini' });
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-test');
+    const { service } = buildService(makeFakeRedisClient());
+    await expect(service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: '   ' }))
+      .rejects.toMatchObject({ status: 400 });
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

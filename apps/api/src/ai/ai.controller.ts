@@ -78,6 +78,15 @@ const AiChatEditSchema = z.object({
 }).passthrough();
 type AiChatEditBody = z.infer<typeof AiChatEditSchema>;
 
+// 2026-06-26 — AI image generation. The prompt drives a paid image-model
+// call (~$0.04+/image), so the API boundary caps it tight: non-empty,
+// ≤1000 chars, and a fixed orientation enum the service re-validates.
+const AiImageSchema = z.object({
+  prompt: z.string().min(1).max(1000),
+  size: z.enum(['1024x1024', '1792x1024', '1024x1792']).optional(),
+}).passthrough();
+type AiImageBody = z.infer<typeof AiImageSchema>;
+
 @UseGuards(JwtAuthGuard, RbacGuard)
 @Controller('api/v1/ai')
 export class AiController {
@@ -139,6 +148,32 @@ export class AiController {
       ...body,
       tenantId: req.user.tenantId,
       userId: req.user.id,
+    });
+  }
+
+  // 2026-06-26 — AI image generation. Type a prompt → get a custom,
+  // on-brand image saved to the asset library. Same roles as generate
+  // (ADMIN+ + CONTRIBUTOR; below RESTRICTED_VIEWER so read-only roles
+  // can't burn the image budget). The service degrades gracefully when
+  // the tenant has no image-capable provider (Anthropic/platform →
+  // AI_IMAGE_UNAVAILABLE, not a 500). We pass the caller's role so the
+  // created asset honors the same review gate as a manual upload.
+  @Post('image')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  async generateImage(
+    @Request() req: any,
+    @Body(new ZodValidationPipe(AiImageSchema)) body: AiImageBody,
+  ) {
+    return this.ai.generateImage({
+      ...body,
+      tenantId: req.user.tenantId,
+      userId: req.user.id,
+      role: req.user.role,
     });
   }
 }
