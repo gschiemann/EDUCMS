@@ -6131,8 +6131,11 @@ function PlayerPage() {
                       width: '100%',
                       height: '100%',
                       objectFit: 'cover',
-                      filter: 'blur(28px) brightness(0.6)',
-                      transform: 'scale(1.12)',
+                      // Dimmed + softened so the sharp image is the clear hero
+                      // and the fill reads as an intentional backdrop, not a
+                      // second copy. Still fills the screen (never black bars).
+                      filter: 'blur(36px) brightness(0.4)',
+                      transform: 'scale(1.18)',
                       zIndex: 0,
                     }}
                   />
