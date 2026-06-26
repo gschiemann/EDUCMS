@@ -186,21 +186,31 @@ export class AuthController {
     // Lane-1 P2 fix: AuditLog every logout for incident forensics
     // ("when did the attacker burn the session?"). Best-effort — never
     // fail the logout if the audit row fails.
-    try {
-      await this.prisma.client.auditLog.create({
-        data: {
-          tenantId: user?.tenantId || user?.schoolId || user?.districtId || null,
-          userId: user?.userId || user?.id || null,
-          action: 'AUTH_LOGOUT',
-          targetType: 'User',
-          targetId: user?.userId || user?.id || null,
-          details: JSON.stringify({
-            ip: req.ip || req.headers['x-forwarded-for'] || null,
-            ua: (req.headers['user-agent'] || '').slice(0, 256),
-          }),
-        },
-      });
-    } catch { /* best-effort */ }
+    //
+    // `AuditLog.tenantId` is NOT NULL. A normal user JWT always carries
+    // tenantId, but an unusual token state (e.g. an api-key/device
+    // identity reaching here) can resolve to null — that `create` would
+    // be guaranteed to throw on the FK/not-null. Guard it: skip the audit
+    // row rather than fire a write we know can't land. The token
+    // revocation above already happened, so the logout is still honored.
+    const auditTenantId = user?.tenantId || user?.schoolId || user?.districtId || null;
+    if (auditTenantId) {
+      try {
+        await this.prisma.client.auditLog.create({
+          data: {
+            tenantId: auditTenantId,
+            userId: user?.userId || user?.id || null,
+            action: 'AUTH_LOGOUT',
+            targetType: 'User',
+            targetId: user?.userId || user?.id || null,
+            details: JSON.stringify({
+              ip: req.ip || req.headers['x-forwarded-for'] || null,
+              ua: (req.headers['user-agent'] || '').slice(0, 256),
+            }),
+          },
+        });
+      } catch { /* best-effort */ }
+    }
     return { success: true };
   }
 }
