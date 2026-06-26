@@ -481,7 +481,6 @@ function GameControl() {
   const g: any = game;
   const homeColor = g.homeColor || '#4f46e5';
   const awayColor = g.awayColor || '#dc2626';
-  const isLive = g.status === 'LIVE';
 
   // item A/0 — the single primary action: go live (Scheduled→LIVE via the same
   // unified status mutation the old stepper used) THEN open Run; once live, it
@@ -535,41 +534,34 @@ function GameControl() {
           <ArrowLeft className="h-4 w-4" />
           <span className="hidden sm:inline">Game Day</span>
         </button>
-        <div className="h-5 w-px bg-slate-200" />
-        <div className="flex gap-1 flex-1 overflow-x-auto">
-          {(
-            [
-              { key: 'run', label: 'Run game', icon: '▶' },
-              { key: 'setup', label: 'Set up', icon: '⚙' },
-            ] as { key: ConsoleMode; label: string; icon: string }[]
-          ).map((tab) => (
+        {/* 2026-06-26 — the Run game / Set up TAB toggle is gone. Operator:
+            "the setup button should be under more as well." Run mode is the
+            default; Set up is reached from the More menu. In Set up we show a
+            clear title + a single "Run game →" exit back to the live console
+            (no tabs, no surface launchers — those live in More too). */}
+        {mode === 'setup' && (
+          <>
+            <div className="h-5 w-px bg-slate-200" />
+            <span className="flex items-center gap-1.5 text-sm font-bold text-slate-900 shrink-0">
+              <span aria-hidden>⚙</span> Set up
+            </span>
+            <span className="text-sm text-slate-400 truncate hidden md:inline">
+              {g.homeTeam} vs {g.awayTeam}
+            </span>
             <button
-              key={tab.key}
+              type="button"
               onClick={() => {
-                setMode(tab.key);
+                setMode('run');
                 setShowCues(false);
                 setShowHighlights(false);
                 setShowPenalties(false);
               }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold transition-colors shrink-0 ${
-                mode === tab.key
-                  ? 'bg-indigo-50 text-indigo-600'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
-              }`}
+              className="ml-auto flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-500 shrink-0"
             >
-              <span>{tab.icon}</span>
-              <span>{tab.label}</span>
-              {tab.key === 'run' && isLive && (
-                <span className="ml-0.5 h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-              )}
+              <span aria-hidden>▶</span> Run game
             </button>
-          ))}
-        </div>
-        {/* Surface launchers (Ribbon / Scoreboard / Stream / Keys) moved into
-            the Run console's single "More" menu (2026-06-26 de-clutter) — they
-            were a 4th competing nav system stacked above the scoreboard. In
-            Set up mode the section is simply empty (those actions belong to a
-            live game). */}
+          </>
+        )}
       </div>
 
       {/* ── mode panels ───────────────────────────────────────── */}
@@ -599,6 +591,12 @@ function GameControl() {
               onCopyStream={copyOverlayUrl}
               streamCopied={copied}
               onShortcuts={() => setShowShortcuts(true)}
+              onSetup={() => {
+                setMode('setup');
+                setShowCues(false);
+                setShowHighlights(false);
+                setShowPenalties(false);
+              }}
             />
           </div>
           {/* Hidden in show / pa views where the strip would crowd the
@@ -677,9 +675,11 @@ function GameControl() {
               </div>
               <p className="text-xs text-slate-400 mt-2.5">
                 Set everything below before the game, then tap{' '}
-                <span className="font-semibold text-slate-500">Go Live</span> at the bottom.
-                During the game, change states (Halftime, Final) from the{' '}
-                <span className="font-semibold text-slate-500">Run game</span> tab.
+                <span className="font-semibold text-slate-500">Run game</span> up top
+                to operate (or <span className="font-semibold text-slate-500">Go Live</span>{' '}
+                at the bottom to start now). During the game, change states from the
+                Run console; come back here any time via{' '}
+                <span className="font-semibold text-slate-500">More → Set up game</span>.
               </p>
             </Section>
 
@@ -1134,6 +1134,7 @@ function RunMode({
   onCopyStream,
   streamCopied,
   onShortcuts,
+  onSetup,
 }: {
   gameId: string;
   g: any;
@@ -1149,6 +1150,7 @@ function RunMode({
   onCopyStream: () => void;
   streamCopied: boolean;
   onShortcuts: () => void;
+  onSetup: () => void;
 }) {
   const isBaseballSoftball = def.key === 'baseball' || def.key === 'softball';
   const stats: Record<string, unknown> = g.stats || {};
@@ -1241,6 +1243,7 @@ function RunMode({
         moreMenu={
           <RunMoreMenu
             gameId={gameId}
+            onSetup={onSetup}
             pills={VIEW_PILLS}
             view={view}
             onView={(k) => onViewChange(k as ConsoleView)}
@@ -6603,9 +6606,6 @@ function HoldChip({
     clearHold();
   };
 
-  // Circumference for r=10 circle: 2π×10 ≈ 62.8
-  const CIRC = 62.8;
-
   return (
     <>
       {/* SR live region — announces the hold prompt to screen readers */}
@@ -6625,27 +6625,18 @@ function HoldChip({
         className={`relative select-none overflow-hidden ${className ?? ''}`}
         style={{ touchAction: 'none', WebkitTapHighlightColor: 'transparent' }}
       >
-        {/* Animated ring — absolute overlay using long-hand sides (CLAUDE.md rule #10) */}
-        <svg
-          className="absolute top-0 right-0 bottom-0 left-0 w-full h-full -rotate-90 pointer-events-none"
-          viewBox="0 0 24 24"
-        >
-          <circle
-            cx="12" cy="12" r="10"
-            fill="none"
-            className="stroke-current opacity-20"
-            strokeWidth="2"
+        {/* Hold-progress: a left→right fill that grows while holding, clipped
+            to the button shape by overflow-hidden above. Hidden at rest — no
+            confusing always-on ring (2026-06-26, operator: "what is the ui on
+            that final button and what does it even do?"). Long-hand sides per
+            CLAUDE.md rule #10. */}
+        {holding && (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute top-0 bottom-0 left-0 bg-current opacity-25"
+            style={{ width: `${progress}%` }}
           />
-          <circle
-            cx="12" cy="12" r="10"
-            fill="none"
-            className="stroke-current"
-            strokeWidth="2"
-            strokeDasharray={CIRC}
-            strokeDashoffset={holding ? CIRC - (CIRC * progress) / 100 : CIRC}
-            strokeLinecap="round"
-          />
-        </svg>
+        )}
         {/* Content */}
         <span className="relative" style={{ zIndex: 1 }}>
           {children ?? label}
@@ -6731,10 +6722,10 @@ function RunStatusControl({
               Halftime
             </button>
             <HoldChip
-              label="Final"
-              ariaLabel="Mark game Final — hold to confirm; ends real-time scoring"
+              label="End game"
+              ariaLabel="End game — sets the score Final and stops live scoring. Hold to confirm"
               onConfirm={() => go('FINAL')}
-              className={`${btn} border-slate-300 text-slate-600 hover:bg-slate-100`}
+              className={`${btn} border-red-200 text-red-700 hover:bg-red-50`}
             />
           </>
         )}
@@ -6744,10 +6735,10 @@ function RunStatusControl({
               Resume
             </button>
             <HoldChip
-              label="Final"
-              ariaLabel="Mark game Final — hold to confirm; ends real-time scoring"
+              label="End game"
+              ariaLabel="End game — sets the score Final and stops live scoring. Hold to confirm"
               onConfirm={() => go('FINAL')}
-              className={`${btn} border-slate-300 text-slate-600 hover:bg-slate-100`}
+              className={`${btn} border-red-200 text-red-700 hover:bg-red-50`}
             />
           </>
         )}

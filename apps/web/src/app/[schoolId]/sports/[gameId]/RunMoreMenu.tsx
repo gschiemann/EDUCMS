@@ -41,6 +41,7 @@ import {
   Pause,
   Plus,
   X,
+  Settings,
 } from 'lucide-react';
 import type { ViewPill } from './RunCommandBar';
 import type { useShowControl } from './useShowControl';
@@ -87,6 +88,7 @@ function MenuRow({
 
 export function RunMoreMenu({
   gameId,
+  onSetup,
   pills,
   view,
   onView,
@@ -99,6 +101,7 @@ export function RunMoreMenu({
   screensNub,
 }: {
   gameId: string;
+  onSetup: () => void;
   pills: ViewPill[];
   view: string;
   onView: (key: string) => void;
@@ -152,6 +155,14 @@ export function RunMoreMenu({
                 <X className="h-4 w-4" />
               </button>
             </div>
+
+            <SectionLabel>Game</SectionLabel>
+            <MenuRow
+              icon={<Settings className="h-[18px] w-[18px]" />}
+              label="Set up game"
+              hint="teams · roster · displays"
+              onClick={run(onSetup)}
+            />
 
             {show.scenes.length > 0 && (
               <>
