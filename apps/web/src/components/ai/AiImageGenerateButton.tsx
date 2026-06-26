@@ -26,6 +26,8 @@ import { useParams } from 'next/navigation';
 import { Sparkles, Loader2, X, AlertCircle, ImagePlus, Settings2 } from 'lucide-react';
 import { getAiStatusSource } from './AiGenerateButton';
 import { useGenerateImage } from '@/hooks/use-api';
+import { useTenantCopy } from '@/hooks/use-tenant-copy';
+import type { Vertical } from '@cms/api-types';
 
 type Orientation = 'square' | 'landscape' | 'portrait';
 const SIZE_FOR: Record<Orientation, '1024x1024' | '1792x1024' | '1024x1792'> = {
@@ -33,6 +35,35 @@ const SIZE_FOR: Record<Orientation, '1024x1024' | '1792x1024' | '1024x1792'> = {
   landscape: '1792x1024',
   portrait: '1024x1792',
 };
+
+/**
+ * Per-vertical prompt placeholder for the "Generate an image with AI" modal.
+ * The original copy ("a welcoming back-to-school banner…") was K-12-only and
+ * read wrong on Sports / QSR / Retail / etc. tenants. Each vertical now gets a
+ * relevant example; unknown verticals fall back to GENERIC_IMAGE_PLACEHOLDER.
+ * Keyed by the canonical Vertical union from packages/api-types/verticals.ts.
+ */
+const GENERIC_IMAGE_PLACEHOLDER =
+  'A clean, modern hero background with soft lighting and your brand colors — friendly, bright, and uncluttered';
+
+const IMAGE_PLACEHOLDER_BY_VERTICAL: Record<Vertical, string> = {
+  K12: 'A welcoming back-to-school banner with bright confetti, soft sunrise colors, friendly and clean',
+  GYM: 'A high-energy fitness banner — motion-blurred athlete mid-workout, bold lighting, motivating and modern',
+  RETAIL: 'A bright storefront promo background for a seasonal sale — clean product styling, airy and inviting',
+  CORPORATE: 'A polished corporate lobby backdrop — abstract geometric shapes, calm professional palette',
+  QSR: 'A mouth-watering menu hero shot — a fresh signature burger and crisp fries on a clean studio background',
+  FASHION: 'An editorial boutique lookbook backdrop — soft draped fabric, runway lighting, elegant and minimal',
+  BAR: 'A moody happy-hour banner — a craft cocktail with citrus and steam, warm neon glow, inviting nightlife vibe',
+  HEALTHCARE: 'A calm, reassuring waiting-room background — soft greens and blues, clean lines, friendly and safe',
+  HOSPITALITY: 'An elegant hotel lobby welcome backdrop — warm ambient lighting, plush textures, refined and inviting',
+  RESTAURANT: 'An appetizing plated-dish hero — a beautifully arranged entrée with garnish, warm restaurant lighting',
+  SPORTS: 'A dynamic game-day banner background — stadium lights, dramatic motion, bold team-color energy',
+  WORSHIP: 'A serene, uplifting service backdrop — soft golden light through stained glass, peaceful and warm',
+};
+
+function imagePlaceholderForVertical(v: Vertical): string {
+  return IMAGE_PLACEHOLDER_BY_VERTICAL[v] ?? GENERIC_IMAGE_PLACEHOLDER;
+}
 
 export function AiImageGenerateButton({
   onGenerated,
@@ -93,6 +124,11 @@ function AiImageModal({
   const [error, setError] = useState<string | null>(null);
   const [needsImageProvider, setNeedsImageProvider] = useState(false);
   const generate = useGenerateImage();
+
+  // Vertical-aware prompt example — Sports tenants get a game-day banner,
+  // QSR a menu hero, etc., instead of the K-12 "back-to-school" default.
+  const { vertical } = useTenantCopy();
+  const promptPlaceholder = imagePlaceholderForVertical(vertical);
 
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -220,7 +256,7 @@ function AiImageModal({
                   ref={textareaRef}
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="A welcoming back-to-school banner with bright confetti, soft sunrise colors, friendly and clean"
+                  placeholder={promptPlaceholder}
                   rows={3}
                   maxLength={1000}
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"

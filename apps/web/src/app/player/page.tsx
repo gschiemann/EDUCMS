@@ -5589,6 +5589,55 @@ function PlayerPage() {
         })}
         </TemplateScaler>
 
+        {/* Empty-scene dead-end fallback (2026-06-26). On a multi-scene
+            touch kiosk, a visitor can tap a button whose goto-scene target
+            has ZERO renderable zones (e.g. an AI-generated kiosk's
+            "Concessions" / "Restrooms" destination scene was left empty).
+            Without this, the canvas just goes blank — bgColor only — and
+            the visitor is stranded until the 60s idle-reset fires. The
+            cross-template "Nothing to show here" fallback only lives in
+            TouchNavOverlay, which doesn't cover in-template scene switches.
+
+            Trigger: interactive context + the active scene has no zones +
+            we've navigated AWAY from the home/default scene (so there's
+            somewhere to go back TO). We never show this for a legacy
+            single-scene template that's simply empty on the home scene —
+            there'd be no "Back" destination and it isn't the dead-end bug.
+
+            Taurus-safe: longhand top/right/bottom/left (no `inset`), no
+            flex `gap` (margins instead), per CLAUDE.md #10. */}
+        {isInteractive && zones.length === 0 && activeSceneId && defaultScene?.id && activeSceneId !== defaultScene.id && (
+          // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
+          <div
+            className="absolute flex items-center justify-center text-white text-center px-8 z-[900]"
+            style={{ top: 0, right: 0, bottom: 0, left: 0 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div>
+              <h2 className="text-4xl font-black mb-3">This section is empty</h2>
+              <p className="text-lg text-white/60 mb-8">There&apos;s nothing here yet.</p>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // Return to the home/default scene. Reuse the same
+                  // scene-change path a goto-scene action fires so all the
+                  // idle-reset + analytics listeners stay consistent.
+                  try {
+                    window.dispatchEvent(new CustomEvent('edu:touch-scene-change', {
+                      detail: { sceneId: defaultScene.id, transition: 'cut' },
+                    }));
+                  } catch {}
+                  setCurrentSceneId(defaultScene.id);
+                }}
+                className="px-7 py-4 rounded-xl text-lg font-bold text-white bg-white/15 hover:bg-white/25 border border-white/30 transition-colors"
+              >
+                ← Back
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Preview mode chip — always visible in the top-right corner so
             it's obvious the browser tab is a preview, not the real kiosk. */}
         {isPreviewMode() && (
