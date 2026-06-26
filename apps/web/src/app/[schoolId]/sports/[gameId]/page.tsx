@@ -19,7 +19,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useConsoleFit, FIT, type FitTier } from './use-console-fit';
-import { ShowControlPanel } from './ShowControlPanel';
+import { RunMoreMenu, OnAirBar } from './RunMoreMenu';
+import { useShowControl } from './useShowControl';
 import { RunCommandBar } from './RunCommandBar';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -564,53 +565,11 @@ function GameControl() {
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            onClick={() => window.open(`/ribbon/${gameId}`, '_blank')}
-            title="Open the stadium ribbon / fascia board in a new tab"
-          >
-            <RectangleHorizontal className="h-4 w-4" />
-            <span className="hidden sm:inline">Ribbon</span>
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            onClick={() => window.open(`/board/${gameId}`, '_blank')}
-            title="Open the scoreboard in a new tab"
-          >
-            <ExternalLink className="h-4 w-4" />
-            <span className="hidden sm:inline">Scoreboard</span>
-          </Button>
-          {mode === 'run' && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              onClick={copyOverlayUrl}
-              title="Copy the transparent stream-overlay URL — add it as a Browser Source in OBS / vMix / Hudl (1920×1080). Same live game state as the in-venue board."
-            >
-              {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
-              <span className="hidden sm:inline">{copied ? 'Copied!' : 'Stream'}</span>
-            </Button>
-          )}
-          {mode === 'run' && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              onClick={() => setShowShortcuts(true)}
-              title="Keyboard shortcuts (?)"
-              aria-label="Show keyboard shortcuts"
-            >
-              <Keyboard className="h-4 w-4" />
-              <span className="hidden sm:inline">Keys</span>
-            </Button>
-          )}
-        </div>
+        {/* Surface launchers (Ribbon / Scoreboard / Stream / Keys) moved into
+            the Run console's single "More" menu (2026-06-26 de-clutter) — they
+            were a 4th competing nav system stacked above the scoreboard. In
+            Set up mode the section is simply empty (those actions belong to a
+            live game). */}
       </div>
 
       {/* ── mode panels ───────────────────────────────────────── */}
@@ -637,6 +596,9 @@ function GameControl() {
               onViewChange={setView}
               onHighlights={() => setShowHighlights(true)}
               onPenalties={() => setShowPenalties(true)}
+              onCopyStream={copyOverlayUrl}
+              streamCopied={copied}
+              onShortcuts={() => setShowShortcuts(true)}
             />
           </div>
           {/* Hidden in show / pa views where the strip would crowd the
@@ -1169,6 +1131,9 @@ function RunMode({
   onViewChange,
   onHighlights,
   onPenalties,
+  onCopyStream,
+  streamCopied,
+  onShortcuts,
 }: {
   gameId: string;
   g: any;
@@ -1181,6 +1146,9 @@ function RunMode({
   onViewChange: (v: ConsoleView) => void;
   onHighlights: () => void;
   onPenalties: () => void;
+  onCopyStream: () => void;
+  streamCopied: boolean;
+  onShortcuts: () => void;
 }) {
   const isBaseballSoftball = def.key === 'baseball' || def.key === 'softball';
   const stats: Record<string, unknown> = g.stats || {};
@@ -1251,6 +1219,10 @@ function RunMode({
   const scoreFitRef = useRef<HTMLDivElement>(null);
   const fitTier = useConsoleFit(scoreFitRef, showScoreboard && !showResultsGrid);
 
+  // Scene-recall state machine (Show on board) — one instance drives BOTH the
+  // "Show on board" section inside the More menu and the on-air promote row.
+  const show = useShowControl(ctl);
+
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
 
@@ -1262,17 +1234,25 @@ function RunMode({
       <RunCommandBar
         gameName={`${g.homeTeam || 'Home'} vs ${g.awayTeam || 'Away'}`}
         status={String(g?.status || 'SCHEDULED')}
-        pills={VIEW_PILLS}
-        view={view}
-        onView={(k) => onViewChange(k as ConsoleView)}
-        showSpotlight
-        onSpotlight={onHighlights}
         penaltyLabel={def.penaltyBox ? def.penaltyBox.label : null}
         penaltyCount={penaltyCount}
         onPenalty={onPenalties}
-        onShare={() => setShareOpen(true)}
         statusButtons={<RunStatusControl g={g} ctl={ctl} embedded />}
-        screensNub={<SurfaceHealthPills gameId={gameId} summary />}
+        moreMenu={
+          <RunMoreMenu
+            gameId={gameId}
+            pills={VIEW_PILLS}
+            view={view}
+            onView={(k) => onViewChange(k as ConsoleView)}
+            show={show}
+            onSpotlight={onHighlights}
+            onShare={() => setShareOpen(true)}
+            onCopyStream={onCopyStream}
+            streamCopied={streamCopied}
+            onShortcuts={onShortcuts}
+            screensNub={<SurfaceHealthPills gameId={gameId} summary />}
+          />
+        }
       />
 
 
@@ -1362,11 +1342,13 @@ function RunMode({
           command bar above (RunStatusControl embedded + SurfaceHealthPills
           summary nub) — no longer two separate strips. (2026-06-22 elegance) */}
 
-      {/* T3-3 — Show Control: one-tap recall of a full-screen gameday scene
-          (Halftime / Lineup / Sponsors / This Week / Countdown) to the board,
-          with auto-revert + an always-available Back-to-Live. (2026-06-22 —
-          "how would I even trigger that halftime template?") */}
-      <ShowControlPanel g={g} ctl={ctl} />
+      {/* On-air promote row — the de-cluttered home for Show Control. Scenes
+          are TAKEN from the More menu's "Show on board" section; this slim red
+          row only appears WHILE a scene is on the board (Back to live +
+          countdown + Hold/+20s) and vanishes the instant it's back to the
+          scoreboard. (2026-06-26 de-clutter — replaces the always-visible
+          full-width ShowControlPanel strip.) */}
+      <OnAirBar show={show} />
 
       {/* ── PA / Announcer view ───────────────────────────────── */}
       {showPaSpotlight && (

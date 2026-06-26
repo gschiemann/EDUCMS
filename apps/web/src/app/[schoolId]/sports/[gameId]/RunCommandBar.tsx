@@ -1,23 +1,23 @@
 'use client';
 
 /**
- * RunCommandBar — the single console command bar (2026-06-22 elegance redesign).
+ * RunCommandBar — the single live-console command bar.
  *
- * Operator: "it seems so fucking messy" — the Run console had FOUR stacked
- * full-width toolbars (view/action rail · game-state strip · screens-health
- * strip · show-control strip) competing above the scoreboard with no hierarchy.
- * This collapses the first three into ONE slim bar: game identity + a status
- * chip (left) · a role segmented control (centre) · status-transition buttons +
- * Spotlight + Penalty + Screens-health nub + Send-to-device (right).
+ * 2026-06-26 de-clutter: the prior "elegance" pass merged four strips into one
+ * bar but LEFT the bar itself carrying five competing nav vocabularies (role
+ * pills + spotlight + screens nub + send + status). Operator: "remove all these
+ * fucking tabs and buttons… impossible to know what I'm supposed to do." So the
+ * bar is now stripped to ONLY the live-essential glance + actions:
  *
- * Pure presentational shell — every interactive piece is passed in (the status
- * buttons and the screens nub come in as elements so there's no circular import
- * with page.tsx, and the mutation/role logic stays exactly where it was). Solid
- * white bg (no backdrop-blur) so the always-mounted chrome can't trip the
+ *   [matchup · LIVE chip]  ········  [status transitions] [exclusions ②] [More]
+ *
+ * The role switcher, spotlight, screens health, send-to-device, and the surface
+ * launchers all moved into the single `moreMenu` (RunMoreMenu) — passed in as an
+ * element so there's no circular import and the mutation/role logic is unchanged.
+ * Solid white bg (no backdrop-blur) so the always-mounted chrome can't trip the
  * mobile-perf GPU guard.
  */
 import { ReactNode } from 'react';
-import { Star, ExternalLink } from 'lucide-react';
 
 const STATUS_CHIP: Record<string, { label: string; cls: string; dot: string }> = {
   SCHEDULED: { label: 'Scheduled', cls: 'bg-slate-100 text-slate-600 border-slate-200', dot: 'bg-slate-400' },
@@ -32,38 +32,26 @@ export type ViewPill = { key: string; label: string; title: string };
 export function RunCommandBar({
   gameName,
   status,
-  pills,
-  view,
-  onView,
-  showSpotlight,
-  onSpotlight,
   penaltyLabel,
   penaltyCount,
   onPenalty,
-  onShare,
   statusButtons,
-  screensNub,
+  moreMenu,
 }: {
   gameName: string;
   status: string;
-  pills: ViewPill[];
-  view: string;
-  onView: (key: string) => void;
-  showSpotlight: boolean;
-  onSpotlight: () => void;
   penaltyLabel: string | null;
   penaltyCount: number;
   onPenalty: () => void;
-  onShare: () => void;
   statusButtons: ReactNode;
-  screensNub: ReactNode;
+  moreMenu: ReactNode;
 }) {
   const chip = STATUS_CHIP[status] || STATUS_CHIP.SCHEDULED;
   return (
     <div className="flex items-center gap-2 px-3 sm:px-4 py-2 border-b border-slate-200 bg-white shrink-0 overflow-x-auto">
       {/* Identity + live status chip — one chip, glanceable game state. */}
       <div className="flex items-center gap-2 shrink-0 min-w-0">
-        <span className="text-[13px] font-bold text-slate-900 truncate max-w-[160px] sm:max-w-[220px]" title={gameName}>
+        <span className="text-[13px] font-bold text-slate-900 truncate max-w-[160px] sm:max-w-[260px]" title={gameName}>
           {gameName}
         </span>
         <span
@@ -75,39 +63,11 @@ export function RunCommandBar({
         </span>
       </div>
 
-      {/* Role segmented control — one control, not four loose pills. */}
-      <div className="flex items-center bg-slate-100 rounded-xl p-0.5 shrink-0">
-        {pills.map((p) => (
-          <button
-            key={p.key}
-            type="button"
-            title={p.title}
-            onClick={() => onView(p.key)}
-            aria-pressed={view === p.key}
-            className={`min-h-[40px] px-3 py-1 rounded-lg text-[13px] font-bold transition-colors ${
-              view === p.key ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            {p.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Right cluster: live state transitions + ambient actions. */}
+      {/* Right cluster: the only live-essential actions — game-state
+          transitions for the current status, the live exclusions count, and
+          the single More affordance for everything else. */}
       <div className="ml-auto flex items-center gap-1.5 shrink-0">
         {statusButtons}
-
-        {showSpotlight && (
-          <button
-            type="button"
-            onClick={onSpotlight}
-            title="Spotlight a player or sponsor on the scoreboard AND the ribbon"
-            aria-label="Spotlight"
-            className="flex items-center justify-center min-h-[40px] min-w-[40px] rounded-lg text-slate-500 hover:bg-amber-50 hover:text-amber-700 transition-colors"
-          >
-            <Star className="h-[18px] w-[18px]" />
-          </button>
-        )}
 
         {penaltyLabel && (
           <button
@@ -129,17 +89,7 @@ export function RunCommandBar({
           </button>
         )}
 
-        {screensNub}
-
-        <button
-          type="button"
-          onClick={onShare}
-          title="Send a role view (Scorekeeper / Show Caller / PA) to another phone or tablet"
-          aria-label="Send to device"
-          className="flex items-center justify-center min-h-[40px] min-w-[40px] rounded-lg text-slate-500 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
-        >
-          <ExternalLink className="h-[18px] w-[18px]" />
-        </button>
+        {moreMenu}
       </div>
     </div>
   );
