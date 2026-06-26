@@ -7,14 +7,16 @@
  * across multiple API replicas to bypass an in-memory limiter is
  * already inside our perimeter. The `@Throttle` decorator on the
  * challenge route adds a per-IP layer through the NestJS global
- * limiter (Redis-backed in prod via the existing ThrottlerModule
- * config), and the audit log records every failed attempt for
- * forensic review. The in-memory limiter is the third defense.
+ * limiter (in-memory / per-replica — see the ThrottlerModule note
+ * in app.module.ts; effectively global at our committed
+ * numReplicas:1), and the audit log records every failed attempt
+ * for forensic review. The in-memory limiter is the third defense.
  *
- * If the API scales to >3 replicas this should migrate to a
- * SETNX-with-TTL in Redis, but at our current size the cost of
- * adding a Redis round-trip per challenge attempt outweighs the
- * marginal security gain.
+ * If the API scales to >1 replica BOTH this limiter and the global
+ * ThrottlerModule should migrate to Redis (SETNX-with-TTL here; a
+ * fail-open Redis ThrottlerStorage there), but at our current size
+ * the cost of a Redis round-trip per attempt outweighs the marginal
+ * security gain.
  */
 
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';

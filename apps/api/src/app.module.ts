@@ -155,6 +155,23 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     // brute-force or abuse is the actual risk. Health endpoints are
     // explicitly @SkipThrottle()'d so the recovery probe is never
     // gated by ANY of these.
+    // STORAGE IS IN-MEMORY (default ThrottlerStorageService) — every
+    // @Throttle limit (login brute-force, register, ota-state, branding
+    // scrape, geocode, …) is counted PER REPLICA. That is correct and
+    // effectively global at our committed numReplicas:1 (railway.json).
+    // The one cap where per-replica would actually cost money — the AI
+    // hourly cap — is already Redis-backed with fail-open separately
+    // (ai/ai-hourly-cap.ts), so it is NOT affected by this storage.
+    //
+    // ⚠️ BEFORE bumping numReplicas > 1: this MUST migrate to a
+    // Redis-backed ThrottlerStorage, or every limit silently multiplies
+    // by the replica count (a 5/min login limit becomes 5×N). The
+    // migration is a custom ThrottlerStorage over the existing ioredis
+    // client (no new dep) that FAILS OPEN to this in-memory storage when
+    // Redis is unavailable — the API must still boot/serve with Redis
+    // down (CLAUDE.md "Redis missing → API boots anyway"). Deliberately
+    // NOT done now: at 1 replica it changes nothing and would route
+    // every request through a new Redis dependency for zero benefit.
     ThrottlerModule.forRoot([{
       ttl: 60000,
       limit: 600,
