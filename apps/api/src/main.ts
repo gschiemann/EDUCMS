@@ -77,6 +77,30 @@ async function bootstrap() {
   //
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const expressBody = require('express');
+
+  // Stripe webhook MUST verify the signature against the EXACT raw bytes.
+  // The `{ rawBody: true }` flag on NestFactory.create populates
+  // req.rawBody ONLY for parsers Nest itself registers — but the global
+  // expressBody.json() below is registered here, during bootstrap, and so
+  // runs BEFORE Nest's parsers (which register at app.init()/listen()).
+  // express's json() reads the stream to completion and sets req._body,
+  // so Nest's rawBody-capturing parser short-circuits and req.rawBody is
+  // never set → constructWebhookEvent throws and EVERY webhook 400s the
+  // moment Stripe goes live. Mount a path-scoped raw parser for JUST the
+  // webhook route, BEFORE the global json(), and capture the exact bytes
+  // via verify(). Deterministic regardless of Nest's parser ordering;
+  // every other route still hits the global json() below unchanged.
+  app.use(
+    '/api/v1/billing/webhook',
+    expressBody.raw({
+      type: '*/*',
+      limit: '1mb',
+      verify: (req: any, _res: unknown, buf: Buffer) => {
+        req.rawBody = buf;
+      },
+    }),
+  );
+
   app.use(expressBody.json({ limit: '5mb' }));
   app.use(expressBody.urlencoded({ limit: '5mb', extended: true }));
 
