@@ -145,7 +145,10 @@ export default function SsoSettingsPage() {
     try {
       const body: Record<string, unknown> = {
         provider,
-        enabled,
+        // SAML can't be armed in this build (lib removed for CVE-2025-54419 +
+        // API forbids arming it) — never submit enabled:true for SAML, which
+        // matches the disabled checkbox and avoids an opaque server rejection.
+        enabled: provider === 'SAML' ? false : enabled,
         defaultRole,
         autoProvision,
         allowedEmailDomain: allowedEmailDomain || null,
@@ -260,12 +263,20 @@ export default function SsoSettingsPage() {
                       : 'SSO is not enabled — admins can still sign in with email/password.'}
                   </p>
                 </div>
-                <label className="flex items-center gap-2 text-xs font-semibold">
+                {/* SAML is intentionally non-armable in this build:
+                    passport-saml@3 was removed to remediate CVE-2025-54419,
+                    so buildSamlLoginUrl/validateSamlCallback always 503, and
+                    the API ForbidS a non-SUPER_ADMIN from flipping SAML on.
+                    Don't offer an Enabled checkbox the operator can't honor —
+                    OIDC still arms normally. Storing SAML config is still
+                    allowed (the form below saves fine). */}
+                <label className={`flex items-center gap-2 text-xs font-semibold ${provider === 'SAML' ? 'text-slate-300 cursor-not-allowed' : ''}`}>
                   <input
                     type="checkbox"
-                    checked={enabled}
+                    checked={provider === 'SAML' ? false : enabled}
+                    disabled={provider === 'SAML'}
                     onChange={(e) => setEnabled(e.target.checked)}
-                    className="w-4 h-4 rounded border-slate-300"
+                    className="w-4 h-4 rounded border-slate-300 disabled:opacity-50"
                   />
                   Enabled
                 </label>
@@ -280,13 +291,29 @@ export default function SsoSettingsPage() {
                   onChange={(e) => setProvider(e.target.value as Provider)}
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white"
                 >
-                  <option value="SAML">SAML 2.0 (ADFS, Okta, Entra)</option>
+                  <option value="SAML">SAML 2.0 (ADFS, Okta, Entra) — temporarily unavailable</option>
                   <option value="OIDC">OIDC (Google Workspace, Auth0, Azure AD)</option>
                 </select>
               </div>
 
               {provider === 'SAML' ? (
                 <div className="space-y-3">
+                  {/* Honest state — SAML login can't actually run in this build:
+                      the SAML library (passport-saml@3) was removed to remediate
+                      CVE-2025-54419, so the login + callback paths return 503 and
+                      the API blocks arming SAML. You can still store your config
+                      here so it's ready when SAML returns; use OIDC today. */}
+                  <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+                    <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-800 font-medium leading-relaxed">
+                      <span className="font-bold">SAML sign-in is temporarily unavailable.</span>{' '}
+                      The SAML library was removed to remediate a security advisory
+                      (CVE-2025-54419) and returns in a follow-up. You can save your
+                      SAML configuration below so it&rsquo;s ready when it ships, but it
+                      can&rsquo;t be enabled yet — use <span className="font-bold">OIDC</span> or
+                      email + password for now.
+                    </p>
+                  </div>
                   <Field
                     label="Metadata URL / SSO Entry Point"
                     value={metadataUrl}
