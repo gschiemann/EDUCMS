@@ -32,6 +32,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 import { useUIStore } from '@/store/ui-store';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
+import { getAiTemplatePrompts } from '@cms/api-types';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 import { getAiStatusSource } from '@/components/ai/AiGenerateButton';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
@@ -94,6 +95,22 @@ const CATEGORY_TABS = [
   { key: 'ATHLETICS', label: 'Athletics' },
   { key: 'HOLIDAYS',  label: 'Holidays' },
 ];
+
+// The "Athletics" tab has no presets tagged with the literal 'ATHLETICS'
+// category. The game-day boards (preset-hs-ath-gameday / -standings /
+// -biggame / -broadcast) are tagged 'EVENTS', and the live scoreboards are
+// the SPORTS-vertical 'scoreboard' presets. This predicate gathers the
+// athletics slate so the tab resolves to real boards rather than a blank
+// page. Match on id-prefix / category / name so future athletics boards
+// land here without another code change.
+function isAthleticsPreset(t: { id?: string; name?: string; category?: string }): boolean {
+  const id = (t.id || '').toLowerCase();
+  const name = (t.name || '').toLowerCase();
+  const cat = (t.category || '').toUpperCase();
+  if (id.startsWith('preset-hs-ath-')) return true;
+  if (id.includes('scoreboard') || cat === 'SCOREBOARD' || cat === 'ATHLETICS') return true;
+  return /\b(athletic|athletics|game ?day|scoreboard|big game)\b/.test(name);
+}
 
 // Holiday sub-filter — shown only when the Holidays category tab is
 // active. Each entry maps to the `variant` value baked into the
@@ -586,6 +603,17 @@ export default function TemplatesPage() {
     }
   }, [aiCandidates, aiInteractive, createFromCandidate, closeAiModal, openInBuilder]);
 
+  // Human label for a category key — reads the vertical-aware tab set
+  // (same source the filter buttons render from) so the empty-state copy
+  // matches the operator's vocabulary. Falls back to the raw key.
+  const categoryLabel = (key: string): string => {
+    if (!key) return 'matching';
+    const cats = (tenantCopy.templateCategories && tenantCopy.templateCategories.length > 0)
+      ? tenantCopy.templateCategories
+      : CATEGORY_TABS;
+    return cats.find((c) => c.key === key)?.label || key;
+  };
+
   const q = searchQuery.trim().toLowerCase();
   const filtered = (templates || []).filter((t: Template) => {
     // Hide letterboxed portrait presets — see LETTERBOXED_PORTRAIT_PRESETS
@@ -603,7 +631,16 @@ export default function TemplatesPage() {
     // that.") Every vertical's category set includes a KIOSK tab, so touch
     // stays reachable in all verticals.
     if (t.category === 'KIOSK' && activeCategory !== 'KIOSK') return false;
-    if (activeCategory && t.category !== activeCategory) return false;
+    // ATHLETICS tab — no preset is tagged with the literal 'ATHLETICS'
+    // category; the game-day/scoreboard boards live under 'EVENTS' (the
+    // 4 `preset-hs-ath-*` stadium boards) plus the SPORTS-vertical
+    // scoreboard presets. Map the tab to those so clicking "Athletics"
+    // shows the gameday slate instead of a blank page. (2026-06-26 fix.)
+    if (activeCategory === 'ATHLETICS') {
+      if (!isAthleticsPreset(t)) return false;
+    } else if (activeCategory && t.category !== activeCategory) {
+      return false;
+    }
     if (activeLevel) {
       // UNIVERSAL (or missing) is always shown — it's grade-agnostic.
       const lvl = (t.schoolLevel || 'UNIVERSAL').toUpperCase();
@@ -1068,22 +1105,14 @@ export default function TemplatesPage() {
                 />
 
                 <div className="flex flex-wrap gap-2">
-                  {(aiInteractive
-                    ? [
-                        'Wi-Fi info screen with QR code and password',
-                        'Cafeteria menu with tap-to-see-allergens',
-                        'Library map with tap on each section',
-                        'After-school programs picker',
-                        'Front-desk visitor sign-in kiosk',
-                      ]
-                    : [
-                        'Welcome lobby board with logo, clock and weather',
-                        'Daily announcements ticker with photo strip',
-                        'Event countdown with a big hero image',
-                        'Cafeteria menu of the day',
-                        'Staff spotlight with rotating quotes',
-                      ]
-                  ).map((suggestion) => (
+                  {/* Vertical-aware suggestion chips — Sports gets stadium /
+                      concourse examples, restaurants get menu examples, etc.
+                      Falls back to neutral copy for an unknown vertical.
+                      (2026-06-26 fix — was hard-coded K-12 on every vertical.) */}
+                  {(() => {
+                    const prompts = getAiTemplatePrompts(tenantCopy.vertical);
+                    return aiInteractive ? prompts.kiosk : prompts.signage;
+                  })().map((suggestion: string) => (
                     <button
                       key={suggestion}
                       type="button"
@@ -1371,6 +1400,33 @@ export default function TemplatesPage() {
 
       {isLoading ? (
         <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>
+      ) : (systemTemplates.length === 0 && customTemplates.length === 0 && (activeCategory || searchQuery.trim())) ? (
+        // Category/search empty-state — never let a filter render a blank
+        // page (the Athletics tab used to do exactly that). Tells the
+        // operator nothing matched and offers the two escape hatches.
+        // (2026-06-26 fix.)
+        <div className="bg-white rounded-2xl border-2 border-dashed border-slate-200 p-16 text-center">
+          <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <LayoutTemplate className="w-8 h-8 text-slate-300" />
+          </div>
+          <p className="text-sm font-semibold text-slate-500">
+            {searchQuery.trim()
+              ? `No templates match "${searchQuery.trim()}"`
+              : `No ${categoryLabel(activeCategory).toLowerCase()} templates yet`}
+          </p>
+          <p className="text-xs text-slate-400 mt-1">
+            Try another category, clear your search, or generate one with AI.
+          </p>
+          <div className="flex items-center justify-center gap-2 mt-5">
+            <button
+              type="button"
+              onClick={() => { setActiveCategory(''); setSearchQuery(''); }}
+              className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white border border-slate-200 text-slate-600 hover:border-slate-300 transition"
+            >
+              Show all templates
+            </button>
+          </div>
+        </div>
       ) : (
         <>
           {systemTemplates.length > 0 && (

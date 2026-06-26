@@ -6,7 +6,7 @@ import {
   Plus, Layers, Settings2, Keyboard, Undo2, Redo2, ZoomIn, ZoomOut, Grid3x3, Magnet, Ruler,
   Palette, Image as ImageIcon, X, Paintbrush,
   Copy, Lock, Unlock, ChevronUp, ChevronDown, Trash2,
-  AlignLeft, AlignCenter, AlignRight,
+  AlignLeft, AlignCenter, AlignRight, AlignJustify,
   Bold, Italic, Underline, Strikethrough,
   RefreshCw, Maximize2, Clock, Thermometer, Gauge, Calendar, Globe, MousePointer,
   Layers3, Sparkles,
@@ -1180,6 +1180,72 @@ function BuilderBottomBar() {
                   className="absolute inset-0 opacity-0 cursor-pointer"
                 />
               </label>
+
+              {/* Brand-color presets — resolve to the per-template brand kit
+                  (BuilderCanvas scopes --brand-primary / --brand-accent to
+                  [data-template-canvas]). Stored as the literal CSS var string
+                  so a brand recolor live-updates every field that picked it.
+                  Satisfies the Editability Standard's "Brand primary / accent"
+                  requirement on every color field. */}
+              {smallBtn(
+                'Brand primary color',
+                () => setFieldStyleProp('color', 'var(--brand-primary)'),
+                <span
+                  className="w-3.5 h-3.5 rounded-full border border-slate-300"
+                  style={{ background: 'var(--brand-primary, #4f46e5)' }}
+                />,
+                false,
+                curFieldStyle.color === 'var(--brand-primary)',
+              )}
+              {smallBtn(
+                'Brand accent color',
+                () => setFieldStyleProp('color', 'var(--brand-accent)'),
+                <span
+                  className="w-3.5 h-3.5 rounded-full border border-slate-300"
+                  style={{ background: 'var(--brand-accent, #ec4899)' }}
+                />,
+                false,
+                curFieldStyle.color === 'var(--brand-accent)',
+              )}
+
+              <div className="w-px h-5 bg-slate-200 mx-0.5" />
+
+              {/* Text alignment — cycles left → center → right → justify.
+                  Writes _styles[field].textAlign, applied by BuilderZone. */}
+              {smallBtn(
+                `Align: ${curFieldStyle.textAlign || 'left'} (click to cycle)`,
+                () => {
+                  const cur = curFieldStyle.textAlign || 'left';
+                  const next = cur === 'left' ? 'center' : cur === 'center' ? 'right' : cur === 'right' ? 'justify' : 'left';
+                  setFieldStyleProp('textAlign', next === 'left' ? undefined : next);
+                },
+                curFieldStyle.textAlign === 'center'
+                  ? <AlignCenter className="w-3.5 h-3.5" />
+                  : curFieldStyle.textAlign === 'right'
+                    ? <AlignRight className="w-3.5 h-3.5" />
+                    : curFieldStyle.textAlign === 'justify'
+                      ? <AlignJustify className="w-3.5 h-3.5" />
+                      : <AlignLeft className="w-3.5 h-3.5" />,
+                false,
+                !!curFieldStyle.textAlign,
+              )}
+
+              {/* Line-height — steps 1.0 → 2.0 in 0.1 increments. */}
+              <div className="flex items-center ml-0.5" title="Line height">
+                {smallBtn('Tighter line height', () => {
+                  const cur = typeof curFieldStyle.lineHeight === 'number' ? curFieldStyle.lineHeight : 1.4;
+                  const next = Math.round(Math.max(1, cur - 0.1) * 10) / 10;
+                  setFieldStyleProp('lineHeight', next === 1.4 ? undefined : next);
+                }, <span className="text-base leading-none font-semibold">−</span>)}
+                <span className="h-8 w-8 px-1 text-[10px] flex items-center justify-center rounded-md bg-white border border-slate-200 tabular-nums" aria-label="Line height value">
+                  {typeof curFieldStyle.lineHeight === 'number' ? curFieldStyle.lineHeight.toFixed(1) : '1.4'}
+                </span>
+                {smallBtn('Looser line height', () => {
+                  const cur = typeof curFieldStyle.lineHeight === 'number' ? curFieldStyle.lineHeight : 1.4;
+                  const next = Math.round(Math.min(2, cur + 0.1) * 10) / 10;
+                  setFieldStyleProp('lineHeight', next === 1.4 ? undefined : next);
+                }, <span className="text-base leading-none font-semibold">+</span>)}
+              </div>
 
               {Object.keys(curFieldStyle).length > 0 && smallBtn(
                 'Reset field overrides',

@@ -413,3 +413,207 @@ export const VERTICAL_TEMPLATE_CATEGORIES: Record<Vertical, ReadonlyArray<{ key:
     { key: 'GIVING',  label: 'Giving' },
   ],
 };
+
+// Per-vertical example prompts for the "Generate a template with AI" modal.
+// `kiosk` = touch-kiosk suggestions (tap-driven scenes); `signage` =
+// passive board suggestions. The chips were hard-coded K-12 ("Cafeteria
+// menu / Library map / After-school programs / Front-desk visitor sign-in")
+// on EVERY vertical incl. Sports — these make them vertical-aware. Keyed by
+// the existing `Vertical` enum so it stays in lockstep with the rest of the
+// per-vertical maps above. Callers fall back to NEUTRAL_AI_TEMPLATE_PROMPTS
+// for an unknown / unset vertical.
+export const VERTICAL_AI_TEMPLATE_PROMPTS: Record<Vertical, { kiosk: ReadonlyArray<string>; signage: ReadonlyArray<string> }> = {
+  K12: {
+    kiosk: [
+      'Wi-Fi info screen with QR code and password',
+      'Cafeteria menu with tap-to-see-allergens',
+      'Library map with tap on each section',
+      'After-school programs picker',
+      'Front-desk visitor sign-in kiosk',
+    ],
+    signage: [
+      'Welcome lobby board with logo, clock and weather',
+      'Daily announcements ticker with photo strip',
+      'Event countdown with a big hero image',
+      'Cafeteria menu of the day',
+      'Staff spotlight with rotating quotes',
+    ],
+  },
+  GYM: {
+    kiosk: [
+      'Class schedule with tap to see today\'s sessions',
+      'Membership tiers with tap-to-compare',
+      'Wi-Fi and locker info screen with QR code',
+      'Personal-trainer picker with bios',
+    ],
+    signage: [
+      'Today\'s class schedule board with instructor photos',
+      'New-member promo with a big hero image',
+      'Personal-training spotlight with rotating testimonials',
+      'Gym hours and amenities welcome board',
+    ],
+  },
+  RETAIL: {
+    kiosk: [
+      'Store directory with tap on each department',
+      'Loyalty sign-up kiosk with QR code',
+      'Product lookbook with tap to browse',
+      'Today\'s deals picker',
+    ],
+    signage: [
+      'Weekend sale board with big price callouts',
+      'New-arrivals lookbook with rotating photos',
+      'Loyalty program promo with QR code',
+      'Seasonal storefront welcome board',
+    ],
+  },
+  CORPORATE: {
+    kiosk: [
+      'Lobby check-in kiosk with visitor sign-in',
+      'Conference-room finder with tap on each room',
+      'Building directory with tap to search',
+      'Wi-Fi and guest info screen with QR code',
+    ],
+    signage: [
+      'Lobby welcome board with logo, clock and news ticker',
+      'Conference-room schedule board',
+      'Internal comms board with announcements and KPIs',
+      'Visitor welcome board for today\'s meetings',
+    ],
+  },
+  QSR: {
+    kiosk: [
+      'Order kiosk with tap-to-build a combo',
+      'Loyalty sign-up screen with QR code',
+      'Allergen and calorie info picker',
+      'Today\'s deals kiosk',
+    ],
+    signage: [
+      'Digital menu board with combos and prices',
+      'Limited-time-offer promo with a big hero shot',
+      'Loyalty program board with QR code',
+      'Drive-thru order-here / pay-here board',
+    ],
+  },
+  FASHION: {
+    kiosk: [
+      'Lookbook with tap to browse this season',
+      'Style finder with tap on each category',
+      'Loyalty sign-up kiosk with QR code',
+      'Store directory with tap on each floor',
+    ],
+    signage: [
+      'New-collection lookbook with rotating editorial photos',
+      'Seasonal sale board with bold price callouts',
+      'Brand-story welcome board with logo and hero image',
+      'Window-display promo with a single hero look',
+    ],
+  },
+  BAR: {
+    kiosk: [
+      'Tap list with tap to see each beer\'s ABV and notes',
+      'Tonight\'s events picker',
+      'Drink-specials menu with tap-to-see ingredients',
+      'Wi-Fi info screen with QR code',
+    ],
+    signage: [
+      'Tap-list board with ABV, brewery and price',
+      'Happy-hour specials board with a bold headline',
+      'Tonight\'s live-music / events board',
+      'Big-game watch-party board with the matchup',
+    ],
+  },
+  HEALTHCARE: {
+    kiosk: [
+      'Patient check-in kiosk with tap-to-start',
+      'Department directory with tap to find a clinic',
+      'Wayfinding map with tap on each wing',
+      'Wi-Fi and visitor info screen with QR code',
+    ],
+    signage: [
+      'Waiting-room board with now-serving and wait times',
+      'Department directory and wayfinding board',
+      'Patient-education board with rotating health tips',
+      'Lobby welcome board with clock and hours',
+    ],
+  },
+  HOSPITALITY: {
+    kiosk: [
+      'Guest check-in kiosk with tap-to-start',
+      'Property map with tap on each amenity',
+      'Today\'s events picker',
+      'Concierge info screen with Wi-Fi QR code',
+    ],
+    signage: [
+      'Lobby welcome board with logo, clock and local weather',
+      'Today\'s events and meetings board',
+      'Amenities and dining-hours board',
+      'Wayfinding board with directions to key areas',
+    ],
+  },
+  RESTAURANT: {
+    kiosk: [
+      'Menu with tap to see each dish\'s ingredients and allergens',
+      'Wine list with tap-to-pair',
+      'Reservation / waitlist kiosk with QR code',
+      'Tonight\'s specials picker',
+    ],
+    signage: [
+      'Dinner menu board with sections and prices',
+      'Tonight\'s specials board with a hero plating shot',
+      'Wine-and-bar board with by-the-glass pours',
+      'Prix-fixe / chef\'s-tasting board',
+    ],
+  },
+  SPORTS: {
+    kiosk: [
+      'Concourse wayfinding kiosk with tap on each section',
+      'Tonight\'s matchup info screen with QR to tickets',
+      'Concessions menu with tap-to-see each stand',
+      'Fan Wi-Fi and stadium info screen with QR code',
+    ],
+    signage: [
+      'Stadium scoreboard with home/away score, clock and period',
+      'Game-day matchup board with team records and kickoff countdown',
+      'Sponsor rotator strip for the ribbon board',
+      'Concourse concessions board with stands and prices',
+    ],
+  },
+  WORSHIP: {
+    kiosk: [
+      'Welcome kiosk with tap to find today\'s service',
+      'Ministry directory with tap on each group',
+      'Giving kiosk with QR code',
+      'Campus map with tap on each room',
+    ],
+    signage: [
+      'Service-times welcome board with logo and clock',
+      'This-week ministries and events board',
+      'Sermon-series board with a hero image',
+      'Giving thermometer board toward a goal',
+    ],
+  },
+};
+
+// Neutral fallback for an unknown / unset vertical — generic enough for any
+// venue so a board still gets sensible suggestion chips.
+export const NEUTRAL_AI_TEMPLATE_PROMPTS: { kiosk: ReadonlyArray<string>; signage: ReadonlyArray<string> } = {
+  kiosk: [
+    'Lobby check-in kiosk with three tap buttons',
+    'Directory with tap on each section',
+    'Wi-Fi info screen with QR code',
+    'Today\'s info picker',
+  ],
+  signage: [
+    'Welcome lobby board with logo, clock and weather',
+    'Announcements ticker with a rotating photo strip',
+    'Event countdown with a big hero image',
+    'Promo board with a bold headline and image',
+  ],
+};
+
+/** Resolve the AI-template suggestion chips for a vertical, with fallback. */
+export function getAiTemplatePrompts(vertical: Vertical | string | undefined): { kiosk: ReadonlyArray<string>; signage: ReadonlyArray<string> } {
+  const v = vertical as Vertical;
+  return (v && VERTICAL_AI_TEMPLATE_PROMPTS[v]) || NEUTRAL_AI_TEMPLATE_PROMPTS;
+}

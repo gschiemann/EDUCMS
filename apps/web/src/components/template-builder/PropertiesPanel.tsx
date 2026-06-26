@@ -5870,11 +5870,13 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
           list.push(k);
           groups.set(prefix, list);
         }
-        // 2026-05-08 — HS portrait widgets get the per-field style
-        // disclosure (font-size + color) wired in via StyleableField.
+        // 2026-05-08 — HS portrait widgets get per-field text styling:
+        // StyleableField forwards focus to BuilderBottomBar's format
+        // controls (font / size / B-I-U-S / color / brand / align /
+        // line-height), which BuilderZone applies via cfg._styles.
         // MS / Fitness widgets stick with plain TextField for now —
         // they don't have the runtime useTextStyleOverrides hook on
-        // their widget side, so showing the disclosure would lie about
+        // their widget side, so per-field styling would lie about
         // what works.
         const isHsWidget = typeof zone.widgetType === 'string' && zone.widgetType.startsWith('HS_');
         const styleSetter = (s: FieldStyleMap) => setField({ __styles: s });
@@ -6230,11 +6232,14 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
 // the stage's DOM and applies inline styles on top of the class
 // defaults at runtime.
 //
-// On the editor side, each text field grows a small "Style" disclosure
-// directly under the input — operator clicks it to reveal the size /
-// color / weight controls. Empty / cleared inputs delete the matching
-// override key so the CSS class default returns. Wrapping all sites is
-// done via the StyleableField component below; both single-line and
+// On the editor side, focusing a StyleableField input (or clicking the
+// matching text on the canvas) sets the builder store's activeFieldName,
+// which lights up the per-field format controls in BuilderShell's
+// persistent BuilderBottomBar (font / size / B-I-U-S / color / brand-color
+// presets / alignment / line-height). Those write `cfg._styles[fieldKey]`,
+// which BuilderZone injects as scoped CSS at render time. Clearing a value
+// deletes the matching override key so the CSS class default returns. All
+// call sites use the StyleableField component below; both single-line and
 // multi-line variants exist.
 
 // Schema parity with `apps/web/src/components/widgets/hs/useTextStyleOverrides.ts#TextStyleOverride`.
@@ -6288,112 +6293,13 @@ function updateFieldStyleMap(
   return next;
 }
 
-/** Per-field text formatting toolbar — same component set the custom
- *  TEXT widget uses (FontFamilyField + FontSizeField + FormatToggles +
- *  LineHeightField + ColorField). Every dimension is scoped to ONE
- *  data-field on an HS widget via the `__styles` map; an empty value
- *  removes the override and lets the CSS class default surface again.
- *
- *  Always visible — no disclosure. Operator complained the previous
- *  hidden <details> made them think the feature didn't exist. */
-function StyleDisclosure({
-  fieldName,
-  styles,
-  onStylesChange,
-}: {
-  fieldName: string;
-  styles: FieldStyleMap | undefined;
-  onStylesChange: (next: FieldStyleMap) => void;
-}) {
-  const cur = readFieldStyle(styles, fieldName);
-  const hasAny = Object.keys(cur).length > 0;
-  const setProp = (prop: FieldStyleProp, value: number | string | undefined) => {
-    onStylesChange(updateFieldStyleMap(styles, fieldName, prop, value));
-  };
-  // Resolve the current state of B/I/U/S from the style override.
-  const isBold = (cur.fontWeight ?? 0) >= 700;
-  const isItalic = cur.fontStyle === 'italic';
-  const td = cur.textDecoration || '';
-  const isUnderline = td.includes('underline');
-  const isStrike = td.includes('line-through');
-  // Recompute the textDecoration string when a toggle flips.
-  const updateDecoration = (nextU: boolean, nextS: boolean) => {
-    const parts: string[] = [];
-    if (nextU) parts.push('underline');
-    if (nextS) parts.push('line-through');
-    setProp('textDecoration', parts.length ? (parts.join(' ') as any) : undefined);
-  };
-  return (
-    <div className="mt-1.5 mb-1.5 rounded-lg border border-slate-200/60 bg-slate-50/60 p-2 space-y-2">
-      <div className="text-[9px] font-bold uppercase tracking-widest text-slate-400 flex items-center justify-between">
-        <span>Text style</span>
-        {hasAny && (
-          <button
-            type="button"
-            onClick={() => {
-              const next = { ...(styles || {}) };
-              delete next[fieldName];
-              onStylesChange(next);
-            }}
-            className="text-[9px] font-bold text-indigo-500 hover:text-rose-500 transition-colors px-1 py-0.5 rounded hover:bg-rose-50"
-            title="Reset all overrides on this field"
-          >
-            ↺ Reset
-          </button>
-        )}
-      </div>
-      <FontFamilyField
-        label="Font"
-        value={cur.fontFamily || ''}
-        onChange={(v) => setProp('fontFamily', v || undefined)}
-      />
-      <FontSizeField
-        label="Size"
-        value={cur.fontSize ?? null}
-        onChange={(v) => setProp('fontSize', v)}
-        getMeasuredSize={() => {
-          if (typeof document === 'undefined') return null;
-          // Find the rendered text element in the preview by its
-          // data-field attribute. Excludes the property panel itself.
-          const els = document.querySelectorAll<HTMLElement>(`[data-field="${fieldName}"]`);
-          for (const el of Array.from(els)) {
-            if (el.closest('[data-properties-panel]')) continue;
-            const fs = parseFloat(getComputedStyle(el).fontSize);
-            if (Number.isFinite(fs)) return fs;
-          }
-          return null;
-        }}
-      />
-      <FormatToggles
-        bold={isBold}
-        italic={isItalic}
-        underline={isUnderline}
-        strikethrough={isStrike}
-        onChange={(patch) => {
-          if ('bold' in patch) setProp('fontWeight', patch.bold ? 800 : undefined);
-          if ('italic' in patch) setProp('fontStyle', patch.italic ? 'italic' : undefined);
-          if ('underline' in patch) updateDecoration(!!patch.underline, isStrike);
-          if ('strikethrough' in patch) updateDecoration(isUnderline, !!patch.strikethrough);
-        }}
-      />
-      <LineHeightField
-        value={typeof cur.lineHeight === 'number' ? cur.lineHeight : 1.4}
-        onChange={(v) => setProp('lineHeight', v)}
-      />
-      <ColorField
-        label="Text color"
-        value={cur.color || ''}
-        onChange={(v) => setProp('color', v || undefined)}
-      />
-      <ColorField
-        label="Highlight"
-        value={cur.backgroundColor || 'transparent'}
-        onChange={(v) => setProp('backgroundColor', v && v !== 'transparent' ? v : undefined)}
-        allowTransparent
-      />
-    </div>
-  );
-}
+// NOTE (2026-06-26): the former in-panel `StyleDisclosure` rich editor was
+// removed. It had ZERO JSX call sites and duplicated the per-field styling
+// that BuilderShell's persistent BuilderBottomBar already provides on field
+// focus (writing cfg._styles, applied by BuilderZone). Two competing editors
+// targeting two different style maps (__styles vs _styles) was the bug. The
+// bottom bar now carries every dimension — font / size / B-I-U-S / color /
+// brand-color presets / alignment / line-height — see BuilderBottomBar.
 
 /** Single-line TextField that lights up the BuilderBottomBar's per-field
  *  format toolbar on focus. The actual font / size / B-I-U-S / color
@@ -7355,13 +7261,13 @@ function HolidayPanelExtras({
           {group.fields.map((f) => {
             const current = values[f.key] ?? '';
             // 2026-05-08 — swap plain TextField/TextAreaField for the
-            // Styleable* wrappers so each field gets a 🎨 Style
-            // disclosure (font-size + color) just like the HS widgets.
-            // Operator's typed style values are forwarded by
-            // HolidayWidget into the iframe via postMessage and applied
-            // by _style-bridge.js as inline styles on the matching
-            // [data-field] element. fieldName is the data-field key
-            // (the same dotted-string the iframe-side bridge looks up).
+            // Styleable* wrappers so each field is stylable via the
+            // BuilderBottomBar per-field controls (font / size / B-I-U-S /
+            // color / brand / align / line-height), same as the HS widgets.
+            // Operator's style values are forwarded by HolidayWidget into
+            // the iframe via postMessage and applied by _style-bridge.js as
+            // inline styles on the matching [data-field] element. fieldName
+            // is the data-field key (the dotted-string the bridge looks up).
             return (
               // Wrapping div carries data-field-section="<fullKey>"
               // so the generic template-edit-field listener can scroll

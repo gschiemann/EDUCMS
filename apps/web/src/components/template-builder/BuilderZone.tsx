@@ -646,13 +646,22 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
           const rules: string[] = [];
           const fam = typeof s.fontFamily === 'string' && s.fontFamily.trim();
           const sz = typeof s.fontSize === 'number' && Number.isFinite(s.fontSize) ? s.fontSize : null;
+          // Color accepts a literal (#hex / rgb()) OR a brand token the
+          // bottom-bar writes as `var(--brand-primary)` / `var(--brand-accent)`.
+          // Those resolve against the per-template canvas vars (BuilderCanvas
+          // scopes them to [data-template-canvas]), so brand recolors live-update.
           const col = typeof s.color === 'string' && s.color.trim();
+          const lh = typeof s.lineHeight === 'number' && Number.isFinite(s.lineHeight) ? s.lineHeight : null;
+          const align = typeof s.textAlign === 'string' && ['left', 'center', 'right', 'justify'].includes(s.textAlign)
+            ? s.textAlign : null;
           const decorations: string[] = [];
           if (s.underline === true) decorations.push('underline');
           if (s.strikethrough === true) decorations.push('line-through');
           if (fam) rules.push(`font-family: ${fam} !important`);
           if (sz) rules.push(`font-size: ${sz}px !important`);
           if (col) rules.push(`color: ${col} !important`);
+          if (lh) rules.push(`line-height: ${lh} !important`);
+          if (align) rules.push(`text-align: ${align} !important`);
           if (s.bold === true) rules.push(`font-weight: 800 !important`);
           if (s.italic === true) rules.push(`font-style: italic !important`);
           if (decorations.length) rules.push(`text-decoration: ${decorations.join(' ')} !important`);
