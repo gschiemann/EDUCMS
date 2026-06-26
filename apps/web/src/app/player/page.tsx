@@ -6092,39 +6092,71 @@ function PlayerPage() {
               />;
             }
             return (
-              <img
+              // 2026-06-25 — FULL-BLEED FIT, the "looks great like every CMS"
+              // render. Two layers: (1) a blurred, zoomed COVER copy that fills
+              // the whole screen so there are never black letterbox bars, and
+              // (2) the sharp image on top in the operator's fit mode
+              // (--led-fit, default 'contain' = the WHOLE image, never cropped).
+              // This reconciles the two requirements that look contradictory —
+              // "don't cut anything off" AND "fill the screen edge-to-edge" —
+              // exactly how polished signage CMS handle off-aspect content.
+              // Taurus-safe: filter:blur + objectFit + transform:scale are all
+              // Chromium-53+ (LED floor is 83); no inset / gap / backdrop-filter.
+              // The blur layer renders for the ACTIVE slide only to keep the
+              // Taurus GPU light. When the fit is 'cover'/'fill' the sharp layer
+              // covers the whole screen and the blur is simply hidden behind it.
+              <div
                 key={item.id}
-                src={resUrl}
-                alt=""
                 className={classes}
-                // 2026-05-13 — inline-style fallback so the image renders
-                // even if Tailwind's `absolute top-0 right-0 bottom-0 left-0 w-full h-full
-                // object-contain` utilities fail to apply. Operator was
-                // seeing a black screen on a Taurus WebView with the
-                // image downloaded but invisible — the parent flex
-                // wrapper relies on Tailwind for sizing too. Two
-                // belts-and-suspenders: image element gets explicit
-                // absolute-fill, opacity flips by isActive so transitions
-                // still work.
                 style={{
                   position: 'absolute',
                   top: 0, left: 0, right: 0, bottom: 0,
                   width: '100%',
                   height: '100%',
-                  // 2026-06-25 — honor the LED canvas fit mode. --led-fit is
-                  // 'cover' on operator-configured canvas screens (FILL the
-                  // panel, like other CMS); unset elsewhere → 'contain'. Inline
-                  // style overrides the object-contain Tailwind class above.
-                  objectFit: 'var(--led-fit, contain)' as any,
+                  overflow: 'hidden',
+                  background: '#000',
                   opacity: isActive ? 1 : 0,
                   zIndex: isActive ? 10 : 0,
                   transition: trans === 'NONE' ? 'none' : 'opacity 1000ms ease-in-out',
                 }}
-                onError={() => {
-                  console.warn('[Player] image error, skipping:', resUrl);
-                  if (isActive) setCurrentIndex(prev => prev + 1);
-                }}
-              />
+              >
+                {isActive && (
+                  <img
+                    src={resUrl}
+                    alt=""
+                    aria-hidden="true"
+                    style={{
+                      position: 'absolute',
+                      top: 0, left: 0, right: 0, bottom: 0,
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      filter: 'blur(28px) brightness(0.6)',
+                      transform: 'scale(1.12)',
+                      zIndex: 0,
+                    }}
+                  />
+                )}
+                <img
+                  src={resUrl}
+                  alt=""
+                  // 2026-05-13 — inline-style belt-and-suspenders so the image
+                  // renders even if Tailwind utilities fail to apply on a Taurus
+                  // WebView. Honors the fit mode via --led-fit (default contain).
+                  style={{
+                    position: 'absolute',
+                    top: 0, left: 0, right: 0, bottom: 0,
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'var(--led-fit, contain)' as any,
+                    zIndex: 1,
+                  }}
+                  onError={() => {
+                    console.warn('[Player] image error, skipping:', resUrl);
+                    if (isActive) setCurrentIndex(prev => prev + 1);
+                  }}
+                />
+              </div>
             );
           })}
         </div>
