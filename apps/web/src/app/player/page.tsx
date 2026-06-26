@@ -3006,10 +3006,13 @@ function PlayerPage() {
           // var stays unset → 'contain' (unchanged for every regular kiosk).
           {
             const cf = (manifest as any).contentFit;
-            root.style.setProperty(
-              '--led-fit',
-              cf === 'contain' || cf === 'fill' || cf === 'cover' ? cf : 'cover',
-            );
+            if (cf === 'contain' || cf === 'cover' || cf === 'fill') {
+              root.style.setProperty('--led-fit', cf);
+            } else {
+              // No explicit operator choice → default to 'contain' (whole
+              // media, never clips) via the var fallback on the img/video.
+              root.style.removeProperty('--led-fit');
+            }
           }
         } catch { /* localStorage / DOM mutation guards */ }
       }

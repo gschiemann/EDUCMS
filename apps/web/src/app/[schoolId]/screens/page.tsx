@@ -2,7 +2,7 @@
 
 import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check, AlertCircle } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useUpdateScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout, useSetScreenOrientation, useSetScreenCanvas, useHardwareCatalog, useSetScreenHardwareModel, useSetScreenConsoleProfile } from '@/hooks/use-api';
+import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useUpdateScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout, useSetScreenOrientation, useSetScreenCanvas, useSetScreenContentFit, useHardwareCatalog, useSetScreenHardwareModel, useSetScreenConsoleProfile } from '@/hooks/use-api';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 import { ReturnToFleetBanner } from '@/components/screens/ReturnToFleetBanner';
@@ -367,6 +367,7 @@ function ScreenDiagnostics({ screen }: { screen: any }) {
   // one click without climbing a ladder.
   const setOrientation = useSetScreenOrientation();
   const setCanvas = useSetScreenCanvas();
+  const setContentFit = useSetScreenContentFit();
   const currentOrientation: string = screen?.orientation || 'LANDSCAPE';
   // 2026-05-26 — LED canvas (N-panel daisy-chain). Operator clicks a
   // panel count; we resolve to canvasW = 320 × N, canvasH = 1080.
@@ -377,6 +378,15 @@ function ScreenDiagnostics({ screen }: { screen: any }) {
   const currentPanelN: number | null =
     currentCanvasW && currentCanvasH === 1080 && currentCanvasW % 320 === 0
       ? currentCanvasW / 320
+      : null;
+  // 2026-06-25 — content fit for published media on the LED canvas.
+  // null = player default ('contain', whole media, never clips).
+  const currentContentFit: 'contain' | 'cover' | 'fill' | null =
+    (screen?.config && typeof screen.config === 'object'
+      && (screen.config.contentFit === 'contain'
+        || screen.config.contentFit === 'cover'
+        || screen.config.contentFit === 'fill'))
+      ? screen.config.contentFit
       : null;
   // 2026-05-27 — content tile-repeat UI picker removed from this card
   // (operator wanted score-repeat in the Ribbon Content panel as the
@@ -514,6 +524,50 @@ function ScreenDiagnostics({ screen }: { screen: any }) {
             </span>
           </div>
         </div>
+        {/* 2026-06-25 — Content fit: how published images/videos sit on the
+            LED canvas. Only shown when a canvas is set. Fit=contain (whole
+            media, may letterbox) · Fill=cover (fills, may crop edges) ·
+            Stretch=fill (fills exactly, may distort). Persists to
+            Screen.config.contentFit → manifest → player --led-fit CSS var. */}
+        {(currentCanvasW || currentCanvasH) ? (
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+              Image fit
+            </span>
+            <div className="flex items-center gap-1">
+              {([
+                { key: 'contain', label: 'Fit', tip: 'Fit — show the whole image/video (may leave bars on the sides)' },
+                { key: 'cover', label: 'Fill', tip: 'Fill — fill the panel edge-to-edge (may crop the top/bottom or sides)' },
+                { key: 'fill', label: 'Stretch', tip: 'Stretch — fill the panel exactly (may distort the image)' },
+              ] as const).map(({ key, label, tip }) => {
+                const active = currentContentFit === key
+                  || (currentContentFit === null && key === 'contain');
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setContentFit.mutate({ id: screen.id, contentFit: key });
+                    }}
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors ${
+                      active
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-indigo-50 hover:border-indigo-200'
+                    }`}
+                    title={tip}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            <span className="text-[10px] text-slate-400 ml-1">
+              {setContentFit.isPending && 'saving…'}
+              {setContentFit.isError && 'error'}
+            </span>
+          </div>
+        ) : null}
         {/* 2026-05-27 — Removed "Content tile-repeat" picker from screen
             settings. Operator: "we built the repeat of the score right
             into the [ribbon content] settings but then you added it
