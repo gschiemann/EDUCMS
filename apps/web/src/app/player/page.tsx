@@ -85,6 +85,49 @@ function nativeReload() {
 }
 
 /**
+ * Hard, cache-busting reload used by the stale-bundle / bundle-drift paths.
+ *
+ * Why not plain `window.location.reload()`: Android System WebView (the
+ * kiosk runtime, incl. the NovaStar Taurus Chromium-83 fork) is far more
+ * aggressive than desktop Chrome about re-serving the *same* URL from its
+ * HTTP cache on a reload — even when the document carries `no-store`. The
+ * symptom is exactly the launch-blocking bug we're fixing: a deploy ships,
+ * the kiosk "reloads", and the SAME stale JS comes back. Navigating to a
+ * URL that differs by one query param (`?_v=<ts>`) forces the WebView to
+ * treat it as a brand-new resource and fetch it fresh from the origin.
+ *
+ * Order of preference:
+ *   1. The native bridge (`EduCmsNative.reload()`) when present — the APK's
+ *      reload clears the WebView cache itself, so it's already a true hard
+ *      reload and preserves the existing URL (the APK owns the URL).
+ *   2. Otherwise, `location.replace()` to the same URL with a fresh `_v`
+ *      cache-buster. `replace` (not `assign`) keeps the history stack flat
+ *      so a kiosk can't accumulate back-entries over weeks of uptime.
+ *
+ * Existing query params (client=android, preview, fp overrides, etc.) are
+ * preserved; only `_v` is (re)written. `Date.now()` is the timestamp — this
+ * only ever runs in the browser, so it's deterministic enough.
+ */
+function hardCacheBustingReload() {
+  if (typeof window === 'undefined') return;
+  try {
+    const bridge = (window as any).EduCmsNative;
+    if (bridge && typeof bridge.reload === 'function') {
+      bridge.reload();
+      return;
+    }
+  } catch { /* fall through to location.replace */ }
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set('_v', String(Date.now()));
+    window.location.replace(url.toString());
+  } catch {
+    // URL API or replace() threw (ancient WebView) — last-resort plain reload.
+    try { window.location.reload(); } catch { /* noop */ }
+  }
+}
+
+/**
  * Phase D1.6 — touch-action URL safety helpers.
  *
  * Security review (2026-05-12) flagged HIGH: a rogue CONTRIBUTOR
@@ -1505,16 +1548,40 @@ function PlayerPage() {
   //      item back to the first — the content was about to restart from
   //      item 0 anyway, so picking up the new bundle there is invisible.
   //   2. Max-staleness cap (watcher): a screen that NEVER wraps (single
-  //      URL / solo item) can't hit a loop boundary, so once the bundle
-  //      has been known-stale longer than this cap we reload anyway —
-  //      a rare ~3s splash blip beats running indefinitely-old code.
-  //      The dashboard "Refresh kiosk page" push stays the instant
-  //      override for an urgent fix.
+  //      URL / solo item / single-board template) can't hit a loop
+  //      boundary, so once the bundle has been known-stale longer than
+  //      this cap we reload anyway. The dashboard "Refresh kiosk page"
+  //      push stays the instant override for an urgent fix.
+  //
+  // 2026-06-27 — LAUNCH-BLOCKING fix. The cap above used to be SIX HOURS,
+  // which meant any continuously-looping kiosk (a single board, a solo
+  // URL, a template-only screen) ran a known-stale bundle for up to 6h
+  // after a deploy — confirmed live on a 960×1080 LED that never picked
+  // up new player/emergency fixes. The loop-boundary reload only covers
+  // multi-distinct-item PLAYLISTS (the heartbeat effect requires
+  // playlist.items and skips single-distinct-item playlists), so a
+  // single-board screen had NOTHING but this cap. The WS REFRESH_WEB push
+  // doesn't help either: if a kiosk's WebSocket is flaky/down (the very
+  // symptom — emergencies arrive via the HTTP manifest poll but reloads
+  // don't), the WS-only push never lands.
+  //
+  // The cap is now ~12 minutes — roughly 1-2 typical playlist loops. A
+  // brief between-loop splash blip is the correct trade for a kiosk that
+  // is otherwise running stale code indefinitely. The watcher polls
+  // /api/build-info on its OWN interval (WS-independent), so this fires
+  // even when the socket is dead.
   // `bundleDriftSinceRef` = epoch ms when we first saw the server SHA
   // differ from ours (null = we're in sync). Read by both the watcher
   // and the playback heartbeat (different effects → must be a ref).
   const bundleDriftSinceRef = useRef<number | null>(null);
-  const MAX_BUNDLE_STALE_MS = 6 * 60 * 60 * 1000; // 6h
+  const MAX_BUNDLE_STALE_MS = 12 * 60 * 1000; // 12 min (~1-2 playlist loops)
+  // Reload-loop floor: epoch ms of the last bundle-drift reload we fired.
+  // Guarantees we NEVER reload more than once per MIN_BUNDLE_RELOAD_GAP_MS
+  // for the bundle-drift reason — so even if the server SHA never
+  // converges (regional CDN skew, a build-info env var that drifts), the
+  // kiosk degrades to "reload at most every ~10 min", not a crash-loop.
+  const lastBundleReloadAtRef = useRef<number>(0);
+  const MIN_BUNDLE_RELOAD_GAP_MS = 10 * 60 * 1000; // 10 min
 
   // 2026-05-15 — Web→Native liveness heartbeat. Operator (2026-05-15):
   // "i just saw my player disconnect and then start playing the url
@@ -3656,55 +3723,64 @@ function PlayerPage() {
           `[bundle-drift] mine=${myShaShort} server=${serverShaShort} — reloading in ${Math.round(delay / 1000)}s`,
         );
         scheduledReloadTimer = setTimeout(() => {
+          // Re-let the next poll schedule its own timer once this one
+          // resolves (reload or defer). Cleared in every branch below.
+          const clearTimer = () => { scheduledReloadTimer = null; };
+
           // Don't reload if there's an active emergency on screen —
           // that override is more important than picking up a JS fix.
           // The reloader will catch this on the next poll cycle.
           const cachedEm = readCachedEmergency();
           if (cachedEm) {
             console.log('[bundle-drift] emergency active — deferring reload');
-            scheduledReloadTimer = null;
+            clearTimer();
             return;
           }
-          // 2026-05-13 — never reload during playback. Operator: "once
-          // content is live, it stays live...even if the damn internet
-          // drops the player stays live with the content." A bundle-
-          // drift reload flashes back to the splash and replays from
-          // the first item — which the operator (correctly) called out
-          // as a "huge issue" that can't ever happen mid-content.
+          // Reload-loop floor (2026-06-27). If we already fired a
+          // bundle-drift reload very recently, do NOT fire again — the new
+          // bundle is presumably loading / just loaded and our baked-in SHA
+          // hasn't been refreshed in THIS still-running document. (After a
+          // successful reload the new document reads the new SHA and the
+          // drift clears.) This is the hard guarantee against a crash-loop
+          // if the server SHA never converges with ours (regional CDN skew,
+          // a build-info env var that drifts from the bundle's inlined SHA).
+          const sinceLastReload = Date.now() - lastBundleReloadAtRef.current;
+          if (lastBundleReloadAtRef.current && sinceLastReload < MIN_BUNDLE_RELOAD_GAP_MS) {
+            console.log('[bundle-drift] reloaded ' + Math.round(sinceLastReload / 1000) + 's ago — holding off (min gap ' + Math.round(MIN_BUNDLE_RELOAD_GAP_MS / 60000) + 'm)');
+            clearTimer();
+            return;
+          }
+          // 2026-05-13 — historically we NEVER reloaded during playback
+          // (operator: "once content is live, it stays live"). The flaw:
+          // a 24/7 single-board / solo-URL / template-only screen is ALWAYS
+          // "playing" and never hits a loop boundary, so it deferred the
+          // reload for the full 6h cap and ran ancient code — confirmed
+          // live on a 960×1080 LED that never picked up new player /
+          // emergency fixes (2026-06-27, launch-blocking).
           //
-          // If we're playing, defer entirely. The watcher polls again
-          // every 5 min; sooner or later the player will hit an idle
-          // state (paired but no schedule, all-clear from emergency,
-          // playlist exhausted) where reload IS safe. Until then, the
-          // operator gets uninterrupted content even when we've
-          // shipped a JS fix. phaseRef gives us the CURRENT phase at
-          // timer-fire time, not whatever it was when this useEffect
-          // last ran (which was at mount, so phase='registering').
+          // New policy: while playing, defer ONLY until the (now ~12 min)
+          // staleness cap, then force the reload. For a multi-item playlist
+          // the loop-boundary path in the heartbeat usually catches it
+          // first (invisible at the seam); this cap is the backstop for
+          // screens that can't wrap. A brief between-loop splash blip is
+          // the correct trade vs. indefinitely-stale code. phaseRef gives
+          // us the CURRENT phase at timer-fire time (mount-time phase was
+          // 'registering').
           if (phaseRef.current === 'playing') {
-            // Never flash mid-content — defer… UNLESS we've been running a
-            // known-stale bundle past the cap. A 24/7 single-item / URL
-            // screen never hits a loop boundary, so without this cap it
-            // would defer forever (the original bug). Past the cap, a rare
-            // ~3s reload is the lesser evil vs. indefinitely-old code.
             const staleMs = bundleDriftSinceRef.current ? Date.now() - bundleDriftSinceRef.current : 0;
             if (staleMs < MAX_BUNDLE_STALE_MS) {
-              console.log('[bundle-drift] content playing — deferring (' + Math.round(staleMs / 60000) + 'm stale; loop-boundary or ' + Math.round(MAX_BUNDLE_STALE_MS / 3600000) + 'h cap will catch it)');
-              scheduledReloadTimer = null;
+              console.log('[bundle-drift] content playing — deferring (' + Math.round(staleMs / 60000) + 'm stale; loop-boundary or ' + Math.round(MAX_BUNDLE_STALE_MS / 60000) + 'm cap will catch it)');
+              clearTimer();
               return;
             }
-            console.warn('[bundle-drift] stale ' + Math.round(staleMs / 3600000) + 'h while continuously playing — forcing reload (staleness cap)');
+            console.warn('[bundle-drift] stale ' + Math.round(staleMs / 60000) + 'm while continuously playing — forcing reload (staleness cap)');
             // fall through to the reload below
           }
-          try {
-            const bridge = (window as any).EduCmsNative;
-            if (bridge && typeof bridge.reload === 'function') {
-              bridge.reload();
-            } else {
-              window.location.reload();
-            }
-          } catch (e) {
-            console.warn('[bundle-drift] reload threw:', (e as Error)?.message);
-          }
+          // Record BEFORE we navigate away so the floor is honored even if
+          // the reload is async / the document survives momentarily.
+          lastBundleReloadAtRef.current = Date.now();
+          clearTimer();
+          hardCacheBustingReload();
         }, delay);
       } catch {
         // Tolerated — /api/build-info will be re-polled on the next tick.
@@ -4474,15 +4550,16 @@ function PlayerPage() {
         if (
           idx === sorted.length - 1 &&
           bundleDriftSinceRef.current &&
-          !readCachedEmergency()
+          !readCachedEmergency() &&
+          // Honor the reload-loop floor here too — if a watcher reload just
+          // fired, don't immediately re-fire at the next seam.
+          (!lastBundleReloadAtRef.current ||
+            Date.now() - lastBundleReloadAtRef.current >= MIN_BUNDLE_RELOAD_GAP_MS)
         ) {
           console.log('[bundle-drift] loop boundary reached with new bundle pending — reloading at the seam');
-          try {
-            const bridge = (window as any).EduCmsNative;
-            if (bridge && typeof bridge.reload === 'function') bridge.reload();
-            else if (typeof window !== 'undefined') window.location.reload();
-            return;
-          } catch { /* reload threw — fall through to a normal advance */ }
+          lastBundleReloadAtRef.current = Date.now();
+          hardCacheBustingReload();
+          return;
         }
         setCurrentIndex((prev) => prev + 1);
       }
