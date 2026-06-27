@@ -24,6 +24,7 @@
 import {
   ARCHETYPE_IDS,
   THEMES,
+  bestTextColor,
   deriveThemeFromBrand,
   getTheme,
   resolveArchetype,
@@ -217,9 +218,16 @@ function mapTextConfig(
   const role = tokens.typeRole;
   const isDisplay = role === 'display' || role === 'headline';
   const content = copyForSlot(z.slot, copy, listIndex);
-  const hex = resolveTextHex(z, palette);
 
   const overImage = isImageBoard(archetype) || !!tokens.scrim;
+  // Text over a (dark) scrim must be a guaranteed-LEGIBLE color chosen against
+  // the scrim — NOT the theme's `inkInverse`, which on a dark theme resolves to
+  // near-black and renders invisible over the dark scrim. (Caught in render
+  // review 2026-06-26: hero/lower-third/poster headlines were black-on-black.)
+  const hex =
+    overImage && !tokens.isAccent
+      ? bestTextColor(theme.scrim?.color ?? '#0a0a0a')
+      : resolveTextHex(z, palette);
 
   if (z.slot === 'cta') {
     // Filled accent button. The renderer centers + pads via paddingMode.
