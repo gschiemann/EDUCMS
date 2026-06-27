@@ -19,6 +19,7 @@ import {
   TemplateCreateSchema, type TemplateCreateInput,
   TemplateGenerateTouchSchema, type TemplateGenerateTouchInput,
   TemplateGenerateTouchCandidatesSchema, type TemplateGenerateTouchCandidatesInput,
+  TemplateRefineSignageSchema, type TemplateRefineSignageInput,
   TemplateCreateFromCandidateSchema, type TemplateCreateFromCandidateInput,
   TemplateDuplicateSchema, type TemplateDuplicateInput,
   TemplateUpdateSchema, type TemplateUpdateInput,
@@ -1075,6 +1076,34 @@ export class TemplatesController {
       archetype: board.archetype,
     });
     return { template: mapTemplate(created), archetype: board.archetype, theme: board.theme };
+  }
+
+  // Wave 3 (2026-06-27) — CHAT-TO-EDIT. Refine an already-generated (unpersisted)
+  // engine candidate by a natural-language instruction. Returns a NEW candidate
+  // (same shape, carrying the updated spec) — NOT persisted; the operator still
+  // picks "Use this" to commit via create-from-candidate. A delta-prompt over
+  // the candidate's ArtDirectorSpec; the incoming spec is re-sanitized server-side.
+  @Post('refine-signage')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async refineSignage(
+    @Request() req: any,
+    @Body(new ZodValidationPipe(TemplateRefineSignageSchema)) body: TemplateRefineSignageInput,
+  ) {
+    const out = await this.ai.refineSignageBoard({
+      tenantId: req.user.tenantId,
+      userId: req.user.id,
+      spec: body.spec,
+      instruction: body.instruction,
+      screenWidth: body.screenWidth,
+      screenHeight: body.screenHeight,
+      vertical: body.vertical,
+    });
+    return {
+      candidates: [out.candidate],
+      engine: true,
+      refined: true,
+      ai: { source: out.source, usage: out.usage },
+    };
   }
 
   /**

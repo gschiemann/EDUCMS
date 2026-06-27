@@ -24,7 +24,7 @@ import {
   useAssets, usePlaylists, useAssetFolders,
   useTenantBranding, useApplyBrandToTemplates,
   useGenerateTouchTemplate, useExportTemplate, useImportTemplate,
-  useGenerateTouchCandidates, useCreateFromCandidate, type AiTemplateCandidate,
+  useGenerateTouchCandidates, useCreateFromCandidate, useRefineSignageBoard, type AiTemplateCandidate,
 } from '@/hooks/use-api';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
@@ -411,6 +411,11 @@ export default function TemplatesPage() {
   // Touch; a set is always non-touch signage.
   const [aiSetMode, setAiSetMode] = useState(false);
   const [aiPicking, setAiPicking] = useState<number | null>(null);
+  // Wave 3 — chat-to-edit. Which candidate's "Tweak" box is open, its text, and
+  // which one is currently refining (delta-prompt in flight).
+  const [aiTweakIdx, setAiTweakIdx] = useState<number | null>(null);
+  const [aiTweakText, setAiTweakText] = useState('');
+  const [aiRefiningIdx, setAiRefiningIdx] = useState<number | null>(null);
   // Esc-to-close — wired only when the modal is open so dashboard
   // keyboard shortcuts elsewhere aren't shadowed. Disabled while a
   // generation is in flight so the operator doesn't accidentally
@@ -548,6 +553,7 @@ export default function TemplatesPage() {
   const generateTouch = useGenerateTouchTemplate();
   const generateCandidates = useGenerateTouchCandidates();
   const createFromCandidate = useCreateFromCandidate();
+  const refineSignage = useRefineSignageBoard();
   const exportTemplate = useExportTemplate();
   const importTemplate = useImportTemplate();
 
@@ -628,6 +634,35 @@ export default function TemplatesPage() {
       setAiPicking(null);
     }
   }, [aiCandidates, aiInteractive, createFromCandidate, closeAiModal, openInBuilder]);
+
+  // Wave 3 — chat-to-edit. Refine candidate `index` by a natural-language tweak
+  // (delta-prompt over its spec) and REPLACE it in place. Closes the tweak box.
+  const refineCandidate = useCallback(async (index: number, instruction: string) => {
+    const candidate = aiCandidates[index];
+    const text = instruction.trim();
+    if (!candidate || !text || !candidate.spec) return;
+    setAiError(null);
+    setAiRefiningIdx(index);
+    try {
+      const res = await refineSignage.mutateAsync({
+        spec: candidate.spec,
+        instruction: text,
+        vertical: (tenantCopy.vertical || 'venue').toLowerCase(),
+      });
+      const refined = res?.candidates?.[0];
+      if (refined) {
+        setAiCandidates((prev) => prev.map((c, i) => (i === index ? refined : c)));
+        setAiTweakIdx(null);
+        setAiTweakText('');
+      } else {
+        setAiError('That change produced nothing usable. Try rephrasing it.');
+      }
+    } catch (e: any) {
+      setAiError(friendlyAiError(e));
+    } finally {
+      setAiRefiningIdx(null);
+    }
+  }, [aiCandidates, refineSignage, tenantCopy.vertical]);
 
   // Human label for a category key — reads the vertical-aware tab set
   // (same source the filter buttons render from) so the empty-state copy
@@ -1038,8 +1073,11 @@ export default function TemplatesPage() {
                   }`}
                 >
                   {aiCandidates.map((c, i) => {
-                    const label = ['Balanced', 'Bold', 'Detailed'][i] || `Option ${i + 1}`;
+                    const label = aiSetMode ? 'Your set' : (['Balanced', 'Bold', 'Detailed'][i] || `Option ${i + 1}`);
                     const picking = aiPicking === i;
+                    const tweakOpen = aiTweakIdx === i;
+                    const refining = aiRefiningIdx === i;
+                    const canTweak = !!c.spec; // engine candidates carry the spec
                     return (
                       <div
                         key={i}
@@ -1057,6 +1095,12 @@ export default function TemplatesPage() {
                           <span className="absolute top-1.5 left-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-600 text-white shadow">
                             {label}
                           </span>
+                          {refining && (
+                            <div className="absolute top-0 right-0 bottom-0 left-0 bg-white/70 backdrop-blur-sm flex flex-col items-center justify-center gap-1.5">
+                              <Loader2 className="w-5 h-5 animate-spin text-violet-600" />
+                              <span className="text-[10px] font-bold text-violet-700">Applying your change…</span>
+                            </div>
+                          )}
                         </div>
                         <div className="p-2.5 flex flex-col gap-2 grow">
                           <div>
@@ -1066,14 +1110,57 @@ export default function TemplatesPage() {
                               {c.scenes && c.scenes.length > 1 ? ` · ${c.scenes.length} scenes` : ''}
                             </p>
                           </div>
-                          <button
-                            onClick={() => pickCandidate(i)}
-                            disabled={aiPicking !== null}
-                            className="mt-auto w-full px-3 py-2 text-xs font-bold rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
-                          >
-                            {picking && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                            {picking ? 'Opening…' : 'Use this'}
-                          </button>
+                          {/* Wave 3 — chat-to-edit: tweak this board in plain English */}
+                          {canTweak && tweakOpen && (
+                            <div className="flex flex-col gap-1.5">
+                              <input
+                                autoFocus
+                                value={aiTweakText}
+                                onChange={(e) => setAiTweakText(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter' && aiTweakText.trim()) refineCandidate(i, aiTweakText); }}
+                                placeholder='e.g. "darker theme", "punchier headline", "add a stat"'
+                                disabled={refining}
+                                className="w-full px-2.5 py-1.5 text-[11px] rounded-lg bg-slate-50 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-60"
+                              />
+                              <div className="flex gap-1.5">
+                                <button
+                                  onClick={() => refineCandidate(i, aiTweakText)}
+                                  disabled={refining || !aiTweakText.trim()}
+                                  className="flex-1 px-2 py-1.5 text-[11px] font-bold rounded-lg bg-violet-600 text-white disabled:opacity-50 flex items-center justify-center gap-1"
+                                >
+                                  {refining ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                                  Apply
+                                </button>
+                                <button
+                                  onClick={() => { setAiTweakIdx(null); setAiTweakText(''); }}
+                                  disabled={refining}
+                                  className="px-2 py-1.5 text-[11px] font-bold rounded-lg bg-white border border-slate-200 text-slate-600 disabled:opacity-50"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                          <div className="mt-auto flex gap-1.5">
+                            {canTweak && !tweakOpen && (
+                              <button
+                                onClick={() => { setAiTweakIdx(i); setAiTweakText(''); setAiError(null); }}
+                                disabled={aiPicking !== null || aiRefiningIdx !== null}
+                                title="Refine this board by describing a change"
+                                className="px-2.5 py-2 text-xs font-bold rounded-lg bg-white border border-violet-200 text-violet-700 hover:bg-violet-50 disabled:opacity-50 flex items-center gap-1"
+                              >
+                                <Sparkles className="w-3.5 h-3.5" /> Tweak
+                              </button>
+                            )}
+                            <button
+                              onClick={() => pickCandidate(i)}
+                              disabled={aiPicking !== null || aiRefiningIdx !== null}
+                              className="flex-1 px-3 py-2 text-xs font-bold rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                            >
+                              {picking && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                              {picking ? 'Opening…' : 'Use this'}
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );

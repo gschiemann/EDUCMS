@@ -1869,6 +1869,9 @@ export class AiService {
       background: { bgColor?: string; bgGradient?: string; bgImage?: string };
       archetype: string;
       theme: string;
+      /** The art-director spec this candidate was built from — carried back so
+       *  chat-to-edit (refineSignageBoard) can patch it as a delta-prompt. */
+      spec: ArtDirectorSpec;
     }>;
     source: 'tenant' | 'platform';
     usage: { used: number; cap: number; resetAt: string } | null;
@@ -1977,6 +1980,7 @@ export class AiService {
       background: b.mapped.background,
       archetype: b.spec.archetype,
       theme: b.spec.theme,
+      spec: b.spec,
     }));
     return { candidates, source: resolved.source, usage };
   }
@@ -2009,6 +2013,7 @@ export class AiService {
       background: { bgColor?: string; bgGradient?: string; bgImage?: string };
       archetype: string;
       theme: string;
+      spec: ArtDirectorSpec;
     };
     source: 'tenant' | 'platform';
     usage: { used: number; cap: number; resetAt: string } | null;
@@ -2106,6 +2111,164 @@ export class AiService {
         background: core.mapped.background,
         archetype: core.spec.archetype,
         theme: forcedTheme,
+        spec: core.spec,
+      },
+      source: resolved.source,
+      usage,
+    };
+  }
+
+  /**
+   * Wave 3 (2026-06-27) — CHAT-TO-EDIT. Refine an existing art-directed board by
+   * a natural-language instruction. A DELTA-PROMPT (not a rebuild): the current
+   * spec + the tweak go to the model, which returns a patched spec; the engine
+   * re-derives geometry/type/contrast — so a tweak can never break the layout.
+   * Works for single boards AND multi-scene sets (the spec carries scenes). The
+   * INCOMING spec is untrusted (round-trips through the browser) → it is
+   * re-sanitized via parseArtDirectorSpec before the model ever sees it.
+   */
+  async refineSignageBoard(opts: {
+    tenantId: string;
+    userId?: string;
+    spec: any;
+    instruction: string;
+    screenWidth?: number;
+    screenHeight?: number;
+    vertical?: string;
+  }): Promise<{
+    candidate: {
+      name: string;
+      description?: string;
+      zones: any[];
+      scenes?: Array<{ name: string }>;
+      background: { bgColor?: string; bgGradient?: string; bgImage?: string };
+      archetype: string;
+      theme: string;
+      spec: ArtDirectorSpec;
+    };
+    source: 'tenant' | 'platform';
+    usage: { used: number; cap: number; resetAt: string } | null;
+  }> {
+    await this.checkFailureCap(opts.tenantId);
+    const resolved = await this.resolveProviderKey(opts.tenantId);
+    if (!resolved) {
+      throw new ServiceUnavailableException(
+        'AI is not configured. Add your provider API key in Settings → Integrations, or contact your admin.',
+      );
+    }
+    const instruction = (opts.instruction || '').trim();
+    if (!instruction) throw new BadRequestException('Tell the AI what to change.');
+    if (instruction.length > 500) throw new BadRequestException('Keep the change request under 500 characters.');
+
+    if ((await this.windowCount(this.RL_SUCCESS_PREFIX, opts.tenantId)) >= this.HOURLY_CAP) {
+      throw new BadRequestException(`Hit the hourly AI cap (${this.HOURLY_CAP} generations/hour). Try again later.`);
+    }
+    if (resolved.source === 'platform') {
+      const u = await this.readPlatformUsage(opts.tenantId);
+      if (u.used >= u.cap) {
+        throw new HttpException(
+          {
+            message: `Hit the monthly free AI cap (${u.cap} generations). Add your own provider key in Settings → AI provider for unlimited.`,
+            code: 'AI_CAP_REACHED',
+            cap: u.cap,
+            used: u.used,
+            resetAt: u.resetAt,
+          },
+          HttpStatus.PAYMENT_REQUIRED,
+        );
+      }
+    }
+
+    const affinity = getVerticalDesignAffinity(opts.vertical);
+    const fallback = { archetype: affinity.archetypes[0], theme: affinity.themes[0] };
+    // Trust boundary: re-sanitize the browser-supplied spec BEFORE the model
+    // sees it (clamps archetype/theme/copy lengths, drops anything unknown).
+    const currentSpec = parseArtDirectorSpec(opts.spec, fallback);
+    const sw = opts.screenWidth || 1920;
+    const sh = opts.screenHeight || 1080;
+    const system = prependVoices(
+      REFINE_SIGNAGE_SYSTEM_PROMPT,
+      opts.vertical,
+      await this.tenantBrandVoice(opts.tenantId),
+    );
+    const userPrompt = [
+      'CURRENT SPEC:',
+      JSON.stringify(currentSpec),
+      '',
+      `Operator's change request: ${instruction}`,
+      `Canvas: ${sw} × ${sh} px (${sh > sw ? 'portrait' : 'landscape'}).`,
+      '',
+      'Return the COMPLETE updated ArtDirectorSpec JSON only.',
+    ].join('\n');
+
+    const maxTokens = currentSpec.scenes && currentSpec.scenes.length ? 2600 : 900;
+    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, maxTokens);
+    const stripped = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+    let parsedJson: any;
+    try {
+      parsedJson = JSON.parse(stripped);
+    } catch {
+      this.logger.warn(`AI returned non-JSON for signage refine: ${stripped.slice(0, 200)}`);
+      throw new ServiceUnavailableException('AI returned an unparseable response. Try rephrasing your change.');
+    }
+    const spec = parseArtDirectorSpec(parsedJson, fallback);
+    const brand = await this.tenantBrandColors(opts.tenantId);
+    const mapped: MappedTemplate = artDirectorSpecToTemplate(spec, {
+      screenWidth: sw,
+      screenHeight: sh,
+      brandPrimaryHex: brand.primaryHex,
+      brandAccentHex: brand.accentHex,
+    });
+    const sanitized = sanitizeTouchTemplate({
+      name: mapped.name,
+      description: mapped.description,
+      zones: mapped.zones,
+      scenes: mapped.scenes,
+    });
+    if (!sanitized.zones.length) {
+      throw new ServiceUnavailableException('That change produced no usable layout. Try rephrasing it.');
+    }
+
+    await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
+    if (resolved.source === 'platform') {
+      try { await this.bumpPlatformUsage(opts.tenantId); }
+      catch (e: any) { this.logger.warn(`Platform usage bump failed: ${e?.message}`); }
+    }
+    let usage: { used: number; cap: number; resetAt: string } | null = null;
+    if (resolved.source === 'platform') {
+      const u = await this.readPlatformUsage(opts.tenantId);
+      usage = { used: u.used, cap: u.cap, resetAt: u.resetAt };
+    }
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'AI_SIGNAGE_BOARD_REFINED',
+        targetType: 'tenant',
+        targetId: opts.tenantId,
+        tenantId: opts.tenantId,
+        userId: opts.userId || null,
+        details: JSON.stringify({
+          vertical: opts.vertical || null,
+          instruction: instruction.slice(0, 200),
+          archetype: spec.archetype,
+          theme: spec.theme,
+          scenes: mapped.scenes?.length ?? 1,
+          provider: resolved.provider,
+          model: resolved.model,
+          source: resolved.source,
+        }),
+      },
+    }).catch(() => { /* audit best-effort */ });
+
+    return {
+      candidate: {
+        name: sanitized.name,
+        description: sanitized.description,
+        zones: sanitized.zones,
+        scenes: sanitized.scenes,
+        background: mapped.background,
+        archetype: spec.archetype,
+        theme: spec.theme,
+        spec,
       },
       source: resolved.source,
       usage,
@@ -2732,6 +2895,32 @@ For a multi-screen interactive kiosk, include "scenes": each entry is a FULL spe
 designed board, never an empty shell.
 
 Return JSON only — no preamble, no markdown fences, no commentary.`;
+
+// Wave 3 (2026-06-27) — CHAT-TO-EDIT. The operator has an existing board (its
+// ArtDirectorSpec) and types a natural-language tweak ("make the headline
+// bolder", "darker theme", "add a third stat", "punchier CTA"). The model
+// returns the COMPLETE updated spec — same shape + same rules as the art
+// director — changing ONLY what the instruction asks for. The engine then
+// re-derives geometry/type/contrast, so a tweak can never break the layout.
+const REFINE_SIGNAGE_SYSTEM_PROMPT = `You are EDITING an existing digital-signage board. You will be given its current
+ArtDirectorSpec (JSON) and ONE plain-language change request from the operator.
+
+Apply ONLY the requested change and return the COMPLETE, updated ArtDirectorSpec
+in the EXACT same shape. Keep everything the operator did NOT ask to change
+(archetype, theme, copy, accent, scenes) byte-for-byte unless the change clearly
+requires touching it. Examples:
+  - "darker / more premium" → change "theme" to a darker curated id (e.g. midnight-tech, neon-sports, qsr-appetite).
+  - "punchier headline" / "shorter" → rewrite copy.headline only.
+  - "add a stat" / "add an item" → add to copy.items (respecting the archetype).
+  - "make it a menu" / "use a big number" → change "archetype" to the right id.
+  - "different accent" → change "accentSlot".
+
+SAME HARD RULES as generation: NO coordinates, NO x/y/width/height, NO hex
+colors, NO font sizes — EVER. "archetype" must be one of the 9 ids; "theme" one
+of the 12 curated ids (or "brand"). headline stays REQUIRED and short.
+
+Return ONLY the updated ArtDirectorSpec JSON — no preamble, no markdown fences,
+no commentary.`;
 
 /**
  * Wave 2 — SAFE PARSER for the model's ArtDirectorSpec output. Zod-free

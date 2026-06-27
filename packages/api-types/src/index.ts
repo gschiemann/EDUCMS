@@ -600,6 +600,21 @@ export const TemplateGenerateTouchCandidatesSchema = z
   .passthrough();
 export type TemplateGenerateTouchCandidatesInput = z.infer<typeof TemplateGenerateTouchCandidatesSchema>;
 
+// Wave 3 (2026-06-27) — CHAT-TO-EDIT. Refine an existing art-directed board by a
+// natural-language instruction. `spec` is the ArtDirectorSpec the candidate was
+// built from (round-trips through the browser → re-sanitized server-side via
+// parseArtDirectorSpec, so it's accepted permissively here).
+export const TemplateRefineSignageSchema = z
+  .object({
+    instruction: BoundedText(500),
+    spec: z.any(),
+    screenWidth: z.number().optional(),
+    screenHeight: z.number().optional(),
+    vertical: BoundedText(40).optional(),
+  })
+  .passthrough();
+export type TemplateRefineSignageInput = z.infer<typeof TemplateRefineSignageSchema>;
+
 // Wave 2 (2026-06-26) — the background descriptor an engine candidate carries
 // so create-from-candidate can persist Template.bgColor/bgGradient/bgImage.
 export const TemplateBackgroundSchema = z

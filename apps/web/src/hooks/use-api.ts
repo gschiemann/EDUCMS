@@ -1348,6 +1348,9 @@ export interface AiTemplateCandidate {
   background?: { bgColor?: string; bgGradient?: string; bgImage?: string };
   archetype?: string;
   theme?: string;
+  /** Wave 3 — the ArtDirectorSpec this candidate was built from, so chat-to-edit
+   *  (refine-signage) can patch it as a delta-prompt. Present on engine candidates. */
+  spec?: any;
 }
 
 export interface AiGenerateCandidatesResponse {
@@ -1382,6 +1385,29 @@ export function useGenerateTouchCandidates() {
   >({
     mutationFn: (body) =>
       apiFetch<AiGenerateCandidatesResponse>('/templates/generate-touch/candidates', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+  });
+}
+
+// Wave 3 (2026-06-27) — CHAT-TO-EDIT. Refine an engine candidate by a
+// natural-language instruction; returns a NEW candidate (same shape, with the
+// updated spec) to replace it in the picker. Not persisted until "Use this".
+export function useRefineSignageBoard() {
+  return useMutation<
+    AiGenerateCandidatesResponse,
+    Error,
+    {
+      spec: any;
+      instruction: string;
+      screenWidth?: number;
+      screenHeight?: number;
+      vertical?: string;
+    }
+  >({
+    mutationFn: (body) =>
+      apiFetch<AiGenerateCandidatesResponse>('/templates/refine-signage', {
         method: 'POST',
         body: JSON.stringify(body),
       }),
