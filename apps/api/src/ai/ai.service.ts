@@ -60,12 +60,15 @@ import {
 } from '@cms/signage-design';
 import {
   isVertical,
+  VERTICAL_ALIASES,
+  getVerticalDesignAffinity,
   getTextFieldDescriptor,
   primaryTextFieldKey,
   TEXT_FIELDS,
   isRewriteOp,
   type RewriteOp,
   type TextFieldKind,
+  type VerticalDesignAffinity,
 } from '@cms/api-types';
 // SECURITY (audit-B4 fix, 2026-05-25) — AI-generated touch actions
 // can include `open-url` / `webhook` targets. Without an SSRF guard,
@@ -162,11 +165,13 @@ const VERTICAL_VOICE: Record<string, string> = {
   BAR:
     'AUDIENCE — a bar / taproom / nightclub: an adult crowd (21+). Voice: lively, social, fun, a little cheeky; happy-hour and game-day energy; tasteful, never reckless about alcohol.',
   RETAIL:
-    'AUDIENCE — a retail store: shoppers. Voice: clear and benefit-led, lightly promotional; drive footfall and highlight the offer without pressure.',
+    'AUDIENCE — a retail store: shoppers mid-browse. Voice: benefit-led and lightly urgent; lead with the deal or the must-have and make the offer impossible to miss — confident, never hard-sell. Sounds like "This weekend only — 30% off everything".',
   FASHION:
     'AUDIENCE — a fashion / boutique brand: style-conscious shoppers. Voice: chic, aspirational, trend-aware, minimal; let the product feel premium.',
   CORPORATE:
-    'AUDIENCE — a corporate lobby / internal comms: employees and visitors. Voice: polished, professional, concise, on-brand; informative over flashy.',
+    'AUDIENCE — a corporate lobby / internal comms: employees and visitors. Voice: confident, polished, and human; informative and on-brand; respect people\'s time — ONE clear takeaway per board, never corporate filler or jargon.',
+  VENUE:
+    'AUDIENCE — a general venue (school, gym, restaurant, store, office, or public space): a mixed walk-by audience. Voice: clear, friendly, and professional; scannable from across a room; lead with the single most useful message; no slang, no clickbait, no all-caps gimmicks.',
   HEALTHCARE:
     'AUDIENCE — a healthcare facility: patients, families, staff. Voice: calm, clear, reassuring, accessible; plain language; never alarmist or jokey.',
   HOSPITALITY:
@@ -203,7 +208,14 @@ function brandVoiceClause(v?: string | null): string {
 function prependVoices(base: string, vertical?: string, brandVoice?: string | null): string {
   const parts: string[] = [];
   const key = (vertical || '').trim().toUpperCase();
-  const v = key ? VERTICAL_VOICE[key] : undefined;
+  // Resolve in order: exact key → legacy alias (FITNESS→GYM) → VENUE generic
+  // fallback. The fallback closes the hole where an unset/'venue' tenant (or a
+  // legacy-alias vertical) shipped with ZERO voice guidance — the worst-case
+  // copy quality landed on exactly the new/unconfigured tenants.
+  const v =
+    VERTICAL_VOICE[key] ||
+    (VERTICAL_ALIASES[key] && VERTICAL_VOICE[VERTICAL_ALIASES[key]]) ||
+    VERTICAL_VOICE.VENUE;
   if (v) parts.push(v);
   const b = brandVoiceClause(brandVoice);
   if (b) parts.push(b);
@@ -1753,10 +1765,21 @@ export class AiService {
     );
     const sw = opts.screenWidth || 1920;
     const sh = opts.screenHeight || 1080;
+    // Per-vertical DESIGN AFFINITY (verticals.ts) — the layout + theme families
+    // that look on-brand for this industry. Used as BOTH a soft prompt hint
+    // (steer the model) AND the deterministic parse fallback (so an omitted/
+    // garbled pick lands on the vertical's own look, never cold corporate navy).
+    const affinity: VerticalDesignAffinity = getVerticalDesignAffinity(opts.vertical);
+    const affinityHint =
+      `VERTICAL DESIGN GUIDANCE — for this ${opts.vertical || 'venue'} board, PREFER ` +
+      `archetypes [${affinity.archetypes.join(', ')}] and themes [${affinity.themes.join(', ')}]. ` +
+      `Deviate only if the operator's description clearly calls for a different layout or mood.`;
     const userPrompt = [
       `Operator description: ${opts.prompt}`,
       `Vertical: ${opts.vertical || 'venue'}`,
       `Canvas: ${sw} × ${sh} px (${sh > sw ? 'portrait' : 'landscape'}).`,
+      '',
+      affinityHint,
       ...(directive ? ['', directive] : []),
       '',
       'Return ONLY the ArtDirectorSpec JSON. No coordinates, no hex, no font sizes. No preamble, no markdown fences.',
@@ -1774,7 +1797,12 @@ export class AiService {
       this.logger.warn(`AI returned non-JSON for signage spec: ${stripped.slice(0, 200)}`);
       throw new ServiceUnavailableException('AI returned an unparseable response. Try rephrasing your prompt.');
     }
-    const spec = parseArtDirectorSpec(parsedJson);
+    // Deterministic on-brand fallback: if the model omits/garbles archetype or
+    // theme, fall back to this vertical's first affinity pick, not cold corporate.
+    const spec = parseArtDirectorSpec(parsedJson, {
+      archetype: affinity.archetypes[0],
+      theme: affinity.themes[0],
+    });
 
     // Fetch the tenant brand palette so theme:'brand' (or any board) can ride
     // the venue's colors when the spec asks for it.
@@ -1873,7 +1901,11 @@ export class AiService {
       }
     }
 
-    const directives = SIGNAGE_CANDIDATE_DIRECTIVES.slice(0, count);
+    // Vertical-aware directives: derive each of the 3 takes' archetype from the
+    // vertical's affinity order so all candidates stay ON-vertical (no nonsensical
+    // menu-list for a worship board). Falls back to the static Balanced/Bold/
+    // Detailed directives for an unknown vertical.
+    const directives = signageCandidateDirectives(opts.vertical, count);
     const coreOpts = {
       tenantId: opts.tenantId,
       prompt,
@@ -2518,10 +2550,20 @@ ARCHETYPES — pick the ONE that fits the operator's intent:
   - "quote-spotlight"     — a large centered quote with attribution. For testimonials, worship verses, corporate values, quote-of-the-day. Put the quote in "headline", the attribution in "body".
   - "title-cta"           — a centered eyebrow + headline + supporting line + ONE call-to-action. The all-purpose announcement / welcome / event board.
 
-THEMES — pick ONE id (or "brand" to use the tenant's own brand colors):
-  clean-corporate, warm-school, neon-sports, qsr-appetite, minimal-luxury,
-  calm-clinic, fresh-fitness, worship-warm, bold-retail, sky-civic,
-  forest-campus, midnight-tech
+THEMES — pick the ONE whose MOOD matches the venue (or "brand" to use the
+tenant's own brand colors). Match the mood, do NOT default to clean-corporate:
+  - clean-corporate — crisp navy + white, professional. Offices, B2B, generic.
+  - warm-school     — friendly warm primary, approachable. K-12, campuses.
+  - neon-sports     — bold high-energy dark + electric accent. Stadiums, gyms, hype.
+  - qsr-appetite    — warm crave-able dark + amber/red. Fast food, menus, combos.
+  - minimal-luxury  — restrained premium, lots of space, refined. Hotels, fashion, fine dining.
+  - calm-clinic     — soft reassuring sky-blue + white. Healthcare, waiting rooms.
+  - fresh-fitness   — vibrant energetic green/teal. Gyms, wellness, classes.
+  - worship-warm    — warm gold on deep tone, sincere. Churches, ministries.
+  - bold-retail     — punchy high-contrast promo colors. Sales, retail, drink specials.
+  - sky-civic       — clean trustworthy blue, public-sector calm. Civic, healthcare, schools.
+  - forest-campus   — natural greens, grounded. Campuses, outdoors, community.
+  - midnight-tech   — sleek dark + vivid accent, modern. Tech, premium corporate, launches.
 
 COPY RULES:
   - headline is REQUIRED and must be SHORT and punchy (signage is read at a glance).
@@ -2676,13 +2718,23 @@ function injectBackgroundImage(zones: any[], url: string): void {
   target.defaultConfig.fit = 'cover';
 }
 
-function parseSceneSpec(raw: any): SceneSpec {
+function parseSceneSpec(raw: any, fallback?: { archetype?: string; theme?: string }): SceneSpec {
   const obj = raw && typeof raw === 'object' ? raw : {};
+  // Deterministic fallbacks: when the model omits/garbles its archetype/theme,
+  // fall back to the VERTICAL's on-brand pick (passed in) instead of the global
+  // hero-fullbleed/clean-corporate — so a QSR/worship/healthcare board never
+  // silently ships as cold corporate navy. Absent fallback → prior behavior.
+  const fbArchetype: ArchetypeId =
+    fallback?.archetype && (ARCHETYPE_IDS as string[]).includes(fallback.archetype)
+      ? (fallback.archetype as ArchetypeId)
+      : 'hero-fullbleed';
+  const fbTheme =
+    fallback?.theme && ART_THEME_IDS.has(fallback.theme) ? fallback.theme : 'clean-corporate';
   const archetype: ArchetypeId = (ARCHETYPE_IDS as string[]).includes(obj.archetype)
     ? (obj.archetype as ArchetypeId)
-    : 'hero-fullbleed';
+    : fbArchetype;
   const theme =
-    obj.theme === 'brand' || ART_THEME_IDS.has(obj.theme) ? obj.theme : 'clean-corporate';
+    obj.theme === 'brand' || ART_THEME_IDS.has(obj.theme) ? obj.theme : fbTheme;
   const rawCopy = obj.copy && typeof obj.copy === 'object' ? obj.copy : {};
   const headline = clampStr(rawCopy.headline, 120) || 'Welcome';
   const copy = {
@@ -2708,11 +2760,14 @@ function parseSceneSpec(raw: any): SceneSpec {
   return scene;
 }
 
-function parseArtDirectorSpec(raw: any): ArtDirectorSpec {
-  const base = parseSceneSpec(raw);
+function parseArtDirectorSpec(
+  raw: any,
+  fallback?: { archetype?: string; theme?: string },
+): ArtDirectorSpec {
+  const base = parseSceneSpec(raw, fallback);
   const spec: ArtDirectorSpec = { ...base };
   if (raw && typeof raw === 'object' && Array.isArray(raw.scenes) && raw.scenes.length) {
-    const scenes = raw.scenes.slice(0, 8).map((s: any) => parseSceneSpec(s));
+    const scenes = raw.scenes.slice(0, 8).map((s: any) => parseSceneSpec(s, fallback));
     if (scenes.length) spec.scenes = scenes;
   }
   return spec;
@@ -2850,6 +2905,37 @@ const SIGNAGE_CANDIDATE_DIRECTIVES: string[] = [
   'DESIGN DIRECTION: bold & cinematic — ONE dominant focal element on a full-bleed or poster treatment. Prefer archetypes like hero-fullbleed, poster-promo, or quote-spotlight, and an image background when it fits. Maximum impact from across a room.',
   'DESIGN DIRECTION: information-forward — surface the key numbers or a few facts at a glance. Prefer archetypes like stat-spotlight, three-up-grid, or menu-list. Organized and aligned, never cluttered.',
 ];
+
+/**
+ * Build vertical-aware candidate directives so all 3 "Pick your favorite" takes
+ * stay ON-vertical: each take focuses on a DIFFERENT archetype drawn from the
+ * vertical's affinity order (so a worship board never surfaces a menu-list, a
+ * QSR board's first take is its menu, etc.). The 3 moods stay distinct
+ * (balanced / bold / information-forward). Falls back to the static
+ * SIGNAGE_CANDIDATE_DIRECTIVES for an unknown vertical (affinity = NEUTRAL).
+ */
+function signageCandidateDirectives(vertical: string | undefined, count: number): string[] {
+  const aff = getVerticalDesignAffinity(vertical);
+  // No specialized affinity (neutral/unknown) → keep the proven static set.
+  if (aff === undefined || !aff.archetypes.length) {
+    return SIGNAGE_CANDIDATE_DIRECTIVES.slice(0, count);
+  }
+  const moods = [
+    { tone: 'balanced & classic', shape: 'clean with a clear hierarchy and generous breathing room' },
+    { tone: 'bold & cinematic', shape: 'built around ONE dominant focal element, high-impact from across a room' },
+    { tone: 'information-forward', shape: 'organized and scannable — surface the key facts/numbers at a glance' },
+  ];
+  const themeList = aff.themes.join(' or ');
+  const out: string[] = [];
+  for (let i = 0; i < Math.min(count, 3); i++) {
+    const archetype = aff.archetypes[i] || aff.archetypes[aff.archetypes.length - 1];
+    const mood = moods[i] || moods[0];
+    out.push(
+      `DESIGN DIRECTION: ${mood.tone} — build this take as a "${archetype}" board on an on-brand theme (${themeList}). Make it ${mood.shape}.`,
+    );
+  }
+  return out;
+}
 
 /**
  * Sibling of TOUCH_TEMPLATE_SYSTEM_PROMPT for PASSIVE (non-touch) digital

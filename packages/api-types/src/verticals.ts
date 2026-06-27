@@ -617,3 +617,63 @@ export function getAiTemplatePrompts(vertical: Vertical | string | undefined): {
   const v = vertical as Vertical;
   return (v && VERTICAL_AI_TEMPLATE_PROMPTS[v]) || NEUTRAL_AI_TEMPLATE_PROMPTS;
 }
+
+/**
+ * Per-vertical DESIGN AFFINITY — the layout archetypes + visual themes that look
+ * on-brand for each industry. Added 2026-06-27 to fix the core AI-template
+ * weakness: the vertical previously steered ONLY copy tone, so archetype + theme
+ * were the model's free guess and a gym promo / worship verse / corporate KPI
+ * board all rolled the same dice and routinely fell back to cold corporate navy.
+ *
+ * The art-director engine consumes this TWO ways (apps/api/src/ai/ai.service.ts
+ * buildSignageBoardCore):
+ *   1. as a SOFT HINT in the generation prompt ("prefer these archetypes/themes;
+ *      deviate only if the description clearly calls for it"), and
+ *   2. as the DETERMINISTIC FALLBACK when the model omits/garbles its pick — so
+ *      the failure mode is the vertical's own on-brand look, never cold navy.
+ *
+ * Archetype ids mirror @cms/signage-design ARCHETYPE_IDS; theme ids mirror its
+ * THEMES. Kept as plain strings so this package stays dependency-light; the
+ * signage-design test suite asserts every id here resolves (no drift).
+ * Order = preference — element [0] is the deterministic default.
+ */
+export interface VerticalDesignAffinity {
+  archetypes: ReadonlyArray<string>;
+  themes: ReadonlyArray<string>;
+}
+
+export const VERTICAL_DESIGN_AFFINITY: Record<Vertical, VerticalDesignAffinity> = {
+  K12:         { archetypes: ['title-cta', 'three-up-grid', 'stat-spotlight', 'hero-fullbleed'], themes: ['warm-school', 'sky-civic'] },
+  GYM:         { archetypes: ['stat-spotlight', 'hero-fullbleed', 'title-cta', 'split-50'],       themes: ['fresh-fitness', 'neon-sports'] },
+  RETAIL:      { archetypes: ['poster-promo', 'hero-fullbleed', 'three-up-grid'],                 themes: ['bold-retail', 'minimal-luxury'] },
+  CORPORATE:   { archetypes: ['split-50', 'stat-spotlight', 'title-cta'],                         themes: ['clean-corporate', 'minimal-luxury'] },
+  QSR:         { archetypes: ['menu-list', 'poster-promo', 'title-cta'],                          themes: ['qsr-appetite', 'bold-retail'] },
+  FASHION:     { archetypes: ['poster-promo', 'hero-fullbleed', 'quote-spotlight'],              themes: ['minimal-luxury', 'bold-retail'] },
+  BAR:         { archetypes: ['poster-promo', 'lower-third-banner', 'title-cta'],                themes: ['bold-retail', 'neon-sports'] },
+  HEALTHCARE:  { archetypes: ['three-up-grid', 'title-cta', 'split-50'],                          themes: ['calm-clinic', 'sky-civic'] },
+  HOSPITALITY: { archetypes: ['hero-fullbleed', 'split-50', 'title-cta'],                         themes: ['minimal-luxury', 'worship-warm'] },
+  RESTAURANT:  { archetypes: ['menu-list', 'hero-fullbleed', 'split-50'],                         themes: ['minimal-luxury', 'qsr-appetite'] },
+  SPORTS:      { archetypes: ['stat-spotlight', 'hero-fullbleed', 'lower-third-banner'],          themes: ['neon-sports', 'bold-retail'] },
+  WORSHIP:     { archetypes: ['quote-spotlight', 'title-cta', 'three-up-grid'],                   themes: ['worship-warm', 'warm-school'] },
+};
+
+/** Generic affinity for an unset / 'venue' / unknown vertical. NOT K12 — a
+ *  no-vertical tenant should fall back to a neutral professional look, not the
+ *  school palette (that's why this can't reuse normalizeVertical, which maps
+ *  unknown → K12). */
+export const NEUTRAL_DESIGN_AFFINITY: VerticalDesignAffinity = {
+  archetypes: ['title-cta', 'hero-fullbleed', 'stat-spotlight'],
+  themes: ['clean-corporate', 'minimal-luxury'],
+};
+
+/**
+ * Resolve design affinity for ANY raw vertical string (canonical, lowercase, or
+ * legacy alias). Unknown / 'venue' / unset → NEUTRAL (never K12). */
+export function getVerticalDesignAffinity(vertical: unknown): VerticalDesignAffinity {
+  if (typeof vertical === 'string') {
+    const up = vertical.toUpperCase();
+    if (isVertical(up)) return VERTICAL_DESIGN_AFFINITY[up as Vertical];
+    if (VERTICAL_ALIASES[up]) return VERTICAL_DESIGN_AFFINITY[VERTICAL_ALIASES[up]];
+  }
+  return NEUTRAL_DESIGN_AFFINITY;
+}

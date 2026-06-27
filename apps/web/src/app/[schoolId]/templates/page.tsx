@@ -443,6 +443,21 @@ export default function TemplatesPage() {
   // from the current tenant's vertical via useTenantCopy().
   const tenantCopy = useTenantCopy();
 
+  // Per-vertical default for the AI Touch/Display toggle. Signage-first
+  // verticals (menu boards, scoreboards, promos, waiting rooms) default to
+  // Display so the operator doesn't have to flip a switch on the 30-second
+  // happy path. Runs ONCE when the vertical first resolves and never fights a
+  // manual toggle thereafter.
+  const aiDefaultAppliedRef = useRef(false);
+  useEffect(() => {
+    if (aiDefaultAppliedRef.current) return;
+    const v = (tenantCopy.vertical || '').toUpperCase();
+    if (!v) return;
+    aiDefaultAppliedRef.current = true;
+    const SIGNAGE_FIRST = ['SPORTS', 'QSR', 'RESTAURANT', 'BAR', 'RETAIL', 'FASHION', 'HEALTHCARE'];
+    if (SIGNAGE_FIRST.includes(v)) setAiInteractive(false);
+  }, [tenantCopy.vertical]);
+
   const openInBuilder = useCallback((t: Template) => {
     // 2026-06-09 — read-only guard. A RESTRICTED_VIEWER must never reach
     // any editor surface (gallery Edit buttons are already disabled; this
@@ -1124,17 +1139,37 @@ export default function TemplatesPage() {
                   {(() => {
                     const prompts = getAiTemplatePrompts(tenantCopy.vertical);
                     return aiInteractive ? prompts.kiosk : prompts.signage;
-                  })().map((suggestion: string) => (
-                    <button
-                      key={suggestion}
-                      type="button"
-                      onClick={() => setAiPrompt(suggestion)}
-                      disabled={generateCandidates.isPending}
-                      className="text-[11px] px-3 py-1.5 rounded-full bg-violet-50 text-violet-700 font-semibold hover:bg-violet-100 transition-colors disabled:opacity-50"
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
+                  })().map((suggestion: string) => {
+                    // Non-destructive: a chip TOGGLES into the prompt instead of
+                    // replacing it, so an operator can stack several ideas (and
+                    // never lose text they already typed). Already-present →
+                    // remove it; else append on a new line.
+                    const lines = aiPrompt.split('\n').map((l) => l.trim()).filter(Boolean);
+                    const active = lines.includes(suggestion);
+                    return (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        onClick={() =>
+                          setAiPrompt((prev) => {
+                            const cur = prev.split('\n').map((l) => l.trim()).filter(Boolean);
+                            if (cur.includes(suggestion)) {
+                              return cur.filter((l) => l !== suggestion).join('\n');
+                            }
+                            return [...cur, suggestion].join('\n');
+                          })
+                        }
+                        disabled={generateCandidates.isPending}
+                        className={`text-[11px] px-3 py-1.5 rounded-full font-semibold transition-colors disabled:opacity-50 ${
+                          active
+                            ? 'bg-violet-600 text-white hover:bg-violet-700'
+                            : 'bg-violet-50 text-violet-700 hover:bg-violet-100'
+                        }`}
+                      >
+                        {active ? '✓ ' : ''}{suggestion}
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {aiError && (
