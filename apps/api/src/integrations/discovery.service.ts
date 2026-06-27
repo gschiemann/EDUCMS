@@ -30,6 +30,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { load as cheerioLoad } from 'cheerio';
 import { safeFetch, SsrfError } from '../branding/safe-fetch';
+import { POS_PROVIDERS } from '@cms/api-types';
 
 export type IntegrationCategory =
   | 'pos'
@@ -44,8 +45,32 @@ export type IntegrationCategory =
   | 'social'
   | 'fitness'
   | 'sports-data'
+  | 'giving'
   | 'design'
   | 'analytics';
+
+/**
+ * Honest connector status — mirrors the vocabulary used by the
+ * integrations-health controller (`READY | DEGRADED | NOT_CONFIGURED |
+ * COMING_SOON`). The Concierge UI keys off this so a not-yet-wired
+ * provider renders a distinct "Coming soon" chip instead of a dead
+ * "Connect" button.
+ *
+ *   - `AVAILABLE`   — a real, self-serve connect path exists TODAY
+ *                     (`connectHref` is non-null and routable). Connecting
+ *                     it actually syncs / authorizes end-to-end.
+ *   - `COMING_SOON` — the provider is recognised but NOT wired end-to-end
+ *                     yet (partner program, no public CMS API, or the sync
+ *                     handler hasn't shipped). `connectHref` is null and
+ *                     `comingSoonReason` carries a friendly explanation.
+ *
+ * 2026-06-27 — added to kill the "costume" class the beta found: a
+ * provider presented as connectable (DIRECT tier, or a null/dead
+ * connectHref rendered as a button) that surfaces "connector in
+ * development" only AFTER the operator clicks Connect. Every provider in
+ * RULES is now graded honestly; zero costumes.
+ */
+export type ConnectorStatus = 'AVAILABLE' | 'COMING_SOON';
 
 export interface ProviderCandidate {
   id: string;
@@ -56,8 +81,20 @@ export interface ProviderCandidate {
   blurb: string;
   /** Why we matched — for debug + the "we found this on your site" badge. */
   matchedSignals: string[];
-  /** Where the operator goes to connect this. null = "Coming soon". */
+  /** Honest connector readiness — drives the Connect vs "Coming soon" chip. */
+  status: ConnectorStatus;
+  /**
+   * Where the operator goes to connect this. Non-null ONLY when
+   * `status === 'AVAILABLE'` (a real, routable connect surface). Always
+   * null for `COMING_SOON` providers so the UI can't render a dead button.
+   */
   connectHref: string | null;
+  /**
+   * Friendly "why it's not connectable yet" line, present ONLY when
+   * `status === 'COMING_SOON'`. e.g. "Coming soon — Toast sync in
+   * development (Toast Partner Program)."
+   */
+  comingSoonReason?: string;
 }
 
 export interface DiscoveryResult {
@@ -79,7 +116,16 @@ interface ProviderRule {
   name: string;
   category: IntegrationCategory;
   blurb: string;
+  /**
+   * Honest connector readiness. `AVAILABLE` REQUIRES a non-null,
+   * routable `connectHref`. `COMING_SOON` REQUIRES `connectHref: null`
+   * (enforced at build time by `buildCandidate`) + a `comingSoonReason`.
+   */
+  status: ConnectorStatus;
+  /** Real, routable connect surface — ONLY for `AVAILABLE` providers. */
   connectHref: string | null;
+  /** Friendly "not yet" line — ONLY for `COMING_SOON` providers. */
+  comingSoonReason?: string;
   /**
    * Patterns checked against the haystack (lowercased combined text).
    * Each match contributes `weight` to the rule's confidence.
@@ -87,21 +133,64 @@ interface ProviderRule {
   signals: Array<{ pattern: RegExp; weight: number; label: string }>;
 }
 
+/**
+ * The set of POS provider ids that are genuinely self-serve TODAY —
+ * derived from the AUTHORITATIVE `POS_PROVIDERS` catalog in
+ * `@cms/api-types` (the same catalog the /settings/pos page + the
+ * connector registry read). A provider is connectable iff its
+ * `integrationTier === 'DIRECT'`. PARTNER (partner-program / no sync
+ * handler) and CLOSED (no public CMS API) tiers are NOT connectable, so
+ * the Concierge marks them COMING_SOON rather than routing the operator
+ * to a Connect button that dead-ends. Keeping this derived (not
+ * hard-coded) means promoting a POS provider to DIRECT in one place
+ * (the catalog) flips it to AVAILABLE here automatically.
+ */
+const DIRECT_POS_IDS: ReadonlySet<string> = new Set(
+  POS_PROVIDERS.filter((p) => p.integrationTier === 'DIRECT').map((p) => p.id),
+);
+
+/** True when a POS provider id is self-serve-connectable today. */
+function posIsDirect(catalogId: string): boolean {
+  return DIRECT_POS_IDS.has(catalogId);
+}
+
+/**
+ * Build the `{ status, connectHref, comingSoonReason }` slice for a POS
+ * provider rule, derived from the authoritative catalog tier. DIRECT →
+ * AVAILABLE (route to `connectPath`); anything else → COMING_SOON (null
+ * href + the friendly reason). Spread into the rule literal so a single
+ * tier change in @cms/api-types flips the Concierge automatically and the
+ * COMING_SOON/AVAILABLE invariants can never drift out of sync by hand.
+ */
+function posStatus(
+  catalogId: string,
+  connectPath: string,
+  comingSoonReason = `Coming soon — ${catalogId} sync in development. Use the Custom Webhook today to push your catalog.`,
+): Pick<ProviderRule, 'status' | 'connectHref' | 'comingSoonReason'> {
+  return posIsDirect(catalogId)
+    ? { status: 'AVAILABLE', connectHref: connectPath }
+    : { status: 'COMING_SOON', connectHref: null, comingSoonReason };
+}
+
 // Hand-curated rule list. Add new providers here as we onboard them.
 // Order matters only for display when scores tie — first listed wins.
 const RULES: ProviderRule[] = [
-  // POS — restaurants / retail
+  // ─── POS — restaurants / retail ───────────────────────────────────
+  // Status is DERIVED from the authoritative @cms/api-types POS catalog
+  // (DIRECT → AVAILABLE → /settings/pos; PARTNER/CLOSED → COMING_SOON) so
+  // promoting a provider's tier in ONE place flips it here too. The
+  // discovery rule `id` differs from the catalog id for a few (lightspeed
+  // → lightspeed-retail, shopify → shopify-pos); posIsDirect() keys off
+  // the CATALOG id below.
   {
     id: 'square',
     name: 'Square',
     category: 'pos',
     blurb: 'Sync your Square POS catalog so menu boards auto-update when prices or items change.',
-    // `/connect/square` has no page (404). `/connect/square/done` exists but is
-    // the OAuth *callback* landing — visiting it without OAuth params falsely
-    // flashes "Square connected". The operator-facing place to START the connect
-    // is the POS settings page (it mints the OAuth URL via /pos/oauth/square/
-    // authorize), consistent with the SSO entries' `/settings/sso`.
-    connectHref: '/settings/pos',
+    // DIRECT in the catalog → real self-serve OAuth. `/connect/square` has
+    // no page; the operator-facing place to START the connect is the POS
+    // settings page (it mints the OAuth URL via /pos/oauth/square/authorize).
+    ...posStatus('square', '/settings/pos'),
     signals: [
       { pattern: /\bsquare(?:up)?\.com\b/i, weight: 0.6, label: 'links to squareup.com' },
       { pattern: /\bsquare\s+(?:pos|reader|terminal|checkout)\b/i, weight: 0.4, label: 'mentions Square POS hardware' },
@@ -112,8 +201,9 @@ const RULES: ProviderRule[] = [
     id: 'toast',
     name: 'Toast',
     category: 'pos',
-    blurb: 'Toast restaurant POS — pull menu items, prices, and 86-list into your menu boards in real time.',
-    connectHref: null, // partnership pending
+    blurb: 'Toast restaurant POS — pull menu items, prices, and 86-list into your menu boards.',
+    // PARTNER in the catalog (Toast Partner Program, no live sync handler).
+    ...posStatus('toast', '/settings/pos', 'Coming soon — Toast sync in development (Toast Partner Program). Use the Custom Webhook today to push your catalog.'),
     signals: [
       { pattern: /\btoasttab\.com\b/i, weight: 0.7, label: 'links to toasttab.com' },
       { pattern: /\b(?:order|menu)\s+(?:powered\s+by\s+)?toast\b/i, weight: 0.5, label: 'menu/order powered by Toast' },
@@ -125,7 +215,9 @@ const RULES: ProviderRule[] = [
     name: 'Clover',
     category: 'pos',
     blurb: 'Clover POS — push your live catalog to digital menu boards.',
-    connectHref: null,
+    // DIRECT in the catalog (2026-06-02): OAuth + catalog sync ship in
+    // providers/clover.ts + the connector registry. Self-serve.
+    ...posStatus('clover', '/settings/pos'),
     signals: [
       { pattern: /\bclover\.com\b/i, weight: 0.6, label: 'links to clover.com' },
       { pattern: /\bclover\s+(?:pos|station|mini|flex)\b/i, weight: 0.4, label: 'Clover hardware mentioned' },
@@ -135,8 +227,9 @@ const RULES: ProviderRule[] = [
     id: 'lightspeed',
     name: 'Lightspeed',
     category: 'pos',
-    blurb: 'Lightspeed retail / restaurant POS catalog sync.',
-    connectHref: null,
+    blurb: 'Lightspeed X-Series Items API — multi-location retail / restaurant catalog sync.',
+    // Catalog id is `lightspeed-retail` (DIRECT since 2026-06-02).
+    ...posStatus('lightspeed-retail', '/settings/pos'),
     signals: [
       { pattern: /\blightspeedhq\.com\b/i, weight: 0.6, label: 'links to lightspeedhq.com' },
       { pattern: /\blightspeed\s+(?:retail|restaurant|pos)\b/i, weight: 0.4, label: 'Lightspeed product mentioned' },
@@ -147,20 +240,23 @@ const RULES: ProviderRule[] = [
     name: 'Shopify',
     category: 'pos',
     blurb: 'Shopify storefront / POS — surface featured products, sale items, low-stock alerts.',
-    connectHref: null,
+    // Catalog id is `shopify-pos` (DIRECT since 2026-06-02).
+    ...posStatus('shopify-pos', '/settings/pos'),
     signals: [
       { pattern: /cdn\.shopify\.com|myshopify\.com/i, weight: 0.7, label: 'Shopify CDN or myshopify subdomain' },
       { pattern: /\bpowered\s+by\s+shopify\b/i, weight: 0.6, label: 'Shopify footer credit' },
     ],
   },
 
-  // Reservations — restaurants / hospitality
+  // ─── Reservations — restaurants / hospitality (no connector yet) ───
   {
     id: 'opentable',
     name: 'OpenTable',
     category: 'reservations',
     blurb: 'Show tonight\'s wait times + available reservations on lobby boards.',
+    status: 'COMING_SOON',
     connectHref: null,
+    comingSoonReason: 'Coming soon — OpenTable reservation sync in development. Use a Webpage widget to embed your public booking page today.',
     signals: [
       { pattern: /\bopentable\.com\b/i, weight: 0.7, label: 'links to opentable.com' },
       { pattern: /\bbook\s+(?:a\s+)?table\b/i, weight: 0.2, label: '"book a table" CTA' },
@@ -171,19 +267,26 @@ const RULES: ProviderRule[] = [
     name: 'Resy',
     category: 'reservations',
     blurb: 'Resy reservation data on host-stand screens.',
+    status: 'COMING_SOON',
     connectHref: null,
+    comingSoonReason: 'Coming soon — Resy reservation sync in development. Use a Webpage widget to embed your Resy page today.',
     signals: [
       { pattern: /\bresy\.com\b/i, weight: 0.7, label: 'links to resy.com' },
     ],
   },
 
-  // Streaming + broadcast
+  // ─── Streaming + broadcast ─────────────────────────────────────────
+  // YouTube/Twitch are real public EMBEDS today (no per-tenant auth) —
+  // added via the Webpage/Video widget in the template editor, so they're
+  // AVAILABLE and route there. NFHS is a paid-subscription overlay with no
+  // connector → COMING_SOON.
   {
     id: 'youtube',
     name: 'YouTube Live',
     category: 'streaming',
-    blurb: 'Live YouTube channel embed (note: many channels disable embedding — Concierge pre-validates).',
-    connectHref: null,
+    blurb: 'Embed a live YouTube channel via the Webpage widget (some channels disable embedding).',
+    status: 'AVAILABLE',
+    connectHref: '/templates',
     signals: [
       { pattern: /\byoutube\.com\b|youtu\.be/i, weight: 0.5, label: 'YouTube links present' },
       { pattern: /\b(?:live|stream|broadcast)\b.*\byoutube\b/i, weight: 0.3, label: 'live-streaming context' },
@@ -193,8 +296,9 @@ const RULES: ProviderRule[] = [
     id: 'twitch',
     name: 'Twitch',
     category: 'streaming',
-    blurb: 'Public Twitch channel embed — works without channel-owner consent.',
-    connectHref: null,
+    blurb: 'Embed a public Twitch channel via the Webpage widget — no channel-owner consent needed.',
+    status: 'AVAILABLE',
+    connectHref: '/templates',
     signals: [
       { pattern: /\btwitch\.tv\b/i, weight: 0.7, label: 'Twitch link present' },
     ],
@@ -203,20 +307,42 @@ const RULES: ProviderRule[] = [
     id: 'nfhs',
     name: 'NFHS Network',
     category: 'streaming',
-    blurb: 'High-school sports live-stream overlay — only for SPORTS-vertical tenants with active subscriptions.',
+    blurb: 'High-school sports live-stream overlay for SPORTS-vertical tenants.',
+    status: 'COMING_SOON',
     connectHref: null,
+    comingSoonReason: 'Coming soon — NFHS Network overlay in development (requires an active NFHS subscription).',
     signals: [
       { pattern: /\bnfhsnetwork\.com\b/i, weight: 0.8, label: 'NFHS Network link' },
     ],
   },
 
-  // Music
+  // ─── Music ─────────────────────────────────────────────────────────
+  // SomaFM + the NPR station catalog are REAL today — free, commercial-
+  // licensed streams surfaced in the Music widget's station picker (no
+  // auth, no connect page). The operator adds a Music widget and picks a
+  // station, so SomaFM routes to the template editor. Spotify-for-Business
+  // / Apple-Music-for-Business need OAuth partnerships that aren't wired.
+  {
+    id: 'somafm',
+    name: 'SomaFM',
+    category: 'music',
+    blurb: 'Free, commercial-licensed background music — add a Music widget and pick a station. No account needed.',
+    // Real catalog via the Music widget; the old `/connect/somafm` route
+    // never existed (dead button). Route to the template editor instead.
+    status: 'AVAILABLE',
+    connectHref: '/templates',
+    signals: [
+      { pattern: /\bsomafm\.com\b/i, weight: 0.8, label: 'SomaFM link' },
+    ],
+  },
   {
     id: 'spotify-business',
     name: 'Spotify for Business',
     category: 'music',
-    blurb: 'Curated commercial-license music for venues. Requires Soundtrack Your Brand subscription.',
+    blurb: 'Curated commercial-license music for venues (Soundtrack Your Brand).',
+    status: 'COMING_SOON',
     connectHref: null,
+    comingSoonReason: 'Coming soon — Spotify for Business sync in development. Use SomaFM\'s free licensed stations today.',
     signals: [
       { pattern: /\bspotify\.com|\bsoundtrackyourbrand\.com\b/i, weight: 0.5, label: 'Spotify / SYB references' },
     ],
@@ -225,30 +351,24 @@ const RULES: ProviderRule[] = [
     id: 'apple-music-business',
     name: 'Apple Music for Business',
     category: 'music',
-    blurb: 'Commercial-license music via Apple Music for Business. Coming soon — partnership in flight.',
+    blurb: 'Commercial-license music via Apple Music for Business.',
+    status: 'COMING_SOON',
     connectHref: null,
+    comingSoonReason: 'Coming soon — Apple Music for Business sync in development. Use SomaFM\'s free licensed stations today.',
     signals: [
       { pattern: /\bapple\.com\/business\b|music\.apple\.com/i, weight: 0.5, label: 'Apple Music / Apple Business' },
     ],
   },
-  {
-    id: 'somafm',
-    name: 'SomaFM',
-    category: 'music',
-    blurb: 'Free, commercial-licensed background music — 21 stations including ambient, jazz, indie.',
-    connectHref: '/connect/somafm',
-    signals: [
-      { pattern: /\bsomafm\.com\b/i, weight: 0.8, label: 'SomaFM link' },
-    ],
-  },
 
-  // Calendar
+  // ─── Calendar (no connector yet) ───────────────────────────────────
   {
     id: 'google-calendar',
     name: 'Google Calendar',
     category: 'calendar',
     blurb: 'Pull events from a public Google Calendar into your events widget.',
+    status: 'COMING_SOON',
     connectHref: null,
+    comingSoonReason: 'Coming soon — Google Calendar sync in development. Add events manually in the Calendar widget today.',
     signals: [
       { pattern: /\bgoogle\.com\/calendar\b|calendar\.google\.com/i, weight: 0.7, label: 'Google Calendar link' },
     ],
@@ -258,19 +378,23 @@ const RULES: ProviderRule[] = [
     name: 'Eventbrite',
     category: 'calendar',
     blurb: 'Upcoming Eventbrite event listings + ticket-sales status on signage.',
+    status: 'COMING_SOON',
     connectHref: null,
+    comingSoonReason: 'Coming soon — Eventbrite sync in development. Add events manually in the Calendar widget today.',
     signals: [
       { pattern: /\beventbrite\.com\b/i, weight: 0.7, label: 'Eventbrite link' },
     ],
   },
 
-  // Email / comms
+  // ─── Email / comms (no connector yet) ──────────────────────────────
   {
     id: 'mailchimp',
     name: 'Mailchimp',
     category: 'email',
-    blurb: 'Push Mailchimp newsletter signups via a QR-code widget; sync subscriber count to lobby screens.',
+    blurb: 'Newsletter signup QR + subscriber-count callouts on lobby screens.',
+    status: 'COMING_SOON',
     connectHref: null,
+    comingSoonReason: 'Coming soon — Mailchimp sync in development. Add a QR-code widget linking to your signup page today.',
     signals: [
       { pattern: /\bmailchimp\.com\b|\.list-manage\.com/i, weight: 0.6, label: 'Mailchimp links / list-manage' },
     ],
@@ -280,18 +404,21 @@ const RULES: ProviderRule[] = [
     name: 'Constant Contact',
     category: 'email',
     blurb: 'Constant Contact newsletter signup QR + subscriber metrics.',
+    status: 'COMING_SOON',
     connectHref: null,
+    comingSoonReason: 'Coming soon — Constant Contact sync in development. Add a QR-code widget linking to your signup page today.',
     signals: [
       { pattern: /\bconstantcontact\.com\b/i, weight: 0.6, label: 'Constant Contact link' },
     ],
   },
 
-  // Identity / SSO
+  // ─── Identity / SSO (OIDC is wired end-to-end) ─────────────────────
   {
     id: 'google-sso',
     name: 'Google Workspace SSO',
     category: 'identity',
     blurb: 'Let staff sign into VenueOS with their Google Workspace account.',
+    status: 'AVAILABLE',
     connectHref: '/settings/sso',
     signals: [
       { pattern: /workspace\.google\.com|gsuite\.google\.com|g\.co\/workspace/i, weight: 0.6, label: 'Google Workspace link' },
@@ -302,58 +429,102 @@ const RULES: ProviderRule[] = [
     name: 'Microsoft 365 SSO',
     category: 'identity',
     blurb: 'Sign in with Microsoft 365 / Azure AD accounts.',
+    status: 'AVAILABLE',
     connectHref: '/settings/sso',
     signals: [
       { pattern: /microsoft365\.com|office\.com|outlook\.com\/owa/i, weight: 0.6, label: 'Microsoft 365 / Office links' },
     ],
   },
 
-  // SIS — K-12
+  // ─── SIS — K-12 (Clever roster sync is wired end-to-end) ───────────
   {
     id: 'clever',
     name: 'Clever',
     category: 'sis',
-    blurb: 'K-12 staff roster + class schedule sync via Clever (already wired in CleverModule).',
-    connectHref: '/settings/sso?provider=clever',
+    blurb: 'K-12 staff roster sync via Clever — nightly + on-demand (real OAuth + roster diff).',
+    // REAL: CleverModule ships connect → callback → sync (user create/
+    // update/disable + sync log + audit). The connect surface is the
+    // dedicated Clever page, NOT the generic SSO page.
+    status: 'AVAILABLE',
+    connectHref: '/settings/integrations/clever',
     signals: [
       { pattern: /\bclever\.com\b|sso\.clever\.com/i, weight: 0.7, label: 'Clever link' },
       { pattern: /\.edu\b/i, weight: 0.1, label: '.edu domain' },
     ],
   },
 
-  // Social — public-facing feeds
+  // ─── Social — public-facing feeds (no connector yet) ───────────────
   {
     id: 'instagram',
     name: 'Instagram',
     category: 'social',
-    blurb: 'Public Instagram feed widget on lobby screens (requires Instagram Business account).',
+    blurb: 'Public Instagram feed widget on lobby screens.',
+    status: 'COMING_SOON',
     connectHref: null,
+    comingSoonReason: 'Coming soon — Instagram feed sync in development (requires an Instagram Business account).',
     signals: [
       { pattern: /\binstagram\.com\b/i, weight: 0.5, label: 'Instagram link' },
     ],
   },
 
-  // Sports data
+  // ─── Sports data (no connector yet) ────────────────────────────────
+  // NOTE: live SCORE feeds (Daktronics RS485, water-polo path) ARE real,
+  // but they're wired through the Sports console / hardware bridge, not the
+  // Concierge URL/description discovery flow. MaxPreps schedule scraping has
+  // no connector → COMING_SOON.
   {
     id: 'maxpreps',
     name: 'MaxPreps',
     category: 'sports-data',
     blurb: 'High-school athletic schedules + standings from MaxPreps.',
+    status: 'COMING_SOON',
     connectHref: null,
+    comingSoonReason: 'Coming soon — MaxPreps schedule sync in development. Build a schedule board manually today.',
     signals: [
       { pattern: /\bmaxpreps\.com\b/i, weight: 0.8, label: 'MaxPreps link' },
     ],
   },
 
-  // Fitness
+  // ─── Fitness (no connector yet) ────────────────────────────────────
   {
     id: 'mindbody',
-    name: 'Mindbody',
+    name: 'MINDBODY',
     category: 'fitness',
-    blurb: 'Class schedule + instructor lineup from Mindbody for gym / yoga studios.',
+    blurb: 'Class schedule + instructor lineup from MINDBODY for gym / yoga studios.',
+    status: 'COMING_SOON',
     connectHref: null,
+    comingSoonReason: 'Coming soon — MINDBODY sync in development (Partner Program). Build a class-schedule board manually today.',
     signals: [
-      { pattern: /\bmindbodyonline\.com|mindbody\.io\b/i, weight: 0.7, label: 'Mindbody link' },
+      { pattern: /\bmindbodyonline\.com|mindbody\.io\b/i, weight: 0.7, label: 'MINDBODY link' },
+    ],
+  },
+
+  // ─── Giving / donations — WORSHIP vertical (no connector yet) ──────
+  // Added 2026-06-27 so houses of worship discover their giving platforms
+  // as honestly COMING_SOON rather than not at all. Surfaced by the
+  // church/parish keyword hints + by site signals.
+  {
+    id: 'tithely',
+    name: 'Tithe.ly',
+    category: 'giving',
+    blurb: 'Show giving progress + a "Give now" QR for your Tithe.ly campaigns.',
+    status: 'COMING_SOON',
+    connectHref: null,
+    comingSoonReason: 'Coming soon — Tithe.ly giving sync in development. Add a QR-code widget linking to your giving page today.',
+    signals: [
+      { pattern: /\btithe\.ly\b|tithely\.com/i, weight: 0.8, label: 'Tithe.ly link' },
+    ],
+  },
+  {
+    id: 'pushpay',
+    name: 'Pushpay',
+    category: 'giving',
+    blurb: 'Surface Pushpay giving totals + a "Give now" QR on worship-center screens.',
+    status: 'COMING_SOON',
+    connectHref: null,
+    comingSoonReason: 'Coming soon — Pushpay giving sync in development. Add a QR-code widget linking to your giving page today.',
+    signals: [
+      { pattern: /\bpushpay\.com\b/i, weight: 0.8, label: 'Pushpay link' },
     ],
   },
 ];
@@ -385,8 +556,14 @@ const KEYWORD_CATEGORY_HINTS: Record<string, IntegrationCategory[]> = {
   venue: ['reservations', 'streaming'],
   stadium: ['streaming', 'sports-data'],
   arena: ['streaming', 'sports-data'],
-  church: ['streaming', 'calendar'],
-  parish: ['streaming', 'calendar'],
+  church: ['streaming', 'calendar', 'giving'],
+  parish: ['streaming', 'calendar', 'giving'],
+  temple: ['streaming', 'calendar', 'giving'],
+  synagogue: ['streaming', 'calendar', 'giving'],
+  mosque: ['streaming', 'calendar', 'giving'],
+  ministry: ['streaming', 'giving'],
+  worship: ['streaming', 'giving'],
+  congregation: ['streaming', 'giving'],
 };
 
 @Injectable()
@@ -513,19 +690,51 @@ export class IntegrationDiscoveryService {
       }
       if (score <= 0) continue;
       const confidence = Math.min(1, score);
-      candidates.push({
-        id: rule.id,
-        name: rule.name,
-        category: rule.category,
-        confidence,
-        blurb: rule.blurb,
-        matchedSignals: matched,
-        connectHref: rule.connectHref,
-      });
+      candidates.push(buildCandidate(rule, confidence, matched));
     }
 
     candidates.sort((a, b) => b.confidence - a.confidence);
     // Cap at 12 — anything below that is noise for the operator.
     return candidates.slice(0, 12);
   }
+}
+
+/**
+ * Assemble a `ProviderCandidate` from a matched rule, ENFORCING the honesty
+ * invariant so a costume can't slip through even if a rule literal is
+ * mis-authored:
+ *   - `AVAILABLE`   MUST carry a non-null `connectHref`; if it doesn't, we
+ *                   downgrade to `COMING_SOON` (never render a dead Connect).
+ *   - `COMING_SOON` NEVER carries a `connectHref` (forced null) and always
+ *                   carries a `comingSoonReason` (synthesised if missing).
+ * This is the single chokepoint every candidate passes through, so the API
+ * response is guaranteed self-describing for the Concierge UI.
+ */
+function buildCandidate(
+  rule: ProviderRule,
+  confidence: number,
+  matchedSignals: string[],
+): ProviderCandidate {
+  const base = {
+    id: rule.id,
+    name: rule.name,
+    category: rule.category,
+    confidence,
+    blurb: rule.blurb,
+    matchedSignals,
+  };
+
+  // AVAILABLE requires a real, routable connect path. Missing one is a
+  // bug in the rule — fail safe to COMING_SOON rather than a dead button.
+  if (rule.status === 'AVAILABLE' && rule.connectHref) {
+    return { ...base, status: 'AVAILABLE', connectHref: rule.connectHref };
+  }
+
+  return {
+    ...base,
+    status: 'COMING_SOON',
+    connectHref: null,
+    comingSoonReason:
+      rule.comingSoonReason || `Coming soon — ${rule.name} integration in development.`,
+  };
 }
