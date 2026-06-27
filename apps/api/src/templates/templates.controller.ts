@@ -1057,7 +1057,15 @@ export class TemplatesController {
             sortOrder: i,
             defaultConfig: cfg && Object.keys(cfg).length ? JSON.stringify(cfg) : null,
             touchAction: resolveActionTarget(z.touchAction),
-            sceneId: defaultSceneId,
+            // F-AI1 (2026-06-26) — place each zone on ITS scene. The
+            // sanitizer carries the AI's per-zone scene NAME as `sceneRef`;
+            // resolve it to the created scene's id (fall back to the default
+            // scene when absent/unmatched). Previously hardcoded
+            // `defaultSceneId`, so an AI multi-scene template dumped ALL
+            // content on scene 1 and destination scenes rendered blank.
+            sceneId:
+              ((z as any).sceneRef && sceneNameToId.get(String((z as any).sceneRef).toLowerCase())) ||
+              defaultSceneId,
           } as any,
         });
       }

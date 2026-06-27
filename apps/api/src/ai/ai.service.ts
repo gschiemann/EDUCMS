@@ -48,6 +48,7 @@ import {
   isVertical,
   getTextFieldDescriptor,
   primaryTextFieldKey,
+  TEXT_FIELDS,
   isRewriteOp,
   type RewriteOp,
   type TextFieldKind,
@@ -2019,12 +2020,23 @@ OUTPUT SCHEMA (strict — no extra fields):
                         show-overlay, reset-idle, sound-toggle, webhook,
                         request-help,
         "target": string              // URL, asset id, scene name, or template name
-      }
+      },
+      "sceneId": string               // optional; the NAME of the scene this
+                                      // zone lives on (must EXACTLY match one
+                                      // of scenes[].name below). Omit for the
+                                      // first/default scene. REQUIRED on every
+                                      // zone that belongs to a non-default
+                                      // scene — without it the content lands
+                                      // on the first scene and the destination
+                                      // scene renders blank.
     }
   ],
   "scenes": [ { "name": string } ]    // optional; include for multi-screen
                                       // interactions. First scene is the
-                                      // default. Names should be short.
+                                      // default. Names should be short. Put
+                                      // each zone on its scene via the zone's
+                                      // "sceneId" (the scene NAME, not an
+                                      // index).
 }
 
 RULES:
@@ -2033,6 +2045,10 @@ RULES:
 - For touch templates, AT LEAST 2 zones should have a touchAction set.
 - Use 'goto-scene' with target=scene-name for in-template navigation;
   the server resolves the name to the matching scene id.
+- MULTI-SCENE: when you return more than one scene, EVERY zone that
+  belongs to a non-default scene MUST set "sceneId" to that scene's
+  NAME (exactly matching scenes[].name). Zones with no "sceneId" land
+  on the first scene. Do not put content for scene 2/3 on scene 1.
 - TouchAction targets that look like URLs MUST start with https://.
 - No webhook targets to private IPs or localhost.
 - TEXT / ANNOUNCEMENT / QUOTE widgets should have populated content
@@ -2377,6 +2393,63 @@ function validateChatEditDiff(
 }
 
 /**
+ * F-AI2 (2026-06-26) — decode the handful of HTML entities models love to
+ * double-encode in DISPLAY text ("Burgers &amp; Fries" → "Burgers & Fries").
+ * The board renders these as plain text, not HTML, so a literal `&amp;`
+ * shows on screen. Scoped to AI-gen DISPLAY-text fields only (template
+ * name/description, zone names, and the per-widget text keys in TEXT_FIELDS)
+ * — NEVER applied to URLs / config leaves where `&` is significant.
+ *
+ * Numeric entities (decimal + hex) are decoded too, but only for the small
+ * safe ASCII/Latin-1 range — we are un-escaping the model's own output, not
+ * accepting attacker HTML, and the result is stored as text + scrubbed
+ * elsewhere. Done in a single left-to-right pass so we never re-decode a
+ * `&amp;amp;` into a bare `&` chain we didn't intend.
+ */
+function decodeEntities(s: string): string {
+  if (!s || s.indexOf('&') === -1) return s;
+  return s.replace(/&(#x[0-9a-fA-F]+|#\d+|[a-zA-Z]+);/g, (m, body: string) => {
+    const named: Record<string, string> = {
+      amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", '#39': "'", nbsp: ' ',
+    };
+    if (body[0] === '#') {
+      const code = body[1] === 'x' || body[1] === 'X'
+        ? parseInt(body.slice(2), 16)
+        : parseInt(body.slice(1), 10);
+      // Only decode the safe printable range (avoid control chars / surrogates).
+      if (Number.isFinite(code) && code >= 32 && code <= 0x2122) {
+        try { return String.fromCodePoint(code); } catch { return m; }
+      }
+      return m;
+    }
+    return Object.prototype.hasOwnProperty.call(named, body) ? named[body] : m;
+  });
+}
+
+/**
+ * F-AI2 (2026-06-26) — decode HTML entities in a widget's DISPLAY-text config
+ * keys ONLY (the keys TEXT_FIELDS declares for this widgetType: e.g. TEXT
+ * `content`, ANNOUNCEMENT `message`, QUOTE `quote`/`author`, TICKER
+ * `messages[]`). The board renders these as plain text, so a literal
+ * `&amp;` would show on screen. Scoped to declared text keys so `&` stays
+ * intact in URLs / colors / arbitrary config leaves. Mutates `cfg` in place.
+ */
+function decodeConfigTextFields(cfg: Record<string, any>, widgetType: string): void {
+  const fields = TEXT_FIELDS[String(widgetType || '').toUpperCase()];
+  if (!fields) return;
+  for (const f of fields) {
+    const v = cfg[f.key];
+    if (f.kind === 'list') {
+      if (Array.isArray(v)) {
+        cfg[f.key] = v.map((item) => (typeof item === 'string' ? decodeEntities(item) : item));
+      }
+    } else if (typeof v === 'string') {
+      cfg[f.key] = decodeEntities(v);
+    }
+  }
+}
+
+/**
  * Strip every field that doesn't match the schema. Soft on individual
  * zones (drop bad ones, keep good ones) but strict on the top-level
  * envelope (must have a name + at least one zone after filtering).
@@ -2394,6 +2467,11 @@ function sanitizeTouchTemplate(raw: any): {
     defaultConfig?: Record<string, any>;
     touchAction?: any;
     sceneId?: string | null;
+    // F-AI1 — the NAME of the scene this zone belongs to (verbatim from the
+    // AI's `zone.sceneId`, a scene NAME matching scenes[].name). The
+    // controller resolves it to the created scene's id; the scenes don't have
+    // ids at generation time. Undefined → controller assigns the default scene.
+    sceneRef?: string;
   }>;
   scenes?: Array<{ name: string }>;
 } {
@@ -2401,10 +2479,10 @@ function sanitizeTouchTemplate(raw: any): {
     return { name: 'Untitled', zones: [] };
   }
   const name = typeof raw.name === 'string' && raw.name.trim()
-    ? raw.name.trim().slice(0, 60)
+    ? decodeEntities(raw.name.trim()).slice(0, 60)
     : 'Untitled template';
   const description = typeof raw.description === 'string' && raw.description.trim()
-    ? raw.description.trim().slice(0, 200)
+    ? decodeEntities(raw.description.trim()).slice(0, 200)
     : undefined;
 
   const clampPct = (n: any, min = 0, max = 100): number | null => {
@@ -2511,8 +2589,13 @@ function sanitizeTouchTemplate(raw: any): {
     const cfg = z.defaultConfig && typeof z.defaultConfig === 'object' && !Array.isArray(z.defaultConfig)
       ? scrubConfigLeaves(z.defaultConfig) as Record<string, any>
       : undefined;
+    // F-AI2 — decode HTML entities in this widget's DISPLAY-text fields only
+    // (the keys TEXT_FIELDS declares for this widgetType). A board renders
+    // these as plain text, so a literal "&amp;" would show on screen. We
+    // scope to text keys so `&` stays intact in URLs / arbitrary config.
+    if (cfg) decodeConfigTextFields(cfg, widgetType);
     zonesOut.push({
-      name: typeof z.name === 'string' && z.name.trim() ? z.name.trim().slice(0, 30) : undefined,
+      name: typeof z.name === 'string' && z.name.trim() ? decodeEntities(z.name.trim()).slice(0, 30) : undefined,
       widgetType,
       x,
       y,
@@ -2520,9 +2603,12 @@ function sanitizeTouchTemplate(raw: any): {
       height: safeH,
       defaultConfig: cfg,
       touchAction: sanitizeAction(z.touchAction),
-      // sceneId can't be set at generation time — the scenes don't have
-      // ids yet. The controller will resolve sceneId after scenes are
-      // created from `scenes[]` names.
+      // F-AI1 — carry the per-zone scene NAME through so the controller can
+      // resolve it to the created scene's id (scenes have no ids yet here).
+      // Trimmed string scene-name only; undefined → controller uses default.
+      sceneRef: typeof z.sceneId === 'string' && z.sceneId.trim()
+        ? z.sceneId.trim().slice(0, 60)
+        : undefined,
     });
   }
 
