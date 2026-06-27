@@ -21,7 +21,7 @@ import {
 import {
   useTemplates, useCreateTemplate, useDeleteTemplate, useCreateFromPreset,
   useDuplicateTemplate, useUpdateTemplate, useUpdateTemplateZones,
-  useAssets, usePlaylists, useAssetFolders,
+  useAssets, usePlaylists, useAssetFolders, useScreens,
   useTenantBranding, useApplyBrandToTemplates,
   useGenerateTouchTemplate, useExportTemplate, useImportTemplate,
   useGenerateTouchCandidates, useCreateFromCandidate, useRefineSignageBoard, type AiTemplateCandidate,
@@ -410,6 +410,15 @@ export default function TemplatesPage() {
   // ONE cohesive multi-scene template that plays itself. Mutually exclusive with
   // Touch; a set is always non-touch signage.
   const [aiSetMode, setAiSetMode] = useState(false);
+  // CC-1 (2026-06-27) — canvas size for the AI generate request. Without this
+  // every board was generated at 1920×1080 and CLIPPED on a real screen of a
+  // different aspect (the live LED is 960×1080 portrait). { w, h } is forwarded
+  // to BOTH generate-candidates and create-from-candidate so the engine lays
+  // out for the right aspect from the first draft. Defaults to landscape Full HD
+  // but is auto-prefilled from the tenant's most-common screen canvas once the
+  // screens list resolves (see the prefill effect below).
+  const [aiCanvas, setAiCanvas] = useState<{ w: number; h: number }>({ w: 1920, h: 1080 });
+  const aiCanvasDefaultedRef = useRef(false);
   const [aiPicking, setAiPicking] = useState<number | null>(null);
   // Wave 3 — chat-to-edit. Which candidate's "Tweak" box is open, its text, and
   // which one is currently refining (delta-prompt in flight).
@@ -557,6 +566,54 @@ export default function TemplatesPage() {
   const exportTemplate = useExportTemplate();
   const importTemplate = useImportTemplate();
 
+  // CC-1 — real screens for the AI "Match a screen…" picker. Each option
+  // resolves to a concrete pixel canvas: an explicit per-screen LED canvas
+  // (canvasW×canvasH, e.g. 960×1080) wins, else the parsed `resolution`
+  // string ("1920x1080"), else a 1920×1080 fallback. Only screens with a
+  // determinable size become options.
+  const { data: screensData } = useScreens();
+  const aiScreenOptions = useMemo(() => {
+    const list: Array<{ id: string; name: string; w: number; h: number }> = [];
+    for (const s of (screensData || []) as any[]) {
+      let w = 0;
+      let h = 0;
+      if (typeof s?.canvasW === 'number' && typeof s?.canvasH === 'number' && s.canvasW > 0 && s.canvasH > 0) {
+        w = s.canvasW;
+        h = s.canvasH;
+      } else if (typeof s?.resolution === 'string') {
+        const m = s.resolution.match(/(\d{2,5})\s*[x×]\s*(\d{2,5})/i);
+        if (m) {
+          w = parseInt(m[1], 10);
+          h = parseInt(m[2], 10);
+        }
+      }
+      if (w > 0 && h > 0) list.push({ id: s.id, name: s.name || 'Screen', w, h });
+    }
+    return list;
+  }, [screensData]);
+
+  // Prefill the AI canvas from the tenant's MOST-COMMON screen size the first
+  // time the screen list resolves, so an operator whose fleet is all 960×1080
+  // portrait LEDs gets a portrait board by default — no clipping, no manual
+  // flip. Runs ONCE and never fights a manual change thereafter.
+  useEffect(() => {
+    if (aiCanvasDefaultedRef.current) return;
+    if (aiScreenOptions.length === 0) return;
+    aiCanvasDefaultedRef.current = true;
+    const counts = new Map<string, { w: number; h: number; n: number }>();
+    for (const o of aiScreenOptions) {
+      const key = `${o.w}x${o.h}`;
+      const cur = counts.get(key);
+      if (cur) cur.n += 1;
+      else counts.set(key, { w: o.w, h: o.h, n: 1 });
+    }
+    let best: { w: number; h: number; n: number } | null = null;
+    for (const v of counts.values()) {
+      if (!best || v.n > best.n) best = v;
+    }
+    if (best) setAiCanvas({ w: best.w, h: best.h });
+  }, [aiScreenOptions]);
+
   // Reset the AI modal back to a clean 'prompt' phase. Called on
   // open/close so a stale candidate grid never flashes on reopen.
   const resetAiModal = useCallback(() => {
@@ -584,6 +641,10 @@ export default function TemplatesPage() {
     try {
       const res = await generateCandidates.mutateAsync({
         prompt,
+        // CC-1 — lay the board out for the chosen aspect so it isn't clipped on
+        // a real screen of a different size (e.g. a 960×1080 portrait LED).
+        screenWidth: aiCanvas.w,
+        screenHeight: aiCanvas.h,
         vertical: (tenantCopy.vertical || 'venue').toLowerCase(),
         interactive: aiInteractive,
         // Pick-a-winner = 3 drafts. A SET omits count so the backend builds its
@@ -608,7 +669,7 @@ export default function TemplatesPage() {
     } catch (e: any) {
       setAiError(friendlyAiError(e));
     }
-  }, [aiPrompt, aiInteractive, aiSetMode, tenantCopy.vertical, generateCandidates]);
+  }, [aiPrompt, aiInteractive, aiSetMode, aiCanvas, tenantCopy.vertical, generateCandidates]);
 
   // Phase 2 → done: persist the chosen candidate (re-sanitized server-
   // side) and open it in the builder. The sub-1024px mobile handoff is
@@ -621,6 +682,10 @@ export default function TemplatesPage() {
     try {
       const res = await createFromCandidate.mutateAsync({
         candidate,
+        // CC-1 — persist the template at the same canvas it was laid out for,
+        // so the created board's screenWidth/Height match the target screen.
+        screenWidth: aiCanvas.w,
+        screenHeight: aiCanvas.h,
         interactive: aiInteractive,
         // Wave 2 fix (beta-QA P1): forward the art-director background so the
         // engine board persists with its theme gradient/photo. Without this the
@@ -640,7 +705,7 @@ export default function TemplatesPage() {
       setAiError(friendlyAiError(e));
       setAiPicking(null);
     }
-  }, [aiCandidates, aiInteractive, createFromCandidate, closeAiModal, openInBuilder]);
+  }, [aiCandidates, aiInteractive, aiCanvas, createFromCandidate, closeAiModal, openInBuilder]);
 
   // Wave 3 — chat-to-edit. Refine candidate `index` by a natural-language tweak
   // (delta-prompt over its spec) and REPLACE it in place. Closes the tweak box.
@@ -1252,6 +1317,67 @@ export default function TemplatesPage() {
                     </button>
                   </div>
                 </div>
+
+                {/* CC-1 — canvas size. Orientation presets + optional "Match a
+                    screen…". The chosen size flows into BOTH generate and
+                    create-from-candidate so the board is laid out for the real
+                    screen aspect (was hardcoded 1920×1080 → clipped on a
+                    960×1080 portrait LED). */}
+                {(() => {
+                  const orient: 'landscape' | 'portrait' | 'square' =
+                    aiCanvas.w === aiCanvas.h ? 'square' : aiCanvas.h > aiCanvas.w ? 'portrait' : 'landscape';
+                  // Is the current size an exact match for a real screen? If so,
+                  // keep that screen selected in the dropdown.
+                  const matchedScreen = aiScreenOptions.find((o) => o.w === aiCanvas.w && o.h === aiCanvas.h);
+                  const presets: Array<{ key: 'landscape' | 'portrait' | 'square'; label: string; w: number; h: number }> = [
+                    { key: 'landscape', label: 'Landscape', w: 1920, h: 1080 },
+                    { key: 'portrait', label: 'Portrait', w: 1080, h: 1920 },
+                    { key: 'square', label: 'Square', w: 1080, h: 1080 },
+                  ];
+                  return (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-semibold text-slate-500">Screen:</span>
+                      <div className="inline-flex rounded-xl bg-slate-100 p-1">
+                        {presets.map((p) => (
+                          <button
+                            key={p.key}
+                            type="button"
+                            onClick={() => setAiCanvas({ w: p.w, h: p.h })}
+                            disabled={generateCandidates.isPending}
+                            title={`${p.w}×${p.h}`}
+                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${
+                              !matchedScreen && orient === p.key
+                                ? 'bg-white text-violet-700 shadow-sm'
+                                : 'text-slate-500 hover:text-slate-700'
+                            }`}
+                          >
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                      {aiScreenOptions.length > 0 && (
+                        <select
+                          aria-label="Match a screen size"
+                          value={matchedScreen ? matchedScreen.id : ''}
+                          onChange={(e) => {
+                            const opt = aiScreenOptions.find((o) => o.id === e.target.value);
+                            if (opt) setAiCanvas({ w: opt.w, h: opt.h });
+                          }}
+                          disabled={generateCandidates.isPending}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-50 border border-slate-200 text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-50 max-w-[200px]"
+                        >
+                          <option value="">Match a screen…</option>
+                          {aiScreenOptions.map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {o.name} ({o.w}×{o.h})
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      <span className="text-[11px] text-slate-400 tabular-nums">{aiCanvas.w}×{aiCanvas.h}</span>
+                    </div>
+                  );
+                })()}
 
                 <textarea
                   autoFocus
