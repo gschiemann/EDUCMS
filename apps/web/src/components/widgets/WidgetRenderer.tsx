@@ -1333,6 +1333,18 @@ function SignageText({ config }: { config: any }) {
 
   const justify = align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start';
 
+  // Long single words must wrap at boundaries / hyphenate rather than split
+  // mid-letter ("Homecomin·g"). Applied to the card title + the plain headline.
+  const wordWrapStyle: React.CSSProperties = {
+    wordBreak: 'normal',
+    overflowWrap: 'break-word',
+    hyphens: 'auto',
+  };
+
+  // One consistent soft elevation for the card + CTA pill — premium depth,
+  // never a flat slab. Plain text gets NO shadow.
+  const softElevation = '0 12px 40px rgba(0,0,0,0.28)';
+
   // CTA — a centered, filled accent pill.
   if (config.paddingMode === 'button') {
     return (
@@ -1357,6 +1369,7 @@ function SignageText({ config }: { config: any }) {
             padding: '0.6em 1.4em',
             borderRadius:
               typeof config.borderRadius === 'number' ? `${config.borderRadius}px` : config.borderRadius,
+            boxShadow: softElevation,
           }}
         >
           {content}
@@ -1375,10 +1388,11 @@ function SignageText({ config }: { config: any }) {
           borderRadius:
             typeof config.borderRadius === 'number' ? `${config.borderRadius}px` : config.borderRadius,
           padding: '5%',
+          boxShadow: softElevation,
         }}
         data-field="content"
       >
-        <div style={{ ...baseTextStyle, fontWeight: 800 }}>{content}</div>
+        <div style={{ ...baseTextStyle, ...wordWrapStyle, fontWeight: 800 }}>{content}</div>
         {config.detail ? (
           <div
             style={{
@@ -1402,6 +1416,9 @@ function SignageText({ config }: { config: any }) {
     return (
       <div
         className="absolute top-0 right-0 bottom-0 left-0 flex flex-row items-center overflow-hidden"
+        // Small right padding so the right-aligned price never kisses the
+        // zone's right edge.
+        style={{ paddingRight: '0.6em' }}
         data-field="content"
       >
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -1447,7 +1464,7 @@ function SignageText({ config }: { config: any }) {
       style={{ alignItems: itemsAlign }}
       data-field="content"
     >
-      <p style={{ ...baseTextStyle, width: '100%' }}>{content}</p>
+      <p style={{ ...baseTextStyle, ...wordWrapStyle, width: '100%' }}>{content}</p>
     </div>
   );
 }
