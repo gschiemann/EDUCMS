@@ -586,7 +586,10 @@ export default function TemplatesPage() {
         prompt,
         vertical: (tenantCopy.vertical || 'venue').toLowerCase(),
         interactive: aiInteractive,
-        count: 3,
+        // Pick-a-winner = 3 drafts. A SET omits count so the backend builds its
+        // cohesive 4-board loop (beta-QA P1: count:3 forced sets down to 3 and
+        // never reached the welcome→offer→hours→event story).
+        count: aiSetMode ? undefined : 3,
         // Passive signage boards run through the signage-design art-director
         // engine (Wave 2) — grid-locked archetype + theme + signage-scale type.
         // Touch templates keep the multi-scene generator (touchActions).
@@ -619,6 +622,10 @@ export default function TemplatesPage() {
       const res = await createFromCandidate.mutateAsync({
         candidate,
         interactive: aiInteractive,
+        // Wave 2 fix (beta-QA P1): forward the art-director background so the
+        // engine board persists with its theme gradient/photo. Without this the
+        // board rendered FLAT on screen — the central output was silently lost.
+        background: candidate.background,
       });
       const created = res?.template;
       if (created?.id) {

@@ -4467,9 +4467,16 @@ function PlayerPage() {
     const tpl: any = playlist?.template;
     const scenes: any[] = Array.isArray(tpl?.scenes) ? tpl.scenes : [];
     if (scenes.length < 2) return;
-    const ordered = [...scenes].sort(
-      (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
-    );
+    // Only cycle scenes that actually HAVE zones — a truncated set can leave a
+    // trailing scene with zero zones; never auto-advance onto a blank board
+    // (beta-QA P1). A zone with no sceneId belongs to the default scene.
+    const allZones: any[] = Array.isArray(tpl?.zones) ? tpl.zones : [];
+    const ordered = [...scenes]
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+      .filter((s) =>
+        allZones.some((z: any) => z.sceneId === s.id || (!!s.isDefault && !z.sceneId)),
+      );
+    if (ordered.length < 2) return;
     const perSceneMs = 8000;
     // Start from the current/default scene, then cycle.
     const startId =
