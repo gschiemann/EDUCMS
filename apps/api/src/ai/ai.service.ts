@@ -910,10 +910,13 @@ export class AiService {
     system: string,
     userPrompt: string,
   ): Promise<ReturnType<typeof sanitizeTouchTemplate>> {
-    // Higher cap than the text-snippet path because a 6-zone template with
-    // touch actions is ~1.5KB JSON. 1500 keeps spend bounded (~$0.02/call
-    // on Haiku) but leaves headroom.
-    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, 1500);
+    // Higher cap than the text-snippet path because templates are big JSON.
+    // A single-scene 6-zone template is ~1.5KB, but a MULTI-SCENE kiosk now
+    // generates content for EVERY scene (~3-4 zones/scene → a 3-scene kiosk
+    // returns ~9-14 zones ≈ 3-4KB JSON). 2600 leaves headroom so the larger
+    // output doesn't truncate into unparseable JSON, while staying bounded
+    // (~$0.03-0.04/call on Haiku).
+    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, 2600);
 
     const stripped = raw
       .replace(/^```(?:json)?\n?/, '')
@@ -2040,15 +2043,26 @@ OUTPUT SCHEMA (strict — no extra fields):
 }
 
 RULES:
-- 3-8 zones per template. Don't crowd the canvas; whitespace is good.
+- For a SINGLE-scene template: 3-8 zones. Don't crowd the canvas; whitespace is good.
 - No two zones should overlap by more than 10%.
 - For touch templates, AT LEAST 2 zones should have a touchAction set.
 - Use 'goto-scene' with target=scene-name for in-template navigation;
   the server resolves the name to the matching scene id.
-- MULTI-SCENE: when you return more than one scene, EVERY zone that
-  belongs to a non-default scene MUST set "sceneId" to that scene's
-  NAME (exactly matching scenes[].name). Zones with no "sceneId" land
-  on the first scene. Do not put content for scene 2/3 on scene 1.
+- MULTI-SCENE (CRITICAL — read carefully): when you return more than one
+  scene, you MUST generate real CONTENT for EVERY scene, not just the
+  first one. A scene a button navigates to must NOT be empty — a visitor
+  who taps it has to land on a populated screen.
+  • The FIRST (default) scene is the home/menu: its nav buttons each
+    'goto-scene' a destination.
+  • For EACH destination scene, generate 2-4 content zones (a heading +
+    body/list/image relevant to that section) AND set each of those
+    zones' "sceneId" to that destination scene's NAME (exactly matching
+    scenes[].name). Example: a "Concessions" scene gets an ANNOUNCEMENT
+    heading + a TEXT/TICKER menu, both with sceneId:"Concessions".
+  • Zones with no "sceneId" land on the first scene. NEVER leave a
+    non-default scene with zero zones. Total zone budget for a multi-
+    scene template is ~3-4 zones PER scene (so a 3-scene kiosk returns
+    roughly 9-14 zones), not 3-8 overall.
 - TouchAction targets that look like URLs MUST start with https://.
 - No webhook targets to private IPs or localhost.
 - TEXT / ANNOUNCEMENT / QUOTE widgets should have populated content
