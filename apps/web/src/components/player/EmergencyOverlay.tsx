@@ -127,23 +127,34 @@ interface Props {
   deviceToken?: string | null;
 }
 
+// `solidBg` is a raw hex applied via INLINE style so the emergency takeover
+// ALWAYS paints opaque — even if Tailwind fails to load on the kiosk WebView
+// (a real Taurus failure mode, cf. the 2026-05-13 "template went black"
+// bug). Relying on the `bg-*` CLASS alone meant that when Tailwind didn't
+// load, the overlay was transparent and the running playlist showed straight
+// through behind the alert (Greg live-caught this on the 960×1080 LED). Hex
+// values match the Tailwind classes (yellow-400 / orange-500 / red-700) at
+// FULL opacity — a life-safety takeover must never be see-through.
 const severityStyles = {
   INFO: {
-    bg: 'bg-yellow-400/95',
+    bg: 'bg-yellow-400',
+    solidBg: '#facc15',
     border: 'border-yellow-600',
     text: 'text-slate-900',
     icon: Megaphone,
     animate: '',
   },
   WARN: {
-    bg: 'bg-orange-500/95',
+    bg: 'bg-orange-500',
+    solidBg: '#f97316',
     border: 'border-orange-700',
     text: 'text-white',
     icon: AlertTriangle,
     animate: '',
   },
   CRITICAL: {
-    bg: 'bg-red-700/95',
+    bg: 'bg-red-700',
+    solidBg: '#b91c1c',
     border: 'border-red-900',
     text: 'text-white',
     icon: ShieldAlert,
@@ -253,7 +264,7 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
         role="alert"
         aria-live="assertive"
         className={`fixed top-0 left-0 right-0 z-[9999] ${style.bg} ${style.text} border-b-4 ${style.border} ${style.animate} px-8 py-4 flex items-center shadow-2xl overflow-hidden`}
-        style={{ maxHeight: '40vh' }}
+        style={{ maxHeight: '40vh', backgroundColor: style.solidBg }}
       >
         <Icon className="w-8 h-8 flex-shrink-0" />
         {/* ml-4 stand-in for a parent flex GAP (Chrome 84+ only). min-w-0 lets
@@ -269,6 +280,10 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
       role="alert"
       aria-live="assertive"
       className={`fixed top-0 right-0 bottom-0 left-0 z-[9999] ${style.bg} ${style.text} ${style.animate}`}
+      // Guaranteed-opaque backdrop — paints even if Tailwind's bg class never
+      // loads on the kiosk WebView, so the playlist can never show through a
+      // life-safety takeover.
+      style={{ backgroundColor: style.solidBg }}
     >
       {active.severity === 'CRITICAL' && (
         <div className="pointer-events-none absolute top-0 right-0 bottom-0 left-0 border-[12px] border-red-500 animate-pulse z-10" aria-hidden />
