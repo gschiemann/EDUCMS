@@ -56,5 +56,7 @@ Files: `apps/api/src/ai/ai.service.ts`, `apps/api/src/ai/art-director.ts`, `pack
 
 - **Phase 3a — Chat-to-edit** (`eafbe168`, CI watch bdr9vq1l6): `AiService.refineSignageBoard` (delta-prompt over the candidate's ArtDirectorSpec → re-emit patched spec → re-run engine; works for boards + sets; spec re-sanitized server-side; one credit; AI_SIGNAGE_BOARD_REFINED); engine candidates carry their `spec`; controller `POST templates/refine-signage` + schema + `useRefineSignageBoard` hook; FE per-card **Tweak** input (type a change → that candidate re-generates in place). 121 tests green.
 
+- **Phase 3b — Auto-translate** (`77f0bd8f`): one-tap language chips (ES/FR/ZH/VI/KO/AR) in the Tweak panel → refine pipeline translates copy + re-fits layout; no backend change. Cross-vertical (K-12/healthcare/hospitality/worship).
+
 ## REMAINING (Phase 3 stretch, ranked)
-auto-translate · live-data slot (clock/weather/countdown archetypes) · variable-length menu-list + N-up grid · vertical-native archetypes (lookbook/now-serving/giving-thermometer) · brand-from-URL into the AI modal · magic-resize action · AI product imagery · Stage B prompt-to-playlist (PlaylistItem.templateId). Plus: live authed-UI verification of Phase 1+2 + a per-vertical render-review/QA workflow.
+live-data slot (clock/weather/countdown archetypes) · variable-length menu-list + N-up grid · vertical-native archetypes (lookbook/now-serving/giving-thermometer) · brand-from-URL into the AI modal · magic-resize action · AI product imagery · Stage B prompt-to-playlist (PlaylistItem.templateId). Plus: live authed-UI verification of Phase 1+2 + a per-vertical render-review/QA workflow.
