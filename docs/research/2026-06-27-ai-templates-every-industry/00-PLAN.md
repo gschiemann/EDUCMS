@@ -47,3 +47,12 @@ Recon workflow `wf_863ea41b-794` (7 agents, 870K tokens). Full findings:
 **Phase 3 — parity stretch (ranked):** chat-to-edit (delta-prompt refine), auto-translate, live-data slot (clock/weather/countdown archetypes), variable-length menu-list + N-up grid, vertical-native archetypes (lookbook/now-serving/giving-thermometer), brand-from-URL into the AI modal, magic-resize as a product action, AI product imagery, AI→POS/score binding, Stage B prompt-to-playlist.
 
 Files: `apps/api/src/ai/ai.service.ts`, `apps/api/src/ai/art-director.ts`, `packages/api-types/src/verticals.ts`, `packages/signage-design/src/{archetypes,themes,types}.ts`, `apps/api/src/templates/templates.controller.ts`, `apps/web/src/app/[schoolId]/templates/page.tsx`, `apps/web/src/app/player/page.tsx`.
+
+---
+
+## SHIPPED (2026-06-27)
+- **Phase 1 — per-vertical intelligence** (`62f71f6e`, CI-green): `VERTICAL_DESIGN_AFFINITY` map; affinity injected as prompt hint + deterministic on-brand parse fallback (no more cold-corporate default); vertical-aware candidate directives; VENUE voice clause + `normalizeVertical` alias resolution in `prependVoices` + RETAIL/CORPORATE voice rewrites; inline theme-mood descriptions; non-destructive multi-select chips + per-vertical Display default; `vertical-affinity.spec.ts` drift guard. 110 tests green.
+- **Phase 2 — Build a set** (`a0f1ebcb`, CI-green): `generateSignageBoardSet` (one/many prompts → ONE cohesive multi-scene template sharing one theme, one credit); `buildSignageBoardCore` forcedTheme+maxTokens overrides; controller `set:true` branch; player passive multi-scene auto-advance (8s); FE "Build a set" mode + set-aware labels; `set` flag on schema + hook. 121 tests green. Reuses the existing map→sanitize→persist scene pipeline (no migration).
+
+## REMAINING (Phase 3 stretch, ranked)
+chat-to-edit (delta-prompt refine) · auto-translate · live-data slot (clock/weather/countdown archetypes) · variable-length menu-list + N-up grid · vertical-native archetypes (lookbook/now-serving/giving-thermometer) · brand-from-URL into the AI modal · magic-resize action · AI product imagery · Stage B prompt-to-playlist (PlaylistItem.templateId). Plus: live authed-UI verification of Phase 1+2 + a per-vertical render-review/QA workflow.
