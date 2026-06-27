@@ -7,6 +7,7 @@ import {
   resolveArchetype,
 } from './archetypes';
 import { THEMES } from './themes';
+import { enforce } from './validator';
 import { CANVAS_CLASSES } from './types';
 import type { ArchetypeId, ResolvedZone } from './types';
 
@@ -107,6 +108,106 @@ describe.each(ARCHETYPE_IDS)('resolve(%s) on landscape', (id) => {
       const serialized = JSON.stringify(z.styleTokens);
       expect(serialized).not.toMatch(/"inset"/);
       expect(serialized).not.toMatch(/\bgap\b/);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ORIENTATION (Wave 3): for EACH archetype and EACH canvas class in its
+// `supports`, the resolved geometry must be in-bounds, content >= 5% margin,
+// and no two DIFFERENT-slot content zones overlap.
+// ---------------------------------------------------------------------------
+
+const SINGLE_MESSAGE: ArchetypeId[] = [
+  'hero-fullbleed',
+  'lower-third-banner',
+  'stat-spotlight',
+  'poster-promo',
+  'title-cta',
+];
+const MULTI_ZONE: ArchetypeId[] = [
+  'split-50',
+  'three-up-grid',
+  'menu-list',
+  'quote-spotlight',
+];
+
+describe('orientation: every archetype x every supported canvas class', () => {
+  for (const id of ARCHETYPE_IDS) {
+    const supported = ARCHETYPES[id].supports;
+    describe(`${id}`, () => {
+      for (const cid of supported) {
+        const canvas = CANVAS_CLASSES[cid];
+
+        it(`[${cid}] resolves at least one zone`, () => {
+          const zones = resolveArchetype(id, canvas, theme);
+          expect(zones.length).toBeGreaterThan(0);
+        });
+
+        it(`[${cid}] all rects are in bounds (0..100)`, () => {
+          for (const z of resolveArchetype(id, canvas, theme)) {
+            expect(z.x).toBeGreaterThanOrEqual(0);
+            expect(z.y).toBeGreaterThanOrEqual(0);
+            expect(z.width).toBeGreaterThan(0);
+            expect(z.height).toBeGreaterThan(0);
+            expect(z.x + z.width).toBeLessThanOrEqual(100.001);
+            expect(z.y + z.height).toBeLessThanOrEqual(100.001);
+          }
+        });
+
+        it(`[${cid}] content (non-image) zones keep the 5% safe margin`, () => {
+          for (const z of marginCheckedZones(resolveArchetype(id, canvas, theme))) {
+            expect(z.x).toBeGreaterThanOrEqual(SAFE_MARGIN_PCT - 1e-6);
+            expect(z.y).toBeGreaterThanOrEqual(SAFE_MARGIN_PCT - 1e-6);
+            expect(z.x + z.width).toBeLessThanOrEqual(100 - SAFE_MARGIN_PCT + 1e-6);
+            expect(z.y + z.height).toBeLessThanOrEqual(100 - SAFE_MARGIN_PCT + 1e-6);
+          }
+        });
+
+        it(`[${cid}] no overlap between DISTINCT content slots`, () => {
+          const cz = contentZones(resolveArchetype(id, canvas, theme));
+          for (let i = 0; i < cz.length; i++) {
+            for (let j = i + 1; j < cz.length; j++) {
+              if (cz[i]!.slot === cz[j]!.slot) continue; // tiled list rows allowed
+              expect(rectsOverlap(cz[i]!, cz[j]!)).toBe(false);
+            }
+          }
+        });
+
+        it(`[${cid}] passes the validator with no error-severity findings`, () => {
+          const zones = resolveArchetype(id, canvas, theme);
+          const result = enforce(zones, { canvas, theme });
+          const errors = result.findings.filter((f) => f.severity === 'error');
+          expect(errors).toEqual([]);
+          expect(result.ok).toBe(true);
+        });
+      }
+    });
+  }
+
+  it('the 5 single-message archetypes support the ribbon; the 4 multi-zone do NOT', () => {
+    for (const id of SINGLE_MESSAGE) {
+      expect(archetypeSupports(id, 'ultrawide-ribbon')).toBe(true);
+    }
+    for (const id of MULTI_ZONE) {
+      expect(archetypeSupports(id, 'ultrawide-ribbon')).toBe(false);
+    }
+  });
+
+  it('every archetype supports landscape, portrait, and square (the universal three)', () => {
+    for (const id of ARCHETYPE_IDS) {
+      expect(archetypeSupports(id, 'landscape-16-9')).toBe(true);
+      expect(archetypeSupports(id, 'portrait-9-16')).toBe(true);
+      expect(archetypeSupports(id, 'square')).toBe(true);
+    }
+  });
+
+  it("each archetype's supports[] contains only valid canvas class ids", () => {
+    const valid = new Set(Object.keys(CANVAS_CLASSES));
+    for (const id of ARCHETYPE_IDS) {
+      for (const cid of ARCHETYPES[id].supports) {
+        expect(valid.has(cid)).toBe(true);
+      }
     }
   });
 });
