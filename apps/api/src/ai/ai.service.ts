@@ -1649,63 +1649,15 @@ export class AiService {
       }
     }
 
-    // The art-director spec is small (no geometry/hex/sizes) → 900 tokens is
-    // ample, keeping spend bounded (~$0.01/call on Haiku).
-    const system = prependVoices(
-      ART_DIRECTOR_SYSTEM_PROMPT,
-      opts.vertical,
-      await this.tenantBrandVoice(opts.tenantId),
-    );
-    const sw = opts.screenWidth || 1920;
-    const sh = opts.screenHeight || 1080;
-    const userPrompt = [
-      `Operator description: ${prompt}`,
-      `Vertical: ${opts.vertical || 'venue'}`,
-      `Canvas: ${sw} × ${sh} px (${sh > sw ? 'portrait' : 'landscape'}).`,
-      '',
-      'Return ONLY the ArtDirectorSpec JSON. No coordinates, no hex, no font sizes. No preamble, no markdown fences.',
-    ].join('\n');
-
-    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, 900);
-    const stripped = raw
-      .replace(/^```(?:json)?\n?/, '')
-      .replace(/\n?```$/, '')
-      .trim();
-    let parsedJson: any;
-    try {
-      parsedJson = JSON.parse(stripped);
-    } catch {
-      this.logger.warn(`AI returned non-JSON for signage spec: ${stripped.slice(0, 200)}`);
-      throw new ServiceUnavailableException('AI returned an unparseable response. Try rephrasing your prompt.');
-    }
-    const spec = parseArtDirectorSpec(parsedJson);
-
-    // Fetch the tenant brand palette so theme:'brand' (or any board) can ride
-    // the venue's colors when the spec asks for it.
-    const brand = await this.tenantBrandColors(opts.tenantId);
-
-    // Run the ENGINE. This produces grid-locked zones + a background descriptor.
-    const mapped: MappedTemplate = artDirectorSpecToTemplate(spec, {
-      screenWidth: sw,
-      screenHeight: sh,
-      brandPrimaryHex: brand.primaryHex,
-      brandAccentHex: brand.accentHex,
+    // The art-director spec → engine → sanitized board (shared with the
+    // multi-candidate path via buildSignageBoardCore).
+    const { sanitized, mapped, spec, sw, sh } = await this.buildSignageBoardCore(resolved, {
+      tenantId: opts.tenantId,
+      prompt,
+      screenWidth: opts.screenWidth,
+      screenHeight: opts.screenHeight,
+      vertical: opts.vertical,
     });
-
-    // Re-run the SAME safety scrubbing the other generators use. IMPORTANT:
-    // sanitizeTouchTemplate ALLOWS arbitrary defaultConfig leaves (scrubConfigLeaves
-    // keeps numbers/strings/bools), so the absolute-px config survives — it just
-    // clamps coords + allowlists widget types + scrubs SSRF/XSS. It DROPS the
-    // top-level `background` descriptor, so we re-attach it below.
-    const sanitized = sanitizeTouchTemplate({
-      name: mapped.name,
-      description: mapped.description,
-      zones: mapped.zones,
-      scenes: mapped.scenes,
-    });
-    if (!sanitized.zones.length) {
-      throw new ServiceUnavailableException('AI produced no usable layout. Try a more specific prompt.');
-    }
 
     // Spend accounting AFTER a usable result (same leak-fix as the others).
     await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
@@ -1778,6 +1730,214 @@ export class AiService {
       usage,
       backgroundImageUrl,
     };
+  }
+
+  /**
+   * The pure spec→engine→sanitized-board core shared by the single-shot
+   * (generateSignageBoardInner) and multi-candidate (generateSignageBoardCandidates)
+   * paths. Does the LLM dispatch + parse + map + sanitize ONLY — NO rate-limit,
+   * NO spend accounting, NO audit, NO image. An optional `directive` biases the
+   * art-director toward a particular archetype family so the 3 candidates differ.
+   */
+  private async buildSignageBoardCore(
+    resolved: { provider: AiProvider; apiKey: string; model: string; source: 'tenant' | 'platform' },
+    opts: { tenantId: string; prompt: string; screenWidth?: number; screenHeight?: number; vertical?: string },
+    directive?: string,
+  ): Promise<{ sanitized: any; mapped: MappedTemplate; spec: ArtDirectorSpec; sw: number; sh: number }> {
+    // The art-director spec is small (no geometry/hex/sizes) → 900 tokens is
+    // ample, keeping spend bounded (~$0.01/call on Haiku).
+    const system = prependVoices(
+      ART_DIRECTOR_SYSTEM_PROMPT,
+      opts.vertical,
+      await this.tenantBrandVoice(opts.tenantId),
+    );
+    const sw = opts.screenWidth || 1920;
+    const sh = opts.screenHeight || 1080;
+    const userPrompt = [
+      `Operator description: ${opts.prompt}`,
+      `Vertical: ${opts.vertical || 'venue'}`,
+      `Canvas: ${sw} × ${sh} px (${sh > sw ? 'portrait' : 'landscape'}).`,
+      ...(directive ? ['', directive] : []),
+      '',
+      'Return ONLY the ArtDirectorSpec JSON. No coordinates, no hex, no font sizes. No preamble, no markdown fences.',
+    ].join('\n');
+
+    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, 900);
+    const stripped = raw
+      .replace(/^```(?:json)?\n?/, '')
+      .replace(/\n?```$/, '')
+      .trim();
+    let parsedJson: any;
+    try {
+      parsedJson = JSON.parse(stripped);
+    } catch {
+      this.logger.warn(`AI returned non-JSON for signage spec: ${stripped.slice(0, 200)}`);
+      throw new ServiceUnavailableException('AI returned an unparseable response. Try rephrasing your prompt.');
+    }
+    const spec = parseArtDirectorSpec(parsedJson);
+
+    // Fetch the tenant brand palette so theme:'brand' (or any board) can ride
+    // the venue's colors when the spec asks for it.
+    const brand = await this.tenantBrandColors(opts.tenantId);
+
+    // Run the ENGINE. This produces grid-locked zones + a background descriptor.
+    const mapped: MappedTemplate = artDirectorSpecToTemplate(spec, {
+      screenWidth: sw,
+      screenHeight: sh,
+      brandPrimaryHex: brand.primaryHex,
+      brandAccentHex: brand.accentHex,
+    });
+
+    // Re-run the SAME safety scrubbing the other generators use. IMPORTANT:
+    // sanitizeTouchTemplate ALLOWS arbitrary defaultConfig leaves (scrubConfigLeaves
+    // keeps numbers/strings/bools), so the absolute-px config survives — it just
+    // clamps coords + allowlists widget types + scrubs SSRF/XSS. It DROPS the
+    // top-level `background` descriptor, so the caller re-attaches mapped.background.
+    const sanitized = sanitizeTouchTemplate({
+      name: mapped.name,
+      description: mapped.description,
+      zones: mapped.zones,
+      scenes: mapped.scenes,
+    });
+    if (!sanitized.zones.length) {
+      throw new ServiceUnavailableException('AI produced no usable layout. Try a more specific prompt.');
+    }
+    return { sanitized, mapped, spec, sw, sh };
+  }
+
+  /**
+   * Wave 2a (2026-06-27) — the ENGINE path's "Pick your favorite" — returns up
+   * to `count` (default 3) DISTINCT art-directed boards, mirroring the touch
+   * candidate fan-out. Each take is biased toward a different archetype family
+   * (SIGNAGE_CANDIDATE_DIRECTIVES) so the operator sees Balanced / Bold /
+   * Detailed, not three clones. Image-free (the chosen board pays the image cost
+   * later, on accept). One bad candidate never sinks the batch; spend is recorded
+   * per SUCCESSFUL candidate (honest 3-tier accounting), and only when EVERY
+   * candidate fails do we surface the real error (out-of-credit, bad key, …).
+   */
+  async generateSignageBoardCandidates(opts: {
+    tenantId: string;
+    userId?: string;
+    prompt: string;
+    screenWidth?: number;
+    screenHeight?: number;
+    vertical?: string;
+    count?: number;
+  }): Promise<{
+    candidates: Array<{
+      name: string;
+      description?: string;
+      zones: any[];
+      scenes?: Array<{ name: string }>;
+      background: { bgColor?: string; bgGradient?: string; bgImage?: string };
+      archetype: string;
+      theme: string;
+    }>;
+    source: 'tenant' | 'platform';
+    usage: { used: number; cap: number; resetAt: string } | null;
+  }> {
+    await this.checkFailureCap(opts.tenantId);
+    const resolved = await this.resolveProviderKey(opts.tenantId);
+    if (!resolved) {
+      throw new ServiceUnavailableException(
+        'AI is not configured. Add your provider API key in Settings → Integrations, or contact your admin.',
+      );
+    }
+    const prompt = (opts.prompt || '').trim();
+    if (!prompt) throw new BadRequestException('Tell the AI what kind of signage board to build.');
+    if (prompt.length > 2000) {
+      throw new BadRequestException('Prompt too long. Keep it under 2000 characters.');
+    }
+    const count = Math.min(Math.max(opts.count ?? 3, 1), 3);
+
+    // Up-front caps (need headroom for at least one). Same shared Redis hourly
+    // window + monthly platform cap as every other generator.
+    if ((await this.windowCount(this.RL_SUCCESS_PREFIX, opts.tenantId)) >= this.HOURLY_CAP) {
+      throw new BadRequestException(
+        `Hit the hourly AI cap (${this.HOURLY_CAP} generations/hour). Try again later.`,
+      );
+    }
+    if (resolved.source === 'platform') {
+      const u = await this.readPlatformUsage(opts.tenantId);
+      if (u.used >= u.cap) {
+        throw new HttpException(
+          {
+            message: `Hit the monthly free AI cap (${u.cap} generations). Add your own provider key in Settings → AI provider for unlimited.`,
+            code: 'AI_CAP_REACHED',
+            cap: u.cap,
+            used: u.used,
+            resetAt: u.resetAt,
+          },
+          HttpStatus.PAYMENT_REQUIRED,
+        );
+      }
+    }
+
+    const directives = SIGNAGE_CANDIDATE_DIRECTIVES.slice(0, count);
+    const coreOpts = {
+      tenantId: opts.tenantId,
+      prompt,
+      screenWidth: opts.screenWidth,
+      screenHeight: opts.screenHeight,
+      vertical: opts.vertical,
+    };
+    // Fan out — each take is independently settled so one bad spec can't sink
+    // the batch. A failure-cap slot is burned ONLY when the whole batch fails.
+    const settled = await Promise.allSettled(
+      directives.map((directive) => this.buildSignageBoardCore(resolved, coreOpts, directive)),
+    );
+    const built = settled
+      .filter((s): s is PromiseFulfilledResult<{ sanitized: any; mapped: MappedTemplate; spec: ArtDirectorSpec; sw: number; sh: number }> => s.status === 'fulfilled')
+      .map((s) => s.value);
+    if (!built.length) {
+      await this.recordFailure(opts.tenantId);
+      const firstRej = settled.find((s) => s.status === 'rejected') as PromiseRejectedResult | undefined;
+      if (firstRej?.reason instanceof HttpException) throw firstRej.reason;
+      throw new ServiceUnavailableException('AI could not generate any usable options. Try rephrasing your prompt.');
+    }
+
+    // Record spend per SUCCESSFUL candidate (honest 3-tier accounting).
+    for (let i = 0; i < built.length; i++) {
+      await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
+      if (resolved.source === 'platform') {
+        try { await this.bumpPlatformUsage(opts.tenantId); }
+        catch (e: any) { this.logger.warn(`Platform usage bump failed: ${e?.message}`); }
+      }
+    }
+    let usage: { used: number; cap: number; resetAt: string } | null = null;
+    if (resolved.source === 'platform') {
+      const u = await this.readPlatformUsage(opts.tenantId);
+      usage = { used: u.used, cap: u.cap, resetAt: u.resetAt };
+    }
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'AI_SIGNAGE_BOARD_CANDIDATES',
+        targetType: 'tenant',
+        targetId: opts.tenantId,
+        tenantId: opts.tenantId,
+        userId: opts.userId || null,
+        details: JSON.stringify({
+          vertical: opts.vertical || null,
+          requested: count,
+          returned: built.length,
+          archetypes: built.map((b) => b.spec.archetype),
+          provider: resolved.provider,
+          model: resolved.model,
+          source: resolved.source,
+        }),
+      },
+    }).catch(() => { /* audit best-effort */ });
+
+    const candidates = built.map((b) => ({
+      name: b.sanitized.name,
+      description: b.sanitized.description,
+      zones: b.sanitized.zones,
+      scenes: b.sanitized.scenes,
+      background: b.mapped.background,
+      archetype: b.spec.archetype,
+      theme: b.spec.theme,
+    }));
+    return { candidates, source: resolved.source, usage };
   }
 
   /**
@@ -2675,6 +2835,20 @@ const TOUCH_CANDIDATE_DIRECTIVES: string[] = [
   'DESIGN DIRECTION: a balanced, classic layout — clear visual hierarchy, a prominent title, generous whitespace, evenly-spaced elements. Safe, legible, professional.',
   'DESIGN DIRECTION: a bold, hero-led layout — ONE large dominant focal element (a big headline, featured image, or primary action) with a few small supporting zones. Fewer, larger zones. High impact, readable from across a room.',
   'DESIGN DIRECTION: an information-rich grid — more zones arranged in a tidy grid for a busy space where viewers want many options or facts at a glance. Organized and aligned, never cluttered.',
+];
+
+/**
+ * Sibling of TOUCH_CANDIDATE_DIRECTIVES for the ART-DIRECTOR (engine) path —
+ * steers the 3 signage candidates toward DISTINCT archetype families/moods so
+ * "Pick your favorite" actually shows three different takes, not three clones.
+ * The model still chooses the final archetype id (the parser clamps to a valid
+ * one); these only bias the choice. Order mirrors the FE labels
+ * Balanced / Bold / Detailed.
+ */
+const SIGNAGE_CANDIDATE_DIRECTIVES: string[] = [
+  'DESIGN DIRECTION: balanced & classic — a clear title-led or split layout with strong hierarchy and generous breathing room. Prefer archetypes like title-cta, split-50, or lower-third-banner. Calm, premium, instantly legible.',
+  'DESIGN DIRECTION: bold & cinematic — ONE dominant focal element on a full-bleed or poster treatment. Prefer archetypes like hero-fullbleed, poster-promo, or quote-spotlight, and an image background when it fits. Maximum impact from across a room.',
+  'DESIGN DIRECTION: information-forward — surface the key numbers or a few facts at a glance. Prefer archetypes like stat-spotlight, three-up-grid, or menu-list. Organized and aligned, never cluttered.',
 ];
 
 /**

@@ -1002,7 +1002,15 @@ export default function TemplatesPage() {
                     {aiError}
                   </div>
                 )}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div
+                  className={`grid grid-cols-1 gap-3 mx-auto ${
+                    aiCandidates.length >= 3
+                      ? 'sm:grid-cols-3'
+                      : aiCandidates.length === 2
+                        ? 'sm:grid-cols-2 sm:max-w-2xl'
+                        : 'sm:max-w-xs'
+                  }`}
+                >
                   {aiCandidates.map((c, i) => {
                     const label = ['Balanced', 'Bold', 'Detailed'][i] || `Option ${i + 1}`;
                     const picking = aiPicking === i;

@@ -911,35 +911,30 @@ export class TemplatesController {
     @Body(new ZodValidationPipe(TemplateGenerateTouchCandidatesSchema)) body: TemplateGenerateTouchCandidatesInput,
   ) {
     // Wave 2 (2026-06-26) — opt-in ENGINE path. `engine:true` routes through
-    // the signage-design art-director pipeline so the board is grid-locked +
-    // theme'd + signage-scale typed instead of grey-text-on-white. Returns ONE
-    // candidate (Wave 2a) that ALSO carries `background` + archetype/theme. The
-    // old (non-engine) fan-out below is untouched when the flag is absent/false.
+    // the signage-design art-director pipeline so each board is grid-locked +
+    // theme'd + signage-scale typed instead of grey-text-on-white. Wave 2a
+    // (2026-06-27): returns UP TO `count` (default 3) DISTINCT candidates —
+    // Balanced / Bold / Detailed — each carrying its own `background` +
+    // archetype/theme. (Previously returned only ONE, which the "Three takes"
+    // picker rendered as a single left-hugging card.) The old non-engine
+    // fan-out below is untouched when the flag is absent/false.
     if (body.engine === true) {
-      const board = await this.ai.generateSignageBoard({
+      const out = await this.ai.generateSignageBoardCandidates({
         tenantId: req.user.tenantId,
         userId: req.user.id,
         prompt: body.prompt,
         screenWidth: body.screenWidth,
         screenHeight: body.screenHeight,
         vertical: body.vertical,
+        count: body.count,
       });
-      // The candidate round-trips through create-from-candidate, which
+      // Each candidate round-trips through create-from-candidate, which
       // re-sanitizes the zones and persists `background`. We carry the bg +
-      // archetype/theme on the candidate so the FE can show them + send them back.
-      const candidate = {
-        name: board.name,
-        description: board.description,
-        zones: board.zones,
-        scenes: board.scenes,
-        background: board.background,
-        archetype: board.archetype,
-        theme: board.theme,
-      };
+      // archetype/theme so the FE can show them + send them back.
       return {
-        candidates: [candidate],
+        candidates: out.candidates,
         engine: true,
-        ai: { source: board.source, usage: board.usage },
+        ai: { source: out.source, usage: out.usage },
       };
     }
 
