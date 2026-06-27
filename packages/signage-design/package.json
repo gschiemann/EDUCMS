@@ -1,0 +1,29 @@
+{
+  "name": "@cms/signage-design",
+  "version": "1.0.0",
+  "description": "VenueOS signage design engine — the art-director contract + archetype resolver + theme tokens + type scale + WCAG contrast + numeric rulebook validator. Turns the LLM into an art-director while the engine owns geometry, type, color, and contrast. Source of truth for AI template generation (API) and live preview/edit (web).",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "rootDir": "src",
+    "testRegex": ".*\\.spec\\.ts$"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "devDependencies": {
+    "@types/jest": "^29.5.11",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "typescript": "^5.3.3"
+  }
+}

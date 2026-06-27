@@ -27,7 +27,7 @@
     "a11y:ci": "pnpm --filter web run a11y:ci",
     "lhci": "pnpm --filter web run lhci",
     "mobile-perf-guard": "node apps/web/tools/check-mobile-perf.cjs",
-    "preflight": "pnpm install --frozen-lockfile --lockfile-only && pnpm --filter @cms/api-types build && pnpm --filter @cms/auth-core build && pnpm --filter @cms/ws-events build && pnpm --filter @cms/scoreboard-cts build && pnpm --filter api build && pnpm --filter web build",
+    "preflight": "pnpm install --frozen-lockfile --lockfile-only && pnpm --filter @cms/api-types build && pnpm --filter @cms/auth-core build && pnpm --filter @cms/ws-events build && pnpm --filter @cms/scoreboard-cts build && pnpm --filter @cms/signage-design build && pnpm --filter api build && pnpm --filter web build",
     "prepare": "husky || true"
   },
   "dependencies": {
