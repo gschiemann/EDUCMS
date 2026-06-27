@@ -590,6 +590,12 @@ export const TemplateGenerateTouchCandidatesSchema = z
     // true the candidates each carry a `background` descriptor + archetype/theme
     // metadata. The old (non-engine) path is untouched when this is absent/false.
     engine: z.boolean().optional(),
+    // Wave 2a (2026-06-27) — opt-in "build a whole set": ONE prompt (or several,
+    // newline-separated) → ONE cohesive multi-SCENE template (4-6 boards sharing
+    // one theme) that plays itself. Implies engine. Returns a single candidate
+    // whose `scenes[]` is the set. The old single-board candidate path is
+    // untouched when absent/false.
+    set: z.boolean().optional(),
   })
   .passthrough();
 export type TemplateGenerateTouchCandidatesInput = z.infer<typeof TemplateGenerateTouchCandidatesSchema>;

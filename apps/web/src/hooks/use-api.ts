@@ -1374,6 +1374,10 @@ export function useGenerateTouchCandidates() {
       /** Route through the @cms/signage-design art-director engine (Wave 2).
        *  Used for passive signage boards — grid-locked archetype + theme. */
       engine?: boolean;
+      /** Wave 2a — "build a set": ONE prompt (or many newline-separated) →
+       *  ONE cohesive multi-scene template (4-6 boards) that plays itself.
+       *  Returns a single candidate whose scenes[] is the set. Implies engine. */
+      set?: boolean;
     }
   >({
     mutationFn: (body) =>

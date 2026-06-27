@@ -406,6 +406,10 @@ export default function TemplatesPage() {
   const [aiPhase, setAiPhase] = useState<'prompt' | 'pick'>('prompt');
   const [aiCandidates, setAiCandidates] = useState<AiTemplateCandidate[]>([]);
   const [aiInteractive, setAiInteractive] = useState(true);
+  // Wave 2a (2026-06-27) — "Build a set" mode: one (or many newline) prompts →
+  // ONE cohesive multi-scene template that plays itself. Mutually exclusive with
+  // Touch; a set is always non-touch signage.
+  const [aiSetMode, setAiSetMode] = useState(false);
   const [aiPicking, setAiPicking] = useState<number | null>(null);
   // Esc-to-close — wired only when the modal is open so dashboard
   // keyboard shortcuts elsewhere aren't shadowed. Disabled while a
@@ -581,6 +585,9 @@ export default function TemplatesPage() {
         // engine (Wave 2) — grid-locked archetype + theme + signage-scale type.
         // Touch templates keep the multi-scene generator (touchActions).
         engine: !aiInteractive,
+        // Wave 2a — "Build a set": ONE cohesive multi-scene template (the whole
+        // venue loop) instead of 3 single-board options to pick from.
+        set: aiSetMode,
       });
       const cands = res?.candidates || [];
       if (!cands.length) {
@@ -592,7 +599,7 @@ export default function TemplatesPage() {
     } catch (e: any) {
       setAiError(friendlyAiError(e));
     }
-  }, [aiPrompt, aiInteractive, tenantCopy.vertical, generateCandidates]);
+  }, [aiPrompt, aiInteractive, aiSetMode, tenantCopy.vertical, generateCandidates]);
 
   // Phase 2 → done: persist the chosen candidate (re-sanitized server-
   // side) and open it in the builder. The sub-1024px mobile handoff is
@@ -986,12 +993,16 @@ export default function TemplatesPage() {
                 </div>
                 <div>
                   <h2 id="ai-gen-title" className="text-lg font-bold text-slate-800">
-                    {aiPhase === 'pick' ? 'Pick your favorite' : 'Generate a template with AI'}
+                    {aiPhase === 'pick'
+                      ? (aiSetMode ? 'Your signage set is ready' : 'Pick your favorite')
+                      : 'Generate a template with AI'}
                   </h2>
                   <p className="text-xs text-slate-500">
                     {aiPhase === 'pick'
-                      ? 'Three takes on your idea — choose one to open and fine-tune.'
-                      : 'Describe what you want — Claude drafts three different layouts to choose from.'}
+                      ? (aiSetMode
+                          ? 'A cohesive multi-board loop that plays itself — open it to fine-tune any board.'
+                          : 'Three takes on your idea — choose one to open and fine-tune.')
+                      : 'Describe what you want — Claude drafts it for you, on-brand for your venue.'}
                   </p>
                 </div>
               </div>
@@ -1095,19 +1106,28 @@ export default function TemplatesPage() {
                   <div className="inline-flex rounded-xl bg-slate-100 p-1">
                     <button
                       type="button"
-                      onClick={() => setAiInteractive(true)}
+                      onClick={() => { setAiInteractive(true); setAiSetMode(false); }}
                       disabled={generateCandidates.isPending}
-                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${aiInteractive ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${aiInteractive && !aiSetMode ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                       Touch (interactive)
                     </button>
                     <button
                       type="button"
-                      onClick={() => setAiInteractive(false)}
+                      onClick={() => { setAiInteractive(false); setAiSetMode(false); }}
                       disabled={generateCandidates.isPending}
-                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${!aiInteractive ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${!aiInteractive && !aiSetMode ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                       Display (no touch)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setAiSetMode(true); setAiInteractive(false); }}
+                      disabled={generateCandidates.isPending}
+                      title="One prompt (or one idea per line) → a whole set of boards that plays itself"
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${aiSetMode ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      ✨ Build a set
                     </button>
                   </div>
                 </div>
@@ -1122,7 +1142,9 @@ export default function TemplatesPage() {
                     // keeps shouting at them while they iterate.
                     if (aiError) setAiError(null);
                   }}
-                  placeholder={aiInteractive
+                  placeholder={aiSetMode
+                    ? `Describe your whole signage loop — or put one board per line:\n  Welcome to our venue\n  Today's featured special\n  Hours & info\n  Upcoming event`
+                    : aiInteractive
                     ? `e.g. Lobby check-in kiosk with three tap buttons: "Sign in," "Visiting hours," and "Wi-Fi info." Use the brand colors. Each button opens its own scene.`
                     : `e.g. Welcome lobby board: big school name, today's date and weather, a rolling ticker of announcements, and a rotating photo strip along the bottom.`}
                   maxLength={1800}
@@ -1184,7 +1206,9 @@ export default function TemplatesPage() {
 
                 <div className="flex items-center justify-between pt-1 gap-3">
                   <p className="text-[10px] text-slate-400">
-                    Creates 3 drafts to choose from — uses up to 3 of your monthly AI credits. All drafts are editable.
+                    {aiSetMode
+                      ? 'Builds ONE template of 4–6 cohesive boards that plays itself — uses 1 AI credit. Fully editable.'
+                      : 'Creates 3 drafts to choose from — uses up to 3 of your monthly AI credits. All drafts are editable.'}
                   </p>
                   <div className="flex gap-2 shrink-0">
                     <button
@@ -1200,7 +1224,9 @@ export default function TemplatesPage() {
                       className="px-5 py-2 text-sm font-bold rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                     >
                       {generateCandidates.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                      {generateCandidates.isPending ? 'Generating 3…' : 'Generate 3 options'}
+                      {generateCandidates.isPending
+                        ? (aiSetMode ? 'Building set…' : 'Generating 3…')
+                        : (aiSetMode ? 'Build the set' : 'Generate 3 options')}
                     </button>
                   </div>
                 </div>

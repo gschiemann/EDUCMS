@@ -918,6 +918,27 @@ export class TemplatesController {
     // archetype/theme. (Previously returned only ONE, which the "Three takes"
     // picker rendered as a single left-hugging card.) The old non-engine
     // fan-out below is untouched when the flag is absent/false.
+    // Wave 2a (2026-06-27) — "build a whole set": ONE (or many newline-separated)
+    // prompts → ONE cohesive multi-scene template (4-6 boards, one theme) that
+    // plays itself. Returns a SINGLE candidate whose scenes[] is the set; the
+    // existing create-from-candidate path persists the scenes unchanged.
+    if (body.set === true) {
+      const out = await this.ai.generateSignageBoardSet({
+        tenantId: req.user.tenantId,
+        userId: req.user.id,
+        prompt: body.prompt,
+        screenWidth: body.screenWidth,
+        screenHeight: body.screenHeight,
+        vertical: body.vertical,
+        count: body.count,
+      });
+      return {
+        candidates: [out.candidate],
+        engine: true,
+        set: true,
+        ai: { source: out.source, usage: out.usage },
+      };
+    }
     if (body.engine === true) {
       const out = await this.ai.generateSignageBoardCandidates({
         tenantId: req.user.tenantId,

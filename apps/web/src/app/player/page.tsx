@@ -4457,6 +4457,33 @@ function PlayerPage() {
     };
   }, [isTouchTemplate, idleResetMs]);
 
+  // Wave 2a (2026-06-27) — PASSIVE multi-scene auto-advance. A NON-touch
+  // template with >1 scene (an AI-generated "set" / lobby loop) plays itself:
+  // walk currentSceneId through the scenes on a timer so each board shows in
+  // turn. Touch templates are untouched (they advance on tap); single-scene
+  // signage is untouched (effect no-ops). Taurus-safe (setInterval only).
+  useEffect(() => {
+    if (isTouchTemplate) return;
+    const tpl: any = playlist?.template;
+    const scenes: any[] = Array.isArray(tpl?.scenes) ? tpl.scenes : [];
+    if (scenes.length < 2) return;
+    const ordered = [...scenes].sort(
+      (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
+    );
+    const perSceneMs = 8000;
+    // Start from the current/default scene, then cycle.
+    const startId =
+      currentSceneId || ordered.find((s) => s.isDefault)?.id || ordered[0]?.id || null;
+    let idx = Math.max(0, ordered.findIndex((s) => s.id === startId));
+    setCurrentSceneId(ordered[idx]?.id ?? null);
+    const timer = setInterval(() => {
+      idx = (idx + 1) % ordered.length;
+      setCurrentSceneId(ordered[idx]?.id ?? null);
+    }, perSceneMs);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTouchTemplate, playlist?.template?.id]);
+
   // ── Kiosk (EXTERNAL_HTML) wired-button actions ───────────────────
   // The Touch Kiosks pack runs inside a sandboxed null-origin iframe, so
   // a kiosk can't navigate the player or call our API itself. When a

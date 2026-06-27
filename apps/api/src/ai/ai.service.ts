@@ -1755,6 +1755,7 @@ export class AiService {
     resolved: { provider: AiProvider; apiKey: string; model: string; source: 'tenant' | 'platform' },
     opts: { tenantId: string; prompt: string; screenWidth?: number; screenHeight?: number; vertical?: string },
     directive?: string,
+    overrides?: { forcedTheme?: string; maxTokens?: number },
   ): Promise<{ sanitized: any; mapped: MappedTemplate; spec: ArtDirectorSpec; sw: number; sh: number }> {
     // The art-director spec is small (no geometry/hex/sizes) → 900 tokens is
     // ample, keeping spend bounded (~$0.01/call on Haiku).
@@ -1785,7 +1786,7 @@ export class AiService {
       'Return ONLY the ArtDirectorSpec JSON. No coordinates, no hex, no font sizes. No preamble, no markdown fences.',
     ].join('\n');
 
-    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, 900);
+    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, overrides?.maxTokens ?? 900);
     const stripped = raw
       .replace(/^```(?:json)?\n?/, '')
       .replace(/\n?```$/, '')
@@ -1803,6 +1804,14 @@ export class AiService {
       archetype: affinity.archetypes[0],
       theme: affinity.themes[0],
     });
+
+    // SET mode: force ONE shared theme across the whole multi-scene template so
+    // every board in the set reads as one cohesive campaign (not a mismatched
+    // patchwork). Applies to the top-level + every scene; honors a valid id only.
+    if (overrides?.forcedTheme && ART_THEME_IDS.has(overrides.forcedTheme)) {
+      (spec as any).theme = overrides.forcedTheme;
+      if (spec.scenes) for (const sc of spec.scenes) (sc as any).theme = overrides.forcedTheme;
+    }
 
     // Fetch the tenant brand palette so theme:'brand' (or any board) can ride
     // the venue's colors when the spec asks for it.
@@ -1970,6 +1979,137 @@ export class AiService {
       theme: b.spec.theme,
     }));
     return { candidates, source: resolved.source, usage };
+  }
+
+  /**
+   * Wave 2a (2026-06-27) — BUILD A WHOLE SET from one or many prompts. The
+   * cutting-edge "make the entire template" capability: ONE prompt (or several,
+   * newline-separated) → ONE cohesive multi-SCENE template (4-6 boards sharing a
+   * single theme + the tenant brand) that plays itself on the player. The
+   * smallest clean change — it reuses the ENTIRE existing pipeline: the
+   * art-director already supports `scenes[]`, the mapper already tags each zone
+   * with its scene + returns the scenes list, and create-from-candidate already
+   * persists template_scenes. Returns ONE candidate whose `scenes[]` IS the set.
+   * Image-free + one LLM call → one generation credit (generous to the operator).
+   */
+  async generateSignageBoardSet(opts: {
+    tenantId: string;
+    userId?: string;
+    prompt: string;
+    screenWidth?: number;
+    screenHeight?: number;
+    vertical?: string;
+    count?: number;
+  }): Promise<{
+    candidate: {
+      name: string;
+      description?: string;
+      zones: any[];
+      scenes?: Array<{ name: string }>;
+      background: { bgColor?: string; bgGradient?: string; bgImage?: string };
+      archetype: string;
+      theme: string;
+    };
+    source: 'tenant' | 'platform';
+    usage: { used: number; cap: number; resetAt: string } | null;
+  }> {
+    await this.checkFailureCap(opts.tenantId);
+    const resolved = await this.resolveProviderKey(opts.tenantId);
+    if (!resolved) {
+      throw new ServiceUnavailableException(
+        'AI is not configured. Add your provider API key in Settings → Integrations, or contact your admin.',
+      );
+    }
+    const prompt = (opts.prompt || '').trim();
+    if (!prompt) throw new BadRequestException('Tell the AI what kind of signage set to build.');
+    if (prompt.length > 8000) throw new BadRequestException('Prompt too long.');
+
+    // Same shared 30/hr Redis window + monthly platform cap as every generator.
+    if ((await this.windowCount(this.RL_SUCCESS_PREFIX, opts.tenantId)) >= this.HOURLY_CAP) {
+      throw new BadRequestException(`Hit the hourly AI cap (${this.HOURLY_CAP} generations/hour). Try again later.`);
+    }
+    if (resolved.source === 'platform') {
+      const u = await this.readPlatformUsage(opts.tenantId);
+      if (u.used >= u.cap) {
+        throw new HttpException(
+          {
+            message: `Hit the monthly free AI cap (${u.cap} generations). Add your own provider key in Settings → AI provider for unlimited.`,
+            code: 'AI_CAP_REACHED',
+            cap: u.cap,
+            used: u.used,
+            resetAt: u.resetAt,
+          },
+          HttpStatus.PAYMENT_REQUIRED,
+        );
+      }
+    }
+
+    // Multi-prompt: each non-empty line is one board brief. One line / free text
+    // → let the planner expand it into a cohesive venue story.
+    const briefs = prompt.split('\n').map((l) => l.trim()).filter(Boolean);
+    const target = Math.min(Math.max(opts.count ?? (briefs.length > 1 ? briefs.length : 4), 2), 5);
+    const affinity = getVerticalDesignAffinity(opts.vertical);
+    const forcedTheme = affinity.themes[0];
+
+    const setDirective =
+      briefs.length > 1
+        ? `BUILD A SET of ${briefs.length} cohesive boards as "scenes" — ONE board per line below, in order:\n` +
+          briefs.map((b, i) => `  ${i + 1}. ${b}`).join('\n') +
+          `\nPut ALL ${briefs.length} boards in the "scenes" array (each a FULL board: its own archetype + copy + accentSlot + a short "name"). EVERY scene MUST use theme "${forcedTheme}" so the set is visually consistent.`
+        : `BUILD A SET: expand this into a COHESIVE loop of ${target} boards that tell this venue's everyday story (e.g. welcome → featured offer/highlight → hours/info → upcoming event → a quote or thank-you). Put ALL ${target} boards in the "scenes" array (each a FULL board: its own archetype + copy + accentSlot + a short "name"). EVERY scene MUST use theme "${forcedTheme}" so the whole set is visually consistent. Vary the archetypes so the loop doesn't feel repetitive.`;
+
+    // ~2600 tokens: 5 boards × short copy each. buildSignageBoardCore forces the
+    // shared theme post-parse (defense-in-depth even if the model drifts).
+    const core = await this.buildSignageBoardCore(
+      resolved,
+      { tenantId: opts.tenantId, prompt, screenWidth: opts.screenWidth, screenHeight: opts.screenHeight, vertical: opts.vertical },
+      setDirective,
+      { forcedTheme, maxTokens: 2600 },
+    );
+
+    // ONE generation credit (one LLM call) regardless of board count.
+    await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
+    if (resolved.source === 'platform') {
+      try { await this.bumpPlatformUsage(opts.tenantId); }
+      catch (e: any) { this.logger.warn(`Platform usage bump failed: ${e?.message}`); }
+    }
+    let usage: { used: number; cap: number; resetAt: string } | null = null;
+    if (resolved.source === 'platform') {
+      const u = await this.readPlatformUsage(opts.tenantId);
+      usage = { used: u.used, cap: u.cap, resetAt: u.resetAt };
+    }
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'AI_SIGNAGE_BOARD_SET',
+        targetType: 'tenant',
+        targetId: opts.tenantId,
+        tenantId: opts.tenantId,
+        userId: opts.userId || null,
+        details: JSON.stringify({
+          vertical: opts.vertical || null,
+          requested: target,
+          scenes: core.mapped.scenes?.length ?? 1,
+          theme: forcedTheme,
+          provider: resolved.provider,
+          model: resolved.model,
+          source: resolved.source,
+        }),
+      },
+    }).catch(() => { /* audit best-effort */ });
+
+    return {
+      candidate: {
+        name: core.sanitized.name,
+        description: core.sanitized.description,
+        zones: core.sanitized.zones,
+        scenes: core.sanitized.scenes,
+        background: core.mapped.background,
+        archetype: core.spec.archetype,
+        theme: forcedTheme,
+      },
+      source: resolved.source,
+      usage,
+    };
   }
 
   /**
