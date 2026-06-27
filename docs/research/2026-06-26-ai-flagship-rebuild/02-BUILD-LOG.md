@@ -77,6 +77,16 @@ Greg delegated the mockup aesthetic review to the lead ("you review the mockups 
 - 62536762 — docs: recon + plan + critique committed (so build agents can read the spec).
 - 50450f1d — feat(signage-design): the @cms/signage-design engine (Wave 1). 3599 LOC, 112/112 tests, zero runtime deps (HCT/CAM16 ported inline). Added to root preflight. NOT wired yet (dead code until Wave 2).
 - 7acb6a85 — feat(ai): Wave 2 — wire engine into AI generator (mapper + SignageText absolute-px renderer + engine flag + bg persist). 17 mapper tests, api+web tsc clean, frozen lockfile. LIVE-verify pending deploy.
+
+## WAVE 3 (2026-06-27, "go hard" — 3 parallel agents + QA team, lead merged all) — SHIPPED + CI-green
+- **9c4f65f0** — orientation-aware resolvers: all 9 archetypes re-stack for portrait-9:16 + square; 5 single-message also ribbon. 290 engine tests (was 127). + **ccb0b76d** mapper classifyCanvas glue (screen w/h → right canvas class).
+- **d74991bc** — renderer polish: three-up word-wrap, soft elevation on cards/CTAs, menu price padding.
+- **843aae0e** — REAL AI background imagery: image archetypes generate a photo via tenant BYOK (reuses audited generateImage; tier-safe; graceful gradient fallback; candidates stay image-free). 106 AI tests. + **1eebbfaf** one-shot `POST /templates/generate-signage` (board + photo in one call; LLM writes its own image prompt).
+- **aaf6fd3a** — three-up card titles fit the column (mid-word break fixed) + prompt label cap.
+- **QA TEAM** (wf_ad7b4dc1, 13 agents, 1.95M tokens) → GO-WITH-FOLLOWUPS (`03-QA-SIGNOFF.md`). 3 confirmed defects FIXED + harness-verified in **12bee4ca**: accent-text legibility (stat was 2.93:1 → legible), theme:'brand' 500 on odd hex (normalize+guard), CTA pill overflow (font floor 50 + 0.3em pad).
+- Lead render-harness verified ALL 9 landscape + portrait + ribbon + the QA fixes (stat legible white #42, compact CTA pills). Harness: `scratch/design/signage-engine-render/` via `scratchpad/gen-catalog.cjs`.
+- **OWED:** live authed-UI check (Greg re-auth) · FE button to expose `/generate-signage` (one-shot imagery) in the dashboard · portrait three-up headline-height nit.
+
 - 77e45736 — fix(build): build @cms/signage-design in Dockerfile (Railway) + all 5 CI chains (Wave 2 made the API import it; was missing from the build chain → TS2307). Railway+CI green after.
 - 85666595 — feat(ai): FE routes non-touch AI signage generation through the engine (engine:true) + threads background.
 - d3217ec7 — feat(signage-design): catalog 6→9 archetypes (poster-promo, quote-spotlight, title-cta) + subtle theme gradient on every board bg. Engine 127/127, mapper 20/20, api tsc clean. (Pushed; CI watching. Visual review of the 9 = live app after re-auth + QA render-grade.)
