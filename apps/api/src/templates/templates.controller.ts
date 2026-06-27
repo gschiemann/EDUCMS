@@ -1011,6 +1011,56 @@ export class TemplatesController {
     return { template: mapTemplate(created) };
   }
 
+  // Wave 3 (2026-06-27) — one-shot "build me ONE great board, with a real
+  // background photo." Runs the signage-design art-director engine AND (for
+  // image archetypes) generates a background image via the tenant's BYOK
+  // provider (withImage), then persists. Distinct from generate-touch/candidates
+  // (the fast 3-up picker, which stays image-free): this is the
+  // describe-it-and-get-a-finished-board flow. Passive signage (non-touch).
+  // Any image failure leaves the board on its theme gradient — never blocks.
+  @Post('generate-signage')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async generateSignage(
+    @Request() req: any,
+    @Body(new ZodValidationPipe(TemplateGenerateTouchCandidatesSchema)) body: TemplateGenerateTouchCandidatesInput,
+  ) {
+    const screenWidth = body.screenWidth || 1920;
+    const screenHeight = body.screenHeight || 1080;
+    const board = await this.ai.generateSignageBoard({
+      tenantId: req.user.tenantId,
+      userId: req.user.id,
+      role: req.user.role,
+      prompt: body.prompt,
+      screenWidth,
+      screenHeight,
+      vertical: body.vertical,
+      withImage: true,
+    });
+    // Re-run the SAME server-side sanitizer the candidate path uses (the board
+    // is engine-built, but defense-in-depth + it preserves our https assetUrl).
+    const parsed = sanitizeTouchTemplate(board);
+    if (!parsed.zones.length) {
+      throw new BadRequestException('The AI could not build a board. Try a more concrete prompt.');
+    }
+    const created = await this.persistGeneratedTemplate(
+      req,
+      parsed,
+      screenWidth,
+      screenHeight,
+      false,
+      board.background,
+    );
+    await this.audit(req, 'TEMPLATE_CREATED', created?.id ?? null, {
+      name: created?.name,
+      zoneCount: created?.zones?.length ?? 0,
+      via: 'ai-signage',
+      engine: true,
+      withImage: true,
+      archetype: board.archetype,
+    });
+    return { template: mapTemplate(created), archetype: board.archetype, theme: board.theme };
+  }
+
   /**
    * Shared persist for AI-generated templates (Slice 1c). Creates the
    * Template + scenes + zones in one transaction with tenant-brand
