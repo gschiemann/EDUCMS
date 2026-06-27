@@ -2072,6 +2072,26 @@ RULES:
   and TEXT for body copy.
 - Pick zones that fit a 1920×1080 landscape canvas unless told otherwise.
 
+WORKED MULTI-SCENE EXAMPLE (this is the level of completeness expected —
+notice EVERY scene has content, and destination zones carry "sceneId"):
+{
+  "name": "Visitor Kiosk",
+  "scenes": [ { "name": "Home" }, { "name": "Hours" } ],
+  "zones": [
+    { "name": "Title", "widgetType": "ANNOUNCEMENT", "x": 10, "y": 8, "width": 80, "height": 18,
+      "defaultConfig": { "message": "Welcome — how can we help?" } },
+    { "name": "Hours button", "widgetType": "TEXT", "x": 20, "y": 40, "width": 60, "height": 20,
+      "defaultConfig": { "content": "Visiting Hours" },
+      "touchAction": { "type": "goto-scene", "target": "Hours" } },
+    { "name": "Hours heading", "widgetType": "ANNOUNCEMENT", "x": 10, "y": 10, "width": 80, "height": 18,
+      "defaultConfig": { "message": "Visiting Hours" }, "sceneId": "Hours" },
+    { "name": "Hours list", "widgetType": "TEXT", "x": 10, "y": 32, "width": 80, "height": 50,
+      "defaultConfig": { "content": "Mon–Fri 9am–8pm\\nSat–Sun 10am–6pm\\nHolidays 12pm–5pm" }, "sceneId": "Hours" }
+  ]
+}
+Note the "Hours" scene is NOT empty — it has its own heading + content, both
+tagged sceneId:"Hours". Do the same for EVERY destination scene you create.
+
 Return JSON ONLY. No markdown fences, no prose, no apology. If the
 operator's prompt is unsuitable for a touch template, return a minimal
 valid template explaining the issue in the description field.`;
