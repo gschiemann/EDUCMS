@@ -1366,7 +1366,7 @@ function SignageText({ config }: { config: any }) {
             lineHeight,
             letterSpacing,
             textTransform: textTransform as any,
-            padding: '0.6em 1.4em',
+            padding: '0.3em 1.3em',
             borderRadius:
               typeof config.borderRadius === 'number' ? `${config.borderRadius}px` : config.borderRadius,
             boxShadow: softElevation,

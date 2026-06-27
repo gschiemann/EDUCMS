@@ -23,9 +23,11 @@
 
 import {
   ARCHETYPE_IDS,
+  LARGE_CONTRAST_FLOOR,
   THEMES,
   bestTextColor,
   classifyCanvas,
+  contrastRatio,
   deriveThemeFromBrand,
   getTheme,
   resolveArchetype,
@@ -89,13 +91,36 @@ const IMAGE_BG_ARCHETYPES = new Set<ArchetypeId>([
   'poster-promo',
 ]);
 
+/**
+ * Normalize a brand hex to #RGB or #RRGGBB — the only forms the engine's
+ * argbFromHex accepts. A stored brand color can be 4/5/7/8 digits (the
+ * /branding/adopt path persists unvalidated client palettes); passing one
+ * straight to deriveThemeFromBrand THROWS (QA 2026-06-27, unhandled 500).
+ * Returns undefined for unusable input so the caller defaults safely.
+ */
+function normalizeHex(hex?: string): string | undefined {
+  if (!hex) return undefined;
+  const h = hex.trim().replace(/^#/, '');
+  if (!/^[0-9a-fA-F]+$/.test(h)) return undefined;
+  if (h.length === 3 || h.length === 6) return '#' + h;
+  if (h.length === 8 || h.length === 7) return '#' + h.slice(0, 6); // RRGGBB(AA) → RRGGBB
+  if (h.length === 4 || h.length === 5) return '#' + h.slice(0, 3); // RGB(A) short → RGB
+  return undefined;
+}
+
 /** Resolve the theme for a scene: 'brand' → derive from the tenant kit; else a curated id. */
 function resolveTheme(theme: string, opts: ArtDirectorMapOptions): ThemeBundle {
   if (theme === 'brand') {
-    return deriveThemeFromBrand(opts.brandPrimaryHex ?? '#2563eb', {
-      mode: 'dark',
-      accentHex: opts.brandAccentHex,
-    });
+    // A malformed stored brand hex must NEVER 500 a board generation — normalize
+    // then guard, falling back to a curated theme on any derive failure.
+    try {
+      return deriveThemeFromBrand(normalizeHex(opts.brandPrimaryHex) ?? '#2563eb', {
+        mode: 'dark',
+        accentHex: normalizeHex(opts.brandAccentHex),
+      });
+    } catch {
+      return getTheme('clean-corporate') ?? THEMES[0];
+    }
   }
   return getTheme(theme) ?? THEMES[0];
 }
@@ -225,10 +250,25 @@ function mapTextConfig(
   // the scrim — NOT the theme's `inkInverse`, which on a dark theme resolves to
   // near-black and renders invisible over the dark scrim. (Caught in render
   // review 2026-06-26: hero/lower-third/poster headlines were black-on-black.)
-  const hex =
-    overImage && !tokens.isAccent
-      ? bestTextColor(theme.scrim?.color ?? '#0a0a0a')
-      : resolveTextHex(z, palette);
+  const hex = (() => {
+    if (overImage && !tokens.isAccent) {
+      return bestTextColor(theme.scrim?.color ?? '#0a0a0a');
+    }
+    const base = resolveTextHex(z, palette);
+    // Accent TEXT must clear the large-text floor against the surface it sits
+    // on. A curated fill-accent (tuned for buttons) can be too dim as text on a
+    // dark board (QA 2026-06-27: stat-spotlight #be185d on #18181b = 2.93:1,
+    // below 4.5:1 — the focal stat rendered illegibly). When it fails, drop to a
+    // guaranteed-legible color. (The CTA is a filled pill, handled in its own
+    // branch with onAccent text, so this only affects accent TEXT like the stat.)
+    if (tokens.isAccent) {
+      const surface = overImage ? theme.scrim?.color ?? palette.background : palette.background;
+      if (contrastRatio(palette.accent, surface) < LARGE_CONTRAST_FLOOR) {
+        return bestTextColor(surface);
+      }
+    }
+    return base;
+  })();
 
   if (z.slot === 'cta') {
     // Filled accent button. The renderer centers + pads via paddingMode.
@@ -237,7 +277,12 @@ function mapTextConfig(
       config: {
         content,
         sizeMode: 'absolute',
-        fontSize: tokens.fontSizePx,
+        // A CTA is a PILL inside a short zone (~7-10% of canvas height). At the
+        // full title px + button padding the pill is ~2x its zone and clips off
+        // (QA 2026-06-27). Scale the CTA text down (but never below the 50px
+        // signage floor) — the renderer's tight 0.3em button padding does the
+        // rest so the pill fits its zone.
+        fontSize: Math.max(50, Math.round((tokens.fontSizePx ?? 64) * 0.6)),
         fontFamily: tokens.fontFamily,
         fontWeight: tokens.fontWeight,
         color: palette.onAccent,
@@ -245,7 +290,7 @@ function mapTextConfig(
         alignment: 'center',
         borderRadius: theme.radiusPx,
         paddingMode: 'button',
-        lineHeight: 1.1,
+        lineHeight: 1.05,
       },
     };
   }
