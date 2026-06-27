@@ -2640,9 +2640,17 @@ function sanitizeTouchTemplate(raw: any): {
       // F-AI1 — carry the per-zone scene NAME through so the controller can
       // resolve it to the created scene's id (scenes have no ids yet here).
       // Trimmed string scene-name only; undefined → controller uses default.
-      sceneRef: typeof z.sceneId === 'string' && z.sceneId.trim()
-        ? z.sceneId.trim().slice(0, 60)
-        : undefined,
+      // The AI emits the scene NAME on `sceneId`; our OWN sanitized output
+      // carries it on `sceneRef`. create-from-candidate re-sanitizes an
+      // already-sanitized draft, so accept EITHER — otherwise the round-trip
+      // drops the scene assignment and every zone collapses onto scene 1.
+      sceneRef: (() => {
+        const ref =
+          (typeof z.sceneId === 'string' && z.sceneId.trim() && z.sceneId) ||
+          (typeof (z as any).sceneRef === 'string' && (z as any).sceneRef.trim() && (z as any).sceneRef) ||
+          '';
+        return ref ? String(ref).trim().slice(0, 60) : undefined;
+      })(),
     });
   }
 
