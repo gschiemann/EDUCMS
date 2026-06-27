@@ -1085,6 +1085,17 @@ export default function TemplatesPage() {
                     const tweakOpen = aiTweakIdx === i;
                     const refining = aiRefiningIdx === i;
                     const canTweak = !!c.spec; // engine candidates carry the spec
+                    // Thumbnail fidelity (beta-QA #4): a multi-scene "set" must
+                    // preview its FIRST board only — otherwise every scene's
+                    // zones pile onto one canvas. And honor the engine board's
+                    // real background (theme gradient / photo); the old
+                    // hardcoded white made light-on-dark copy invisible.
+                    const isSet = !!(c.scenes && c.scenes.length > 1);
+                    const firstSceneName = c.scenes?.[0]?.name;
+                    const thumbZones = isSet
+                      ? c.zones.filter((z) => !z.sceneRef || z.sceneRef === firstSceneName)
+                      : c.zones;
+                    const thumbBg = c.background || {};
                     return (
                       <div
                         key={i}
@@ -1092,10 +1103,12 @@ export default function TemplatesPage() {
                       >
                         <div className="relative bg-slate-100" style={{ aspectRatio: '16 / 9' }}>
                           <ScaledTemplateThumbnail
-                            zones={c.zones as any}
+                            zones={thumbZones as any}
                             screenWidth={1920}
                             screenHeight={1080}
-                            bgColor="#ffffff"
+                            bgColor={thumbBg.bgColor || '#ffffff'}
+                            bgGradient={thumbBg.bgGradient || null}
+                            bgImage={thumbBg.bgImage || null}
                             maxHeight={160}
                             freeze
                           />

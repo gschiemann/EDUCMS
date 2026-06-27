@@ -1341,6 +1341,8 @@ export interface AiTemplateCandidate {
     height: number;
     defaultConfig?: Record<string, any>;
     touchAction?: any;
+    /** Multi-scene "Build a set" — the scene NAME this zone belongs to. */
+    sceneRef?: string;
   }>;
   scenes?: Array<{ name: string }>;
   /** Engine boards (signage-design) carry a template-level background + the
