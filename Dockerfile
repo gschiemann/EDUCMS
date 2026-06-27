@@ -21,6 +21,7 @@ COPY packages/database/package.json ./packages/database/package.json
 COPY packages/api-types/package.json ./packages/api-types/package.json
 COPY packages/auth-core/package.json ./packages/auth-core/package.json
 COPY packages/ws-events/package.json ./packages/ws-events/package.json
+COPY packages/signage-design/package.json ./packages/signage-design/package.json
 
 # Prisma schema must exist before `pnpm install` because the root
 # postinstall hook runs `prisma generate`. Without these files the
@@ -43,6 +44,10 @@ RUN cd packages/database && npx prisma generate
 RUN cd packages/api-types && pnpm run build
 RUN cd packages/auth-core && pnpm run build
 RUN cd packages/ws-events && pnpm run build
+# @cms/signage-design — the AI-template art-director engine the API imports
+# (ai.service.ts / art-director.ts). Must be built BEFORE the API or tsc
+# fails with TS2307 "Cannot find module '@cms/signage-design'".
+RUN cd packages/signage-design && pnpm run build
 
 # Copy API source
 COPY apps/api/ ./apps/api/

@@ -153,6 +153,7 @@ jobs:
           pnpm --filter @cms/auth-core build
           pnpm --filter @cms/ws-events build
           pnpm --filter @cms/scoreboard-cts build
+          pnpm --filter @cms/signage-design build
 
       - name: Cache Playwright browsers
         id: playwright-cache-widget

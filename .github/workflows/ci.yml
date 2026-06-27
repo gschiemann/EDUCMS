@@ -39,7 +39,7 @@ jobs:
         # "Cannot find module '@cms/api-types'". This build-order gap was masked
         # for ages by the API test step's `continue-on-error: true`; making the
         # gate blocking (2026-05-29) surfaced it. Mirrors `pnpm preflight`.
-        run: pnpm --filter @cms/api-types --filter @cms/auth-core --filter @cms/ws-events --filter @cms/scoreboard-cts build
+        run: pnpm --filter @cms/api-types --filter @cms/auth-core --filter @cms/ws-events --filter @cms/scoreboard-cts --filter @cms/signage-design build
 
       - name: Run Tests
         # BLOCKING (governance review #1, 2026-05-29). Previously gated with

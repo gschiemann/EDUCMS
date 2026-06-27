@@ -66,6 +66,7 @@ jobs:
           pnpm --filter @cms/auth-core build
           pnpm --filter @cms/ws-events build
           pnpm --filter @cms/scoreboard-cts build
+          pnpm --filter @cms/signage-design build
 
       # Cache Playwright browser binaries between runs to keep the
       # cold-cache install closer to ~1 min instead of ~4 min.
