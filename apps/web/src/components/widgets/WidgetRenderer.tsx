@@ -1299,12 +1299,160 @@ function TextWidget({ config, onConfigChange }: { config: any; onConfigChange?: 
 // ═══════════════════════════════════════════════════════
 // The art-director engine emits ABSOLUTE px font sizes (signage scale, derived
 // from canvas + viewing distance), a single accent, scrim-aware shadows, and a
-// few layout modes (button / card / row). This renderer honors px VERBATIM —
-// no /16, no cap — so a 1920×1080 board reads at 8-foot viewing distance.
+// few layout modes (button / card / row). This renderer treats the px as the
+// INTENDED size but guarantees the text always FITS its zone via a measure +
+// transform:scale safety net — so a long headline, an un-loaded font, or an odd
+// canvas can never overflow / overlap a neighbour. (2026-06-27: the live
+// "Dodgers vs Giants" board wrapped to 3 lines and clipped to just "vs" because
+// Oswald wasn't loaded → a wide serif fallback overflowed the size that fits in
+// condensed Oswald.)
+//
+// The engine picks real typefaces (Oswald / Poppins / Montserrat / Playfair /
+// …). They MUST be loaded or the browser substitutes a wide serif and the
+// engine's careful sizing breaks — `useSignageFonts` injects the whole engine
+// font set once.
 //
 // TAURUS (CLAUDE.md rule #10): positioning is LONGHAND top/right/bottom/left,
-// never `inset`; spacing uses per-child margin, never flex `gap`.
+// never `inset`; spacing uses per-child margin, never flex `gap`. ResizeObserver
+// (Chrome 64+) and FontFaceSet.ready (Chrome 35+) are Chromium-83-safe.
+
+// The full engine typeface set — a mirror of the @cms/signage-design themes.ts
+// font pairings. Loaded ONCE, globally, the first time a signage board renders.
+const SIGNAGE_FONTS_HREF =
+  'https://fonts.googleapis.com/css2?' +
+  [
+    'family=Inter:wght@400;500;600;700;800;900',
+    'family=Oswald:wght@400;500;600;700',
+    'family=Poppins:wght@400;500;600;700;800',
+    'family=Montserrat:wght@400;500;600;700;800;900',
+    'family=Cormorant+Garamond:wght@400;500;600;700',
+    'family=Barlow:wght@400;500;600;700;800',
+    'family=Playfair+Display:wght@400;500;600;700;800;900',
+    'family=Sora:wght@400;500;600;700;800',
+    'family=Space+Grotesk:wght@400;500;600;700',
+  ].join('&') +
+  '&display=swap';
+
+let signageFontsInjected = false;
+
+/**
+ * Inject the engine font set once into <head>. We append our OWN <link> and
+ * never remove it — safe under React 19 / App Router (CLAUDE.md rule #6 only
+ * forbids detaching nodes React itself rendered).
+ */
+function useSignageFonts() {
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (signageFontsInjected || document.getElementById('signage-engine-fonts')) {
+      signageFontsInjected = true;
+      return;
+    }
+    const link = document.createElement('link');
+    link.id = 'signage-engine-fonts';
+    link.rel = 'stylesheet';
+    link.href = SIGNAGE_FONTS_HREF;
+    document.head.appendChild(link);
+    signageFontsInjected = true;
+  }, []);
+}
+
+/**
+ * Fills its zone and scales its children DOWN (never up) so they always fit —
+ * the universal auto-fit guarantee. Measures the content's natural size against
+ * the available (padding-aware) box and applies transform:scale; re-measures on
+ * resize and once webfonts finish loading. Scale 1 (no shrink) is the common
+ * case once the right font is loaded, so a correctly-sized board renders at its
+ * full intended size.
+ */
+function FitScaler({
+  justify,
+  items,
+  origin,
+  outerStyle,
+  innerStyle,
+  dataField,
+  children,
+  deps,
+}: {
+  justify: React.CSSProperties['justifyContent'];
+  items: React.CSSProperties['alignItems'];
+  origin: string;
+  outerStyle?: React.CSSProperties;
+  innerStyle?: React.CSSProperties;
+  dataField?: string;
+  children: React.ReactNode;
+  deps: any[];
+}) {
+  const outerRef = useRef<HTMLDivElement | null>(null);
+  const innerRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    if (!outer || !inner) return;
+    let raf = 0;
+    const measure = () => {
+      const cs = typeof getComputedStyle === 'function' ? getComputedStyle(outer) : null;
+      const padX = cs ? (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0) : 0;
+      const padY = cs ? (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0) : 0;
+      const availW = outer.clientWidth - padX;
+      const availH = outer.clientHeight - padY;
+      const naturalW = inner.scrollWidth;
+      const naturalH = inner.scrollHeight;
+      if (availW <= 0 || availH <= 0 || !naturalW || !naturalH) return;
+      const next = Math.min(1, availW / naturalW, availH / naturalH);
+      setScale((prev) => (Math.abs(prev - next) > 0.004 ? Math.max(0.05, next) : prev));
+    };
+    measure();
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => {
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(measure);
+      });
+      ro.observe(outer);
+    }
+    const fonts: any = typeof document !== 'undefined' ? (document as any).fonts : null;
+    if (fonts?.ready?.then) {
+      fonts.ready
+        .then(() => {
+          raf = requestAnimationFrame(measure);
+        })
+        .catch(() => {});
+    }
+    return () => {
+      if (ro) ro.disconnect();
+      cancelAnimationFrame(raf);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+
+  return (
+    <div
+      ref={outerRef}
+      className="absolute top-0 right-0 bottom-0 left-0 flex overflow-hidden"
+      style={{ justifyContent: justify, alignItems: items, ...outerStyle }}
+      data-field={dataField}
+    >
+      <div
+        ref={innerRef}
+        style={{
+          transform: scale < 1 ? `scale(${scale})` : undefined,
+          transformOrigin: origin,
+          willChange: scale < 1 ? 'transform' : undefined,
+          ...innerStyle,
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function SignageText({ config }: { config: any }) {
+  useSignageFonts();
+
   const content = config.content ?? '';
   const fontSize = typeof config.fontSize === 'number' ? config.fontSize : 64;
   const fontFamily = config.fontFamily || undefined;
@@ -1332,6 +1480,8 @@ function SignageText({ config }: { config: any }) {
   };
 
   const justify = align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start';
+  const scaleOrigin =
+    align === 'center' ? 'center center' : align === 'right' ? 'right center' : 'left center';
 
   // Long single words must wrap at boundaries / hyphenate rather than split
   // mid-letter ("Homecomin·g"). Applied to the card title + the plain headline.
@@ -1345,19 +1495,23 @@ function SignageText({ config }: { config: any }) {
   // never a flat slab. Plain text gets NO shadow.
   const softElevation = '0 12px 40px rgba(0,0,0,0.28)';
 
-  // CTA — a centered, filled accent pill.
+  // CTA — a centered, filled accent pill. The pill scales to fit its zone so a
+  // long label never overflows its rect (QA finding #3).
   if (config.paddingMode === 'button') {
     return (
-      <div
-        className="absolute top-0 right-0 bottom-0 left-0 flex items-center"
-        style={{ justifyContent: justify }}
-        data-field="content"
+      <FitScaler
+        justify={justify}
+        items="center"
+        origin={scaleOrigin}
+        dataField="content"
+        deps={[content, fontSize, fontFamily, fontWeight, align, config.bgColor]}
       >
         <span
           style={{
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
+            whiteSpace: 'nowrap',
             backgroundColor: config.bgColor,
             color,
             fontSize: `${fontSize}px`,
@@ -1374,23 +1528,28 @@ function SignageText({ config }: { config: any }) {
         >
           {content}
         </span>
-      </div>
+      </FitScaler>
     );
   }
 
-  // Three-up-grid card — a surface tile with a bold title + muted detail.
+  // Three-up-grid card — a surface tile with a bold title + muted detail. The
+  // tile fills the zone; only the text inside scales to fit.
   if (config.cardLayout) {
     return (
-      <div
-        className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center overflow-hidden"
-        style={{
+      <FitScaler
+        justify="center"
+        items="stretch"
+        origin="center center"
+        dataField="content"
+        outerStyle={{
           backgroundColor: config.bgColor,
           borderRadius:
             typeof config.borderRadius === 'number' ? `${config.borderRadius}px` : config.borderRadius,
           padding: '5%',
           boxShadow: softElevation,
         }}
-        data-field="content"
+        innerStyle={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', width: '100%' }}
+        deps={[content, config.detail, fontSize, fontFamily, fontWeight, align]}
       >
         <div style={{ ...baseTextStyle, ...wordWrapStyle, fontWeight: 800 }}>{content}</div>
         {config.detail ? (
@@ -1406,20 +1565,25 @@ function SignageText({ config }: { config: any }) {
             {config.detail}
           </div>
         ) : null}
-      </div>
+      </FitScaler>
     );
   }
 
   // Menu-list row — label (left, flex:1) + optional detail under it + a
   // right-aligned bold value column. Per-child margin for spacing (no gap).
+  // Scales to fit so a long item name + price never overflows the row.
   if (config.rowLayout) {
     return (
-      <div
-        className="absolute top-0 right-0 bottom-0 left-0 flex flex-row items-center overflow-hidden"
+      <FitScaler
+        justify="flex-start"
+        items="center"
+        origin="left center"
+        dataField="content"
         // Small right padding so the right-aligned price never kisses the
         // zone's right edge.
-        style={{ paddingRight: '0.6em' }}
-        data-field="content"
+        outerStyle={{ paddingRight: '0.6em' }}
+        innerStyle={{ display: 'flex', flexDirection: 'row', alignItems: 'center', width: '100%' }}
+        deps={[content, config.detail, config.valueText, fontSize, fontFamily, fontWeight]}
       >
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ ...baseTextStyle, textAlign: 'left' }}>{content}</div>
@@ -1452,20 +1616,23 @@ function SignageText({ config }: { config: any }) {
             {config.valueText}
           </div>
         ) : null}
-      </div>
+      </FitScaler>
     );
   }
 
-  // Plain absolute-px text (kicker / headline / body / stat / label).
-  const itemsAlign = align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start';
+  // Plain absolute-px text (kicker / headline / body / stat / label). Scales to
+  // fit its zone — the safety net for the catastrophic-overflow case.
   return (
-    <div
-      className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center overflow-hidden"
-      style={{ alignItems: itemsAlign }}
-      data-field="content"
+    <FitScaler
+      justify={justify}
+      items="center"
+      origin={scaleOrigin}
+      dataField="content"
+      innerStyle={{ width: '100%' }}
+      deps={[content, fontSize, fontFamily, fontWeight, align, lineHeight]}
     >
       <p style={{ ...baseTextStyle, ...wordWrapStyle, width: '100%' }}>{content}</p>
-    </div>
+    </FitScaler>
   );
 }
 
