@@ -44,6 +44,20 @@ import {
   imageHourlyCap,
 } from './ai-image-cap';
 import { openAiKey } from './ai-key-cipher';
+// Wave 2 — the signage-design ENGINE. The LLM emits ONLY an ArtDirectorSpec
+// (archetype + theme + copy + image plan + accentSlot); the mapper runs the
+// engine (geometry/type/color/contrast) and produces persistable zones.
+import { artDirectorSpecToTemplate, type MappedTemplate } from './art-director';
+import {
+  ARCHETYPE_IDS,
+  THEMES,
+  type ArchetypeId,
+  type ArchetypeImagePlan,
+  type ArchetypeItem,
+  type ArtDirectorSpec,
+  type AccentSlot,
+  type SceneSpec,
+} from '@cms/signage-design';
 import {
   isVertical,
   getTextFieldDescriptor,
@@ -460,6 +474,32 @@ export class AiService {
       return typeof v === 'string' && v.trim() ? v.trim() : null;
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * Wave 2 — read this tenant's brand PRIMARY + ACCENT hex from the saved
+   * TenantBranding.palette JSON ({ primary, accent, ... }). Best-effort: returns
+   * {} on any error / missing row so the signage engine falls back to its own
+   * default brand color. Mirrors getBrandDefaults() in templates.controller but
+   * scoped to just the two hexes the engine's deriveThemeFromBrand needs.
+   */
+  private async tenantBrandColors(
+    tenantId: string,
+  ): Promise<{ primaryHex?: string; accentHex?: string }> {
+    try {
+      const b = await this.prisma.client.tenantBranding.findUnique({
+        where: { tenantId },
+        select: { palette: true } as any,
+      }) as any;
+      const palette = (b?.palette as any) || {};
+      const hex = (v: any): string | undefined =>
+        typeof v === 'string' && /^#?[0-9a-fA-F]{3,8}$/.test(v.trim())
+          ? (v.trim().startsWith('#') ? v.trim() : `#${v.trim()}`)
+          : undefined;
+      return { primaryHex: hex(palette.primary), accentHex: hex(palette.accent) };
+    } catch {
+      return {};
     }
   }
 
@@ -1507,6 +1547,197 @@ export class AiService {
   }
 
   /**
+   * Wave 2 — AI SIGNAGE BOARD (the art-director path). The LLM is an ART
+   * DIRECTOR: it emits ONLY an ArtDirectorSpec (archetype id + theme id + copy +
+   * image plan + accentSlot + optional multi-scene). The @cms/signage-design
+   * ENGINE owns geometry / type scale / color / contrast — so the generated
+   * board looks like designed signage (grid-locked archetype + signage-scale
+   * type + one accent + scrim) instead of grey-text-on-white.
+   *
+   * Pipeline: resolve provider (BYOK→platform) → call the model with
+   * ART_DIRECTOR_SYSTEM_PROMPT → parseArtDirectorSpec (safe coerce/clamp) →
+   * fetch tenant brand primary/accent → artDirectorSpecToTemplate (runs the
+   * engine) → sanitizeTouchTemplate scrubbing → re-attach the background
+   * descriptor (the sanitizer drops it). Shares the SAME rate-limit / monthly
+   * cap / AuditLog plumbing as the touch-template generators. ADDITIVE — the
+   * existing touch/signage generators are untouched.
+   */
+  async generateSignageBoard(opts: {
+    tenantId: string;
+    userId?: string;
+    prompt: string;
+    screenWidth?: number;
+    screenHeight?: number;
+    vertical?: string;
+  }): Promise<{
+    name: string;
+    description?: string;
+    zones: any[];
+    scenes?: Array<{ name: string }>;
+    background: { bgColor?: string; bgGradient?: string; bgImage?: string };
+    archetype: string;
+    theme: string;
+    source: 'tenant' | 'platform';
+    usage: { used: number; cap: number; resetAt: string } | null;
+  }> {
+    // Same failure-cap wrapper as the other generators.
+    await this.checkFailureCap(opts.tenantId);
+    try {
+      return await this.generateSignageBoardInner(opts);
+    } catch (e) {
+      await this.recordFailure(opts.tenantId);
+      throw e;
+    }
+  }
+
+  private async generateSignageBoardInner(opts: {
+    tenantId: string;
+    userId?: string;
+    prompt: string;
+    screenWidth?: number;
+    screenHeight?: number;
+    vertical?: string;
+  }): Promise<any> {
+    const resolved = await this.resolveProviderKey(opts.tenantId);
+    if (!resolved) {
+      throw new ServiceUnavailableException(
+        'AI is not configured. Add your provider API key in Settings → Integrations, or contact your admin.',
+      );
+    }
+    const prompt = (opts.prompt || '').trim();
+    if (!prompt) throw new BadRequestException('Tell the AI what kind of signage board to build.');
+    if (prompt.length > 2000) {
+      throw new BadRequestException('Prompt too long. Keep it under 2000 characters.');
+    }
+
+    // Shared 30/hr Redis window + monthly platform cap (same keys as the other
+    // generators — one generation burns one slot regardless of which path).
+    if ((await this.windowCount(this.RL_SUCCESS_PREFIX, opts.tenantId)) >= this.HOURLY_CAP) {
+      throw new BadRequestException(
+        `Hit the hourly AI cap (${this.HOURLY_CAP} generations/hour). Try again later.`,
+      );
+    }
+    if (resolved.source === 'platform') {
+      const u = await this.readPlatformUsage(opts.tenantId);
+      if (u.used >= u.cap) {
+        throw new HttpException(
+          {
+            message: `Hit the monthly free AI cap (${u.cap} generations). Add your own provider key in Settings → AI provider for unlimited.`,
+            code: 'AI_CAP_REACHED',
+            cap: u.cap,
+            used: u.used,
+            resetAt: u.resetAt,
+          },
+          HttpStatus.PAYMENT_REQUIRED,
+        );
+      }
+    }
+
+    // The art-director spec is small (no geometry/hex/sizes) → 900 tokens is
+    // ample, keeping spend bounded (~$0.01/call on Haiku).
+    const system = prependVoices(
+      ART_DIRECTOR_SYSTEM_PROMPT,
+      opts.vertical,
+      await this.tenantBrandVoice(opts.tenantId),
+    );
+    const sw = opts.screenWidth || 1920;
+    const sh = opts.screenHeight || 1080;
+    const userPrompt = [
+      `Operator description: ${prompt}`,
+      `Vertical: ${opts.vertical || 'venue'}`,
+      `Canvas: ${sw} × ${sh} px (${sh > sw ? 'portrait' : 'landscape'}).`,
+      '',
+      'Return ONLY the ArtDirectorSpec JSON. No coordinates, no hex, no font sizes. No preamble, no markdown fences.',
+    ].join('\n');
+
+    const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, 900);
+    const stripped = raw
+      .replace(/^```(?:json)?\n?/, '')
+      .replace(/\n?```$/, '')
+      .trim();
+    let parsedJson: any;
+    try {
+      parsedJson = JSON.parse(stripped);
+    } catch {
+      this.logger.warn(`AI returned non-JSON for signage spec: ${stripped.slice(0, 200)}`);
+      throw new ServiceUnavailableException('AI returned an unparseable response. Try rephrasing your prompt.');
+    }
+    const spec = parseArtDirectorSpec(parsedJson);
+
+    // Fetch the tenant brand palette so theme:'brand' (or any board) can ride
+    // the venue's colors when the spec asks for it.
+    const brand = await this.tenantBrandColors(opts.tenantId);
+
+    // Run the ENGINE. This produces grid-locked zones + a background descriptor.
+    const mapped: MappedTemplate = artDirectorSpecToTemplate(spec, {
+      screenWidth: sw,
+      screenHeight: sh,
+      brandPrimaryHex: brand.primaryHex,
+      brandAccentHex: brand.accentHex,
+    });
+
+    // Re-run the SAME safety scrubbing the other generators use. IMPORTANT:
+    // sanitizeTouchTemplate ALLOWS arbitrary defaultConfig leaves (scrubConfigLeaves
+    // keeps numbers/strings/bools), so the absolute-px config survives — it just
+    // clamps coords + allowlists widget types + scrubs SSRF/XSS. It DROPS the
+    // top-level `background` descriptor, so we re-attach it below.
+    const sanitized = sanitizeTouchTemplate({
+      name: mapped.name,
+      description: mapped.description,
+      zones: mapped.zones,
+      scenes: mapped.scenes,
+    });
+    if (!sanitized.zones.length) {
+      throw new ServiceUnavailableException('AI produced no usable layout. Try a more specific prompt.');
+    }
+
+    // Spend accounting AFTER a usable result (same leak-fix as the others).
+    await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
+    if (resolved.source === 'platform') {
+      try { await this.bumpPlatformUsage(opts.tenantId); }
+      catch (e: any) { this.logger.warn(`Platform usage bump failed: ${e?.message}`); }
+    }
+    let usage: { used: number; cap: number; resetAt: string } | null = null;
+    if (resolved.source === 'platform') {
+      const u = await this.readPlatformUsage(opts.tenantId);
+      usage = { used: u.used, cap: u.cap, resetAt: u.resetAt };
+    }
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'AI_SIGNAGE_BOARD_GENERATED',
+        targetType: 'tenant',
+        targetId: opts.tenantId,
+        tenantId: opts.tenantId,
+        userId: opts.userId || null,
+        details: JSON.stringify({
+          vertical: opts.vertical || null,
+          screenWidth: sw,
+          screenHeight: sh,
+          archetype: spec.archetype,
+          theme: spec.theme,
+          scenes: mapped.scenes?.length ?? 1,
+          provider: resolved.provider,
+          model: resolved.model,
+          source: resolved.source,
+          zoneCount: sanitized.zones.length,
+        }),
+      },
+    }).catch(() => { /* audit best-effort */ });
+
+    return {
+      name: sanitized.name,
+      description: sanitized.description,
+      zones: sanitized.zones,
+      scenes: sanitized.scenes,
+      background: mapped.background,
+      archetype: spec.archetype,
+      theme: spec.theme,
+      source: resolved.source,
+      usage,
+    };
+  }
+
+  /**
    * AI IMAGE GENERATION (2026-06-26) — type a prompt, get a custom,
    * on-brand image saved straight into the asset library. The #1
    * competitive gap vs Appspace: every text leg of our AI already
@@ -1989,6 +2220,152 @@ const TOUCH_GEN_ALLOWED_ACTIONS = new Set([
   'show-overlay', 'reset-idle', 'sound-toggle', 'webhook',
   'request-help',
 ]);
+
+// ───────────────────────────────────────────────────────────────────────
+// Wave 2 — the ART-DIRECTOR prompt + safe parser. The model emits ONLY an
+// ArtDirectorSpec (archetype + theme + copy + image plan + accentSlot). The
+// @cms/signage-design engine owns geometry / type / color / contrast — so the
+// model NEVER emits coordinates, hex, or font sizes. This is the architecture
+// every world-class AI design tool uses (Canva / Gamma / Beautiful.ai).
+// ───────────────────────────────────────────────────────────────────────
+
+const ART_DIRECTOR_SYSTEM_PROMPT = `You are an ART DIRECTOR for digital signage. You do NOT lay out pixels — a
+design engine owns geometry, type scale, color, and contrast. Your ONLY job is
+to choose a layout archetype, a theme, write punchy signage copy, plan imagery,
+and pick which element gets the accent color.
+
+Return ONLY a JSON object (an "ArtDirectorSpec"). NO coordinates, NO x/y/width/
+height, NO hex colors, NO font sizes — EVER. The engine derives all of those.
+
+SHAPE:
+{
+  "archetype": "<one of the 6 ids below>",
+  "theme": "<one of the 12 theme ids below, OR the literal \\"brand\\">",
+  "copy": {
+    "kicker": "<eyebrow line, <= 4 words, optional>",
+    "headline": "<the one dominant message, <= 6 words, REQUIRED>",
+    "body": "<supporting line, <= 15 words, optional>",
+    "cta": "<call to action, <= 4 words, optional>",
+    "items": [ { "label": "<name>", "value": "<price/time/stat, optional>", "detail": "<short note, optional>" } ]
+  },
+  "image": { "mode": "none" },
+  "accentSlot": "<one of: kicker | headline | cta | stat | none>",
+  "scenes": [ /* OPTIONAL — for multi-screen interactive kiosks, each entry is a FULL spec like the top level */ ]
+}
+
+ARCHETYPES — pick the ONE that fits the operator's intent:
+  - "hero-fullbleed"      — a single bold message over a full-bleed photo + scrim. For one big statement.
+  - "split-50"            — image on one half, headline + body + CTA on the other. For a feature/announcement with supporting detail.
+  - "lower-third-banner"  — photo fills the screen, headline + CTA in a bottom band. For a bold message over imagery.
+  - "stat-spotlight"      — one enormous number/stat + label. For "one big number" (attendance, days left, score).
+  - "three-up-grid"       — a headline over three equal cards. For an event lineup / "what's on today".
+  - "menu-list"           — a headline over priced rows with a value column. For a price list / menu.
+
+THEMES — pick ONE id (or "brand" to use the tenant's own brand colors):
+  clean-corporate, warm-school, neon-sports, qsr-appetite, minimal-luxury,
+  calm-clinic, fresh-fitness, worship-warm, bold-retail, sky-civic,
+  forest-campus, midnight-tech
+
+COPY RULES:
+  - headline is REQUIRED and must be SHORT and punchy (signage is read at a glance).
+  - Use "items" ONLY for menu-list (label + value + detail per row) and three-up-grid (label + detail per card). 3-5 items typical, 8 max.
+  - For stat-spotlight, put the big number in "headline" and the label in "body".
+
+IMAGERY: always emit {"mode":"none"} for now — imagery is wired in a later wave.
+
+ACCENT: exactly ONE element carries the accent color. Default to "cta" when a CTA exists, else the most important element.
+
+For a multi-screen interactive kiosk, include "scenes": each entry is a FULL spec
+(its own archetype + theme + copy + image + accentSlot) so every screen is a
+designed board, never an empty shell.
+
+Return JSON only — no preamble, no markdown fences, no commentary.`;
+
+/**
+ * Wave 2 — SAFE PARSER for the model's ArtDirectorSpec output. Zod-free
+ * (matches the rest of this file's sanitizers): coerces/clamps anything the
+ * model returns into a VALID ArtDirectorSpec so the engine never receives
+ * garbage. Defensive defaults everywhere:
+ *   - archetype must be one of the 6, else 'hero-fullbleed'
+ *   - theme must be a known curated id or the literal 'brand', else 'clean-corporate'
+ *   - headline is required → a sensible default when missing
+ *   - copy lengths clamped; items capped at 8
+ *   - accentSlot coerced to the allowed enum (default 'cta')
+ *   - scenes (multi-scene) each parsed as a full SceneSpec, capped at 8
+ */
+const ART_ACCENT_SLOTS: AccentSlot[] = ['kicker', 'headline', 'cta', 'stat', 'none'];
+const ART_THEME_IDS = new Set(THEMES.map((t) => t.id));
+
+function clampStr(v: any, max: number): string | undefined {
+  if (typeof v !== 'string') return undefined;
+  const t = v.trim();
+  return t ? t.slice(0, max) : undefined;
+}
+
+function parseArtItems(raw: any): ArchetypeItem[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: ArchetypeItem[] = [];
+  for (const it of raw.slice(0, 8)) {
+    if (!it || typeof it !== 'object') continue;
+    const label = clampStr((it as any).label, 80);
+    if (!label) continue;
+    const item: ArchetypeItem = { label };
+    const value = clampStr((it as any).value, 40);
+    if (value) item.value = value;
+    const detail = clampStr((it as any).detail, 120);
+    if (detail) item.detail = detail;
+    out.push(item);
+  }
+  return out.length ? out : undefined;
+}
+
+function parseArtImage(raw: any): ArchetypeImagePlan {
+  // Wave 2a: imagery is wired later. Force mode 'none' (ignore any prompt/query
+  // the model emits) so we never reference a non-existent asset.
+  return { mode: 'none' };
+}
+
+function parseSceneSpec(raw: any): SceneSpec {
+  const obj = raw && typeof raw === 'object' ? raw : {};
+  const archetype: ArchetypeId = (ARCHETYPE_IDS as string[]).includes(obj.archetype)
+    ? (obj.archetype as ArchetypeId)
+    : 'hero-fullbleed';
+  const theme =
+    obj.theme === 'brand' || ART_THEME_IDS.has(obj.theme) ? obj.theme : 'clean-corporate';
+  const rawCopy = obj.copy && typeof obj.copy === 'object' ? obj.copy : {};
+  const headline = clampStr(rawCopy.headline, 120) || 'Welcome';
+  const copy = {
+    kicker: clampStr(rawCopy.kicker, 60),
+    headline,
+    body: clampStr(rawCopy.body, 240),
+    cta: clampStr(rawCopy.cta, 60),
+    items: parseArtItems(rawCopy.items),
+  };
+  const accentSlot: AccentSlot = ART_ACCENT_SLOTS.includes(obj.accentSlot)
+    ? obj.accentSlot
+    : 'cta';
+  const scene: SceneSpec = {
+    archetype,
+    theme,
+    copy,
+    image: parseArtImage(obj.image),
+    accentSlot,
+  };
+  // Carry an optional per-scene name (used by the mapper for scene tagging).
+  const name = clampStr(obj.name, 60);
+  if (name) (scene as any).name = name;
+  return scene;
+}
+
+function parseArtDirectorSpec(raw: any): ArtDirectorSpec {
+  const base = parseSceneSpec(raw);
+  const spec: ArtDirectorSpec = { ...base };
+  if (raw && typeof raw === 'object' && Array.isArray(raw.scenes) && raw.scenes.length) {
+    const scenes = raw.scenes.slice(0, 8).map((s: any) => parseSceneSpec(s));
+    if (scenes.length) spec.scenes = scenes;
+  }
+  return spec;
+}
 
 const TOUCH_TEMPLATE_SYSTEM_PROMPT = `You design interactive touch-screen templates for digital signage. The
 operator describes what they want; you return a JSON object that the
@@ -2713,4 +3090,4 @@ function scrubConfigLeaves(value: any, depth = 0): any {
 }
 
 // Export the sanitizers + validators + voice helpers for unit testing.
-export { sanitizeTouchTemplate, scrubConfigLeaves, sanitizeRewriteText, validateChatEditDiff, resolveChatColor, brandVoiceClause, prependVoices };
+export { sanitizeTouchTemplate, scrubConfigLeaves, sanitizeRewriteText, validateChatEditDiff, resolveChatColor, brandVoiceClause, prependVoices, parseArtDirectorSpec };

@@ -98,6 +98,9 @@ importers:
       '@cms/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@cms/signage-design':
+        specifier: workspace:*
+        version: link:../../packages/signage-design
       '@growthbook/growthbook':
         specifier: ^1.6.5
         version: 1.6.5

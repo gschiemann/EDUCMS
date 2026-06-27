@@ -910,6 +910,39 @@ export class TemplatesController {
     @Request() req: any,
     @Body(new ZodValidationPipe(TemplateGenerateTouchCandidatesSchema)) body: TemplateGenerateTouchCandidatesInput,
   ) {
+    // Wave 2 (2026-06-26) — opt-in ENGINE path. `engine:true` routes through
+    // the signage-design art-director pipeline so the board is grid-locked +
+    // theme'd + signage-scale typed instead of grey-text-on-white. Returns ONE
+    // candidate (Wave 2a) that ALSO carries `background` + archetype/theme. The
+    // old (non-engine) fan-out below is untouched when the flag is absent/false.
+    if (body.engine === true) {
+      const board = await this.ai.generateSignageBoard({
+        tenantId: req.user.tenantId,
+        userId: req.user.id,
+        prompt: body.prompt,
+        screenWidth: body.screenWidth,
+        screenHeight: body.screenHeight,
+        vertical: body.vertical,
+      });
+      // The candidate round-trips through create-from-candidate, which
+      // re-sanitizes the zones and persists `background`. We carry the bg +
+      // archetype/theme on the candidate so the FE can show them + send them back.
+      const candidate = {
+        name: board.name,
+        description: board.description,
+        zones: board.zones,
+        scenes: board.scenes,
+        background: board.background,
+        archetype: board.archetype,
+        theme: board.theme,
+      };
+      return {
+        candidates: [candidate],
+        engine: true,
+        ai: { source: board.source, usage: board.usage },
+      };
+    }
+
     const result = await this.ai.generateTouchTemplateCandidates({
       tenantId: req.user.tenantId,
       userId: req.user.id,
@@ -946,12 +979,25 @@ export class TemplatesController {
     const screenHeight = body.screenHeight || 1080;
     const interactive = body.interactive !== false;
 
+    // Wave 2 (2026-06-26) — an engine candidate carries a background descriptor
+    // (bgColor/bgGradient/bgImage). Persist it onto the Template's bg fields.
+    // The candidate round-tripped through the browser, so only the bounded
+    // (BoundedText) fields from the Zod schema reach here — never trust shape.
+    const background = body.background
+      ? {
+          bgColor: body.background.bgColor,
+          bgGradient: body.background.bgGradient,
+          bgImage: body.background.bgImage,
+        }
+      : undefined;
+
     const created = await this.persistGeneratedTemplate(
       req,
       parsed,
       screenWidth,
       screenHeight,
       interactive,
+      background,
     );
 
     await this.audit(req, 'TEMPLATE_CREATED', created?.id ?? null, {
@@ -959,6 +1005,7 @@ export class TemplatesController {
       zoneCount: created?.zones?.length ?? 0,
       via: 'ai-candidate',
       interactive,
+      engine: !!background,
     });
 
     return { template: mapTemplate(created) };
@@ -977,6 +1024,11 @@ export class TemplatesController {
     screenWidth: number,
     screenHeight: number,
     interactive: boolean,
+    // Wave 2 (2026-06-26) — optional engine-derived background descriptor. The
+    // signage-design engine paints the bg ZONE with the gradient; this sets the
+    // Template's solid bg base (and any future bgGradient/bgImage). Falls back to
+    // the tenant brand surface only when background.bgColor is absent.
+    background?: { bgColor?: string; bgGradient?: string; bgImage?: string },
   ): Promise<any> {
     const orientation = screenHeight > screenWidth ? 'PORTRAIT' : 'LANDSCAPE';
 
@@ -998,7 +1050,10 @@ export class TemplatesController {
           screenWidth,
           screenHeight,
           isTouchEnabled: interactive,
-          bgColor: brand.surface || null,
+          // Engine background wins; else fall back to the tenant brand surface.
+          bgColor: background?.bgColor || brand.surface || null,
+          bgGradient: background?.bgGradient || null,
+          bgImage: background?.bgImage || null,
           brandKit: brand.brandKit ?? undefined,
           createdById: req.user.id,
         } as any,

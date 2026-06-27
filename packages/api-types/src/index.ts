@@ -585,9 +585,25 @@ export const TemplateGenerateTouchCandidatesSchema = z
     vertical: BoundedText(40).optional(),
     interactive: z.boolean().optional(),
     count: z.number().int().min(1).max(3).optional(),
+    // Wave 2 (2026-06-26) — opt-in flag to route through the signage-design
+    // ENGINE (art-director spec → grid-locked archetype + theme + scrim). When
+    // true the candidates each carry a `background` descriptor + archetype/theme
+    // metadata. The old (non-engine) path is untouched when this is absent/false.
+    engine: z.boolean().optional(),
   })
   .passthrough();
 export type TemplateGenerateTouchCandidatesInput = z.infer<typeof TemplateGenerateTouchCandidatesSchema>;
+
+// Wave 2 (2026-06-26) — the background descriptor an engine candidate carries
+// so create-from-candidate can persist Template.bgColor/bgGradient/bgImage.
+export const TemplateBackgroundSchema = z
+  .object({
+    bgColor: BoundedText(64).optional(),
+    bgGradient: BoundedText(1024).optional(),
+    bgImage: BoundedText(2048).optional(),
+  })
+  .partial();
+export type TemplateBackgroundInput = z.infer<typeof TemplateBackgroundSchema>;
 
 // The operator's chosen candidate round-trips back to be persisted. The
 // candidate JSON is RE-SANITIZED server-side (sanitizeTouchTemplate) — so
@@ -606,6 +622,9 @@ export const TemplateCreateFromCandidateSchema = z
     screenWidth: z.number().optional(),
     screenHeight: z.number().optional(),
     interactive: z.boolean().optional(),
+    // Wave 2 (2026-06-26) — an engine candidate carries a background descriptor
+    // (bgColor / bgGradient / bgImage). Persisted onto the Template's bg fields.
+    background: TemplateBackgroundSchema.optional(),
   })
   .passthrough();
 export type TemplateCreateFromCandidateInput = z.infer<typeof TemplateCreateFromCandidateSchema>;

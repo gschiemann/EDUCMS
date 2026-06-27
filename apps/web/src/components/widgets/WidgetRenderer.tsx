@@ -1237,6 +1237,10 @@ function TextWidget({ config, onConfigChange }: { config: any; onConfigChange?: 
   if (config.theme === 'library-quiet') return config.html ? <LibraryQuietRichText config={config} /> : <LibraryQuietText config={config} onConfigChange={onConfigChange} />;
   if (config.theme === 'music-arts') return config.html ? <MusicArtsRichText config={config} /> : <MusicArtsText config={config} onConfigChange={onConfigChange} />;
   if (config.theme === 'stem-science') return config.html ? <StemScienceRichText config={config} /> : <StemScienceText config={config} onConfigChange={onConfigChange} />;
+  // Wave 2 (2026-06-26) — signage-design ENGINE absolute-px path. The art-
+  // director engine sizes text in real px (signage scale), not the legacy
+  // /16-em fallback. When sizeMode is 'absolute', honor the px verbatim.
+  if (config.sizeMode === 'absolute') return <SignageText config={config} />;
   const content = config.content || 'Your text here';
   const fontSize = config.fontSize || 24;
   const fontFamily = config.fontFamily;
@@ -1286,6 +1290,164 @@ function TextWidget({ config, onConfigChange }: { config: any; onConfigChange?: 
       >
         {content}
       </p>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// SIGNAGE TEXT — the @cms/signage-design ENGINE render path (Wave 2)
+// ═══════════════════════════════════════════════════════
+// The art-director engine emits ABSOLUTE px font sizes (signage scale, derived
+// from canvas + viewing distance), a single accent, scrim-aware shadows, and a
+// few layout modes (button / card / row). This renderer honors px VERBATIM —
+// no /16, no cap — so a 1920×1080 board reads at 8-foot viewing distance.
+//
+// TAURUS (CLAUDE.md rule #10): positioning is LONGHAND top/right/bottom/left,
+// never `inset`; spacing uses per-child margin, never flex `gap`.
+function SignageText({ config }: { config: any }) {
+  const content = config.content ?? '';
+  const fontSize = typeof config.fontSize === 'number' ? config.fontSize : 64;
+  const fontFamily = config.fontFamily || undefined;
+  const fontWeight = typeof config.fontWeight === 'number' ? config.fontWeight : 700;
+  const color = config.color || '#ffffff';
+  const align = (config.alignment || 'left') as 'left' | 'center' | 'right';
+  const lineHeight = typeof config.lineHeight === 'number' ? config.lineHeight : 1.2;
+  const letterSpacing = config.letterSpacing || undefined;
+  const textTransform = config.textTransform || undefined;
+  const textShadow = config.textShadow || undefined;
+
+  const baseTextStyle: React.CSSProperties = {
+    fontSize: `${fontSize}px`,
+    fontFamily,
+    fontWeight,
+    color,
+    textAlign: align,
+    lineHeight,
+    letterSpacing,
+    textTransform: textTransform as any,
+    textShadow,
+    whiteSpace: 'pre-wrap',
+    wordWrap: 'break-word',
+    margin: 0,
+  };
+
+  const justify = align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start';
+
+  // CTA — a centered, filled accent pill.
+  if (config.paddingMode === 'button') {
+    return (
+      <div
+        className="absolute top-0 right-0 bottom-0 left-0 flex items-center"
+        style={{ justifyContent: justify }}
+        data-field="content"
+      >
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: config.bgColor,
+            color,
+            fontSize: `${fontSize}px`,
+            fontFamily,
+            fontWeight,
+            lineHeight,
+            letterSpacing,
+            textTransform: textTransform as any,
+            padding: '0.6em 1.4em',
+            borderRadius:
+              typeof config.borderRadius === 'number' ? `${config.borderRadius}px` : config.borderRadius,
+          }}
+        >
+          {content}
+        </span>
+      </div>
+    );
+  }
+
+  // Three-up-grid card — a surface tile with a bold title + muted detail.
+  if (config.cardLayout) {
+    return (
+      <div
+        className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center overflow-hidden"
+        style={{
+          backgroundColor: config.bgColor,
+          borderRadius:
+            typeof config.borderRadius === 'number' ? `${config.borderRadius}px` : config.borderRadius,
+          padding: '5%',
+        }}
+        data-field="content"
+      >
+        <div style={{ ...baseTextStyle, fontWeight: 800 }}>{content}</div>
+        {config.detail ? (
+          <div
+            style={{
+              ...baseTextStyle,
+              fontWeight: 500,
+              fontSize: `${Math.round(fontSize * 0.62)}px`,
+              opacity: 0.78,
+              marginTop: '0.4em',
+            }}
+          >
+            {config.detail}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  // Menu-list row — label (left, flex:1) + optional detail under it + a
+  // right-aligned bold value column. Per-child margin for spacing (no gap).
+  if (config.rowLayout) {
+    return (
+      <div
+        className="absolute top-0 right-0 bottom-0 left-0 flex flex-row items-center overflow-hidden"
+        data-field="content"
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ ...baseTextStyle, textAlign: 'left' }}>{content}</div>
+          {config.detail ? (
+            <div
+              style={{
+                ...baseTextStyle,
+                textAlign: 'left',
+                fontWeight: 500,
+                fontSize: `${Math.round(fontSize * 0.6)}px`,
+                opacity: 0.72,
+                marginTop: '0.2em',
+              }}
+            >
+              {config.detail}
+            </div>
+          ) : null}
+        </div>
+        {config.valueText ? (
+          <div
+            style={{
+              ...baseTextStyle,
+              textAlign: 'right',
+              fontWeight: 800,
+              color,
+              marginLeft: '0.6em',
+              flexShrink: 0,
+            }}
+          >
+            {config.valueText}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  // Plain absolute-px text (kicker / headline / body / stat / label).
+  const itemsAlign = align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start';
+  return (
+    <div
+      className="absolute top-0 right-0 bottom-0 left-0 flex flex-col justify-center overflow-hidden"
+      style={{ alignItems: itemsAlign }}
+      data-field="content"
+    >
+      <p style={{ ...baseTextStyle, width: '100%' }}>{content}</p>
     </div>
   );
 }
@@ -1807,6 +1969,33 @@ function ImageWidget({ config }: { config: any }) {
           className="w-full h-full"
           style={{ objectFit: fit, opacity }}
         />
+        {/* Wave 2 (2026-06-26) — engine scrim overlay (contrast guard) over the
+            photo so text on top stays legible. CSS gradient only; no inset. */}
+        {config.scrimCss ? (
+          <div
+            className="absolute top-0 right-0 bottom-0 left-0"
+            style={{ background: config.scrimCss, pointerEvents: 'none' }}
+          />
+        ) : null}
+      </div>
+    );
+  }
+  // Wave 2 (2026-06-26) — engine background slot with NO photo yet (image-gen
+  // is a later wave): paint the theme gradient (+ optional scrim) full-bleed
+  // instead of the "Add Image" placeholder, so a generated board looks designed.
+  if (config.bgGradient) {
+    const radius = typeof config.borderRadius === 'number' ? Math.max(0, config.borderRadius) : 0;
+    return (
+      <div
+        className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden"
+        style={{ background: config.bgGradient, borderRadius: radius || undefined }}
+      >
+        {config.scrimCss ? (
+          <div
+            className="absolute top-0 right-0 bottom-0 left-0"
+            style={{ background: config.scrimCss, pointerEvents: 'none' }}
+          />
+        ) : null}
       </div>
     );
   }
