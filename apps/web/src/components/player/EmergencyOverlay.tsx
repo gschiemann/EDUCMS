@@ -16,8 +16,85 @@
  * banner-style overlay unless severity is CRITICAL.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, ShieldAlert, Megaphone, Volume2 } from 'lucide-react';
+
+/**
+ * P0 (2026-06-27, Greg live-tested on the 960×1080 LED) — the full-screen
+ * emergency render used FIXED sizes (text-8xl headline, w-32 icon, p-12) and
+ * centered with NO fit. On a portrait / non-1080p canvas a real lockdown
+ * message wraps taller than the viewport and centered overflow CLIPS it top
+ * AND bottom → unreadable life-safety text. Unacceptable.
+ *
+ * FitToViewport measures the natural content size vs the available space and
+ * scales the whole block DOWN (never up) with a CSS transform so the message
+ * is ALWAYS the largest size that fully fits — on 960×1080, 320×1080 ribbons,
+ * 4K, anything. transform:scale is Chromium-83-safe (Taurus). Re-measures on
+ * resize + font load. A one-frame unscaled flash self-corrects instantly.
+ */
+function FitToViewport({ children, padding = 40 }: { children: React.ReactNode; padding?: number }) {
+  const outerRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const measure = () => {
+      const outer = outerRef.current;
+      const inner = innerRef.current;
+      if (!outer || !inner) return;
+      const aw = outer.clientWidth - padding * 2;
+      const ah = outer.clientHeight - padding * 2;
+      // scrollWidth/Height = the UNtransformed natural size (transform is
+      // visual only, doesn't change the layout box), so this never feeds back.
+      const cw = inner.scrollWidth;
+      const ch = inner.scrollHeight;
+      if (cw <= 0 || ch <= 0 || aw <= 0 || ah <= 0) return;
+      const s = Math.min(1, aw / cw, ah / ch);
+      setScale(s > 0 && Number.isFinite(s) ? s : 1);
+    };
+    measure();
+    let ro: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(measure);
+      if (outerRef.current) ro.observe(outerRef.current);
+      if (innerRef.current) ro.observe(innerRef.current);
+    }
+    const fonts = (document as { fonts?: { ready?: Promise<unknown> } }).fonts;
+    if (fonts?.ready?.then) fonts.ready.then(measure).catch(() => {});
+    window.addEventListener('resize', measure);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [children, padding]);
+
+  return (
+    <div
+      ref={outerRef}
+      style={{
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        ref={innerRef}
+        style={{
+          transform: scale < 1 ? `scale(${scale})` : undefined,
+          transformOrigin: 'center center',
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
 
 export interface EmergencyMessageView {
   id: string;
@@ -175,13 +252,18 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
     <div
       role="alert"
       aria-live="assertive"
-      className={`fixed top-0 right-0 bottom-0 left-0 z-[9999] ${style.bg} ${style.text} ${style.animate} flex flex-col items-center justify-center p-12`}
+      className={`fixed top-0 right-0 bottom-0 left-0 z-[9999] ${style.bg} ${style.text} ${style.animate}`}
     >
       {active.severity === 'CRITICAL' && (
-        <div className="pointer-events-none absolute top-0 right-0 bottom-0 left-0 border-[12px] border-red-500 animate-pulse" aria-hidden />
+        <div className="pointer-events-none absolute top-0 right-0 bottom-0 left-0 border-[12px] border-red-500 animate-pulse z-10" aria-hidden />
       )}
 
-      <div className="relative max-w-6xl w-full text-center">
+      {/* P0 2026-06-27 — scale-to-fit so the message is never clipped on a
+          960×1080 / portrait / ribbon canvas (Greg live-caught the cutoff).
+          max-w-6xl keeps long copy wrapping; FitToViewport shrinks the whole
+          block to the largest size that fully fits. */}
+      <FitToViewport padding={40}>
+      <div className="relative max-w-6xl text-center">
         <Icon className="w-32 h-32 mx-auto mb-6" />
         <div className="text-sm uppercase tracking-[0.4em] font-bold opacity-80 mb-2">
           {active.type === 'SOS' ? 'Staff SOS' : active.type === 'MEDIA_ALERT' ? 'Emergency Alert' : 'Broadcast'}
@@ -223,6 +305,7 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
           </div>
         )}
       </div>
+      </FitToViewport>
     </div>
   );
 }
