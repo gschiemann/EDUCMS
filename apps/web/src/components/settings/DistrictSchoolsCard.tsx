@@ -17,6 +17,7 @@ import { useTenantSwitch } from '@/hooks/use-tenant-switch';
 import { Building2, Plus, MonitorPlay, Users, ExternalLink, AlertTriangle, Loader2, Home, Pencil, Check, X } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
 import { AddressAutocomplete } from '@/components/ui/AddressAutocomplete';
+import { getVerticalSample } from '@cms/api-types';
 
 interface ChildTenant {
   id: string;
@@ -237,7 +238,14 @@ export function DistrictSchoolsCard() {
 
   const role = user?.role || '';
   const visible = role === 'DISTRICT_ADMIN' || role === 'SUPER_ADMIN';
-  const c = copyFor(vertical);
+  // 2026-06-27 — account-hierarchy NOUNS stay unified ("Location" /
+  // "Primary", per Greg 2026-06-01), but the add-location form's EXAMPLE
+  // name/slug placeholder is now on-vertical (canonical VERTICAL_SAMPLE in
+  // @cms/api-types) so a fresh QSR / clinic / worship admin sees an
+  // industry-appropriate hint instead of the generic "Downtown". Fixes the
+  // per-vertical beta finding without reverting the noun unification.
+  const sample = getVerticalSample(vertical);
+  const c = { ...copyFor(vertical), exampleName: sample.exampleName, exampleSlug: sample.exampleSlug };
 
   useEffect(() => {
     if (!visible) { setLoading(false); return; }

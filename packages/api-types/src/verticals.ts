@@ -313,6 +313,78 @@ export const VERTICAL_DEFAULT_BRAND: Record<Vertical, string> = {
 };
 
 /**
+ * Per-vertical SAMPLE / EXAMPLE identity — the polished on-vertical
+ * example a brand-new tenant sees before they've configured anything.
+ * Added 2026-06-27 to fix the beta finding that a fresh tenant fell back
+ * to generic placeholder copy across the board (the branding wizard,
+ * the add-location form, and the onboarding flow) regardless of which
+ * industry they picked — a worship admin saw "yourschool.org", a clinic
+ * saw "Lincoln High School", etc.
+ *
+ * This is the SINGLE SOURCE OF TRUTH for per-vertical sample identity so
+ * the three UI surfaces that previously hard-coded their own copies
+ * (apps/web BrandingWizard EXAMPLES_BY_VERTICAL + PLACEHOLDER_BY_VERTICAL,
+ * apps/web DistrictSchoolsCard COPY) can converge on one map and never
+ * drift again.
+ *
+ *   - exampleName  : a realistic tenant name for that industry (form
+ *                    placeholder + onboarding sample).
+ *   - exampleSlug  : the slug that name would derive to.
+ *   - sampleUrl    : a real, scrape-friendly website for the branding
+ *                    wizard's "Try an example" affordance. Hand-picked
+ *                    to avoid aggressive Cloudflare/Akamai bot protection
+ *                    where possible; if one is blocked the wizard shows
+ *                    the friendly BRANDING_BLOCKED message and the
+ *                    operator can paste their own.
+ *   - urlPlaceholder : the "https://www.yourX.com" hint for the URL input.
+ *
+ * Every entry is industry-appropriate so a fresh tenant's first
+ * impression is never the K-12 product wearing another industry's hat.
+ */
+export interface VerticalSample {
+  exampleName: string;
+  exampleSlug: string;
+  sampleUrl: string;
+  urlPlaceholder: string;
+}
+
+export const VERTICAL_SAMPLE: Record<Vertical, VerticalSample> = {
+  K12:         { exampleName: 'Lincoln High School',   exampleSlug: 'lincoln-high',     sampleUrl: 'https://www.stanford.edu/',           urlPlaceholder: 'https://www.yourschool.org' },
+  GYM:         { exampleName: 'Chicago Loop Gym',      exampleSlug: 'chicago-loop',     sampleUrl: 'https://www.crunch.com/',             urlPlaceholder: 'https://www.yourgym.com' },
+  RETAIL:      { exampleName: 'Mall of America Store', exampleSlug: 'mall-of-america',  sampleUrl: 'https://www.patagonia.com/',          urlPlaceholder: 'https://www.yourstore.com' },
+  CORPORATE:   { exampleName: 'San Francisco Office',  exampleSlug: 'san-francisco',    sampleUrl: 'https://www.hubspot.com/',            urlPlaceholder: 'https://www.yourcompany.com' },
+  QSR:         { exampleName: 'Times Square Location', exampleSlug: 'times-square',     sampleUrl: 'https://www.chipotle.com/',           urlPlaceholder: 'https://www.yourrestaurant.com' },
+  FASHION:     { exampleName: 'SoHo Studio',           exampleSlug: 'soho',             sampleUrl: 'https://www.everlane.com/',           urlPlaceholder: 'https://www.yourboutique.com' },
+  BAR:         { exampleName: 'Downtown Taproom',      exampleSlug: 'downtown-taproom', sampleUrl: 'https://www.stonebrewing.com/',       urlPlaceholder: 'https://www.yourbar.com' },
+  HEALTHCARE:  { exampleName: 'Downtown Clinic',       exampleSlug: 'downtown-clinic',  sampleUrl: 'https://www.onemedical.com/',         urlPlaceholder: 'https://www.yourpractice.com' },
+  HOSPITALITY: { exampleName: 'The Grand Hotel',       exampleSlug: 'grand-hotel',      sampleUrl: 'https://www.kimptonhotels.com/',      urlPlaceholder: 'https://www.yourhotel.com' },
+  RESTAURANT:  { exampleName: 'The Riverside Grill',   exampleSlug: 'riverside-grill',  sampleUrl: 'https://www.texasroadhouse.com/',     urlPlaceholder: 'https://www.yourrestaurant.com' },
+  SPORTS:      { exampleName: 'Memorial Stadium',      exampleSlug: 'memorial-stadium', sampleUrl: 'https://www.ncaa.com/',               urlPlaceholder: 'https://www.yourteam.com' },
+  WORSHIP:     { exampleName: 'Grace Community Church', exampleSlug: 'grace-community',  sampleUrl: 'https://www.life.church/',            urlPlaceholder: 'https://www.yourchurch.org' },
+};
+
+/** Neutral sample for an unknown / unset / 'venue' vertical. */
+export const NEUTRAL_SAMPLE: VerticalSample = {
+  exampleName: 'Downtown',
+  exampleSlug: 'downtown',
+  sampleUrl: 'https://www.example.com/',
+  urlPlaceholder: 'https://www.yourwebsite.com',
+};
+
+/**
+ * Resolve the sample identity for ANY raw vertical string (canonical,
+ * lowercase, or legacy alias). Unknown / 'venue' / unset → NEUTRAL.
+ */
+export function getVerticalSample(vertical: unknown): VerticalSample {
+  if (typeof vertical === 'string') {
+    const up = vertical.toUpperCase();
+    if (isVertical(up)) return VERTICAL_SAMPLE[up as Vertical];
+    if (VERTICAL_ALIASES[up]) return VERTICAL_SAMPLE[VERTICAL_ALIASES[up]];
+  }
+  return NEUTRAL_SAMPLE;
+}
+
+/**
  * Per-vertical template category tabs shown in the template gallery.
  * Each vertical gets its own taxonomy that maps to template.category
  * values seeded for that vertical. Falls back to a single "All" tab

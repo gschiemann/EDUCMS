@@ -29,8 +29,15 @@ const MENU_VERTICALS = new Set(['QSR', 'RESTAURANT', 'BAR']);
 /** Verticals that benefit from a pre-seeded retail SKU catalog. */
 const RETAIL_VERTICALS = new Set(['RETAIL', 'FASHION']);
 
-/** Verticals that benefit from live public-broadcaster streams. */
-const STREAM_VERTICALS = new Set(['GYM', 'K12', 'SPORTS', 'CORPORATE', 'HEALTHCARE', 'HOSPITALITY']);
+/**
+ * Verticals that benefit from live public-broadcaster streams (news /
+ * weather feeds for lobbies, waiting rooms, fellowship halls, etc.).
+ * 2026-06-27 — added WORSHIP (was absent per the per-vertical beta
+ * finding): a church lobby / welcome-center screen benefits from the
+ * same passive news/weather feed as a corporate lobby or clinic waiting
+ * room, so a fresh worship tenant now seeds these channels too.
+ */
+const STREAM_VERTICALS = new Set(['GYM', 'K12', 'SPORTS', 'CORPORATE', 'HEALTHCARE', 'HOSPITALITY', 'WORSHIP']);
 
 @Injectable()
 export class SampleDataService {
