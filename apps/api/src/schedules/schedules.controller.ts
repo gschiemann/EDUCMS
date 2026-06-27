@@ -326,6 +326,110 @@ export class SchedulesController {
     return submission;
   }
 
+  /**
+   * CC-2 (2026-06-27 launch beta) — a screen must NEVER silently go dark.
+   *
+   * Publishing a schedule deactivates the prior active one for the same
+   * target; DELETING (or deactivating) that survivor used to leave the
+   * target with ZERO active schedules → the manifest resolver
+   * (screens.controller `:id/manifest`, the `isActive: true` query) returned
+   * an EMPTY playlist set → the physical screen went BLANK.
+   *
+   * This helper runs AFTER a delete / deactivate. If the just-removed
+   * schedule's EXACT target (same screenId, or same screenGroupId) now has
+   * no active schedule left BUT other (inactive) schedules still exist for
+   * that same target, it re-activates the next-best one — highest priority,
+   * most-recent startTime as tiebreak (there is no updatedAt column on
+   * Schedule). It writes a SCHEDULE_AUTO_REACTIVATED AuditLog row so the
+   * fallback is forensically traceable.
+   *
+   * SAFETY:
+   *  - Same-tenant only (the where clause is always tenant-scoped) — never
+   *    auto-activate across tenants.
+   *  - Same-target only (exact screenId OR exact screenGroupId match) — we
+   *    deliberately do NOT promote a group schedule onto a per-screen pin or
+   *    vice-versa; that cross-target precedence is the operator's call, not
+   *    an automatic one. The common case the operator hits (publish A then B
+   *    to the same screen, then delete B) is exactly a same-target promotion.
+   *  - Idempotent: if an active schedule already covers the target, it does
+   *    nothing.
+   *  - Runs inside the caller's transaction (`tx`) so the delete/deactivate
+   *    and the fallback commit atomically — a screen is never momentarily
+   *    dark between the two writes.
+   *
+   * Returns the id of the schedule it re-activated, or null.
+   */
+  private async reactivateFallbackIfDark(
+    tx: any,
+    opts: {
+      tenantId: string;
+      userId: string | null;
+      screenId: string | null;
+      screenGroupId: string | null;
+      removedScheduleId: string;
+    },
+  ): Promise<string | null> {
+    const { tenantId, userId, screenId, screenGroupId, removedScheduleId } = opts;
+
+    // A schedule targets exactly ONE thing. Build the exact-target match —
+    // null means "match the rows whose column IS NULL", which is correct
+    // here: a per-screen schedule has screenGroupId=null, a group schedule
+    // has screenId=null. We restore like-for-like.
+    const targetWhere: { screenId: string | null; screenGroupId: string | null } = screenId
+      ? { screenId, screenGroupId: null }
+      : { screenId: null, screenGroupId: screenGroupId };
+
+    // Nothing to do if the removed schedule had no target at all (shouldn't
+    // happen — create() requires one — but be defensive).
+    if (!screenId && !screenGroupId) return null;
+
+    // Is the target still covered by an active schedule? If so, leave it be.
+    const stillActive = await tx.schedule.findFirst({
+      where: { tenantId, isActive: true, ...targetWhere },
+      select: { id: true },
+    });
+    if (stillActive) return null;
+
+    // Find the best inactive candidate for the SAME target to promote.
+    // priority DESC, then most-recent startTime DESC (no updatedAt column).
+    const candidate = await tx.schedule.findFirst({
+      where: {
+        tenantId,
+        isActive: false,
+        id: { not: removedScheduleId },
+        ...targetWhere,
+      },
+      orderBy: [{ priority: 'desc' }, { startTime: 'desc' }],
+      select: { id: true, playlistId: true, screenId: true, screenGroupId: true, priority: true },
+    });
+    if (!candidate) return null;
+
+    await tx.schedule.update({
+      where: { id: candidate.id },
+      data: { isActive: true },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        tenantId,
+        userId,
+        action: 'SCHEDULE_AUTO_REACTIVATED',
+        targetType: 'Schedule',
+        targetId: candidate.id,
+        details: JSON.stringify({
+          reason: 'prevent_screen_blank',
+          removedScheduleId,
+          playlistId: candidate.playlistId,
+          screenId: candidate.screenId,
+          screenGroupId: candidate.screenGroupId,
+          priority: candidate.priority,
+        }),
+      },
+    });
+
+    return candidate.id;
+  }
+
   @Put(':id')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async update(
@@ -384,14 +488,66 @@ export class SchedulesController {
     // to null and lose the "force unmuted" state.
     if (body.mutedOverride !== undefined) data.mutedOverride = body.mutedOverride;
 
-    const res = await this.prisma.client.schedule.update({
-      where: { id },
-      data,
-      include: {
-        playlist: { select: { id: true, name: true } },
-        screenGroup: { select: { id: true, name: true } },
-        screen: { select: { id: true, name: true } },
-      },
+    // PUT now honors isActive (admin-only endpoint), so the live/draft state
+    // is no longer ONLY flippable via /toggle — that silent inconsistency
+    // confused operators. We mirror /toggle's discipline exactly: when the
+    // active state actually CHANGES, audit it AND (on a deactivation) run the
+    // go-dark fallback, all inside one transaction so partial state and a
+    // momentarily-blank screen are both impossible.
+    const isActiveChanging =
+      body.isActive !== undefined && body.isActive !== schedule.isActive;
+    if (body.isActive !== undefined) data.isActive = body.isActive;
+
+    // The effective target AFTER this update — a PUT may also re-target the
+    // schedule, so the fallback must reason about where it ends up living.
+    const effectiveScreenId =
+      data.screenId !== undefined ? data.screenId : schedule.screenId;
+    const effectiveScreenGroupId =
+      data.screenGroupId !== undefined ? data.screenGroupId : schedule.screenGroupId;
+
+    const res = await this.prisma.client.$transaction(async (tx) => {
+      const updated = await tx.schedule.update({
+        where: { id },
+        data,
+        include: {
+          playlist: { select: { id: true, name: true } },
+          screenGroup: { select: { id: true, name: true } },
+          screen: { select: { id: true, name: true } },
+        },
+      });
+
+      if (isActiveChanging) {
+        await tx.auditLog.create({
+          data: {
+            tenantId: req.user.tenantId,
+            userId: req.user.userId ?? null,
+            action: 'SCHEDULE_TOGGLED',
+            targetType: 'Schedule',
+            targetId: id,
+            details: JSON.stringify({
+              isActive: updated.isActive,
+              via: 'put',
+              playlistId: updated.playlistId,
+              screenId: updated.screenId,
+              screenGroupId: updated.screenGroupId,
+            }),
+          },
+        });
+
+        // Deactivating via PUT can take a screen off the air exactly like
+        // /toggle or delete — apply the same fallback.
+        if (updated.isActive === false) {
+          await this.reactivateFallbackIfDark(tx, {
+            tenantId: req.user.tenantId,
+            userId: req.user.userId ?? null,
+            screenId: effectiveScreenId,
+            screenGroupId: effectiveScreenGroupId,
+            removedScheduleId: id,
+          });
+        }
+      }
+
+      return updated;
     });
     this.notifySync(req.user.tenantId);
     return res;
@@ -433,6 +589,20 @@ export class SchedulesController {
           }),
         },
       });
+
+      // CC-2: toggling a schedule OFF can take the screen off the air the
+      // same way a delete can. If this deactivation left the target with no
+      // active schedule, promote the next-best inactive one (same target)
+      // so the screen never goes dark.
+      if (!updated.isActive) {
+        await this.reactivateFallbackIfDark(tx, {
+          tenantId: req.user.tenantId,
+          userId: req.user.userId ?? null,
+          screenId: schedule.screenId,
+          screenGroupId: schedule.screenGroupId,
+          removedScheduleId: id,
+        });
+      }
       return updated;
     });
     this.notifySync(req.user.tenantId);
@@ -467,6 +637,21 @@ export class SchedulesController {
           }),
         },
       });
+
+      // CC-2: if this delete just removed the LAST active schedule for the
+      // target, promote the next-best inactive one so the screen never goes
+      // dark. Only matters when the deleted schedule was the live one —
+      // deleting a draft can't take a screen off the air. Same transaction,
+      // so the screen is never momentarily blank.
+      if (schedule.isActive) {
+        await this.reactivateFallbackIfDark(tx, {
+          tenantId: req.user.tenantId,
+          userId: req.user.userId ?? null,
+          screenId: schedule.screenId,
+          screenGroupId: schedule.screenGroupId,
+          removedScheduleId: id,
+        });
+      }
     });
     this.notifySync(req.user.tenantId);
     return { deleted: true };

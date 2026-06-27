@@ -458,6 +458,12 @@ export const ScheduleUpdateSchema = z
     timeEnd: TimeOfDayString.nullish(),
     priority: z.number().int().optional(),
     mutedOverride: z.boolean().nullish(),
+    // PUT /schedules/:id may now flip the live/draft state too — previously
+    // only PUT /schedules/:id/toggle could, which silently dropped any
+    // isActive sent through the plain update (a confusing inconsistency).
+    // Honored admin-side; routed through the same audit + go-dark fallback
+    // as /toggle so deactivating here can never leave a screen blank.
+    isActive: z.boolean().optional(),
   })
   .passthrough();
 export type ScheduleUpdateInput = z.infer<typeof ScheduleUpdateSchema>;
