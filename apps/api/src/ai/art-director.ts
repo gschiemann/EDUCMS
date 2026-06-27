@@ -76,6 +76,25 @@ export interface ArtDirectorMapOptions {
   brandAccentHex?: string;
 }
 
+/**
+ * The most scenes a generated template may carry (one per board in a "set").
+ * Mirrors the `scenesIn.slice(0, MAX_GENERATED_SCENES)` cap in
+ * `sanitizeTouchTemplate`.
+ */
+export const MAX_GENERATED_SCENES = 8;
+/** Per-scene zone ceiling (richest archetype — menu-list/three-up — is ~8). */
+export const MAX_ZONES_PER_SCENE = 20;
+/**
+ * GLOBAL zone ceiling across ALL scenes of one template. The old value was a
+ * flat 20 — which silently truncated multi-scene "Build a set" output the
+ * moment the running total hit 20 (a 6-board set with a couple of dense
+ * menu-list / three-up scenes lost its tail boards entirely → blank scenes).
+ * Sized for the worst REAL set (8 scenes × ~12 zones), still bounded against a
+ * runaway/abusive AI emitting hundreds. `sanitizeTouchTemplate` slices to the
+ * SAME constant so the two caps can never drift.
+ */
+export const MAX_GENERATED_TEMPLATE_ZONES = 96;
+
 /** A SceneSpec that may carry an optional name (used to tag multi-scene zones). */
 export type SceneSpecWithName = SceneSpec & { name?: string };
 
@@ -390,7 +409,7 @@ function mapImageConfig(
 /**
  * Run the engine pipeline for ONE scene and map its ResolvedZones → MappedZones.
  * Drops a text zone whose resolved copy is empty EXCEPT the headline (which is
- * always required). Returns at most 20 zones.
+ * always required). Returns at most MAX_ZONES_PER_SCENE zones.
  */
 function mapScene(
   scene: SceneSpec,
@@ -456,7 +475,7 @@ function mapScene(
       sceneRef,
     });
 
-    if (mapped.length >= 20) break;
+    if (mapped.length >= MAX_ZONES_PER_SCENE) break;
   }
 
   return { zones: mapped, theme, archetypeId };
@@ -489,7 +508,7 @@ export function artDirectorSpecToTemplate(
 
   if (spec.scenes && spec.scenes.length) {
     const used = new Set<string>();
-    for (let i = 0; i < spec.scenes.length && i < 8; i++) {
+    for (let i = 0; i < spec.scenes.length && i < MAX_GENERATED_SCENES; i++) {
       const scene = spec.scenes[i] as SceneSpecWithName;
       // Unique scene name so name→id resolution is unambiguous.
       let name = (scene.name || '').trim();
@@ -506,7 +525,7 @@ export function artDirectorSpecToTemplate(
       const { zones: sceneZones, theme } = mapScene(scene, opts, candidate);
       if (i === 0) primaryTheme = theme;
       for (const z of sceneZones) {
-        if (zones.length >= 20) break;
+        if (zones.length >= MAX_GENERATED_TEMPLATE_ZONES) break;
         zones.push(z);
       }
     }
@@ -515,7 +534,7 @@ export function artDirectorSpecToTemplate(
     const { zones: sceneZones, theme } = mapScene(spec, opts, undefined);
     primaryTheme = theme;
     for (const z of sceneZones) {
-      if (zones.length >= 20) break;
+      if (zones.length >= MAX_GENERATED_TEMPLATE_ZONES) break;
       zones.push(z);
     }
   }

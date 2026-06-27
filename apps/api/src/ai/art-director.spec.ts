@@ -156,6 +156,37 @@ describe('artDirectorSpecToTemplate', () => {
     }
   });
 
+  it('keeps EVERY scene in a large dense set (no 20-zone global truncation)', () => {
+    // Regression: a "Build a set" of 6 dense boards (menu-list/three-up have
+    // ~6-8 zones each) used to silently drop tail scenes once the running zone
+    // total hit a flat 20 — the last boards rendered blank. Every scene must
+    // now contribute at least its headline.
+    const dense: ArchetypeId[] = [
+      'menu-list',
+      'three-up-grid',
+      'menu-list',
+      'three-up-grid',
+      'menu-list',
+      'three-up-grid',
+    ];
+    const base = specFor('menu-list');
+    const spec: ArtDirectorSpec = {
+      ...base,
+      scenes: dense.map((archetype, i) => ({
+        ...specFor(archetype),
+        copy: { ...specFor(archetype).copy, headline: `Board ${i + 1}` },
+      })),
+    };
+    const out = artDirectorSpecToTemplate(spec, OPTS);
+    expect(out.scenes?.length).toBe(6);
+    // Every scene must own at least one zone (no blank tail boards).
+    for (const s of out.scenes!) {
+      expect(out.zones.some((z) => z.sceneRef === s.name)).toBe(true);
+    }
+    // …and the set genuinely exceeds the old flat-20 cap.
+    expect(out.zones.length).toBeGreaterThan(20);
+  });
+
   it('drops empty optional text zones but keeps the headline', () => {
     const spec = specFor('split-50');
     spec.copy = { headline: 'Just A Headline' }; // no kicker/body/cta/items

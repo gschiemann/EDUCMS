@@ -47,7 +47,12 @@ import { openAiKey } from './ai-key-cipher';
 // Wave 2 — the signage-design ENGINE. The LLM emits ONLY an ArtDirectorSpec
 // (archetype + theme + copy + image plan + accentSlot); the mapper runs the
 // engine (geometry/type/color/contrast) and produces persistable zones.
-import { artDirectorSpecToTemplate, type MappedTemplate } from './art-director';
+import {
+  artDirectorSpecToTemplate,
+  MAX_GENERATED_SCENES,
+  MAX_GENERATED_TEMPLATE_ZONES,
+  type MappedTemplate,
+} from './art-director';
 import {
   ARCHETYPE_IDS,
   THEMES,
@@ -3763,7 +3768,10 @@ function sanitizeTouchTemplate(raw: any): {
 
   const zonesIn = Array.isArray(raw.zones) ? raw.zones : [];
   const zonesOut: Array<any> = [];
-  for (const z of zonesIn.slice(0, 20)) {
+  // Multi-scene "Build a set" packs many boards into one template — the old flat
+  // 20-zone slice silently dropped the tail boards once the running total hit 20.
+  // Cap shared with the mapper (art-director.ts) so the two can never drift.
+  for (const z of zonesIn.slice(0, MAX_GENERATED_TEMPLATE_ZONES)) {
     if (!z || typeof z !== 'object') continue;
     const widgetType = String(z.widgetType || '').trim().toUpperCase();
     if (!TOUCH_GEN_ALLOWED_WIDGETS.has(widgetType)) continue;
@@ -3813,7 +3821,7 @@ function sanitizeTouchTemplate(raw: any): {
 
   const scenesIn = Array.isArray(raw.scenes) ? raw.scenes : [];
   const scenesOut: Array<{ name: string }> = [];
-  for (const s of scenesIn.slice(0, 8)) {
+  for (const s of scenesIn.slice(0, MAX_GENERATED_SCENES)) {
     if (!s || typeof s !== 'object') continue;
     const sName = typeof s.name === 'string' && s.name.trim() ? s.name.trim().slice(0, 60) : '';
     if (sName) scenesOut.push({ name: sName });
