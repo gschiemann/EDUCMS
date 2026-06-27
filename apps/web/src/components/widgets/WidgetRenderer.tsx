@@ -654,13 +654,28 @@ export function WidgetPreview({ widgetType, config, width, height, live, freeze,
     case 'RETAIL_LOYALTY_QR':             return <RetailLoyaltyQRWidget config={cfg} live={live} />;
     case 'RETAIL_LOOKBOOK_CAROUSEL':      return <RetailLookbookCarouselWidget config={cfg} live={live} />;
     case 'RETAIL_STOREFRONT_HOURS':       return <RetailStorefrontHoursWidget config={cfg} live={live} />;
-    // v2 canonical-only types — these have no single default renderer;
-    // they ALWAYS render through the `cfg.variant` path at the top of
-    // this function. Reaching the switch means the variant was lost
-    // (config sanitized, variant id renamed). Show a visible "pick a
-    // style" placeholder rather than `default: return null` — a silent
-    // blank widget is the worse failure (the operator sees nothing and
-    // can't tell the zone simply needs a variant chosen).
+    // v2 canonical-only types (CORPORATE / HEALTHCARE / WORSHIP /
+    // HOSPITALITY / RETAIL / CHART / CELEBRATION / BACKGROUND /
+    // LIVE_DATA) — these have no single hard-coded renderer; every
+    // tile in their pack registers under the canonical type and is
+    // selected via `cfg.variant`, dispatched at the top of this
+    // function. Reaching the switch means the variant was LOST
+    // (config sanitized, variant id renamed, or an AI/import pipeline
+    // emitted a bare canonical type with no variant — see the
+    // re-sanitize round-trip class of bugs).
+    //
+    // 2026-06-27 — the old behavior here was a dead-end dark "Pick a
+    // style" box. On the live PLAYER (`live`) there is no picker, so a
+    // CORPORATE/HEALTHCARE/WORSHIP/HOSPITALITY zone whose variant was
+    // lost rendered a slab of slate that an operator can never fix from
+    // the display. Per-vertical beta finding: these read as costumes.
+    // Fix: resolve the FIRST registered variant for this type from the
+    // registry and render its real Component with merged defaults — so a
+    // lost-variant zone shows real, branded content instead of a
+    // placeholder. The "needs a style" hint is kept ONLY for the
+    // builder (no `live`) and ONLY when the type genuinely has zero
+    // registered variants (a never-shipped pack), so the operator still
+    // gets a signal rather than a silent blank.
     case 'CELEBRATION':
     case 'HEALTHCARE':
     case 'CORPORATE':
@@ -669,7 +684,28 @@ export function WidgetPreview({ widgetType, config, width, height, live, freeze,
     case 'CHART':
     case 'RETAIL':
     case 'BACKGROUND':
-    case 'LIVE_DATA':
+    case 'LIVE_DATA': {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { listVariants } = require('./variants') as typeof import('./variants');
+      // Prefer a non-previewOnly variant (real canvas renderer); fall
+      // back to the first registered variant for the type.
+      const candidates = listVariants({ widgetType });
+      const fallback = candidates.find(v => !v.previewOnly && v.render) || candidates[0];
+      if (fallback && fallback.render && !fallback.previewOnly) {
+        const Render = fallback.render;
+        // Merge the variant's seed defaults UNDER the operator's existing
+        // config so any edits already made (e.g. a renamed sermon title)
+        // survive, and stamp the resolved variant id so the next render
+        // takes the fast top-of-function path instead of landing here
+        // again.
+        const merged = { ...(fallback.defaultConfig || {}), ...cfg, variant: fallback.id };
+        return <Render config={merged} compact={compact} live={live} onConfigChange={onConfigChange} />;
+      }
+      // Last resort — only the builder ever sees this; the player never
+      // shows a "pick a style" prompt (there's nothing to click on a
+      // display). On the player, an unresolvable canonical type renders
+      // nothing rather than a confusing slab.
+      if (live) return null;
       return (
         <div style={{
           width: '100%', height: '100%', display: 'flex',
@@ -680,6 +716,7 @@ export function WidgetPreview({ widgetType, config, width, height, live, freeze,
           Pick a {String(widgetType).toLowerCase().replace(/_/g, ' ')} style
         </div>
       );
+    }
     default:             return null;
   }
 }
