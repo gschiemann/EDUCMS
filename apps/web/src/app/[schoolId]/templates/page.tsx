@@ -562,6 +562,10 @@ export default function TemplatesPage() {
         vertical: (tenantCopy.vertical || 'venue').toLowerCase(),
         interactive: aiInteractive,
         count: 3,
+        // Passive signage boards run through the signage-design art-director
+        // engine (Wave 2) — grid-locked archetype + theme + signage-scale type.
+        // Touch templates keep the multi-scene generator (touchActions).
+        engine: !aiInteractive,
       });
       const cands = res?.candidates || [];
       if (!cands.length) {

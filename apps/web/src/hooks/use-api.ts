@@ -1343,6 +1343,11 @@ export interface AiTemplateCandidate {
     touchAction?: any;
   }>;
   scenes?: Array<{ name: string }>;
+  /** Engine boards (signage-design) carry a template-level background + the
+   *  art-director's archetype/theme so create-from-candidate can persist them. */
+  background?: { bgColor?: string; bgGradient?: string; bgImage?: string };
+  archetype?: string;
+  theme?: string;
 }
 
 export interface AiGenerateCandidatesResponse {
@@ -1366,6 +1371,9 @@ export function useGenerateTouchCandidates() {
       vertical?: string;
       interactive?: boolean;
       count?: number;
+      /** Route through the @cms/signage-design art-director engine (Wave 2).
+       *  Used for passive signage boards — grid-locked archetype + theme. */
+      engine?: boolean;
     }
   >({
     mutationFn: (body) =>
@@ -1386,6 +1394,8 @@ export function useCreateFromCandidate() {
       screenWidth?: number;
       screenHeight?: number;
       interactive?: boolean;
+      /** Engine boards carry a template-level background to persist. */
+      background?: { bgColor?: string; bgGradient?: string; bgImage?: string };
     }
   >({
     mutationFn: (body) =>
