@@ -35,7 +35,10 @@ export type ArchetypeId =
   | 'lower-third-banner' // image fills, content in a bottom band
   | 'stat-spotlight' //   one huge number/stat + label
   | 'three-up-grid' //    three equal cards ("what's on today")
-  | 'menu-list'; //       priced rows, grid-aligned value column
+  | 'menu-list' //        priced rows, grid-aligned value column
+  | 'poster-promo' //     full-bleed photo + scrim, centered punchy offer + CTA
+  | 'quote-spotlight' //  large centered quote + attribution (testimonial/verse)
+  | 'title-cta'; //       centered eyebrow + headline + body + one CTA (announcement)
 
 /**
  * Named copy slots. Every archetype declares which subset it uses; the LLM

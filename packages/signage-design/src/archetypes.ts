@@ -382,6 +382,86 @@ const menuList: Archetype = {
 };
 
 // ---------------------------------------------------------------------------
+// 7. poster-promo — full-bleed image + scrim, centered punchy offer + CTA.
+// ---------------------------------------------------------------------------
+
+const posterPromo: Archetype = {
+  id: 'poster-promo',
+  label: 'Poster / Promo',
+  description: 'Full-bleed photo + scrim with a centered punchy offer headline and a prominent CTA. Retail/QSR promos, "today only".',
+  supports: MOST,
+  backgroundMode: 'image',
+  slots: [SLOT.background, SLOT.kicker, SLOT.headline, SLOT.cta],
+  resolve(canvas: CanvasClass, theme: ThemeBundle): ResolvedZone[] {
+    const cb = contentBox();
+    const bg = zone(SLOT.background, fullBleed(), 0, {
+      scrim: { ...theme.scrim, direction: 'full', opacity: 0.62 },
+    });
+    // Centered stack: kicker 8 + g + headline 30 + g + cta 10 = 59.
+    const blockH = 8 + GUTTER_PCT + 30 + GUTTER_PCT + 10;
+    let y = (100 - blockH) / 2;
+    const kicker = zone(SLOT.kicker, { x: cb.x, y, width: cb.width, height: 8 }, 2, textTokens(theme, 'kicker', 'inkInverse', 'center'));
+    y += 8 + GUTTER_PCT;
+    const headline = zone(SLOT.headline, { x: cb.x, y, width: cb.width, height: 30 }, 2, textTokens(theme, 'display', 'inkInverse', 'center'));
+    y += 30 + GUTTER_PCT;
+    const cta = zone(SLOT.cta, { x: 30, y, width: 40, height: 10 }, 2, textTokens(theme, 'title', 'accent', 'center', true));
+    return [bg, kicker, headline, cta];
+  },
+};
+
+// ---------------------------------------------------------------------------
+// 8. quote-spotlight — a large centered quote + attribution.
+// ---------------------------------------------------------------------------
+
+const quoteSpotlight: Archetype = {
+  id: 'quote-spotlight',
+  label: 'Quote Spotlight',
+  description: 'A large centered quote with attribution. Testimonials, worship verses, corporate values, quote-of-the-day.',
+  supports: MOST,
+  backgroundMode: 'gradient',
+  slots: [SLOT.kicker, SLOT.headline, SLOT.body],
+  resolve(canvas: CanvasClass, theme: ThemeBundle): ResolvedZone[] {
+    const cb = contentBox();
+    // kicker 7 + g + quote 34 + g + attribution 8 = 55, centered.
+    const blockH = 7 + GUTTER_PCT + 34 + GUTTER_PCT + 8;
+    let y = (100 - blockH) / 2;
+    const kicker = zone(SLOT.kicker, { x: cb.x, y, width: cb.width, height: 7 }, 2, textTokens(theme, 'kicker', 'accent', 'center'));
+    y += 7 + GUTTER_PCT;
+    const headline = zone(SLOT.headline, { x: cb.x, y, width: cb.width, height: 34 }, 2, textTokens(theme, 'headline', 'ink', 'center'));
+    y += 34 + GUTTER_PCT;
+    const body = zone(SLOT.body, { x: cb.x + 10, y, width: cb.width - 20, height: 8 }, 2, textTokens(theme, 'title', 'muted', 'center'));
+    return [kicker, headline, body];
+  },
+};
+
+// ---------------------------------------------------------------------------
+// 9. title-cta — centered eyebrow + headline + body + one CTA (announcement).
+// ---------------------------------------------------------------------------
+
+const titleCta: Archetype = {
+  id: 'title-cta',
+  label: 'Title + CTA',
+  description: 'A centered announcement: eyebrow, headline, a supporting line, and one call-to-action. All-purpose welcome/announcement/event.',
+  supports: MOST,
+  backgroundMode: 'gradient',
+  slots: [SLOT.kicker, SLOT.headline, SLOT.body, SLOT.cta],
+  resolve(canvas: CanvasClass, theme: ThemeBundle): ResolvedZone[] {
+    const cb = contentBox();
+    // kicker 7 + g + headline 26 + g + body 12 + g + cta 9 = 63, centered.
+    const blockH = 7 + GUTTER_PCT + 26 + GUTTER_PCT + 12 + GUTTER_PCT + 9;
+    let y = (100 - blockH) / 2;
+    const kicker = zone(SLOT.kicker, { x: cb.x, y, width: cb.width, height: 7 }, 2, textTokens(theme, 'kicker', 'accent', 'center'));
+    y += 7 + GUTTER_PCT;
+    const headline = zone(SLOT.headline, { x: cb.x, y, width: cb.width, height: 26 }, 2, textTokens(theme, 'display', 'ink', 'center'));
+    y += 26 + GUTTER_PCT;
+    const body = zone(SLOT.body, { x: cb.x + 8, y, width: cb.width - 16, height: 12 }, 2, textTokens(theme, 'body', 'muted', 'center'));
+    y += 12 + GUTTER_PCT;
+    const cta = zone(SLOT.cta, { x: 32, y, width: 36, height: 9 }, 2, textTokens(theme, 'title', 'accent', 'center', true));
+    return [kicker, headline, body, cta];
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Registry + public API.
 // ---------------------------------------------------------------------------
 
@@ -392,6 +472,9 @@ export const ARCHETYPES: Record<ArchetypeId, Archetype> = {
   'stat-spotlight': statSpotlight,
   'three-up-grid': threeUpGrid,
   'menu-list': menuList,
+  'poster-promo': posterPromo,
+  'quote-spotlight': quoteSpotlight,
+  'title-cta': titleCta,
 };
 
 export const ARCHETYPE_IDS = Object.keys(ARCHETYPES) as ArchetypeId[];

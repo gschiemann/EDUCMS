@@ -84,6 +84,7 @@ function r3(n: number): number {
 const IMAGE_BG_ARCHETYPES = new Set<ArchetypeId>([
   'hero-fullbleed',
   'lower-third-banner',
+  'poster-promo',
 ]);
 
 /** Resolve the theme for a scene: 'brand' → derive from the tenant kit; else a curated id. */
@@ -462,7 +463,8 @@ export function artDirectorSpecToTemplate(
     name: deriveName(spec),
     zones,
     scenes: scenesOut.length ? scenesOut : undefined,
-    // The bg ZONE carries the gradient; the template bg is just the solid base.
-    background: { bgColor: palette.background },
+    // Solid base + a subtle theme gradient so surface/gradient archetypes are
+    // never a flat slab (image archetypes lay a full-bleed bg zone on top).
+    background: { bgColor: palette.background, bgGradient: themeGradient(palette) },
   };
 }

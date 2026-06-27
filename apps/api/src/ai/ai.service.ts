@@ -2239,7 +2239,7 @@ height, NO hex colors, NO font sizes — EVER. The engine derives all of those.
 
 SHAPE:
 {
-  "archetype": "<one of the 6 ids below>",
+  "archetype": "<one of the 9 ids below>",
   "theme": "<one of the 12 theme ids below, OR the literal \\"brand\\">",
   "copy": {
     "kicker": "<eyebrow line, <= 4 words, optional>",
@@ -2260,6 +2260,9 @@ ARCHETYPES — pick the ONE that fits the operator's intent:
   - "stat-spotlight"      — one enormous number/stat + label. For "one big number" (attendance, days left, score).
   - "three-up-grid"       — a headline over three equal cards. For an event lineup / "what's on today".
   - "menu-list"           — a headline over priced rows with a value column. For a price list / menu.
+  - "poster-promo"        — a centered punchy OFFER over a full-bleed photo + scrim, with a prominent CTA. For retail/QSR promos, "today only", sales.
+  - "quote-spotlight"     — a large centered quote with attribution. For testimonials, worship verses, corporate values, quote-of-the-day. Put the quote in "headline", the attribution in "body".
+  - "title-cta"           — a centered eyebrow + headline + supporting line + ONE call-to-action. The all-purpose announcement / welcome / event board.
 
 THEMES — pick ONE id (or "brand" to use the tenant's own brand colors):
   clean-corporate, warm-school, neon-sports, qsr-appetite, minimal-luxury,

@@ -34,8 +34,8 @@ function rectsOverlap(a: ResolvedZone, b: ResolvedZone): boolean {
 }
 
 describe('archetype registry', () => {
-  it('exposes 6 landscape archetypes', () => {
-    expect(ARCHETYPE_IDS.length).toBe(6);
+  it('exposes the full archetype catalog', () => {
+    expect(ARCHETYPE_IDS.length).toBe(9);
     expect(ARCHETYPE_IDS).toEqual(
       expect.arrayContaining([
         'hero-fullbleed',
@@ -44,6 +44,9 @@ describe('archetype registry', () => {
         'stat-spotlight',
         'three-up-grid',
         'menu-list',
+        'poster-promo',
+        'quote-spotlight',
+        'title-cta',
       ]),
     );
   });
