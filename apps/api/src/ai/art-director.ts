@@ -271,13 +271,17 @@ function mapTextConfig(
 
   if (z.slot === 'listItem' && archetype === 'three-up-grid') {
     const item = copy.items?.[listIndex];
+    // Card titles live in a NARROW column — the full display/title px overflows
+    // and a long word breaks mid-letter ("Homecomin·g"). Scale the card title
+    // down so a real label's longest word fits the column and wraps at spaces.
+    const cardTitlePx = Math.max(50, Math.round((tokens.fontSizePx ?? 64) * 0.7));
     return {
       content: item?.label || content,
       config: {
         content: item?.label || content,
         detail: item?.detail || undefined,
         sizeMode: 'absolute',
-        fontSize: tokens.fontSizePx,
+        fontSize: cardTitlePx,
         fontFamily: tokens.fontFamily,
         color: palette.ink,
         bgColor: palette.surface,

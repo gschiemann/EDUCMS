@@ -2366,6 +2366,7 @@ THEMES — pick ONE id (or "brand" to use the tenant's own brand colors):
 COPY RULES:
   - headline is REQUIRED and must be SHORT and punchy (signage is read at a glance).
   - Use "items" ONLY for menu-list (label + value + detail per row) and three-up-grid (label + detail per card). 3-5 items typical, 8 max.
+  - three-up-grid card labels must be SHORT (≤ 3 words / ~18 chars) so they fit the card column; put the time/place/extra in the item's "detail".
   - For stat-spotlight, put the big number in "headline" and the label in "body".
 
 IMAGERY:
