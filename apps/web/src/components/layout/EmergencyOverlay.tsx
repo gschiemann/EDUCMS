@@ -105,7 +105,16 @@ export function EmergencyOverlay() {
       // even on a frame before the tab bar unmounts. Life-safety: the
       // all-clear control must always own the screen during an active
       // emergency (mobile-UX audit P0-10, 2026-05-29).
-      className="absolute inset-0 z-[60] flex items-center justify-center p-6 bg-red-950/90 backdrop-blur-3xl border-8 border-red-500 transition-all duration-300"
+      // 2026-06-27 (LANE 1 life-safety) — added `overflow-y-auto` so the
+      // all-clear control is ALWAYS reachable. The overlay centers its content
+      // with `items-center`; on a short viewport (a phone in landscape, a
+      // small browser window) the stacked content — icon + title + desc + the
+      // tall "type CLEAR" card — exceeded the viewport and, with no scroll, the
+      // input + Terminate button were pushed off-screen, leaving the operator
+      // unable to clear the emergency. `overflow-y-auto` lets it scroll; the
+      // `my-auto` on the inner block keeps it centered when it DOES fit.
+      // (Dashboard surface, not a Taurus player — inset-0 / blur are fine here.)
+      className="absolute inset-0 z-[60] flex items-center justify-center p-6 overflow-y-auto bg-red-950/90 backdrop-blur-3xl border-8 border-red-500 transition-all duration-300"
     >
       {/* Inner alert region — announces the title + description on mount.
           The outer alertdialog handles focus + modal semantics; this
@@ -131,7 +140,7 @@ export function EmergencyOverlay() {
       <div className="absolute inset-x-0 top-0 h-2 bg-red-500 animate-pulse" aria-hidden />
       <div className="absolute inset-x-0 bottom-0 h-2 bg-red-500 animate-pulse" aria-hidden />
       
-      <div className="max-w-2xl w-full flex flex-col items-center justify-center text-center space-y-8 animate-in zoom-in-95 duration-500">
+      <div className="max-w-2xl w-full my-auto flex flex-col items-center justify-center text-center space-y-8 animate-in zoom-in-95 duration-500">
         <div className="w-32 h-32 rounded-full bg-red-500/20 flex items-center justify-center animate-pulse">
           <AlertTriangle className="w-16 h-16 text-red-500" />
         </div>

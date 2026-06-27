@@ -2841,12 +2841,28 @@ export class ScreensController {
                    id: "emergency-zone",
                    x: 0, y: 0, width: 100, height: 100, zIndex: 1,
                    widgetType: "TEXT",
+                   // 2026-06-27 (LANE 1 life-safety) — route through the
+                   // signage-design ENGINE text path (`sizeMode: 'absolute'`)
+                   // so the message ALWAYS fits its zone via FitScaler
+                   // (measure + transform:scale, Chromium-83/Taurus-safe),
+                   // never clipping. The legacy TEXT path hard-CLAMPS
+                   // fontSize to 3em (~48px) AND wraps inside an
+                   // `overflow:hidden` box with NO shrink — so a long
+                   // operator-typed lockdown message (textBlob) was cut off
+                   // top/bottom on any canvas where the wrapped text ran
+                   // taller than the zone (the exact clip class Greg caught
+                   // on the 960×1080 LED). `fontSize` here is the INTENDED
+                   // size; FitScaler shrinks it down to fit. fontWeight 800
+                   // replaces the legacy `bold` flag (the absolute path reads
+                   // a numeric weight, not the toggle).
                    defaultConfig: {
+                     sizeMode: "absolute",
                      content: fallbackContent,
                      fontSize: isPortrait ? 140 : 100,
+                     fontWeight: 800,
                      color: "white",
                      alignment: "center",
-                     bold: true
+                     lineHeight: 1.15
                    }
                  }
                ]

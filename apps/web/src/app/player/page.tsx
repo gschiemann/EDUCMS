@@ -1267,6 +1267,90 @@ function CanvasInfoRow() {
   );
 }
 
+/**
+ * FitToViewport — life-safety scale-to-fit (LANE 1, 2026-06-27).
+ *
+ * Measures the natural content size vs the available box and scales the whole
+ * block DOWN (never up) with a CSS transform so the message is ALWAYS the
+ * largest size that fully fits — on 960×1080 portrait, 320×1080 ribbons, 4K,
+ * anything. Used by the crash-recovery cached-emergency screen below, which
+ * previously rendered FIXED sizes (text-7xl headline, w-32 icon, text-3xl
+ * body, p-12) centered with NO fit → a real lockdown message wrapped taller
+ * than a narrow/portrait canvas and was CLIPPED top AND bottom (the exact
+ * cutoff class Greg caught on the live 960×1080 LED).
+ *
+ * transform:scale is Chromium-83-safe (Taurus). longhand top/right/bottom/left,
+ * no `inset` (CLAUDE.md rule #10). Re-measures on resize + font load. A
+ * one-frame unscaled flash self-corrects instantly.
+ *
+ * Mirrors the same component in apps/web/src/components/player/EmergencyOverlay.tsx
+ * (kept local here so the crash boundary — a class component that can't use
+ * hooks — can compose it without importing render internals).
+ */
+function FitToViewport({ children, padding = 40 }: { children: ReactNode; padding?: number }) {
+  const outerRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const measure = () => {
+      const outer = outerRef.current;
+      const inner = innerRef.current;
+      if (!outer || !inner) return;
+      const aw = outer.clientWidth - padding * 2;
+      const ah = outer.clientHeight - padding * 2;
+      // scrollWidth/Height = the UNtransformed natural size (transform is
+      // visual only, doesn't change the layout box), so this never feeds back.
+      const cw = inner.scrollWidth;
+      const ch = inner.scrollHeight;
+      if (cw <= 0 || ch <= 0 || aw <= 0 || ah <= 0) return;
+      const s = Math.min(1, aw / cw, ah / ch);
+      setScale(s > 0 && Number.isFinite(s) ? s : 1);
+    };
+    measure();
+    let ro: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(measure);
+      if (outerRef.current) ro.observe(outerRef.current);
+      if (innerRef.current) ro.observe(innerRef.current);
+    }
+    const fonts = (document as { fonts?: { ready?: Promise<unknown> } }).fonts;
+    if (fonts?.ready?.then) fonts.ready.then(measure).catch(() => {});
+    window.addEventListener('resize', measure);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [children, padding]);
+
+  return (
+    <div
+      ref={outerRef}
+      style={{
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        ref={innerRef}
+        style={{
+          transform: scale < 1 ? `scale(${scale})` : undefined,
+          transformOrigin: 'center center',
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 // ─── Error boundary wraps the whole player so a single widget crash can't
 // ─── black out the screen mid-emergency. On crash, we surface the cached
 // ─── emergency (if any) and start a recovery countdown, then auto-reload.
@@ -1338,13 +1422,22 @@ class PlayerErrorBoundary extends Component<{ children: ReactNode }, { hasError:
     if (!this.state.hasError) return this.props.children;
     const cachedEm = readCachedEmergency();
     if (cachedEm) {
-      // Life-safety override survives the crash.
+      // Life-safety override survives the crash. Wrapped in FitToViewport
+      // (2026-06-27, LANE 1) so the cached lockdown message is NEVER clipped
+      // on a 960×1080 portrait / 320×1080 ribbon / 4K canvas — the fixed
+      // sizes below (text-7xl headline, w-32 icon, text-3xl body) wrapped
+      // taller than a narrow canvas and were cut off top/bottom before the
+      // fit wrapper (the same cutoff class Greg caught on the live LED).
       return (
-        <div className="fixed top-0 right-0 bottom-0 left-0 bg-red-700 text-white flex flex-col items-center justify-center p-12 text-center">
-          <AlertTriangle className="w-32 h-32 mb-8 animate-pulse" />
-          <h1 className="text-7xl font-black uppercase tracking-wider mb-6">{cachedEm.type || cachedEm.title || 'Emergency'}</h1>
-          {cachedEm.textBlob && <p className="text-3xl font-bold max-w-4xl">{cachedEm.textBlob}</p>}
-          <p className="text-sm mt-12 opacity-70">Player recovering — reloading shortly</p>
+        <div className="fixed top-0 right-0 bottom-0 left-0 bg-red-700 text-white">
+          <FitToViewport padding={40}>
+            <div className="flex flex-col items-center justify-center text-center max-w-5xl">
+              <AlertTriangle className="w-32 h-32 mb-8 animate-pulse" />
+              <h1 className="text-7xl font-black uppercase tracking-wider mb-6 break-words">{cachedEm.type || cachedEm.title || 'Emergency'}</h1>
+              {cachedEm.textBlob && <p className="text-3xl font-bold whitespace-pre-wrap break-words">{cachedEm.textBlob}</p>}
+              <p className="text-sm mt-12 opacity-70">Player recovering — reloading shortly</p>
+            </div>
+          </FitToViewport>
         </div>
       );
     }

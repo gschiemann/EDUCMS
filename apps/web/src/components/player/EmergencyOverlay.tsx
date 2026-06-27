@@ -235,15 +235,31 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
   // opaque; blur was aesthetic polish, not load-bearing). Same render
   // on modern engines; correct render on Chromium 83.
   if (isBanner) {
+    // 2026-06-27 (LANE 1 life-safety) — the banner is top-anchored and was a
+    // plain `flex` row with `text-xl` and NO height bound + NO word-break. On a
+    // narrow 320×1080 ribbon a long broadcast (or one long unbreakable word /
+    // URL) overflowed horizontally and pushed the icon offscreen; on a short
+    // canvas an unbounded banner could grow to cover the whole screen.
+    // Fix — all readability, no logic change:
+    //   • cap the banner at 40vh + `overflow-hidden` so it can NEVER become
+    //     the whole canvas (40vh at text-xl holds ~12 lines — more than any
+    //     real broadcast), and
+    //   • `min-w-0` + `whitespace-pre-wrap` + `break-words` so a long word /
+    //     URL wraps instead of running off a narrow ribbon edge.
+    // Taurus-safe (no `inset`, no flex `gap` — the ml-4 stands in for a row
+    // gap; vh on a top-anchored fixed bar is fine).
     return (
       <div
         role="alert"
         aria-live="assertive"
-        className={`fixed top-0 left-0 right-0 z-[9999] ${style.bg} ${style.text} border-b-4 ${style.border} ${style.animate} px-8 py-4 flex items-center shadow-2xl`}
+        className={`fixed top-0 left-0 right-0 z-[9999] ${style.bg} ${style.text} border-b-4 ${style.border} ${style.animate} px-8 py-4 flex items-center shadow-2xl overflow-hidden`}
+        style={{ maxHeight: '40vh' }}
       >
         <Icon className="w-8 h-8 flex-shrink-0" />
-        {/* ml-4 stand-in for a parent flex GAP (Chrome 84+ only) */}
-        <div className="flex-1 text-xl font-bold leading-snug ml-4">{active.textBlob}</div>
+        {/* ml-4 stand-in for a parent flex GAP (Chrome 84+ only). min-w-0 lets
+            the text column actually shrink below its content width so wrapping
+            kicks in on a narrow ribbon instead of overflowing the flex row. */}
+        <div className="flex-1 min-w-0 text-xl font-bold leading-snug ml-4 whitespace-pre-wrap break-words">{active.textBlob}</div>
       </div>
     );
   }
