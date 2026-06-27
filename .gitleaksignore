@@ -1,0 +1,13 @@
+# gitleaks false-positive allowlist (fingerprint = commit:file:rule:line).
+# Each entry below was manually verified to be a NON-secret. Keep this list
+# precise (per-fingerprint) so any REAL leaked credential is still caught —
+# do NOT blanket-allowlist a path.
+#
+# 2026-06-26 — two findings in internal AUDIT/RESEARCH docs (not code, never
+# shipped to runtime), both rule `generic-api-key`, both verified false:
+#   1. WAVE1-DIGEST.md:32 — a made-up EXAMPLE password ("abcd1234efgh") inside
+#      a documented curl repro command for a rate-limit finding. Not real.
+#   2. stats-raw-workflow.json:177 — agent-transcript prose about roster import
+#      (a token-like word in design notes). Not a credential.
+62716ae30d7fbbe5a78bcf545c9add6c510620b6:docs/research/2026-06-25-live-test-everything/01-WAVE1-DIGEST.md:generic-api-key:32
+62716ae30d7fbbe5a78bcf545c9add6c510620b6:docs/research/2026-06-21-console-fit-redesign/stats-raw-workflow.json:generic-api-key:177
