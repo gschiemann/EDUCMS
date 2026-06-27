@@ -21,7 +21,7 @@
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { AiService, sanitizeRewriteText, validateChatEditDiff, resolveChatColor, brandVoiceClause, prependVoices } from './ai.service';
+import { AiService, sanitizeRewriteText, validateChatEditDiff, resolveChatColor, brandVoiceClause, prependVoices, parseArtDirectorSpec } from './ai.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 
@@ -818,5 +818,212 @@ describe('AiService — AI image generation', () => {
     await expect(service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: '   ' }))
       .rejects.toMatchObject({ status: 400 });
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────
+// Wave 3 (2026-06-27) — REAL AI background imagery for the IMAGE archetypes.
+//   parseArtDirectorSpec now accepts an image plan ('generate'/'stock'/'none')
+//   + a sanitized prompt; generateSignageBoard({withImage:true}) generates a
+//   photo and injects it behind the scrim — but ONLY for an image-bg archetype,
+//   ONLY when a usable image provider exists, and NEVER throws if it can't.
+// ───────────────────────────────────────────────────────────────────────
+
+describe('parseArtDirectorSpec — Wave 3 image-mode coercion', () => {
+  it('coerces a generate plan and SANITIZES the prompt (clamps + strips control chars)', () => {
+    const dirty = 'A stadium\nat\tgolden\x00 hour'; // newline/tab/NUL → single spaces
+    const spec = parseArtDirectorSpec({
+      archetype: 'hero-fullbleed',
+      copy: { headline: 'Go Team' },
+      image: { mode: 'generate', prompt: dirty },
+    });
+    expect(spec.image.mode).toBe('generate');
+    expect(spec.image.prompt).toBe('A stadium at golden hour'); // control bytes collapsed
+    expect(spec.image.prompt).not.toMatch(/[\x00-\x1F\x7F]/);
+  });
+
+  it('defaults to mode:none when image is absent / invalid / unknown mode', () => {
+    expect(parseArtDirectorSpec({ archetype: 'hero-fullbleed', copy: { headline: 'h' } }).image.mode).toBe('none');
+    expect(parseArtDirectorSpec({ archetype: 'hero-fullbleed', copy: { headline: 'h' }, image: 'nope' }).image.mode).toBe('none');
+    expect(parseArtDirectorSpec({ archetype: 'hero-fullbleed', copy: { headline: 'h' }, image: { mode: 'wat' } }).image.mode).toBe('none');
+  });
+
+  it('folds a generate plan with NO usable prompt down to mode:none (no empty plan)', () => {
+    const spec = parseArtDirectorSpec({
+      archetype: 'poster-promo',
+      copy: { headline: 'Sale' },
+      image: { mode: 'generate', prompt: '   ' },
+    });
+    expect(spec.image.mode).toBe('none');
+    expect(spec.image.prompt).toBeUndefined();
+  });
+
+  it('clamps an over-long prompt to 600 chars', () => {
+    const spec = parseArtDirectorSpec({
+      archetype: 'hero-fullbleed',
+      copy: { headline: 'h' },
+      image: { mode: 'generate', prompt: 'x'.repeat(2000) },
+    });
+    expect(spec.image.prompt!.length).toBe(600);
+  });
+
+  it('parses an image plan PER SCENE in a multi-scene spec', () => {
+    const spec = parseArtDirectorSpec({
+      archetype: 'title-cta',
+      copy: { headline: 'Welcome' },
+      image: { mode: 'none' },
+      scenes: [
+        { name: 'Home', archetype: 'title-cta', copy: { headline: 'Home' }, image: { mode: 'none' } },
+        { name: 'Promo', archetype: 'poster-promo', copy: { headline: 'Deal' }, image: { mode: 'generate', prompt: 'a bright cafe interior' } },
+      ],
+    });
+    expect(spec.scenes![1].image.mode).toBe('generate');
+    expect(spec.scenes![1].image.prompt).toBe('a bright cafe interior');
+  });
+});
+
+describe('AiService — generateSignageBoard Wave 3 background imagery', () => {
+  // A valid ArtDirectorSpec the model "returns" → drives the engine path.
+  const boardSpec = (image: any = { mode: 'none' }, archetype = 'hero-fullbleed') =>
+    JSON.stringify({
+      archetype,
+      theme: 'neon-sports',
+      copy: { kicker: 'TONIGHT', headline: 'Go Eagles', cta: 'Tip-off 7PM' },
+      image,
+      accentSlot: 'cta',
+    });
+
+  const TINY_PNG_B64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  function okJson(body: any) {
+    return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) } as any;
+  }
+
+  let fetchSpy: jest.SpyInstance;
+  beforeEach(() => {
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.AI_FREE_TIER_CAP;
+    delete process.env.AI_IMAGE_HOURLY_CAP;
+    tenantsById.clear();
+    brandingByTenant.clear();
+    auditRows.length = 0;
+    dispatchMock.mockReset();
+    (prismaMock.client.asset.create as jest.Mock).mockClear();
+    fetchSpy = jest.spyOn(global, 'fetch' as any);
+  });
+  afterEach(() => fetchSpy.mockRestore());
+
+  it('NO provider configured → still returns a valid board, NO assetUrl, no throw', async () => {
+    // No BYOK key, no platform key → resolveProviderKey returns null upstream,
+    // so this actually throws "AI is not configured" BEFORE the model call.
+    // The contract we pin here is the WITH-a-provider-but-no-IMAGE-provider
+    // case: a platform (anthropic) tenant gets a board on the gradient.
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    dispatchMock.mockResolvedValue({ raw: boardSpec({ mode: 'generate', prompt: 'a packed arena at night' }) });
+    const { service } = buildService(makeFakeRedisClient());
+
+    const board = await service.generateSignageBoard({
+      tenantId: 't1', prompt: 'sports board', withImage: true,
+    });
+
+    // Valid board produced.
+    expect(board.zones.length).toBeGreaterThan(0);
+    expect(board.archetype).toBe('hero-fullbleed');
+    // Platform = anthropic → no image provider → no photo generated, no throw.
+    expect(board.backgroundImageUrl).toBeUndefined();
+    expect(fetchSpy).not.toHaveBeenCalled(); // never reached an image endpoint
+    const bg = board.zones.find((z: any) => z.widgetType === 'IMAGE' && z.name === 'background');
+    expect(bg).toBeDefined();
+    expect(bg.defaultConfig.assetUrl).toBeUndefined(); // rides the gradient
+    expect(bg.defaultConfig.bgGradient).toBeTruthy();
+  });
+
+  it('withImage=false (default) → NEVER generates an image even on an image-bg archetype', async () => {
+    tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'gpt-4o-mini' });
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-test');
+    dispatchMock.mockResolvedValue({ raw: boardSpec({ mode: 'generate', prompt: 'a packed arena at night' }) });
+    const { service } = buildService(makeFakeRedisClient());
+
+    const board = await service.generateSignageBoard({ tenantId: 't1', prompt: 'sports board' }); // withImage omitted
+
+    expect(board.backgroundImageUrl).toBeUndefined();
+    // fetch is the image endpoint; the text dispatch is the mocked dispatchAi,
+    // so a clean board must hit NO fetch at all when withImage is off.
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('withImage=true + OpenAI BYOK + image-bg archetype + generate plan → injects assetUrl behind the scrim', async () => {
+    tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'gpt-4o-mini' });
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-test');
+    dispatchMock.mockResolvedValue({ raw: boardSpec({ mode: 'generate', prompt: 'a packed arena under stadium lights, wide negative space' }) });
+    fetchSpy.mockResolvedValue(okJson({ data: [{ b64_json: TINY_PNG_B64 }] }));
+    const { service, storage } = buildService(makeFakeRedisClient());
+
+    const board = await service.generateSignageBoard({
+      tenantId: 't1', userId: 'u1', role: 'SCHOOL_ADMIN', prompt: 'sports board',
+      screenWidth: 1920, screenHeight: 1080, withImage: true,
+    });
+
+    // The OpenAI images endpoint was hit + a landscape size requested.
+    const calledUrl = String(fetchSpy.mock.calls[0][0]);
+    expect(calledUrl).toBe('https://api.openai.com/v1/images/generations');
+    const reqBody = JSON.parse(String(fetchSpy.mock.calls[0][1].body));
+    expect(reqBody.size).toBe('1536x1024'); // landscape → gpt-image-1 vocabulary
+    // Photo persisted as an asset + injected onto the background zone.
+    expect(storage.upload).toHaveBeenCalledTimes(1);
+    expect(board.backgroundImageUrl).toBeTruthy();
+    const bg = board.zones.find((z: any) => z.widgetType === 'IMAGE' && z.name === 'background');
+    expect(bg.defaultConfig.assetUrl).toBe(board.backgroundImageUrl);
+    expect(bg.defaultConfig.fit).toBe('cover');
+    // Top-level bg descriptor mirrors the photo too.
+    expect(board.background.bgImage).toBe(board.backgroundImageUrl);
+    // Both the board-gen AND the image-gen are audited.
+    expect(auditRows.some((r) => r.action === 'AI_SIGNAGE_BOARD_GENERATED')).toBe(true);
+    expect(auditRows.some((r) => r.action === 'AI_IMAGE_GENERATED')).toBe(true);
+  });
+
+  it('withImage=true but the model planned mode:none → no image generated', async () => {
+    tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'gpt-4o-mini' });
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-test');
+    dispatchMock.mockResolvedValue({ raw: boardSpec({ mode: 'none' }) });
+    fetchSpy.mockResolvedValue(okJson({ data: [{ b64_json: TINY_PNG_B64 }] }));
+    const { service } = buildService(makeFakeRedisClient());
+
+    const board = await service.generateSignageBoard({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'sports board', withImage: true });
+    expect(board.backgroundImageUrl).toBeUndefined();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('withImage=true + generate plan but a NON-image archetype (stat-spotlight) → no image generated', async () => {
+    tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'gpt-4o-mini' });
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-test');
+    dispatchMock.mockResolvedValue({ raw: boardSpec({ mode: 'generate', prompt: 'a stadium' }, 'stat-spotlight') });
+    fetchSpy.mockResolvedValue(okJson({ data: [{ b64_json: TINY_PNG_B64 }] }));
+    const { service } = buildService(makeFakeRedisClient());
+
+    const board = await service.generateSignageBoard({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'big number', withImage: true });
+    expect(board.archetype).toBe('stat-spotlight');
+    expect(board.backgroundImageUrl).toBeUndefined();
+    expect(fetchSpy).not.toHaveBeenCalled(); // stat-spotlight has no image bg
+  });
+
+  it('image-gen FAILURE (provider 500) → board STILL ships on its gradient, no throw', async () => {
+    tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'gpt-4o-mini' });
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-test');
+    dispatchMock.mockResolvedValue({ raw: boardSpec({ mode: 'generate', prompt: 'a packed arena' }) });
+    // gpt-image-1 AND the dall-e-3 fallback both 500 → callOpenAiImage throws,
+    // generateBoardBackground swallows it → board rides the gradient.
+    fetchSpy.mockResolvedValue({ ok: false, status: 500, json: async () => ({}), text: async () => 'upstream boom' } as any);
+    const { service } = buildService(makeFakeRedisClient());
+
+    const board = await service.generateSignageBoard({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'sports board', withImage: true });
+
+    expect(board.zones.length).toBeGreaterThan(0);
+    expect(board.backgroundImageUrl).toBeUndefined();
+    const bg = board.zones.find((z: any) => z.widgetType === 'IMAGE' && z.name === 'background');
+    expect(bg.defaultConfig.assetUrl).toBeUndefined();
+    expect(bg.defaultConfig.bgGradient).toBeTruthy();
+    // The board-gen still succeeded + was audited.
+    expect(auditRows.some((r) => r.action === 'AI_SIGNAGE_BOARD_GENERATED')).toBe(true);
   });
 });

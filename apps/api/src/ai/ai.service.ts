@@ -1565,10 +1565,22 @@ export class AiService {
   async generateSignageBoard(opts: {
     tenantId: string;
     userId?: string;
+    role?: string;
     prompt: string;
     screenWidth?: number;
     screenHeight?: number;
     vertical?: string;
+    /**
+     * Wave 3 (2026-06-27) — opt-in REAL background photo. When true AND the
+     * resolved archetype is an image-bg type AND the spec asks for
+     * mode:'generate' AND the tenant has a usable image provider (OpenAI /
+     * Google BYOK), the engine generates a photo and injects it behind the
+     * scrim. Default false: the multi-candidate fan-out MUST stay image-free
+     * (fast + cheap); only ONE accepted/explicit board pays the ~10-20s,
+     * ~$0.04 image cost. ANY image failure leaves the board on its gradient —
+     * it never throws, never blocks, never falls back to the platform key.
+     */
+    withImage?: boolean;
   }): Promise<{
     name: string;
     description?: string;
@@ -1579,6 +1591,8 @@ export class AiService {
     theme: string;
     source: 'tenant' | 'platform';
     usage: { used: number; cap: number; resetAt: string } | null;
+    /** Wave 3 — set when a generated photo was injected behind the scrim. */
+    backgroundImageUrl?: string;
   }> {
     // Same failure-cap wrapper as the other generators.
     await this.checkFailureCap(opts.tenantId);
@@ -1593,10 +1607,12 @@ export class AiService {
   private async generateSignageBoardInner(opts: {
     tenantId: string;
     userId?: string;
+    role?: string;
     prompt: string;
     screenWidth?: number;
     screenHeight?: number;
     vertical?: string;
+    withImage?: boolean;
   }): Promise<any> {
     const resolved = await this.resolveProviderKey(opts.tenantId);
     if (!resolved) {
@@ -1724,6 +1740,32 @@ export class AiService {
       },
     }).catch(() => { /* audit best-effort */ });
 
+    // ── Wave 3 (2026-06-27): inject a REAL generated background photo ──────
+    // Opt-in (withImage) + image-bg archetype + the model planned a generate
+    // image + the tenant has a usable image provider → generate the photo and
+    // drop it behind the scrim. This is the ONLY place the board pays the
+    // ~10-20s / ~$0.04 image cost; the candidate fan-out stays image-free.
+    // ROBUSTNESS: this whole block can NEVER throw — any failure (no provider,
+    // anthropic-only, key rejected, out-of-credit, cap, timeout, content
+    // policy) is swallowed and the board simply ships on its gradient.
+    let backgroundImageUrl: string | undefined;
+    if (opts.withImage && spec.image?.mode === 'generate' && isImageBgArchetype(spec.archetype)) {
+      backgroundImageUrl = await this.generateBoardBackground({
+        tenantId: opts.tenantId,
+        userId: opts.userId,
+        role: opts.role,
+        imagePrompt: spec.image.prompt,
+        screenWidth: sw,
+        screenHeight: sh,
+      });
+      if (backgroundImageUrl) {
+        injectBackgroundImage(sanitized.zones, backgroundImageUrl);
+        // The Template's bg descriptor mirrors the zone — so a renderer that
+        // reads the top-level bgImage (not the zone) also shows the photo.
+        mapped.background = { ...mapped.background, bgImage: backgroundImageUrl };
+      }
+    }
+
     return {
       name: sanitized.name,
       description: sanitized.description,
@@ -1734,7 +1776,59 @@ export class AiService {
       theme: spec.theme,
       source: resolved.source,
       usage,
+      backgroundImageUrl,
     };
+  }
+
+  /**
+   * Wave 3 — generate ONE landscape background photo for a signage board and
+   * return its asset URL, or `undefined` on ANY failure. NEVER throws.
+   *
+   * It reuses the EXISTING generateImage() path verbatim — so the photo lands
+   * as a real Asset (Supabase + Asset row + role-aware status), is AuditLogged
+   * (AI_IMAGE_GENERATED), and respects the same image hourly cap + monthly
+   * platform cap + tier discipline. Because generateImage() returns
+   * AI_IMAGE_UNAVAILABLE for anthropic / platform-only tenants, a BYOK tenant
+   * can NEVER silently spend the platform key on an image — the tier rule is
+   * inherited, not re-implemented. We probe the provider FIRST so a board with
+   * no image provider doesn't burn a failure-cap slot on an expected 503.
+   */
+  private async generateBoardBackground(opts: {
+    tenantId: string;
+    userId?: string;
+    role?: string;
+    imagePrompt?: string;
+    screenWidth: number;
+    screenHeight: number;
+  }): Promise<string | undefined> {
+    try {
+      const prompt = (opts.imagePrompt || '').trim();
+      if (!prompt) return undefined;
+      // Cheap pre-flight: only OpenAI / Google can make images. Anthropic and
+      // the platform fallback (always Anthropic) can't — skip silently rather
+      // than calling generateImage() just to catch its AI_IMAGE_UNAVAILABLE
+      // (which would needlessly count against the per-tenant failure cap).
+      const resolved = await this.resolveProviderKey(opts.tenantId);
+      if (!resolved || resolved.provider === 'anthropic') return undefined;
+
+      // Landscape orientation for a 16:9-ish board; portrait when the canvas is
+      // taller than wide (hallway pillars, menu boards).
+      const size = opts.screenHeight > opts.screenWidth ? '1024x1792' : '1792x1024';
+      const img = await this.generateImage({
+        tenantId: opts.tenantId,
+        userId: opts.userId,
+        role: opts.role,
+        prompt,
+        size,
+      });
+      return img.fileUrl || undefined;
+    } catch (e: any) {
+      // Swallow EVERYTHING — the board must still ship on its gradient.
+      this.logger.warn(
+        `Background image gen skipped for ${opts.tenantId}: ${e?.message || e}`,
+      );
+      return undefined;
+    }
   }
 
   /**
@@ -2248,7 +2342,7 @@ SHAPE:
     "cta": "<call to action, <= 4 words, optional>",
     "items": [ { "label": "<name>", "value": "<price/time/stat, optional>", "detail": "<short note, optional>" } ]
   },
-  "image": { "mode": "none" },
+  "image": { "mode": "<generate | none>", "prompt": "<for mode:generate — a vivid, brand-appropriate, TEXT-FREE background photo prompt>" },
   "accentSlot": "<one of: kicker | headline | cta | stat | none>",
   "scenes": [ /* OPTIONAL — for multi-screen interactive kiosks, each entry is a FULL spec like the top level */ ]
 }
@@ -2274,7 +2368,19 @@ COPY RULES:
   - Use "items" ONLY for menu-list (label + value + detail per row) and three-up-grid (label + detail per card). 3-5 items typical, 8 max.
   - For stat-spotlight, put the big number in "headline" and the label in "body".
 
-IMAGERY: always emit {"mode":"none"} for now — imagery is wired in a later wave.
+IMAGERY:
+  - For the IMAGE archetypes — "hero-fullbleed", "lower-third-banner", "poster-promo" —
+    set "image": {"mode":"generate", "prompt":"..."} and write a vivid, brand-appropriate,
+    PHOTOREALISTIC background photo prompt. The photo sits behind a dark scrim with the
+    headline laid over it, so:
+      • NO words, NO letters, NO text, NO logos, NO numbers in the image — describe a SCENE only.
+      • Leave NEGATIVE SPACE / an unbusy area for the headline to sit over (e.g. "soft
+        out-of-focus background", "uncluttered sky", "shallow depth of field").
+      • Match the venue + theme mood (e.g. a stadium at golden hour for sports; a bright
+        bustling dining room for QSR; a calm sunlit campus quad for a school).
+      • One clear subject, cinematic lighting, high detail. ~1-2 sentences.
+  - For ALL OTHER archetypes (split-50, stat-spotlight, three-up-grid, menu-list,
+    quote-spotlight, title-cta): emit {"mode":"none"} — they ride a clean themed gradient.
 
 ACCENT: exactly ONE element carries the accent color. Default to "cta" when a CTA exists, else the most important element.
 
@@ -2322,10 +2428,91 @@ function parseArtItems(raw: any): ArchetypeItem[] | undefined {
   return out.length ? out : undefined;
 }
 
+// Wave 3 (2026-06-27): the model is now allowed to plan a GENERATED background
+// photo for the image archetypes. The plan it emits is still parsed
+// defensively — only 'generate'/'stock'/'none' are accepted (default 'none'),
+// and the prompt is clamped + stripped of control chars before it is ever fed
+// to an image provider. We still NEVER trust a model-supplied asset URL —
+// generation happens server-side and the URL is injected by us (see
+// generateSignageBoardInner), so there is no path for the model to reference an
+// arbitrary asset. 'brand' is accepted on the type but folded to 'generate'
+// here (we have no curated brand-image library yet; the brand hint is woven
+// into the generation prompt instead).
+const ART_IMAGE_MODES = new Set(['generate', 'stock', 'none']);
+
+/** Strip ASCII control chars (incl. NUL / newlines) from a model-supplied
+ *  image prompt; collapse runs of whitespace; trim. Keeps the prompt a single
+ *  clean line so it can't smuggle control bytes into a provider request. */
+function sanitizeImagePrompt(v: any): string | undefined {
+  if (typeof v !== 'string') return undefined;
+  const cleaned = v
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\x00-\x1F\x7F]+/g, ' ') // ASCII control bytes (NUL, LF, CR, DEL…)
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned ? cleaned.slice(0, 600) : undefined;
+}
+
 function parseArtImage(raw: any): ArchetypeImagePlan {
-  // Wave 2a: imagery is wired later. Force mode 'none' (ignore any prompt/query
-  // the model emits) so we never reference a non-existent asset.
-  return { mode: 'none' };
+  const obj = raw && typeof raw === 'object' ? raw : {};
+  const mode = ART_IMAGE_MODES.has(obj.mode)
+    ? (obj.mode as ArchetypeImagePlan['mode'])
+    : 'none';
+  if (mode === 'none') return { mode: 'none' };
+  const plan: ArchetypeImagePlan = { mode };
+  const prompt = sanitizeImagePrompt(obj.prompt);
+  if (prompt) plan.prompt = prompt;
+  const query = clampStr(obj.query, 200);
+  if (query) plan.query = query;
+  // A 'generate'/'stock' plan with NO usable text is useless — fold to 'none'
+  // so the board rides the gradient instead of carrying an empty plan.
+  if (mode === 'generate' && !plan.prompt) return { mode: 'none' };
+  if (mode === 'stock' && !plan.query && !plan.prompt) return { mode: 'none' };
+  return plan;
+}
+
+// Wave 3 — the archetypes whose default backgroundMode is a full-bleed 'image'
+// (archetypes.ts). These are the ONLY ones that get a generated photo behind
+// the scrim; everything else rides a themed gradient/surface. Kept as a literal
+// set (not derived from @cms/signage-design at runtime) so this gate is obvious
+// + cheap; archetypes.spec.ts pins each archetype's backgroundMode upstream.
+const IMAGE_BG_ARCHETYPES = new Set<string>([
+  'hero-fullbleed',
+  'lower-third-banner',
+  'poster-promo',
+]);
+
+function isImageBgArchetype(archetype: string | undefined): boolean {
+  return !!archetype && IMAGE_BG_ARCHETYPES.has(archetype);
+}
+
+/**
+ * Wave 3 — drop a generated photo URL onto the board's BACKGROUND image zone so
+ * the renderer lays the existing scrim over a real photo instead of the
+ * gradient. Mutates the zones array in place. Finds the background zone by the
+ * mapper's contract: widgetType 'IMAGE' AND (name 'background' OR a
+ * defaultConfig that carries bgGradient). Prefers an exact name match so the
+ * split-50 image-HALF (name 'image') is never mistaken for the full-bleed
+ * background. Sets assetUrl + fit:'cover'; leaves bgGradient as the load/error
+ * fallback. No-op if no background zone exists.
+ */
+function injectBackgroundImage(zones: any[], url: string): void {
+  if (!Array.isArray(zones) || !url) return;
+  const isBgImage = (z: any) =>
+    z && z.widgetType === 'IMAGE' &&
+    (z.name === 'background' ||
+      (z.defaultConfig && typeof z.defaultConfig === 'object' && 'bgGradient' in z.defaultConfig));
+  // Prefer the explicitly-named background zone; fall back to the first IMAGE
+  // zone that carries a bgGradient (the full-bleed background marker).
+  const target =
+    zones.find((z) => z && z.widgetType === 'IMAGE' && z.name === 'background') ||
+    zones.find(isBgImage);
+  if (!target) return;
+  if (!target.defaultConfig || typeof target.defaultConfig !== 'object') {
+    target.defaultConfig = {};
+  }
+  target.defaultConfig.assetUrl = url;
+  target.defaultConfig.fit = 'cover';
 }
 
 function parseSceneSpec(raw: any): SceneSpec {
