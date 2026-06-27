@@ -1139,6 +1139,20 @@ export default function TemplatesPage() {
                                   Cancel
                                 </button>
                               </div>
+                              {/* Wave 3b — one-tap auto-translate (reuses the refine pipeline) */}
+                              <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                                <span className="text-[10px] text-slate-400 mr-0.5">🌐 Translate:</span>
+                                {['Spanish', 'French', 'Chinese', 'Vietnamese', 'Korean', 'Arabic'].map((lang) => (
+                                  <button
+                                    key={lang}
+                                    onClick={() => refineCandidate(i, `Translate ALL visible copy to ${lang}. Keep the layout, theme, structure, and any prices/times/numbers identical.`)}
+                                    disabled={refining}
+                                    className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 hover:bg-violet-100 hover:text-violet-700 disabled:opacity-50"
+                                  >
+                                    {lang}
+                                  </button>
+                                ))}
+                              </div>
                             </div>
                           )}
                           <div className="mt-auto flex gap-1.5">
