@@ -25,6 +25,7 @@ import {
   ARCHETYPE_IDS,
   THEMES,
   bestTextColor,
+  classifyCanvas,
   deriveThemeFromBrand,
   getTheme,
   resolveArchetype,
@@ -349,7 +350,12 @@ function mapScene(
 ): { zones: MappedZone[]; theme: ThemeBundle; archetypeId: ArchetypeId } {
   const archetypeId = resolveArchetypeId(scene.archetype);
   const theme = resolveTheme(scene.theme, opts);
-  const canvas = resolveCanvas('landscape-16-9', {
+  // Classify the real screen w/h into a canvas class so the resolver re-stacks
+  // for portrait / ribbon / square (Wave 3 "any screen size") AND picks the
+  // right viewing-distance + coarse-pitch defaults — then override with the
+  // actual pixel dimensions.
+  const canvasClass = classifyCanvas(opts.screenWidth, opts.screenHeight);
+  const canvas = resolveCanvas(canvasClass, {
     w: opts.screenWidth,
     h: opts.screenHeight,
   });
