@@ -2873,11 +2873,28 @@ tenant's own brand colors). Match the mood, do NOT default to clean-corporate:
   - forest-campus   — natural greens, grounded. Campuses, outdoors, community.
   - midnight-tech   — sleek dark + vivid accent, modern. Tech, premium corporate, launches.
 
-COPY RULES:
+COPY RULES — write a COMPLETE board, never a bare headline + button:
   - headline is REQUIRED and must be SHORT and punchy (signage is read at a glance).
-  - Use "items" ONLY for menu-list (label + value + detail per row) and three-up-grid (label + detail per card). 3-5 items typical, 8 max.
-  - three-up-grid card labels must be SHORT (≤ 3 words / ~18 chars) so they fit the card column; put the time/place/extra in the item's "detail".
-  - For stat-spotlight, put the big number in "headline" and the label in "body".
+  - FILL THE BOARD WITH SUBSTANCE. A premium board has MULTIPLE elements, not a
+    lone headline floating in space. For EVERY archetype that supports them,
+    supply a "kicker" (a short eyebrow that frames the message — e.g. "TODAY ONLY",
+    "NOW OPEN", "THIS WEEK", "MEMBERS SAVE") AND a "cta" (the next action — e.g.
+    "Order at the counter", "Scan to join", "Doors at 7", "Ask a team member").
+    Only omit kicker/cta when the archetype genuinely has no slot for them
+    (stat-spotlight has no cta; quote-spotlight uses headline+body only).
+  - For split-50 and title-cta, ALSO write a "body" — one concrete supporting
+    line (a detail, a benefit, a what/when/where) so the board reads rich, never
+    sparse. Body ≤ 15 words.
+  - Use "items" for menu-list (label + value + detail per row) and three-up-grid
+    (label + detail per card). Prefer 3-5 items (8 max) — a fuller list reads as
+    a designed board, a 1-item list reads as broken.
+  - three-up-grid card labels must be SHORT (≤ 3 words / ~18 chars) so they fit the
+    card column; ALWAYS give each card a "detail" (the time/place/extra) so the
+    card has two lines of substance, not one floating word.
+  - For stat-spotlight, put the big number in "headline" and the label in "body";
+    add a "kicker" framing the metric ("ATTENDANCE TODAY", "DAYS UNTIL KICKOFF").
+  - Write copy that fits the VENUE and the operator's description specifically —
+    real, on-brand words for THIS business, never generic placeholder filler.
 
 IMAGERY:
   - For the IMAGE archetypes — "hero-fullbleed", "lower-third-banner", "poster-promo" —

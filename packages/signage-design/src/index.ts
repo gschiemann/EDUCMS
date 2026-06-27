@@ -22,6 +22,7 @@ export * from './types';
 export * from './type-scale';
 export * from './contrast';
 export * from './themes';
+export * from './surface-css';
 export * from './archetypes';
 export * from './validator';
 

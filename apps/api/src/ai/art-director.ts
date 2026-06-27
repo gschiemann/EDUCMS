@@ -26,13 +26,17 @@ import {
   LARGE_CONTRAST_FLOOR,
   THEMES,
   bestTextColor,
+  cardFillCss,
   classifyCanvas,
   contrastRatio,
   deriveThemeFromBrand,
+  dividerCss,
   getTheme,
+  imageHalfCss,
   resolveArchetype,
   resolveCanvas,
   enforce,
+  themeBackgroundCss,
   type ArchetypeId,
   type ArtDirectorSpec,
   type ResolvedZone,
@@ -209,14 +213,20 @@ export function scrimToCss(s: ScrimSpec | undefined): string | undefined {
   }
 }
 
-/** The theme's board gradient — surface → background radial, used on the bg slot. */
-function themeGradient(palette: ThemePalette): string {
-  return `radial-gradient(130% 120% at 50% 0%, ${palette.surface} 0%, ${palette.background} 70%)`;
+/**
+ * The theme's board background — now a LAYERED, accent-tinted depth stack
+ * (themeBackgroundCss in the engine) instead of the old flat surface→background
+ * radial that read as a near-black slab on dark themes. Replaces every callsite
+ * so EVERY non-image archetype gets the premium background. Signature stays
+ * `(palette)`-shaped at the callsites via the theme wrapper below.
+ */
+function themeGradient(theme: ThemeBundle): string {
+  return themeBackgroundCss(theme);
 }
 
-/** A tinted gradient for the split-50 image half (no photo yet — Wave 3). */
-function imageHalfGradient(palette: ThemePalette): string {
-  return `linear-gradient(135deg, ${palette.accent} 0%, ${palette.surface} 100%)`;
+/** A bold accent→surface diagonal for the split-50 image half (no photo yet). */
+function imageHalfGradient(theme: ThemeBundle): string {
+  return imageHalfCss(theme);
 }
 
 /** Resolve the copy string for a text slot from the scene copy. */
@@ -339,6 +349,10 @@ function mapTextConfig(
     // and a long word breaks mid-letter ("Homecomin·g"). Scale the card title
     // down so a real label's longest word fits the column and wraps at spaces.
     const cardTitlePx = Math.max(50, Math.round((tokens.fontSizePx ?? 64) * 0.7));
+    // PREMIUM card: a top-lit surface gradient + an accent hairline border + a
+    // top accent bar — the antidote to the banned "flat rounded rect + shadow".
+    const fill = cardFillCss(theme);
+    const div = dividerCss(theme);
     return {
       content: item?.label || content,
       config: {
@@ -348,7 +362,12 @@ function mapTextConfig(
         fontSize: cardTitlePx,
         fontFamily: tokens.fontFamily,
         color: palette.ink,
+        // The renderer paints `cardBg` (gradient) when present, else `bgColor`.
         bgColor: palette.surface,
+        cardBg: fill.background,
+        cardBorder: fill.border,
+        // A thin accent bar across the card top — the per-card "designed" cue.
+        cardAccentBar: div.background,
         alignment: 'left',
         cardLayout: true,
         borderRadius: theme.radiusPx,
@@ -371,6 +390,12 @@ function mapTextConfig(
   if (z.slot === 'kicker') {
     config.letterSpacing = '0.18em';
     config.textTransform = 'uppercase';
+    // ACCENT DIVIDER — a short tapered accent rule under the eyebrow so the copy
+    // is anchored, not floating (a $$$-design cue). The renderer draws it as a
+    // thin element below the kicker text, aligned to the kicker's alignment.
+    const div = dividerCss(theme);
+    config.accentDivider = div.background;
+    config.accentDividerThicknessPx = div.thicknessPx;
   }
   if (overImage) {
     config.textShadow = '0 2px 24px rgba(0,0,0,0.45)';
@@ -388,20 +413,19 @@ function mapImageConfig(
   z: ResolvedZone,
   theme: ThemeBundle,
 ): Record<string, any> {
-  const palette = theme.palette;
   if (z.slot === 'background') {
     // Wave 2a: NO real photo yet (image-gen is Wave 3) → omit assetUrl and
-    // rely on the theme gradient + scrim.
+    // rely on the LAYERED theme background + scrim.
     return {
       fit: 'cover',
-      bgGradient: themeGradient(palette),
+      bgGradient: themeGradient(theme),
       scrimCss: scrimToCss(z.styleTokens.scrim),
     };
   }
-  // split-50 image half — a tinted gradient placeholder (no photo yet).
+  // split-50 image half — a bold accent→surface diagonal placeholder (no photo).
   return {
     fit: 'cover',
-    bgGradient: imageHalfGradient(palette),
+    bgGradient: imageHalfGradient(theme),
     scrimCss: undefined,
   };
 }
@@ -539,14 +563,16 @@ export function artDirectorSpecToTemplate(
     }
   }
 
-  const palette = (primaryTheme ?? THEMES[0]).palette;
+  const theme = primaryTheme ?? THEMES[0];
+  const palette = theme.palette;
 
   return {
     name: deriveName(spec),
     zones,
     scenes: scenesOut.length ? scenesOut : undefined,
-    // Solid base + a subtle theme gradient so surface/gradient archetypes are
-    // never a flat slab (image archetypes lay a full-bleed bg zone on top).
-    background: { bgColor: palette.background, bgGradient: themeGradient(palette) },
+    // Solid base + the LAYERED theme background (accent-tinted depth) so
+    // surface/gradient archetypes are never a flat slab (image archetypes lay a
+    // full-bleed bg zone on top).
+    background: { bgColor: palette.background, bgGradient: themeGradient(theme) },
   };
 }

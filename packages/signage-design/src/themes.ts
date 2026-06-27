@@ -24,9 +24,10 @@ import {
   WHITE,
   bestTextColor,
   contrastRatio,
+  relativeLuminance,
 } from './contrast';
 import { PERFECT_FOURTH } from './type-scale';
-import type { FontPair, ScrimSpec, ThemeBundle, ThemePalette } from './types';
+import type { FontPair, ScrimSpec, SurfaceStyle, ThemeBundle, ThemePalette } from './types';
 
 const SANS_FALLBACK = 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif';
 
@@ -41,7 +42,9 @@ function bundle(
   label: string,
   palette: ThemePalette,
   fontPair: FontPair,
-  opts: Partial<Pick<ThemeBundle, 'typeScaleRatio' | 'scrim' | 'motion' | 'radiusPx'>> = {},
+  opts: Partial<
+    Pick<ThemeBundle, 'typeScaleRatio' | 'scrim' | 'motion' | 'radiusPx' | 'surfaceStyle'>
+  > = {},
 ): ThemeBundle {
   return {
     id,
@@ -52,6 +55,7 @@ function bundle(
     scrim: opts.scrim ?? DEFAULT_SCRIM,
     motion: opts.motion ?? { durationMs: 400, easing: 'ease-out' },
     radiusPx: opts.radiusPx ?? 24,
+    surfaceStyle: opts.surfaceStyle,
   };
 }
 
@@ -74,7 +78,7 @@ export const THEMES: ThemeBundle[] = [
       muted: '#cbd5e1',
     },
     pair('Inter', 'Inter'),
-    { radiusPx: 16 },
+    { radiusPx: 16, surfaceStyle: { background: 'spotlight', glow: 0.5, card: 'gradient', cardBorder: true } },
   ),
   bundle(
     'warm-school',
@@ -89,7 +93,7 @@ export const THEMES: ThemeBundle[] = [
       muted: '#5b4a36',
     },
     pair('Poppins', 'Inter'),
-    { radiusPx: 28 },
+    { radiusPx: 28, surfaceStyle: { background: 'spotlight', glow: 0.32, card: 'gradient', cardBorder: true } },
   ),
   bundle(
     'neon-sports',
@@ -104,7 +108,12 @@ export const THEMES: ThemeBundle[] = [
       muted: '#d4d4d4',
     },
     pair('Oswald', 'Inter'),
-    { typeScaleRatio: 1.414, radiusPx: 8, motion: { durationMs: 320, easing: 'ease-out' } },
+    {
+      typeScaleRatio: 1.414,
+      radiusPx: 8,
+      motion: { durationMs: 320, easing: 'ease-out' },
+      surfaceStyle: { background: 'duotone', glow: 0.85, card: 'gradient', cardBorder: true },
+    },
   ),
   bundle(
     'qsr-appetite',
@@ -119,7 +128,7 @@ export const THEMES: ThemeBundle[] = [
       muted: '#e5cfcf',
     },
     pair('Montserrat', 'Inter'),
-    { radiusPx: 18 },
+    { radiusPx: 18, surfaceStyle: { background: 'spotlight', glow: 0.72, card: 'gradient', cardBorder: true } },
   ),
   bundle(
     'minimal-luxury',
@@ -134,7 +143,12 @@ export const THEMES: ThemeBundle[] = [
       muted: '#a3a3a3',
     },
     pair('Cormorant Garamond', 'Inter'),
-    { typeScaleRatio: 1.5, radiusPx: 0, motion: { durationMs: 500, easing: 'ease-in-out' } },
+    {
+      typeScaleRatio: 1.5,
+      radiusPx: 0,
+      motion: { durationMs: 500, easing: 'ease-in-out' },
+      surfaceStyle: { background: 'wash', glow: 0.28, card: 'flat', cardBorder: true },
+    },
   ),
   bundle(
     'calm-clinic',
@@ -149,7 +163,11 @@ export const THEMES: ThemeBundle[] = [
       muted: '#3f6478',
     },
     pair('Inter', 'Inter'),
-    { radiusPx: 20, motion: { durationMs: 450, easing: 'ease-in-out' } },
+    {
+      radiusPx: 20,
+      motion: { durationMs: 450, easing: 'ease-in-out' },
+      surfaceStyle: { background: 'wash', glow: 0.3, card: 'gradient', cardBorder: true },
+    },
   ),
   bundle(
     'fresh-fitness',
@@ -164,7 +182,7 @@ export const THEMES: ThemeBundle[] = [
       muted: '#c2d0db',
     },
     pair('Barlow', 'Inter'),
-    { radiusPx: 14 },
+    { radiusPx: 14, surfaceStyle: { background: 'duotone', glow: 0.78, card: 'gradient', cardBorder: true } },
   ),
   bundle(
     'worship-warm',
@@ -179,7 +197,12 @@ export const THEMES: ThemeBundle[] = [
       muted: '#e0cdb4',
     },
     pair('Playfair Display', 'Inter'),
-    { typeScaleRatio: 1.5, radiusPx: 12, motion: { durationMs: 500, easing: 'ease-in-out' } },
+    {
+      typeScaleRatio: 1.5,
+      radiusPx: 12,
+      motion: { durationMs: 500, easing: 'ease-in-out' },
+      surfaceStyle: { background: 'spotlight', glow: 0.55, card: 'gradient', cardBorder: true },
+    },
   ),
   bundle(
     'bold-retail',
@@ -194,7 +217,7 @@ export const THEMES: ThemeBundle[] = [
       muted: '#d4d4d8',
     },
     pair('Sora', 'Inter'),
-    { radiusPx: 20 },
+    { radiusPx: 20, surfaceStyle: { background: 'duotone', glow: 0.8, card: 'gradient', cardBorder: true } },
   ),
   bundle(
     'sky-civic',
@@ -209,7 +232,7 @@ export const THEMES: ThemeBundle[] = [
       muted: '#3c5871',
     },
     pair('Inter', 'Inter'),
-    { radiusPx: 16 },
+    { radiusPx: 16, surfaceStyle: { background: 'wash', glow: 0.34, card: 'gradient', cardBorder: true } },
   ),
   bundle(
     'forest-campus',
@@ -224,7 +247,7 @@ export const THEMES: ThemeBundle[] = [
       muted: '#bfe0c9',
     },
     pair('Poppins', 'Inter'),
-    { radiusPx: 22 },
+    { radiusPx: 22, surfaceStyle: { background: 'spotlight', glow: 0.55, card: 'gradient', cardBorder: true } },
   ),
   bundle(
     'midnight-tech',
@@ -239,9 +262,46 @@ export const THEMES: ThemeBundle[] = [
       muted: '#c4c4d4',
     },
     pair('Space Grotesk', 'Inter'),
-    { radiusPx: 18 },
+    { radiusPx: 18, surfaceStyle: { background: 'duotone', glow: 0.82, card: 'glass', cardBorder: true } },
   ),
 ];
+
+// ---------------------------------------------------------------------------
+// SURFACE STYLE — the DEPTH recipe (defaults + resolver). Every board, curated
+// or brand-derived, gets layered depth (never a flat slab) by reading this.
+// ---------------------------------------------------------------------------
+
+/** Sensible defaults when a theme omits a SurfaceStyle (brand-derived themes). */
+export const DEFAULT_SURFACE_STYLE: Required<SurfaceStyle> = {
+  background: 'spotlight',
+  glow: 0.5,
+  card: 'gradient',
+  cardBorder: true,
+};
+
+/**
+ * Resolve a theme's full depth recipe, filling defaults for any unset dial.
+ * Brand-derived themes (no surfaceStyle) get the premium default automatically.
+ * A light board (luminous background) gets a gentler default glow so the accent
+ * tint never muddies a clean light surface.
+ */
+export function resolveSurfaceStyle(theme: ThemeBundle): Required<SurfaceStyle> {
+  const isLight = relativeLuminance(theme.palette.background) > 0.5;
+  const base: Required<SurfaceStyle> = {
+    ...DEFAULT_SURFACE_STYLE,
+    // Light themes read best as an airy wash with a restrained glow.
+    background: isLight ? 'wash' : DEFAULT_SURFACE_STYLE.background,
+    glow: isLight ? 0.32 : DEFAULT_SURFACE_STYLE.glow,
+  };
+  const s = theme.surfaceStyle;
+  if (!s) return base;
+  return {
+    background: s.background ?? base.background,
+    glow: s.glow ?? base.glow,
+    card: s.card ?? base.card,
+    cardBorder: s.cardBorder ?? base.cardBorder,
+  };
+}
 
 const THEME_BY_ID = new Map(THEMES.map((t) => [t.id, t]));
 

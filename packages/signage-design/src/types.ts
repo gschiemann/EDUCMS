@@ -344,6 +344,48 @@ export interface ThemeMotion {
   easing: 'ease-out' | 'ease-in' | 'ease-in-out';
 }
 
+/**
+ * The DEPTH recipe for a theme — how the engine builds the layered, $$$-grade
+ * background + surface treatment (not a flat slab). Consumed by the mapper
+ * (art-director.ts → themeBackgroundCss / cardCss / dividerCss); emits CSS
+ * gradients only (Taurus-safe — no `inset`, no `gap`, no `backdrop-filter`).
+ *
+ * Every field is OPTIONAL with a sensible default in `resolveSurfaceStyle` so a
+ * curated theme need only override the dial it cares about, and a brand-derived
+ * theme gets a coherent default depth automatically.
+ */
+export interface SurfaceStyle {
+  /**
+   * The overall background construction:
+   *   - 'spotlight' : a soft accent-tinted glow top-center fading into the
+   *                   background, layered over a subtle vertical surface→bg
+   *                   ramp. The default, premium "designed" look.
+   *   - 'duotone'   : a diagonal two-stop ramp (surface → background) for a
+   *                   richer, more directional feel (sports / tech / retail).
+   *   - 'wash'      : a gentle near-flat radial — for light/minimal themes that
+   *                   want air, not drama (luxury / clinic / civic).
+   */
+  background?: 'spotlight' | 'duotone' | 'wash';
+  /**
+   * Accent-glow strength on the background (0 = none, 1 = strong). The glow is a
+   * low-alpha accent radial; it sits BEHIND all text and never touches measured
+   * text contrast. Defaults per-background.
+   */
+  glow?: number;
+  /**
+   * Surface (card) treatment:
+   *   - 'flat'     : solid surface fill (legacy).
+   *   - 'gradient' : a subtle top-lit surface gradient — premium card depth.
+   *   - 'glass'    : a translucent surface over the board (used sparingly).
+   */
+  card?: 'flat' | 'gradient' | 'glass';
+  /**
+   * Whether cards/surfaces get a 1px hairline border in the accent or a tuned
+   * neutral. Adds the "designed", not "default rounded rect" feel.
+   */
+  cardBorder?: boolean;
+}
+
 export interface ThemeBundle {
   id: string;
   label: string;
@@ -356,6 +398,11 @@ export interface ThemeBundle {
   motion: ThemeMotion;
   /** Corner radius token (px) for surfaces/cards. */
   radiusPx: number;
+  /**
+   * The depth recipe. Optional — `resolveSurfaceStyle(theme)` fills sensible
+   * defaults so EVERY board (curated OR brand-derived) gets layered depth.
+   */
+  surfaceStyle?: SurfaceStyle;
 }
 
 // ---------------------------------------------------------------------------

@@ -1569,40 +1569,57 @@ function SignageText({ config }: { config: any }) {
     );
   }
 
-  // Three-up-grid card — a surface tile with a bold title + muted detail. The
-  // tile fills the zone; only the text inside scales to fit.
+  // Three-up-grid card — a PREMIUM surface tile: a top-lit surface gradient
+  // (config.cardBg) + an accent hairline border + a thin accent top-bar, with a
+  // bold title + muted detail. The tile fills the zone; only the text inside
+  // scales to fit. Falls back to the solid bgColor for legacy configs.
+  // (2026-06-27 richness pass: the antidote to "flat rounded rect + shadow".)
   if (config.cardLayout) {
+    const cardRadius =
+      typeof config.borderRadius === 'number' ? `${config.borderRadius}px` : config.borderRadius;
     return (
-      <FitScaler
-        justify="center"
-        items="stretch"
-        origin="center center"
-        dataField="content"
-        outerStyle={{
-          backgroundColor: config.bgColor,
-          borderRadius:
-            typeof config.borderRadius === 'number' ? `${config.borderRadius}px` : config.borderRadius,
-          padding: '5%',
+      <div
+        className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden"
+        style={{
+          background: config.cardBg || config.bgColor,
+          border: config.cardBorder || undefined,
+          borderRadius: cardRadius,
           boxShadow: softElevation,
         }}
-        innerStyle={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', width: '100%' }}
-        deps={[content, config.detail, fontSize, fontFamily, fontWeight, align]}
       >
-        <div style={{ ...baseTextStyle, ...wordWrapStyle, fontWeight: 800 }}>{content}</div>
-        {config.detail ? (
+        {/* Thin accent bar across the card top — the per-card "designed" cue.
+            CSS background only; longhand positioning (Taurus rule #10). */}
+        {config.cardAccentBar ? (
           <div
-            style={{
-              ...baseTextStyle,
-              fontWeight: 500,
-              fontSize: `${Math.round(fontSize * 0.62)}px`,
-              opacity: 0.78,
-              marginTop: '0.4em',
-            }}
-          >
-            {config.detail}
-          </div>
+            className="absolute top-0 right-0 left-0"
+            style={{ height: '5px', background: config.cardAccentBar, pointerEvents: 'none' }}
+          />
         ) : null}
-      </FitScaler>
+        <FitScaler
+          justify="center"
+          items="stretch"
+          origin="center center"
+          dataField="content"
+          outerStyle={{ padding: '5%' }}
+          innerStyle={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', width: '100%' }}
+          deps={[content, config.detail, fontSize, fontFamily, fontWeight, align]}
+        >
+          <div style={{ ...baseTextStyle, ...wordWrapStyle, fontWeight: 800 }}>{content}</div>
+          {config.detail ? (
+            <div
+              style={{
+                ...baseTextStyle,
+                fontWeight: 500,
+                fontSize: `${Math.round(fontSize * 0.62)}px`,
+                opacity: 0.78,
+                marginTop: '0.4em',
+              }}
+            >
+              {config.detail}
+            </div>
+          ) : null}
+        </FitScaler>
+      </div>
     );
   }
 
@@ -1659,6 +1676,47 @@ function SignageText({ config }: { config: any }) {
 
   // Plain absolute-px text (kicker / headline / body / stat / label). Scales to
   // fit its zone — the safety net for the catastrophic-overflow case.
+  //
+  // ACCENT DIVIDER (kicker): when config.accentDivider is set, draw a short
+  // tapered accent rule under the eyebrow so the copy is anchored, not floating
+  // (a $$$-design cue from the 2026-06-27 richness pass). The rule width is a
+  // fraction of the zone, aligned to the text's alignment. CSS background only;
+  // longhand positioning — Taurus-safe (rule #10).
+  if (config.accentDivider) {
+    const ruleH =
+      typeof config.accentDividerThicknessPx === 'number' ? config.accentDividerThicknessPx : 4;
+    const ruleAlign =
+      align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start';
+    // A right-aligned eyebrow needs the gradient to run right→left so the solid
+    // end sits under the text edge; flip for that case.
+    const ruleBg =
+      align === 'right' && typeof config.accentDivider === 'string'
+        ? String(config.accentDivider).replace('90deg', '270deg')
+        : config.accentDivider;
+    return (
+      <FitScaler
+        justify={justify}
+        items="center"
+        origin={scaleOrigin}
+        dataField="content"
+        innerStyle={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: ruleAlign }}
+        deps={[content, fontSize, fontFamily, fontWeight, align, lineHeight]}
+      >
+        <p style={{ ...baseTextStyle, ...wordWrapStyle, width: '100%' }}>{content}</p>
+        <div
+          style={{
+            height: `${ruleH}px`,
+            width: '2.2em',
+            background: ruleBg,
+            borderRadius: `${ruleH}px`,
+            marginTop: '0.45em',
+            flexShrink: 0,
+          }}
+        />
+      </FitScaler>
+    );
+  }
+
   return (
     <FitScaler
       justify={justify}
