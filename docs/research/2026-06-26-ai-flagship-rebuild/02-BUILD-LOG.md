@@ -34,6 +34,14 @@ Greg delegated the mockup aesthetic review to the lead ("you review the mockups 
 
 ## RESUME: read this table → first non-DONE wave. Engine branch returned by w3h0yscqr; lead merges + verifies. Then show Greg mockups → Wave 2.
 
+## WAVE 2 — wiring contract (recon DONE, code-verified)
+- **Engine API** (`@cms/signage-design`): `resolveCanvas(id, {w,h,viewingDistanceFt?})` · `classifyCanvas(w,h)` · `getTheme(id)`/`THEMES`/`deriveThemeFromBrand(hex,{mode,accentHex})` · `resolveArchetype(id, canvas, theme)→ResolvedZone[]` (geometry+styleTokens, NO fontSizePx) · `enforce(zones,{canvas,theme,passingBy?,copy})→{ok,findings,zones}` (POPULATES fontSizePx + scrim + contrast flips). Pipeline: resolveCanvas → theme → resolveArchetype → enforce → map.
+- **Sanitized output shape** (ai.service.ts `sanitizeTouchTemplate`): `{name, description?, zones:[{name?,widgetType,x,y,width,height,defaultConfig,touchAction?,sceneRef?}], scenes?}`. ResolvedZone x/y/w/h are already %-coords → drop straight in.
+- **RENDERER TRAP (verified WidgetRenderer.tsx:1266):** base TEXT caps `fontSize` at `min(fontSize/16,3)em` = **48px max** — THIS is why AI boards look tiny/garbage. Fix: add a signage render path (`config.sizeMode:'absolute'`) honoring absolute px (correct inside the transform:scaled canvas, like the mockups). Good templates use *themed* text variants that fill the zone; base TEXT is the trap.
+- **IMAGE** (WidgetRenderer.tsx:1796): `assetUrl`+`fit:'cover'`. No scrim/gradient widget exists → add scrim overlay + no-assetUrl gradient-fill to IMAGE.
+- **Template bg** rendered at player/page.tsx:5392 from `bgColor`/`bgGradient`/`bgImage`; create-from-candidate (templates.controller.ts:~991) sets `bgColor:brand.surface` — extend to accept engine theme bg.
+- **colorToken→hex** (mirror validator resolveTextHex): isAccent→accent · inkInverse→inkInverse · muted→muted · accent→accent · surface→ink · ink→ink. CTA(isAccent)→FILLED button (bg=accent, color=onAccent).
+
 ## SHIPPED LOG
 - 62536762 — docs: recon + plan + critique committed (so build agents can read the spec).
 - 50450f1d — feat(signage-design): the @cms/signage-design engine (Wave 1). 3599 LOC, 112/112 tests, zero runtime deps (HCT/CAM16 ported inline). Added to root preflight. NOT wired yet (dead code until Wave 2).
