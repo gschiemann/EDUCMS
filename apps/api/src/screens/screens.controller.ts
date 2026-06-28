@@ -2812,8 +2812,19 @@ export class ScreensController {
         // and scope_note land in the fallback content so the rendered
         // text matches the trigger UX exactly.
         if (playlists.length === 0) {
-          const canvasW = isPortrait ? 1080 : 1920;
-          const canvasH = isPortrait ? 1920 : 1080;
+          // 2026-06-28 (Greg live P0 — lockdown rendered at 1920 on the
+          // 960×1080 LED): the fallback template MUST be authored at the
+          // screen's REAL visible canvas, not a hardcoded 1920/1080. The
+          // player's TemplateScaler sizes the scene to designW=template.
+          // screenWidth; when that was 1920 the lockdown was laid out for a
+          // 1920 frame buffer and only the left ~960 showed on the panel. Use
+          // the operator-set canvasW/canvasH (e.g. 960×1080) so the fallback
+          // emergency fills the actual LED exactly; fall back to the
+          // portrait/landscape default only when the screen has no canvas set.
+          const canvasW =
+            screen.canvasW && screen.canvasW > 0 ? screen.canvasW : (isPortrait ? 1080 : 1920);
+          const canvasH =
+            screen.canvasH && screen.canvasH > 0 ? screen.canvasH : (isPortrait ? 1920 : 1080);
           // Pick the most specific text we have — operator's textBlob
           // first, then the scope_note ("Gym wing — hold position"),
           // then a SYSTEM DEFAULT message that includes the type.
