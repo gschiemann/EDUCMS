@@ -31,7 +31,16 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
-import { dispatchAi, mapProviderQuotaError, type AiProvider, coerceProvider, defaultModelFor } from './ai-providers';
+import { dispatchAi, dispatchAiMessages, mapProviderQuotaError, type AiProvider, coerceProvider, defaultModelFor } from './ai-providers';
+// Signage Concierge (2026-06-28) — the conversational intake brain. The PURE
+// module owns the persona/contract + defensive parsing; AiService.conciergeChat
+// orchestrates it through the SAME resolve-key/caps/audit plumbing as generate().
+import {
+  buildConciergeSystemPrompt,
+  parseConciergeTurn,
+  CONCIERGE_MAX_TOKENS,
+} from './signage-concierge';
+import { AiAltTextService } from './ai-alt-text.service';
 import {
   aiWindowCount,
   aiRecordEvent,
@@ -82,6 +91,9 @@ import {
   type RewriteOp,
   type TextFieldKind,
   type VerticalDesignAffinity,
+  type ConciergeMessage,
+  type ConciergeReference,
+  type ConciergeTurnResponse,
 } from '@cms/api-types';
 // SECURITY (audit-B4 fix, 2026-05-25) — AI-generated touch actions
 // can include `open-url` / `webhook` targets. Without an SSRF guard,
@@ -250,6 +262,13 @@ export class AiService {
     // 2026-06-26 — AI image generation persists the decoded image as a
     // normal Asset via the same Supabase storage path as a regular upload.
     private readonly storage: SupabaseStorageService,
+    // 2026-06-28 — Signage Concierge image references. AiAltTextService owns
+    // the multi-provider vision plumbing; conciergeChat's image-reference
+    // entry point (analyzeDesignReferenceImage) delegates to its new
+    // analyzeDesignReference method. Both are providers in AiModule (no
+    // circular dep — AiAltTextService doesn't depend on AiService), so this
+    // is a clean intra-module injection.
+    private readonly altText: AiAltTextService,
   ) {}
 
   // P1-14 (2026-05-28 audit) — both per-tenant hourly caps moved from
@@ -1070,6 +1089,250 @@ export class AiService {
       );
     }
     return raw;
+  }
+
+  /**
+   * Multi-turn twin of dispatchRawOrThrow (Signage Concierge, 2026-06-28).
+   * Dispatches a full {role,content}[] conversation and returns the raw text,
+   * or throws with the SAME provider-error mapping every AI surface uses
+   * (structured 402 out-of-credit, BYOK key-rejected, 429 rate-limit, generic
+   * 5xx, empty-reply). Calls dispatchAiMessages instead of dispatchAi; the
+   * error handling + empty-reply guard are identical to the single-turn path.
+   * Does NOT parse — the caller owns parsing (the concierge JSON envelope).
+   */
+  private async dispatchMessagesOrThrow(
+    resolved: { provider: AiProvider; apiKey: string; model: string; source: 'tenant' | 'platform' },
+    system: string,
+    messages: { role: 'user' | 'assistant'; content: string }[],
+    maxTokens: number,
+  ): Promise<string> {
+    let raw: string;
+    try {
+      const out = await dispatchAiMessages(resolved.provider, {
+        apiKey: resolved.apiKey,
+        model: resolved.model,
+        system,
+        messages,
+        maxTokens,
+      });
+      if (out.errorStatus) {
+        // 2026-05-26 audit AI-P0-1 — out-of-credit disambiguation.
+        const quotaErr = mapProviderQuotaError(resolved.provider, out.errorStatus, out.errorBody);
+        if (quotaErr) {
+          throw new HttpException(
+            {
+              message: quotaErr.message,
+              code: quotaErr.code,
+              provider: quotaErr.provider,
+              keySource: resolved.source,
+            },
+            HttpStatus.PAYMENT_REQUIRED,
+          );
+        }
+        const keyRejected =
+          out.errorStatus === 401 ||
+          out.errorStatus === 403 ||
+          (out.errorStatus === 400 && /api[_ ]?key|API_KEY_INVALID|PERMISSION_DENIED/i.test(out.errorBody || ''));
+        if (keyRejected && resolved.source === 'tenant') {
+          throw new ServiceUnavailableException(
+            `Your ${providerDisplayName(resolved.provider)} API key was rejected (${out.errorStatus}). Re-enter it in Settings → Integrations.`,
+          );
+        }
+        if (out.errorStatus === 429) {
+          throw new ServiceUnavailableException('AI service rate-limited the request. Try again in a moment.');
+        }
+        throw new ServiceUnavailableException(`AI service responded ${out.errorStatus}.`);
+      }
+      raw = out.raw;
+    } catch (err: any) {
+      // Re-throw ANY HttpException (incl. the structured 402
+      // AI_PROVIDER_OUT_OF_CREDIT) untouched; only raw network failures
+      // become "unreachable" (2026-06-09 Fable audit dead-code fix).
+      if (err instanceof HttpException) throw err;
+      this.logger.error(`AI dispatch failed: ${err?.message}`);
+      throw new ServiceUnavailableException('AI service unreachable.');
+    }
+    // Empty (but non-error) reply — e.g. a thinking model that exhausted
+    // its output budget. Actionable message instead of a cryptic parse error.
+    if (!raw || !raw.trim()) {
+      throw new ServiceUnavailableException(
+        'The AI model returned an empty response — it may have run out of output budget. Try a shorter prompt, or switch to a faster model like Gemini Flash in Settings → AI provider.',
+      );
+    }
+    return raw;
+  }
+
+  /**
+   * Signage Concierge chat turn (2026-06-28). One step of the conversational,
+   * reference-driven template intake: takes the running transcript + any shared
+   * references, calls the model with the concierge persona/contract, and
+   * returns the next reply + the cumulative structured intake + a usable design
+   * brief. Reuses the EXACT resolve-key/caps/audit plumbing as generate()
+   * (Tier-2 everyday creative — shared 30/hr Redis window + monthly platform
+   * cap + BYOK-first→platform resolution + per-call audit row). Additive: no
+   * existing generation path changes.
+   */
+  async conciergeChat(opts: {
+    tenantId: string;
+    userId?: string;
+    messages: ConciergeMessage[];
+    references?: ConciergeReference[];
+    vertical?: string;
+    canvas?: { w: number; h: number } | null;
+  }): Promise<ConciergeTurnResponse> {
+    // Audit-W1 wrap — same failure-cap door as generate(): a tenant looping
+    // bad concierge calls is blocked, and any throw counts as a failure.
+    await this.checkFailureCap(opts.tenantId);
+    try {
+      return await this.conciergeChatInner(opts);
+    } catch (e) {
+      await this.recordFailure(opts.tenantId);
+      throw e;
+    }
+  }
+
+  private async conciergeChatInner(opts: {
+    tenantId: string;
+    userId?: string;
+    messages: ConciergeMessage[];
+    references?: ConciergeReference[];
+    vertical?: string;
+    canvas?: { w: number; h: number } | null;
+  }): Promise<ConciergeTurnResponse> {
+    const resolved = await this.resolveProviderKey(opts.tenantId);
+    if (!resolved) {
+      throw new ServiceUnavailableException(
+        'AI is not configured. Add your provider API key in Settings → AI provider, or contact your admin.',
+      );
+    }
+
+    // Guard the transcript. Zod bounds count + lengths upstream; here we
+    // enforce the provider contract — a non-empty conversation that ENDS on a
+    // user turn (the model must be answering the customer's latest message).
+    const messages = (opts.messages || []).filter(
+      (m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim(),
+    );
+    if (messages.length === 0) {
+      throw new BadRequestException('Send a message to the concierge to start.');
+    }
+    if (messages[messages.length - 1].role !== 'user') {
+      throw new BadRequestException('The latest message must be from you.');
+    }
+
+    // Hourly cap — same shared 30/hr Redis window as every other AI surface.
+    if ((await this.windowCount(this.RL_SUCCESS_PREFIX, opts.tenantId)) >= this.HOURLY_CAP) {
+      throw new BadRequestException(
+        `Hit the hourly AI cap (${this.HOURLY_CAP} generations/hour). Try again later or contact sales for a higher tier.`,
+      );
+    }
+
+    // Monthly platform cap — enforced ONLY for platform-paid turns (BYOK
+    // bypasses). Same structured 402 envelope as generate() so the FE shows
+    // the right "connect your own key / wait for reset" copy.
+    if (resolved.source === 'platform') {
+      const u = await this.readPlatformUsage(opts.tenantId);
+      if (u.used >= u.cap) {
+        throw new HttpException(
+          {
+            message: `Hit the monthly free AI cap (${u.cap} generations). Connect your own provider key in Settings → AI provider for unlimited, or wait until the cap resets at ${u.resetAt}.`,
+            code: 'AI_CAP_REACHED',
+            cap: u.cap,
+            used: u.used,
+            resetAt: u.resetAt,
+          },
+          HttpStatus.PAYMENT_REQUIRED,
+        );
+      }
+    }
+
+    // Build the persona/contract system prompt fresh each turn so the model
+    // always "sees" the current brand + canvas + shared references.
+    const brand = await this.tenantBrandColors(opts.tenantId);
+    const system = buildConciergeSystemPrompt({
+      vertical: opts.vertical,
+      brandPrimary: brand.primaryHex,
+      brandAccent: brand.accentHex,
+      brandVoice: await this.tenantBrandVoice(opts.tenantId),
+      canvas: opts.canvas,
+      references: opts.references,
+    });
+
+    const raw = await this.dispatchMessagesOrThrow(
+      resolved,
+      system,
+      messages.map((m) => ({ role: m.role, content: m.content })),
+      CONCIERGE_MAX_TOKENS,
+    );
+    const turn = parseConciergeTurn(raw);
+
+    // Spend accounting — record only AFTER a usable result (leak-fix
+    // discipline shared with generate()/rewriteText).
+    await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
+    if (resolved.source === 'platform') {
+      try { await this.bumpPlatformUsage(opts.tenantId); }
+      catch (e: any) { this.logger.warn(`Platform usage bump failed (${opts.tenantId}): ${e?.message}`); }
+    }
+    let usage: { used: number; cap: number; resetAt: string } | null = null;
+    if (resolved.source === 'platform') {
+      const u = await this.readPlatformUsage(opts.tenantId);
+      usage = { used: u.used, cap: u.cap, resetAt: u.resetAt };
+    }
+
+    // Audit row — dimensions only (no transcript content: operator free text
+    // could carry PII). Mirrors AI_GENERATE / AI_TEXT_REWRITE.
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'AI_CONCIERGE_CHAT',
+        targetType: 'tenant',
+        targetId: opts.tenantId,
+        tenantId: opts.tenantId,
+        userId: opts.userId || null,
+        details: JSON.stringify({
+          vertical: opts.vertical || null,
+          provider: resolved.provider,
+          model: resolved.model,
+          source: resolved.source,
+          turns: opts.messages.length,
+          references: (opts.references || []).length,
+          ready: turn.ready,
+        }),
+      },
+    }).catch(() => { /* audit best-effort */ });
+
+    return { ...turn, source: resolved.source, usage };
+  }
+
+  /**
+   * Signage Concierge image-reference analysis (2026-06-28). The customer
+   * uploads a photo of signage / a brand / a style they like; we run it
+   * through the multi-provider vision plumbing (AiAltTextService) and turn the
+   * result into a compact ConciergeReference the concierge LLM can read.
+   * Returns null when no vision provider is configured or a cap is hit — the
+   * controller turns null into a friendly 422 ("describe the look instead").
+   * Delegates to AiAltTextService.analyzeDesignReference so we don't duplicate
+   * the resolve-provider/caps/audit chain (DI: both live in AiModule).
+   */
+  async analyzeDesignReferenceImage(opts: {
+    tenantId: string;
+    userId?: string;
+    imageBuffer: Buffer;
+    mimeType: string;
+    filename?: string;
+  }): Promise<ConciergeReference | null> {
+    const analysis = await this.altText.analyzeDesignReference({
+      tenantId: opts.tenantId,
+      userId: opts.userId,
+      imageBuffer: opts.imageBuffer,
+      mimeType: opts.mimeType,
+    });
+    if (!analysis) return null;
+    const ref: ConciergeReference = {
+      kind: 'image',
+      summary: analysis.summary,
+    };
+    if (opts.filename) ref.label = opts.filename.slice(0, 200);
+    if (analysis.palette.length) ref.palette = analysis.palette.slice(0, 8);
+    return ref;
   }
 
   /**

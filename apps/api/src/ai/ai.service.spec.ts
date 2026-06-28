@@ -118,8 +118,14 @@ function makeStorageMock() {
 function buildService(publisher: any, storage?: any): { service: AiService; storage: any } {
   const redisMock = { publisher } as unknown as RedisService;
   const storageMock = storage ?? makeStorageMock();
+  // 2026-06-28 — AiService now takes AiAltTextService (Signage Concierge image
+  // references). None of the suites below exercise the concierge image path, so
+  // a thin stub keeps construction type-correct without a Nest container.
+  const altTextMock = {
+    analyzeDesignReference: jest.fn(async () => null),
+  } as any;
   // Synchronous construct — no Nest container needed, but use it for parity.
-  const service = new AiService(prismaMock as PrismaService, redisMock, storageMock as any);
+  const service = new AiService(prismaMock as PrismaService, redisMock, storageMock as any, altTextMock);
   return { service, storage: storageMock };
 }
 
