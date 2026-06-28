@@ -602,7 +602,7 @@ function mapScene(
       config = textConfig;
     }
 
-    mapped.push({
+    const mZone: MappedZone = {
       name: z.slot,
       widgetType: z.widgetType,
       x: r3(z.x),
@@ -611,7 +611,14 @@ function mapScene(
       height: r3(z.height),
       defaultConfig: config,
       sceneRef,
-    });
+    };
+    // FUNCTIONAL BINDING (2026-06-28): the archetype's own CTA becomes a tappable
+    // open-url action when the spec carries a real ctaHref — so a generated kiosk
+    // CTA actually does something. The sanitizer re-validates/SSRF-guards it.
+    if (z.slot === 'cta' && opts.ctaHref) {
+      mZone.touchAction = { type: 'open-url', target: opts.ctaHref };
+    }
+    mapped.push(mZone);
     presentSlots.add(z.slot);
 
     if (mapped.length >= MAX_ZONES_PER_SCENE) break;

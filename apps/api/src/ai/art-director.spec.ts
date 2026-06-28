@@ -197,6 +197,156 @@ describe('artDirectorSpecToTemplate', () => {
   });
 });
 
+// ───────────────────────────────────────────────────────────────────────
+// FUNCTIONAL BINDING (2026-06-28) — generated boards must come out WORKING,
+// not as themed shells. These pin: LUNCH_MENU populated from copy.items,
+// WEATHER seeded with a location, COUNTDOWN with the real targetDate, LOGO
+// with the brand-kit assetUrl, QR/CTA with the real URL, no placeholder TEXT.
+// ───────────────────────────────────────────────────────────────────────
+describe('artDirectorSpecToTemplate — functional widget emission', () => {
+  // A spec whose archetype carries NO menu/weather/etc slots, so the required
+  // widgets are appended as supplemental zones (where our binding logic lives).
+  const eventSpec = (): ArtDirectorSpec => ({
+    archetype: 'title-cta',
+    theme: 'clean-corporate',
+    copy: {
+      kicker: 'THIS FRIDAY',
+      headline: 'Happy Hour',
+      body: 'Half-price wings and $5 drafts all night long.',
+      cta: 'See the deals',
+      eventDate: '2099-12-31T18:00:00.000Z',
+      ctaHref: 'https://thecornertap.com/happy-hour',
+      items: [
+        { label: 'Draft beer', value: '$5' },
+        { label: 'Wings', value: '$6', detail: 'half price' },
+      ],
+    },
+    image: { mode: 'none' },
+    accentSlot: 'cta',
+  });
+
+  const CTX = {
+    screenWidth: 1920,
+    screenHeight: 1080,
+    weatherLocation: '32.7767,-96.7970',
+    logoUrl: 'https://cdn.example.com/logo.png',
+    eventDate: '2099-12-31T18:00:00.000Z',
+    ctaHref: 'https://thecornertap.com/happy-hour',
+    requiredWidgets: [
+      'menu', 'weather', 'countdown', 'logo', 'qr', 'cta', 'ticker', 'clock',
+    ] as any,
+  };
+
+  it('populates a LUNCH_MENU `menu` from spec.copy.items (the #1 fix)', () => {
+    const out = artDirectorSpecToTemplate(eventSpec(), { ...CTX });
+    const menu = out.zones.find((z) => z.name === 'menu');
+    expect(menu?.widgetType).toBe('LUNCH_MENU');
+    expect(typeof menu?.defaultConfig?.menu).toBe('string');
+    // The deals the model wrote LAND in the widget (Label: value · detail).
+    expect(menu?.defaultConfig?.menu).toContain('Draft beer: $5');
+    expect(menu?.defaultConfig?.menu).toContain('Wings: $6 · half price');
+    // Newline-joined, one row per item — the format the renderer parses.
+    expect(menu?.defaultConfig?.menu.split('\n').length).toBe(2);
+  });
+
+  it('seeds WEATHER with the venue location', () => {
+    const out = artDirectorSpecToTemplate(eventSpec(), { ...CTX });
+    const weather = out.zones.find((z) => z.name === 'weather');
+    expect(weather?.widgetType).toBe('WEATHER');
+    expect(weather?.defaultConfig?.location).toBe('32.7767,-96.7970');
+  });
+
+  it('seeds COUNTDOWN with the real targetDate from eventDate', () => {
+    const out = artDirectorSpecToTemplate(eventSpec(), { ...CTX });
+    const cd = out.zones.find((z) => z.name === 'countdown');
+    expect(cd?.widgetType).toBe('COUNTDOWN');
+    expect(cd?.defaultConfig?.targetDate).toBe('2099-12-31T18:00:00.000Z');
+  });
+
+  it('omits COUNTDOWN targetDate when no eventDate is supplied (no fake now+30d)', () => {
+    const out = artDirectorSpecToTemplate(eventSpec(), { ...CTX, eventDate: undefined });
+    const cd = out.zones.find((z) => z.name === 'countdown');
+    expect(cd).toBeDefined();
+    expect(cd?.defaultConfig?.targetDate).toBeUndefined();
+  });
+
+  it('seeds LOGO with the tenant brand-kit assetUrl', () => {
+    const out = artDirectorSpecToTemplate(eventSpec(), { ...CTX });
+    const logo = out.zones.find((z) => z.name === 'logo');
+    expect(logo?.widgetType).toBe('LOGO');
+    expect(logo?.defaultConfig?.assetUrl).toBe('https://cdn.example.com/logo.png');
+  });
+
+  it('emits a real qrText from ctaHref (never example.com)', () => {
+    const out = artDirectorSpecToTemplate(eventSpec(), { ...CTX });
+    const qr = out.zones.find((z) => z.name === 'qr');
+    expect(qr?.widgetType).toBe('IMAGE');
+    expect(qr?.defaultConfig?.qrText).toBe('https://thecornertap.com/happy-hour');
+    expect(qr?.defaultConfig?.qrText).not.toContain('example.com/');
+  });
+
+  it('omits qrText when no ctaHref is supplied (no example.com placeholder)', () => {
+    const out = artDirectorSpecToTemplate(eventSpec(), { ...CTX, ctaHref: undefined });
+    const qr = out.zones.find((z) => z.name === 'qr');
+    expect(qr).toBeDefined();
+    expect(qr?.defaultConfig?.qrText).toBeUndefined();
+  });
+
+  it('attaches an open-url touchAction to the CTA when a ctaHref exists', () => {
+    const out = artDirectorSpecToTemplate(eventSpec(), { ...CTX });
+    const cta = out.zones.find((z) => z.name === 'cta');
+    expect(cta?.touchAction?.type).toBe('open-url');
+    expect(cta?.touchAction?.target).toBe('https://thecornertap.com/happy-hour');
+  });
+
+  it('uses real TICKER messages from copy, never the placeholder', () => {
+    const out = artDirectorSpecToTemplate(eventSpec(), { ...CTX });
+    const ticker = out.zones.find((z) => z.name === 'ticker');
+    expect(ticker?.widgetType).toBe('TICKER');
+    const messages = ticker?.defaultConfig?.messages as string[];
+    expect(Array.isArray(messages)).toBe(true);
+    expect(messages).not.toContain('Add your scrolling message here');
+    expect(messages[0]).toContain('Half-price wings');
+  });
+
+  it('drops a placeholder-only subtext zone (no real body copy)', () => {
+    const spec = eventSpec();
+    spec.copy.body = undefined; // no real supporting copy
+    const out = artDirectorSpecToTemplate(spec, {
+      ...CTX,
+      requiredWidgets: ['subtext'] as any,
+    });
+    // No zone may carry the literal placeholder.
+    const placeholderZone = out.zones.find(
+      (z) => z.defaultConfig?.content === 'Add your supporting text here',
+    );
+    expect(placeholderZone).toBeUndefined();
+  });
+
+  it('never ships any "Add your supporting text here" / "Your text here" zone', () => {
+    const spec = eventSpec();
+    spec.copy.body = undefined;
+    const out = artDirectorSpecToTemplate(spec, {
+      ...CTX,
+      requiredWidgets: ['menu', 'weather', 'subtext', 'ticker'] as any,
+    });
+    for (const z of out.zones) {
+      const c = z.defaultConfig?.content;
+      expect(c).not.toBe('Add your supporting text here');
+      expect(c).not.toBe('Your text here');
+    }
+  });
+
+  it('omits the menu data (keeps widget) when there are no items', () => {
+    const spec = eventSpec();
+    spec.copy.items = undefined;
+    const out = artDirectorSpecToTemplate(spec, { ...CTX, requiredWidgets: ['menu'] as any });
+    const menu = out.zones.find((z) => z.name === 'menu');
+    expect(menu).toBeDefined();
+    expect(menu?.defaultConfig?.menu).toBeUndefined();
+  });
+});
+
 describe('scrimToCss', () => {
   it('returns undefined for none', () => {
     expect(

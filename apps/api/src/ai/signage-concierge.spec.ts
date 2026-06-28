@@ -66,6 +66,40 @@ describe('parseConciergeTurn', () => {
     expect(turn.reply.length).toBeGreaterThan(0);
     expect(turn.intake.purpose).toBe('promo');
   });
+
+  it('unwraps a DOUBLE-ENCODED envelope (GPT-5 nests the whole thing in reply)', () => {
+    // GPT-5 sometimes returns {reply: "<the real envelope as a JSON string>"}.
+    const inner = {
+      reply: 'Got it — a bold burger menu it is.',
+      intake: { purpose: 'menu', theme: 'Bold', widgets: ['headline', 'menu'] },
+      missing: ['the prices'],
+      ready: false,
+      brief: 'A bold menu board.',
+    };
+    const raw = JSON.stringify({ reply: JSON.stringify(inner) });
+    const turn = parseConciergeTurn(raw);
+    // The customer must NOT see raw JSON — the inner reply surfaces.
+    expect(turn.reply).toBe('Got it — a bold burger menu it is.');
+    expect(turn.reply).not.toContain('{');
+    // …and the inner structured fields are recovered, not lost.
+    expect(turn.intake.purpose).toBe('menu');
+    expect(turn.intake.theme).toBe('Bold');
+    expect(turn.intake.widgets).toEqual(['headline', 'menu']);
+    expect(turn.missing).toEqual(['the prices']);
+    expect(turn.brief).toContain('bold menu board');
+  });
+
+  it('leaves a plain non-JSON reply intact (does not over-unwrap)', () => {
+    const raw = JSON.stringify({
+      reply: 'What hours should the board show?',
+      intake: { purpose: 'event' },
+      ready: false,
+      brief: '',
+    });
+    const turn = parseConciergeTurn(raw);
+    expect(turn.reply).toBe('What hours should the board show?');
+    expect(turn.intake.purpose).toBe('event');
+  });
 });
 
 describe('clampConciergeIntake', () => {
