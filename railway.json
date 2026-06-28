@@ -23,7 +23,8 @@
     "//": "Auto-apply pending Prisma migrations BEFORE booting the API. 2026-05-04 — first attempt put `pnpm --filter @cms/database run db:deploy && node ...` directly here; that boot went in_progress → inactive in 17s with no useful Railway log surface (silent crash, possibly a startCommand parser quirk or pnpm path issue in the runner stage). Replaced with an explicit shell script (scripts/railway-start.sh) that prints step-by-step status, fails fast on missing DATABASE_URL, calls the prisma binary directly without going through pnpm, then execs node. If migrations fail the script's set -e propagates → Railway restartPolicy retries 10× and the failing step is visible in the deploy log instead of a generic 'inactive'.",
     "startCommand": "./scripts/railway-start.sh",
     "healthcheckPath": "/api/v1/health",
-    "healthcheckTimeout": 60,
+    "//healthcheckTimeout": "2026-06-28 — bumped 60→300. Two consecutive deploys (74e26f92, 15d680f3) FAILED the healthcheck (Docker build green, image pushed) because a cold boot — railway-start.sh `prisma migrate deploy` + NestJS module init + a cold Supabase pool (slow queries ~343ms each, plus a 1Hz Game.findMany background poller adding pool contention) — exceeded the 60s window. This does NOT weaken the gate: restartPolicy (10×) and the always-200 /health liveness endpoint are unchanged; it only tolerates a slow-but-healthy boot so the deploy stops getting killed mid-startup. Follow-up: the 1Hz Game.findMany poller is an efficiency + boot-contention bug worth fixing so 60s is safe again.",
+    "healthcheckTimeout": 300,
     "numReplicas": 1,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
