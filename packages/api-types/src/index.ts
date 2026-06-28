@@ -648,6 +648,114 @@ export const TemplateRefineSignageSchema = z
   .passthrough();
 export type TemplateRefineSignageInput = z.infer<typeof TemplateRefineSignageSchema>;
 
+// ─────────────────────────────────────────────────────────────────────
+// Signage Concierge (2026-06-28) — conversational, reference-driven AI
+// template intake. Instead of a fixed-question wizard, the operator CHATS
+// with a signage-savvy AI that knows the end-game (great digital signage):
+// it asks the right next question, accepts reference URLs + image uploads
+// for the look they want, and fills a structured intake until it can
+// generate 3 on-target boards. The intake field names + enums MIRROR the
+// guided-intake directives on TemplateGenerateTouchCandidatesSchema so the
+// FE can hand them straight to the existing 3-candidate generator.
+// ─────────────────────────────────────────────────────────────────────
+
+/** A reference the customer shared — a website to match, or an image of a
+ *  look they like — already summarized server-side into compact text the
+ *  concierge LLM can read. The FE stashes these and re-sends them each turn
+ *  so the model always "sees" them (the system prompt is rebuilt per call). */
+export const ConciergeReferenceSchema = z
+  .object({
+    kind: z.enum(['url', 'image']),
+    /** The URL or filename, shown as a chip in the UI. */
+    label: BoundedText(200).optional(),
+    /** The compact text summary injected into the concierge's context. */
+    summary: BoundedText(4000),
+    /** Hexes derived from the reference (scraped brand palette / image colors). */
+    palette: z.array(BoundedText(9)).max(8).optional(),
+    /** A usable image URL (scraped hero image / uploaded reference) the
+     *  generator may use as a background or style anchor. */
+    imageUrl: BoundedText(2048).optional(),
+  })
+  .passthrough();
+export type ConciergeReference = z.infer<typeof ConciergeReferenceSchema>;
+
+/** One turn in the concierge transcript. `content` is plain text — the
+ *  user's message or the assistant's prior reply (NOT the JSON envelope). */
+export const ConciergeMessageSchema = z
+  .object({
+    role: z.enum(['user', 'assistant']),
+    content: BoundedText(4000),
+  })
+  .passthrough();
+export type ConciergeMessage = z.infer<typeof ConciergeMessageSchema>;
+
+export const ConciergeChatSchema = z
+  .object({
+    messages: z.array(ConciergeMessageSchema).min(1).max(40),
+    references: z.array(ConciergeReferenceSchema).max(6).optional(),
+    vertical: BoundedText(40).optional(),
+    screenWidth: z.number().optional(),
+    screenHeight: z.number().optional(),
+  })
+  .passthrough();
+export type ConciergeChatInput = z.infer<typeof ConciergeChatSchema>;
+
+/** Scrape a customer URL into a reference summary (palette/logo/fonts/name). */
+export const ConciergeReferenceUrlSchema = z
+  .object({ url: BoundedText(2048) })
+  .passthrough();
+export type ConciergeReferenceUrlInput = z.infer<typeof ConciergeReferenceUrlSchema>;
+
+/** The structured intake the concierge fills as the conversation progresses.
+ *  Field names + enums mirror the guided-intake directives so the FE can pass
+ *  them straight to /templates/generate-touch/candidates. All optional — the
+ *  model fills what it knows so far. */
+export interface ConciergeIntake {
+  purpose?:
+    | 'welcome'
+    | 'menu'
+    | 'promo'
+    | 'event'
+    | 'announcement'
+    | 'feature'
+    | 'photo-hero';
+  /** Friendly theme label / real theme id / 'brand'. */
+  theme?: string;
+  palette?: 'brand' | { colors: string[] };
+  background?: 'solid' | 'gradient' | 'textured' | 'photo';
+  widgets?: Array<
+    | 'headline'
+    | 'subtext'
+    | 'logo'
+    | 'image'
+    | 'clock'
+    | 'date'
+    | 'weather'
+    | 'countdown'
+    | 'menu'
+    | 'ticker'
+    | 'qr'
+    | 'cta'
+  >;
+}
+
+/** What POST /templates/concierge/chat returns each turn. */
+export interface ConciergeTurnResponse {
+  /** The next thing to SAY to the customer — the only text shown in chat. */
+  reply: string;
+  /** Cumulative structured intake derived from the whole conversation. */
+  intake: ConciergeIntake;
+  /** What still matters but isn't known yet (drives subtle UI hints). */
+  missing: string[];
+  /** True when the concierge has enough to generate boards they'll love. */
+  ready: boolean;
+  /** A synthesized design brief (rich prompt) for the generator. Best-effort
+   *  every turn; always populated once `ready`. */
+  brief: string;
+  source: 'tenant' | 'platform';
+  usage: { used: number; cap: number; resetAt: string } | null;
+}
+
 // Wave 2 (2026-06-26) — the background descriptor an engine candidate carries
 // so create-from-candidate can persist Template.bgColor/bgGradient/bgImage.
 export const TemplateBackgroundSchema = z

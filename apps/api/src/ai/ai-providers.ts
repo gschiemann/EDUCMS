@@ -301,6 +301,22 @@ interface DispatchInput {
   maxTokens: number;
 }
 
+/** One turn in a multi-turn conversation. `assistant` = a prior model reply. */
+export interface DispatchMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+interface DispatchMessagesInput {
+  apiKey: string;
+  /** Catalog model id; falls back to provider default if absent. */
+  model?: string;
+  system: string;
+  /** Full conversation so far, oldest first. MUST start with a `user` turn. */
+  messages: DispatchMessage[];
+  maxTokens: number;
+}
+
 interface DispatchOutput {
   raw: string;
   /** Provider-reported errors map to ServiceUnavailableException upstream. */
@@ -309,14 +325,40 @@ interface DispatchOutput {
 }
 
 /**
- * Single entrypoint for both providers. Caller passes the system +
- * user prompts; we shape them appropriately and return the raw text
- * response. Caller does the JSON parsing (it's the same on both ends
- * because our system prompts force JSON output).
+ * Single-turn entrypoint — the original {system, userPrompt} shape every
+ * generation surface uses. Thin wrapper over dispatchAiMessages with a
+ * one-element user-message array. The wire payload is byte-identical to
+ * the historical single-turn request on all three providers (Anthropic
+ * `messages:[{user}]`, OpenAI `[system,user]`, Google `contents:[{user}]`),
+ * so this is a no-behavior-change delegation — the existing generation
+ * paths + CI exercise it.
  */
 export async function dispatchAi(
   provider: AiProvider,
   input: DispatchInput,
+): Promise<DispatchOutput> {
+  return dispatchAiMessages(provider, {
+    apiKey: input.apiKey,
+    model: input.model,
+    system: input.system,
+    messages: [{ role: 'user', content: input.userPrompt }],
+    maxTokens: input.maxTokens,
+  });
+}
+
+/**
+ * Multi-turn entrypoint — same provider shaping as the single-turn path
+ * but accepts a full {role,content}[] conversation so a stateful surface
+ * (the signage concierge) can hold a real back-and-forth. Anthropic and
+ * OpenAI take the array verbatim (assistant turns become assistant
+ * messages); Google maps the `assistant` role to its `model` role. Model
+ * resolution, temperature parity, the 15s abort, OpenAI-reasoning param
+ * branching, and Gemini-2.5 thinking handling are all identical to the
+ * single-turn path.
+ */
+export async function dispatchAiMessages(
+  provider: AiProvider,
+  input: DispatchMessagesInput,
 ): Promise<DispatchOutput> {
   // Resolve which model to send. Tenant's saved choice (input.model)
   // takes precedence; falls back to provider default if absent OR if
@@ -327,24 +369,25 @@ export async function dispatchAi(
   const model = isKnownModel(provider, requested) ? requested : defaultModelFor(provider);
 
   // Temperature parity (2026-05-29 audit §3) — pin a single explicit
-  // temperature on ALL three providers. Previously only Google sent
-  // `0.7` (Anthropic + OpenAI fell through to each provider's default,
-  // ~1.0), so the same prompt produced noticeably more divergent copy
-  // on Anthropic/OpenAI than on Google. 0.7 keeps signage copy varied
-  // (the operator wants 3 distinct options) without the off-the-rails
-  // drift of 1.0. Reasoning models (see openai branch below) reject an
-  // explicit temperature, so it's applied per-branch, not globally.
+  // temperature on ALL three providers. 0.7 keeps signage copy varied
+  // without the off-the-rails drift of 1.0. Reasoning models (see openai
+  // branch) reject an explicit temperature, so it's applied per-branch.
   const TEMPERATURE = 0.7;
 
-  // SECURITY (audit-B2 fix, 2026-05-25) — Node 20's `fetch` has no
-  // default timeout. A hung provider would hold an Express handler
-  // open indefinitely; with our small Railway dyno + 10-connection
-  // Prisma pool this is a trivial DOS. Every provider call below
-  // attaches AbortSignal.timeout(15_000) so a stalled upstream
-  // aborts in 15s. 15s is enough headroom for a slow Anthropic
-  // first-token response without being long enough to chain into
-  // a worker pile-up under load.
+  // SECURITY (audit-B2 fix, 2026-05-25) — Node 20's `fetch` has no default
+  // timeout; a hung provider would hold an Express handler open forever.
+  // Every call attaches AbortSignal.timeout(15s).
   const FETCH_TIMEOUT_MS = 15_000;
+
+  // Defensive: every provider requires a non-empty conversation. Callers
+  // always pass at least one user turn, but guard so a bad caller gets a
+  // clean envelope instead of an opaque provider 400.
+  const turns = (input.messages || []).filter(
+    (m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.length > 0,
+  );
+  if (turns.length === 0) {
+    return { raw: '', errorStatus: 400, errorBody: 'No conversation messages supplied.' };
+  }
 
   if (provider === 'anthropic') {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -359,16 +402,9 @@ export async function dispatchAi(
         max_tokens: input.maxTokens,
         temperature: TEMPERATURE,
         // Anthropic ephemeral prompt cache (audit §3, 2026-05-30) — our
-        // system prompts (SYSTEM_PROMPTS[intent], the touch-template
-        // schema prompt) are STATIC and re-sent verbatim on every call.
-        // Flagging the system block as cacheable lets Anthropic serve
-        // it from cache on repeat calls within the 5-min TTL — a ~90%
-        // discount on those (often large) system input tokens, which is
-        // pure savings on platform-paid generations where WE foot the
-        // bill. The system field accepts EITHER a plain string OR this
-        // block-array form; only the array form carries cache_control.
-        // Mirrors the bug-analyzer's already-shipped pattern. Anthropic-
-        // only — OpenAI/Google have no request-level cache_control knob.
+        // system prompts are STATIC and re-sent verbatim. The block-array
+        // form carries cache_control for a ~90% discount on the system
+        // input tokens within the 5-min TTL. Anthropic-only.
         system: [
           {
             type: 'text',
@@ -376,7 +412,7 @@ export async function dispatchAi(
             cache_control: { type: 'ephemeral' },
           },
         ],
-        messages: [{ role: 'user', content: input.userPrompt }],
+        messages: turns.map((m) => ({ role: m.role, content: m.content })),
       }),
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
@@ -389,26 +425,18 @@ export async function dispatchAi(
   }
 
   if (provider === 'openai') {
-    // Use chat completions (not the new /v1/responses) for max compat
-    // with operators who configured a key on a non-current account.
+    // Use chat completions (not /v1/responses) for max compat.
     //
-    // 2026-05-29 audit §5 (gpt-5 catalog) — OpenAI's reasoning models
-    // (gpt-5 family, o1/o3/o4) REJECT the legacy `max_tokens` param
-    // with a 400 ("Unsupported parameter: 'max_tokens' is not
-    // supported with this model. Use 'max_completion_tokens' instead.")
-    // AND reject any non-default `temperature` ("Unsupported value:
-    // 'temperature' does not support 0.7 ... only the default (1) is
-    // supported."). Branch the request body so the catalog's gpt-5
-    // Premium tier actually works instead of 400-ing on every call.
-    // Non-reasoning models (gpt-4o-mini, gpt-4.1) keep the classic
-    // `max_tokens` + explicit temperature for parity with the other
-    // providers.
+    // 2026-05-29 audit §5 — OpenAI reasoning models (gpt-5 family, o1/o3/o4)
+    // REJECT the legacy `max_tokens` param (use `max_completion_tokens`)
+    // AND reject any non-default `temperature`. Branch the body so the
+    // catalog's gpt-5 Premium tier works instead of 400-ing every call.
     const reasoning = isOpenAiReasoningModel(model);
     const body: Record<string, any> = {
       model,
       messages: [
         { role: 'system', content: input.system },
-        { role: 'user', content: input.userPrompt },
+        ...turns.map((m) => ({ role: m.role, content: m.content })),
       ],
     };
     if (reasoning) {
@@ -438,41 +466,19 @@ export async function dispatchAi(
   if (provider === 'google') {
     // Google Generative Language API (Gemini).
     //
-    // SECURITY (audit-B1 fix, 2026-05-25) — Google supports the key
-    // as either a URL query param OR an `x-goog-api-key` header.
-    // We use the HEADER so the key never appears in the request URL
-    // — Google error responses commonly echo the request URL in
-    // `INVALID_ARGUMENT` / quota / 429 bodies, and that body is
-    // logged upstream in ai.service.ts:331. Header keeps the key
-    // out of `errorBody` entirely.
-    //
-    // System instruction is a sibling of `contents` in this API,
-    // not a message role. maxOutputTokens is camelCase (not
-    // max_tokens). Every model in the catalog (gemini-2.x family)
-    // supports `systemInstruction`; legacy gemini-pro (which we don't
-    // list) does not — moot since we control the catalog.
+    // SECURITY (audit-B1 fix, 2026-05-25) — pass the key as the
+    // `x-goog-api-key` header (not a URL query param) so it never appears
+    // in error bodies. System instruction is a sibling of `contents`, not
+    // a message role; assistant turns use the `model` role.
     const url =
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}` +
       `:generateContent`;
     // ── Gemini 2.5 "thinking" handling (2026-06-08, BYOK launch fix) ──
-    // The 2.5 family (flash, flash-lite, pro) are REASONING models: they
-    // emit internal "thinking" tokens that count against maxOutputTokens.
-    // With a small budget (our paths use 10 / 300 / 1500) the model can
-    // spend the ENTIRE budget thinking and return finishReason=MAX_TOKENS
-    // with ZERO visible text — a 200 OK with an empty body. Downstream that
-    // empty reply becomes a confusing "unparseable / not enabled" error,
-    // and (worse) test-on-save treats the empty-but-OK reply as a PASS, so
-    // a 2.5 key SAVES yet every real generation silently fails. This was the
-    // root cause of "I added my Gemini key but AI still says not enabled."
-    //   • 2.5 Flash / Flash-Lite → disable thinking outright. Our tasks
-    //     (short snippets, alt-text, schema-anchored template JSON) need no
-    //     chain-of-thought; non-thinking Flash is faster + cheaper and never
-    //     truncates a small budget.
-    //   • 2.5 Pro → thinking can't be disabled (a min budget is enforced),
-    //     so give a generous output ceiling instead. Billing is on tokens
-    //     ACTUALLY emitted, not the ceiling, so a short reply still costs a
-    //     few cents — the cap only prevents truncation.
-    //   • Non-2.5 models (gemini-2.0-flash, …) don't think — left untouched.
+    // The 2.5 family emits internal "thinking" tokens that count against
+    // maxOutputTokens; on a small budget it can spend the whole budget
+    // thinking and return finishReason=MAX_TOKENS with ZERO text. Disable
+    // thinking on 2.5-flash; give 2.5-pro (thinking unkillable) a generous
+    // ceiling. Non-2.5 models are left untouched.
     const genConfig: Record<string, any> = {
       temperature: TEMPERATURE,
       maxOutputTokens: input.maxTokens,
@@ -490,35 +496,30 @@ export async function dispatchAi(
       },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: input.system }] },
-        contents: [{ role: 'user', parts: [{ text: input.userPrompt }] }],
+        contents: turns.map((m) => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content }],
+        })),
         generationConfig: genConfig,
       }),
-      // SECURITY (audit-B2 fix) — see fetch-timeout note above the
-      // anthropic branch.
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     if (!res.ok) {
-      // Belt-and-suspenders against B1: even with the header path
-      // above, redact any `key=...` substring that might appear in
-      // forwarded error bodies (e.g. Cloudflare interstitials,
-      // proxied error pages) before bubbling upstream.
+      // Belt-and-suspenders: redact any `key=...` substring that might
+      // appear in forwarded error bodies before bubbling upstream.
       let errorBody = await res.text().catch(() => '');
       errorBody = errorBody.replace(/[?&]key=[^&\s"']+/g, '&key=REDACTED');
       return { raw: '', errorStatus: res.status, errorBody };
     }
     const json = (await res.json()) as any;
-    // Gemini returns parts[] under candidates[0].content.parts.
     const parts = json?.candidates?.[0]?.content?.parts;
     const text = Array.isArray(parts)
       ? parts.map((p: any) => p?.text ?? '').join('')
       : '';
     if (!text.trim()) {
-      // 200 OK but no usable text. Almost always finishReason=MAX_TOKENS
-      // (thinking exhausted the budget — see the thinking note above) or a
-      // SAFETY / RECITATION block. Surface it as an error envelope rather
-      // than a silent '' so callers give the operator an actionable message
-      // instead of a cryptic parse failure, AND so test-on-save stops
-      // treating an empty reply as a valid key.
+      // 200 OK but no usable text — almost always finishReason=MAX_TOKENS
+      // (thinking exhausted the budget) or a SAFETY/RECITATION block.
+      // Surface it as an error envelope rather than a silent ''.
       const finish =
         json?.candidates?.[0]?.finishReason ||
         json?.promptFeedback?.blockReason ||
