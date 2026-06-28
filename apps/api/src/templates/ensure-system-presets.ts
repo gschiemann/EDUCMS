@@ -110,14 +110,20 @@ const SIG_INDUSTRY_VERTICAL: Record<string, string> = {
   hospitality: 'HOSPITALITY',
   'menus-pos': 'RESTAURANT',
   qsr: 'QSR',
-  // 2026-06-08 new-industry signage handoff. church→WORSHIP, gym→GYM,
-  // office→CORPORATE, clinic→HEALTHCARE map cleanly to existing launch
-  // verticals. veterinary / real-estate / museum have NO dedicated vertical
-  // yet, so they are PROVISIONALLY tagged to the nearest existing vertical so
-  // the boards surface rather than being stranded invisible. Promote to
-  // dedicated VETERINARY / REAL_ESTATE / MUSEUM verticals (verticals.ts + the
+  // 2026-06-08 new-industry signage handoff. gym→GYM, office→CORPORATE,
+  // clinic→HEALTHCARE map cleanly to existing launch verticals. veterinary /
+  // real-estate / museum have NO dedicated vertical yet, so they are
+  // PROVISIONALLY tagged to the nearest existing vertical so the boards
+  // surface rather than being stranded invisible. Promote to dedicated
+  // VETERINARY / REAL_ESTATE / MUSEUM verticals (verticals.ts + the
   // §14 per-vertical copy) when the product adds them.
-  church: 'WORSHIP',
+  //
+  // 2026-06-27 — `church: 'WORSHIP'` was REMOVED: the EXTERNAL_HTML
+  // `preset-sig-church-*` costumes were dropped from system-presets.ts in
+  // favor of the editable React-zone WORSHIP_TEMPLATE_PRESETS (spread into
+  // ALL_PRESETS above + tagged WORSHIP at line ~69). No `preset-sig-church-*`
+  // id remains for this map to match, so the entry is dead — removed to keep
+  // the WORSHIP gallery a single, fully-editable pack (no duplicate boards).
   veterinary: 'HEALTHCARE',
   gym: 'GYM',
   'real-estate': 'CORPORATE',

@@ -110,19 +110,18 @@ export const SIGNAGE_TEMPLATES: SignageTemplate[] = [
   { id: "preset-sig-qsr-08", name: "QSR · Rewards", group: "QSR", url: "/templates/signage/qsr/08-rewards.html" },
   { id: "preset-sig-qsr-09", name: "QSR · Hours", group: "QSR", url: "/templates/signage/qsr/09-hours-location.html" },
   { id: "preset-sig-qsr-10", name: "QSR · Now Hiring", group: "QSR", url: "/templates/signage/qsr/10-now-hiring.html" },
-  // New industry signage (2026-06-08 designer handoff) — church, veterinary,
-  // gym, real-estate, museum, office, clinic. Single-file EXTERNAL_HTML with the
+  // New industry signage (2026-06-08 designer handoff) — veterinary, gym,
+  // real-estate, museum, office, clinic. Single-file EXTERNAL_HTML with the
   // V6 click-to-edit shim, Taurus-safe (inset→longhand), landscape + portrait.
-  { id: "preset-sig-church-01", name: "Church · Welcome", group: "Church", url: "/templates/signage/church/01-welcome-flagship.html" },
-  { id: "preset-sig-church-02", name: "Church · Welcome (Light)", group: "Church", url: "/templates/signage/church/01-welcome-light.html" },
-  { id: "preset-sig-church-03", name: "Church · Series", group: "Church", url: "/templates/signage/church/02-series.html" },
-  { id: "preset-sig-church-04", name: "Church · Series (Light)", group: "Church", url: "/templates/signage/church/02-series-light.html" },
-  { id: "preset-sig-church-05", name: "Church · This Week", group: "Church", url: "/templates/signage/church/03-this-week.html" },
-  { id: "preset-sig-church-06", name: "Church · This Week (Light)", group: "Church", url: "/templates/signage/church/03-this-week-light.html" },
-  { id: "preset-sig-church-07", name: "Church · Next Steps & Give", group: "Church", url: "/templates/signage/church/04-next-steps-give.html" },
-  { id: "preset-sig-church-08", name: "Church · Next Steps & Give (Light)", group: "Church", url: "/templates/signage/church/04-next-steps-give-light.html" },
-  { id: "preset-sig-church-09", name: "Church · Prayer Wall", group: "Church", url: "/templates/signage/church/05-prayer-wall.html" },
-  { id: "preset-sig-church-10", name: "Church · Prayer Wall (Light)", group: "Church", url: "/templates/signage/church/05-prayer-wall-light.html" },
+  //
+  // 2026-06-27 — the 10 `preset-sig-church-*` EXTERNAL_HTML worship boards were
+  // REMOVED from this builder dropdown. WORSHIP now ships the fully-editable
+  // React-zone pack (worship-presets.ts → WORSHIP gallery), so the un-editable
+  // sandboxed-iframe church costumes are retired everywhere an operator could
+  // land on them — gallery AND this "switch template" picker — to keep WORSHIP a
+  // single editable pack (beta finding P1 #2 + #10). The `/templates/signage/
+  // church/*.html` files stay on disk (legacy playlists / existing rows render
+  // them) but are no longer offered as a new choice.
   { id: "preset-sig-veterinary-01", name: "Veterinary · Waiting Room", group: "Veterinary", url: "/templates/signage/veterinary/01-waiting-room-flagship.html" },
   { id: "preset-sig-veterinary-02", name: "Veterinary · Adoptable Pets", group: "Veterinary", url: "/templates/signage/veterinary/02-adopt-gallery.html" },
   { id: "preset-sig-gym-01", name: "Gym · Floor Board", group: "Gym", url: "/templates/signage/gym/01-floor-board-flagship.html" },
