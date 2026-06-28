@@ -74,6 +74,7 @@ import {
   ARCHETYPE_IDS,
   THEMES,
   type ArchetypeId,
+  type ArchetypeCopy,
   type ArchetypeImagePlan,
   type ArchetypeItem,
   type ArtDirectorSpec,
@@ -550,6 +551,50 @@ export class AiService {
     } catch {
       return {};
     }
+  }
+
+  /**
+   * FUNCTIONAL BINDING (2026-06-28) — read the tenant CONTEXT a generated board
+   * needs to be live, beyond brand colors:
+   *   - weatherLocation: the venue's coordinates ("lat,lng") when geocoded, else
+   *     its city/name — seeds the WEATHER widget so it shows THIS venue, not the
+   *     placeholder "Springfield".
+   *   - logoUrl: the tenant's brand-kit logo — seeds a requested LOGO widget so
+   *     it isn't an empty slot.
+   * Best-effort: returns {} on any error / missing row so a generation NEVER
+   * breaks on a missing column. Mirrors tenantBrandColors' defensive shape.
+   */
+  private async tenantSignageContext(
+    tenantId: string,
+  ): Promise<{ weatherLocation?: string; logoUrl?: string }> {
+    const out: { weatherLocation?: string; logoUrl?: string } = {};
+    try {
+      const t = await this.prisma.client.tenant.findUnique({
+        where: { id: tenantId },
+        select: { name: true, latitude: true, longitude: true } as any,
+      }) as any;
+      if (t) {
+        // Prefer geocoded coordinates (most precise for Open-Meteo); fall back to
+        // the venue name as a city hint. The renderer's useLiveWeather accepts a
+        // 'lat,lng' pair, a city name, or a ZIP.
+        if (typeof t.latitude === 'number' && typeof t.longitude === 'number') {
+          out.weatherLocation = `${t.latitude},${t.longitude}`;
+        } else if (typeof t.name === 'string' && t.name.trim()) {
+          out.weatherLocation = t.name.trim().slice(0, 80);
+        }
+      }
+    } catch { /* best-effort */ }
+    try {
+      const b = await this.prisma.client.tenantBranding.findUnique({
+        where: { tenantId },
+        select: { logoUrl: true } as any,
+      }) as any;
+      const url = b?.logoUrl;
+      if (typeof url === 'string' && /^https?:\/\//i.test(url.trim())) {
+        out.logoUrl = url.trim().slice(0, 2048);
+      }
+    } catch { /* best-effort */ }
+    return out;
   }
 
   async generate(opts: AiGenerateRequest & { tenantId: string; userId?: string }): Promise<AiGenerateResponse> {
@@ -2137,6 +2182,11 @@ export class AiService {
     // the venue's colors when the spec asks for it.
     const brand = await this.tenantBrandColors(opts.tenantId);
 
+    // FUNCTIONAL BINDING (2026-06-28) — fetch tenant CONTEXT (weather location +
+    // brand-kit logo) so the engine can seed a requested WEATHER/LOGO widget with
+    // real, working data instead of a placeholder. Best-effort: {} on miss.
+    const ctx = await this.tenantSignageContext(opts.tenantId);
+
     // GUIDED-INTAKE: derive the mapper directives (forced SurfaceStyle +
     // custom-palette override + required widget zones) from the intake.
     const mapDirectives = guidedMapperDirectives(opts.intake);
@@ -2150,6 +2200,12 @@ export class AiService {
       forcedSurfaceStyle: mapDirectives?.forcedSurfaceStyle,
       paletteOverride: mapDirectives?.paletteOverride,
       requiredWidgets: mapDirectives?.requiredWidgets,
+      // FUNCTIONAL BINDING — tenant context + the model's user-supplied values
+      // (event date + CTA/QR URL) so weather/logo/countdown/qr/cta widgets WORK.
+      weatherLocation: ctx.weatherLocation,
+      logoUrl: ctx.logoUrl,
+      eventDate: spec.copy?.eventDate,
+      ctaHref: spec.copy?.ctaHref,
     });
 
     // Re-run the SAME safety scrubbing the other generators use. IMPORTANT:
@@ -3384,6 +3440,44 @@ function parseArtItems(raw: any): ArchetypeItem[] | undefined {
   return out.length ? out : undefined;
 }
 
+/**
+ * FUNCTIONAL BINDING (2026-06-28) — parse the model's countdown target. Accept
+ * a string the renderer's resolveCountdownTarget can read: an ISO date
+ * ('YYYY-MM-DD') or full ISO datetime. Validated via Date.parse so a garbled /
+ * non-date string is dropped (the countdown then keeps its no-target behavior).
+ * Returns a NORMALIZED ISO string so the persisted config is canonical. Refuses
+ * absurd years (>9999) — keeps the stored value sane.
+ */
+function parseEventDate(v: any): string | undefined {
+  if (typeof v !== 'string') return undefined;
+  const t = v.trim().slice(0, 40);
+  if (!t) return undefined;
+  const ms = Date.parse(t);
+  if (!Number.isFinite(ms)) return undefined;
+  const d = new Date(ms);
+  if (d.getUTCFullYear() > 9999 || d.getUTCFullYear() < 1970) return undefined;
+  return d.toISOString();
+}
+
+/**
+ * FUNCTIONAL BINDING (2026-06-28) — parse the model's CTA destination URL. It
+ * powers the QR code AND the CTA zone's open-url touchAction, so it MUST clear
+ * the SAME SSRF guard the touchAction sanitizer uses: https only, no private /
+ * loopback / link-local / IP-literal host. Anything else is dropped (the QR
+ * then has no target and is omitted; the CTA stays a plain text pill).
+ */
+function parseCtaHref(v: any): string | undefined {
+  if (typeof v !== 'string') return undefined;
+  const t = v.trim().slice(0, 1000);
+  if (!/^https:\/\//i.test(t)) return undefined;
+  try {
+    validatePublicUrl(t);
+  } catch {
+    return undefined;
+  }
+  return t;
+}
+
 // Wave 3 (2026-06-27): the model is now allowed to plan a GENERATED background
 // photo for the image archetypes. The plan it emits is still parsed
 // defensively — only 'generate'/'stock'/'none' are accepted (default 'none'),
@@ -3490,13 +3584,21 @@ function parseSceneSpec(raw: any, fallback?: { archetype?: string; theme?: strin
     obj.theme === 'brand' || ART_THEME_IDS.has(obj.theme) ? obj.theme : fbTheme;
   const rawCopy = obj.copy && typeof obj.copy === 'object' ? obj.copy : {};
   const headline = clampStr(rawCopy.headline, 120) || 'Welcome';
-  const copy = {
+  const copy: ArchetypeCopy = {
     kicker: clampStr(rawCopy.kicker, 60),
     headline,
     body: clampStr(rawCopy.body, 240),
     cta: clampStr(rawCopy.cta, 60),
     items: parseArtItems(rawCopy.items),
   };
+  // FUNCTIONAL BINDING (2026-06-28) — accept the model's user-supplied values
+  // that make live/link widgets work, validated defensively. eventDate must be
+  // a real parseable date; ctaHref must be a SAFE public https URL (same SSRF
+  // guard the touchAction sanitizer uses — never an IP-literal/private host).
+  const eventDate = parseEventDate(rawCopy.eventDate);
+  if (eventDate) copy.eventDate = eventDate;
+  const ctaHref = parseCtaHref(rawCopy.ctaHref);
+  if (ctaHref) copy.ctaHref = ctaHref;
   const accentSlot: AccentSlot = ART_ACCENT_SLOTS.includes(obj.accentSlot)
     ? obj.accentSlot
     : 'cta';

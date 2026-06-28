@@ -205,6 +205,26 @@ export function parseConciergeTurn(raw: string): ConciergeTurn {
     };
   }
 
+  // DOUBLE-ENCODE UNWRAP (2026-06-28) — GPT-5 sometimes nests the whole
+  // envelope: `reply` is itself a JSON string that parses to ANOTHER
+  // {reply, intake, missing, ready, brief} object. Without unwrapping, the
+  // customer would SEE raw JSON in the chat and the intake/brief would be
+  // lost. If `reply` parses to an object that carries a `reply` key, use the
+  // INNER envelope instead.
+  if (typeof obj.reply === 'string') {
+    const innerText = obj.reply.trim();
+    if (innerText.startsWith('{') && innerText.endsWith('}')) {
+      try {
+        const inner = JSON.parse(innerText);
+        if (inner && typeof inner === 'object' && typeof inner.reply === 'string') {
+          obj = inner;
+        }
+      } catch {
+        // Not actually nested JSON — leave the reply as the literal string.
+      }
+    }
+  }
+
   const reply =
     typeof obj.reply === 'string' && obj.reply.trim()
       ? obj.reply.trim().slice(0, 2000)

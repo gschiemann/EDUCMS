@@ -58,6 +58,18 @@ export interface ArchetypeCopy {
    * Each item carries a label and an optional value (price/time/stat).
    */
   items?: ArchetypeItem[];
+  /**
+   * FUNCTIONAL BINDING (2026-06-28) — user-supplied values that make live/link
+   * widgets actually work. Both optional + additive (the LLM emits them only
+   * when it knows them; the parser validates/clamps them):
+   *   - eventDate: an ISO date/time for a COUNTDOWN (purpose 'event'). Without
+   *     it the countdown renders a meaningless "~30 days from now" counter.
+   *   - ctaHref:   the real destination URL for the CTA — also used as the QR
+   *     target and the CTA zone's open-url touchAction. Without it the QR
+   *     points at example.com and the CTA does nothing when tapped.
+   */
+  eventDate?: string;
+  ctaHref?: string;
 }
 
 export interface ArchetypeItem {

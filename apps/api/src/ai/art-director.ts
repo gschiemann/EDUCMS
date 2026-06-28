@@ -38,6 +38,7 @@ import {
   enforce,
   themeBackgroundCss,
   type ArchetypeId,
+  type ArchetypeItem,
   type ArtDirectorSpec,
   type ResolvedZone,
   type SceneSpec,
@@ -58,6 +59,13 @@ export interface MappedZone {
   defaultConfig?: Record<string, any>;
   /** Scene NAME (controller resolves to created scene id). */
   sceneRef?: string;
+  /**
+   * FUNCTIONAL BINDING (2026-06-28) — an interactive tap action on the zone
+   * (open-url/goto-scene/etc.). The sanitizer (sanitizeTouchTemplate) validates
+   * + SSRF-guards it. Emitted for a CTA zone when a real ctaHref is supplied so
+   * a generated kiosk CTA actually does something when tapped.
+   */
+  touchAction?: { type: string; target?: string; [k: string]: any };
 }
 
 export interface MappedBackground {
@@ -93,6 +101,20 @@ export interface ArtDirectorMapOptions {
   forcedSurfaceStyle?: Partial<SurfaceStyle>;
   paletteOverride?: Partial<ThemePalette>;
   requiredWidgets?: GuidedRequiredWidget[];
+  /**
+   * FUNCTIONAL BINDING (2026-06-28) — tenant CONTEXT + user-supplied values that
+   * make live/link widgets actually work. All optional + best-effort (a missing
+   * value just leaves the widget on its prior no-op default — zero regression):
+   *   - weatherLocation: the venue's "lat,lng" / city → WEATHER config.location.
+   *   - logoUrl:         the tenant brand-kit logo → LOGO config.assetUrl.
+   *   - eventDate:       ISO event date (from the spec copy) → COUNTDOWN config.targetDate.
+   *   - ctaHref:         the real CTA/QR destination (from the spec copy) → QR
+   *                      config.qrText AND a CTA zone's open-url touchAction.
+   */
+  weatherLocation?: string;
+  logoUrl?: string;
+  eventDate?: string;
+  ctaHref?: string;
 }
 
 /** The content widgets the guided-intake may require (mirror of GuidedWidget). */
@@ -639,41 +661,136 @@ const SLOT_COVERS: Record<string, GuidedRequiredWidget | undefined> = {
   logo: 'logo',
 };
 
-/** A sensible default defaultConfig per required widget, themed where it helps. */
+/**
+ * FUNCTIONAL BINDING (2026-06-28) — convert the art-director's `items` into the
+ * format the LUNCH_MENU widget parses: a NEWLINE-joined string, one
+ * "Label: value · detail" line per row (the renderer splits each line on the
+ * first ':' into a day/label + the items). This lands the deals/prices the model
+ * gathered onto the actual widget. Returns undefined for an empty/missing list
+ * so the caller omits `menu` (widget keeps its placeholder).
+ */
+function itemsToMenuString(items: ArchetypeItem[] | undefined): string | undefined {
+  if (!Array.isArray(items) || !items.length) return undefined;
+  const lines: string[] = [];
+  for (const it of items) {
+    const label = (it?.label || '').trim();
+    if (!label) continue;
+    // Build the right-hand side from value (+ detail). The renderer shows the
+    // text after the FIRST ':' as the row's items, so keep the label colon-free.
+    const cleanLabel = label.replace(/:/g, ' ').trim();
+    const rhsParts = [it?.value, it?.detail].map((p) => (p || '').trim()).filter(Boolean);
+    const rhs = rhsParts.join(' · ');
+    lines.push(rhs ? `${cleanLabel}: ${rhs}` : cleanLabel);
+  }
+  return lines.length ? lines.join('\n') : undefined;
+}
+
+/**
+ * A sensible default defaultConfig per required widget, themed where it helps.
+ *
+ * FUNCTIONAL BINDING (2026-06-28): when the operator/tenant CONTEXT carries the
+ * value a live/link widget needs (weather location, logo URL, event date, CTA
+ * URL, menu items), we seed it here so the generated board WORKS instead of
+ * shipping a placeholder. When the value is absent we keep the widget's prior
+ * no-op default — zero regression.
+ */
 function requiredWidgetConfig(
   w: GuidedRequiredWidget,
   theme: ThemeBundle,
+  opts: ArtDirectorMapOptions,
+  copy?: SceneSpec['copy'],
 ): Record<string, any> {
   const palette = theme.palette;
   switch (w) {
     case 'headline':
-      return { content: 'Headline', sizeMode: 'absolute', fontSize: 96, fontFamily: theme.fontPair.display, fontWeight: 800, color: palette.ink, alignment: 'left', lineHeight: 1.1 };
+      // Prefer the REAL headline the model wrote; the placeholder is a last resort.
+      return { content: (copy?.headline || '').trim() || 'Headline', sizeMode: 'absolute', fontSize: 96, fontFamily: theme.fontPair.display, fontWeight: 800, color: palette.ink, alignment: 'left', lineHeight: 1.1 };
     case 'subtext':
-      return { content: 'Add your supporting text here', sizeMode: 'absolute', fontSize: 44, fontFamily: theme.fontPair.body, color: palette.muted, alignment: 'left', lineHeight: 1.35 };
+      // Real supporting copy when present; the placeholder is filtered out by the
+      // caller (no-placeholder rule) so it never actually ships to a board.
+      return { content: (copy?.body || '').trim() || 'Add your supporting text here', sizeMode: 'absolute', fontSize: 44, fontFamily: theme.fontPair.body, color: palette.muted, alignment: 'left', lineHeight: 1.35 };
     case 'cta':
-      return { content: 'Learn more', sizeMode: 'absolute', fontSize: 50, fontFamily: theme.fontPair.body, fontWeight: 700, color: palette.onAccent, bgColor: palette.accent, alignment: 'center', borderRadius: theme.radiusPx, paddingMode: 'button', lineHeight: 1.05 };
+      // Real CTA copy when present, else a sensible default ("Learn more") — the
+      // CTA is kept only when it has real copy OR a real ctaHref (caller rule).
+      return { content: (copy?.cta || '').trim() || 'Learn more', sizeMode: 'absolute', fontSize: 50, fontFamily: theme.fontPair.body, fontWeight: 700, color: palette.onAccent, bgColor: palette.accent, alignment: 'center', borderRadius: theme.radiusPx, paddingMode: 'button', lineHeight: 1.05 };
     case 'logo':
-      return { fit: 'contain' };
+      // Seed the tenant brand-kit logo so the widget shows a mark, not an empty
+      // "Add Logo" shield. Absent → fit-only (the renderer's placeholder).
+      return opts.logoUrl ? { fit: 'contain', assetUrl: opts.logoUrl } : { fit: 'contain' };
     case 'image':
       return { fit: 'cover', bgGradient: imageHalfGradient(theme) };
-    case 'qr':
-      // The renderer builds a real QR from `qrText`; the gradient is the load fallback.
-      return { fit: 'contain', qrText: 'https://example.com', bgColor: '#ffffff' };
+    case 'qr': {
+      // The renderer builds a REAL scannable QR from `qrText`. Seed the real CTA
+      // destination when we have one; OMIT qrText otherwise (a QR to example.com
+      // is worse than no code — the renderer shows the load gradient instead).
+      const cfg: Record<string, any> = { fit: 'contain', bgColor: '#ffffff' };
+      if (opts.ctaHref) cfg.qrText = opts.ctaHref;
+      return cfg;
+    }
     case 'clock':
       return { showSeconds: false, hour12: true, color: palette.ink, fontFamily: theme.fontPair.display, fontSize: 72 };
     case 'date':
       return { mode: 'date', showDate: true, dateFormat: 'long', color: palette.ink, fontFamily: theme.fontPair.body, fontSize: 48 };
-    case 'weather':
-      return { color: palette.ink, fontFamily: theme.fontPair.body, fontSize: 48 };
-    case 'countdown':
-      return { label: 'Counting down to', units: ['days', 'hours', 'minutes', 'seconds'], color: palette.ink, accentColor: palette.accent, fontFamily: theme.fontPair.display, fontSize: 64 };
-    case 'menu':
-      return { color: palette.ink, fontFamily: theme.fontPair.body };
-    case 'ticker':
-      return { messages: ['Add your scrolling message here'], color: palette.ink, bgColor: palette.surface, fontFamily: theme.fontPair.body, fontSize: 44 };
+    case 'weather': {
+      // Seed the venue's location so the widget shows THIS venue's weather, not
+      // the placeholder city. Absent → the renderer's own default city.
+      const cfg: Record<string, any> = { color: palette.ink, fontFamily: theme.fontPair.body, fontSize: 48 };
+      if (opts.weatherLocation) cfg.location = opts.weatherLocation;
+      return cfg;
+    }
+    case 'countdown': {
+      // Seed the REAL event date so the countdown ticks to it. Absent → omit
+      // targetDate (the renderer keeps its no-target behavior — never a fake
+      // "now+30d" that we deliberately invented here).
+      const cfg: Record<string, any> = { mode: 'date', label: 'Counting down to', units: ['days', 'hours', 'minutes', 'seconds'], color: palette.ink, accentColor: palette.accent, fontFamily: theme.fontPair.display, fontSize: 64 };
+      if (opts.eventDate) cfg.targetDate = opts.eventDate;
+      return cfg;
+    }
+    case 'menu': {
+      // THE #1 FIX — populate the LUNCH_MENU's `menu` field from the items the
+      // model wrote, in the renderer's expected format (a newline-joined string,
+      // one "Label: value/detail" line per row). Without this the deals the AI
+      // gathered are LOST and the widget falls back to the hardcoded cafeteria
+      // sample. Absent items → omit `menu` (the widget then shows its own
+      // placeholder, the prior behavior).
+      const cfg: Record<string, any> = { color: palette.ink, fontFamily: theme.fontPair.body };
+      const menu = itemsToMenuString(copy?.items);
+      if (menu) cfg.menu = menu;
+      return cfg;
+    }
+    case 'ticker': {
+      // Use REAL messages the model wrote (body line + item labels) — never the
+      // "Add your scrolling message here" placeholder. The caller drops a ticker
+      // with no real copy (no-placeholder rule), so by the time we get here there
+      // IS real copy; tickerMessages mirrors tickerHasRealCopy's source.
+      const cfg: Record<string, any> = { color: palette.ink, bgColor: palette.surface, fontFamily: theme.fontPair.body, fontSize: 44 };
+      const messages = tickerMessages(copy);
+      if (messages.length) cfg.messages = messages;
+      return cfg;
+    }
     default:
       return {};
   }
+}
+
+/** The real lines a TICKER can scroll, drawn from copy the model actually wrote:
+ *  the body line + any item labels (with their values). Empty when there's none. */
+function tickerMessages(copy: SceneSpec['copy'] | undefined): string[] {
+  const out: string[] = [];
+  const body = (copy?.body || '').trim();
+  if (body) out.push(body);
+  for (const it of copy?.items ?? []) {
+    const label = (it?.label || '').trim();
+    if (!label) continue;
+    const value = (it?.value || '').trim();
+    out.push(value ? `${label} — ${value}` : label);
+  }
+  return out.slice(0, 12);
+}
+
+/** True when there is REAL copy for a ticker to scroll (no placeholder ship). */
+function tickerHasRealCopy(copy: SceneSpec['copy'] | undefined): boolean {
+  return tickerMessages(copy).length > 0;
 }
 
 /**
@@ -687,6 +804,8 @@ function buildRequiredWidgetZones(
   presentSlots: Set<string>,
   theme: ThemeBundle,
   sceneRef: string | undefined,
+  opts: ArtDirectorMapOptions,
+  copy?: SceneSpec['copy'],
 ): MappedZone[] {
   // De-dupe + drop widgets the archetype already provides (covered by a slot).
   const covered = new Set<GuidedRequiredWidget>();
@@ -699,6 +818,13 @@ function buildRequiredWidgetZones(
   for (const w of required) {
     if (covered.has(w) || seen.has(w)) continue;
     seen.add(w);
+    // NO-PLACEHOLDER RULE (2026-06-28): never ship a TEXT-bearing supplemental
+    // zone whose only content is the built-in placeholder. A 'subtext' with no
+    // real body copy, a 'ticker' with no real messages, or a 'cta' with neither
+    // real copy NOR a real ctaHref is a fill-in-the-blank dud — DROP it instead.
+    if (w === 'subtext' && !(copy?.body || '').trim()) continue;
+    if (w === 'ticker' && !tickerHasRealCopy(copy)) continue;
+    if (w === 'cta' && !(copy?.cta || '').trim() && !opts.ctaHref) continue;
     wanted.push(w);
   }
   if (!wanted.length) return [];
@@ -719,16 +845,23 @@ function buildRequiredWidgetZones(
     const colW = (usable - gap * (members.length - 1)) / members.length;
     members.forEach((w, i) => {
       const x = left + i * (colW + gap);
-      zones.push({
+      const zone: MappedZone = {
         name: w,
         widgetType: REQUIRED_WIDGET_TYPE[w],
         x: r3(x),
         y: r3(yTop),
         width: r3(colW),
         height: r3(h),
-        defaultConfig: requiredWidgetConfig(w, theme),
+        defaultConfig: requiredWidgetConfig(w, theme, opts, copy),
         sceneRef,
-      });
+      };
+      // FUNCTIONAL BINDING: a CTA with a real destination becomes a tappable
+      // open-url action (the sanitizer re-validates it). Without a ctaHref it
+      // stays a plain text pill (kiosks add the tap by hand in the builder).
+      if (w === 'cta' && opts.ctaHref) {
+        zone.touchAction = { type: 'open-url', target: opts.ctaHref };
+      }
+      zones.push(zone);
     });
   };
 
@@ -787,7 +920,7 @@ export function artDirectorSpecToTemplate(
       // GUIDED-INTAKE: each scene of a set is its own designed screen, so each
       // gets the operator's required widgets (de-duped against its own slots).
       if (opts.requiredWidgets && opts.requiredWidgets.length) {
-        const extra = buildRequiredWidgetZones(opts.requiredWidgets, presentSlots, theme, candidate);
+        const extra = buildRequiredWidgetZones(opts.requiredWidgets, presentSlots, theme, candidate, opts, scene.copy);
         for (const z of extra) {
           if (zones.length >= MAX_GENERATED_TEMPLATE_ZONES) break;
           zones.push(z);
@@ -804,7 +937,7 @@ export function artDirectorSpecToTemplate(
     }
     // GUIDED-INTAKE: append the operator's required widgets the layout lacks.
     if (opts.requiredWidgets && opts.requiredWidgets.length) {
-      const extra = buildRequiredWidgetZones(opts.requiredWidgets, presentSlots, theme, undefined);
+      const extra = buildRequiredWidgetZones(opts.requiredWidgets, presentSlots, theme, undefined, opts, spec.copy);
       for (const z of extra) {
         if (zones.length >= MAX_GENERATED_TEMPLATE_ZONES) break;
         zones.push(z);
