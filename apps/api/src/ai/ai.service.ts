@@ -46,6 +46,7 @@ import {
   aiRecordEvent,
   AI_RL_SUCCESS_PREFIX,
   AI_HOURLY_WINDOW_MS,
+  resolveAiHourlyCap,
 } from './ai-hourly-cap';
 import {
   aiImageWindowCount,
@@ -294,7 +295,9 @@ export class AiService {
   // is durable + replica-safe already) PLUS max_tokens=300/1500 per
   // call. So a Redis outage can let a tenant briefly exceed 30/hr,
   // but it can NOT let them exceed the monthly platform credit budget.
-  private readonly HOURLY_CAP = 30;
+  // 2026-06-28 — env-overridable (AI_HOURLY_CAP), default raised 30 → 120 for
+  // the multi-call Signage Concierge + 3-candidate flow. See resolveAiHourlyCap.
+  private readonly HOURLY_CAP = resolveAiHourlyCap();
   private readonly HOURLY_FAILURE_CAP = 200;
   private readonly WINDOW_MS = AI_HOURLY_WINDOW_MS;
   // Image generation is slower than text (a 1024² render is seconds, not

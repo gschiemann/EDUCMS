@@ -112,6 +112,10 @@ export interface SignageConciergeProps {
   onGenerate: (args: { prompt: string; intake: ConciergeIntake }) => void;
   /** True while the page's generate request is in flight. */
   generating: boolean;
+  /** Error from the page's GENERATE step (e.g. hourly AI cap, provider error) —
+   *  surfaced here so a failed "Generate 3 boards" never looks like it did
+   *  nothing. Set by the parent's generate handler; null/undefined = no error. */
+  generateError?: string | null;
   /** The Touch / Display / Build-a-set toggle (owned by the page). */
   typeToggle?: React.ReactNode;
   /** The canvas / "Match a screen" picker (owned by the page). */
@@ -121,7 +125,7 @@ export interface SignageConciergeProps {
 type ChipKind = ConciergeReference['kind'];
 
 export function SignageConcierge(props: SignageConciergeProps) {
-  const { canvas, interactive, vertical, onGenerate, generating, typeToggle, screenPicker } = props;
+  const { canvas, interactive, vertical, onGenerate, generating, generateError, typeToggle, screenPicker } = props;
 
   // Display transcript. The leading assistant greeting is display-only and
   // is NOT sent in the FIRST chat call (the contract prefers a leading USER
@@ -451,6 +455,18 @@ export function SignageConcierge(props: SignageConciergeProps) {
         <div className="flex flex-col gap-2 pt-1 border-t border-slate-100">
           {typeToggle}
           {screenPicker}
+        </div>
+      )}
+
+      {/* ── Generate error (e.g. hourly AI cap) — surfaced so a failed
+            "Generate 3 boards" never looks like nothing happened. ── */}
+      {generateError && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2"
+        >
+          <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+          <span>{generateError}</span>
         </div>
       )}
 

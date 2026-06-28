@@ -50,7 +50,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { openAiKey } from './ai-key-cipher';
 import { mapProviderQuotaError, defaultModelFor } from './ai-providers';
-import { aiWindowCount, aiRecordEvent } from './ai-hourly-cap';
+import { aiWindowCount, aiRecordEvent, resolveAiHourlyCap } from './ai-hourly-cap';
 
 /** Providers whose vision API alt-text supports. All three of the
  *  catalog providers are now covered (OpenAI + Anthropic via platform
@@ -79,11 +79,12 @@ const GOOGLE_EST_COST_USD = 0.001;
 // reader.
 const MAX_ALT_TEXT_CHARS = 160;
 
-// Shared per-tenant hourly AI cap (audit §3 P3, 2026-05-30). Alt-text
-// now counts against the SAME 30/hr ceiling as sparkle + touch-template
-// (one shared Redis sorted set, ai:rl:gen:<tenantId>). MUST match
-// AiService.HOURLY_CAP — both consume the same budget.
-const HOURLY_CAP = 30;
+// Shared per-tenant hourly AI cap (audit §3 P3, 2026-05-30). Alt-text counts
+// against the SAME ceiling as sparkle + touch-template + the concierge (one
+// shared Redis sorted set, ai:rl:gen:<tenantId>). Resolved from the SAME
+// env-overridable source as AiService.HOURLY_CAP so both stay in lock-step
+// (2026-06-28: default raised 30 → 120, AI_HOURLY_CAP override).
+const HOURLY_CAP = resolveAiHourlyCap();
 
 // Hard fetch timeout. Alt-text generation runs fire-and-forget after
 // upload; we don't want a hung provider holding a connection.

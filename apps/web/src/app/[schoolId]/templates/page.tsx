@@ -1466,6 +1466,7 @@ export default function TemplatesPage() {
                         canvas={aiCanvas}
                         interactive={aiInteractive}
                         generating={generateCandidates.isPending}
+                        generateError={aiError}
                         screenPicker={screenPicker}
                         typeToggle={typeToggle}
                         onGenerate={runGenerateFromConcierge}

@@ -32,6 +32,7 @@ jest.mock('./ai-providers', () => {
   return { ...actual, dispatchAi: jest.fn() };
 });
 import { dispatchAi } from './ai-providers';
+import { resolveAiHourlyCap } from './ai-hourly-cap';
 const dispatchMock = dispatchAi as unknown as jest.Mock;
 
 // ── In-memory Prisma stub ───────────────────────────────────────────
@@ -180,10 +181,13 @@ describe('AiService — P1-14 Redis-backed rate limits', () => {
   it('throws the hourly cap error from the Redis count WITHOUT calling the provider', async () => {
     process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
     const fake = makeFakeRedisClient();
-    // Pre-fill the success window to the 30/hr cap.
+    // Pre-fill the success window to the hourly cap (env-overridable; default
+    // 120 since 2026-06-28 — fill to the resolved cap so this stays correct
+    // regardless of the default).
     const now = Date.now();
+    const cap = resolveAiHourlyCap();
     const win = new Map<string, number>();
-    for (let i = 0; i < 30; i++) win.set(`m${i}`, now - 1000);
+    for (let i = 0; i < cap; i++) win.set(`m${i}`, now - 1000);
     fake.sets.set('ai:rl:gen:t1', win);
     const { service } = buildService(fake);
 

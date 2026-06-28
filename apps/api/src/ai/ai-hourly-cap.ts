@@ -34,6 +34,26 @@
 export const AI_HOURLY_WINDOW_MS = 60 * 60 * 1000;
 
 /**
+ * The shared per-tenant hourly "successful generation" cap, env-overridable via
+ * `AI_HOURLY_CAP` (a higher tier / paid plan can raise it without a deploy).
+ *
+ * 2026-06-28 — default raised 30 → 120. The old 30 was sized for the
+ * single-call sparkle button; the Signage Concierge is a MULTI-TURN
+ * conversation PLUS a 3-candidate generation, so one finished template is
+ * ~6-10 successful calls. At 30/hr an operator hit the wall after ~3-4
+ * templates ("You've hit this hour's AI limit") — unacceptable for the flagship
+ * "create beautiful templates" flow. The cap is a runaway/abuse guard, NOT the
+ * cost ceiling: the durable spend limit is the MONTHLY platform cap
+ * (Tenant.aiPlatformUsage*, Postgres) for platform-key tenants + per-call
+ * max_tokens. For BYOK tenants (own provider key) the hourly cap is purely an
+ * abuse guard — no platform cost — so raising it is safe.
+ */
+export function resolveAiHourlyCap(): number {
+  const n = parseInt(process.env.AI_HOURLY_CAP || '', 10);
+  return Number.isFinite(n) && n > 0 ? n : 120;
+}
+
+/**
  * Redis key prefix for the shared "successful generation" sliding
  * window. Tenant id is appended. MUST match across every AI surface so
  * the 30/hr cap is one shared ceiling — do not fork this string.
