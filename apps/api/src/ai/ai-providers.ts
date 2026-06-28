@@ -375,9 +375,22 @@ export async function dispatchAiMessages(
   const TEMPERATURE = 0.7;
 
   // SECURITY (audit-B2 fix, 2026-05-25) — Node 20's `fetch` has no default
-  // timeout; a hung provider would hold an Express handler open forever.
-  // Every call attaches AbortSignal.timeout(15s).
-  const FETCH_TIMEOUT_MS = 15_000;
+  // timeout; a hung provider would hold an Express handler open forever, so
+  // every call attaches an AbortSignal.timeout.
+  //
+  // 2026-06-28 BETA FINDING — the old flat 15s aborted EVERY gpt-5 call with
+  // "AI service unreachable", making the premium tier unusable across the WHOLE
+  // app (concierge AND board generation). Reasoning / premium models (gpt-5 +
+  // o-series, gemini-2.5, claude opus) emit internal reasoning tokens and
+  // routinely take 20-60s+ for a non-trivial generation. So the ceiling is now
+  // model-aware: a generous 90s for slow reasoning models, a still-comfortable
+  // 30s for fast models (Haiku / gpt-4o-mini / Gemini Flash return in
+  // seconds — the ceiling is an abort guard, not a wait). Railway's edge proxy
+  // tolerates this; AI calls are user-initiated + capped at 30/hr, so a longer
+  // ceiling can't pile up workers under load.
+  const slowModel =
+    isOpenAiReasoningModel(model) || /^gemini-2\.5/.test(model) || /opus/i.test(model);
+  const FETCH_TIMEOUT_MS = slowModel ? 90_000 : 30_000;
 
   // Defensive: every provider requires a non-empty conversation. Callers
   // always pass at least one user turn, but guard so a bad caller gets a
