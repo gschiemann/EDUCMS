@@ -36,11 +36,18 @@ import { AiAltTextService, AiAltTextQuotaError } from '../ai/ai-alt-text.service
 //
 // If an operator hits this list with a .mov or .avi, the assertUploadIntent
 // error message tells them to export as MP4 (H.264) — universal.
-// Lane-1 P1: image/svg+xml dropped from ALLOWED_TYPES until AssetSanitizerService
-// is actually wired into the upload path. SVG can contain <script> and is rendered
-// raw via dangerouslySetInnerHTML by brand-kit / sidebar / branding-wizard. The
-// sanitizer service exists at apps/api/src/security/asset-sanitizer.service.ts
-// but has zero callers. Re-add SVG once the service runs on every upload buffer.
+// image/svg+xml is intentionally NOT allowed in the media library. Two
+// reasons, in order of importance:
+//   1) The main upload path is presign → direct browser→Supabase, so the
+//      server never sees the bytes and CANNOT sanitize an SVG before it
+//      lands in storage. Asset SVGs are rendered raw elsewhere, so an
+//      unsanitized one is a stored-XSS vector (<script>, on* handlers,
+//      <foreignObject>, javascript: xlink:href).
+//   2) Logos — the one place SVG fidelity matters — already have a safe,
+//      server-sanitized path: the Brand Kit flow (BrandingController.adopt
+//      + sanitizeLogoSvg / DOMPurify). Operators who want an SVG logo go
+//      there. assertUploadIntent() below returns a friendly message that
+//      points them at it instead of a generic "unsupported format."
 const ALLOWED_TYPES = [
   'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/x-icon', 'image/bmp',
   'video/mp4', 'video/webm', 'video/x-m4v',
@@ -248,10 +255,21 @@ export class AssetsController {
       throw new HttpException(rejectReason, HttpStatus.UNSUPPORTED_MEDIA_TYPE);
     }
 
+    // SVG gets its own friendly, actionable message — see the ALLOWED_TYPES
+    // comment for why it isn't a media-library format. Point the operator at
+    // the place SVG DOES work (Brand Kit logos) instead of a generic
+    // "unsupported." Mirrors getUnsupportedReason() in the web assets page.
+    if (ext === '.svg' || explicit === 'image/svg+xml') {
+      throw new HttpException(
+        "SVG isn't supported in the media library (an SVG can carry hidden scripts, so we don't store raw SVGs as content). For a logo, use Settings → Branding — that path accepts SVG safely. Otherwise export this as a PNG and upload that.",
+        HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+      );
+    }
+
     const mimeType = this.normalizeMimeType(filename, contentType);
     if (!ALLOWED_TYPES.includes(mimeType)) {
       throw new HttpException(
-        'File type is not supported. Allowed: images (JPG/PNG/WebP/GIF/SVG), MP4/WebM video, audio (MP3/OGG/WAV/M4A), PDF.',
+        'File type is not supported. Allowed: images (JPG/PNG/WebP/GIF), MP4/WebM video, audio (MP3/OGG/WAV/M4A), PDF.',
         HttpStatus.UNSUPPORTED_MEDIA_TYPE,
       );
     }
@@ -535,7 +553,7 @@ export class AssetsController {
   ) {
     if (!file) {
       throw new HttpException(
-        'No file uploaded, or file type is not supported. Allowed: images (JPG/PNG/WebP/GIF/SVG), MP4/WebM video, audio, PDF. QuickTime .mov and AVI are not supported — export as MP4 first.',
+        'No file uploaded, or file type is not supported. Allowed: images (JPG/PNG/WebP/GIF), MP4/WebM video, audio, PDF. QuickTime .mov and AVI are not supported — export as MP4 first. For an SVG logo, use Settings → Branding.',
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -857,7 +875,7 @@ export class AssetsController {
   ) {
     if (!file) {
       throw new HttpException(
-        'No file uploaded, or file type is not supported. Allowed: images (JPG/PNG/WebP/GIF/SVG), MP4/WebM video, audio, PDF. QuickTime .mov and AVI are not supported — export as MP4 first.',
+        'No file uploaded, or file type is not supported. Allowed: images (JPG/PNG/WebP/GIF), MP4/WebM video, audio, PDF. QuickTime .mov and AVI are not supported — export as MP4 first. For an SVG logo, use Settings → Branding.',
         HttpStatus.BAD_REQUEST,
       );
     }

@@ -29,7 +29,14 @@ const MAX_FILE_SIZE = 500 * 1024 * 1024;
 // means the operator gets an instant, actionable error instead of a
 // 4-hour debugging trip. Server enforces the same allowlist in
 // assets.controller.ts (assertUploadIntent + Supabase bucket policy).
-const ACCEPT_STRING = '.jpg,.jpeg,.png,.webp,.gif,.svg,.bmp,.mp4,.m4v,.webm,.mp3,.ogg,.wav,.m4a,.pdf';
+// SVG is intentionally NOT in the asset-library picker. The library uploads
+// direct browser→Supabase (presign), so the server never sees the bytes and
+// can't sanitize the SVG before it lands in storage — and asset SVGs are
+// rendered raw elsewhere, so an unsanitized one is a stored-XSS vector. Logos
+// DO support SVG via the Brand Kit flow (Settings → Branding), which scrapes
+// or uploads through a server-side-sanitized path. getUnsupportedReason()
+// below explains this if an operator drag-drops a .svg anyway.
+const ACCEPT_STRING = '.jpg,.jpeg,.png,.webp,.gif,.bmp,.mp4,.m4v,.webm,.mp3,.ogg,.wav,.m4a,.pdf';
 
 // Friendly, per-format rejection messages. Mirrors REJECTED_EXTENSIONS /
 // REJECTED_MIMES on the server — keeping the rule list in two places is
@@ -43,6 +50,12 @@ function getUnsupportedReason(file: File): string | null {
   }
   if (name.endsWith('.avi') || type === 'video/x-msvideo') {
     return "AVI files aren't supported by browsers. Convert to MP4 (H.264) and re-upload.";
+  }
+  if (name.endsWith('.svg') || type === 'image/svg+xml') {
+    // Friendly, actionable — and points at the place SVG DOES work (logos),
+    // instead of a generic "unsupported format." Mirrors the server message
+    // in assets.controller.ts assertUploadIntent().
+    return "SVG isn't supported in the media library (an SVG can carry hidden scripts, so we don't store raw SVGs as content). For a logo, use Settings → Branding — that path accepts SVG safely. Otherwise export this as a PNG (most design tools: File → Export → PNG) and upload that.";
   }
   return null;
 }

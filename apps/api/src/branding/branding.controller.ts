@@ -41,6 +41,7 @@ import { BrandingRateLimiter } from './branding-rate-limiter';
 import { safeFetch, SsrfError } from './safe-fetch';
 import { derivePalette, parseColor, ensureContrast, contrastRatio, bestTextOn, ContrastReport } from './color-utils';
 import { sanitizeLogoSvg } from './sanitize-svg';
+import { selectVectorLogo } from './select-vector-logo';
 
 import { createHash } from 'crypto';
 
@@ -208,9 +209,30 @@ export class BrandingController {
         this.logger.warn(`Inline SVG logo upload failed, falling back to inline: ${e?.message}`);
       }
     }
-    // Also try the raster logoUrl as a fallback OR primary (when the
-    // SVG was rejected). If logoUrl is already set from the SVG branch,
-    // skip — the SVG wins.
+    // VECTOR-PRESERVATION (task #223, the Domino's bug). Before we fall
+    // back to a raster, scan EVERY scraped candidate for a vector logo
+    // (inline SVG or a `.svg` URL) and keep it as a vector. The chosen
+    // candidate's inline SVG can be rejected (corrupt-in-transit or a
+    // text-only wordmark) OR the operator may have pinned a raster while a
+    // crisp SVG sits further down the list — both used to rasterize the
+    // logo and ship a pixelated wordmark to a 4K wall. Only runs when the
+    // primary SVG branch above didn't already produce a logo.
+    if (!logoUrl) {
+      const vector = await this.pickVectorLogoCandidate(
+        body.logos,
+        `branding/${tenantId}`,
+        isRealSvg,
+        tenantId,
+      );
+      if (vector) {
+        logoUrl = vector.logoUrl;
+        if (!logoSvgInline && vector.logoSvgInline) logoSvgInline = vector.logoSvgInline;
+      }
+    }
+
+    // Also try the raster logoUrl as a fallback OR primary (when no vector
+    // candidate existed). If logoUrl is already set from the SVG/vector
+    // branch, skip — the vector wins.
     if (!logoUrl && chosenLogo) {
       try {
         logoUrl = await this.rehostUrl(chosenLogo, `branding/${tenantId}/logo`);
@@ -970,6 +992,65 @@ export class BrandingController {
   }
 
   /**
+   * Prefer a VECTOR logo over a raster one when the scrape captured a
+   * vector — the Domino's bug (task #223): the operator's pinned SVG was
+   * rejected (corrupt-in-transit or a text-only wordmark with no shape
+   * primitive), so adopt fell straight through to the raster og:image and
+   * the crisp scalable wordmark was lost. A logo that renders pixelated on
+   * a 4K wall is the most visible "this looks cheap" failure on a signage
+   * product.
+   *
+   * Scans EVERY candidate (not just position #1) for a vector and rehosts
+   * it before any raster fallback runs:
+   *   1) inline SVG that passes the same isRealSvg shape-primitive gate — we
+   *      sanitize it for the inline-render path AND store the raw SVG as the
+   *      <img>-served asset (same dual-trust model as the main adopt path).
+   *   2) a candidate whose URL is a `.svg` (or `isSvg` flag) — rehostUrl
+   *      preserves the `image/svg+xml` content-type, so it stays vector.
+   *
+   * Returns the rehosted vector logoUrl + (for inline SVGs) the sanitized
+   * inline markup, or null when no vector candidate exists. Pure-ish: only
+   * touches storage; never persists.
+   */
+  private async pickVectorLogoCandidate(
+    logos: AdoptBody['logos'],
+    keyPrefix: string,
+    isRealSvg: (s: string | null) => boolean,
+    tenantId: string,
+  ): Promise<{ logoUrl: string; logoSvgInline: string | null } | null> {
+    // Pure selection lives in select-vector-logo.ts (unit-tested in
+    // isolation — no NestJS / DOMPurify in the test path). Here we just do
+    // the I/O for whatever it picked.
+    const choice = selectVectorLogo(logos, isRealSvg);
+    if (!choice) return null;
+
+    if (choice.kind === 'inline') {
+      try {
+        const cleaned = sanitizeLogoSvg(choice.svgInline);
+        // Store the RAW SVG (sandboxed via <img>) — preserves <image>,
+        // <use>, filters the inline-sanitizer would strip. The sanitized
+        // copy goes inline via dangerouslySetInnerHTML.
+        const url = await this.rehost(choice.svgInline, `${keyPrefix}/logo.svg`, 'image/svg+xml');
+        this.logger.log(`[adopt] preserved vector logo (inline SVG) for tenant ${tenantId}`);
+        return { logoUrl: url, logoSvgInline: cleaned };
+      } catch (e: any) {
+        this.logger.warn(`[adopt] inline-SVG vector rehost failed for tenant ${tenantId}: ${e?.message}`);
+        return null;
+      }
+    }
+
+    // URL-referenced SVG — rehostUrl preserves the image/svg+xml mime.
+    try {
+      const rehosted = await this.rehostUrl(choice.url, `${keyPrefix}/logo-vec`);
+      this.logger.log(`[adopt] preserved vector logo (SVG URL) for tenant ${tenantId}`);
+      return { logoUrl: rehosted, logoSvgInline: null };
+    } catch (e: any) {
+      this.logger.warn(`[adopt] vector-SVG-URL rehost failed for tenant ${tenantId}: ${e?.message}`);
+      return null;
+    }
+  }
+
+  /**
    * Shared helper used by per-template adopt (and reusable for tenant
    * adopt in a future refactor). Takes a scrape preview body, a
    * Supabase storage prefix to scope the rehosted assets, and an
@@ -1018,6 +1099,18 @@ export class BrandingController {
         logoUrl = await this.rehost(chosenSvg, `${keyPrefix}/logo.svg`, 'image/svg+xml');
       } catch (e: any) {
         this.logger.warn(`[brand-kit] inline SVG upload failed for ${keyPrefix}: ${e?.message}`);
+      }
+    }
+
+    // VECTOR-PRESERVATION (task #223) — same as the global adopt path:
+    // prefer a scraped vector logo (inline SVG or `.svg` URL) over a raster
+    // before the raster fallback, so a rejected/unpinned vector still keeps
+    // its scalability on a per-template brand kit.
+    if (!logoUrl) {
+      const vector = await this.pickVectorLogoCandidate(body.logos, keyPrefix, isRealSvg, keyPrefix);
+      if (vector) {
+        logoUrl = vector.logoUrl;
+        if (!logoSvgInline && vector.logoSvgInline) logoSvgInline = vector.logoSvgInline;
       }
     }
 
