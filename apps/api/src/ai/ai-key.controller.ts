@@ -284,6 +284,101 @@ export class AiKeyController {
   }
 
   /**
+   * Change ONLY the model, reusing the already-stored key. Lets an
+   * operator switch e.g. GPT-4o mini → GPT-5 right from the connected
+   * card WITHOUT re-pasting the key (2026-06-28 — the connected state
+   * had no model picker, so the only way to change models was to
+   * Replace the whole key). Decrypts the stored key, re-tests it against
+   * the NEW model (so a model the key can't access fails here, not later
+   * at generate-time), then updates aiModel.
+   */
+  @Post('model')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async setModel(@Request() req: any, @Body() body: { model?: string }) {
+    const tenant = (await this.prisma.client.tenant.findUnique({
+      where: { id: req.user.tenantId },
+      select: { aiProvider: true, aiKeyEncrypted: true } as any,
+    })) as any;
+    if (!tenant?.aiKeyEncrypted || !tenant?.aiProvider) {
+      throw new HttpException(
+        'Connect a provider key first, then you can switch models.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const provider = coerceProvider(tenant.aiProvider);
+    if (!provider) {
+      throw new HttpException('Stored AI provider is unrecognized — reconnect your key.', HttpStatus.BAD_REQUEST);
+    }
+    const requestedModel = (body?.model || '').trim();
+    if (!requestedModel || !isKnownModel(provider, requestedModel)) {
+      throw new HttpException(
+        `Unknown model "${requestedModel}" for provider ${provider}. Pick one from the list.`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    let apiKey: string;
+    try {
+      apiKey = openAiKey(tenant.aiKeyEncrypted);
+    } catch {
+      throw new HttpException(
+        'Your saved key could not be read (it may need re-entering). Use "Replace key".',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    // Re-test the STORED key against the NEW model — a model the key
+    // lacks access to fails here with a clear message, not later when
+    // an operator clicks "generate" and gets a confusing error.
+    const testResult = await dispatchAi(provider, {
+      apiKey,
+      model: requestedModel,
+      system: 'Reply with the single character "ok" and nothing else.',
+      userPrompt: 'ping',
+      maxTokens: 10,
+    });
+    if (testResult.errorStatus) {
+      const providerLabel = provider === 'anthropic' ? 'Anthropic' : provider === 'openai' ? 'OpenAI' : 'Google';
+      const quotaErr = mapProviderQuotaError(provider, testResult.errorStatus, testResult.errorBody);
+      const detail = quotaErr
+        ? quotaErr.message
+        : testResult.errorStatus === 403
+          ? `Your key doesn't have access to "${requestedModel}". Some models are gated by your ${providerLabel} plan — pick another.`
+          : testResult.errorStatus === 404
+            ? `"${requestedModel}" wasn't found on your ${providerLabel} account — try another model.`
+            : testResult.errorStatus === 401
+              ? `Your saved ${providerLabel} key was rejected — use "Replace key" to re-enter it.`
+              : testResult.errorStatus === 429
+                ? `Provider rate-limited the test — try again in a moment.`
+                : `Provider rejected the request (${testResult.errorStatus}).`;
+      await this.prisma.client.auditLog.create({
+        data: {
+          action: 'AI_KEY_TEST_FAILED',
+          targetType: 'tenant',
+          targetId: req.user.tenantId,
+          tenantId: req.user.tenantId,
+          userId: req.user.id,
+          details: JSON.stringify({ provider, model: requestedModel, upstreamStatus: testResult.errorStatus, quotaError: !!quotaErr, via: 'model-switch' }),
+        },
+      }).catch(() => { /* audit best-effort */ });
+      throw new HttpException(detail, HttpStatus.BAD_REQUEST);
+    }
+    await this.prisma.client.tenant.update({
+      where: { id: req.user.tenantId },
+      data: { aiModel: requestedModel } as any,
+    });
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'AI_KEY_MODEL_CHANGED',
+        targetType: 'tenant',
+        targetId: req.user.tenantId,
+        tenantId: req.user.tenantId,
+        userId: req.user.id,
+        details: JSON.stringify({ provider, model: requestedModel }),
+      },
+    }).catch(() => { /* audit best-effort */ });
+    return { ok: true, provider, model: requestedModel };
+  }
+
+  /**
    * Clear the tenant's AI key. Tenant falls back to platform free-trial
    * key if one is set on the deployment, else AI gracefully refuses.
    */

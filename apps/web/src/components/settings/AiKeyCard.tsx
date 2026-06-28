@@ -73,6 +73,7 @@ export function AiKeyCard() {
   const [showKey, setShowKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [switchingModel, setSwitchingModel] = useState(false);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
   const currentProviderInfo = catalog?.find((p) => p.id === provider);
@@ -117,6 +118,29 @@ export function AiKeyCard() {
     const p = catalog?.find((x) => x.id === next);
     const def = p?.models.find((m) => m.default) || p?.models[0];
     setModel(def?.id || '');
+  };
+
+  // Switch ONLY the model on an already-connected provider, reusing the
+  // stored key (no re-pasting). 2026-06-28 — the connected card had no
+  // model picker, so changing models meant Replace-key-and-retype.
+  const handleModelChange = async (nextModel: string) => {
+    if (!nextModel || nextModel === status?.model) return;
+    setSwitchingModel(true);
+    setMsg(null);
+    try {
+      const res = await apiFetch<{ ok: true; provider: string; model: string }>('/ai/key/model', {
+        method: 'POST',
+        body: JSON.stringify({ model: nextModel }),
+      });
+      const pInfo = catalog?.find((p) => p.id === res.provider);
+      const mInfo = pInfo?.models.find((m) => m.id === res.model);
+      setStatus((s) => (s ? { ...s, model: res.model } : s));
+      setMsg({ kind: 'ok', text: `Switched to ${mInfo?.label || res.model}. New AI generations use it now.` });
+    } catch (e: any) {
+      setMsg({ kind: 'err', text: e?.message || 'Could not switch model.' });
+    } finally {
+      setSwitchingModel(false);
+    }
   };
 
   const handleSave = async () => {
@@ -204,6 +228,32 @@ export function AiKeyCard() {
               )}
             </div>
           </div>
+          {/* Inline MODEL SWITCHER — change the model without re-entering
+              the key. 2026-06-28: the connected card previously had no model
+              picker; the only way to switch was Replace-key + retype. */}
+          {cfgProvider && cfgProvider.models.length > 0 && (
+            <div>
+              <label className="block text-[11px] font-bold text-emerald-900 mb-1">Model</label>
+              <select
+                value={status.model || ''}
+                disabled={switchingModel || saving}
+                onChange={(e) => handleModelChange(e.target.value)}
+                className="w-full rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 disabled:opacity-60"
+              >
+                {!status.model && <option value="">Choose a model…</option>}
+                {cfgProvider.models.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </select>
+              <div className="text-[11px] text-emerald-700/80 mt-1 inline-flex items-center gap-1">
+                {switchingModel ? (
+                  <><Loader2 className="w-3 h-3 animate-spin" /> Switching — testing your key on the new model…</>
+                ) : (
+                  'Switch models anytime — uses your saved key, no need to re-enter it.'
+                )}
+              </div>
+            </div>
+          )}
           <div className="flex gap-2">
             <button
               type="button"
