@@ -372,3 +372,82 @@ describe('scrimToCss', () => {
     expect(css).toContain('transparent 62%');
   });
 });
+
+// ───────────────────────────────────────────────────────────────────────
+// TASTE TIER (2026-06-28) — the mapper must emit the new design tokens:
+// per-zone entrance motion, the kicker badge/divider, accent2 on the menu
+// value column, tabular figures + balance on the focal text, display tracking.
+// ───────────────────────────────────────────────────────────────────────
+describe('artDirectorSpecToTemplate — taste-tier design tokens', () => {
+  const tasteSpec = (archetype: ArchetypeId): ArtDirectorSpec => ({
+    archetype,
+    theme: 'neon-sports', // a theme with accent2 + a kicker badge + tracking
+    copy: {
+      kicker: 'GAME DAY',
+      headline: 'Beat State',
+      body: 'Kickoff at seven on Friday night.',
+      cta: 'Get loud',
+      items: [
+        { label: 'Nachos', value: '$8' },
+        { label: 'Hot Dog', value: '$5' },
+        { label: 'Soda', value: '$3' },
+      ],
+    },
+    image: { mode: 'none' },
+    accentSlot: 'cta',
+  });
+
+  it('attaches a staggered entrance descriptor to every zone', () => {
+    const out = artDirectorSpecToTemplate(tasteSpec('title-cta'), OPTS);
+    for (const z of out.zones) {
+      const e = z.defaultConfig?.entrance;
+      expect(e).toBeTruthy();
+      expect(['rise-fade', 'fade', 'pop', 'none']).toContain(e.kind);
+      expect(typeof e.delayMs).toBe('number');
+      expect(e.durationMs).toBeGreaterThanOrEqual(300);
+    }
+    // Stagger order: kicker reveals before the CTA.
+    const kicker = out.zones.find((z) => z.name === 'kicker');
+    const cta = out.zones.find((z) => z.name === 'cta');
+    expect(kicker!.defaultConfig!.entrance.delayMs).toBeLessThan(
+      cta!.defaultConfig!.entrance.delayMs,
+    );
+  });
+
+  it('renders the kicker as a badge OR an accent2 divider (never both)', () => {
+    const out = artDirectorSpecToTemplate(tasteSpec('title-cta'), OPTS);
+    const kicker = out.zones.find((z) => z.name === 'kicker')!;
+    const cfg = kicker.defaultConfig!;
+    const hasBadge = !!cfg.kickerBadge;
+    const hasDivider = !!cfg.accentDivider;
+    expect(hasBadge || hasDivider).toBe(true);
+    expect(hasBadge && hasDivider).toBe(false);
+    // neon-sports is high-energy → a FILLED badge.
+    expect(cfg.kickerBadge?.variant).toBe('filled');
+  });
+
+  it('gives the display headline negative tracking + balanced wrapping', () => {
+    const out = artDirectorSpecToTemplate(tasteSpec('title-cta'), OPTS);
+    const headline = out.zones.find((z) => z.name === 'headline')!.defaultConfig!;
+    expect(headline.textWrapBalance).toBe(true);
+    expect(headline.fontFeatureSettings).toContain('kern');
+    // neon-sports displayTracking is negative.
+    expect(String(headline.letterSpacing)).toMatch(/^-/);
+  });
+
+  it('gives the focal stat tabular figures', () => {
+    const out = artDirectorSpecToTemplate(
+      { ...tasteSpec('stat-spotlight'), copy: { headline: '111', body: 'Wins' } },
+      OPTS,
+    );
+    const stat = out.zones.find((z) => z.name === 'stat')!.defaultConfig!;
+    expect(stat.fontVariantNumeric).toBe('tabular-nums');
+  });
+
+  it('colors the menu value column in accent2 with tabular figures', () => {
+    const out = artDirectorSpecToTemplate(tasteSpec('menu-list'), OPTS);
+    const row = out.zones.find((z) => z.name === 'listItem')!.defaultConfig!;
+    expect(row.valueTabular).toBe(true);
+    expect(row.valueColor).toBeTruthy();
+  });
+});
