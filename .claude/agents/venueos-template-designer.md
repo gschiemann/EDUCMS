@@ -304,6 +304,28 @@ unsure, open one and match its bones.
   each grade+holiday gets its OWN composition; ES holiday = the rainbow-animated standard
   (animated arc, falling decor, oversized layered headline, illustrated focal scene).
 
+### 4d. VenueOS live engines / data-binding catalog (what you can wire in)
+
+You design self-contained HTML + the shim — NOT React widgets. But the same
+underlying VenueOS capabilities exist; design your board so the real data has a
+home. The authoritative, code-verified catalog of what each VenueOS widget DOES
+and the config/data that makes it functional is
+`docs/research/2026-06-28-signage-concierge/01-CAPABILITY-MAP.md` and the shared
+map `apps/api/src/ai/venueos-capability-map.ts` — read it when a board needs live
+data. The wireable HTML-side hooks:
+
+- **Live clock / date** — `data-live="clock"` (§4b date engine). Self-ticks, no data.
+- **Live schedule / now-next / bell / departures** — the §4a schedule engine
+  (`data-schedule` + `data-sched-*`). Lights the current row from the wall clock.
+- **Live POS menu** (QSR / bar / restaurant menu boards) — the `applyMenu()` shim
+  pulls live per-location POS prices + auto-86 (`posSync`); design menu rows so
+  each item has a `data-field` the shim can overlay a live price/sold-out onto.
+  Honest: this is live ONLY when the operator's POS is connected.
+- **Photo / image slots** — `data-imgslot` (operator/AI-supplied image, brand hero).
+- **Editable text/copy** — `data-field` (the editability + click-to-edit contract, §1).
+- **NOT live here** — there is no real RSS/social feed; do NOT build a "live news /
+  social" panel that implies a feed that doesn't exist. Use editable text rows.
+
 ## 5. Filing + registration (so it lands in the right place and filters correctly)
 
 When you finish a template, state the **filename + category + group + schoolLevel**

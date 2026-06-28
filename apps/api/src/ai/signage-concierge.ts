@@ -22,6 +22,14 @@
  */
 
 import type { ConciergeIntake, ConciergeReference } from '@cms/api-types';
+// The single shared VenueOS Capability Map (venueos-capability-map.ts) — what
+// each widget DOES + the live integrations the concierge may PROPOSE. Same
+// source of truth the art-director / touch / signage prompts use, so the
+// concierge can knowledgeably steer the customer toward FUNCTIONAL boards.
+import {
+  WIDGET_CAPABILITY_BLOCK,
+  INTEGRATION_VOCABULARY_BLOCK,
+} from './venueos-capability-map';
 
 /** Budget for one concierge turn — a short reply + the cumulative intake
  *  JSON + a design brief. ~1100 tokens is comfortable headroom. */
@@ -104,7 +112,9 @@ export function buildConciergeSystemPrompt(args: {
     `- Ask ONE focused thing at a time (occasionally two tightly-related). Build on what they've said — never re-ask something already known or obvious from the vertical.`,
     `- Be concrete and visual. Offer a quick suggestion they can accept ("I'd go bold and appetizing with a big hero photo — sound right?") rather than open-ended menus.`,
     `- Proactively invite references EARLY: "If you have a website I can match your brand to, paste it — or upload a photo of signage you like and I'll match the look." Treat any reference they share as the strongest signal of the look they want.`,
-    `- When you have enough to nail it (purpose + a clear look + the key message/content + which elements), set ready=true and tell them you're ready to generate 3 options. Don't drag the interview out — aim to be ready within a few exchanges. The customer can also generate at any time, so always keep the brief field usable.`,
+    `- GATHER THE DATA THAT MAKES WIDGETS WORK — a board with empty widgets is a dud. When an element needs live/real data, get it in the same breath: a COUNTDOWN needs the event's date and time; WEATHER needs the location (default to the venue's own city — don't make them think about it); a MENU needs the actual items + prices (and offer "I can pull live prices straight from your POS if it's connected"); a CTA or QR needs the destination URL/phone. Capture these in the brief so the generated boards arrive functional, not as fill-in-the-blank shells.`,
+    `- PROPOSE live capabilities the customer may not know exist — that's the magic. If they're a restaurant/bar, mention live POS menu pricing + auto-86; a sports venue, live scores; anyone outdoors-relevant, live weather. Be honest about what needs a connection ("once your POS is linked").`,
+    `- When you have enough to nail it (purpose + a clear look + the key message/content + which elements + the data those elements need), set ready=true and tell them you're ready to generate 3 options. Don't drag the interview out — aim to be ready within a few exchanges. The customer can also generate at any time, so always keep the brief field usable.`,
     '',
     `WHAT YOU ARE GATHERING (fill the "intake" object — use these EXACT values):`,
     `- purpose: one of welcome | menu | promo | event | announcement | feature | photo-hero (what the board is for).`,
@@ -112,6 +122,11 @@ export function buildConciergeSystemPrompt(args: {
     `- palette: "brand" (use their brand colors) OR { "colors": ["#hex", ...] } when they or a reference specify colors. Omit to let the engine choose.`,
     `- background: solid | gradient | textured | photo (photo = a real generated/brand photo background; great for hero/welcome/feature boards).`,
     `- widgets: the content elements they need, from: headline, subtext, logo, image, clock, date, weather, countdown, menu, ticker, qr, cta. Include only what serves THIS board.`,
+    '',
+    `VENUEOS CAPABILITIES — know what each widget DOES and the data it needs, so you ask for the RIGHT things and never promise a feature that's a placeholder:`,
+    WIDGET_CAPABILITY_BLOCK,
+    '',
+    INTEGRATION_VOCABULARY_BLOCK,
     '',
     `THE DESIGN BRIEF (the "brief" field): a tight 2-4 sentence brief the image/layout generator will use. Capture: the board's purpose + audience, the mood/look, the ACTUAL copy to show (draft a punchy headline + any supporting line/items in the brand voice), the palette/imagery direction, and which elements must appear. This is what makes all 3 candidates hit the mark — write it as if briefing a designer who can't ask follow-ups.`,
     refBlock,

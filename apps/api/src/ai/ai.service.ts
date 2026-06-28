@@ -105,6 +105,11 @@ import {
 // host/IP-range check the branding scraper uses (loopback, link-
 // local, RFC1918, ULA, IPv6 ::1, 0.0.0.0, multicast, etc.).
 import { validatePublicUrl } from '../branding/safe-fetch';
+// The single shared VenueOS Capability Map (venueos-capability-map.ts) — what
+// each widget DOES + the data that makes it functional. Interpolated into the
+// template-generation system prompts so the model builds FUNCTIONAL boards, not
+// pretty empty shells. ONE source of truth shared with the concierge prompt.
+import { WIDGET_CAPABILITY_BLOCK } from './venueos-capability-map';
 
 // Audit-W5 fix (2026-05-25) — error-message helper. Was inlined
 // `provider === 'anthropic' ? 'Anthropic' : 'OpenAI'` three times,
@@ -3214,7 +3219,9 @@ SHAPE:
     "headline": "<the one dominant message, <= 6 words, REQUIRED>",
     "body": "<supporting line, <= 15 words, optional>",
     "cta": "<call to action, <= 4 words, optional>",
-    "items": [ { "label": "<name>", "value": "<price/time/stat, optional>", "detail": "<short note, optional>" } ]
+    "items": [ { "label": "<name>", "value": "<price/time/stat, optional>", "detail": "<short note, optional>" } ],
+    "eventDate": "<ISO date/time of the event, ONLY when a countdown / event date is in play, optional>",
+    "ctaHref": "<the REAL destination https:// URL the CTA / QR should point to, optional>"
   },
   "image": { "mode": "<generate | none>", "prompt": "<for mode:generate — a vivid, brand-appropriate, TEXT-FREE background photo prompt>" },
   "accentSlot": "<one of: kicker | headline | cta | stat | none>",
@@ -3285,6 +3292,21 @@ IMAGERY:
     quote-spotlight, title-cta): emit {"mode":"none"} — they ride a clean themed gradient.
 
 ACCENT: exactly ONE element carries the accent color. Default to "cta" when a CTA exists, else the most important element.
+
+FUNCTIONAL DATA — your copy becomes real, working widgets. Fill the data that
+makes them function, never a placeholder:
+  - "items" become the ROWS of a live menu/list widget — write the ACTUAL menu
+    items + prices the operator described (e.g. {"label":"Draft beer","value":"$5"}).
+    A menu with no items renders the generic cafeteria sample, not their menu.
+  - For an EVENT/countdown board, set copy.eventDate to the REAL event date/time
+    (ISO 8601). Without it the countdown shows a meaningless "~30 days" counter.
+    If you don't know the date, leave it out (the operator will be asked) — never
+    invent one.
+  - For a CTA or a "Scan to join / Order online" message, set copy.ctaHref to the
+    REAL destination https:// URL. It powers both the tap action and any QR code.
+    Omit it if you don't have a real URL — never use example.com.
+
+${WIDGET_CAPABILITY_BLOCK}
 
 For a multi-screen interactive kiosk, include "scenes": each entry is a FULL spec
 (its own archetype + theme + copy + image + accentSlot) so every screen is a
@@ -3556,6 +3578,8 @@ OUTPUT SCHEMA (strict — no extra fields):
                                       // index).
 }
 
+${WIDGET_CAPABILITY_BLOCK}
+
 RULES:
 - For a SINGLE-scene template: 3-8 zones. Don't crowd the canvas; whitespace is good.
 - No two zones should overlap by more than 10%.
@@ -3708,6 +3732,8 @@ OUTPUT SCHEMA (strict — no extra fields):
     }
   ]
 }
+
+${WIDGET_CAPABILITY_BLOCK}
 
 RULES:
 - 3-8 zones. Don't crowd the canvas; whitespace is good.
