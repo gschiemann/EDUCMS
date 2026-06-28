@@ -338,6 +338,19 @@ export interface ThemePalette {
   onAccent: string;
   /** A muted/secondary text tone (still passes large-text floor). */
   muted: string;
+  /**
+   * SECONDARY accent (2026-06-28 taste tier) — a restrained second pop colour
+   * (analogous ±30° or complementary to `accent`), used for a SINGLE secondary
+   * emphasis element (kicker / divider) so a board reads as a 2-colour SYSTEM
+   * rather than monochrome. The primary `accent` discipline is unchanged — at
+   * most ONE element carries the primary accent; `accent2` is the lighter touch
+   * on the eyebrow/rule. Guaranteed to clear the LARGE text floor against
+   * `background` (themes.spec.ts). Optional + additive — a theme/derived palette
+   * without it falls back to `accent` everywhere (today's behaviour).
+   */
+  accent2?: string;
+  /** Text color guaranteed legible ON the `accent2` fill. Defaults to onAccent. */
+  onAccent2?: string;
 }
 
 export interface FontPair {
@@ -347,6 +360,30 @@ export interface FontPair {
   body: string;
   /** CSS font stack fallback appended to both. */
   fallback: string;
+  /**
+   * TYPOGRAPHIC DETAIL TOKENS (2026-06-28 taste tier) — set per typeface so a
+   * Playfair headline reads like a designed serif (900, 0 tracking) and an
+   * Oswald headline reads like condensed sports type (600, tight -0.03em),
+   * instead of every display being a uniform 800/0em web heading. ALL optional
+   * with engine defaults (display 800, body 500, tracking 0) so a FontPair
+   * without them behaves exactly as before.
+   */
+  /** Weight for display/headline/title roles (e.g. Playfair 900, Oswald 600). */
+  displayWeight?: number;
+  /** Weight for body/caption roles (e.g. 400-500). */
+  bodyWeight?: number;
+  /**
+   * Letter-spacing for big DISPLAY/headline type, as a CSS length string
+   * (e.g. '-0.03em' for condensed/geometric sans, '0' for serif). Large type
+   * wants negative tracking; the renderer already proves this on its own number
+   * widgets (-0.02em). Applied by mapTextConfig to display/headline roles.
+   */
+  displayTracking?: string;
+  /**
+   * Letter-spacing for the all-caps KICKER eyebrow (e.g. Oswald ~0.22em,
+   * geometric sans ~0.16em, serif ~0.12em). Falls back to the legacy 0.18em.
+   */
+  kickerTracking?: string;
 }
 
 export interface ThemeMotion {
@@ -354,6 +391,42 @@ export interface ThemeMotion {
   durationMs: number;
   /** Easing — never 'linear' (R6 rule 21). */
   easing: 'ease-out' | 'ease-in' | 'ease-in-out';
+}
+
+/**
+ * PER-ZONE ENTRANCE MOTION (2026-06-28 taste tier) — the descriptor the mapper
+ * emits onto a text/image zone's `defaultConfig.entrance`, and the renderer turns
+ * into a tasteful CSS @keyframes reveal (staggered fade/rise) + optional subtle
+ * ambient drift. Driven by the theme's `motion` (duration + easing) and the
+ * zone's ROLE (kicker reveals first, then headline, body, cta). Taurus-safe:
+ * the renderer animates `transform` + `opacity` ONLY (CSS keyframes, never the
+ * Web Animations API), respects `prefers-reduced-motion`, and runs AFTER the
+ * FitScaler measure so the reveal never disturbs the auto-fit sizing.
+ *
+ * Backward-compatible: a zone with no `entrance` renders dead-static, exactly as
+ * before. The renderer also tolerates a missing/garbled field.
+ */
+export interface EntranceMotion {
+  /**
+   * The reveal style:
+   *   - 'rise-fade' : fade in while sliding up a few px (the premium default).
+   *   - 'fade'      : opacity only (calm/luxury/clinic moods).
+   *   - 'pop'       : fade in with a slight scale-up (high-energy / focal stat).
+   *   - 'none'      : no entrance (explicit opt-out).
+   */
+  kind: 'rise-fade' | 'fade' | 'pop' | 'none';
+  /** Stagger delay before this zone reveals, in ms (kicker 0 → headline → …). */
+  delayMs: number;
+  /** Reveal duration in ms (from theme.motion.durationMs). */
+  durationMs: number;
+  /** Easing keyword (from theme.motion.easing). */
+  easing: 'ease-out' | 'ease-in' | 'ease-in-out';
+  /**
+   * Optional subtle, slow AMBIENT drift after the entrance settles (a barely-
+   * perceptible float/Ken-Burns) — set ONLY for backgrounds + the focal hero on
+   * high-motion themes so a watched screen is never fully dead. Default off.
+   */
+  ambient?: 'float' | 'kenburns' | 'none';
 }
 
 /**

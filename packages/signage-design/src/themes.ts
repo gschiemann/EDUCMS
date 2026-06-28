@@ -26,13 +26,35 @@ import {
   contrastRatio,
   relativeLuminance,
 } from './contrast';
-import { PERFECT_FOURTH } from './type-scale';
+import { GOLDEN_RATIO, MAJOR_THIRD, PERFECT_FOURTH } from './type-scale';
+import { Hct, TonalPalette as HctTonalPalette, argbFromHex } from './hct';
 import type { FontPair, ScrimSpec, SurfaceStyle, ThemeBundle, ThemePalette } from './types';
 
 const SANS_FALLBACK = 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif';
+const SERIF_FALLBACK = 'Georgia, Cambria, "Times New Roman", Times, serif';
 
-function pair(display: string, body: string): FontPair {
-  return { display, body, fallback: SANS_FALLBACK };
+/**
+ * Build a FontPair, optionally carrying the per-typeface DETAIL tokens
+ * (displayWeight / bodyWeight / displayTracking / kickerTracking — 2026-06-28).
+ * `fallback` defaults to the sans stack; pass the serif stack for serif displays
+ * so an un-loaded serif degrades to a serif, not a sans.
+ */
+function pair(
+  display: string,
+  body: string,
+  detail: Partial<
+    Pick<FontPair, 'displayWeight' | 'bodyWeight' | 'displayTracking' | 'kickerTracking' | 'fallback'>
+  > = {},
+): FontPair {
+  return {
+    display,
+    body,
+    fallback: detail.fallback ?? SANS_FALLBACK,
+    displayWeight: detail.displayWeight,
+    bodyWeight: detail.bodyWeight,
+    displayTracking: detail.displayTracking,
+    kickerTracking: detail.kickerTracking,
+  };
 }
 
 const DEFAULT_SCRIM: ScrimSpec = { color: NEAR_BLACK, opacity: 0.55, direction: 'full' };
@@ -76,9 +98,23 @@ export const THEMES: ThemeBundle[] = [
       accent: '#38bdf8',
       onAccent: '#06283d',
       muted: '#cbd5e1',
+      // analogous indigo — a calm secondary pop on the eyebrow/rule.
+      accent2: '#818cf8',
+      onAccent2: '#0a0a0a',
     },
-    pair('Inter', 'Inter'),
-    { radiusPx: 16, surfaceStyle: { background: 'spotlight', glow: 0.5, card: 'gradient', cardBorder: true } },
+    // Space Grotesk display over Inter body — a modern SaaS pairing with a touch
+    // more character than Inter/Inter, tight display tracking.
+    pair('Space Grotesk', 'Inter', {
+      displayWeight: 700,
+      bodyWeight: 500,
+      displayTracking: '-0.02em',
+      kickerTracking: '0.16em',
+    }),
+    {
+      typeScaleRatio: MAJOR_THIRD,
+      radiusPx: 16,
+      surfaceStyle: { background: 'spotlight', glow: 0.5, card: 'gradient', cardBorder: true },
+    },
   ),
   bundle(
     'warm-school',
@@ -91,8 +127,17 @@ export const THEMES: ThemeBundle[] = [
       accent: '#c2410c',
       onAccent: '#ffffff',
       muted: '#5b4a36',
+      // a friendly teal complement to the warm terracotta accent.
+      accent2: '#0f766e',
+      onAccent2: '#ffffff',
     },
-    pair('Poppins', 'Inter'),
+    // Fredoka — a rounded, friendly display for K-12; Nunito Sans body.
+    pair('Fredoka', 'Nunito Sans', {
+      displayWeight: 600,
+      bodyWeight: 500,
+      displayTracking: '-0.01em',
+      kickerTracking: '0.14em',
+    }),
     { radiusPx: 28, surfaceStyle: { background: 'spotlight', glow: 0.32, card: 'gradient', cardBorder: true } },
   ),
   bundle(
@@ -106,10 +151,19 @@ export const THEMES: ThemeBundle[] = [
       accent: '#facc15',
       onAccent: '#1a1500',
       muted: '#d4d4d4',
+      // electric cyan — a stadium-LED second pop alongside the amber.
+      accent2: '#22d3ee',
+      onAccent2: '#04222b',
     },
-    pair('Oswald', 'Inter'),
+    // Anton — an ultra-bold condensed display made for hype; Barlow body.
+    pair('Anton', 'Barlow', {
+      displayWeight: 400, // Anton ships a single 400 weight that reads as ultra-bold
+      bodyWeight: 500,
+      displayTracking: '-0.01em',
+      kickerTracking: '0.22em',
+    }),
     {
-      typeScaleRatio: 1.414,
+      typeScaleRatio: GOLDEN_RATIO,
       radiusPx: 8,
       motion: { durationMs: 320, easing: 'ease-out' },
       surfaceStyle: { background: 'duotone', glow: 0.85, card: 'gradient', cardBorder: true },
@@ -119,32 +173,58 @@ export const THEMES: ThemeBundle[] = [
     'qsr-appetite',
     'QSR Appetite',
     {
-      background: '#1a0a0a',
-      surface: '#2b0f0f',
-      ink: '#ffffff',
+      // a true espresso ground (not near-black) so the theme reads distinct.
+      background: '#241310',
+      surface: '#371b16',
+      ink: '#fff8f2',
       inkInverse: '#0a0a0a',
       accent: '#f59e0b',
       onAccent: '#1f1400',
-      muted: '#e5cfcf',
+      muted: '#eccfc4',
+      // a hot tomato red — the classic QSR amber+red duo.
+      accent2: '#ef4444',
+      onAccent2: '#1a0606',
     },
-    pair('Montserrat', 'Inter'),
-    { radiusPx: 18, surfaceStyle: { background: 'spotlight', glow: 0.72, card: 'gradient', cardBorder: true } },
+    // Archivo (with an expanded feel) display over Inter — punchy menu type.
+    pair('Archivo', 'Inter', {
+      displayWeight: 800,
+      bodyWeight: 500,
+      displayTracking: '-0.02em',
+      kickerTracking: '0.18em',
+    }),
+    {
+      typeScaleRatio: 1.5,
+      radiusPx: 18,
+      surfaceStyle: { background: 'spotlight', glow: 0.72, card: 'gradient', cardBorder: true },
+    },
   ),
   bundle(
     'minimal-luxury',
     'Minimal Luxury',
     {
-      background: '#0c0c0c',
-      surface: '#161616',
-      ink: '#f5f5f5',
+      // a warm charcoal ground (not near-black) — editorial, not slab.
+      background: '#1c1a17',
+      surface: '#26231f',
+      ink: '#f5f3ee',
       inkInverse: '#0a0a0a',
-      accent: '#b8a06a',
+      accent: '#c9b27e',
       onAccent: '#1a1505',
-      muted: '#a3a3a3',
+      muted: '#b3aa99',
+      // a deep muted bronze for the eyebrow — a restrained tonal partner.
+      accent2: '#a98e64',
+      onAccent2: '#161208',
     },
-    pair('Cormorant Garamond', 'Inter'),
+    // Fraunces — a high-contrast display serif with real luxury character;
+    // Cormorant Garamond body. Serif display wants 0 tracking + heavier weight.
+    pair('Fraunces', 'Cormorant Garamond', {
+      displayWeight: 600,
+      bodyWeight: 500,
+      displayTracking: '0',
+      kickerTracking: '0.28em',
+      fallback: SERIF_FALLBACK,
+    }),
     {
-      typeScaleRatio: 1.5,
+      typeScaleRatio: GOLDEN_RATIO,
       radiusPx: 0,
       motion: { durationMs: 500, easing: 'ease-in-out' },
       surfaceStyle: { background: 'wash', glow: 0.28, card: 'flat', cardBorder: true },
@@ -161,9 +241,19 @@ export const THEMES: ThemeBundle[] = [
       accent: '#0f766e',
       onAccent: '#ffffff',
       muted: '#3f6478',
+      // a soft trustworthy blue partner for the eyebrow.
+      accent2: '#0369a1',
+      onAccent2: '#ffffff',
     },
-    pair('Inter', 'Inter'),
+    // A humanist sans display (Mulish) over Inter — softer than Inter/Inter.
+    pair('Mulish', 'Inter', {
+      displayWeight: 700,
+      bodyWeight: 400,
+      displayTracking: '-0.01em',
+      kickerTracking: '0.16em',
+    }),
     {
+      typeScaleRatio: MAJOR_THIRD,
       radiusPx: 20,
       motion: { durationMs: 450, easing: 'ease-in-out' },
       surfaceStyle: { background: 'wash', glow: 0.3, card: 'gradient', cardBorder: true },
@@ -174,15 +264,27 @@ export const THEMES: ThemeBundle[] = [
     'Fresh Fitness',
     {
       background: '#0a0f14',
-      surface: '#141c24',
+      surface: '#152029',
       ink: '#ffffff',
       inkInverse: '#0a0a0a',
       accent: '#22d3ee',
       onAccent: '#04222b',
       muted: '#c2d0db',
+      // a vivid lime — the energetic gym second pop.
+      accent2: '#a3e635',
+      onAccent2: '#0c1a02',
     },
-    pair('Barlow', 'Inter'),
-    { radiusPx: 14, surfaceStyle: { background: 'duotone', glow: 0.78, card: 'gradient', cardBorder: true } },
+    pair('Barlow Condensed', 'Barlow', {
+      displayWeight: 700,
+      bodyWeight: 500,
+      displayTracking: '-0.01em',
+      kickerTracking: '0.2em',
+    }),
+    {
+      typeScaleRatio: 1.5,
+      radiusPx: 14,
+      surfaceStyle: { background: 'duotone', glow: 0.78, card: 'gradient', cardBorder: true },
+    },
   ),
   bundle(
     'worship-warm',
@@ -195,10 +297,21 @@ export const THEMES: ThemeBundle[] = [
       accent: '#d4a857',
       onAccent: '#241803',
       muted: '#e0cdb4',
+      // a warm rose-gold partner for the eyebrow.
+      accent2: '#c97b63',
+      onAccent2: '#1a0a06',
     },
-    pair('Playfair Display', 'Inter'),
+    // Playfair Display — a true serif display at its elegant heavy weight, with
+    // a Source Serif body (not Inter) for a coherent serif voice.
+    pair('Playfair Display', 'Source Serif 4', {
+      displayWeight: 800,
+      bodyWeight: 400,
+      displayTracking: '0',
+      kickerTracking: '0.24em',
+      fallback: SERIF_FALLBACK,
+    }),
     {
-      typeScaleRatio: 1.5,
+      typeScaleRatio: GOLDEN_RATIO,
       radiusPx: 12,
       motion: { durationMs: 500, easing: 'ease-in-out' },
       surfaceStyle: { background: 'spotlight', glow: 0.55, card: 'gradient', cardBorder: true },
@@ -212,12 +325,26 @@ export const THEMES: ThemeBundle[] = [
       surface: '#27272a',
       ink: '#ffffff',
       inkInverse: '#0a0a0a',
-      accent: '#be185d',
-      onAccent: '#ffffff',
+      // RE-TUNED (2026-06-28): #be185d failed as accent-TEXT on #18181b
+      // (2.93:1). #f0529a clears the LARGE floor as text AND as a CTA fill.
+      accent: '#f0529a',
+      onAccent: '#2a0716',
       muted: '#d4d4d8',
+      // a vivid violet — the retail promo second pop.
+      accent2: '#a78bfa',
+      onAccent2: '#150826',
     },
-    pair('Sora', 'Inter'),
-    { radiusPx: 20, surfaceStyle: { background: 'duotone', glow: 0.8, card: 'gradient', cardBorder: true } },
+    pair('Sora', 'Inter', {
+      displayWeight: 800,
+      bodyWeight: 500,
+      displayTracking: '-0.03em',
+      kickerTracking: '0.18em',
+    }),
+    {
+      typeScaleRatio: 1.5,
+      radiusPx: 20,
+      surfaceStyle: { background: 'duotone', glow: 0.8, card: 'gradient', cardBorder: true },
+    },
   ),
   bundle(
     'sky-civic',
@@ -230,9 +357,21 @@ export const THEMES: ThemeBundle[] = [
       accent: '#1d4ed8',
       onAccent: '#ffffff',
       muted: '#3c5871',
+      // a steady teal partner for the eyebrow.
+      accent2: '#0e7490',
+      onAccent2: '#ffffff',
     },
-    pair('Inter', 'Inter'),
-    { radiusPx: 16, surfaceStyle: { background: 'wash', glow: 0.34, card: 'gradient', cardBorder: true } },
+    pair('Archivo', 'Inter', {
+      displayWeight: 700,
+      bodyWeight: 400,
+      displayTracking: '-0.015em',
+      kickerTracking: '0.16em',
+    }),
+    {
+      typeScaleRatio: MAJOR_THIRD,
+      radiusPx: 16,
+      surfaceStyle: { background: 'wash', glow: 0.34, card: 'gradient', cardBorder: true },
+    },
   ),
   bundle(
     'forest-campus',
@@ -245,24 +384,52 @@ export const THEMES: ThemeBundle[] = [
       accent: '#84cc16',
       onAccent: '#13230a',
       muted: '#bfe0c9',
+      // a warm amber complement to the lime green.
+      accent2: '#d4a017',
+      onAccent2: '#1a1404',
     },
-    pair('Poppins', 'Inter'),
-    { radiusPx: 22, surfaceStyle: { background: 'spotlight', glow: 0.55, card: 'gradient', cardBorder: true } },
+    pair('Fraunces', 'Nunito Sans', {
+      displayWeight: 600,
+      bodyWeight: 500,
+      displayTracking: '0',
+      kickerTracking: '0.18em',
+      fallback: SERIF_FALLBACK,
+    }),
+    {
+      typeScaleRatio: PERFECT_FOURTH,
+      radiusPx: 22,
+      surfaceStyle: { background: 'spotlight', glow: 0.55, card: 'gradient', cardBorder: true },
+    },
   ),
   bundle(
     'midnight-tech',
     'Midnight Tech',
     {
-      background: '#0a0a14',
-      surface: '#13131f',
+      // a deep indigo ground (not near-black) so the theme reads distinct + glows.
+      background: '#141228',
+      surface: '#1d1a3a',
       ink: '#f5f5ff',
       inkInverse: '#0a0a0a',
-      accent: '#6d28d9',
-      onAccent: '#ffffff',
-      muted: '#c4c4d4',
+      // RE-TUNED (2026-06-28): #6d28d9 failed as accent-TEXT on its bg (2.77:1).
+      // #a78bfa clears the LARGE floor as text AND fills a CTA pill cleanly.
+      accent: '#a78bfa',
+      onAccent: '#1a1033',
+      muted: '#c4c4e4',
+      // an electric cyan — the modern tech second pop.
+      accent2: '#22d3ee',
+      onAccent2: '#04222b',
     },
-    pair('Space Grotesk', 'Inter'),
-    { radiusPx: 18, surfaceStyle: { background: 'duotone', glow: 0.82, card: 'glass', cardBorder: true } },
+    pair('Sora', 'Inter', {
+      displayWeight: 700,
+      bodyWeight: 400,
+      displayTracking: '-0.03em',
+      kickerTracking: '0.2em',
+    }),
+    {
+      typeScaleRatio: 1.5,
+      radiusPx: 18,
+      surfaceStyle: { background: 'duotone', glow: 0.82, card: 'glass', cardBorder: true },
+    },
   ),
 ];
 
@@ -406,23 +573,24 @@ export function deriveThemeFromBrand(
     mode === 'dark' ? 'light' : 'dark',
   );
 
-  // Accent: keep it vivid (mid tone) but ensure onAccent text clears the LARGE
-  // floor (the accent is used on CTAs / focal elements — large text).
-  // We pick the accent tone that is both vivid AND lets a text token pass.
-  let accent = accentPalette.tone(mode === 'dark' ? 70 : 45);
-  let onAccent = bestTextColor(accent);
-  if (contrastRatio(onAccent, accent) < LARGE_CONTRAST_FLOOR) {
-    // Push the accent toward an extreme where a pure text token clears the floor.
-    for (const t of [60, 75, 50, 80, 40, 85, 35]) {
-      const candidate = accentPalette.tone(t);
-      const candidateText = bestTextColor(candidate);
-      if (contrastRatio(candidateText, candidate) >= LARGE_CONTRAST_FLOOR) {
-        accent = candidate;
-        onAccent = candidateText;
-        break;
-      }
-    }
-  }
+  // Accent — keep the brand color PUNCHY, never pastel'd (2026-06-28 fix).
+  // The old code hardcoded tone(dark?70:45); tone 70 on a high-chroma hue lands
+  // washed-out (Coca-Cola red → salmon, hot-pink → pale). Instead we scan from
+  // the SATURATED end toward lighter and pick the LOWEST tone that still:
+  //   (a) clears the LARGE floor as accent-TEXT on the board background (so the
+  //       focal stat keeps its brand color — never silently flips to white), AND
+  //   (b) lets a pure onAccent text token clear the LARGE floor ON the accent
+  //       fill (so the CTA pill stays legible).
+  // The lowest passing tone is the MOST saturated one that's still legible — the
+  // opposite of the pastel bias. We bias the scan toward mid tones (50-58) for
+  // high-chroma seeds so the brand reads vivid, falling back to lighter tones
+  // only if the brand hue can't clear the floor any other way.
+  const { accent, onAccent } = pickBrandAccent(accentPalette, background, mode);
+
+  // accent2 — a restrained ANALOGOUS secondary (±~28° hue) at the same vibrant
+  // discipline, so a brand board reads as a 2-colour system, not monochrome.
+  const accent2Palette = analogousPalette(accentPalette, mode === 'dark' ? 28 : -28);
+  const a2 = pickBrandAccent(accent2Palette, background, mode);
 
   const palette: ThemePalette = {
     background,
@@ -432,9 +600,70 @@ export function deriveThemeFromBrand(
     accent,
     onAccent,
     muted,
+    accent2: a2.accent,
+    onAccent2: a2.onAccent,
   };
 
   return bundle(id, label, palette, fontPair, {
     scrim: { color: mode === 'dark' ? NEAR_BLACK : WHITE, opacity: 0.55, direction: 'full' },
   });
+}
+
+/**
+ * Pick the most SATURATED-yet-legible accent tone for a brand palette against a
+ * board background. Returns the accent hex + a contrast-safe onAccent text token.
+ *
+ * Strategy: walk tones from the vivid mid-band outward and return the FIRST that
+ * satisfies BOTH legibility checks (accent-as-text on bg ≥ LARGE; onAccent-on-
+ * accent ≥ LARGE). The candidate order is chosen so a high-chroma seed lands on
+ * a saturated tone (50-58) and only drifts lighter/darker when forced. If
+ * nothing clears both, fall back to the most-contrasting brand tone (guaranteed
+ * legible as a CTA fill via its onAccent token).
+ */
+function pickBrandAccent(
+  palette: TonalPalette,
+  background: string,
+  mode: 'dark' | 'light',
+): { accent: string; onAccent: string } {
+  // Dark boards want a brighter accent (it sits on a dark ground); light boards
+  // want a deeper one. Both lead with the vibrant mid-band, NOT the pale end.
+  const order =
+    mode === 'dark'
+      ? [58, 62, 54, 66, 50, 70, 46, 74, 78]
+      : [50, 46, 54, 42, 58, 38, 62, 34];
+  let best = palette.tone(order[0]);
+  let bestText = bestTextColor(best);
+  let bestRatio = 0;
+  for (const t of order) {
+    const candidate = palette.tone(t);
+    const candidateText = bestTextColor(candidate);
+    const asText = contrastRatio(candidate, background); // accent legible as TEXT on bg
+    const onFill = contrastRatio(candidateText, candidate); // onAccent legible on accent fill
+    // Track the best CTA-fill candidate as a guaranteed fallback.
+    if (onFill > bestRatio) {
+      bestRatio = onFill;
+      best = candidate;
+      bestText = candidateText;
+    }
+    if (asText >= LARGE_CONTRAST_FLOOR && onFill >= LARGE_CONTRAST_FLOOR) {
+      return { accent: candidate, onAccent: candidateText };
+    }
+  }
+  return { accent: best, onAccent: bestText };
+}
+
+/**
+ * Build an analogous TonalPalette by rotating the seed's HCT hue by `deltaDeg`
+ * (keeping its chroma) — the math behind a coherent secondary accent. Falls back
+ * to the original palette on any HCT failure so accent2 always resolves.
+ */
+function analogousPalette(seed: TonalPalette, deltaDeg: number): TonalPalette {
+  try {
+    // Read the seed's hue+chroma from a mid tone, rotate the hue, keep chroma.
+    const hct = Hct.fromInt(argbFromHex(seed.tone(50)));
+    const hue = ((hct.hue + deltaDeg) % 360 + 360) % 360;
+    return HctTonalPalette.fromHueAndChroma(hue, hct.chroma);
+  } catch {
+    return seed;
+  }
 }

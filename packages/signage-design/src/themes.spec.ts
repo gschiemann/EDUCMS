@@ -19,6 +19,30 @@ function assertThemeLegible(t: ThemeBundle) {
   expect(contrastRatio(t.palette.onAccent, t.palette.accent)).toBeGreaterThanOrEqual(
     LARGE_CONTRAST_FLOOR - 0.05,
   );
+  // ACCENT-AS-TEXT (2026-06-28): the focal stat / accent text sits ON the
+  // background, so the accent MUST clear the LARGE floor as text there too —
+  // otherwise art-director.ts silently flips the focal stat to plain white and
+  // the brand pop vanishes (the old bold-retail / midnight-tech failure).
+  expect(contrastRatio(t.palette.accent, t.palette.background)).toBeGreaterThanOrEqual(
+    LARGE_CONTRAST_FLOOR - 0.05,
+  );
+  // SECONDARY ACCENT (2026-06-28): when present, accent2 must clear the LARGE
+  // floor as text on background AND its onAccent2 must clear it on the fill.
+  if (t.palette.accent2) {
+    expect(contrastRatio(t.palette.accent2, t.palette.background)).toBeGreaterThanOrEqual(
+      LARGE_CONTRAST_FLOOR - 0.05,
+    );
+    if (t.palette.onAccent2) {
+      expect(contrastRatio(t.palette.onAccent2, t.palette.accent2)).toBeGreaterThanOrEqual(
+        LARGE_CONTRAST_FLOOR - 0.05,
+      );
+    }
+  }
+}
+
+/** HCT chroma of a hex (0 = grey, higher = more saturated). */
+function chromaOf(hex: string): number {
+  return Hct.fromInt(argbFromHex(hex)).chroma;
 }
 
 describe('HCT primitives', () => {
@@ -72,6 +96,24 @@ describe('curated THEMES', () => {
     }
   });
 
+  it('every curated theme ships a secondary accent (accent2 system)', () => {
+    for (const t of THEMES) {
+      expect(typeof t.palette.accent2).toBe('string');
+      expect(t.palette.accent2).toMatch(/^#[0-9a-fA-F]{6}$/);
+      // accent2 should be a DISTINCT hue, not a clone of the primary accent.
+      expect(t.palette.accent2).not.toBe(t.palette.accent);
+    }
+  });
+
+  it('every curated theme carries typographic detail tokens', () => {
+    for (const t of THEMES) {
+      // display weight set per face (serif 600-800, condensed/sans 400-800).
+      expect(typeof t.fontPair.displayWeight).toBe('number');
+      expect(typeof t.fontPair.displayTracking).toBe('string');
+      expect(typeof t.fontPair.kickerTracking).toBe('string');
+    }
+  });
+
   it('getTheme looks up by id', () => {
     expect(getTheme('warm-school')?.label).toBe('Warm School');
     expect(getTheme('nope')).toBeUndefined();
@@ -113,5 +155,30 @@ describe('deriveThemeFromBrand — GUARANTEED contrast for any brand color', () 
     // Background is a dark brand tone, not literal #000000.
     expect(t.palette.background).not.toBe('#000000');
     expect(t.palette.background).not.toBe('#ffffff');
+  });
+
+  it('derives a secondary accent (accent2) for every brand color', () => {
+    for (const hex of hardColors) {
+      const t = deriveThemeFromBrand(hex, { mode: 'dark' });
+      expect(t.palette.accent2).toMatch(/^#[0-9a-fA-F]{6}$/);
+    }
+  });
+
+  // PASTEL FIX (2026-06-28): the old code lightened the accent to tone 70, which
+  // washed a high-chroma brand into a pastel (Coca-Cola red → salmon). The fix
+  // keeps the accent SATURATED — for a high-chroma seed the derived accent must
+  // retain a meaningful fraction of the seed's chroma, NOT collapse toward grey.
+  it.each([
+    '#e61a27', // Coca-Cola red
+    '#ff1493', // hot pink
+    '#1d4ed8', // a strong blue
+    '#16a34a', // a vivid green
+  ])('keeps a high-chroma brand %s vivid (no pastel collapse)', (hex) => {
+    const seedChroma = chromaOf(hex);
+    const t = deriveThemeFromBrand(hex, { mode: 'dark' });
+    const accentChroma = chromaOf(t.palette.accent);
+    // The derived accent must retain >= 55% of the seed's chroma — a pastel
+    // (tone-70) derivation drops well below half. This is the brand-fidelity guard.
+    expect(accentChroma).toBeGreaterThanOrEqual(seedChroma * 0.55);
   });
 });
