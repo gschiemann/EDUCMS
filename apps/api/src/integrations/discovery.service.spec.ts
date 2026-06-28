@@ -29,7 +29,7 @@ describe('IntegrationDiscoveryService — zero-costume invariants', () => {
     'Clover, Lightspeed, Shopify, OpenTable, Resy, YouTube, Twitch, NFHS Network, ' +
     'Spotify, Apple Music, SomaFM, Google Calendar, Eventbrite, Mailchimp, ' +
     'Constant Contact, Google Workspace, Microsoft 365, Clever, Instagram, ' +
-    'MaxPreps, Mindbody, Tithe.ly, Pushpay.';
+    'MaxPreps, Mindbody, Tithe.ly, Pushpay, GivingTrac.';
 
   async function allCandidates() {
     const res = await svc.discoverFromDescription(everythingDescription);
@@ -120,18 +120,19 @@ describe('IntegrationDiscoveryService — zero-costume invariants', () => {
     expect(google?.connectHref).toBe('/settings/sso');
   });
 
-  it('makes WORSHIP giving (Tithe.ly / Pushpay) discoverable as COMING_SOON', async () => {
+  it('makes WORSHIP giving (Tithe.ly / Pushpay / GivingTrac) discoverable as COMING_SOON', async () => {
     const res = await svc.discoverFromDescription(
-      'We are a church / parish ministry that uses Tithe.ly and Pushpay for giving.',
+      'We are a church / parish ministry that uses Tithe.ly, Pushpay and GivingTrac for giving.',
     );
     const byId = new Map(res.candidates.map((c) => [c.id, c]));
 
-    for (const id of ['tithely', 'pushpay']) {
+    for (const id of ['tithely', 'pushpay', 'givingtrac']) {
       const cand = byId.get(id);
       expect(cand).toBeDefined();
       expect(cand!.category).toBe('giving');
       expect(cand!.status).toBe('COMING_SOON');
       expect(cand!.connectHref).toBeNull();
+      expect((cand!.comingSoonReason || '').length).toBeGreaterThan(8);
     }
   });
 

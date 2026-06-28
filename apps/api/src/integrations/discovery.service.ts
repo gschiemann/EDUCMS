@@ -527,6 +527,18 @@ const RULES: ProviderRule[] = [
       { pattern: /\bpushpay\.com\b/i, weight: 0.8, label: 'Pushpay link' },
     ],
   },
+  {
+    id: 'givingtrac',
+    name: 'GivingTrac',
+    category: 'giving',
+    blurb: 'Show GivingTrac campaign progress + a "Give now" QR on sanctuary screens.',
+    status: 'COMING_SOON',
+    connectHref: null,
+    comingSoonReason: 'Coming soon — GivingTrac giving sync in development. Add a QR-code widget linking to your giving page today.',
+    signals: [
+      { pattern: /\bgivingtrac\.com\b/i, weight: 0.8, label: 'GivingTrac link' },
+    ],
+  },
 ];
 
 // Free-text classification — same rule list, but signals are matched

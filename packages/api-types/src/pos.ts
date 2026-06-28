@@ -141,7 +141,10 @@ export const POS_PROVIDERS: ReadonlyArray<PosProviderDef> = [
     docsUrl: 'https://docs.clover.com/docs/inventory-overview',
     websiteUrl: 'https://www.clover.com',
     pricingNote: 'Self-serve — free sandbox',
-    bestFor: ['QSR', 'RETAIL', 'BAR'],
+    // FASHION added 2026-06-27 (beta finding #14): Clover is a major
+    // apparel/boutique POS (Clover for Retail powers clothing shops), so it
+    // belongs in the FASHION picker alongside Lightspeed + Shopify.
+    bestFor: ['QSR', 'RETAIL', 'BAR', 'FASHION'],
     capabilities: { menuSync: true, categorySync: true, availabilitySync: true, locationsSync: true, realtimeUpdates: false },
     tierReason: 'Clover ships a real, free catalog API (docs.clover.com). Self-serve OAuth — connect with a free Clover sandbox, then go live with production credentials. Catalog syncs hourly + on demand.',
   },
