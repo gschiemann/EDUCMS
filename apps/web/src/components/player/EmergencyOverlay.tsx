@@ -119,7 +119,7 @@ function FitToViewport({ children, padding = 40 }: { children: React.ReactNode; 
  * unreliable inside a 90°-rotated preview body on Taurus). Re-reads on resize
  * + storage so a late canvas-set (manifest applies it after mount) is honored.
  */
-function useLedCanvas(): { w: number | null; h: number | null } {
+function useLedCanvas(activeKey: string | null): { w: number | null; h: number | null } {
   const [dims, setDims] = useState<{ w: number | null; h: number | null }>({ w: null, h: null });
   useEffect(() => {
     const read = () => {
@@ -137,13 +137,25 @@ function useLedCanvas(): { w: number | null; h: number | null } {
       }
     };
     read();
+    // CRITICAL (2026-06-28, Greg live-caught round 2 — still cut off at 1920):
+    // the player writes `edu_canvasW` to localStorage only AFTER it fetches the
+    // manifest, which is AFTER this overlay has mounted — and a same-tab
+    // `localStorage.setItem` does NOT fire a `storage` event. So a mount-only
+    // read caches null and the takeover falls back to the 1920 frame-buffer
+    // viewport FOREVER (the playlist fits 960 via its own manifest-watching
+    // effect, but the emergency overlay had no such effect → it alone stayed at
+    // 1920). Poll so we pick up the canvas within ~1s of it being set, and
+    // re-read whenever an emergency becomes active (activeKey changes) so the
+    // value is always fresh at the moment the alert is shown.
+    const iv = setInterval(read, 1000);
     window.addEventListener('storage', read);
     window.addEventListener('resize', read);
     return () => {
+      clearInterval(iv);
       window.removeEventListener('storage', read);
       window.removeEventListener('resize', read);
     };
-  }, []);
+  }, [activeKey]);
   return dims;
 }
 
@@ -217,8 +229,10 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
   const [polled, setPolled] = useState<EmergencyMessageView | null>(null);
   // LED canvas (960×1080 etc.) so the takeover sizes to the visible panel, not
   // the 1920 frame-buffer viewport. See useLedCanvas above (Greg's "cut off by
-  // half / thinks it's 1920×1080" P0).
-  const canvas = useLedCanvas();
+  // half / thinks it's 1920×1080" P0). Pass the active message id so the canvas
+  // is re-read the instant an alert fires (the value is set by the manifest
+  // after this overlay first mounts).
+  const canvas = useLedCanvas(message?.id ?? polled?.id ?? null);
 
   useEffect(() => {
     if (message || !apiUrl) return;
