@@ -1310,8 +1310,19 @@ export class AiService {
       references: opts.references,
     });
 
+    // COST TIERING (2026-06-28) — auto-pick the model by REQUEST type. The
+    // concierge CHAT is conversation + intake extraction, which the provider's
+    // cheapest Standard-tier model (gpt-4o-mini / Haiku / Gemini Flash) handles
+    // perfectly — so we downgrade to it here instead of burning the tenant's
+    // premium model (e.g. GPT-5) on "what time is happy hour?". The tenant's
+    // CONFIGURED model stays reserved for the actual TEMPLATE generation (the
+    // high-value art direction), so the dropdown still controls board quality.
+    // Bonus: the cheap model is also FAR faster, so chat feels instant even when
+    // the configured generation model is a slow reasoning model. defaultModelFor
+    // returns the catalog's default (Standard, cheapest) model for the provider.
+    const chatModel = defaultModelFor(resolved.provider);
     const raw = await this.dispatchMessagesOrThrow(
-      resolved,
+      { ...resolved, model: chatModel },
       system,
       messages.map((m) => ({ role: m.role, content: m.content })),
       CONCIERGE_MAX_TOKENS,
@@ -1343,7 +1354,8 @@ export class AiService {
         details: JSON.stringify({
           vertical: opts.vertical || null,
           provider: resolved.provider,
-          model: resolved.model,
+          model: chatModel, // cost-tiered: the cheap chat model, not the configured premium one
+          configuredModel: resolved.model || null,
           source: resolved.source,
           turns: opts.messages.length,
           references: (opts.references || []).length,
