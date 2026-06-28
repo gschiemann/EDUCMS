@@ -453,7 +453,22 @@ export async function dispatchAiMessages(
       ],
     };
     if (reasoning) {
-      body.max_completion_tokens = input.maxTokens;
+      // 2026-06-28 BETA FINDING #2 — a reasoning model's INTERNAL reasoning
+      // tokens count against max_completion_tokens. With the caller's modest
+      // budget (300 snippet / 900 board / 1100 concierge / 2600 set), GPT-5
+      // spent the ENTIRE budget reasoning and returned ZERO visible text →
+      // "The AI model returned an empty response" on every call. Same class as
+      // the Gemini-2.5 thinking-budget bug. Two fixes:
+      //   1) reasoning_effort 'low' — this is signage copy / template JSON, not
+      //      a math proof; low keeps GPT-5 fast + cheap and stops it from
+      //      burning the whole budget thinking. (minimal/low/medium/high are
+      //      the accepted values for gpt-5 + o-series; 'low' is safe on all.)
+      //   2) give the VISIBLE output real headroom on top of the reasoning
+      //      spend — the caller's maxTokens is the desired visible size, so add
+      //      a generous reasoning allowance (billed only on tokens actually
+      //      emitted, so a high ceiling just prevents truncation).
+      body.reasoning_effort = 'low';
+      body.max_completion_tokens = input.maxTokens + 12000;
       // Reasoning models only accept the default temperature — omit it.
     } else {
       body.max_tokens = input.maxTokens;
