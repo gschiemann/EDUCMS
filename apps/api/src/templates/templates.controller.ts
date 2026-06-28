@@ -1,8 +1,10 @@
 import {
   Controller, Get, Post, Put, Delete, Body, Param, Query,
   UseGuards, Request, HttpException, HttpStatus, Header, Logger,
-  BadRequestException,
+  BadRequestException, UseInterceptors, UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
@@ -13,6 +15,10 @@ import { FITNESS_TEMPLATE_PRESETS } from './fitness-presets';
 import { verticalMatchOr } from './ensure-system-presets';
 import { AiService, sanitizeTouchTemplate } from '../ai/ai.service';
 import { parseGuidedIntake } from '../ai/guided-intake';
+// Signage Concierge (2026-06-28) — a pasted URL is scraped into a brand
+// summary by the branding scraper, then summarized into a ConciergeReference.
+import { BrandingScraperService } from '../branding/branding-scraper.service';
+import { summarizeUrlReference } from '../ai/signage-concierge';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import {
   TemplateNameOnlySchema, type TemplateNameOnlyInput,
@@ -25,6 +31,8 @@ import {
   TemplateDuplicateSchema, type TemplateDuplicateInput,
   TemplateUpdateSchema, type TemplateUpdateInput,
   TemplateReplaceZonesSchema, type TemplateReplaceZonesInput,
+  ConciergeChatSchema, type ConciergeChatInput,
+  ConciergeReferenceUrlSchema, type ConciergeReferenceUrlInput,
 } from '@cms/api-types';
 
 @Controller('api/v1/templates')
@@ -35,6 +43,9 @@ export class TemplatesController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
+    // 2026-06-28 — Signage Concierge URL references. BrandingModule (imported
+    // by app.module.ts) now exports the scraper so it's injectable here.
+    private readonly brandingScraper: BrandingScraperService,
   ) {}
 
   /**
@@ -988,6 +999,100 @@ export class TemplatesController {
       candidates: result.candidates,
       ai: { source: result.source, usage: result.usage },
     };
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Signage Concierge (2026-06-28) — conversational, reference-driven AI
+  // template intake. Three endpoints consume the concierge spine:
+  //   • POST concierge/chat            — one chat turn (reply + intake + brief)
+  //   • POST concierge/reference/url   — scrape a pasted URL → ConciergeReference
+  //   • POST concierge/reference/image — analyze an uploaded image → reference
+  // Same RBAC stack as the AI generate endpoints; tenantId/userId from req.user.
+  // ───────────────────────────────────────────────────────────────────────
+
+  @Post('concierge/chat')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async conciergeChat(
+    @Request() req: any,
+    @Body(new ZodValidationPipe(ConciergeChatSchema)) body: ConciergeChatInput,
+  ) {
+    return this.ai.conciergeChat({
+      tenantId: req.user.tenantId,
+      userId: req.user.id,
+      messages: body.messages,
+      references: body.references,
+      vertical: body.vertical,
+      canvas:
+        body.screenWidth && body.screenHeight
+          ? { w: body.screenWidth, h: body.screenHeight }
+          : null,
+    });
+  }
+
+  @Post('concierge/reference/url')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async conciergeReferenceUrl(
+    @Request() req: any,
+    @Body(new ZodValidationPipe(ConciergeReferenceUrlSchema)) body: ConciergeReferenceUrlInput,
+  ) {
+    // Scrape the operator's site (the scraper itself enforces the SSRF
+    // safe-fetch host guard + a time budget). Any failure (bot-protection,
+    // fetch error, timeout) degrades to a friendly "tell me your colors
+    // instead" — never a 500.
+    try {
+      const preview = await this.brandingScraper.scrape(body.url);
+      return summarizeUrlReference(preview, body.url);
+    } catch (e: any) {
+      this.auditLogger.warn(`concierge URL scrape failed (${body.url}): ${e?.message}`);
+      throw new HttpException(
+        {
+          message:
+            "I couldn't read that site — it may block bots. Tell me your colors/style instead and I'll match it.",
+          code: 'CONCIERGE_SCRAPE_FAILED',
+        },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+  }
+
+  @Post('concierge/reference/image')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  @UseInterceptors(FileInterceptor('file', {
+    storage: memoryStorage(),
+    // 10MB ceiling matches the spec; the vision providers don't need more.
+    limits: { fileSize: 10 * 1024 * 1024 },
+  }))
+  async conciergeReferenceImage(
+    @Request() req: any,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file || !file.buffer) {
+      throw new BadRequestException('No image uploaded.');
+    }
+    if (!(file.mimetype || '').toLowerCase().startsWith('image/')) {
+      throw new BadRequestException('Upload an image file (JPG, PNG, WebP, or GIF).');
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      throw new BadRequestException('Image is too large — keep it under 10MB.');
+    }
+    const ref = await this.ai.analyzeDesignReferenceImage({
+      tenantId: req.user.tenantId,
+      userId: req.user.id,
+      imageBuffer: file.buffer,
+      mimeType: file.mimetype,
+      filename: file.originalname,
+    });
+    if (!ref) {
+      throw new HttpException(
+        {
+          message:
+            "I couldn't analyze that image. Make sure an AI provider is set in Settings → AI provider, or describe the look instead.",
+          code: 'CONCIERGE_VISION_UNAVAILABLE',
+        },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    return ref;
   }
 
   @Post('create-from-candidate')
