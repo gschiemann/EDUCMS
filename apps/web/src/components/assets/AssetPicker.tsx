@@ -80,20 +80,34 @@ export function AssetPicker({
     return a.folderId === folderId;
   });
 
+  // SVG is intentionally absent from the accept list — the server can't
+  // sanitize a direct browser→Supabase upload before it lands in storage,
+  // so a raw SVG would be a stored-XSS vector. Dropping it from `accept`
+  // means the native file picker doesn't even offer SVGs; the `upload()`
+  // pre-check below catches a drag-drop / "all files" pick and surfaces a
+  // specific, honest message instead of a generic 415 "Upload failed".
+  // (Mirrors getUnsupportedReason() in /assets/page.tsx + the server's
+  // assertUploadIntent() in assets.controller.ts.)
   const accept =
     kind === 'image'
-      ? 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/avif'
+      ? 'image/png,image/jpeg,image/webp,image/gif,image/avif'
       : kind === 'video'
         ? 'video/mp4,video/webm'
         : kind === 'audio'
           ? 'audio/mpeg,audio/wav,audio/ogg,audio/mp4'
-          : 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/avif,video/mp4,video/webm,audio/mpeg,audio/wav,audio/ogg,audio/mp4';
+          : 'image/png,image/jpeg,image/webp,image/gif,image/avif,video/mp4,video/webm,audio/mpeg,audio/wav,audio/ogg,audio/mp4';
 
   const upload = async (file: File) => {
     setErr('');
     const lname = (file.name || '').toLowerCase();
     if (lname.endsWith('.mov') || (file.type || '').toLowerCase() === 'video/quicktime') {
       setErr("QuickTime .mov isn't supported — export as MP4 and re-upload.");
+      return;
+    }
+    if (lname.endsWith('.svg') || (file.type || '').toLowerCase() === 'image/svg+xml') {
+      // Specific over silent: tell the operator exactly what to do instead
+      // of letting the presign call 415 and surface a raw "Upload failed".
+      setErr("SVG logos aren't supported yet — export as PNG (SVG support is coming soon).");
       return;
     }
     setUploading(true);

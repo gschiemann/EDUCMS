@@ -52,10 +52,12 @@ function getUnsupportedReason(file: File): string | null {
     return "AVI files aren't supported by browsers. Convert to MP4 (H.264) and re-upload.";
   }
   if (name.endsWith('.svg') || type === 'image/svg+xml') {
-    // Friendly, actionable — and points at the place SVG DOES work (logos),
-    // instead of a generic "unsupported format." Mirrors the server message
-    // in assets.controller.ts assertUploadIntent().
-    return "SVG isn't supported in the media library (an SVG can carry hidden scripts, so we don't store raw SVGs as content). For a logo, use Settings → Branding — that path accepts SVG safely. Otherwise export this as a PNG (most design tools: File → Export → PNG) and upload that.";
+    // Friendly, actionable, and honest about the roadmap — an SVG can carry
+    // hidden scripts so we don't store raw SVGs as content yet. Points at the
+    // place SVG DOES work today (logos) instead of a generic "unsupported
+    // format." Mirrors the server message in assets.controller.ts
+    // assertUploadIntent() and the AssetPicker pre-check.
+    return "SVG logos aren't supported yet — export as PNG for now (SVG support is coming soon). For a logo specifically, Settings → Branding accepts SVG safely today.";
   }
   return null;
 }
