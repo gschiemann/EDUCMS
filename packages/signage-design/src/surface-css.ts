@@ -29,7 +29,7 @@
  *   - So these layers CANNOT lower the contrast the validator verified.
  */
 
-import { parseHex } from './contrast';
+import { parseHex, relativeLuminance } from './contrast';
 import { resolveSurfaceStyle } from './themes';
 import type { ThemeBundle } from './types';
 
@@ -58,10 +58,16 @@ export function themeBackgroundCss(theme: ThemeBundle): string {
   const { palette } = theme;
   const style = resolveSurfaceStyle(theme);
   const { accent, surface, background } = palette;
+  // The SECONDARY accent (2026-06-28) — used as a second, offset glow source so
+  // the photoless background reads as a designed MESH, not a single-hue ramp.
+  // Falls back to the primary accent when a theme/derived palette has no accent2.
+  const accent2 = palette.accent2 ?? accent;
 
   // The accent glow — strength dialed by `glow` (0..1). Capped low so it tints
   // rather than paints; a glow of 1 lands at ~0.22 alpha at the hot spot.
-  const glowAlpha = Math.max(0, Math.min(1, style.glow)) * 0.22;
+  const g = Math.max(0, Math.min(1, style.glow));
+  const glowAlpha = g * 0.22;
+  // PRIMARY glow — a soft radial pooled top-center (the focal light source).
   const glow =
     glowAlpha > 0.001
       ? `radial-gradient(80% 60% at 50% 0%, ${hexToRgba(accent, glowAlpha)} 0%, ${hexToRgba(
@@ -69,12 +75,36 @@ export function themeBackgroundCss(theme: ThemeBundle): string {
           0,
         )} 60%)`
       : '';
+  // SECONDARY mesh blob — a smaller accent2 radial offset to a lower corner so
+  // the field has TWO light sources (the studio "mesh gradient" move). Kept at a
+  // lower alpha than the primary so the brand accent stays dominant. Decorative,
+  // fades fully to transparent — never touches measured text contrast.
+  const meshAlpha = g * 0.14;
+  const mesh =
+    meshAlpha > 0.001
+      ? `radial-gradient(55% 45% at 88% 100%, ${hexToRgba(accent2, meshAlpha)} 0%, ${hexToRgba(
+          accent2,
+          0,
+        )} 55%)`
+      : '';
+  // A corner VIGNETTE on dark themes — a faint darken at the edges so the board
+  // has tactile depth instead of a flat digital ramp. Skipped on light themes
+  // (a vignette muddies a clean light surface). Pure background layer, Taurus-safe.
+  const isLight = relativeLuminance(background) > 0.5;
+  const vignette = isLight
+    ? ''
+    : 'radial-gradient(135% 120% at 50% 42%, rgba(0,0,0,0) 58%, rgba(0,0,0,0.26) 100%)';
 
   let base: string;
   switch (style.background) {
     case 'duotone':
-      // A directional diagonal ramp — richer, more energetic (sports / tech).
-      base = `linear-gradient(135deg, ${surface} 0%, ${background} 62%, ${background} 100%)`;
+      // A directional diagonal ramp with a 3rd stop pulling toward accent2 in the
+      // far corner — richer + more energetic (sports / tech / retail).
+      base = `linear-gradient(135deg, ${surface} 0%, ${background} 58%, ${blend(
+        background,
+        accent2,
+        0.1,
+      )} 100%)`;
       break;
     case 'wash':
       // A gentle near-flat radial — airy, for light/minimal themes.
@@ -82,13 +112,19 @@ export function themeBackgroundCss(theme: ThemeBundle): string {
       break;
     case 'spotlight':
     default:
-      // A top-center spotlight ramp over a subtle vertical lift — the premium
-      // default. The surface tone pools at the top, fading to background.
-      base = `radial-gradient(110% 75% at 50% -8%, ${surface} 0%, ${background} 60%), linear-gradient(180deg, ${surface} 0%, ${background} 100%)`;
+      // A 3-STOP top-center spotlight (surface → a mid blend → background) over a
+      // subtle vertical lift — so a dark theme where surface≈background still
+      // shows visible FORM, not a flat near-black slab. (2026-06-28 richness.)
+      base = `radial-gradient(110% 78% at 50% -10%, ${surface} 0%, ${blend(
+        surface,
+        background,
+        0.55,
+      )} 38%, ${background} 70%), linear-gradient(180deg, ${surface} 0%, ${background} 100%)`;
       break;
   }
 
-  return glow ? `${glow}, ${base}` : base;
+  // Paint order (CSS paints first-listed on top): glow → mesh → vignette → base.
+  return [glow, mesh, vignette, base].filter(Boolean).join(', ');
 }
 
 /**
@@ -97,7 +133,17 @@ export function themeBackgroundCss(theme: ThemeBundle): string {
  * (Already the richest surface in the engine; kept + centralized here.)
  */
 export function imageHalfCss(theme: ThemeBundle): string {
-  const { accent, surface } = theme.palette;
+  const { accent, surface, accent2 } = theme.palette;
+  // A bold accent → accent2 diagonal (a true two-colour field), with a final
+  // settle toward surface so it ties into the board. When there's no accent2 we
+  // keep the original accent → surface ramp (zero regression).
+  if (accent2 && accent2 !== accent) {
+    return `linear-gradient(135deg, ${accent} 0%, ${accent2} 58%, ${blend(
+      accent2,
+      surface,
+      0.5,
+    )} 100%)`;
+  }
   return `linear-gradient(135deg, ${accent} 0%, ${surface} 100%)`;
 }
 
@@ -178,14 +224,113 @@ export interface DividerCss {
   thicknessPx: number;
 }
 
-/** Build the accent divider CSS for a theme. */
-export function dividerCss(theme: ThemeBundle): DividerCss {
-  const { accent } = theme.palette;
+/**
+ * Build the accent divider CSS for a theme. By default the rule uses the
+ * SECONDARY accent (accent2) so the eyebrow/divider carries the second colour
+ * of the system while the primary accent stays reserved for the focal CTA/stat
+ * — the "now it looks designed" 2-colour split. Pass `useSecondary:false` to
+ * force the primary accent (e.g. the three-up card top-bar, where the card is
+ * already a neutral surface and the primary pop reads best).
+ */
+export function dividerCss(theme: ThemeBundle, useSecondary = true): DividerCss {
+  const { accent, accent2 } = theme.palette;
+  const c = useSecondary ? accent2 ?? accent : accent;
   return {
     // A solid accent that fades to transparent — a tapered rule, not a hard bar.
-    background: `linear-gradient(90deg, ${accent} 0%, ${hexToRgba(accent, 0)} 100%)`,
+    background: `linear-gradient(90deg, ${c} 0%, ${hexToRgba(c, 0)} 100%)`,
     thicknessPx: 4,
   };
+}
+
+// ---------------------------------------------------------------------------
+// KICKER-AS-BADGE (2026-06-28 taste tier) — the enclosed eyebrow chip, the most
+// universal "this was designed" micro-signal. The renderer renders the kicker
+// inside an inline-flex padded pill when `badgeCss` is set.
+// ---------------------------------------------------------------------------
+
+export interface BadgeCss {
+  /** Whether this theme uses a badge at all (some looks want bare type). */
+  enabled: boolean;
+  /** 'filled' (accent2 bg + onAccent2 text) or 'outline' (border + accent2 text). */
+  variant: 'filled' | 'outline';
+  /** The pill `background` CSS value (transparent for outline). */
+  background: string;
+  /** The pill text color. */
+  color: string;
+  /** A `1px solid <color>` border for the outline variant, else undefined. */
+  border?: string;
+  /** Corner radius in px (a high value = full capsule). */
+  radiusPx: number;
+}
+
+/**
+ * Build the kicker-badge recipe for a theme. High-energy themes get a FILLED
+ * accent2 pill (the loud "designed" cue); minimal/luxury + light editorial
+ * themes get an OUTLINE capsule (restrained) — and pure-serif luxury can skip
+ * the badge entirely (bare letterspaced type IS the luxury look). Uses accent2
+ * so the badge doesn't fight the primary-accent focal element.
+ */
+export function badgeCss(theme: ThemeBundle): BadgeCss {
+  const { accent, accent2, onAccent2, onAccent, background } = theme.palette;
+  const a2 = accent2 ?? accent;
+  const on2 = onAccent2 ?? onAccent;
+  const isLight = relativeLuminance(background) > 0.5;
+  // Luxury / minimal: bare type is the look — no badge.
+  if (theme.id === 'minimal-luxury') {
+    return { enabled: false, variant: 'outline', background: 'transparent', color: a2, radiusPx: 0 };
+  }
+  // Light editorial + calm themes read better with a restrained OUTLINE capsule.
+  const outline = isLight || theme.id === 'calm-clinic' || theme.id === 'sky-civic';
+  if (outline) {
+    return {
+      enabled: true,
+      variant: 'outline',
+      background: 'transparent',
+      color: a2,
+      border: `1px solid ${hexToRgba(a2, 0.55)}`,
+      radiusPx: 999,
+    };
+  }
+  // Everything else: a FILLED accent2 pill.
+  return {
+    enabled: true,
+    variant: 'filled',
+    background: a2,
+    color: on2,
+    radiusPx: 999,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// ENTRANCE MOTION CSS (2026-06-28 taste tier) — the @keyframes the renderer
+// injects so a generated board reveals tastefully instead of being dead-static.
+// Pure CSS keyframes (Chromium-83-safe — NO Web Animations API), transform +
+// opacity ONLY. Authored ONCE by the renderer; the per-zone descriptor drives
+// which keyframe + delay/duration each zone uses. Kept here so the engine owns
+// the design and surface-css.spec can pin it.
+// ---------------------------------------------------------------------------
+
+/** The keyframes block the renderer injects once. Names are namespaced. */
+export const ENTRANCE_KEYFRAMES_CSS = `
+@keyframes sigd-rise-fade { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes sigd-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sigd-pop { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: scale(1); } }
+@keyframes sigd-float { 0% { transform: translateY(0); } 50% { transform: translateY(-1.4%); } 100% { transform: translateY(0); } }
+@keyframes sigd-kenburns { from { transform: scale(1.0); } to { transform: scale(1.06); } }
+`.trim();
+
+/** Map an EntranceMotion.kind → the keyframe animation name. */
+export function entranceAnimName(kind: string): string | undefined {
+  switch (kind) {
+    case 'rise-fade':
+      return 'sigd-rise-fade';
+    case 'fade':
+      return 'sigd-fade';
+    case 'pop':
+      return 'sigd-pop';
+    default:
+      return undefined;
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -9,9 +9,12 @@
  */
 
 import {
+  ENTRANCE_KEYFRAMES_CSS,
+  badgeCss,
   blend,
   cardFillCss,
   dividerCss,
+  entranceAnimName,
   hexToRgba,
   imageHalfCss,
   themeBackgroundCss,
@@ -99,21 +102,71 @@ describe('cardFillCss — premium card, not a flat rounded rect', () => {
 });
 
 describe('dividerCss — the accent rule that anchors copy', () => {
-  it('is a tapered accent gradient for every theme', () => {
+  it('is a tapered secondary-accent gradient for every theme', () => {
     for (const t of THEMES) {
-      const d = dividerCss(t);
+      const d = dividerCss(t); // default = secondary accent (accent2)
       expect(d.background).toMatch(/linear-gradient\(90deg/);
-      // Solid accent at one end, transparent accent at the other.
-      const { r, g, b } = require('./contrast').parseHex(t.palette.accent);
+      // Solid accent2 at one end, transparent accent2 at the other.
+      const c = t.palette.accent2 ?? t.palette.accent;
+      const { r, g, b } = require('./contrast').parseHex(c);
       expect(d.background).toContain(`rgba(${r}, ${g}, ${b}, 0)`);
       expect(d.thicknessPx).toBeGreaterThan(0);
       expect(isTaurusSafe(d.background)).toBe(true);
     }
   });
+
+  it('honors useSecondary:false (primary accent for the card top-bar)', () => {
+    const t = THEMES[0];
+    const d = dividerCss(t, false);
+    const { r, g, b } = require('./contrast').parseHex(t.palette.accent);
+    expect(d.background).toContain(`rgba(${r}, ${g}, ${b}, 0)`);
+  });
 });
 
-describe('imageHalfCss — bold accent→surface field', () => {
-  it('is a diagonal accent→surface ramp, Taurus-safe', () => {
+describe('badgeCss — the kicker-as-badge chip', () => {
+  it('returns a Taurus-safe filled/outline recipe per theme', () => {
+    for (const t of THEMES) {
+      const b = badgeCss(t);
+      expect(['filled', 'outline']).toContain(b.variant);
+      expect(typeof b.color).toBe('string');
+      expect(isTaurusSafe(b.background)).toBe(true);
+      if (b.border) expect(b.border).toContain('1px solid');
+    }
+  });
+
+  it('minimal-luxury opts OUT of a badge (bare type is the look)', () => {
+    const t = THEMES.find((x) => x.id === 'minimal-luxury')!;
+    expect(badgeCss(t).enabled).toBe(false);
+  });
+
+  it('a high-energy dark theme uses a FILLED accent2 pill', () => {
+    const t = THEMES.find((x) => x.id === 'neon-sports')!;
+    const b = badgeCss(t);
+    expect(b.enabled).toBe(true);
+    expect(b.variant).toBe('filled');
+    expect(b.background).toBe(t.palette.accent2);
+  });
+});
+
+describe('entrance motion CSS', () => {
+  it('exposes namespaced keyframes for every reveal kind', () => {
+    expect(ENTRANCE_KEYFRAMES_CSS).toContain('@keyframes sigd-rise-fade');
+    expect(ENTRANCE_KEYFRAMES_CSS).toContain('@keyframes sigd-fade');
+    expect(ENTRANCE_KEYFRAMES_CSS).toContain('@keyframes sigd-pop');
+    // transform/opacity ONLY — no banned/layout-thrashing props.
+    expect(/\bwidth\s*:/.test(ENTRANCE_KEYFRAMES_CSS)).toBe(false);
+    expect(/\binset\s*:/.test(ENTRANCE_KEYFRAMES_CSS)).toBe(false);
+  });
+
+  it('maps a kind to a keyframe name (none → undefined)', () => {
+    expect(entranceAnimName('rise-fade')).toBe('sigd-rise-fade');
+    expect(entranceAnimName('pop')).toBe('sigd-pop');
+    expect(entranceAnimName('none')).toBeUndefined();
+  });
+});
+
+describe('imageHalfCss — bold accent→accent2 field', () => {
+  it('is a diagonal accent-led ramp, Taurus-safe', () => {
     for (const t of THEMES) {
       const css = imageHalfCss(t);
       expect(css).toMatch(/linear-gradient\(135deg/);

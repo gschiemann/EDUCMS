@@ -96,11 +96,17 @@ function textTokens(
   isAccent = false,
 ): ZoneStyleTokens {
   const isDisplay = role === 'display' || role === 'headline' || role === 'title';
+  // TYPOGRAPHY DETAIL TOKENS (2026-06-28): read the per-typeface weight from the
+  // theme's FontPair (Playfair 900 vs Oswald/Anton 400-600 vs sans 700-800)
+  // instead of a uniform 800/500. Falls back to the legacy 800/500 so a FontPair
+  // without the tokens is unchanged.
+  const displayWeight = theme.fontPair.displayWeight ?? 800;
+  const bodyWeight = theme.fontPair.bodyWeight ?? 500;
   return {
     typeRole: role,
     colorToken: isAccent ? 'accent' : colorToken,
     fontFamily: isDisplay ? theme.fontPair.display : theme.fontPair.body,
-    fontWeight: isDisplay ? 800 : 500,
+    fontWeight: isDisplay ? displayWeight : bodyWeight,
     align,
     isAccent,
   };

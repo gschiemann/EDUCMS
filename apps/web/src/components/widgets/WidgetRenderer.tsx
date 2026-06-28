@@ -1367,6 +1367,18 @@ const SIGNAGE_FONTS_HREF =
     'family=Playfair+Display:wght@400;500;600;700;800;900',
     'family=Sora:wght@400;500;600;700;800',
     'family=Space+Grotesk:wght@400;500;600;700',
+    // 2026-06-28 taste tier — characterful display + non-Inter body faces the
+    // re-paired curated themes now use. A family the renderer does NOT load
+    // silently falls back to system-ui (the exact 50px-floor bug), so every
+    // theme font added in themes.ts MUST be loaded here with the weights it uses.
+    'family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700', // minimal-luxury / forest display
+    'family=Anton', // neon-sports display (single 400 weight, reads ultra-bold)
+    'family=Archivo:wght@400;500;600;700;800;900', // qsr / sky-civic display
+    'family=Fredoka:wght@400;500;600;700', // warm-school display
+    'family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700', // worship body
+    'family=Nunito+Sans:opsz,wght@6..12,400;6..12,500;6..12,600;6..12,700', // warm-school / forest body
+    'family=Mulish:wght@400;500;600;700;800', // calm-clinic display
+    'family=Barlow+Condensed:wght@400;500;600;700', // fresh-fitness display
   ].join('&') +
   '&display=swap';
 
@@ -1430,6 +1442,84 @@ function withIntlFont(fontFamily: string | undefined, content: any): string | un
 
 let signageFontsInjected = false;
 let signageCjkFontsInjected = false;
+let signageEntranceKfInjected = false;
+
+// ENTRANCE MOTION (2026-06-28 taste tier) — the @keyframes the art-director's
+// per-zone `entrance` descriptor plays. Mirrors ENTRANCE_KEYFRAMES_CSS in
+// @cms/signage-design (kept inline here so the renderer is self-contained and
+// has no engine import at render time). Taurus-safe: transform + opacity ONLY,
+// CSS keyframes (NOT the Web Animations API). The `@media (prefers-reduced-
+// motion)` block disables every reveal/drift for motion-sensitive viewers.
+const SIGNAGE_ENTRANCE_KEYFRAMES = `
+@keyframes sigd-rise-fade { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes sigd-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sigd-pop { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: scale(1); } }
+@keyframes sigd-float { 0% { transform: translateY(0); } 50% { transform: translateY(-1.4%); } 100% { transform: translateY(0); } }
+@keyframes sigd-kenburns { from { transform: scale(1.0); } to { transform: scale(1.06); } }
+@media (prefers-reduced-motion: reduce) {
+  .sigd-anim { animation: none !important; opacity: 1 !important; transform: none !important; }
+}
+`.trim();
+
+/** Map an entrance kind → the keyframe animation name (undefined = no reveal). */
+function sigdEntranceAnim(kind: any): string | undefined {
+  switch (kind) {
+    case 'rise-fade':
+      return 'sigd-rise-fade';
+    case 'fade':
+      return 'sigd-fade';
+    case 'pop':
+      return 'sigd-pop';
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Build the inline `animation` shorthand(s) for a zone's entrance descriptor.
+ * Returns undefined when there's nothing to animate, so a board with no
+ * `entrance` (or `kind:'none'`) renders dead-static exactly as before.
+ *
+ * The reveal runs ONCE (forwards fill so it settles at identity — never shifts
+ * layout, never re-triggers FitScaler). An optional slow ambient drift runs
+ * after, infinitely, ONLY where the engine set it (background Ken-Burns / hero
+ * float) so a watched screen is never fully dead.
+ */
+function sigdAnimation(entrance: any): string | undefined {
+  if (!entrance || typeof entrance !== 'object') return undefined;
+  const anim = sigdEntranceAnim(entrance.kind);
+  const parts: string[] = [];
+  if (anim) {
+    const dur = Number.isFinite(entrance.durationMs) ? entrance.durationMs : 400;
+    const delay = Number.isFinite(entrance.delayMs) ? entrance.delayMs : 0;
+    const ease = typeof entrance.easing === 'string' ? entrance.easing : 'ease-out';
+    parts.push(`${anim} ${dur}ms ${ease} ${delay}ms both`);
+  }
+  if (entrance.ambient === 'float') {
+    parts.push('sigd-float 7s ease-in-out 1200ms infinite');
+  } else if (entrance.ambient === 'kenburns') {
+    parts.push('sigd-kenburns 18s ease-out 600ms infinite alternate');
+  }
+  return parts.length ? parts.join(', ') : undefined;
+}
+
+/**
+ * Wrap children in a zone-entrance animation layer. Fills its parent zone via
+ * longhand top/right/bottom/left (Taurus rule #10 — never `inset`) so it doesn't
+ * affect the FitScaler box inside it. `will-change` is set only while animating.
+ */
+function EntranceWrap({ entrance, children }: { entrance: any; children: React.ReactNode }) {
+  const animation = sigdAnimation(entrance);
+  if (!animation) return <>{children}</>;
+  return (
+    <div
+      className="sigd-anim absolute top-0 right-0 bottom-0 left-0"
+      style={{ animation, willChange: 'transform, opacity' }}
+    >
+      {children}
+    </div>
+  );
+}
 
 /**
  * Inject the engine font set once into <head>. We append our OWN <link> and
@@ -1456,6 +1546,15 @@ function useSignageFonts() {
       document.head.appendChild(cjk);
     }
     signageCjkFontsInjected = true;
+    // Entrance-motion keyframes — injected once as our OWN <style> (never
+    // removed; React-19-safe, same contract as the font links).
+    if (!signageEntranceKfInjected && !document.getElementById('signage-entrance-kf')) {
+      const style = document.createElement('style');
+      style.id = 'signage-entrance-kf';
+      style.textContent = SIGNAGE_ENTRANCE_KEYFRAMES;
+      document.head.appendChild(style);
+    }
+    signageEntranceKfInjected = true;
   }, []);
 }
 
@@ -1570,6 +1669,14 @@ function SignageText({ config }: { config: any }) {
   const letterSpacing = config.letterSpacing || undefined;
   const textTransform = config.textTransform || undefined;
   const textShadow = config.textShadow || undefined;
+  // 2026-06-28 taste tier — premium type micro-details forwarded from the
+  // art-director config: balanced wrapping on display, kerning/ligatures, and
+  // tabular figures on the focal stat (a '111' renders even, not lopsided).
+  const textWrapBalance = config.textWrapBalance === true;
+  const fontFeatureSettings = config.fontFeatureSettings || undefined;
+  const fontVariantNumeric = config.fontVariantNumeric || undefined;
+  // The per-zone entrance descriptor (staggered reveal + optional ambient drift).
+  const entrance = config.entrance;
 
   // Right-to-left scripts (Arabic / Hebrew) must lay out RTL or the text reads
   // backwards and the alignment is wrong. Detect from the actual copy (so a
@@ -1598,6 +1705,11 @@ function SignageText({ config }: { config: any }) {
     letterSpacing,
     textTransform: textTransform as any,
     textShadow,
+    fontFeatureSettings,
+    fontVariantNumeric,
+    // text-wrap:balance distributes a 2-line headline evenly (a designed look).
+    // Unknown to Chromium 83 → harmlessly ignored there (degrades to normal wrap).
+    textWrap: textWrapBalance ? ('balance' as any) : undefined,
     whiteSpace: 'pre-wrap',
     wordWrap: 'break-word',
     margin: 0,
@@ -1624,6 +1736,7 @@ function SignageText({ config }: { config: any }) {
   // long label never overflows its rect (QA finding #3).
   if (config.paddingMode === 'button') {
     return (
+      <EntranceWrap entrance={entrance}>
       <FitScaler
         justify={justify}
         items="center"
@@ -1656,6 +1769,7 @@ function SignageText({ config }: { config: any }) {
           {content}
         </span>
       </FitScaler>
+      </EntranceWrap>
     );
   }
 
@@ -1668,6 +1782,7 @@ function SignageText({ config }: { config: any }) {
     const cardRadius =
       typeof config.borderRadius === 'number' ? `${config.borderRadius}px` : config.borderRadius;
     return (
+      <EntranceWrap entrance={entrance}>
       <div
         className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden"
         style={{
@@ -1713,6 +1828,7 @@ function SignageText({ config }: { config: any }) {
           ) : null}
         </FitScaler>
       </div>
+      </EntranceWrap>
     );
   }
 
@@ -1727,6 +1843,7 @@ function SignageText({ config }: { config: any }) {
     // the zone edge regardless of direction.
     const valueIntlFont = withIntlFont(config.fontFamily || undefined, config.valueText);
     return (
+      <EntranceWrap entrance={entrance}>
       <FitScaler
         justify={rtl ? 'flex-end' : 'flex-start'}
         items="center"
@@ -1763,7 +1880,11 @@ function SignageText({ config }: { config: any }) {
               fontFamily: valueIntlFont,
               textAlign: 'end',
               fontWeight: 800,
-              color,
+              // The price column pops in the secondary accent (designed-menu cue)
+              // when the engine supplies one; falls back to the row's ink color.
+              color: config.valueColor || color,
+              // Tabular figures so a column of $5 / $12 / $8.50 aligns cleanly.
+              fontVariantNumeric: config.valueTabular ? 'tabular-nums' : fontVariantNumeric,
               marginLeft: '0.6em',
               flexShrink: 0,
             }}
@@ -1772,6 +1893,52 @@ function SignageText({ config }: { config: any }) {
           </div>
         ) : null}
       </FitScaler>
+      </EntranceWrap>
+    );
+  }
+
+  // KICKER-AS-BADGE (2026-06-28 taste tier): when config.kickerBadge is set, the
+  // eyebrow renders inside an enclosed chip — a filled accent2 pill (high-energy
+  // themes) or an outlined capsule (minimal/light). The most universal "this was
+  // designed" micro-signal. Taurus-safe: inline-flex + solid bg/border, no
+  // backdrop-filter, longhand positioning via FitScaler.
+  if (config.kickerBadge && typeof config.kickerBadge === 'object') {
+    const b = config.kickerBadge;
+    const padRadius = typeof b.radiusPx === 'number' ? `${b.radiusPx}px` : '999px';
+    return (
+      <EntranceWrap entrance={entrance}>
+      <FitScaler
+        justify={justify}
+        items="center"
+        origin={scaleOrigin}
+        dataField="content"
+        deps={[content, fontSize, fontFamily, fontWeight, align, rtl]}
+      >
+        <span
+          dir={dirAttr}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            whiteSpace: 'nowrap',
+            direction: rtl ? 'rtl' : undefined,
+            fontSize: `${fontSize}px`,
+            fontFamily,
+            fontWeight,
+            lineHeight: 1,
+            letterSpacing,
+            textTransform: textTransform as any,
+            color: b.color || color,
+            background: b.variant === 'filled' ? b.background : 'transparent',
+            border: b.border || undefined,
+            padding: '0.32em 0.85em',
+            borderRadius: padRadius,
+          }}
+        >
+          {content}
+        </span>
+      </FitScaler>
+      </EntranceWrap>
     );
   }
 
@@ -1797,6 +1964,7 @@ function SignageText({ config }: { config: any }) {
         ? String(config.accentDivider).replace('90deg', '270deg')
         : config.accentDivider;
     return (
+      <EntranceWrap entrance={entrance}>
       <FitScaler
         justify={justify}
         items="center"
@@ -1817,10 +1985,12 @@ function SignageText({ config }: { config: any }) {
           }}
         />
       </FitScaler>
+      </EntranceWrap>
     );
   }
 
   return (
+    <EntranceWrap entrance={entrance}>
     <FitScaler
       justify={justify}
       items="center"
@@ -1831,6 +2001,7 @@ function SignageText({ config }: { config: any }) {
     >
       <p dir={dirAttr} style={{ ...baseTextStyle, ...wordWrapStyle, width: '100%' }}>{content}</p>
     </FitScaler>
+    </EntranceWrap>
   );
 }
 
@@ -2343,13 +2514,21 @@ function ImageWidget({ config }: { config: any }) {
     const fit = (config.fit || config.fitMode || 'contain') as 'cover' | 'contain';
     const opacity = typeof config.opacity === 'number' ? Math.max(0, Math.min(1, config.opacity)) : 1;
     const radius = typeof config.borderRadius === 'number' ? Math.max(0, config.borderRadius) : 0;
+    // ENTRANCE (2026-06-28): a slow Ken-Burns on the full-bleed background photo
+    // when the engine set ambient:'kenburns' (high-motion themes), so a watched
+    // board's hero image is never frozen. Transform-only; the `overflow-hidden`
+    // parent crops the slight scale. Respects prefers-reduced-motion via .sigd-anim.
+    const imgAnim =
+      config.entrance?.ambient === 'kenburns'
+        ? 'sigd-kenburns 18s ease-out 600ms infinite alternate'
+        : undefined;
     return (
       <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden" style={{ borderRadius: radius || undefined }}>
         <img
           src={resolveUrl(config.assetUrl)}
           alt=""
-          className="w-full h-full"
-          style={{ objectFit: fit, opacity }}
+          className={imgAnim ? 'w-full h-full sigd-anim' : 'w-full h-full'}
+          style={{ objectFit: fit, opacity, animation: imgAnim, willChange: imgAnim ? 'transform' : undefined }}
         />
         {/* Wave 2 (2026-06-26) — engine scrim overlay (contrast guard) over the
             photo so text on top stays legible. CSS gradient only; no inset. */}

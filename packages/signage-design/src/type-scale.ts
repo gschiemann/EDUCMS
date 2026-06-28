@@ -152,6 +152,51 @@ export function headlineToBodyRatio(
 }
 
 /**
+ * PER-ROLE LEADING (line-height) — tuned to role + typeface (2026-06-28).
+ * A flat 1.1 for all display clips serif ascenders (Playfair / Cormorant /
+ * Fraunces) and is too loose for a single-line all-caps hero. Derive instead:
+ *   - serif display      → 1.16  (serifs need room for ascenders/descenders)
+ *   - sans display       → 1.05  (tight, modern hero)
+ *   - title              → 1.15
+ *   - body / caption     → 1.35
+ *   - kicker             → 1.1
+ * `isSerif` is passed by the caller (it knows the resolved family). Optional —
+ * a caller that doesn't pass it gets the sans values (today's behaviour for the
+ * sans-heavy default set).
+ */
+export function leadingForRole(role: TypeRole, isSerif = false): number {
+  switch (role) {
+    case 'display':
+    case 'headline':
+      return isSerif ? 1.16 : 1.05;
+    case 'title':
+      return isSerif ? 1.2 : 1.15;
+    case 'kicker':
+      return 1.1;
+    case 'body':
+    case 'caption':
+    default:
+      return 1.35;
+  }
+}
+
+/** Family names whose display faces are SERIFS (need looser display leading). */
+const SERIF_FAMILIES = new Set([
+  'Playfair Display',
+  'Cormorant Garamond',
+  'Fraunces',
+  'Source Serif 4',
+]);
+
+/** Whether a resolved font-family is one of the engine's serif display faces. */
+export function isSerifFamily(family: string | undefined): boolean {
+  if (!family) return false;
+  // Match the first family token (the design font), ignoring the fallback stack.
+  const first = family.split(',')[0].trim().replace(/^['"]|['"]$/g, '');
+  return SERIF_FAMILIES.has(first);
+}
+
+/**
  * Cap-height (px) of a rendered font size — used to verify the published
  * %-of-canvas-height law in tests + the validator.
  */

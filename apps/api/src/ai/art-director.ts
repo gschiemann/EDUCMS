@@ -25,6 +25,7 @@ import {
   ARCHETYPE_IDS,
   LARGE_CONTRAST_FLOOR,
   THEMES,
+  badgeCss,
   bestTextColor,
   cardFillCss,
   classifyCanvas,
@@ -33,6 +34,8 @@ import {
   dividerCss,
   getTheme,
   imageHalfCss,
+  isSerifFamily,
+  leadingForRole,
   resolveArchetype,
   resolveCanvas,
   enforce,
@@ -40,12 +43,14 @@ import {
   type ArchetypeId,
   type ArchetypeItem,
   type ArtDirectorSpec,
+  type EntranceMotion,
   type ResolvedZone,
   type SceneSpec,
   type ScrimSpec,
   type SurfaceStyle,
   type ThemeBundle,
   type ThemePalette,
+  type TypeRole,
 } from '@cms/signage-design';
 
 /** The zone shape `sanitizeTouchTemplate` produces (plus our `sceneRef`). */
@@ -258,6 +263,12 @@ function mergeCustomPalette(base: ThemePalette, override: Partial<ThemePalette>)
     muted: bgChanged ? bestTextColor(background) : base.muted,
     accent,
     onAccent: accentChanged ? bestTextColor(accent) : base.onAccent,
+    // Carry the theme's secondary accent through a custom-palette merge. The
+    // operator's swatches only set bg/accent/surface, so accent2 stays the
+    // theme's own (already contrast-verified). If they changed the background,
+    // re-derive a legible onAccent2 against the new accent2.
+    accent2: base.accent2,
+    onAccent2: base.accent2 && bgChanged ? bestTextColor(base.accent2) : base.onAccent2,
   };
 }
 
@@ -288,6 +299,16 @@ function resolveTextHex(z: ResolvedZone, palette: ThemePalette): string {
     default:
       return palette.ink;
   }
+}
+
+/**
+ * The SECONDARY-accent hex for a theme (2026-06-28). Used for a restrained
+ * second emphasis element — the kicker text + its divider — so a board reads as
+ * a 2-colour SYSTEM, not monochrome. Falls back to the primary accent when a
+ * palette has no accent2 (zero regression).
+ */
+function accent2Hex(palette: ThemePalette): string {
+  return palette.accent2 ?? palette.accent;
 }
 
 /** A short hex (#rgb/#rrggbb) → rgba(r,g,b,a). Falls back to the raw color on parse miss. */
@@ -373,6 +394,65 @@ function isImageBoard(archetype: ArchetypeId): boolean {
   return IMAGE_BG_ARCHETYPES.has(archetype);
 }
 
+// ───────────────────────────────────────────────────────────────────────
+// PER-ZONE ENTRANCE MOTION (2026-06-28 taste tier). The theme already defines
+// `motion` {durationMs, easing} but NOTHING read it — every board was a dead
+// slate. We emit an EntranceMotion descriptor per zone, staggered by ROLE so
+// the eyebrow reveals first, then the headline, body, CTA — a tasteful cascade
+// the renderer plays as a CSS @keyframes reveal AFTER the FitScaler measure.
+// Subtle by default; the reveal settles to identity so it never shifts layout.
+// ───────────────────────────────────────────────────────────────────────
+
+/** Stagger order by slot — earlier slots reveal first (ms offsets). */
+const ENTRANCE_STAGGER_MS: Partial<Record<ResolvedZone['slot'], number>> = {
+  background: 0,
+  kicker: 0,
+  headline: 120,
+  stat: 120,
+  statLabel: 260,
+  body: 260,
+  listItem: 260, // list/grid rows reveal as a group after the headline
+  cta: 380,
+  image: 0,
+};
+
+/** Pick the reveal KIND for a slot, tuned to theme energy + role. */
+function entranceKindForSlot(
+  slot: ResolvedZone['slot'],
+  theme: ThemeBundle,
+): EntranceMotion['kind'] {
+  // High-glow / high-energy themes get a little 'pop' on the focal element; calm
+  // themes stay on a clean 'rise-fade'. Backgrounds always plain-fade.
+  if (slot === 'background' || slot === 'image') return 'fade';
+  const energetic = (theme.surfaceStyle?.glow ?? 0.5) >= 0.78;
+  if (slot === 'stat' || (energetic && slot === 'cta')) return 'pop';
+  return 'rise-fade';
+}
+
+/**
+ * Build the EntranceMotion descriptor for a zone. Returns undefined for slots
+ * we deliberately leave static (none today, but keeps the door open). Ambient
+ * drift is set ONLY on the full-bleed background of high-motion themes (a slow
+ * Ken-Burns) so a watched screen is never fully dead — never on text.
+ */
+function entranceForSlot(
+  slot: ResolvedZone['slot'],
+  theme: ThemeBundle,
+): EntranceMotion {
+  const kind = entranceKindForSlot(slot, theme);
+  const delayMs = ENTRANCE_STAGGER_MS[slot] ?? 200;
+  const energetic = (theme.surfaceStyle?.glow ?? 0.5) >= 0.78;
+  const ambient: EntranceMotion['ambient'] =
+    slot === 'background' && energetic ? 'kenburns' : 'none';
+  return {
+    kind,
+    delayMs,
+    durationMs: theme.motion.durationMs,
+    easing: theme.motion.easing,
+    ambient,
+  };
+}
+
 /** Map a single resolved text zone → defaultConfig. */
 function mapTextConfig(
   z: ResolvedZone,
@@ -448,7 +528,14 @@ function mapTextConfig(
         sizeMode: 'absolute',
         fontSize: tokens.fontSizePx,
         fontFamily: tokens.fontFamily,
+        fontWeight: tokens.fontWeight,
         color: hex,
+        // The price column is the secondary-accent emphasis on a menu — a $$$
+        // designed-menu cue (the label stays ink, the value pops in accent2).
+        valueColor: accent2Hex(palette),
+        // Prices are numerals → tabular figures so a column of $5 / $12 / $8.50
+        // aligns cleanly instead of jittering with proportional figures.
+        valueTabular: true,
         alignment: 'left',
         rowLayout: true,
         lineHeight: 1.2,
@@ -465,7 +552,9 @@ function mapTextConfig(
     // PREMIUM card: a top-lit surface gradient + an accent hairline border + a
     // top accent bar — the antidote to the banned "flat rounded rect + shadow".
     const fill = cardFillCss(theme);
-    const div = dividerCss(theme);
+    // The card top-bar uses the PRIMARY accent (the focal card cue); the kicker
+    // divider elsewhere uses accent2 — together they make the 2-colour system.
+    const div = dividerCss(theme, false);
     return {
       content: item?.label || content,
       config: {
@@ -474,6 +563,7 @@ function mapTextConfig(
         sizeMode: 'absolute',
         fontSize: cardTitlePx,
         fontFamily: tokens.fontFamily,
+        fontWeight: tokens.fontWeight,
         color: palette.ink,
         // The renderer paints `cardBg` (gradient) when present, else `bgColor`.
         bgColor: palette.surface,
@@ -490,6 +580,12 @@ function mapTextConfig(
   }
 
   // Plain text slots (kicker / headline / body / cta-fallback / stat / statLabel).
+  // TYPOGRAPHY DETAIL (2026-06-28): per-role leading tuned to the resolved face
+  // (serif display gets looser leading so ascenders aren't clipped), and big
+  // display/headline type gets the theme's negative display-tracking instead of
+  // the loose default 0em — the "uniform-800, loose-tracking" amateur tell fix.
+  const serif = isSerifFamily(tokens.fontFamily);
+  const lineHeight = leadingForRole((role as TypeRole) ?? 'body', serif);
   const config: Record<string, any> = {
     content,
     sizeMode: 'absolute',
@@ -498,17 +594,50 @@ function mapTextConfig(
     fontWeight: tokens.fontWeight,
     color: hex,
     alignment: tokens.align || 'left',
-    lineHeight: isDisplay ? 1.1 : 1.35,
+    lineHeight,
   };
+  if (isDisplay) {
+    // Negative display tracking (theme-tuned) + balanced wrapping + kerning/ligs
+    // — the difference between "typeset by a template" and "designed".
+    if (theme.fontPair.displayTracking) config.letterSpacing = theme.fontPair.displayTracking;
+    config.textWrapBalance = true;
+    config.fontFeatureSettings = '"kern" 1, "liga" 1';
+  }
+  if (z.slot === 'stat') {
+    // The one big number: tabular figures so a '111' renders even, + a slightly
+    // tighter tracking so the digits group tightly (the renderer already proves
+    // this on its own number widgets at -0.02em).
+    config.fontVariantNumeric = 'tabular-nums';
+    config.letterSpacing = '-0.02em';
+  }
   if (z.slot === 'kicker') {
-    config.letterSpacing = '0.18em';
+    // Per-typeface kicker tracking (condensed faces want wider, serifs tighter)
+    // — falls back to the legacy 0.18em.
+    config.letterSpacing = theme.fontPair.kickerTracking ?? '0.18em';
     config.textTransform = 'uppercase';
-    // ACCENT DIVIDER — a short tapered accent rule under the eyebrow so the copy
-    // is anchored, not floating (a $$$-design cue). The renderer draws it as a
-    // thin element below the kicker text, aligned to the kicker's alignment.
-    const div = dividerCss(theme);
-    config.accentDivider = div.background;
-    config.accentDividerThicknessPx = div.thicknessPx;
+    // KICKER-AS-BADGE — the enclosed eyebrow chip, the most universal "designed"
+    // micro-signal. Filled accent2 pill on energetic themes, outline capsule on
+    // minimal/light, skipped where bare type IS the look. The renderer wraps the
+    // kicker text in an inline-flex padded pill when `kickerBadge` is set.
+    const badge = badgeCss(theme);
+    if (badge.enabled) {
+      config.kickerBadge = {
+        variant: badge.variant,
+        background: badge.background,
+        color: badge.color,
+        border: badge.border,
+        radiusPx: badge.radiusPx,
+      };
+      // A badged eyebrow carries its OWN colour; drop the under-rule so we don't
+      // double up (pill + rule reads busy).
+    } else {
+      // No badge → the tapered SECONDARY-accent rule under the eyebrow so the
+      // copy is anchored, not floating. accent2 keeps the primary accent reserved
+      // for the focal CTA/stat (the 2-colour system).
+      const div = dividerCss(theme, true);
+      config.accentDivider = div.background;
+      config.accentDividerThicknessPx = div.thicknessPx;
+    }
   }
   if (overImage) {
     config.textShadow = '0 2px 24px rgba(0,0,0,0.45)';
@@ -600,6 +729,14 @@ function mapScene(
       const isEmpty = !content || !String(content).trim();
       if (isEmpty && z.slot !== 'headline') continue;
       config = textConfig;
+    }
+
+    // ENTRANCE MOTION (2026-06-28): attach a staggered reveal descriptor to every
+    // zone's defaultConfig. The renderer plays it as a CSS @keyframes reveal AFTER
+    // the FitScaler measure, gated behind prefers-reduced-motion. Wire it onto a
+    // COPY of the config so we never mutate a shared object.
+    if (config) {
+      config = { ...config, entrance: entranceForSlot(z.slot, theme) };
     }
 
     const mZone: MappedZone = {
