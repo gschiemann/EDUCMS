@@ -97,6 +97,27 @@ const ALT_TEXT_SYSTEM_PROMPT =
   'Don\'t say "image of" or "picture of". Just describe the visible content. ' +
   'No emoji, no markdown, no quotes — return plain text only.';
 
+// 2026-06-28 — Signage Concierge design-reference analysis. The customer
+// uploads a photo of signage / a brand / a look they like; the concierge needs
+// a compact STYLE read (not an accessibility caption) it can fold into the
+// design brief. Strict JSON so the parse is reliable; defensive fallback in
+// analyzeDesignReference treats a non-JSON reply as the summary.
+const DESIGN_REFERENCE_SYSTEM_PROMPT =
+  'You are a design analyst for digital signage. Look at this reference image ' +
+  '(signage, a brand, or a style the customer likes). Return ONLY JSON: ' +
+  '{"summary":"1-2 sentences describing the visual style — mood, color feel, layout, typography vibe, imagery","palette":["#hex",...]} ' +
+  'with up to 6 dominant hex colors. No markdown, no text outside the JSON.';
+
+// A design-reference read needs more room than a 125-char caption (a 1-2
+// sentence style summary + a 6-color palette). 500 tokens is comfortable.
+const DESIGN_REFERENCE_MAX_TOKENS = 500;
+// Design-reference analysis is operator-interactive (they're waiting on the
+// concierge), so a touch more headroom than the fire-and-forget alt-text 5s.
+const DESIGN_REFERENCE_TIMEOUT_MS = 8_000;
+// Clamp the persisted style summary. ConciergeReference.summary is bounded to
+// 4000 at the Zod boundary; 700 keeps the system-prompt reference block tight.
+const MAX_DESIGN_SUMMARY_CHARS = 700;
+
 export interface GenerateAltTextArgs {
   tenantId: string;
   /** Bytes to feed to the vision model. Pass the OPTIMIZED buffer when
@@ -309,7 +330,14 @@ export class AiAltTextService {
   private async auditLog(args: {
     tenantId: string;
     userId?: string;
-    action: 'AI_ALT_TEXT_GENERATED' | 'AI_ALT_TEXT_SKIPPED' | 'AI_ALT_TEXT_FAILED';
+    action:
+      | 'AI_ALT_TEXT_GENERATED'
+      | 'AI_ALT_TEXT_SKIPPED'
+      | 'AI_ALT_TEXT_FAILED'
+      // 2026-06-28 — Signage Concierge design-reference image analysis.
+      | 'AI_DESIGN_REFERENCE_ANALYZED'
+      | 'AI_DESIGN_REFERENCE_SKIPPED'
+      | 'AI_DESIGN_REFERENCE_FAILED';
     assetId?: string;
     details: Record<string, unknown>;
   }): Promise<void> {
@@ -535,6 +563,325 @@ export class AiAltTextService {
     });
 
     return { altText, provider: resolved.provider, model, estCostUsd: estCost };
+  }
+
+  /**
+   * Signage Concierge design-reference analysis (2026-06-28). Generalized
+   * sibling of generateImageAltText: instead of a screen-reader caption it
+   * returns a STYLE read (1-2 sentence summary + dominant palette) the
+   * concierge folds into its design brief. Reuses the EXACT plumbing —
+   * resolveProvider (BYOK→platform), isPlatformCapExhausted, the shared 30/hr
+   * window (aiWindowCount/aiRecordEvent), bumpPlatformUsage, and auditLog — so
+   * a reference upload counts against the same budget as every other AI
+   * surface. Like alt-text it NEVER throws on a provider/cap miss; it returns
+   * null (the caller surfaces a friendly "describe the look instead" message).
+   *
+   * Some duplication of the three provider wire-branches is acceptable here
+   * (callVisionRaw) to avoid touching the load-bearing alt-text methods.
+   */
+  async analyzeDesignReference(args: {
+    tenantId: string;
+    userId?: string;
+    imageBuffer: Buffer;
+    mimeType: string;
+  }): Promise<{ summary: string; palette: string[]; provider: string; model: string } | null> {
+    // Guard 1: must be an image.
+    const mime = (args.mimeType || '').toLowerCase();
+    if (!mime.startsWith('image/')) {
+      await this.auditLog({
+        tenantId: args.tenantId,
+        userId: args.userId,
+        action: 'AI_DESIGN_REFERENCE_SKIPPED',
+        details: { reason: 'not_an_image', mimeType: mime, bytes: args.imageBuffer.length },
+      });
+      return null;
+    }
+
+    // Guard 2: resolve a vision-capable provider (HONEST skip reasons).
+    const resolveOutcome = await this.resolveProvider(args.tenantId);
+    if (resolveOutcome.unsupportedProvider) {
+      await this.auditLog({
+        tenantId: args.tenantId,
+        userId: args.userId,
+        action: 'AI_DESIGN_REFERENCE_SKIPPED',
+        details: {
+          reason: 'provider_unsupported_for_vision',
+          provider: resolveOutcome.unsupportedProvider,
+        },
+      });
+      return null;
+    }
+    const resolved = resolveOutcome.resolved;
+    if (!resolved) {
+      await this.auditLog({
+        tenantId: args.tenantId,
+        userId: args.userId,
+        action: 'AI_DESIGN_REFERENCE_SKIPPED',
+        details: { reason: 'no_ai_provider_configured' },
+      });
+      return null;
+    }
+
+    // Guard 3: platform free-tier monthly cap.
+    if (resolved.source === 'platform' && await this.isPlatformCapExhausted(args.tenantId)) {
+      await this.auditLog({
+        tenantId: args.tenantId,
+        userId: args.userId,
+        action: 'AI_DESIGN_REFERENCE_SKIPPED',
+        details: { reason: 'platform_cap_exhausted', provider: resolved.provider, source: resolved.source },
+      });
+      return null;
+    }
+
+    // Guard 4: SHARED 30/hr hourly cap (applies to BOTH platform + BYOK —
+    // runaway guard, not a spend cap; fails OPEN on Redis loss).
+    if ((await aiWindowCount(this.redis.publisher, args.tenantId)) >= HOURLY_CAP) {
+      await this.auditLog({
+        tenantId: args.tenantId,
+        userId: args.userId,
+        action: 'AI_DESIGN_REFERENCE_SKIPPED',
+        details: { reason: 'hourly_cap_reached', cap: HOURLY_CAP, provider: resolved.provider, source: resolved.source },
+      });
+      return null;
+    }
+
+    const base64 = args.imageBuffer.toString('base64');
+    const userText = 'Analyze the visual style of this reference image for digital signage.';
+
+    let raw: string | null = null;
+    let model = '';
+    try {
+      if (resolved.provider === 'openai') {
+        model = 'gpt-4o-mini';
+      } else if (resolved.provider === 'google') {
+        model = resolved.model || defaultModelFor('google');
+      } else {
+        model = 'claude-3-5-haiku-20241022';
+      }
+      raw = await this.callVisionRaw(
+        resolved.provider,
+        resolved.apiKey,
+        base64,
+        mime,
+        DESIGN_REFERENCE_SYSTEM_PROMPT,
+        userText,
+        model,
+        DESIGN_REFERENCE_MAX_TOKENS,
+        DESIGN_REFERENCE_TIMEOUT_MS,
+      );
+    } catch (e: any) {
+      // Quota errors + generic errors both → null (concierge degrades to
+      // "describe the look instead"). Audit with the disambiguation.
+      const isQuota = e instanceof AiAltTextQuotaError;
+      this.logger.warn(`design-reference analysis failed (${resolved.provider}): ${e?.message}`);
+      await this.auditLog({
+        tenantId: args.tenantId,
+        userId: args.userId,
+        action: 'AI_DESIGN_REFERENCE_FAILED',
+        details: {
+          provider: resolved.provider,
+          model,
+          source: resolved.source,
+          ...(isQuota
+            ? { errorCode: 'AI_QUOTA_EXHAUSTED', statusCode: (e as AiAltTextQuotaError).statusCode }
+            : { error: String(e?.message || e).slice(0, 200) }),
+          bytes: args.imageBuffer.length,
+        },
+      });
+      return null;
+    }
+
+    if (!raw || !raw.trim()) {
+      await this.auditLog({
+        tenantId: args.tenantId,
+        userId: args.userId,
+        action: 'AI_DESIGN_REFERENCE_FAILED',
+        details: { provider: resolved.provider, model, source: resolved.source, error: 'empty_response' },
+      });
+      return null;
+    }
+
+    // Parse defensively — strip fences, JSON.parse, fall back to treating the
+    // whole reply as the summary with an empty palette.
+    const { summary, palette } = parseDesignReferenceReply(raw);
+    if (!summary) {
+      await this.auditLog({
+        tenantId: args.tenantId,
+        userId: args.userId,
+        action: 'AI_DESIGN_REFERENCE_FAILED',
+        details: { provider: resolved.provider, model, source: resolved.source, error: 'no_summary' },
+      });
+      return null;
+    }
+
+    // Spend accounting — record only AFTER a usable result (leak-fix).
+    await aiRecordEvent(this.redis.publisher, args.tenantId);
+    if (resolved.source === 'platform') {
+      try { await this.bumpPlatformUsage(args.tenantId); }
+      catch (e: any) { this.logger.warn(`design-reference platform usage bump failed (${args.tenantId}): ${e?.message}`); }
+    }
+
+    await this.auditLog({
+      tenantId: args.tenantId,
+      userId: args.userId,
+      action: 'AI_DESIGN_REFERENCE_ANALYZED',
+      details: {
+        provider: resolved.provider,
+        model,
+        source: resolved.source,
+        bytes: args.imageBuffer.length,
+        chars: summary.length,
+        colors: palette.length,
+      },
+    });
+
+    return { summary, palette, provider: resolved.provider, model };
+  }
+
+  /**
+   * Generalized vision call (2026-06-28). Mirrors the three provider branches
+   * in callOpenAi/callGoogle/callAnthropic (same wire shapes, same
+   * throwMappedProviderError, same Gemini-2.5 thinking handling) but
+   * parameterized on systemPrompt/userText/maxTokens/timeout so a non-alt-text
+   * consumer (design-reference analysis) can reuse it. Returns the raw model
+   * text on success; throws AiAltTextQuotaError on out-of-credit (or a generic
+   * Error otherwise) so the caller audits + returns null.
+   */
+  private async callVisionRaw(
+    provider: AltTextProvider,
+    apiKey: string,
+    base64Image: string,
+    mimeType: string,
+    systemPrompt: string,
+    userText: string,
+    model: string,
+    maxTokens: number,
+    timeoutMs: number,
+  ): Promise<string | null> {
+    if (provider === 'openai') {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: maxTokens,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: userText },
+                {
+                  type: 'image_url',
+                  image_url: { url: `data:${mimeType};base64,${base64Image}` },
+                },
+              ],
+            },
+          ],
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        this.throwMappedProviderError('openai', res.status, body);
+      }
+      const json = (await res.json()) as any;
+      const text = json?.choices?.[0]?.message?.content;
+      return typeof text === 'string' && text.trim() ? text.trim() : null;
+    }
+
+    if (provider === 'google') {
+      const url =
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}` +
+        `:generateContent`;
+      // Gemini 2.5 "thinking" handling — mirror callGoogle: 2.5-flash disables
+      // thinking, 2.5-pro (can't disable) gets a large ceiling, non-2.5 untouched.
+      const genConfig: Record<string, any> = { maxOutputTokens: maxTokens, temperature: 0.7 };
+      if (/^gemini-2\.5-flash/.test(model)) {
+        genConfig.thinkingConfig = { thinkingBudget: 0 };
+      } else if (/^gemini-2\.5/.test(model)) {
+        genConfig.maxOutputTokens = 8192;
+      }
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: userText },
+                { inlineData: { mimeType, data: base64Image } },
+              ],
+            },
+          ],
+          generationConfig: genConfig,
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!res.ok) {
+        let body = await res.text().catch(() => '');
+        // Belt-and-suspenders: redact any key=… before it reaches logs.
+        body = body.replace(/[?&]key=[^&\s"']+/g, '&key=REDACTED');
+        this.throwMappedProviderError('google', res.status, body);
+      }
+      const json = (await res.json()) as any;
+      const parts = json?.candidates?.[0]?.content?.parts;
+      const text = Array.isArray(parts)
+        ? parts.map((p: any) => p?.text ?? '').join('').trim()
+        : '';
+      return text ? text : null;
+    }
+
+    // Anthropic.
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: maxTokens,
+        // Ephemeral prompt cache — the design-reference system prompt is
+        // identical on every call, so flag it cacheable (Anthropic-only).
+        system: [
+          {
+            type: 'text',
+            text: systemPrompt,
+            cache_control: { type: 'ephemeral' },
+          },
+        ],
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image',
+                source: { type: 'base64', media_type: mimeType, data: base64Image },
+              },
+              { type: 'text', text: userText },
+            ],
+          },
+        ],
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      this.throwMappedProviderError('anthropic', res.status, body);
+    }
+    const json = (await res.json()) as any;
+    const text = json?.content?.[0]?.text;
+    return typeof text === 'string' && text.trim() ? text.trim() : null;
   }
 
   /**
@@ -767,4 +1114,58 @@ export class AiAltTextService {
     const text = json?.content?.[0]?.text;
     return typeof text === 'string' && text.trim() ? text.trim() : null;
   }
+}
+
+/**
+ * Defensive parse of the design-reference model reply (2026-06-28). Strips
+ * markdown fences, JSON.parses {summary, palette}, and falls back to treating
+ * the whole reply as the summary (empty palette) on any failure. Clamps the
+ * summary to MAX_DESIGN_SUMMARY_CHARS and palette to up to 6 valid 6-digit
+ * hexes. Pure — exported for unit testing.
+ */
+export function parseDesignReferenceReply(raw: string): { summary: string; palette: string[] } {
+  const text = String(raw || '').trim();
+  const stripped = text
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+
+  let obj: any = null;
+  try {
+    obj = JSON.parse(stripped);
+  } catch {
+    // The model sometimes prepends a sentence — grab the first {...} block.
+    const start = stripped.indexOf('{');
+    const end = stripped.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      try {
+        obj = JSON.parse(stripped.slice(start, end + 1));
+      } catch {
+        obj = null;
+      }
+    }
+  }
+
+  const clampSummary = (s: string): string =>
+    s.replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, MAX_DESIGN_SUMMARY_CHARS);
+  const clampPalette = (arr: any): string[] => {
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .map((c: any) => String(c || '').trim())
+      .filter((c: string) => /^#?[0-9a-fA-F]{6}$/.test(c))
+      .map((c: string) => (c.startsWith('#') ? c.toLowerCase() : `#${c.toLowerCase()}`))
+      .filter((c: string, i: number, a: string[]) => a.indexOf(c) === i)
+      .slice(0, 6);
+  };
+
+  if (obj && typeof obj === 'object') {
+    const summary = typeof obj.summary === 'string' ? clampSummary(obj.summary) : '';
+    const palette = clampPalette(obj.palette);
+    // If the JSON had no usable summary, fall through to the raw-text fallback.
+    if (summary) return { summary, palette };
+  }
+
+  // Total parse failure (or JSON with no summary) — use the whole reply as the
+  // summary with an empty palette so the concierge still gets a style read.
+  return { summary: clampSummary(text), palette: [] };
 }
