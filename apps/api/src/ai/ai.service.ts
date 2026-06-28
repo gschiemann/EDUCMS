@@ -183,33 +183,39 @@ const SYSTEM_PROMPTS: Record<AiIntent, string> = {
  * against isVertical() upstream, so an unknown key here just means
  * "no specialized voice yet", which is safe).
  */
+// Per-vertical COPY PLAYBOOK (2026-06-28 taste tier). Each entry is a tight
+// 4-part spec: VOICE (mood) · KICKER patterns (the native eyebrow) · GOLD copy
+// (1-2 headline/CTA exemplars in the vertical's real vocabulary) · ITEM shape +
+// BANNED phrases. Kept compact — this rides the cached system block. The goal:
+// a taproom sounds like a taproom and a clinic sounds like a clinic, using the
+// words an insider would, not generic "amazing/delicious" filler.
 const VERTICAL_VOICE: Record<string, string> = {
   K12:
-    'AUDIENCE — a K-12 school: students, parents, teachers, staff. Voice: warm, encouraging, plainly informative; safe for all ages; never slangy or salesy.',
+    'AUDIENCE — a K-12 school (students, parents, teachers, staff). VOICE: warm, encouraging, plainly informative; all-ages; never slangy or salesy. KICKERS: "THIS WEEK", "GO TEAM", "REMINDER", "TODAY\'S LUNCH". GOLD: "Picture Day is Friday" / "Spring Concert — 7 PM Thursday" / CTA "Permission slips due Friday". ITEMS: event + day/time, or menu item + day. BANNED: "amazing", corporate-speak, urgency gimmicks.',
   SPORTS:
-    'AUDIENCE — a live sports venue / athletic program: fans, players, a game-day crowd. Voice: high-energy, bold, hype; build crowd excitement; rally and celebrate without trash-talk or profanity.',
+    'AUDIENCE — a live sports venue / athletic program (fans, players, game-day crowd). VOICE: high-energy, bold, hype; build crowd noise; rally + celebrate, no trash-talk or profanity. KICKERS: "GAME DAY", "TONIGHT", "FINAL", "GO {TEAM}". GOLD: "Beat State. 7 PM Friday." / "Sold Out — Thank You, Fans" / CTA "Get loud". ITEMS: opponent + date/time, or stat + label. BANNED: limp verbs ("join us for"), hashtags in headlines.',
   GYM:
-    'AUDIENCE — a gym / fitness club: members mid-workout. Voice: energizing and motivating, direct, action-oriented; nod to effort, progress, and consistency.',
+    'AUDIENCE — a gym / fitness club (members mid-workout). VOICE: energizing, motivating, direct, action-led; nod to effort + consistency. KICKERS: "NEW CLASS", "PR ALERT", "THIS WEEK", "MEMBERS". GOLD: "Leg Day Starts Now" / "6 AM HIIT — 12 Spots Left" / CTA "Book your spot". ITEMS: class + time + slots left. BANNED: "amazing results", shame/diet-guilt language.',
   RESTAURANT:
-    'AUDIENCE — a full-service restaurant: diners. Voice: appetizing and sensory, hospitable, a touch elevated; make the food and the experience the hero.',
+    'AUDIENCE — a full-service restaurant (diners). VOICE: appetizing + sensory, hospitable, a touch elevated; make the food + room the hero. KICKERS: "TONIGHT\'S SPECIAL", "CHEF\'S TABLE", "NOW SERVING", "FRESH TODAY". GOLD: "Wood-Fired, Every Night" / "Reserve for Two" / CTA "Reserve a table". ITEMS: dish + price + a 3-word descriptor (e.g. "seared, citrus glaze"). BANNED: "delicious", "mouth-watering" — show the dish, don\'t label it.',
   QSR:
-    'AUDIENCE — a quick-service restaurant: fast-moving customers. Voice: fast, crave-able, value-forward; short and punchy; speed and tastiness over fine-dining prose.',
+    'AUDIENCE — a quick-service restaurant (fast-moving customers). VOICE: fast, crave-able, value-forward; short + punchy; speed + taste over fine-dining prose. KICKERS: "NEW", "DEAL", "LIMITED TIME", "COMBO". GOLD: "2 for $6, All Day" / "New Spicy Chicken — $4.99" / CTA "Order at the counter". ITEMS: combo # / item + price (+ cal). BANNED: "gourmet", long sentences, "experience our".',
   BAR:
-    'AUDIENCE — a bar / taproom / nightclub: an adult crowd (21+). Voice: lively, social, fun, a little cheeky; happy-hour and game-day energy; tasteful, never reckless about alcohol.',
+    'AUDIENCE — a bar / taproom / nightclub (21+). VOICE: lively, social, a little cheeky; happy-hour + game-day energy; tasteful, never reckless about alcohol. KICKERS: "NOW ON TAP", "HAPPY HOUR", "LAST CALL", "TONIGHT". GOLD: "$5 Pours Till 7" / "Trivia Tuesdays, 8 PM" / CTA "Grab a stool". ITEMS: beer/cocktail + ABV + price (e.g. "Hazy IPA · 6.8% · $7"). BANNED: "amazing drinks", anything encouraging excess.',
   RETAIL:
-    'AUDIENCE — a retail store: shoppers mid-browse. Voice: benefit-led and lightly urgent; lead with the deal or the must-have and make the offer impossible to miss — confident, never hard-sell. Sounds like "This weekend only — 30% off everything".',
+    'AUDIENCE — a retail store (shoppers mid-browse). VOICE: benefit-led, lightly urgent; lead with the deal / must-have, make the offer impossible to miss — confident, never hard-sell. KICKERS: "TODAY ONLY", "THIS WEEKEND", "MEMBERS SAVE", "NEW ARRIVAL". GOLD: "30% Off Everything — This Weekend" / "Buy One, Get One Free" / CTA "Shop the sale". ITEMS: product + price/discount. BANNED: "unbeatable", "best ever", fake countdowns.',
   FASHION:
-    'AUDIENCE — a fashion / boutique brand: style-conscious shoppers. Voice: chic, aspirational, trend-aware, minimal; let the product feel premium.',
+    'AUDIENCE — a fashion / boutique brand (style-conscious shoppers). VOICE: chic, aspirational, trend-aware, minimal — fewer words, more space; let the product feel premium. KICKERS: "NEW IN", "THE {SEASON} EDIT", "JUST DROPPED". GOLD: "Fall, Reimagined" / "The Linen Edit" / CTA "Discover the collection". ITEMS: piece + price (no clutter). BANNED: exclamation points, "must-have!!", hard discounts shouted.',
   CORPORATE:
-    'AUDIENCE — a corporate lobby / internal comms: employees and visitors. Voice: confident, polished, and human; informative and on-brand; respect people\'s time — ONE clear takeaway per board, never corporate filler or jargon.',
+    'AUDIENCE — a corporate lobby / internal comms (employees + visitors). VOICE: confident, polished, human; one clear takeaway per board, never jargon or filler. KICKERS: "WELCOME", "THIS WEEK", "TOWN HALL", "REMINDER". GOLD: "Welcome to {Company}" / "All-Hands — Thursday, 10 AM" / CTA "Add to calendar". ITEMS: event + day/time, or metric + label. BANNED: "synergy", "leverage", "world-class", buzzwords.',
   VENUE:
-    'AUDIENCE — a general venue (school, gym, restaurant, store, office, or public space): a mixed walk-by audience. Voice: clear, friendly, and professional; scannable from across a room; lead with the single most useful message; no slang, no clickbait, no all-caps gimmicks.',
+    'AUDIENCE — a general venue (mixed walk-by audience). VOICE: clear, friendly, professional; scannable across a room; lead with the single most useful message. KICKERS: "TODAY", "THIS WEEK", "NOW OPEN", "WELCOME". GOLD: "Open Till 9 Tonight" / CTA "Ask a team member". ITEMS: item + time/detail. BANNED: slang, clickbait, all-caps gimmicks, "amazing".',
   HEALTHCARE:
-    'AUDIENCE — a healthcare facility: patients, families, staff. Voice: calm, clear, reassuring, accessible; plain language; never alarmist or jokey.',
+    'AUDIENCE — a healthcare facility (patients, families, staff). VOICE: calm, clear, reassuring, accessible; plain language; never alarmist or jokey. KICKERS: "NOW SEEING", "WELCOME", "PLEASE NOTE", "WAIT TIME". GOLD: "Walk-Ins Welcome" / "Flu Shots Available Today" / CTA "Check in at the desk". ITEMS: service + hours/detail. BANNED: salesy kickers ("TODAY ONLY"), exclamation points, fear language.',
   HOSPITALITY:
-    'AUDIENCE — a hotel / hospitality venue: guests. Voice: gracious, welcoming, refined, helpful; make guests feel looked-after.',
+    'AUDIENCE — a hotel / hospitality venue (guests). VOICE: gracious, welcoming, refined, helpful; make guests feel looked-after. KICKERS: "WELCOME", "TODAY", "CONCIERGE", "NOW SERVING". GOLD: "Welcome, {Guest}" / "Breakfast Till 10:30" / CTA "Visit the front desk". ITEMS: amenity + hours/location. BANNED: pushy upsells, "amazing stay", generic hotel-speak.',
   WORSHIP:
-    'AUDIENCE — a house of worship: a congregation. Voice: warm, sincere, inclusive, uplifting; respectful and community-minded; never commercial.',
+    'AUDIENCE — a house of worship (a congregation). VOICE: warm, sincere, inclusive, uplifting; respectful + community-minded; never commercial. KICKERS: "THIS SUNDAY", "WELCOME", "JOIN US", "GATHER". GOLD: "All Are Welcome" / "Sunday Service — 9 & 11 AM" / CTA "Join us Sunday". ITEMS: service/group + day/time. BANNED: sales urgency, prices framed as deals, "don\'t miss out".',
 };
 
 /**
@@ -3325,13 +3331,29 @@ tenant's own brand colors). Match the mood, do NOT default to clean-corporate:
   - forest-campus   — natural greens, grounded. Campuses, outdoors, community.
   - midnight-tech   — sleek dark + vivid accent, modern. Tech, premium corporate, launches.
 
+COPY CRAFT — the difference between "AI filler" and copy a pro wrote. Obey these:
+  - SHOW, DON'T TELL. Name the thing, never label it good. Write "Wood-fired,
+    every night", not "Amazing food". BANNED words anywhere: amazing, delicious,
+    incredible, unbeatable, world-class, gourmet, premium (as a brag), "experience
+    our", "join us for", "don't miss". If you typed one, rewrite it concrete.
+  - BE SPECIFIC, NOT CATEGORICAL. "30% off everything this weekend" beats "Great
+    deals". "6 AM HIIT — 12 spots left" beats "New classes". Use real NUMERALS
+    (prices, times, dates, counts) — they read instantly and signal substance.
+  - ONE IDEA PER BOARD. The headline carries the single message; kicker frames it,
+    body adds ONE concrete detail, CTA gives ONE next action. No second pitch.
+  - STRONG VERBS / NO FILLER. Lead with a verb or the offer. Cut "we are pleased
+    to", "come and", articles where they don't earn their place.
+  - Match the AUDIENCE block above — use that vertical's native vocabulary + its
+    KICKER patterns + its GOLD examples as your model. A clinic never gets a salesy
+    "TODAY ONLY"; a bar never gets a stiff corporate eyebrow.
+
 COPY RULES — write a COMPLETE board, never a bare headline + button:
   - headline is REQUIRED and must be SHORT and punchy (signage is read at a glance).
   - FILL THE BOARD WITH SUBSTANCE. A premium board has MULTIPLE elements, not a
     lone headline floating in space. For EVERY archetype that supports them,
-    supply a "kicker" (a short eyebrow that frames the message — e.g. "TODAY ONLY",
-    "NOW OPEN", "THIS WEEK", "MEMBERS SAVE") AND a "cta" (the next action — e.g.
-    "Order at the counter", "Scan to join", "Doors at 7", "Ask a team member").
+    supply a "kicker" (a short eyebrow that frames the message — use the KICKER
+    patterns in the AUDIENCE block above, the ones native to THIS vertical) AND a
+    "cta" (the next action — use the vertical's own GOLD-example CTA voice).
     Only omit kicker/cta when the archetype genuinely has no slot for them
     (stat-spotlight has no cta; quote-spotlight uses headline+body only).
   - For split-50 and title-cta, ALSO write a "body" — one concrete supporting
