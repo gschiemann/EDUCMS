@@ -96,6 +96,57 @@ function FitToViewport({ children, padding = 40 }: { children: React.ReactNode; 
   );
 }
 
+/**
+ * P0 (2026-06-28, Greg live-caught on the 960×1080 LED): "the emergency text
+ * is cut off by half — it thinks it's 1920×1080."
+ *
+ * Root cause: the full-screen emergency root is `position: fixed` and, on a
+ * NovaStar/Taurus controller, `position:fixed` resolves to the WebView's
+ * frame-buffer VIEWPORT (forced 1920×1080 minimum) — NOT the LED's actual
+ * visible canvas (e.g. 960×1080). So FitToViewport measured 1920 wide, sized
+ * the message to 1920, and the panel only shows the top-left 960 → the right
+ * half is cropped off the wall. Normal playlist content doesn't have this
+ * problem because it renders inside TemplateScaler, which measures its
+ * canvas-pinned parent (960) and scales to fit; the emergency overlay is
+ * mounted OUTSIDE that scaler.
+ *
+ * Fix: size the emergency takeover to the LED's real canvas — read the same
+ * `edu_canvasW/edu_canvasH` (URL param → localStorage) that TemplateScaler /
+ * layout.tsx use, and anchor the overlay TOP-LEFT (the region a NovaStar/TB
+ * controller lights up by default with zero pixel-mapping). When no canvas
+ * override is set (a normal 1920×1080 screen / admin browser preview) we fall
+ * back to the full viewport via top/right/bottom/left:0 — no vw/vh (those are
+ * unreliable inside a 90°-rotated preview body on Taurus). Re-reads on resize
+ * + storage so a late canvas-set (manifest applies it after mount) is honored.
+ */
+function useLedCanvas(): { w: number | null; h: number | null } {
+  const [dims, setDims] = useState<{ w: number | null; h: number | null }>({ w: null, h: null });
+  useEffect(() => {
+    const read = () => {
+      try {
+        const p = new URLSearchParams(window.location.search);
+        const uw = parseInt(p.get('canvasW') || '', 10);
+        const uh = parseInt(p.get('canvasH') || '', 10);
+        const lw = parseInt(localStorage.getItem('edu_canvasW') || '', 10);
+        const lh = parseInt(localStorage.getItem('edu_canvasH') || '', 10);
+        const w = uw > 0 ? uw : (lw > 0 ? lw : null);
+        const h = uh > 0 ? uh : (lh > 0 ? lh : null);
+        setDims((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
+      } catch {
+        /* ignore — fall back to viewport */
+      }
+    };
+    read();
+    window.addEventListener('storage', read);
+    window.addEventListener('resize', read);
+    return () => {
+      window.removeEventListener('storage', read);
+      window.removeEventListener('resize', read);
+    };
+  }, []);
+  return dims;
+}
+
 export interface EmergencyMessageView {
   id: string;
   type: 'SOS' | 'TEXT_BROADCAST' | 'MEDIA_ALERT';
@@ -164,6 +215,10 @@ const severityStyles = {
 
 export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, deviceToken }: Props) {
   const [polled, setPolled] = useState<EmergencyMessageView | null>(null);
+  // LED canvas (960×1080 etc.) so the takeover sizes to the visible panel, not
+  // the 1920 frame-buffer viewport. See useLedCanvas above (Greg's "cut off by
+  // half / thinks it's 1920×1080" P0).
+  const canvas = useLedCanvas();
 
   useEffect(() => {
     if (message || !apiUrl) return;
@@ -263,8 +318,16 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
       <div
         role="alert"
         aria-live="assertive"
-        className={`fixed top-0 left-0 right-0 z-[9999] ${style.bg} ${style.text} border-b-4 ${style.border} ${style.animate} px-8 py-4 flex items-center shadow-2xl overflow-hidden`}
-        style={{ maxHeight: '40vh', backgroundColor: style.solidBg }}
+        className={`fixed top-0 left-0 z-[9999] ${style.bg} ${style.text} border-b-4 ${style.border} ${style.animate} px-8 py-4 flex items-center shadow-2xl overflow-hidden`}
+        // Width pinned to the LED canvas (960 etc.) so the banner spans only the
+        // visible panel, not the 1920 frame buffer. maxHeight in px off canvasH
+        // when known (vh is unreliable in a rotated Taurus preview body).
+        style={{
+          width: canvas.w ? `${canvas.w}px` : undefined,
+          right: canvas.w ? undefined : 0,
+          maxHeight: canvas.h ? `${Math.round(canvas.h * 0.4)}px` : '40vh',
+          backgroundColor: style.solidBg,
+        }}
       >
         <Icon className="w-8 h-8 flex-shrink-0" />
         {/* ml-4 stand-in for a parent flex GAP (Chrome 84+ only). min-w-0 lets
@@ -279,11 +342,23 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
     <div
       role="alert"
       aria-live="assertive"
-      className={`fixed top-0 right-0 bottom-0 left-0 z-[9999] ${style.bg} ${style.text} ${style.animate}`}
-      // Guaranteed-opaque backdrop — paints even if Tailwind's bg class never
-      // loads on the kiosk WebView, so the playlist can never show through a
-      // life-safety takeover.
-      style={{ backgroundColor: style.solidBg }}
+      className={`fixed z-[9999] ${style.bg} ${style.text} ${style.animate}`}
+      // Sized to the LED canvas, anchored TOP-LEFT (the region a NovaStar/TB
+      // controller shows by default). On a 960×1080 panel this paints exactly
+      // the visible area instead of the 1920 frame buffer — so the takeover is
+      // never cropped by half. Falls back to the full viewport (right/bottom:0,
+      // no vw/vh) when no canvas override is set. Longhand only (Taurus-safe).
+      // backgroundColor is a guaranteed-opaque backdrop even if Tailwind's bg
+      // class never loads on the kiosk WebView (no playlist show-through).
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        ...(canvas.w && canvas.h
+          ? { width: `${canvas.w}px`, height: `${canvas.h}px` }
+          : { right: 0, bottom: 0 }),
+        backgroundColor: style.solidBg,
+      }}
     >
       {active.severity === 'CRITICAL' && (
         <div className="pointer-events-none absolute top-0 right-0 bottom-0 left-0 border-[12px] border-red-500 animate-pulse z-10" aria-hidden />

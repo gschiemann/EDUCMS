@@ -1471,8 +1471,23 @@ class PlayerErrorBoundary extends Component<{ children: ReactNode }, { hasError:
       // sizes below (text-7xl headline, w-32 icon, text-3xl body) wrapped
       // taller than a narrow canvas and were cut off top/bottom before the
       // fit wrapper (the same cutoff class Greg caught on the live LED).
+      // 2026-06-28 — size the crash-emergency root to the LED CANVAS (not the
+      // 1920 frame-buffer viewport), anchored top-left, so the cached takeover
+      // isn't cropped by half on a 960-wide panel during a crash. Same fix as
+      // the live EmergencyOverlay. Falls back to full viewport when no override.
+      const led = readCanvasOverride();
       return (
-        <div className="fixed top-0 right-0 bottom-0 left-0 bg-red-700 text-white">
+        <div
+          className="fixed bg-red-700 text-white"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            ...(led.w && led.h
+              ? { width: `${led.w}px`, height: `${led.h}px` }
+              : { right: 0, bottom: 0 }),
+          }}
+        >
           <FitToViewport padding={40}>
             <div className="flex flex-col items-center justify-center text-center max-w-5xl">
               <AlertTriangle className="w-32 h-32 mb-8 animate-pulse" />
