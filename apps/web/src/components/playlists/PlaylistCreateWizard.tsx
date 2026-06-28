@@ -1212,6 +1212,16 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
                 disabled={nextDisabled || creating}
                 className="inline-flex items-center px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed rounded-lg shadow-sm transition-colors"
               >
+                {/* Selection count chip — pinned in the footer so the operator
+                    always sees how many they've picked WITHOUT scrolling down to
+                    the SelectedMediaDrawer (mobile bug: count below the fold,
+                    2026-06-27). Only on Step 2 / media kind, only once they've
+                    picked something. */}
+                {step === 2 && kind === 'media' && selectedAssetItems.length > 0 && (
+                  <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 mr-1.5 rounded-full bg-white/25 text-white text-[11px] font-bold leading-none">
+                    {selectedAssetItems.length}
+                  </span>
+                )}
                 Next
                 <ChevronRight className="w-4 h-4 ml-1" />
               </button>
@@ -1718,7 +1728,7 @@ function SelectedMediaDrawer({
           so 20+ items don't push the picker grid off the modal. */}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onReorder}>
         <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
-          <ol className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+          <ol className="space-y-1.5 max-h-32 sm:max-h-44 overflow-y-auto pr-1">
             {items.map((sel, idx) => {
               const a = allAssets.find((x: any) => x.id === sel.assetId);
               if (!a) return null;

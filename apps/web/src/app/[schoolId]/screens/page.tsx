@@ -871,10 +871,9 @@ function ScreenSettingsMenu({
     top: number | null;
     bottom: number | null;
     right: number;
+    width: number;
     maxHeight: number;
   } | null>(null);
-
-  const MENU_WIDTH = 256; // matches w-64 on the menu div
 
   const updateAnchor = () => {
     const btn = buttonRef.current;
@@ -884,6 +883,15 @@ function ScreenSettingsMenu({
     const GAP = 8;
     const MARGIN = 12; // keep the menu this far off the viewport edge
 
+    // The menu is nominally 256px (w-64) but on very narrow viewports a fixed
+    // 256px panel can't fit between two MARGINs — so DERIVE the actual width
+    // from the viewport and pin it explicitly. This is the missing guard
+    // behind the recurring "settings drawer pushes off the left edge" report
+    // (2026-06-27 deep-wave): the old clamp math assumed the rendered width
+    // was always exactly 256, so on sub-280px widths (small Androids, browser
+    // zoom, iPhone landscape split-view) the left edge still went negative.
+    const MENU_WIDTH = Math.min(256, vw - MARGIN * 2);
+
     // Right-align the menu with the gear button, but CLAMP so the panel is
     // ALWAYS fully on-screen — at any width, regardless of where the gear sits
     // in the row (fixes the off-the-left-edge bug on phones, 2026-05-31). We
@@ -892,10 +900,10 @@ function ScreenSettingsMenu({
     // `right` is measured from the viewport's RIGHT edge (CSS `right` px).
     let right = vw - r.right;
     if (vw < 500) {
-      // Phone width (~390px) — gear-anchored right-alignment leaves the 256px
-      // panel partly off-screen even after edge-clamping. Center-ish anchor it
-      // so it always reads fully on-screen no matter where the gear sits in
-      // the action row (2026-06-26).
+      // Phone width (~390px) — gear-anchored right-alignment leaves the panel
+      // partly off-screen even after edge-clamping. Center-ish anchor it so it
+      // always reads fully on-screen no matter where the gear sits in the
+      // action row (2026-06-26).
       right = Math.max(MARGIN, Math.min(vw / 2, vw - MENU_WIDTH - MARGIN));
     } else {
       // Clamp: ensure left edge = vw - right - MENU_WIDTH >= MARGIN
@@ -904,6 +912,10 @@ function ScreenSettingsMenu({
       // Also keep the right edge at least MARGIN from the viewport right.
       if (right < MARGIN) right = MARGIN;
     }
+    // Final defensive clamp — guarantees the LEFT edge is on-screen no matter
+    // what (vw - right - MENU_WIDTH >= MARGIN). Belt-and-suspenders so a stale
+    // measurement during an iOS reflow can never park the panel off the edge.
+    right = Math.min(right, Math.max(MARGIN, vw - MENU_WIDTH - MARGIN));
 
     const spaceBelow = window.innerHeight - r.bottom - GAP - MARGIN;
     const spaceAbove = r.top - GAP - MARGIN;
@@ -912,12 +924,13 @@ function ScreenSettingsMenu({
     // past the cap). Fixes the gear menu dropping off the bottom of
     // the page when the screen row sits near the viewport's lower edge.
     if (spaceBelow >= spaceAbove) {
-      setAnchor({ top: r.bottom + GAP, bottom: null, right, maxHeight: Math.max(180, spaceBelow) });
+      setAnchor({ top: r.bottom + GAP, bottom: null, right, width: MENU_WIDTH, maxHeight: Math.max(180, spaceBelow) });
     } else {
       setAnchor({
         top: null,
         bottom: window.innerHeight - r.top + GAP,
         right,
+        width: MENU_WIDTH,
         maxHeight: Math.max(180, spaceAbove),
       });
     }
@@ -1039,13 +1052,19 @@ function ScreenSettingsMenu({
     // portal boundary.
     <div
       ref={menuRef}
-      className="fixed w-64 rounded-xl bg-white border border-slate-200 shadow-[0_12px_32px_rgba(15,23,42,0.18)] overflow-y-auto overflow-x-hidden z-[9999]"
+      className="fixed rounded-xl bg-white border border-slate-200 shadow-[0_12px_32px_rgba(15,23,42,0.18)] overflow-y-auto overflow-x-hidden z-[9999]"
       style={
         anchor
           ? {
               ...(anchor.top != null ? { top: anchor.top } : {}),
               ...(anchor.bottom != null ? { bottom: anchor.bottom } : {}),
               right: anchor.right,
+              // Width is DERIVED (was the static w-64=256px). On narrow
+              // viewports the panel shrinks to fit so its left edge can never
+              // run off-screen. `maxWidth` is a final hard cap regardless of
+              // the measured `width`.
+              width: anchor.width,
+              maxWidth: 'calc(100vw - 24px)',
               maxHeight: anchor.maxHeight,
             }
           : { top: -9999, right: 0 }

@@ -176,11 +176,21 @@ export function AssetPicker({
 
   return (
     <div
-      className="fixed inset-0 z-[10001] flex items-center justify-center p-4"
+      // top/right/bottom/left longhand (NOT inset-0) — this picker can mount on
+      // the player-adjacent template builder; keep it Taurus-safe. The modal is
+      // z-[10001] so it paints OVER the TopToolbar (z-20) and the mobile tab bar
+      // (hidden via useOverlayLock above) — its Close + Upload toolbar are
+      // always reachable on a phone. Safe-area padding keeps the modal clear of
+      // the notch / home indicator on short viewports (mobile bug, 2026-06-27).
+      className="fixed top-0 right-0 bottom-0 left-0 z-[10001] flex items-center justify-center p-4"
+      style={{
+        paddingTop: 'max(16px, env(safe-area-inset-top, 0px))',
+        paddingBottom: 'max(16px, env(safe-area-inset-bottom, 0px))',
+      }}
       role="dialog"
       aria-modal="true"
     >
-      <div className="absolute inset-0 bg-slate-900/50" onClick={onClose} />
+      <div className="absolute top-0 right-0 bottom-0 left-0 bg-slate-900/50" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-2xl ring-1 ring-slate-200 w-full max-w-2xl max-h-[82vh] flex flex-col overflow-hidden">
         {/* header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
@@ -201,7 +211,7 @@ export function AssetPicker({
           <select
             value={folderId}
             onChange={(e) => setFolderId(e.target.value)}
-            className="text-xs font-medium border border-slate-200 rounded-lg px-2 py-1.5 bg-white cursor-pointer outline-none focus:ring-2 focus:ring-indigo-400"
+            className="text-xs font-medium border border-slate-200 rounded-lg px-2 py-1.5 bg-white cursor-pointer outline-none focus:ring-2 focus:ring-indigo-400 min-w-0 max-w-[40vw] sm:max-w-none truncate"
             aria-label="Filter by folder"
           >
             <option value="all">All folders</option>
@@ -227,7 +237,7 @@ export function AssetPicker({
             type="button"
             disabled={uploading}
             onClick={() => fileRef.current?.click()}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold disabled:opacity-60 cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold disabled:opacity-60 cursor-pointer shrink-0"
           >
             {uploading ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />

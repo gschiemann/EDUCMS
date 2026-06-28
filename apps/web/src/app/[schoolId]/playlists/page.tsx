@@ -1897,7 +1897,10 @@ export default function PlaylistsPage() {
         {showPicker && (
           <div
             className="fixed top-0 right-0 bottom-0 left-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            style={{ paddingTop: 'max(16px, env(safe-area-inset-top, 0px))' }}
+            style={{
+              paddingTop: 'max(16px, env(safe-area-inset-top, 0px))',
+              paddingBottom: 'max(16px, env(safe-area-inset-bottom, 0px))',
+            }}
             role="dialog"
             aria-modal="true"
             aria-label="Choose Media"
@@ -1905,13 +1908,18 @@ export default function PlaylistsPage() {
             <button className="absolute top-0 right-0 bottom-0 left-0 cursor-default" aria-label="Close dialog" onClick={() => setShowPicker(false)} />
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col relative z-10">
 
-              {/* Modal Header */}
-              <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-white z-10">
-                <div className="flex items-center gap-3">
-                  <h3 className="text-base font-bold text-slate-800">Choose Media</h3>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{selectedPickerAssets.size} selected</span>
+              {/* Modal Header — wraps on narrow phones so the action buttons
+                  (Upload / Cancel / Add Selected) never overflow off the right
+                  edge and get clipped. The old single non-wrapping row pushed
+                  "Add Selected" off-screen at ~390px (mobile bug, 2026-06-27).
+                  flex-wrap + ml-auto keeps the actions right-aligned on desktop
+                  but lets them drop to their own full row on a phone. */}
+              <div className="px-4 sm:px-5 py-3 sm:py-4 border-b border-slate-100 flex flex-wrap items-center gap-x-3 gap-y-2 bg-white z-10">
+                <div className="flex items-center gap-2 min-w-0">
+                  <h3 className="text-base font-bold text-slate-800 truncate">Choose Media</h3>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">{selectedPickerAssets.size} selected</span>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2 ml-auto shrink-0">
                   {/* Inline upload — keeps the operator inside the playlist they're building */}
                   <input
                     ref={pickerFileInputRef}
