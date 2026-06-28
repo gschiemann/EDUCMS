@@ -28,6 +28,12 @@ import {
 } from '@/hooks/use-api';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
+import { AiIntakeWizard } from '@/components/templates/AiIntakeWizard';
+import {
+  type AiIntakeAnswers,
+  DEFAULT_INTAKE_ANSWERS,
+  buildIntakeRequestFields,
+} from '@/components/templates/ai-intake-contract';
 import { useParams, useRouter } from 'next/navigation';
 import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 import { useUIStore } from '@/store/ui-store';
@@ -399,11 +405,17 @@ export default function TemplatesPage() {
   const [showAiGenerate, setShowAiGenerate] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiError, setAiError] = useState<string | null>(null);
-  // Slice 1c (2026-06-16) — 3-candidate "pick-a-winner" flow. The modal
-  // has two phases: 'prompt' (type + options) → 'pick' (choose 1 of 3).
-  // aiInteractive toggles touch (default) vs passive signage, so the same
-  // generator serves BOTH the touch editor and the non-touch maker.
-  const [aiPhase, setAiPhase] = useState<'prompt' | 'pick'>('prompt');
+  // Slice 1c (2026-06-16) — 3-candidate "pick-a-winner" flow. Phases:
+  //   'intake' (guided 6-question wizard / advanced one-screen view) → 'pick'.
+  // (2026-06-28) — the old free-text-only 'prompt' phase is replaced by the
+  // AiIntakeWizard; the wizard collects the SAME prompt plus optional directives
+  // and runGenerateCandidates forwards them. aiInteractive toggles touch
+  // (default) vs passive signage so the same generator serves BOTH surfaces.
+  const [aiPhase, setAiPhase] = useState<'intake' | 'pick'>('intake');
+  // (2026-06-28) — the guided-intake answers (purpose/theme/palette/background/
+  // widgets). Defaults are all 'auto'/empty so an operator who skips every
+  // question gets TODAY's derive-from-prompt + vertical-affinity behavior.
+  const [aiIntake, setAiIntake] = useState<AiIntakeAnswers>(DEFAULT_INTAKE_ANSWERS);
   const [aiCandidates, setAiCandidates] = useState<AiTemplateCandidate[]>([]);
   const [aiInteractive, setAiInteractive] = useState(true);
   // Wave 2a (2026-06-27) — "Build a set" mode: one (or many newline) prompts →
@@ -614,13 +626,14 @@ export default function TemplatesPage() {
     if (best) setAiCanvas({ w: best.w, h: best.h });
   }, [aiScreenOptions]);
 
-  // Reset the AI modal back to a clean 'prompt' phase. Called on
+  // Reset the AI modal back to a clean 'intake' phase. Called on
   // open/close so a stale candidate grid never flashes on reopen.
   const resetAiModal = useCallback(() => {
-    setAiPhase('prompt');
+    setAiPhase('intake');
     setAiCandidates([]);
     setAiError(null);
     setAiPicking(null);
+    setAiIntake(DEFAULT_INTAKE_ANSWERS);
   }, []);
 
   const closeAiModal = useCallback(() => {
@@ -639,6 +652,10 @@ export default function TemplatesPage() {
       return;
     }
     try {
+      // (2026-06-28) — the guided-intake directives. Every field is OPTIONAL;
+      // anything left on 'auto'/empty is OMITTED so the engine keeps its
+      // derive-from-prompt + vertical-affinity behavior (nothing regresses).
+      const intakeFields = buildIntakeRequestFields(aiIntake);
       const res = await generateCandidates.mutateAsync({
         prompt,
         // CC-1 — lay the board out for the chosen aspect so it isn't clipped on
@@ -658,6 +675,10 @@ export default function TemplatesPage() {
         // Wave 2a — "Build a set": ONE cohesive multi-scene template (the whole
         // venue loop) instead of 3 single-board options to pick from.
         set: aiSetMode,
+        // (2026-06-28) — guided-intake directives (purpose/theme/palette/
+        // background/widgets). The backend schema is `.passthrough()`, so these
+        // ride through even before the backend lane consumes them.
+        ...intakeFields,
       });
       const cands = res?.candidates || [];
       if (!cands.length) {
@@ -669,7 +690,7 @@ export default function TemplatesPage() {
     } catch (e: any) {
       setAiError(friendlyAiError(e));
     }
-  }, [aiPrompt, aiInteractive, aiSetMode, aiCanvas, tenantCopy.vertical, generateCandidates]);
+  }, [aiPrompt, aiInteractive, aiSetMode, aiCanvas, aiIntake, tenantCopy.vertical, generateCandidates]);
 
   // Phase 2 → done: persist the chosen candidate (re-sanitized server-
   // side) and open it in the builder. The sub-1024px mobile handoff is
@@ -1109,7 +1130,7 @@ export default function TemplatesPage() {
                       ? (aiSetMode
                           ? 'A cohesive multi-board loop that plays itself — open it to fine-tune any board.'
                           : 'Three takes on your idea — choose one to open and fine-tune.')
-                      : 'Describe what you want — Claude drafts it for you, on-brand for your venue.'}
+                      : 'Answer a few quick questions — Claude drafts it for you, on-brand for your venue.'}
                   </p>
                 </div>
               </div>
@@ -1267,7 +1288,7 @@ export default function TemplatesPage() {
                 </div>
                 <div className="flex items-center justify-between pt-1">
                   <button
-                    onClick={() => { setAiPhase('prompt'); setAiError(null); }}
+                    onClick={() => { setAiPhase('intake'); setAiError(null); }}
                     disabled={aiPicking !== null}
                     className="px-4 py-2 text-sm font-bold rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                   >
@@ -1284,200 +1305,128 @@ export default function TemplatesPage() {
                 </div>
               </>
             ) : (
-              /* ── PHASE 1: prompt + options ── */
-              <>
-                {/* Touch vs Display — same generator serves both surfaces. */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs font-semibold text-slate-500">Type:</span>
-                  <div className="inline-flex rounded-xl bg-slate-100 p-1">
-                    <button
-                      type="button"
-                      onClick={() => { setAiInteractive(true); setAiSetMode(false); }}
-                      disabled={generateCandidates.isPending}
-                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${aiInteractive && !aiSetMode ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                      Touch (interactive)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setAiInteractive(false); setAiSetMode(false); }}
-                      disabled={generateCandidates.isPending}
-                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${!aiInteractive && !aiSetMode ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                      Display (no touch)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setAiSetMode(true); setAiInteractive(false); }}
-                      disabled={generateCandidates.isPending}
-                      title="One prompt (or one idea per line) → a whole set of boards that plays itself"
-                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${aiSetMode ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                      ✨ Build a set
-                    </button>
-                  </div>
-                </div>
-
-                {/* CC-1 — canvas size. Orientation presets + optional "Match a
-                    screen…". The chosen size flows into BOTH generate and
-                    create-from-candidate so the board is laid out for the real
-                    screen aspect (was hardcoded 1920×1080 → clipped on a
-                    960×1080 portrait LED). */}
-                {(() => {
-                  const orient: 'landscape' | 'portrait' | 'square' =
-                    aiCanvas.w === aiCanvas.h ? 'square' : aiCanvas.h > aiCanvas.w ? 'portrait' : 'landscape';
-                  // Is the current size an exact match for a real screen? If so,
-                  // keep that screen selected in the dropdown.
-                  const matchedScreen = aiScreenOptions.find((o) => o.w === aiCanvas.w && o.h === aiCanvas.h);
-                  const presets: Array<{ key: 'landscape' | 'portrait' | 'square'; label: string; w: number; h: number }> = [
-                    { key: 'landscape', label: 'Landscape', w: 1920, h: 1080 },
-                    { key: 'portrait', label: 'Portrait', w: 1080, h: 1920 },
-                    { key: 'square', label: 'Square', w: 1080, h: 1080 },
-                  ];
-                  return (
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-semibold text-slate-500">Screen:</span>
-                      <div className="inline-flex rounded-xl bg-slate-100 p-1">
-                        {presets.map((p) => (
-                          <button
-                            key={p.key}
-                            type="button"
-                            onClick={() => setAiCanvas({ w: p.w, h: p.h })}
-                            disabled={generateCandidates.isPending}
-                            title={`${p.w}×${p.h}`}
-                            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${
-                              !matchedScreen && orient === p.key
-                                ? 'bg-white text-violet-700 shadow-sm'
-                                : 'text-slate-500 hover:text-slate-700'
-                            }`}
-                          >
-                            {p.label}
-                          </button>
-                        ))}
-                      </div>
-                      {aiScreenOptions.length > 0 && (
-                        <select
-                          aria-label="Match a screen size"
-                          value={matchedScreen ? matchedScreen.id : ''}
-                          onChange={(e) => {
-                            const opt = aiScreenOptions.find((o) => o.id === e.target.value);
-                            if (opt) setAiCanvas({ w: opt.w, h: opt.h });
-                          }}
-                          disabled={generateCandidates.isPending}
-                          className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-50 border border-slate-200 text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-50 max-w-[200px]"
-                        >
-                          <option value="">Match a screen…</option>
-                          {aiScreenOptions.map((o) => (
-                            <option key={o.id} value={o.id}>
-                              {o.name} ({o.w}×{o.h})
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                      <span className="text-[11px] text-slate-400 tabular-nums">{aiCanvas.w}×{aiCanvas.h}</span>
-                    </div>
-                  );
-                })()}
-
-                <textarea
-                  autoFocus
-                  value={aiPrompt}
-                  onChange={(e) => {
-                    setAiPrompt(e.target.value);
-                    // Clear a stale error the moment the operator starts
-                    // typing a new prompt — otherwise an old red banner
-                    // keeps shouting at them while they iterate.
-                    if (aiError) setAiError(null);
-                  }}
-                  placeholder={aiSetMode
-                    ? `Describe your whole signage loop — or put one board per line:\n  Welcome to our venue\n  Today's featured special\n  Hours & info\n  Upcoming event`
-                    : aiInteractive
-                    ? `e.g. Lobby check-in kiosk with three tap buttons: "Sign in," "Visiting hours," and "Wi-Fi info." Use the brand colors. Each button opens its own scene.`
-                    : `e.g. Welcome lobby board: big school name, today's date and weather, a rolling ticker of announcements, and a rotating photo strip along the bottom.`}
-                  maxLength={1800}
-                  rows={5}
-                  disabled={generateCandidates.isPending}
-                  className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent placeholder:text-slate-400 disabled:opacity-60"
-                />
-
-                <div className="flex flex-wrap gap-2">
-                  {/* Vertical-aware suggestion chips — Sports gets stadium /
-                      concourse examples, restaurants get menu examples, etc.
-                      Falls back to neutral copy for an unknown vertical.
-                      (2026-06-26 fix — was hard-coded K-12 on every vertical.) */}
-                  {(() => {
-                    const prompts = getAiTemplatePrompts(tenantCopy.vertical);
-                    return aiInteractive ? prompts.kiosk : prompts.signage;
-                  })().map((suggestion: string) => {
-                    // Non-destructive: a chip TOGGLES into the prompt instead of
-                    // replacing it, so an operator can stack several ideas (and
-                    // never lose text they already typed). Already-present →
-                    // remove it; else append on a new line.
-                    const lines = aiPrompt.split('\n').map((l) => l.trim()).filter(Boolean);
-                    const active = lines.includes(suggestion);
-                    return (
+              /* ── PHASE 1: guided intake wizard + advanced view ──
+                 The wizard/advanced view collect the prompt + optional
+                 directives (purpose/theme/palette/background/widgets). They
+                 reuse the EXISTING Touch/Display/Set toggle + canvas picker
+                 (built here as nodes and passed in) so we don't rebuild them. */
+              (() => {
+                // Touch vs Display vs Build-a-set — same generator serves all.
+                const typeToggle = (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-semibold text-slate-500">Type:</span>
+                    <div className="inline-flex rounded-xl bg-slate-100 p-1">
                       <button
-                        key={suggestion}
                         type="button"
-                        onClick={() =>
-                          setAiPrompt((prev) => {
-                            const cur = prev.split('\n').map((l) => l.trim()).filter(Boolean);
-                            if (cur.includes(suggestion)) {
-                              return cur.filter((l) => l !== suggestion).join('\n');
-                            }
-                            return [...cur, suggestion].join('\n');
-                          })
-                        }
+                        onClick={() => { setAiInteractive(true); setAiSetMode(false); }}
                         disabled={generateCandidates.isPending}
-                        className={`text-[11px] px-3 py-1.5 rounded-full font-semibold transition-colors disabled:opacity-50 ${
-                          active
-                            ? 'bg-violet-600 text-white hover:bg-violet-700'
-                            : 'bg-violet-50 text-violet-700 hover:bg-violet-100'
-                        }`}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${aiInteractive && !aiSetMode ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                       >
-                        {active ? '✓ ' : ''}{suggestion}
+                        Touch (interactive)
                       </button>
-                    );
-                  })}
-                </div>
-
-                {aiError && (
-                  <div
-                    role="alert"
-                    aria-live="polite"
-                    className="text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2.5"
-                  >
-                    {aiError}
+                      <button
+                        type="button"
+                        onClick={() => { setAiInteractive(false); setAiSetMode(false); }}
+                        disabled={generateCandidates.isPending}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${!aiInteractive && !aiSetMode ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                        Display (no touch)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setAiSetMode(true); setAiInteractive(false); }}
+                        disabled={generateCandidates.isPending}
+                        title="One prompt (or one idea per line) → a whole set of boards that plays itself"
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${aiSetMode ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                        ✨ Build a set
+                      </button>
+                    </div>
                   </div>
-                )}
+                );
 
-                <div className="flex items-center justify-between pt-1 gap-3">
-                  <p className="text-[10px] text-slate-400">
-                    {aiSetMode
-                      ? 'Builds ONE template of 4–6 cohesive boards that plays itself — uses 1 AI credit. Fully editable.'
-                      : 'Creates 3 drafts to choose from — uses up to 3 of your monthly AI credits. All drafts are editable.'}
-                  </p>
-                  <div className="flex gap-2 shrink-0">
-                    <button
-                      onClick={closeAiModal}
-                      disabled={generateCandidates.isPending}
-                      className="px-4 py-2 text-sm font-bold rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={runGenerateCandidates}
-                      disabled={generateCandidates.isPending || !aiPrompt.trim()}
-                      className="px-5 py-2 text-sm font-bold rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                    >
-                      {generateCandidates.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                      {generateCandidates.isPending
-                        ? (aiSetMode ? 'Building set…' : 'Generating 3…')
-                        : (aiSetMode ? 'Build the set' : 'Generate 3 options')}
-                    </button>
+                // CC-1 — canvas size. Orientation presets + optional "Match a
+                // screen…". The chosen size flows into BOTH generate and
+                // create-from-candidate so the board is laid out for the real
+                // screen aspect (was hardcoded 1920×1080 → clipped on a
+                // 960×1080 portrait LED).
+                const orient: 'landscape' | 'portrait' | 'square' =
+                  aiCanvas.w === aiCanvas.h ? 'square' : aiCanvas.h > aiCanvas.w ? 'portrait' : 'landscape';
+                const matchedScreen = aiScreenOptions.find((o) => o.w === aiCanvas.w && o.h === aiCanvas.h);
+                const presets: Array<{ key: 'landscape' | 'portrait' | 'square'; label: string; w: number; h: number }> = [
+                  { key: 'landscape', label: 'Landscape', w: 1920, h: 1080 },
+                  { key: 'portrait', label: 'Portrait', w: 1080, h: 1920 },
+                  { key: 'square', label: 'Square', w: 1080, h: 1080 },
+                ];
+                const screenPicker = (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="inline-flex rounded-xl bg-slate-100 p-1">
+                      {presets.map((p) => (
+                        <button
+                          key={p.key}
+                          type="button"
+                          onClick={() => setAiCanvas({ w: p.w, h: p.h })}
+                          disabled={generateCandidates.isPending}
+                          title={`${p.w}×${p.h}`}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${
+                            !matchedScreen && orient === p.key
+                              ? 'bg-white text-violet-700 shadow-sm'
+                              : 'text-slate-500 hover:text-slate-700'
+                          }`}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                    {aiScreenOptions.length > 0 && (
+                      <select
+                        aria-label="Match a screen size"
+                        value={matchedScreen ? matchedScreen.id : ''}
+                        onChange={(e) => {
+                          const opt = aiScreenOptions.find((o) => o.id === e.target.value);
+                          if (opt) setAiCanvas({ w: opt.w, h: opt.h });
+                        }}
+                        disabled={generateCandidates.isPending}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-50 border border-slate-200 text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-50 max-w-[200px]"
+                      >
+                        <option value="">Match a screen…</option>
+                        {aiScreenOptions.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.name} ({o.w}×{o.h})
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    <span className="text-[11px] text-slate-400 tabular-nums">{aiCanvas.w}×{aiCanvas.h}</span>
                   </div>
-                </div>
-              </>
+                );
+
+                const exampleChips = (() => {
+                  const prompts = getAiTemplatePrompts(tenantCopy.vertical);
+                  return aiInteractive ? prompts.kiosk : prompts.signage;
+                })();
+
+                return (
+                  <AiIntakeWizard
+                    answers={aiIntake}
+                    onChange={setAiIntake}
+                    promptText={aiPrompt}
+                    onPromptChange={(v) => {
+                      setAiPrompt(v);
+                      // Clear a stale error the moment they start a new prompt.
+                      if (aiError) setAiError(null);
+                    }}
+                    exampleChips={exampleChips}
+                    screenPicker={screenPicker}
+                    typeToggle={typeToggle}
+                    onGenerate={runGenerateCandidates}
+                    onCancel={closeAiModal}
+                    isPending={generateCandidates.isPending}
+                    error={aiError}
+                    setMode={aiSetMode}
+                  />
+                );
+              })()
             )}
           </div>
         </div>
