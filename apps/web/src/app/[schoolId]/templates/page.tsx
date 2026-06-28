@@ -29,11 +29,14 @@ import {
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
 import { AiIntakeWizard } from '@/components/templates/AiIntakeWizard';
+import { SignageConcierge } from '@/components/templates/SignageConcierge';
 import {
   type AiIntakeAnswers,
+  type AiIntakeRequestFields,
   DEFAULT_INTAKE_ANSWERS,
   buildIntakeRequestFields,
 } from '@/components/templates/ai-intake-contract';
+import type { ConciergeIntake } from '@cms/api-types';
 import { useParams, useRouter } from 'next/navigation';
 import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 import { useUIStore } from '@/store/ui-store';
@@ -412,6 +415,10 @@ export default function TemplatesPage() {
   // and runGenerateCandidates forwards them. aiInteractive toggles touch
   // (default) vs passive signage so the same generator serves BOTH surfaces.
   const [aiPhase, setAiPhase] = useState<'intake' | 'pick'>('intake');
+  // (2026-06-28) — the intake phase now DEFAULTS to a conversational Signage
+  // Concierge chat; the guided 6-step wizard stays one click away as a
+  // fallback ("Use the guided form instead"). 'chat' | 'wizard'.
+  const [aiIntakeMode, setAiIntakeMode] = useState<'chat' | 'wizard'>('chat');
   // (2026-06-28) — the guided-intake answers (purpose/theme/palette/background/
   // widgets). Defaults are all 'auto'/empty so an operator who skips every
   // question gets TODAY's derive-from-prompt + vertical-affinity behavior.
@@ -630,6 +637,7 @@ export default function TemplatesPage() {
   // open/close so a stale candidate grid never flashes on reopen.
   const resetAiModal = useCallback(() => {
     setAiPhase('intake');
+    setAiIntakeMode('chat');
     setAiCandidates([]);
     setAiError(null);
     setAiPicking(null);
@@ -641,56 +649,95 @@ export default function TemplatesPage() {
     resetAiModal();
   }, [resetAiModal]);
 
-  // Phase 1 → 2: fan out 3 candidate drafts from the prompt. Reused by
-  // both the initial Generate button and the "Regenerate" button in the
-  // pick grid. Errors stay inline in the modal (never a toast).
-  const runGenerateCandidates = useCallback(async () => {
-    setAiError(null);
-    const prompt = aiPrompt.trim();
-    if (!prompt) {
-      setAiError('Tell the AI what to build.');
-      return;
-    }
-    try {
-      // (2026-06-28) — the guided-intake directives. Every field is OPTIONAL;
-      // anything left on 'auto'/empty is OMITTED so the engine keeps its
-      // derive-from-prompt + vertical-affinity behavior (nothing regresses).
-      const intakeFields = buildIntakeRequestFields(aiIntake);
-      const res = await generateCandidates.mutateAsync({
-        prompt,
-        // CC-1 — lay the board out for the chosen aspect so it isn't clipped on
-        // a real screen of a different size (e.g. a 960×1080 portrait LED).
-        screenWidth: aiCanvas.w,
-        screenHeight: aiCanvas.h,
-        vertical: (tenantCopy.vertical || 'venue').toLowerCase(),
-        interactive: aiInteractive,
-        // Pick-a-winner = 3 drafts. A SET omits count so the backend builds its
-        // cohesive 4-board loop (beta-QA P1: count:3 forced sets down to 3 and
-        // never reached the welcome→offer→hours→event story).
-        count: aiSetMode ? undefined : 3,
-        // Passive signage boards run through the signage-design art-director
-        // engine (Wave 2) — grid-locked archetype + theme + signage-scale type.
-        // Touch templates keep the multi-scene generator (touchActions).
-        engine: !aiInteractive,
-        // Wave 2a — "Build a set": ONE cohesive multi-scene template (the whole
-        // venue loop) instead of 3 single-board options to pick from.
-        set: aiSetMode,
-        // (2026-06-28) — guided-intake directives (purpose/theme/palette/
-        // background/widgets). The backend schema is `.passthrough()`, so these
-        // ride through even before the backend lane consumes them.
-        ...intakeFields,
-      });
-      const cands = res?.candidates || [];
-      if (!cands.length) {
-        setAiError('The AI returned no options. Try rephrasing your prompt with more concrete details.');
+  // Phase 1 → 2: fan out 3 candidate drafts. The SHARED core — both the
+  // guided-wizard path and the conversational Signage Concierge path call
+  // this with their own prompt + intake-directive source. Everything else
+  // (canvas, vertical, interactive, count, engine, set, error mapping,
+  // setAiCandidates, setAiPhase('pick')) is identical for both. `intakeFields`
+  // is spread straight into the body — the wizard passes
+  // buildIntakeRequestFields(answers); the concierge passes its
+  // ConciergeIntake directly (it's ALREADY the wire shape). The backend
+  // schema is `.passthrough()`, so these ride through. Errors stay inline.
+  const runGenerateCandidatesCore = useCallback(
+    async ({
+      prompt: rawPrompt,
+      intakeFields,
+    }: {
+      prompt: string;
+      // The wizard passes buildIntakeRequestFields(answers); the concierge
+      // passes its ConciergeIntake directly — both are the SAME wire shape
+      // (purpose/theme/palette/background/widgets), spread straight into the
+      // body. The backend schema is `.passthrough()`.
+      intakeFields: AiIntakeRequestFields | ConciergeIntake;
+    }) => {
+      setAiError(null);
+      const prompt = rawPrompt.trim();
+      if (!prompt) {
+        setAiError('Tell the AI what to build.');
         return;
       }
-      setAiCandidates(cands);
-      setAiPhase('pick');
-    } catch (e: any) {
-      setAiError(friendlyAiError(e));
-    }
-  }, [aiPrompt, aiInteractive, aiSetMode, aiCanvas, aiIntake, tenantCopy.vertical, generateCandidates]);
+      try {
+        const res = await generateCandidates.mutateAsync({
+          prompt,
+          // CC-1 — lay the board out for the chosen aspect so it isn't clipped on
+          // a real screen of a different size (e.g. a 960×1080 portrait LED).
+          screenWidth: aiCanvas.w,
+          screenHeight: aiCanvas.h,
+          vertical: (tenantCopy.vertical || 'venue').toLowerCase(),
+          interactive: aiInteractive,
+          // Pick-a-winner = 3 drafts. A SET omits count so the backend builds its
+          // cohesive 4-board loop (beta-QA P1: count:3 forced sets down to 3 and
+          // never reached the welcome→offer→hours→event story).
+          count: aiSetMode ? undefined : 3,
+          // Passive signage boards run through the signage-design art-director
+          // engine (Wave 2) — grid-locked archetype + theme + signage-scale type.
+          // Touch templates keep the multi-scene generator (touchActions).
+          engine: !aiInteractive,
+          // Wave 2a — "Build a set": ONE cohesive multi-scene template (the whole
+          // venue loop) instead of 3 single-board options to pick from.
+          set: aiSetMode,
+          // (2026-06-28) — guided-intake directives (purpose/theme/palette/
+          // background/widgets). The backend schema is `.passthrough()`, so these
+          // ride through even before the backend lane consumes them.
+          ...intakeFields,
+        });
+        const cands = res?.candidates || [];
+        if (!cands.length) {
+          setAiError('The AI returned no options. Try rephrasing your prompt with more concrete details.');
+          return;
+        }
+        setAiCandidates(cands);
+        setAiPhase('pick');
+      } catch (e: any) {
+        setAiError(friendlyAiError(e));
+      }
+    },
+    [aiInteractive, aiSetMode, aiCanvas, tenantCopy.vertical, generateCandidates],
+  );
+
+  // The WIZARD path: prompt = the wizard's prompt field; intake = the guided
+  // answers resolved to wire fields. Also reused by the pick-grid "Regenerate".
+  const runGenerateCandidates = useCallback(() => {
+    return runGenerateCandidatesCore({
+      prompt: aiPrompt,
+      intakeFields: buildIntakeRequestFields(aiIntake),
+    });
+  }, [aiPrompt, aiIntake, runGenerateCandidatesCore]);
+
+  // The CONCIERGE path: the chat hands us a synthesized prompt (brief) + a
+  // ConciergeIntake that's ALREADY the wire shape — spread it directly (do NOT
+  // run it through buildIntakeRequestFields, which expects the wizard's answer
+  // shape). The prompt feeds aiPrompt too so the pick-grid "Regenerate" works.
+  const runGenerateFromConcierge = useCallback(
+    (args: { prompt: string; intake: ConciergeIntake }) => {
+      setAiPrompt(args.prompt);
+      return runGenerateCandidatesCore({
+        prompt: args.prompt,
+        intakeFields: { ...args.intake },
+      });
+    },
+    [runGenerateCandidatesCore],
+  );
 
   // Phase 2 → done: persist the chosen candidate (re-sanitized server-
   // side) and open it in the builder. The sub-1024px mobile handoff is
@@ -1130,7 +1177,9 @@ export default function TemplatesPage() {
                       ? (aiSetMode
                           ? 'A cohesive multi-board loop that plays itself — open it to fine-tune any board.'
                           : 'Three takes on your idea — choose one to open and fine-tune.')
-                      : 'Answer a few quick questions — Claude drafts it for you, on-brand for your venue.'}
+                      : (aiIntakeMode === 'chat'
+                          ? 'Chat with the Concierge — share a website or a photo of a look you like, and it designs it with you.'
+                          : 'Answer a few quick questions — Claude drafts it for you, on-brand for your venue.')}
                   </p>
                 </div>
               </div>
@@ -1406,25 +1455,62 @@ export default function TemplatesPage() {
                   return aiInteractive ? prompts.kiosk : prompts.signage;
                 })();
 
+                // DEFAULT = conversational Signage Concierge; the guided form
+                // is one click away. Both reuse the SAME type-toggle + screen
+                // picker nodes and both hand off to the existing generator.
+                if (aiIntakeMode === 'chat') {
+                  return (
+                    <div className="flex flex-col gap-3">
+                      <SignageConcierge
+                        vertical={(tenantCopy.vertical || 'venue').toLowerCase()}
+                        canvas={aiCanvas}
+                        interactive={aiInteractive}
+                        generating={generateCandidates.isPending}
+                        screenPicker={screenPicker}
+                        typeToggle={typeToggle}
+                        onGenerate={runGenerateFromConcierge}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => { setAiIntakeMode('wizard'); setAiError(null); }}
+                        disabled={generateCandidates.isPending}
+                        className="self-center text-xs font-semibold text-slate-400 hover:text-violet-600 underline-offset-2 hover:underline disabled:opacity-50"
+                      >
+                        Use the guided form instead
+                      </button>
+                    </div>
+                  );
+                }
+
                 return (
-                  <AiIntakeWizard
-                    answers={aiIntake}
-                    onChange={setAiIntake}
-                    promptText={aiPrompt}
-                    onPromptChange={(v) => {
-                      setAiPrompt(v);
-                      // Clear a stale error the moment they start a new prompt.
-                      if (aiError) setAiError(null);
-                    }}
-                    exampleChips={exampleChips}
-                    screenPicker={screenPicker}
-                    typeToggle={typeToggle}
-                    onGenerate={runGenerateCandidates}
-                    onCancel={closeAiModal}
-                    isPending={generateCandidates.isPending}
-                    error={aiError}
-                    setMode={aiSetMode}
-                  />
+                  <div className="flex flex-col gap-3">
+                    <AiIntakeWizard
+                      answers={aiIntake}
+                      onChange={setAiIntake}
+                      promptText={aiPrompt}
+                      onPromptChange={(v) => {
+                        setAiPrompt(v);
+                        // Clear a stale error the moment they start a new prompt.
+                        if (aiError) setAiError(null);
+                      }}
+                      exampleChips={exampleChips}
+                      screenPicker={screenPicker}
+                      typeToggle={typeToggle}
+                      onGenerate={runGenerateCandidates}
+                      onCancel={closeAiModal}
+                      isPending={generateCandidates.isPending}
+                      error={aiError}
+                      setMode={aiSetMode}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setAiIntakeMode('chat'); setAiError(null); }}
+                      disabled={generateCandidates.isPending}
+                      className="self-center text-xs font-semibold text-slate-400 hover:text-violet-600 underline-offset-2 hover:underline disabled:opacity-50"
+                    >
+                      ← Back to chat with the Concierge
+                    </button>
+                  </div>
                 );
               })()
             )}
