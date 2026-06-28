@@ -82,14 +82,19 @@ describe('dispatchAi — temperature parity', () => {
 describe('dispatchAi — OpenAI reasoning-model contract (gpt-5 fix)', () => {
   beforeEach(() => fetchMock.mockReset());
 
-  it('gpt-5 uses max_completion_tokens and OMITS max_tokens + temperature', async () => {
+  it('gpt-5 uses max_completion_tokens (+reasoning headroom) and OMITS max_tokens + temperature', async () => {
     fetchMock.mockResolvedValue(okJson({ choices: [{ message: { content: 'hi' } }] }));
     await dispatchAi('openai', {
       apiKey: 'sk-x', model: 'gpt-5',
       system: 's', userPrompt: 'u', maxTokens: 1500,
     });
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(body.max_completion_tokens).toBe(1500);
+    // 2026-06-28 empty-reply fix — a reasoning model's internal reasoning tokens
+    // count against max_completion_tokens, so the budget is the caller's VISIBLE
+    // size (1500) PLUS a 12k reasoning allowance, else GPT-5 returns empty text.
+    expect(body.max_completion_tokens).toBe(1500 + 12000);
+    // …and reasoning_effort is pinned low (signage copy needs no deep reasoning).
+    expect(body.reasoning_effort).toBe('low');
     expect(body.max_tokens).toBeUndefined();
     // Reasoning models reject a non-default temperature → must be omitted.
     expect(body.temperature).toBeUndefined();
