@@ -2,6 +2,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { API_URL } from '@/lib/api-url';
 import { useUIStore } from '@/store/ui-store';
+import type {
+  ConciergeReference,
+  ConciergeMessage,
+  ConciergeTurnResponse,
+} from '@cms/api-types';
 
 // ─── Tenant Status ──────────────────────────────────────────────
 export function useTenantStatus() {
@@ -1437,6 +1442,69 @@ export function useCreateFromCandidate() {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['templates'] });
+    },
+  });
+}
+
+// ─── Signage Concierge (2026-06-28) — conversational AI intake ──────
+//
+// The operator CHATS with a signage-savvy AI instead of filling a fixed
+// wizard. The model asks the right next question, accepts reference URLs +
+// image uploads, and fills a structured ConciergeIntake until it can
+// generate the same 3 candidates as the wizard path. These mutations are
+// request/response only — NO list invalidation (nothing is persisted until
+// the operator hands the intake off to the existing generate flow).
+
+/** One conversational turn. Re-send the FULL transcript + references each
+ *  call (the server rebuilds the system prompt per turn, so it must "see"
+ *  everything gathered so far). Errors carry err.status/err.code/err.body
+ *  (see apiFetch) so the UI can map 402 cap / 503 not-configured / 422. */
+export function useConciergeChat() {
+  return useMutation<
+    ConciergeTurnResponse,
+    Error,
+    {
+      messages: ConciergeMessage[];
+      references?: ConciergeReference[];
+      vertical?: string;
+      screenWidth?: number;
+      screenHeight?: number;
+    }
+  >({
+    mutationFn: (body) =>
+      apiFetch<ConciergeTurnResponse>('/templates/concierge/chat', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+  });
+}
+
+/** Scrape a customer URL into a compact reference summary (name / palette /
+ *  hero image). May 422 with { code: 'CONCIERGE_SCRAPE_FAILED' }. */
+export function useConciergeUrlReference() {
+  return useMutation<ConciergeReference, Error, { url: string }>({
+    mutationFn: (body) =>
+      apiFetch<ConciergeReference>('/templates/concierge/reference/url', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+  });
+}
+
+/** Summarize an uploaded image of a look the operator likes (vision →
+ *  palette + style summary). Multipart FormData (field `file`). apiFetch
+ *  auto-detects FormData and skips the JSON Content-Type so the multipart
+ *  boundary survives — and still attaches err.status/code/body on a 422
+ *  ({ code: 'CONCIERGE_VISION_UNAVAILABLE' }). */
+export function useConciergeImageReference() {
+  return useMutation<ConciergeReference, Error, File>({
+    mutationFn: (file) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      return apiFetch<ConciergeReference>('/templates/concierge/reference/image', {
+        method: 'POST',
+        body: fd,
+      });
     },
   });
 }
