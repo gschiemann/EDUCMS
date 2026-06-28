@@ -297,6 +297,27 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
   const active = message || polled;
   if (!active) return null;
 
+  // TEMP DIAGNOSTIC (2026-06-28, build DBG-A) — after 5 blind rounds on the
+  // "emergency renders at 1920 not 960" P0, surface the ACTUAL runtime canvas
+  // signals on-screen so the live camera shows the truth instead of guessing:
+  //   cw   = canvas.w×h resolved by useLedCanvas (URL → localStorage)
+  //   led  = the --led-w/--led-h the beforeInteractive viewport-pin published
+  //   cfg  = data-led-cfg (1 = operator-configured canvas, 0 = viewport guess)
+  //   vw   = window.innerWidth×Height (the frame-buffer viewport)
+  // Seeing "DBG-A" at all confirms the kiosk is running THIS bundle. Removed
+  // once the canvas-fit is verified on glass.
+  let dbg = 'DBG-A';
+  try {
+    const de = document.documentElement;
+    const cs = getComputedStyle(de);
+    const ledw = (cs.getPropertyValue('--led-w') || '').trim() || '?';
+    const ledh = (cs.getPropertyValue('--led-h') || '').trim() || '?';
+    const cfg = de.getAttribute('data-led-cfg') ?? '?';
+    const vw = typeof window !== 'undefined' ? window.innerWidth : '?';
+    const vh = typeof window !== 'undefined' ? window.innerHeight : '?';
+    dbg = `DBG-A cw=${canvas.w}x${canvas.h} led=${ledw}x${ledh} cfg=${cfg} vw=${vw}x${vh}`;
+  } catch { /* keep DBG-A */ }
+
   const style = severityStyles[active.severity] || severityStyles.CRITICAL;
   const Icon = style.icon;
 
@@ -376,6 +397,27 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
         backgroundColor: style.solidBg,
       }}
     >
+      {/* TEMP DIAGNOSTIC readout (build DBG-A) — top-left of the frame buffer
+          (always inside the visible panel). Readable via the live camera. */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          zIndex: 30,
+          fontFamily: 'monospace',
+          fontSize: 18,
+          lineHeight: 1.3,
+          color: '#ffffff',
+          background: 'rgba(0,0,0,0.7)',
+          padding: '4px 8px',
+          maxWidth: '100%',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+        }}
+      >
+        {dbg}
+      </div>
       {/* Content region confined to the LED canvas (e.g. 960×1080), anchored
           TOP-LEFT (where a NovaStar/TB controller lights up by default), so the
           message FITS the visible panel instead of being sized to the 1920
