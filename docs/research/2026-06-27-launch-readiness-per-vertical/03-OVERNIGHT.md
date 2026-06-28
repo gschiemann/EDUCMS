@@ -29,9 +29,20 @@ From 02-DEEPWAVE2 Lane 3, filtered to what's safe to do unattended (held-lane-1 
 - **L-B (SVG, security boundary → HOLD):** wire `AssetSanitizerService` (exists, zero callers) into the asset upload path + re-enable SVG with strict scrub + thorough security tests → the Domino's vector-logo fix (#223). Ship the honest-UX interim message now; HOLD the sanitizer-enable for review (stored-XSS attack surface — never auto-merge unattended).
 - **L-C (mobile verify+fix):** confirm tonight's `d84001e6` actually fixed #215 (media-picker toolbar) and #217 (settings drawer off left edge); fix any residual. Mobile CSS only.
 
+## Wave 3 RESULT (`wn47lvw35`) — 3 lanes, 3 commits merged (2 lanes), 1 held
+- **MERGED `d91db84b`** — schedule test coverage (2 specs, 10 tests). Proves the **group-supersession** behavior is REAL, not aspirational (the audit's [P0] "comment may be aspirational" was FALSE — the `replaceOr` clause in schedules.controller deactivates every member pin; test confirms). Also covers schedule-publish→manifest (the #1 operator workflow that the e2e file left `.skip()`-ed). **This de-risks held lane 1's review.** 26 schedules tests pass total.
+- **MERGED `b049a3bf`** — honest SVG-upload message in the shared AssetPicker (#223 UX half). Root cause: AssetPicker listed `image/svg+xml` in `accept` but had no pre-check → silent 415 "Upload failed". Now drops SVG from the native picker + shows "SVG logos aren't supported yet — export as PNG (coming soon)". Frontend-only, web tsc clean.
+- **HELD for Greg — SVG sanitizer re-enable** branch `worktree-wf_e984975b-5fd-2` (`cbe5aa9a`): rewrites AssetSanitizerService into a strict allowlist + fail-closed scrubber, wires it into the in-memory `/assets/upload` path, re-enables SVG (the real Domino's vector fidelity fix). 17 malicious-SVG fixtures neutralized + legit logo preserved (17/17 tests pass). **Held — it's a stored-XSS attack surface.** Agent's honest caveats: (1) single-engine (had to drop the DOMPurify second pass the Brand Kit logo path uses — jsdom@29 ESM breaks ts-jest; add `transformIgnorePatterns` then layer DOMPurify for belt-and-suspenders), (2) no live e2e exercise (worktree had no app), (3) presign/direct-to-Supabase channel still rejects SVG (only the server-proxied `/upload` route enables it). Verify the DOMPurify second pass + a live upload→render round-trip before flipping on. Merge: `git cherry-pick cbe5aa9a`.
+- **VERIFIED (no change needed) — MOBILE BUGS #215 + #217.** Tonight's `d84001e6` already fixed both (media-picker toolbar reachable; settings drawer on-screen). Confirmed via code-path + mobile-perf-guard (clean) + tsc (clean). These two tasks can close. Optional belt-and-suspenders: a Playwright iPhone-viewport pass asserting all action buttons are within the viewport.
+
+## State of held branches (all 3 await your one-command merge)
+- `worktree-wf_56f783bb-97c-1` (`708005f5`) — content-delivery: schedule group-supersession precedence + null-hash asset cache-freshness (touches player SW + emergency precache). **Now partly de-risked** by the wave-3 group-supersession test on master.
+- `worktree-wf_ed49045e-b0a-1` (`980646f5`) — geocoding/address-picker (#216): auth-guard relaxation + metered-cost.
+- `worktree-wf_e984975b-5fd-2` (`cbe5aa9a`) — SVG sanitizer re-enable (#223): stored-XSS surface.
+Worktree dirs removed; branches preserved. `git worktree list` shows only the main tree (clean).
+
 ## OWED at morning
 1. On-glass emergency verify (display was asleep) — trigger device-scoped lockdown on the 960×1080 LED, confirm full + readable + opaque; the kiosk should already be on the fixed bundle via the dynamic /player + cache-bust reload.
-2. Review/merge held lane 1 (content-delivery) after live verify.
-3. Review/merge held geocoding (#216) — auth-guard relaxation + metered-cost, your call.
-4. Greg-decisions: MFA legacy guard, Stripe DLQ.
-5. Remaining 00-BETA-FINDINGS per-vertical depth — the 4 genuine costume verticals (WORSHIP/HEALTHCARE/HOSPITALITY/CORPORATE) need real per-widget React packs, which is DESIGN work requiring your approval loop (no batching) — queued, not done unattended.
+2. Review/merge the 3 held branches (above) after live verify.
+3. Greg-decisions: MFA legacy guard, Stripe DLQ.
+4. Remaining 00-BETA-FINDINGS per-vertical depth — the 4 genuine costume verticals (WORSHIP/HEALTHCARE/HOSPITALITY/CORPORATE) need real per-widget React packs, which is DESIGN work requiring your approval loop (no batching) — queued, not done unattended.
