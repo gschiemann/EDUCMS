@@ -42,6 +42,7 @@ import {
   type ResolvedZone,
   type SceneSpec,
   type ScrimSpec,
+  type SurfaceStyle,
   type ThemeBundle,
   type ThemePalette,
 } from '@cms/signage-design';
@@ -78,7 +79,36 @@ export interface ArtDirectorMapOptions {
   screenHeight: number;
   brandPrimaryHex?: string;
   brandAccentHex?: string;
+  /**
+   * GUIDED-INTAKE directives (guided-intake.ts). All optional — when present each
+   * is a HARD directive the engine honors; when absent the engine derives as
+   * before (zero regression).
+   *   - forcedSurfaceStyle: override the theme's SurfaceStyle dials (solid /
+   *     gradient / textured background choice).
+   *   - paletteOverride: replace specific palette tokens from custom swatches
+   *     (the contrast guard still re-derives legible text against them).
+   *   - requiredWidgets: content widgets the operator REQUIRES as zones; the
+   *     mapper emits each as a supplemental zone with a sensible default.
+   */
+  forcedSurfaceStyle?: Partial<SurfaceStyle>;
+  paletteOverride?: Partial<ThemePalette>;
+  requiredWidgets?: GuidedRequiredWidget[];
 }
+
+/** The content widgets the guided-intake may require (mirror of GuidedWidget). */
+export type GuidedRequiredWidget =
+  | 'headline'
+  | 'subtext'
+  | 'logo'
+  | 'image'
+  | 'clock'
+  | 'date'
+  | 'weather'
+  | 'countdown'
+  | 'menu'
+  | 'ticker'
+  | 'qr'
+  | 'cta';
 
 /**
  * The most scenes a generated template may carry (one per board in a "set").
@@ -133,19 +163,80 @@ function normalizeHex(hex?: string): string | undefined {
 
 /** Resolve the theme for a scene: 'brand' → derive from the tenant kit; else a curated id. */
 function resolveTheme(theme: string, opts: ArtDirectorMapOptions): ThemeBundle {
+  let bundle: ThemeBundle;
   if (theme === 'brand') {
     // A malformed stored brand hex must NEVER 500 a board generation — normalize
     // then guard, falling back to a curated theme on any derive failure.
     try {
-      return deriveThemeFromBrand(normalizeHex(opts.brandPrimaryHex) ?? '#2563eb', {
+      bundle = deriveThemeFromBrand(normalizeHex(opts.brandPrimaryHex) ?? '#2563eb', {
         mode: 'dark',
         accentHex: normalizeHex(opts.brandAccentHex),
       });
     } catch {
-      return getTheme('clean-corporate') ?? THEMES[0];
+      bundle = getTheme('clean-corporate') ?? THEMES[0];
     }
+  } else {
+    bundle = getTheme(theme) ?? THEMES[0];
   }
-  return getTheme(theme) ?? THEMES[0];
+  return applyThemeDirectives(bundle, opts);
+}
+
+/**
+ * GUIDED-INTAKE: layer the operator's forced SurfaceStyle + custom-palette
+ * directives onto the resolved theme. Returns a SHALLOW-CLONED bundle (never
+ * mutates the shared curated THEMES) so each board can carry its own surface /
+ * palette without leaking into the next generation.
+ *
+ * The custom-palette override only sets the BG/accent/surface hex; ink /
+ * onAccent / muted stay theme-owned, and the engine's contrast guard re-derives
+ * legible text against whatever surface we set (mapTextConfig's overImage /
+ * accent floors) — so a custom palette can never produce illegible text.
+ */
+function applyThemeDirectives(theme: ThemeBundle, opts: ArtDirectorMapOptions): ThemeBundle {
+  const hasSurface = opts.forcedSurfaceStyle && Object.keys(opts.forcedSurfaceStyle).length > 0;
+  const hasPalette = opts.paletteOverride && Object.keys(opts.paletteOverride).length > 0;
+  if (!hasSurface && !hasPalette) return theme;
+  const next: ThemeBundle = { ...theme };
+  if (hasSurface) {
+    next.surfaceStyle = { ...(theme.surfaceStyle ?? {}), ...opts.forcedSurfaceStyle };
+  }
+  if (hasPalette) {
+    next.palette = mergeCustomPalette(theme.palette, opts.paletteOverride!);
+  }
+  return next;
+}
+
+/** A hex (#rgb / #rrggbb) only — the engine's argbFromHex accepts nothing else. */
+function isHex(v: string | undefined): boolean {
+  return !!v && /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v);
+}
+
+/**
+ * Merge custom swatches (background / accent / surface) into a palette and
+ * RE-DERIVE the text tokens (ink / inkInverse / muted / onAccent) so they stay
+ * legible against the new surfaces. This is what makes a custom palette safe:
+ * the operator never has to think about contrast — `bestTextColor` picks
+ * black/white per WCAG against whatever background/accent they chose. Malformed
+ * swatches (defense in depth — already hex-validated at the API boundary) fall
+ * back to the theme's own token.
+ */
+function mergeCustomPalette(base: ThemePalette, override: Partial<ThemePalette>): ThemePalette {
+  const background = isHex(override.background) ? override.background! : base.background;
+  const accent = isHex(override.accent) ? override.accent! : base.accent;
+  const surface = isHex(override.surface) ? override.surface! : base.surface;
+  // Only re-derive the text tokens for surfaces the operator actually changed —
+  // an untouched surface keeps the theme's hand-verified token.
+  const bgChanged = isHex(override.background) && override.background !== base.background;
+  const accentChanged = isHex(override.accent) && override.accent !== base.accent;
+  return {
+    background,
+    surface,
+    ink: bgChanged ? bestTextColor(background) : base.ink,
+    inkInverse: bgChanged ? bestTextColor(surface) : base.inkInverse,
+    muted: bgChanged ? bestTextColor(background) : base.muted,
+    accent,
+    onAccent: accentChanged ? bestTextColor(accent) : base.onAccent,
+  };
 }
 
 /** Coerce an archetype id to a known one (LLM safety net — should already be valid). */
@@ -439,7 +530,7 @@ function mapScene(
   scene: SceneSpec,
   opts: ArtDirectorMapOptions,
   sceneRef: string | undefined,
-): { zones: MappedZone[]; theme: ThemeBundle; archetypeId: ArchetypeId } {
+): { zones: MappedZone[]; theme: ThemeBundle; archetypeId: ArchetypeId; presentSlots: Set<string> } {
   const archetypeId = resolveArchetypeId(scene.archetype);
   const theme = resolveTheme(scene.theme, opts);
   // Classify the real screen w/h into a canvas class so the resolver re-stacks
@@ -463,6 +554,7 @@ function mapScene(
   zones = res.zones;
 
   const mapped: MappedZone[] = [];
+  const presentSlots = new Set<string>();
   let listIndex = 0;
 
   for (const z of zones) {
@@ -498,11 +590,151 @@ function mapScene(
       defaultConfig: config,
       sceneRef,
     });
+    presentSlots.add(z.slot);
 
     if (mapped.length >= MAX_ZONES_PER_SCENE) break;
   }
 
-  return { zones: mapped, theme, archetypeId };
+  return { zones: mapped, theme, archetypeId, presentSlots };
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// GUIDED-INTAKE: required-widget supplemental zones.
+//
+// The art-director archetypes only emit TEXT/IMAGE slots (headline / body /
+// cta / image / list). When the operator REQUIRES content widgets the layout
+// doesn't already carry (clock, weather, countdown, ticker, logo, qr, …), we
+// append them as SUPPLEMENTAL zones placed in the board's safe-margin band so
+// they sit ON TOP of the archetype content (appended last → highest sortOrder
+// in the renderer). Each maps to a real WidgetRenderer widgetType that's also
+// on the sanitizer's allow-list (TOUCH_GEN_ALLOWED_WIDGETS) so it survives the
+// scrub.
+// ───────────────────────────────────────────────────────────────────────
+
+/** Map a required-widget key → the real widgetType the renderer + sanitizer accept. */
+const REQUIRED_WIDGET_TYPE: Record<GuidedRequiredWidget, string> = {
+  headline: 'TEXT',
+  subtext: 'TEXT',
+  logo: 'LOGO',
+  image: 'IMAGE',
+  clock: 'CLOCK',
+  date: 'CLOCK',
+  weather: 'WEATHER',
+  countdown: 'COUNTDOWN',
+  menu: 'LUNCH_MENU',
+  ticker: 'TICKER',
+  qr: 'IMAGE', // QR renders as an IMAGE zone (the renderer turns a qrText config into a real QR); IMAGE is allow-listed, QR_CODE is not.
+  cta: 'TEXT',
+};
+
+/** Widget keys the archetype already covers via its text/image slots — never
+ *  re-added so we don't double up the headline / body / CTA / image. The
+ *  mapper's slot names map onto these. */
+const SLOT_COVERS: Record<string, GuidedRequiredWidget | undefined> = {
+  headline: 'headline',
+  body: 'subtext',
+  cta: 'cta',
+  image: 'image',
+  background: 'image',
+  logo: 'logo',
+};
+
+/** A sensible default defaultConfig per required widget, themed where it helps. */
+function requiredWidgetConfig(
+  w: GuidedRequiredWidget,
+  theme: ThemeBundle,
+): Record<string, any> {
+  const palette = theme.palette;
+  switch (w) {
+    case 'headline':
+      return { content: 'Headline', sizeMode: 'absolute', fontSize: 96, fontFamily: theme.fontPair.display, fontWeight: 800, color: palette.ink, alignment: 'left', lineHeight: 1.1 };
+    case 'subtext':
+      return { content: 'Add your supporting text here', sizeMode: 'absolute', fontSize: 44, fontFamily: theme.fontPair.body, color: palette.muted, alignment: 'left', lineHeight: 1.35 };
+    case 'cta':
+      return { content: 'Learn more', sizeMode: 'absolute', fontSize: 50, fontFamily: theme.fontPair.body, fontWeight: 700, color: palette.onAccent, bgColor: palette.accent, alignment: 'center', borderRadius: theme.radiusPx, paddingMode: 'button', lineHeight: 1.05 };
+    case 'logo':
+      return { fit: 'contain' };
+    case 'image':
+      return { fit: 'cover', bgGradient: imageHalfGradient(theme) };
+    case 'qr':
+      // The renderer builds a real QR from `qrText`; the gradient is the load fallback.
+      return { fit: 'contain', qrText: 'https://example.com', bgColor: '#ffffff' };
+    case 'clock':
+      return { showSeconds: false, hour12: true, color: palette.ink, fontFamily: theme.fontPair.display, fontSize: 72 };
+    case 'date':
+      return { mode: 'date', showDate: true, dateFormat: 'long', color: palette.ink, fontFamily: theme.fontPair.body, fontSize: 48 };
+    case 'weather':
+      return { color: palette.ink, fontFamily: theme.fontPair.body, fontSize: 48 };
+    case 'countdown':
+      return { label: 'Counting down to', units: ['days', 'hours', 'minutes', 'seconds'], color: palette.ink, accentColor: palette.accent, fontFamily: theme.fontPair.display, fontSize: 64 };
+    case 'menu':
+      return { color: palette.ink, fontFamily: theme.fontPair.body };
+    case 'ticker':
+      return { messages: ['Add your scrolling message here'], color: palette.ink, bgColor: palette.surface, fontFamily: theme.fontPair.body, fontSize: 44 };
+    default:
+      return {};
+  }
+}
+
+/**
+ * Build supplemental zones for the operator's REQUIRED widgets that the
+ * archetype's own slots don't already cover. Lays them along the bottom safe-
+ * margin band (and a top band for clock/date/weather chrome) so they don't
+ * collide with the focal headline. Caller appends these AFTER the scene zones.
+ */
+function buildRequiredWidgetZones(
+  required: GuidedRequiredWidget[],
+  presentSlots: Set<string>,
+  theme: ThemeBundle,
+  sceneRef: string | undefined,
+): MappedZone[] {
+  // De-dupe + drop widgets the archetype already provides (covered by a slot).
+  const covered = new Set<GuidedRequiredWidget>();
+  for (const slot of presentSlots) {
+    const w = SLOT_COVERS[slot];
+    if (w) covered.add(w);
+  }
+  const wanted: GuidedRequiredWidget[] = [];
+  const seen = new Set<string>();
+  for (const w of required) {
+    if (covered.has(w) || seen.has(w)) continue;
+    seen.add(w);
+    wanted.push(w);
+  }
+  if (!wanted.length) return [];
+
+  // Two bands: chrome (clock/date/weather) along the TOP; everything else along
+  // the BOTTOM. Each band lays its members left→right in equal columns within
+  // the safe margins (5%..95%). Heights are small so they never crowd the focus.
+  const TOP = new Set<GuidedRequiredWidget>(['clock', 'date', 'weather']);
+  const topRow = wanted.filter((w) => TOP.has(w));
+  const bottomRow = wanted.filter((w) => !TOP.has(w));
+  const zones: MappedZone[] = [];
+
+  const layRow = (members: GuidedRequiredWidget[], yTop: number, h: number) => {
+    if (!members.length) return;
+    const left = 5;
+    const usable = 90; // 5%..95%
+    const gap = 2;
+    const colW = (usable - gap * (members.length - 1)) / members.length;
+    members.forEach((w, i) => {
+      const x = left + i * (colW + gap);
+      zones.push({
+        name: w,
+        widgetType: REQUIRED_WIDGET_TYPE[w],
+        x: r3(x),
+        y: r3(yTop),
+        width: r3(colW),
+        height: r3(h),
+        defaultConfig: requiredWidgetConfig(w, theme),
+        sceneRef,
+      });
+    });
+  };
+
+  layRow(topRow, 5, 10);
+  layRow(bottomRow, 82, 12);
+  return zones;
 }
 
 /** Derive a board name (≤60 chars) from the spec copy. */
@@ -546,20 +778,37 @@ export function artDirectorSpecToTemplate(
       used.add(candidate.toLowerCase());
       scenesOut.push({ name: candidate });
 
-      const { zones: sceneZones, theme } = mapScene(scene, opts, candidate);
+      const { zones: sceneZones, theme, presentSlots } = mapScene(scene, opts, candidate);
       if (i === 0) primaryTheme = theme;
       for (const z of sceneZones) {
         if (zones.length >= MAX_GENERATED_TEMPLATE_ZONES) break;
         zones.push(z);
       }
+      // GUIDED-INTAKE: each scene of a set is its own designed screen, so each
+      // gets the operator's required widgets (de-duped against its own slots).
+      if (opts.requiredWidgets && opts.requiredWidgets.length) {
+        const extra = buildRequiredWidgetZones(opts.requiredWidgets, presentSlots, theme, candidate);
+        for (const z of extra) {
+          if (zones.length >= MAX_GENERATED_TEMPLATE_ZONES) break;
+          zones.push(z);
+        }
+      }
     }
   } else {
     // Single board — the top-level SceneSpec.
-    const { zones: sceneZones, theme } = mapScene(spec, opts, undefined);
+    const { zones: sceneZones, theme, presentSlots } = mapScene(spec, opts, undefined);
     primaryTheme = theme;
     for (const z of sceneZones) {
       if (zones.length >= MAX_GENERATED_TEMPLATE_ZONES) break;
       zones.push(z);
+    }
+    // GUIDED-INTAKE: append the operator's required widgets the layout lacks.
+    if (opts.requiredWidgets && opts.requiredWidgets.length) {
+      const extra = buildRequiredWidgetZones(opts.requiredWidgets, presentSlots, theme, undefined);
+      for (const z of extra) {
+        if (zones.length >= MAX_GENERATED_TEMPLATE_ZONES) break;
+        zones.push(z);
+      }
     }
   }
 

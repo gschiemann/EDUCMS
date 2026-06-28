@@ -12,6 +12,7 @@ import { SYSTEM_TEMPLATE_PRESETS } from './system-presets';
 import { FITNESS_TEMPLATE_PRESETS } from './fitness-presets';
 import { verticalMatchOr } from './ensure-system-presets';
 import { AiService, sanitizeTouchTemplate } from '../ai/ai.service';
+import { parseGuidedIntake } from '../ai/guided-intake';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import {
   TemplateNameOnlySchema, type TemplateNameOnlyInput,
@@ -923,6 +924,11 @@ export class TemplatesController {
     // prompts → ONE cohesive multi-scene template (4-6 boards, one theme) that
     // plays itself. Returns a SINGLE candidate whose scenes[] is the set; the
     // existing create-from-candidate path persists the scenes unchanged.
+    // GUIDED-INTAKE (2026-06-28): parse the OPTIONAL purpose / theme / palette /
+    // background / widgets directives off the body. Returns undefined when none
+    // present → the engine derives as before (zero regression). Only meaningful
+    // on the ENGINE / SET paths.
+    const intake = parseGuidedIntake(body);
     if (body.set === true) {
       const out = await this.ai.generateSignageBoardSet({
         tenantId: req.user.tenantId,
@@ -932,11 +938,15 @@ export class TemplatesController {
         screenHeight: body.screenHeight,
         vertical: body.vertical,
         count: body.count,
+        intake,
       });
       return {
         candidates: [out.candidate],
         engine: true,
         set: true,
+        // GUIDED-INTAKE: surface the photo-pending signal so the FE can note the
+        // gradient is a stand-in until the accepted board generates its photo.
+        photoPending: out.photoPending,
         ai: { source: out.source, usage: out.usage },
       };
     }
@@ -949,6 +959,7 @@ export class TemplatesController {
         screenHeight: body.screenHeight,
         vertical: body.vertical,
         count: body.count,
+        intake,
       });
       // Each candidate round-trips through create-from-candidate, which
       // re-sanitizes the zones and persists `background`. We carry the bg +
@@ -956,6 +967,7 @@ export class TemplatesController {
       return {
         candidates: out.candidates,
         engine: true,
+        photoPending: out.photoPending,
         ai: { source: out.source, usage: out.usage },
       };
     }
@@ -1043,6 +1055,11 @@ export class TemplatesController {
   ) {
     const screenWidth = body.screenWidth || 1920;
     const screenHeight = body.screenHeight || 1080;
+    // GUIDED-INTAKE: honor the operator's purpose/theme/palette/background/widgets
+    // picks as HARD directives. (This finished-board flow already opts into a
+    // photo via withImage; a guided 'photo' background reinforces it, 'solid'/
+    // 'gradient'/'textured' force a non-photo surface instead.)
+    const intake = parseGuidedIntake(body);
     const board = await this.ai.generateSignageBoard({
       tenantId: req.user.tenantId,
       userId: req.user.id,
@@ -1051,7 +1068,10 @@ export class TemplatesController {
       screenWidth,
       screenHeight,
       vertical: body.vertical,
-      withImage: true,
+      // A non-photo background directive means the operator wants a designed
+      // surface (no photo); otherwise default to the finished-board photo opt-in.
+      withImage: intake?.background ? intake.background === 'photo' : true,
+      intake,
     });
     // Re-run the SAME server-side sanitizer the candidate path uses (the board
     // is engine-built, but defense-in-depth + it preserves our https assetUrl).
@@ -1075,7 +1095,15 @@ export class TemplatesController {
       withImage: true,
       archetype: board.archetype,
     });
-    return { template: mapTemplate(created), archetype: board.archetype, theme: board.theme };
+    return {
+      template: mapTemplate(created),
+      archetype: board.archetype,
+      theme: board.theme,
+      // GUIDED-INTAKE: honest signal — operator asked for a photo but none was
+      // produced (image-gen unavailable / failed); the board shipped on its
+      // themed gradient. We spent ZERO platform budget on the miss.
+      photoFallback: board.photoFallback,
+    };
   }
 
   // Wave 3 (2026-06-27) — CHAT-TO-EDIT. Refine an already-generated (unpersisted)

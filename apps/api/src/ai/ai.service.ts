@@ -53,6 +53,14 @@ import {
   MAX_GENERATED_TEMPLATE_ZONES,
   type MappedTemplate,
 } from './art-director';
+// GUIDED-INTAKE — turn the operator's picks (purpose / theme / palette /
+// background / widgets) into HARD directives the board engine honors.
+import {
+  applyGuidedIntakeToSpec,
+  guidedMapperDirectives,
+  paletteIsBrand,
+  type GuidedIntake,
+} from './guided-intake';
 import {
   ARCHETYPE_IDS,
   THEMES,
@@ -1598,6 +1606,8 @@ export class AiService {
      * it never throws, never blocks, never falls back to the platform key.
      */
     withImage?: boolean;
+    /** GUIDED-INTAKE: optional purpose/theme/palette/background/widgets directives. */
+    intake?: GuidedIntake;
   }): Promise<{
     name: string;
     description?: string;
@@ -1610,6 +1620,13 @@ export class AiService {
     usage: { used: number; cap: number; resetAt: string } | null;
     /** Wave 3 — set when a generated photo was injected behind the scrim. */
     backgroundImageUrl?: string;
+    /**
+     * GUIDED-INTAKE: true when a 'photo' background was requested but no image
+     * was produced (image-gen unavailable / failed / not gated on) — the board
+     * shipped on its themed gradient instead. The UI can note the fallback; we
+     * NEVER silently spend platform Tier-1 budget on it.
+     */
+    photoFallback?: boolean;
   }> {
     // Same failure-cap wrapper as the other generators.
     await this.checkFailureCap(opts.tenantId);
@@ -1630,6 +1647,7 @@ export class AiService {
     screenHeight?: number;
     vertical?: string;
     withImage?: boolean;
+    intake?: GuidedIntake;
   }): Promise<any> {
     const resolved = await this.resolveProviderKey(opts.tenantId);
     if (!resolved) {
@@ -1667,13 +1685,15 @@ export class AiService {
     }
 
     // The art-director spec → engine → sanitized board (shared with the
-    // multi-candidate path via buildSignageBoardCore).
+    // multi-candidate path via buildSignageBoardCore). GUIDED-INTAKE flows in so
+    // the operator's purpose/theme/palette/background/widgets are HARD directives.
     const { sanitized, mapped, spec, sw, sh } = await this.buildSignageBoardCore(resolved, {
       tenantId: opts.tenantId,
       prompt,
       screenWidth: opts.screenWidth,
       screenHeight: opts.screenHeight,
       vertical: opts.vertical,
+      intake: opts.intake,
     });
 
     // Spend accounting AFTER a usable result (same leak-fix as the others).
@@ -1718,7 +1738,13 @@ export class AiService {
     // anthropic-only, key rejected, out-of-credit, cap, timeout, content
     // policy) is swallowed and the board simply ships on its gradient.
     let backgroundImageUrl: string | undefined;
-    if (opts.withImage && spec.image?.mode === 'generate' && isImageBgArchetype(spec.archetype)) {
+    // GUIDED-INTAKE: a 'photo' background is an EXPLICIT request for a real image
+    // — treat it the same as the withImage opt-in (applyGuidedIntakeToSpec already
+    // upgraded the spec's image plan to 'generate'). Either trigger fires the
+    // SAME gated generateBoardBackground (provider availability + image cap +
+    // role review). It NEVER falls back to the platform Tier-1 key.
+    const wantPhoto = !!opts.withImage || opts.intake?.background === 'photo';
+    if (wantPhoto && spec.image?.mode === 'generate' && isImageBgArchetype(spec.archetype)) {
       backgroundImageUrl = await this.generateBoardBackground({
         tenantId: opts.tenantId,
         userId: opts.userId,
@@ -1735,6 +1761,12 @@ export class AiService {
       }
     }
 
+    // GUIDED-INTAKE: the operator asked for a photo but we produced none (image
+    // -gen unavailable / failed / not an image-bg archetype) — the board ships on
+    // its themed gradient. Signal that honestly so the UI can note it; we spent
+    // ZERO platform budget on the miss.
+    const photoFallback = opts.intake?.background === 'photo' && !backgroundImageUrl ? true : undefined;
+
     return {
       name: sanitized.name,
       description: sanitized.description,
@@ -1746,6 +1778,7 @@ export class AiService {
       source: resolved.source,
       usage,
       backgroundImageUrl,
+      photoFallback,
     };
   }
 
@@ -1758,7 +1791,7 @@ export class AiService {
    */
   private async buildSignageBoardCore(
     resolved: { provider: AiProvider; apiKey: string; model: string; source: 'tenant' | 'platform' },
-    opts: { tenantId: string; prompt: string; screenWidth?: number; screenHeight?: number; vertical?: string },
+    opts: { tenantId: string; prompt: string; screenWidth?: number; screenHeight?: number; vertical?: string; intake?: GuidedIntake },
     directive?: string,
     overrides?: { forcedTheme?: string; maxTokens?: number },
   ): Promise<{ sanitized: any; mapped: MappedTemplate; spec: ArtDirectorSpec; sw: number; sh: number }> {
@@ -1818,9 +1851,27 @@ export class AiService {
       if (spec.scenes) for (const sc of spec.scenes) (sc as any).theme = overrides.forcedTheme;
     }
 
+    // GUIDED-INTAKE: the operator's purpose/theme picks are HARD directives —
+    // force the spec's archetype + theme (overriding the model + the affinity
+    // fallback) BEFORE the engine runs. palette:'brand' folds to theme:'brand'
+    // so the brand tokens flow through the SAME derive-from-kit path. Omitted →
+    // spec untouched (no regression). Applied AFTER forcedTheme so a guided
+    // theme wins over the SET default (the operator was explicit).
+    if (opts.intake) {
+      applyGuidedIntakeToSpec(spec, opts.intake);
+      if (paletteIsBrand(opts.intake)) {
+        (spec as any).theme = 'brand';
+        if (spec.scenes) for (const sc of spec.scenes) (sc as any).theme = 'brand';
+      }
+    }
+
     // Fetch the tenant brand palette so theme:'brand' (or any board) can ride
     // the venue's colors when the spec asks for it.
     const brand = await this.tenantBrandColors(opts.tenantId);
+
+    // GUIDED-INTAKE: derive the mapper directives (forced SurfaceStyle +
+    // custom-palette override + required widget zones) from the intake.
+    const mapDirectives = guidedMapperDirectives(opts.intake);
 
     // Run the ENGINE. This produces grid-locked zones + a background descriptor.
     const mapped: MappedTemplate = artDirectorSpecToTemplate(spec, {
@@ -1828,6 +1879,9 @@ export class AiService {
       screenHeight: sh,
       brandPrimaryHex: brand.primaryHex,
       brandAccentHex: brand.accentHex,
+      forcedSurfaceStyle: mapDirectives?.forcedSurfaceStyle,
+      paletteOverride: mapDirectives?.paletteOverride,
+      requiredWidgets: mapDirectives?.requiredWidgets,
     });
 
     // Re-run the SAME safety scrubbing the other generators use. IMPORTANT:
@@ -1865,6 +1919,8 @@ export class AiService {
     screenHeight?: number;
     vertical?: string;
     count?: number;
+    /** GUIDED-INTAKE: optional purpose/theme/palette/background/widgets directives. */
+    intake?: GuidedIntake;
   }): Promise<{
     candidates: Array<{
       name: string;
@@ -1880,6 +1936,14 @@ export class AiService {
     }>;
     source: 'tenant' | 'platform';
     usage: { used: number; cap: number; resetAt: string } | null;
+    /**
+     * GUIDED-INTAKE: true when the operator chose a 'photo' background. The
+     * candidate fan-out stays image-FREE (fast + cheap) — the boards ride a rich
+     * themed gradient here; the real AI photo only generates on the ACCEPTED
+     * board (create-from-candidate / single-board withImage). The FE shows this
+     * so the gradient reads as intentional, not a miss.
+     */
+    photoPending?: boolean;
   }> {
     await this.checkFailureCap(opts.tenantId);
     const resolved = await this.resolveProviderKey(opts.tenantId);
@@ -1929,6 +1993,7 @@ export class AiService {
       screenWidth: opts.screenWidth,
       screenHeight: opts.screenHeight,
       vertical: opts.vertical,
+      intake: opts.intake,
     };
     // Fan out — each take is independently settled so one bad spec can't sink
     // the batch. A failure-cap slot is burned ONLY when the whole batch fails.
@@ -1987,7 +2052,10 @@ export class AiService {
       theme: b.spec.theme,
       spec: b.spec,
     }));
-    return { candidates, source: resolved.source, usage };
+    // GUIDED-INTAKE: signal a pending photo so the FE notes the gradient is a
+    // stand-in (the real AI photo only generates on the accepted board).
+    const photoPending = opts.intake?.background === 'photo' ? true : undefined;
+    return { candidates, source: resolved.source, usage, photoPending };
   }
 
   /**
@@ -2009,6 +2077,8 @@ export class AiService {
     screenHeight?: number;
     vertical?: string;
     count?: number;
+    /** GUIDED-INTAKE: optional purpose/theme/palette/background/widgets directives. */
+    intake?: GuidedIntake;
   }): Promise<{
     candidate: {
       name: string;
@@ -2022,6 +2092,9 @@ export class AiService {
     };
     source: 'tenant' | 'platform';
     usage: { used: number; cap: number; resetAt: string } | null;
+    /** GUIDED-INTAKE: true when 'photo' was chosen (the set ships on gradients;
+     *  photo is per-board on accept). */
+    photoPending?: boolean;
   }> {
     await this.checkFailureCap(opts.tenantId);
     const resolved = await this.resolveProviderKey(opts.tenantId);
@@ -2059,7 +2132,17 @@ export class AiService {
     const briefs = prompt.split('\n').map((l) => l.trim()).filter(Boolean);
     const target = Math.min(Math.max(opts.count ?? (briefs.length > 1 ? briefs.length : 4), 2), 5);
     const affinity = getVerticalDesignAffinity(opts.vertical);
-    const forcedTheme = affinity.themes[0];
+    // GUIDED-INTAKE: when the operator explicitly picked a theme (a real id —
+    // NOT 'brand', which the engine derives per-board), force the WHOLE set onto
+    // it so the cohesive-campaign guarantee still holds. Else the vertical's
+    // affinity theme. ('brand' falls through to the affinity forcedTheme for the
+    // prompt-consistency hint; the per-scene theme='brand' override below makes
+    // each board derive the brand palette.)
+    const guidedTheme =
+      opts.intake?.theme && opts.intake.theme !== 'brand' && ART_THEME_IDS.has(opts.intake.theme)
+        ? opts.intake.theme
+        : undefined;
+    const forcedTheme = guidedTheme ?? affinity.themes[0];
 
     const setDirective =
       briefs.length > 1
@@ -2072,7 +2155,7 @@ export class AiService {
     // shared theme post-parse (defense-in-depth even if the model drifts).
     const core = await this.buildSignageBoardCore(
       resolved,
-      { tenantId: opts.tenantId, prompt, screenWidth: opts.screenWidth, screenHeight: opts.screenHeight, vertical: opts.vertical },
+      { tenantId: opts.tenantId, prompt, screenWidth: opts.screenWidth, screenHeight: opts.screenHeight, vertical: opts.vertical, intake: opts.intake },
       setDirective,
       { forcedTheme, maxTokens: 2600 },
     );
@@ -2115,11 +2198,14 @@ export class AiService {
         scenes: core.sanitized.scenes,
         background: core.mapped.background,
         archetype: core.spec.archetype,
-        theme: forcedTheme,
+        // Reflect the theme the core ACTUALLY applied (guided 'brand' folds the
+        // per-scene theme to 'brand'; otherwise it's the forced set theme).
+        theme: core.spec.theme,
         spec: core.spec,
       },
       source: resolved.source,
       usage,
+      photoPending: opts.intake?.background === 'photo' ? true : undefined,
     };
   }
 

@@ -602,6 +602,33 @@ export const TemplateGenerateTouchCandidatesSchema = z
     // whose `scenes[]` is the set. The old single-board candidate path is
     // untouched when absent/false.
     set: z.boolean().optional(),
+    // GUIDED-INTAKE (2026-06-28) — OPTIONAL guided-builder directives. Every one
+    // is OPTIONAL and, when omitted/'auto', the engine keeps its derive-from-
+    // prompt + vertical-affinity behavior (zero regression). The service
+    // re-parses/clamps these via parseGuidedIntake (apps/api/src/ai/guided-intake.ts)
+    // — this schema just bounds the shapes at the boundary. Only meaningful on
+    // the ENGINE path (engine:true or set:true).
+    //   purpose    → archetype (welcome→hero-fullbleed, menu→menu-list, …)
+    //   theme      → a friendly label (Modern/Bold/Elegant/Warm/Neon/Minimal/
+    //                Playful) OR a real theme id OR 'brand'
+    //   palette    → 'brand' | 'auto' | { colors: hex[] (≤6) }
+    //   background → 'solid' | 'gradient' | 'textured' | 'photo' | 'auto'
+    //   widgets    → required content zones (headline/subtext/logo/image/clock/
+    //                date/weather/countdown/menu/ticker/qr/cta)
+    purpose: z.enum([
+      'welcome', 'menu', 'promo', 'event', 'announcement', 'feature', 'photo-hero', 'auto',
+    ]).optional(),
+    theme: BoundedText(40).optional(),
+    palette: z.union([
+      z.literal('brand'),
+      z.literal('auto'),
+      z.object({ colors: z.array(BoundedText(9)).max(6) }).passthrough(),
+    ]).optional(),
+    background: z.enum(['solid', 'gradient', 'textured', 'photo', 'auto']).optional(),
+    widgets: z.array(z.enum([
+      'headline', 'subtext', 'logo', 'image', 'clock', 'date',
+      'weather', 'countdown', 'menu', 'ticker', 'qr', 'cta',
+    ])).max(12).optional(),
   })
   .passthrough();
 export type TemplateGenerateTouchCandidatesInput = z.infer<typeof TemplateGenerateTouchCandidatesSchema>;
