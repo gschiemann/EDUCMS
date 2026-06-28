@@ -3916,7 +3916,10 @@ function PlayerPage() {
         try {
           const bridge = (window as any).EduCmsNative;
           if (bridge && typeof bridge.reload === 'function') bridge.reload();
-          else window.location.reload();
+          // Cache-busting reload (not plain reload) so the NovaStar/Taurus
+          // WebView fetches the CURRENT bundle instead of re-serving the cached
+          // one — see the WS REFRESH_WEB handler for the full rationale.
+          else hardCacheBustingReload();
         } catch { /* swallow */ }
       });
       // P0-2 (life-safety) — Sprint 5 emergency messages on the SSE
@@ -4275,8 +4278,16 @@ function PlayerPage() {
                     const bridge = (window as any).EduCmsNative;
                     if (bridge && typeof bridge.reload === 'function') {
                       bridge.reload();
-                    } else if (typeof window !== 'undefined') {
-                      window.location.reload();
+                    } else {
+                      // CRITICAL (2026-06-28): a plain window.location.reload()
+                      // on the NovaStar/Taurus WebView re-serves the CACHED
+                      // bundle — so an operator hitting "refresh" (or the
+                      // dashboard refresh-web) NEVER pulled new code, and every
+                      // emergency/template fix appeared not to ship. Use the
+                      // cache-busting reload (location.replace + fresh ?_v=) so
+                      // refresh-web actually fetches the current bundle. This is
+                      // the same helper the stale-bundle auto-reload uses.
+                      hardCacheBustingReload();
                     }
                   } catch (e) {
                     console.warn(`[REFRESH_WEB ${corrId}] reload threw:`, (e as Error)?.message);
