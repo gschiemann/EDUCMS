@@ -1027,3 +1027,125 @@ describe('AiService — generateSignageBoard Wave 3 background imagery', () => {
     expect(auditRows.some((r) => r.action === 'AI_SIGNAGE_BOARD_GENERATED')).toBe(true);
   });
 });
+
+// ───────────────────────────────────────────────────────────────────────
+// 2026-06-27 — refine-drops-scenes guard. refineSignageBoard runs a delta
+// prompt; if the model answers as if editing a SINGLE board (drops the
+// "scenes" array, or returns fewer scenes) a multi-scene SET would silently
+// collapse to one board — the operator's whole loop wiped. The guard forces a
+// refined set back to AT LEAST the original scene count.
+// ───────────────────────────────────────────────────────────────────────
+describe('AiService — refineSignageBoard keeps every scene of a SET', () => {
+  // A FULL multi-scene set spec (what the UI hands back as opts.spec).
+  const SET_SPEC = {
+    archetype: 'title-cta',
+    theme: 'neon-sports',
+    copy: { headline: 'Welcome' },
+    accentSlot: 'cta',
+    scenes: [
+      { name: 'Welcome', archetype: 'title-cta', theme: 'neon-sports', copy: { headline: 'Welcome' }, accentSlot: 'cta' },
+      { name: 'Featured', archetype: 'poster-promo', theme: 'neon-sports', copy: { headline: 'Tonight 7PM' }, accentSlot: 'headline' },
+      { name: 'Hours', archetype: 'stat-spotlight', theme: 'neon-sports', copy: { headline: 'Open till 11' }, accentSlot: 'stat' },
+    ],
+  };
+
+  beforeEach(() => {
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.AI_FREE_TIER_CAP;
+    tenantsById.clear();
+    brandingByTenant.clear();
+    auditRows.length = 0;
+    dispatchMock.mockReset();
+    // BYOK Anthropic tenant → resolveProviderKey returns a usable provider so
+    // the refine path runs end-to-end (dispatchAi is mocked). openAiKey() is the
+    // generic decrypt for every provider's sealed key (see resolveProviderKey).
+    tenantsById.set('t1', { id: 't1', aiProvider: 'anthropic', aiKeyEncrypted: 'enc', aiModel: 'claude-3-5-haiku' });
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-ant-byok');
+  });
+
+  it('model collapsed the set to a single board → all 3 scenes restored, in order', async () => {
+    // The model answered as if editing ONE board (no "scenes" array at all).
+    dispatchMock.mockResolvedValue({
+      raw: JSON.stringify({
+        archetype: 'title-cta', theme: 'midnight-tech',
+        copy: { headline: 'Welcome — refreshed' }, accentSlot: 'cta',
+      }),
+    });
+    const { service } = buildService(makeFakeRedisClient());
+
+    const out = await service.refineSignageBoard({
+      tenantId: 't1', spec: SET_SPEC, instruction: 'make it more premium',
+    });
+
+    // The SET survived — still 3 scenes. Scene 1 = the model's collapsed board
+    // (its edit preserved; name derives from the refreshed headline since the
+    // collapsed board carried no scene name); scenes 2-3 backfilled verbatim.
+    expect(out.candidate.scenes).toBeDefined();
+    expect(out.candidate.scenes!.length).toBe(3);
+    expect(out.candidate.scenes!.map((s) => s.name)).toEqual(['Welcome — refreshed', 'Featured', 'Hours']);
+    // Zones span all 3 scenes (not a single-board zone set).
+    const sceneRefs = new Set(out.candidate.zones.map((z: any) => z.sceneRef).filter(Boolean));
+    expect(sceneRefs.size).toBe(3);
+  });
+
+  it('model dropped the tail scene → the missing scene is backfilled', async () => {
+    // Model returned only the first 2 of 3 scenes.
+    dispatchMock.mockResolvedValue({
+      raw: JSON.stringify({
+        archetype: 'title-cta', theme: 'neon-sports', copy: { headline: 'Welcome' }, accentSlot: 'cta',
+        scenes: [
+          { name: 'Welcome', archetype: 'title-cta', theme: 'neon-sports', copy: { headline: 'Welcome!' }, accentSlot: 'cta' },
+          { name: 'Featured', archetype: 'poster-promo', theme: 'neon-sports', copy: { headline: 'Tonight 7PM' }, accentSlot: 'headline' },
+        ],
+      }),
+    });
+    const { service } = buildService(makeFakeRedisClient());
+
+    const out = await service.refineSignageBoard({
+      tenantId: 't1', spec: SET_SPEC, instruction: 'punchier first slide',
+    });
+
+    expect(out.candidate.scenes!.length).toBe(3);
+    expect(out.candidate.scenes!.map((s) => s.name)).toEqual(['Welcome', 'Featured', 'Hours']);
+  });
+
+  it('model kept all scenes → its edits pass through unchanged (no spurious restore)', async () => {
+    dispatchMock.mockResolvedValue({
+      raw: JSON.stringify({
+        archetype: 'title-cta', theme: 'midnight-tech', copy: { headline: 'Welcome' }, accentSlot: 'cta',
+        scenes: [
+          { name: 'Hello', archetype: 'title-cta', theme: 'midnight-tech', copy: { headline: 'Hello' }, accentSlot: 'cta' },
+          { name: 'Featured', archetype: 'poster-promo', theme: 'midnight-tech', copy: { headline: 'Tonight 7PM' }, accentSlot: 'headline' },
+          { name: 'Hours', archetype: 'stat-spotlight', theme: 'midnight-tech', copy: { headline: 'Open till 11' }, accentSlot: 'stat' },
+        ],
+      }),
+    });
+    const { service } = buildService(makeFakeRedisClient());
+
+    const out = await service.refineSignageBoard({
+      tenantId: 't1', spec: SET_SPEC, instruction: 'darker theme, rename slide 1',
+    });
+
+    expect(out.candidate.scenes!.length).toBe(3);
+    // The model's rename of scene 1 ('Welcome' → 'Hello') is preserved.
+    expect(out.candidate.scenes!.map((s) => s.name)).toEqual(['Hello', 'Featured', 'Hours']);
+  });
+
+  it('a SINGLE-board refine still returns a single board (guard is set-only)', async () => {
+    dispatchMock.mockResolvedValue({
+      raw: JSON.stringify({
+        archetype: 'hero-fullbleed', theme: 'neon-sports', copy: { headline: 'Go Eagles' }, accentSlot: 'cta',
+      }),
+    });
+    const { service } = buildService(makeFakeRedisClient());
+
+    const out = await service.refineSignageBoard({
+      tenantId: 't1',
+      spec: { archetype: 'hero-fullbleed', theme: 'neon-sports', copy: { headline: 'Eagles' }, accentSlot: 'cta' },
+      instruction: 'punchier headline',
+    });
+
+    expect(out.candidate.scenes).toBeUndefined();
+    expect(out.candidate.zones.length).toBeGreaterThan(0);
+  });
+});

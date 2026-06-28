@@ -2217,6 +2217,31 @@ export class AiService {
       throw new ServiceUnavailableException('AI returned an unparseable response. Try rephrasing your change.');
     }
     const spec = parseArtDirectorSpec(parsedJson, fallback);
+
+    // GUARD — a multi-scene SET must NEVER collapse on refine. The delta-prompt
+    // can drop the "scenes" array (or return fewer scenes) when the model
+    // answers as if it were editing a single board; if we trusted that verbatim
+    // a 6-board loop would silently become one board (operator's whole set
+    // wiped). When the CURRENT spec was a set, force the refined spec back to at
+    // least the original scene COUNT, in order: keep each scene the model DID
+    // return and backfill any missing tail scenes from the pre-refine spec
+    // (re-sanitized). The model's own edits to the scenes it kept still apply.
+    if (currentSpec.scenes && currentSpec.scenes.length > 1) {
+      const before = currentSpec.scenes;
+      const after = spec.scenes && spec.scenes.length ? spec.scenes : [spec];
+      if (after.length < before.length) {
+        const restored = after.slice();
+        for (let i = after.length; i < before.length; i += 1) restored.push(before[i]);
+        spec.scenes = restored;
+        this.logger.warn(
+          `Signage refine collapsed a ${before.length}-scene set to ${after.length}; ` +
+            `restored ${restored.length - after.length} dropped scene(s) for ${opts.tenantId}.`,
+        );
+      } else {
+        spec.scenes = after;
+      }
+    }
+
     const brand = await this.tenantBrandColors(opts.tenantId);
     const mapped: MappedTemplate = artDirectorSpecToTemplate(spec, {
       screenWidth: sw,
@@ -2940,6 +2965,12 @@ requires touching it. Examples:
 SAME HARD RULES as generation: NO coordinates, NO x/y/width/height, NO hex
 colors, NO font sizes — EVER. "archetype" must be one of the 9 ids; "theme" one
 of the 12 curated ids (or "brand"). headline stays REQUIRED and short.
+
+MULTI-SCENE SETS (CRITICAL): if the CURRENT SPEC has a "scenes" array, it is a
+SET of multiple boards. You MUST return the SAME number of scenes in the same
+order — NEVER collapse a set to a single board, and NEVER drop a scene. Apply
+the operator's change to EVERY scene unless they named one ("make slide 2 …").
+Keep each scene a FULL board (its own archetype + copy + accentSlot + name).
 
 Return ONLY the updated ArtDirectorSpec JSON — no preamble, no markdown fences,
 no commentary.`;

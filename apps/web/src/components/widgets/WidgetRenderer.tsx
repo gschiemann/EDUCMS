@@ -1370,26 +1370,92 @@ const SIGNAGE_FONTS_HREF =
   ].join('&') +
   '&display=swap';
 
+// CJK + Arabic webfonts — loaded ONCE alongside the Latin set so translated
+// boards (AI translate / multilingual signage) render in a KNOWN typeface with
+// known metrics instead of whatever the OS substitutes. That matters because
+// FitScaler measures the rendered text and scales to fit: an OS fallback (often
+// a wide serif) measures DIFFERENTLY than the design font, so the careful
+// signage sizing breaks and a Chinese/Arabic headline either overflowed or sat
+// tiny. Noto's per-script families have metrics consistent across every OS, so
+// the measure is stable. Separate <link> + id from the Latin set: the CJK fonts
+// are large, but display:swap means text shows immediately and FitScaler
+// re-measures on FontFaceSet.ready. Appended once, never removed (Taurus-safe;
+// same React-19 contract as the Latin set — we only detach nodes React owns).
+const SIGNAGE_CJK_FONTS_HREF =
+  'https://fonts.googleapis.com/css2?' +
+  [
+    'family=Noto+Sans+SC:wght@400;500;700;900', // Simplified Chinese
+    'family=Noto+Sans+TC:wght@400;500;700;900', // Traditional Chinese
+    'family=Noto+Sans+JP:wght@400;500;700;900', // Japanese
+    'family=Noto+Sans+KR:wght@400;500;700;900', // Korean
+    'family=Noto+Naskh+Arabic:wght@400;500;700', // Arabic (RTL)
+    'family=Noto+Sans+Hebrew:wght@400;500;700;900', // Hebrew (RTL)
+  ].join('&') +
+  '&display=swap';
+
+// The fallback chain we append to the engine fontFamily for CJK/Arabic copy so
+// the right Noto family resolves the glyphs (the Latin design font has no CJK /
+// Arabic glyphs, so without this the browser silently picks an OS font). Order
+// is broad-coverage first; the browser uses the first family that has the glyph.
+const CJK_ARABIC_FALLBACK_STACK =
+  "'Noto Sans SC','Noto Sans TC','Noto Sans JP','Noto Sans KR','Noto Naskh Arabic','Noto Sans Hebrew',sans-serif";
+
+// Unicode ranges. RTL = Arabic (0600–06FF, 0750–077F, 08A0–08FF, FB50–FDFF,
+// FE70–FEFF) + Hebrew (0590–05FF, FB1D–FB4F). CJK covers Han / Hiragana /
+// Katakana / Hangul / fullwidth + CJK punctuation.
+const RTL_RANGE = /[֐-׿؀-ۿݐ-ݿࢠ-ࣿיִ-ﭏﭐ-﷿ﹰ-﻿]/;
+const CJK_RANGE =
+  /[぀-ヿ㄀-ㄯ㐀-䶿一-鿿豈-﫿가-힯＀-￯]/;
+
+/** True when the string contains any Arabic/Hebrew (right-to-left) characters. */
+function isRtlText(s: any): boolean {
+  return typeof s === 'string' && RTL_RANGE.test(s);
+}
+
+/** True when the string contains any CJK or RTL glyphs that need a Noto fallback. */
+function needsIntlFont(s: any): boolean {
+  return typeof s === 'string' && (CJK_RANGE.test(s) || RTL_RANGE.test(s));
+}
+
+/**
+ * Append the CJK/Arabic Noto fallback chain to a fontFamily ONLY when the copy
+ * actually contains non-Latin glyphs — so a pure-Latin board keeps its exact
+ * design font with no behavior change, and a translated board gets a stable,
+ * measurable typeface for the glyphs the design font can't render.
+ */
+function withIntlFont(fontFamily: string | undefined, content: any): string | undefined {
+  if (!needsIntlFont(content)) return fontFamily;
+  return fontFamily ? `${fontFamily}, ${CJK_ARABIC_FALLBACK_STACK}` : CJK_ARABIC_FALLBACK_STACK;
+}
+
 let signageFontsInjected = false;
+let signageCjkFontsInjected = false;
 
 /**
  * Inject the engine font set once into <head>. We append our OWN <link> and
  * never remove it — safe under React 19 / App Router (CLAUDE.md rule #6 only
- * forbids detaching nodes React itself rendered).
+ * forbids detaching nodes React itself rendered). The CJK/Arabic set is a
+ * SEPARATE link injected the same way so multilingual boards have real fonts.
  */
 function useSignageFonts() {
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    if (signageFontsInjected || document.getElementById('signage-engine-fonts')) {
-      signageFontsInjected = true;
-      return;
+    if (!signageFontsInjected && !document.getElementById('signage-engine-fonts')) {
+      const link = document.createElement('link');
+      link.id = 'signage-engine-fonts';
+      link.rel = 'stylesheet';
+      link.href = SIGNAGE_FONTS_HREF;
+      document.head.appendChild(link);
     }
-    const link = document.createElement('link');
-    link.id = 'signage-engine-fonts';
-    link.rel = 'stylesheet';
-    link.href = SIGNAGE_FONTS_HREF;
-    document.head.appendChild(link);
     signageFontsInjected = true;
+    if (!signageCjkFontsInjected && !document.getElementById('signage-cjk-fonts')) {
+      const cjk = document.createElement('link');
+      cjk.id = 'signage-cjk-fonts';
+      cjk.rel = 'stylesheet';
+      cjk.href = SIGNAGE_CJK_FONTS_HREF;
+      document.head.appendChild(cjk);
+    }
+    signageCjkFontsInjected = true;
   }, []);
 }
 
@@ -1492,7 +1558,11 @@ function SignageText({ config }: { config: any }) {
 
   const content = config.content ?? '';
   const fontSize = typeof config.fontSize === 'number' ? config.fontSize : 64;
-  const fontFamily = config.fontFamily || undefined;
+  // CJK / Arabic / Hebrew copy (e.g. AI-translated boards) gets the Noto
+  // fallback chain appended so the glyphs resolve in a KNOWN, measurable font
+  // instead of an OS substitute — that keeps FitScaler's measure-and-scale
+  // sizing accurate. Pure-Latin copy is unchanged (returns the design font).
+  const fontFamily = withIntlFont(config.fontFamily || undefined, content);
   const fontWeight = typeof config.fontWeight === 'number' ? config.fontWeight : 700;
   const color = config.color || '#ffffff';
   const align = (config.alignment || 'left') as 'left' | 'center' | 'right';
@@ -1501,12 +1571,29 @@ function SignageText({ config }: { config: any }) {
   const textTransform = config.textTransform || undefined;
   const textShadow = config.textShadow || undefined;
 
+  // Right-to-left scripts (Arabic / Hebrew) must lay out RTL or the text reads
+  // backwards and the alignment is wrong. Detect from the actual copy (so a
+  // translated board flips automatically with no config flag) and:
+  //   • set dir='rtl' + direction:'rtl' on the text element
+  //   • use direction-relative 'start'/'end' for textAlign so a default 'left'
+  //     (= start) lands on the RIGHT edge, the natural Arabic/Hebrew reading
+  //     start. FitScaler's flex justify + scale origin flip to match.
+  const rtl = isRtlText(content);
+  const dirAttr = rtl ? 'rtl' : undefined;
+  // Map the operator's logical alignment to a physical edge given direction.
+  // LTR: left→left, right→right. RTL: left(start)→right, right(end)→left.
+  const physicalAlign: 'left' | 'center' | 'right' =
+    align === 'center' ? 'center' : rtl ? (align === 'right' ? 'left' : 'right') : align;
+  const cssTextAlign: React.CSSProperties['textAlign'] =
+    align === 'center' ? 'center' : align === 'right' ? 'end' : 'start';
+
   const baseTextStyle: React.CSSProperties = {
     fontSize: `${fontSize}px`,
     fontFamily,
     fontWeight,
     color,
-    textAlign: align,
+    textAlign: cssTextAlign,
+    direction: rtl ? 'rtl' : undefined,
     lineHeight,
     letterSpacing,
     textTransform: textTransform as any,
@@ -1516,9 +1603,10 @@ function SignageText({ config }: { config: any }) {
     margin: 0,
   };
 
-  const justify = align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start';
+  const justify =
+    physicalAlign === 'center' ? 'center' : physicalAlign === 'right' ? 'flex-end' : 'flex-start';
   const scaleOrigin =
-    align === 'center' ? 'center center' : align === 'right' ? 'right center' : 'left center';
+    physicalAlign === 'center' ? 'center center' : physicalAlign === 'right' ? 'right center' : 'left center';
 
   // Long single words must wrap at boundaries / hyphenate rather than split
   // mid-letter ("Homecomin·g"). Applied to the card title + the plain headline.
@@ -1544,11 +1632,13 @@ function SignageText({ config }: { config: any }) {
         deps={[content, fontSize, fontFamily, fontWeight, align, config.bgColor]}
       >
         <span
+          dir={dirAttr}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
             whiteSpace: 'nowrap',
+            direction: rtl ? 'rtl' : undefined,
             backgroundColor: config.bgColor,
             color,
             fontSize: `${fontSize}px`,
@@ -1604,11 +1694,14 @@ function SignageText({ config }: { config: any }) {
           innerStyle={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', width: '100%' }}
           deps={[content, config.detail, fontSize, fontFamily, fontWeight, align]}
         >
-          <div style={{ ...baseTextStyle, ...wordWrapStyle, fontWeight: 800 }}>{content}</div>
+          <div dir={dirAttr} style={{ ...baseTextStyle, ...wordWrapStyle, fontWeight: 800 }}>{content}</div>
           {config.detail ? (
             <div
+              dir={isRtlText(config.detail) ? 'rtl' : undefined}
               style={{
                 ...baseTextStyle,
+                fontFamily: withIntlFont(config.fontFamily || undefined, config.detail),
+                direction: isRtlText(config.detail) ? 'rtl' : baseTextStyle.direction,
                 fontWeight: 500,
                 fontSize: `${Math.round(fontSize * 0.62)}px`,
                 opacity: 0.78,
@@ -1627,25 +1720,31 @@ function SignageText({ config }: { config: any }) {
   // right-aligned bold value column. Per-child margin for spacing (no gap).
   // Scales to fit so a long item name + price never overflows the row.
   if (config.rowLayout) {
+    // RTL menu rows: the label reads from the right (the row's direction:rtl
+    // flips the flex order automatically, so the label sits right + the value
+    // left). Use direction-relative 'start'/'end' so it reads correctly either
+    // way; the inner padding flips to the LEADING edge so the value never kisses
+    // the zone edge regardless of direction.
+    const valueIntlFont = withIntlFont(config.fontFamily || undefined, config.valueText);
     return (
       <FitScaler
-        justify="flex-start"
+        justify={rtl ? 'flex-end' : 'flex-start'}
         items="center"
-        origin="left center"
+        origin={rtl ? 'right center' : 'left center'}
         dataField="content"
-        // Small right padding so the right-aligned price never kisses the
-        // zone's right edge.
-        outerStyle={{ paddingRight: '0.6em' }}
-        innerStyle={{ display: 'flex', flexDirection: 'row', alignItems: 'center', width: '100%' }}
-        deps={[content, config.detail, config.valueText, fontSize, fontFamily, fontWeight]}
+        outerStyle={rtl ? { paddingLeft: '0.6em' } : { paddingRight: '0.6em' }}
+        innerStyle={{ display: 'flex', flexDirection: 'row', alignItems: 'center', width: '100%', direction: rtl ? 'rtl' : undefined }}
+        deps={[content, config.detail, config.valueText, fontSize, fontFamily, fontWeight, rtl]}
       >
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ ...baseTextStyle, textAlign: 'left' }}>{content}</div>
+          <div dir={dirAttr} style={{ ...baseTextStyle, textAlign: 'start' }}>{content}</div>
           {config.detail ? (
             <div
+              dir={isRtlText(config.detail) ? 'rtl' : dirAttr}
               style={{
                 ...baseTextStyle,
-                textAlign: 'left',
+                fontFamily: withIntlFont(config.fontFamily || undefined, config.detail),
+                textAlign: 'start',
                 fontWeight: 500,
                 fontSize: `${Math.round(fontSize * 0.6)}px`,
                 opacity: 0.72,
@@ -1658,9 +1757,11 @@ function SignageText({ config }: { config: any }) {
         </div>
         {config.valueText ? (
           <div
+            dir={isRtlText(config.valueText) ? 'rtl' : dirAttr}
             style={{
               ...baseTextStyle,
-              textAlign: 'right',
+              fontFamily: valueIntlFont,
+              textAlign: 'end',
               fontWeight: 800,
               color,
               marginLeft: '0.6em',
@@ -1685,12 +1786,14 @@ function SignageText({ config }: { config: any }) {
   if (config.accentDivider) {
     const ruleH =
       typeof config.accentDividerThicknessPx === 'number' ? config.accentDividerThicknessPx : 4;
+    // Anchor the rule under the PHYSICAL text edge (direction-aware) so it sits
+    // under the eyebrow's start, not floating to the wrong side in RTL.
     const ruleAlign =
-      align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start';
-    // A right-aligned eyebrow needs the gradient to run right→left so the solid
-    // end sits under the text edge; flip for that case.
+      physicalAlign === 'center' ? 'center' : physicalAlign === 'right' ? 'flex-end' : 'flex-start';
+    // When the eyebrow's solid end sits on the physical right, run the gradient
+    // right→left so the solid end is under the text edge; flip for that case.
     const ruleBg =
-      align === 'right' && typeof config.accentDivider === 'string'
+      physicalAlign === 'right' && typeof config.accentDivider === 'string'
         ? String(config.accentDivider).replace('90deg', '270deg')
         : config.accentDivider;
     return (
@@ -1700,9 +1803,9 @@ function SignageText({ config }: { config: any }) {
         origin={scaleOrigin}
         dataField="content"
         innerStyle={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: ruleAlign }}
-        deps={[content, fontSize, fontFamily, fontWeight, align, lineHeight]}
+        deps={[content, fontSize, fontFamily, fontWeight, align, lineHeight, rtl]}
       >
-        <p style={{ ...baseTextStyle, ...wordWrapStyle, width: '100%' }}>{content}</p>
+        <p dir={dirAttr} style={{ ...baseTextStyle, ...wordWrapStyle, width: '100%' }}>{content}</p>
         <div
           style={{
             height: `${ruleH}px`,
@@ -1724,9 +1827,9 @@ function SignageText({ config }: { config: any }) {
       origin={scaleOrigin}
       dataField="content"
       innerStyle={{ width: '100%' }}
-      deps={[content, fontSize, fontFamily, fontWeight, align, lineHeight]}
+      deps={[content, fontSize, fontFamily, fontWeight, align, lineHeight, rtl]}
     >
-      <p style={{ ...baseTextStyle, ...wordWrapStyle, width: '100%' }}>{content}</p>
+      <p dir={dirAttr} style={{ ...baseTextStyle, ...wordWrapStyle, width: '100%' }}>{content}</p>
     </FitScaler>
   );
 }
