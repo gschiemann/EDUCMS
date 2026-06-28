@@ -1,6 +1,24 @@
 import type { Metadata, Viewport } from 'next';
 import { AppDialogHost } from '@/components/ui/app-dialog';
 
+// 2026-06-27 — LAUNCH-BLOCKING root cause of "deploys never reach the kiosk".
+// The /player route is a client app with no per-request data, so Next.js
+// STATICALLY PRERENDERS it and Vercel serves that HTML from its edge cache.
+// Live-confirmed on the production LED: `GET /player` returned
+// `x-vercel-cache: HIT, age: 21170` (~6 HOURS stale), so a kiosk — even a
+// freshly-restarted one — fetched old HTML that referenced the OLD JS chunk
+// hashes, and never loaded shipped fixes (the emergency cut-off, etc.). The
+// `Cache-Control: no-store` we set in next.config controls the BROWSER, not
+// Vercel's own static-route cache, so it didn't help.
+//
+// `force-dynamic` makes Vercel render /player per-request (never edge-cache the
+// HTML), so every kiosk fetch gets HTML pointing at the CURRENT bundle. The
+// page itself is still a client component — this only affects how the shell
+// HTML is served (cheap), and it's the one change that makes deploys actually
+// land on the glass. Pairs with the player's cache-busting reload.
+export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+
 export const metadata: Metadata = {
   title: 'VenueOS Player',
   description: 'Digital signage player for screens',
