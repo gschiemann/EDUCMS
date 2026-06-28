@@ -357,23 +357,40 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
       role="alert"
       aria-live="assertive"
       className={`fixed z-[9999] ${style.bg} ${style.text} ${style.animate}`}
-      // Sized to the LED canvas, anchored TOP-LEFT (the region a NovaStar/TB
-      // controller shows by default). On a 960×1080 panel this paints exactly
-      // the visible area instead of the 1920 frame buffer — so the takeover is
-      // never cropped by half. Falls back to the full viewport (right/bottom:0,
-      // no vw/vh) when no canvas override is set. Longhand only (Taurus-safe).
-      // backgroundColor is a guaranteed-opaque backdrop even if Tailwind's bg
-      // class never loads on the kiosk WebView (no playlist show-through).
+      // FULL-VIEWPORT opaque backdrop — ALWAYS covers the entire frame buffer
+      // so the running playlist can NEVER show behind a life-safety takeover.
+      // (2026-06-28, Greg live-caught round 3: when the WHOLE overlay was shrunk
+      // to the 960 canvas, the playlist showed through — the LED's visible panel
+      // is WIDER than 960, so a 960-wide overlay only covered part of it and the
+      // rest kept playing the playlist, even cycling slides. The pre-shrink
+      // full-viewport overlay WAS solid; we keep that for the background and
+      // confine only the TEXT to the canvas below.) Longhand only (Taurus-safe);
+      // backgroundColor is the guaranteed-opaque paint even if Tailwind's bg
+      // class fails to load on the kiosk WebView.
       style={{
         position: 'fixed',
         top: 0,
+        right: 0,
+        bottom: 0,
         left: 0,
-        ...(canvas.w && canvas.h
-          ? { width: `${canvas.w}px`, height: `${canvas.h}px` }
-          : { right: 0, bottom: 0 }),
         backgroundColor: style.solidBg,
       }}
     >
+      {/* Content region confined to the LED canvas (e.g. 960×1080), anchored
+          TOP-LEFT (where a NovaStar/TB controller lights up by default), so the
+          message FITS the visible panel instead of being sized to the 1920
+          frame buffer (Greg's "cut off / thinks it's 1920" P0). Falls back to
+          the full overlay (100%/100%) when no canvas override is set. The
+          opaque background above always covers the whole panel regardless. */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: canvas.w ? `${canvas.w}px` : '100%',
+          height: canvas.h ? `${canvas.h}px` : '100%',
+        }}
+      >
       {active.severity === 'CRITICAL' && (
         <div className="pointer-events-none absolute top-0 right-0 bottom-0 left-0 border-[12px] border-red-500 animate-pulse z-10" aria-hidden />
       )}
@@ -426,6 +443,7 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
         )}
       </div>
       </FitToViewport>
+      </div>
     </div>
   );
 }
