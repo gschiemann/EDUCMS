@@ -125,8 +125,16 @@ function buildService(publisher: any, storage?: any): { service: AiService; stor
   const altTextMock = {
     analyzeDesignReference: jest.fn(async () => null),
   } as any;
+  // 2026-06-28 — IMAGERY wave. AiService now also takes StockImageService. These
+  // suites don't exercise the stock path (no PEXELS_API_KEY in CI), so a stub
+  // that reports "not configured" keeps generation on the gradient — identical to
+  // the default no-key behaviour.
+  const stockMock = {
+    isConfigured: jest.fn(() => false),
+    search: jest.fn(async () => null),
+  } as any;
   // Synchronous construct — no Nest container needed, but use it for parity.
-  const service = new AiService(prismaMock as PrismaService, redisMock, storageMock as any, altTextMock);
+  const service = new AiService(prismaMock as PrismaService, redisMock, storageMock as any, altTextMock, stockMock);
   return { service, storage: storageMock };
 }
 

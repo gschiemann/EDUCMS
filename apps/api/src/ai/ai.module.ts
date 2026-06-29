@@ -3,6 +3,7 @@ import { AiController } from './ai.controller';
 import { AiService } from './ai.service';
 import { AiKeyController } from './ai-key.controller';
 import { AiAltTextService } from './ai-alt-text.service';
+import { StockImageService } from './stock-image.service';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
 
 /**
@@ -24,10 +25,17 @@ import { SupabaseStorageService } from '../storage/supabase-storage.service';
  * storage service is provided here (it's stateless — reads env, lazily
  * creates the client — same as the branding/license/imports modules that
  * provide it locally rather than from a shared module).
+ *
+ * 2026-06-28: IMAGERY wave. StockImageService gives EVERY tenant a free,
+ * relevant stock photo (Pexels) by default on photo-archetype boards —
+ * regardless of AI provider — with the AI photo as a one-tap upgrade. It's
+ * stateless (reads PEXELS_API_KEY, plain fetch) and degrades to the themed
+ * gradient when no key is set. Exported so the art-director path can resolve a
+ * photo at generate time.
  */
 @Module({
   controllers: [AiController, AiKeyController],
-  providers: [AiService, AiAltTextService, SupabaseStorageService],
-  exports: [AiService, AiAltTextService],
+  providers: [AiService, AiAltTextService, StockImageService, SupabaseStorageService],
+  exports: [AiService, AiAltTextService, StockImageService],
 })
 export class AiModule {}

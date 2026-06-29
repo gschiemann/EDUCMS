@@ -34,6 +34,7 @@ import {
   dividerCss,
   getTheme,
   imageHalfCss,
+  imageTreatmentCss,
   isSerifFamily,
   leadingForRole,
   resolveArchetype,
@@ -44,6 +45,7 @@ import {
   type ArchetypeItem,
   type ArtDirectorSpec,
   type EntranceMotion,
+  type PhotoTextAnchor,
   type ResolvedZone,
   type SceneSpec,
   type ScrimSpec,
@@ -120,6 +122,18 @@ export interface ArtDirectorMapOptions {
   logoUrl?: string;
   eventDate?: string;
   ctaHref?: string;
+  /**
+   * IMAGERY wave (2026-06-28) — a resolved STOCK photo URL for this board's
+   * full-bleed background. When set (image-archetype boards where the spec/plan
+   * wants a photo and no AI image is being made), the mapper drops it onto the
+   * background IMAGE zone's assetUrl and emits an art-directed treatment +
+   * directional scrim so the photo looks designed and the headline stays legible.
+   * Resolved server-side by StockImageService (Pexels) at generate time, so it's
+   * already a trusted https URL. Absent → the board rides its themed gradient
+   * exactly as before (zero regression). The AI-photo upgrade uses the existing
+   * generateBoardBackground/injectBackgroundImage path, not this field.
+   */
+  stockImageUrl?: string;
 }
 
 /** The content widgets the guided-intake may require (mirror of GuidedWidget). */
@@ -646,23 +660,54 @@ function mapTextConfig(
 }
 
 /**
+ * Where the headline lands over the photo, per image archetype — drives the
+ * DIRECTIONAL treatment scrim so the photo breathes where there's no text.
+ *   - hero-fullbleed / lower-third-banner → bottom band.
+ *   - poster-promo → a soft radial pool behind the centered offer.
+ */
+function photoAnchorFor(archetype: ArchetypeId): PhotoTextAnchor {
+  if (archetype === 'poster-promo') return 'center';
+  return 'bottom';
+}
+
+/**
  * Map a single resolved IMAGE zone (background or split-50 image half).
- * NOTE: the scene's ArchetypeImagePlan is intentionally not consulted yet —
- * Wave 2a has no real imagery (image-gen lands in Wave 3); the slot rides the
- * theme gradient + scrim until then.
+ *
+ * IMAGERY wave (2026-06-28): when a resolved STOCK photo URL is supplied
+ * (opts.stockImageUrl, image archetypes), the full-bleed `background` zone now
+ * carries the REAL photo (assetUrl) + an art-directed treatment (a brand grade +
+ * a DIRECTIONAL scrim anchored to where the headline sits) so it looks designed,
+ * not "raw stock under a grey slab", AND headline contrast stays guaranteed. We
+ * keep the flat contrast-guard `scrimCss` as the fallback the renderer uses when
+ * there's no photo (load/error). No stock URL → the slot rides the theme
+ * gradient + flat scrim exactly as before (zero regression).
  */
 function mapImageConfig(
   z: ResolvedZone,
   theme: ThemeBundle,
+  archetype: ArchetypeId,
+  stockImageUrl?: string,
 ): Record<string, any> {
   if (z.slot === 'background') {
-    // Wave 2a: NO real photo yet (image-gen is Wave 3) → omit assetUrl and
-    // rely on the LAYERED theme background + scrim.
-    return {
+    const base: Record<string, any> = {
       fit: 'cover',
+      // The flat contrast-guard gradient/scrim stay as the no-photo fallback the
+      // renderer paints under/around the photo (and when the photo fails to load).
       bgGradient: themeGradient(theme),
       scrimCss: scrimToCss(z.styleTokens.scrim),
     };
+    if (stockImageUrl) {
+      // REAL photo behind the headline. The directional treatment makes it look
+      // art-directed; the headline-side scrim guarantees the contrast floor.
+      const treatment = imageTreatmentCss(theme, photoAnchorFor(archetype));
+      base.assetUrl = stockImageUrl;
+      base.imageTreatment = {
+        grade: treatment.grade,
+        gradeBlend: treatment.gradeBlend,
+        scrim: treatment.scrim,
+      };
+    }
+    return base;
   }
   // split-50 image half — a bold accent→surface diagonal placeholder (no photo).
   return {
@@ -712,7 +757,7 @@ function mapScene(
     let config: Record<string, any> | undefined;
 
     if (z.widgetType === 'IMAGE') {
-      config = mapImageConfig(z, theme);
+      config = mapImageConfig(z, theme, archetypeId, opts.stockImageUrl);
     } else {
       // text slot
       const isListItem = z.slot === 'listItem';
@@ -1092,6 +1137,23 @@ export function artDirectorSpecToTemplate(
   const theme = primaryTheme ?? THEMES[0];
   const palette = theme.palette;
 
+  // IMAGERY wave (2026-06-28): mirror a SINGLE-board stock photo onto the
+  // top-level bg descriptor too, so a renderer that reads Template.bgImage (not
+  // the bg zone) also shows the photo — and so the persist path can find + rehost
+  // it. Only for a single image archetype (a multi-scene set's photos live per
+  // scene on their own bg zones; one top-level bgImage can't represent them all).
+  const background: MappedBackground = {
+    bgColor: palette.background,
+    bgGradient: themeGradient(theme),
+  };
+  if (
+    opts.stockImageUrl &&
+    !(spec.scenes && spec.scenes.length) &&
+    IMAGE_BG_ARCHETYPES.has(resolveArchetypeId(spec.archetype))
+  ) {
+    background.bgImage = opts.stockImageUrl;
+  }
+
   return {
     name: deriveName(spec),
     zones,
@@ -1099,6 +1161,6 @@ export function artDirectorSpecToTemplate(
     // Solid base + the LAYERED theme background (accent-tinted depth) so
     // surface/gradient archetypes are never a flat slab (image archetypes lay a
     // full-bleed bg zone on top).
-    background: { bgColor: palette.background, bgGradient: themeGradient(theme) },
+    background,
   };
 }

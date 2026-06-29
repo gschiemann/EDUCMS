@@ -41,6 +41,7 @@ import {
   CONCIERGE_MAX_TOKENS,
 } from './signage-concierge';
 import { AiAltTextService } from './ai-alt-text.service';
+import { StockImageService } from './stock-image.service';
 import {
   aiWindowCount,
   aiRecordEvent,
@@ -282,6 +283,11 @@ export class AiService {
     // circular dep — AiAltTextService doesn't depend on AiService), so this
     // is a clean intra-module injection.
     private readonly altText: AiAltTextService,
+    // 2026-06-28 — IMAGERY wave. Free stock photography (Pexels) so EVERY
+    // photo-archetype board comes back with a real, relevant photo by default,
+    // regardless of AI provider. Degrades to the themed gradient when no
+    // PEXELS_API_KEY is set (search() returns null, never throws).
+    private readonly stockImages: StockImageService,
   ) {}
 
   // P1-14 (2026-05-28 audit) — both per-tenant hourly caps moved from
@@ -2212,6 +2218,20 @@ export class AiService {
     // custom-palette override + required widget zones) from the intake.
     const mapDirectives = guidedMapperDirectives(opts.intake);
 
+    // ── IMAGERY wave (2026-06-28): STOCK PHOTO BY DEFAULT ──────────────────
+    // For an image-archetype board (hero / lower-third / poster), resolve a
+    // FREE, relevant stock photo (Pexels) and thread it into the engine so the
+    // candidate arrives WITH a real photo — for EVERY tenant, regardless of AI
+    // provider. Best-effort: null (no key / no result / error) leaves the board
+    // on its themed gradient (zero regression). We SKIP stock when the operator
+    // explicitly asked for a non-photo surface (guided background solid/gradient/
+    // textured) — they want a designed surface, not a photo.
+    const wantsNonPhotoSurface =
+      !!opts.intake?.background && opts.intake.background !== 'photo';
+    const stockImageUrl = wantsNonPhotoSurface
+      ? undefined
+      : await this.resolveStockBackground(spec, sw, sh, opts.vertical);
+
     // Run the ENGINE. This produces grid-locked zones + a background descriptor.
     const mapped: MappedTemplate = artDirectorSpecToTemplate(spec, {
       screenWidth: sw,
@@ -2227,6 +2247,8 @@ export class AiService {
       logoUrl: ctx.logoUrl,
       eventDate: spec.copy?.eventDate,
       ctaHref: spec.copy?.ctaHref,
+      // IMAGERY wave — the resolved free stock photo (undefined = themed gradient).
+      stockImageUrl,
     });
 
     // Re-run the SAME safety scrubbing the other generators use. IMPORTANT:
@@ -2734,6 +2756,50 @@ export class AiService {
       source: resolved.source,
       usage,
     };
+  }
+
+  /**
+   * IMAGERY wave (2026-06-28) — resolve a FREE stock photo (Pexels) for a
+   * board's full-bleed background, or `undefined` when not applicable / no key /
+   * no result. NEVER throws (StockImageService.search swallows everything).
+   *
+   * WHEN it resolves a photo:
+   *   - SINGLE-board spec (no `scenes`) — a multi-scene set's per-scene photos
+   *     can't be represented by the mapper's single `stockImageUrl` (it would put
+   *     the SAME photo on every scene), so sets ship on gradients here and get
+   *     per-board photos on accept (photoPending), unchanged.
+   *   - AND an IMAGE archetype (hero / lower-third / poster) — the only
+   *     archetypes with a full-bleed background zone — OR the model explicitly
+   *     planned mode:'stock'. Other archetypes ride the themed gradient.
+   *
+   * QUERY: the model's `image.query` (2-5 vivid stock terms) when it gave one;
+   * else a derived query from the headline + vertical. Orientation follows the
+   * canvas. This is FREE ($0) so we resolve it for every applicable candidate.
+   */
+  private async resolveStockBackground(
+    spec: ArtDirectorSpec,
+    screenWidth: number,
+    screenHeight: number,
+    vertical?: string,
+  ): Promise<string | undefined> {
+    // No key (or service not wired) → feature off; skip the work entirely.
+    if (!this.stockImages?.isConfigured?.()) return undefined;
+    // Sets ship on gradients (photo is per-board on accept) — see WHEN above.
+    if (spec.scenes && spec.scenes.length) return undefined;
+
+    const isImageArch = isImageBgArchetype(spec.archetype);
+    const planWantsStock = spec.image?.mode === 'stock';
+    // Only resolve where a photo actually has somewhere to land (an image
+    // archetype's background zone), or where the model explicitly asked for one.
+    if (!isImageArch && !planWantsStock) return undefined;
+
+    const query = deriveStockQuery(spec, vertical);
+    if (!query) return undefined;
+
+    const orientation: 'landscape' | 'portrait' =
+      screenHeight > screenWidth ? 'portrait' : 'landscape';
+    const result = await this.stockImages.search(query, { orientation });
+    return result?.url || undefined;
   }
 
   /**
@@ -3300,7 +3366,7 @@ SHAPE:
     "eventDate": "<ISO date/time of the event, ONLY when a countdown / event date is in play, optional>",
     "ctaHref": "<the REAL destination https:// URL the CTA / QR should point to, optional>"
   },
-  "image": { "mode": "<generate | none>", "prompt": "<for mode:generate — a vivid, brand-appropriate, TEXT-FREE background photo prompt>" },
+  "image": { "mode": "<stock | generate | none>", "query": "<for mode:stock — 2-5 vivid, TEXT-FREE stock-photo search terms>", "prompt": "<for mode:generate — a vivid, brand-appropriate, TEXT-FREE background photo prompt>" },
   "accentSlot": "<one of: kicker | headline | cta | stat | none>",
   "scenes": [ /* OPTIONAL — for multi-screen interactive kiosks, each entry is a FULL spec like the top level */ ]
 }
@@ -3372,15 +3438,23 @@ COPY RULES — write a COMPLETE board, never a bare headline + button:
 
 IMAGERY:
   - For the IMAGE archetypes — "hero-fullbleed", "lower-third-banner", "poster-promo" —
-    set "image": {"mode":"generate", "prompt":"..."} and write a vivid, brand-appropriate,
-    PHOTOREALISTIC background photo prompt. The photo sits behind a dark scrim with the
-    headline laid over it, so:
-      • NO words, NO letters, NO text, NO logos, NO numbers in the image — describe a SCENE only.
-      • Leave NEGATIVE SPACE / an unbusy area for the headline to sit over (e.g. "soft
-        out-of-focus background", "uncluttered sky", "shallow depth of field").
-      • Match the venue + theme mood (e.g. a stadium at golden hour for sports; a bright
-        bustling dining room for QSR; a calm sunlit campus quad for a school).
-      • One clear subject, cinematic lighting, high detail. ~1-2 sentences.
+    a REAL photo is the default and the single biggest "world-class" lever. ALWAYS emit
+    BOTH a "query" AND a "prompt" so the engine can use a free stock photo OR (on upgrade)
+    generate one:
+      • "query": 2-5 vivid, concrete, TEXT-FREE stock-search terms naming the SUBJECT +
+        scene — what a great photo of THIS board would show (e.g. "craft beer pour bar
+        counter", "fresh cheeseburger fries diner", "students walking campus quad",
+        "stadium night lights crowd", "modern hotel lobby"). Real subjects/products/
+        spaces/people. NO brand names, NO words/numbers, NO style jargon — just the scene.
+      • "prompt": a vivid, brand-appropriate, PHOTOREALISTIC version of the same scene for
+        AI generation (the one-tap upgrade), 1-2 sentences with cinematic lighting + an
+        unbusy area for the headline. Same scene as the query, expanded.
+      • Both: NO words, NO letters, NO logos, NO numbers IN the image — a SCENE only.
+        Leave NEGATIVE SPACE for the headline. Match the venue + theme mood.
+    Set "mode":"stock" (preferred — free, instant, photoreal-by-definition for real
+    subjects: food, products, spaces, people) — the engine fetches a relevant stock photo
+    by your "query". Reserve "mode":"generate" for stylized/abstract subjects a stock
+    library wouldn't have. EITHER mode, write BOTH fields.
   - For ALL OTHER archetypes (split-50, stat-spotlight, three-up-grid, menu-list,
     quote-spotlight, title-cta): emit {"mode":"none"} — they ride a clean themed gradient.
 
@@ -3571,6 +3645,49 @@ const IMAGE_BG_ARCHETYPES = new Set<string>([
 
 function isImageBgArchetype(archetype: string | undefined): boolean {
   return !!archetype && IMAGE_BG_ARCHETYPES.has(archetype);
+}
+
+/**
+ * IMAGERY wave (2026-06-28) — build the stock-photo SEARCH QUERY for a board.
+ * Prefers the model's own `image.query` (it's instructed to emit 2-5 vivid,
+ * text-free terms for photo archetypes); falls back to a derived query from the
+ * headline + kicker + vertical so a board with no explicit query still gets a
+ * relevant photo. Strips punctuation, collapses whitespace, clamps length, and
+ * returns undefined when there's nothing usable (the board then keeps its
+ * gradient). NEVER includes a price/URL/number-only string (those make poor
+ * image queries) — we keep word tokens only.
+ */
+function deriveStockQuery(spec: ArtDirectorSpec, vertical?: string): string | undefined {
+  // 1) The model's explicit stock query wins — it's purpose-written.
+  const planQuery = (spec.image?.query || '').trim();
+  if (planQuery) return cleanStockQuery(planQuery);
+
+  // 2) Derive from the copy + vertical. The HEADLINE is the subject; the vertical
+  //    grounds it in a venue context (e.g. "burger" + "restaurant" → food shots).
+  const parts: string[] = [];
+  const headline = (spec.copy?.headline || '').trim();
+  if (headline) parts.push(headline);
+  const kicker = (spec.copy?.kicker || '').trim();
+  if (kicker) parts.push(kicker);
+  const v = (vertical || '').trim();
+  if (v) parts.push(v);
+  const q = cleanStockQuery(parts.join(' '));
+  return q || undefined;
+}
+
+/** Normalize a stock query: drop punctuation/symbols, collapse whitespace, keep
+ *  word tokens only, clamp to a handful of words so the search stays focused. */
+function cleanStockQuery(raw: string): string | undefined {
+  const cleaned = (raw || '')
+    .toLowerCase()
+    // Keep letters, numbers, spaces; drop everything else (prices, $, !, emoji…).
+    .replace(/[^a-z0-9\s]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned) return undefined;
+  // First ~6 words — a tight, on-subject query beats a whole sentence.
+  const words = cleaned.split(' ').filter(Boolean).slice(0, 6);
+  return words.length ? words.join(' ') : undefined;
 }
 
 /**
