@@ -1295,17 +1295,33 @@ export default function TemplatesPage() {
                         key={i}
                         className="rounded-xl border-2 border-slate-200 hover:border-violet-400 transition-colors overflow-hidden flex flex-col bg-white"
                       >
-                        <div className="relative bg-slate-100" style={{ aspectRatio: '16 / 9' }}>
-                          <ScaledTemplateThumbnail
-                            zones={thumbZones as any}
-                            screenWidth={1920}
-                            screenHeight={1080}
-                            bgColor={thumbBg.bgColor || '#ffffff'}
-                            bgGradient={thumbBg.bgGradient || null}
-                            bgImage={thumbBg.bgImage || null}
-                            maxHeight={160}
-                            freeze
-                          />
+                        <div className="relative bg-slate-100 overflow-hidden" style={{ aspectRatio: '16 / 9' }}>
+                          {c._designerHtml ? (
+                            // AI Designer board: render the authored HTML directly as a
+                            // srcdoc preview. The board's own self-scale script fits its
+                            // 1920×1080 stage to this iframe, so each option shows its REAL
+                            // design (not a placeholder). pointer-events-none so the card
+                            // click still selects.
+                            <iframe
+                              title={c.name}
+                              srcDoc={c._designerHtml}
+                              loading="lazy"
+                              sandbox="allow-scripts"
+                              className="absolute top-0 right-0 bottom-0 left-0 w-full h-full"
+                              style={{ border: 0, pointerEvents: 'none' }}
+                            />
+                          ) : (
+                            <ScaledTemplateThumbnail
+                              zones={thumbZones as any}
+                              screenWidth={1920}
+                              screenHeight={1080}
+                              bgColor={thumbBg.bgColor || '#ffffff'}
+                              bgGradient={thumbBg.bgGradient || null}
+                              bgImage={thumbBg.bgImage || null}
+                              maxHeight={160}
+                              freeze
+                            />
+                          )}
                           <span className="absolute top-1.5 left-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-600 text-white shadow">
                             {label}
                           </span>
