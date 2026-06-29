@@ -8,7 +8,12 @@ import {
   sanitizeDesignerHtml,
   auditDesignerHtmlTaurus,
 } from './designer-prompt';
-import { DESIGNER_EDIT_SHIM, injectDesignerEditShim } from './designer-edit-shim';
+import {
+  DESIGNER_EDIT_SHIM,
+  injectDesignerEditShim,
+  DESIGNER_LAYOUT_ENGINE,
+  injectDesignerLayoutEngine,
+} from './designer-edit-shim';
 
 // A realistic (>200 char) self-contained board fixture — short docs are rejected.
 const DOC = '<!doctype html><html><head><meta charset="utf-8">'
@@ -202,5 +207,45 @@ describe('designer base64 transport (cont.)', () => {
     const { html } = sanitizeDesignerHtml(withScript);
     expect(html).toContain('<style>');
     expect(html).toContain('var s=1');
+  });
+});
+
+// The deterministic text auto-fit engine baked into every board (the 2026-06-29
+// "jumbled hunk" fix): kills guessed pixel sizes that overflow/wrap/collide.
+describe('VOS-FIT-ENGINE (injectDesignerLayoutEngine)', () => {
+  const DOC = '<!doctype html><html><head><meta charset="utf-8"></head>'
+    + '<body><div class="col"><div data-field="venue" data-fit data-fit-min="56">Chrome</div></div></body></html>';
+
+  it('the engine carries the marker + fits [data-fit] by font-size (shrink-to-fit)', () => {
+    expect(DESIGNER_LAYOUT_ENGINE).toContain('VOS-FIT-ENGINE');
+    expect(DESIGNER_LAYOUT_ENGINE).toContain('data-fit');
+    expect(DESIGNER_LAYOUT_ENGINE).toContain('scrollWidth');
+    expect(DESIGNER_LAYOUT_ENGINE).toContain('data-fit-min');
+    // It must re-run after web fonts load (they change widths late).
+    expect(DESIGNER_LAYOUT_ENGINE).toContain('document.fonts');
+    expect(DESIGNER_LAYOUT_ENGINE.trim().startsWith('<script>')).toBe(true);
+  });
+
+  it('injects before </body> and is idempotent', () => {
+    const once = injectDesignerLayoutEngine(DOC);
+    expect(once).toContain('VOS-FIT-ENGINE');
+    expect(once.indexOf('VOS-FIT-ENGINE')).toBeLessThan(once.indexOf('</body>'));
+    const twice = injectDesignerLayoutEngine(once);
+    expect(twice).toBe(once); // no double-inject
+    expect(twice.split('VOS-FIT-ENGINE').length - 1).toBe(1);
+  });
+
+  it('coexists with the edit shim (both present, in order) and is Taurus-safe', () => {
+    const both = injectDesignerLayoutEngine(injectDesignerEditShim(DOC));
+    expect(both).toContain('EDUCMS-SHIM-V6');
+    expect(both).toContain('VOS-FIT-ENGINE');
+    // No inset/gap shorthand in the engine (Chromium-83 player target).
+    expect(/\binset\s*:/.test(DESIGNER_LAYOUT_ENGINE)).toBe(false);
+    expect(/[^-]\bgap\s*:/.test(DESIGNER_LAYOUT_ENGINE)).toBe(false);
+  });
+
+  it('does nothing for empty / non-string input', () => {
+    expect(injectDesignerLayoutEngine('')).toBe('');
+    expect(injectDesignerLayoutEngine(undefined as unknown as string)).toBeUndefined();
   });
 });

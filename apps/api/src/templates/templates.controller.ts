@@ -16,7 +16,7 @@ import { verticalMatchOr } from './ensure-system-presets';
 import { AiService, sanitizeTouchTemplate } from '../ai/ai.service';
 import { parseGuidedIntake } from '../ai/guided-intake';
 import { sanitizeDesignerHtml } from '../ai/designer-prompt';
-import { injectDesignerEditShim } from '../ai/designer-edit-shim';
+import { injectDesignerEditShim, injectDesignerLayoutEngine } from '../ai/designer-edit-shim';
 import { z } from 'zod';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
 import { safeFetch } from '../branding/safe-fetch';
@@ -1105,7 +1105,10 @@ export class TemplatesController {
     // becomes click-to-edit + accepts live overrides via postMessage (same
     // protocol the static boards + PropertiesPanel already speak). Trusted code
     // injected server-side AFTER sanitize (never re-sanitized).
-    const html = injectDesignerEditShim(sanitized.html);
+    // Also bake the VOS-FIT-ENGINE: deterministic text auto-fit so display
+    // text (wordmark/headline/price) never overflows, wraps, or collides
+    // regardless of the px size the model guessed (the "jumbled hunk" fix).
+    const html = injectDesignerLayoutEngine(injectDesignerEditShim(sanitized.html));
     const screenWidth = body.screenWidth || 1920;
     const screenHeight = body.screenHeight || 1080;
     const parsed = {

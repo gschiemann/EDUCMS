@@ -29,3 +29,47 @@ export function injectDesignerEditShim(html: string): string {
   if (bodyClose !== -1) return html.slice(0, bodyClose) + DESIGNER_EDIT_SHIM + html.slice(bodyClose);
   return html + DESIGNER_EDIT_SHIM;
 }
+
+/**
+ * VOS-FIT-ENGINE — the deterministic text-placement engine baked into EVERY AI
+ * Designer board at persist time. The model hand-sets pixel font-sizes that can
+ * overflow, wrap, or collide (the 2026-06-29 "jumbled hunk" report); this engine
+ * removes the guesswork: it measures each element flagged `data-fit` and
+ * SHRINKS its font-size (binary search, down to a legibility floor) until it
+ * fits its container on one line — so a headline/wordmark/price NEVER overflows
+ * its box or wraps into the next element, regardless of content length or the
+ * size the model guessed. Shrink-only by default (set data-fit-max to allow
+ * growth), so it never surprises by ballooning short text. Re-runs on
+ * fonts.ready + timeouts + resize because web fonts load late and change widths.
+ * Structure-agnostic (keys only off the data-fit attribute), idempotent (marker),
+ * runs inside the sandboxed srcdoc next to the edit shim. Chromium-83 safe.
+ */
+export const DESIGNER_LAYOUT_ENGINE =
+  "<script>/*VOS-FIT-ENGINE*/(function(){" +
+  "function fitOne(el){try{var p=el.parentElement;if(!p)return;" +
+  "var cs=getComputedStyle(el);var cur=parseFloat(cs.fontSize)||40;" +
+  "var min=parseFloat(el.getAttribute('data-fit-min'))||Math.max(14,Math.round(cur*0.35));" +
+  "var max=parseFloat(el.getAttribute('data-fit-max'))||cur;if(max<min)max=min;" +
+  "el.style.whiteSpace='nowrap';" +
+  "var avail=p.clientWidth-(parseFloat(cs.paddingLeft)||0)-(parseFloat(cs.paddingRight)||0);" +
+  "if(!avail||avail<8)return;el.style.fontSize=max+'px';" +
+  "if(el.scrollWidth<=avail)return;" +
+  "var lo=min,hi=max,best=min;for(var i=0;i<22;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';" +
+  "if(el.scrollWidth<=avail){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}catch(e){}}" +
+  "function run(){try{var n=document.querySelectorAll('[data-fit]');for(var i=0;i<n.length;i++)fitOne(n[i]);}catch(e){}}" +
+  "if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run);else run();" +
+  "if(document.fonts&&document.fonts.ready){try{document.fonts.ready.then(run);}catch(e){}}" +
+  "setTimeout(run,300);setTimeout(run,1000);window.addEventListener('resize',run);" +
+  "})();</script>";
+
+/**
+ * Insert the VOS-FIT-ENGINE just before </body> (it must run AFTER the board's
+ * content exists so it can measure widths). Idempotent. Falls back to append.
+ */
+export function injectDesignerLayoutEngine(html: string): string {
+  if (typeof html !== "string" || !html) return html;
+  if (html.indexOf("VOS-FIT-ENGINE") !== -1) return html; // already injected
+  const bodyClose = html.search(/<\/body>/i);
+  if (bodyClose !== -1) return html.slice(0, bodyClose) + DESIGNER_LAYOUT_ENGINE + html.slice(bodyClose);
+  return html + DESIGNER_LAYOUT_ENGINE;
+}
