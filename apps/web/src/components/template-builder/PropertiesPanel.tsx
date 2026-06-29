@@ -3074,6 +3074,14 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
           />,
         );
         fields.push(<ColorField key="color" label="Text color (overrides theme)" value={cfg.color || ''} onChange={(v) => setField({ color: v })} allowTransparent />);
+        // 2026-06-28 — operator: the menu forced its K-12 cafeteria green on
+        // every board (clashed on a navy/red board). Setting EITHER of these
+        // flips the widget into theme-match mode: header=accent, body=background,
+        // rows recolored for contrast. Lets an operator brand the menu (and bring
+        // an older AI board — saved before art-director passed the palette — on
+        // brand). Unset → the green default stays (back-compat for school presets).
+        fields.push(<ColorField key="accentColor" label="Header color (overrides theme)" value={cfg.accentColor || ''} onChange={(v) => setField({ accentColor: v })} allowTransparent />);
+        fields.push(<ColorField key="bgColor" label="Background color (overrides theme)" value={cfg.bgColor || ''} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
       }
       break;
     case 'QUOTE':
