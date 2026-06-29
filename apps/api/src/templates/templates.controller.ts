@@ -15,6 +15,10 @@ import { FITNESS_TEMPLATE_PRESETS } from './fitness-presets';
 import { verticalMatchOr } from './ensure-system-presets';
 import { AiService, sanitizeTouchTemplate } from '../ai/ai.service';
 import { parseGuidedIntake } from '../ai/guided-intake';
+import { SupabaseStorageService } from '../storage/supabase-storage.service';
+import { safeFetch } from '../branding/safe-fetch';
+import { PEXELS_IMAGE_HOST } from '../ai/stock-image.service';
+import { createHash } from 'node:crypto';
 // Signage Concierge (2026-06-28) — a pasted URL is scraped into a brand
 // summary by the branding scraper, then summarized into a ConciergeReference.
 import { BrandingScraperService } from '../branding/branding-scraper.service';
@@ -46,6 +50,10 @@ export class TemplatesController {
     // 2026-06-28 — Signage Concierge URL references. BrandingModule (imported
     // by app.module.ts) now exports the scraper so it's injectable here.
     private readonly brandingScraper: BrandingScraperService,
+    // 2026-06-28 — IMAGERY wave. Re-host an external stock photo into our own
+    // Supabase bucket on persist (durable + offline-cacheable on Taurus). The
+    // storage service is a global app.module provider (stateless, env-driven).
+    private readonly storage: SupabaseStorageService,
   ) {}
 
   /**
@@ -1125,6 +1133,13 @@ export class TemplatesController {
         }
       : undefined;
 
+    // IMAGERY wave (2026-06-28) — RE-HOST external stock photos into our own
+    // Supabase bucket so the SAVED board is durable + service-worker-cacheable on
+    // Taurus/offline players (the provider URL could rotate/expire/CDN-miss).
+    // Best-effort + host-allowlisted (only the trusted Pexels CDN) — a rehost
+    // miss keeps the provider URL (the board still renders).
+    await this.rehostStockImages(req.user.tenantId, parsed.zones, background);
+
     const created = await this.persistGeneratedTemplate(
       req,
       parsed,
@@ -1184,13 +1199,18 @@ export class TemplatesController {
     if (!parsed.zones.length) {
       throw new BadRequestException('The AI could not build a board. Try a more concrete prompt.');
     }
+    // IMAGERY wave — re-host any external stock photo (engine fallback when no AI
+    // image provider) into our bucket. The AI-generated photo is already a
+    // Supabase asset (skipped by the host allowlist), so this only touches stock.
+    const signageBg = board.background as { bgColor?: string; bgGradient?: string; bgImage?: string } | undefined;
+    await this.rehostStockImages(req.user.tenantId, parsed.zones, signageBg);
     const created = await this.persistGeneratedTemplate(
       req,
       parsed,
       screenWidth,
       screenHeight,
       false,
-      board.background,
+      signageBg,
     );
     await this.audit(req, 'TEMPLATE_CREATED', created?.id ?? null, {
       name: created?.name,
@@ -1362,6 +1382,127 @@ export class TemplatesController {
       });
       return fresh;
     });
+  }
+
+  // ───────────────────────────────────────────────────────
+  // IMAGERY wave (2026-06-28) — stock-photo re-host + AI-photo upgrade
+  // ───────────────────────────────────────────────────────
+
+  /**
+   * Re-host every EXTERNAL stock photo on a candidate (the background bgImage +
+   * any IMAGE zone assetUrl) into our own Supabase bucket, swapping the URL in
+   * place. Durable + service-worker-cacheable on Taurus/offline players, vs a
+   * provider URL that can rotate/expire/CDN-miss. Best-effort: a rehost failure
+   * keeps the provider URL (the board still renders). SSRF-safe: ONLY the trusted
+   * Pexels image host is ever fetched (isRehostableStockUrl), and safeFetch adds
+   * the full SSRF guard on top. Mutates `zones` + `background` in place.
+   */
+  private async rehostStockImages(
+    tenantId: string,
+    zones: Array<{ widgetType?: string; defaultConfig?: any }>,
+    background?: { bgColor?: string; bgGradient?: string; bgImage?: string },
+  ): Promise<void> {
+    // De-dupe identical URLs so a shared photo is fetched + stored once.
+    const cache = new Map<string, string>();
+    const rehost = async (url: string): Promise<string | undefined> => {
+      if (cache.has(url)) return cache.get(url);
+      const hosted = await this.rehostStockUrl(tenantId, url);
+      if (hosted) cache.set(url, hosted);
+      return hosted;
+    };
+
+    if (background?.bgImage && isRehostableStockUrl(background.bgImage)) {
+      const hosted = await rehost(background.bgImage);
+      if (hosted) background.bgImage = hosted;
+    }
+    for (const z of zones || []) {
+      if (z?.widgetType !== 'IMAGE') continue;
+      const cfg = z.defaultConfig;
+      if (!cfg || typeof cfg !== 'object') continue;
+      const asset = cfg.assetUrl;
+      if (typeof asset === 'string' && isRehostableStockUrl(asset)) {
+        const hosted = await rehost(asset);
+        if (hosted) cfg.assetUrl = hosted;
+      }
+    }
+  }
+
+  /**
+   * Fetch ONE external stock photo (SSRF-guarded) and store it in our Supabase
+   * bucket with the bucket's immutable Cache-Control. Returns the public Supabase
+   * URL, or undefined on ANY failure (caller keeps the provider URL). The caller
+   * has already host-allowlisted the URL (Pexels), and safeFetch re-validates the
+   * scheme/port + DNS + connect-time pin — defense in depth.
+   */
+  private async rehostStockUrl(tenantId: string, sourceUrl: string): Promise<string | undefined> {
+    try {
+      const r = await safeFetch(sourceUrl, { maxBytes: 8 * 1024 * 1024, timeoutMs: 8000 });
+      if (r.status < 200 || r.status >= 300) return undefined;
+      const ct = (r.contentType || '').toLowerCase();
+      if (!ct.startsWith('image/')) return undefined; // never store a challenge/HTML page
+      if (!r.body || !r.body.length) return undefined;
+      const ext = ct.includes('png') ? 'png' : ct.includes('webp') ? 'webp' : ct.includes('gif') ? 'gif' : 'jpg';
+      const hash = createHash('sha256').update(r.body).digest('hex').slice(0, 16);
+      const path = `ai-stock/${tenantId}/${hash}.${ext}`;
+      return await this.storage.upload(path, r.body, r.contentType || 'image/jpeg');
+    } catch {
+      return undefined; // best-effort — keep the provider URL on any failure
+    }
+  }
+
+  // Wave (2026-06-28) — the AI-photo UPGRADE. Swap a board's background for a
+  // freshly AI-generated, on-brand photo (the one-tap "+AI photo" affordance).
+  // Reuses AiService.generateImage (BYOK image-gen + Supabase persist + caps +
+  // audit + tier discipline — NEVER the platform key for an image). Anthropic /
+  // no-image-provider tenants get a friendly AI_IMAGE_UNAVAILABLE (the FE then
+  // tells them to add an OpenAI/Google key) — the board keeps its current bg.
+  @Post(':id/regenerate-image')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async regenerateImage(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { prompt?: string },
+  ) {
+    // Tenant-scope the template (never let one tenant repaint another's board).
+    const tpl = await this.prisma.client.template.findFirst({
+      where: { id, tenantId: req.user.tenantId },
+      select: { id: true, name: true, description: true, screenWidth: true, screenHeight: true },
+    });
+    if (!tpl) throw new HttpException('Template not found', HttpStatus.NOT_FOUND);
+
+    // A real prompt is required (the operator/AffordanceFE may pass a derived one
+    // from the board copy). Bounded; AiService re-clamps + brand-weaves it.
+    const prompt = (body?.prompt || '').trim();
+    if (!prompt) {
+      throw new BadRequestException('Describe the photo you want (or generate the board first).');
+    }
+
+    // Generate via the existing BYOK image path (throws AI_IMAGE_UNAVAILABLE /
+    // cap / quota errors the FE already knows how to surface). The returned asset
+    // is ALREADY in our Supabase bucket — no rehost needed.
+    const img = await this.ai.generateImage({
+      tenantId: req.user.tenantId,
+      userId: req.user.id,
+      role: req.user.role,
+      prompt: prompt.slice(0, 1000),
+      size: tpl.screenHeight > tpl.screenWidth ? '1024x1792' : '1792x1024',
+    });
+
+    // Swap the board's bgImage to the AI photo (the background zone's gradient
+    // stays as the load/error fallback). The IMAGE background zone, if present,
+    // also points at the top-level bgImage via the renderer's precedence.
+    await this.prisma.client.template.update({
+      where: { id: tpl.id },
+      data: { bgImage: img.fileUrl } as any,
+    });
+
+    await this.audit(req, 'TEMPLATE_UPDATED', tpl.id, {
+      name: tpl.name,
+      via: 'ai-regenerate-image',
+      provider: img.provider,
+    });
+
+    return { bgImage: img.fileUrl, assetId: img.id };
   }
 
   // ───────────────────────────────────────────────────────
@@ -1906,6 +2047,26 @@ export function mapTemplate(template: any) {
     }));
   }
   return template;
+}
+
+/**
+ * IMAGERY wave (2026-06-28) — TRUE only for an external https URL on the trusted
+ * Pexels image CDN host. This is the SSRF allowlist gate for re-hosting: we only
+ * ever fetch + mirror a stock URL we ourselves resolved from Pexels. An already-
+ * rehosted Supabase URL, an AI-generated asset, a data URL, or any other host is
+ * left untouched (returns false → keep the URL as-is). Exact host match (no
+ * suffix trickery like `images.pexels.com.evil.com`).
+ */
+export function isRehostableStockUrl(url: string): boolean {
+  if (typeof url !== 'string') return false;
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== 'https:') return false;
+  return u.hostname.toLowerCase() === PEXELS_IMAGE_HOST;
 }
 
 function validateZoneBounds(zone: { x: number; y: number; width: number; height: number }) {
