@@ -52,6 +52,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
+import { POS_PROVIDERS } from '@cms/api-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { StripeService } from '../billing/stripe.service';
@@ -493,21 +494,30 @@ export class IntegrationsHealthController {
         docsUrl: opts.docsUrl,
       });
     };
-    // 2026-05-28 audit P1-6: Square + Custom Webhook are the only POS
-    // connectors with a live sync handler. The rest (Toast / Clover /
-    // Lightspeed / Shopify / Stripe-catalog / MINDBODY) are PARTNER-tier
-    // and dead-end on sync, so they're reported COMING_SOON here — never
-    // a "READY"/"NOT_CONFIGURED" implication that connecting them works.
-    // Re-promote one to the dynamic `def(...)` form the moment its
-    // `providers/<id>.ts` handler + DIRECT tier ship.
+    // POS connector status is derived from the AUTHORITATIVE POS_PROVIDERS
+    // catalog tier (the same source the Integration Concierge reads), so this
+    // dashboard can never again drift from reality and UNDER-claim a live
+    // connector. DIRECT-tier providers (Square, Clover, Lightspeed Retail,
+    // Shopify POS, Custom Webhook) have real OAuth + catalog sync handlers
+    // (providers/<id>.ts + registry + pos.service.syncConnection) and get the
+    // live dynamic def() status (READY/NOT_CONFIGURED). PARTNER/CLOSED-tier
+    // providers (Toast / Stripe-catalog / MINDBODY) dead-end on sync, so they
+    // stay COMING_SOON — never a "connecting works" implication. Promotion is
+    // automatic the moment a provider's tier flips to DIRECT in the catalog.
+    const DIRECT_POS_IDS: ReadonlySet<string> = new Set(
+      POS_PROVIDERS.filter((p) => p.integrationTier === 'DIRECT').map((p) => p.id),
+    );
     const comingSoon = (reason: string) => ({ status: 'COMING_SOON' as const, message: reason });
+    // partnerOnly applies COMING_SOON ONLY to non-DIRECT connectors; for a
+    // DIRECT id it returns {} so def() falls through to the live status.
+    const partnerOnly = (id: string, reason: string) => (DIRECT_POS_IDS.has(id) ? {} : comingSoon(reason));
     def('square', 'Square POS', { docsUrl: 'https://developer.squareup.com/docs/catalog-api/what-it-does' });
-    def('toast', 'Toast', { docsUrl: 'https://doc.toasttab.com/', ...comingSoon('Toast connector in development (Partner Program). Use Custom Webhook to push your catalog today.') });
-    def('clover', 'Clover', { docsUrl: 'https://docs.clover.com/docs/inventory-overview', ...comingSoon('Clover connector in development. Use Custom Webhook to push your catalog today.') });
-    def('lightspeed-retail', 'Lightspeed Retail', { presetId: 'retail-storefront-welcome', verticalHint: 'RETAIL', docsUrl: 'https://developers.lightspeedhq.com/retail/', ...comingSoon('Lightspeed connector in development. Use Custom Webhook to push your catalog today.') });
-    def('shopify-pos', 'Shopify POS', { presetId: 'retail-storefront-welcome', verticalHint: 'RETAIL', docsUrl: 'https://shopify.dev/docs/api/admin-rest/2024-04/resources/product', ...comingSoon('Shopify connector in development. Use Custom Webhook to push your catalog today.') });
-    def('stripe-terminal', 'Stripe (catalog)', { docsUrl: 'https://docs.stripe.com/api/products', ...comingSoon('Stripe Products/Prices catalog connector in development. Use Custom Webhook to push your catalog today.') });
-    def('mindbody', 'MINDBODY', { docsUrl: 'https://developers.mindbodyonline.com/', ...comingSoon('MINDBODY connector in development (Partner Program). Use Custom Webhook to push your catalog today.') });
+    def('toast', 'Toast', { docsUrl: 'https://doc.toasttab.com/', ...partnerOnly('toast', 'Toast connector in development (Partner Program). Use Custom Webhook to push your catalog today.') });
+    def('clover', 'Clover', { docsUrl: 'https://docs.clover.com/docs/inventory-overview', ...partnerOnly('clover', 'Clover connector in development. Use Custom Webhook to push your catalog today.') });
+    def('lightspeed-retail', 'Lightspeed Retail', { presetId: 'retail-storefront-welcome', verticalHint: 'RETAIL', docsUrl: 'https://developers.lightspeedhq.com/retail/', ...partnerOnly('lightspeed-retail', 'Lightspeed connector in development. Use Custom Webhook to push your catalog today.') });
+    def('shopify-pos', 'Shopify POS', { presetId: 'retail-storefront-welcome', verticalHint: 'RETAIL', docsUrl: 'https://shopify.dev/docs/api/admin-rest/2024-04/resources/product', ...partnerOnly('shopify-pos', 'Shopify connector in development. Use Custom Webhook to push your catalog today.') });
+    def('stripe-terminal', 'Stripe (catalog)', { docsUrl: 'https://docs.stripe.com/api/products', ...partnerOnly('stripe-terminal', 'Stripe Products/Prices catalog connector in development. Use Custom Webhook to push your catalog today.') });
+    def('mindbody', 'MINDBODY', { docsUrl: 'https://developers.mindbodyonline.com/', ...partnerOnly('mindbody', 'MINDBODY connector in development (Partner Program). Use Custom Webhook to push your catalog today.') });
     // Sample-data loaders — useful as a one-click "verify the
     // restaurant menu board works" smoke test.
     rows.push({
