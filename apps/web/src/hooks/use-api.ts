@@ -1167,6 +1167,30 @@ export function useUpdateTemplate() {
   });
 }
 
+/**
+ * IMAGERY wave (2026-06-28) — the one-tap "Make it an AI photo" upgrade. POST
+ * /templates/:id/regenerate-image generates an on-brand AI photo (BYOK image
+ * provider), persists it to the asset library, and swaps the board's bgImage.
+ * Returns { bgImage, assetId }. Errors (AI_IMAGE_UNAVAILABLE for Anthropic /
+ * no-image-provider, cap reached, out of credit) surface via apiFetch's
+ * structured error so the builder can branch like the sparkle / image button.
+ */
+export function useRegenerateBoardImage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, prompt }: { id: string; prompt: string }) =>
+      apiFetch<{ bgImage: string; assetId: string }>(
+        `/templates/${id}/regenerate-image`,
+        { method: 'POST', body: JSON.stringify({ prompt }) },
+      ),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['templates', vars.id] });
+      qc.invalidateQueries({ queryKey: ['templates'] });
+      qc.invalidateQueries({ queryKey: ['assets'] });
+    },
+  });
+}
+
 export function useUpdateTemplateZones() {
   const qc = useQueryClient();
   return useMutation({

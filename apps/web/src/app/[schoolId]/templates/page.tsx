@@ -25,6 +25,7 @@ import {
   useTenantBranding, useApplyBrandToTemplates,
   useGenerateTouchTemplate, useExportTemplate, useImportTemplate,
   useGenerateTouchCandidates, useCreateFromCandidate, useRefineSignageBoard, type AiTemplateCandidate,
+  useRegenerateBoardImage,
 } from '@/hooks/use-api';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
@@ -2571,7 +2572,38 @@ function TemplateBuilder({ template, onBack, onSaved }: {
 
   const updateTemplate = useUpdateTemplate();
   const updateZonesApi = useUpdateTemplateZones();
+  // IMAGERY wave (2026-06-28) — the one-tap "Make it an AI photo" upgrade.
+  const regenerateImage = useRegenerateBoardImage();
+  const [aiPhotoError, setAiPhotoError] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  // Swap the board background for a freshly AI-generated, on-brand photo. Uses
+  // the board name/description as the photo subject. On AI_IMAGE_UNAVAILABLE
+  // (Anthropic / no image provider) we surface the friendly add-a-key message;
+  // the board keeps its current background.
+  async function makeAiPhoto() {
+    setAiPhotoError(null);
+    const subject = (tName || tDesc || 'a clean, modern background photo for this signage board').trim();
+    try {
+      const res = await regenerateImage.mutateAsync({
+        id: template.id,
+        prompt: `A photorealistic, text-free background photo for a digital signage board: ${subject}. Cinematic lighting, an unbusy area for the headline, no words or logos.`.slice(0, 1000),
+      });
+      if (res?.bgImage) {
+        setBgImage(res.bgImage);
+        setBgGradient('');
+        setIsDirty(true);
+        setSaveStatus('idle');
+      }
+    } catch (e: any) {
+      const code = e?.code || e?.data?.code;
+      setAiPhotoError(
+        code === 'AI_IMAGE_UNAVAILABLE'
+          ? 'AI photos need an OpenAI or Google key — add one in Settings → AI provider.'
+          : (e?.message || 'Could not generate a photo. Try again.'),
+      );
+    }
+  }
 
   const [dragState, setDragState] = useState<{
     type: 'move' | 'resize'; zoneIdx: number;
@@ -2979,6 +3011,19 @@ function TemplateBuilder({ template, onBack, onSaved }: {
                       className="p-1 text-slate-300 hover:text-red-400"><X className="w-3.5 h-3.5" /></button>}
                   </div>
                   <p className="text-[9px] text-slate-300 mt-1">Fills canvas behind all zones (cover fit)</p>
+                  {/* IMAGERY wave (2026-06-28) — one-tap "Make it an AI photo". */}
+                  <button
+                    onClick={makeAiPhoto}
+                    disabled={regenerateImage.isPending}
+                    title="Generate an on-brand AI photo for this board's background"
+                    className="mt-2 w-full py-2 text-[11px] font-bold rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-sm disabled:opacity-60 flex items-center justify-center gap-1.5"
+                  >
+                    {regenerateImage.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                    {regenerateImage.isPending ? 'Generating photo…' : 'Make it an AI photo'}
+                  </button>
+                  {aiPhotoError && (
+                    <p className="text-[9px] text-red-500 mt-1 leading-snug">{aiPhotoError}</p>
+                  )}
                 </div>
 
                 {/* Reset */}

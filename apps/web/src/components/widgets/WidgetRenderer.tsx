@@ -2522,20 +2522,44 @@ function ImageWidget({ config }: { config: any }) {
       config.entrance?.ambient === 'kenburns'
         ? 'sigd-kenburns 18s ease-out 600ms infinite alternate'
         : undefined;
+    // IMAGERY wave (2026-06-28) — the engine's art-direction overlay for a real
+    // STOCK/AI photo: a brand-toward-theme GRADE (a tinted duotone + vignette,
+    // mix-blend so it grades not repaints) UNDER a DIRECTIONAL contrast SCRIM
+    // (dense where the headline lands, transparent across the subject). When a
+    // treatment is present its scrim REPLACES the flat contrast scrim (it's the
+    // legibility guard now). Taurus-safe: gradient `background` + mix-blend-mode
+    // + opacity only — NO inset (longhand sides), NO backdrop-filter, NO gap.
+    const treatment = config.imageTreatment && typeof config.imageTreatment === 'object'
+      ? config.imageTreatment
+      : null;
+    const gradeBlend = treatment?.gradeBlend === 'multiply' ? 'multiply' : 'soft-light';
+    // The themed gradient sits UNDER the photo so a transparent/letterboxed image
+    // or a load failure still shows a designed surface, never bare slate.
+    const underGradient: string | undefined = typeof config.bgGradient === 'string' ? config.bgGradient : undefined;
     return (
-      <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden" style={{ borderRadius: radius || undefined }}>
+      <div
+        className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden"
+        style={{ borderRadius: radius || undefined, background: underGradient }}
+      >
         <img
           src={resolveUrl(config.assetUrl)}
           alt=""
           className={imgAnim ? 'w-full h-full sigd-anim' : 'w-full h-full'}
           style={{ objectFit: fit, opacity, animation: imgAnim, willChange: imgAnim ? 'transform' : undefined }}
         />
-        {/* Wave 2 (2026-06-26) — engine scrim overlay (contrast guard) over the
-            photo so text on top stays legible. CSS gradient only; no inset. */}
-        {config.scrimCss ? (
+        {/* IMAGERY wave — brand GRADE layer (between the photo and the scrim). */}
+        {treatment?.grade ? (
           <div
             className="absolute top-0 right-0 bottom-0 left-0"
-            style={{ background: config.scrimCss, pointerEvents: 'none' }}
+            style={{ background: treatment.grade, mixBlendMode: gradeBlend as any, pointerEvents: 'none' }}
+          />
+        ) : null}
+        {/* Contrast SCRIM — the directional treatment scrim when present, else the
+            engine's flat contrast-guard scrim. CSS gradient only; no inset. */}
+        {treatment?.scrim || config.scrimCss ? (
+          <div
+            className="absolute top-0 right-0 bottom-0 left-0"
+            style={{ background: treatment?.scrim || config.scrimCss, pointerEvents: 'none' }}
           />
         ) : null}
       </div>
