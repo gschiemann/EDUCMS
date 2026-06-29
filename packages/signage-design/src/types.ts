@@ -449,8 +449,13 @@ export interface SurfaceStyle {
    *                   richer, more directional feel (sports / tech / retail).
    *   - 'wash'      : a gentle near-flat radial — for light/minimal themes that
    *                   want air, not drama (luxury / clinic / civic).
+   *   - 'mesh'      : a multi-blob colour MESH (primary accent + accent2 pooled
+   *                   from opposite corners over a warm base) for VIBRANT,
+   *                   scroll-stopping promo/event boards (sunset-pop). Decorative
+   *                   layers fade fully to transparent — measured text contrast is
+   *                   still governed by the palette's solid background/surface.
    */
-  background?: 'spotlight' | 'duotone' | 'wash';
+  background?: 'spotlight' | 'duotone' | 'wash' | 'mesh';
   /**
    * Accent-glow strength on the background (0 = none, 1 = strong). The glow is a
    * low-alpha accent radial; it sits BEHIND all text and never touches measured

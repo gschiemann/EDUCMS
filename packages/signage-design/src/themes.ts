@@ -431,6 +431,169 @@ export const THEMES: ThemeBundle[] = [
       surfaceStyle: { background: 'duotone', glow: 0.82, card: 'glass', cardBorder: true },
     },
   ),
+  // -------------------------------------------------------------------------
+  // VERSATILE PREMIUM SET (2026-06-28) — five upscale, NON-vertical-locked
+  // looks that span the missing tonal space so a bar / retail / restaurant /
+  // fashion / corporate board is no longer forced into two dark themes. Three
+  // LIGHT (editorial-ivory, bright-studio, coastal-fresh), one VIBRANT
+  // (sunset-pop), one rich JEWEL dark-but-not-black (jewel-luxe). All fonts are
+  // in SIGNAGE_FONTS_HREF; all text tokens verified vs the signage floors.
+  // -------------------------------------------------------------------------
+  bundle(
+    'editorial-ivory',
+    'Editorial Ivory',
+    {
+      // Kinfolk / boutique-hotel: a warm ivory page, warm ink, a refined
+      // terracotta focal accent + an ink-navy secondary. LIGHT.
+      background: '#faf7f1',
+      surface: '#ffffff',
+      ink: '#2b2118',
+      inkInverse: '#ffffff',
+      accent: '#a8401f', // deep terracotta — vivid but earthy, clears 4.5 on ivory
+      onAccent: '#ffffff',
+      muted: '#6b5b4a',
+      accent2: '#1f3a5f', // ink-navy — the editorial rule/eyebrow partner
+      onAccent2: '#ffffff',
+    },
+    // Fraunces — a soft, optical-size editorial serif — over a clean Inter body.
+    pair('Fraunces', 'Inter', {
+      displayWeight: 600,
+      bodyWeight: 400,
+      displayTracking: '0',
+      kickerTracking: '0.26em',
+      fallback: SERIF_FALLBACK,
+    }),
+    {
+      typeScaleRatio: GOLDEN_RATIO,
+      radiusPx: 4,
+      motion: { durationMs: 500, easing: 'ease-in-out' },
+      surfaceStyle: { background: 'wash', glow: 0.22, card: 'flat', cardBorder: true },
+    },
+  ),
+  bundle(
+    'bright-studio',
+    'Bright Studio',
+    {
+      // Apple / Aesop product page: near-white air, near-black ink, ONE
+      // confident electric-blue accent + a deep coral secondary. LIGHT.
+      background: '#fbfbfc',
+      surface: '#ffffff',
+      ink: '#141618',
+      inkInverse: '#ffffff',
+      accent: '#1452e6', // electric blue
+      onAccent: '#ffffff',
+      muted: '#56606b',
+      accent2: '#c91f33', // deep coral-red — clears 4.5 on near-white
+      onAccent2: '#ffffff',
+    },
+    // Space Grotesk — modern geometric display — over Inter body.
+    pair('Space Grotesk', 'Inter', {
+      displayWeight: 700,
+      bodyWeight: 500,
+      displayTracking: '-0.025em',
+      kickerTracking: '0.18em',
+    }),
+    {
+      typeScaleRatio: MAJOR_THIRD,
+      radiusPx: 14,
+      motion: { durationMs: 400, easing: 'ease-out' },
+      surfaceStyle: { background: 'wash', glow: 0.28, card: 'gradient', cardBorder: true },
+    },
+  ),
+  bundle(
+    'sunset-pop',
+    'Sunset Pop',
+    {
+      // VIBRANT: rendered as a coral→magenta→violet MESH (surfaceStyle 'mesh').
+      // The palette background/surface below are the SOLID fallbacks the
+      // contrast test checks — a warm peach that keeps the dark ink + magenta
+      // accent + violet secondary all comfortably above the floors. Scroll-
+      // stopping promo/event/bar energy.
+      background: '#fff4ec',
+      surface: '#ffffff',
+      ink: '#3a1206', // deep cocoa-brown ink — legible over the warm mesh
+      inkInverse: '#ffffff',
+      accent: '#c81d6a', // hot magenta — the punchy focal
+      onAccent: '#ffffff',
+      muted: '#7a3a2c',
+      accent2: '#7b2ff7', // electric violet — the second pop of the mesh
+      onAccent2: '#ffffff',
+    },
+    // Anton — ultra-bold condensed display — over Archivo body for punch.
+    pair('Anton', 'Archivo', {
+      displayWeight: 400, // Anton ships a single 400 that reads ultra-bold
+      bodyWeight: 600,
+      displayTracking: '-0.005em',
+      kickerTracking: '0.24em',
+    }),
+    {
+      typeScaleRatio: GOLDEN_RATIO,
+      radiusPx: 26,
+      motion: { durationMs: 360, easing: 'ease-out' },
+      surfaceStyle: { background: 'mesh', glow: 0.9, card: 'gradient', cardBorder: false },
+    },
+  ),
+  bundle(
+    'jewel-luxe',
+    'Jewel Luxe',
+    {
+      // Steakhouse / speakeasy: a deep emerald jewel ground (NOT black) with a
+      // champagne-gold focal + a copper-rose secondary. Rich DARK.
+      background: '#0b2e22',
+      surface: '#11402f',
+      ink: '#f4efe2', // warm parchment ink
+      inkInverse: '#0a0a0a',
+      accent: '#e8c069', // champagne gold
+      onAccent: '#231803',
+      muted: '#bfccae',
+      accent2: '#e08a6e', // copper-rose — the warm secondary glint
+      onAccent2: '#2a0e06',
+    },
+    // Playfair Display — high-contrast luxury serif — over Cormorant Garamond.
+    pair('Playfair Display', 'Cormorant Garamond', {
+      displayWeight: 700,
+      bodyWeight: 500,
+      displayTracking: '0',
+      kickerTracking: '0.3em',
+      fallback: SERIF_FALLBACK,
+    }),
+    {
+      typeScaleRatio: GOLDEN_RATIO,
+      radiusPx: 6,
+      motion: { durationMs: 500, easing: 'ease-in-out' },
+      surfaceStyle: { background: 'spotlight', glow: 0.5, card: 'gradient', cardBorder: true },
+    },
+  ),
+  bundle(
+    'coastal-fresh',
+    'Coastal Fresh',
+    {
+      // Hospitality / wellness / cafe: a soft sky-and-sand light palette with a
+      // deep teal focal + a warm terracotta secondary. LIGHT + breezy.
+      background: '#eef7f8',
+      surface: '#ffffff',
+      ink: '#10363c',
+      inkInverse: '#ffffff',
+      accent: '#0b7a85', // deep teal
+      onAccent: '#ffffff',
+      muted: '#3d6b71',
+      accent2: '#b14a16', // warm terracotta — sand-coast partner
+      onAccent2: '#ffffff',
+    },
+    // Poppins — clean rounded geometric — over Nunito Sans body.
+    pair('Poppins', 'Nunito Sans', {
+      displayWeight: 700,
+      bodyWeight: 500,
+      displayTracking: '-0.015em',
+      kickerTracking: '0.18em',
+    }),
+    {
+      typeScaleRatio: MAJOR_THIRD,
+      radiusPx: 24,
+      motion: { durationMs: 450, easing: 'ease-in-out' },
+      surfaceStyle: { background: 'wash', glow: 0.3, card: 'gradient', cardBorder: true },
+    },
+  ),
 ];
 
 // ---------------------------------------------------------------------------

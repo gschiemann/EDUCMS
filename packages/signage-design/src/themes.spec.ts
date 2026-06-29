@@ -70,9 +70,9 @@ describe('HCT primitives', () => {
 });
 
 describe('curated THEMES', () => {
-  it('ships exactly 12 themes with unique ids', () => {
-    expect(THEMES.length).toBe(12);
-    expect(new Set(THEMES.map((t) => t.id)).size).toBe(12);
+  it('ships exactly 17 themes with unique ids', () => {
+    expect(THEMES.length).toBe(17);
+    expect(new Set(THEMES.map((t) => t.id)).size).toBe(17);
   });
 
   it('every theme uses at most 2 font families', () => {

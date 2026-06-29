@@ -110,6 +110,18 @@ export function themeBackgroundCss(theme: ThemeBundle): string {
       // A gentle near-flat radial — airy, for light/minimal themes.
       base = `radial-gradient(120% 120% at 50% 18%, ${surface} 0%, ${background} 78%)`;
       break;
+    case 'mesh':
+      // A multi-stop diagonal that warms toward accent / accent2 in opposite
+      // corners — the VIBRANT scroll-stopper. The corner pulls are blended at a
+      // low fraction so the solid `background` (which the palette guarantees text
+      // clears) still dominates the central reading zone; the brighter mesh blobs
+      // are added on top by the glow + mesh radial layers below.
+      base = `linear-gradient(135deg, ${blend(background, accent, 0.16)} 0%, ${background} 46%, ${blend(
+        background,
+        accent2,
+        0.16,
+      )} 100%)`;
+      break;
     case 'spotlight':
     default:
       // A 3-STOP top-center spotlight (surface → a mid blend → background) over a
