@@ -1125,19 +1125,53 @@ export class TemplatesController {
     // (bgColor/bgGradient/bgImage). Persist it onto the Template's bg fields.
     // The candidate round-tripped through the browser, so only the bounded
     // (BoundedText) fields from the Zod schema reach here — never trust shape.
-    const background = body.background
-      ? {
-          bgColor: body.background.bgColor,
-          bgGradient: body.background.bgGradient,
-          bgImage: body.background.bgImage,
-        }
-      : undefined;
+    let background: { bgColor?: string; bgGradient?: string; bgImage?: string } | undefined =
+      body.background
+        ? {
+            bgColor: body.background.bgColor,
+            bgGradient: body.background.bgGradient,
+            bgImage: body.background.bgImage,
+          }
+        : undefined;
+
+    // IMAGERY wave (2026-06-28) — AUTO-PHOTO ON THE KEPT BOARD (THE key change).
+    // The candidate fan-out is image-FREE (fast/cheap), so a picked candidate is
+    // usually a GRADIENT. Before persisting, make the KEPT board photo-rich:
+    // STOCK first (free, when PEXELS_API_KEY is set), else an AI photo (the
+    // tenant's BYOK image provider — never the platform Tier-1 key), at most ONE
+    // image. Best-effort + cost-bounded: ANY miss/cap/timeout/error leaves the
+    // board on its rich gradient (attachKeptBoardPhoto never throws). The
+    // candidate carries its art-director `spec` + `archetype` (Zod passthrough),
+    // re-parsed defensively inside the service. Mutates parsed.zones in place and,
+    // on success, sets the background's bgImage so the SAVED board persists it.
+    const candidate = body.candidate as any;
+    const keptPhotoUrl = await this.ai.attachKeptBoardPhoto({
+      tenantId: req.user.tenantId,
+      userId: req.user.id,
+      role: req.user.role,
+      zones: parsed.zones,
+      background,
+      spec: candidate?.spec,
+      archetype: candidate?.archetype,
+      screenWidth,
+      screenHeight,
+      vertical: candidate?.vertical,
+    });
+    if (keptPhotoUrl) {
+      // Mirror the photo onto the top-level bg descriptor so a renderer that reads
+      // Template.bgImage (not the bg zone) also shows it, and so the rehost step
+      // below mirrors an external stock URL into our bucket. Create the descriptor
+      // if the candidate didn't carry one (so Template.bgImage still persists).
+      background = { ...(background || {}), bgImage: keptPhotoUrl };
+    }
 
     // IMAGERY wave (2026-06-28) — RE-HOST external stock photos into our own
     // Supabase bucket so the SAVED board is durable + service-worker-cacheable on
     // Taurus/offline players (the provider URL could rotate/expire/CDN-miss).
     // Best-effort + host-allowlisted (only the trusted Pexels CDN) — a rehost
-    // miss keeps the provider URL (the board still renders).
+    // miss keeps the provider URL (the board still renders). Runs AFTER auto-photo
+    // so a stock photo it just attached gets mirrored too. (An AI photo is already
+    // a Supabase asset — skipped by the host allowlist.)
     await this.rehostStockImages(req.user.tenantId, parsed.zones, background);
 
     const created = await this.persistGeneratedTemplate(

@@ -120,7 +120,7 @@ export function buildConciergeSystemPrompt(args: {
     `- purpose: one of welcome | menu | promo | event | announcement | feature | photo-hero (what the board is for).`,
     `- theme: a look label — ${THEME_LABELS.join(' | ')} — OR "brand" to derive from their brand colors. Pick the one that fits; you may change it if a reference suggests otherwise.`,
     `- palette: "brand" (use their brand colors) OR { "colors": ["#hex", ...] } when they or a reference specify colors. Omit to let the engine choose.`,
-    `- background: solid | gradient | textured | photo (photo = a real generated/brand photo background; great for hero/welcome/feature boards).`,
+    `- background: solid | gradient | textured | photo. A REAL PHOTO is the DEFAULT for hero/welcome/promo/event/feature/photo-hero boards — it's what makes a board look world-class, and the engine sources a relevant photo for free. So LEAVE background UNSET for those (the engine defaults to a photo) UNLESS the operator clearly wants a flat/solid/gradient/plain look — only then set solid | gradient | textured. Set "photo" explicitly only if they ask for one specifically.`,
     `- widgets: the content elements they need, from: headline, subtext, logo, image, clock, date, weather, countdown, menu, ticker, qr, cta. Include only what serves THIS board.`,
     '',
     `VENUEOS CAPABILITIES — know what each widget DOES and the data it needs, so you ask for the RIGHT things and never promise a feature that's a placeholder:`,

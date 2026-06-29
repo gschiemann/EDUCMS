@@ -2803,6 +2803,113 @@ export class AiService {
   }
 
   /**
+   * IMAGERY wave (2026-06-28) — AUTO-PHOTO ON THE KEPT BOARD. THE key lever for
+   * "every board a customer keeps is photo-rich". When the operator picks a
+   * candidate (create-from-candidate), the candidate's background is usually a
+   * GRADIENT (the candidate fan-out is image-FREE to stay fast/cheap). This makes
+   * the ACCEPTED board photo-rich, best-effort + cost-bounded, BEFORE it persists.
+   *
+   * FALLBACK ORDER (at most ONE image per kept board — cost control):
+   *   1) The board ALREADY has a real photo → nothing to do (the candidate carried
+   *      a stock photo because a key was set; we don't double-spend).
+   *   2) Not a photo-appropriate archetype (no place a photo lands + looks good:
+   *      stat/grid/menu/quote/title-cta) → keep the rich gradient.
+   *   3) STOCK first (FREE): if PEXELS_API_KEY is set, search the board's query
+   *      (the spec's image.query, else headline+vertical) → a Pexels URL.
+   *   4) Else AI (BYOK): generateBoardBackground on the tenant's image provider
+   *      (Anthropic/platform tenants skip — never spends the platform Tier-1 key on
+   *      a Tier-2 image; the existing image hourly cap + audit apply).
+   *   5) Any miss/timeout/cap/error → the board KEEPS its gradient. NEVER throws.
+   *
+   * On success it mutates `zones` (drops the URL on the background/image zone via
+   * injectBackgroundImage) AND returns the URL so the caller mirrors it onto
+   * Template.bgImage. The returned URL may be an EXTERNAL Pexels URL — the caller
+   * re-hosts it into Supabase (rehostStockImages) exactly as the candidate path
+   * does (durable + offline-cacheable). An AI URL is already a Supabase asset.
+   */
+  async attachKeptBoardPhoto(opts: {
+    tenantId: string;
+    userId?: string;
+    role?: string;
+    /** The persisted board's zones (mutated in place when a photo is attached). */
+    zones: any[];
+    /** The board's current background descriptor (read to detect an existing photo). */
+    background?: { bgColor?: string; bgGradient?: string; bgImage?: string };
+    /** The art-director spec the candidate was built from (carries archetype +
+     *  image.query + copy.headline). Round-trips through the browser, parsed
+     *  defensively here so a tampered value can never reach a provider. */
+    spec?: any;
+    /** Fallback archetype id when the spec is absent (the candidate also carries it). */
+    archetype?: string;
+    screenWidth: number;
+    screenHeight: number;
+    vertical?: string;
+  }): Promise<string | undefined> {
+    try {
+      // (1) Already a real photo on the board (top-level bgImage OR any IMAGE zone
+      //     assetUrl) → don't double-spend. A gradient-only board has neither.
+      if (boardAlreadyHasPhoto(opts.zones, opts.background)) return undefined;
+
+      // Resolve the archetype from the (defensively-parsed) spec, else the
+      // candidate's own archetype field. Only photo-appropriate archetypes get a
+      // photo (a place it lands + looks world-class).
+      const spec = opts.spec ? parseArtDirectorSpec(opts.spec) : undefined;
+      const archetype =
+        (spec?.archetype as string) ||
+        (typeof opts.archetype === 'string' ? opts.archetype : '') ||
+        '';
+      if (!PHOTO_DEFAULT_ARCHETYPES.has(archetype)) return undefined; // (2)
+
+      // (3) STOCK first (FREE). Derive the query from the spec when present
+      //     (image.query → headline+vertical); else just headline-less → skip.
+      let url: string | undefined;
+      if (this.stockImages?.isConfigured?.()) {
+        const query = spec
+          ? deriveStockQuery(spec, opts.vertical)
+          : undefined;
+        if (query) {
+          const orientation: 'landscape' | 'portrait' =
+            opts.screenHeight > opts.screenWidth ? 'portrait' : 'landscape';
+          const result = await this.stockImages.search(query, { orientation });
+          url = result?.url || undefined;
+        }
+      }
+
+      // (4) AI fallback (BYOK only) — only when stock produced nothing. Reuses the
+      //     gated path (image hourly cap + audit + tier discipline; Anthropic /
+      //     platform tenants return undefined, never spending the Tier-1 key).
+      if (!url) {
+        const imagePrompt = spec
+          ? (spec.image?.prompt || spec.image?.query || spec.copy?.headline || '').trim()
+          : '';
+        if (imagePrompt) {
+          url = await this.generateBoardBackground({
+            tenantId: opts.tenantId,
+            userId: opts.userId,
+            role: opts.role,
+            imagePrompt,
+            screenWidth: opts.screenWidth,
+            screenHeight: opts.screenHeight,
+          });
+        }
+      }
+
+      if (!url) return undefined; // (5) nothing sourced → keep the gradient
+
+      // Land it on the board's background/image zone (the renderer lays the
+      // existing scrim over the photo) + return it for Template.bgImage mirroring.
+      injectBackgroundImage(opts.zones, url);
+      return url;
+    } catch (e: any) {
+      // NEVER let an image failure break the create — keep the gradient.
+      this.logger.warn(
+        `Auto-photo skipped for kept board (${opts.tenantId}): ${e?.message || e}`,
+      );
+      return undefined;
+    }
+  }
+
+  /**
    * Wave 3 — generate ONE landscape background photo for a signage board and
    * return its asset URL, or `undefined` on ANY failure. NEVER throws.
    *
@@ -3436,27 +3543,35 @@ COPY RULES — write a COMPLETE board, never a bare headline + button:
   - Write copy that fits the VENUE and the operator's description specifically —
     real, on-brand words for THIS business, never generic placeholder filler.
 
-IMAGERY:
-  - For the IMAGE archetypes — "hero-fullbleed", "lower-third-banner", "poster-promo" —
-    a REAL photo is the default and the single biggest "world-class" lever. ALWAYS emit
-    BOTH a "query" AND a "prompt" so the engine can use a free stock photo OR (on upgrade)
-    generate one:
-      • "query": 2-5 vivid, concrete, TEXT-FREE stock-search terms naming the SUBJECT +
-        scene — what a great photo of THIS board would show (e.g. "craft beer pour bar
-        counter", "fresh cheeseburger fries diner", "students walking campus quad",
-        "stadium night lights crowd", "modern hotel lobby"). Real subjects/products/
-        spaces/people. NO brand names, NO words/numbers, NO style jargon — just the scene.
-      • "prompt": a vivid, brand-appropriate, PHOTOREALISTIC version of the same scene for
-        AI generation (the one-tap upgrade), 1-2 sentences with cinematic lighting + an
-        unbusy area for the headline. Same scene as the query, expanded.
-      • Both: NO words, NO letters, NO logos, NO numbers IN the image — a SCENE only.
-        Leave NEGATIVE SPACE for the headline. Match the venue + theme mood.
-    Set "mode":"stock" (preferred — free, instant, photoreal-by-definition for real
-    subjects: food, products, spaces, people) — the engine fetches a relevant stock photo
-    by your "query". Reserve "mode":"generate" for stylized/abstract subjects a stock
-    library wouldn't have. EITHER mode, write BOTH fields.
-  - For ALL OTHER archetypes (split-50, stat-spotlight, three-up-grid, menu-list,
-    quote-spotlight, title-cta): emit {"mode":"none"} — they ride a clean themed gradient.
+IMAGERY — a REAL PHOTO is the DEFAULT, not the exception. A real, relevant photo
+is the single biggest "world-class" lever; a flat gradient board reads as a draft.
+So for any PHOTO-APPROPRIATE archetype, DEFAULT to a photo and ALWAYS emit BOTH a
+"query" AND a "prompt":
+  - PHOTO-APPROPRIATE archetypes (DEFAULT to "mode":"stock" — a real photo):
+    "hero-fullbleed", "lower-third-banner", "poster-promo" (a full-bleed photo behind
+    the message), AND "split-50" (a real photo fills the image half). For these, emit a
+    photo UNLESS the operator clearly wants a plain/flat/solid look.
+  - "query": 2-5 vivid, concrete, TEXT-FREE stock-search terms naming the SUBJECT +
+    scene — what a great photo of THIS board would show (e.g. "craft beer pour bar
+    counter", "fresh cheeseburger fries diner", "students walking campus quad",
+    "stadium night lights crowd", "modern hotel lobby"). Real subjects/products/
+    spaces/people. NO brand names, NO words/numbers, NO style jargon — just the scene.
+  - "prompt": a vivid, brand-appropriate, PHOTOREALISTIC version of the same scene for
+    AI generation (the one-tap upgrade), 1-2 sentences with cinematic lighting + an
+    unbusy area for the headline. Same scene as the query, expanded.
+  - Both: NO words, NO letters, NO logos, NO numbers IN the image — a SCENE only.
+    Leave NEGATIVE SPACE for the headline. Match the venue + theme mood.
+  - Set "mode":"stock" (the DEFAULT — free, instant, photoreal-by-definition for real
+    subjects: food, products, spaces, people). Reserve "mode":"generate" for stylized/
+    abstract subjects a stock library wouldn't have. EITHER mode, write BOTH fields so
+    the engine can fall back to a free stock photo OR generate one on the one-tap upgrade.
+  - The ONLY time a photo-appropriate archetype gets {"mode":"none"} is when the
+    operator's description clearly asks for a flat / solid / gradient / "no photo" look —
+    then the engine paints a rich themed gradient instead.
+  - The text-/data-first archetypes — "stat-spotlight", "three-up-grid", "menu-list",
+    "quote-spotlight", "title-cta" — emit {"mode":"none"} (they ride a clean themed
+    gradient; a photo would fight the dense type). If you want a photo behind one of these,
+    choose a photo-appropriate archetype instead.
 
 ACCENT: exactly ONE element carries the accent color. Default to "cta" when a CTA exists, else the most important element.
 
@@ -3601,6 +3716,23 @@ function parseCtaHref(v: any): string | undefined {
 // into the generation prompt instead).
 const ART_IMAGE_MODES = new Set(['generate', 'stock', 'none']);
 
+// IMAGERY wave (2026-06-28) — PHOTO-FORWARD BY DEFAULT. The archetypes that have
+// somewhere a real photo can LAND (a full-bleed background zone, or split-50's
+// image half) AND look world-class with one: hero/lower-third/poster fill behind
+// the message (with a directional scrim guaranteeing headline contrast), split-50
+// fills the image half. For these, a missing/garbled/explicit-'none' image plan
+// from the model is upgraded to a 'stock' photo by default (the engine derives a
+// query from the headline+vertical) — so the customer sees a photo, not a flat
+// gradient. The text-/data-dense archetypes (stat/grid/menu/quote/title-cta) are
+// NOT in this set: a photo would fight their type, so they keep the rich gradient.
+// resolveStockBackground only fetches where this is true OR the model said 'stock'.
+const PHOTO_DEFAULT_ARCHETYPES = new Set<string>([
+  'hero-fullbleed',
+  'lower-third-banner',
+  'poster-promo',
+  'split-50',
+]);
+
 /** Strip ASCII control chars (incl. NUL / newlines) from a model-supplied
  *  image prompt; collapse runs of whitespace; trim. Keeps the prompt a single
  *  clean line so it can't smuggle control bytes into a provider request. */
@@ -3614,21 +3746,36 @@ function sanitizeImagePrompt(v: any): string | undefined {
   return cleaned ? cleaned.slice(0, 600) : undefined;
 }
 
-function parseArtImage(raw: any): ArchetypeImagePlan {
+function parseArtImage(raw: any, archetype?: string): ArchetypeImagePlan {
   const obj = raw && typeof raw === 'object' ? raw : {};
-  const mode = ART_IMAGE_MODES.has(obj.mode)
+  let mode = ART_IMAGE_MODES.has(obj.mode)
     ? (obj.mode as ArchetypeImagePlan['mode'])
     : 'none';
+  const prompt = sanitizeImagePrompt(obj.prompt);
+  const query = clampStr(obj.query, 200);
+
+  // PHOTO-FORWARD DEFAULT (2026-06-28): a photo-appropriate archetype defaults to
+  // a STOCK photo even when the model omitted the plan or said 'none' — the
+  // gradient is a fallback, not the default outcome. resolveStockBackground then
+  // derives a query from the headline+vertical when none was supplied, so this is
+  // safe with no query here (the engine fills it). We do NOT override an explicit
+  // 'generate' (the model wants a stylized image) — only upgrade 'none'→'stock'.
+  // An operator's explicit non-photo background is honored upstream
+  // (buildSignageBoardCore skips stock when intake.background is solid/gradient/
+  // textured), so this default never fights an explicit choice.
+  if (mode === 'none' && archetype && PHOTO_DEFAULT_ARCHETYPES.has(archetype)) {
+    mode = 'stock';
+  }
+
   if (mode === 'none') return { mode: 'none' };
   const plan: ArchetypeImagePlan = { mode };
-  const prompt = sanitizeImagePrompt(obj.prompt);
   if (prompt) plan.prompt = prompt;
-  const query = clampStr(obj.query, 200);
   if (query) plan.query = query;
-  // A 'generate'/'stock' plan with NO usable text is useless — fold to 'none'
-  // so the board rides the gradient instead of carrying an empty plan.
+  // A 'generate' plan with NO usable prompt is useless — fold to 'none' (we can't
+  // generate without a prompt). A 'stock' plan can survive with NO query: the
+  // engine derives one from the headline+vertical (deriveStockQuery), so a
+  // photo-appropriate board still gets a relevant photo.
   if (mode === 'generate' && !plan.prompt) return { mode: 'none' };
-  if (mode === 'stock' && !plan.query && !plan.prompt) return { mode: 'none' };
   return plan;
 }
 
@@ -3719,6 +3866,28 @@ function injectBackgroundImage(zones: any[], url: string): void {
   target.defaultConfig.fit = 'cover';
 }
 
+/**
+ * IMAGERY wave (2026-06-28) — TRUE when a board already carries a REAL photo (so
+ * the auto-photo-on-accept path skips it — at most ONE image per kept board). A
+ * "real photo" = a top-level bgImage URL OR any IMAGE zone with an assetUrl. A
+ * gradient-only board has a bgGradient but NO assetUrl/bgImage → returns false →
+ * the kept board gets its photo. Defensive against any shape.
+ */
+function boardAlreadyHasPhoto(
+  zones: any[],
+  background?: { bgColor?: string; bgGradient?: string; bgImage?: string },
+): boolean {
+  const bg = (background?.bgImage || '').trim();
+  if (bg) return true;
+  if (!Array.isArray(zones)) return false;
+  for (const z of zones) {
+    if (z?.widgetType !== 'IMAGE') continue;
+    const url = z?.defaultConfig?.assetUrl;
+    if (typeof url === 'string' && url.trim()) return true;
+  }
+  return false;
+}
+
 function parseSceneSpec(raw: any, fallback?: { archetype?: string; theme?: string }): SceneSpec {
   const obj = raw && typeof raw === 'object' ? raw : {};
   // Deterministic fallbacks: when the model omits/garbles its archetype/theme,
@@ -3760,7 +3929,9 @@ function parseSceneSpec(raw: any, fallback?: { archetype?: string; theme?: strin
     archetype,
     theme,
     copy,
-    image: parseArtImage(obj.image),
+    // Archetype-aware: a photo-appropriate archetype defaults to a stock photo
+    // even when the model omits the plan (PHOTO-FORWARD DEFAULT).
+    image: parseArtImage(obj.image, archetype),
     accentSlot,
   };
   // Carry an optional per-scene name (used by the mapper for scene tagging).

@@ -709,12 +709,18 @@ function mapImageConfig(
     }
     return base;
   }
-  // split-50 image half — a bold accent→surface diagonal placeholder (no photo).
-  return {
+  // split-50 image HALF. With a resolved stock photo, the half shows the REAL
+  // photo (photo-forward default, 2026-06-28) — no directional scrim needed here
+  // because the text lives on the OTHER half, so the photo can breathe full-frame.
+  // The accent→surface diagonal stays as the load/error fallback. No photo → the
+  // diagonal placeholder, exactly as before (zero regression).
+  const half: Record<string, any> = {
     fit: 'cover',
     bgGradient: imageHalfGradient(theme),
     scrimCss: undefined,
   };
+  if (stockImageUrl) half.assetUrl = stockImageUrl;
+  return half;
 }
 
 /**

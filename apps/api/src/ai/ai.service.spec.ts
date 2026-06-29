@@ -116,7 +116,7 @@ function makeStorageMock() {
   };
 }
 
-function buildService(publisher: any, storage?: any): { service: AiService; storage: any } {
+function buildService(publisher: any, storage?: any, stock?: any): { service: AiService; storage: any; stock: any } {
   const redisMock = { publisher } as unknown as RedisService;
   const storageMock = storage ?? makeStorageMock();
   // 2026-06-28 — AiService now takes AiAltTextService (Signage Concierge image
@@ -125,17 +125,17 @@ function buildService(publisher: any, storage?: any): { service: AiService; stor
   const altTextMock = {
     analyzeDesignReference: jest.fn(async () => null),
   } as any;
-  // 2026-06-28 — IMAGERY wave. AiService now also takes StockImageService. These
-  // suites don't exercise the stock path (no PEXELS_API_KEY in CI), so a stub
-  // that reports "not configured" keeps generation on the gradient — identical to
-  // the default no-key behaviour.
-  const stockMock = {
+  // 2026-06-28 — IMAGERY wave. AiService now also takes StockImageService. Most
+  // suites don't exercise the stock path (no PEXELS_API_KEY in CI), so the
+  // DEFAULT stub reports "not configured" → generation rides the gradient,
+  // identical to the no-key behaviour. The auto-photo suite passes its own.
+  const stockMock = stock ?? {
     isConfigured: jest.fn(() => false),
     search: jest.fn(async () => null),
   } as any;
   // Synchronous construct — no Nest container needed, but use it for parity.
   const service = new AiService(prismaMock as PrismaService, redisMock, storageMock as any, altTextMock, stockMock);
-  return { service, storage: storageMock };
+  return { service, storage: storageMock, stock: stockMock };
 }
 
 describe('AiService — P1-14 Redis-backed rate limits', () => {
@@ -860,10 +860,26 @@ describe('parseArtDirectorSpec — Wave 3 image-mode coercion', () => {
     expect(spec.image.prompt).not.toMatch(/[\x00-\x1F\x7F]/);
   });
 
-  it('defaults to mode:none when image is absent / invalid / unknown mode', () => {
-    expect(parseArtDirectorSpec({ archetype: 'hero-fullbleed', copy: { headline: 'h' } }).image.mode).toBe('none');
-    expect(parseArtDirectorSpec({ archetype: 'hero-fullbleed', copy: { headline: 'h' }, image: 'nope' }).image.mode).toBe('none');
-    expect(parseArtDirectorSpec({ archetype: 'hero-fullbleed', copy: { headline: 'h' }, image: { mode: 'wat' } }).image.mode).toBe('none');
+  // PHOTO-FORWARD DEFAULT (2026-06-28): a photo-appropriate archetype with an
+  // absent / invalid / unknown image plan now defaults to a STOCK photo (the
+  // gradient is the FALLBACK, not the default outcome). The text-/data-dense
+  // archetypes still default to mode:none (a photo would fight their dense type).
+  it('defaults a PHOTO-appropriate archetype to mode:stock when image is absent / invalid / unknown mode', () => {
+    expect(parseArtDirectorSpec({ archetype: 'hero-fullbleed', copy: { headline: 'h' } }).image.mode).toBe('stock');
+    expect(parseArtDirectorSpec({ archetype: 'hero-fullbleed', copy: { headline: 'h' }, image: 'nope' }).image.mode).toBe('stock');
+    expect(parseArtDirectorSpec({ archetype: 'hero-fullbleed', copy: { headline: 'h' }, image: { mode: 'wat' } }).image.mode).toBe('stock');
+    // split-50 (photo lands on the image half) is photo-appropriate too.
+    expect(parseArtDirectorSpec({ archetype: 'split-50', copy: { headline: 'h' } }).image.mode).toBe('stock');
+    // An EXPLICIT mode:none on a photo archetype is upgraded to stock as well —
+    // the operator's explicit non-photo choice is honored UPSTREAM (intake),
+    // never by the model emitting 'none' (which is just "I didn't bother").
+    expect(parseArtDirectorSpec({ archetype: 'poster-promo', copy: { headline: 'h' }, image: { mode: 'none' } }).image.mode).toBe('stock');
+  });
+
+  it('still defaults a TEXT/DATA-dense archetype to mode:none (gradient — a photo fights the type)', () => {
+    for (const archetype of ['stat-spotlight', 'three-up-grid', 'menu-list', 'quote-spotlight', 'title-cta']) {
+      expect(parseArtDirectorSpec({ archetype, copy: { headline: 'h' } }).image.mode).toBe('none');
+    }
   });
 
   it('folds a generate plan with NO usable prompt down to mode:none (no empty plan)', () => {
@@ -1165,5 +1181,161 @@ describe('AiService — refineSignageBoard keeps every scene of a SET', () => {
 
     expect(out.candidate.scenes).toBeUndefined();
     expect(out.candidate.zones.length).toBeGreaterThan(0);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────
+// IMAGERY wave (2026-06-28) — AUTO-PHOTO ON THE KEPT BOARD.
+//   attachKeptBoardPhoto makes the ACCEPTED candidate photo-rich, best-effort +
+//   cost-bounded: STOCK first (free, when PEXELS_API_KEY is set), else an AI
+//   photo (the tenant's BYOK image provider — NEVER the platform Tier-1 key), at
+//   most ONE image. Any miss/error keeps the gradient (never throws). These pin:
+//     (1) STOCK-when-key — a Pexels photo is fetched + landed on the bg zone
+//     (2) AI-FALLBACK — no stock key but a BYOK image provider → generateImage
+//     (3) GRACEFUL-NONE — no key + no image provider → undefined, gradient kept
+//     (4) SKIP when the board already carries a real photo (no double-spend)
+//     (5) SKIP for a non-photo-appropriate archetype (gradient kept)
+// ───────────────────────────────────────────────────────────────────────
+describe('AiService — attachKeptBoardPhoto (auto-photo on accept)', () => {
+  let fetchSpy: jest.SpyInstance;
+  beforeEach(() => {
+    delete process.env.ANTHROPIC_API_KEY;
+    tenantsById.clear();
+    brandingByTenant.clear();
+    auditRows.length = 0;
+    dispatchMock.mockReset();
+    (prismaMock.client.asset.create as jest.Mock).mockClear();
+    fetchSpy = jest.spyOn(global, 'fetch' as any);
+  });
+  afterEach(() => fetchSpy.mockRestore());
+
+  // A minimal gradient-only hero board (the candidate's bg zone the fan-out built).
+  // Typed `any[]` so the tests can read the mutated `defaultConfig.assetUrl` (the
+  // service drops the photo URL there) without strict shape narrowing.
+  const gradientHeroZones = (): any[] => [
+    { name: 'background', widgetType: 'IMAGE', defaultConfig: { fit: 'cover', bgGradient: 'linear-gradient(...)' } },
+    { name: 'headline', widgetType: 'TEXT', defaultConfig: { content: 'Happy Hour' } },
+  ];
+  const heroSpec = () => ({
+    archetype: 'hero-fullbleed',
+    theme: 'bold-retail',
+    copy: { headline: 'Happy Hour' },
+    image: { mode: 'stock', query: 'craft beer pour bar counter' },
+    accentSlot: 'cta',
+  });
+
+  it('(1) STOCK-when-key: lands a free Pexels photo on the background zone + returns the URL', async () => {
+    // Platform (anthropic) tenant — no image provider — proving STOCK is provider-agnostic.
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const stock = {
+      isConfigured: jest.fn(() => true),
+      search: jest.fn(async () => ({ url: 'https://images.pexels.com/photos/1/x.jpg' })),
+    };
+    const { service } = buildService(makeFakeRedisClient(), undefined, stock);
+    const zones = gradientHeroZones();
+
+    const url = await service.attachKeptBoardPhoto({
+      tenantId: 't1', userId: 'u1', role: 'SCHOOL_ADMIN',
+      zones, background: { bgGradient: 'linear-gradient(...)' },
+      spec: heroSpec(), archetype: 'hero-fullbleed',
+      screenWidth: 1920, screenHeight: 1080, vertical: 'BAR',
+    });
+
+    expect(stock.search).toHaveBeenCalledTimes(1);
+    // The cleaned query the model supplied is what we searched.
+    const searchArgs = (stock.search.mock.calls[0] as any[]);
+    expect(searchArgs[0]).toBe('craft beer pour bar counter');
+    expect(searchArgs[1]).toMatchObject({ orientation: 'landscape' });
+    expect(url).toBe('https://images.pexels.com/photos/1/x.jpg');
+    // It landed on the background zone's assetUrl.
+    expect(zones[0].defaultConfig.assetUrl).toBe(url);
+    expect(zones[0].defaultConfig.fit).toBe('cover');
+    // STOCK is free → no image provider call, no AI image generated.
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(prismaMock.client.asset.create).not.toHaveBeenCalled();
+  });
+
+  it('(2) AI-FALLBACK: no stock key but a BYOK OpenAI provider → generates ONE photo', async () => {
+    tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'gpt-4o-mini' });
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-test');
+    // Stock OFF (no PEXELS key) so the path falls through to AI.
+    const stock = { isConfigured: jest.fn(() => false), search: jest.fn(async () => null) };
+    fetchSpy.mockResolvedValue(okJson({ data: [{ b64_json: TINY_PNG_B64 }] }));
+    const { service, storage } = buildService(makeFakeRedisClient(), undefined, stock);
+    const zones = gradientHeroZones();
+
+    const url = await service.attachKeptBoardPhoto({
+      tenantId: 't1', userId: 'u1', role: 'SCHOOL_ADMIN',
+      zones, background: { bgGradient: 'linear-gradient(...)' },
+      spec: { ...heroSpec(), image: { mode: 'stock', query: 'craft beer pour', prompt: 'a cinematic craft beer pour' } },
+      archetype: 'hero-fullbleed',
+      screenWidth: 1920, screenHeight: 1080, vertical: 'BAR',
+    });
+
+    // Stock was attempted (key off → search not even called) and AI produced the photo.
+    expect(stock.search).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(String(fetchSpy.mock.calls[0][0])).toBe('https://api.openai.com/v1/images/generations');
+    expect(storage.upload).toHaveBeenCalledTimes(1);
+    // The AI photo is a Supabase asset URL, landed on the bg zone.
+    expect(url).toContain('/object/public/assets/');
+    expect(zones[0].defaultConfig.assetUrl).toBe(url);
+  });
+
+  it('(3) GRACEFUL-NONE: no stock key + an anthropic/platform tenant → undefined, gradient kept, never throws', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform'; // platform = anthropic, can't make images
+    const stock = { isConfigured: jest.fn(() => false), search: jest.fn(async () => null) };
+    const { service } = buildService(makeFakeRedisClient(), undefined, stock);
+    const zones = gradientHeroZones();
+
+    const url = await service.attachKeptBoardPhoto({
+      tenantId: 't1', role: 'SCHOOL_ADMIN',
+      zones, background: { bgGradient: 'linear-gradient(...)' },
+      spec: heroSpec(), archetype: 'hero-fullbleed',
+      screenWidth: 1920, screenHeight: 1080,
+    });
+
+    expect(url).toBeUndefined();
+    // Never spent the platform Tier-1 key on an image; the gradient zone is untouched.
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(prismaMock.client.asset.create).not.toHaveBeenCalled();
+    expect(zones[0].defaultConfig.assetUrl).toBeUndefined();
+    expect(zones[0].defaultConfig.bgGradient).toBeTruthy();
+  });
+
+  it('(4) SKIP when the board already carries a real photo (no double-spend)', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const stock = { isConfigured: jest.fn(() => true), search: jest.fn(async () => ({ url: 'https://images.pexels.com/photos/2/y.jpg' })) };
+    const { service } = buildService(makeFakeRedisClient(), undefined, stock);
+    const zones = gradientHeroZones();
+
+    const url = await service.attachKeptBoardPhoto({
+      tenantId: 't1', role: 'SCHOOL_ADMIN',
+      zones,
+      background: { bgImage: 'https://images.pexels.com/photos/existing/z.jpg' }, // already a photo
+      spec: heroSpec(), archetype: 'hero-fullbleed',
+      screenWidth: 1920, screenHeight: 1080,
+    });
+
+    expect(url).toBeUndefined();
+    expect(stock.search).not.toHaveBeenCalled(); // never searched — board was already photo-rich
+  });
+
+  it('(5) SKIP for a non-photo-appropriate archetype (menu-list keeps its gradient)', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const stock = { isConfigured: jest.fn(() => true), search: jest.fn(async () => ({ url: 'https://images.pexels.com/photos/3/q.jpg' })) };
+    const { service } = buildService(makeFakeRedisClient(), undefined, stock);
+    const zones = [{ name: 'headline', widgetType: 'TEXT', defaultConfig: { content: 'Menu' } }];
+
+    const url = await service.attachKeptBoardPhoto({
+      tenantId: 't1', role: 'SCHOOL_ADMIN',
+      zones, background: { bgGradient: 'linear-gradient(...)' },
+      spec: { archetype: 'menu-list', theme: 'qsr-appetite', copy: { headline: 'Menu' }, image: { mode: 'none' }, accentSlot: 'none' },
+      archetype: 'menu-list',
+      screenWidth: 1920, screenHeight: 1080,
+    });
+
+    expect(url).toBeUndefined();
+    expect(stock.search).not.toHaveBeenCalled();
   });
 });
