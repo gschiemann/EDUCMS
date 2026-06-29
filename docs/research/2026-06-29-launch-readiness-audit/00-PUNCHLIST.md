@@ -37,6 +37,19 @@ not live-render-verified, per read-only rule): a11y keyboard-nav + WCAG contrast
    "Put on a screen" express lane on board cards + the AI candidate picker → single-item playlist →
    PublishToLocationsModal, bypassing the desktop-only builder.
 
+## VERIFIED against live Railway prod env (2026-06-29) — no secret values recorded (public repo)
+Checked the actual `graceful-embrace / api` service variables:
+- 🔴 **P0 — `JWT_SECRET` + `SESSION_SECRET` are weak, predictable placeholder strings** (beta-era literals, not random). They pass the length gate but are guessable → token/session forgery across all tenants. ROTATE both to fresh 64-hex random before public launch. (`DEVICE_SECRET_KEY` + `DEVICE_JWT_SECRET` ARE proper random — leave or rotate-with-repair-window.)
+- 🟡 **`ANTHROPIC_API_KEY` is NOT set** → non-BYOK public trial tenants get "AI not configured" (the platform Tier-1 key is absent). SET it for the "AI is the prize" launch story.
+- 🟡 **`PEXELS_API_KEY` is NOT set** → AI boards never get free stock photos. SET it (free).
+- ✅ `ALLOWED_ORIGINS` includes `https://venue-os.app` (+ www). Correct.
+- ✅ `EMAIL_FROM` = a `@venue-os.app` address (NOT the resend.dev sandbox) + `RESEND_API_KEY` set → email will deliver IF `venue-os.app` is a verified Resend sending domain (confirm DKIM/SPF in the Resend dashboard).
+- ✅ `GOOGLE_MAPS_API_KEY` set → address picker uses authoritative Google geocoding.
+- ✅ `DATABASE_URL` carries `connection_limit=25` + `pool_timeout=20` (above the floor).
+- ✅ CSRF enforced (no CSRF_ENFORCE=false / CSRF_WARN). ✅ Sentry DSN set.
+- 🔵 **Stripe is in TEST mode** (`sk_test_…`, test price ids, webhook secret set). Fine for a free pilot; swap to `sk_live_…` + live price ids + live webhook secret to charge real customers.
+- 🔵 **`GH_TOKEN` sits in the API runtime env** — a GitHub token in the app's process env is an unnecessary exposure surface; remove it if the API doesn't use it at runtime.
+
 ## OPEN — config / decision (Greg's actions, no code)
 - **[P0] Rotate the 4 boot secrets** before public launch: `JWT_SECRET`, `SESSION_SECRET`,
   `DEVICE_SECRET_KEY`, `DEVICE_JWT_SECRET` (boot already refuses to start without them). Rotating
