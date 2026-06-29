@@ -3,6 +3,16 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 const BUCKET = 'assets';
 
+// PRIVATE bucket for floor plans (Audit launch-readiness P1). Floor plans are
+// operational-security data (building layouts + emergency exits). The `assets`
+// bucket is PUBLIC (CDN-cacheable for everyday signage), so a leaked floor-plan
+// URL would expose a building layout to the world forever. This bucket is
+// created with `public: false` so objects are ONLY reachable via short-TTL
+// signed URLs minted server-side from the RBAC-gated floor-plan endpoints.
+// Do NOT route normal signage assets here — they must stay on the public,
+// CDN-cacheable `assets` bucket.
+const FLOORPLAN_BUCKET = 'floor-plans';
+
 @Injectable()
 export class SupabaseStorageService implements OnModuleInit {
   private client: SupabaseClient;
@@ -102,6 +112,35 @@ export class SupabaseStorageService implements OnModuleInit {
     } else {
       this.logger.log(`Supabase Storage bucket "assets" ready (cap ${FILE_SIZE_LIMIT / (1024*1024)}MB)`);
     }
+
+    // PRIVATE floor-plan bucket (launch-readiness P1). public:false so objects
+    // are never world-readable; floor-plan endpoints serve them via short-TTL
+    // signed URLs only. Floor plans are images (PNG/JPG/WEBP) and rarely large,
+    // so a 25MB cap matches the controller's multer limit — defense in depth in
+    // case someone hits the Supabase upload URL directly.
+    const FLOORPLAN_MIMES = ['image/jpeg', 'image/png', 'image/webp'];
+    const FLOORPLAN_SIZE_LIMIT = 25 * 1024 * 1024; // 25MB — matches controller cap
+    const { error: fpErr } = await this.client.storage.createBucket(FLOORPLAN_BUCKET, {
+      public: false,
+      fileSizeLimit: FLOORPLAN_SIZE_LIMIT,
+      allowedMimeTypes: FLOORPLAN_MIMES,
+    });
+    if (fpErr && !fpErr.message?.includes('already exists') && !fpErr.message?.includes('duplicate')) {
+      this.logger.error(`Failed to create floor-plan storage bucket: ${fpErr.message}`);
+    } else {
+      // updateBucket on every boot — keeps public:false enforced and limits
+      // current even on a bucket that already existed from a prior deploy.
+      const { error: fpUpdErr } = await this.client.storage.updateBucket(FLOORPLAN_BUCKET, {
+        public: false,
+        fileSizeLimit: FLOORPLAN_SIZE_LIMIT,
+        allowedMimeTypes: FLOORPLAN_MIMES,
+      });
+      if (fpUpdErr) {
+        this.logger.warn(`Failed to update floor-plan bucket: ${fpUpdErr.message}`);
+      } else {
+        this.logger.log(`Supabase Storage bucket "${FLOORPLAN_BUCKET}" ready (private, cap ${FLOORPLAN_SIZE_LIMIT / (1024*1024)}MB)`);
+      }
+    }
   }
 
   /**
@@ -180,6 +219,26 @@ export class SupabaseStorageService implements OnModuleInit {
     buffer: any,
     contentType: string,
   ): Promise<string> {
+    return this.uploadToBucket(BUCKET, filePath, buffer, contentType);
+  }
+
+  /**
+   * Upload to an EXPLICIT bucket. The public `assets` bucket returns a public
+   * URL; a private bucket (floor-plans) returns an `…/object/<bucket>/<path>`
+   * URL whose bytes are only retrievable via a signed URL or service-role auth —
+   * NEVER world-readable. Floor plans (launch-readiness P1) route here with
+   * FLOORPLAN_BUCKET so the building layout isn't exposed by a leaked URL.
+   *
+   * Uses the Supabase Storage REST API directly via fetch because
+   * @supabase/supabase-js v2 mangles Node.js Buffers (JSON-serializes them)
+   * and produces 0-byte files with Uint8Array views.
+   */
+  async uploadToBucket(
+    bucket: string,
+    filePath: string,
+    buffer: any,
+    contentType: string,
+  ): Promise<string> {
     const url = process.env.SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -191,10 +250,10 @@ export class SupabaseStorageService implements OnModuleInit {
     const buf = this.toSafeBuffer(buffer);
     const size = buf.length;
 
-    this.logger.log(`Upload: path=${filePath}, size=${size}, contentType=${contentType}, inputType=${typeof buffer}, isBuffer=${Buffer.isBuffer(buffer)}, constructor=${buffer?.constructor?.name}`);
+    this.logger.log(`Upload: bucket=${bucket}, path=${filePath}, size=${size}, contentType=${contentType}, inputType=${typeof buffer}, isBuffer=${Buffer.isBuffer(buffer)}, constructor=${buffer?.constructor?.name}`);
 
     // POST directly to the Storage REST API — bypasses the JS client entirely.
-    const endpoint = `${url}/storage/v1/object/${BUCKET}/${filePath}`;
+    const endpoint = `${url}/storage/v1/object/${bucket}/${filePath}`;
 
     // Copy into a guaranteed ArrayBuffer (not SharedArrayBuffer).
     const ab = new ArrayBuffer(size);
@@ -233,8 +292,21 @@ export class SupabaseStorageService implements OnModuleInit {
       throw new Error(`Storage upload failed (${res.status}): ${body}`);
     }
 
-    // Build the public URL the same way the JS client does
-    return `${url}/storage/v1/object/public/${BUCKET}/${filePath}`;
+    // Build the same URL shape the JS client returns. For the public bucket we
+    // return the public URL; for a private bucket the public-style URL won't
+    // resolve without a signature — callers (floor plans) re-sign on read via
+    // bucketFromObjectUrl + createSignedUrl, so we store the canonical
+    // `…/object/<bucket>/<path>` form from which both bucket and path parse back.
+    if (bucket === BUCKET) {
+      return `${url}/storage/v1/object/public/${BUCKET}/${filePath}`;
+    }
+    return `${url}/storage/v1/object/${bucket}/${filePath}`;
+  }
+
+  /** The private floor-plan bucket name. Exposed so the floor-plan controller
+   *  and migration script can route uploads there without hard-coding it. */
+  floorPlanBucketName(): string {
+    return FLOORPLAN_BUCKET;
   }
 
   publicUrlForPath(filePath: string): string {
@@ -243,14 +315,14 @@ export class SupabaseStorageService implements OnModuleInit {
   }
 
   /**
-   * Best-effort: recover the bucket-relative storage PATH from a stored
-   * Supabase object URL (public OR signed). Floor-plan rows persist a full
-   * public URL in `imageUrl`; to re-sign on read (Audit 37-infra F-1) we need
-   * the path back. Returns null if the URL isn't a recognizable Supabase
-   * `…/object/(public|sign)/<bucket>/<path>` shape for OUR bucket — caller
-   * then falls back to the stored URL unchanged.
+   * Best-effort: split a stored Supabase object URL (public OR signed) into its
+   * { bucket, path }. Floor-plan rows persist a full URL in `imageUrl`; old
+   * floor plans live in the public `assets` bucket, new ones in the private
+   * `floor-plans` bucket — so to re-sign on read we must derive BOTH from the
+   * stored URL (no schema change). Returns null if the URL isn't a recognizable
+   * Supabase `…/object/(public|sign|authenticated)/<bucket>/<path>` shape.
    */
-  pathFromObjectUrl(objectUrl: string): string | null {
+  parseObjectUrl(objectUrl: string): { bucket: string; path: string } | null {
     if (typeof objectUrl !== 'string' || !objectUrl) return null;
     try {
       const u = new URL(objectUrl);
@@ -259,15 +331,38 @@ export class SupabaseStorageService implements OnModuleInit {
       const idx = u.pathname.indexOf(marker);
       if (idx === -1) return null;
       let rest = u.pathname.slice(idx + marker.length); // e.g. "public/assets/<tenant>/floor-plans/x.png"
-      // Drop the access-mode segment (public | sign | authenticated).
+      // Drop the access-mode segment (public | sign | authenticated). Private
+      // buckets omit it, so this is a no-op there.
       rest = rest.replace(/^(public|sign|authenticated)\//, '');
-      const prefix = `${BUCKET}/`;
-      if (!rest.startsWith(prefix)) return null;
-      const path = rest.slice(prefix.length);
-      return path ? decodeURIComponent(path) : null;
+      const slash = rest.indexOf('/');
+      if (slash <= 0) return null;
+      const bucket = rest.slice(0, slash);
+      const path = rest.slice(slash + 1);
+      if (!bucket || !path) return null;
+      return { bucket, path: decodeURIComponent(path) };
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Recover the bucket-relative storage PATH from a stored Supabase object URL.
+   * Bucket-agnostic now (old floor plans live in `assets`, new in `floor-plans`).
+   * Returns null if the URL isn't a recognizable Supabase object URL — caller
+   * then falls back to the stored URL unchanged.
+   */
+  pathFromObjectUrl(objectUrl: string): string | null {
+    return this.parseObjectUrl(objectUrl)?.path ?? null;
+  }
+
+  /**
+   * Recover the BUCKET segment from a stored Supabase object URL. Floor-plan
+   * re-signing (launch-readiness P1) must sign against the bucket the object
+   * ACTUALLY lives in — old plans in the public `assets` bucket, new plans in
+   * the private `floor-plans` bucket. Returns null if unparseable.
+   */
+  bucketFromObjectUrl(objectUrl: string): string | null {
+    return this.parseObjectUrl(objectUrl)?.bucket ?? null;
   }
 
   /**
@@ -279,12 +374,12 @@ export class SupabaseStorageService implements OnModuleInit {
    * floor-plan endpoints. Returns null on any failure so the caller can fall
    * back to the stored URL instead of breaking the page.
    */
-  async createSignedUrl(filePath: string, expiresInSeconds = 300): Promise<string | null> {
+  async createSignedUrl(filePath: string, expiresInSeconds = 300, bucket: string = BUCKET): Promise<string | null> {
     try {
-      const storage = this.ensureClient().storage.from(BUCKET) as any;
+      const storage = this.ensureClient().storage.from(bucket) as any;
       const { data, error } = await storage.createSignedUrl(filePath, expiresInSeconds);
       if (error) {
-        this.logger.warn(`createSignedUrl failed for ${filePath}: ${error.message}`);
+        this.logger.warn(`createSignedUrl failed for ${bucket}/${filePath}: ${error.message}`);
         return null;
       }
       const raw = data?.signedUrl || data?.signedURL;
@@ -295,7 +390,7 @@ export class SupabaseStorageService implements OnModuleInit {
       const { url } = this.supabaseConfig();
       return raw.startsWith('/storage/v1') ? `${url}${raw}` : `${url}/storage/v1${raw.startsWith('/') ? '' : '/'}${raw}`;
     } catch (e: any) {
-      this.logger.warn(`createSignedUrl threw for ${filePath}: ${e?.message ?? e}`);
+      this.logger.warn(`createSignedUrl threw for ${bucket}/${filePath}: ${e?.message ?? e}`);
       return null;
     }
   }

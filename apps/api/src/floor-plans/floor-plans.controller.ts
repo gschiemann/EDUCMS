@@ -237,9 +237,17 @@ export class FloorPlansController {
    */
   private async withSignedImageUrl<T extends { imageUrl?: string | null }>(plan: T): Promise<T> {
     if (!plan || !plan.imageUrl) return plan;
-    const path = this.storage.pathFromObjectUrl(plan.imageUrl);
-    if (!path) return plan; // unrecognized URL shape — leave untouched
-    const signed = await this.storage.createSignedUrl(path, FLOOR_PLAN_SIGNED_URL_TTL_SECONDS);
+    // Derive BOTH bucket + path from the stored URL so we sign against the
+    // bucket the object actually lives in (launch-readiness P1): old floor
+    // plans live in the public `assets` bucket, new ones in the private
+    // `floor-plans` bucket. Signing against the wrong bucket would 404.
+    const parsed = this.storage.parseObjectUrl(plan.imageUrl);
+    if (!parsed) return plan; // unrecognized URL shape — leave untouched
+    const signed = await this.storage.createSignedUrl(
+      parsed.path,
+      FLOOR_PLAN_SIGNED_URL_TTL_SECONDS,
+      parsed.bucket,
+    );
     return signed ? { ...plan, imageUrl: signed } : plan;
   }
 
@@ -460,14 +468,24 @@ export class FloorPlansController {
       }
     }
 
-    // Upload to Supabase storage. Path is tenant-scoped so a stray URL
-    // can't leak across tenants if it ever escapes the public bucket.
+    // Upload to the PRIVATE floor-plan bucket (launch-readiness P1). Floor
+    // plans are operational-security data (building layouts + exits); the
+    // public `assets` bucket would expose them to anyone with the URL forever.
+    // The private bucket's bytes are only retrievable via the short-TTL signed
+    // URL minted on read (withSignedImageUrl) from these RBAC-gated endpoints.
+    // Path is also tenant-scoped as defense in depth.
     const rawOriginalName = typeof file.originalname === 'string' ? file.originalname : '';
     const ext = (rawOriginalName.split('.').pop() || 'png').toLowerCase().slice(0, 6) || 'png';
     const filePath = `${tenantId}/floor-plans/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    // Stored URL (private bucket → not world-readable; re-signed on every read).
     let publicUrl: string;
     try {
-      publicUrl = await this.storage.upload(filePath, safeBuffer, file.mimetype);
+      publicUrl = await this.storage.uploadToBucket(
+        this.storage.floorPlanBucketName(),
+        filePath,
+        safeBuffer,
+        file.mimetype,
+      );
     } catch (err: any) {
       const detail = err?.message ? String(err.message).slice(0, 400) : 'storage upload failed';
       this.logger.error(
