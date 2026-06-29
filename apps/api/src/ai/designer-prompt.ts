@@ -56,6 +56,55 @@ export interface DesignerBoardOptions {
 const FONT_LIST = DESIGNER_FONTS.join(', ');
 
 /**
+ * A worked, Taurus-safe exemplar baked into the system prompt as a few-shot
+ * anchor. It demonstrates the craft level + the exact technical contract (fixed
+ * stage + self-scale script, fonts <link>, photo panel WITH a scrim so content
+ * stays the hero, eyebrow, characterful display wordmark, dotted-leader menu
+ * rows with tabular prices, footer, data-field/data-imgslot hooks, NO
+ * inset/gap). The model is told to MATCH THE QUALITY for the real brief — never
+ * to copy it verbatim. Keep this Chromium-83-clean (auditDesignerHtmlTaurus must
+ * return [] for it — there is a unit test).
+ */
+export const DESIGNER_EXEMPLAR = [
+  '<!doctype html><html lang="en"><head><meta charset="utf-8">',
+  '<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">',
+  '<style>',
+  '*{margin:0;padding:0;box-sizing:border-box}',
+  'html,body{width:100%;height:100%;background:#15181c;overflow:hidden}',
+  '#fit{position:absolute;top:0;left:0;transform-origin:top left}',
+  '.stage{position:relative;width:1920px;height:1080px;background:linear-gradient(135deg,#23282f,#15181c);color:#f0f1f3;font-family:Inter,sans-serif;overflow:hidden}',
+  '.photo{position:absolute;top:0;right:0;bottom:0;width:640px}',
+  '.photo img{width:100%;height:100%;object-fit:cover;filter:grayscale(.25) contrast(1.05)}',
+  '.photo:after{content:"";position:absolute;top:0;left:0;bottom:0;width:260px;background:linear-gradient(90deg,#23282f,rgba(35,40,47,0))}',
+  '.body{position:absolute;top:96px;left:110px;width:1040px}',
+  '.eyebrow{font-weight:700;letter-spacing:.32em;text-transform:uppercase;font-size:26px;color:#f0523d;margin-bottom:18px}',
+  '.wordmark{font-family:Fraunces,serif;font-weight:800;font-size:130px;line-height:.92;letter-spacing:-.01em}',
+  '.wordmark span{color:#f0523d}',
+  '.tag{font-size:30px;color:#c1c8d1;margin-top:14px;margin-bottom:60px}',
+  '.row{display:flex;align-items:baseline;margin-bottom:32px}',
+  '.nm{font-family:Fraunces,serif;font-weight:600;font-size:50px;white-space:nowrap}',
+  '.dots{flex:1;border-bottom:2px dotted #4a5464;margin:0 18px 12px}',
+  '.pr{font-weight:700;font-size:46px;color:#f0523d;font-variant-numeric:tabular-nums}',
+  '.foot{position:absolute;left:110px;bottom:60px;font-size:26px;color:#c1c8d1;letter-spacing:.04em}',
+  '.foot b{color:#f0f1f3;font-weight:700}',
+  '</style></head><body><div id="fit"><div class="stage">',
+  '<div class="photo"><img data-imgslot="hero" src="https://images.unsplash.com/photo-1497935586351-b67a49e012bf?w=1200&q=80&auto=format&fit=crop" onerror="this.style.display=\'none\'" alt=""></div>',
+  '<div class="body">',
+  '<div class="eyebrow" data-field="eyebrow">Brentwood · Est. 2019</div>',
+  '<div class="wordmark" data-field="venue">Chrome<span>.</span></div>',
+  '<div class="tag" data-field="tagline">Single-origin espresso &amp; slow mornings</div>',
+  '<div class="row"><div class="nm" data-field="item.0.name">Cortado</div><div class="dots"></div><div class="pr" data-field="item.0.price">$4.5</div></div>',
+  '<div class="row"><div class="nm" data-field="item.1.name">Pour Over</div><div class="dots"></div><div class="pr" data-field="item.1.price">$5</div></div>',
+  '<div class="row"><div class="nm" data-field="item.2.name">Brown Sugar Latte</div><div class="dots"></div><div class="pr" data-field="item.2.price">$5.75</div></div>',
+  '<div class="row"><div class="nm" data-field="item.3.name">Cold Brew</div><div class="dots"></div><div class="pr" data-field="item.3.price">$5</div></div>',
+  '</div>',
+  '<div class="foot"><b data-field="hours">Open 6a–4p daily</b> · 11700 San Vicente Blvd</div>',
+  '</div></div>',
+  '<script>(function(){var W=1920,H=1080,f=document.getElementById("fit");function s(){var k=Math.min(window.innerWidth/W,window.innerHeight/H);f.style.transform="scale("+k+")";f.style.left=((window.innerWidth-W*k)/2)+"px";f.style.top=((window.innerHeight-H*k)/2)+"px";}s();window.addEventListener("resize",s);})();</script>',
+  '</body></html>',
+].join('');
+
+/**
  * The system prompt — a world-class signage designer. This is the IP; tune it
  * against live screenshots until 3-of-3 generations come back designer-level.
  */
@@ -69,6 +118,8 @@ export const DESIGNER_SYSTEM_PROMPT = [
   '- Real typography: pair a CHARACTERFUL display face with a clean body face; dramatic size contrast; tight display tracking; large enough to read across a room.',
   '- Real detail: dividers / hairline rules, an eyebrow/kicker, dotted leader lines on menus, section labels, a small accent tick or rule, layered depth (a duotone photo, a subtle texture/gradient, a color-blocked panel). Borrow the craft of a printed poster or a designed menu.',
   '- Real imagery where it fits: a relevant photograph (hero, side panel, or full-bleed with a legibility scrim). Use Unsplash source URLs (https://images.unsplash.com/photo-...?w=1600&q=80&auto=format&fit=crop) chosen for the venue/topic. ALWAYS put a CSS gradient (in the venue palette) BEHIND every image so a failed load is still on-brand, never blank. Add onerror="this.style.display=\'none\'" to <img>.',
+  '',
+  'CONTENT IS THE HERO (the #1 failure to avoid): the board exists to communicate its CONTENT — the menu, the offer, the headline, the schedule. That content must be the largest, sharpest, most prominent thing on the board and fully legible across a room. Photography SUPPORTS the content — confine it to a panel/strip OR, if full-bleed, lay a strong palette scrim/duotone over it so EVERY character stays crisp. NEVER let a photo or background wash dominate and shrink the content to an afterthought. If you must choose, the content wins.',
   '',
   'BRAND — match the venue, do not invent a generic look:',
   '- Use the supplied palette as the backbone (primary, accents, ink, surface). If none, derive a tasteful on-vertical palette.',
@@ -84,6 +135,9 @@ export const DESIGNER_SYSTEM_PROMPT = [
   '- Chromium-83 SAFE CSS ONLY: NEVER use the `inset` shorthand (use top/right/bottom/left longhand). NEVER use `gap` on flex/grid (use margins). NO :has(), NO container queries, NO CSS nesting, NO color-mix()/oklch(). Prefer flexbox + absolute positioning. backdrop-filter is unreliable — avoid or provide a solid fallback.',
   '- NO external <script src> (no remote code). NO <iframe>/<object>/<embed>. Inline <style> + the one self-scaling <script> + the fonts <link> + <img> from https only.',
   '- Everything must fit inside the canvas with no scrollbars and no clipped text.',
+  '',
+  'STUDY THIS EXEMPLAR for the craft level + the exact technical contract (fixed stage, self-scale script, fonts link, photo-with-scrim so content stays the hero, eyebrow, characterful wordmark, dotted-leader rows, tabular prices, data-field/data-imgslot hooks, NO inset/gap). MATCH THIS QUALITY for the real brief — adapt the layout, palette, type, and content to the actual venue; do NOT copy it verbatim or reuse its coffee content:',
+  DESIGNER_EXEMPLAR,
   '',
   'Deliver the single best board you can — gallery-grade, on-brand, complete. Return ONLY the HTML.',
 ].join('\n');
