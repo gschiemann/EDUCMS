@@ -1382,6 +1382,10 @@ export interface AiTemplateCandidate {
   /** Wave 3 — the ArtDirectorSpec this candidate was built from, so chat-to-edit
    *  (refine-signage) can patch it as a delta-prompt. Present on engine candidates. */
   spec?: any;
+  /** AI Designer (2026-06-29) — when set, this candidate is a full-HTML board.
+   *  Carries the raw HTML so the picker can persist it via create-designer
+   *  (base64). The preview renders it through the EXTERNAL_HTML srcdoc zone. */
+  _designerHtml?: string;
 }
 
 export interface AiGenerateCandidatesResponse {
@@ -1461,6 +1465,83 @@ export function useCreateFromCandidate() {
   >({
     mutationFn: (body) =>
       apiFetch<{ template: any }>('/templates/create-from-candidate', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['templates'] });
+    },
+  });
+}
+
+// ─── AI Designer (2026-06-29) — full-HTML, designer-grade boards ──────
+//
+// A top model AUTHORS a COMPLETE premium HTML signage board (not a templated
+// engine layout). Each candidate is the whole board as an HTML string; it
+// renders through the EXTERNAL_HTML srcdoc path (ExternalHtmlWidget). The
+// picker maps each into a one-zone EXTERNAL_HTML candidate for preview, then
+// persists the chosen board via create-designer as base64 (the global
+// SanitizationPipe strips a raw html field — base64 survives it).
+
+/** One AI-designed board: the whole document as an HTML string. */
+export interface DesignerBoardCandidate {
+  name: string;
+  html: string;
+  screenWidth: number;
+  screenHeight: number;
+  taurusWarnings?: string[];
+}
+
+export interface DesignerCandidatesResponse {
+  candidates: DesignerBoardCandidate[];
+  source?: 'tenant' | 'platform';
+  usage?: { used: number; cap: number; resetAt: string } | null;
+}
+
+export function useGenerateDesignerCandidates() {
+  // Not persisted until the operator picks one (useCreateDesigner invalidates).
+  return useMutation<
+    DesignerCandidatesResponse,
+    Error,
+    {
+      prompt: string;
+      screenWidth?: number;
+      screenHeight?: number;
+      vertical?: string;
+      palette?: string[];
+      venueName?: string;
+      tagline?: string;
+      logoUrl?: string;
+      content?: string;
+      reference?: string;
+      count?: number;
+    }
+  >({
+    mutationFn: (body) =>
+      apiFetch<DesignerCandidatesResponse>('/templates/generate-designer/candidates', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+  });
+}
+
+export function useCreateDesigner() {
+  const qc = useQueryClient();
+  // create-designer returns the created template directly (mapTemplate), so the
+  // result carries `.id`. The HTML must be base64 (htmlBase64) to survive the
+  // global input sanitizer untouched.
+  return useMutation<
+    { id: string; [k: string]: any },
+    Error,
+    {
+      name?: string;
+      htmlBase64: string;
+      screenWidth?: number;
+      screenHeight?: number;
+    }
+  >({
+    mutationFn: (body) =>
+      apiFetch<{ id: string; [k: string]: any }>('/templates/create-designer', {
         method: 'POST',
         body: JSON.stringify(body),
       }),

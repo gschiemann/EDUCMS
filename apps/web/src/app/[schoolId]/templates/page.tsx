@@ -25,6 +25,7 @@ import {
   useTenantBranding, useApplyBrandToTemplates,
   useGenerateTouchTemplate, useExportTemplate, useImportTemplate,
   useGenerateTouchCandidates, useCreateFromCandidate, useRefineSignageBoard, type AiTemplateCandidate,
+  useGenerateDesignerCandidates, useCreateDesigner,
   useRegenerateBoardImage,
 } from '@/hooks/use-api';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
@@ -430,6 +431,10 @@ export default function TemplatesPage() {
   // ONE cohesive multi-scene template that plays itself. Mutually exclusive with
   // Touch; a set is always non-touch signage.
   const [aiSetMode, setAiSetMode] = useState(false);
+  // AI Designer (2026-06-29) — a top model AUTHORS a full designer-grade HTML
+  // board (not a templated engine layout). Mutually exclusive with Touch/Set;
+  // always non-touch. Routes generate→generate-designer and pick→create-designer.
+  const [aiDesignerMode, setAiDesignerMode] = useState(false);
   // CC-1 (2026-06-27) — canvas size for the AI generate request. Without this
   // every board was generated at 1920×1080 and CLIPPED on a real screen of a
   // different aspect (the live LED is 960×1080 portrait). { w, h } is forwarded
@@ -582,7 +587,11 @@ export default function TemplatesPage() {
   const generateTouch = useGenerateTouchTemplate();
   const generateCandidates = useGenerateTouchCandidates();
   const createFromCandidate = useCreateFromCandidate();
+  const generateDesigner = useGenerateDesignerCandidates();
+  const createDesigner = useCreateDesigner();
   const refineSignage = useRefineSignageBoard();
+  // Any AI generation in flight (touch-engine OR designer) drives the spinners.
+  const aiBusy = [generateCandidates, generateDesigner].some((m) => m.isPending);
   const exportTemplate = useExportTemplate();
   const importTemplate = useImportTemplate();
 
@@ -678,6 +687,34 @@ export default function TemplatesPage() {
         return;
       }
       try {
+        // AI Designer (2026-06-29): a top model authors the WHOLE board as HTML.
+        // Each board maps to a one-zone EXTERNAL_HTML candidate so the existing
+        // pick-grid previews it via srcdoc; the raw html rides on _designerHtml
+        // for persist (create-designer, base64).
+        if (aiDesignerMode) {
+          const dres = await generateDesigner.mutateAsync({
+            prompt,
+            screenWidth: aiCanvas.w,
+            screenHeight: aiCanvas.h,
+            vertical: (tenantCopy.vertical || 'venue').toLowerCase(),
+            count: 3,
+            // palette/content/venueName/tagline ride through (schema passthrough).
+            ...(intakeFields as Record<string, any>),
+          });
+          const boards = dres?.candidates || [];
+          if (!boards.length) {
+            setAiError('The AI returned no options. Try rephrasing your prompt with more concrete details.');
+            return;
+          }
+          const mapped: AiTemplateCandidate[] = boards.map((b) => ({
+            name: b.name || 'AI Designer board',
+            zones: [{ name: 'board', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, defaultConfig: { html: b.html } }],
+            _designerHtml: b.html,
+          }));
+          setAiCandidates(mapped);
+          setAiPhase('pick');
+          return;
+        }
         const res = await generateCandidates.mutateAsync({
           prompt,
           // CC-1 — lay the board out for the chosen aspect so it isn't clipped on
@@ -713,7 +750,7 @@ export default function TemplatesPage() {
         setAiError(friendlyAiError(e));
       }
     },
-    [aiInteractive, aiSetMode, aiCanvas, tenantCopy.vertical, generateCandidates],
+    [aiInteractive, aiSetMode, aiDesignerMode, aiCanvas, tenantCopy.vertical, generateCandidates, generateDesigner],
   );
 
   // The WIZARD path: prompt = the wizard's prompt field; intake = the guided
@@ -749,6 +786,27 @@ export default function TemplatesPage() {
     setAiError(null);
     setAiPicking(index);
     try {
+      // AI Designer board → persist the full HTML via create-designer. base64
+      // so the global input sanitizer passes it through intact (a raw html
+      // field would be gutted of its <style>/<script>).
+      if (candidate._designerHtml) {
+        const htmlBase64 = btoa(unescape(encodeURIComponent(candidate._designerHtml)));
+        const created = await createDesigner.mutateAsync({
+          name: candidate.name,
+          htmlBase64,
+          screenWidth: aiCanvas.w,
+          screenHeight: aiCanvas.h,
+        });
+        if (created?.id) {
+          closeAiModal();
+          setAiPrompt('');
+          openInBuilder(created as unknown as Template);
+        } else {
+          setAiError('That option could not be created. Pick another or regenerate.');
+          setAiPicking(null);
+        }
+        return;
+      }
       const res = await createFromCandidate.mutateAsync({
         candidate,
         // CC-1 — persist the template at the same canvas it was laid out for,
@@ -774,7 +832,7 @@ export default function TemplatesPage() {
       setAiError(friendlyAiError(e));
       setAiPicking(null);
     }
-  }, [aiCandidates, aiInteractive, aiCanvas, createFromCandidate, closeAiModal, openInBuilder]);
+  }, [aiCandidates, aiInteractive, aiCanvas, createFromCandidate, createDesigner, closeAiModal, openInBuilder]);
 
   // Wave 3 — chat-to-edit. Refine candidate `index` by a natural-language tweak
   // (delta-prompt over its spec) and REPLACE it in place. Closes the tweak box.
@@ -1151,7 +1209,7 @@ export default function TemplatesPage() {
           // the backdrop element itself, not a bubbled selection.
           onClick={(e) => {
             if (e.target !== e.currentTarget) return;
-            if (generateCandidates.isPending || aiPicking !== null) return;
+            if (aiBusy || aiPicking !== null) return;
             closeAiModal();
           }}
         >
@@ -1185,8 +1243,8 @@ export default function TemplatesPage() {
                 </div>
               </div>
               <button
-                onClick={() => { if (!generateCandidates.isPending && aiPicking === null) closeAiModal(); }}
-                disabled={generateCandidates.isPending || aiPicking !== null}
+                onClick={() => { if (!aiBusy && aiPicking === null) closeAiModal(); }}
+                disabled={aiBusy || aiPicking !== null}
                 className="text-slate-400 hover:text-slate-600 disabled:opacity-40"
                 aria-label="Close"
               >
@@ -1346,11 +1404,11 @@ export default function TemplatesPage() {
                   </button>
                   <button
                     onClick={runGenerateCandidates}
-                    disabled={generateCandidates.isPending || aiPicking !== null}
+                    disabled={aiBusy || aiPicking !== null}
                     className="px-4 py-2 text-sm font-bold rounded-xl bg-white border border-violet-200 text-violet-700 hover:bg-violet-50 disabled:opacity-50 flex items-center gap-1.5"
                   >
-                    {generateCandidates.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
-                    {generateCandidates.isPending ? 'Generating…' : 'Regenerate'}
+                    {aiBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+                    {aiBusy ? 'Generating…' : 'Regenerate'}
                   </button>
                 </div>
               </>
@@ -1365,31 +1423,40 @@ export default function TemplatesPage() {
                 const typeToggle = (
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-semibold text-slate-500">Type:</span>
-                    <div className="inline-flex rounded-xl bg-slate-100 p-1">
+                    <div className="inline-flex rounded-xl bg-slate-100 p-1 flex-wrap">
                       <button
                         type="button"
-                        onClick={() => { setAiInteractive(true); setAiSetMode(false); }}
-                        disabled={generateCandidates.isPending}
-                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${aiInteractive && !aiSetMode ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        onClick={() => { setAiInteractive(true); setAiSetMode(false); setAiDesignerMode(false); }}
+                        disabled={aiBusy}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${aiInteractive && !aiSetMode && !aiDesignerMode ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                       >
                         Touch (interactive)
                       </button>
                       <button
                         type="button"
-                        onClick={() => { setAiInteractive(false); setAiSetMode(false); }}
-                        disabled={generateCandidates.isPending}
-                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${!aiInteractive && !aiSetMode ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        onClick={() => { setAiInteractive(false); setAiSetMode(false); setAiDesignerMode(false); }}
+                        disabled={aiBusy}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${!aiInteractive && !aiSetMode && !aiDesignerMode ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                       >
                         Display (no touch)
                       </button>
                       <button
                         type="button"
-                        onClick={() => { setAiSetMode(true); setAiInteractive(false); }}
-                        disabled={generateCandidates.isPending}
+                        onClick={() => { setAiSetMode(true); setAiInteractive(false); setAiDesignerMode(false); }}
+                        disabled={aiBusy}
                         title="One prompt (or one idea per line) → a whole set of boards that plays itself"
-                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${aiSetMode ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${aiSetMode && !aiDesignerMode ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                       >
                         ✨ Build a set
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setAiDesignerMode(true); setAiInteractive(false); setAiSetMode(false); }}
+                        disabled={aiBusy}
+                        title="A top AI designer authors a complete, designer-grade signage board — pick from 3 distinct options"
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${aiDesignerMode ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                        ✨ Designer (HTML)
                       </button>
                     </div>
                   </div>
@@ -1416,7 +1483,7 @@ export default function TemplatesPage() {
                           key={p.key}
                           type="button"
                           onClick={() => setAiCanvas({ w: p.w, h: p.h })}
-                          disabled={generateCandidates.isPending}
+                          disabled={aiBusy}
                           title={`${p.w}×${p.h}`}
                           className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${
                             !matchedScreen && orient === p.key
@@ -1436,7 +1503,7 @@ export default function TemplatesPage() {
                           const opt = aiScreenOptions.find((o) => o.id === e.target.value);
                           if (opt) setAiCanvas({ w: opt.w, h: opt.h });
                         }}
-                        disabled={generateCandidates.isPending}
+                        disabled={aiBusy}
                         className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-50 border border-slate-200 text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-50 max-w-[200px]"
                       >
                         <option value="">Match a screen…</option>
@@ -1466,7 +1533,7 @@ export default function TemplatesPage() {
                         vertical={(tenantCopy.vertical || 'venue').toLowerCase()}
                         canvas={aiCanvas}
                         interactive={aiInteractive}
-                        generating={generateCandidates.isPending}
+                        generating={aiBusy}
                         generateError={aiError}
                         screenPicker={screenPicker}
                         typeToggle={typeToggle}
@@ -1475,7 +1542,7 @@ export default function TemplatesPage() {
                       <button
                         type="button"
                         onClick={() => { setAiIntakeMode('wizard'); setAiError(null); }}
-                        disabled={generateCandidates.isPending}
+                        disabled={aiBusy}
                         className="self-center text-xs font-semibold text-slate-400 hover:text-violet-600 underline-offset-2 hover:underline disabled:opacity-50"
                       >
                         Use the guided form instead
@@ -1500,14 +1567,14 @@ export default function TemplatesPage() {
                       typeToggle={typeToggle}
                       onGenerate={runGenerateCandidates}
                       onCancel={closeAiModal}
-                      isPending={generateCandidates.isPending}
+                      isPending={aiBusy}
                       error={aiError}
                       setMode={aiSetMode}
                     />
                     <button
                       type="button"
                       onClick={() => { setAiIntakeMode('chat'); setAiError(null); }}
-                      disabled={generateCandidates.isPending}
+                      disabled={aiBusy}
                       className="self-center text-xs font-semibold text-slate-400 hover:text-violet-600 underline-offset-2 hover:underline disabled:opacity-50"
                     >
                       ← Back to chat with the Concierge
