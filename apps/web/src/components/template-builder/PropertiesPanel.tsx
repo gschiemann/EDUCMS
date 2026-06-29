@@ -2493,7 +2493,9 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       // overrides through the iframe URL (`?text=…`) where the V2
       // brand shim applies them at first paint, on both the editor
       // preview AND every player at runtime.
-      if (cfg.url) {
+      // url boards fetch their HTML; AI Designer boards carry it inline in
+      // cfg.html (srcdoc). Either way the editor walks the data-field hooks.
+      if (cfg.url || cfg.html) {
         fields.push(SH('ext-text', 'Edit text'));
         fields.push(
           <ExternalHtmlTextEditor
@@ -6633,6 +6635,9 @@ function ExternalHtmlTextEditor({
   setField: (patch: Record<string, any>) => void;
 }) {
   const url = typeof cfg?.url === 'string' ? cfg.url.trim() : '';
+  // AI Designer boards carry their HTML INLINE (cfg.html, srcdoc) — no url to
+  // fetch. Discover fields from that string directly; static boards fetch url.
+  const inlineHtml = typeof cfg?.html === 'string' ? cfg.html.trim() : '';
   // discoveredFields: ordered list of {key, defaultText, sectionKey}
   // null = still loading, [] = no fields (or fetch failed gracefully).
   const [discoveredFields, setDiscoveredFields] = useState<
@@ -6656,7 +6661,7 @@ function ExternalHtmlTextEditor({
   >(null);
 
   useEffect(() => {
-    if (!url) {
+    if (!url && !inlineHtml) {
       setDiscoveredFields([]);
       setDiscoveredImages([]); setDiscoveredActions([]);
       return;
@@ -6664,8 +6669,11 @@ function ExternalHtmlTextEditor({
     let cancelled = false;
     setDiscoveredFields(null);
     setDiscoveredImages(null); setDiscoveredActions(null);
-    fetch(url, { credentials: 'omit' })
-      .then((res) => res.ok ? res.text() : '')
+    // Inline (AI Designer) → parse cfg.html directly; url board → fetch it.
+    const htmlSource: Promise<string> = inlineHtml
+      ? Promise.resolve(inlineHtml)
+      : fetch(url, { credentials: 'omit' }).then((res) => (res.ok ? res.text() : ''));
+    htmlSource
       .then((html) => {
         if (cancelled) return;
         if (!html) {
@@ -6752,7 +6760,7 @@ function ExternalHtmlTextEditor({
         if (!cancelled) { setDiscoveredFields([]); setDiscoveredImages([]); setDiscoveredActions([]); }
       });
     return () => { cancelled = true; };
-  }, [url]);
+  }, [url, inlineHtml]);
 
   // 2026-06-01 — board → panel "hot zones" (the operator's actual ask:
   // "click a section and have it jump to the editable area"). The board
@@ -6776,7 +6784,7 @@ function ExternalHtmlTextEditor({
     const base = url.split('?')[0];
     const sendEditMode = () => {
       try {
-        document.querySelectorAll('iframe[title="Signage template"]').forEach((f) => {
+        document.querySelectorAll('iframe[title="Signage template"],iframe[title="AI-designed signage board"]').forEach((f) => {
           const fr = f as HTMLIFrameElement;
           try {
             if (base && fr.src && !fr.src.includes(base)) return;
