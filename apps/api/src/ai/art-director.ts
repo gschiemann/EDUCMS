@@ -942,7 +942,17 @@ function requiredWidgetConfig(
       // gathered are LOST and the widget falls back to the hardcoded cafeteria
       // sample. Absent items → omit `menu` (the widget then shows its own
       // placeholder, the prior behavior).
-      const cfg: Record<string, any> = { color: palette.ink, fontFamily: theme.fontPair.body };
+      // Pass the full theme subset so the LUNCH_MENU widget paints itself to
+      // MATCH the board (header=accent, body=surface, rows=ink/muted) instead of
+      // forcing its K-12 cafeteria green — the green clashed on a navy/red board.
+      const cfg: Record<string, any> = {
+        color: palette.ink,
+        accentColor: palette.accent,
+        onAccentColor: palette.onAccent,
+        bgColor: palette.surface,
+        mutedColor: palette.muted,
+        fontFamily: theme.fontPair.body,
+      };
       const menu = itemsToMenuString(copy?.items);
       if (menu) cfg.menu = menu;
       return cfg;

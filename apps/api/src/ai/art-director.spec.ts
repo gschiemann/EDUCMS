@@ -1,5 +1,6 @@
 import {
   ARCHETYPE_IDS,
+  getTheme,
   type ArchetypeId,
   type ArtDirectorSpec,
 } from '@cms/signage-design';
@@ -247,6 +248,24 @@ describe('artDirectorSpecToTemplate — functional widget emission', () => {
     expect(menu?.defaultConfig?.menu).toContain('Wings: $6 · half price');
     // Newline-joined, one row per item — the format the renderer parses.
     expect(menu?.defaultConfig?.menu.split('\n').length).toBe(2);
+  });
+
+  it('themes the LUNCH_MENU to the board palette (no more hardcoded green)', () => {
+    const out = artDirectorSpecToTemplate(eventSpec(), { ...CTX });
+    const menu = out.zones.find((z) => z.name === 'menu');
+    const cfg = menu?.defaultConfig;
+    // The widget needs accent (header), surface (body), onAccent (title) and
+    // muted (item rows) so it can paint itself to MATCH the board — not green.
+    const p = getTheme(eventSpec().theme)!.palette;
+    expect(cfg?.accentColor).toBe(p.accent);
+    expect(cfg?.onAccentColor).toBe(p.onAccent);
+    expect(cfg?.bgColor).toBe(p.surface);
+    expect(cfg?.mutedColor).toBe(p.muted);
+    expect(cfg?.color).toBe(p.ink);
+    // clean-corporate is a DARK theme (surface #1e293b) — proves the menu now
+    // carries a dark surface + light ink, the exact navy-board case that broke.
+    expect(cfg?.bgColor).toBe('#1e293b');
+    expect(cfg?.color).toBe('#ffffff');
   });
 
   it('seeds WEATHER with the venue location', () => {

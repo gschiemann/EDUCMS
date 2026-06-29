@@ -2302,6 +2302,46 @@ function BellScheduleWidget({ config, compact }: { config: any; compact: boolean
 // LUNCH MENU — Styled cafeteria menu
 // ═══════════════════════════════════════════════════════
 
+/** Parse a #rgb / #rrggbb hex into [r,g,b], or null for anything else
+ *  (rgb()/named/gradient strings) so callers can fall back gracefully.
+ *  Taurus-safe: pure JS, emits plain rgba()/hex the Chromium-83 parser accepts. */
+function parseHex(c?: string): [number, number, number] | null {
+  if (typeof c !== 'string') return null;
+  let h = c.trim();
+  if (h[0] !== '#') return null;
+  h = h.slice(1);
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+  if (h.length !== 6 || /[^0-9a-fA-F]/.test(h)) return null;
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+/** Relative luminance (0 dark … 1 light). Returns 1 (assume light) when unparseable. */
+function hexLuminance(c?: string): number {
+  const rgb = parseHex(c);
+  if (!rgb) return 1;
+  const [r, g, b] = rgb.map((v) => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+const isDarkColor = (c?: string) => hexLuminance(c) < 0.5;
+/** Lighten/darken a hex by `amt` (-1…1). Non-hex input is returned unchanged. */
+function shadeHex(c: string, amt: number): string {
+  const rgb = parseHex(c);
+  if (!rgb) return c;
+  const adj = rgb.map((v) => {
+    const next = amt >= 0 ? v + (255 - v) * amt : v * (1 + amt);
+    return Math.max(0, Math.min(255, Math.round(next)));
+  });
+  return `#${adj.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+/** hex → rgba() string with the given alpha; passthrough for non-hex. */
+function hexToRgba(c: string, alpha: number): string {
+  const rgb = parseHex(c);
+  if (!rgb) return c;
+  return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})`;
+}
+
 function LunchMenuWidget({ config, compact }: { config: any; compact: boolean }) {
   if (config.theme === 'diner-chalkboard') return <DinerChalkboardLunchMenu config={config} />;
   if (config.theme === 'library-quiet') return <LibraryQuietLunch config={config} />;
@@ -2309,15 +2349,48 @@ function LunchMenuWidget({ config, compact }: { config: any; compact: boolean })
   const lines = normalizeMenuLines(config.menu);
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
 
+  // THEME-AWARE (2026-06-28): when the board passes brand/theme colors
+  // (AI-generated signage boards via the art-director, or an operator who set
+  // the color fields), the menu paints itself to MATCH the board instead of
+  // forcing the K-12 cafeteria green. The green look stays the default ONLY
+  // when no theme colors are passed — back-compat for existing school presets.
+  const accent = config.accentColor || config.accent;
+  const surface = config.bgColor || config.surface;
+  const themed = !!(accent || surface);
+
+  const fontFamily = config.fontFamily || undefined;
+  // Surface the menu paints on. Default → the school green wash.
+  const bodyBg = surface
+    ? `linear-gradient(180deg, ${surface}, ${shadeHex(surface, isDarkColor(surface) ? 0.06 : -0.04)})`
+    : 'linear-gradient(180deg, #f0fdf4, #dcfce7)';
+  const dark = themed ? isDarkColor(surface || '#ffffff') : false;
+  // Header band uses the board accent (with a tasteful 2-tone gradient), else green.
+  const headerAccent = accent || '#16a34a';
+  const headerBg = themed
+    ? `linear-gradient(135deg, ${headerAccent}, ${shadeHex(headerAccent, 0.18)})`
+    : 'linear-gradient(135deg, #16a34a, #22c55e)';
+  // Title/icon sit ON the accent band → use the engine's onAccent (≥4.5:1), else white.
+  const onAccentColor = themed ? (config.onAccentColor || '#ffffff') : 'white';
+  // Row text — contrast-safe against the menu body. `color` is engine ink (≥7:1
+  // on surface); muted is engine-tuned but we floor it for legibility on dark.
+  const dayColor = themed ? (config.color || (dark ? '#ffffff' : '#0f172a')) : '#475569';
+  const itemColor = themed
+    ? (config.mutedColor || (dark ? 'rgba(255,255,255,0.82)' : 'rgba(15,23,42,0.66)'))
+    : '#64748b';
+  const todayBg = themed ? hexToRgba(headerAccent, dark ? 0.22 : 0.12) : 'rgba(34,197,94,0.1)';
+  const todayBorder = themed ? headerAccent : '#22c55e';
+  // "Today" gets a hair more emphasis without risking contrast: keep ink/day color.
+  const todayDayColor = themed ? dayColor : '#15803d';
+
   return (
-    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col overflow-hidden" style={{ background: 'linear-gradient(180deg, #f0fdf4, #dcfce7)' }}>
+    <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col overflow-hidden" style={{ background: bodyBg, fontFamily }}>
       <div style={{
-        background: 'linear-gradient(135deg, #16a34a, #22c55e)',
+        background: headerBg,
         padding: compact ? '3% 5%' : '4% 6%',
-        display: 'flex', alignItems: 'center', gap: '3%',
+        display: 'flex', alignItems: 'center',
       }}>
-        <UtensilsCrossed style={{ width: compact ? '0.6em' : '0.8em', height: compact ? '0.6em' : '0.8em', color: 'white' }} />
-        <span data-field="title" style={{ fontSize: compact ? '0.5em' : '0.7em', fontWeight: 700, color: 'white' }}>{title}</span>
+        <UtensilsCrossed style={{ width: compact ? '0.6em' : '0.8em', height: compact ? '0.6em' : '0.8em', color: onAccentColor, marginRight: '3%' }} />
+        <span data-field="title" style={{ fontSize: compact ? '0.5em' : '0.7em', fontWeight: 700, color: onAccentColor }}>{title}</span>
       </div>
       <div className="flex-1 overflow-y-auto" style={{ padding: '3% 5%' }}>
         {lines.map((line: string, i: number) => {
@@ -2327,11 +2400,11 @@ function LunchMenuWidget({ config, compact }: { config: any; compact: boolean })
             <div key={i} style={{
               padding: compact ? '2% 3%' : '3% 4%',
               borderRadius: 6, marginBottom: '1%',
-              background: isToday ? 'rgba(34,197,94,0.1)' : 'transparent',
-              borderLeft: isToday ? '3px solid #22c55e' : '3px solid transparent',
+              background: isToday ? todayBg : 'transparent',
+              borderLeft: isToday ? `3px solid ${todayBorder}` : '3px solid transparent',
             }}>
-              <div data-field={`menu.${i}.day`} style={{ fontSize: compact ? '0.4em' : '0.55em', fontWeight: 700, color: isToday ? '#15803d' : '#475569' }}>{day}</div>
-              {rest.length > 0 && <div data-field={`menu.${i}.items`} style={{ fontSize: compact ? '0.35em' : '0.48em', color: '#64748b', marginTop: '0.1em' }}>{rest.join(':').trim()}</div>}
+              <div data-field={`menu.${i}.day`} style={{ fontSize: compact ? '0.4em' : '0.55em', fontWeight: 700, color: isToday ? todayDayColor : dayColor }}>{day}</div>
+              {rest.length > 0 && <div data-field={`menu.${i}.items`} style={{ fontSize: compact ? '0.35em' : '0.48em', color: itemColor, marginTop: '0.1em' }}>{rest.join(':').trim()}</div>}
             </div>
           );
         })}
