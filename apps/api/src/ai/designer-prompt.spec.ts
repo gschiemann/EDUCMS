@@ -51,15 +51,21 @@ describe('designer-prompt — system prompt + user prompt', () => {
     expect(DESIGNER_FONTS.length).toBeGreaterThan(10);
   });
 
-  it('system prompt carries the content-is-hero rule + the worked exemplar', () => {
+  it('system prompt carries the content-is-hero rule, layout contract + the worked exemplar', () => {
     expect(DESIGNER_SYSTEM_PROMPT).toMatch(/CONTENT IS THE HERO/);
+    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/LAYOUT CONTRACT/);
+    expect(DESIGNER_SYSTEM_PROMPT).toMatch(/RESERVED footer band|reserved footer band/);
     expect(DESIGNER_SYSTEM_PROMPT).toContain(DESIGNER_EXEMPLAR);
   });
 
-  it('the baked exemplar is itself Taurus-safe + uses only loaded fonts + is a valid doc', () => {
+  it('the baked exemplar is itself Taurus-safe + uses only loaded fonts + has the auto-fit safety net', () => {
     // It is shown to the model as the gold standard — it must not teach bad CSS.
     expect(auditDesignerHtmlTaurus(DESIGNER_EXEMPLAR)).toHaveLength(0);
     expect(() => sanitizeDesignerHtml(DESIGNER_EXEMPLAR)).not.toThrow();
+    // The exemplar must demonstrate the content auto-fit + reserved footer band.
+    expect(DESIGNER_EXEMPLAR).toContain('fitCol');
+    expect(DESIGNER_EXEMPLAR).toContain('document.fonts');
+    expect(DESIGNER_EXEMPLAR).toContain('class="foot"');
     // Every font-family it names must be in the loaded set (else it teaches a
     // family the renderer drops to system-ui — the "unstyled" failure).
     const families = (DESIGNER_EXEMPLAR.match(/font-family:([^;}"]+)/g) || [])
