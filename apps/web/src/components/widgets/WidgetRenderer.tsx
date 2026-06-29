@@ -1854,7 +1854,10 @@ function SignageText({ config }: { config: any }) {
         deps={[content, config.detail, config.valueText, fontSize, fontFamily, fontWeight, rtl]}
       >
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div dir={dirAttr} style={{ ...baseTextStyle, textAlign: 'start' }}>{content}</div>
+          {/* nowrap so FitScaler shrinks a long name to ONE line instead of
+              breaking it mid-word ("Espr esso") — critical in a narrow 2-column
+              menu where the label column is ~half the canvas. */}
+          <div dir={dirAttr} style={{ ...baseTextStyle, textAlign: 'start', whiteSpace: 'nowrap' }}>{content}</div>
           {config.detail ? (
             <div
               dir={isRtlText(config.detail) ? 'rtl' : dirAttr}
