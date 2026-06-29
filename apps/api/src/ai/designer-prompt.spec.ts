@@ -8,6 +8,7 @@ import {
   sanitizeDesignerHtml,
   auditDesignerHtmlTaurus,
 } from './designer-prompt';
+import { DESIGNER_EDIT_SHIM, injectDesignerEditShim } from './designer-edit-shim';
 
 // A realistic (>200 char) self-contained board fixture — short docs are rejected.
 const DOC = '<!doctype html><html><head><meta charset="utf-8">'
@@ -142,6 +143,55 @@ describe('designer board persist — base64 transport survives the global saniti
     expect(gutted).not.toContain('<!doctype html>');
   });
 
+  it('placeholder', () => { expect(true).toBe(true); });
+});
+
+// Phase 4: the editability shim baked into AI Designer boards (EDUCMS-SHIM-V6).
+describe('injectDesignerEditShim', () => {
+  const DOC = '<!doctype html><html><head><meta charset="utf-8"></head>'
+    + '<body><div data-field="venue">Chrome</div><div data-imgslot="hero"></div></body></html>';
+
+  it('the shim carries the V6 marker + the editability protocol', () => {
+    expect(DESIGNER_EDIT_SHIM).toContain('EDUCMS-SHIM-V6');
+    expect(DESIGNER_EDIT_SHIM).toContain('educms-overrides');
+    expect(DESIGNER_EDIT_SHIM).toContain('educms-field-click');
+    expect(DESIGNER_EDIT_SHIM).toContain('educms-edit-mode');
+    expect(DESIGNER_EDIT_SHIM.trim().startsWith('<script>')).toBe(true);
+  });
+
+  it('injects the shim before </head> and is idempotent', () => {
+    const once = injectDesignerEditShim(DOC);
+    expect(once).toContain('EDUCMS-SHIM-V6');
+    // before </head>
+    expect(once.indexOf('EDUCMS-SHIM-V6')).toBeLessThan(once.indexOf('</head>'));
+    // re-injecting does nothing (no double shim)
+    const twice = injectDesignerEditShim(once);
+    expect(twice).toBe(once);
+    // exactly ONE shim injected (the marker lives once, in the script's /*…*/ comment)
+    expect(twice.split('EDUCMS-SHIM-V6').length - 1).toBe(1);
+    expect(twice.split('<script>').length).toBe(once.split('<script>').length);
+  });
+
+  it('falls back to </body> when there is no head, and appends otherwise', () => {
+    const noHead = '<body><div data-field="x">y</div></body>';
+    const r = injectDesignerEditShim(noHead);
+    expect(r).toContain('EDUCMS-SHIM-V6');
+    expect(r.indexOf('EDUCMS-SHIM-V6')).toBeLessThan(r.indexOf('</body>'));
+    const bare = '<div data-field="x">y</div>';
+    expect(injectDesignerEditShim(bare)).toContain('EDUCMS-SHIM-V6');
+  });
+
+  it('does nothing for non-string / empty input', () => {
+    expect(injectDesignerEditShim('')).toBe('');
+    expect(injectDesignerEditShim(undefined as unknown as string)).toBeUndefined();
+  });
+});
+
+describe('designer base64 transport (cont.)', () => {
+  const pipe = (s: string) => sanitizeHtml(s, {
+    allowedTags: sanitizeHtml.defaults.allowedTags.concat(['img']),
+    allowedAttributes: { ...sanitizeHtml.defaults.allowedAttributes, '*': ['style'] },
+  });
   it('base64 round-trips through the pipe untouched (the fix)', () => {
     const b64 = Buffer.from(DOC, 'utf8').toString('base64');
     expect(pipe(b64)).toBe(b64); // no tags → sanitize-html passes it through

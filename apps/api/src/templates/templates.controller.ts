@@ -16,6 +16,7 @@ import { verticalMatchOr } from './ensure-system-presets';
 import { AiService, sanitizeTouchTemplate } from '../ai/ai.service';
 import { parseGuidedIntake } from '../ai/guided-intake';
 import { sanitizeDesignerHtml } from '../ai/designer-prompt';
+import { injectDesignerEditShim } from '../ai/designer-edit-shim';
 import { z } from 'zod';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
 import { safeFetch } from '../branding/safe-fetch';
@@ -1099,7 +1100,12 @@ export class TemplatesController {
         throw new BadRequestException({ code: 'BAD_HTML', message: 'htmlBase64 is not valid base64' });
       }
     }
-    const { html } = sanitizeDesignerHtml(rawHtml);
+    const sanitized = sanitizeDesignerHtml(rawHtml);
+    // Phase 4: bake the EDUCMS-SHIM-V6 editability runtime into the board so it
+    // becomes click-to-edit + accepts live overrides via postMessage (same
+    // protocol the static boards + PropertiesPanel already speak). Trusted code
+    // injected server-side AFTER sanitize (never re-sanitized).
+    const html = injectDesignerEditShim(sanitized.html);
     const screenWidth = body.screenWidth || 1920;
     const screenHeight = body.screenHeight || 1080;
     const parsed = {

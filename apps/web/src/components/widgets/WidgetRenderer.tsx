@@ -3732,11 +3732,37 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
     return () => { el.removeEventListener('load', postMenu); };
   }, [postMenu]);
 
+  // AI DESIGNER overrides (Phase 4): a srcdoc board has NO URL, so brand / text /
+  // textStyles / image overrides reach the baked EDUCMS-SHIM-V6 via postMessage
+  // (educms-overrides) — the SAME message the static boards' URL-param path and
+  // the live-menu feed already use. Only fires for inline (srcdoc) boards; the
+  // url path keeps its URL-param passthrough. Re-posts on frame load + on change.
+  const postDesignerOverrides = useCallback(() => {
+    if (!inlineHtml) return;
+    const win = frameRef.current?.contentWindow;
+    if (!win) return;
+    const styles = config?.textStyles ?? config?._styles;
+    const payload: Record<string, unknown> = { type: 'educms-overrides' };
+    if (config?.brand) payload.brand = config.brand;
+    if (config?.textOverrides) payload.text = config.textOverrides;
+    if (styles) payload.textStyles = styles;
+    if (config?.imageOverrides) payload.img = config.imageOverrides;
+    if (config?.actionOverrides) payload.actions = config.actionOverrides;
+    try { win.postMessage(payload, '*'); } catch { /* detached / cross-origin — ignore */ }
+  }, [inlineHtml, config?.brand, config?.textOverrides, config?.textStyles, config?._styles, config?.imageOverrides, config?.actionOverrides]);
+  useEffect(() => {
+    postDesignerOverrides();
+    const el = frameRef.current;
+    if (!el) return;
+    el.addEventListener('load', postDesignerOverrides);
+    return () => { el.removeEventListener('load', postDesignerOverrides); };
+  }, [postDesignerOverrides]);
+
   // AI DESIGNER — inline HTML board. Same null-origin sandbox as the url path;
   // rendered via `srcdoc`. `key` on a cheap length+head hash so an edit reloads
-  // the frame. Overrides (brand/text/img) apply via postMessage to the shim
-  // (the url path's URL-param passthrough doesn't exist for srcdoc) — wired in a
-  // later phase; the AI bakes final content directly today.
+  // the frame. Overrides (brand/text/img) apply via postMessage to the baked
+  // EDUCMS-SHIM-V6 (see postDesignerOverrides above) — the srcdoc equivalent of
+  // the url path's URL-param passthrough.
   if (inlineHtml) {
     return (
       <iframe
