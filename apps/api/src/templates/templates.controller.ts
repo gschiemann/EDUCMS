@@ -60,11 +60,20 @@ type DesignerGenerateInput = z.infer<typeof DesignerGenerateSchema>;
 
 const DesignerCreateSchema = z.object({
   name: z.string().max(120).optional(),
-  // The AI-authored board HTML (re-sanitized server-side before persist).
-  html: z.string().min(200).max(400000),
+  // The AI-authored board HTML, re-sanitized server-side before persist.
+  // PREFER htmlBase64: the global SanitizationPipe (APP_PIPE) runs
+  // sanitize-html on EVERY request-body string and would strip the
+  // <!doctype>/<head>/<style>/<script> out of a raw `html` field — gutting
+  // the board to an unstyled fragment. A base64 payload has no HTML tags so
+  // the pipe passes it through untouched; we decode + re-sanitize here.
+  htmlBase64: z.string().min(260).max(560000).optional(),
+  html: z.string().min(200).max(400000).optional(),
   screenWidth: z.number().int().positive().max(8192).optional(),
   screenHeight: z.number().int().positive().max(8192).optional(),
-}).passthrough();
+}).passthrough().refine((v) => !!(v.htmlBase64 || v.html), {
+  message: 'html or htmlBase64 is required',
+  path: ['htmlBase64'],
+});
 type DesignerCreateInput = z.infer<typeof DesignerCreateSchema>;
 
 @Controller('api/v1/templates')
@@ -1077,9 +1086,20 @@ export class TemplatesController {
     @Request() req: any,
     @Body(new ZodValidationPipe(DesignerCreateSchema)) body: DesignerCreateInput,
   ) {
-    // Re-sanitize the round-tripped HTML (client JSON is never trusted) and persist
-    // as ONE full-bleed EXTERNAL_HTML zone — rendered via the sandboxed srcdoc path.
-    const { html } = sanitizeDesignerHtml(body.html);
+    // Decode the base64 transport (preferred — survives the global
+    // SanitizationPipe intact), falling back to a raw `html` field for
+    // older callers. Re-sanitize the round-tripped HTML (client JSON is
+    // never trusted) and persist as ONE full-bleed EXTERNAL_HTML zone —
+    // rendered via the sandboxed srcdoc path.
+    let rawHtml = body.html || '';
+    if (body.htmlBase64) {
+      try {
+        rawHtml = Buffer.from(body.htmlBase64, 'base64').toString('utf8');
+      } catch {
+        throw new BadRequestException({ code: 'BAD_HTML', message: 'htmlBase64 is not valid base64' });
+      }
+    }
+    const { html } = sanitizeDesignerHtml(rawHtml);
     const screenWidth = body.screenWidth || 1920;
     const screenHeight = body.screenHeight || 1080;
     const parsed = {

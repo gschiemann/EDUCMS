@@ -1,3 +1,4 @@
+import sanitizeHtml from 'sanitize-html';
 import {
   DESIGNER_FONTS,
   DESIGNER_SYSTEM_PROMPT,
@@ -91,5 +92,38 @@ describe('sanitizeDesignerHtml', () => {
 
   it('clean Taurus-safe HTML produces no warnings', () => {
     expect(auditDesignerHtmlTaurus(DOC)).toHaveLength(0);
+  });
+});
+
+// The global SanitizationPipe (app.module.ts APP_PIPE) runs sanitize-html on
+// every request-body string. A RAW `html` field is gutted by it (loses
+// <!doctype>/<head>/<style>/<script>) — that bug truncated an 11,445-char
+// board to a 3,022-char unstyled fragment on persist (2026-06-28). The fix:
+// create-designer accepts `htmlBase64` instead. This locks in *why* — if a
+// future refactor reverts to a raw html field, this test fails loudly.
+describe('designer board persist — base64 transport survives the global sanitizer', () => {
+  // mirror SanitizationPipe.sanitizeString exactly
+  const pipe = (s: string) => sanitizeHtml(s, {
+    allowedTags: sanitizeHtml.defaults.allowedTags.concat(['img']),
+    allowedAttributes: { ...sanitizeHtml.defaults.allowedAttributes, '*': ['style'] },
+  });
+
+  it('RAW html is destroyed by the pipe (the original bug)', () => {
+    const gutted = pipe(DOC);
+    expect(gutted.length).toBeLessThan(DOC.length);
+    expect(gutted).not.toContain('<style>');
+    expect(gutted).not.toContain('<!doctype html>');
+  });
+
+  it('base64 round-trips through the pipe untouched (the fix)', () => {
+    const b64 = Buffer.from(DOC, 'utf8').toString('base64');
+    expect(pipe(b64)).toBe(b64); // no tags → sanitize-html passes it through
+    const decoded = Buffer.from(pipe(b64), 'base64').toString('utf8');
+    expect(decoded).toBe(DOC);
+    // and the decoded doc still passes the designer sanitizer with style + script intact
+    const withScript = decoded.replace('</body>', '<style>.z{color:#0f0}</style><script>var s=1;</script></body>');
+    const { html } = sanitizeDesignerHtml(withScript);
+    expect(html).toContain('<style>');
+    expect(html).toContain('var s=1');
   });
 });
