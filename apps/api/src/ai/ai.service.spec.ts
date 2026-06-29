@@ -1361,6 +1361,14 @@ describe('signageCandidatePlan — distinct candidate takes (no clones)', () => 
     expect(archetypes).toEqual(['poster-promo', 'lower-third-banner', 'title-cta']);
   });
 
+  it('spans DISTINCT themes (not three dark clones) for a mono-tonal vertical', () => {
+    // bar affinity is two dark themes; the selector pulls from the versatile
+    // premium pool so the 3 takes are visually different, not "boring black x3".
+    const themes = signageCandidatePlan('bar', 3).map((p) => p.theme);
+    expect(new Set(themes).size).toBeGreaterThanOrEqual(2); // anti-clone invariant
+    expect(themes.every((t) => typeof t === 'string' && t.length > 0)).toBe(true);
+  });
+
   it('every forced archetype is a real engine archetype id', () => {
     for (const v of ['bar', 'qsr', 'retail', 'k12', 'sports', 'worship', undefined]) {
       for (const take of signageCandidatePlan(v, 3)) {

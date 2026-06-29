@@ -82,6 +82,7 @@ import {
   type ArtDirectorSpec,
   type AccentSlot,
   type SceneSpec,
+  type ThemeBundle,
 } from '@cms/signage-design';
 import {
   isVertical,
@@ -4100,46 +4101,119 @@ const TOUCH_CANDIDATE_DIRECTIVES: string[] = [
   'DESIGN DIRECTION: an information-rich grid — more zones arranged in a tidy grid for a busy space where viewers want many options or facts at a glance. Organized and aligned, never cluttered.',
 ];
 
+/** sRGB relative luminance (0 dark … 1 light) of a #rrggbb hex. 1 if unparseable. */
+function themeBgLuminance(hex: string): number {
+  const h = (hex || '').trim().replace(/^#/, '');
+  if (h.length !== 6 || /[^0-9a-fA-F]/.test(h)) return 1;
+  const lin = [0, 2, 4].map((i) => {
+    const c = parseInt(h.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+}
+/** HSL saturation (0 grey … 1 pure) of a #rrggbb hex — a vibrancy proxy. */
+function hexSaturation(hex: string): number {
+  const h = (hex || '').trim().replace(/^#/, '');
+  if (h.length !== 6) return 0;
+  const r = parseInt(h.slice(0, 2), 16) / 255, g = parseInt(h.slice(2, 4), 16) / 255, b = parseInt(h.slice(4, 6), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
+  if (max === min) return 0;
+  const d = max - min;
+  return l > 0.5 ? d / (2 - max - min) : d / (max + min);
+}
+type ThemeTone = 'light' | 'dark' | 'vibrant';
+/** Classify a theme by its palette so the candidate fan-out can span TONES
+ *  (light / dark / vibrant) instead of returning three dark clones. A light
+ *  background → 'light'; otherwise a mesh/duotone surface OR a highly-saturated
+ *  accent → 'vibrant' (energetic, colorful); else 'dark'. */
+function themeTone(t: ThemeBundle): ThemeTone {
+  if (themeBgLuminance(t.palette.background) >= 0.5) return 'light';
+  const surf = (t.surfaceStyle as any)?.background;
+  if (surf === 'mesh' || surf === 'duotone') return 'vibrant';
+  if (hexSaturation(t.palette.accent) >= 0.7 && themeBgLuminance(t.palette.background) > 0.05) return 'vibrant';
+  return 'dark';
+}
+/**
+ * VERSATILE cross-vertical premium themes that ANY vertical may use to add tonal
+ * variety to its 3 takes (so a bar — whose affinity is two dark themes — can still
+ * get a light or vibrant option). Deliberately EXCLUDES vertical-locked looks
+ * (warm-school / calm-clinic / sky-civic / qsr-appetite / worship-warm /
+ * forest-campus / fresh-fitness) which would read off-brand on another vertical.
+ * Add new premium versatile theme ids here as they land in the engine.
+ */
+const VERSATILE_THEME_IDS = [
+  'minimal-luxury', 'clean-corporate', 'bold-retail', 'neon-sports', 'midnight-tech',
+  // premium versatile additions (light-editorial / bright / vibrant / jewel / coastal):
+  'editorial-ivory', 'bright-studio', 'sunset-pop', 'jewel-luxe', 'coastal-fresh',
+];
+
 /**
  * Build vertical-aware candidate takes for the ART-DIRECTOR (engine) path so all
- * 3 "Pick your favorite" options are GENUINELY distinct, not three clones. Each
- * take carries a FORCED archetype (drawn from the vertical's affinity order — so
- * a worship board never surfaces a menu-list) + a FORCED theme (cycled through
- * the vertical's on-brand palette) that buildSignageBoardCore applies at the
- * ENGINE level, plus a copy directive (balanced / bold / information-forward).
- * Forcing at the engine — not just hinting in the prompt — is the fix for a
- * consistent model (GPT-5) returning three identical boards. An unknown vertical
- * resolves to the NEUTRAL affinity, so every take still gets a real archetype.
+ * 3 "Pick your favorite" options are GENUINELY distinct AND visually varied — not
+ * three dark clones (operator: "boring ass black background"). Each take carries:
+ *  • a FORCED, DISTINCT archetype (affinity order — a worship board never gets a
+ *    menu-list), and
+ *  • a FORCED theme chosen to SPAN tonal buckets (one dark/on-brand, one light/
+ *    editorial, one vibrant) drawn from the vertical's affinity PLUS the versatile
+ *    premium pool — so the operator sees three different design directions, like a
+ *    graphic artist gave them options.
+ * Both are applied at the ENGINE level by buildSignageBoardCore (a consistent
+ * model ignores soft prompt hints), so the takes can't collapse to clones.
  */
 export function signageCandidatePlan(
   vertical: string | undefined,
   count: number,
 ): Array<{ directive: string; archetype: string; theme: string }> {
   // getVerticalDesignAffinity ALWAYS returns a populated affinity (NEUTRAL for an
-  // unknown/'venue' vertical) — so every take gets a real archetype + theme.
+  // unknown/'venue' vertical) — so every take gets a real archetype.
   const aff = getVerticalDesignAffinity(vertical);
   const archetypes = aff.archetypes;
-  const themes = aff.themes;
   const moods = [
     { tone: 'balanced & classic', shape: 'clean with a clear hierarchy and generous breathing room' },
     { tone: 'bold & cinematic', shape: 'built around ONE dominant focal element, high-impact from across a room' },
     { tone: 'information-forward', shape: 'organized and scannable — surface the key facts/numbers at a glance' },
   ];
   const n = Math.min(Math.max(count, 1), 3);
+
+  // ── Choose `n` THEMES that span tonal buckets ───────────────────────────────
+  // Candidate themes = the vertical's affinity (most on-brand) + the versatile
+  // premium pool (for tonal range the affinity lacks). Classify each by tone.
+  const byId = new Map(THEMES.map((t) => [t.id, t] as const));
+  const poolIds: string[] = [];
+  for (const id of [...aff.themes, ...VERSATILE_THEME_IDS]) {
+    if (byId.has(id) && !poolIds.includes(id)) poolIds.push(id);
+  }
+  const bucket: Record<ThemeTone, string[]> = { dark: [], light: [], vibrant: [] };
+  for (const id of poolIds) bucket[themeTone(byId.get(id)!)].push(id);
+  // Lead with the vertical's NATIVE tone (its first affinity theme), then diversify
+  // across the other two buckets so the 3 takes read as distinct directions.
+  const nativeTone: ThemeTone = aff.themes[0] && byId.has(aff.themes[0])
+    ? themeTone(byId.get(aff.themes[0])!)
+    : 'dark';
+  const order: ThemeTone[] = [nativeTone, ...(['dark', 'light', 'vibrant'] as ThemeTone[]).filter((b) => b !== nativeTone)];
+  const chosenThemes: string[] = [];
+  for (const b of order) {
+    if (chosenThemes.length >= n) break;
+    const pick = bucket[b].find((id) => !chosenThemes.includes(id));
+    if (pick) chosenThemes.push(pick);
+  }
+  // Backfill (e.g. a bucket was empty) from any remaining pool theme, then the
+  // affinity list, so we always return `n` themes even if tonal range is thin.
+  for (const id of [...poolIds, ...aff.themes]) {
+    if (chosenThemes.length >= n) break;
+    if (byId.has(id) && !chosenThemes.includes(id)) chosenThemes.push(id);
+  }
+
   const out: Array<{ directive: string; archetype: string; theme: string }> = [];
   for (let i = 0; i < n; i++) {
-    // Each take gets a DISTINCT archetype (affinity is ordered, ≥3 entries for
-    // every vertical) and a theme cycled through the vertical's on-brand palette.
-    // These are FORCED at the engine level (see buildSignageBoardCore) so the
-    // takes can't collapse to clones even when the model ignores the directive.
     const archetype = archetypes[i] || archetypes[archetypes.length - 1];
-    const theme = themes[i % themes.length];
+    const theme = chosenThemes[i] || chosenThemes[chosenThemes.length - 1] || aff.themes[0];
     const mood = moods[i] || moods[0];
     out.push({
       archetype,
       theme,
-      // The directive still nudges the COPY/voice to fit this take's mood + shape
-      // (the engine forces the actual geometry/theme regardless).
+      // The directive nudges the COPY/voice to fit this take's mood + shape
+      // (the engine forces the actual geometry + theme regardless).
       directive: `DESIGN DIRECTION: ${mood.tone} — write copy for a "${archetype}" board. Make it ${mood.shape}.`,
     });
   }
