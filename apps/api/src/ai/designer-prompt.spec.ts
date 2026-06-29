@@ -7,6 +7,7 @@ import {
   buildDesignerUserPrompt,
   sanitizeDesignerHtml,
   auditDesignerHtmlTaurus,
+  stripGuessedStockPhotos,
 } from './designer-prompt';
 import {
   DESIGNER_EDIT_SHIM,
@@ -247,5 +248,44 @@ describe('VOS-FIT-ENGINE (injectDesignerLayoutEngine)', () => {
   it('does nothing for empty / non-string input', () => {
     expect(injectDesignerLayoutEngine('')).toBe('');
     expect(injectDesignerLayoutEngine(undefined as unknown as string)).toBeUndefined();
+  });
+});
+
+// The "sunset on a Domino's board" guard: a model-guessed stock-photo URL
+// resolves to a random wrong image, so we strip it server-side. The data-imgslot
+// stays so the platform can fill a real keyword-matched photo later.
+describe('stripGuessedStockPhotos (no wrong photos)', () => {
+  it('strips the src from an <img> on a stock host but keeps the slot', () => {
+    const h = '<div class="photo"><img data-imgslot="hero" data-photo-query="pizza" src="https://images.unsplash.com/photo-1542281286-9e0a16bb7366?w=1600" alt=""></div>';
+    const out = stripGuessedStockPhotos(h);
+    expect(out).not.toContain('unsplash.com');
+    expect(out).not.toMatch(/src\s*=/); // the guessed src is gone
+    expect(out).toContain('data-imgslot="hero"'); // slot preserved for a real fill
+    expect(out).toContain('data-photo-query="pizza"');
+  });
+
+  it('neutralizes an inline background-image using a stock host', () => {
+    const h = '<div style="background-image:url(https://images.pexels.com/x.jpg);color:#fff">x</div>';
+    const out = stripGuessedStockPhotos(h);
+    expect(out).not.toContain('pexels.com');
+    expect(out).toContain('background-image:none');
+    expect(out).toContain('color:#fff'); // other styles untouched
+  });
+
+  it('leaves a same-origin / our-bucket image src alone', () => {
+    const h = '<img data-img="logo" src="https://bhdaxzfalaycfopvcopm.supabase.co/storage/v1/object/public/assets/logo.png">';
+    expect(stripGuessedStockPhotos(h)).toContain('supabase.co');
+  });
+
+  it('the sanitizer applies the strip end-to-end', () => {
+    const doc = '<!doctype html><html><head><meta charset="utf-8">'
+      + '<style>.stage{width:1920px;height:1080px;position:relative;background:#111;color:#fff}'
+      + '.photo{position:absolute;top:0;right:0;bottom:0;width:600px;background:linear-gradient(160deg,#222,#000)}</style></head>'
+      + '<body><div class="stage"><div class="hd" data-field="headline">Chrome Coffee</div>'
+      + '<div class="photo" data-imgslot="hero" data-photo-query="latte"><img data-imgslot="hero" src="https://images.unsplash.com/photo-x?w=1600"></div>'
+      + '</div></body></html>';
+    const { html } = sanitizeDesignerHtml(doc);
+    expect(html).not.toContain('unsplash.com');
+    expect(html).toContain('data-imgslot="hero"');
   });
 });

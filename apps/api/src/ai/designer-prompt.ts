@@ -73,7 +73,7 @@ export const DESIGNER_EXEMPLAR = [
   'html,body{width:100%;height:100%;background:#15181c;overflow:hidden}',
   '#fit{position:absolute;top:0;left:0;transform-origin:top left}',
   '.stage{position:relative;width:1920px;height:1080px;background:linear-gradient(135deg,#262c34 0%,#15181c 72%);color:#f0f1f3;font-family:Inter,sans-serif;overflow:hidden}',
-  '.photo{position:absolute;top:0;right:0;bottom:0;width:600px;background:#23282f}',
+  '.photo{position:absolute;top:0;right:0;bottom:0;width:600px;background:linear-gradient(160deg,#2d343d 0%,#15181c 100%);background-size:cover;background-position:center}',
   '.photo img{width:100%;height:100%;object-fit:cover;filter:grayscale(.28) contrast(1.05) brightness(.9)}',
   '.photo:after{content:"";position:absolute;top:0;left:0;bottom:0;width:260px;background:linear-gradient(90deg,#262c34,rgba(38,44,52,0))}',
   '.foot{position:absolute;left:120px;right:660px;bottom:54px;height:40px;display:flex;align-items:center;font-size:25px;color:#c1c8d1;letter-spacing:.03em}',
@@ -91,7 +91,7 @@ export const DESIGNER_EXEMPLAR = [
   '.dots{flex:1;border-bottom:2px dotted #4a5464;margin:0 20px 12px}',
   '.pr{font-weight:700;font-size:44px;color:#f0523d;font-variant-numeric:tabular-nums}',
   '</style></head><body><div id="fit"><div class="stage">',
-  '<div class="photo"><img data-imgslot="hero" src="https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=1200&q=80&auto=format&fit=crop" onerror="this.style.display=\'none\'" alt=""></div>',
+  '<div class="photo" data-imgslot="hero" data-photo-query="latte art espresso cup"></div>',
   '<div class="fit" id="cc">',
   '<div class="eyebrow" data-field="eyebrow"><i></i>Brentwood · Est. 2019</div>',
   '<div class="wordmark" data-field="venue" data-fit data-fit-min="56">Chrome<span>.</span></div>',
@@ -126,7 +126,7 @@ export const DESIGNER_SYSTEM_PROMPT = [
   '- Real typography: pair a CHARACTERFUL display face with a clean body face; dramatic size contrast; tight display tracking; large enough to read across a room.',
   '- Real detail: dividers / hairline rules, an eyebrow/kicker, dotted leader lines on menus, section labels, a small accent tick or rule, layered depth (a duotone photo, a subtle texture/gradient, a color-blocked panel). Borrow the craft of a printed poster or a designed menu.',
   '- Real imagery where it fits: a relevant photograph CONFINED to a side panel, a top/bottom band, or a column — NOT a full-bleed wash behind dense text (that kills legibility). If you ever place a photo behind text, it must carry a strong palette scrim/duotone AND the text must sit on the solid-color part, never over the busy part of the photo.',
-  '- PHOTO RELEVANCE (critical): only add a photo when you can pick one that CLEARLY matches the venue subject. Use Unsplash URLs (https://images.unsplash.com/photo-...?w=1600&q=80&auto=format&fit=crop). If you are NOT confident a specific Unsplash photo id depicts the right subject, DO NOT guess one — a wrong photo (e.g. a stethoscope on a plant-shop board) looks broken and cheap. Instead compose a REFINED on-palette gradient/texture panel (layered gradients, a subtle pattern, a color-blocked column). A beautiful gradient always reads as intentional; a mismatched photo never does. ALWAYS put a CSS gradient (in the venue palette) BEHIND every image so a failed load is still on-brand. Add onerror="this.style.display=\'none\'" to <img>.',
+  '- IMAGERY — NEVER GUESS A PHOTO URL (this is the "sunset on a pizza board" failure): you CANNOT know what an opaque stock-photo ID actually depicts, so a hand-written URL to images.unsplash.com / pexels / pixabay / picsum / ANY external photo resolves to a RANDOM, usually-WRONG image. So: do NOT output any `<img src="http...">` to a stock host — the platform strips them anyway. INSTEAD, for every photo area paint a REFINED on-palette gradient or graphic panel (layered gradients, a color-blocked column, an oversized translucent brand initial, a subtle geometric pattern) and mark THAT element with `data-imgslot="hero"` plus `data-photo-query="<2-5 words naming the literal subject, e.g. pepperoni pizza closeup>"`. The platform fills it with a REAL, keyword-matched photo when an image source is configured; if not, your gradient stays — and a tasteful on-brand gradient ALWAYS reads as intentional, while a wrong photo always looks broken. Prefer a DIV (not <img>) for the slot so the swapped photo applies cleanly as a background.',
   '',
   'CONTENT IS THE HERO (the #1 failure to avoid): the board exists to communicate its CONTENT — the menu, the offer, the headline, the schedule. That content must be the largest, sharpest, most prominent thing on the board and fully legible across a room. Photography SUPPORTS the content — confine it to a panel/strip OR, if full-bleed, lay a strong palette scrim/duotone over it so EVERY character stays crisp. NEVER let a photo or background wash dominate and shrink the content to an afterthought. If you must choose, the content wins.',
   '',
@@ -190,6 +190,33 @@ export const DESIGNER_ART_DIRECTIONS: string[] = [
   'Vibrant & graphic — color-blocked panels or a rich on-palette gradient, oversized type, a lively accent; high-impact and scroll-stopping while staying on-brand. Photo optional; if used, keep it in its own block.',
 ];
 
+/**
+ * Stock-photo hosts an LLM "guesses" by emitting an opaque ID it can't verify.
+ * A guessed ID resolves to a random, usually-wrong image (a sunset on a pizza
+ * board). We never trust a model-authored photo URL from these.
+ */
+const GUESSED_PHOTO_HOST_RE =
+  /https?:\/\/(?:[a-z0-9-]+\.)*(?:unsplash\.com|pexels\.com|pixabay\.com|istockphoto\.com|shutterstock\.com|gettyimages\.com|picsum\.photos|loremflickr\.com|placekitten\.com|placehold\.co|via\.placeholder\.com|source\.unsplash\.com)\/[^"'\s>]*/i;
+
+/**
+ * Remove the `src` from any <img> pointing at a guessed stock-photo host (and
+ * any inline background-image using one), so a wrong photo can NEVER render. The
+ * element keeps its data-imgslot/data-photo-query so the platform can fill a
+ * real, keyword-matched photo later; until then the on-palette gradient shows.
+ */
+export function stripGuessedStockPhotos(html: string): string {
+  if (typeof html !== 'string' || !html) return html;
+  return html
+    // <img ... src="<stock>" ...> → drop the src attribute (keep the tag + data-*)
+    .replace(/(<img\b[^>]*?)\s+src\s*=\s*("|')(?:[^"']*)\2/gi, (m, pre: string, q: string) => {
+      return GUESSED_PHOTO_HOST_RE.test(m) ? pre : m;
+    })
+    // inline style background-image:url(<stock>) → neutralize the url()
+    .replace(/background(-image)?\s*:\s*url\(([^)]*)\)/gi, (m: string) =>
+      GUESSED_PHOTO_HOST_RE.test(m) ? 'background-image:none' : m,
+    );
+}
+
 /** Result of sanitizing AI-authored board HTML. */
 export interface SanitizedDesignerHtml {
   html: string;
@@ -225,6 +252,13 @@ export function sanitizeDesignerHtml(raw: unknown): SanitizedDesignerHtml {
     .replace(/<script\b[^>]*\bsrc\s*=[^>]*\/?>/gi, '')
     .replace(/<(iframe|object|embed)\b[\s\S]*?<\/\1>/gi, '')
     .replace(/<(iframe|object|embed)\b[^>]*\/?>/gi, '');
+  // IMAGERY GUARD (2026-06-29 "sunset on a Domino's board"): the model cannot
+  // know what an opaque stock-photo ID actually depicts, so any hand-written
+  // stock URL resolves to a RANDOM, usually-wrong image. Strip the src from any
+  // <img> pointing at a stock host — the element keeps its data-imgslot so the
+  // platform can fill a REAL keyword-matched photo later (Pexels/BYOK), and
+  // until then the on-palette gradient behind it shows (intentional, never wrong).
+  html = stripGuessedStockPhotos(html);
   return { html, taurusWarnings: auditDesignerHtmlTaurus(html) };
 }
 
