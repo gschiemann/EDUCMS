@@ -15,6 +15,8 @@ import { FITNESS_TEMPLATE_PRESETS } from './fitness-presets';
 import { verticalMatchOr } from './ensure-system-presets';
 import { AiService, sanitizeTouchTemplate } from '../ai/ai.service';
 import { parseGuidedIntake } from '../ai/guided-intake';
+import { sanitizeDesignerHtml } from '../ai/designer-prompt';
+import { z } from 'zod';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
 import { safeFetch } from '../branding/safe-fetch';
 import { PEXELS_IMAGE_HOST } from '../ai/stock-image.service';
@@ -38,6 +40,32 @@ import {
   ConciergeChatSchema, type ConciergeChatInput,
   ConciergeReferenceUrlSchema, type ConciergeReferenceUrlInput,
 } from '@cms/api-types';
+
+// AI DESIGNER (2026-06-28) — request schemas for the designer-grade full-HTML
+// generation path. Kept inline (not in api-types) while the feature stabilizes.
+const DesignerGenerateSchema = z.object({
+  prompt: z.string().min(1).max(4000),
+  screenWidth: z.number().int().positive().max(8192).optional(),
+  screenHeight: z.number().int().positive().max(8192).optional(),
+  vertical: z.string().max(40).optional(),
+  palette: z.array(z.string().max(32)).max(12).optional(),
+  venueName: z.string().max(120).optional(),
+  tagline: z.string().max(200).optional(),
+  logoUrl: z.string().url().max(2000).optional(),
+  content: z.string().max(8000).optional(),
+  reference: z.string().max(4000).optional(),
+  count: z.number().int().min(1).max(3).optional(),
+}).passthrough();
+type DesignerGenerateInput = z.infer<typeof DesignerGenerateSchema>;
+
+const DesignerCreateSchema = z.object({
+  name: z.string().max(120).optional(),
+  // The AI-authored board HTML (re-sanitized server-side before persist).
+  html: z.string().min(200).max(400000),
+  screenWidth: z.number().int().positive().max(8192).optional(),
+  screenHeight: z.number().int().positive().max(8192).optional(),
+}).passthrough();
+type DesignerCreateInput = z.infer<typeof DesignerCreateSchema>;
 
 @Controller('api/v1/templates')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -1007,6 +1035,79 @@ export class TemplatesController {
       candidates: result.candidates,
       ai: { source: result.source, usage: result.usage },
     };
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // AI DESIGNER (2026-06-28) — designer-grade FULL-HTML boards. A top model
+  // AUTHORS each board as a complete HTML document (apps/api/src/ai/designer-
+  // prompt.ts); it renders through the EXTERNAL_HTML srcdoc path. `candidates`
+  // returns UP TO 3 DISTINCT designs (unpersisted). The kept board persists via
+  // create-designer below (re-sanitized + ONE EXTERNAL_HTML zone) — NOT the touch
+  // sanitizer, which would strip EXTERNAL_HTML and truncate the html.
+  // ───────────────────────────────────────────────────────────────────────
+  @Post('generate-designer/candidates')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async generateDesignerCandidates(
+    @Request() req: any,
+    @Body(new ZodValidationPipe(DesignerGenerateSchema)) body: DesignerGenerateInput,
+  ) {
+    const out = await this.ai.generateDesignerBoardCandidates({
+      tenantId: req.user.tenantId,
+      userId: req.user.id,
+      prompt: body.prompt,
+      screenWidth: body.screenWidth,
+      screenHeight: body.screenHeight,
+      vertical: body.vertical,
+      palette: body.palette,
+      venueName: body.venueName,
+      tagline: body.tagline,
+      logoUrl: body.logoUrl,
+      content: body.content,
+      reference: body.reference,
+      count: body.count,
+    });
+    return { candidates: out.candidates, designer: true, ai: { source: out.source, usage: out.usage } };
+  }
+
+  @Post('create-designer')
+  // CONTRIBUTOR can save (content-building, not publishing) — same rationale as
+  // the @Post() create route.
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  async createDesigner(
+    @Request() req: any,
+    @Body(new ZodValidationPipe(DesignerCreateSchema)) body: DesignerCreateInput,
+  ) {
+    // Re-sanitize the round-tripped HTML (client JSON is never trusted) and persist
+    // as ONE full-bleed EXTERNAL_HTML zone — rendered via the sandboxed srcdoc path.
+    const { html } = sanitizeDesignerHtml(body.html);
+    const screenWidth = body.screenWidth || 1920;
+    const screenHeight = body.screenHeight || 1080;
+    const parsed = {
+      name: (body.name || 'AI Designer board').trim().slice(0, 120) || 'AI Designer board',
+      zones: [
+        {
+          name: 'board',
+          widgetType: 'EXTERNAL_HTML',
+          x: 0,
+          y: 0,
+          width: 100,
+          height: 100,
+          defaultConfig: { html },
+        },
+      ],
+    };
+    const created = await this.persistGeneratedTemplate(req, parsed, screenWidth, screenHeight, false);
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'TEMPLATE_CREATED',
+        targetType: 'template',
+        targetId: created.id,
+        tenantId: req.user.tenantId,
+        userId: req.user.id,
+        details: JSON.stringify({ name: parsed.name, via: 'ai-designer', engine: true }),
+      },
+    }).catch(() => { /* audit best-effort */ });
+    return mapTemplate(created);
   }
 
   // ───────────────────────────────────────────────────────────────────────

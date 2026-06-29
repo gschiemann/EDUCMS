@@ -1389,3 +1389,63 @@ describe('signageCandidatePlan — distinct candidate takes (no clones)', () => 
     expect(signageCandidatePlan('bar', 9)).toHaveLength(3);
   });
 });
+
+// ───────────────────────────────────────────────────────────────────────────
+// AI DESIGNER — generateDesignerBoardCandidates fans out distinct designer-grade
+// HTML boards (a top model authors each as a full doc; we sanitize). Mirrors the
+// candidate caps/spend discipline. dispatchAi is mocked (no real provider call).
+// ───────────────────────────────────────────────────────────────────────────
+describe('AiService — AI Designer HTML candidates', () => {
+  const fakeBoard = '<!doctype html><html><head><style>.stage{width:1920px;height:1080px;position:absolute;top:0;left:0;background:#23282f;color:#fff}</style></head>'
+    + '<body><div class="stage"><h1 data-field="headline">Chrome Coffee</h1>'
+    + '<script src="https://evil.example/x.js"></script>'
+    + '<script>var s=1;/* self-scale */</script></div></body></html>';
+
+  beforeEach(() => {
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.AI_FREE_TIER_CAP;
+    tenantsById.clear();
+    auditRows.length = 0;
+    dispatchMock.mockReset();
+    tenantsById.set('t1', { id: 't1', aiProvider: null, aiKeyEncrypted: null, aiModel: null });
+  });
+
+  it('fans out 3 designer boards, sanitizes the HTML, records spend per board', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const fake = makeFakeRedisClient();
+    dispatchMock.mockResolvedValue({ raw: fakeBoard });
+    const { service } = buildService(fake);
+
+    const res = await service.generateDesignerBoardCandidates({
+      tenantId: 't1',
+      prompt: 'designer coffee menu',
+      vertical: 'qsr',
+      venueName: 'Chrome Coffee',
+      palette: ['#23282f', '#f0523d'],
+      content: 'Espresso 3.50',
+    });
+
+    expect(res.candidates).toHaveLength(3);
+    expect(dispatchMock).toHaveBeenCalledTimes(3); // one provider call per board
+    for (const c of res.candidates) {
+      expect(c.html).toContain('<!doctype html>');
+      expect(c.html).toContain('data-field="headline"');
+      expect(c.html).toContain('var s=1'); // inline self-scale script kept
+      expect(c.html).not.toMatch(/<script[^>]*src=/i); // remote script stripped
+      expect(c.screenWidth).toBe(1920);
+      expect(c.name).toBe('Chrome Coffee');
+    }
+    const successAdds = fake.zadd.mock.calls.filter((c) => c[0] === 'ai:rl:gen:t1');
+    expect(successAdds.length).toBe(3); // honest hourly accounting
+  });
+
+  it('surfaces the provider error when EVERY board fails', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const fake = makeFakeRedisClient();
+    dispatchMock.mockResolvedValue({ raw: '', errorStatus: 500, errorBody: 'boom' });
+    const { service } = buildService(fake);
+    await expect(
+      service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'x' }),
+    ).rejects.toBeDefined();
+  });
+});

@@ -85,6 +85,12 @@ import {
   type ThemeBundle,
 } from '@cms/signage-design';
 import {
+  DESIGNER_SYSTEM_PROMPT,
+  DESIGNER_ART_DIRECTIONS,
+  buildDesignerUserPrompt,
+  sanitizeDesignerHtml,
+} from './designer-prompt';
+import {
   isVertical,
   VERTICAL_ALIASES,
   getVerticalDesignAffinity,
@@ -2450,6 +2456,151 @@ export class AiService {
     // stand-in (the real AI photo only generates on the accepted board).
     const photoPending = opts.intake?.background === 'photo' ? true : undefined;
     return { candidates, source: resolved.source, usage, photoPending };
+  }
+
+  /**
+   * AI DESIGNER (2026-06-28) — the designer-grade path. A TOP model AUTHORS each
+   * board as a COMPLETE HTML document (designer-prompt.ts); we sanitize it and
+   * return it for the EXTERNAL_HTML srcdoc render. Fans out `count` (default 3)
+   * DISTINCT art directions so the picker shows three genuinely different designs
+   * (operator: AI templates must be designer-level, not the templated-engine
+   * look). Mirrors the signage-candidate caps / spend / audit discipline; the
+   * HTML is large so each dispatch gets a big token budget; one bad take never
+   * sinks the batch. The kept board persists via the controller's create-designer
+   * path (NOT sanitizeTouchTemplate, which would strip EXTERNAL_HTML + truncate
+   * the html) — it re-runs sanitizeDesignerHtml there for defense-in-depth.
+   */
+  async generateDesignerBoardCandidates(opts: {
+    tenantId: string;
+    userId?: string;
+    prompt: string;
+    screenWidth?: number;
+    screenHeight?: number;
+    vertical?: string;
+    palette?: string[];
+    venueName?: string;
+    tagline?: string;
+    logoUrl?: string;
+    content?: string;
+    reference?: string;
+    count?: number;
+  }): Promise<{
+    candidates: Array<{ name: string; html: string; screenWidth: number; screenHeight: number; taurusWarnings: string[] }>;
+    source: 'tenant' | 'platform';
+    usage: { used: number; cap: number; resetAt: string } | null;
+  }> {
+    await this.checkFailureCap(opts.tenantId);
+    const resolved = await this.resolveProviderKey(opts.tenantId);
+    if (!resolved) {
+      throw new ServiceUnavailableException(
+        'AI is not configured. Add your provider API key in Settings → Integrations, or contact your admin.',
+      );
+    }
+    const prompt = (opts.prompt || '').trim();
+    if (!prompt) throw new BadRequestException('Tell the AI what board to design.');
+    if (prompt.length > 4000) throw new BadRequestException('Prompt too long. Keep it under 4000 characters.');
+    const count = Math.min(Math.max(opts.count ?? 3, 1), 3);
+    const sw = opts.screenWidth || 1920;
+    const sh = opts.screenHeight || 1080;
+
+    // Up-front caps — need headroom for at least one. Same shared Redis hourly
+    // window + monthly platform cap as every other generator.
+    if ((await this.windowCount(this.RL_SUCCESS_PREFIX, opts.tenantId)) >= this.HOURLY_CAP) {
+      throw new BadRequestException(
+        `Hit the hourly AI cap (${this.HOURLY_CAP} generations/hour). Try again later or contact sales for a higher tier.`,
+      );
+    }
+    if (resolved.source === 'platform') {
+      const u = await this.readPlatformUsage(opts.tenantId);
+      if (u.used >= u.cap) {
+        throw new HttpException(
+          {
+            message: `Hit the monthly free AI cap (${u.cap} generations). Add your own provider key in Settings → AI provider for unlimited.`,
+            code: 'AI_CAP_REACHED',
+            cap: u.cap,
+            used: u.used,
+            resetAt: u.resetAt,
+          },
+          HttpStatus.PAYMENT_REQUIRED,
+        );
+      }
+    }
+
+    const directions = DESIGNER_ART_DIRECTIONS.slice(0, count);
+    const system = prependVoices(DESIGNER_SYSTEM_PROMPT, opts.vertical, await this.tenantBrandVoice(opts.tenantId));
+    // A full premium HTML board is large — a generous output budget. (dispatchAi
+    // adds reasoning headroom for gpt-5 / o-series on top of this.)
+    const MAX_HTML_TOKENS = 16000;
+    const settled = await Promise.allSettled(
+      directions.map((artDirection) => {
+        const userPrompt = buildDesignerUserPrompt({
+          prompt,
+          width: sw,
+          height: sh,
+          vertical: opts.vertical,
+          palette: opts.palette,
+          venueName: opts.venueName,
+          tagline: opts.tagline,
+          logoUrl: opts.logoUrl,
+          content: opts.content,
+          reference: opts.reference,
+          artDirection,
+        });
+        return this.dispatchRawOrThrow(resolved, system, userPrompt, MAX_HTML_TOKENS).then((raw) =>
+          sanitizeDesignerHtml(raw),
+        );
+      }),
+    );
+    const built = settled
+      .filter((s): s is PromiseFulfilledResult<{ html: string; taurusWarnings: string[] }> => s.status === 'fulfilled')
+      .map((s) => s.value);
+    if (!built.length) {
+      await this.recordFailure(opts.tenantId);
+      const firstRej = settled.find((s) => s.status === 'rejected') as PromiseRejectedResult | undefined;
+      if (firstRej?.reason instanceof HttpException) throw firstRej.reason;
+      throw new ServiceUnavailableException('AI could not design a usable board. Try rephrasing your brief.');
+    }
+
+    // Record spend per SUCCESSFUL candidate (honest 3-tier accounting).
+    for (let i = 0; i < built.length; i++) {
+      await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
+      if (resolved.source === 'platform') {
+        try { await this.bumpPlatformUsage(opts.tenantId); }
+        catch (e: any) { this.logger.warn(`Platform usage bump failed: ${e?.message}`); }
+      }
+    }
+    let usage: { used: number; cap: number; resetAt: string } | null = null;
+    if (resolved.source === 'platform') {
+      const u = await this.readPlatformUsage(opts.tenantId);
+      usage = { used: u.used, cap: u.cap, resetAt: u.resetAt };
+    }
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'AI_DESIGNER_CANDIDATES',
+        targetType: 'tenant',
+        targetId: opts.tenantId,
+        tenantId: opts.tenantId,
+        userId: opts.userId || null,
+        details: JSON.stringify({
+          vertical: opts.vertical || null,
+          requested: count,
+          returned: built.length,
+          provider: resolved.provider,
+          model: resolved.model,
+          source: resolved.source,
+        }),
+      },
+    }).catch(() => { /* audit best-effort */ });
+
+    const baseName = ((opts.venueName || prompt).trim().slice(0, 60)) || 'AI Designer board';
+    const candidates = built.map((b) => ({
+      name: baseName,
+      html: b.html,
+      screenWidth: sw,
+      screenHeight: sh,
+      taurusWarnings: b.taurusWarnings,
+    }));
+    return { candidates, source: resolved.source, usage };
   }
 
   /**
