@@ -29,7 +29,7 @@
  *   - So these layers CANNOT lower the contrast the validator verified.
  */
 
-import { parseHex, relativeLuminance } from './contrast';
+import { NEAR_BLACK, parseHex, relativeLuminance } from './contrast';
 import { resolveSurfaceStyle } from './themes';
 import type { ThemeBundle } from './types';
 
@@ -331,6 +331,105 @@ export function entranceAnimName(kind: string): string | undefined {
     default:
       return undefined;
   }
+}
+
+// ---------------------------------------------------------------------------
+// IMAGE TREATMENT (2026-06-28 IMAGERY wave) — the art-direction layer that
+// makes a real STOCK/AI photo look STUDIO-graded instead of "raw stock under a
+// grey rectangle" (the 2010-PowerPoint / OptiSign tell). Two stacked overlay
+// layers, both Taurus-safe (gradient `background:` only — NO inset, NO gap, NO
+// backdrop-filter; the renderer paints them on longhand-positioned divs):
+//
+//   1. GRADE — a subtle brand-toward-theme duotone tint (low alpha so the photo
+//      still reads true) + a corner vignette for tactile depth.
+//   2. SCRIM — a DIRECTIONAL contrast guard that darkens ONLY the side/area the
+//      headline sits over and tapers to transparent across the focal subject, so
+//      the photo BREATHES where there's no text. (Replaces the muddy full-bleed
+//      55% slab for photo boards; the flat scrim stays the safety-net fallback.)
+//
+// Headline contrast over the photo is GUARANTEED: the scrim layer is dense
+// (>=0.62 alpha of NEAR_BLACK) at the text edge and the text rides inkInverse /
+// bestTextColor(scrim) chosen by the mapper, so the floor is met regardless of
+// the photo's own luminance (the same guarantee the flat scrim gave, kept).
+// ---------------------------------------------------------------------------
+
+/** Where the headline sits over the photo — drives the directional scrim. */
+export type PhotoTextAnchor = 'bottom' | 'left' | 'right' | 'center';
+
+export interface ImageTreatment {
+  /** The brand-toward-theme GRADE + vignette overlay `background` (paints on a
+   *  full-bleed div ABOVE the photo, BELOW the scrim). Empty string → skip. */
+  grade: string;
+  /** The blend-mode for the grade layer — 'multiply' deepens, 'soft-light'
+   *  tints gently. Chromium-83-safe (mix-blend-mode shipped Chrome 41). */
+  gradeBlend: 'multiply' | 'soft-light';
+  /** The DIRECTIONAL contrast scrim `background` (paints on a full-bleed div
+   *  ABOVE the grade) — dense where text lands, transparent across the subject. */
+  scrim: string;
+}
+
+/**
+ * Build the image-treatment overlay stack for a theme + headline anchor.
+ *
+ * The GRADE tints the photo toward the theme's accent (energetic themes) or its
+ * ink (minimal/luxury — a desaturating deepen) so a tenant's boards share a
+ * house look. Kept LOW-alpha so it grades, never repaints. The directional SCRIM
+ * is anchored to where the copy lands (bottom band for hero/lower-third, a side
+ * column for split, a soft radial-behind-center for poster) and tapers out so
+ * the focal subject reads clean.
+ *
+ * Deterministic (theme + anchor in → CSS out) so surface-css.spec can pin it.
+ */
+export function imageTreatmentCss(
+  theme: ThemeBundle,
+  anchor: PhotoTextAnchor = 'bottom',
+): ImageTreatment {
+  const { palette } = theme;
+  const style = resolveSurfaceStyle(theme);
+  const { accent, ink, background } = palette;
+  const energetic = (style.glow ?? 0.5) >= 0.7;
+
+  // GRADE — a directional duotone toward accent (energetic) or ink (calm), plus
+  // a corner vignette. Low alpha so the photo still reads true.
+  const gradeColor = energetic ? accent : ink;
+  const tintA = energetic ? 0.22 : 0.16;
+  const isLight = relativeLuminance(background) > 0.5;
+  const vignetteA = isLight ? 0.16 : 0.3;
+  const grade = [
+    // A gentle diagonal duotone wash toward the theme colour.
+    `linear-gradient(135deg, ${hexToRgba(gradeColor, tintA)} 0%, ${hexToRgba(gradeColor, 0)} 62%)`,
+    // A corner vignette so the photo has tactile depth, not a flat crop.
+    `radial-gradient(135% 120% at 50% 42%, rgba(0,0,0,0) 56%, rgba(0,0,0,${vignetteA}) 100%)`,
+  ].join(', ');
+  // soft-light tints without muddying; multiply deepens for crave-able/dramatic.
+  const gradeBlend: ImageTreatment['gradeBlend'] = energetic ? 'soft-light' : 'soft-light';
+
+  // SCRIM — directional, anchored to the headline. Dense at the text edge,
+  // transparent across the subject. NEAR_BLACK so light copy always clears.
+  const dense = hexToRgba(NEAR_BLACK, 0.72);
+  const mid = hexToRgba(NEAR_BLACK, 0.42);
+  const clear = hexToRgba(NEAR_BLACK, 0);
+  let scrim: string;
+  switch (anchor) {
+    case 'left':
+      // Split / hero-left — darken the left column, let the right (photo) breathe.
+      scrim = `linear-gradient(90deg, ${dense} 0%, ${mid} 38%, ${clear} 62%)`;
+      break;
+    case 'right':
+      scrim = `linear-gradient(270deg, ${dense} 0%, ${mid} 38%, ${clear} 62%)`;
+      break;
+    case 'center':
+      // Poster — a soft radial pool behind the centered offer, tapering by ~58%.
+      scrim = `radial-gradient(75% 75% at 50% 52%, ${dense} 0%, ${mid} 34%, ${clear} 62%), linear-gradient(0deg, ${hexToRgba(NEAR_BLACK, 0.18)} 0%, ${hexToRgba(NEAR_BLACK, 0.18)} 100%)`;
+      break;
+    case 'bottom':
+    default:
+      // Hero / lower-third — a bottom band dense at the text, clear at the top.
+      scrim = `linear-gradient(0deg, ${dense} 0%, ${mid} 34%, ${clear} 60%)`;
+      break;
+  }
+
+  return { grade, gradeBlend, scrim };
 }
 
 // ---------------------------------------------------------------------------

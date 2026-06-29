@@ -17,6 +17,7 @@ import {
   entranceAnimName,
   hexToRgba,
   imageHalfCss,
+  imageTreatmentCss,
   themeBackgroundCss,
 } from './surface-css';
 import { THEMES, deriveThemeFromBrand, resolveSurfaceStyle } from './themes';
@@ -193,5 +194,40 @@ describe('helpers', () => {
   it('helpers fall back gracefully on bad input (never throw)', () => {
     expect(() => hexToRgba('not-a-hex', 0.5)).not.toThrow();
     expect(() => blend('xyz', '#fff', 0.5)).not.toThrow();
+  });
+});
+
+describe('imageTreatmentCss — art-directed photo grade + directional scrim', () => {
+  it('builds a grade + directional scrim for every curated theme (Taurus-safe)', () => {
+    for (const t of THEMES) {
+      for (const anchor of ['bottom', 'left', 'right', 'center'] as const) {
+        const tr = imageTreatmentCss(t, anchor);
+        // Both layers must be gradient strings — never a bare slab.
+        expect(tr.grade).toMatch(/gradient\(/);
+        expect(tr.scrim).toMatch(/gradient\(/);
+        // The grade blend is one of the two allowed modes.
+        expect(['multiply', 'soft-light']).toContain(tr.gradeBlend);
+        // BOTH layers must be Taurus-safe (no inset / gap / backdrop-filter).
+        expect(isTaurusSafe(tr.grade)).toBe(true);
+        expect(isTaurusSafe(tr.scrim)).toBe(true);
+      }
+    }
+  });
+
+  it('the scrim is DENSE near the text edge so headline contrast is guaranteed', () => {
+    // The densest stop is a NEAR_BLACK at >= 0.62 alpha — the legibility floor
+    // the flat scrim used to guarantee, kept on the directional one.
+    for (const t of THEMES) {
+      const tr = imageTreatmentCss(t, 'bottom');
+      expect(tr.scrim).toMatch(/rgba\(10, 10, 10, 0\.(6[2-9]|7\d?|8\d?|9\d?)/);
+    }
+  });
+
+  it('anchors the scrim to where the headline sits (direction differs per anchor)', () => {
+    const t = THEMES[0];
+    expect(imageTreatmentCss(t, 'bottom').scrim).toContain('linear-gradient(0deg');
+    expect(imageTreatmentCss(t, 'left').scrim).toContain('linear-gradient(90deg');
+    expect(imageTreatmentCss(t, 'right').scrim).toContain('linear-gradient(270deg');
+    expect(imageTreatmentCss(t, 'center').scrim).toContain('radial-gradient(');
   });
 });
