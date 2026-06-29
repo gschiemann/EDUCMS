@@ -6841,7 +6841,11 @@ function ExternalHtmlTextEditor({
   const imageOverrides: Record<string, string> =
     (cfg?.imageOverrides && typeof cfg.imageOverrides === 'object') ? cfg.imageOverrides : {};
 
-  if (!url) {
+  // AI Designer boards have no url (inline srcdoc) — only show the "pick a
+  // template" placeholder when there's NEITHER a url NOR inline html. Without
+  // the inlineHtml escape, designer boards short-circuit here and the
+  // discovered fields below never render (the 2026-06-29 "0 editable rows" bug).
+  if (!url && !inlineHtml) {
     return (
       <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-500">
         Pick a template above to expose its editable text.

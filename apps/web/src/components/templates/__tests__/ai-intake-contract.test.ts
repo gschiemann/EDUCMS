@@ -141,6 +141,10 @@ describe('ai-intake-contract: option lists are coherent', () => {
 
   it('every non-auto purpose option has a default-widget set', () => {
     for (const o of PURPOSE_OPTIONS) {
+      // 'auto' lets the AI choose the purpose — it intentionally has no fixed
+      // default-widget set (the type includes it; this map covers the concrete
+      // purposes only). Narrowing past it also keeps the index type-safe.
+      if (o.key === 'auto') continue;
       expect(DEFAULT_WIDGETS_BY_PURPOSE[o.key]).toBeDefined();
       expect(DEFAULT_WIDGETS_BY_PURPOSE[o.key].length).toBeGreaterThan(0);
     }
