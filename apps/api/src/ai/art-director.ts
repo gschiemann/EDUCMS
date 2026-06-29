@@ -325,6 +325,23 @@ function accent2Hex(palette: ThemePalette): string {
   return palette.accent2 ?? palette.accent;
 }
 
+/**
+ * The menu PRICE-column color (2026-06-28 menu canvas-fill). The price pops in
+ * the secondary accent (a designed-menu cue), but a curated accent2 (tuned as a
+ * fill / eyebrow color) can be too DIM as text on the board surface. So we
+ * contrast-guard it against the surface the rows sit on (the board background):
+ *   accent2 if it clears the large-text floor → else the primary accent if THAT
+ *   clears → else a guaranteed-legible bestTextColor. Prices must always be
+ *   readable — that's the whole point of a price column.
+ */
+function menuValueColor(palette: ThemePalette): string {
+  const surface = palette.background;
+  const a2 = accent2Hex(palette);
+  if (contrastRatio(a2, surface) >= LARGE_CONTRAST_FLOOR) return a2;
+  if (contrastRatio(palette.accent, surface) >= LARGE_CONTRAST_FLOOR) return palette.accent;
+  return bestTextColor(surface);
+}
+
 /** A short hex (#rgb/#rrggbb) → rgba(r,g,b,a). Falls back to the raw color on parse miss. */
 function hexToRgba(hex: string, alpha: number): string {
   let h = (hex || '').trim().replace(/^#/, '');
@@ -545,8 +562,9 @@ function mapTextConfig(
         fontWeight: tokens.fontWeight,
         color: hex,
         // The price column is the secondary-accent emphasis on a menu — a $$$
-        // designed-menu cue (the label stays ink, the value pops in accent2).
-        valueColor: accent2Hex(palette),
+        // designed-menu cue (the label stays ink, the value pops in accent2),
+        // contrast-guarded so a dim curated accent2 never makes prices illegible.
+        valueColor: menuValueColor(palette),
         // Prices are numerals → tabular figures so a column of $5 / $12 / $8.50
         // aligns cleanly instead of jittering with proportional figures.
         valueTabular: true,
@@ -746,7 +764,12 @@ function mapScene(
   });
 
   // THE PIPELINE: resolve geometry → enforce (sizes + scrim + contrast).
-  let zones = resolveArchetype(archetypeId, canvas, theme);
+  // CONTENT-AWARE FILL (2026-06-28): thread the item count into the resolver so
+  // a menu-list lays out the WHOLE menu (1-col for a short/portrait menu, 2-col
+  // for a long landscape one) and fills the canvas — never a fixed 5 rows in the
+  // left 40%. Other archetypes ignore `itemCount` (additive, zero regression).
+  const itemCount = Array.isArray(scene.copy?.items) ? scene.copy.items.length : 0;
+  let zones = resolveArchetype(archetypeId, canvas, theme, { itemCount });
   const res = enforce(zones, {
     canvas,
     theme,

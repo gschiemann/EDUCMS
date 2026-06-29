@@ -212,6 +212,98 @@ describe('orientation: every archetype x every supported canvas class', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// MENU CANVAS-FILL (2026-06-28) — the menu-list resolver lays out the WHOLE menu
+// and FILLS the canvas: a long landscape menu (>=7 items) goes two-column; a
+// short one (<=6) stays a single centered column WITH a negative-space photo
+// panel on the empty side; portrait stays single full-width column. The row
+// COUNT matches the (clamped) item count so unused rows never exist.
+// ---------------------------------------------------------------------------
+describe('menu-list content-aware fill', () => {
+  const portrait = CANVAS_CLASSES['portrait-9-16'];
+
+  function rows(zones: ResolvedZone[]): ResolvedZone[] {
+    return zones.filter((z) => z.slot === 'listItem');
+  }
+
+  it('a 10-item landscape menu yields 10 rows across TWO columns', () => {
+    const zones = resolveArchetype('menu-list', landscape, theme, { itemCount: 10 });
+    const r = rows(zones);
+    expect(r.length).toBe(10);
+    // Two distinct x columns (left + right), each ~46% wide.
+    const xs = new Set(r.map((z) => Math.round(z.x)));
+    expect(xs.size).toBe(2);
+    // No negative-space photo panel on a long (two-column) menu.
+    expect(zones.some((z) => z.slot === 'image')).toBe(false);
+    // The right column's value edge reaches the safe-right (~95%): some row spans
+    // out past the canvas midpoint, so the right half is filled, not empty.
+    const maxRight = Math.max(...r.map((z) => z.x + z.width));
+    expect(maxRight).toBeGreaterThan(90);
+  });
+
+  it('a 4-item landscape menu yields a SINGLE centered column + a photo panel', () => {
+    const zones = resolveArchetype('menu-list', landscape, theme, { itemCount: 4 });
+    const r = rows(zones);
+    expect(r.length).toBe(4);
+    // Single column — every row shares one left x.
+    const xs = new Set(r.map((z) => Math.round(z.x)));
+    expect(xs.size).toBe(1);
+    // The empty side carries a negative-space photo/panel (image slot), so the
+    // right half is never stranded.
+    const photo = zones.filter((z) => z.slot === 'image');
+    expect(photo.length).toBe(1);
+    expect(photo[0]!.x).toBeGreaterThan(50); // sits on the right side
+    expect(photo[0]!.x + photo[0]!.width).toBeLessThanOrEqual(100 + 1e-6);
+    // Vertically CENTERED: the block doesn't strand the bottom — the first row
+    // starts below the headline band but the last row ends well inside the canvas.
+    const firstTop = Math.min(...r.map((z) => z.y));
+    const lastBottom = Math.max(...r.map((z) => z.y + z.height));
+    expect(firstTop).toBeGreaterThan(18); // below the headline
+    expect(lastBottom).toBeLessThanOrEqual(95 + 1e-6); // inside the safe bottom
+  });
+
+  it('a portrait menu stays a single full-width column (no photo panel)', () => {
+    const zones = resolveArchetype('menu-list', portrait, theme, { itemCount: 8 });
+    const r = rows(zones);
+    expect(r.length).toBe(8);
+    const xs = new Set(r.map((z) => Math.round(z.x)));
+    expect(xs.size).toBe(1);
+    // Full content width (no reserved photo side on a portrait pillar).
+    expect(r[0]!.width).toBeGreaterThan(80);
+    expect(zones.some((z) => z.slot === 'image')).toBe(false);
+  });
+
+  it('clamps the row count to the [3, 12] band (whole menu, never a fixed 5)', () => {
+    // 1 item → at least the 3-row minimum (reads as a list, not a lone line).
+    expect(rows(resolveArchetype('menu-list', landscape, theme, { itemCount: 1 })).length).toBe(3);
+    // 20 items → capped at 12 (the parser caps the same).
+    expect(rows(resolveArchetype('menu-list', landscape, theme, { itemCount: 20 })).length).toBe(12);
+  });
+
+  it('no opts (legacy/preview path) still resolves a legal default menu', () => {
+    const zones = resolveArchetype('menu-list', landscape, theme);
+    expect(rows(zones).length).toBeGreaterThanOrEqual(3);
+    const result = enforce(zones, { canvas: landscape, theme });
+    expect(result.findings.filter((f) => f.severity === 'error')).toEqual([]);
+  });
+
+  it('a 10-item landscape menu passes the validator with no errors (no scrim on menu text)', () => {
+    const zones = resolveArchetype('menu-list', landscape, theme, { itemCount: 10 });
+    const result = enforce(zones, { canvas: landscape, theme, copy: { headline: 'Our Menu' } });
+    expect(result.findings.filter((f) => f.severity === 'error')).toEqual([]);
+    expect(result.ok).toBe(true);
+  });
+
+  it('a 4-item menu with a photo panel does NOT trigger a text scrim (image is a half, not a full-bleed bg)', () => {
+    // The negative-space panel is an `image` slot, not a `background` — so the
+    // menu TEXT must NOT be treated as text-over-image and get a scrim.
+    const zones = resolveArchetype('menu-list', landscape, theme, { itemCount: 4 });
+    const result = enforce(zones, { canvas: landscape, theme, copy: { headline: 'Our Menu' } });
+    expect(result.findings.some((f) => f.code === 'TEXT_OVER_IMAGE_NO_SCRIM')).toBe(false);
+    expect(result.ok).toBe(true);
+  });
+});
+
 describe('every-archetype geometry sanity', () => {
   it('all rects are within 0-100 bounds', () => {
     for (const id of ARCHETYPE_IDS) {

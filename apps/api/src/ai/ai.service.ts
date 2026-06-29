@@ -3560,8 +3560,15 @@ COPY RULES — write a COMPLETE board, never a bare headline + button:
     line (a detail, a benefit, a what/when/where) so the board reads rich, never
     sparse. Body ≤ 15 words.
   - Use "items" for menu-list (label + value + detail per row) and three-up-grid
-    (label + detail per card). Prefer 3-5 items (8 max) — a fuller list reads as
-    a designed board, a 1-item list reads as broken.
+    (label + detail per card).
+  - FOR A "menu-list" BOARD: include EVERY menu item the operator listed — the
+    WHOLE menu, up to 12 items, NOT just a sample of 3-5. A real coffee / bar /
+    restaurant menu has 8-14 items; a half-empty menu reads as broken. Give each
+    item its price in "value" and an optional short "detail". The engine fills the
+    whole canvas with them (a long menu lays out in two balanced columns), so
+    supply the full list — do NOT trim it to fit.
+  - For "three-up-grid", give EXACTLY 3 cards (it has three slots). A 1-item list
+    reads as broken.
   - three-up-grid card labels must be SHORT (≤ 3 words / ~18 chars) so they fit the
     card column; ALWAYS give each card a "detail" (the time/place/extra) so the
     card has two lines of substance, not one floating word.
@@ -3663,12 +3670,22 @@ no commentary.`;
  *   - archetype must be one of the 6, else 'hero-fullbleed'
  *   - theme must be a known curated id or the literal 'brand', else 'clean-corporate'
  *   - headline is required → a sensible default when missing
- *   - copy lengths clamped; items capped at 8
+ *   - copy lengths clamped; items capped at ART_MAX_ITEMS (12)
  *   - accentSlot coerced to the allowed enum (default 'cta')
  *   - scenes (multi-scene) each parsed as a full SceneSpec, capped at 8
  */
 const ART_ACCENT_SLOTS: AccentSlot[] = ['kicker', 'headline', 'cta', 'stat', 'none'];
 const ART_THEME_IDS = new Set(THEMES.map((t) => t.id));
+
+/**
+ * The most repeatable items (menu rows / grid cards) a board may carry. Raised
+ * 8 → 12 (2026-06-28 menu canvas-fill): a real coffee/bar/restaurant menu has
+ * 10-14 items, and the old 8-cap silently dropped the tail so the board showed a
+ * partial menu. 12 matches the engine's MENU_MAX_ROWS (the geometry lays out up
+ * to 12 rows across two columns on a wide canvas), so the parser + the layout
+ * agree and a full menu renders. Still bounded against a runaway/abusive model.
+ */
+const ART_MAX_ITEMS = 12;
 
 function clampStr(v: any, max: number): string | undefined {
   if (typeof v !== 'string') return undefined;
@@ -3679,7 +3696,7 @@ function clampStr(v: any, max: number): string | undefined {
 function parseArtItems(raw: any): ArchetypeItem[] | undefined {
   if (!Array.isArray(raw)) return undefined;
   const out: ArchetypeItem[] = [];
-  for (const it of raw.slice(0, 8)) {
+  for (const it of raw.slice(0, ART_MAX_ITEMS)) {
     if (!it || typeof it !== 'object') continue;
     const label = clampStr((it as any).label, 80);
     if (!label) continue;

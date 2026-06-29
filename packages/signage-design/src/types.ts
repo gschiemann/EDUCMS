@@ -233,6 +233,30 @@ export interface ArchetypeSlotSpec {
   required?: boolean;
 }
 
+/**
+ * CONTENT-AWARE RESOLVE OPTIONS (2026-06-28 — menu canvas-fill).
+ *
+ * Optional, additive directives the mapper threads into an archetype's
+ * `resolve()` so the geometry can adapt to the actual COPY — chiefly the number
+ * of repeatable rows a list/menu carries. Every field is optional and every
+ * archetype that doesn't read it behaves EXACTLY as before (zero regression):
+ * only `menu-list` consumes `itemCount` today.
+ *
+ * Why this lives in `resolve()` (not the mapper): font sizes + scrims are
+ * derived by `enforce()` from the RESOLVED geometry, and `enforce` runs BEFORE
+ * the mapper. So the column/row count must be decided here, where enforce sees
+ * it — otherwise a post-hoc geometry tweak would mismatch the font size to the
+ * row height.
+ */
+export interface ResolveArchetypeOpts {
+  /**
+   * How many repeatable items (menu rows / grid cards) the board's copy carries.
+   * Drives the menu-list 1-column vs 2-column decision + the exact row count so
+   * the layout fills the canvas and shows the WHOLE menu, never a fixed 5.
+   */
+  itemCount?: number;
+}
+
 export interface Archetype {
   id: ArchetypeId;
   /** Human label for galleries. */
@@ -249,8 +273,16 @@ export interface Archetype {
    * Resolve named slots into pixel-perfect, grid-locked, Taurus-safe rects for
    * a given canvas + theme. THIS is the function the server calls after the LLM
    * picks the archetype. The LLM never sees the output.
+   *
+   * `opts` is an OPTIONAL, additive content-awareness hint (e.g. itemCount for a
+   * menu's row/column layout). Archetypes that don't read it ignore it — a call
+   * with no `opts` is identical to the pre-2026-06-28 behavior.
    */
-  resolve: (canvas: CanvasClass, theme: ThemeBundle) => ResolvedZone[];
+  resolve: (
+    canvas: CanvasClass,
+    theme: ThemeBundle,
+    opts?: ResolveArchetypeOpts,
+  ) => ResolvedZone[];
 }
 
 // ---------------------------------------------------------------------------

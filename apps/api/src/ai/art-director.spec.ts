@@ -112,6 +112,79 @@ describe('artDirectorSpecToTemplate', () => {
     expect(rows[0]?.defaultConfig?.content).toBe('Margherita');
   });
 
+  it('a 10-item landscape menu fills the canvas with 10 rows across TWO columns', () => {
+    // MENU CANVAS-FILL (2026-06-28): a real coffee/bar menu has 10-14 items. The
+    // mapper must thread the item count into the resolver so the WHOLE menu lays
+    // out (two balanced columns on a wide canvas), not a fixed 5 in the left 40%.
+    const items = Array.from({ length: 10 }, (_, i) => ({
+      label: `Item ${i + 1}`,
+      value: `$${i + 3}`,
+    }));
+    const spec: ArtDirectorSpec = {
+      ...specFor('menu-list'),
+      copy: { headline: 'Full Menu', items },
+    };
+    const out = artDirectorSpecToTemplate(spec, OPTS);
+    const rows = out.zones.filter((z) => z.name === 'listItem');
+    expect(rows.length).toBe(10);
+    // Each row carries its OWN item (the whole menu, in order).
+    expect(rows[0]?.defaultConfig?.content).toBe('Item 1');
+    expect(rows[9]?.defaultConfig?.content).toBe('Item 10');
+    // Two columns → two distinct row x-positions; the right column reaches the
+    // safe-right so the canvas is filled, not left-packed.
+    const xs = new Set(rows.map((z) => Math.round(z.x)));
+    expect(xs.size).toBe(2);
+    const maxRight = Math.max(...rows.map((z) => z.x + z.width));
+    expect(maxRight).toBeGreaterThan(90);
+  });
+
+  it('a 4-item landscape menu is a single centered column + a negative-space photo/panel', () => {
+    const items = [
+      { label: 'Espresso', value: '$3' },
+      { label: 'Latte', value: '$5' },
+      { label: 'Cold Brew', value: '$4' },
+      { label: 'Mocha', value: '$5' },
+    ];
+    const spec: ArtDirectorSpec = {
+      ...specFor('menu-list'),
+      copy: { headline: 'Coffee', items },
+    };
+    const out = artDirectorSpecToTemplate(spec, OPTS);
+    const rows = out.zones.filter((z) => z.name === 'listItem');
+    expect(rows.length).toBe(4);
+    // Single column.
+    const xs = new Set(rows.map((z) => Math.round(z.x)));
+    expect(xs.size).toBe(1);
+    // The empty side carries an IMAGE zone (the negative-space photo/panel) so
+    // the right half is never stranded. With no stock URL it rides the themed
+    // gradient (NEVER empty) — proven by the bgGradient fallback.
+    const panel = out.zones.filter((z) => z.name === 'image');
+    expect(panel.length).toBe(1);
+    expect(panel[0]?.widgetType).toBe('IMAGE');
+    expect(panel[0]?.defaultConfig?.bgGradient).toBeTruthy();
+    expect(panel[0]?.defaultConfig?.assetUrl).toBeUndefined();
+    expect(panel[0]!.x).toBeGreaterThan(50);
+  });
+
+  it('drops the stock photo onto the menu side panel when a stock URL is supplied', () => {
+    const items = [
+      { label: 'Espresso', value: '$3' },
+      { label: 'Latte', value: '$5' },
+      { label: 'Cold Brew', value: '$4' },
+    ];
+    const spec: ArtDirectorSpec = {
+      ...specFor('menu-list'),
+      copy: { headline: 'Coffee', items },
+    };
+    const out = artDirectorSpecToTemplate(spec, {
+      ...OPTS,
+      stockImageUrl: 'https://images.example.com/coffee.jpg',
+    });
+    const panel = out.zones.find((z) => z.name === 'image');
+    expect(panel?.defaultConfig?.assetUrl).toBe('https://images.example.com/coffee.jpg');
+    expect(panel?.defaultConfig?.fit).toBe('cover');
+  });
+
   it('three-up-grid cards use cardLayout + surface bg', () => {
     const out = artDirectorSpecToTemplate(specFor('three-up-grid'), OPTS);
     const cards = out.zones.filter((z) => z.name === 'listItem');

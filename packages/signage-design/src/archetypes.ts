@@ -24,6 +24,7 @@ import {
   type ArchetypeSlotSpec,
   type CanvasClass,
   type CanvasClassId,
+  type ResolveArchetypeOpts,
   type ResolvedZone,
   type ThemeBundle,
   type ZoneStyleTokens,
@@ -596,9 +597,36 @@ const threeUpGrid: Archetype = {
 
 // ---------------------------------------------------------------------------
 // 6. menu-list — priced rows, grid-aligned value column.
+//
+// CONTENT-AWARE FILL (2026-06-28 — operator-verified gap): the menu must show
+// the WHOLE menu and FILL the canvas, never a fixed 5 rows packed into the left
+// 40%. The geometry adapts to the item count + canvas SHAPE:
+//   - PORTRAIT, or LANDSCAPE with <= 6 items → ONE full-width column, rows tall,
+//     the block centered vertically so a short menu doesn't strand the bottom.
+//     A short LANDSCAPE menu also reserves a negative-space PHOTO panel on the
+//     right ~42% (the mapper drops the resolved stock photo there, or a tasteful
+//     themed panel when there's no photo) so the empty side never reads as a bug.
+//   - LANDSCAPE/wide with >= 7 items → TWO equal columns under a full-width
+//     headline, rows split left/right, each ~46% wide with a center gutter — the
+//     canvas fills and the full menu is visible at a glance.
+// The row COUNT equals the (clamped) item count so unused rows never exist, and
+// the geometry is decided HERE (so enforce sizes fonts to the real row height).
 // ---------------------------------------------------------------------------
 
-const MENU_ROWS = 5;
+/** Default rows when the mapper supplies no item count (legacy/preview path). */
+const MENU_DEFAULT_ROWS = 5;
+/** Hard ceiling on menu rows the geometry will lay out (matches the parser cap). */
+export const MENU_MAX_ROWS = 12;
+/** Min rows so a 1-item menu still reads as a designed list, not a lone line. */
+const MENU_MIN_ROWS = 3;
+/** Item-count threshold at/below which a landscape menu stays single-column. */
+const MENU_SINGLE_COL_MAX = 6;
+
+/** Clamp the requested item count into the row band the geometry supports. */
+function menuRowCount(itemCount: number | undefined): number {
+  const n = typeof itemCount === 'number' && itemCount > 0 ? Math.floor(itemCount) : MENU_DEFAULT_ROWS;
+  return Math.max(MENU_MIN_ROWS, Math.min(MENU_MAX_ROWS, n));
+}
 
 const menuList: Archetype = {
   id: 'menu-list',
@@ -606,42 +634,116 @@ const menuList: Archetype = {
   description: 'A headline over priced rows with a fixed-position value column.',
   supports: NO_RIBBON,
   backgroundMode: 'surface',
+  // Slots are advisory (the resolver emits the EXACT row count it needs from the
+  // item count); list MENU_MAX_ROWS listItem specs so any static consumer of
+  // `slots` sees the full capacity. `image` is the optional negative-space
+  // photo/panel slot a short landscape menu lays on its empty side — an IMAGE
+  // HALF (NOT a full-bleed `background`, so the menu TEXT never gets a scrim).
   slots: [
     SLOT.headline,
-    SLOT.listItem,
-    SLOT.listItem,
-    SLOT.listItem,
-    SLOT.listItem,
-    SLOT.listItem,
+    SLOT.image,
+    ...Array.from({ length: MENU_MAX_ROWS }, () => SLOT.listItem),
   ],
-  resolve(canvas: CanvasClass, theme: ThemeBundle): ResolvedZone[] {
+  resolve(canvas: CanvasClass, theme: ThemeBundle, opts?: ResolveArchetypeOpts): ResolvedZone[] {
     const cb = contentBox();
+    const rowTokens = (): ZoneStyleTokens => ({ ...textTokens(theme, 'title', 'ink', 'left') });
+
+    const n = menuRowCount(opts?.itemCount);
+    const portrait = isPortrait(canvas);
+    // Two columns only on a wide/landscape canvas with a genuinely long menu.
+    const twoColumn = !portrait && n > MENU_SINGLE_COL_MAX;
+
+    // ── TWO-COLUMN (long landscape menu) ──────────────────────────────────
+    // Full-width headline on top, then items split into a left + right column
+    // (left gets the first ceil(n/2), right the rest) with a center gutter. Each
+    // column's rows fill the vertical space so the whole canvas is used.
+    if (twoColumn) {
+      const headlineH = 13;
+      const headline = zone(
+        SLOT.headline,
+        { x: cb.x, y: cb.y, width: cb.width, height: headlineH },
+        2,
+        textTokens(theme, 'headline', 'ink', 'left'),
+      );
+      const rowsTop = cb.y + headlineH + GUTTER_PCT;
+      const rowsH = cb.y + cb.height - rowsTop;
+
+      const leftCount = Math.ceil(n / 2);
+      const rightCount = n - leftCount;
+      // Both columns are sized to the SAME (taller) column's row height so the
+      // two columns visually align row-for-row.
+      const rowsPerCol = Math.max(leftCount, rightCount);
+      const rowH = (rowsH - (rowsPerCol - 1) * GUTTER_PCT) / rowsPerCol;
+
+      const colGutter = GUTTER_PCT + 1; // a touch wider than stacked gutters
+      const colW = (cb.width - colGutter) / 2;
+      const leftX = cb.x;
+      const rightX = cb.x + colW + colGutter;
+
+      const rows: ResolvedZone[] = [];
+      for (let i = 0; i < n; i++) {
+        const inLeft = i < leftCount;
+        const colIdx = inLeft ? i : i - leftCount;
+        const x = inLeft ? leftX : rightX;
+        const y = rowsTop + colIdx * (rowH + GUTTER_PCT);
+        rows.push(zone(SLOT.listItem, { x, y, width: colW, height: rowH }, 2, rowTokens()));
+      }
+      return [headline, ...rows];
+    }
+
+    // ── SINGLE-COLUMN (portrait, or short landscape menu) ────────────────
     // Portrait gets a shorter headline band so each priced row is taller and
     // reads from across a hallway pillar.
-    const headlineH = isPortrait(canvas) ? 10 : 13;
+    const headlineH = portrait ? 10 : 13;
+
+    // A SHORT landscape menu reserves the right ~42% for a negative-space photo
+    // (or themed panel). The text column then uses the LEFT ~54% so the price
+    // value still hits the right edge of its (narrower) column, not mid-canvas.
+    const usePhoto = !portrait && n <= MENU_SINGLE_COL_MAX;
+    const PHOTO_W = 42;
+    const PHOTO_GUTTER = 4;
+    const textW = usePhoto ? cb.width - PHOTO_W - PHOTO_GUTTER : cb.width;
+
     const headline = zone(
       SLOT.headline,
-      { x: cb.x, y: cb.y, width: cb.width, height: headlineH },
+      { x: cb.x, y: cb.y, width: textW, height: headlineH },
       2,
       textTokens(theme, 'headline', 'ink', 'left'),
     );
+
     const rowsTop = cb.y + headlineH + GUTTER_PCT;
-    const rowsH = cb.y + cb.height - rowsTop;
-    const rowH = (rowsH - (MENU_ROWS - 1) * GUTTER_PCT) / MENU_ROWS;
+    const rowsAvail = cb.y + cb.height - rowsTop;
+    // Tall rows even when few: cap each row's height so a 3-item menu doesn't get
+    // absurdly tall rows, and CENTER the block vertically when it doesn't fill.
+    const fullRowH = (rowsAvail - (n - 1) * GUTTER_PCT) / n;
+    const maxRowH = 16; // a comfortable upper bound for a priced row
+    const rowH = Math.min(fullRowH, maxRowH);
+    const blockH = n * rowH + (n - 1) * GUTTER_PCT;
+    const blockTop = rowsTop + Math.max(0, (rowsAvail - blockH) / 2);
+
     const rows: ResolvedZone[] = [];
-    for (let i = 0; i < MENU_ROWS; i++) {
-      const y = rowsTop + i * (rowH + GUTTER_PCT);
+    for (let i = 0; i < n; i++) {
+      const y = blockTop + i * (rowH + GUTTER_PCT);
       // Each row is a single zone; the renderer lays label (left) + value
       // (right, fixed column) inside it — R6 §10.E rule 20 (fixed price column).
-      rows.push(
-        zone(
-          SLOT.listItem,
-          { x: cb.x, y, width: cb.width, height: rowH },
-          2,
-          { ...textTokens(theme, 'title', 'ink', 'left') },
-        ),
-      );
+      rows.push(zone(SLOT.listItem, { x: cb.x, y, width: textW, height: rowH }, 2, rowTokens()));
     }
+
+    if (usePhoto) {
+      // The negative-space side panel — an IMAGE HALF (slot 'image', not the
+      // full-bleed 'background' that would scrim the menu text). The mapper paints
+      // the resolved stock photo here when one is available, else a tasteful
+      // accent→surface themed panel (imageHalfGradient) — NEVER empty. Spans the
+      // full content height so the right half is filled, not stranded.
+      const photo = zone(
+        SLOT.image,
+        { x: cb.x + textW + PHOTO_GUTTER, y: cb.y, width: PHOTO_W, height: cb.height },
+        1,
+        {},
+      );
+      return [headline, ...rows, photo];
+    }
+
     return [headline, ...rows];
   },
 };
@@ -862,8 +964,9 @@ export function resolveArchetype(
   id: ArchetypeId,
   canvas: CanvasClass,
   theme: ThemeBundle,
+  opts?: ResolveArchetypeOpts,
 ): ResolvedZone[] {
-  return getArchetype(id).resolve(canvas, theme);
+  return getArchetype(id).resolve(canvas, theme, opts);
 }
 
 /** Whether an archetype supports a given canvas class. */
