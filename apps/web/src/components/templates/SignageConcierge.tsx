@@ -109,7 +109,7 @@ export interface SignageConciergeProps {
   /** Touch (interactive) vs passive display — passed through to generate. */
   interactive: boolean;
   /** Hand the gathered intake to the EXISTING 3-candidate generator. */
-  onGenerate: (args: { prompt: string; intake: ConciergeIntake; references: ConciergeReference[] }) => void;
+  onGenerate: (args: { prompt: string; intake: ConciergeIntake; references: ConciergeReference[]; userNotes: string }) => void;
   /** True while the page's generate request is in flight. */
   generating: boolean;
   /** Error from the page's GENERATE step (e.g. hourly AI cap, provider error) —
@@ -248,8 +248,17 @@ export function SignageConcierge(props: SignageConciergeProps) {
     // Pass the gathered references (scraped site + uploaded images) so the
     // page can feed the designer agent the real brand palette + business-type +
     // logo — the difference between an on-brand pizza board and a generic one.
-    onGenerate({ prompt, intake, references });
-  }, [generating, brief, lastUserText, intake, references, onGenerate]);
+    // ALSO pass the operator's verbatim chat turns (userNotes): the synthesized
+    // `brief` summarizes the conversation and loses specifics, so the generator
+    // gets the operator's actual words too and can't ignore what they asked for
+    // in the chat (the 2026-06-29 "it didn't pay attention to my chat" report).
+    const userNotes = messages
+      .filter((m) => m.role === 'user')
+      .map((m) => m.content.trim())
+      .filter(Boolean)
+      .join('\n');
+    onGenerate({ prompt, intake, references, userNotes });
+  }, [generating, brief, lastUserText, intake, references, messages, onGenerate]);
 
   // ── "What I've gathered" chips ─────────────────────────────────────────
   const intakeChips = useMemo(() => {

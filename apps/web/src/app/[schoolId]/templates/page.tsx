@@ -799,8 +799,17 @@ export default function TemplatesPage() {
   // run it through buildIntakeRequestFields, which expects the wizard's answer
   // shape). The prompt feeds aiPrompt too so the pick-grid "Regenerate" works.
   const runGenerateFromConcierge = useCallback(
-    (args: { prompt: string; intake: ConciergeIntake; references?: ConciergeReference[] }) => {
-      setAiPrompt(args.prompt);
+    (args: { prompt: string; intake: ConciergeIntake; references?: ConciergeReference[]; userNotes?: string }) => {
+      // The synthesized brief summarizes the chat and loses specifics. Append
+      // the operator's verbatim chat turns so the designer agent honors exactly
+      // what they asked for (the 2026-06-29 "it ignored my chat" report). Only
+      // append when the notes add detail beyond the brief.
+      const notes = (args.userNotes || '').trim();
+      const prompt =
+        notes && notes !== args.prompt.trim()
+          ? `${args.prompt}\n\nOperator's exact words from the chat — honor every specific they mentioned (items, offers, prices, tone, layout): ${notes}`.slice(0, 4000)
+          : args.prompt;
+      setAiPrompt(prompt);
       // Distill the gathered references (scraped site + uploaded images) into
       // the designer brief: deduped brand palette, a logo/hero image, and the
       // rich summary text — which now carries "what they sell" (the 2026-06-29
@@ -814,7 +823,7 @@ export default function TemplatesPage() {
       const logoUrl = refs.map((r) => r.imageUrl).find((u) => typeof u === 'string' && u) || undefined;
       const reference = refs.map((r) => r.summary).filter(Boolean).join('\n\n').slice(0, 4000) || undefined;
       return runGenerateCandidatesCore({
-        prompt: args.prompt,
+        prompt,
         intakeFields: { ...args.intake },
         forceDesigner: true,
         designerExtras: {
