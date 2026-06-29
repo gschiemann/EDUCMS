@@ -2133,7 +2133,7 @@ export class AiService {
     resolved: { provider: AiProvider; apiKey: string; model: string; source: 'tenant' | 'platform' },
     opts: { tenantId: string; prompt: string; screenWidth?: number; screenHeight?: number; vertical?: string; intake?: GuidedIntake },
     directive?: string,
-    overrides?: { forcedTheme?: string; maxTokens?: number },
+    overrides?: { forcedTheme?: string; forcedArchetype?: string; maxTokens?: number },
   ): Promise<{ sanitized: any; mapped: MappedTemplate; spec: ArtDirectorSpec; sw: number; sh: number }> {
     // The art-director spec is small (no geometry/hex/sizes) → 900 tokens is
     // ample, keeping spend bounded (~$0.01/call on Haiku).
@@ -2203,6 +2203,21 @@ export class AiService {
         (spec as any).theme = 'brand';
         if (spec.scenes) for (const sc of spec.scenes) (sc as any).theme = 'brand';
       }
+    }
+
+    // CANDIDATE DIVERSITY (2026-06-28) — the 3-candidate "pick your favorite"
+    // fan-out forces a DISTINCT archetype per take at the ENGINE level. The
+    // per-candidate prompt `directive` is only a soft hint, and a consistent
+    // reasoning model (GPT-5) IGNORES it — live repro returned three identical
+    // poster-promo / neon-sports boards, so the picker showed three clones
+    // (operator: "they all look the same until you click into them"). Forcing the
+    // archetype here GUARANTEES three structurally distinct options. Applied
+    // LAST — AFTER guided intake — so layout variety always wins (the whole point
+    // of three takes). Theme diversity rides the existing forcedTheme path above,
+    // which an explicit operator theme / brand palette still overrides. Single-
+    // board paths pass no forcedArchetype → spec untouched (zero regression).
+    if (overrides?.forcedArchetype && (ARCHETYPE_IDS as readonly string[]).includes(overrides.forcedArchetype)) {
+      (spec as any).archetype = overrides.forcedArchetype;
     }
 
     // Fetch the tenant brand palette so theme:'brand' (or any board) can ride
@@ -2353,7 +2368,7 @@ export class AiService {
     // vertical's affinity order so all candidates stay ON-vertical (no nonsensical
     // menu-list for a worship board). Falls back to the static Balanced/Bold/
     // Detailed directives for an unknown vertical.
-    const directives = signageCandidateDirectives(opts.vertical, count);
+    const plan = signageCandidatePlan(opts.vertical, count);
     const coreOpts = {
       tenantId: opts.tenantId,
       prompt,
@@ -2364,8 +2379,19 @@ export class AiService {
     };
     // Fan out — each take is independently settled so one bad spec can't sink
     // the batch. A failure-cap slot is burned ONLY when the whole batch fails.
+    // Each take FORCES a distinct archetype + theme at the engine level (not just
+    // a prompt hint) so the three options can never collapse to clones — the fix
+    // for "they all look the same until you click into them" (a consistent model
+    // ignored the soft directive and returned three identical boards). An explicit
+    // operator theme / brand palette still overrides the forced theme inside
+    // buildSignageBoardCore (the archetype variety always wins — that's the point).
     const settled = await Promise.allSettled(
-      directives.map((directive) => this.buildSignageBoardCore(resolved, coreOpts, directive)),
+      plan.map((p) =>
+        this.buildSignageBoardCore(resolved, coreOpts, p.directive, {
+          forcedArchetype: p.archetype,
+          forcedTheme: p.theme,
+        }),
+      ),
     );
     const built = settled
       .filter((s): s is PromiseFulfilledResult<{ sanitized: any; mapped: MappedTemplate; spec: ArtDirectorSpec; sw: number; sh: number }> => s.status === 'fulfilled')
@@ -4075,46 +4101,47 @@ const TOUCH_CANDIDATE_DIRECTIVES: string[] = [
 ];
 
 /**
- * Sibling of TOUCH_CANDIDATE_DIRECTIVES for the ART-DIRECTOR (engine) path —
- * steers the 3 signage candidates toward DISTINCT archetype families/moods so
- * "Pick your favorite" actually shows three different takes, not three clones.
- * The model still chooses the final archetype id (the parser clamps to a valid
- * one); these only bias the choice. Order mirrors the FE labels
- * Balanced / Bold / Detailed.
+ * Build vertical-aware candidate takes for the ART-DIRECTOR (engine) path so all
+ * 3 "Pick your favorite" options are GENUINELY distinct, not three clones. Each
+ * take carries a FORCED archetype (drawn from the vertical's affinity order — so
+ * a worship board never surfaces a menu-list) + a FORCED theme (cycled through
+ * the vertical's on-brand palette) that buildSignageBoardCore applies at the
+ * ENGINE level, plus a copy directive (balanced / bold / information-forward).
+ * Forcing at the engine — not just hinting in the prompt — is the fix for a
+ * consistent model (GPT-5) returning three identical boards. An unknown vertical
+ * resolves to the NEUTRAL affinity, so every take still gets a real archetype.
  */
-const SIGNAGE_CANDIDATE_DIRECTIVES: string[] = [
-  'DESIGN DIRECTION: balanced & classic — a clear title-led or split layout with strong hierarchy and generous breathing room. Prefer archetypes like title-cta, split-50, or lower-third-banner. Calm, premium, instantly legible.',
-  'DESIGN DIRECTION: bold & cinematic — ONE dominant focal element on a full-bleed or poster treatment. Prefer archetypes like hero-fullbleed, poster-promo, or quote-spotlight, and an image background when it fits. Maximum impact from across a room.',
-  'DESIGN DIRECTION: information-forward — surface the key numbers or a few facts at a glance. Prefer archetypes like stat-spotlight, three-up-grid, or menu-list. Organized and aligned, never cluttered.',
-];
-
-/**
- * Build vertical-aware candidate directives so all 3 "Pick your favorite" takes
- * stay ON-vertical: each take focuses on a DIFFERENT archetype drawn from the
- * vertical's affinity order (so a worship board never surfaces a menu-list, a
- * QSR board's first take is its menu, etc.). The 3 moods stay distinct
- * (balanced / bold / information-forward). Falls back to the static
- * SIGNAGE_CANDIDATE_DIRECTIVES for an unknown vertical (affinity = NEUTRAL).
- */
-function signageCandidateDirectives(vertical: string | undefined, count: number): string[] {
+export function signageCandidatePlan(
+  vertical: string | undefined,
+  count: number,
+): Array<{ directive: string; archetype: string; theme: string }> {
+  // getVerticalDesignAffinity ALWAYS returns a populated affinity (NEUTRAL for an
+  // unknown/'venue' vertical) — so every take gets a real archetype + theme.
   const aff = getVerticalDesignAffinity(vertical);
-  // No specialized affinity (neutral/unknown) → keep the proven static set.
-  if (aff === undefined || !aff.archetypes.length) {
-    return SIGNAGE_CANDIDATE_DIRECTIVES.slice(0, count);
-  }
+  const archetypes = aff.archetypes;
+  const themes = aff.themes;
   const moods = [
     { tone: 'balanced & classic', shape: 'clean with a clear hierarchy and generous breathing room' },
     { tone: 'bold & cinematic', shape: 'built around ONE dominant focal element, high-impact from across a room' },
     { tone: 'information-forward', shape: 'organized and scannable — surface the key facts/numbers at a glance' },
   ];
-  const themeList = aff.themes.join(' or ');
-  const out: string[] = [];
-  for (let i = 0; i < Math.min(count, 3); i++) {
-    const archetype = aff.archetypes[i] || aff.archetypes[aff.archetypes.length - 1];
+  const n = Math.min(Math.max(count, 1), 3);
+  const out: Array<{ directive: string; archetype: string; theme: string }> = [];
+  for (let i = 0; i < n; i++) {
+    // Each take gets a DISTINCT archetype (affinity is ordered, ≥3 entries for
+    // every vertical) and a theme cycled through the vertical's on-brand palette.
+    // These are FORCED at the engine level (see buildSignageBoardCore) so the
+    // takes can't collapse to clones even when the model ignores the directive.
+    const archetype = archetypes[i] || archetypes[archetypes.length - 1];
+    const theme = themes[i % themes.length];
     const mood = moods[i] || moods[0];
-    out.push(
-      `DESIGN DIRECTION: ${mood.tone} — build this take as a "${archetype}" board on an on-brand theme (${themeList}). Make it ${mood.shape}.`,
-    );
+    out.push({
+      archetype,
+      theme,
+      // The directive still nudges the COPY/voice to fit this take's mood + shape
+      // (the engine forces the actual geometry/theme regardless).
+      directive: `DESIGN DIRECTION: ${mood.tone} — write copy for a "${archetype}" board. Make it ${mood.shape}.`,
+    });
   }
   return out;
 }

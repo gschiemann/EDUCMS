@@ -21,7 +21,8 @@
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { AiService, sanitizeRewriteText, validateChatEditDiff, resolveChatColor, brandVoiceClause, prependVoices, parseArtDirectorSpec } from './ai.service';
+import { AiService, sanitizeRewriteText, validateChatEditDiff, resolveChatColor, brandVoiceClause, prependVoices, parseArtDirectorSpec, signageCandidatePlan } from './ai.service';
+import { ARCHETYPE_IDS } from '@cms/signage-design';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 
@@ -1337,5 +1338,46 @@ describe('AiService — attachKeptBoardPhoto (auto-photo on accept)', () => {
 
     expect(url).toBeUndefined();
     expect(stock.search).not.toHaveBeenCalled();
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// signageCandidatePlan — the 3-candidate "pick your favorite" diversity source.
+// The bug (2026-06-28): a consistent reasoning model (GPT-5) ignored the soft
+// per-candidate prompt hint and returned three IDENTICAL boards (same archetype
+// + theme), so the picker showed three clones ("they all look the same until you
+// click into them"). The fix forces a DISTINCT archetype + theme per take at the
+// engine level; this pins that the plan actually produces distinct, valid takes.
+// ───────────────────────────────────────────────────────────────────────────
+describe('signageCandidatePlan — distinct candidate takes (no clones)', () => {
+  const ids = new Set(ARCHETYPE_IDS as readonly string[]);
+
+  it('gives each of the 3 takes a DISTINCT archetype for a known vertical', () => {
+    const plan = signageCandidatePlan('bar', 3);
+    expect(plan).toHaveLength(3);
+    const archetypes = plan.map((p) => p.archetype);
+    expect(new Set(archetypes).size).toBe(3); // all different — never three clones
+    // bar affinity order = poster-promo, lower-third-banner, title-cta.
+    expect(archetypes).toEqual(['poster-promo', 'lower-third-banner', 'title-cta']);
+  });
+
+  it('every forced archetype is a real engine archetype id', () => {
+    for (const v of ['bar', 'qsr', 'retail', 'k12', 'sports', 'worship', undefined]) {
+      for (const take of signageCandidatePlan(v, 3)) {
+        expect(ids.has(take.archetype)).toBe(true);
+      }
+    }
+  });
+
+  it('falls back to a populated (NEUTRAL) plan for an unknown vertical', () => {
+    const plan = signageCandidatePlan('totally-made-up', 3);
+    expect(plan).toHaveLength(3);
+    expect(new Set(plan.map((p) => p.archetype)).size).toBe(3);
+    expect(plan.every((p) => p.archetype && p.theme && p.directive)).toBe(true);
+  });
+
+  it('clamps count to [1,3]', () => {
+    expect(signageCandidatePlan('bar', 0)).toHaveLength(1);
+    expect(signageCandidatePlan('bar', 9)).toHaveLength(3);
   });
 });
