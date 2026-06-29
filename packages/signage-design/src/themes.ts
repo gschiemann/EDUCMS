@@ -542,7 +542,22 @@ export function deriveThemeFromBrand(
   const mode = opts.mode ?? 'dark';
   const id = opts.id ?? 'brand';
   const label = opts.label ?? 'Brand';
-  const fontPair = opts.fontPair ?? pair('Inter', 'Inter');
+  // 2026-06-28 LIVE-VISUAL FIX — a brand-palette board (the COMMON case: the
+  // operator wants their own colors) previously defaulted to Inter/Inter, so it
+  // read like a SaaS dashboard, not a designed poster (the road-to-world-class
+  // panel's #1 typographic miss, confirmed on a live render). Default brand
+  // boards to a characterful-but-brand-neutral display face (Space Grotesk —
+  // geometric, modern, pairs with ANY brand hue; already in SIGNAGE_FONTS_HREF)
+  // with proper negative display tracking + a clean Inter body. A caller that
+  // wants the brand on a NAMED theme's fonts still passes opts.fontPair.
+  const fontPair =
+    opts.fontPair ??
+    pair('Space Grotesk', 'Inter', {
+      displayWeight: 700,
+      bodyWeight: 500,
+      displayTracking: '-0.02em',
+      kickerTracking: '0.16em',
+    });
 
   const brandPalette = TonalPalette.fromHex(brandPrimaryHex);
   const accentPalette = opts.accentHex
