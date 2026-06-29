@@ -62,3 +62,31 @@ is the high-value path and works now.
 - **4b (next poke):** ExternalHtmlTextEditor — discover fields from `config.html`
   (not fetch) for srcdoc boards; click-to-edit jump already works. Then brand-var
   prompt change for recolor.
+
+## ✅ 4a SHIPPED + verified (`043f8082`)
+- `apps/api/src/ai/designer-edit-shim.ts` — `DESIGNER_EDIT_SHIM` (EDUCMS-SHIM-V6
+  verbatim) + `injectDesignerEditShim(html)` (idempotent, before </head>).
+- `create-designer` injects the shim into the sanitized board before persist.
+- WidgetRenderer srcdoc branch: `postDesignerOverrides` forwards brand/text/
+  textStyles/img/actions via `educms-overrides` postMessage (reuses frameRef,
+  re-posts on load). Stale "wired in a later phase" comment removed.
+- 18 designer tests green; api+web tsc clean.
+- **Headless proof:** postMessage `educms-overrides {text:{venue:'NOVA CAFÉ'},
+  textStyles:{venue:{color:'#00e5ff'}}}` → the data-field text + color updated
+  live; `educms-edit-mode {on}` armed the click handlers (`__veArmed:true`).
+
+### 4a nuance to carry into 4b
+- `applyBrand` sets CSS vars; AI boards use literal hex → brand recolor needs a
+  prompt change so boards define+use `--brand-*` vars. (Text + style + image edits
+  work now.)
+- `<img data-imgslot>` gets `background-image` (not `src`) from the shim — for
+  reliable image SWAP, steer the prompt to a DIV `data-imgslot` (background) or
+  add an `<img data-img>` path. Text/style override is the proven path.
+
+## Next: 4b = make it operator-facing
+ExternalHtmlTextEditor must, for srcdoc boards (config.html, no url): parse
+`config.html` with DOMParser to discover `[data-field]`/`[data-imgslot]`/
+`[data-action]`, render the same editors (write config.textOverrides etc.), and
+rely on the existing src-agnostic click-to-edit window listener. Then the
+WidgetRenderer forwarding (4a) applies them live. Load-bearing panel change —
+do with care + a live builder screenshot.
