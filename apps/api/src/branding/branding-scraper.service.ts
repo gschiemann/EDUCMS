@@ -108,6 +108,16 @@ export interface BrandingPreview {
   finalUrl: string;
   displayName: string | null;
   tagline: string | null;
+  /**
+   * Business descriptor — "what this venue IS / sells" (e.g. Domino's:
+   * "Pizza Delivery & Carryout, Pasta, Wings & More"). Distinct from
+   * `tagline` (which is deduped/boilerplate-filtered for the branding
+   * wizard): this keeps the raw descriptor EVEN IF it overlaps the name,
+   * because the AI template generator needs the business TYPE so it doesn't
+   * invent the wrong cuisine (the 2026-06-29 "Domino's -> burger menu"
+   * failure: the scrape knew the name + colors but never "pizza").
+   */
+  description: string | null;
   logos: LogoCandidate[];
   favicon: string | null;
   ogImage: string | null;
@@ -896,6 +906,26 @@ export class BrandingScraperService {
 
     const durationMs = Date.now() - startedAt;
 
+    // Business descriptor for the AI template generator — the raw "what they
+    // sell" signal, kept even if it overlaps the brand name (unlike tagline).
+    // Prefer the social/meta description; fall back to the descriptive segment
+    // of the SEO <title> (the part that is NOT the brand name) — e.g.
+    // "Pizza Delivery & Carryout, Pasta, Wings & More". Cheap, no extra fetch.
+    const description = (() => {
+      const cands = [ogDesc, metaDesc, twitterDesc]
+        .map((s) => (typeof s === 'string' ? s.trim() : ''))
+        .filter(Boolean);
+      let best = cands.find((s) => s.length >= 12) || cands[0] || '';
+      if (!best && pageTitle) {
+        const segs = pageTitle.split(/\s*[|\-–—]\s*/).map((s) => s.trim()).filter(Boolean);
+        best =
+          segs
+            .filter((s) => !dnNorm || normalize(s) !== dnNorm)
+            .sort((a, b) => b.length - a.length)[0] || '';
+      }
+      return best ? best.slice(0, 300) : null;
+    })();
+
     const rawSnapshot = {
       title: pageTitle,
       ogSiteName, ogTitle, ogDesc, metaDesc,
@@ -911,6 +941,7 @@ export class BrandingScraperService {
       finalUrl,
       displayName,
       tagline,
+      description,
       logos: logos.slice(0, 8),
       favicon,
       ogImage,

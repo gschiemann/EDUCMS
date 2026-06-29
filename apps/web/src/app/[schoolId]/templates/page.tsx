@@ -38,7 +38,7 @@ import {
   DEFAULT_INTAKE_ANSWERS,
   buildIntakeRequestFields,
 } from '@/components/templates/ai-intake-contract';
-import type { ConciergeIntake } from '@cms/api-types';
+import type { ConciergeIntake, ConciergeReference } from '@cms/api-types';
 import { useParams, useRouter } from 'next/navigation';
 import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 import { useUIStore } from '@/store/ui-store';
@@ -681,6 +681,8 @@ export default function TemplatesPage() {
     async ({
       prompt: rawPrompt,
       intakeFields,
+      forceDesigner = false,
+      designerExtras,
     }: {
       prompt: string;
       // The wizard passes buildIntakeRequestFields(answers); the concierge
@@ -688,6 +690,15 @@ export default function TemplatesPage() {
       // (purpose/theme/palette/background/widgets), spread straight into the
       // body. The backend schema is `.passthrough()`.
       intakeFields: AiIntakeRequestFields | ConciergeIntake;
+      // forceDesigner: route to the trained AI-Designer agent (full-HTML board)
+      // regardless of the mode toggle — the conversational Concierge ALWAYS uses
+      // it so a pasted URL + chat produces a designer-grade, on-brand,
+      // on-subject board (the 2026-06-29 "Domino's -> generic burger menu" fix).
+      forceDesigner?: boolean;
+      // Brand + business-type + logo distilled from the gathered references, fed
+      // straight into the designer prompt (palette = scraped brand colors;
+      // reference = the rich summary incl. "what they sell").
+      designerExtras?: { palette?: string[]; venueName?: string; logoUrl?: string; reference?: string };
     }) => {
       setAiError(null);
       const prompt = rawPrompt.trim();
@@ -700,7 +711,7 @@ export default function TemplatesPage() {
         // Each board maps to a one-zone EXTERNAL_HTML candidate so the existing
         // pick-grid previews it via srcdoc; the raw html rides on _designerHtml
         // for persist (create-designer, base64).
-        if (aiDesignerMode) {
+        if (aiDesignerMode || forceDesigner) {
           const dres = await generateDesigner.mutateAsync({
             prompt,
             screenWidth: aiCanvas.w,
@@ -709,6 +720,18 @@ export default function TemplatesPage() {
             count: 3,
             // palette/content/venueName/tagline ride through (schema passthrough).
             ...(intakeFields as Record<string, any>),
+            // Scraped-reference brand + business-type + logo (Concierge path) win
+            // over the intake defaults — this is what makes a pasted URL produce
+            // an on-brand, on-subject board (palette = real brand colors;
+            // reference = the rich summary incl. "what they sell").
+            ...(designerExtras
+              ? {
+                  ...(designerExtras.palette && designerExtras.palette.length ? { palette: designerExtras.palette } : {}),
+                  ...(designerExtras.venueName ? { venueName: designerExtras.venueName } : {}),
+                  ...(designerExtras.logoUrl ? { logoUrl: designerExtras.logoUrl } : {}),
+                  ...(designerExtras.reference ? { reference: designerExtras.reference } : {}),
+                }
+              : {}),
           });
           const boards = dres?.candidates || [];
           if (!boards.length) {
@@ -776,11 +799,29 @@ export default function TemplatesPage() {
   // run it through buildIntakeRequestFields, which expects the wizard's answer
   // shape). The prompt feeds aiPrompt too so the pick-grid "Regenerate" works.
   const runGenerateFromConcierge = useCallback(
-    (args: { prompt: string; intake: ConciergeIntake }) => {
+    (args: { prompt: string; intake: ConciergeIntake; references?: ConciergeReference[] }) => {
       setAiPrompt(args.prompt);
+      // Distill the gathered references (scraped site + uploaded images) into
+      // the designer brief: deduped brand palette, a logo/hero image, and the
+      // rich summary text — which now carries "what they sell" (the 2026-06-29
+      // Domino's fix). The conversational Concierge ALWAYS routes to the trained
+      // AI-Designer agent so a pasted URL + chat yields a designer-grade,
+      // on-brand, on-SUBJECT board — never the engine's generic template.
+      const refs = args.references || [];
+      const palette = Array.from(
+        new Set(refs.flatMap((r) => (Array.isArray(r.palette) ? r.palette : [])).filter(Boolean)),
+      ).slice(0, 8);
+      const logoUrl = refs.map((r) => r.imageUrl).find((u) => typeof u === 'string' && u) || undefined;
+      const reference = refs.map((r) => r.summary).filter(Boolean).join('\n\n').slice(0, 4000) || undefined;
       return runGenerateCandidatesCore({
         prompt: args.prompt,
         intakeFields: { ...args.intake },
+        forceDesigner: true,
+        designerExtras: {
+          ...(palette.length ? { palette } : {}),
+          ...(logoUrl ? { logoUrl } : {}),
+          ...(reference ? { reference } : {}),
+        },
       });
     },
     [runGenerateCandidatesCore],

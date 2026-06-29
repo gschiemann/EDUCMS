@@ -295,6 +295,11 @@ export function clampConciergeIntake(raw: any): ConciergeIntake {
 export function summarizeUrlReference(preview: any, url: string): ConciergeReference {
   const name = strOrEmpty(preview?.displayName);
   const tagline = strOrEmpty(preview?.tagline);
+  // Business descriptor — "what they sell" — the SINGLE most important signal
+  // for content generation. Without it the model invents the wrong cuisine
+  // (the 2026-06-29 "Domino's -> burger menu" failure: it had the name + colors
+  // but never "pizza"). Lead with it so the generated board is on-subject.
+  const businessType = strOrEmpty(preview?.description);
   const fonts =
     preview?.fonts && (preview.fonts.heading || preview.fonts.body)
       ? `Fonts: ${[preview.fonts.heading, preview.fonts.body].filter(Boolean).join(' / ')}.`
@@ -306,6 +311,7 @@ export function summarizeUrlReference(preview: any, url: string): ConciergeRefer
 
   const summaryParts = [
     name ? `Brand: ${name}.` : '',
+    businessType ? `What they are / sell (use this to pick the RIGHT content — never invent a different cuisine/industry): "${businessType.slice(0, 240)}".` : '',
     tagline ? `Tagline: "${tagline.slice(0, 160)}".` : '',
     palette.length ? `Brand palette: ${palette.slice(0, 6).join(', ')}.` : '',
     fonts,

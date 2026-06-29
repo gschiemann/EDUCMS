@@ -109,7 +109,7 @@ export interface SignageConciergeProps {
   /** Touch (interactive) vs passive display — passed through to generate. */
   interactive: boolean;
   /** Hand the gathered intake to the EXISTING 3-candidate generator. */
-  onGenerate: (args: { prompt: string; intake: ConciergeIntake }) => void;
+  onGenerate: (args: { prompt: string; intake: ConciergeIntake; references: ConciergeReference[] }) => void;
   /** True while the page's generate request is in flight. */
   generating: boolean;
   /** Error from the page's GENERATE step (e.g. hourly AI cap, provider error) —
@@ -245,8 +245,11 @@ export function SignageConcierge(props: SignageConciergeProps) {
       setError('Tell me a bit about the screen first, then I can generate it.');
       return;
     }
-    onGenerate({ prompt, intake });
-  }, [generating, brief, lastUserText, intake, onGenerate]);
+    // Pass the gathered references (scraped site + uploaded images) so the
+    // page can feed the designer agent the real brand palette + business-type +
+    // logo — the difference between an on-brand pizza board and a generic one.
+    onGenerate({ prompt, intake, references });
+  }, [generating, brief, lastUserText, intake, references, onGenerate]);
 
   // ── "What I've gathered" chips ─────────────────────────────────────────
   const intakeChips = useMemo(() => {
