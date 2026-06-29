@@ -3622,6 +3622,13 @@ function QrCodeVariant({ config, bgColor, color }: { config: any; bgColor: strin
  */
 function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean }) {
   const url = typeof config?.url === 'string' ? config.url.trim() : '';
+  // AI DESIGNER (2026-06-28): a board can carry its HTML INLINE (config.html)
+  // instead of a hosted url — used by AI-authored full-HTML boards (per-tenant
+  // runtime content that can't be a build-time public file). Rendered via the
+  // SAME null-origin sandboxed iframe, just through `srcdoc`. Inline HTML also
+  // rides in the template payload, so the player service-worker caches it for
+  // free (no external fetch). The url path is unchanged when no html is present.
+  const inlineHtml = typeof config?.html === 'string' ? config.html.trim() : '';
 
   // Passthrough payload — base64url-encoded JSON on URL params:
   //   ?brand=…       CSS custom-property overrides (colors, fonts)
@@ -3724,6 +3731,25 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
     el.addEventListener('load', postMenu);
     return () => { el.removeEventListener('load', postMenu); };
   }, [postMenu]);
+
+  // AI DESIGNER — inline HTML board. Same null-origin sandbox as the url path;
+  // rendered via `srcdoc`. `key` on a cheap length+head hash so an edit reloads
+  // the frame. Overrides (brand/text/img) apply via postMessage to the shim
+  // (the url path's URL-param passthrough doesn't exist for srcdoc) — wired in a
+  // later phase; the AI bakes final content directly today.
+  if (inlineHtml) {
+    return (
+      <iframe
+        key={`srcdoc:${inlineHtml.length}:${inlineHtml.slice(0, 64)}`}
+        ref={frameRef}
+        srcDoc={inlineHtml}
+        title="AI-designed signage board"
+        loading="lazy"
+        sandbox="allow-scripts"
+        style={{ width: '100%', height: '100%', border: 0, display: 'block' }}
+      />
+    );
+  }
 
   if (!url) {
     return (
