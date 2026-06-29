@@ -981,6 +981,52 @@ export default function PlaylistsPage() {
   const selectedPlaylist = playlists?.find((p: any) => p.id === selectedId);
   const playlistSchedules = (schedules || []).filter((s: any) => s.playlistId === selectedId);
 
+  // ── Express lane handoff: "Put on a screen" from the Templates page ──
+  // The templates page creates a template-backed playlist, then navigates here
+  // with ?publishPlaylist=<id>. We auto-select that playlist and open the
+  // existing single-tenant Publish-to-Screens sheet (role-correct + mobile
+  // bottom-sheet) so the operator picks screens and publishes — no layout
+  // builder, no desktop wall. Mirrors the Assets → ?newPlaylist=1 pattern.
+  //
+  // Two-phase so a brief stale-cache first paint can't drop the handoff:
+  //  1. On first mount, capture the id into a ref and STRIP the param (so a
+  //     refresh / back never re-triggers the sheet).
+  //  2. On each `playlists` update, once the target row is present, open the
+  //     sheet and clear the pending id. If the row never shows (deleted / wrong
+  //     tenant), it simply no-ops — fail safe.
+  const publishHandoffIdRef = useRef<string | null>(null);
+  const publishHandoffCapturedRef = useRef(false);
+  useEffect(() => {
+    if (publishHandoffCapturedRef.current) return;
+    if (typeof window === 'undefined') return;
+    publishHandoffCapturedRef.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const wantId = params.get('publishPlaylist');
+    if (!wantId) return;
+    publishHandoffIdRef.current = wantId;
+    params.delete('publishPlaylist');
+    const qs = params.toString();
+    window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''));
+  }, []);
+  useEffect(() => {
+    const wantId = publishHandoffIdRef.current;
+    if (!wantId || !playlists) return;
+    const target = playlists.find((p: { id: string }) => p.id === wantId);
+    if (!target) return; // not loaded yet (or gone) — wait for the next update
+    publishHandoffIdRef.current = null; // consume — open exactly once
+    // Select it (same state handleSelect sets) + open Publish with fresh
+    // defaults, matching the in-page "Publish" button's onClick.
+    setSelectedId(target.id);
+    setLocalItems(target.items || []);
+    setHasChanges(false);
+    setTab('editor');
+    setEditingScheduleId(null);
+    setSchedTargets([]);
+    setSchedMode('always');
+    setSchedMuted(true);
+    setShowPublishModal(true);
+  }, [playlists]);
+
   // --- Build playlist → screen mapping for dashboard cards ---
   const playlistScreenMap = useMemo(() => {
     const map: Record<string, { screens: any[]; groups: any[]; scheduleCount: number; activeCount: number }> = {};

@@ -16,7 +16,7 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical,
   Layers, ChevronUp, ChevronDown, Lock, Unlock, GripVertical,
   ZoomIn, ZoomOut, Maximize2, RotateCcw, RotateCw, Palette, MousePointer,
-  PanelLeft, Sparkles, Search, FolderOpen, ChevronRight, Wand2,
+  PanelLeft, Sparkles, Search, FolderOpen, ChevronRight, Wand2, MonitorPlay,
 } from 'lucide-react';
 import {
   useTemplates, useCreateTemplate, useDeleteTemplate, useCreateFromPreset,
@@ -26,7 +26,7 @@ import {
   useGenerateTouchTemplate, useExportTemplate, useImportTemplate,
   useGenerateTouchCandidates, useCreateFromCandidate, useRefineSignageBoard, type AiTemplateCandidate,
   useGenerateDesignerCandidates, useCreateDesigner,
-  useRegenerateBoardImage,
+  useRegenerateBoardImage, useCreatePlaylist,
 } from '@/hooks/use-api';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
@@ -594,6 +594,15 @@ export default function TemplatesPage() {
   const aiBusy = [generateCandidates, generateDesigner].some((m) => m.isPending);
   const exportTemplate = useExportTemplate();
   const importTemplate = useImportTemplate();
+  // Express lane — "Put on a screen". Creates a one-item playlist FROM this
+  // board/template (same path the New-Playlist "From Template" mode uses) and
+  // hands off to the playlists page's existing single-tenant Publish-to-Screens
+  // flow (a mobile bottom-sheet). Deliberately does NOT touch openInBuilder, so
+  // it works on a phone (≤1023px) where the layout editor is gated off.
+  const createPlaylist = useCreatePlaylist();
+  // The template id currently being turned into a playlist (drives the per-card
+  // spinner). null = idle.
+  const [puttingOnScreenId, setPuttingOnScreenId] = useState<string | null>(null);
 
   // CC-1 — real screens for the AI "Match a screen…" picker. Each option
   // resolves to a concrete pixel canvas: an explicit per-screen LED canvas
@@ -777,14 +786,60 @@ export default function TemplatesPage() {
     [runGenerateCandidatesCore],
   );
 
-  // Phase 2 → done: persist the chosen candidate (re-sanitized server-
-  // side) and open it in the builder. The sub-1024px mobile handoff is
-  // handled by openInBuilder (toast + stay on gallery).
-  const pickCandidate = useCallback(async (index: number) => {
+  // ── Express lane: "Put on a screen" ──
+  // The most-marketed flow ("AI board → onto a screen") was multi-step AND
+  // blocked on a phone, because every persist routed through the desktop-only
+  // layout builder (openInBuilder bounces ≤1023px). This bypasses the builder
+  // entirely: spin up a template-backed playlist (one DB row, no item wiring —
+  // a template playlist references the template), then deep-link the playlists
+  // page to its existing Publish-to-Screens sheet (role-correct for SCHOOL_ADMIN
+  // and mobile-friendly). Works identically on desktop and phone. Declared
+  // before pickCandidate so the candidate "To a screen" path can call it.
+  const putOnScreen = useCallback(async (template: Template) => {
+    if (isViewer || puttingOnScreenId) return;
+    setPuttingOnScreenId(template.id);
+    try {
+      const created = await createPlaylist.mutateAsync({
+        // Keep the name recognizable so it's easy to find in the playlist list.
+        name: template.name,
+        templateId: template.id,
+      });
+      const playlistId = (created as { id?: string } | undefined)?.id;
+      if (!playlistId) throw new Error('Playlist was created without an id.');
+      // Hand off to the playlists page, which auto-selects this playlist and
+      // opens its Publish-to-Screens sheet (see the ?publishPlaylist= handler
+      // there). Full nav (not router.push) matches the builder-open pattern and
+      // guarantees the playlists page mounts fresh with the param.
+      window.location.href =
+        `/${params?.schoolId ?? ''}/playlists?publishPlaylist=${encodeURIComponent(playlistId)}`;
+    } catch (err) {
+      setPuttingOnScreenId(null);
+      await appAlert({
+        title: 'Could not start publishing',
+        message: (err as Error)?.message || 'We could not create a playlist from this board. Try again.',
+        tone: 'danger',
+        confirmLabel: 'Got it',
+      });
+    }
+  }, [isViewer, puttingOnScreenId, createPlaylist, params?.schoolId]);
+
+  // Phase 2 → done: persist the chosen candidate (re-sanitized server-side),
+  // then route to its destination:
+  //  - 'edit'   → open the layout builder (desktop arrange path; the sub-1024px
+  //               mobile handoff is handled by openInBuilder = toast + stay).
+  //  - 'screen' → express lane: skip the builder, turn the freshly-saved board
+  //               into a playlist and jump to Publish-to-Screens (phone-friendly).
+  const pickCandidate = useCallback(async (index: number, dest: 'edit' | 'screen' = 'edit') => {
     const candidate = aiCandidates[index];
     if (!candidate) return;
     setAiError(null);
     setAiPicking(index);
+    const route = (created: Template) => {
+      closeAiModal();
+      setAiPrompt('');
+      if (dest === 'screen') void putOnScreen(created);
+      else openInBuilder(created);
+    };
     try {
       // AI Designer board → persist the full HTML via create-designer. base64
       // so the global input sanitizer passes it through intact (a raw html
@@ -798,9 +853,7 @@ export default function TemplatesPage() {
           screenHeight: aiCanvas.h,
         });
         if (created?.id) {
-          closeAiModal();
-          setAiPrompt('');
-          openInBuilder(created as unknown as Template);
+          route(created as unknown as Template);
         } else {
           setAiError('That option could not be created. Pick another or regenerate.');
           setAiPicking(null);
@@ -821,9 +874,7 @@ export default function TemplatesPage() {
       });
       const created = res?.template;
       if (created?.id) {
-        closeAiModal();
-        setAiPrompt('');
-        openInBuilder(created as unknown as Template);
+        route(created as unknown as Template);
       } else {
         setAiError('That option could not be created. Pick another or regenerate.');
         setAiPicking(null);
@@ -832,7 +883,7 @@ export default function TemplatesPage() {
       setAiError(friendlyAiError(e));
       setAiPicking(null);
     }
-  }, [aiCandidates, aiInteractive, aiCanvas, createFromCandidate, createDesigner, closeAiModal, openInBuilder]);
+  }, [aiCandidates, aiInteractive, aiCanvas, createFromCandidate, createDesigner, closeAiModal, openInBuilder, putOnScreen]);
 
   // Wave 3 — chat-to-edit. Refine candidate `index` by a natural-language tweak
   // (delta-prompt over its spec) and REPLACE it in place. Closes the tweak box.
@@ -1399,10 +1450,22 @@ export default function TemplatesPage() {
                             <button
                               onClick={() => pickCandidate(i)}
                               disabled={aiPicking !== null || aiRefiningIdx !== null}
+                              title="Save this board, then open the layout editor (desktop)"
                               className="flex-1 px-3 py-2 text-xs font-bold rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
                             >
                               {picking && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                               {picking ? 'Opening…' : 'Use this'}
+                            </button>
+                            {/* Express lane — save this board AND go straight to
+                                publishing it to a screen. Phone-friendly: it
+                                never opens the desktop-only layout editor. */}
+                            <button
+                              onClick={() => pickCandidate(i, 'screen')}
+                              disabled={aiPicking !== null || aiRefiningIdx !== null}
+                              title="Save this board and publish it to your screens"
+                              className="px-2.5 py-2 text-xs font-bold rounded-lg bg-white border border-violet-200 text-violet-700 hover:bg-violet-50 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                            >
+                              <MonitorPlay className="w-3.5 h-3.5" /> To a screen
                             </button>
                           </div>
                         </div>
@@ -1913,6 +1976,8 @@ export default function TemplatesPage() {
                     template={t}
                     portraitSibling={portraitSiblingFor(t)}
                     onEdit={() => openTemplate(t)}
+                    onPutOnScreen={() => putOnScreen(t)}
+                    putOnScreenBusy={puttingOnScreenId === t.id}
                     onDuplicate={() => handleDuplicate(t)}
                     onExport={() => handleExport(t)}
                     onAdaptForLED={() => setAdaptTemplate(t)}
@@ -2352,7 +2417,7 @@ function AdaptForLedModal({
 // GALLERY CARD — premium hover preview
 // ═════════════════════════════════════════════════════
 
-function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, onDuplicate, onExport, onAdaptForLED, onDelete, onPreview, isViewerDisabled = false }: {
+function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, onPutOnScreen, putOnScreenBusy = false, onDuplicate, onExport, onAdaptForLED, onDelete, onPreview, isViewerDisabled = false }: {
   template: Template;
   /** If this template has a portrait sibling preset, pass it here; the
    *  card shows a Landscape | Portrait toggle and renders the active
@@ -2361,6 +2426,13 @@ function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, 
   onUse?: () => void;
   onUsePortrait?: () => void;
   onEdit?: () => void;
+  /** Express lane — create a playlist from this template and jump straight to
+   *  the Publish-to-Screens sheet. Works on a phone (skips the layout builder).
+   *  Only rendered for custom templates (presets aren't playlist-ready). */
+  onPutOnScreen?: () => void;
+  /** True while this card's "Put on a screen" action is creating the playlist
+   *  + navigating, so the button shows a spinner and disables. */
+  putOnScreenBusy?: boolean;
   onDuplicate?: () => void;
   /** Export this template to a portable .educms-template.json file. */
   onExport?: () => void;
@@ -2582,7 +2654,25 @@ function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, 
           <span className="text-[10px] text-slate-400">{zones.length} zone{zones.length !== 1 ? 's' : ''}</span>
         </div>
 
-        <div className="flex gap-2 mt-3 pt-3 border-t border-slate-100">
+        {/* Express lane — one tap turns this board into a playlist and jumps
+            to the Publish-to-Screens sheet. Phone-friendly (never opens the
+            desktop-only layout builder). Edit (below) stays the arrange path. */}
+        {onPutOnScreen && (
+          <div className="mt-3 pt-3 border-t border-slate-100">
+            <button
+              onClick={onPutOnScreen}
+              disabled={isViewerDisabled || putOnScreenBusy}
+              title={isViewerDisabled ? 'Read-only — viewer role' : 'Create a playlist from this and publish to your screens'}
+              className="w-full py-2.5 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ background: 'var(--brand-primary, #4f46e5)' }}
+            >
+              {putOnScreenBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MonitorPlay className="w-3.5 h-3.5" />}
+              {putOnScreenBusy ? 'Opening publish…' : 'Put on a screen'}
+            </button>
+          </div>
+        )}
+
+        <div className={`flex gap-2 mt-3 ${onPutOnScreen ? '' : 'pt-3 border-t border-slate-100'}`}>
           {onUse && (
             <div className="flex-1 flex gap-1">
               <button onClick={onUse} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-sm">
