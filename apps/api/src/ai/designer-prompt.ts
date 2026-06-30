@@ -279,10 +279,16 @@ export function buildDesignerUserPrompt(opts: DesignerBoardOptions): string {
 }
 
 /** Three distinct art directions so a 3-candidate fan-out yields different designs. */
+// IMPORTANT: none of these reserve a bare side panel for a photo. The 3-up
+// preview is ALWAYS image-free and many boards never get a photo, so a
+// reserved photo strip renders as a DEAD void. Every direction must FILL ALL
+// FOUR CORNERS edge-to-edge; a signature graphic object is WOVEN INTO the
+// composition (corner anchor / behind the headline / a band), never a separate
+// empty column. A photo, if it ever arrives, layers on top as enhancement.
 export const DESIGNER_ART_DIRECTIONS: string[] = [
-  'Bold editorial — a confident oversized headline beside a SELF-SUFFICIENT graphic side panel: an on-palette gradient/duotone block carrying a signature object (a large gradient sphere/medallion, an oversized translucent brand initial, a bold pattern, or a hero stat). The panel must look COMPLETE and designed with NO photo in it (the 3-up preview is always image-free and many boards never get a photo) — a relevant photo, if any, layers ON TOP of that graphic as enhancement, never as the panel\'s only content. NEVER leave a reserved panel as a bare/dark empty slot. Magazine-cover energy; content crisp on a solid field.',
-  'Clean & premium — minimal, lots of intentional whitespace, a refined type pairing and a single restrained accent; Aesop/Apple calm. Photo optional + subtle (small inset or none).',
-  'Vibrant & graphic — color-blocked panels or a rich on-palette gradient, oversized type, a lively accent; high-impact and scroll-stopping while staying on-brand. Photo optional; if used, keep it in its own block.',
+  'Full-bleed editorial — a confident oversized headline and the content span the FULL width edge-to-edge; ONE large signature graphic object (a gradient sphere/medallion, an oversized translucent brand initial, a starburst, a bold pattern) is woven INTO the composition as a corner anchor or behind the hero, sized so it visually balances the text — NOT a reserved side strip. Every quadrant carries content, color, or that graphic; ZERO dead/empty band anywhere. Magazine-cover energy.',
+  'Clean & premium — calm and refined, but whitespace is distributed EVENLY across the whole canvas (never dumped into one empty half); a high-contrast serif + clean sans pairing, ONE restrained metallic/brand accent, and a single elegant signature object (a thin-ruled seal or a small gradient medallion) anchoring the composition. Content is centered or full-width so NO quadrant is empty.',
+  'Vibrant & graphic — edge-to-edge: a rich on-palette gradient or color-blocked panels cover the WHOLE field, oversized type, a lively accent, and a bold recurring shape motif. Every region carries color or content; high-impact and scroll-stopping with ZERO dead space.',
 ];
 
 /**
