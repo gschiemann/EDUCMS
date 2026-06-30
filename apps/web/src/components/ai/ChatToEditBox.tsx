@@ -104,6 +104,38 @@ export function ChatToEditBox({
     abortRef.current?.abort();
     abortRef.current = new AbortController();
     try {
+      // ── AI-Designer board (EXTERNAL_HTML with baked html) ──────────────
+      // These have no structured fields for /ai/edit/resolve to patch — the
+      // whole board is one HTML document. Route to the designer-refine path:
+      // the model revises the current HTML per the instruction and we swap the
+      // zone's html. (This is the "dial it in with AI" loop on a generated board.)
+      const dz =
+        editable.length === 1 &&
+        editable[0].widgetType === 'EXTERNAL_HTML' &&
+        typeof editable[0].defaultConfig?.html === 'string' &&
+        (editable[0].defaultConfig!.html as string).length > 200
+          ? editable[0]
+          : null;
+      if (dz) {
+        const curHtml = dz.defaultConfig!.html as string;
+        // utf8-safe base64 so the global request sanitizer passes it untouched.
+        const b64 = btoa(unescape(encodeURIComponent(curHtml)));
+        const dres = await apiFetch<{ html?: string }>('/templates/refine-designer', {
+          method: 'POST',
+          body: JSON.stringify({ instruction: text, htmlBase64: b64, ...(vertical ? { vertical } : {}) }),
+          signal: abortRef.current.signal,
+        });
+        const newHtml = dres?.html;
+        if (!newHtml || newHtml.length < 200) {
+          setError("The AI couldn't apply that change. Try rephrasing it.");
+          return;
+        }
+        setReview({
+          diff: [{ zoneId: dz.id, patch: { defaultConfig: { html: newHtml } }, summary: [`Applied: ${text}`] }],
+          unresolved: [],
+        });
+        return;
+      }
       const body: Record<string, any> = {
         instruction: text,
         zones: editable.map((z) => ({

@@ -78,6 +78,21 @@ const DesignerCreateSchema = z.object({
 });
 type DesignerCreateInput = z.infer<typeof DesignerCreateSchema>;
 
+// "Edit with words" / dial-it-in for an existing AI-designer board. Same
+// base64 transport rationale as create (the global pipe would gut a raw html).
+const DesignerRefineSchema = z.object({
+  instruction: z.string().min(1).max(500),
+  htmlBase64: z.string().min(260).max(560000).optional(),
+  html: z.string().min(200).max(400000).optional(),
+  screenWidth: z.number().int().positive().max(8192).optional(),
+  screenHeight: z.number().int().positive().max(8192).optional(),
+  vertical: z.string().max(40).optional(),
+}).passthrough().refine((v) => !!(v.htmlBase64 || v.html), {
+  message: 'html or htmlBase64 is required',
+  path: ['htmlBase64'],
+});
+type DesignerRefineInput = z.infer<typeof DesignerRefineSchema>;
+
 @Controller('api/v1/templates')
 @UseGuards(JwtAuthGuard, RbacGuard)
 export class TemplatesController {
@@ -1153,6 +1168,52 @@ export class TemplatesController {
       },
     }).catch(() => { /* audit best-effort */ });
     return mapTemplate(created);
+  }
+
+  @Post('refine-designer')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  async refineDesigner(
+    @Request() req: any,
+    @Body(new ZodValidationPipe(DesignerRefineSchema)) body: DesignerRefineInput,
+  ) {
+    // "Edit with words" on an AI-designer board: revise the CURRENT html per the
+    // operator's instruction and return the new html (the FE applies it to the
+    // EXTERNAL_HTML zone + re-renders). base64 transport in AND a re-injected
+    // board out — same trust model as create-designer.
+    let rawHtml = body.html || '';
+    if (body.htmlBase64) {
+      try {
+        rawHtml = Buffer.from(body.htmlBase64, 'base64').toString('utf8');
+      } catch {
+        throw new BadRequestException({ code: 'BAD_HTML', message: 'htmlBase64 is not valid base64' });
+      }
+    }
+    // Recover the design canvas the board was built for (baked by the engine
+    // injector) so the revision keeps the right size + legibility floor.
+    const cwMatch = rawHtml.match(/__VOS_CW=(\d+)/);
+    const chMatch = rawHtml.match(/__VOS_CH=(\d+)/);
+    const screenWidth = body.screenWidth || (cwMatch ? parseInt(cwMatch[1], 10) : 0) || 1920;
+    const screenHeight = body.screenHeight || (chMatch ? parseInt(chMatch[1], 10) : 0) || 1080;
+
+    const out = await this.ai.refineDesignerBoard({
+      tenantId: req.user.tenantId,
+      userId: req.user.id,
+      html: rawHtml,
+      instruction: body.instruction,
+      screenWidth,
+      screenHeight,
+      vertical: body.vertical,
+    });
+    // Re-sanitize + re-inject the runtime (fit engine + edit shim + canvas dims)
+    // exactly like create-designer, so the revised board is collision-free,
+    // legibility-floored, editable, and base64-safe to persist.
+    const sanitized = sanitizeDesignerHtml(out.html);
+    const html = injectDesignerLayoutEngine(
+      injectDesignerEditShim(sanitized.html),
+      screenWidth,
+      screenHeight,
+    );
+    return { html, designer: true, ai: { source: out.source, usage: out.usage } };
   }
 
   // ───────────────────────────────────────────────────────────────────────

@@ -155,6 +155,20 @@ export const DESIGNER_LAYOUT_ENGINE =
  * Insert the VOS-FIT-ENGINE just before </body> (it must run AFTER the board's
  * content exists so it can measure widths). Idempotent. Falls back to append.
  */
+/**
+ * Strip the server-injected runtime (edit shim, fit engine, canvas-dims) back
+ * out of a board so the LLM revises the CLEAN authored board — then the caller
+ * re-injects fresh runtime. Without this, "Edit with words" would feed the model
+ * its own minified engine/shim scripts (which it would mangle or duplicate).
+ */
+export function stripInjectedRuntime(html: string): string {
+  if (typeof html !== "string" || !html) return html;
+  return html
+    .replace(/<script>\/\*VOS-FIT-ENGINE\*\/[\s\S]*?<\/script>/g, "")
+    .replace(/<script>\/\*EDUCMS-SHIM-V\d+\*\/[\s\S]*?<\/script>/g, "")
+    .replace(/<script>\/\*VOS-CANVAS\*\/[\s\S]*?<\/script>/g, "");
+}
+
 export function injectDesignerLayoutEngine(
   html: string,
   screenWidth?: number,

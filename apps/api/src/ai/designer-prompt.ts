@@ -280,6 +280,48 @@ export function buildDesignerUserPrompt(opts: DesignerBoardOptions): string {
   return lines.join('\n');
 }
 
+/**
+ * "Edit with words" / dial-it-in for an already-generated designer board. The
+ * operator types a plain-language tweak ("make the headline bigger", "use our
+ * red", "drop the scoreboards row", "warmer feel") and the model REVISES the
+ * existing board rather than designing a new one — so iterating keeps the look
+ * the operator already chose. Paired with DESIGNER_SYSTEM_PROMPT as the system.
+ */
+export function buildDesignerRevisePrompt(opts: {
+  currentHtml: string;
+  instruction: string;
+  width: number;
+  height: number;
+  vertical?: string;
+  palette?: string[];
+}): string {
+  const orient = opts.height > opts.width ? 'portrait' : 'landscape';
+  const lines: string[] = [
+    'You are REVISING an existing signage board, not designing a new one. Below is its COMPLETE current HTML. Apply ONLY the operator\'s requested change and return the COMPLETE revised HTML document.',
+    '',
+    `Canvas: ${opts.width} × ${opts.height} px (${orient}). Vertical: ${opts.vertical || 'venue'}.`,
+  ];
+  if (opts.palette && opts.palette.length) {
+    lines.push(`Brand palette (hex, first = primary): ${opts.palette.join(', ')}. When the operator says "our color"/"brand color", use these.`);
+  }
+  lines.push(
+    '',
+    'REVISION RULES:',
+    '- Change ONLY what the operator asked. Preserve every other element, the layout, the content, the data-field / data-imgslot / data-action hooks, and the overall design language. This is a surgical edit, not a redesign.',
+    '- Keep obeying ALL the standing laws: the size floor (no text below the canvas-relative minimum), no redaction bars (no solid fill behind words except at most ONE CTA button), contrast floor, fonts loaded via <link>, Taurus-safe CSS (longhand top/right/bottom/left, never `inset`).',
+    '- If the change would push the board past those laws (e.g. "make everything huge" would overflow), satisfy the intent as far as the laws allow rather than breaking them.',
+    '- Do NOT add any guessed stock-photo URL. Keep existing brand images. Keep it self-contained (no external scripts beyond the existing font <link>s).',
+    '',
+    `OPERATOR'S REQUESTED CHANGE: ${opts.instruction}`,
+    '',
+    'CURRENT BOARD HTML:',
+    opts.currentHtml,
+    '',
+    'Return ONLY the complete revised HTML document — nothing else.',
+  );
+  return lines.join('\n');
+}
+
 /** Three distinct art directions so a 3-candidate fan-out yields different designs. */
 // IMPORTANT: none of these reserve a bare side panel for a photo. The 3-up
 // preview is ALWAYS image-free and many boards never get a photo, so a

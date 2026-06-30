@@ -88,8 +88,10 @@ import {
   DESIGNER_SYSTEM_PROMPT,
   DESIGNER_ART_DIRECTIONS,
   buildDesignerUserPrompt,
+  buildDesignerRevisePrompt,
   sanitizeDesignerHtml,
 } from './designer-prompt';
+import { stripInjectedRuntime } from './designer-edit-shim';
 import {
   isVertical,
   VERTICAL_ALIASES,
@@ -2637,6 +2639,111 @@ export class AiService {
       taurusWarnings: b.taurusWarnings,
     }));
     return { candidates, source: resolved.source, usage };
+  }
+
+  /**
+   * "Edit with words" / dial-it-in for an EXISTING AI-designer board (2026-06-30).
+   * Takes the board's CURRENT html + a plain-language instruction, strips the
+   * server-injected runtime so the model revises the CLEAN authored board, asks
+   * for a SURGICAL revision (not a redesign), and returns the clean revised html
+   * (the controller re-injects the fit engine + edit shim + canvas dims). Same
+   * caps + 3-tier accounting + audit row as every other generator.
+   */
+  async refineDesignerBoard(opts: {
+    tenantId: string;
+    userId?: string;
+    html: string;
+    instruction: string;
+    screenWidth?: number;
+    screenHeight?: number;
+    vertical?: string;
+    palette?: string[];
+  }): Promise<{ html: string; source: 'tenant' | 'platform'; usage: { used: number; cap: number; resetAt: string } | null }> {
+    await this.checkFailureCap(opts.tenantId);
+    const resolved = await this.resolveProviderKey(opts.tenantId);
+    if (!resolved) {
+      throw new ServiceUnavailableException(
+        'AI is not configured. Add your provider API key in Settings → Integrations, or contact your admin.',
+      );
+    }
+    const instruction = (opts.instruction || '').trim();
+    if (!instruction) throw new BadRequestException('Tell the AI what to change.');
+    if (instruction.length > 500) throw new BadRequestException('Keep the change description under 500 characters.');
+    const clean = stripInjectedRuntime(String(opts.html || '')).trim();
+    if (clean.length < 200) throw new BadRequestException('No board to edit.');
+    const sw = opts.screenWidth || 1920;
+    const sh = opts.screenHeight || 1080;
+
+    if ((await this.windowCount(this.RL_SUCCESS_PREFIX, opts.tenantId)) >= this.HOURLY_CAP) {
+      throw new BadRequestException(
+        `Hit the hourly AI cap (${this.HOURLY_CAP} generations/hour). Try again later or contact sales for a higher tier.`,
+      );
+    }
+    if (resolved.source === 'platform') {
+      const u = await this.readPlatformUsage(opts.tenantId);
+      if (u.used >= u.cap) {
+        throw new HttpException(
+          {
+            message: `Hit the monthly free AI cap (${u.cap} generations). Add your own provider key in Settings → AI provider for unlimited.`,
+            code: 'AI_CAP_REACHED',
+            cap: u.cap,
+            used: u.used,
+            resetAt: u.resetAt,
+          },
+          HttpStatus.PAYMENT_REQUIRED,
+        );
+      }
+    }
+
+    const system = prependVoices(DESIGNER_SYSTEM_PROMPT, opts.vertical, await this.tenantBrandVoice(opts.tenantId));
+    const userPrompt = buildDesignerRevisePrompt({
+      currentHtml: clean,
+      instruction,
+      width: sw,
+      height: sh,
+      vertical: opts.vertical,
+      palette: opts.palette,
+    });
+    const MAX_HTML_TOKENS = 16000;
+    let revised: { html: string; taurusWarnings: string[] };
+    try {
+      const raw = await this.dispatchRawOrThrow(resolved, system, userPrompt, MAX_HTML_TOKENS);
+      revised = sanitizeDesignerHtml(raw);
+    } catch (e) {
+      await this.recordFailure(opts.tenantId);
+      throw e;
+    }
+    if (!revised.html || revised.html.length < 200) {
+      await this.recordFailure(opts.tenantId);
+      throw new ServiceUnavailableException('The AI returned an unusable revision. Try rephrasing the change.');
+    }
+
+    await this.recordEvent(this.RL_SUCCESS_PREFIX, opts.tenantId);
+    let usage: { used: number; cap: number; resetAt: string } | null = null;
+    if (resolved.source === 'platform') {
+      try { await this.bumpPlatformUsage(opts.tenantId); }
+      catch (e: any) { this.logger.warn(`Platform usage bump failed: ${e?.message}`); }
+      const u = await this.readPlatformUsage(opts.tenantId);
+      usage = { used: u.used, cap: u.cap, resetAt: u.resetAt };
+    }
+    await this.prisma.client.auditLog.create({
+      data: {
+        action: 'AI_DESIGNER_REFINE',
+        targetType: 'tenant',
+        targetId: opts.tenantId,
+        tenantId: opts.tenantId,
+        userId: opts.userId || null,
+        details: JSON.stringify({
+          vertical: opts.vertical || null,
+          provider: resolved.provider,
+          model: resolved.model,
+          source: resolved.source,
+          instruction: instruction.slice(0, 200),
+        }),
+      },
+    }).catch(() => { /* audit best-effort */ });
+
+    return { html: revised.html, source: resolved.source, usage };
   }
 
   /**
