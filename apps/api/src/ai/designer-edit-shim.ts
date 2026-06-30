@@ -92,8 +92,35 @@ export const DESIGNER_LAYOUT_ENGINE =
   "var stored=false;function storeOrig(){if(stored)return;var lv=leaves();for(var i=0;i<lv.length;i++){var el=lv[i].el;" +
   "if(!el.getAttribute('data-vos-fs')){var fs=parseFloat(getComputedStyle(el).fontSize)||0;if(fs>0)el.setAttribute('data-vos-fs',String(fs));}}stored=true;}" +
   "function applyScale(k){var n=document.querySelectorAll('[data-vos-fs]');for(var i=0;i<n.length;i++){var o=parseFloat(n[i].getAttribute('data-vos-fs'))||0;if(o>0)n[i].style.fontSize=(Math.round(o*k*100)/100)+'px';}}" +
+  // ── DECORATION GUARD: a no-text GRAPHIC must NEVER cover text that isn't its
+  //    own child (the 'giant sphere bleeds over the values' / 'badge lands on the
+  //    headline' overshoot the model sometimes makes to fill the canvas). This is
+  //    NOT a text-vs-text overlap so the passes above can't see it. We measure
+  //    every pure-decoration element (5-70% of canvas, has a visual fill, no text
+  //    of its own) and, if its box covers any text it does NOT contain, shrink it
+  //    until clear; if it still covers at the floor, drop it BEHIND + translucent
+  //    so the text always reads. Originals are stored so a later settled pass can
+  //    restore an element that no longer collides (idempotent). Good boards never
+  //    trigger it (nothing covers their text).
+  "function _da(r){return Math.max(0,r.width)*Math.max(0,r.height);}" +
+  "function guardDeco(){try{var lv=leaves();if(!lv.length)return;var SA=(window.innerWidth||1920)*(window.innerHeight||1080);var all=document.body.querySelectorAll('*');var cands=[];" +
+  "for(var i=0;i<all.length;i++){var el=all[i];if((el.textContent||'').replace(/\\s+/g,''))continue;" +
+  "var cs=getComputedStyle(el);if(cs.display==='none'||cs.visibility==='hidden')continue;" +
+  "if((parseFloat(cs.opacity)||1)<0.5&&el.getAttribute('data-vgo')===null)continue;" +
+  "var bg=cs.backgroundImage&&cs.backgroundImage!=='none';var bc=cs.backgroundColor&&cs.backgroundColor!=='rgba(0, 0, 0, 0)'&&cs.backgroundColor!=='transparent';var cl=cs.clipPath&&cs.clipPath!=='none';" +
+  "if(!(bg||bc||cl||el.tagName==='IMG'||el.tagName==='svg'))continue;" +
+  "var r=el.getBoundingClientRect();var a=_da(r);if(a<SA*0.05||a>SA*0.7)continue;cands.push({el:el,a:a});}" +
+  "cands.sort(function(x,y){return y.a-x.a;});" +
+  "function cov(el){var er=el.getBoundingClientRect();for(var k=0;k<lv.length;k++){var T=lv[k];if(el===T.el||el.contains(T.el)||T.el.contains(el))continue;var ix=Math.min(er.right,T.r.right)-Math.max(er.left,T.r.left);var iy=Math.min(er.bottom,T.r.bottom)-Math.max(er.top,T.r.top);if(ix>8&&iy>8)return true;}return false;}" +
+  "for(var c=0;c<cands.length;c++){var E=cands[c].el;" +
+  "if(E.getAttribute('data-vgw')===null){E.setAttribute('data-vgw',String(E.offsetWidth));E.setAttribute('data-vgh',String(E.offsetHeight));E.setAttribute('data-vgo',E.style.opacity||'');E.setAttribute('data-vgz',E.style.zIndex||'');}" +
+  "var ow=parseFloat(E.getAttribute('data-vgw'))||0,oh=parseFloat(E.getAttribute('data-vgh'))||0;" +
+  "E.style.opacity=E.getAttribute('data-vgo');E.style.zIndex=E.getAttribute('data-vgz');if(ow>4)E.style.width=ow+'px';if(oh>4)E.style.height=oh+'px';" +
+  "if(!cov(E))continue;" +
+  "var cleared=false;if(ow>4&&oh>4){for(var s=0;s<8;s++){var f=1-(s+1)*0.1;E.style.width=Math.round(ow*f)+'px';E.style.height=Math.round(oh*f)+'px';if(!cov(E)){cleared=true;break;}}}" +
+  "if(!cleared){try{E.style.zIndex='0';}catch(e){}E.style.opacity='0.2';}}}catch(e){}}" +
   // ── orchestrate: only mutate beyond data-fit when a real collision exists ──
-  "function repair(){try{runFit();if(nOver()===0)return;enforceRows();if(nOver()===0)return;" +
+  "function repair(){try{runFit();guardDeco();if(nOver()===0)return;enforceRows();if(nOver()===0)return;" +
   "clearClips(pairs(leaves()));if(nOver()===0)return;storeOrig();" +
   // NB: do NOT call runFit() inside the shrink loop. runFit re-grows data-fit
   // elements to fill their WIDTH, which re-inflates a data-fit line (e.g. a
