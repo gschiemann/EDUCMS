@@ -698,7 +698,7 @@ export default function TemplatesPage() {
       // Brand + business-type + logo distilled from the gathered references, fed
       // straight into the designer prompt (palette = scraped brand colors;
       // reference = the rich summary incl. "what they sell").
-      designerExtras?: { palette?: string[]; venueName?: string; logoUrl?: string; reference?: string };
+      designerExtras?: { palette?: string[]; venueName?: string; logoUrl?: string; heroImageUrl?: string; reference?: string };
     }) => {
       setAiError(null);
       const prompt = rawPrompt.trim();
@@ -729,6 +729,7 @@ export default function TemplatesPage() {
                   ...(designerExtras.palette && designerExtras.palette.length ? { palette: designerExtras.palette } : {}),
                   ...(designerExtras.venueName ? { venueName: designerExtras.venueName } : {}),
                   ...(designerExtras.logoUrl ? { logoUrl: designerExtras.logoUrl } : {}),
+                  ...(designerExtras.heroImageUrl ? { heroImageUrl: designerExtras.heroImageUrl } : {}),
                   ...(designerExtras.reference ? { reference: designerExtras.reference } : {}),
                 }
               : {}),
@@ -820,7 +821,12 @@ export default function TemplatesPage() {
       const palette = Array.from(
         new Set(refs.flatMap((r) => (Array.isArray(r.palette) ? r.palette : [])).filter(Boolean)),
       ).slice(0, 8);
-      const logoUrl = refs.map((r) => r.imageUrl).find((u) => typeof u === 'string' && u) || undefined;
+      // The brand's REAL logo (its own mark) and REAL hero/work photo — kept
+      // SEPARATE so the board places the logo in the header AND uses the photo as
+      // the hero (the 2026-06-30 "take color, content, logos" fix). Both are the
+      // brand's own verified assets, so they survive the guessed-stock-photo strip.
+      const logoUrl = refs.map((r) => (r as any).logoUrl).find((u) => typeof u === 'string' && u) || undefined;
+      const heroImageUrl = refs.map((r) => r.imageUrl).find((u) => typeof u === 'string' && u) || undefined;
       const reference = refs.map((r) => r.summary).filter(Boolean).join('\n\n').slice(0, 4000) || undefined;
       return runGenerateCandidatesCore({
         prompt,
@@ -829,6 +835,7 @@ export default function TemplatesPage() {
         designerExtras: {
           ...(palette.length ? { palette } : {}),
           ...(logoUrl ? { logoUrl } : {}),
+          ...(heroImageUrl ? { heroImageUrl } : {}),
           ...(reference ? { reference } : {}),
         },
       });

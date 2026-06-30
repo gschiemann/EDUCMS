@@ -1512,6 +1512,7 @@ export function useGenerateDesignerCandidates() {
       venueName?: string;
       tagline?: string;
       logoUrl?: string;
+      heroImageUrl?: string;
       content?: string;
       reference?: string;
       count?: number;

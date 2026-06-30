@@ -41,6 +41,13 @@ export interface DesignerBoardOptions {
   venueName?: string;
   tagline?: string;
   logoUrl?: string;
+  /**
+   * The venue's OWN hero/work photo (scraped from their site or uploaded) — a
+   * VERIFIED brand asset, not a guessed stock id. When present the board uses it
+   * as the hero background (with a palette scrim). Survives the stock-photo
+   * strip because it is the brand's own domain.
+   */
+  heroImageUrl?: string;
   /** Real content the board must show (menu items+prices, headline, hours…). */
   content?: string;
   /** Reference summary (scraped site / uploaded image) to match the look. */
@@ -126,7 +133,7 @@ export const DESIGNER_SYSTEM_PROMPT = [
   '- Real typography: pair a CHARACTERFUL display face with a clean body face; dramatic size contrast; tight display tracking; large enough to read across a room.',
   '- Real detail: dividers / hairline rules, an eyebrow/kicker, dotted leader lines on menus, section labels, a small accent tick or rule, layered depth (a duotone photo, a subtle texture/gradient, a color-blocked panel). Borrow the craft of a printed poster or a designed menu.',
   '- Real imagery where it fits: a relevant photograph CONFINED to a side panel, a top/bottom band, or a column — NOT a full-bleed wash behind dense text (that kills legibility). If you ever place a photo behind text, it must carry a strong palette scrim/duotone AND the text must sit on the solid-color part, never over the busy part of the photo.',
-  '- IMAGERY — NEVER GUESS A PHOTO URL (this is the "sunset on a pizza board" failure): you CANNOT know what an opaque stock-photo ID actually depicts, so a hand-written URL to images.unsplash.com / pexels / pixabay / picsum / ANY external photo resolves to a RANDOM, usually-WRONG image. So: do NOT output any `<img src="http...">` to a stock host — the platform strips them anyway. INSTEAD, for every photo area paint a REFINED on-palette gradient or graphic panel (layered gradients, a color-blocked column, an oversized translucent brand initial, a subtle geometric pattern) and mark THAT element with `data-imgslot="hero"` plus `data-photo-query="<2-5 words naming the literal subject, e.g. pepperoni pizza closeup>"`. The platform fills it with a REAL, keyword-matched photo when an image source is configured; if not, your gradient stays — and a tasteful on-brand gradient ALWAYS reads as intentional, while a wrong photo always looks broken. Prefer a DIV (not <img>) for the slot so the swapped photo applies cleanly as a background.',
+  '- IMAGERY — TWO RULES. (1) USE SUPPLIED BRAND ASSETS: if the brief gives a Brand LOGO URL or a Brand HERO PHOTO URL, you MUST place them (real logo in the header; hero photo as the hero background with a scrim). Those are the venue\'s OWN verified images — using them is REQUIRED and is what makes the board look like the real brand. (2) NEVER GUESS A STOCK PHOTO URL (the "sunset on a pizza board" failure): you CANNOT know what an opaque stock id depicts, so do NOT hand-write any URL to images.unsplash.com / pexels / pixabay / picsum / any stock host — the platform strips them. For any photo area you are NOT given a brand asset for, paint a REFINED on-palette gradient/graphic panel and mark it `data-imgslot="hero"` + `data-photo-query="<2-5 words naming the subject>"`; the platform fills a real keyword-matched photo when configured, else the gradient stays (always reads as intentional). A supplied brand photo > a keyword gradient > a wrong stock photo.',
   '',
   'CONTENT IS THE HERO (the #1 failure to avoid): the board exists to communicate its CONTENT — the menu, the offer, the headline, the schedule. That content must be the largest, sharpest, most prominent thing on the board and fully legible across a room. Photography SUPPORTS the content — confine it to a panel/strip OR, if full-bleed, lay a strong palette scrim/duotone over it so EVERY character stays crisp. NEVER let a photo or background wash dominate and shrink the content to an afterthought. If you must choose, the content wins.',
   '',
@@ -174,8 +181,9 @@ export function buildDesignerUserPrompt(opts: DesignerBoardOptions): string {
   ];
   if (opts.venueName) lines.push(`Venue name: ${opts.venueName}.`);
   if (opts.tagline) lines.push(`Tagline: ${opts.tagline}.`);
-  if (opts.palette && opts.palette.length) lines.push(`Brand palette (hex, first = primary): ${opts.palette.join(', ')}.`);
-  if (opts.logoUrl) lines.push(`Logo URL (use it, e.g. top-left): ${opts.logoUrl}`);
+  if (opts.palette && opts.palette.length) lines.push(`Brand palette (hex, first = primary): ${opts.palette.join(', ')}. USE THESE COLORS BOLDLY as the backbone — big confident fields/accents of the brand color, NOT a timid default dark-navy board. The brand color should be unmistakable at a glance.`);
+  if (opts.logoUrl) lines.push(`Brand LOGO URL — place the REAL logo (top-left or header) via <img data-imgslot="logo" data-img src="${opts.logoUrl}" ...> at a real size; do NOT just typeset the brand name. This is the venue's own verified asset — USE it (it is NOT a guessed stock photo). If it may have a solid background, sit it on a matching surface/chip.`);
+  if (opts.heroImageUrl) lines.push(`Brand HERO PHOTO URL (the venue's OWN work photo) — USE it as the hero background/side-panel via <img data-imgslot="hero" data-img src="${opts.heroImageUrl}" ...> with a brand-palette scrim/duotone so the headline stays legible. This is a VERIFIED brand asset, NOT a guess — it makes the board look like the real brand instead of a flat gradient. Put a gradient behind it as the load fallback.`);
   if (opts.content) lines.push('', 'REAL CONTENT to feature (use verbatim — items, prices, copy):', opts.content);
   if (opts.reference) lines.push('', `Reference (match this look/brand): ${opts.reference}`);
   if (opts.artDirection) lines.push('', `ART DIRECTION for THIS board (make it distinct): ${opts.artDirection}`);

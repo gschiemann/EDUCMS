@@ -315,6 +315,7 @@ export function summarizeUrlReference(preview: any, url: string): ConciergeRefer
   // Palette hexes: prefer the derived palette, then ranked colors.
   const palette = extractHexes(preview);
   const heroImageUrl = pickHeroImage(preview);
+  const logoUrl = pickLogo(preview);
 
   const summaryParts = [
     name ? `Brand: ${name}.` : '',
@@ -325,7 +326,8 @@ export function summarizeUrlReference(preview: any, url: string): ConciergeRefer
     tagline && tagline !== businessType ? `Tagline: "${tagline.slice(0, 160)}".` : '',
     palette.length ? `Brand palette: ${palette.slice(0, 6).join(', ')}.` : '',
     fonts,
-    heroImageUrl ? 'Has a hero image available to use as a background.' : '',
+    logoUrl ? 'Has a LOGO image — place the real logo on the board (top-left or in the header), do not just typeset the name.' : '',
+    heroImageUrl ? 'Has a real hero/work PHOTO from the site — use it as the hero background (with a brand scrim so text stays legible), not a flat gradient.' : '',
   ].filter(Boolean);
 
   const summary =
@@ -338,7 +340,20 @@ export function summarizeUrlReference(preview: any, url: string): ConciergeRefer
   };
   if (palette.length) ref.palette = palette.slice(0, 8);
   if (heroImageUrl) ref.imageUrl = heroImageUrl.slice(0, 2048);
+  if (logoUrl) ref.logoUrl = logoUrl.slice(0, 2048);
   return ref;
+}
+
+/** Best logo URL from the scrape — the brand's real mark to place on the board. */
+function pickLogo(preview: any): string | null {
+  const logos = preview?.logos;
+  if (Array.isArray(logos)) {
+    for (const l of logos) {
+      const u = typeof l === 'string' ? l : l?.url;
+      if (typeof u === 'string' && /^https?:\/\//i.test(u)) return u;
+    }
+  }
+  return null;
 }
 
 function strOrEmpty(v: any): string {

@@ -675,6 +675,9 @@ export const ConciergeReferenceSchema = z
     /** A usable image URL (scraped hero image / uploaded reference) the
      *  generator may use as a background or style anchor. */
     imageUrl: BoundedText(2048).optional(),
+    /** The brand's LOGO image URL (scraped). The generator places it on the
+     *  board so it carries the real mark, not typeset text. */
+    logoUrl: BoundedText(2048).optional(),
   })
   .passthrough();
 export type ConciergeReference = z.infer<typeof ConciergeReferenceSchema>;

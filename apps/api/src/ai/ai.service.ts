@@ -2481,6 +2481,7 @@ export class AiService {
     venueName?: string;
     tagline?: string;
     logoUrl?: string;
+    heroImageUrl?: string;
     content?: string;
     reference?: string;
     count?: number;
@@ -2542,6 +2543,7 @@ export class AiService {
           venueName: opts.venueName,
           tagline: opts.tagline,
           logoUrl: opts.logoUrl,
+          heroImageUrl: opts.heroImageUrl,
           content: opts.content,
           reference: opts.reference,
           artDirection,
