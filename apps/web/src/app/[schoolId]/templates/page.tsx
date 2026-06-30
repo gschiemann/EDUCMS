@@ -465,6 +465,13 @@ export default function TemplatesPage() {
   // Which candidate is open FULL-SCREEN (null = none). The full-screen preview
   // never discards the set — Esc / Close returns to the grid.
   const [aiFullscreenIdx, setAiFullscreenIdx] = useState<number | null>(null);
+  // (2026-06-30) — "Resume last generation": the last fan-out is cached in
+  // localStorage so closing the picker doesn't force a re-generate (which costs
+  // an AI call). On reopen the intake offers a one-tap restore back into the
+  // pick grid. Loaded when the modal opens; written after every generation.
+  const [aiLastBatch, setAiLastBatch] = useState<
+    { candidates: AiTemplateCandidate[]; canvas: { w: number; h: number }; interactive: boolean; ts: number } | null
+  >(null);
   // Esc-to-close — wired only when the modal is open so dashboard
   // keyboard shortcuts elsewhere aren't shadowed. Disabled while a
   // generation is in flight so the operator doesn't accidentally
@@ -685,6 +692,45 @@ export default function TemplatesPage() {
     resetAiModal();
   }, [resetAiModal]);
 
+  // ── "Resume last generation" (2026-06-30) ──────────────────────────────
+  // Cache the last fan-out in localStorage so closing the picker never forces a
+  // paid re-generate. Keyed per school. Best-effort: any storage error (quota /
+  // private mode) is swallowed — the feature degrades to "not available".
+  const aiBatchKey = `vos:ai:lastbatch:${params?.schoolId ?? 'x'}`;
+  const persistLastBatch = useCallback(
+    (candidates: AiTemplateCandidate[]) => {
+      try {
+        if (!candidates?.length) return;
+        const payload = { candidates, canvas: aiCanvas, interactive: aiInteractive, ts: Date.now() };
+        const json = JSON.stringify(payload);
+        if (json.length > 3_000_000) return; // don't blow the ~5MB quota
+        localStorage.setItem(aiBatchKey, json);
+        setAiLastBatch(payload);
+      } catch { /* storage unavailable — skip silently */ }
+    },
+    [aiBatchKey, aiCanvas, aiInteractive],
+  );
+  // Load the cached batch whenever the modal opens (so the intake can offer it).
+  useEffect(() => {
+    if (!showAiGenerate) return;
+    try {
+      const raw = localStorage.getItem(aiBatchKey);
+      const p = raw ? JSON.parse(raw) : null;
+      setAiLastBatch(p && Array.isArray(p.candidates) && p.candidates.length ? p : null);
+    } catch { setAiLastBatch(null); }
+  }, [showAiGenerate, aiBatchKey]);
+  // One-tap restore: drop the cached set straight into the pick grid.
+  const resumeLastBatch = useCallback(() => {
+    if (!aiLastBatch?.candidates?.length) return;
+    if (aiLastBatch.canvas) setAiCanvas(aiLastBatch.canvas);
+    setAiInteractive(!!aiLastBatch.interactive);
+    setAiCandidates(aiLastBatch.candidates);
+    setAiSavedIds({});
+    setAiFullscreenIdx(null);
+    setAiError(null);
+    setAiPhase('pick');
+  }, [aiLastBatch]);
+
   // Phase 1 → 2: fan out 3 candidate drafts. The SHARED core — both the
   // guided-wizard path and the conversational Signage Concierge path call
   // this with their own prompt + intake-directive source. Everything else
@@ -762,6 +808,7 @@ export default function TemplatesPage() {
             _designerHtml: b.html,
           }));
           setAiCandidates(mapped);
+          persistLastBatch(mapped); // cache so closing the picker never forces a re-generate
           // Fresh set → forget which indices were saved / open full-screen.
           setAiSavedIds({});
           setAiFullscreenIdx(null);
@@ -798,6 +845,7 @@ export default function TemplatesPage() {
           return;
         }
         setAiCandidates(cands);
+        persistLastBatch(cands); // cache so closing the picker never forces a re-generate
         // Fresh set → forget which indices were saved / open full-screen.
         setAiSavedIds({});
         setAiFullscreenIdx(null);
@@ -806,7 +854,7 @@ export default function TemplatesPage() {
         setAiError(friendlyAiError(e));
       }
     },
-    [aiInteractive, aiSetMode, aiDesignerMode, aiCanvas, tenantCopy.vertical, generateCandidates, generateDesigner],
+    [aiInteractive, aiSetMode, aiDesignerMode, aiCanvas, tenantCopy.vertical, generateCandidates, generateDesigner, persistLastBatch],
   );
 
   // The WIZARD path: prompt = the wizard's prompt field; intake = the guided
@@ -1407,6 +1455,18 @@ export default function TemplatesPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {aiPhase !== 'pick' && aiLastBatch && aiLastBatch.candidates?.length ? (
+              /* Resume the last fan-out without paying for a re-generate. */
+              <button
+                type="button"
+                onClick={resumeLastBatch}
+                className="w-full flex items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 hover:bg-violet-100 text-violet-700 text-sm font-semibold px-3 py-2.5 mb-3 transition-colors"
+              >
+                <RotateCcw className="w-4 h-4" />
+                Resume your last {aiLastBatch.candidates.length} generated board{aiLastBatch.candidates.length === 1 ? '' : 's'} — no re-generate
+              </button>
+            ) : null}
 
             {aiPhase === 'pick' ? (
               /* ── PHASE 2: pick 1 of 3 AI drafts ── */
