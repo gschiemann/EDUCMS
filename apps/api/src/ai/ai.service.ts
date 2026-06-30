@@ -89,6 +89,7 @@ import {
   DESIGNER_ART_DIRECTIONS,
   buildDesignerUserPrompt,
   buildDesignerRevisePrompt,
+  summarizeHouseStyle,
   sanitizeDesignerHtml,
 } from './designer-prompt';
 import { stripInjectedRuntime } from './designer-edit-shim';
@@ -2506,6 +2507,41 @@ export class AiService {
    * path (NOT sanitizeTouchTemplate, which would strip EXTERNAL_HTML + truncate
    * the html) — it re-runs sanitizeDesignerHtml there for defense-in-depth.
    */
+  /**
+   * PER-TENANT STYLE MEMORY (2026-06-30) — the AI-designer "learns" each
+   * operator's taste over time with NO model training and NO cross-tenant data:
+   * distill a compact style fingerprint (recurring palette + favored fonts +
+   * motion tendency) from the boards THIS tenant has KEPT, fed as an on-brand
+   * lean into the next generation. Deterministic (no extra AI call), strictly
+   * scoped to the tenant, no PII. Returns null for an operator with no kept
+   * designer boards yet — so a new tenant behaves exactly as before.
+   */
+  private async deriveTenantHouseStyle(tenantId: string): Promise<string | null> {
+    try {
+      const tpls = await this.prisma.client.template.findMany({
+        where: {
+          tenantId,
+          zones: { some: { widgetType: 'EXTERNAL_HTML', defaultConfig: { contains: 'VOS-FIT-ENGINE' } } },
+        },
+        select: { zones: { where: { widgetType: 'EXTERNAL_HTML' }, select: { defaultConfig: true }, take: 1 } },
+        orderBy: { createdAt: 'desc' },
+        take: 4,
+      });
+      const htmls: string[] = [];
+      for (const t of tpls) {
+        const cfg = t.zones?.[0]?.defaultConfig;
+        if (!cfg) continue;
+        try {
+          const h = (JSON.parse(cfg) as { html?: unknown })?.html;
+          if (typeof h === 'string') htmls.push(h);
+        } catch { /* skip unparseable */ }
+      }
+      return summarizeHouseStyle(htmls);
+    } catch {
+      return null; // best-effort — a query hiccup must never block a generation
+    }
+  }
+
   async generateDesignerBoardCandidates(opts: {
     tenantId: string;
     userId?: string;
@@ -2565,6 +2601,9 @@ export class AiService {
 
     const directions = DESIGNER_ART_DIRECTIONS.slice(0, count);
     const system = prependVoices(DESIGNER_SYSTEM_PROMPT, opts.vertical, await this.tenantBrandVoice(opts.tenantId));
+    // PER-TENANT STYLE MEMORY — distilled once from this tenant's kept boards and
+    // shared by all candidates (null for a brand-new operator).
+    const houseStyle = await this.deriveTenantHouseStyle(opts.tenantId);
     // A full premium HTML board is large — a generous output budget. (dispatchAi
     // adds reasoning headroom for gpt-5 / o-series on top of this.)
     const MAX_HTML_TOKENS = 16000;
@@ -2583,6 +2622,7 @@ export class AiService {
           content: opts.content,
           reference: opts.reference,
           artDirection,
+          houseStyle: houseStyle || undefined,
         });
         return this.dispatchRawOrThrow(resolved, system, userPrompt, MAX_HTML_TOKENS).then((raw) =>
           sanitizeDesignerHtml(raw),

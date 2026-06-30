@@ -5,6 +5,7 @@ import {
   DESIGNER_ART_DIRECTIONS,
   DESIGNER_EXEMPLAR,
   buildDesignerUserPrompt,
+  summarizeHouseStyle,
   sanitizeDesignerHtml,
   auditDesignerHtmlTaurus,
   stripGuessedStockPhotos,
@@ -287,5 +288,43 @@ describe('stripGuessedStockPhotos (no wrong photos)', () => {
     const { html } = sanitizeDesignerHtml(doc);
     expect(html).not.toContain('unsplash.com');
     expect(html).toContain('data-imgslot="hero"');
+  });
+});
+
+describe('summarizeHouseStyle — per-tenant style memory', () => {
+  const board = (extra: string) =>
+    '<!doctype html><html><head><style>.stage{width:1920px;height:1080px;background:#0b1f3a;color:#fff;font-family:Fraunces,serif}'
+    + '.s{color:#ff6b35;font-family:Inter,sans-serif}' + extra
+    + '</style></head><body><div class="stage"><div class="s">Hi there friend, this is long enough copy to pass the length floor.</div></div></body></html>';
+
+  it('returns null when there is no usable signal', () => {
+    expect(summarizeHouseStyle([])).toBeNull();
+    expect(summarizeHouseStyle(['<div>too short</div>'])).toBeNull();
+  });
+
+  it('distills recurring palette + favored fonts from kept boards', () => {
+    const out = summarizeHouseStyle([board(''), board('')]);
+    expect(out).toBeTruthy();
+    expect(out).toContain('HOUSE STYLE');
+    expect(out).toContain('#0b1f3a'); // recurring brand field
+    expect(out).toContain('#ff6b35'); // recurring accent
+    expect(out).toContain('Fraunces'); // display face
+    expect(out).toContain('Inter'); // body face
+    expect(out).not.toMatch(/\bserif\b\s*\/|font-family/i); // generic keywords filtered out
+  });
+
+  it('detects motion tendency from @keyframes presence', () => {
+    const moving = summarizeHouseStyle([board('@keyframes a{to{transform:scale(1.02)}}'), board('@keyframes b{to{opacity:1}}')]);
+    expect(moving).toContain('subtle motion');
+    const still = summarizeHouseStyle([board(''), board('')]);
+    expect(still).toContain('mostly still');
+  });
+
+  it('buildDesignerUserPrompt embeds the house style when provided (and omits it otherwise)', () => {
+    const hs = summarizeHouseStyle([board(''), board('')])!;
+    const withHs = buildDesignerUserPrompt({ prompt: 'welcome board', width: 1920, height: 1080, houseStyle: hs });
+    expect(withHs).toContain('HOUSE STYLE');
+    const withoutHs = buildDesignerUserPrompt({ prompt: 'welcome board', width: 1920, height: 1080 });
+    expect(withoutHs).not.toContain('HOUSE STYLE');
   });
 });

@@ -61,6 +61,13 @@ export interface DesignerBoardOptions {
    * generous whitespace" vs "vibrant, color-blocked".
    */
   artDirection?: string;
+  /**
+   * PER-TENANT STYLE MEMORY — a compact "house style" fingerprint distilled from
+   * the boards THIS operator has kept (recurring palette / favored fonts / motion
+   * tendency). Steers the new board toward their established on-brand look so the
+   * AI gets more "them" over time. Per-tenant only; null for a new operator.
+   */
+  houseStyle?: string;
 }
 
 const FONT_LIST = DESIGNER_FONTS.join(', ');
@@ -276,6 +283,7 @@ export function buildDesignerUserPrompt(opts: DesignerBoardOptions): string {
   if (opts.content) lines.push('', 'REAL CONTENT to feature (use verbatim — items, prices, copy):', opts.content);
   if (opts.reference) lines.push('', `Reference (match this look/brand): ${opts.reference}`);
   if (opts.artDirection) lines.push('', `ART DIRECTION for THIS board (make it distinct): ${opts.artDirection}`);
+  if (opts.houseStyle) lines.push('', opts.houseStyle);
   lines.push('', 'Return ONLY the complete HTML document.');
   return lines.join('\n');
 }
@@ -320,6 +328,46 @@ export function buildDesignerRevisePrompt(opts: {
     'Return ONLY the complete revised HTML document — nothing else.',
   );
   return lines.join('\n');
+}
+
+/**
+ * PER-TENANT STYLE MEMORY — distill a compact "house style" fingerprint from the
+ * raw HTML of boards an operator has KEPT (recurring palette, favored fonts,
+ * motion tendency). Pure + deterministic (no AI call, no DB) so it's unit-testable
+ * and free. Returns null when there's no usable signal. Fed into the next
+ * generation via DesignerBoardOptions.houseStyle.
+ */
+export function summarizeHouseStyle(htmls: string[]): string | null {
+  const real = (htmls || []).filter((h) => typeof h === 'string' && h.length > 200);
+  if (!real.length) return null;
+  const colorCount: Record<string, number> = {};
+  const fonts: string[] = [];
+  let motionBoards = 0;
+  for (const h of real) {
+    for (const c of h.match(/#[0-9a-fA-F]{6}\b/g) || []) {
+      const k = c.toLowerCase();
+      colorCount[k] = (colorCount[k] || 0) + 1;
+    }
+    for (const m of h.matchAll(/font-family:\s*([^;}"'<]+)/gi)) {
+      const f = (m[1] || '').split(',')[0].trim().replace(/^['"]|['"]$/g, '');
+      if (f && f.length < 40 && !/^(inherit|initial|unset|sans-serif|serif|monospace|system-ui)$/i.test(f) && !fonts.includes(f)) {
+        fonts.push(f);
+      }
+    }
+    if (/@keyframes/.test(h)) motionBoards++;
+  }
+  const topColors = Object.entries(colorCount).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([c]) => c);
+  const topFonts = fonts.slice(0, 4);
+  if (!topColors.length && !topFonts.length) return null;
+  const parts: string[] = [];
+  if (topColors.length) parts.push(`recurring palette ${topColors.join(', ')}`);
+  if (topFonts.length) parts.push(`fonts they favor ${topFonts.join(' / ')}`);
+  parts.push(
+    motionBoards >= Math.ceil(real.length / 2)
+      ? 'they tend to use subtle motion'
+      : 'they tend to keep boards mostly still',
+  );
+  return `THIS OPERATOR'S HOUSE STYLE (learned from boards they have KEPT — lean toward this established, on-brand look UNLESS the new brief clearly calls for something different; do NOT copy any past board's layout, bring this STYLE to the NEW brief): ${parts.join('; ')}.`;
 }
 
 /** Three distinct art directions so a 3-candidate fan-out yields different designs. */
