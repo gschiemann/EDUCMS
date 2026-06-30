@@ -63,7 +63,13 @@ export const DESIGNER_LAYOUT_ENGINE =
   "function leaves(){var out=[];if(!document.body)return out;var all=document.body.querySelectorAll('*');" +
   "for(var i=0;i<all.length;i++){var el=all[i];var t=(el.textContent||'').replace(/\\s+/g,'');if(!t)continue;" +
   "var ct=false,ch=el.children;for(var k=0;k<ch.length;k++){if((ch[k].textContent||'').replace(/\\s+/g,'')){ct=true;break;}}if(ct)continue;" +
-  "if(!vis(el))continue;var r=el.getBoundingClientRect();if(r.width<2||r.height<2)continue;out.push({el:el,r:r});}return out;}" +
+  "if(!vis(el))continue;var r=grect(el);if(r.width<2||r.height<2)continue;out.push({el:el,r:r});}return out;}" +
+  // GLYPH-accurate bounds: measure where the TEXT actually renders (Range client
+  // rects), not the element's box. A wide container with short text (a full-width
+  // eyebrow, a flex cell) has a box far larger than its glyphs — measuring the box
+  // yields phantom overlaps (engine needlessly shrinks) AND misses real crowding
+  // (e.g. stacked lines inside a round medallion). Range rects fix both.
+  "function grect(el){try{var rg=document.createRange();rg.selectNodeContents(el);var rs=rg.getClientRects();if(!rs||!rs.length)return el.getBoundingClientRect();var x=1e9,y=1e9,R=-1e9,B=-1e9;for(var i=0;i<rs.length;i++){if(rs[i].width<1&&rs[i].height<1)continue;if(rs[i].left<x)x=rs[i].left;if(rs[i].top<y)y=rs[i].top;if(rs[i].right>R)R=rs[i].right;if(rs[i].bottom>B)B=rs[i].bottom;}if(R<x||B<y)return el.getBoundingClientRect();return {left:x,top:y,right:R,bottom:B,width:R-x,height:B-y};}catch(e){return el.getBoundingClientRect();}}" +
   "function pairs(lv){var p=[];for(var i=0;i<lv.length;i++)for(var j=i+1;j<lv.length;j++){var a=lv[i],b=lv[j];" +
   "if(a.el.contains(b.el)||b.el.contains(a.el))continue;" +
   "var ix=Math.min(a.r.right,b.r.right)-Math.max(a.r.left,b.r.left);" +
@@ -89,7 +95,12 @@ export const DESIGNER_LAYOUT_ENGINE =
   // ── orchestrate: only mutate beyond data-fit when a real collision exists ──
   "function repair(){try{runFit();if(nOver()===0)return;enforceRows();if(nOver()===0)return;" +
   "clearClips(pairs(leaves()));if(nOver()===0)return;storeOrig();" +
-  "var k=1.0;for(var i=0;i<9;i++){k-=0.06;applyScale(k);runFit();if(nOver()===0)break;if(k<=0.5)break;}}catch(e){}}" +
+  // NB: do NOT call runFit() inside the shrink loop. runFit re-grows data-fit
+  // elements to fill their WIDTH, which re-inflates a data-fit line (e.g. a
+  // medallion's big middle line) and re-introduces the VERTICAL crowding we are
+  // shrinking to resolve. runFit ran once up top; the loop shrinks ALL leaves
+  // (data-fit included, via their stored size) so stacked lines actually separate.
+  "var k=1.0;for(var i=0;i<9;i++){k-=0.06;applyScale(k);if(nOver()===0)break;if(k<=0.5)break;}}catch(e){}}" +
   "function run(){repair();}" +
   "if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run);else run();" +
   "if(document.fonts&&document.fonts.ready){try{document.fonts.ready.then(run);}catch(e){}}" +
