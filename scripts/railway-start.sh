@@ -54,30 +54,55 @@ else
   # and failed with `sh: prisma: not found` because npm/npx isn't
   # installed in the Alpine runner — corepack only sets up pnpm.
   #
-  # New approach: try paths in order, then the pnpm workspace
-  # invocation which always works (matches what `pnpm db:deploy`
-  # does locally). Set -e fails fast if every path fails.
-  MIGRATED=""
-  for candidate in \
-    "./packages/database/node_modules/.bin/prisma" \
-    "./node_modules/.bin/prisma" \
-    "./node_modules/prisma/build/index.js"; do
-    if [ -x "$candidate" ] || [ -f "$candidate" ]; then
-      echo "[railway-start] running migrations via $candidate"
-      if [ "$candidate" = "./node_modules/prisma/build/index.js" ]; then
-        node "$candidate" migrate deploy --schema=packages/database/prisma/schema.prisma
-      else
-        "$candidate" migrate deploy --schema=packages/database/prisma/schema.prisma
-      fi
-      MIGRATED=1
+  # Try paths in order, then the pnpm workspace invocation which
+  # always works (matches what `pnpm db:deploy` does locally).
+  #
+  # 2026-06-30 — RESILIENCE: a transient Supabase pooler blip at boot
+  # made `migrate deploy` fail P1001 ("can't reach database server");
+  # with set -e + one attempt the container died and Railway exhausted
+  # its 10 fast restarts inside the ~2-min outage window → the WHOLE
+  # deploy went FAILED (operator saw "railway throwing an error") even
+  # though the code + DB were fine. Now we RETRY with backoff (6 tries,
+  # 15/30/45/60/75s ≈ 3.75 min budget) so a brief pooler outage is
+  # survived, while a persistent failure still exits non-zero (loud)
+  # after the budget. `migrate deploy` is idempotent, so re-running is
+  # safe. set -e is toggled OFF only around each attempt so we can
+  # capture the exit code instead of dying on the first failure.
+  attempt=1
+  max=6
+  migrated=""
+  while [ "$attempt" -le "$max" ]; do
+    echo "[railway-start] migrate attempt $attempt/$max"
+    set +e
+    if [ -x "./packages/database/node_modules/.bin/prisma" ]; then
+      ./packages/database/node_modules/.bin/prisma migrate deploy --schema=packages/database/prisma/schema.prisma
+      rc=$?
+    elif [ -x "./node_modules/.bin/prisma" ]; then
+      ./node_modules/.bin/prisma migrate deploy --schema=packages/database/prisma/schema.prisma
+      rc=$?
+    elif [ -f "./node_modules/prisma/build/index.js" ]; then
+      node ./node_modules/prisma/build/index.js migrate deploy --schema=packages/database/prisma/schema.prisma
+      rc=$?
+    else
+      echo "[railway-start] direct prisma binary not found — using pnpm workspace runner"
+      pnpm --filter @cms/database run db:deploy
+      rc=$?
+    fi
+    set -e
+    if [ "$rc" -eq 0 ]; then
+      migrated=1
       break
     fi
+    if [ "$attempt" -lt "$max" ]; then
+      wait_s=$((attempt * 15))
+      echo "[railway-start] migrate attempt $attempt failed (rc=$rc) — likely a transient DB blip; retrying in ${wait_s}s"
+      sleep "$wait_s"
+    fi
+    attempt=$((attempt + 1))
   done
-  if [ -z "$MIGRATED" ]; then
-    echo "[railway-start] direct prisma binary not found — using pnpm workspace runner"
-    # corepack sets up pnpm in the runner stage; this is the same
-    # invocation `pnpm db:deploy` uses locally.
-    pnpm --filter @cms/database run db:deploy
+  if [ -z "$migrated" ]; then
+    echo "[railway-start] FATAL: prisma migrate deploy failed after $max attempts"
+    exit 1
   fi
   echo "[railway-start] migrations applied successfully"
 fi
