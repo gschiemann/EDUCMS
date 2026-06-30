@@ -200,6 +200,21 @@ function isNoiseColor(hex: string): boolean {
   return false;
 }
 
+/**
+ * Normalize an operator-typed site URL. They shouldn't have to type the scheme —
+ * "riotcolor.com" must work, not only "https://riotcolor.com". Without this,
+ * new URL()/safeFetch throw on a scheme-less string and the scrape fails with a
+ * misleading "couldn't read that site" error and no reason (2026-06-30 report:
+ * http:// worked, a bare domain errored). Prepend https:// when no http(s)
+ * scheme is present; leave a valid scheme untouched.
+ */
+export function normalizeWebUrl(raw: string): string {
+  const s = (raw || '').trim();
+  if (!s) return s;
+  if (/^https?:\/\//i.test(s)) return s;
+  return 'https://' + s.replace(/^\/+/, '');
+}
+
 @Injectable()
 export class BrandingScraperService {
   private readonly logger = new Logger(BrandingScraperService.name);

@@ -48,6 +48,18 @@ interface ApiError {
   message?: string;
   body?: { message?: string };
 }
+/**
+ * Operators shouldn't have to type the scheme. Accept "riotcolor.com" and add
+ * https:// when missing (a bare domain used to fail the scrape with a confusing
+ * error; http:// worked — 2026-06-30 report). Leave a real scheme untouched.
+ */
+function normalizeWebUrl(raw: string): string {
+  const s = (raw || '').trim();
+  if (!s) return s;
+  if (/^https?:\/\//i.test(s)) return s;
+  return 'https://' + s.replace(/^\/+/, '');
+}
+
 function friendlyConciergeError(err: unknown): string {
   const e = (err ?? {}) as ApiError;
   const code = String(e.code || '');
@@ -212,7 +224,7 @@ export function SignageConcierge(props: SignageConciergeProps) {
   );
 
   const addUrl = useCallback(async () => {
-    const url = urlValue.trim();
+    const url = normalizeWebUrl(urlValue);
     if (!url || urlRef.isPending) return;
     setRefError(null);
     try {
@@ -255,7 +267,7 @@ export function SignageConcierge(props: SignageConciergeProps) {
     // (the 2026-06-30 "I added the site but it ignored it" report). Scrape it now
     // and include it in the references we generate from.
     let refs = references;
-    const pendingUrl = urlValue.trim();
+    const pendingUrl = normalizeWebUrl(urlValue);
     if (pendingUrl && !urlRef.isPending) {
       try {
         const ref = await urlRef.mutateAsync({ url: pendingUrl });

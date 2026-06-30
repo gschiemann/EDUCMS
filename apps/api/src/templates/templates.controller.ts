@@ -24,7 +24,7 @@ import { PEXELS_IMAGE_HOST } from '../ai/stock-image.service';
 import { createHash } from 'node:crypto';
 // Signage Concierge (2026-06-28) — a pasted URL is scraped into a brand
 // summary by the branding scraper, then summarized into a ConciergeReference.
-import { BrandingScraperService } from '../branding/branding-scraper.service';
+import { BrandingScraperService, normalizeWebUrl } from '../branding/branding-scraper.service';
 import { summarizeUrlReference } from '../ai/signage-concierge';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import {
@@ -1189,11 +1189,15 @@ export class TemplatesController {
     // safe-fetch host guard + a time budget). Any failure (bot-protection,
     // fetch error, timeout) degrades to a friendly "tell me your colors
     // instead" — never a 500.
+    // Operators shouldn't have to type the scheme — accept a bare domain
+    // ("riotcolor.com") and add https:// for them (a scheme-less URL used to
+    // fail the scrape with a misleading "couldn't read that site" error).
+    const url = normalizeWebUrl(body.url);
     try {
-      const preview = await this.brandingScraper.scrape(body.url);
-      return summarizeUrlReference(preview, body.url);
+      const preview = await this.brandingScraper.scrape(url);
+      return summarizeUrlReference(preview, url);
     } catch (e: any) {
-      this.auditLogger.warn(`concierge URL scrape failed (${body.url}): ${e?.message}`);
+      this.auditLogger.warn(`concierge URL scrape failed (${url}): ${e?.message}`);
       throw new HttpException(
         {
           message:
