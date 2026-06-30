@@ -383,14 +383,34 @@ function extractHexes(preview: any): string[] {
 }
 
 function pickHeroImage(preview: any): string | null {
+  // Prefer a REAL large work photo over the og:image — many sites set og:image
+  // to an icon/map/social card, which makes a weak hero (the 2026-06-30
+  // riotcolor case: og:image was a service-area MAP, not their mural work).
+  const looksWeak = (u: string) =>
+    /favicon|sprite|icon|logo|map-location|placeholder|cropped|[-_](og|share|social|card)[-_.]/i.test(u);
   const hero = preview?.heroImages;
   if (Array.isArray(hero) && hero.length) {
-    const first = hero[0];
-    const u = typeof first === 'string' ? first : first?.url;
-    if (typeof u === 'string' && /^https?:\/\//i.test(u)) return u;
+    const cands = hero
+      .map((h: any) => ({
+        url: typeof h === 'string' ? h : h?.url,
+        w: typeof h?.width === 'number' ? h.width : 0,
+        h: typeof h?.height === 'number' ? h.height : 0,
+        kind: h?.kind,
+      }))
+      .filter((c: any) => typeof c.url === 'string' && /^https?:\/\//i.test(c.url));
+    // 1) a big landscape-ish CONTENT photo (real work shot), not a weak one.
+    const strong = cands
+      .filter((c: any) => c.kind === 'large-img' && c.w >= 800 && !looksWeak(c.url))
+      .sort((a: any, b: any) => b.w * b.h - a.w * a.h)[0];
+    if (strong) return strong.url;
+    // 2) any non-weak candidate.
+    const ok = cands.find((c: any) => !looksWeak(c.url));
+    if (ok) return ok.url;
+    // 3) last resort — the first one (better than nothing).
+    if (cands[0]) return cands[0].url;
   }
   const og = preview?.ogImage;
-  if (typeof og === 'string' && /^https?:\/\//i.test(og)) return og;
+  if (typeof og === 'string' && /^https?:\/\//i.test(og) && !looksWeak(og)) return og;
   return null;
 }
 
