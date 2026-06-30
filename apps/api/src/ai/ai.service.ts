@@ -1151,6 +1151,23 @@ export class AiService {
       // become "unreachable" (2026-06-09 Fable audit dead-code fix).
       if (err instanceof HttpException) throw err;
       this.logger.error(`AI dispatch failed: ${err?.message}`);
+      // 2026-06-30 — distinguish a TIMEOUT (the call ran past the abort
+      // ceiling — happens on a big gpt-5 board, esp. 3 fired in parallel) from
+      // a true network failure. A timeout is transient + retry-able, so it gets
+      // its own structured code + an honest "tap Generate again" message
+      // instead of the misleading "service unreachable" (reads as "we're down").
+      const isTimeout =
+        err?.name === 'TimeoutError' || /timeout|abort/i.test(err?.message || '');
+      if (isTimeout) {
+        throw new HttpException(
+          {
+            message:
+              'The AI took longer than usual on this one. Tap Generate again — it almost always works on the next try.',
+            code: 'AI_TIMEOUT',
+          },
+          HttpStatus.SERVICE_UNAVAILABLE,
+        );
+      }
       throw new ServiceUnavailableException('AI service unreachable.');
     }
     // Empty (but non-error) reply — e.g. a thinking model that exhausted
@@ -1222,6 +1239,23 @@ export class AiService {
       // become "unreachable" (2026-06-09 Fable audit dead-code fix).
       if (err instanceof HttpException) throw err;
       this.logger.error(`AI dispatch failed: ${err?.message}`);
+      // 2026-06-30 — distinguish a TIMEOUT (the call ran past the abort
+      // ceiling — happens on a big gpt-5 board, esp. 3 fired in parallel) from
+      // a true network failure. A timeout is transient + retry-able, so it gets
+      // its own structured code + an honest "tap Generate again" message
+      // instead of the misleading "service unreachable" (reads as "we're down").
+      const isTimeout =
+        err?.name === 'TimeoutError' || /timeout|abort/i.test(err?.message || '');
+      if (isTimeout) {
+        throw new HttpException(
+          {
+            message:
+              'The AI took longer than usual on this one. Tap Generate again — it almost always works on the next try.',
+            code: 'AI_TIMEOUT',
+          },
+          HttpStatus.SERVICE_UNAVAILABLE,
+        );
+      }
       throw new ServiceUnavailableException('AI service unreachable.');
     }
     // Empty (but non-error) reply — e.g. a thinking model that exhausted

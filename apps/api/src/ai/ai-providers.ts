@@ -382,15 +382,31 @@ export async function dispatchAiMessages(
   // "AI service unreachable", making the premium tier unusable across the WHOLE
   // app (concierge AND board generation). Reasoning / premium models (gpt-5 +
   // o-series, gemini-2.5, claude opus) emit internal reasoning tokens and
-  // routinely take 20-60s+ for a non-trivial generation. So the ceiling is now
-  // model-aware: a generous 90s for slow reasoning models, a still-comfortable
-  // 30s for fast models (Haiku / gpt-4o-mini / Gemini Flash return in
-  // seconds — the ceiling is an abort guard, not a wait). Railway's edge proxy
-  // tolerates this; AI calls are user-initiated + capped at 30/hr, so a longer
-  // ceiling can't pile up workers under load.
+  // routinely take 20-60s+ for a non-trivial generation.
+  //
+  // 2026-06-30 PROD INCIDENT — a flat 90s STILL wasn't enough for the single
+  // biggest call in the app: a full HTML designer board (generate-designer asks
+  // for 16k visible tokens). gpt-5's latency is highly variable, and the
+  // 3-candidate picker fires THREE of these in parallel on one key — they
+  // contend, all blow past 90s together, the whole batch fails, and the
+  // operator sees "Could not reach the AI service" (Railway log: three
+  // "operation was aborted due to timeout" in the same ms). The abort guard
+  // must scale with the WORK requested, not a flat number: a 300-token snippet
+  // and a 16k-token board are not the same wait. So for slow models the ceiling
+  // is now `base + per-visible-token` — a board lands ~186s, concierge ~97s,
+  // snippets ~92s (never below the old 90s floor). Hard-capped at 240s, which
+  // is deliberately UNDER Railway's edge limit: a request with no bytes flowing
+  // (we don't stream) is closed by the edge proxy after 300s anyway, so a
+  // ceiling past that would just trade our clean 503 for an opaque proxy reset.
+  // Fast models (Haiku / gpt-4o-mini / Gemini Flash) return in seconds — 30s is
+  // an abort guard, not a wait. AI calls are user-initiated + capped per hour,
+  // so a longer ceiling can't pile up workers under load.
   const slowModel =
     isOpenAiReasoningModel(model) || /^gemini-2\.5/.test(model) || /opus/i.test(model);
-  const FETCH_TIMEOUT_MS = slowModel ? 90_000 : 30_000;
+  const maxTok = input.maxTokens || 1000;
+  const FETCH_TIMEOUT_MS = slowModel
+    ? Math.min(240_000, 90_000 + maxTok * 6)
+    : 30_000;
 
   // Defensive: every provider requires a non-empty conversation. Callers
   // always pass at least one user turn, but guard so a bad caller gets a

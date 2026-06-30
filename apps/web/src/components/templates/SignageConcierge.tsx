@@ -82,6 +82,9 @@ function friendlyConciergeError(err: unknown): string {
   if (code === 'AI_FAILURE_CAP_REACHED') {
     return 'Too many failed AI requests in the last hour. Wait an hour, or contact support if you think this is wrong.';
   }
+  if (code === 'AI_TIMEOUT' || raw.includes('took longer than usual')) {
+    return 'The AI took longer than usual on this one. Tap Generate again — it almost always works on the next try.';
+  }
   if (raw.includes('not configured')) {
     return "AI isn't enabled for this site. Ask your administrator to add an API key in Settings → AI provider.";
   }
