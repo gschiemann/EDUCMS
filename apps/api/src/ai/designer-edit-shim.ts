@@ -45,7 +45,8 @@ export function injectDesignerEditShim(html: string): string {
  * runs inside the sandboxed srcdoc next to the edit shim. Chromium-83 safe.
  */
 export const DESIGNER_LAYOUT_ENGINE =
-  "<script>/*VOS-FIT-ENGINE*/(function(){" +
+  "<script>/*VOS-FIT-ENGINE*/(function(){try{" +
+  // ── data-fit: shrink flagged display text to fit its box on one line ──
   "function fitOne(el){try{var p=el.parentElement;if(!p)return;" +
   "var cs=getComputedStyle(el);var cur=parseFloat(cs.fontSize)||40;" +
   "var min=parseFloat(el.getAttribute('data-fit-min'))||Math.max(14,Math.round(cur*0.35));" +
@@ -56,11 +57,44 @@ export const DESIGNER_LAYOUT_ENGINE =
   "if(el.scrollWidth<=avail)return;" +
   "var lo=min,hi=max,best=min;for(var i=0;i<22;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';" +
   "if(el.scrollWidth<=avail){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}catch(e){}}" +
-  "function run(){try{var n=document.querySelectorAll('[data-fit]');for(var i=0;i<n.length;i++)fitOne(n[i]);}catch(e){}}" +
+  "function runFit(){try{var n=document.querySelectorAll('[data-fit]');for(var i=0;i<n.length;i++)fitOne(n[i]);}catch(e){}}" +
+  // ── collision detection over visible TEXT-LEAF elements (post-transform) ──
+  "function vis(el){var cs=getComputedStyle(el);return cs.visibility!=='hidden'&&cs.display!=='none'&&parseFloat(cs.opacity)!==0;}" +
+  "function leaves(){var out=[];if(!document.body)return out;var all=document.body.querySelectorAll('*');" +
+  "for(var i=0;i<all.length;i++){var el=all[i];var t=(el.textContent||'').replace(/\\s+/g,'');if(!t)continue;" +
+  "var ct=false,ch=el.children;for(var k=0;k<ch.length;k++){if((ch[k].textContent||'').replace(/\\s+/g,'')){ct=true;break;}}if(ct)continue;" +
+  "if(!vis(el))continue;var r=el.getBoundingClientRect();if(r.width<2||r.height<2)continue;out.push({el:el,r:r});}return out;}" +
+  "function pairs(lv){var p=[];for(var i=0;i<lv.length;i++)for(var j=i+1;j<lv.length;j++){var a=lv[i],b=lv[j];" +
+  "if(a.el.contains(b.el)||b.el.contains(a.el))continue;" +
+  "var ix=Math.min(a.r.right,b.r.right)-Math.max(a.r.left,b.r.left);" +
+  "var iy=Math.min(a.r.bottom,b.r.bottom)-Math.max(a.r.top,b.r.top);" +
+  "if(ix>6&&iy>6)p.push([a.el,b.el]);}return p;}" +
+  "function nOver(){return pairs(leaves()).length;}" +
+  // ── Pass A: flex leader-rows — name shrinks/wraps, short trailing value holds ──
+  "function enforceRows(){try{var all=document.body.querySelectorAll('*');for(var i=0;i<all.length;i++){var el=all[i];" +
+  "var cs=getComputedStyle(el);if(cs.display!=='flex'&&cs.display!=='inline-flex')continue;" +
+  "if(cs.flexDirection&&cs.flexDirection.indexOf('column')===0)continue;" +
+  "var kids=[];for(var k=0;k<el.children.length;k++)kids.push(el.children[k]);if(kids.length<2)continue;" +
+  "for(var m=0;m<kids.length;m++){kids[m].style.minWidth='0';}" +
+  "var first=kids[0];first.style.flexShrink='1';var fcs=getComputedStyle(first);if(fcs.whiteSpace==='nowrap')first.style.whiteSpace='normal';" +
+  "var last=kids[kids.length-1];var lt=(last.textContent||'').trim();if(lt.length<=18){last.style.flexShrink='0';last.style.flexGrow='0';}" +
+  "}}catch(e){}}" +
+  // ── Pass B: stop text-clipping ancestors from hiding pushed content ──
+  "function clearClips(ps){try{for(var i=0;i<ps.length;i++)for(var s=0;s<2;s++){var p=ps[i][s];for(var u=0;u<4&&p;u++){" +
+  "var cs=getComputedStyle(p);if(cs.overflow==='hidden'||cs.overflowY==='hidden'||cs.overflowX==='hidden')p.style.overflow='visible';p=p.parentElement;}}}catch(e){}}" +
+  // ── Pass C: uniform text down-scale until clean (idempotent via stored orig) ──
+  "var stored=false;function storeOrig(){if(stored)return;var lv=leaves();for(var i=0;i<lv.length;i++){var el=lv[i].el;" +
+  "if(!el.getAttribute('data-vos-fs')){var fs=parseFloat(getComputedStyle(el).fontSize)||0;if(fs>0)el.setAttribute('data-vos-fs',String(fs));}}stored=true;}" +
+  "function applyScale(k){var n=document.querySelectorAll('[data-vos-fs]');for(var i=0;i<n.length;i++){var o=parseFloat(n[i].getAttribute('data-vos-fs'))||0;if(o>0)n[i].style.fontSize=(Math.round(o*k*100)/100)+'px';}}" +
+  // ── orchestrate: only mutate beyond data-fit when a real collision exists ──
+  "function repair(){try{runFit();if(nOver()===0)return;enforceRows();if(nOver()===0)return;" +
+  "clearClips(pairs(leaves()));if(nOver()===0)return;storeOrig();" +
+  "var k=1.0;for(var i=0;i<9;i++){k-=0.06;applyScale(k);runFit();if(nOver()===0)break;if(k<=0.5)break;}}catch(e){}}" +
+  "function run(){repair();}" +
   "if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run);else run();" +
   "if(document.fonts&&document.fonts.ready){try{document.fonts.ready.then(run);}catch(e){}}" +
-  "setTimeout(run,300);setTimeout(run,1000);window.addEventListener('resize',run);" +
-  "})();</script>";
+  "setTimeout(run,400);setTimeout(run,1200);setTimeout(run,2000);window.addEventListener('resize',run);" +
+  "}catch(e){}})();</script>";
 
 /**
  * Insert the VOS-FIT-ENGINE just before </body> (it must run AFTER the board's

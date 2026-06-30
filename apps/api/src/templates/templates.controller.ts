@@ -1078,7 +1078,17 @@ export class TemplatesController {
       reference: body.reference,
       count: body.count,
     });
-    return { candidates: out.candidates, designer: true, ai: { source: out.source, usage: out.usage } };
+    // Bake the VOS-FIT-ENGINE into each candidate NOW (not just at save) so the
+    // 3-up preview the operator sees is already collision-free + auto-fit on the
+    // FIRST shot — no overlap that only gets fixed after they pick + save. The
+    // engine is idempotent (marker-guarded), so create-designer's re-inject is a
+    // no-op. The edit shim is still added only at create (preview needs no edit).
+    const candidates = (out.candidates || []).map((cnd: any) =>
+      cnd && typeof cnd.html === 'string'
+        ? { ...cnd, html: injectDesignerLayoutEngine(cnd.html) }
+        : cnd,
+    );
+    return { candidates, designer: true, ai: { source: out.source, usage: out.usage } };
   }
 
   @Post('create-designer')
