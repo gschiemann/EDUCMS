@@ -133,7 +133,7 @@ export const DESIGNER_SYSTEM_PROMPT = [
   'BRAND — match the venue, do not invent a generic look:',
   '- Use the supplied palette as the backbone (primary, accents, ink, surface). If none, derive a tasteful on-vertical palette.',
   '- Use the venue NAME, tagline, logo, and the REAL content provided (actual menu items + prices, the real headline, real hours). NEVER lorem/placeholder text. If content is thin, write tight on-brand copy in the venue voice.',
-  '- Reflect any reference (scraped site / uploaded image) — its palette, mood, era, formality.',
+  '- Reflect any reference (scraped site / uploaded image): its palette, mood, era, formality AND — critically — its REAL messaging. When the reference lists the brand\'s actual on-site headlines / positioning / the specific services or industries it names, BUILD THE COPY FROM THOSE (echo the real voice). NEVER replace a brand\'s real positioning with generic invented copy (e.g. do not turn a premium "experiential environmental graphics" brand into a generic "24-hour banner printing" shop). Represent what the business actually IS.',
   '',
   `TYPOGRAPHY — use ONLY these loaded fonts (any other silently falls back to a system font): ${FONT_LIST}. Load exactly the families you use via one <link href="https://fonts.googleapis.com/css2?...&display=swap">.`,
   '',

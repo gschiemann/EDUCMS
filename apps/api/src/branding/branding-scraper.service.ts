@@ -118,6 +118,13 @@ export interface BrandingPreview {
    * failure: the scrape knew the name + colors but never "pizza").
    */
   description: string | null;
+  /**
+   * The brand's REAL on-page headlines/positioning (h1 + section h2/h3),
+   * deduped + boilerplate-filtered. Feeds the AI template generator the
+   * actual brand voice + the services/industries it names, so a generated
+   * board REPRESENTS the business instead of inventing generic copy.
+   */
+  keyMessages: string[];
   logos: LogoCandidate[];
   favicon: string | null;
   ogImage: string | null;
@@ -503,6 +510,32 @@ export class BrandingScraperService {
     // Look for "Home of the X" pattern anywhere visible
     const homeOfMatch = $('body').text().match(/\b(Home of (?:the )?[A-Z][\w\s]{2,40}?)(?:[.!]|\s*$|\s*\n)/);
     const homeOf = homeOfMatch?.[1]?.trim() || null;
+
+    // KEY MESSAGES — the brand's REAL on-page positioning/voice (h1 + section
+    // h2/h3 headlines). Without these the AI template generator only sees a
+    // one-line meta description + colors and INVENTS generic copy that
+    // misrepresents the business (the 2026-06-29 riotcolor.com case: an
+    // experiential-graphics brand whose site says "Branding Beyond Boundaries /
+    // Spaces That Spark Discovery" came out as a generic "24-48hr banners" quick
+    // print shop). Capturing the real headlines lets the generator echo the
+    // brand's actual message + the industries/services it actually names.
+    const keyMessages: string[] = (() => {
+      const seen = new Set<string>();
+      const out: string[] = [];
+      $('h1, h2, h3').each((_i, el) => {
+        if (out.length >= 14) return;
+        const t = decodeEntities($(el).text().replace(/\s+/g, ' ').trim());
+        if (!t) return;
+        const norm = t.toLowerCase();
+        // Skip nav/boilerplate + too-short/too-long fragments.
+        if (t.length < 4 || t.length > 90) return;
+        if (seen.has(norm)) return;
+        if (/^(home|about|contact|menu|search|login|sign in|careers|blog|news|shop|cart|services|products|gallery|faq|more|next|previous)$/i.test(t)) return;
+        seen.add(norm);
+        out.push(t);
+      });
+      return out;
+    })();
 
     const taglineCandidates: Array<string | null | undefined> = [
       ogDesc,
@@ -942,6 +975,7 @@ export class BrandingScraperService {
       displayName,
       tagline,
       description,
+      keyMessages,
       logos: logos.slice(0, 8),
       favicon,
       ogImage,

@@ -300,6 +300,13 @@ export function summarizeUrlReference(preview: any, url: string): ConciergeRefer
   // (the 2026-06-29 "Domino's -> burger menu" failure: it had the name + colors
   // but never "pizza"). Lead with it so the generated board is on-subject.
   const businessType = strOrEmpty(preview?.description);
+  // The brand's REAL on-page headlines/positioning — so the board echoes the
+  // actual voice + the services/industries the site names, instead of inventing
+  // generic copy (the 2026-06-29 riotcolor.com case: a premium experiential-
+  // graphics brand came out as a generic "24-48hr banners" print shop).
+  const keyMessages: string[] = Array.isArray(preview?.keyMessages)
+    ? preview.keyMessages.filter((m: any) => typeof m === 'string' && m.trim()).slice(0, 12)
+    : [];
   const fonts =
     preview?.fonts && (preview.fonts.heading || preview.fonts.body)
       ? `Fonts: ${[preview.fonts.heading, preview.fonts.body].filter(Boolean).join(' / ')}.`
@@ -312,7 +319,10 @@ export function summarizeUrlReference(preview: any, url: string): ConciergeRefer
   const summaryParts = [
     name ? `Brand: ${name}.` : '',
     businessType ? `What they are / sell (use this to pick the RIGHT content — never invent a different cuisine/industry): "${businessType.slice(0, 240)}".` : '',
-    tagline ? `Tagline: "${tagline.slice(0, 160)}".` : '',
+    keyMessages.length
+      ? `The brand's REAL on-site messaging — ECHO this actual voice + the services/industries it names; do NOT invent generic copy: ${keyMessages.map((m) => `"${m}"`).join(' · ')}.`
+      : '',
+    tagline && tagline !== businessType ? `Tagline: "${tagline.slice(0, 160)}".` : '',
     palette.length ? `Brand palette: ${palette.slice(0, 6).join(', ')}.` : '',
     fonts,
     heroImageUrl ? 'Has a hero image available to use as a background.' : '',
