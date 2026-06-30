@@ -173,7 +173,10 @@ export function SignageConcierge(props: SignageConciergeProps) {
   const hasUserTurn = useMemo(() => messages.some((m) => m.role === 'user'), [messages]);
 
   const send = useCallback(
-    async (text: string) => {
+    // refsOverride lets a caller (e.g. just-added website/photo) pass the
+    // UP-TO-DATE references synchronously, avoiding the setReferences race where
+    // the closure's `references` is still the pre-add array.
+    async (text: string, refsOverride?: ConciergeReference[]) => {
       const content = text.trim();
       if (!content || busy) return;
       setError(null);
@@ -187,10 +190,11 @@ export function SignageConcierge(props: SignageConciergeProps) {
         nextMessages.length > 0 && nextMessages[0].role === 'assistant'
           ? nextMessages.slice(1)
           : nextMessages;
+      const refs = refsOverride ?? references;
       try {
         const turn = await chat.mutateAsync({
           messages: wire,
-          references: references.length ? references : undefined,
+          references: refs.length ? refs : undefined,
           vertical,
           screenWidth: canvas.w,
           screenHeight: canvas.h,
@@ -213,33 +217,56 @@ export function SignageConcierge(props: SignageConciergeProps) {
     setRefError(null);
     try {
       const ref = await urlRef.mutateAsync({ url });
-      setReferences((prev) => [...prev, ref]);
+      const nextRefs = [...references, ref];
+      setReferences(nextRefs);
       setUrlValue('');
       setUrlOpen(false);
+      // React to the scan IMMEDIATELY: send a turn (with the up-to-date refs) so
+      // the Concierge acknowledges the site, says what it found, and tailors its
+      // suggestions — instead of going silent or asking for the URL again.
+      void send(`I added our website (${url}). Scan it and use what you find — its brand colors, logo, and the actual products/services — then tell me what you found and tailor the board to it.`, nextRefs);
     } catch (e) {
       setRefError(friendlyConciergeError(e));
     }
-  }, [urlValue, urlRef]);
+  }, [urlValue, urlRef, references, send]);
 
   const addImage = useCallback(
     async (file: File) => {
       setRefError(null);
       try {
         const ref = await imageRef.mutateAsync(file);
-        setReferences((prev) => [...prev, ref]);
+        const nextRefs = [...references, ref];
+        setReferences(nextRefs);
+        void send('I uploaded a look I like — use its style, palette, and mood. Tell me what you see and reflect it in the board.', nextRefs);
       } catch (e) {
         setRefError(friendlyConciergeError(e));
       }
     },
-    [imageRef],
+    [imageRef, references, send],
   );
 
   const removeReference = useCallback((idx: number) => {
     setReferences((prev) => prev.filter((_, i) => i !== idx));
   }, []);
 
-  const handleGenerate = useCallback(() => {
+  const handleGenerate = useCallback(async () => {
     if (generating) return;
+    // FLUSH a typed-but-not-"Added" website so it can never be silently lost
+    // (the 2026-06-30 "I added the site but it ignored it" report). Scrape it now
+    // and include it in the references we generate from.
+    let refs = references;
+    const pendingUrl = urlValue.trim();
+    if (pendingUrl && !urlRef.isPending) {
+      try {
+        const ref = await urlRef.mutateAsync({ url: pendingUrl });
+        refs = [...references, ref];
+        setReferences(refs);
+        setUrlValue('');
+        setUrlOpen(false);
+      } catch (e) {
+        setRefError(friendlyConciergeError(e));
+      }
+    }
     const prompt = (brief || lastUserText).trim();
     if (!prompt) {
       setError('Tell me a bit about the screen first, then I can generate it.');
@@ -257,8 +284,8 @@ export function SignageConcierge(props: SignageConciergeProps) {
       .map((m) => m.content.trim())
       .filter(Boolean)
       .join('\n');
-    onGenerate({ prompt, intake, references, userNotes });
-  }, [generating, brief, lastUserText, intake, references, messages, onGenerate]);
+    onGenerate({ prompt, intake, references: refs, userNotes });
+  }, [generating, brief, lastUserText, intake, references, messages, onGenerate, urlValue, urlRef]);
 
   // ── "What I've gathered" chips ─────────────────────────────────────────
   const intakeChips = useMemo(() => {
