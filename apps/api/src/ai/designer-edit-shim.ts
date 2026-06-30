@@ -46,10 +46,17 @@ export function injectDesignerEditShim(html: string): string {
  */
 export const DESIGNER_LAYOUT_ENGINE =
   "<script>/*VOS-FIT-ENGINE*/(function(){try{" +
+  // ── SIGNAGE LEGIBILITY FLOOR (2026-06-30) ── These boards play on 43-98in
+  // screens viewed across a room, so NO text may render below a canvas-relative
+  // minimum. The floor is 2.4% of the canvas SHORT side (≈26px @1920x1080,
+  // ≈52px @2160x3840 4K-portrait) clamped to [24,60]. window.innerWidth/Height
+  // are the board's DESIGN px in the srcdoc (the iframe is canvas-sized; the
+  // OUTER element scales to the screen) — same basis guardDeco already uses.
+  "var MINPX=24;function calcMin(){try{var W=window.__VOS_CW||window.innerWidth||1920;var H=window.__VOS_CH||window.innerHeight||1080;var d=Math.min(W,H);MINPX=Math.max(24,Math.min(60,Math.round(d*0.024)));}catch(e){MINPX=24;}}calcMin();" +
   // ── data-fit: shrink flagged display text to fit its box on one line ──
   "function fitOne(el){try{var p=el.parentElement;if(!p)return;" +
   "var cs=getComputedStyle(el);var cur=parseFloat(cs.fontSize)||40;" +
-  "var min=parseFloat(el.getAttribute('data-fit-min'))||Math.max(14,Math.round(cur*0.35));" +
+  "var min=parseFloat(el.getAttribute('data-fit-min'))||Math.max(14,Math.round(cur*0.35));if(min<MINPX)min=MINPX;" +
   "var max=parseFloat(el.getAttribute('data-fit-max'))||cur;if(max<min)max=min;" +
   "el.style.whiteSpace='nowrap';" +
   "var avail=p.clientWidth-(parseFloat(cs.paddingLeft)||0)-(parseFloat(cs.paddingRight)||0);" +
@@ -91,7 +98,17 @@ export const DESIGNER_LAYOUT_ENGINE =
   // ── Pass C: uniform text down-scale until clean (idempotent via stored orig) ──
   "var stored=false;function storeOrig(){if(stored)return;var lv=leaves();for(var i=0;i<lv.length;i++){var el=lv[i].el;" +
   "if(!el.getAttribute('data-vos-fs')){var fs=parseFloat(getComputedStyle(el).fontSize)||0;if(fs>0)el.setAttribute('data-vos-fs',String(fs));}}stored=true;}" +
-  "function applyScale(k){var n=document.querySelectorAll('[data-vos-fs]');for(var i=0;i<n.length;i++){var o=parseFloat(n[i].getAttribute('data-vos-fs'))||0;if(o>0)n[i].style.fontSize=(Math.round(o*k*100)/100)+'px';}}" +
+  // applyScale clamps at the legibility floor — the overlap down-scale can NEVER
+  // push text below MINPX. If a board can't be both legible AND collision-free it
+  // stays legible (content density is the prompt's job, not the engine's).
+  "function applyScale(k){var n=document.querySelectorAll('[data-vos-fs]');for(var i=0;i<n.length;i++){var o=parseFloat(n[i].getAttribute('data-vos-fs'))||0;if(o>0){var v=o*k;if(v<MINPX)v=MINPX;n[i].style.fontSize=(Math.round(v*100)/100)+'px';}}}" +
+  // ── FLOOR-UP: scale any under-floor text UP to MINPX (the legibility guard). ──
+  // Stores the true original first so a later overlap down-scale starts from it.
+  "function floorUp(){try{var lv=leaves();for(var i=0;i<lv.length;i++){var el=lv[i].el;var fs=parseFloat(getComputedStyle(el).fontSize)||0;if(fs>0&&fs<MINPX-0.5){if(!el.getAttribute('data-vos-fs'))el.setAttribute('data-vos-fs',String(fs));el.style.fontSize=MINPX+'px';}}}catch(e){}}" +
+  // ── OVERFLOW CLAMP: no text may poke past the canvas edge (the clipped-headline
+  //    bug). Shrink-to-fit width down to MINPX; if it still overflows at the floor,
+  //    let it WRAP rather than clip or go illegible. ──
+  "function clampOverflow(){try{var W=window.innerWidth||1920;var lv=leaves();for(var i=0;i<lv.length;i++){var el=lv[i].el;var r=grect(el);if(r.right<=W-2&&r.left>=-2)continue;var cur=parseFloat(getComputedStyle(el).fontSize)||0;if(cur<=MINPX){el.style.whiteSpace='normal';continue;}var lo=MINPX,hi=cur,best=MINPX;for(var s=0;s<14;s++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var rr=grect(el);if(rr.right<=W-2&&rr.left>=-2){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';var rf=grect(el);if(rf.right>W-2||rf.left<-2)el.style.whiteSpace='normal';}}catch(e){}}" +
   // ── DECORATION GUARD: a no-text GRAPHIC must NEVER cover text that isn't its
   //    own child (the 'giant sphere bleeds over the values' / 'badge lands on the
   //    headline' overshoot the model sometimes makes to fill the canvas). This is
@@ -120,7 +137,7 @@ export const DESIGNER_LAYOUT_ENGINE =
   "var cleared=false;if(ow>4&&oh>4){for(var s=0;s<8;s++){var f=1-(s+1)*0.1;E.style.width=Math.round(ow*f)+'px';E.style.height=Math.round(oh*f)+'px';if(!cov(E)){cleared=true;break;}}}" +
   "if(!cleared){try{E.style.zIndex='0';}catch(e){}E.style.opacity='0.2';}}}catch(e){}}" +
   // ── orchestrate: only mutate beyond data-fit when a real collision exists ──
-  "function repair(){try{runFit();guardDeco();if(nOver()===0)return;enforceRows();if(nOver()===0)return;" +
+  "function repair(){try{calcMin();runFit();floorUp();clampOverflow();guardDeco();if(nOver()===0)return;enforceRows();if(nOver()===0)return;" +
   "clearClips(pairs(leaves()));if(nOver()===0)return;storeOrig();" +
   // NB: do NOT call runFit() inside the shrink loop. runFit re-grows data-fit
   // elements to fill their WIDTH, which re-inflates a data-fit line (e.g. a
@@ -138,10 +155,25 @@ export const DESIGNER_LAYOUT_ENGINE =
  * Insert the VOS-FIT-ENGINE just before </body> (it must run AFTER the board's
  * content exists so it can measure widths). Idempotent. Falls back to append.
  */
-export function injectDesignerLayoutEngine(html: string): string {
+export function injectDesignerLayoutEngine(
+  html: string,
+  screenWidth?: number,
+  screenHeight?: number,
+): string {
   if (typeof html !== "string" || !html) return html;
   if (html.indexOf("VOS-FIT-ENGINE") !== -1) return html; // already injected
+  // Bake the DESIGN canvas so the legibility floor (MINPX) is computed from the
+  // board's real dimensions in EVERY render context — the full-screen player AND
+  // the scaled-down editor/picker preview (where window.innerWidth would be the
+  // tiny preview size, under-applying the floor in the exact view the operator
+  // judges from). Falls back to window dims when not supplied (old/external HTML).
+  const w = Number(screenWidth), h = Number(screenHeight);
+  const dims =
+    Number.isFinite(w) && w > 0 && Number.isFinite(h) && h > 0
+      ? `<script>/*VOS-CANVAS*/window.__VOS_CW=${Math.round(w)};window.__VOS_CH=${Math.round(h)};</script>`
+      : "";
+  const block = dims + DESIGNER_LAYOUT_ENGINE;
   const bodyClose = html.search(/<\/body>/i);
-  if (bodyClose !== -1) return html.slice(0, bodyClose) + DESIGNER_LAYOUT_ENGINE + html.slice(bodyClose);
-  return html + DESIGNER_LAYOUT_ENGINE;
+  if (bodyClose !== -1) return html.slice(0, bodyClose) + block + html.slice(bodyClose);
+  return html + block;
 }

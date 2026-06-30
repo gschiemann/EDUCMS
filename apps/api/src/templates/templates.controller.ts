@@ -1085,7 +1085,7 @@ export class TemplatesController {
     // no-op. The edit shim is still added only at create (preview needs no edit).
     const candidates = (out.candidates || []).map((cnd: any) =>
       cnd && typeof cnd.html === 'string'
-        ? { ...cnd, html: injectDesignerLayoutEngine(cnd.html) }
+        ? { ...cnd, html: injectDesignerLayoutEngine(cnd.html, cnd.screenWidth, cnd.screenHeight) }
         : cnd,
     );
     return { candidates, designer: true, ai: { source: out.source, usage: out.usage } };
@@ -1120,9 +1120,13 @@ export class TemplatesController {
     // Also bake the VOS-FIT-ENGINE: deterministic text auto-fit so display
     // text (wordmark/headline/price) never overflows, wraps, or collides
     // regardless of the px size the model guessed (the "jumbled hunk" fix).
-    const html = injectDesignerLayoutEngine(injectDesignerEditShim(sanitized.html));
     const screenWidth = body.screenWidth || 1920;
     const screenHeight = body.screenHeight || 1080;
+    const html = injectDesignerLayoutEngine(
+      injectDesignerEditShim(sanitized.html),
+      screenWidth,
+      screenHeight,
+    );
     const parsed = {
       name: (body.name || 'AI Designer board').trim().slice(0, 120) || 'AI Designer board',
       zones: [
