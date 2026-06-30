@@ -17,6 +17,7 @@ import {
   Layers, ChevronUp, ChevronDown, Lock, Unlock, GripVertical,
   ZoomIn, ZoomOut, Maximize2, RotateCcw, RotateCw, Palette, MousePointer,
   PanelLeft, Sparkles, Search, FolderOpen, ChevronRight, Wand2, MonitorPlay,
+  Check, Expand, ChevronLeft,
 } from 'lucide-react';
 import {
   useTemplates, useCreateTemplate, useDeleteTemplate, useCreateFromPreset,
@@ -450,6 +451,17 @@ export default function TemplatesPage() {
   const [aiTweakIdx, setAiTweakIdx] = useState<number | null>(null);
   const [aiTweakText, setAiTweakText] = useState('');
   const [aiRefiningIdx, setAiRefiningIdx] = useState<number | null>(null);
+  // (2026-06-30) — keep ALL 3 candidates as reviewable history. Saving a
+  // candidate persists it as a real template (it then shows in the gallery —
+  // that IS the durable history) WITHOUT clearing the set, so the operator can
+  // open each full-screen, go back to the grid, and save any/all of them.
+  // `aiSavedIds` maps a candidate index → the template id created when it was
+  // saved (so re-saving is a no-op and the card can show "Saved ✓"). It's reset
+  // whenever a fresh set is generated (candidate indices change meaning).
+  const [aiSavedIds, setAiSavedIds] = useState<Record<number, string>>({});
+  // Which candidate is open FULL-SCREEN (null = none). The full-screen preview
+  // never discards the set — Esc / Close returns to the grid.
+  const [aiFullscreenIdx, setAiFullscreenIdx] = useState<number | null>(null);
   // Esc-to-close — wired only when the modal is open so dashboard
   // keyboard shortcuts elsewhere aren't shadowed. Disabled while a
   // generation is in flight so the operator doesn't accidentally
@@ -660,6 +672,8 @@ export default function TemplatesPage() {
     setAiCandidates([]);
     setAiError(null);
     setAiPicking(null);
+    setAiSavedIds({});
+    setAiFullscreenIdx(null);
     setAiIntake(DEFAULT_INTAKE_ANSWERS);
   }, []);
 
@@ -745,6 +759,9 @@ export default function TemplatesPage() {
             _designerHtml: b.html,
           }));
           setAiCandidates(mapped);
+          // Fresh set → forget which indices were saved / open full-screen.
+          setAiSavedIds({});
+          setAiFullscreenIdx(null);
           setAiPhase('pick');
           return;
         }
@@ -778,6 +795,9 @@ export default function TemplatesPage() {
           return;
         }
         setAiCandidates(cands);
+        // Fresh set → forget which indices were saved / open full-screen.
+        setAiSavedIds({});
+        setAiFullscreenIdx(null);
         setAiPhase('pick');
       } catch (e: any) {
         setAiError(friendlyAiError(e));
@@ -850,8 +870,9 @@ export default function TemplatesPage() {
   // entirely: spin up a template-backed playlist (one DB row, no item wiring —
   // a template playlist references the template), then deep-link the playlists
   // page to its existing Publish-to-Screens sheet (role-correct for SCHOOL_ADMIN
-  // and mobile-friendly). Works identically on desktop and phone. Declared
-  // before pickCandidate so the candidate "To a screen" path can call it.
+  // and mobile-friendly). Works identically on desktop and phone. This is the
+  // gallery card's "Put on a screen" action ONLY — the AI generation flow no
+  // longer publishes-to-screen directly (operators always tweak first, 2026-06-30).
   const putOnScreen = useCallback(async (template: Template) => {
     if (isViewer || puttingOnScreenId) return;
     setPuttingOnScreenId(template.id);
@@ -880,67 +901,82 @@ export default function TemplatesPage() {
     }
   }, [isViewer, puttingOnScreenId, createPlaylist, params?.schoolId]);
 
-  // Phase 2 → done: persist the chosen candidate (re-sanitized server-side),
-  // then route to its destination:
-  //  - 'edit'   → open the layout builder (desktop arrange path; the sub-1024px
-  //               mobile handoff is handled by openInBuilder = toast + stay).
-  //  - 'screen' → express lane: skip the builder, turn the freshly-saved board
-  //               into a playlist and jump to Publish-to-Screens (phone-friendly).
-  const pickCandidate = useCallback(async (index: number, dest: 'edit' | 'screen' = 'edit') => {
+  // Phase 2 — persist ONE candidate as a real template WITHOUT discarding the
+  // set (2026-06-30). The operator can save any/all of the 3; each saved board
+  // shows in the gallery — that IS the durable history they asked for. Returns
+  // the created Template (or null on failure). Idempotent: a candidate already
+  // saved this session is NOT re-created — we return its existing template via a
+  // light shape so callers can still route to it.
+  //
+  // NOTE: this no longer publishes-to-screen (removed per operator: they always
+  // tweak before publishing). Publish lives only on the gallery "Put on a
+  // screen" button, outside the generation flow.
+  const saveCandidate = useCallback(async (index: number): Promise<Template | null> => {
     const candidate = aiCandidates[index];
-    if (!candidate) return;
+    if (!candidate) return null;
+    // Already saved this session → no-op (don't create a duplicate). We don't
+    // hold the full Template object, but callers that need to navigate handle
+    // the already-saved case via openInBuilder on the id-bearing minimal shape.
+    const existingId = aiSavedIds[index];
+    if (existingId) {
+      return { id: existingId, name: candidate.name } as unknown as Template;
+    }
     setAiError(null);
     setAiPicking(index);
-    const route = (created: Template) => {
-      closeAiModal();
-      setAiPrompt('');
-      if (dest === 'screen') void putOnScreen(created);
-      else openInBuilder(created);
-    };
     try {
+      let created: Template | null = null;
       // AI Designer board → persist the full HTML via create-designer. base64
       // so the global input sanitizer passes it through intact (a raw html
       // field would be gutted of its <style>/<script>).
       if (candidate._designerHtml) {
         const htmlBase64 = btoa(unescape(encodeURIComponent(candidate._designerHtml)));
-        const created = await createDesigner.mutateAsync({
+        const res = await createDesigner.mutateAsync({
           name: candidate.name,
           htmlBase64,
           screenWidth: aiCanvas.w,
           screenHeight: aiCanvas.h,
         });
-        if (created?.id) {
-          route(created as unknown as Template);
-        } else {
-          setAiError('That option could not be created. Pick another or regenerate.');
-          setAiPicking(null);
-        }
-        return;
-      }
-      const res = await createFromCandidate.mutateAsync({
-        candidate,
-        // CC-1 — persist the template at the same canvas it was laid out for,
-        // so the created board's screenWidth/Height match the target screen.
-        screenWidth: aiCanvas.w,
-        screenHeight: aiCanvas.h,
-        interactive: aiInteractive,
-        // Wave 2 fix (beta-QA P1): forward the art-director background so the
-        // engine board persists with its theme gradient/photo. Without this the
-        // board rendered FLAT on screen — the central output was silently lost.
-        background: candidate.background,
-      });
-      const created = res?.template;
-      if (created?.id) {
-        route(created as unknown as Template);
+        created = res?.id ? (res as unknown as Template) : null;
       } else {
-        setAiError('That option could not be created. Pick another or regenerate.');
-        setAiPicking(null);
+        const res = await createFromCandidate.mutateAsync({
+          candidate,
+          // CC-1 — persist the template at the same canvas it was laid out for,
+          // so the created board's screenWidth/Height match the target screen.
+          screenWidth: aiCanvas.w,
+          screenHeight: aiCanvas.h,
+          interactive: aiInteractive,
+          // Wave 2 fix (beta-QA P1): forward the art-director background so the
+          // engine board persists with its theme gradient/photo. Without this the
+          // board rendered FLAT on screen — the central output was silently lost.
+          background: candidate.background,
+        });
+        created = res?.template?.id ? (res.template as unknown as Template) : null;
       }
+      if (created?.id) {
+        // Mark this index saved (shows "Saved ✓"); keep the set on screen.
+        setAiSavedIds((prev) => ({ ...prev, [index]: created!.id }));
+        return created;
+      }
+      setAiError('That option could not be created. Pick another or regenerate.');
+      return null;
     } catch (e: any) {
       setAiError(friendlyAiError(e));
+      return null;
+    } finally {
       setAiPicking(null);
     }
-  }, [aiCandidates, aiInteractive, aiCanvas, createFromCandidate, createDesigner, closeAiModal, openInBuilder, putOnScreen]);
+  }, [aiCandidates, aiSavedIds, aiInteractive, aiCanvas, createFromCandidate, createDesigner]);
+
+  // "Open in editor" — save (if not already) AND navigate to the layout builder.
+  // This one DOES leave the modal (it navigates away) — expected for the
+  // explicit "edit now" action.
+  const openCandidateInEditor = useCallback(async (index: number) => {
+    const created = await saveCandidate(index);
+    if (!created?.id) return;
+    closeAiModal();
+    setAiPrompt('');
+    openInBuilder(created);
+  }, [saveCandidate, closeAiModal, openInBuilder]);
 
   // Wave 3 — chat-to-edit. Refine candidate `index` by a natural-language tweak
   // (delta-prompt over its spec) and REPLACE it in place. Closes the tweak box.
@@ -959,6 +995,15 @@ export default function TemplatesPage() {
       const refined = res?.candidates?.[0];
       if (refined) {
         setAiCandidates((prev) => prev.map((c, i) => (i === index ? refined : c)));
+        // The content at this index changed → clear its "Saved" mark so the
+        // refined version can be saved as a fresh template (the earlier save,
+        // if any, already lives in the gallery as a separate row).
+        setAiSavedIds((prev) => {
+          if (!(index in prev)) return prev;
+          const next = { ...prev };
+          delete next[index];
+          return next;
+        });
         setAiTweakIdx(null);
         setAiTweakText('');
       } else {
@@ -1343,7 +1388,7 @@ export default function TemplatesPage() {
                     {aiPhase === 'pick'
                       ? (aiSetMode
                           ? 'A cohesive multi-board loop that plays itself — open it to fine-tune any board.'
-                          : 'Three takes on your idea — choose one to open and fine-tune.')
+                          : 'Three takes on your idea — tap any to preview full-screen, then save the ones you like.')
                       : (aiIntakeMode === 'chat'
                           ? 'Chat with the Concierge — share a website or a photo of a look you like, and it designs it with you.'
                           : 'Answer a few quick questions — Claude drafts it for you, on-brand for your venue.')}
@@ -1387,6 +1432,8 @@ export default function TemplatesPage() {
                     const tweakOpen = aiTweakIdx === i;
                     const refining = aiRefiningIdx === i;
                     const canTweak = !!c.spec; // engine candidates carry the spec
+                    const saved = !!aiSavedIds[i]; // already persisted this session
+                    const busy = aiPicking !== null || aiRefiningIdx !== null;
                     // Thumbnail fidelity (beta-QA #4): a multi-scene "set" must
                     // preview its FIRST board only — otherwise every scene's
                     // zones pile onto one canvas. And honor the engine board's
@@ -1403,13 +1450,23 @@ export default function TemplatesPage() {
                         key={i}
                         className="rounded-xl border-2 border-slate-200 hover:border-violet-400 transition-colors overflow-hidden flex flex-col bg-white"
                       >
-                        <div className="relative bg-slate-100 overflow-hidden" style={{ aspectRatio: '16 / 9' }}>
+                        {/* The thumbnail is a button — tap/click opens this candidate
+                            FULL-SCREEN (Esc / Close returns to this grid; the set is
+                            never discarded). */}
+                        <button
+                          type="button"
+                          onClick={() => { setAiError(null); setAiFullscreenIdx(i); }}
+                          title="Open full-screen preview"
+                          aria-label={`Open ${c.name} full-screen`}
+                          className="group relative block w-full bg-slate-100 overflow-hidden cursor-zoom-in focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-1"
+                          style={{ aspectRatio: '16 / 9' }}
+                        >
                           {c._designerHtml ? (
                             // AI Designer board: render the authored HTML directly as a
                             // srcdoc preview. The board's own self-scale script fits its
                             // 1920×1080 stage to this iframe, so each option shows its REAL
-                            // design (not a placeholder). pointer-events-none so the card
-                            // click still selects.
+                            // design (not a placeholder). pointer-events-none so the
+                            // wrapping button still receives the click.
                             <iframe
                               title={c.name}
                               srcDoc={c._designerHtml}
@@ -1433,13 +1490,23 @@ export default function TemplatesPage() {
                           <span className="absolute top-1.5 left-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-600 text-white shadow">
                             {label}
                           </span>
+                          {saved && (
+                            <span className="absolute top-1.5 right-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white shadow flex items-center gap-0.5">
+                              <Check className="w-3 h-3" /> Saved
+                            </span>
+                          )}
+                          {/* Expand affordance — visible on hover (desktop) and always
+                              tappable; the whole tile is the hit target on mobile. */}
+                          <span className="absolute bottom-1.5 right-1.5 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full bg-slate-900/70 text-white shadow opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                            <Expand className="w-3 h-3" /> Full-screen
+                          </span>
                           {refining && (
                             <div className="absolute top-0 right-0 bottom-0 left-0 bg-white/70 backdrop-blur-sm flex flex-col items-center justify-center gap-1.5">
                               <Loader2 className="w-5 h-5 animate-spin text-violet-600" />
                               <span className="text-[10px] font-bold text-violet-700">Applying your change…</span>
                             </div>
                           )}
-                        </div>
+                        </button>
                         <div className="p-2.5 flex flex-col gap-2 grow">
                           <div>
                             <p className="text-xs font-bold text-slate-800 truncate" title={c.name}>{c.name}</p>
@@ -1493,37 +1560,49 @@ export default function TemplatesPage() {
                               </div>
                             </div>
                           )}
-                          <div className="mt-auto flex gap-1.5">
+                          {/* Actions — non-destructive. Saving a board does NOT close
+                              the modal or discard the other two, so the operator can
+                              save any/all of the 3. Saved boards land in the gallery
+                              (the durable history). "Open in editor" saves + navigates. */}
+                          <div className="mt-auto flex flex-col gap-1.5">
                             {canTweak && !tweakOpen && (
                               <button
                                 onClick={() => { setAiTweakIdx(i); setAiTweakText(''); setAiError(null); }}
-                                disabled={aiPicking !== null || aiRefiningIdx !== null}
+                                disabled={busy}
                                 title="Refine this board by describing a change"
-                                className="px-2.5 py-2 text-xs font-bold rounded-lg bg-white border border-violet-200 text-violet-700 hover:bg-violet-50 disabled:opacity-50 flex items-center gap-1"
+                                className="w-full px-2.5 py-2 text-xs font-bold rounded-lg bg-white border border-violet-200 text-violet-700 hover:bg-violet-50 disabled:opacity-50 flex items-center justify-center gap-1"
                               >
                                 <Sparkles className="w-3.5 h-3.5" /> Tweak
                               </button>
                             )}
-                            <button
-                              onClick={() => pickCandidate(i)}
-                              disabled={aiPicking !== null || aiRefiningIdx !== null}
-                              title="Save this board, then open the layout editor (desktop)"
-                              className="flex-1 px-3 py-2 text-xs font-bold rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
-                            >
-                              {picking && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                              {picking ? 'Opening…' : 'Use this'}
-                            </button>
-                            {/* Express lane — save this board AND go straight to
-                                publishing it to a screen. Phone-friendly: it
-                                never opens the desktop-only layout editor. */}
-                            <button
-                              onClick={() => pickCandidate(i, 'screen')}
-                              disabled={aiPicking !== null || aiRefiningIdx !== null}
-                              title="Save this board and publish it to your screens"
-                              className="px-2.5 py-2 text-xs font-bold rounded-lg bg-white border border-violet-200 text-violet-700 hover:bg-violet-50 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                            >
-                              <MonitorPlay className="w-3.5 h-3.5" /> To a screen
-                            </button>
+                            <div className="flex gap-1.5">
+                              <button
+                                onClick={() => { void saveCandidate(i); }}
+                                disabled={busy || saved}
+                                title={saved ? 'Already saved to your templates' : 'Save this board to your templates (keeps the other options open)'}
+                                className={`flex-1 px-3 py-2 text-xs font-bold rounded-lg shadow-sm disabled:cursor-not-allowed flex items-center justify-center gap-1.5 ${
+                                  saved
+                                    ? 'bg-emerald-50 border border-emerald-200 text-emerald-700 disabled:opacity-100'
+                                    : 'bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white disabled:opacity-50'
+                                }`}
+                              >
+                                {picking ? (
+                                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…</>
+                                ) : saved ? (
+                                  <><Check className="w-3.5 h-3.5" /> Saved</>
+                                ) : (
+                                  'Save'
+                                )}
+                              </button>
+                              <button
+                                onClick={() => { void openCandidateInEditor(i); }}
+                                disabled={busy}
+                                title="Save this board and open the layout editor (desktop)"
+                                className="px-2.5 py-2 text-xs font-bold rounded-lg bg-white border border-violet-200 text-violet-700 hover:bg-violet-50 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                              >
+                                <Pencil className="w-3.5 h-3.5" /> Edit
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1721,6 +1800,31 @@ export default function TemplatesPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* Full-screen candidate preview — opened from any candidate card's
+          thumbnail. Sits ABOVE the AI modal (z-110) and renders the candidate
+          in-place (NOT a saved template). Esc / Close / backdrop returns to the
+          grid; the set is never discarded. Prev/next flips between the 3. */}
+      {showAiGenerate && aiPhase === 'pick' && aiFullscreenIdx !== null && aiCandidates[aiFullscreenIdx] && (
+        <CandidateFullscreenPreview
+          candidate={aiCandidates[aiFullscreenIdx]}
+          index={aiFullscreenIdx}
+          total={aiCandidates.length}
+          canvas={aiCanvas}
+          saved={!!aiSavedIds[aiFullscreenIdx]}
+          saving={aiPicking === aiFullscreenIdx}
+          onPrev={() => setAiFullscreenIdx((cur) => {
+            if (cur === null) return cur;
+            return (cur - 1 + aiCandidates.length) % aiCandidates.length;
+          })}
+          onNext={() => setAiFullscreenIdx((cur) => {
+            if (cur === null) return cur;
+            return (cur + 1) % aiCandidates.length;
+          })}
+          onClose={() => setAiFullscreenIdx(null)}
+          onSave={() => { void saveCandidate(aiFullscreenIdx); }}
+        />
       )}
 
       {/* Create Modal — mobile-first bottom-sheet on phones, centered
@@ -2089,6 +2193,184 @@ export default function TemplatesPage() {
         />
       )}
     </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════
+// Full-screen AI-candidate preview (2026-06-30)
+// ═════════════════════════════════════════════════════
+//
+// Renders ONE not-yet-saved AI candidate full-screen so the operator can review
+// each of the 3 at full size before deciding which to save. Mirrors
+// TemplatePreviewModal's chrome (floating top bar, Esc/Close, "{w}×{h} · n
+// elements · Esc to close"), but takes a candidate (NOT a saved Template) so the
+// set is never discarded. Esc / Close / backdrop returns to the grid; prev/next
+// flips between candidates; Save persists this board without leaving.
+function CandidateFullscreenPreview({
+  candidate, index, total, canvas, saved, saving, onPrev, onNext, onClose, onSave,
+}: {
+  candidate: AiTemplateCandidate;
+  index: number;
+  total: number;
+  canvas: { w: number; h: number };
+  saved: boolean;
+  saving: boolean;
+  onPrev: () => void;
+  onNext: () => void;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  // Live viewport height so the engine render fills the available area (same
+  // hydration-safe pattern as TemplatePreviewModal: SSR-safe default, then bump
+  // to the real value post-mount).
+  const [vh, setVh] = useState<number>(800);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); onClose(); }
+      else if (e.key === 'ArrowLeft' && total > 1) onPrev();
+      else if (e.key === 'ArrowRight' && total > 1) onNext();
+    };
+    const onResize = () => setVh(window.innerHeight);
+    onResize();
+    // Capture so our Esc closes the full-screen view FIRST (and stops it from
+    // bubbling to the AI modal's own Esc handler, which would close everything).
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [onClose, onPrev, onNext, total]);
+
+  const sw = canvas.w || 1920;
+  const sh = canvas.h || 1080;
+  // Engine boards: a multi-scene "set" must preview its FIRST board only.
+  const isSet = !!(candidate.scenes && candidate.scenes.length > 1);
+  const firstSceneName = candidate.scenes?.[0]?.name;
+  const previewZones = isSet
+    ? candidate.zones.filter((z) => !z.sceneRef || z.sceneRef === firstSceneName)
+    : candidate.zones;
+  const bg = candidate.background || {};
+  const maxH = Math.max(300, vh - 48);
+  const label = ['Balanced', 'Bold', 'Detailed'][index] || `Option ${index + 1}`;
+
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div
+      className="fixed top-0 right-0 bottom-0 left-0 z-[110] bg-slate-950/95 flex flex-col"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Full-screen preview: ${candidate.name}`}
+    >
+      {/* Full-bleed stage */}
+      <div
+        className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center p-4 md:p-8"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {candidate._designerHtml ? (
+          // AI Designer board — render the authored HTML full-screen. Its own
+          // self-scale script fits the 1920×1080 stage to this frame. NOT
+          // pointer-events-none here (full-screen is interactive-allowed).
+          <iframe
+            title={candidate.name}
+            srcDoc={candidate._designerHtml}
+            sandbox="allow-scripts"
+            className="w-full h-full bg-black rounded-lg shadow-2xl"
+            style={{ border: 0, maxWidth: `${(maxH * sw) / sh}px`, maxHeight: `${maxH}px`, aspectRatio: `${sw} / ${sh}` }}
+          />
+        ) : (
+          <ScaledTemplateThumbnail
+            zones={previewZones as any}
+            screenWidth={sw}
+            screenHeight={sh}
+            bgColor={bg.bgColor || '#ffffff'}
+            bgGradient={bg.bgGradient || null}
+            bgImage={bg.bgImage || null}
+            maxHeight={maxH}
+            freeze={false}
+          />
+        )}
+      </div>
+
+      {/* Floating top bar — name + meta + Close */}
+      <div className="absolute top-0 right-0 left-0 flex items-start justify-between px-4 py-3 bg-gradient-to-b from-slate-950/80 to-transparent pointer-events-none pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <div className="pointer-events-auto">
+          <div className="text-base font-bold text-white drop-shadow flex items-center gap-2">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-600 text-white">{label}</span>
+            <span className="truncate max-w-[50vw]">{candidate.name}</span>
+            {saved && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white flex items-center gap-0.5">
+                <Check className="w-3 h-3" /> Saved
+              </span>
+            )}
+          </div>
+          <div className="text-[11px] text-white/60 drop-shadow">
+            {sw}×{sh} · {candidate.zones.length} element{candidate.zones.length === 1 ? '' : 's'}
+            {total > 1 ? ` · ${index + 1} of ${total}` : ''} · Esc to close
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="pointer-events-auto flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-100 text-slate-900 text-sm font-bold rounded-full transition-colors shadow-lg"
+          aria-label="Close preview"
+        >
+          <X className="w-4 h-4" /> Close
+        </button>
+      </div>
+
+      {/* Prev / Next — flip between the candidates without leaving full-screen. */}
+      {total > 1 && (
+        <>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onPrev(); }}
+            aria-label="Previous option"
+            className="pointer-events-auto absolute left-2 md:left-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center rounded-full bg-white/90 hover:bg-white text-slate-900 shadow-lg active:scale-95 transition"
+          >
+            <ChevronLeft className="w-6 h-6" />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onNext(); }}
+            aria-label="Next option"
+            className="pointer-events-auto absolute right-2 md:right-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center rounded-full bg-white/90 hover:bg-white text-slate-900 shadow-lg active:scale-95 transition"
+          >
+            <ChevronRight className="w-6 h-6" />
+          </button>
+        </>
+      )}
+
+      {/* Floating bottom CTA — Save (non-destructive; stays full-screen). */}
+      <div className="absolute right-0 bottom-0 left-0 flex items-center justify-center pb-[max(1rem,env(safe-area-inset-bottom))] pointer-events-none">
+        <div
+          className="pointer-events-auto flex items-center gap-2 px-3 py-2 bg-slate-900/85 rounded-full shadow-2xl border border-white/10"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving || saved}
+            className={`px-5 py-2.5 text-sm font-bold rounded-full flex items-center gap-1.5 disabled:cursor-not-allowed ${
+              saved
+                ? 'bg-emerald-600 text-white'
+                : 'bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white disabled:opacity-60'
+            }`}
+          >
+            {saving ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
+            ) : saved ? (
+              <><Check className="w-4 h-4" /> Saved to templates</>
+            ) : (
+              <><Check className="w-4 h-4" /> Save this board</>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
