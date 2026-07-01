@@ -22,7 +22,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { MapPin, Loader2, X } from 'lucide-react';
-import { geocodeViaApi, primeLocationBias } from '@/lib/geocode';
+import { geocodeViaApiFull, primeLocationBias } from '@/lib/geocode';
 
 interface PhotonFeature {
   geometry: { coordinates: [number, number] };
@@ -136,6 +136,11 @@ export function AddressAutocomplete({
   // We block the next search after a pick so the dropdown doesn't
   // re-open with the just-picked address still as the query.
   const [justPicked, setJustPicked] = useState(false);
+  // MOBILE BUG #216 (2026-07-01) — surface honestly when this deploy has no
+  // GOOGLE_MAPS_API_KEY, instead of silently falling back to less-precise
+  // matching with no explanation. null = haven't heard from the server yet.
+  const [googleConfigured, setGoogleConfigured] = useState<boolean | null>(null);
+  const [noMatch, setNoMatch] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<any>(null);
   const lastQueryRef = useRef('');
@@ -168,20 +173,25 @@ export function AddressAutocomplete({
     const q = value.trim();
     if (q.length < 3) {
       setResults([]);
+      setNoMatch(false);
       return;
     }
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       lastQueryRef.current = q;
       setSearching(true);
-      // Server-side geocode FIRST: GET /api/v1/geocode uses Google when the API
-      // has GOOGLE_MAPS_API_KEY (authoritative US house numbers). Key stays
+      setNoMatch(false);
+      // Server-side geocode FIRST: GET /api/v1/geocode chains Google (when
+      // GOOGLE_MAPS_API_KEY is set — authoritative US house numbers) → US
+      // Census Bureau Geocoder (free, keyless, real house-number coverage,
+      // added 2026-07-01 for mobile bug #216) → Nominatim. Key stays
       // server-side. Falls through to the client-side Photon/Nominatim merge
-      // below when it returns nothing (unconfigured / ZERO_RESULTS / error).
+      // below only if ALL THREE server tiers miss.
       try {
-        const apiHits = await geocodeViaApi(q);
+        const apiRes = await geocodeViaApiFull(q);
         if (lastQueryRef.current !== q) return; // stale
-        const mapped = apiHits
+        setGoogleConfigured(apiRes.googleConfigured);
+        const mapped = apiRes.hits
           .map((h, i) => ({
             id: `api-${i}-${h.lat}-${h.lon}`,
             displayName: h.display_name,
@@ -219,7 +229,11 @@ export function AddressAutocomplete({
         if (lastQueryRef.current !== q) return;
         const merged = mergeResults(photonHits, nomHits);
         setResults(merged);
-        if (merged.length > 0) setOpen(true);
+        if (merged.length > 0) {
+          setOpen(true);
+        } else {
+          setNoMatch(true);
+        }
       } finally {
         if (lastQueryRef.current === q) setSearching(false);
       }
@@ -234,6 +248,7 @@ export function AddressAutocomplete({
     onChange(r.displayName);
     setResults([]);
     setOpen(false);
+    setNoMatch(false);
     onPick?.({
       displayName: r.displayName,
       latitude: r.lat,
@@ -268,7 +283,7 @@ export function AddressAutocomplete({
         ) : value && (
           <button
             type="button"
-            onClick={() => { onChange(''); setResults([]); setOpen(false); }}
+            onClick={() => { onChange(''); setResults([]); setOpen(false); setNoMatch(false); }}
             className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600"
             aria-label="Clear address"
           >
@@ -314,6 +329,17 @@ export function AddressAutocomplete({
             </a>
           </li>
         </ul>
+      )}
+      {/* MOBILE BUG #216 (2026-07-01) — honest note instead of silently
+          returning nothing when no result matched and this deploy has no
+          Google Maps key configured (precise house-number search needs it;
+          the free Census/OSM fallback still covers most addresses). */}
+      {!open && noMatch && googleConfigured === false && value.trim().length >= 3 && !searching && (
+        <p className="mt-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5">
+          No match yet — this deploy is using free approximate address
+          search (no Google Maps key configured). Try adding the city &amp;
+          state, or double-check the street number.
+        </p>
       )}
     </div>
   );

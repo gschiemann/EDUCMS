@@ -3738,7 +3738,15 @@ function AssetPicker({ mimeFilter, selectedIds, onSelect, onRemove, multiple = f
   const [searchAsset, setSearchAsset] = useState('');
   const [previewAsset, setPreviewAsset] = useState<any>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  
+
+  // MOBILE BUG #215 (2026-07-01) — hide the mobile bottom tab bar while this
+  // full-screen asset browser is open. The modal is already z-[9999] (above
+  // the tab bar's z-[60]) but per use-overlay-lock.ts a raw z-index isn't
+  // reliably sufficient on iOS Safari once the dashboard's ancestor stacking
+  // contexts are in play — this is belt-and-suspenders + consistency with
+  // every other overlay in the app.
+  useOverlayLock(showModal);
+
   // Folder state
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
 
@@ -3829,11 +3837,19 @@ function AssetPicker({ mimeFilter, selectedIds, onSelect, onRemove, multiple = f
         {selectedAssets.length > 0 ? (multiple ? 'Add More Assets' : 'Change Asset') : 'Browse Assets'}
       </button>
 
-      {/* Full-screen asset browser modal */}
+      {/* Full-screen asset browser modal. top/right/bottom/left longhand
+          (not inset-0) + safe-area padding so the footer's Use Selected /
+          Done button clears the notch / home indicator on a phone
+          (mobile bug #215, 2026-07-01). */}
       {showModal && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+        <div
+          className="fixed top-0 right-0 bottom-0 left-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+          style={{
+            paddingTop: 'max(16px, env(safe-area-inset-top, 0px))',
+            paddingBottom: 'max(16px, env(safe-area-inset-bottom, 0px))',
+          }}
           onClick={(e) => { if (e.target === e.currentTarget) setShowModal(false); }}>
-          <div className="bg-white dark:bg-slate-900 w-full max-w-5xl h-[85vh] rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-5xl h-[85vh] max-h-full rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden">
             
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 shrink-0">
@@ -4060,7 +4076,7 @@ function AssetPicker({ mimeFilter, selectedIds, onSelect, onRemove, multiple = f
 
       {/* Preview overlay */}
       {previewAsset && createPortal(
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-8"
+        <div className="fixed top-0 right-0 bottom-0 left-0 z-[10000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-8"
           onClick={() => setPreviewAsset(null)}>
           <div className="max-w-3xl max-h-[80vh] rounded-2xl overflow-hidden shadow-2xl relative" onClick={e => e.stopPropagation()}>
             {isImage(previewAsset) ? (

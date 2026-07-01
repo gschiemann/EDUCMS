@@ -18,6 +18,7 @@ import { useParams, useRouter } from 'next/navigation';
 import QRCode from 'qrcode';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
+import { clampPopoverAnchor } from '@/lib/clamp-popover-anchor';
 
 /**
  * Derive "portrait" | "landscape" from a free-text resolution string
@@ -875,65 +876,22 @@ function ScreenSettingsMenu({
     maxHeight: number;
   } | null>(null);
 
+  // Anchor math lives in a standalone, unit-tested module (mobile bug #217,
+  // 2026-07-01 — apps/web/src/lib/clamp-popover-anchor.ts +
+  // clamp-popover-anchor.test.ts) so the exact clamping behavior can be
+  // regression-tested across a matrix of button positions × viewport
+  // widths without rendering this whole (hook-heavy) page component.
   const updateAnchor = () => {
     const btn = buttonRef.current;
     if (!btn) return;
     const r = btn.getBoundingClientRect();
-    const vw = window.innerWidth;
-    const GAP = 8;
-    const MARGIN = 12; // keep the menu this far off the viewport edge
-
-    // The menu is nominally 256px (w-64) but on very narrow viewports a fixed
-    // 256px panel can't fit between two MARGINs — so DERIVE the actual width
-    // from the viewport and pin it explicitly. This is the missing guard
-    // behind the recurring "settings drawer pushes off the left edge" report
-    // (2026-06-27 deep-wave): the old clamp math assumed the rendered width
-    // was always exactly 256, so on sub-280px widths (small Androids, browser
-    // zoom, iPhone landscape split-view) the left edge still went negative.
-    const MENU_WIDTH = Math.min(256, vw - MARGIN * 2);
-
-    // Right-align the menu with the gear button, but CLAMP so the panel is
-    // ALWAYS fully on-screen — at any width, regardless of where the gear sits
-    // in the row (fixes the off-the-left-edge bug on phones, 2026-05-31). We
-    // keep the floating popover on mobile too — a full-width bottom sheet read
-    // worse and had no clear close; clamping is all the popover needed.
-    // `right` is measured from the viewport's RIGHT edge (CSS `right` px).
-    let right = vw - r.right;
-    if (vw < 500) {
-      // Phone width (~390px) — gear-anchored right-alignment leaves the panel
-      // partly off-screen even after edge-clamping. Center-ish anchor it so it
-      // always reads fully on-screen no matter where the gear sits in the
-      // action row (2026-06-26).
-      right = Math.max(MARGIN, Math.min(vw / 2, vw - MENU_WIDTH - MARGIN));
-    } else {
-      // Clamp: ensure left edge = vw - right - MENU_WIDTH >= MARGIN
-      const maxRight = vw - MENU_WIDTH - MARGIN;
-      if (right > maxRight) right = maxRight;
-      // Also keep the right edge at least MARGIN from the viewport right.
-      if (right < MARGIN) right = MARGIN;
-    }
-    // Final defensive clamp — guarantees the LEFT edge is on-screen no matter
-    // what (vw - right - MENU_WIDTH >= MARGIN). Belt-and-suspenders so a stale
-    // measurement during an iOS reflow can never park the panel off the edge.
-    right = Math.min(right, Math.max(MARGIN, vw - MENU_WIDTH - MARGIN));
-
-    const spaceBelow = window.innerHeight - r.bottom - GAP - MARGIN;
-    const spaceAbove = r.top - GAP - MARGIN;
-    // Open on whichever side has more room, and cap the height to that
-    // space so the menu ALWAYS fits on screen (it scrolls internally
-    // past the cap). Fixes the gear menu dropping off the bottom of
-    // the page when the screen row sits near the viewport's lower edge.
-    if (spaceBelow >= spaceAbove) {
-      setAnchor({ top: r.bottom + GAP, bottom: null, right, width: MENU_WIDTH, maxHeight: Math.max(180, spaceBelow) });
-    } else {
-      setAnchor({
-        top: null,
-        bottom: window.innerHeight - r.top + GAP,
-        right,
-        width: MENU_WIDTH,
-        maxHeight: Math.max(180, spaceAbove),
-      });
-    }
+    setAnchor(
+      clampPopoverAnchor({
+        buttonRect: { top: r.top, bottom: r.bottom, right: r.right },
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      }),
+    );
   };
 
   useEffect(() => {

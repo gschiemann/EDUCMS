@@ -21,19 +21,41 @@ export class GeocodingController {
 
   @Get()
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
-  async search(@Query('q') q?: string, @Query('lat') lat?: string, @Query('lng') lng?: string) {
+  async search(
+    @Query('q') q?: string,
+    @Query('lat') lat?: string,
+    @Query('lng') lng?: string,
+  ) {
     // Optional region bias (operator's coarse location) so an ambiguous street
     // name resolves to the one NEAR them, not a same-named street in another state.
     const blat = lat != null ? Number(lat) : NaN;
     const blng = lng != null ? Number(lng) : NaN;
     const bias =
-      Number.isFinite(blat) && Number.isFinite(blng) ? { lat: blat, lng: blng } : undefined;
+      Number.isFinite(blat) && Number.isFinite(blng)
+        ? { lat: blat, lng: blng }
+        : undefined;
     const results = await this.geocoding.search(q ?? '', { bias });
-    return { results, provider: this.geocoding.googleEnabled() ? 'google' : 'osm' };
+    // HONESTY FIX (mobile bug #216, 2026-07-01): `provider` used to report
+    // whether Google was CONFIGURED, not which provider actually resolved
+    // the query — so an unconfigured deploy always claimed 'osm' even when
+    // every result underneath actually came from google/census that request.
+    // Report the real source of the top hit (results are provider-ordered:
+    // google → census → nominatim, first non-empty tier wins), and whether
+    // Google is configured at all — the frontend uses `googleConfigured` to
+    // decide whether to show the "precise search needs a Google key" note.
+    return {
+      results,
+      provider:
+        results[0]?.source ??
+        (this.geocoding.googleEnabled() ? 'google' : 'census'),
+      googleConfigured: this.geocoding.googleEnabled(),
+    };
   }
 
   /** `GET /api/v1/geocode/reverse?lat=&lng=` — lat/lng → nearest address.
-   *  Powers "drop a pin on the fleet map → auto-fill the address". */
+   *  Powers "drop a pin on the fleet map → auto-fill the address". Census
+   *  Geocoder has no reverse-to-street-address endpoint (only forward search
+   *  + geography-boundary lookups), so reverse stays Google → Nominatim. */
   @Get('reverse')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async reverse(@Query('lat') lat?: string, @Query('lng') lng?: string) {
@@ -41,6 +63,12 @@ export class GeocodingController {
     const ln = lng != null ? Number(lng) : NaN;
     if (!Number.isFinite(la) || !Number.isFinite(ln)) return { result: null };
     const result = await this.geocoding.reverse(la, ln);
-    return { result, provider: this.geocoding.googleEnabled() ? 'google' : 'osm' };
+    return {
+      result,
+      provider:
+        result?.source ??
+        (this.geocoding.googleEnabled() ? 'google' : 'nominatim'),
+      googleConfigured: this.geocoding.googleEnabled(),
+    };
   }
 }

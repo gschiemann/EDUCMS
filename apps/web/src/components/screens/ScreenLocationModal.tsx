@@ -31,7 +31,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Search, MapPin, X, Loader2, CheckCircle2 } from 'lucide-react';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
-import { geocodeViaApi, primeLocationBias } from '@/lib/geocode';
+import { geocodeViaApiFull, primeLocationBias } from '@/lib/geocode';
 
 interface PhotonFeature {
   geometry: { coordinates: [number, number] };
@@ -127,6 +127,11 @@ export function ScreenLocationModal({ screenName, currentAddress, onClose, onSav
   const [saving, setSaving] = useState(false);
   const [selected, setSelected] = useState<NominatimResult | null>(null);
   const [noMatch, setNoMatch] = useState(false);
+  // MOBILE BUG #216 (2026-07-01) — honestly surface when precise (Google)
+  // house-number search isn't available for this deploy, instead of
+  // silently returning less-precise matches with no explanation. `null` =
+  // haven't heard back from the server yet; `false`/`true` once we know.
+  const [googleConfigured, setGoogleConfigured] = useState<boolean | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<any>(null);
   const lastQueryRef = useRef<string>('');
@@ -166,17 +171,19 @@ export function ScreenLocationModal({ screenName, currentAddress, onClose, onSav
       setSearching(true);
       setNoMatch(false);
 
-      // Server-side geocode FIRST: GET /api/v1/geocode uses Google when the
-      // API has GOOGLE_MAPS_API_KEY (authoritative US house numbers — finds
-      // addresses Photon/Nominatim/Census miss, e.g. "2748 Emory Oak Court").
-      // The Google key stays server-side. If it returns nothing (unconfigured /
-      // ZERO_RESULTS / error) we fall through to the client-side merge below.
+      // Server-side geocode FIRST: GET /api/v1/geocode chains Google (when
+      // the API has GOOGLE_MAPS_API_KEY — authoritative US house numbers) →
+      // US Census Bureau Geocoder (free, keyless, real house-number coverage,
+      // added 2026-07-01 for mobile bug #216) → Nominatim. The Google key
+      // stays server-side. If it returns nothing (all three tiers missed /
+      // error) we fall through to the client-side Photon/Nominatim merge below.
       try {
-        const apiHits = await geocodeViaApi(q);
+        const apiRes = await geocodeViaApiFull(q);
         if (lastQueryRef.current !== q) return; // stale
-        if (apiHits.length) {
+        setGoogleConfigured(apiRes.googleConfigured);
+        if (apiRes.hits.length) {
           setResults(
-            apiHits.map((h, i) => ({
+            apiRes.hits.map((h, i) => ({
               id: `api-${i}-${h.lat}-${h.lon}`,
               display_name: h.display_name,
               lat: h.lat,
@@ -379,6 +386,13 @@ export function ScreenLocationModal({ screenName, currentAddress, onClose, onSav
           <div className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
             No matches. Try adding the city &amp; state, or save anyway — the address will show in the list
             but the screen won&rsquo;t pin on the map until coordinates are found.
+            {googleConfigured === false && (
+              <>
+                {' '}Search is using free approximate address matching (no
+                Google Maps key configured) — most street addresses still
+                resolve, but some newer or rural addresses may not.
+              </>
+            )}
           </div>
         )}
 

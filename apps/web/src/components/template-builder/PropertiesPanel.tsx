@@ -28,6 +28,7 @@ import { apiFetch } from '@/lib/api-client';
 import { filterRelevantTemplates } from '@/lib/template-relevance';
 import { useCustomData } from '@/lib/data/use-custom-data';
 import { ColorPickerField } from '@/components/ui/color-picker';
+import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { THEMED_WIDGET_FIELDS } from './themed-widget-defaults';
 import { AiGenerateButton } from '@/components/ai/AiGenerateButton';
 import { InlineRewriteChips } from '@/components/ai/InlineRewriteChips';
@@ -8638,6 +8639,15 @@ export function AssetLibraryModal({
   multi?: boolean;
   onPickMulti?: (urls: string[]) => void;
 }) {
+  // MOBILE BUG #215 (2026-07-01) — this modal never called useOverlayLock(),
+  // so the fixed MobileTabBar (z-[60]) and TopToolbar (sticky z-20) could
+  // paint over its own Upload/Cancel toolbar on a phone even though the
+  // modal itself is z-[10001]. Sibling picker AssetPicker.tsx already had
+  // this fix (2026-06-27); this modal — the one PropertiesPanel + AddSidebar
+  // actually mount — was missed. See use-overlay-lock.ts for why a body-level
+  // z-index alone isn't sufficient (transformed/blurred DashboardLayout
+  // ancestors create their own stacking contexts).
+  useOverlayLock();
   const { data: assets, isLoading } = useAssets();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -8794,8 +8804,24 @@ export function AssetLibraryModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
+    <div
+      // top/right/bottom/left longhand (NOT inset-0) — matches AssetPicker.tsx
+      // and the CLAUDE.md #10 convention. z-[10001] paints over the mobile
+      // TopToolbar (z-20) and MobileTabBar (z-[60] — hidden via useOverlayLock
+      // above anyway). Safe-area padding keeps the modal clear of the notch /
+      // home indicator on short viewports.
+      className="fixed top-0 right-0 bottom-0 left-0 z-[10001] flex items-center justify-center p-4"
+      style={{
+        paddingTop: 'max(16px, env(safe-area-inset-top, 0px))',
+        paddingBottom: 'max(16px, env(safe-area-inset-bottom, 0px))',
+      }}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="absolute top-0 right-0 bottom-0 left-0 bg-slate-900/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
       <div className="relative bg-white rounded-2xl shadow-2xl ring-1 ring-slate-200 max-w-2xl w-full max-h-[80vh] flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
           <h2 className="text-sm font-bold text-slate-800">

@@ -6,7 +6,18 @@ export interface GeoHit {
   display_name: string;
   lat: string;
   lon: string;
-  source?: 'google' | 'nominatim' | string;
+  source?: 'google' | 'census' | 'nominatim' | string;
+}
+
+/** Full server response — `hits` plus enough metadata for a picker to
+ *  surface an honest "why is search less precise" note (mobile bug #216,
+ *  2026-07-01). `googleConfigured` is false when the deploy has no
+ *  GOOGLE_MAPS_API_KEY, meaning search rode the free Census/Nominatim tiers
+ *  instead of Google's authoritative match. */
+export interface GeoApiResponse {
+  hits: GeoHit[];
+  provider: 'google' | 'census' | 'nominatim' | string | null;
+  googleConfigured: boolean;
 }
 
 // ── Region bias ───────────────────────────────────────────────────────────
@@ -48,20 +59,24 @@ export function currentLocationBias(): { lat: number; lng: number } | null {
 }
 
 /**
- * Server-side geocode via `GET /api/v1/geocode` (Google when GOOGLE_MAPS_API_KEY
- * is set, OSM fallback). The Google key never leaves the server.
+ * Server-side geocode via `GET /api/v1/geocode`. Provider chain (server-side,
+ * mobile bug #216, 2026-07-01): Google (when GOOGLE_MAPS_API_KEY is set) →
+ * US Census Bureau Geocoder (free, keyless, real US house-number coverage) →
+ * OSM Nominatim (final fallback). The Google key never leaves the server.
  *
  * Automatically biases by the operator's location (see primeLocationBias) so
  * same-named streets resolve to the nearby one. Pass `bias` to override (e.g.
- * a tenant centroid). Returns `[]` on ANY failure so callers can fall back to
- * their own client-side providers.
+ * a tenant centroid). Returns full metadata (`hits` + `provider` +
+ * `googleConfigured`) on ANY success, and an empty/unconfigured shape on
+ * failure so callers can fall back to their own client-side providers.
  */
-export async function geocodeViaApi(
+export async function geocodeViaApiFull(
   query: string,
   bias?: { lat: number; lng: number } | null,
-): Promise<GeoHit[]> {
+): Promise<GeoApiResponse> {
   const q = (query || '').trim();
-  if (q.length < 3) return [];
+  const empty: GeoApiResponse = { hits: [], provider: null, googleConfigured: false };
+  if (q.length < 3) return empty;
   // Non-blocking: kick off the prompt if it hasn't happened, but use whatever
   // bias is already cached — never make the user wait on the geolocation dialog.
   primeLocationBias();
@@ -71,11 +86,31 @@ export async function geocodeViaApi(
     path += `&lat=${encodeURIComponent(String(b.lat))}&lng=${encodeURIComponent(String(b.lng))}`;
   }
   try {
-    const res = await apiFetch<{ results?: GeoHit[] }>(path);
-    return Array.isArray(res?.results) ? (res!.results as GeoHit[]) : [];
+    const res = await apiFetch<{
+      results?: GeoHit[];
+      provider?: string;
+      googleConfigured?: boolean;
+    }>(path);
+    return {
+      hits: Array.isArray(res?.results) ? (res!.results as GeoHit[]) : [],
+      provider: res?.provider ?? null,
+      googleConfigured: !!res?.googleConfigured,
+    };
   } catch {
-    return [];
+    return empty;
   }
+}
+
+/**
+ * Back-compat convenience wrapper — same as `geocodeViaApiFull` but returns
+ * just the hit array, for callers that don't need the provider metadata.
+ */
+export async function geocodeViaApi(
+  query: string,
+  bias?: { lat: number; lng: number } | null,
+): Promise<GeoHit[]> {
+  const res = await geocodeViaApiFull(query, bias);
+  return res.hits;
 }
 
 /**
