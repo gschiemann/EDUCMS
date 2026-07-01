@@ -22,6 +22,7 @@ import { useGames, useCreateGame, useDeleteGame, useDuplicateGame, useScrapeBran
 import { appConfirm } from '@/components/ui/app-dialog';
 import { SPORTS, findSport, formatScore } from '@cms/api-types';
 import { AssetPicker } from '@/components/assets/AssetPicker';
+import { filterRelevantTemplates } from '@/lib/template-relevance';
 
 const STATUS_BADGE: Record<string, string> = {
   SCHEDULED: 'bg-slate-100 text-slate-600',
@@ -268,6 +269,25 @@ function CreateGameModal({ onClose }: { onClose: () => void }) {
   const [ribbonTemplateId, setRibbonTemplateId] = useState('');
   const [scorebugTemplateId, setScorebugTemplateId] = useState('');
   const { data: templates } = useTemplates();
+  // 2026-07-01 — operator: "the drop down list of templates to choose
+  // from is stupid and includes our touch menu's...we should only show
+  // options that really work for the sport and for the screen we are
+  // selecting it for." These three dropdowns used to dump the FULL
+  // tenant template list (every vertical, touch kiosks included) —
+  // filter each to its own sports-surface category (same categories
+  // `aspectMatches` already enforces on the in-game Layouts panel at
+  // sports/[gameId]/page.tsx). "Show all" is the escape hatch.
+  const [showAllLayoutTemplates, setShowAllLayoutTemplates] = useState(false);
+  const allTemplates = Array.isArray(templates) ? templates : [];
+  const scoreboardTemplateOptions = showAllLayoutTemplates
+    ? allTemplates
+    : filterRelevantTemplates(allTemplates, { sportsSurface: 'scoreboard', wantsTouch: false });
+  const ribbonTemplateOptions = showAllLayoutTemplates
+    ? allTemplates
+    : filterRelevantTemplates(allTemplates, { sportsSurface: 'ribbon', wantsTouch: false });
+  const scorebugTemplateOptions = showAllLayoutTemplates
+    ? allTemplates
+    : filterRelevantTemplates(allTemplates, { sportsSurface: 'scorebug', wantsTouch: false });
   const [err, setErr] = useState('');
 
   /** Forget the saved home team and reset the home fields to blank. */
@@ -446,12 +466,11 @@ function CreateGameModal({ onClose }: { onClose: () => void }) {
                 onChange={(e) => setScoreboardTemplateId(e.target.value)}
               >
                 <option value="">Default — built-in layout</option>
-                {Array.isArray(templates) &&
-                  templates.map((t: any) => (
-                    <option key={t.id} value={t.id}>
-                      {t.isSystem ? '★ ' : ''}{t.name}
-                    </option>
-                  ))}
+                {scoreboardTemplateOptions.map((t: any) => (
+                  <option key={t.id} value={t.id}>
+                    {t.isSystem ? '★ ' : ''}{t.name}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
@@ -462,12 +481,11 @@ function CreateGameModal({ onClose }: { onClose: () => void }) {
                 onChange={(e) => setRibbonTemplateId(e.target.value)}
               >
                 <option value="">Default — built-in layout</option>
-                {Array.isArray(templates) &&
-                  templates.map((t: any) => (
-                    <option key={t.id} value={t.id}>
-                      {t.isSystem ? '★ ' : ''}{t.name}
-                    </option>
-                  ))}
+                {ribbonTemplateOptions.map((t: any) => (
+                  <option key={t.id} value={t.id}>
+                    {t.isSystem ? '★ ' : ''}{t.name}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
@@ -478,15 +496,27 @@ function CreateGameModal({ onClose }: { onClose: () => void }) {
                 onChange={(e) => setScorebugTemplateId(e.target.value)}
               >
                 <option value="">Default — built-in layout</option>
-                {Array.isArray(templates) &&
-                  templates.map((t: any) => (
-                    <option key={t.id} value={t.id}>
-                      {t.isSystem ? '★ ' : ''}{t.name}
-                    </option>
-                  ))}
+                {scorebugTemplateOptions.map((t: any) => (
+                  <option key={t.id} value={t.id}>
+                    {t.isSystem ? '★ ' : ''}{t.name}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
+          {!showAllLayoutTemplates && (
+            scoreboardTemplateOptions.length < allTemplates.length ||
+            ribbonTemplateOptions.length < allTemplates.length ||
+            scorebugTemplateOptions.length < allTemplates.length
+          ) && (
+            <button
+              type="button"
+              onClick={() => setShowAllLayoutTemplates(true)}
+              className="mt-2 text-[11px] font-medium text-indigo-600 hover:text-indigo-700 underline underline-offset-2"
+            >
+              Show all templates ({allTemplates.length})
+            </button>
+          )}
         </div>
 
         {def && (

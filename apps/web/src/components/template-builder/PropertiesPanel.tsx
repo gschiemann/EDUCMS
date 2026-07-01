@@ -25,6 +25,7 @@ import {
 } from '@/components/widgets/sports/cts-fields';
 import { useAssets, usePlaylists, useTemplates, useTemplateBackdrops } from '@/hooks/use-api';
 import { apiFetch } from '@/lib/api-client';
+import { filterRelevantTemplates } from '@/lib/template-relevance';
 import { useCustomData } from '@/lib/data/use-custom-data';
 import { ColorPickerField } from '@/components/ui/color-picker';
 import { THEMED_WIDGET_FIELDS } from './themed-widget-defaults';
@@ -1579,6 +1580,11 @@ function TapActionTargetPicker({
   const { data: templates } = useTemplates();
   const { data: assets } = useAssets();
   const currentTemplateId = useBuilderStore((s) => s.templateId);
+  // "Go to template" only ever fires from a tap on a touch-enabled
+  // template — so the sensible default is to offer OTHER touch templates,
+  // not the entire catalog of passive display boards (2026-07-01 fix).
+  const currentIsTouchEnabled = useBuilderStore((s) => s.isTouchEnabled);
+  const [showAllTemplates, setShowAllTemplates] = useState(false);
 
   if (kind === 'scene') {
     if (!scenes.length) {
@@ -1612,20 +1618,47 @@ function TapActionTargetPicker({
   }
 
   if (kind === 'template') {
-    const list = (Array.isArray(templates) ? templates : []).filter(
+    const allCustom = (Array.isArray(templates) ? templates : []).filter(
       (t: any) => t.id !== currentTemplateId && !t.isSystem,
     );
+    // 2026-07-01 — operator: "the drop down list of templates to choose
+    // from is stupid and includes our touch menu's...we should only show
+    // options that really work for the sport and for the screen we are
+    // selecting it for." A tap action lives inside a touch-enabled
+    // template, so "Go to template" should default to OTHER touch
+    // templates (a display board isn't a sensible tap destination), not
+    // every custom template in the tenant. "Show all" is the escape
+    // hatch — nothing is permanently hidden.
+    // TODO(lead): confirm the desired default when the CURRENT template is
+    // NOT touch-enabled (goto-template action defined before Touch mode is
+    // turned on) — today `wantsTouch: false` in that branch, which excludes
+    // kiosk templates too. If operators sometimes build a tap action first
+    // and flip Touch mode after, this branch may need `wantsTouch: undefined`.
+    const list = showAllTemplates
+      ? allCustom
+      : filterRelevantTemplates(allCustom, { wantsTouch: currentIsTouchEnabled });
     return (
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400"
-      >
-        <option value="">— Pick a template —</option>
-        {list.map((t: any) => (
-          <option key={t.id} value={t.id}>{t.name}</option>
-        ))}
-      </select>
+      <>
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400"
+        >
+          <option value="">— Pick a template —</option>
+          {list.map((t: any) => (
+            <option key={t.id} value={t.id}>{t.name}</option>
+          ))}
+        </select>
+        {!showAllTemplates && list.length < allCustom.length && (
+          <button
+            type="button"
+            onClick={() => setShowAllTemplates(true)}
+            className="mt-1 text-[10px] font-medium text-indigo-600 hover:text-indigo-700 underline underline-offset-2"
+          >
+            Show all templates ({allCustom.length})
+          </button>
+        )}
+      </>
     );
   }
 

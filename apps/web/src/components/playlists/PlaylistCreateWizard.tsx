@@ -130,6 +130,7 @@ import { GripVertical } from 'lucide-react';
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
+import { isTouchTemplate } from '@/lib/template-relevance';
 
 // ─── Shared constants ──────────────────────────────────────────────────
 
@@ -368,6 +369,14 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [templateFilter, setTemplateFilter] = useState<'all' | 'custom' | 'system'>('all');
   const [templateSearch, setTemplateSearch] = useState('');
+  // 2026-07-01 — operator: "the drop down list of templates to choose
+  // from is stupid and includes our touch menu's...we should only show
+  // options that really work for...the screen we are selecting it for."
+  // A playlist plays on passive displays — touch kiosk templates (tap
+  // menus, check-in flows) aren't a sensible playlist item, so they're
+  // hidden by default here. "Show touch kiosks too" is the escape hatch
+  // (some operators DO want to schedule a kiosk template into rotation).
+  const [includeTouchTemplates, setIncludeTouchTemplates] = useState(false);
 
   // Step 3 — screens
   const [selectedScreenIds, setSelectedScreenIds] = useState<Set<string>>(new Set());
@@ -425,6 +434,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
     setCurrentFolderId(null);
     setTemplateFilter('all');
     setTemplateSearch('');
+    setIncludeTouchTemplates(false);
     setSelectedScreenIds(new Set());
     setSelectedGroupIds(new Set());
     setScreenSearch('');
@@ -577,6 +587,7 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
   const visibleTemplates = (templates || []).filter((t: any) => {
     if (templateFilter === 'custom' && t.isSystem) return false;
     if (templateFilter === 'system' && !t.isSystem) return false;
+    if (!includeTouchTemplates && isTouchTemplate(t)) return false;
     if (templateSearch) {
       const needle = templateSearch.toLowerCase();
       const hay = `${t.name || ''} ${t.description || ''}`.toLowerCase();
@@ -1085,6 +1096,15 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
               onName={(tName: string) => {
                 if (!name.trim()) setName(tName);
               }}
+              includeTouchTemplates={includeTouchTemplates}
+              setIncludeTouchTemplates={setIncludeTouchTemplates}
+              touchHiddenCount={(templates || []).filter(
+                (t: any) =>
+                  isTouchTemplate(t) &&
+                  (templateFilter === 'all' ||
+                    (templateFilter === 'custom' && !t.isSystem) ||
+                    (templateFilter === 'system' && t.isSystem)),
+              ).length}
             />
           )}
           {step === 3 && (
@@ -1882,6 +1902,9 @@ function Step2Template({
   selectedId,
   onSelect,
   onName,
+  includeTouchTemplates,
+  setIncludeTouchTemplates,
+  touchHiddenCount,
 }: {
   templates: any[];
   search: string;
@@ -1891,6 +1914,13 @@ function Step2Template({
   selectedId: string | null;
   onSelect: (id: string) => void;
   onName: (name: string) => void;
+  /** 2026-07-01 — touch kiosk templates (tap menus, check-in flows) are
+   *  hidden by default since a playlist plays on a passive display. */
+  includeTouchTemplates: boolean;
+  setIncludeTouchTemplates: (v: boolean) => void;
+  /** How many touch templates are currently hidden by the filter above —
+   *  drives whether the "Show touch kiosks too" toggle is worth showing. */
+  touchHiddenCount: number;
 }) {
   const filterChips: { id: typeof filter; label: string }[] = [
     { id: 'all', label: 'All' },
@@ -1927,7 +1957,7 @@ function Step2Template({
         </div>
       </div>
 
-      <div className="flex flex-wrap mb-4">
+      <div className="flex flex-wrap items-center mb-4">
         {filterChips.map((c) => (
           <button
             key={c.id}
@@ -1942,6 +1972,23 @@ function Step2Template({
             {c.label}
           </button>
         ))}
+        {/* 2026-07-01 — touch kiosk templates (tap menus, check-in flows)
+            are hidden by default: a playlist plays on a passive display,
+            so mixing in touch-only experiences was the operator's exact
+            complaint ("includes our touch menu's"). Escape hatch, not a
+            hard exclusion — some operators DO want a kiosk template in
+            rotation. */}
+        {(includeTouchTemplates || touchHiddenCount > 0) && (
+          <label className="mb-2 ml-1 inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-500 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={includeTouchTemplates}
+              onChange={(e) => setIncludeTouchTemplates(e.target.checked)}
+              className="w-3.5 h-3.5 accent-violet-500"
+            />
+            Show touch kiosks too{touchHiddenCount > 0 && !includeTouchTemplates ? ` (${touchHiddenCount})` : ''}
+          </label>
+        )}
       </div>
 
       {templates.length === 0 ? (
