@@ -88,6 +88,7 @@ import { ConsoleScoreboardCelebration } from './ConsoleScoreboardCelebration';
 import { SurfaceHealthPills } from './SurfaceHealthPills';
 import { AssetPicker } from '@/components/assets/AssetPicker';
 import { RecentEventsBar } from './RecentEventsBar';
+import { LanePadSection, isLaneMeetSport } from './LanePadSection';
 
 // ── constants ──────────────────────────────────────────────────
 
@@ -1210,6 +1211,12 @@ function RunMode({
   // combined swimming_diving key — it's judged, not timed, so it belongs
   // here, not with LEADERBOARD-only swim/track).
   const isJudgedResults   = def.key === 'gymnastics' || def.key === 'competitive_cheer' || def.key === 'diving';
+  // LANE sports (task #271, 2026-07-01 — the meet lane pad): swimming and
+  // track & field assign lanes and their finish order is entirely
+  // time-driven, so they get the pre-filled lane grid with auto-place
+  // instead of the generic hand-typed list. isLaneMeetSport() is the one
+  // predicate every surface should share (see LanePadSection.tsx).
+  const isLaneMeet        = isLaneMeetSport(def.key);
   // LEADERBOARD sports (track / swim / cross-country / golf) + the judged
   // sports all use the meet-results grid (finish order or apparatus scores).
   const showResultsGrid   = (def.mode === 'LEADERBOARD' || isJudgedResults) && view !== 'pa';
@@ -1428,14 +1435,22 @@ function RunMode({
                 no team-tile scoring worth touching during a meet — finish
                 order IS the scoreboard — so the operator records places
                 + marks here. Gymnastics / cheer use the same grid in a
-                per-apparatus mode (event = apparatus, mark = judged score). */}
+                per-apparatus mode (event = apparatus, mark = judged score).
+                LANE sports (swim / track — #271) get the purpose-built lane
+                pad instead: pre-filled rows, roster auto-fill, auto-place,
+                one-tap heat advance. Same showResultsGrid gate, same
+                stats.results contract — just a different editor. */}
             {showResultsGrid && (
-              <MeetResultsSection
-                g={g}
-                def={def}
-                ctl={ctl}
-                judged={isJudgedResults}
-              />
+              isLaneMeet ? (
+                <LanePadSection gameId={gameId} g={g} def={def} ctl={ctl} />
+              ) : (
+                <MeetResultsSection
+                  g={g}
+                  def={def}
+                  ctl={ctl}
+                  judged={isJudgedResults}
+                />
+              )
             )}
           </div>
 
