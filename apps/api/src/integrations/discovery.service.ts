@@ -95,6 +95,19 @@ export interface ProviderCandidate {
    * development (Toast Partner Program)."
    */
   comingSoonReason?: string;
+  /**
+   * The operator's OWN destination for this provider, when we could
+   * confidently extract one from their homepage — e.g. their actual
+   * "https://youtube.com/@theirchannel" link, not just "we detected
+   * YouTube signals." World-class build (2026-07-01, App Library Tier 2
+   * "concierge auto-fill"): this is what turns "we noticed you use
+   * YouTube" (useless) into "here's your board, one tap to add"
+   * (effortless) — the App Library UI pre-fills the matching app's
+   * config form with this value. Populated ONLY for rule ids that have a
+   * matching entry in `OWN_LINK_MATCHERS` below; every other candidate
+   * carries `undefined` here exactly as before (fully additive field).
+   */
+  detectedValue?: string;
 }
 
 export interface DiscoveryResult {
@@ -102,6 +115,17 @@ export interface DiscoveryResult {
   inputSummary: string;
   candidates: ProviderCandidate[];
   warnings: string[];
+  /**
+   * The operator's own extracted links/handles, keyed by a stable id the
+   * App Library's concierge-map.ts understands (youtube / vimeo / twitch /
+   * instagram / facebook-page / google-slides / google-sheets / calendar /
+   * news-rss). Deliberately a flat, provider-agnostic map SEPARATE from
+   * `candidates` — this is populated even for providers that have no
+   * matching integration RULE (e.g. we don't have a "google-slides"
+   * connector rule, but the App Library absolutely wants that link).
+   * Deterministic/keyless (no AI cost) — see `extractOwnLinks`.
+   */
+  ownLinks: Record<string, string>;
 }
 
 /**
@@ -578,6 +602,124 @@ const KEYWORD_CATEGORY_HINTS: Record<string, IntegrationCategory[]> = {
   congregation: ['streaming', 'giving'],
 };
 
+/**
+ * `extractOwnLinks` matchers — App Library Tier-2 "concierge auto-fill"
+ * (2026-07-01). Each entry recognizes ONE destination type in the
+ * operator's own footer/nav/JSON-LD links and maps it to the stable key
+ * the frontend's `concierge-map.ts` uses to open a pre-filled App Registry
+ * tile. Deliberately separate from the integration `RULES` above — those
+ * classify PROVIDER CATEGORIES from ambient page signals (any mention of
+ * "youtube" anywhere counts); this extracts the operator's ACTUAL
+ * destination URL from a real anchor/link element, which is a much
+ * stronger and more specific signal (and the only thing that lets us
+ * pre-fill a field rather than just say "we noticed X").
+ *
+ * Kept deterministic/keyless — no AI cost, no new setting — per
+ * CLAUDE.md's AI economic model (never spend a Tier-1 call on something a
+ * regex can do for free).
+ */
+interface OwnLinkMatcher {
+  /** Stable key consumed by the frontend's concierge-map.ts (App Registry id space where practical). */
+  key: string;
+  pattern: RegExp;
+}
+
+const OWN_LINK_MATCHERS: OwnLinkMatcher[] = [
+  {
+    key: 'youtube',
+    pattern:
+      /(?:youtube\.com\/(?:@[\w-]+|channel\/[\w-]+|c\/[\w-]+|user\/[\w-]+)|youtu\.be\/[\w-]+)/i,
+  },
+  { key: 'vimeo', pattern: /vimeo\.com\/(?:video\/)?\d+|vimeo\.com\/[\w-]+/i },
+  { key: 'twitch', pattern: /twitch\.tv\/[\w-]+/i },
+  { key: 'instagram', pattern: /instagram\.com\/[\w.-]+/i },
+  { key: 'facebook-page', pattern: /facebook\.com\/[\w.-]+/i },
+  {
+    key: 'google-slides',
+    pattern: /docs\.google\.com\/presentation\/d\/[\w-]+/i,
+  },
+  {
+    key: 'google-sheets',
+    pattern: /docs\.google\.com\/spreadsheets\/d\/[\w-]+/i,
+  },
+  {
+    key: 'calendar',
+    pattern: /calendar\.google\.com\/calendar\/(?:embed|ical)[^\s"'<>]*/i,
+  },
+  { key: 'news-rss', pattern: /[^\s"'<>]+\.(?:xml|rss)(?:\?[^\s"'<>]*)?/i },
+];
+
+/**
+ * Harvest the operator's OWN destination links from their homepage —
+ * footer/nav anchors, `<link rel="alternate" type="application/rss+xml">`,
+ * and JSON-LD `sameAs[]` — and map each to a stable key. Returns AT MOST
+ * one URL per key (first match wins; footer/nav order is usually the
+ * canonical one). Never throws: a malformed document just yields fewer
+ * (or zero) links, same honest-degrade posture as the rest of the
+ * discovery pass.
+ */
+function extractOwnLinks(html: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  try {
+    const $ = cheerioLoad(html);
+
+    // 1) Every anchor href on the page (footer/nav are usually included in
+    // a full-page fetch; we don't scope to <footer>/<nav> specifically
+    // since many sites put social links in a header or a floating bar).
+    const hrefs: string[] = $('a[href]')
+      .map((_, el) => $(el).attr('href') || '')
+      .get()
+      .filter(Boolean);
+
+    // 2) RSS/Atom feed autodiscovery — the canonical way a site advertises
+    // its feed, far more reliable than guessing a /feed.xml path.
+    const feedHrefs: string[] = $(
+      'link[rel="alternate"][type*="rss"], link[rel="alternate"][type*="atom"]',
+    )
+      .map((_, el) => $(el).attr('href') || '')
+      .get()
+      .filter(Boolean);
+
+    // 3) JSON-LD `sameAs` arrays — schema.org Organization/LocalBusiness
+    // markup commonly lists official social profile URLs here, often more
+    // reliable than a footer icon link (no icon-only <a> with a tracking
+    // redirect to parse through).
+    const sameAsHrefs: string[] = [];
+    $('script[type="application/ld+json"]').each((_, el) => {
+      const raw = $(el).contents().text();
+      if (!raw || raw.length > 100_000) return; // guard against pathological payloads
+      try {
+        const parsed: unknown = JSON.parse(raw);
+        const nodes: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
+        for (const node of nodes) {
+          const sameAs =
+            node && typeof node === 'object'
+              ? (node as Record<string, unknown>).sameAs
+              : undefined;
+          if (Array.isArray(sameAs)) {
+            for (const v of sameAs) if (typeof v === 'string') sameAsHrefs.push(v);
+          } else if (typeof sameAs === 'string') {
+            sameAsHrefs.push(sameAs);
+          }
+        }
+      } catch {
+        // Malformed JSON-LD is common in the wild — skip this block, keep scanning others.
+      }
+    });
+
+    const allCandidates = [...hrefs, ...feedHrefs, ...sameAsHrefs];
+    for (const matcher of OWN_LINK_MATCHERS) {
+      if (out[matcher.key]) continue; // first match wins
+      const hit = allCandidates.find((href) => matcher.pattern.test(href));
+      if (hit) out[matcher.key] = hit;
+    }
+  } catch {
+    // Cheerio parse failed entirely — return whatever we have (nothing),
+    // never throw. Mirrors buildHaystack's fallback posture.
+  }
+  return out;
+}
+
 @Injectable()
 export class IntegrationDiscoveryService {
   private readonly log = new Logger(IntegrationDiscoveryService.name);
@@ -608,7 +750,13 @@ export class IntegrationDiscoveryService {
         const msg = e instanceof Error ? e.message : String(e);
         warnings.push(`Couldn't fetch URL: ${msg}`);
       }
-      return { source: 'url', inputSummary, candidates: [], warnings };
+      return {
+        source: 'url',
+        inputSummary,
+        candidates: [],
+        warnings,
+        ownLinks: {},
+      };
     }
 
     // Build a single lowercased haystack: visible text + script-src
@@ -617,7 +765,16 @@ export class IntegrationDiscoveryService {
     const haystack = this.buildHaystack(html);
 
     const candidates = this.scoreRules(haystack, /* boostByCategory */ {});
-    return { source: 'url', inputSummary, candidates, warnings };
+    const ownLinks = extractOwnLinks(html);
+    // Thread the operator's own extracted link onto any candidate whose
+    // rule id matches an own-link key (e.g. the 'youtube' integration
+    // RULE gets `detectedValue` = the operator's actual channel URL, not
+    // just "we saw youtube.com somewhere"). Additive — candidates with no
+    // matching own-link keep `detectedValue: undefined` exactly as before.
+    for (const c of candidates) {
+      if (ownLinks[c.id]) c.detectedValue = ownLinks[c.id];
+    }
+    return { source: 'url', inputSummary, candidates, warnings, ownLinks };
   }
 
   /**
@@ -629,7 +786,13 @@ export class IntegrationDiscoveryService {
     const cleaned = String(text || '').slice(0, 2_000).trim();
     if (!cleaned) {
       warnings.push('Description was empty.');
-      return { source: 'description', inputSummary: '', candidates: [], warnings };
+      return {
+        source: 'description',
+        inputSummary: '',
+        candidates: [],
+        warnings,
+        ownLinks: {},
+      };
     }
 
     const lower = cleaned.toLowerCase();
@@ -650,6 +813,9 @@ export class IntegrationDiscoveryService {
       inputSummary: cleaned.length > 120 ? cleaned.slice(0, 117) + '...' : cleaned,
       candidates,
       warnings,
+      // Free-text descriptions have no HTML to harvest links from — no
+      // own-link extraction is possible for the /describe path.
+      ownLinks: {},
     };
   }
 
