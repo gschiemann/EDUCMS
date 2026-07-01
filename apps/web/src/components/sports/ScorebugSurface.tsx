@@ -279,7 +279,14 @@ export function meetContextLabel(def: SportDefinition, data: BoardData): string 
     const div = str('division');
     return div ? div.toUpperCase() : null;
   }
-  // Track & field / swimming & diving — the currently-contested event.
+  if (def.key === 'diving') {
+    const diver = str('currentDiver');
+    const code = str('diveCode');
+    if (!diver) return null;
+    return code ? `${diver.toUpperCase()} · ${code.toUpperCase()}` : diver.toUpperCase();
+  }
+  // Track & field / swimming (+ the deprecated legacy swimming_diving key)
+  // — the currently-contested event.
   const ev = str('currentEvent');
   return ev ? ev.toUpperCase() : null;
 }

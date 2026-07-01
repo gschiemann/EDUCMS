@@ -59,6 +59,13 @@ export type WidgetType =
   // hardcoded layout — so a custom template stays in lockstep with
   // score / clock / cue changes.
   | 'SCORE_HOME' | 'SCORE_AWAY' | 'GAME_CLOCK' | 'GAME_SEGMENT' | 'GAME_STAT'
+  // 2026-07-01 — swim/dive split flagship widgets. SWIM_LANE_GRID is the
+  // "lanes and shit" board (one row per lane: lane#, swimmer/team, seed/
+  // time, place) sourced from the MeetResult structured stats.
+  // DIVE_LEADERBOARD ranks divers by running judged total — diving has NO
+  // lanes/clock/splits, a fundamentally different data model, so it's a
+  // separate widget, not a SWIM_LANE_GRID config option.
+  | 'SWIM_LANE_GRID' | 'DIVE_LEADERBOARD'
   // VenueOS universal packs — drop-in template backgrounds and live
   // data feeds (markets, news, weather, transit). Variant-rendered;
   // each canonical type groups its pack under one picker chip.

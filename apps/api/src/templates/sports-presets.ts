@@ -585,6 +585,42 @@ export const SPORTS_TEMPLATE_PRESETS: SystemPreset[] = [
       { name: 'Announcements', widgetType: 'TICKER', x: 0, y: 88, width: 100, height: 10, zIndex: 2, sortOrder: 2, defaultConfig: { theme: 'track-day', messages: ['NEXT EVENT — 200M PRELIMS', 'FIELD EVENTS UNDERWAY — LONG JUMP PIT 2', 'GO TEAM!'], speed: 'normal' } },
     ],
   },
+  // ── Swimming lane board + Diving leaderboard (2026-07-01 split) ─────
+  // Operator: "find out what scoreboards do for swimming competitions...
+  // lanes and shit that we need to show where each swimmer is. And you
+  // grouped diving into the same sport but wouldn't that be totally
+  // different? SEPARATE it." Swimming gets the flagship SWIM_LANE_GRID
+  // (one row per lane); diving gets DIVE_LEADERBOARD (judged running
+  // total, no lanes/clock/splits — a different data model). Full-canvas
+  // scene widgets (own transform:scale fit), not sbZone element pieces.
+  {
+    id: 'sports-swim-lane-board',
+    name: '🏊 Swimming Lane Board',
+    description:
+      'Live heat board — one row per lane (lane #, swimmer/team, time, place), with a LANE⇄PLACE order toggle in Properties. Bind a meet; resize for any LED.',
+    category: 'SCOREBOARD',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor: '#050b16',
+    zones: [
+      { name: 'Lane Grid', widgetType: 'SWIM_LANE_GRID', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { orderMode: 'lane', laneCount: 8 } },
+    ],
+  },
+  {
+    id: 'sports-dive-leaderboard',
+    name: '🤿 Diving Leaderboard',
+    description:
+      'Judged running-total leaderboard for diving — place, diver/team, total score. No lanes/clock/splits (diving is judged, not timed — a different sport from swimming). Bind a meet; resize for any LED.',
+    category: 'SCOREBOARD',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor: '#0a0714',
+    zones: [
+      { name: 'Dive Leaderboard', widgetType: 'DIVE_LEADERBOARD', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} },
+    ],
+  },
   // ── Sponsors — first-class revenue surfaces (Sprint 13 §7) ────────
   sponsorBoard(
     'sports-sponsor-rotator',

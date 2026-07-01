@@ -1565,9 +1565,16 @@ function meetContext(
   const s = data.stats || {};
   switch (def.key) {
     case 'track_and_field':
-    case 'swimming_diving': {
+    // DEPRECATED key — pre-split games only.
+    case 'swimming_diving':
+    case 'swimming': {
       const ev = statStr(s, 'currentEvent');
       return { eyebrow: 'CURRENT EVENT', headline: ev || 'WARM-UPS' };
+    }
+    case 'diving': {
+      const diver = statStr(s, 'currentDiver');
+      const code = statStr(s, 'diveCode');
+      return { eyebrow: 'NOW DIVING', headline: diver ? (code ? `${diver} · ${code}` : diver) : 'WARM-UPS' };
     }
     case 'cross_country': {
       const lead = statStr(s, 'leadRunner');
@@ -1978,7 +1985,14 @@ function LeaderboardScene({ data, def }: { data: BoardData; def: SportDefinition
       const par = statStr(s, team === 'home' ? 'homePar' : 'awayPar');
       return par ? `${par} vs par` : '';
     }
-    if (def.key === 'gymnastics' || def.key === 'track_and_field' || def.key === 'swimming_diving') {
+    if (
+      def.key === 'gymnastics' ||
+      def.key === 'track_and_field' ||
+      // DEPRECATED key — pre-split games only.
+      def.key === 'swimming_diving' ||
+      def.key === 'swimming' ||
+      def.key === 'diving'
+    ) {
       const n = statStr(s, team === 'home' ? 'homeAthletes' : 'awayAthletes');
       return n ? `${n} competing` : '';
     }

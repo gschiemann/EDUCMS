@@ -903,6 +903,18 @@ const TRACK_AND_FIELD: SportDefinition = {
   ],
 };
 
+// DEPRECATED: split into `swimming` + `diving` (2026-07-01). Swimming is a
+// lane/heat/time sport; diving is a judged panel-score sport with no lanes,
+// clock, or splits — bundling them forced a lanes-and-times widget model
+// onto a judges-and-DD sport (operator complaint 2026-06-30: "you grouped
+// diving into the same sport but wouldn't that be totally different?
+// SEPARATE it"). See docs/research/2026-06-30-swim-dive-scoreboards/00-REPORT.md.
+//
+// Kept here, in SPORT_DEFINITIONS, PLAYER_STATS, STAT_SEMANTICS, and
+// CAREER_THRESHOLDS so `findSport('swimming_diving')` and every stat-engine
+// lookup still resolve for EXISTING games created before the split — full
+// back-compat, zero migration. REMOVED from the `SPORTS` ordered array (the
+// new-game picker), which now offers `swimming` and `diving` separately.
 const SWIMMING_DIVING: SportDefinition = {
   key: 'swimming_diving',
   name: 'Swimming & Diving',
@@ -925,6 +937,78 @@ const SWIMMING_DIVING: SportDefinition = {
     { key: 'newRecord', label: 'New Record', emoji: '📋' },
     { key: 'personalBest', label: 'Personal Best', emoji: '⭐' },
     { key: 'perfectDive', label: 'Perfect Dive', emoji: '🏊' },
+  ],
+};
+
+/**
+ * SWIMMING — a lane/heat/time meet sport (2026-07-01 split). Every real
+ * board is a lane grid: lane #, swimmer/team, seed/live time, place. See
+ * `SWIM_LANE_GRID` widget (apps/web/src/components/widgets/sports/) for the
+ * flagship render of this data, sourced from the `MeetResult`/`ResultEntry`
+ * structured stats (stats.results — `entry.lane` was already optional
+ * there, so no schema change was needed to add lanes).
+ */
+const SWIMMING: SportDefinition = {
+  key: 'swimming',
+  name: 'Swimming',
+  emoji: '🏊',
+  mode: 'LEADERBOARD',
+  clock: { type: 'none' },
+  segment: { name: 'Event', count: 1, overtime: false },
+  // NFHS dual-meet swimming individual-event scoring is 6-4-3-2-1 (places
+  // 1-5); relays are 8-4-2 (double the top weights). The quick-add set
+  // covers the place-point values an operator credits as heats finish.
+  score: { unit: 'points', increments: [1, 2, 3, 4, 6, 8] },
+  stats: [
+    { key: 'currentEvent', label: 'Current Event', scope: 'game', type: 'text' },
+    { key: 'heat', label: 'Heat', scope: 'game', type: 'text' },
+    { key: 'course', label: 'Course (SCY / SCM / LCM)', scope: 'game', type: 'text' },
+    { key: 'homeAthletes', label: 'Home Competitors', scope: 'home', type: 'number', min: 0, max: 999 },
+    { key: 'awayAthletes', label: 'Away Competitors', scope: 'away', type: 'number', min: 0, max: 999 },
+  ],
+  celebrations: [
+    { key: 'firstPlace', label: 'First Place!', emoji: '🥇' },
+    { key: 'newRecord', label: 'New Record', emoji: '📋' },
+    { key: 'personalBest', label: 'Personal Best', emoji: '⭐' },
+    { key: 'relayWin', label: 'Relay Win', emoji: '🏊' },
+  ],
+};
+
+/**
+ * DIVING — a judged panel-score sport (2026-07-01 split out of the legacy
+ * combined `swimming_diving`). No lanes, no clock, no splits: a panel of
+ * judges scores each dive 0-10, drops high/low, sums the middle scores ×
+ * Degree of Difficulty (DD), and the diver's running total accumulates
+ * across a fixed dive list (HS dual = 6 dives). Team total is a 2-decimal
+ * judged score (e.g. 245.60) — stored as a scaled int like gymnastics'
+ * 3-decimal convention, via `scoreDecimals`. See `DIVE_LEADERBOARD` widget.
+ */
+const DIVING: SportDefinition = {
+  key: 'diving',
+  name: 'Diving',
+  emoji: '🤿',
+  mode: 'LEADERBOARD',
+  clock: { type: 'none' },
+  segment: { name: 'Round', count: 1, overtime: false },
+  // Running-total judged score (e.g. 245.60). Scaled int (24560) like
+  // gymnastics/cheer; console enters the absolute total, surfaces format it.
+  score: { unit: 'points', increments: [1, 5, 10] },
+  scoreDecimals: 2,
+  stats: [
+    { key: 'currentDiver', label: 'Current Diver', scope: 'game', type: 'text' },
+    { key: 'diveCode', label: 'Dive Code (e.g. 105B)', scope: 'game', type: 'text' },
+    // Degree of Difficulty is a decimal (1.2–4.1 in 0.1 steps) — kept as
+    // text so the operator can type "2.4" without a stepper rounding it.
+    { key: 'dd', label: 'Degree of Difficulty (DD)', scope: 'game', type: 'text' },
+    { key: 'round', label: 'Round (Prelim / Semi / Final)', scope: 'game', type: 'text' },
+    { key: 'homeAthletes', label: 'Home Competitors', scope: 'home', type: 'number', min: 0, max: 999 },
+    { key: 'awayAthletes', label: 'Away Competitors', scope: 'away', type: 'number', min: 0, max: 999 },
+  ],
+  celebrations: [
+    { key: 'perfectDive', label: 'Perfect Dive', emoji: '🤿' },
+    { key: 'bigDD', label: 'Big DD', emoji: '🔥' },
+    { key: 'firstPlace', label: 'First Place!', emoji: '🥇' },
+    { key: 'newRecord', label: 'New Record', emoji: '📋' },
   ],
 };
 
@@ -1035,7 +1119,12 @@ const COMPETITIVE_CHEER: SportDefinition = {
   ],
 };
 
-/** All shipped sport definitions, keyed by `key`. */
+/**
+ * All shipped sport definitions, keyed by `key`. `swimming_diving` stays
+ * here (DEPRECATED, see the const above) purely so `findSport` resolves it
+ * for games created before the 2026-07-01 swim/dive split — it is NOT in
+ * the `SPORTS` picker array below.
+ */
 export const SPORT_DEFINITIONS: Record<string, SportDefinition> = {
   football: FOOTBALL,
   basketball: BASKETBALL,
@@ -1051,17 +1140,24 @@ export const SPORT_DEFINITIONS: Record<string, SportDefinition> = {
   pickleball: PICKLEBALL,
   track_and_field: TRACK_AND_FIELD,
   swimming_diving: SWIMMING_DIVING,
+  swimming: SWIMMING,
+  diving: DIVING,
   cross_country: CROSS_COUNTRY,
   gymnastics: GYMNASTICS,
   golf: GOLF,
   competitive_cheer: COMPETITIVE_CHEER,
 };
 
-/** Ordered list for pickers. */
+/**
+ * Ordered list for pickers (the NEW-GAME picker). `SWIMMING_DIVING` is
+ * deliberately ABSENT — replaced by `SWIMMING` + `DIVING` (2026-07-01
+ * split). Existing games already on `swimming_diving` keep working via
+ * `SPORT_DEFINITIONS` / `findSport` above; only the picker changed.
+ */
 export const SPORTS: SportDefinition[] = [
   FOOTBALL, BASKETBALL, BASEBALL, SOFTBALL, SOCCER, VOLLEYBALL, WRESTLING,
   HOCKEY, LACROSSE, FIELD_HOCKEY, WATER_POLO, PICKLEBALL,
-  TRACK_AND_FIELD, SWIMMING_DIVING, CROSS_COUNTRY, GYMNASTICS, GOLF, COMPETITIVE_CHEER,
+  TRACK_AND_FIELD, SWIMMING, DIVING, CROSS_COUNTRY, GYMNASTICS, GOLF, COMPETITIVE_CHEER,
 ];
 
 /** Look up a sport definition by key; undefined if unknown. */
@@ -1151,7 +1247,11 @@ export const PLAYER_STATS: Record<string, string[]> = {
   water_polo: ['G', 'A', 'ST', 'EXC'],
   pickleball: ['W', 'L', 'PTS'],
   track_and_field: ['PTS', 'PL', 'PR', 'MK'],
+  // DEPRECATED — see the SWIMMING_DIVING const. Kept so PLAYER_STATS[sport]
+  // lookups for pre-split games (and STAT_SEMANTICS coverage) still resolve.
   swimming_diving: ['PTS', 'PL', 'PR', 'MK'],
+  swimming: ['PL', 'TIME', 'PTS', 'PR'],
+  diving: ['PL', 'SCORE', 'DD', 'PTS'],
   cross_country: ['PTS', 'PL', 'TIME', 'PR'],
   gymnastics: ['PTS', 'VT', 'UB', 'BB', 'FX'],
   golf: ['STR', 'PAR', 'HOLE', 'W'],
@@ -1225,8 +1325,13 @@ function ribbonSituationLabel(def: SportDefinition): string {
     case 'water_polo':
       return 'Shots & exclusions';
     case 'track_and_field':
+    // DEPRECATED key — pre-split games only; current event is still the
+    // right label for it.
     case 'swimming_diving':
+    case 'swimming':
       return 'Current event';
+    case 'diving':
+      return 'Current dive & DD';
     case 'cross_country':
       return 'Finishers & lead';
     case 'gymnastics':
@@ -1613,11 +1718,29 @@ export const STAT_SEMANTICS: Record<string, StatSemantic[]> = {
     { key: 'PR', kind: 'rate', higherBetter: true },
     { key: 'MK', kind: 'rate', higherBetter: true },
   ],
+  // DEPRECATED — see the SWIMMING_DIVING const. Kept so STAT_SEMANTICS
+  // coverage for pre-split games (PLAYER_STATS.swimming_diving) still
+  // resolves; `statSemantic('swimming_diving', …)` keeps working forever.
   swimming_diving: [
     { key: 'PTS', kind: 'counting', higherBetter: true },
     { key: 'PL', kind: 'rate', higherBetter: false },
     { key: 'PR', kind: 'rate', higherBetter: true },
     { key: 'MK', kind: 'rate', higherBetter: false, timeMark: true },
+  ],
+  swimming: [
+    { key: 'PL', kind: 'rate', higherBetter: false },
+    { key: 'TIME', kind: 'rate', higherBetter: false, timeMark: true },
+    { key: 'PTS', kind: 'counting', higherBetter: true },
+    { key: 'PR', kind: 'rate', higherBetter: true },
+  ],
+  diving: [
+    { key: 'PL', kind: 'rate', higherBetter: false },
+    // Judged dive score — a decimal running total (rate, not summed).
+    { key: 'SCORE', kind: 'rate', higherBetter: true, decimals: 2 },
+    // Degree of Difficulty — a decimal descriptor of the dive attempted,
+    // not a counting/summable stat.
+    { key: 'DD', kind: 'rate', higherBetter: true, decimals: 1 },
+    { key: 'PTS', kind: 'counting', higherBetter: true },
   ],
   cross_country: [
     { key: 'PTS', kind: 'counting', higherBetter: false },
@@ -1831,7 +1954,14 @@ export const CAREER_THRESHOLDS: Record<string, Record<string, number[]>> = {
   track_and_field: {
     PTS: [50, 100, 250, 500],
   },
+  // DEPRECATED — see the SWIMMING_DIVING const. Kept for pre-split games.
   swimming_diving: {
+    PTS: [50, 100, 250, 500],
+  },
+  swimming: {
+    PTS: [50, 100, 250, 500],
+  },
+  diving: {
     PTS: [50, 100, 250, 500],
   },
   cross_country: {

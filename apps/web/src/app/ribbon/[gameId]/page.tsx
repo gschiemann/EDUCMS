@@ -674,8 +674,16 @@ function ribbonSituational(def: SportDefinition, stats: Record<string, unknown>)
     } else if (def.key === 'competitive_cheer') {
       const div = String(stats.division || '').trim();
       if (div) parts.push(`DIVISION ${div.toUpperCase()}`);
+    } else if (def.key === 'diving') {
+      // Diving (2026-07-01 split) — judged, no lanes/clock/splits. Show
+      // the current diver + dive code/DD, not a "currentEvent" chip
+      // (diving never sets that stat key).
+      const diver = String(stats.currentDiver || '').trim();
+      const code = String(stats.diveCode || '').trim();
+      if (diver) parts.push(`NOW DIVING · ${diver.toUpperCase()}${code ? ` (${code.toUpperCase()})` : ''}`);
     } else {
-      // Track & field / swimming & diving — the currently-contested event.
+      // Track & field / swimming (+ the deprecated legacy swimming_diving
+      // key) — the currently-contested event.
       const ev = String(stats.currentEvent || '').trim();
       if (ev) parts.push(`NOW · ${ev.toUpperCase()}`);
     }

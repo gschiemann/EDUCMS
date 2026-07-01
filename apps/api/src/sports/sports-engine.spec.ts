@@ -15,24 +15,39 @@ import {
 } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 
+// 2026-07-01 — swimming_diving split into `swimming` + `diving` (separate
+// widget sets: swimming is a lane/heat/time sport, diving is judged panel
+// scoring with no lanes/clock/splits). The legacy combined key stays
+// resolvable via SPORT_DEFINITIONS/findSport for pre-split games but is
+// intentionally ABSENT from the SPORTS picker array — see sports.ts.
 const EXPECTED_KEYS = [
   'football', 'basketball', 'baseball', 'softball', 'soccer',
   'volleyball', 'wrestling', 'hockey', 'lacrosse', 'field_hockey',
-  'water_polo', 'pickleball', 'track_and_field', 'swimming_diving',
+  'water_polo', 'pickleball', 'track_and_field', 'swimming', 'diving',
   'cross_country', 'gymnastics', 'golf', 'competitive_cheer',
 ];
 
 describe('Sport Engine', () => {
-  it('ships the 18 expected sports', () => {
+  it('ships the 19 expected sports', () => {
     expect(SPORTS).toHaveLength(EXPECTED_KEYS.length);
     const keys = SPORTS.map((s) => s.key);
     for (const k of EXPECTED_KEYS) expect(keys).toContain(k);
   });
 
-  it('SPORTS list and SPORT_DEFINITIONS map agree', () => {
-    expect(Object.keys(SPORT_DEFINITIONS).sort()).toEqual(
-      SPORTS.map((s) => s.key).sort(),
-    );
+  it('legacy swimming_diving key still resolves for pre-split games (back-compat)', () => {
+    const legacy = findSport('swimming_diving');
+    expect(legacy).toBeDefined();
+    expect(legacy?.name).toBe('Swimming & Diving');
+    // NOT in the new-game picker array.
+    expect(SPORTS.map((s) => s.key)).not.toContain('swimming_diving');
+  });
+
+  it('SPORTS list and SPORT_DEFINITIONS map agree (modulo the deprecated legacy key)', () => {
+    // SPORT_DEFINITIONS carries one extra entry — the deprecated
+    // `swimming_diving` combined key, kept resolvable for pre-split games
+    // but deliberately excluded from the SPORTS picker array.
+    const defKeys = Object.keys(SPORT_DEFINITIONS).filter((k) => k !== 'swimming_diving');
+    expect(defKeys.sort()).toEqual(SPORTS.map((s) => s.key).sort());
     for (const s of SPORTS) expect(SPORT_DEFINITIONS[s.key]).toBe(s);
   });
 
@@ -174,13 +189,17 @@ describe('decimal team scores (scaled-integer convention)', () => {
   const gymnastics = findSport('gymnastics');
   const cheer = findSport('competitive_cheer');
 
-  it('only the two judged sports carry scoreDecimals', () => {
+  it('only the three judged sports carry scoreDecimals', () => {
     expect(gymnastics?.scoreDecimals).toBe(3);
     expect(cheer?.scoreDecimals).toBe(1);
+    // Diving joined 2026-07-01 (split from swimming_diving) — a judged
+    // running-total dive score (e.g. 245.60), same scaled-int convention.
+    expect(findSport('diving')?.scoreDecimals).toBe(2);
     // EVERY other sport leaves it undefined → integer behaviour.
     for (const s of SPORTS) {
       if (s.key === 'gymnastics') expect(s.scoreDecimals).toBe(3);
       else if (s.key === 'competitive_cheer') expect(s.scoreDecimals).toBe(1);
+      else if (s.key === 'diving') expect(s.scoreDecimals).toBe(2);
       else expect(s.scoreDecimals).toBeUndefined();
     }
   });

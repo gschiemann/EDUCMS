@@ -249,10 +249,11 @@ export function hasSituational(def: SportDefinition, stats: Record<string, unkno
   // Rally sports — the match set/game count is always worth showing, plus
   // the serve indicator when a server is set.
   if (def.key === 'volleyball' || def.key === 'pickleball') return true;
-  // Judged meet sports — the apparatus/rotation (gymnastics) or division/
-  // round (cheer) is always worth a broadcast situational line, so the
-  // scorebug shows real meet context instead of a generic chip dump.
-  if (def.key === 'gymnastics' || def.key === 'competitive_cheer') return true;
+  // Judged meet sports — the apparatus/rotation (gymnastics), division/
+  // round (cheer), or current diver/DD (diving) is always worth a
+  // broadcast situational line, so the scorebug shows real meet context
+  // instead of a generic chip dump.
+  if (def.key === 'gymnastics' || def.key === 'competitive_cheer' || def.key === 'diving') return true;
   // Invasion sports — the broadcast-standard tuned line (shots / power
   // play / ground balls / corners) ports from the ribbon so the board
   // strip never falls to a raw chip dump. Only worth a frame once a stat
@@ -333,7 +334,9 @@ function curatedInvasion(def: SportDefinition, stats: Record<string, unknown>): 
 /**
  * Curated meet (LEADERBOARD) situational line for the remaining meet
  * sports the dedicated branches don't already handle — golf, cross
- * country, and timed/judged track & swim. Mirrors ribbonSituational.
+ * country, and timed track & swim. (Diving — judged, no lanes/clock/
+ * splits — got its OWN dedicated branch in SituationalRow, 2026-07-01
+ * split; it never reaches this fallback.) Mirrors ribbonSituational.
  * Returns ordered text chips, or null when nothing is live.
  */
 function curatedLeaderboard(def: SportDefinition, stats: Record<string, unknown>): string[] | null {
@@ -350,7 +353,8 @@ function curatedLeaderboard(def: SportDefinition, stats: Record<string, unknown>
     const fin = num(stats.finishers);
     if (fin > 0) parts.push(`${fin} FINISHED`);
   } else {
-    // Track & field / swimming & diving — the currently-contested event.
+    // Track & field / swimming (+ the deprecated legacy swimming_diving
+    // key) — the currently-contested event.
     const ev = String(stats.currentEvent || '').trim();
     if (ev) parts.push(`NOW · ${ev.toUpperCase()}`);
   }
@@ -578,6 +582,26 @@ export function SituationalRow({ def, stats, h, accent, ink, dim, hairline }: Ro
         {routine && (
           <span style={{ fontSize: px(h, 0.05), fontWeight: 800, color: dim, letterSpacing: 2 }}>
             <strong style={{ color: ink }}>{routine.toUpperCase()}</strong>
+          </span>
+        )}
+      </>
+    );
+  } else if (def.key === 'diving') {
+    // ── Diving — current diver + dive code/DD (judged meet, no lanes/
+    //    clock/splits — a fundamentally different data model from
+    //    swimming, split out 2026-07-01). ──
+    const diver = String(stats.currentDiver || '').trim();
+    const code = String(stats.diveCode || '').trim();
+    const dd = String(stats.dd || '').trim();
+    content = (
+      <>
+        <span style={{ fontSize: px(h, 0.06), fontWeight: 900, color: accent, letterSpacing: 2 }}>
+          🤿 {diver ? diver.toUpperCase() : 'WARM-UPS'}
+        </span>
+        {code && (
+          <span style={{ fontSize: px(h, 0.05), fontWeight: 800, color: dim, letterSpacing: 2 }}>
+            <strong style={{ color: ink, fontVariantNumeric: 'tabular-nums' }}>{code.toUpperCase()}</strong>
+            {dd ? ` · DD ${dd}` : ''}
           </span>
         )}
       </>

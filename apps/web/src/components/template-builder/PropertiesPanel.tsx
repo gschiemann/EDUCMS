@@ -5079,6 +5079,40 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       fields.push(<SelectField key="align" label="Align" value={String(cfg.align || 'center')} options={[['left','Left'],['center','Center'],['right','Right']]} onChange={(v) => setField({ align: v })} />);
       break;
     }
+    // 2026-07-01 — swim/dive sport split flagship widgets (operator:
+    // "lanes and shit that we need to show where each swimmer is" +
+    // "[diving] wouldn't that be totally different? SEPARATE it"). Both
+    // read Game.stats.results (the same MeetResult contract the console's
+    // "Meet results" grid writes — see MeetResultsSection); the fields
+    // here only control presentation (header text, order, colors), not a
+    // separate data source.
+    case 'SWIM_LANE_GRID': {
+      fields.push(<TextField key="headerText" label="Header text (blank = auto from the live event)" value={cfg.headerText || ''} placeholder="EVENT 12 — BOYS 100 FREESTYLE — HEAT 3 OF 4" onChange={(v) => setField({ headerText: v })} />);
+      fields.push(<TextField key="eventFilter" label="Pin to event (exact name; blank = auto-pick current heat)" value={cfg.eventFilter || ''} placeholder="" onChange={(v) => setField({ eventFilter: v })} />);
+      fields.push(<SelectField key="orderMode" label="Row order" value={String(cfg.orderMode || 'lane')} options={[['lane','Lane order (the grid spectators read)'],['place','Results order (sorted by finish place)']]} onChange={(v) => setField({ orderMode: v })} />);
+      fields.push(<NumField key="laneCount" id="slg-laneCount" label="Number of lanes" value={typeof cfg.laneCount === 'number' ? cfg.laneCount : 8} onChange={(v) => setField({ laneCount: v })} min={1} max={12} step={1} />);
+      fields.push(<ColorField key="headerColor" label="Header text color" value={cfg.headerColor || '#fbbf24'} onChange={(v) => setField({ headerColor: v })} />);
+      fields.push(<ColorField key="textColor" label="Swimmer name color" value={cfg.textColor || '#ffffff'} onChange={(v) => setField({ textColor: v })} />);
+      fields.push(<ColorField key="laneColColor" label="Lane number chip color" value={cfg.laneColColor || '#1e3a8a'} onChange={(v) => setField({ laneColColor: v })} />);
+      fields.push(<ColorField key="homeColor" label="Home team color bar" value={cfg.homeColor || '#1e3a8a'} onChange={(v) => setField({ homeColor: v })} />);
+      fields.push(<ColorField key="awayColor" label="Away team color bar" value={cfg.awayColor || '#b91c1c'} onChange={(v) => setField({ awayColor: v })} />);
+      fields.push(<ColorField key="panelColor" label="Row / panel background" value={cfg.panelColor || '#0c1830'} onChange={(v) => setField({ panelColor: v })} allowTransparent />);
+      fields.push(<ColorField key="bgColor" label="Scene background" value={cfg.bgColor || '#050b16'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+      break;
+    }
+    case 'DIVE_LEADERBOARD': {
+      fields.push(<TextField key="headerText" label="Header text (blank = auto from the live event)" value={cfg.headerText || ''} placeholder="GIRLS 1M SPRINGBOARD — FINAL" onChange={(v) => setField({ headerText: v })} />);
+      fields.push(<TextField key="eventFilter" label="Pin to event (exact name; blank = auto-pick current round)" value={cfg.eventFilter || ''} placeholder="" onChange={(v) => setField({ eventFilter: v })} />);
+      fields.push(<NumField key="divesInList" id="dl-divesInList" label="Dives in the list (0 = hide the count)" value={typeof cfg.divesInList === 'number' ? cfg.divesInList : 6} onChange={(v) => setField({ divesInList: v })} min={0} max={20} step={1} />);
+      fields.push(<ColorField key="headerColor" label="Header text color" value={cfg.headerColor || '#fbbf24'} onChange={(v) => setField({ headerColor: v })} />);
+      fields.push(<ColorField key="textColor" label="Diver name color" value={cfg.textColor || '#ffffff'} onChange={(v) => setField({ textColor: v })} />);
+      fields.push(<ColorField key="accentColor" label="Accent color (header border, leader highlight)" value={cfg.accentColor || '#a78bfa'} onChange={(v) => setField({ accentColor: v })} />);
+      fields.push(<ColorField key="homeColor" label="Home team color bar" value={cfg.homeColor || '#1e3a8a'} onChange={(v) => setField({ homeColor: v })} />);
+      fields.push(<ColorField key="awayColor" label="Away team color bar" value={cfg.awayColor || '#b91c1c'} onChange={(v) => setField({ awayColor: v })} />);
+      fields.push(<ColorField key="panelColor" label="Row / panel background" value={cfg.panelColor || '#160f28'} onChange={(v) => setField({ panelColor: v })} allowTransparent />);
+      fields.push(<ColorField key="bgColor" label="Scene background" value={cfg.bgColor || '#0a0714'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+      break;
+    }
     case 'FITNESS_AD_BANNER': {
       // Rotating gym promo creative. Each creative is { headline, sub,
       // ctaText, ctaUrl?, durationMs? }; we render a small array editor.

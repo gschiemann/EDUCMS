@@ -196,7 +196,9 @@ export function verticalForWidgetType(wt: string): string | null {
   if (wt === 'HEALTHCARE') return 'HEALTHCARE';
   if (wt === 'HOSPITALITY') return 'HOSPITALITY';
   if (wt === 'CORPORATE') return 'CORPORATE';
-  if (/^(SCOREBOARD|SCORE_|GAME_)/.test(wt)) return 'SPORTS';
+  // SWIM_ / DIVE_ (2026-07-01 swim/dive split flagship widgets) join the
+  // SPORTS-exclusive prefix set alongside SCOREBOARD/SCORE_/GAME_.
+  if (/^(SCOREBOARD|SCORE_|GAME_|SWIM_|DIVE_)/.test(wt)) return 'SPORTS';
   if (/^(HS_|MS_|BULLETIN_|SCRAPBOOK_|STORYBOOK_)/.test(wt)) return 'K12';
   if (/^ANIMATED_(WELCOME|CAFETERIA|BELL|BUS|HALLWAY|MAIN_ENTRANCE|MORNING_NEWS|ACHIEVEMENT)/.test(wt)) return 'K12';
   return null;

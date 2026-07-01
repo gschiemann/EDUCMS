@@ -118,6 +118,9 @@ const STAT_LABELS: Record<string, string> = {
   BB: 'Balance Beam',
   FX: 'Floor',
   RND: 'Round',
+  // Diving (2026-07-01 split from swimming_diving).
+  SCORE: 'Dive Score',
+  DD: 'Degree of Difficulty',
 };
 
 function labelFor(key: string): string {
@@ -149,7 +152,14 @@ const POTG_WEIGHTS: Record<string, Record<string, number>> = {
   water_polo: { G: 5, A: 3, ST: 1.5 },
   pickleball: { W: 4, PTS: 1 },
   track_and_field: { PTS: 2, PR: 3 },
+  // DEPRECATED — see the SWIMMING_DIVING const in @cms/api-types. Kept for
+  // pre-split games; `swimming` / `diving` below are the current sports.
   swimming_diving: { PTS: 2, PR: 3 },
+  swimming: { PTS: 2, PR: 3 },
+  // SCORE (a rate stat, not counting) is diving's marquee number — give it
+  // an explicit weight so it isn't silently zeroed by the counting-only
+  // DEFAULT_POTG_WEIGHT fallback.
+  diving: { PTS: 2, SCORE: 3 },
   cross_country: { PR: 3 },
   gymnastics: { PTS: 3, VT: 1, UB: 1, BB: 1, FX: 1 },
   golf: { HOLE: 2, W: 4 },

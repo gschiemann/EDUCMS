@@ -58,6 +58,10 @@ import { AnimatedWelcomePortraitWidget } from './AnimatedWelcomePortraitWidget';
 // render on /board /ribbon /scorebug; in the builder canvas (no
 // provider) they render the config's `placeholder` instead.
 import { ScoreHomeWidget, ScoreAwayWidget, GameClockWidget, GameSegmentWidget, GameStatWidget } from './sports/SportWidgets';
+// 2026-07-01 — swim/dive sport split flagship widgets. SWIM_LANE_GRID is
+// the lane/heat/time board; DIVE_LEADERBOARD is the judged running-total
+// leaderboard (diving has NO lanes/clock/splits — a different sport).
+import { SwimLaneGridWidget, DiveLeaderboardWidget } from './sports/SwimDiveWidgets';
 // ── Fitness vertical (Phase 1) — these are the first widgets for a
 // non-EDU vertical. Kept in a dedicated /fitness subdir so the EDU
 // import list up top stays readable + so we can fan these into
@@ -512,6 +516,8 @@ export function WidgetPreview({ widgetType, config, width, height, live, freeze,
     case 'GAME_CLOCK':    return <GameClockWidget config={cfg} />;
     case 'GAME_SEGMENT':  return <GameSegmentWidget config={cfg} />;
     case 'GAME_STAT':     return <GameStatWidget config={cfg} />;
+    case 'SWIM_LANE_GRID':    return <SwimLaneGridWidget config={cfg} />;
+    case 'DIVE_LEADERBOARD':  return <DiveLeaderboardWidget config={cfg} />;
     case 'SCHEDULE_GRID': return <ScheduleGridWidget config={cfg} />;
     case 'ATTENDANCE':   return <AttendanceWidget config={cfg} />;
     case 'BIRTHDAYS':    return cfg.theme === 'rainbow-animated' ? <RainbowAnimatedBirthdays config={cfg} /> : <BirthdaysWidget config={cfg} />;

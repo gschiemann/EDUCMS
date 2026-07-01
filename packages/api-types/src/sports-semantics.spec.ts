@@ -30,9 +30,14 @@ import {
 } from './sports';
 
 describe('STAT_SEMANTICS coverage', () => {
-  it('has exactly one semantic row for every PLAYER_STATS key, all 18 sports', () => {
+  // 2026-07-01 — swimming_diving split into `swimming` + `diving` (separate
+  // widget sets). The legacy combined key stays in PLAYER_STATS/
+  // STAT_SEMANTICS (back-compat for pre-split games), so the count grew
+  // from 18 sports to 20 (18 + swimming + diving; swimming_diving was
+  // already one of the original 18 and is NOT removed).
+  it('has exactly one semantic row for every PLAYER_STATS key, all 20 sports', () => {
     const sports = Object.keys(PLAYER_STATS);
-    expect(sports.length).toBe(18); // guard: don't silently drop a sport
+    expect(sports.length).toBe(20); // guard: don't silently drop a sport
 
     for (const sport of sports) {
       const keys = PLAYER_STATS[sport];

@@ -1203,10 +1203,13 @@ function RunMode({
   // Sports whose live tray carries a per-player counter / one-tap macro.
   const isBasketball      = def.key === 'basketball';
   const isWaterPolo       = def.key === 'water_polo';
-  // The judged per-apparatus / per-routine sports — these get an
-  // event = apparatus / round variant of the meet results grid where the
-  // "mark" is a decimal judged score (Vault 9.850, Routine 285.5).
-  const isJudgedResults   = def.key === 'gymnastics' || def.key === 'competitive_cheer';
+  // The judged per-apparatus / per-routine / per-dive sports — these get
+  // an event = apparatus / round / dive variant of the meet results grid
+  // where the "mark" is a decimal judged score (Vault 9.850, Routine
+  // 285.5, Dive 245.60). Diving joined 2026-07-01 (split out of the
+  // combined swimming_diving key — it's judged, not timed, so it belongs
+  // here, not with LEADERBOARD-only swim/track).
+  const isJudgedResults   = def.key === 'gymnastics' || def.key === 'competitive_cheer' || def.key === 'diving';
   // LEADERBOARD sports (track / swim / cross-country / golf) + the judged
   // sports all use the meet-results grid (finish order or apparatus scores).
   const showResultsGrid   = (def.mode === 'LEADERBOARD' || isJudgedResults) && view !== 'pa';
@@ -2410,7 +2413,9 @@ function RunInteractiveScoreboard({
 // The keys this surfaced for the first time, per sport:
 //   competitive_cheer  → Division (text)
 //   track_and_field    → Current Event (text)
-//   swimming_diving    → Current Event (text)
+//   swimming_diving    → Current Event (text) — DEPRECATED, pre-split games
+//   swimming           → Current Event (text), Heat (text), Course (text)
+//   diving             → Current Diver / Dive Code / DD / Round (text)
 //   cross_country      → Lead Runner (text), Finishers (number)
 //   gymnastics         → Current Apparatus (text)
 //   golf               → Current Hole (number)
@@ -5334,6 +5339,9 @@ type ResultEvent = { event: string; order?: number; entries: ResultEntry[] };
 const APPARATUS_PRESETS: Record<string, string[]> = {
   gymnastics: ['Vault', 'Bars', 'Beam', 'Floor', 'All-Around'],
   competitive_cheer: ['Round 1', 'Round 2', 'Finals', 'Game Day', 'Stunt'],
+  // Diving (2026-07-01 split) — judged rounds, not apparatus, but the same
+  // "pick a preset event name" UX applies.
+  diving: ['Prelims', 'Semifinals', 'Finals', '1m Springboard', '3m Springboard', 'Platform'],
 };
 
 function MeetResultsSection({
@@ -5371,10 +5379,15 @@ function MeetResultsSection({
   const [newEvent, setNewEvent] = useState('');
   const markLabel = judged ? 'Score' : 'Mark';
   const markPlaceholder = judged
-    ? def.key === 'gymnastics' ? '9.850' : '285.5'
-    : def.key === 'golf' ? '72 (+1)' : def.key === 'swimming_diving' ? '1:52.31' : '11.42';
-  const eventNoun = judged ? (def.key === 'gymnastics' ? 'apparatus' : 'round') : 'event';
-  const lanesShown = def.key === 'swimming_diving';
+    ? def.key === 'gymnastics' ? '9.850' : def.key === 'diving' ? '245.60' : '285.5'
+    // DEPRECATED swimming_diving key kept for pre-split games — same time
+    // placeholder as its successor `swimming`.
+    : def.key === 'golf' ? '72 (+1)' : (def.key === 'swimming_diving' || def.key === 'swimming') ? '1:52.31' : '11.42';
+  const eventNoun = judged ? (def.key === 'gymnastics' ? 'apparatus' : def.key === 'diving' ? 'round' : 'round') : 'event';
+  // Lanes are a SWIMMING concept (heat/lane grid) — diving has no lanes
+  // (one diver at a time off a board/platform), so it's excluded even
+  // though it shares the judged-results grid with gymnastics/cheer.
+  const lanesShown = def.key === 'swimming_diving' || def.key === 'swimming';
   const presets = APPARATUS_PRESETS[def.key] || [];
 
   const addEvent = (name: string) => {

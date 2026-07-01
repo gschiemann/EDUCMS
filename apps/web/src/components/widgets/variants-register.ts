@@ -966,6 +966,9 @@ import {
 // primitive layout. This is a faithful BoardScene reproduction that
 // reads live game state from the GameStateProvider.
 import { MainScoreboardWidget } from './sports/MainScoreboardWidget';
+// 2026-07-01 — swim/dive sport split flagship widgets (see file header
+// of SwimDiveWidgets.tsx for the full swimming-vs-diving rationale).
+import { SwimLaneGridWidget, DiveLeaderboardWidget } from './sports/SwimDiveWidgets';
 // 2026-05-26 — CTS-fed ribbon scoreboard. Live game state flows from
 // the CtsBridge (Beelink mini PC reading the CTS console via Web
 // Serial) → API → signed WS → window CustomEvent → this widget.
@@ -1277,6 +1280,35 @@ registerVariant({
     label: 'Down',
     placeholder: '2',
   },
+});
+
+// 2026-07-01 — swim/dive sport split flagship widgets (operator: "lanes
+// and shit that we need to show where each swimmer is" + "[diving is]
+// totally different, SEPARATE it"). Each is its own top-level widgetType
+// (not a SCOREBOARD variant) so it gets its own palette tile, matching
+// the GAME_CLOCK / GAME_SEGMENT pattern above. `vertical: 'SPORTS'` scopes
+// them to the Sports Venue palette (verticalForWidgetType's regex only
+// covers SCOREBOARD|SCORE_|GAME_ prefixes, so these need the explicit tag).
+registerVariant({
+  id: 'swim-lane-grid',
+  widgetType: 'SWIM_LANE_GRID',
+  name: 'Swim Lane Grid',
+  description: 'Live heat board — one row per lane: lane #, swimmer/team, time, place. Toggle lane order vs. results order. Bind a meet; resize for any LED.',
+  category: 'SPORTS',
+  render: SwimLaneGridWidget as any,
+  vertical: 'SPORTS',
+  defaultConfig: { orderMode: 'lane', laneCount: 8 },
+});
+
+registerVariant({
+  id: 'dive-leaderboard',
+  widgetType: 'DIVE_LEADERBOARD',
+  name: 'Dive Leaderboard',
+  description: 'Judged running-total leaderboard for diving — place, diver/team, total score. No lanes/clock/splits (diving is judged, not timed). Bind a meet; resize for any LED.',
+  category: 'SPORTS',
+  render: DiveLeaderboardWidget as any,
+  vertical: 'SPORTS',
+  defaultConfig: {},
 });
 
 // ════════════════════════════════════════════════════════════════════
