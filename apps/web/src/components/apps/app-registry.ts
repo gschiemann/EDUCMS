@@ -28,6 +28,7 @@ import {
   toGoogleSheetsEmbedUrl,
   toCanvaEmbedUrl,
   toGoogleMapsEmbedUrl,
+  toGoogleCalendarEmbedUrl,
   extractIframeSrc,
   ensureHttps,
 } from './url-transforms';
@@ -41,7 +42,7 @@ export const FRICTION_TIER_LABEL: Record<FrictionTier, string> = {
   aggregator: 'Powered by an aggregator',
 };
 
-export type AppFieldType = 'text' | 'url' | 'textarea' | 'select' | 'checkbox' | 'number';
+export type AppFieldType = 'text' | 'url' | 'textarea' | 'select' | 'checkbox' | 'number' | 'date';
 
 export interface AppFieldSchema {
   key: string;
@@ -53,6 +54,15 @@ export interface AppFieldSchema {
   /** For type:'select' */
   options?: Array<{ value: string; label: string }>;
   defaultValue?: string | number | boolean;
+}
+
+/** Percent-of-canvas size hint for a freshly-added zone (world-class build,
+ *  smart-placement workstream). Purely a default — the operator can always
+ *  resize after. Omitted apps fall back to a widgetType-keyed default in
+ *  useBuilderStore's addZone. */
+export interface AppDefaultSize {
+  w: number;
+  h: number;
 }
 
 export interface AppBuildResult {
@@ -68,8 +78,21 @@ export interface AppDefinition {
   category: AppCategory;
   frictionTier: FrictionTier;
   blurb: string;
-  /** Longer copy shown in the config-form header — sets expectations (publish-to-web warning, login requirement, etc). */
+  /** Longer copy shown in the config-form header — sets expectations (publish-to-web warning, login requirement, etc). Prefer `setupSteps` for anything with more than one step; kept for the rare single-line note. */
   setupNote?: string;
+  /** Ordered numbered checklist rendered instead of `setupNote`'s prose blob
+   *  — for the publish-to-web apps (Slides/Sheets/Canva/PowerPoint) where the
+   *  hard part is a multi-step dance in a THIRD-PARTY app. Each string is one
+   *  step, written in plain operator language ("Click Share, then..."). */
+  setupSteps?: string[];
+  /** Optional deep-link to open the third-party app the operator needs
+   *  (e.g. slides.google.com) — rendered as a small "Open ↗" button next to
+   *  the setup steps. */
+  helpUrl?: string;
+  /** Shown as its own styled line (not buried in setupNote prose) for apps
+   *  that require "Publish to web" / "Anyone with the link" — a real privacy
+   *  consideration, not just a mechanical step. */
+  publicExposureWarning?: string;
   configSchema: AppFieldSchema[];
   /** Pure function: operator's form values -> a standard zone config. Must not throw — return a safe empty-ish config on bad input, the form validates required fields before allowing confirm. */
   build: (values: Record<string, string>) => AppBuildResult;
@@ -77,6 +100,10 @@ export interface AppDefinition {
   comingSoon?: boolean;
   /** Taurus/Chromium-83 LED note. Every app rides an existing widget so none of these need new player code, but some upstream iframes (Twitch, heavy JS embeds) are known to be flaky on old WebViews. */
   taurusNote?: string;
+  /** Percent-of-canvas size hint applied when this app lands a fresh zone
+   *  (see AppDefaultSize doc comment). Falls back to a widgetType-keyed
+   *  default in useBuilderStore.addZone when omitted. */
+  defaultSize?: AppDefaultSize;
 }
 
 export type AppCategory =
@@ -143,6 +170,7 @@ export const APP_REGISTRY: AppDefinition[] = [
     category: 'video',
     frictionTier: 'instant',
     blurb: 'Play a video, playlist, or channel live stream. Free official embed.',
+    defaultSize: { w: 60, h: 45 },
     configSchema: [
       { key: 'url', label: 'YouTube link', type: 'url', placeholder: 'https://www.youtube.com/watch?v=... or a channel /live URL', required: true },
       { key: 'muted', label: 'Muted (recommended for signage)', type: 'checkbox', defaultValue: true },
@@ -165,6 +193,7 @@ export const APP_REGISTRY: AppDefinition[] = [
     category: 'video',
     frictionTier: 'instant',
     blurb: 'Play a Vimeo video. Free official embed.',
+    defaultSize: { w: 60, h: 45 },
     configSchema: [
       { key: 'url', label: 'Vimeo link', type: 'url', placeholder: 'https://vimeo.com/123456789', required: true },
       { key: 'muted', label: 'Muted (recommended for signage)', type: 'checkbox', defaultValue: true },
@@ -187,8 +216,9 @@ export const APP_REGISTRY: AppDefinition[] = [
     category: 'video',
     frictionTier: 'instant',
     blurb: 'Embed a live Twitch channel. Free official player.',
-    setupNote: 'Twitch’s embed needs the exact domain it runs on (the "parent" param) — the widget fills this in automatically from the current page, so it works in both the builder preview and on the live screen.',
-    taurusNote: 'Twitch’s embed is JS-heavy; verify on the target LED controller before relying on it for a permanent install.',
+    setupNote: 'Just enter your channel name below — we automatically set everything else up so it works in both the preview here and on your live screen.',
+    taurusNote: 'This may run heavy on older LED wall controllers — worth double-checking on your actual screen before a permanent install.',
+    defaultSize: { w: 60, h: 45 },
     configSchema: [
       { key: 'channel', label: 'Twitch channel', type: 'text', placeholder: 'twitch.tv/yourchannel or just yourchannel', required: true },
       { key: 'muted', label: 'Muted (recommended for signage)', type: 'checkbox', defaultValue: true },
@@ -213,9 +243,16 @@ export const APP_REGISTRY: AppDefinition[] = [
     category: 'docs',
     frictionTier: 'instant',
     blurb: 'Auto-advancing slideshow from a published Google Slides deck. The #1 signage app.',
-    setupNote: 'In Slides: File → Share → Publish to web, then paste the link it gives you (or your normal edit link — we’ll convert it). Publishing makes the deck viewable by anyone with the embed link.',
+    setupSteps: [
+      'In your Slides deck, click File → Share → Publish to web.',
+      'Click Publish, then copy the link it gives you.',
+      'Paste that link below (or your normal Slides link — we’ll convert it).',
+    ],
+    helpUrl: 'https://slides.google.com',
+    publicExposureWarning: 'Heads up — publishing makes this deck viewable by anyone with the link, not just your screens.',
+    defaultSize: { w: 60, h: 55 },
     configSchema: [
-      { key: 'url', label: 'Google Slides link', type: 'url', placeholder: 'https://docs.google.com/presentation/d/.../edit', required: true },
+      { key: 'url', label: 'Your Google Slides link', type: 'url', placeholder: 'https://docs.google.com/presentation/d/.../edit', required: true },
       { key: 'delaySeconds', label: 'Seconds per slide', type: 'number', defaultValue: 5, placeholder: '5' },
       { key: 'loop', label: 'Loop the deck', type: 'checkbox', defaultValue: true },
     ],
@@ -234,9 +271,15 @@ export const APP_REGISTRY: AppDefinition[] = [
     category: 'docs',
     frictionTier: 'instant',
     blurb: 'Embed a PowerPoint deck hosted on OneDrive/SharePoint via Office for the web.',
-    setupNote: 'In PowerPoint for the web: File → Share → Embed, then paste the generated link (or the whole <iframe> snippet — we’ll pull the URL out of it).',
+    setupSteps: [
+      'Open your deck in PowerPoint for the web.',
+      'Click File → Share → Embed.',
+      'Copy the link it gives you (or the whole box of code — we’ll pull the link out of it) and paste it below.',
+    ],
+    publicExposureWarning: 'Heads up — embedding makes this deck viewable by anyone with the link, not just your screens.',
+    defaultSize: { w: 60, h: 55 },
     configSchema: [
-      { key: 'url', label: 'Office embed link', type: 'url', placeholder: 'https://onedrive.live.com/embed?... or a full <iframe> snippet', required: true },
+      { key: 'url', label: 'Your PowerPoint share link', type: 'url', placeholder: 'Paste the link (or the whole embed snippet) from PowerPoint’s Share button', required: true },
     ],
     build: (v) => ({
       widgetType: 'WEBPAGE',
@@ -250,9 +293,16 @@ export const APP_REGISTRY: AppDefinition[] = [
     category: 'docs',
     frictionTier: 'instant',
     blurb: 'Embed a Canva design that auto-updates whenever you edit it in Canva.',
-    setupNote: 'In Canva: Share → "Anyone with the link" set to view access, then paste the share link here.',
+    setupSteps: [
+      'Open your design in Canva.',
+      'Click Share, then turn on "Anyone with the link" (set to view).',
+      'Copy that link and paste it below.',
+    ],
+    helpUrl: 'https://www.canva.com',
+    publicExposureWarning: 'Heads up — sharing makes this design viewable by anyone with the link, not just your screens.',
+    defaultSize: { w: 60, h: 55 },
     configSchema: [
-      { key: 'url', label: 'Canva share link', type: 'url', placeholder: 'https://www.canva.com/design/.../view', required: true },
+      { key: 'url', label: 'Your Canva share link', type: 'url', placeholder: 'https://www.canva.com/design/.../view', required: true },
     ],
     build: (v) => ({
       widgetType: 'WEBPAGE',
@@ -266,9 +316,16 @@ export const APP_REGISTRY: AppDefinition[] = [
     category: 'data',
     frictionTier: 'instant',
     blurb: 'Show a live spreadsheet — great for a schedule, roster, or price list a non-technical staffer can edit.',
-    setupNote: 'In Sheets: File → Share → Publish to web, choose the sheet/tab, then paste the link (or your normal edit link — we’ll convert it).',
+    setupSteps: [
+      'In your spreadsheet, click File → Share → Publish to web.',
+      'Choose the sheet/tab you want to show, then click Publish.',
+      'Paste that link below (or your normal Sheets link — we’ll convert it).',
+    ],
+    helpUrl: 'https://sheets.google.com',
+    publicExposureWarning: 'Heads up — publishing makes this sheet viewable by anyone with the link, not just your screens.',
+    defaultSize: { w: 60, h: 55 },
     configSchema: [
-      { key: 'url', label: 'Google Sheets link', type: 'url', placeholder: 'https://docs.google.com/spreadsheets/d/.../edit', required: true },
+      { key: 'url', label: 'Your Google Sheets link', type: 'url', placeholder: 'https://docs.google.com/spreadsheets/d/.../edit', required: true },
     ],
     build: (v) => ({
       widgetType: 'WEBPAGE',
@@ -284,10 +341,11 @@ export const APP_REGISTRY: AppDefinition[] = [
     category: 'utility',
     frictionTier: 'instant',
     blurb: 'Show any website, live and interactive, on screen.',
-    setupNote: 'Works with almost any public site — the page becomes visible on every screen it’s added to. Don’t use this for anything with private/internal data.',
+    publicExposureWarning: 'Heads up — this page becomes visible on every screen it’s added to. Don’t use this for anything with private/internal data.',
+    defaultSize: { w: 60, h: 55 },
     configSchema: [
-      { key: 'url', label: 'Web page URL', type: 'url', placeholder: 'https://example.com', required: true },
-      { key: 'refreshMinutes', label: 'Auto-refresh every (minutes, 0 = never)', type: 'number', defaultValue: 0, placeholder: '0' },
+      { key: 'url', label: 'Web page link', type: 'url', placeholder: 'https://example.com', required: true },
+      { key: 'refreshMinutes', label: 'Refresh the page every (minutes, 0 = never)', type: 'number', defaultValue: 0, placeholder: '0' },
     ],
     build: (v) => ({
       widgetType: 'WEBPAGE',
@@ -304,6 +362,7 @@ export const APP_REGISTRY: AppDefinition[] = [
     category: 'utility',
     frictionTier: 'instant',
     blurb: 'Show a map — directions to your venue, a campus map pin, or a traffic view.',
+    defaultSize: { w: 45, h: 35 },
     configSchema: [
       { key: 'query', label: 'Address or place name', type: 'text', placeholder: '123 Main St, Springfield, or "Springfield High School"', required: true },
     ],
@@ -319,6 +378,7 @@ export const APP_REGISTRY: AppDefinition[] = [
     category: 'utility',
     frictionTier: 'instant',
     blurb: 'A real, scannable QR code — no external service, generated on-device.',
+    defaultSize: { w: 15, h: 15 },
     configSchema: [
       { key: 'text', label: 'Link or text to encode', type: 'text', placeholder: 'https://example.com', required: true },
     ],
@@ -340,8 +400,9 @@ export const APP_REGISTRY: AppDefinition[] = [
     category: 'utility',
     frictionTier: 'instant',
     blurb: 'A live clock — pick a timezone and 12/24-hour format.',
+    defaultSize: { w: 28, h: 22 },
     configSchema: [
-      { key: 'timezone', label: 'Timezone (blank = screen’s local time)', type: 'text', placeholder: 'America/Chicago' },
+      { key: 'timezone', label: 'Timezone (leave blank for the screen’s local time)', type: 'text', placeholder: 'America/Chicago' },
       { key: 'format', label: 'Time format', type: 'select', options: [{ value: '12h', label: '12-hour' }, { value: '24h', label: '24-hour' }], defaultValue: '12h' },
     ],
     build: (v) => ({
@@ -359,9 +420,10 @@ export const APP_REGISTRY: AppDefinition[] = [
     category: 'utility',
     frictionTier: 'instant',
     blurb: 'Count down to a date — a game, a break, an event, a deadline.',
+    defaultSize: { w: 28, h: 22 },
     configSchema: [
       { key: 'label', label: 'Label', type: 'text', placeholder: 'Days Until Winter Break', defaultValue: 'Days Remaining' },
-      { key: 'targetDate', label: 'Target date', type: 'text', placeholder: 'YYYY-MM-DD', required: true },
+      { key: 'targetDate', label: 'Count down to', type: 'date', required: true },
     ],
     build: (v) => ({
       widgetType: 'COUNTDOWN',
@@ -380,8 +442,9 @@ export const APP_REGISTRY: AppDefinition[] = [
     category: 'weather',
     frictionTier: 'instant',
     blurb: 'Live current-conditions weather — free, no API key (Open-Meteo).',
+    defaultSize: { w: 28, h: 22 },
     configSchema: [
-      { key: 'location', label: 'City, ZIP code, or "lat,lng"', type: 'text', placeholder: 'Springfield, IL or 62704', required: true },
+      { key: 'location', label: 'City or ZIP code', type: 'text', placeholder: 'Springfield, IL or 62704', help: 'You can also paste exact coordinates as "lat,lng" if you have them.', required: true },
       { key: 'units', label: 'Units', type: 'select', options: [{ value: 'imperial', label: 'Fahrenheit' }, { value: 'metric', label: 'Celsius' }], defaultValue: 'imperial' },
     ],
     build: (v) => ({
@@ -400,24 +463,33 @@ export const APP_REGISTRY: AppDefinition[] = [
     icon: 'Rss',
     category: 'news',
     frictionTier: 'instant',
-    blurb: 'A scrolling headline feed from any public RSS/Atom feed.',
-    // TODO(lead): RSSWidget (apps/web/src/components/widgets/WidgetRenderer.tsx
-    // ~line 3998) currently renders 5 HARDCODED placeholder headlines — it
-    // does not fetch config.feedUrl or any real feed. This app wires the
-    // config field through correctly (RSS_FEED zone + feedUrl), so the
-    // MOMENT the widget is upgraded to actually fetch+parse, every board
-    // built with this app starts showing real headlines with zero
-    // migration. Flagging here rather than silently shipping a "working"
-    // app that's actually a stub — see CLAUDE.md rule on honest friction
-    // tiers / no silently-broken tiles. Real implementation needs a
-    // backend XML-fetch+parse endpoint (SSRF-guarded, like /proxy/web) or
-    // a keyless RSS-to-JSON service; out of scope for this thin-wrapper
-    // pass per the task's "don't touch WidgetRenderer" constraint.
-    setupNote: 'Phase 1 note for the team: this app wires the feed URL into the zone config correctly, but the underlying News widget still needs its real fetch implementation — see TODO(lead) in app-registry.ts.',
+    blurb: 'A scrolling headline feed from any public RSS/Atom feed. Coming soon.',
+    // World-class build (2026-07-01) — HONESTY workstream: RSSWidget
+    // (apps/web/src/components/widgets/WidgetRenderer.tsx ~line 3998)
+    // renders 5 HARDCODED placeholder headlines and never fetches
+    // config.feedUrl. Shipping this as a clickable "Instant" tile is
+    // exactly the silent-break-tile anti-pattern CLAUDE.md's Standard
+    // Audit Surface and the App Library synthesis both call out — an
+    // operator would paste their real feed, see plausible fake headlines
+    // in preview, ship it, and their screen shows fiction forever.
+    // Retiered comingSoon:true (matches the honest pattern already used
+    // for facebook-page/instagram/social-wall/google-reviews below) until
+    // a real SSRF-guarded backend fetch+parse lands — see TODO(lead) note
+    // on the `build()` below for the wiring that's already correct and
+    // ready to light up the moment the widget gets its real fetch.
+    comingSoon: true,
     configSchema: [
-      { key: 'feedUrl', label: 'RSS/Atom feed URL', type: 'url', placeholder: 'https://example.com/feed.xml', required: true },
+      { key: 'feedUrl', label: 'Your news feed link (RSS/Atom)', type: 'url', placeholder: 'https://example.com/feed.xml', required: true },
       { key: 'maxItems', label: 'Headlines to show', type: 'number', defaultValue: 5, placeholder: '5' },
     ],
+    // TODO(lead): this wires the feed URL into the zone config correctly
+    // (RSS_FEED zone + feedUrl) — the MOMENT RSSWidget is upgraded to
+    // actually fetch+parse a real feed, flip comingSoon back to false/
+    // remove it and every board built with this app starts showing real
+    // headlines with zero migration. Needs a backend XML-fetch+parse
+    // endpoint (SSRF-guarded, like /proxy/web) or a keyless RSS-to-JSON
+    // service; out of scope for this pass per the "don't touch
+    // WidgetRenderer" constraint.
     build: (v) => ({
       widgetType: 'RSS_FEED',
       defaultConfig: {
@@ -434,29 +506,31 @@ export const APP_REGISTRY: AppDefinition[] = [
     icon: 'CalendarDays',
     category: 'calendar',
     frictionTier: 'instant',
-    blurb: 'Upcoming events from Google Calendar, Outlook, or any public iCal (.ics) feed.',
-    setupNote: 'Paste your calendar’s public/secret iCal address (Google Calendar: Settings → [your calendar] → "Secret address in iCal format"; Outlook: Calendar → Share → Publish a calendar → ICS link).',
-    configSchema: [
-      { key: 'title', label: 'Title', type: 'text', placeholder: 'Upcoming Events', defaultValue: 'Upcoming Events' },
-      { key: 'feedUrl', label: 'iCal (.ics) URL', type: 'url', placeholder: 'https://calendar.google.com/calendar/ical/.../basic.ics', required: true },
-      { key: 'maxEvents', label: 'Events to show', type: 'number', defaultValue: 5, placeholder: '5' },
+    blurb: 'Upcoming events from your Google Calendar, live on screen.',
+    // World-class build (2026-07-01) — HONESTY workstream. The CALENDAR
+    // widget only ever renders a manually-entered `cfg.events` list and
+    // never fetches an ICS feed (confirmed against WidgetRenderer.tsx) —
+    // shipping this as an "Instant" tile wired to a feedUrl field would be
+    // the same silent-break trap as News/RSS. Google Calendar's own public
+    // "Embed code" HTML view is real, live, and works TODAY: route this
+    // app through WEBPAGE (same widget/proxy path as every other Docs app)
+    // instead of the CALENDAR widget, so what the operator sees in preview
+    // is exactly what ships — genuinely working, not a costume.
+    setupSteps: [
+      'In Google Calendar, click the gear icon → Settings.',
+      'Under "Settings for my calendars," pick the calendar to show.',
+      'Scroll to "Integrate calendar" and copy the "Public URL" (or the Embed code — either works).',
+      'Paste that link below.',
     ],
-    // TODO(lead): same caveat as News/RSS — CalendarWidget renders
-    // cfg.events (a manually-entered list) and has a `feedUrl` config field
-    // already wired into PropertiesPanel (ListItemsEditor UI), but nothing
-    // in WidgetRenderer actually fetches/parses that ICS feed today. This
-    // app writes feedUrl correctly so it lights up the moment that gets
-    // built. A calendar with a real published HTML view (Google Calendar's
-    // "Embed code") could alternatively ride WEBPAGE today for a fully
-    // working v1 — left as the lead's call since it changes the visual
-    // (Google's own UI chrome) vs. our branded CALENDAR widget.
+    helpUrl: 'https://calendar.google.com',
+    publicExposureWarning: 'Heads up — this makes your calendar’s events viewable by anyone with the link, not just your screens.',
+    defaultSize: { w: 45, h: 55 },
+    configSchema: [
+      { key: 'url', label: 'Your Google Calendar link', type: 'url', placeholder: 'Paste your calendar’s Public URL or Embed link', required: true },
+    ],
     build: (v) => ({
-      widgetType: 'CALENDAR',
-      defaultConfig: {
-        title: str(v, 'title', 'Upcoming Events'),
-        feedUrl: str(v, 'feedUrl'),
-        maxEvents: num(v, 'maxEvents', 5),
-      },
+      widgetType: 'WEBPAGE',
+      defaultConfig: { url: toGoogleCalendarEmbedUrl(str(v, 'url')), staticMode: true },
     }),
   },
 
