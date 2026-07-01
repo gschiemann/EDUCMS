@@ -1615,6 +1615,72 @@ export function useConciergeImageReference() {
   });
 }
 
+// ─── App Library Concierge auto-fill (2026-07-01) ───────────────────
+//
+// NOT the same feature as the Signage Concierge chat above — this wires
+// the Integration Concierge's /integrations/discover + /describe endpoints
+// (apps/api/src/integrations/integrations.controller.ts, already live and
+// SSRF-safe/rate-limited) into the App Library picker so it can float
+// "we found your Instagram" suggestions instead of making the operator
+// hunt down their own URLs. See docs/research/2026-06-30-app-library/
+// 20-WORLDCLASS-BUILD-PLAN.md Tier 2 "Full Concierge 'Suggested for you' row".
+
+/** Mirrors apps/api/src/integrations/discovery.service.ts ProviderCandidate
+ *  (kept as a local shape here rather than importing from the API package —
+ *  the web app doesn't depend on apps/api types elsewhere in this file). */
+export interface ConciergeProviderCandidate {
+  id: string;
+  name: string;
+  category: string;
+  confidence: number;
+  blurb: string;
+  matchedSignals: string[];
+  status: 'AVAILABLE' | 'COMING_SOON';
+  connectHref: string | null;
+  comingSoonReason?: string;
+  /** The operator's own extracted link for this provider, when found —
+   *  what lets the App Library pre-fill a tile instead of just naming it. */
+  detectedValue?: string;
+}
+
+export interface ConciergeDiscoveryResult {
+  source: 'url' | 'description';
+  inputSummary: string;
+  candidates: ConciergeProviderCandidate[];
+  warnings: string[];
+  /** Provider-agnostic own-link map keyed by App Registry id where
+   *  possible (youtube / vimeo / twitch / instagram / facebook-page /
+   *  google-slides / google-sheets / calendar / news-rss) — see
+   *  concierge-map.ts for how the App Library resolves these to tiles. */
+  ownLinks: Record<string, string>;
+}
+
+/** POST the tenant's own website to /integrations/discover. Manually
+ *  triggered (not query-on-mount) via `.mutateAsync()` so the App Library
+ *  panel controls exactly when the (rate-limited, 20/hr) call fires —
+ *  once per panel-open at most, never per keystroke. */
+export function useDiscoverIntegrations() {
+  return useMutation<ConciergeDiscoveryResult, Error, { url: string }>({
+    mutationFn: (body) =>
+      apiFetch<ConciergeDiscoveryResult>('/integrations/discover', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+  });
+}
+
+/** POST a free-text business description to /integrations/describe — the
+ *  no-website-on-file fallback ("Tell us what you do"). */
+export function useDescribeBusiness() {
+  return useMutation<ConciergeDiscoveryResult, Error, { text: string }>({
+    mutationFn: (body) =>
+      apiFetch<ConciergeDiscoveryResult>('/integrations/describe', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+  });
+}
+
 // ─── Template scenes (Phase D2.5) ───────────────────────────────
 //
 // Wraps the /templates/:id/scenes CRUD endpoints. All four mutations
