@@ -25,6 +25,7 @@ import { WidgetErrorBoundary } from '@/components/widgets/WidgetErrorBoundary';
 import { isFlexGapSupported, applyFlexGapPolyfill } from '@/lib/flex-gap-polyfill';
 import { isCqUnitSupported, applyCqUnitPolyfill } from '@/lib/cq-unit-polyfill';
 import { resolveAssetUrl } from '@/lib/asset-cdn';
+import { AllAssetsFailedTracker } from '@/lib/all-assets-failed-tracker';
 import {
   registerOfflineCache,
   precachePlaylist,
@@ -634,6 +635,7 @@ function PlayerVideoSlide({
   isSoloPlaylist,
   onEnded,
   onError,
+  onPlaying,
   videoKey,
   muted,
 }: {
@@ -643,6 +645,10 @@ function PlayerVideoSlide({
   isSoloPlaylist: boolean;
   onEnded: () => void;
   onError: () => void;
+  /** 2026-07-01 — fires on the first real decoded frame. Lets the parent
+   *  clear its "every item has failed" tracker on genuine playback, not
+   *  just on mount (a video can mount fine and still fail to decode). */
+  onPlaying?: () => void;
   videoKey: string;
   /**
    * 2026-05-05 — per-item mute override. When false, the <video> element's
@@ -781,6 +787,7 @@ function PlayerVideoSlide({
       loop={isSoloPlaylist}
       onEnded={isSoloPlaylist ? undefined : onEnded}
       onError={onError}
+      onPlaying={onPlaying}
     >
       {isMov && (
         <>
@@ -1982,6 +1989,36 @@ function PlayerPage() {
   // hint so the operator isn't left poking a broken Exit button.
   const [playbackStopped, setPlaybackStopped] = useState(false);
   const [exitUnavailable, setExitUnavailable] = useState(false);
+  // 2026-07-01 — LAUNCH-SPRINT player deep pass, blank-screen class (b):
+  // "an asset URL 404s mid-playlist." A single broken item was already
+  // handled (onError → setCurrentIndex(prev => prev + 1) skips it), but if
+  // EVERY item in the live playlist fails to load (bulk Supabase outage, a
+  // bucket-migration that left stale signed URLs, an operator's whole
+  // playlist pointing at a since-deleted folder), the skip-forward logic
+  // had NO floor: currentIndex increments forever through the same N
+  // broken items, each iteration mounts an <img>/<video>/<iframe> that
+  // immediately errors again, and the screen shows nothing but the
+  // container's black background — indefinitely, with zero operator-
+  // facing signal. This is exactly the cardinal-sin blank state the
+  // launch-sprint player audit called out.
+  //
+  // Fix: track which item ids have errored in the CURRENT playlist. Once
+  // every distinct item has failed at least once (a full lap with no
+  // successful render), flip `allAssetsFailed` and render an honest
+  // "Content unavailable" card instead of continuing to flash black. A
+  // single successful load (image onLoad / video onPlaying / iframe
+  // onLoad) at any point clears the whole tracker — one good item is
+  // proof the outage has ended, not just that item. Resets automatically
+  // whenever the manifest delivers a different item set (see the
+  // `playlistItemsSig` effect below) so a republish always gets a clean
+  // slate rather than inheriting stale failure state.
+  const [allAssetsFailed, setAllAssetsFailed] = useState(false);
+  // Pure tracking logic lives in a small, independently unit-tested class
+  // (see all-assets-failed-tracker.test.ts) so the "every item has failed"
+  // detection doesn't need the full ~8000-line page component mounted to
+  // verify. One instance per page mount, held in a ref so it survives
+  // re-renders without itself triggering any.
+  const assetsFailedTrackerRef = useRef(new AllAssetsFailedTracker());
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   // 2026-04-29 — last-fired timestamp for the heartbeat-driven OTA
   // polling fallback. Debounces so we don't fire bridge.checkForUpdates
@@ -4491,6 +4528,40 @@ function PlayerPage() {
     slideStartedAtRef.current = Date.now();
   }, [currentIndex, playlistItemsSig]);
 
+  // Clear the all-broken-assets failure tracker whenever the manifest
+  // delivers a genuinely different item set (republish, edit, or a fresh
+  // playlist after the outage that caused the failures is fixed). A
+  // republish deserves a clean slate rather than instantly re-triggering
+  // "Content unavailable" off stale failure ids that no longer exist.
+  useEffect(() => {
+    assetsFailedTrackerRef.current.reset();
+    setAllAssetsFailed(false);
+  }, [playlistItemsSig]);
+
+  // While showing "Content Unavailable" (every item failed), the normal
+  // sorted.map() render is replaced by the fallback card, so nothing is
+  // mounted to naturally retry the failing URLs (an <img>/<video> that
+  // isn't in the DOM can't fire a fresh request). Without an explicit
+  // retry, a TRANSIENT outage (Supabase blip, CDN hiccup) would strand
+  // the kiosk on this card forever even after the origin recovers — a
+  // second silent-failure mode masquerading as a fix for the first one.
+  // Self-correcting retry: clear the flag every 30s so the next render
+  // remounts the current item and gives it a fresh chance. If it's still
+  // broken, markItemFailed immediately re-sets the flag (visually a
+  // no-op — the card doesn't flicker because both states render the same
+  // card); if it recovers, markItemSucceeded clears it and playback
+  // resumes automatically. 30s mirrors the emergency-poll / OTA-heartbeat
+  // order of magnitude elsewhere in this file — frequent enough to
+  // recover promptly, far too infrequent to thundering-herd the origin.
+  useEffect(() => {
+    if (!allAssetsFailed) return;
+    const t = setInterval(() => {
+      assetsFailedTrackerRef.current.reset();
+      setAllAssetsFailed(false);
+    }, 30_000);
+    return () => clearInterval(t);
+  }, [allAssetsFailed]);
+
   useEffect(() => {
     if (phase !== 'playing' || !playlist?.items?.length) return;
 
@@ -4990,6 +5061,28 @@ function PlayerPage() {
       if (currentMins < (sh * 60 + sm) || currentMins > (eh * 60 + em)) return false;
     }
     return true;
+  }, []);
+
+  // 2026-07-01 — all-assets-failed tracker (blank-screen class b). See the
+  // allAssetsFailed state declaration above for the full rationale. These
+  // two callbacks are the only mutation points: markItemFailed records one
+  // more broken item and — only once every DISTINCT item in the current
+  // playlist has failed at least once — flips the honest fallback card on.
+  // markItemSucceeded (called from any onLoad/onPlaying) is proof the
+  // outage (if there was one) is over, so it clears everything immediately
+  // rather than waiting for a full recovery lap. Defined here (before any
+  // early `return`) rather than down by the render logic that reads
+  // `currentItem` — Rules of Hooks forbids a hook call after a component's
+  // early returns have already executed on a given render.
+  const markItemFailed = useCallback((itemId: string | undefined) => {
+    if (!itemId || !sorted.length) return;
+    const allIds = sorted.map((s: any) => s.id as string).filter(Boolean);
+    const allFailed = assetsFailedTrackerRef.current.recordFailure(itemId, allIds);
+    if (allFailed) setAllAssetsFailed(true);
+  }, [sorted]);
+  const markItemSucceeded = useCallback(() => {
+    assetsFailedTrackerRef.current.recordSuccess();
+    setAllAssetsFailed(false);
   }, []);
 
   // Native Android URL overlay. For asset playlists containing URL
@@ -5497,8 +5590,9 @@ function PlayerPage() {
   // `connectivityToast` JSX (defined above the phase returns) replaces
   // it with a ref-loop-driven retry that never freezes.
 
-  // (sceneTick / idleResetTimerRef / sorted / isItemValid hooks were
-  // moved above the early returns to satisfy the Rules of Hooks.)
+  // (sceneTick / idleResetTimerRef / sorted / isItemValid /
+  // markItemFailed / markItemSucceeded hooks were moved above the early
+  // returns to satisfy the Rules of Hooks.)
   const currentItem = sorted.length && isItemValid(sorted[currentIndex % sorted.length]) ? sorted[currentIndex % sorted.length] : null;
   const isVideo = currentItem?.asset?.mimeType?.startsWith('video/');
   const fileUrl = currentItem?.asset?.fileUrl || '';
@@ -6187,7 +6281,7 @@ function PlayerPage() {
         }
       }}
     >
-      {currentItem && !playbackStopped ? (
+      {currentItem && !playbackStopped && !allAssetsFailed ? (
         <div
           className={`relative w-full h-full flex items-center justify-center ${isPlaylistInteractive ? '' : 'pointer-events-none'}`}
           style={{
@@ -6297,8 +6391,10 @@ function PlayerPage() {
                   onEnded={() => setCurrentIndex(prev => prev + 1)}
                   onError={() => {
                     console.warn('[Player] video error, skipping:', resUrl);
+                    markItemFailed(item.id);
                     setCurrentIndex(prev => prev + 1);
                   }}
+                  onPlaying={markItemSucceeded}
                 />
               );
             }
@@ -6375,9 +6471,11 @@ function PlayerPage() {
                       try { frame.contentWindow?.focus(); } catch { /* noop */ }
                     }
                   }).catch(() => { /* never block playback on injection */ });
+                  markItemSucceeded();
                 }}
                 onError={() => {
                   console.warn('[Player] iframe error, skipping:', iframeSrc);
+                  markItemFailed(item.id);
                   setCurrentIndex(prev => prev + 1);
                 }}
               />;
@@ -6404,8 +6502,10 @@ function PlayerPage() {
                   zIndex: isActive ? 10 : 0,
                   transition: trans === 'NONE' ? 'none' : 'opacity 1000ms ease-in-out',
                 }}
+                onLoad={markItemSucceeded}
                 onError={() => {
                   console.warn('[Player] image error, skipping:', resUrl);
+                  markItemFailed(item.id);
                   if (isActive) setCurrentIndex(prev => prev + 1);
                 }}
               />
@@ -6535,7 +6635,49 @@ function PlayerPage() {
                 Pre-pair splash (KioskSplash mode='pairing') still
                 separate — there's no good way to mash a 6-char code
                 into this layout and we want the code to be the hero. */}
-            {phase === 'connecting' ? (
+            {allAssetsFailed ? (
+              // 2026-07-01 — LAUNCH-SPRINT player deep pass, blank-screen
+              // class (b): every item in the live playlist has failed to
+              // load (bulk Supabase outage, stale signed URLs after a
+              // bucket migration, a whole playlist pointing at deleted
+              // assets). Rather than the screen silently flashing black
+              // forever while currentIndex races through the same broken
+              // items, show an honest, branded "content unavailable" card
+              // — the same visual language as every other splash state,
+              // never a raw error, never a blank frame. Auto-recovers the
+              // instant ANY item loads again (markItemSucceeded) or the
+              // manifest delivers a different item set — no operator
+              // action required, this is purely a "don't lie with black"
+              // fix, not a new failure mode.
+              <>
+                <div
+                  className="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-rose-100 to-rose-50 shadow-[inset_0_4px_20px_rgb(0,0,0,0.05)] flex items-center justify-center mb-6 ring-4 ring-white"
+                  style={{
+                    width: 'min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075)))',
+                    height: 'min(96px, max(48px, calc(var(--led-w, 1024px) * 0.075)))',
+                    borderRadius: 'min(32px, max(12px, calc(var(--led-w, 1024px) * 0.025)))',
+                    background: 'linear-gradient(135deg, #ffe4e6 0%, #fff1f2 100%)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    marginBottom: 'min(24px, max(8px, calc(var(--led-w, 1024px) * 0.018)))',
+                    boxShadow: 'inset 0 4px 20px rgba(0,0,0,0.05), 0 0 0 4px white',
+                  }}
+                >
+                  <AlertTriangle className="w-12 h-12 text-rose-500" style={{ width: 'min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04)))', height: 'min(48px, max(24px, calc(var(--led-w, 1024px) * 0.04)))', color: '#f43f5e' }} />
+                </div>
+                <h1
+                  className="text-4xl font-extrabold text-slate-800 tracking-tight"
+                  style={{ fontSize: 'min(36px, max(16px, calc(var(--led-w, 1024px) * 0.028)))', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.025em', margin: 0, textAlign: 'center', lineHeight: 1.15 }}
+                >
+                  Content Unavailable
+                </h1>
+                <p
+                  className="text-lg font-medium text-slate-500 mt-2 mb-10 text-center"
+                  style={{ fontSize: 'min(18px, max(10px, calc(var(--led-w, 1024px) * 0.014)))', fontWeight: 500, color: '#64748b', marginTop: '8px', marginBottom: 'min(40px, max(8px, calc(var(--led-w, 1024px) * 0.03)))', textAlign: 'center', lineHeight: 1.3 }}
+                >
+                  The scheduled content couldn&apos;t load. We&apos;ll keep retrying automatically — no action needed.
+                </p>
+              </>
+            ) : phase === 'connecting' ? (
               <>
                 <div
                   className="w-24 h-24 rounded-[2rem] bg-gradient-to-br from-indigo-100 to-indigo-50 shadow-[inset_0_4px_20px_rgb(0,0,0,0.05)] flex items-center justify-center mb-6 ring-4 ring-white"
