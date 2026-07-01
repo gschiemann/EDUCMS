@@ -22,6 +22,7 @@ COPY packages/api-types/package.json ./packages/api-types/package.json
 COPY packages/auth-core/package.json ./packages/auth-core/package.json
 COPY packages/ws-events/package.json ./packages/ws-events/package.json
 COPY packages/signage-design/package.json ./packages/signage-design/package.json
+COPY packages/scoreboard-cts/package.json ./packages/scoreboard-cts/package.json
 
 # Prisma schema must exist before `pnpm install` because the root
 # postinstall hook runs `prisma generate`. Without these files the
@@ -48,6 +49,11 @@ RUN cd packages/ws-events && pnpm run build
 # (ai.service.ts / art-director.ts). Must be built BEFORE the API or tsc
 # fails with TS2307 "Cannot find module '@cms/signage-design'".
 RUN cd packages/signage-design && pnpm run build
+# @cms/scoreboard-cts — CTS timing/serial parser the API imports (sports
+# swim-timing-feed.ts / sports.service.ts). Must be built BEFORE the API or
+# tsc fails with TS2305 "no exported member 'SwimTimingSnapshot'" (the exact
+# red-Docker-build that shipped 2026-07-01 when this line was missing).
+RUN cd packages/scoreboard-cts && pnpm run build
 
 # Copy API source
 COPY apps/api/ ./apps/api/
