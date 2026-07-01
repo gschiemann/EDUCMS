@@ -19,14 +19,27 @@
  * of a fake mockup, shows a numbered setup checklist instead of one prose
  * paragraph, and threads a smart `defaultSize` into addZone so an app
  * doesn't land as the same generic 40x30 box every time.
+ *
+ * Tier 2 (2026-07-01, see 20-WORLDCLASS-BUILD-PLAN.md Tier 2 "Finished-
+ * board-per-app"): below the plain "Add to canvas" fast path, this form now
+ * offers (a) 2-3 curated `app.starterLayouts` thumbnails that drop a WHOLE
+ * multi-zone, on-brand board instead of one bare zone, and (b) a "✨ Design
+ * one with AI" button that calls the SAME AI Designer pipeline the
+ * Templates page's full-template generator uses (generate-designer/
+ * candidates) to author a bespoke board featuring this app's content, then
+ * adds the winning candidate as a single EXTERNAL_HTML zone. Both are
+ * pure additions to the existing addZone/updateZone confirm path — neither
+ * touches how "Add to canvas" already works.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ExternalLink, AlertTriangle, Loader2 } from 'lucide-react';
+import { ChevronLeft, ExternalLink, AlertTriangle, Loader2, Sparkles, LayoutTemplate } from 'lucide-react';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import { useBuilderStore } from '@/components/template-builder/useBuilderStore';
-import { useTenant } from '@/hooks/use-api';
-import type { AppDefinition, AppFieldSchema } from './app-registry';
+import { useTenant, useGenerateDesignerCandidates } from '@/hooks/use-api';
+import { useTenantCopy } from '@/hooks/use-tenant-copy';
+import { getAiStatusSource } from '@/components/ai/AiGenerateButton';
+import type { AppDefinition, AppFieldSchema, AppStarterLayout } from './app-registry';
 
 function defaultValues(app: AppDefinition, initialValues?: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
@@ -173,6 +186,79 @@ export function AppConfigForm({
     onDone();
   };
 
+  // ── Tier 2: Finished layouts (curated) ─────────────────────────────────
+  // Adds the WHOLE multi-zone composition in one click instead of a bare
+  // zone. Each zone in `layout.zones` either carries its own widgetType
+  // (the complementary title bar / clock / accent strip) or omits it to
+  // mean "this app's own widget here" — in which case it gets the app's
+  // live `built` config (so the operator's already-typed URL/location/etc.
+  // rides straight into the layout, exactly like plain "Add to canvas").
+  const applyStarterLayout = (layout: AppStarterLayout) => {
+    if (!canConfirm) { setTouched(true); return; }
+    let firstId: string | null = null;
+    for (const z of layout.zones) {
+      const widgetType = z.widgetType ?? built.widgetType;
+      const isAppsOwnZone = !z.widgetType || z.widgetType === built.widgetType;
+      const id = addZone(widgetType, undefined, { w: z.width, h: z.height });
+      updateZone(id, {
+        x: z.x,
+        y: z.y,
+        width: z.width,
+        height: z.height,
+        zIndex: z.zIndex ?? 1,
+        defaultConfig: isAppsOwnZone ? { ...built.defaultConfig, ...z.defaultConfig } : z.defaultConfig,
+      });
+      if (!firstId) firstId = id;
+    }
+    if (firstId) select(firstId);
+    onDone();
+  };
+
+  // ── Tier 2: "Design one with AI" ────────────────────────────────────────
+  // Reuses the EXISTING AI Designer pipeline (the same generate-designer/
+  // candidates endpoint the Templates page's full-template generator
+  // calls) — no new AI plumbing. Runs on the tenant's BYOK creative-tier
+  // key (never the platform Tier-1 key), so it degrades to a hidden button
+  // exactly like the sparkle button when no provider is configured.
+  const tenantCopy = useTenantCopy();
+  const screenWidth = useBuilderStore((s) => s.meta.screenWidth);
+  const screenHeight = useBuilderStore((s) => s.meta.screenHeight);
+  const [aiStatus, setAiStatus] = useState<'loading' | 'none' | 'available'>('loading');
+  useEffect(() => {
+    let alive = true;
+    getAiStatusSource().then((src) => { if (alive) setAiStatus(src === 'none' ? 'none' : 'available'); });
+    return () => { alive = false; };
+  }, []);
+  const generateDesigner = useGenerateDesignerCandidates();
+  const [aiDesignError, setAiDesignError] = useState<string | null>(null);
+  const handleDesignWithAi = async () => {
+    if (!canConfirm) { setTouched(true); return; }
+    setAiDesignError(null);
+    try {
+      const res = await generateDesigner.mutateAsync({
+        prompt: `A finished, on-brand signage board featuring ${app.name}: ${app.blurb}`,
+        screenWidth,
+        screenHeight,
+        vertical: (tenantCopy.vertical || 'venue').toLowerCase(),
+        count: 1,
+      });
+      const board = res?.candidates?.[0];
+      if (!board?.html) {
+        setAiDesignError('The AI returned no design. Try again in a moment.');
+        return;
+      }
+      const id = addZone('EXTERNAL_HTML', undefined, { w: 100, h: 100 });
+      updateZone(id, { x: 0, y: 0, width: 100, height: 100, zIndex: 1, defaultConfig: { html: board.html } });
+      select(id);
+      onDone();
+    } catch (e: unknown) {
+      const status = e && typeof e === 'object' && 'status' in e ? (e as { status?: number }).status : undefined;
+      if (status === 402) setAiDesignError('AI generation limit reached for now — try again later.');
+      else if (status === 403) setAiDesignError("Your role can't generate AI boards — ask an admin.");
+      else setAiDesignError('Could not reach the AI service. Try again.');
+    }
+  };
+
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
       {/* Header */}
@@ -218,6 +304,73 @@ export function AppConfigForm({
             )}
           </div>
         </div>
+
+        {/* Tier 2 — Finished layouts + "Design one with AI" (2026-07-01).
+            Never shown for comingSoon apps (nothing to add). The plain
+            "Add to canvas" footer button below stays the fast/default
+            path — this row is a richer alternative, not a required step. */}
+        {!app.comingSoon && (app.starterLayouts?.length || aiStatus === 'available') && (
+          <div className="p-3 border-b border-slate-100 space-y-2">
+            {app.starterLayouts && app.starterLayouts.length > 0 && (
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                  Finished layouts
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {app.starterLayouts.map((layout) => (
+                    <button
+                      key={layout.id}
+                      type="button"
+                      onClick={() => applyStarterLayout(layout)}
+                      disabled={!canConfirm}
+                      title={!canConfirm ? 'Fill in the required field above first' : `Add "${layout.name}"`}
+                      className={`group text-left rounded-lg border-2 overflow-hidden transition-colors ${
+                        canConfirm ? 'border-slate-200 hover:border-indigo-300 cursor-pointer' : 'border-slate-100 opacity-50 cursor-not-allowed'
+                      }`}
+                    >
+                      <StarterLayoutThumbnail layout={layout} />
+                      <div className="px-2 py-1.5 bg-white border-t border-slate-100 flex items-center gap-1">
+                        <LayoutTemplate className="w-3 h-3 text-slate-400 shrink-0" aria-hidden />
+                        <span className="text-[10px] font-semibold text-slate-600 truncate">{layout.name}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {aiStatus === 'available' && (
+              <div>
+                <button
+                  type="button"
+                  onClick={handleDesignWithAi}
+                  disabled={!canConfirm || generateDesigner.isPending}
+                  title={!canConfirm ? 'Fill in the required field above first' : 'Design a bespoke on-brand board with AI'}
+                  className={`w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-colors ${
+                    canConfirm && !generateDesigner.isPending
+                      ? 'bg-violet-50 text-violet-700 border-2 border-violet-200 hover:bg-violet-100 hover:border-violet-300'
+                      : 'bg-slate-50 text-slate-400 border-2 border-slate-100 cursor-not-allowed'
+                  }`}
+                >
+                  {generateDesigner.isPending ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
+                      Designing your board…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5" aria-hidden />
+                      Design one with AI
+                    </>
+                  )}
+                </button>
+                {aiDesignError && (
+                  <p className="mt-1.5 text-[10px] text-rose-500 font-semibold">{aiDesignError}</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="p-4 space-y-4">
           <p className="text-xs text-slate-500 leading-snug">{app.blurb}</p>
@@ -306,6 +459,40 @@ export function AppConfigForm({
           {canConfirm || !firstMissingLabel ? 'Add to canvas' : `Paste your ${firstMissingLabel.replace(/^Your\s+/i, '')} to continue`}
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * A cheap, static-CSS scaled mock-up of a starter layout's zone rects —
+ * NOT a live WidgetPreview per zone (that would mean rendering up to 3
+ * real widgets, incl. an iframe-based WEBPAGE/STREAMING preview, per
+ * thumbnail, per app, every time the config form opens — a mobile-perf
+ * cost with no payoff since the operator is choosing a LAYOUT, not
+ * previewing live content here). Each zone renders as a plain colored
+ * block sized/positioned from its percentages, giving an honest at-a-
+ * glance sense of the composition. Complementary zones (title bar, clock,
+ * accent strip) get a brand-tinted block; the app's own zone (the
+ * majority of the canvas) gets a neutral placeholder block.
+ */
+function StarterLayoutThumbnail({ layout }: { layout: AppStarterLayout }) {
+  return (
+    <div className="relative w-full bg-slate-100" style={{ aspectRatio: '16 / 9' }}>
+      {layout.zones.map((z, i) => {
+        const isComplementary = !!z.widgetType;
+        return (
+          <div
+            key={i}
+            className={`absolute rounded-[1px] ${isComplementary ? 'bg-[var(--brand-primary,#4f46e5)]/70' : 'bg-slate-300'}`}
+            style={{
+              left: `${z.x}%`,
+              top: `${z.y}%`,
+              width: `${z.width}%`,
+              height: `${z.height}%`,
+            }}
+          />
+        );
+      })}
     </div>
   );
 }

@@ -65,6 +65,45 @@ export interface AppDefaultSize {
   h: number;
 }
 
+/**
+ * One zone in a curated "finished layout" (Tier 2, 2026-07-01 — see
+ * docs/research/2026-06-30-app-library/20-WORLDCLASS-BUILD-PLAN.md Tier 2
+ * "Finished-board-per-app"). Coordinates are percent-of-canvas, same space
+ * as `TemplateZone` — AppConfigForm applies them verbatim via addZone +
+ * updateZone, so these are just ordinary zones once on the canvas (undo/
+ * redo, Properties panel, layers — all just work, same as any other zone).
+ *
+ * `{{url}}` inside a string value in `defaultConfig` is substituted with
+ * the app's OWN built config's primary url/text field at apply-time (see
+ * `applyStarterLayout` in AppConfigForm.tsx) so a layout can reference
+ * "whatever the operator just pasted" without every layout author having
+ * to know the exact build() shape for every app that might host it.
+ */
+export interface AppStarterLayoutZone {
+  /** Defaults to the app's own build().widgetType when omitted — set this
+   *  explicitly for the COMPLEMENTARY zones (title bar, clock, accent
+   *  strip) that aren't the app's own widget. */
+  widgetType?: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  zIndex?: number;
+  defaultConfig: Record<string, unknown>;
+}
+
+/** A named, finished multi-zone composition for one app — the app's own
+ *  widget PLUS complementary zones (branded title bar, clock, accent
+ *  strip), all sized/placed and using `var(--brand-primary)` /
+ *  `var(--brand-accent)` so they ride the tenant's brand kit. This is the
+ *  Tier-2 answer to "every competitor ships 100s of finished layouts; we
+ *  ship one bare zone" — see AppConfigForm's "Finished layouts" row. */
+export interface AppStarterLayout {
+  id: string;
+  name: string;
+  zones: AppStarterLayoutZone[];
+}
+
 export interface AppBuildResult {
   widgetType: string;
   defaultConfig: Record<string, unknown>;
@@ -104,6 +143,12 @@ export interface AppDefinition {
    *  (see AppDefaultSize doc comment). Falls back to a widgetType-keyed
    *  default in useBuilderStore.addZone when omitted. */
   defaultSize?: AppDefaultSize;
+  /** Curated finished-board compositions for this app (Tier 2 "finished
+   *  boards" — see AppStarterLayout doc comment). 2-3 per app, ordered
+   *  best-first. Omitted entirely for apps where a single zone genuinely
+   *  IS the whole board (QR code, Clock) — the plain "Add to canvas" stays
+   *  the fast path for everyone either way. */
+  starterLayouts?: AppStarterLayout[];
 }
 
 export type AppCategory =
@@ -148,6 +193,70 @@ function bool(values: Record<string, string>, key: string, fallback = false): bo
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// Starter-layout building blocks — Tier 2 "finished boards" (2026-07-01).
+// Small factories for the COMPLEMENTARY zones every layout below reuses
+// (a branded title bar, a corner clock, a thin accent strip) so each
+// layout definition stays a short, readable list of zones rather than
+// repeating the same TEXT/CLOCK config object bodies. Every color here
+// resolves through the tenant's brand kit (`var(--brand-primary)` /
+// `var(--brand-accent)`, with a safe static fallback) — Taurus-safe
+// (physical longhand positioning only, no `inset`).
+// ─────────────────────────────────────────────────────────────────────────
+
+/** A slim branded title bar along one edge — the zone `build()`s a plain
+ *  TEXT widget with the tenant's brand-primary as the background. */
+function titleBarZone(
+  text: string,
+  opts: { x: number; y: number; width: number; height: number; edge?: 'top' | 'bottom' },
+): AppStarterLayoutZone {
+  return {
+    widgetType: 'TEXT',
+    x: opts.x,
+    y: opts.y,
+    width: opts.width,
+    height: opts.height,
+    zIndex: 5,
+    defaultConfig: {
+      content: text,
+      fontSize: 32,
+      alignment: 'center',
+      bold: true,
+      color: 'var(--brand-primary-ink, #ffffff)',
+      bgColor: 'var(--brand-primary, #4f46e5)',
+    },
+  };
+}
+
+/** A thin brand-accent strip — pure decoration, no text. */
+function accentStripZone(opts: { x: number; y: number; width: number; height: number }): AppStarterLayoutZone {
+  return {
+    widgetType: 'TEXT',
+    x: opts.x,
+    y: opts.y,
+    width: opts.width,
+    height: opts.height,
+    zIndex: 4,
+    defaultConfig: {
+      content: '',
+      bgColor: 'var(--brand-accent, #f59e0b)',
+    },
+  };
+}
+
+/** A compact corner clock, on-brand ink color. */
+function cornerClockZone(opts: { x: number; y: number; width: number; height: number }): AppStarterLayoutZone {
+  return {
+    widgetType: 'CLOCK',
+    x: opts.x,
+    y: opts.y,
+    width: opts.width,
+    height: opts.height,
+    zIndex: 5,
+    defaultConfig: { format: '12h' },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // INSTANT apps — Phase 1 batch. Every one of these `build()`s a config for
 // a widgetType that WidgetRenderer.tsx already has a `case` for (verified
 // against the switch in apps/web/src/components/widgets/WidgetRenderer.tsx
@@ -185,6 +294,26 @@ export const APP_REGISTRY: AppDefinition[] = [
         fitMode: 'cover',
       },
     }),
+    starterLayouts: [
+      {
+        id: 'full-bleed-titled',
+        name: 'Full-bleed + branded title',
+        zones: [
+          { x: 0, y: 0, width: 100, height: 88, zIndex: 1, defaultConfig: {} },
+          titleBarZone('Now Playing', { x: 0, y: 88, width: 100, height: 12 }),
+        ],
+      },
+      {
+        id: 'lower-third-clock',
+        name: 'Video + clock rail',
+        zones: [
+          { x: 0, y: 0, width: 78, height: 100, zIndex: 1, defaultConfig: {} },
+          accentStripZone({ x: 78, y: 0, width: 1, height: 100 }),
+          cornerClockZone({ x: 80, y: 4, width: 18, height: 14 }),
+          titleBarZone('Live', { x: 80, y: 20, width: 18, height: 10 }),
+        ],
+      },
+    ],
   },
   {
     id: 'vimeo',
@@ -208,6 +337,26 @@ export const APP_REGISTRY: AppDefinition[] = [
         fitMode: 'cover',
       },
     }),
+    starterLayouts: [
+      {
+        id: 'full-bleed-titled',
+        name: 'Full-bleed + branded title',
+        zones: [
+          { x: 0, y: 0, width: 100, height: 88, zIndex: 1, defaultConfig: {} },
+          titleBarZone('Now Playing', { x: 0, y: 88, width: 100, height: 12 }),
+        ],
+      },
+      {
+        id: 'lower-third-clock',
+        name: 'Video + clock rail',
+        zones: [
+          { x: 0, y: 0, width: 78, height: 100, zIndex: 1, defaultConfig: {} },
+          accentStripZone({ x: 78, y: 0, width: 1, height: 100 }),
+          cornerClockZone({ x: 80, y: 4, width: 18, height: 14 }),
+          titleBarZone('Featured', { x: 80, y: 20, width: 18, height: 10 }),
+        ],
+      },
+    ],
   },
   {
     id: 'twitch',
@@ -263,6 +412,26 @@ export const APP_REGISTRY: AppDefinition[] = [
         staticMode: true, // publish-to-web embeds are plain iframes; skip the interactive JS pass-through
       },
     }),
+    starterLayouts: [
+      {
+        id: 'full-bleed-titled',
+        name: 'Full-bleed deck + branded title',
+        zones: [
+          { x: 0, y: 0, width: 100, height: 90, zIndex: 1, defaultConfig: {} },
+          titleBarZone('Today at a Glance', { x: 0, y: 90, width: 100, height: 10 }),
+        ],
+      },
+      {
+        id: 'deck-clock-weather-rail',
+        name: 'Deck + clock & weather rail',
+        zones: [
+          { x: 0, y: 0, width: 74, height: 100, zIndex: 1, defaultConfig: {} },
+          accentStripZone({ x: 74, y: 0, width: 1, height: 100 }),
+          cornerClockZone({ x: 76, y: 4, width: 22, height: 16 }),
+          { widgetType: 'WEATHER', x: 76, y: 22, width: 22, height: 20, zIndex: 5, defaultConfig: {} },
+        ],
+      },
+    ],
   },
   {
     id: 'powerpoint-onedrive',
@@ -331,6 +500,25 @@ export const APP_REGISTRY: AppDefinition[] = [
       widgetType: 'WEBPAGE',
       defaultConfig: { url: toGoogleSheetsEmbedUrl(str(v, 'url')), staticMode: true },
     }),
+    starterLayouts: [
+      {
+        id: 'full-bleed-titled',
+        name: 'Full-bleed sheet + branded title',
+        zones: [
+          titleBarZone('Today’s Schedule', { x: 0, y: 0, width: 100, height: 10 }),
+          { x: 0, y: 10, width: 100, height: 90, zIndex: 1, defaultConfig: {} },
+        ],
+      },
+      {
+        id: 'sheet-clock-corner',
+        name: 'Sheet + corner clock',
+        zones: [
+          { x: 0, y: 0, width: 82, height: 100, zIndex: 1, defaultConfig: {} },
+          accentStripZone({ x: 82, y: 0, width: 1, height: 100 }),
+          cornerClockZone({ x: 84, y: 4, width: 14, height: 12 }),
+        ],
+      },
+    ],
   },
 
   // ── UTILITY ────────────────────────────────────────────────────────
@@ -354,6 +542,25 @@ export const APP_REGISTRY: AppDefinition[] = [
         refreshIntervalMs: Math.max(0, num(v, 'refreshMinutes', 0)) * 60_000,
       },
     }),
+    starterLayouts: [
+      {
+        id: 'full-bleed-titled',
+        name: 'Full-bleed page + branded title',
+        zones: [
+          { x: 0, y: 0, width: 100, height: 90, zIndex: 1, defaultConfig: {} },
+          titleBarZone('On Screen', { x: 0, y: 90, width: 100, height: 10 }),
+        ],
+      },
+      {
+        id: 'page-clock-corner',
+        name: 'Page + corner clock',
+        zones: [
+          { x: 0, y: 0, width: 82, height: 100, zIndex: 1, defaultConfig: {} },
+          accentStripZone({ x: 82, y: 0, width: 1, height: 100 }),
+          cornerClockZone({ x: 84, y: 4, width: 14, height: 12 }),
+        ],
+      },
+    ],
   },
   {
     id: 'google-maps',
@@ -370,6 +577,25 @@ export const APP_REGISTRY: AppDefinition[] = [
       widgetType: 'WEBPAGE',
       defaultConfig: { url: toGoogleMapsEmbedUrl(str(v, 'query')), staticMode: true },
     }),
+    starterLayouts: [
+      {
+        id: 'map-titled',
+        name: 'Map + branded title',
+        zones: [
+          titleBarZone('Find Us', { x: 0, y: 0, width: 100, height: 12 }),
+          { x: 0, y: 12, width: 100, height: 88, zIndex: 1, defaultConfig: {} },
+        ],
+      },
+      {
+        id: 'map-clock-corner',
+        name: 'Map + corner clock',
+        zones: [
+          { x: 0, y: 0, width: 78, height: 100, zIndex: 1, defaultConfig: {} },
+          accentStripZone({ x: 78, y: 0, width: 1, height: 100 }),
+          cornerClockZone({ x: 80, y: 4, width: 18, height: 16 }),
+        ],
+      },
+    ],
   },
   {
     id: 'qr-code',
@@ -392,6 +618,25 @@ export const APP_REGISTRY: AppDefinition[] = [
       widgetType: 'TOUCH_POINT',
       defaultConfig: { variant: 'qr', qrText: str(v, 'text') },
     }),
+    starterLayouts: [
+      {
+        id: 'centered-poster',
+        name: 'Centered QR poster',
+        zones: [
+          titleBarZone('Scan Me', { x: 25, y: 12, width: 50, height: 10 }),
+          { x: 35, y: 26, width: 30, height: 48, zIndex: 5, defaultConfig: {} },
+          accentStripZone({ x: 25, y: 78, width: 50, height: 2 }),
+        ],
+      },
+      {
+        id: 'corner-badge',
+        name: 'QR corner badge + headline',
+        zones: [
+          titleBarZone('Scan for More', { x: 0, y: 0, width: 78, height: 100 }),
+          { x: 80, y: 62, width: 18, height: 32, zIndex: 5, defaultConfig: {} },
+        ],
+      },
+    ],
   },
   {
     id: 'clock',
@@ -432,6 +677,26 @@ export const APP_REGISTRY: AppDefinition[] = [
         targetDate: str(v, 'targetDate'),
       },
     }),
+    starterLayouts: [
+      {
+        id: 'centered-hero',
+        name: 'Centered countdown hero',
+        zones: [
+          titleBarZone('Coming Up', { x: 20, y: 16, width: 60, height: 12 }),
+          { x: 15, y: 32, width: 70, height: 46, zIndex: 5, defaultConfig: {} },
+          accentStripZone({ x: 20, y: 80, width: 60, height: 2 }),
+        ],
+      },
+      {
+        id: 'countdown-clock-split',
+        name: 'Countdown + clock split',
+        zones: [
+          { x: 4, y: 20, width: 44, height: 60, zIndex: 5, defaultConfig: {} },
+          accentStripZone({ x: 50, y: 15, width: 1, height: 70 }),
+          cornerClockZone({ x: 56, y: 30, width: 40, height: 30 }),
+        ],
+      },
+    ],
   },
 
   // ── WEATHER ────────────────────────────────────────────────────────
@@ -454,6 +719,25 @@ export const APP_REGISTRY: AppDefinition[] = [
         units: str(v, 'units', 'imperial'),
       },
     }),
+    starterLayouts: [
+      {
+        id: 'weather-clock-titled',
+        name: 'Weather + clock + branded title',
+        zones: [
+          titleBarZone('Today’s Forecast', { x: 0, y: 0, width: 100, height: 14 }),
+          { x: 4, y: 18, width: 44, height: 60, zIndex: 5, defaultConfig: {} },
+          accentStripZone({ x: 50, y: 18, width: 1, height: 60 }),
+          cornerClockZone({ x: 56, y: 30, width: 40, height: 36 }),
+        ],
+      },
+      {
+        id: 'weather-corner-badge',
+        name: 'Weather corner badge',
+        zones: [
+          { x: 74, y: 4, width: 22, height: 26, zIndex: 5, defaultConfig: {} },
+        ],
+      },
+    ],
   },
 
   // ── NEWS ───────────────────────────────────────────────────────────
