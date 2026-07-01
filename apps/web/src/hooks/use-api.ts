@@ -1386,6 +1386,11 @@ export interface AiTemplateCandidate {
    *  Carries the raw HTML so the picker can persist it via create-designer
    *  (base64). The preview renders it through the EXTERNAL_HTML srcdoc zone. */
   _designerHtml?: string;
+  /** #268-1 keep-telemetry — carried from the generate batch and echoed on
+   *  keep (create-designer) so the audit trail ties the KEPT board back to
+   *  its generation batch + art direction. */
+  _batchId?: string;
+  _artDirection?: string;
 }
 
 export interface AiGenerateCandidatesResponse {
@@ -1490,10 +1495,16 @@ export interface DesignerBoardCandidate {
   screenWidth: number;
   screenHeight: number;
   taurusWarnings?: string[];
+  /** #268-1 keep-telemetry — which art direction generated this candidate
+   *  ("Full-bleed editorial" / "Clean & premium" / "Vibrant & graphic");
+   *  echoed back on keep so the audit trail measures first-try hit rate. */
+  artDirection?: string;
 }
 
 export interface DesignerCandidatesResponse {
   candidates: DesignerBoardCandidate[];
+  /** #268-1 keep-telemetry — ties this batch to the eventual keep. */
+  batchId?: string;
   source?: 'tenant' | 'platform';
   usage?: { used: number; cap: number; resetAt: string } | null;
 }
@@ -1539,6 +1550,11 @@ export function useCreateDesigner() {
       htmlBase64: string;
       screenWidth?: number;
       screenHeight?: number;
+      // #268-1 keep-telemetry — echoed from the generate batch so the server
+      // audit row ties the keep to batch/candidate/art direction.
+      batchId?: string;
+      candidateIndex?: number;
+      artDirection?: string;
     }
   >({
     mutationFn: (body) =>

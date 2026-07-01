@@ -806,6 +806,10 @@ export default function TemplatesPage() {
             name: b.name || 'AI Designer board',
             zones: [{ name: 'board', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, defaultConfig: { html: b.html } }],
             _designerHtml: b.html,
+            // #268-1 keep-telemetry — carried through the picker (and the
+            // resume-last-batch cache) so the keep can echo them to the server.
+            _batchId: dres?.batchId,
+            _artDirection: b.artDirection,
           }));
           setAiCandidates(mapped);
           persistLastBatch(mapped); // cache so closing the picker never forces a re-generate
@@ -986,6 +990,12 @@ export default function TemplatesPage() {
           htmlBase64,
           screenWidth: aiCanvas.w,
           screenHeight: aiCanvas.h,
+          // #268-1 keep-telemetry — echo the generation batch + which of the
+          // 3 candidates/art directions was kept, so first-try keep rate is
+          // measurable in the audit log (joins AI_DESIGNER_CANDIDATES).
+          batchId: candidate._batchId,
+          candidateIndex: index,
+          artDirection: candidate._artDirection,
         });
         created = res?.id ? (res as unknown as Template) : null;
       } else {

@@ -72,6 +72,13 @@ const DesignerCreateSchema = z.object({
   html: z.string().min(200).max(400000).optional(),
   screenWidth: z.number().int().positive().max(8192).optional(),
   screenHeight: z.number().int().positive().max(8192).optional(),
+  // #268-1 keep-telemetry — the FE echoes these from the generate batch so
+  // the TEMPLATE_CREATED audit row ties a KEEP to its generation batch /
+  // candidate index / art direction. First-try keep rate = a DB query
+  // joining AI_DESIGNER_CANDIDATES.details.batchId to these fields.
+  batchId: z.string().max(64).optional(),
+  candidateIndex: z.number().int().min(0).max(11).optional(),
+  artDirection: z.string().max(80).optional(),
 }).passthrough().refine((v) => !!(v.htmlBase64 || v.html), {
   message: 'html or htmlBase64 is required',
   path: ['htmlBase64'],
@@ -1164,7 +1171,17 @@ export class TemplatesController {
         targetId: created.id,
         tenantId: req.user.tenantId,
         userId: req.user.id,
-        details: JSON.stringify({ name: parsed.name, via: 'ai-designer', engine: true }),
+        details: JSON.stringify({
+          name: parsed.name,
+          via: 'ai-designer',
+          engine: true,
+          // #268-1 keep-telemetry — joins this KEEP back to its generation
+          // batch (AI_DESIGNER_CANDIDATES.details.batchId) + which of the 3
+          // candidates / art directions the operator actually chose.
+          batchId: body.batchId ?? null,
+          candidateIndex: body.candidateIndex ?? null,
+          artDirection: body.artDirection ?? null,
+        }),
       },
     }).catch(() => { /* audit best-effort */ });
     return mapTemplate(created);

@@ -2558,7 +2558,8 @@ export class AiService {
     reference?: string;
     count?: number;
   }): Promise<{
-    candidates: Array<{ name: string; html: string; screenWidth: number; screenHeight: number; taurusWarnings: string[] }>;
+    candidates: Array<{ name: string; html: string; screenWidth: number; screenHeight: number; taurusWarnings: string[]; artDirection: string }>;
+    batchId: string;
     source: 'tenant' | 'platform';
     usage: { used: number; cap: number; resetAt: string } | null;
   }> {
@@ -2600,6 +2601,10 @@ export class AiService {
     }
 
     const directions = DESIGNER_ART_DIRECTIONS.slice(0, count);
+    // #268-1 keep-telemetry — one id ties this generation batch to the keep
+    // (create-designer echoes it into its TEMPLATE_CREATED audit row), so
+    // "first-try keep rate by art direction" becomes a plain DB query.
+    const batchId = randomUUID();
     const system = prependVoices(DESIGNER_SYSTEM_PROMPT, opts.vertical, await this.tenantBrandVoice(opts.tenantId));
     // PER-TENANT STYLE MEMORY — distilled once from this tenant's kept boards and
     // shared by all candidates (null for a brand-new operator).
@@ -2629,9 +2634,17 @@ export class AiService {
         );
       }),
     );
+    // #268-1 keep-telemetry — map by INDEX (not filter-then-map) so each
+    // surviving candidate keeps the art direction it was generated with even
+    // when a sibling call failed. Slug = the direction's short name ("Full-bleed
+    // editorial") — stable, human-readable, safe to store in audit details.
     const built = settled
-      .filter((s): s is PromiseFulfilledResult<{ html: string; taurusWarnings: string[] }> => s.status === 'fulfilled')
-      .map((s) => s.value);
+      .map((s, i) =>
+        s.status === 'fulfilled'
+          ? { ...s.value, artDirection: (directions[i] || '').split(' — ')[0] || `direction-${i + 1}` }
+          : null,
+      )
+      .filter((v): v is { html: string; taurusWarnings: string[]; artDirection: string } => !!v);
     if (!built.length) {
       await this.recordFailure(opts.tenantId);
       const firstRej = settled.find((s) => s.status === 'rejected') as PromiseRejectedResult | undefined;
@@ -2660,6 +2673,7 @@ export class AiService {
         tenantId: opts.tenantId,
         userId: opts.userId || null,
         details: JSON.stringify({
+          batchId, // #268-1 — joins this generation to the eventual keep (TEMPLATE_CREATED)
           vertical: opts.vertical || null,
           requested: count,
           returned: built.length,
@@ -2677,8 +2691,9 @@ export class AiService {
       screenWidth: sw,
       screenHeight: sh,
       taurusWarnings: b.taurusWarnings,
+      artDirection: b.artDirection,
     }));
-    return { candidates, source: resolved.source, usage };
+    return { candidates, batchId, source: resolved.source, usage };
   }
 
   /**
