@@ -9,7 +9,7 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   Bold, Italic, Underline, Strikethrough,
   RefreshCw, Maximize2, Clock, Thermometer, Gauge, Calendar, Globe, MousePointer,
-  Layers3, Sparkles,
+  Layers3, Sparkles, AppWindow,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { AssetLibraryModal, measureZoneFontSize } from './PropertiesPanel';
@@ -25,6 +25,12 @@ import { BuilderCanvas } from './BuilderCanvas';
 // resurrect WidgetPalette without first verifying it's actually
 // mounted somewhere.
 import { VariantPicker } from './VariantPicker';
+// App Library (Phase 1, 2026-06-30) — curated "Apps" tab. Each app is a
+// thin config-form wrapper that produces a standard zone config for a
+// widgetType WidgetRenderer already renders (STREAMING/WEBPAGE/WEATHER/
+// RSS_FEED/CALENDAR/CLOCK/COUNTDOWN/TOUCH_POINT-qr) — see
+// docs/research/2026-06-30-app-library/00-SYNTHESIS.md.
+import { AppLibraryPanel } from '../apps/AppLibraryPanel';
 import { LayersPanel } from './LayersPanel';
 import { ScenesPanel } from './ScenesPanel';
 import { PropertiesPanel, CanvasBackdropSection } from './PropertiesPanel';
@@ -43,7 +49,7 @@ interface Props {
   onSaved: (t: Template) => void;
 }
 
-type PanelKey = 'widgets' | 'background' | 'layers' | 'scenes' | 'properties' | 'brand' | 'review';
+type PanelKey = 'widgets' | 'apps' | 'background' | 'layers' | 'scenes' | 'properties' | 'brand' | 'review';
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 const AUTO_SAVE_IDLE_MS = 15_000;
@@ -548,6 +554,11 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
 
   const panels: Array<{ key: PanelKey; label: string; icon: LucideIcon }> = [
     { key: 'widgets', label: 'Widgets', icon: Plus },
+    // Phase 1 App Library (2026-06-30) — curated integrations (YouTube,
+    // Slides, Weather, Calendar, QR, etc). Separate tab from Widgets so the
+    // two mental models ("build a layout piece" vs "connect a real-world
+    // service") don't get muddled in one flat list of 400+ tiles.
+    { key: 'apps', label: 'Apps', icon: AppWindow },
     { key: 'background', label: 'Background', icon: Paintbrush },
     { key: 'layers', label: 'Layers', icon: Layers },
     // Phase D2.5 — Scenes panel slots between Layers and Properties so
@@ -695,6 +706,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
             </div>
             <div className="flex-1 overflow-y-auto" role="tabpanel">
               {panel === 'widgets' && <VariantPicker />}
+              {panel === 'apps' && <AppLibraryPanel />}
               {panel === 'background' && <BackgroundPanel />}
               {panel === 'layers' && <LayersPanel />}
               {panel === 'scenes' && <ScenesPanel />}
