@@ -4480,6 +4480,12 @@ export function DefaultBoardScene({
   // status (pre-game = empty pool shell, live = filled lanes/places).
   const swimDiveDefault =
     def.key === 'swimming' || def.key === 'diving' || def.key === 'swimming_diving';
+  // #270a — the swim research (Part C) says the lane grid generalizes to
+  // track & field running events "for free" (lane × athlete/time/place).
+  // Same widget, sport-agnostic athleteLabel/iconEmoji config (see
+  // SwimDiveWidgets.tsx) so this is a config swap, not a new component.
+  const trackDefault = def.key === 'track_and_field';
+  const laneGridDefault = swimDiveDefault || trackDefault;
 
   // Tall-canvas (portrait) detection. When the render viewport is taller than
   // it is wide — a portrait LED poster or a column of joined posters like the
@@ -4509,11 +4515,14 @@ export function DefaultBoardScene({
           // The portrait board is status-aware (shows the status chip + live
           // score/clock), so it replaces the entire landscape scene block.
           <PortraitBoardScene data={view} def={def} />
-        ) : swimDiveDefault ? (
+        ) : laneGridDefault ? (
           // #267 — the swim/dive DEFAULT scoreboard IS the lane grid / dive
           // leaderboard (no template selection needed), across every status.
-          // GameStateProvider re-polls /sports/board/:id so the widget shows
-          // live lanes/heats/places; seeded from `view` to avoid a boot flash.
+          // #270a — track & field reuses the SAME lane grid widget with
+          // running-event copy (🏃 / ATHLETE·TEAM) via config, not a new
+          // component. GameStateProvider re-polls /sports/board/:id so the
+          // widget shows live lanes/heats/places; seeded from `view` to
+          // avoid a boot flash.
           <GameStateProvider gameId={view.id} initial={view as unknown as GameSnapshot}>
             {def.key === 'diving' ? (
               <DiveLeaderboardWidget
@@ -4521,7 +4530,13 @@ export function DefaultBoardScene({
               />
             ) : (
               <SwimLaneGridWidget
-                config={{ homeColor: view.homeColor ?? undefined, awayColor: view.awayColor ?? undefined }}
+                config={{
+                  homeColor: view.homeColor ?? undefined,
+                  awayColor: view.awayColor ?? undefined,
+                  ...(trackDefault
+                    ? { athleteLabel: 'ATHLETE / TEAM', iconEmoji: '🏃' }
+                    : null),
+                }}
               />
             )}
           </GameStateProvider>

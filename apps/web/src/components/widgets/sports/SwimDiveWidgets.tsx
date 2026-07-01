@@ -211,6 +211,17 @@ export interface SwimLaneGridCfg extends BaseCfg {
   /** Number of lane rows to render — matches the operator's pool
    *  (6/8/10 lanes are the common HS/college configurations). */
   laneCount?: number;
+  /**
+   * 2026-07-01 — track & field parity gap fix (#270a). The lane grid
+   * generalizes to any running event with a lane assignment (the swim
+   * research's Part C: "lanes × athlete/time/place" is sport-agnostic).
+   * These two fields are internal caller-set config (the board page sets
+   * them per-sport), NOT new operator-facing PropertiesPanel controls —
+   * both default to the original swimming copy so every existing board
+   * renders byte-identical when unset.
+   */
+  athleteLabel?: string;
+  iconEmoji?: string;
 }
 
 export function SwimLaneGridWidget({ config }: WidgetProps<SwimLaneGridCfg>) {
@@ -229,6 +240,12 @@ export function SwimLaneGridWidget({ config }: WidgetProps<SwimLaneGridCfg>) {
   const textColor = c.textColor || '#ffffff';
   const laneCount = Math.max(1, Math.min(12, c.laneCount ?? 8));
   const orderMode = c.orderMode === 'place' ? 'place' : 'lane';
+  // #270a — track & field reuse: caller (the board page) sets these to
+  // 🏃 / "ATHLETE / TEAM" for track_and_field; every other caller is
+  // unset and gets the original swimming copy, so no existing board
+  // changes.
+  const iconEmoji = c.iconEmoji || '🏊';
+  const athleteLabel = c.athleteLabel || 'SWIMMER / TEAM';
 
   // On a live surface with no results recorded yet, render an empty lane
   // shell (no fabricated names/times) instead of the sample heat — same
@@ -273,7 +290,7 @@ export function SwimLaneGridWidget({ config }: WidgetProps<SwimLaneGridCfg>) {
           }}
         >
           <span style={{ fontFamily: DISPLAY_FONT, fontSize: 42, fontWeight: 800, color: c.headerColor || '#fbbf24', letterSpacing: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-            🏊 {headerText.toUpperCase()}
+            {iconEmoji} {headerText.toUpperCase()}
           </span>
           <span style={{ fontFamily: DISPLAY_FONT, fontSize: 26, fontWeight: 700, color: '#94a3b8', letterSpacing: 3, flex: 'none', marginLeft: 24 }}>
             {orderMode === 'place' ? 'RESULTS' : 'LANE ORDER'}
@@ -283,7 +300,7 @@ export function SwimLaneGridWidget({ config }: WidgetProps<SwimLaneGridCfg>) {
         {/* Column headers */}
         <div style={{ display: 'flex', alignItems: 'center', padding: '0 24px', marginBottom: 8 }}>
           <div style={{ width: 110, fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 700, color: '#64748b', letterSpacing: 2 }}>LANE</div>
-          <div style={{ flex: 1, fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 700, color: '#64748b', letterSpacing: 2 }}>SWIMMER / TEAM</div>
+          <div style={{ flex: 1, fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 700, color: '#64748b', letterSpacing: 2 }}>{athleteLabel}</div>
           <div style={{ width: 260, fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 700, color: '#64748b', letterSpacing: 2, textAlign: 'right' }}>TIME</div>
           <div style={{ width: 140, fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 700, color: '#64748b', letterSpacing: 2, textAlign: 'right' }}>PLACE</div>
         </div>

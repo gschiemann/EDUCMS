@@ -607,6 +607,36 @@ export const SPORTS_TEMPLATE_PRESETS: SystemPreset[] = [
       { name: 'Lane Grid', widgetType: 'SWIM_LANE_GRID', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { orderMode: 'lane', laneCount: 8 } },
     ],
   },
+  // #270a (2026-07-01) — track & field reuses the swim lane grid widget:
+  // the research (Part C) generalizes lanes × athlete/time/place to any
+  // running event "for free." Same SWIM_LANE_GRID widget; the board page's
+  // default-render path sets athleteLabel/iconEmoji for track automatically,
+  // but a template built from THIS preset sets them explicitly so it also
+  // reads right when picked as a custom scoreboard template.
+  {
+    id: 'sports-track-lane-board',
+    name: '🏃 Track Lane Board',
+    description:
+      'Live heat board for track & field running events — one row per lane (lane #, athlete/team, time, place), with a LANE⇄PLACE order toggle in Properties. Bind a meet; resize for any LED.',
+    category: 'SCOREBOARD',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor: '#0a1020',
+    zones: [
+      {
+        name: 'Lane Grid',
+        widgetType: 'SWIM_LANE_GRID',
+        x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0,
+        defaultConfig: {
+          orderMode: 'lane',
+          laneCount: 8,
+          athleteLabel: 'ATHLETE / TEAM',
+          iconEmoji: '🏃',
+        },
+      },
+    ],
+  },
   {
     id: 'sports-dive-leaderboard',
     name: '🤿 Diving Leaderboard',

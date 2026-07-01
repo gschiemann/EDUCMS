@@ -5384,10 +5384,13 @@ function MeetResultsSection({
     // placeholder as its successor `swimming`.
     : def.key === 'golf' ? '72 (+1)' : (def.key === 'swimming_diving' || def.key === 'swimming') ? '1:52.31' : '11.42';
   const eventNoun = judged ? (def.key === 'gymnastics' ? 'apparatus' : def.key === 'diving' ? 'round' : 'round') : 'event';
-  // Lanes are a SWIMMING concept (heat/lane grid) — diving has no lanes
-  // (one diver at a time off a board/platform), so it's excluded even
-  // though it shares the judged-results grid with gymnastics/cheer.
-  const lanesShown = def.key === 'swimming_diving' || def.key === 'swimming';
+  // Lanes are a SWIMMING/TRACK concept (heat/lane grid) — diving has no
+  // lanes (one diver at a time off a board/platform), so it's excluded
+  // even though it shares the judged-results grid with gymnastics/cheer.
+  // #270a — track & field running events also assign lanes; the swim
+  // research (Part C) generalizes the lane grid to track "for free".
+  const lanesShown =
+    def.key === 'swimming_diving' || def.key === 'swimming' || def.key === 'track_and_field';
   const presets = APPARATUS_PRESETS[def.key] || [];
 
   const addEvent = (name: string) => {
