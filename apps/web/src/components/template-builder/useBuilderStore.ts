@@ -80,7 +80,14 @@ interface BuilderState {
    *  next zone-save flush picks it up. */
   assignZonesToScene(zoneIds: string[], sceneId: string | null, commit?: boolean): void;
   markClean(): void;
-  addZone(widgetType: string, dropAt?: { x: number; y: number }): string;
+  /**
+   * `size` (percent-of-canvas w/h) — App Library smart-placement (world-class
+   * build, 2026-07-01). Lets a caller (AppConfigForm) override the generic
+   * 40x30 default with a widgetType-appropriate size (video fills 16:9,
+   * QR drops as a small corner square, etc.) without touching the
+   * palette/touch-tile paths, which keep their existing sizing untouched.
+   */
+  addZone(widgetType: string, dropAt?: { x: number; y: number }, size?: { w: number; h: number }): string;
   /**
    * Quick Layouts: replace all existing zones with N pre-positioned
    * zones (rects in 0-100 percentage space). Each zone defaults to
@@ -273,12 +280,22 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
 
   markClean: () => set({ isDirty: false }),
 
-  addZone: (widgetType, dropAt) => {
+  addZone: (widgetType, dropAt, size) => {
     const id = crypto.randomUUID();
     const zones = get().zones;
     const past = [...get().past, snapshot(get())].slice(-HISTORY_LIMIT);
-    const w = 40;
-    const h = 30;
+    // App Library smart-placement (world-class build, 2026-07-01) — a
+    // generic 40x30 box for every widget was wrong for both a full-bleed
+    // video and a tiny QR code alike. `size` is opt-in and ONLY ever passed
+    // by the App Library's AppConfigForm (keyed off the app's `defaultSize`,
+    // with its own widgetType-keyed fallback for apps that didn't specify
+    // one — see AppConfigForm.tsx). The plain Widgets palette / touch-tile
+    // click-to-add path (VariantPicker, BuilderShell drag/drop) NEVER passes
+    // `size`, so their existing 40x30 / 15x15 sizing is completely
+    // unaffected — this parameter is additive, not a behavior change to the
+    // pre-existing paths.
+    const w = size?.w ?? 40;
+    const h = size?.h ?? 30;
     // Center the new zone on the drop point if one was provided
     // (caller resolves the drop x/y in template-percentage space).
     // Without this, every drop landed at the fixed default 10,10 so
