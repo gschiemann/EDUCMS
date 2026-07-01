@@ -31,10 +31,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Search, ChevronLeft, Sparkles as AggregatorIcon, CheckCircle2, X,
-  Tv, Video, Radio, Presentation, FileText, Palette, Table, Globe, MapPin,
-  QrCode, Clock, Timer, Cloud, Rss, CalendarDays, Users, ThumbsUp, LayoutGrid, Star,
-  Loader2, Wand2,
-  type LucideIcon,
 } from 'lucide-react';
 import {
   APP_REGISTRY, APP_CATEGORY_LABEL, FRICTION_TIER_LABEL,
@@ -43,37 +39,15 @@ import {
 } from './app-registry';
 import { detectApp } from './url-transforms';
 import { AppConfigForm } from './AppConfigForm';
-import { BRAND_ICONS } from './brand-icons';
-import { CONCIERGE_TO_APP_MAP } from './concierge-map';
+import {
+  resolveConciergeSuggestions, readOnboardingConciergeSuggestions,
+  type SuggestedApp,
+} from './concierge-map';
+import { ConciergeSuggestionRow, ConciergeDescribeIntake, AppIcon } from './ConciergeAppSuggestions';
+import { useAppStore } from '@/lib/store';
 import {
   useTenantBranding, useDiscoverIntegrations, useDescribeBusiness,
-  type ConciergeProviderCandidate,
 } from '@/hooks/use-api';
-
-// String -> component map. Kept local to the panel (not the registry file)
-// so app-registry.ts stays React-free / easily unit-testable. Non-branded
-// apps (Weather, QR, Clock, Countdown, generic Web Page, etc.) render these
-// semantic lucide glyphs; branded apps resolve to a real logo mark from
-// brand-icons.tsx first (see AppIcon below).
-const ICONS: Record<string, LucideIcon> = {
-  Tv, Video, Radio, Presentation, FileText, Palette, Table, Globe, MapPin,
-  QrCode, Clock, Timer, Cloud, Rss, CalendarDays, Users, ThumbsUp, LayoutGrid, Star,
-};
-
-function AppIcon({ appId, name, className }: { appId: string; name: string; className?: string }) {
-  const Brand = BRAND_ICONS[appId];
-  if (Brand) return <Brand className={className} />;
-  const Cmp = ICONS[name] || Globe;
-  return <Cmp className={className} aria-hidden />;
-}
-
-/** One resolved "Suggested for you" tile: an App Registry app matched from
- *  a Concierge candidate, with the operator's own detected link ready to
- *  prefill the config form. */
-interface SuggestedApp {
-  app: AppDefinition;
-  prefill: Record<string, string>;
-}
 
 /** Module-level "fired this session" guard for the discover call — mirrors
  *  AiGenerateButton's getAiStatusSource() cache pattern. The panel can
@@ -124,48 +98,38 @@ export function AppLibraryPanel() {
   }, [pasteValue]);
   const pasteNoMatch = pasteValue.trim().length > 0 && !pasteMatch;
 
-  // ── Concierge auto-fill (Tier 2, 2026-07-01) ──────────────────────────
-  // Resolve a discover/describe response's candidates + ownLinks into
-  // App Registry tiles via concierge-map.ts. `detectedValue` (the
-  // operator's ACTUAL link, from the backend's extractOwnLinks) wins over
-  // just knowing the category exists — that's what lets a suggestion open
-  // pre-filled instead of just naming an app the operator already knows.
-  const resolveSuggestions = (
-    candidates: ConciergeProviderCandidate[],
-    ownLinks: Record<string, string>,
-  ): SuggestedApp[] => {
-    const out: SuggestedApp[] = [];
-    const seen = new Set<string>();
-    const tryAdd = (key: string, value: string | undefined) => {
-      const match = CONCIERGE_TO_APP_MAP[key];
-      if (!match || seen.has(match.appId)) return;
-      const app = getApp(match.appId);
-      if (!app || app.comingSoon) return; // never suggest a dead-end tile
-      seen.add(match.appId);
-      out.push({ app, prefill: value ? { [match.prefillKey]: value } : {} });
-    };
-    // Own-links first (higher-value — carries a real detected value).
-    for (const [key, value] of Object.entries(ownLinks)) tryAdd(key, value);
-    // Then any candidate we haven't already matched via ownLinks, even
-    // without a specific detected value (still worth surfacing — "we
-    // noticed you might want Slides" beats not suggesting it at all).
-    for (const c of candidates) tryAdd(c.id, c.detectedValue);
-    return out.slice(0, 4); // keep the row small — a pinned strip, not a second grid
-  };
-
+  // ── Concierge auto-fill (Tier 2, 2026-07-01; shared resolver + onboarding
+  // pre-warm added 2026-07-01 task #265) ────────────────────────────────
+  // Resolution logic now lives in concierge-map.ts's resolveConciergeSuggestions
+  // so the onboarding "Your apps, ready to go" step resolves discover/describe
+  // responses IDENTICALLY instead of re-implementing this matching.
   const { data: branding } = useTenantBranding();
   const sourceUrl = branding?.sourceUrl?.trim() || '';
+  const tenantId = useAppStore((s) => s.user?.tenantId);
   const discover = useDiscoverIntegrations();
   const describe = useDescribeBusiness();
-  const [suggestions, setSuggestions] = useState<SuggestedApp[]>(
-    () => (sourceUrl && __conciergeDiscoverCache?.sourceUrl === sourceUrl ? __conciergeDiscoverCache.suggestions : []),
-  );
+  const [suggestions, setSuggestions] = useState<SuggestedApp[]>(() => {
+    if (!sourceUrl) return [];
+    if (__conciergeDiscoverCache?.sourceUrl === sourceUrl) return __conciergeDiscoverCache.suggestions;
+    // Pre-warm from the onboarding handoff (task #265) — if the operator
+    // already ran discover once during onboarding for this SAME sourceUrl,
+    // show it instantly instead of a blank row while this panel's own
+    // discover call is in flight (or never firing again this session).
+    const handoff = readOnboardingConciergeSuggestions(tenantId, sourceUrl);
+    if (handoff) {
+      __conciergeDiscoverCache = { sourceUrl, suggestions: handoff.suggestions };
+      return handoff.suggestions;
+    }
+    return [];
+  });
   const [conciergeDismissed, setConciergeDismissed] = useState(false);
-  const [describeValue, setDescribeValue] = useState('');
   const [describeSuggestions, setDescribeSuggestions] = useState<SuggestedApp[] | null>(null);
 
   // Fire the discover call AT MOST once per (session, sourceUrl) — never
-  // on every panel open, and never blocking the grid below it.
+  // on every panel open, and never blocking the grid below it. Skipped
+  // entirely if the onboarding handoff already resolved this sourceUrl
+  // (see initializer above) — no need to re-hit the rate-limited endpoint
+  // for data we already have.
   useEffect(() => {
     if (!sourceUrl) return;
     if (__conciergeDiscoverCache?.sourceUrl === sourceUrl) {
@@ -177,7 +141,7 @@ export function AppLibraryPanel() {
       { url: sourceUrl },
       {
         onSuccess: (res) => {
-          const resolved = resolveSuggestions(res.candidates || [], res.ownLinks || {});
+          const resolved = resolveConciergeSuggestions(res.candidates || [], res.ownLinks || {});
           __conciergeDiscoverCache = { sourceUrl, suggestions: resolved };
           if (alive) setSuggestions(resolved);
         },
@@ -190,19 +154,19 @@ export function AppLibraryPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceUrl]);
 
-  // Accepts an optional override so a caller that just set `describeValue`
-  // (React state updates aren't synchronous) can submit the NEW text
-  // immediately instead of racing the stale closure value — e.g. the
-  // empty-search-state recovery button that seeds the box from the
-  // operator's search query and submits in the same click.
-  const handleDescribeSubmit = (overrideText?: string) => {
-    const text = (overrideText ?? describeValue).trim();
-    if (!text) return;
+  // ConciergeDescribeIntake owns its own text-field state now (extracted
+  // 2026-07-01) and always passes the current value explicitly — this
+  // just runs the mutation, so both the "Not sure? Describe your venue"
+  // recovery button (which passes the search query) and the intake's own
+  // submit share one code path.
+  const handleDescribeSubmit = (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
     describe.mutate(
-      { text },
+      { text: trimmed },
       {
         onSuccess: (res) => {
-          setDescribeSuggestions(resolveSuggestions(res.candidates || [], res.ownLinks || {}));
+          setDescribeSuggestions(resolveConciergeSuggestions(res.candidates || [], res.ownLinks || {}));
         },
       },
     );
@@ -299,38 +263,15 @@ export function AppLibraryPanel() {
             your site" pinned row, ABOVE the grid. Non-blocking, dismissible,
             never a forced step. Only rendered once a discover call actually
             resolved matches; a still-loading or empty result renders
-            nothing here (no skeleton flash for a background call). */}
+            nothing here (no skeleton flash for a background call). Shared
+            with the onboarding step's identical row — see
+            ConciergeAppSuggestions.tsx. */}
         {showConciergeRow && (
-          <div className="rounded-lg border border-violet-200 bg-violet-50/60 px-2.5 py-2">
-            <div className="flex items-center justify-between gap-2 mb-1.5">
-              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-violet-700">
-                <Wand2 className="w-3 h-3" aria-hidden />
-                Suggested for you
-              </div>
-              <button
-                type="button"
-                onClick={() => setConciergeDismissed(true)}
-                aria-label="Dismiss suggestions"
-                className="text-violet-400 hover:text-violet-600"
-              >
-                <X className="w-3 h-3" aria-hidden />
-              </button>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {suggestions.map(({ app, prefill }) => (
-                <button
-                  key={app.id}
-                  type="button"
-                  onClick={() => openAppWithValues(app, prefill)}
-                  className="flex items-center gap-1.5 text-[10px] font-semibold text-violet-800 bg-white border border-violet-200 rounded-full pl-1.5 pr-2.5 py-1 hover:border-violet-400 hover:bg-violet-50 transition-colors"
-                  title={`We found this on your site — ${app.name}`}
-                >
-                  <AppIcon appId={app.id} name={app.icon} className="w-3 h-3 text-violet-500" />
-                  We found your {app.name}
-                </button>
-              ))}
-            </div>
-          </div>
+          <ConciergeSuggestionRow
+            suggestions={suggestions}
+            onSelect={(app, prefill) => openAppWithValues(app, prefill)}
+            onDismiss={() => setConciergeDismissed(true)}
+          />
         )}
 
         <div className="relative">
@@ -349,62 +290,14 @@ export function AppLibraryPanel() {
             discover found nothing we can offer) — fall through to the
             free-text /describe intake instead of silence. Kept tiny and
             collapsed-by-default feeling (a single input, not a form). */}
-        {!showConciergeRow && !describeSuggestions && (
-          <div className="flex items-center gap-1.5">
-            <input
-              type="text"
-              value={describeValue}
-              onChange={(e) => setDescribeValue(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleDescribeSubmit(); }}
-              placeholder="Tell us what you do (e.g. “coffee shop in Austin”)"
-              aria-label="Describe your business to get app suggestions"
-              className="flex-1 px-2.5 py-1.5 text-[11px] border border-dashed border-slate-300 rounded-md placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-300"
-            />
-            <button
-              type="button"
-              onClick={() => handleDescribeSubmit()}
-              disabled={!describeValue.trim() || describe.isPending}
-              aria-label="Get app suggestions"
-              className="shrink-0 p-1.5 rounded-md bg-violet-100 text-violet-600 hover:bg-violet-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              {describe.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden /> : <Wand2 className="w-3.5 h-3.5" aria-hidden />}
-            </button>
-          </div>
-        )}
-        {describeSuggestions && (
-          <div className="rounded-lg border border-violet-200 bg-violet-50/60 px-2.5 py-2">
-            <div className="flex items-center justify-between gap-2 mb-1.5">
-              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-violet-700">
-                <Wand2 className="w-3 h-3" aria-hidden />
-                Suggested for you
-              </div>
-              <button
-                type="button"
-                onClick={() => { setDescribeSuggestions(null); setDescribeValue(''); }}
-                aria-label="Dismiss suggestions"
-                className="text-violet-400 hover:text-violet-600"
-              >
-                <X className="w-3 h-3" aria-hidden />
-              </button>
-            </div>
-            {describeSuggestions.length === 0 ? (
-              <p className="text-[10px] text-violet-700/80">No matches yet — try browsing the grid below.</p>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {describeSuggestions.map(({ app, prefill }) => (
-                  <button
-                    key={app.id}
-                    type="button"
-                    onClick={() => openAppWithValues(app, prefill)}
-                    className="flex items-center gap-1.5 text-[10px] font-semibold text-violet-800 bg-white border border-violet-200 rounded-full pl-1.5 pr-2.5 py-1 hover:border-violet-400 hover:bg-violet-50 transition-colors"
-                  >
-                    <AppIcon appId={app.id} name={app.icon} className="w-3 h-3 text-violet-500" />
-                    {app.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+        {!showConciergeRow && (
+          <ConciergeDescribeIntake
+            isPending={describe.isPending}
+            results={describeSuggestions}
+            onSubmit={handleDescribeSubmit}
+            onSelect={(app, prefill) => openAppWithValues(app, prefill)}
+            onDismissResults={() => setDescribeSuggestions(null)}
+          />
         )}
       </div>
 
@@ -470,7 +363,6 @@ export function AppLibraryPanel() {
                   type="button"
                   onClick={() => {
                     const q = search.trim();
-                    setDescribeValue(q);
                     setSearch('');
                     setCategory('ALL');
                     handleDescribeSubmit(q);

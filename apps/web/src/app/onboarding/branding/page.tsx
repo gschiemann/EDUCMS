@@ -1,8 +1,10 @@
 /**
  * Onboarding wizard — /onboarding/branding
- * Authed. After adopt we bounce back to the dashboard so the new
- * branding takes effect immediately (BrandStyleInjector repaints on
- * the `branding:update` event fired by BrandingWizard).
+ * Authed. After adopt, the new branding takes effect immediately
+ * (BrandStyleInjector repaints on the `branding:update` event fired by
+ * BrandingWizard) and we hand off to /onboarding/apps (task #265,
+ * 2026-07-01) — the Concierge auto-fill step, which re-uses this SAME
+ * scraped website to suggest apps before landing on the dashboard.
  */
 'use client';
 
@@ -49,8 +51,13 @@ export default function OnboardingBrandingPage() {
         mode="authed"
         vertical={(tenant as any)?.vertical || 'K12'}
         onAdopted={() => {
-          // Bounce home with a short success flash
-          router.push(activeTenant ? `/${activeTenant}/dashboard?branded=1` : '/');
+          // 2026-07-01 (task #265) — instead of bouncing straight to the
+          // dashboard, hand off to the Concierge auto-fill step, which
+          // re-uses the SAME website we just scraped for branding to
+          // suggest apps ("here's what we can put on your screens"). That
+          // step's own Skip/"I'll do this later" takes the operator to the
+          // dashboard exactly like this used to.
+          router.push('/onboarding/apps');
         }}
       />
     </div>
