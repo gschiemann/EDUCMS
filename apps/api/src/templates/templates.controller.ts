@@ -2262,6 +2262,36 @@ export class TemplatesController {
       throw new HttpException('Cannot delete system templates', HttpStatus.FORBIDDEN);
     }
 
+    // P0-2 (launch-sprint Day 1, 2026-07-01): Playlist.templateId is
+    // optional with onDelete: SetNull — so deleting an in-use template
+    // silently stripped the LAYOUT off every playlist referencing it, with
+    // zero audit trail of which boards broke. World-class = honest block
+    // with the exact playlists to fix, not a silent visual downgrade on
+    // live screens.
+    const inUse = await this.prisma.client.playlist.findMany({
+      where: { templateId: id, tenantId: req.user.tenantId },
+      select: { id: true, name: true },
+      take: 6,
+    });
+    if (inUse.length > 0) {
+      const total = await this.prisma.client.playlist.count({
+        where: { templateId: id, tenantId: req.user.tenantId },
+      });
+      const names = inUse.map((p) => `“${p.name}”`).join(', ');
+      throw new HttpException(
+        {
+          code: 'TEMPLATE_IN_USE',
+          message:
+            `This template is used by ${total} playlist${total === 1 ? '' : 's'} ` +
+            `(${names}${total > inUse.length ? ', …' : ''}). ` +
+            `Switch those playlists to another template first, then delete.`,
+          playlists: inUse,
+          total,
+        },
+        HttpStatus.CONFLICT,
+      );
+    }
+
     // Cascade deletes zones automatically via Prisma relation
     await this.prisma.client.template.delete({ where: { id } });
     await this.audit(req, 'TEMPLATE_DELETED', id, {

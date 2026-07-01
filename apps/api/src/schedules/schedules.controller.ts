@@ -8,6 +8,10 @@ import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
+// CC-2 go-dark fallback — shared with playlists.controller (P0-1 fix,
+// launch-sprint Day 1): any path that removes/deactivates schedules must
+// run the same protection.
+import { reactivateFallbackIfDark as reactivateFallbackIfDarkShared } from './go-dark-fallback';
 import {
   ScheduleCreateSchema, type ScheduleCreateInput,
   ScheduleUpdateSchema, type ScheduleUpdateInput,
@@ -292,22 +296,24 @@ export class SchedulesController {
       },
     });
 
-    await this.prisma.client.auditLog
-      .create({
-        data: {
-          tenantId,
-          userId,
-          action: 'SUBMISSION_CREATED',
-          targetType: 'Submission',
-          targetId: submission.id,
-          details: JSON.stringify({
-            via: 'content_approval_gate',
-            scheduleId: schedule.id,
-            playlistId: schedule.playlistId || null,
-          }),
-        },
-      })
-      .catch(() => {});
+    // P1 (launch-sprint Day 1, 2026-07-01): the audit write MUST NOT be
+    // swallowed — same rationale as the playlist-delete hardening (a
+    // privileged action with no forensic trail is worse than surfacing the
+    // failure). Reviewer NOTIFICATIONS below stay best-effort by design.
+    await this.prisma.client.auditLog.create({
+      data: {
+        tenantId,
+        userId,
+        action: 'SUBMISSION_CREATED',
+        targetType: 'Submission',
+        targetId: submission.id,
+        details: JSON.stringify({
+          via: 'content_approval_gate',
+          scheduleId: schedule.id,
+          playlistId: schedule.playlistId || null,
+        }),
+      },
+    });
 
     for (const reviewerId of reviewerIds) {
       this.notify
@@ -369,65 +375,11 @@ export class SchedulesController {
       removedScheduleId: string;
     },
   ): Promise<string | null> {
-    const { tenantId, userId, screenId, screenGroupId, removedScheduleId } = opts;
-
-    // A schedule targets exactly ONE thing. Build the exact-target match —
-    // null means "match the rows whose column IS NULL", which is correct
-    // here: a per-screen schedule has screenGroupId=null, a group schedule
-    // has screenId=null. We restore like-for-like.
-    const targetWhere: { screenId: string | null; screenGroupId: string | null } = screenId
-      ? { screenId, screenGroupId: null }
-      : { screenId: null, screenGroupId: screenGroupId };
-
-    // Nothing to do if the removed schedule had no target at all (shouldn't
-    // happen — create() requires one — but be defensive).
-    if (!screenId && !screenGroupId) return null;
-
-    // Is the target still covered by an active schedule? If so, leave it be.
-    const stillActive = await tx.schedule.findFirst({
-      where: { tenantId, isActive: true, ...targetWhere },
-      select: { id: true },
-    });
-    if (stillActive) return null;
-
-    // Find the best inactive candidate for the SAME target to promote.
-    // priority DESC, then most-recent startTime DESC (no updatedAt column).
-    const candidate = await tx.schedule.findFirst({
-      where: {
-        tenantId,
-        isActive: false,
-        id: { not: removedScheduleId },
-        ...targetWhere,
-      },
-      orderBy: [{ priority: 'desc' }, { startTime: 'desc' }],
-      select: { id: true, playlistId: true, screenId: true, screenGroupId: true, priority: true },
-    });
-    if (!candidate) return null;
-
-    await tx.schedule.update({
-      where: { id: candidate.id },
-      data: { isActive: true },
-    });
-
-    await tx.auditLog.create({
-      data: {
-        tenantId,
-        userId,
-        action: 'SCHEDULE_AUTO_REACTIVATED',
-        targetType: 'Schedule',
-        targetId: candidate.id,
-        details: JSON.stringify({
-          reason: 'prevent_screen_blank',
-          removedScheduleId,
-          playlistId: candidate.playlistId,
-          screenId: candidate.screenId,
-          screenGroupId: candidate.screenGroupId,
-          priority: candidate.priority,
-        }),
-      },
-    });
-
-    return candidate.id;
+    // Logic extracted to the shared helper (launch-sprint Day 1 P0-1) so the
+    // playlist-delete door — which hard-deletes attached schedules — runs the
+    // EXACT same protection. Any new code path that removes/deactivates
+    // schedules must import reactivateFallbackIfDark from ./go-dark-fallback.
+    return reactivateFallbackIfDarkShared(tx, opts);
   }
 
   @Put(':id')

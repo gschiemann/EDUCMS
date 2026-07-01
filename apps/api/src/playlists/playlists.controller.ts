@@ -8,6 +8,10 @@ import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import { PlaylistDistributionService } from './playlist-distribution.service';
+// CC-2 go-dark fallback (P0-1 fix, launch-sprint Day 1) — deleting a playlist
+// hard-deletes its schedules, which previously BYPASSED the fallback that
+// protects screens from going dark. Shared helper with schedules.controller.
+import { reactivateFallbackIfDark } from '../schedules/go-dark-fallback';
 import {
   PlaylistCreateSchema, type PlaylistCreateInput,
   PlaylistUpdateSchema, type PlaylistUpdateInput,
@@ -414,6 +418,26 @@ export class PlaylistsController {
       // worse than rejecting and asking the operator to retry.
       if (attachedSchedules.length > 0) {
         await tx.schedule.deleteMany({ where: { playlistId: id } });
+        // P0-1 (launch-sprint Day 1, 2026-07-01): deleting a playlist kills
+        // every schedule referencing it — a second door into the CC-2
+        // go-dark failure that previously bypassed the fallback entirely.
+        // For each ACTIVE schedule we just removed, run the SAME fallback
+        // the schedules controller runs: if its target (screen/group) is
+        // now uncovered, promote the best inactive candidate. Runs AFTER
+        // deleteMany inside this tx, so candidates can never reference the
+        // dying playlist (its schedules are already gone) and the whole
+        // delete+fallback commits atomically. Idempotent per target — the
+        // helper's stillActive check makes duplicate targets a no-op.
+        for (const s of attachedSchedules) {
+          if (!s.isActive) continue;
+          await reactivateFallbackIfDark(tx, {
+            tenantId: req.user.tenantId,
+            userId: req.user.id ?? null,
+            screenId: s.screenId,
+            screenGroupId: s.screenGroupId,
+            removedScheduleId: s.id,
+          });
+        }
       }
       await tx.playlist.delete({ where: { id } });
     });
