@@ -670,8 +670,13 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       )}
 
       <div className="flex flex-1 overflow-hidden relative">
-        {/* Abstract background blobs for premium feel */}
-        <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+        {/* Abstract background blobs for premium feel — desktop-only.
+            2026-07-01 mobile-perf fix: these decorative blur-[…] blobs sat
+            un-gated on the always-mounted builder shell, which the phone
+            pays for on every repaint (CLAUDE.md Mobile performance
+            standard rule #3). `hidden md:block` removes the GPU cost on
+            phones with zero visual change on desktop. */}
+        <div className="hidden md:block absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
           <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] rounded-full bg-indigo-200/20 blur-[120px]" />
           <div className="absolute top-[60%] -right-[10%] w-[40%] h-[60%] rounded-full bg-sky-200/20 blur-[100px]" />
         </div>
@@ -682,7 +687,16 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
             Shape) — it duplicated the WIDGETS picker, which adds every one of
             those. One add path now: the WIDGETS tab. */}
         {!previewMode && (
-          <aside className="w-[420px] bg-white/70 backdrop-blur-2xl border-r border-slate-200/50 flex flex-col shrink-0 shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-10" aria-label="Builder tools">
+          // 2026-07-01 mobile-perf + mobile-width fix (App Library
+          // world-class build): the fixed w-[420px] overflowed a ~380px
+          // iPhone viewport (Greg runs the whole product from an iPhone —
+          // CLAUDE.md mobile-perf preamble), and the always-mounted
+          // `backdrop-blur-2xl` re-samples everything behind it on every
+          // repaint — a real mobile-perf-guard-class violation (rule #3).
+          // `w-full max-w-[92vw] md:w-[420px]` keeps the desktop layout
+          // pixel-identical while letting the panel fit a phone; the blur
+          // is now breakpoint-gated with a solid fallback bg on mobile.
+          <aside className="w-full max-w-[92vw] md:w-[420px] bg-white/95 md:bg-white/70 backdrop-blur-none md:backdrop-blur-2xl border-r border-slate-200/50 flex flex-col shrink-0 shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-10" aria-label="Builder tools">
             <div className="flex p-2 gap-1 border-b border-slate-200/50 bg-white/40" role="tablist" aria-label="Panel">
               {panels.map(tab => {
                 const Icon = tab.icon;
