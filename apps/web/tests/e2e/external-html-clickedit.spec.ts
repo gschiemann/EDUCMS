@@ -42,7 +42,20 @@ const BOARDS = [
   '/templates/hs/caf-today.html',
   '/templates/hs/hall-bulletin.html',
   '/templates/signage/corporate/01-lobby-welcome-flagship.html',
+  '/templates/signage/corporate/03-kpi-dashboard.html',
   '/templates/signage/healthcare/01-waiting-room-flagship.html',
+  '/templates/signage/healthcare/02-physician-directory.html',
+  // 2026-07-01 (Day-2 launch sprint) — HOSPITALITY and GYM had ZERO clickedit
+  // coverage despite shipping as EXTERNAL_HTML costumes in the 2026-06-27
+  // beta. Verified live (chromium+webkit) that both already carry a working
+  // V6 shim + data-field/data-imgslot hot zones; adding them here is the CI
+  // gate so a future redesign that forgets to re-run inject-shim-v2.cjs
+  // (the exact 2026-06-07 regression class) fails the build instead of
+  // silently shipping an un-editable board.
+  '/templates/signage/hospitality/01-lobby-welcome-flagship.html',
+  '/templates/signage/hospitality/02-concierge-board.html',
+  '/templates/signage/gym/01-floor-board-flagship.html',
+  '/templates/signage/gym/02-leaderboard.html',
   '/templates/signage/qsr/01-drive-thru-flagship.html',     // menu-V5 + additive click
   '/templates/signage/menus-pos/01-fullservice-menu.html',  // menu-V5 + additive click
   '/templates/signage/bar/01-tap-list-flagship.html',       // menu-V5 + additive click

@@ -52,9 +52,7 @@ if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded'
 try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
 addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();}}}catch(_){}});
 }catch(e){}})();</script>
-</head><body><div class="stage" id="stage"><div class="frame" style="async function readFile(path) {
-    return rpc({ op: 'readFile', path: String(path) });
-  }"><header class="top"><div><span class="logo" data-field="brand.name">NORTHSIDE RESEARCH</span><span class="tag" data-field="brand.tag">Now recruiting</span></div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">9:42 AM</span></div></header>
+</head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">NORTHSIDE RESEARCH</span><span class="tag" data-field="brand.tag">Now recruiting</span></div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">9:42 AM</span></div></header>
 <main style="display:grid;grid-template-columns:2400px 1fr;gap:48px;min-height:0">
 <section style="background:var(--paper);border:3px solid var(--rule);border-radius:48px;padding:80px 96px;display:flex;flex-direction:column;justify-content:center">
 <div style="font:700 40px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--primary)" data-field="ct.eye">Now recruiting · paid study</div>
