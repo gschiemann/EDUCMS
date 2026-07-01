@@ -98,6 +98,9 @@ importers:
       '@cms/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@cms/scoreboard-cts':
+        specifier: workspace:*
+        version: link:../../packages/scoreboard-cts
       '@cms/signage-design':
         specifier: workspace:*
         version: link:../../packages/signage-design

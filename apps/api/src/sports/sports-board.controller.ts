@@ -4,6 +4,8 @@ import {
 } from '@nestjs/common';
 import { SportsService } from './sports.service';
 import { verifyFeedToken } from './sports-feed-token';
+// 2026-07-01 swim/dive DEPTH pass — swim-timing-snapshot ingest.
+import type { SwimTimingSnapshot } from '@cms/scoreboard-cts';
 
 /**
  * VenueOS Sports — Sprint 13. The PUBLIC scoreboard surfaces.
@@ -200,6 +202,60 @@ export class SportsBoardController {
 
     return this.sports.ingestCtsSnapshot(id, (body || {}) as Record<string, unknown>, {
       source: 'cts-feed',
+    });
+  }
+
+  /**
+   * Sprint 13 DEPTH pass (2026-07-01) — CTS SWIMMING scoreboard-serial
+   * ingest. docs/research/2026-06-30-swim-dive-scoreboards/00-REPORT.md
+   * part A7 + docs/research/2026-07-01-swim-dive-depth/.
+   *
+   * A DIFFERENT wire format and data model from `cts-snapshot` above
+   * (water polo — clock/score/shot-clock/exclusions). Swimming is a
+   * lane/heat/time sport: the bridge box runs `@cms/scoreboard-cts`'s
+   * `SwimTimingParser` against the RS-232 line and POSTs the ALREADY-
+   * DECODED `SwimTimingSnapshot` JSON here (same "parse locally, post
+   * JSON" division of labor as the water-polo CtsBridge) — this endpoint
+   * never touches raw serial bytes.
+   *
+   * Auth: identical stateless game-scoped HMAC feed token as every other
+   * console-facing endpoint on this controller (x-feed-token header
+   * preferred, ?token= fallback). Same rate-limit pool (40/10s per game,
+   * keyed separately so a swim bridge and a water-polo bridge on two
+   * different games never share a bucket).
+   *
+   * Writes ONLY into `Game.stats.results` (the MeetResult contract the
+   * console's Meet-Results editor already writes) — no score/segment
+   * write-through, because swimming has no equivalent "operator column"
+   * for in-progress lane times the way water polo has a running score.
+   */
+  @Post(':id/swim-timing-snapshot')
+  async swimTimingSnapshot(
+    @Param('id') id: string,
+    @Headers('x-feed-token') headerToken: string | undefined,
+    @Query('token') queryToken: string | undefined,
+    @Body() body: SwimTimingSnapshot,
+  ) {
+    const now = Date.now();
+    const key = `swim:${id}`;
+    const recent = (this.feedHits.get(key) || []).filter(
+      (t) => t > now - SportsBoardController.FEED_WINDOW_MS,
+    );
+    if (recent.length >= SportsBoardController.FEED_MAX_PER_WINDOW) {
+      this.feedHits.set(key, recent);
+      throw new HttpException('Swim timing snapshot rate limit exceeded', HttpStatus.TOO_MANY_REQUESTS);
+    }
+    recent.push(now);
+    this.feedHits.set(key, recent);
+
+    const token = headerToken || queryToken;
+    const swimVersion = await this.sports.getFeedTokenVersion(id);
+    if (!verifyFeedToken(id, token, swimVersion)) {
+      throw new HttpException('Invalid or missing feed token', HttpStatus.UNAUTHORIZED);
+    }
+
+    return this.sports.ingestSwimTimingSnapshot(id, body || ({} as SwimTimingSnapshot), {
+      source: 'swim-timing-feed',
     });
   }
 

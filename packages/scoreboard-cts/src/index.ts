@@ -112,3 +112,33 @@ export {
 export type { Gen7ParserOptions, ScramblerState } from './gen7';
 export { CtsWireParser } from './wire';
 export type { CtsWireFormat, CtsWireParserOptions } from './wire';
+
+// ── 2026-07-01 swim/dive DEPTH pass — CTS SWIMMING scoreboard-serial
+// decoder (docs/research/2026-06-30-swim-dive-scoreboards/00-REPORT.md
+// part A7). A DIFFERENT wire format from the water-polo decoders above
+// (packed binary, module-addressed, no high-bit-set convention) — see
+// swim-timing.ts file header for the full protocol writeup.
+export {
+  SwimTimingParser,
+  parseCtsSwimPackets,
+  decodeLanePacket,
+  decodeSplitPacket,
+  decodeEventHeatPacket,
+  decodeTeamScorePacket,
+  decodeTimeBytes,
+  laneModule,
+  encodeLanePacket,
+  encodeSplitPacket,
+  encodeEventHeatPacket,
+  encodeTeamScorePacket,
+  concatPackets,
+} from './swim-timing';
+export type {
+  SwimLaneState,
+  SwimSplitState,
+  SwimEventHeatState,
+  SwimTeamScoreState,
+  SwimTimingSnapshot,
+  SwimTimingUpdateListener,
+  RawCtsSwimPacket,
+} from './swim-timing';

@@ -2229,3 +2229,229 @@ describe('SportsService — ingestCtsSnapshot T2-1 fields', () => {
     expect(cts.homeExclusions).toBeUndefined();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2026-07-01 swim/dive DEPTH pass — ingestSwimTimingSnapshot() service tests.
+// docs/research/2026-06-30-swim-dive-scoreboards/00-REPORT.md part A7 +
+// docs/research/2026-07-01-swim-dive-depth/. Pure-function coverage for the
+// normalizer lives in swim-timing-feed.spec.ts; these exercise the
+// service-layer plumbing (tenant scoping, roster join via DB, results
+// persistence via sanitizeResults, sampled audit log).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('SportsService — ingestSwimTimingSnapshot()', () => {
+  function laneSnap(overrides: Partial<any> = {}) {
+    return {
+      lanes: {},
+      splits: {},
+      eventHeat: null,
+      teamScore: null,
+      receivedAt: Date.now(),
+      ...overrides,
+    };
+  }
+
+  it('drops a genuinely empty snapshot without writing (does not mask a console outage)', async () => {
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'swimming');
+
+    const result = await service.ingestSwimTimingSnapshot(g.id, laneSnap(), { tenantId: TENANT });
+    expect(result).toEqual({ ok: true, accepted: false, reason: 'empty snapshot' });
+    const updated = game.rows.find((r: any) => r.id === g.id);
+    expect((updated.stats as any)?.results).toBeUndefined();
+  });
+
+  it('writes a lane-only result (no roster configured) into Game.stats.results', async () => {
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'swimming');
+
+    const snapshot = laneSnap({
+      eventHeat: { eventNumber: 12, heat: 3 },
+      lanes: {
+        1: { lane: 1, place: 0, minutes: 0, seconds: 55, hundredths: 42, display: '55.42', blank: false },
+        3: { lane: 3, place: 1, minutes: 0, seconds: 51, hundredths: 90, display: '51.90', blank: false },
+      },
+    });
+    const result = await service.ingestSwimTimingSnapshot(g.id, snapshot, { tenantId: TENANT });
+    expect(result).toEqual({ ok: true, accepted: true });
+
+    const updated = game.rows.find((r: any) => r.id === g.id);
+    const results = (updated.stats as any).results;
+    expect(results).toHaveLength(1);
+    expect(results[0].event).toBe('EVENT 12 — HEAT 3');
+    const laneRow = results[0].entries.find((e: any) => e.lane === 3);
+    expect(laneRow).toMatchObject({ place: 1, name: '', mark: '51.90' });
+  });
+
+  it('joins a roster lane hint (RosterPlayer.stats.lane) onto the matching lane, never fabricating other lanes', async () => {
+    const { service, game, rosterPlayer } = setup();
+    const g: any = await newGame(service, 'swimming');
+    await rosterPlayer.create({
+      data: {
+        tenantId: TENANT, gameId: g.id, team: 'home', name: 'D. Okafor',
+        stats: { lane: 3 }, sortOrder: 0,
+      },
+    });
+
+    const snapshot = laneSnap({
+      eventHeat: { eventNumber: 12, heat: 3 },
+      lanes: {
+        1: { lane: 1, place: 0, minutes: 0, seconds: 55, hundredths: 42, display: '55.42', blank: false },
+        3: { lane: 3, place: 1, minutes: 0, seconds: 51, hundredths: 90, display: '51.90', blank: false },
+      },
+    });
+    await service.ingestSwimTimingSnapshot(g.id, snapshot, { tenantId: TENANT });
+
+    const updated = game.rows.find((r: any) => r.id === g.id);
+    const entries = (updated.stats as any).results[0].entries;
+    expect(entries.find((e: any) => e.lane === 3)).toMatchObject({ name: 'D. Okafor', team: 'home' });
+    // Lane 1 has no roster hint — must stay lane+time only.
+    expect(entries.find((e: any) => e.lane === 1)).toMatchObject({ name: '' });
+  });
+
+  it('a second snapshot for the SAME heat replaces (not duplicates) the event row', async () => {
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'swimming');
+
+    await service.ingestSwimTimingSnapshot(
+      g.id,
+      laneSnap({
+        eventHeat: { eventNumber: 12, heat: 3 },
+        lanes: { 1: { lane: 1, place: 0, minutes: 0, seconds: 0, hundredths: 0, display: '', blank: false } },
+      }),
+      { tenantId: TENANT },
+    );
+    await service.ingestSwimTimingSnapshot(
+      g.id,
+      laneSnap({
+        eventHeat: { eventNumber: 12, heat: 3 },
+        lanes: { 1: { lane: 1, place: 1, minutes: 0, seconds: 55, hundredths: 42, display: '55.42', blank: false } },
+      }),
+      { tenantId: TENANT },
+    );
+
+    const updated = game.rows.find((r: any) => r.id === g.id);
+    const results = (updated.stats as any).results;
+    expect(results).toHaveLength(1);
+    expect(results[0].entries[0].mark).toBe('55.42');
+  });
+
+  it('a DIFFERENT heat in the same meet accumulates as a separate results row', async () => {
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'swimming');
+
+    await service.ingestSwimTimingSnapshot(
+      g.id,
+      laneSnap({ eventHeat: { eventNumber: 12, heat: 3 }, lanes: { 1: { lane: 1, place: 1, minutes: 0, seconds: 55, hundredths: 0, display: '55.00', blank: false } } }),
+      { tenantId: TENANT },
+    );
+    await service.ingestSwimTimingSnapshot(
+      g.id,
+      laneSnap({ eventHeat: { eventNumber: 12, heat: 4 }, lanes: { 1: { lane: 1, place: 1, minutes: 0, seconds: 54, hundredths: 0, display: '54.00', blank: false } } }),
+      { tenantId: TENANT },
+    );
+
+    const updated = game.rows.find((r: any) => r.id === g.id);
+    const results = (updated.stats as any).results;
+    expect(results.map((r: any) => r.event)).toEqual(['EVENT 12 — HEAT 3', 'EVENT 12 — HEAT 4']);
+  });
+
+  it('folds a reported team score into scalar swimHomeScore/swimAwayScore stats', async () => {
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'swimming');
+
+    await service.ingestSwimTimingSnapshot(
+      g.id,
+      laneSnap({ teamScore: { homeScore: 88, awayScore: 76 } }),
+      { tenantId: TENANT },
+    );
+
+    const updated = game.rows.find((r: any) => r.id === g.id);
+    expect((updated.stats as any).swimHomeScore).toBe(88);
+    expect((updated.stats as any).swimAwayScore).toBe(76);
+  });
+
+  it('resolves the game without a tenant filter on the public feed-token path (auth.tenantId absent)', async () => {
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'swimming');
+
+    const snapshot = laneSnap({
+      eventHeat: { eventNumber: 1, heat: 1 },
+      lanes: { 2: { lane: 2, place: 1, minutes: 0, seconds: 48, hundredths: 90, display: '48.90', blank: false } },
+    });
+    const result = await service.ingestSwimTimingSnapshot(g.id, snapshot, { source: 'swim-timing-feed' });
+    expect(result).toEqual({ ok: true, accepted: true });
+    const updated = game.rows.find((r: any) => r.id === g.id);
+    expect((updated.stats as any).results).toHaveLength(1);
+  });
+
+  it('throws NotFoundException for an unknown game id', async () => {
+    const { service } = setup();
+    await expect(
+      service.ingestSwimTimingSnapshot('nope', laneSnap({ eventHeat: { eventNumber: 1, heat: 1 } }), { tenantId: TENANT }),
+    ).rejects.toThrow(NotFoundException);
+  });
+
+  it('writes an AuditLog row when a lane places (finish)', async () => {
+    const { service, game, auditLog } = setup();
+    const g: any = await newGame(service, 'swimming');
+
+    await service.ingestSwimTimingSnapshot(
+      g.id,
+      laneSnap({
+        eventHeat: { eventNumber: 12, heat: 3 },
+        lanes: { 1: { lane: 1, place: 1, minutes: 0, seconds: 55, hundredths: 42, display: '55.42', blank: false } },
+      }),
+      { tenantId: TENANT },
+    );
+
+    const rows = auditLog.rows.filter((r: any) => r.action === 'SWIM_TIMING_SNAPSHOT_INGEST');
+    expect(rows.length).toBeGreaterThanOrEqual(1);
+    expect(rows[0].targetId).toBe(g.id);
+    expect(rows[0].tenantId).toBe(TENANT);
+  });
+
+  it('does not fabricate a DQ mid-heat when a lane has no time yet', async () => {
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'swimming');
+
+    // Lane 1 has finished; lane 2 is still blank (still racing) — heatOver
+    // heuristic must NOT fire, so lane 2 stays blank, not "DQ".
+    await service.ingestSwimTimingSnapshot(
+      g.id,
+      laneSnap({
+        eventHeat: { eventNumber: 12, heat: 3 },
+        lanes: {
+          1: { lane: 1, place: 1, minutes: 0, seconds: 55, hundredths: 42, display: '55.42', blank: false },
+          2: { lane: 2, place: 0, minutes: 0, seconds: 0, hundredths: 0, display: '', blank: false },
+        },
+      }),
+      { tenantId: TENANT },
+    );
+
+    const updated = game.rows.find((r: any) => r.id === g.id);
+    const lane2 = (updated.stats as any).results[0].entries.find((e: any) => e.lane === 2);
+    expect(lane2.mark).toBe('');
+  });
+
+  it('marks a blank lane as DQ once every other lane in the heat has finished', async () => {
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'swimming');
+
+    await service.ingestSwimTimingSnapshot(
+      g.id,
+      laneSnap({
+        eventHeat: { eventNumber: 12, heat: 3 },
+        lanes: {
+          1: { lane: 1, place: 1, minutes: 0, seconds: 55, hundredths: 42, display: '55.42', blank: false },
+          2: { lane: 2, place: 0, minutes: 0, seconds: 0, hundredths: 0, display: '', blank: true },
+        },
+      }),
+      { tenantId: TENANT },
+    );
+
+    const updated = game.rows.find((r: any) => r.id === g.id);
+    const lane2 = (updated.stats as any).results[0].entries.find((e: any) => e.lane === 2);
+    expect(lane2.mark).toBe('DQ');
+  });
+});

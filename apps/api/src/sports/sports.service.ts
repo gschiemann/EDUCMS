@@ -28,10 +28,20 @@ import {
   sanitizeRibbonScoreRepeat,
   STRUCTURED_STAT_KEYS,
   sanitizeStructuredStat,
+  sanitizeResults,
 } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
 import { makeFeedToken } from './sports-feed-token';
+// 2026-07-01 swim/dive DEPTH pass — CTS SWIMMING scoreboard-serial ingest
+// (docs/research/2026-06-30-swim-dive-scoreboards/00-REPORT.md part A7).
+import type { SwimTimingSnapshot } from '@cms/scoreboard-cts';
+import {
+  normalizeSwimSnapshot,
+  mergeSwimResult,
+  extractSwimTeamScore,
+  type SwimRosterEntry,
+} from './swim-timing-feed';
 // Phase 1-A player-stats engine — PURE leaders + player-of-the-game
 // computed from the roster already in the board payload (no DB query).
 import {
@@ -5028,6 +5038,165 @@ export class SportsService {
         // Audit best-effort — never let a logging failure block the
         // snapshot write. The next snapshot will retry if anything
         // material happens.
+      }
+    }
+
+    return { ok: true, accepted: true };
+  }
+
+  /**
+   * Sprint 13 DEPTH pass (2026-07-01) — CTS SWIMMING scoreboard-serial
+   * ingest. Docs: docs/research/2026-06-30-swim-dive-scoreboards/
+   * 00-REPORT.md part A7 + docs/research/2026-07-01-swim-dive-depth/.
+   *
+   * UNLIKE ingestCtsSnapshot (water polo — writes through to the
+   * operator score/segment columns + syncs penalty/shot-clock timers),
+   * swimming has no equivalent "operator column" for lane times/places —
+   * the whole point is the console IS the source of truth for the heat
+   * in progress. So this method writes ONLY into the structured
+   * `Game.stats.results` key (the SAME MeetResult contract the console's
+   * Meet-Results editor and every swim/dive board widget already read
+   * via `readResults`/`sanitizeResults`) — no Prisma migration, no new
+   * stats shape, no score-column write-through.
+   *
+   * Auth mirrors ingestCtsSnapshot exactly: tenant-scoped load when an
+   * authenticated caller supplies `auth.tenantId`; otherwise the public
+   * feed-token path (`auth.tenantId` absent) resolves the game by id
+   * alone — token possession is what proves ownership there, checked by
+   * the controller BEFORE this method is ever called.
+   *
+   * `snapshot` is the ALREADY-DECODED `SwimTimingSnapshot` shape from
+   * `@cms/scoreboard-cts`'s `SwimTimingParser` (the bridge box parses the
+   * raw RS-232 bytes locally and posts JSON, exactly like the CTS water-
+   * polo bridge does for `cts-snapshot`) — this method never sees raw
+   * serial bytes.
+   */
+  async ingestSwimTimingSnapshot(
+    gameId: string,
+    snapshot: SwimTimingSnapshot,
+    auth: { tenantId?: string | null; actorUserId?: string | null; source?: string },
+  ): Promise<{ ok: true; accepted: boolean; reason?: string }> {
+    const game = auth.tenantId
+      ? await this.prisma.client.game.findFirst({
+          where: { id: gameId, tenantId: auth.tenantId },
+        })
+      : await this.prisma.client.game.findUnique({ where: { id: gameId } });
+    if (!game) {
+      throw new NotFoundException('Game not found');
+    }
+
+    const laneCount = Object.keys(snapshot?.lanes ?? {}).length;
+    if (laneCount === 0 && !snapshot?.eventHeat && !snapshot?.teamScore) {
+      // Nothing decoded yet (e.g. the bridge just connected) — drop
+      // silently, same "don't mask an outage with a no-op write" rule
+      // ingestCtsSnapshot follows for an all-empty snapshot.
+      return { ok: true, accepted: false, reason: 'empty snapshot' };
+    }
+
+    // Roster join (report A7: "names+seed come from meet-mgmt... VenueOS's
+    // ingest must join these two streams on (event, heat, lane)"). VenueOS
+    // has no dedicated Hy-Tek/Splash import yet, so the join source is
+    // whatever the operator has already entered in the game's roster —
+    // `RosterPlayer.stats.lane` (a plain JSON field, no migration) is the
+    // per-heat lane hint. A roster with no lane hints yields lane+time-only
+    // rows, never a fabricated name (report A7/A5 explicit rule).
+    let rosterEntries: SwimRosterEntry[] = [];
+    try {
+      const rosterRows = await this.prisma.client.rosterPlayer.findMany({
+        where: { gameId },
+      });
+      rosterEntries = rosterRows
+        .map((r): SwimRosterEntry | null => {
+          const stats = (r.stats as Record<string, unknown>) || {};
+          const lane = typeof stats.lane === 'number' ? stats.lane : Number(stats.lane);
+          if (!Number.isFinite(lane) || lane <= 0) return null;
+          const team = r.team === 'home' || r.team === 'away' ? r.team : null;
+          return { name: r.name, team, lane };
+        })
+        .filter((r): r is SwimRosterEntry => r !== null);
+    } catch {
+      // Roster lookup is best-effort — a DB hiccup here must not block
+      // the timing snapshot; it just means this update renders lane+time
+      // only, same as "no roster configured."
+      rosterEntries = [];
+    }
+
+    // "Heat over" heuristic: at least one lane has posted a real finish
+    // AND every non-blank lane has one too (no lane is still mid-race).
+    // Conservative on purpose — mid-heat we never guess a DQ.
+    const laneStates = Object.values(snapshot.lanes ?? {});
+    const anyFinished = laneStates.some((l) => l.place > 0);
+    const noneStillRacing = laneStates.every((l) => l.blank || l.place > 0 || l.display !== '');
+    const heatOver = anyFinished && noneStillRacing && laneStates.length > 0;
+
+    const fresh = normalizeSwimSnapshot(snapshot, rosterEntries, heatOver);
+
+    const prevStats: Record<string, unknown> =
+      game.stats && typeof game.stats === 'object' ? { ...(game.stats as Record<string, unknown>) } : {};
+    const prevResults = sanitizeResults(prevStats.results);
+    const mergedResults = mergeSwimResult(prevResults, fresh);
+    const sanitized = sanitizeResults(mergedResults as unknown);
+
+    const nextStats: Record<string, unknown> = { ...prevStats, results: sanitized };
+
+    // Team score (dual meets, report A7 module 0x0D) folds into the same
+    // homeTimeouts-style scalar convention ingestCtsSnapshot uses for its
+    // T2-1 fields — a plain scalar pair on stats, not a new structured key.
+    const teamScore = extractSwimTeamScore(snapshot);
+    if (teamScore) {
+      nextStats.swimHomeScore = teamScore.homeScore;
+      nextStats.swimAwayScore = teamScore.awayScore;
+    }
+
+    await this.prisma.client.game.update({
+      where: { id: gameId },
+      data: { stats: nextStats as any },
+    });
+    this.invalidateBoardCache(gameId);
+
+    // Sampled audit — mirrors ingestCtsSnapshot's cadence discipline (a
+    // 5-10Hz timing feed would otherwise flood AuditLog). Audit-worthy:
+    // a new/changed event-heat header, any place change (someone
+    // finished), or at most once per 60s otherwise.
+    const prevEventHeat = prevResults.find((r) => r.event === fresh.event);
+    const placesChanged =
+      !prevEventHeat ||
+      prevEventHeat.entries.length !== fresh.entries.length ||
+      fresh.entries.some((e, i) => prevEventHeat.entries[i]?.place !== e.place || prevEventHeat.entries[i]?.mark !== e.mark);
+    const prevAuditKey = `swimAuditAt:${fresh.event}`;
+    const lastAuditAt = typeof prevStats[prevAuditKey] === 'number' ? (prevStats[prevAuditKey] as number) : 0;
+    const wantsAudit = placesChanged || Date.now() - lastAuditAt > 60_000;
+    if (wantsAudit) {
+      try {
+        await this.prisma.client.auditLog.create({
+          data: {
+            tenantId: game.tenantId,
+            userId: auth.actorUserId || null,
+            action: 'SWIM_TIMING_SNAPSHOT_INGEST',
+            targetType: 'Game',
+            targetId: gameId,
+            details: JSON.stringify({
+              source: auth.source || 'swim-timing-feed',
+              event: fresh.event,
+              placesChanged,
+              laneCount,
+              rosterJoined: rosterEntries.length,
+            }),
+          },
+        });
+      } catch {
+        // Audit best-effort — never let a logging failure block the
+        // snapshot write.
+      }
+      // Stamp the audit-cadence marker into stats so the next ingest can
+      // compute the 60s window without a separate table.
+      try {
+        await this.prisma.client.game.update({
+          where: { id: gameId },
+          data: { stats: { ...nextStats, [prevAuditKey]: Date.now() } as any },
+        });
+      } catch {
+        /* best-effort cadence marker */
       }
     }
 
