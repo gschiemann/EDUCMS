@@ -1,0 +1,309 @@
+{
+  "label": "DEEP-RESEARCH TASK: DATA / PRODUCTIVITY / UTILITY app feasibility in 2026. For EACH of: G",
+  "findings": {
+    "apps": [
+      {
+        "name": "Google Slides",
+        "category": "Productivity/Docs",
+        "howEmbedded2026": "File > Share > Publish to web > Embed gives a public iframe (no API key, no OAuth). URL params drive signage behavior: start=true (auto-play), delayms=NNNN (per-slide dwell), rm=minimal (kiosk mode, hides Google controls), loop=true. Live: editing the deck auto-updates the screen. Trade-off: 'Publish to web' makes the deck PUBLIC to anyone with the link.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "Highest-value picker. Our WEBPAGE iframe already does this — the app just needs a config form that takes the share link and builds the rm=minimal&start=true&loop=true&delayms URL for the operator. Add a 'make public' reminder. Works on Chromium-83 (pure iframe). No offline fallback (live web)."
+      },
+      {
+        "name": "PowerPoint / OneDrive (PowerPoint Online)",
+        "category": "Productivity/Docs",
+        "howEmbedded2026": "Upload .pptx to OneDrive (personal) -> PowerPoint for the web -> File > Share > Embed -> public iframe (office.com /embed.aspx). Updates to the file reflect automatically. Personal OneDrive embed is anonymous; OneDrive for Business / SharePoint usually forces a Microsoft sign-in (blank/login screen on a kiosk) unless an org admin enables anonymous embed links. Office Online Viewer (view.officeapps.live.com/op/embed.aspx?src=PUBLIC_URL) is the fallback for any publicly-hosted .pptx/.docx/.xlsx.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "Same as Slides — config form that takes the OneDrive embed link. Big gotcha to surface in UX: Business/SharePoint links need anonymous sharing or the screen shows a login wall. Detect 'sharepoint.com'/'-my.sharepoint.com' and warn. Office Online Viewer path also lets us render any public PDF/Word/Excel link without their own embed."
+      },
+      {
+        "name": "Canva",
+        "category": "Productivity/Docs",
+        "howEmbedded2026": "TWO real paths. (1) Free/no-OAuth: Share > More > Embed gives a public iframe (canva.com/design/.../view?embed) — live, auto-updates, but VIEW only and shows Canva's player chrome/branding; presentations need manual click-through unless set to auto-play. (2) Canva Connect API (OAuth 2.0 + PKCE, dev terms updated Dec 2025): export a design to PNG/JPG/PDF/MP4 server-side and re-host as an Asset — gives a clean full-bleed image/video with no Canva chrome, plays offline. Connect requires a registered Canva app + per-tenant OAuth + export-job polling.",
+        "effort": "M",
+        "tosRisk": "medium",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "Ship the embed-iframe path first (S, rides WEBPAGE, instant). The premium path = Connect API export -> IMAGE/VIDEO asset (no Canva branding, offline-cacheable on Taurus) — that's the L/OAuth plumbing already scaffolded in CLAUDE.md env (CANVA_CLIENT_ID/SECRET, Sprint 11). Canva is OptiSigns' highest-rated integration (4.8/5) so parity matters."
+      },
+      {
+        "name": "Google Calendar",
+        "category": "Calendar",
+        "howEmbedded2026": "Two methods. (1) Public embed iframe: calendar.google.com/calendar/embed?src=CAL_ID — Google's own chrome/colors, agenda/week/month modes via &mode=. Requires the calendar set to public. (2) Public iCal/ICS feed (Settings > Integrate calendar > Public address in iCal format) parsed by us into our own branded CALENDAR widget. ICS caches ~24h so near-real-time, not instant.",
+        "effort": "M",
+        "tosRisk": "low",
+        "reusesOurWidget": "CALENDAR",
+        "optiSignsHas": true,
+        "notes": "We ALREADY have a CALENDAR widget — the win is feeding it. Embed-iframe path is S (rides WEBPAGE) but ugly Google chrome. The premium path: paste the public ICS URL, our backend fetches+parses ICS into the branded CALENDAR widget (matches brand palette, no Google look). That ICS parser is the M effort and is reused by Outlook + iCal below."
+      },
+      {
+        "name": "Outlook / Microsoft 365 Calendar",
+        "category": "Calendar",
+        "howEmbedded2026": "Outlook.com / M365: publish the calendar (Settings > Shared calendars > Publish, permission 'Can view all details') which emits BOTH an HTML view URL and a public ICS link. The ICS link feeds our CALENDAR widget exactly like Google. The HTML URL can ride WEBPAGE but is plain. M365 admin must allow calendar publishing (some tenants disable it).",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "CALENDAR",
+        "optiSignsHas": false,
+        "notes": "Once the ICS parser exists for Google Calendar, Outlook is nearly free — same code path, different source URL. Flag the 'admin disabled publishing' failure case in UX."
+      },
+      {
+        "name": "iCal / ICS feed (generic)",
+        "category": "Calendar",
+        "howEmbedded2026": "Any public webcal://, .ics, or http(s) ICS URL (Apple iCloud shared calendars, Eventbrite, sports schedules, school/district calendars, Teamup, etc.) is fetched and parsed server-side into events. Open standard (RFC 5545), no key, no ToS. The universal calendar adapter.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "CALENDAR",
+        "optiSignsHas": true,
+        "notes": "This is the single calendar primitive — Google/Outlook/Apple/Eventbrite all reduce to 'paste an ICS URL.' Build ONE robust ICS fetch+parse service (handle recurrence RRULE, timezones, all-day events) and three calendar 'apps' are really one backend. Cache + revalidate so it survives the source being briefly down."
+      },
+      {
+        "name": "Google Sheets",
+        "category": "Data/Finance",
+        "howEmbedded2026": "Two paths. (1) File > Share > Publish to web > Embed: public iframe of a tab or range, live-updating, can strip frame/headers via URL params (rm=minimal, gid=, range=, widget=true&headers=false). (2) Published CSV/TSV (output=csv) or the Sheets API v4 (API key for public sheets, OAuth for private) to pull rows into our own LIVE_DATA / CHART widget for a branded table or chart instead of the raw Google grid.",
+        "effort": "M",
+        "tosRisk": "low",
+        "reusesOurWidget": "LIVE_DATA",
+        "optiSignsHas": true,
+        "notes": "Embed-iframe path is S (WEBPAGE) and instant. The premium path: published-CSV URL -> our LIVE_DATA table or CHART widget, brand-styled — operators use Sheets as a no-code CMS (prices, rosters, KPIs). The published-CSV fetcher is the M piece and also powers the generic 'spreadsheet-as-datasource' for menu/leaderboard widgets."
+      },
+      {
+        "name": "Google Docs",
+        "category": "Productivity/Docs",
+        "howEmbedded2026": "File > Share > Publish to web > Embed gives a public iframe of the document (live, auto-updating). Lower signage value than Slides/Sheets — long docs read poorly on a wall — but useful for policies, menus written in Docs, single-page notices. Also renderable via Office Online Viewer if exported, but the native publish-to-web iframe is simplest.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": false,
+        "notes": "Low priority vs Slides/Sheets. Pure WEBPAGE iframe config. Include for completeness so the Workspace trio is whole, but de-emphasize in the picker (docs aren't great signage)."
+      },
+      {
+        "name": "News (RSS / Google News / NewsAPI)",
+        "category": "News/RSS",
+        "howEmbedded2026": "RSS is the only zero-cost, zero-ToS-risk path: any publisher RSS/Atom URL parsed into a branded ticker/card feed. The official Google News API was DEPRECATED years ago — there is no official Google News feed; aggregators (GNews ~free 100 req/day, NewsData.io ~200 credits/day, NewsAPI.org free tier is localhost/dev-ONLY and bans commercial+client-side use, paid from $449/mo) wrap it. Curated RSS bundles (AP, Reuters, ESPN, BBC, local outlets) give 'pick a topic' UX with no key.",
+        "effort": "M",
+        "tosRisk": "medium",
+        "reusesOurWidget": "RSS_FEED",
+        "optiSignsHas": true,
+        "notes": "We ALREADY have RSS_FEED. The 'News' app = a curated picker of vetted RSS URLs by topic/region (national, sports, business, weather, local) on top of RSS_FEED — looks like a real app, costs nothing, zero ToS risk. Avoid NewsAPI.org (dev-only license is a legal landmine for a commercial CMS); if a true search-news app is wanted later, use GNews/NewsData on a server-side platform key (Tier-1) — that's the M/L. Headline image scraping from RSS has medium takedown risk; prefer publisher-provided enclosure images."
+      },
+      {
+        "name": "Weather (enrichment)",
+        "category": "Weather",
+        "howEmbedded2026": "Already shipped as a first-class WEATHER widget. Enrichment opportunities in 2026: NWS api.weather.gov (free, no key, US — adds official alerts/CAP, hourly, radar zones), Open-Meteo (free, no key, global, generous), plus animated radar tiles (RainViewer free tiles), air-quality (AQI), pollen, and a 5-7 day branded forecast strip. Severe-weather alerts from NWS CAP tie directly into the emergency surface.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "WEATHER",
+        "optiSignsHas": true,
+        "notes": "Not a new app — a depth play. Add NWS/Open-Meteo as free no-key providers (current uses a key), an animated-radar variant, AQI/pollen chips, and wire NWS severe-weather CAP into the emergency/alert path (see Public-alert/CAP row). All free, all Taurus-safe."
+      },
+      {
+        "name": "Countdown / Clock / Date",
+        "category": "Utility",
+        "howEmbedded2026": "No external service — pure client-render. We already ship CLOCK and COUNTDOWN widgets. Industry table-stakes variants (OptiSigns/Yodeck both ship these): analog clock, world/multi-timezone clock, count-UP (days-since), styled date, flip-clock. Zero API, zero ToS, fully offline (critical for Taurus).",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "CLOCK",
+        "optiSignsHas": true,
+        "notes": "Mostly DONE. Gap vs competitors = variant breadth (analog face, world-clock multi-zone row, count-up). These are pure CSS/JS, Taurus-safe (no inset shorthand), and a cheap way to fill out the picker's Utility row so the library doesn't look thin."
+      },
+      {
+        "name": "QR code",
+        "category": "Utility",
+        "howEmbedded2026": "Generated entirely client-side (qrcode.js / a tiny SVG QR lib) — no external service, no ToS, offline-safe. Operator types a URL/vCard/Wi-Fi/text, we render a brandable SVG QR (logo center optional). OptiSigns and Yodeck both ship this as a standalone app.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "new",
+        "optiSignsHas": true,
+        "notes": "New widget but trivial and high-value (every QSR/retail board wants 'scan to order/follow/review'). Render SVG (crisp at 4K, Taurus-safe). Pairs naturally with the Google Reviews / social 'Follow Us' apps. ~half a day."
+      },
+      {
+        "name": "Web page / URL",
+        "category": "Web/Embed",
+        "howEmbedded2026": "Already shipped: WEBPAGE = sandboxed iframe of any URL. This is the universal substrate every iframe-based app above rides on. 2026 reality: many big sites now send X-Frame-Options: DENY / frame-ancestors CSP and simply WON'T embed — so a raw-URL widget fails silently on those. That's exactly why the curated 'Apps' library beats paste-a-URL: per-app we use the embeddable variant (publish-to-web, /embed, oEmbed) instead of the blocked main URL.",
+        "effort": "S",
+        "tosRisk": "medium",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "Keep as the catch-all 'Website' app. UX win: detect non-embeddable URLs (HEAD check for X-Frame-Options / frame-ancestors) at config time and warn the operator instead of shipping a blank screen — this is a known prior bug class ('CSP frame-ancestors' in our recurring-failure patterns). The whole Apps-library thesis is: replace fragile raw-URL embedding with per-app embeddable endpoints."
+      },
+      {
+        "name": "PDF",
+        "category": "Productivity/Docs",
+        "howEmbedded2026": "We already render PDFs (asset library + playlist tiles, with the Chrome-toolbar masking work already done). For the Apps picker: a public PDF URL or uploaded PDF rendered page-by-page. Best signage practice in 2026 = render pages to images (pdf.js) and auto-advance, NOT the native browser PDF viewer (which shows toolbars, scrollbars, and is flaky on Android WebView/Taurus).",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "IMAGE_CAROUSEL",
+        "optiSignsHas": true,
+        "notes": "Mostly DONE for assets. The 'app' is just exposing it in the editor picker. Prefer the pdf.js-to-images path (each page -> IMAGE_CAROUSEL slide with dwell) for Taurus reliability and offline caching — the native PDF viewer has bitten us repeatedly (toolbar bleed, Chromium-83). Office Online Viewer can also render remote PDFs if we don't want to host pdf.js on the player."
+      },
+      {
+        "name": "Stocks / Crypto / Markets",
+        "category": "Data/Finance",
+        "howEmbedded2026": "Free APIs, server-side fetch into our own ticker/card widget: Finnhub (free 60 calls/min, stocks+forex+crypto), Alpha Vantage (free, 25/day-ish, 50+ indicators), CoinGecko (free, 14k coins, official crypto-ticker widget + API). All require a (free) key and server-side calls (never expose key client-side). We render a branded scrolling ticker / card grid — do NOT iframe third-party widgets (slow, branded, Taurus-risky).",
+        "effort": "M",
+        "tosRisk": "medium",
+        "reusesOurWidget": "TICKER",
+        "optiSignsHas": false,
+        "notes": "Strong corporate/lobby/finance-vertical play and a gap vs OptiSigns. Server-side fetch on a platform key (rate-limit shared across tenants -> cache aggressively, e.g. 60s) feeding our TICKER (scroll) or LIVE_DATA (card) widget. ToS medium: free tiers restrict redistribution/commercial display — read each provider's terms before GA; Finnhub/CoinGecko free tiers are the most signage-friendly. Crypto = CoinGecko (no-key-friendly), equities = Finnhub."
+      },
+      {
+        "name": "Traffic / Transit / Flights",
+        "category": "Transit",
+        "howEmbedded2026": "THREE distinct sub-apps. TRAFFIC: Google Maps Embed API with a traffic-layer URL (free, unlimited, API key, iframe) — easiest. TRANSIT: GTFS-Realtime is the open standard (Protocol Buffers) — agencies publish free feeds (511.org, Transitland, agency portals); parse to a departures board. Some agencies need a free key. FLIGHTS: FlightAware AeroAPI (~$5/mo free credit then paid) or Aviationstack (free 100-500 req/mo, paid from ~$50) for an airport departures/arrivals board.",
+        "effort": "L",
+        "tosRisk": "medium",
+        "reusesOurWidget": "new",
+        "optiSignsHas": false,
+        "notes": "Niche but high-impact for the right venue (transit hubs, hotels, airports, corporate shuttles). Traffic is S (Maps Embed iframe). Transit (GTFS-RT protobuf parse, per-agency feed config) and Flights (paid API + per-route config) are each L and need a real departures-board widget. Recommend: ship Traffic now (rides Google Maps app below), defer Transit/Flights to a vertical-driven request. ToS medium: flight APIs meter hard; GTFS feeds vary by agency license."
+      },
+      {
+        "name": "Sports scores",
+        "category": "Data/Finance",
+        "howEmbedded2026": "For non-game-presentation signage (lobby/bar showing scores): TheSportsDB (free/community, media-rich, NOT real-time), API-Sports/api-sports.io (paid, real-time, broad coverage), ESPN's UNDOCUMENTED hidden endpoints (free, no key, but unofficial — can break/disappear anytime, no SLA, gray-area ToS). We render a branded scoreboard/ticker card. NOTE: this is SEPARATE from our Sprint-13 live game-presentation scoreboards (Daktronics/CTS feeds) — this app is passive 'show the scores around the league.'",
+        "effort": "M",
+        "tosRisk": "high",
+        "reusesOurWidget": "TICKER",
+        "optiSignsHas": false,
+        "notes": "Distinguish clearly from our real sports console. For passive scores: API-Sports on a platform key is the only reliable+licensable option (M). ESPN hidden API is tempting (free) but HIGH ToS/stability risk — don't build a paid feature on it. Good fit for BAR/RESTAURANT/SPORTS verticals as a TICKER or card. Cache; respect provider redistribution terms."
+      },
+      {
+        "name": "Currency / Exchange rates",
+        "category": "Data/Finance",
+        "howEmbedded2026": "Truly free, low-risk APIs: Frankfurter (frankfurter.dev — no key, ECB data, ~33 currencies, unlimited) and ExchangeRate-API (free 1,500 req/mo, all currencies, no card). Server-side fetch into a branded rate board / ticker. Daily granularity is fine for signage; refresh hourly.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "TICKER",
+        "optiSignsHas": false,
+        "notes": "Cheap, clean addition for hotels, banks, airports, international lobbies. Frankfurter needs NO key (zero config) — ideal default. Render into TICKER or a LIVE_DATA card. Very low effort once the generic 'fetch JSON server-side -> map to widget' plumbing (shared with stocks/crypto) exists."
+      },
+      {
+        "name": "Public alert / CAP",
+        "category": "Utility",
+        "howEmbedded2026": "NWS api.weather.gov alerts (free, no key, US) emits Common Alerting Protocol (CAP) v1.2 + JSON-LD + ATOM indexes by state/county/zone. Poll the zone/county feed, parse active alerts, and surface severe weather/AMBER/civil alerts. CAP is the open standard that also underpins IPAWS (FEMA) — inbound consumption is feasible; outbound origination is FEMA-authorized only.",
+        "effort": "M",
+        "tosRisk": "low",
+        "reusesOurWidget": "new",
+        "optiSignsHas": false,
+        "notes": "STRATEGIC — this is our emergency moat, not just an app. Inbound NWS CAP alerts can auto-trigger the existing emergency/weather-alert surface (tornado warning -> screens flip automatically). Already on our Standard Audit Surface (section 13: CAP inbound, IPAWS). Build the CAP parser as a signage 'app' AND wire it to the emergency pipeline. Free, no key, US-wide. Differentiator vs every generic signage CMS."
+      },
+      {
+        "name": "Power BI / Looker Studio / Tableau dashboards",
+        "category": "Data/Finance",
+        "howEmbedded2026": "Power BI: File > Embed report > Publish to web (public) gives an anonymous iframe — BUT it makes the report PUBLIC to the entire internet (no auth), a serious data-governance risk; the secure path is Power BI Embedded / service auth with the user's Pro/Premium credentials (OAuth, what embed-signage-grade vendors do). Looker Studio: Share > Embed report (must enable embedding) -> iframe, supports public or signed-in. Tableau: Tableau Public = free public iframe; Tableau Server/Cloud = embed via Connected Apps/JWT (OAuth-ish).",
+        "effort": "L",
+        "tosRisk": "medium",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "Power BI + Tableau are on OptiSigns; Looker Studio rounds out the trio. Publish-to-web iframe path is S (rides WEBPAGE) and ships now — but UX MUST loudly warn 'this makes your dashboard public to anyone.' The enterprise-grade secure path (per-tenant OAuth, embed tokens) is L and a sell-up for corporate. Looker Studio's embed iframe is the friendliest free path. All Taurus-risky (heavy JS dashboards on Chromium-83) — prefer landscape, simple report pages."
+      },
+      {
+        "name": "Google Maps",
+        "category": "Utility",
+        "howEmbedded2026": "Google Maps Embed API: free with UNLIMITED usage (Google's own words), API key required, pure iframe. Modes: place, directions, view, search, streetview. Traffic layer via the directions/view params. Min size 200x200. May show ads. The cleanest, cheapest 'real app' in this whole list.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": false,
+        "notes": "We already have GOOGLE_MAPS_API_KEY in env (used server-side for geocoding). Maps Embed is a DIFFERENT, free, unlimited product — config form (address/place -> embed URL) on top of WEBPAGE. Great for 'find us / nearby / directions' boards in lobbies, hotels, malls. Also the delivery vehicle for the Traffic sub-app above. Restrict the key to the Embed API + referrer."
+      },
+      {
+        "name": "Spotify (now-playing / playlist)",
+        "category": "Music",
+        "howEmbedded2026": "Two paths. (1) Spotify Embed: open.spotify.com -> Share > Embed -> iframe (open.spotify.com/embed/playlist|album|track/ID) — free, no OAuth, plays 30s previews (full playback needs a logged-in Premium session in the iframe, unreliable on a kiosk). (2) Web API 'currently playing' (OAuth, user token) -> render a custom branded now-playing card with album art/title/artist — what most now-playing widgets do; needs per-account OAuth + token refresh.",
+        "effort": "M",
+        "tosRisk": "medium",
+        "reusesOurWidget": "MUSIC_PLAYER",
+        "optiSignsHas": false,
+        "notes": "We have a MUSIC_PLAYER widget to ride. Embed-iframe path is S but limited (previews only, can't reliably drive venue audio from a kiosk). Now-playing card (OAuth Web API) is the polished play for venues already piping Spotify — M effort, per-tenant OAuth + refresh. ToS medium: Spotify dev terms restrict commercial/automated display and forbid using their data to build a competing service — read terms before GA. Don't promise full audio playback from the player iframe."
+      },
+      {
+        "name": "Apple Music (now-playing / playlist)",
+        "category": "Music",
+        "howEmbedded2026": "Apple Music Embed: embed.music.apple.com iframe for a song/album/playlist (free, no auth, 30-90s previews; full playback needs an Apple Music subscriber session). MusicKit for the Web (JS, requires an Apple Developer Program membership + a MusicKit developer token / JWT) enables a fuller custom player. Must embed a song/album/playlist, NOT just an artist.",
+        "effort": "M",
+        "tosRisk": "medium",
+        "reusesOurWidget": "MUSIC_PLAYER",
+        "optiSignsHas": false,
+        "notes": "Parallel to Spotify. Embed-iframe path is S (rides MUSIC_PLAYER/WEBPAGE). MusicKit Web requires a paid Apple Developer membership + signed developer tokens (more friction than Spotify's OAuth) — defer the custom-player path. Known WebKit/Safari quirks with the embed historically; test on player. Lower priority than Spotify (smaller signage demand)."
+      },
+      {
+        "name": "Menu / POS (live menu boards)",
+        "category": "Productivity/Docs",
+        "howEmbedded2026": "Pull-from-POS catalog APIs feed a branded menu board with live price + 86 (sold-out) automatically: Square Catalog API (OAuth), Toast (partner API), Clover (OAuth/REST), Lightspeed, plus middleware (Olo, Chowly, Deliverect) and a generic REST/CSV fallback. Competitors (42 Signage, Wallboard, Kitcast) push price/86 changes to boards 'within seconds.' This is OAuth + per-location mapping + polling/webhook plumbing per POS.",
+        "effort": "L",
+        "tosRisk": "medium",
+        "reusesOurWidget": "LIVE_DATA",
+        "optiSignsHas": false,
+        "notes": "We've ALREADY built a lot here (POS connector registry, custom-webhook endpoint, per-location pricing, auto-86 — tasks #170/#201/#208/#224). The Apps-picker move is to SURFACE the existing menu/POS pipeline as a first-class 'Digital Menu' app: pick POS -> OAuth -> map location -> drop a pre-wired menu template (the Integration Concierge auto-seed flow). Reuses LIVE_DATA / menu widgets. ToS medium: each POS has partner-program requirements (Toast especially gated)."
+      },
+      {
+        "name": "Digital menu (BYO / no POS)",
+        "category": "Productivity/Docs",
+        "howEmbedded2026": "No external service — operator authors a menu directly (items, prices, categories, dietary tags, photos) OR feeds it from a published Google Sheet (the no-code CMS path). Renders into a brand-styled menu-board template. The non-integrated counterpart to the POS app — works for any small operator without a connected POS.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "LIVE_DATA",
+        "optiSignsHas": false,
+        "notes": "Already largely covered by our menu templates + the Google-Sheets-as-datasource path. The 'app' = an opinionated menu config (or 'connect a Sheet') with auto-86 toggle, so an operator with no POS still gets a live-editable menu board. Pairs with the Google Sheets app's published-CSV fetcher — same backend."
+      }
+    ],
+    "summary": "Researched all 22 requested data/productivity/utility app categories against their real 2026 embed/API methods. The dominant pattern: most 'apps' are a polished per-app CONFIG FORM riding our existing WEBPAGE iframe (Slides, PowerPoint/OneDrive, Canva-embed, Sheets, Docs, Power BI/Looker/Tableau, Google Maps), our CALENDAR widget (Google/Outlook/iCal all reduce to ONE ICS parser), our TICKER/LIVE_DATA widgets (stocks/crypto/currency/sports via free server-side APIs), or our RSS_FEED (a curated 'News' picker). Only ~4 need genuinely new plumbing: QR (trivial client-side), CAP/public-alert (strategic — wire NWS alerts into our emergency moat), transit/flights (niche, paid/GTFS), and music now-playing (OAuth). Critical 2026 realities to design around: the official Google News API is dead (use RSS, not NewsAPI.org whose free tier bans commercial use); Power BI/Slides/Office 'publish to web' make content PUBLIC (governance warning needed); many top sites now block iframing via CSP frame-ancestors — which is the whole justification for a curated Apps library over paste-a-URL; and heavy dashboards (Power BI/Tableau) are Chromium-83/Taurus-risky. Several apps (menu/POS, weather, calendar, RSS, clock/countdown) are already mostly built — the work is surfacing them in the editor picker via the Integration Concierge auto-seed flow.</parameter>\n<parameter name=\"uxNotes\">[\n  \"OptiSigns' apps marketplace groups by intent (Social Media, Photos & Video, News, Business/Productivity) and gates apps by plan tier ('Included in all plans' / 'Standard and up' / 'Pro Plus and up') — a clean upsell lever; VenueOS could gate the OAuth-heavy apps (Canva Connect, Power BI secure, POS) to paid tiers.\",\n  \"Each OptiSigns/Yodeck app has a one-line value blurb ('Display your Power BI dashboard on any screen', 'Highlight your Instagram feed') — a benefit sentence, not a tech description. Our picker should do the same: lead with the outcome.\",\n  \"The leaders ship a per-app CONFIG FORM, not raw embed-code paste: e.g. Google Slides app asks for the share link and auto-builds the rm=minimal&start=true&loop=true&delayms URL behind the scenes. That hidden URL-construction is the core UX value — the operator never sees iframe params.\",\n  \"Yodeck and OptiSigns both ship the cheap utility apps as standalone tiles (QR, Count Down/Up, Date & Time, Analog/World Clock) — they pad out the library and make it feel complete even though each is trivial. Worth doing for picker density.\",\n  \"Calendar apps in the field accept an ICS feed via a single 'paste your calendar URL' field, then offer agenda/week/month layout toggles — abstracting Google vs Outlook vs Apple entirely. The operator picks 'Calendar', not 'Google Calendar'.\",\n  \"POS/menu leaders advertise 'price changes and 86'd items reflect on every screen within seconds, automatically, across all locations' as the headline — automation + multi-location is the selling point, not the menu designer itself.\",\n  \"A recurring competitor caveat surfaced in docs: publish-to-web embeds (Slides, Power BI, Sheets) have 'no offline fallback, no scheduling, no analytics' on the raw-iframe path — VenueOS can differentiate by caching/snapshotting these into Assets for offline playback on Taurus.\",\n  \"Best-practice for PDFs and Slides on signage is auto-advance + kiosk/minimal chrome — the field strongly prefers rendering to images/auto-play over the native browser viewer (toolbars, scrollbars, login walls).\"\n]",
+    "doBetterIdeas": [
+      "Integration Concierge as the picker brain: instead of an A-Z grid, let the operator paste their website or describe the venue and have the Concierge SUGGEST the right apps ('we found you use Toast -> add a live Menu board', 'you're a hotel -> add Weather + Currency + Flights'). This is our existing discovery service applied to the Apps library — no competitor does conversational app discovery.",
+      "Snapshot-to-Asset for offline resilience: for every publish-to-web app (Slides, Sheets, Power BI, Canva), periodically render the current state to an image/video Asset and cache it on the player. When the network or the source is down, the screen shows the last-good snapshot instead of a blank iframe — solves the #1 complaint about iframe-based signage and is a hard differentiator on Chromium-83 Taurus walls.",
+      "Embeddability pre-flight: at config time, do a HEAD check for X-Frame-Options / CSP frame-ancestors and warn 'this site can't be embedded' BEFORE the operator publishes a blank screen. For known-blocked sites, auto-suggest the embeddable variant (publish-to-web, /embed, oEmbed). Turns a silent failure (our recurring CSP bug class) into a guided fix.",
+      "Public-exposure guardrail: for Power BI/Slides/Office 'publish to web' apps, show a plain-English warning that the content becomes visible to anyone on the internet, and where supported offer the secure OAuth path as the 'safe' default. Competitors bury this; making it explicit earns superintendent/IT trust.",
+      "ONE calendar engine, three branded apps: build a single robust ICS parser (RRULE recurrence, timezones, all-day) feeding our brand-styled CALENDAR widget, then expose Google/Outlook/Apple as preset 'apps' that just prefill the source. Result: calendars match the venue's brand instead of showing Google's blue chrome — better-looking than every iframe competitor.",
+      "CAP/NWS as auto-emergency, not just a widget: ingest NWS Common Alerting Protocol alerts for the venue's county and AUTO-FLIP screens to the emergency/weather surface on a tornado/severe warning. This fuses an 'app' with our life-safety moat — no generic signage CMS (OptiSigns/Yodeck) turns a free public-alert feed into automatic screen takeover.",
+      "Free-by-default data apps: prefer no-key/free providers as the zero-config default (Frankfurter for currency, NWS/Open-Meteo for weather, CoinGecko for crypto, RSS for news) so an operator gets a working board with literally zero setup, then offer the paid/keyed providers as an upgrade. 'The app almost does the work for them.'",
+      "Brand-native render over third-party iframe: for stocks/crypto/currency/sports/news, fetch the data server-side and render into OUR brand-palette TICKER/LIVE_DATA/CHART widgets rather than embedding the provider's branded, slow, Taurus-unfriendly widget. Faster, on-brand, offline-cacheable, and Chromium-83-safe — visibly higher production value than competitors' raw embeds."
+    ],
+    "sources": [
+      "https://www.optisigns.com/apps",
+      "https://www.optisigns.com/apps-list/google-slides",
+      "https://www.optisigns.com/apps-list/powerpoint-online",
+      "https://support.microsoft.com/en-us/office/embed-a-presentation-in-a-web-page-or-blog-19668a1d-2299-4af3-91e1-ae57af723a60",
+      "https://www.canva.com/help/embed-designs/",
+      "https://www.canva.dev/docs/connect/",
+      "https://www.canva.dev/docs/connect/api-reference/exports/create-design-export-job/",
+      "https://www.canva.com/policies/canva-developer-terms/",
+      "https://www.yodeck.com/use-cases/google-calendar-display/",
+      "https://help.risevision.com/hc/en-us/articles/14592126494740-Show-an-iCal-Feed",
+      "https://playsignage.com/support/google-sheets/",
+      "https://newsapi.org/pricing",
+      "https://newsdata.io/blog/google-news-api-alternatives/",
+      "https://finnhub.io/",
+      "https://www.alphavantage.co/",
+      "https://www.coingecko.com/en/widgets/coin_ticker_widget",
+      "https://www.optisigns.com/apps-list/qr-code",
+      "https://www.optisigns.com/apps-list/count-down",
+      "https://www.yodeck.com/docs/user-manual/available-apps/",
+      "https://developers.google.com/transit/gtfs-realtime",
+      "https://transitapp.com/apis",
+      "https://www.flightaware.com/commercial/aeroapi",
+      "https://aviationstack.com/pricing",
+      "https://github.com/pseudo-r/Public-ESPN-API",
+      "https://www.thesportsdb.com/free_sports_api",
+      "https://api-sports.io/",
+      "https://learn.microsoft.com/en-us/power-bi/collaborate-share/service-publish-to-web",
+      "https://embedsignage.com/features/widgets/power-bi/",
+      "https://developers.google.com/maps/documentation/embed/get-started",
+      "https://developers.google.com/maps/documentation/embed/usage-and-billing",
+      "https://developer.spotify.com/documentation/embeds",
+      "https://developer.spotify.com/documentation/web-api/reference/get-the-users-currently-playing-track",
+      "https://developer.apple.com/musickit/",
+      "https://frankfurter.dev/",
+      "https://www.exchangerate-api.com/",
+      "https://www.weather.gov/documentation/services-web-alerts",
+      "https://vlab.noaa.gov/web/nws-common-alerting-protocol",
+      "https://brixsignage.com/guides/guide-pos-integration-toast-square-clover/",
+      "https://kitcast.tv/use-cases/digital-menu-boards"
+    ]
+  }
+}

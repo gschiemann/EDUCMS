@@ -1,0 +1,242 @@
+{
+  "label": "MAP-TO-VENUEOS TASK (read-only, no web needed unless helpful): inspect our repo to confir",
+  "findings": {
+    "apps": [
+      {
+        "name": "Web URL / Website",
+        "category": "Web/Embed",
+        "howEmbedded2026": "Any URL works TODAY via our SSRF-guarded server proxy GET /api/v1/proxy/web (strips X-Frame-Options + CSP frame-ancestors, optional &interactive=true to run the page's own JS). This is the one universal embed that beats per-site embed-killing.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "Maps 1:1 to WEBPAGE. config = { url, refreshIntervalMs, staticMode?, scrollEnabled? }. The PropertiesPanel WEBPAGE form already exists (url + auto-refresh). An 'App' = WEBPAGE with a friendly name + branded tile + (optionally) a polished config form that builds the URL for the operator. NOTHING new on the backend."
+      },
+      {
+        "name": "YouTube (video / live / channel)",
+        "category": "Video",
+        "howEmbedded2026": "Official iframe embed still works. StreamingWidget.normalizeEmbedUrl() already converts watch/youtu.be/live/channel URLs to youtube.com/embed with autoplay+mute+controls=0. Some channels disable embedding (honest caveat in our discovery rule).",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "STREAMING",
+        "optiSignsHas": true,
+        "notes": "Maps to STREAMING (playbackType iframe). config = { embedUrl|playbackUrl, muted, isLive }. Per-app form just needs: paste a YouTube URL or video ID. Discovery service already lists youtube as AVAILABLE → /templates."
+      },
+      {
+        "name": "Twitch",
+        "category": "Video",
+        "howEmbedded2026": "Official player.twitch.tv iframe; requires parent=<host> param which StreamingWidget already injects from window.location.hostname. Works on prod + localhost.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "STREAMING",
+        "optiSignsHas": true,
+        "notes": "Maps to STREAMING iframe. Per-app form: paste twitch.tv/<channel>. Already AVAILABLE in discovery.service.ts."
+      },
+      {
+        "name": "Vimeo",
+        "category": "Video",
+        "howEmbedded2026": "Official player.vimeo.com iframe; StreamingWidget.normalizeEmbedUrl handles vimeo.com/<id> → embed. API has an oembed resolver in streaming.service.ts.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "STREAMING",
+        "optiSignsHas": true,
+        "notes": "Maps to STREAMING iframe. Per-app form: paste a Vimeo URL."
+      },
+      {
+        "name": "Instagram",
+        "category": "Social",
+        "howEmbedded2026": "The old public profile-feed embed is DEAD (Meta killed the unauthenticated Instagram oEmbed/feed in 2020-2021; the Graph API now requires an Instagram Business account + Facebook app review + long-lived token). In 2026 a real auto-updating IG wall needs EITHER the Graph API (heavy OAuth/token plumbing) OR a paid 3rd-party aggregator (Curator.io / EmbedSocial / Walls.io / Juicer / Behold). A single-POST permalink can still be embedded via the official post-embed iframe.",
+        "effort": "L",
+        "tosRisk": "high",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "Our SOCIAL_FEED widget is currently a PLACEHOLDER (renders only an icon + 'Connected' if embedUrl set — no fetch, no render). Discovery service already lists instagram as COMING_SOON ('requires an Instagram Business account'). Honest paths: (a) single-post → WEBPAGE of the post-embed URL [S]; (b) full wall → aggregator account, embed their hosted JS wall via WEBPAGE [M, but operator brings their own aggregator] or build SOCIAL_FEED for real against Graph API [L]. Do NOT present an auto-updating IG feed as turnkey."
+      },
+      {
+        "name": "X (Twitter)",
+        "category": "Social",
+        "howEmbedded2026": "Public timeline embeds were gutted in 2023; platform.twitter.com timeline widgets are unreliable/auth-gated and the API is now paid (Basic ~$200/mo). In 2026 a live X feed realistically needs a paid aggregator. Single-tweet embed iframe still works.",
+        "effort": "L",
+        "tosRisk": "high",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "No X rule in discovery.service.ts yet (only Instagram under 'social'). Same shape as IG: single-post via WEBPAGE [S]; live timeline = aggregator or paid API [L]. Mark COMING_SOON / 'bring your aggregator' honestly."
+      },
+      {
+        "name": "Facebook (Page feed / posts)",
+        "category": "Social",
+        "howEmbedded2026": "Facebook Page Plugin iframe (developers.facebook.com/docs/plugins/page-plugin) still renders a page's recent posts WITHOUT per-tenant OAuth — it's the most viable turnkey social embed left in 2026. Single-post embed also works.",
+        "effort": "M",
+        "tosRisk": "medium",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "Page Plugin → build the facebook.com/plugins/page.php iframe URL from a paste of the page URL, render via WEBPAGE. Per-app form (page URL + tabs=timeline + width/height) is the M effort. Best 'real social feed with no token' option."
+      },
+      {
+        "name": "TikTok",
+        "category": "Social",
+        "howEmbedded2026": "Official oEmbed exists for a SINGLE video (tiktok.com/oembed → blockquote + embed.js). No public profile-feed embed; a profile wall needs an aggregator. The embed.js script must run, so it requires interactive WEBPAGE mode (our proxy &interactive=true) or an EXTERNAL_HTML wrapper.",
+        "effort": "M",
+        "tosRisk": "high",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "Single video → WEBPAGE(interactive) of the oEmbed HTML, or EXTERNAL_HTML board carrying the blockquote+script. Profile feed = aggregator [L]. Not in discovery rules yet."
+      },
+      {
+        "name": "LinkedIn",
+        "category": "Social",
+        "howEmbedded2026": "No public page-feed embed; single-post embed iframe exists (linkedin.com/embed/feed/update/...). Company-page feed needs Marketing Developer Platform approval (heavy).",
+        "effort": "M",
+        "tosRisk": "high",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": false,
+        "notes": "Single post via WEBPAGE. Feed = aggregator/API [L]. Lower priority for our verticals."
+      },
+      {
+        "name": "Google Slides",
+        "category": "Productivity/Docs",
+        "howEmbedded2026": "Official 'Publish to the web' gives an /embed URL with auto-advance (start=true, loop=true, delayms=N). No OAuth — the operator just publishes the deck public and pastes the URL. Renders cleanly in an iframe.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "Maps to WEBPAGE (direct iframe — published Slides set frame-ancestors permissively, so it can even skip our proxy). Per-app form: paste the published URL OR just the deck-share URL + we rewrite /pub?... → /embed?start=true&loop=true&delayms=. High-value, zero backend. Note: this is the LIVE-EMBED path, distinct from our existing Sprint-10/11 PDF/Canva design-IMPORT pipeline."
+      },
+      {
+        "name": "Google Calendar",
+        "category": "Calendar",
+        "howEmbedded2026": "Two real paths: (a) public-calendar iframe embed (calendar.google.com/calendar/embed?src=...) — turnkey, no auth, renders Google's own agenda/month UI; (b) public .ics/JSON feed parsed into our themed CALENDAR widget (needs a small server-side .ics fetch+parse). OAuth only needed for private calendars.",
+        "effort": "M",
+        "tosRisk": "low",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "Quick win = WEBPAGE of the embed URL [S]. Premium = feed our themed CALENDAR widget (which today only takes hand-entered config.events) from a public .ics — NEW backend GET /api/v1/calendar/ics?url= proxy+parse [M]. Discovery lists google-calendar COMING_SOON ('add events manually today') — building the .ics parse closes that honestly."
+      },
+      {
+        "name": "Weather",
+        "category": "Weather",
+        "howEmbedded2026": "Already fully built and live — our own WEATHER widget fetches live conditions (use-live-weather.ts) and has ~30 themed variants. No third party, no embed needed.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "WEATHER",
+        "optiSignsHas": true,
+        "notes": "An 'App' tile here is purely a friendly label on the existing WEATHER widget + its location/units config. Zero new work; just surface it in the Apps grid."
+      },
+      {
+        "name": "News / RSS",
+        "category": "News/RSS",
+        "howEmbedded2026": "RSS/Atom feeds are alive and license-friendly. BUT our RSS_FEED widget is a PLACEHOLDER — it renders 5 HARDCODED fake headlines and ignores any feed URL; there is no RSS fetch/parse endpoint on the API. Real news needs a server-side feed fetch+parse (browsers can't fetch cross-origin XML).",
+        "effort": "M",
+        "tosRisk": "low",
+        "reusesOurWidget": "RSS_FEED",
+        "optiSignsHas": true,
+        "notes": "Gap: build GET /api/v1/proxy/rss?url= (reuse safeFetch SSRF guard + a parser) and wire RSS_FEED to render real items. Then 'News' apps = curated RSS presets (AP/Reuters/ESPN/local) that just preset the feed URL. Today RSS_FEED is a costume — must be fixed before shipping a 'News' app."
+      },
+      {
+        "name": "Vimeo/YouTube/HLS live stream (generic)",
+        "category": "Video",
+        "howEmbedded2026": "HLS (.m3u8) plays via StreamingWidget with hls.js polyfill for non-Safari; DASH and RTMP/RTSP are honestly unsupported (surface a 'use HLS' message). Capability-aware codec pick for old Android WebViews.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "STREAMING",
+        "optiSignsHas": true,
+        "notes": "Generic 'Live stream' app → STREAMING. Backed by the streaming-provider catalog in packages/api-types/streaming.ts (Atmosphere, DIRECTV/DISH Business, Mood Media, etc. with auth/licensing tiers)."
+      },
+      {
+        "name": "Background music / radio",
+        "category": "Utility",
+        "howEmbedded2026": "Live today via MUSIC_PLAYER widget: SomaFM + NTS (free public streams, hardcoded URLs), NPR local-station finder (server-side by lat/lng), custom Icecast/Shoutcast/m3u8 paste. Apple Music / Spotify for Business are honest 'Coming soon' (need commercial OAuth contracts).",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "MUSIC_PLAYER",
+        "optiSignsHas": false,
+        "notes": "An 'App' tile = MUSIC_PLAYER with source preselected (e.g. 'SomaFM', 'NPR', 'Custom stream'). Mirrors the fitnessSourceCatalog pattern. Business hours + pause-during-emergency already built."
+      },
+      {
+        "name": "Charts / KPI dashboards",
+        "category": "Data/Finance",
+        "howEmbedded2026": "Our CHART / LIVE_DATA canonical types exist (variant-based). External BI dashboards (Power BI 'publish to web', Tableau Public, Google Data Studio/Looker Studio) all offer public iframe embeds with no per-tenant OAuth.",
+        "effort": "M",
+        "tosRisk": "low",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "External BI dashboards → WEBPAGE of their published embed URL [S]. Native data → CHART/LIVE_DATA variants (operator-entered or a future data feed). Power BI/Looker Studio publish-to-web is the turnkey path."
+      },
+      {
+        "name": "Quotes / Countdown / Clock / Date",
+        "category": "Utility",
+        "howEmbedded2026": "All native, no embed. QUOTE, COUNTDOWN, CLOCK widgets already exist and are fully editable/themed.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "These are the 'filler apps' every signage app store ships (OptiSigns/Yodeck). Already built as native widgets — just need Apps-grid tiles. (reusesOurWidget marked WEBPAGE only to satisfy the enum; actual mapping is QUOTE/COUNTDOWN/CLOCK.)"
+      },
+      {
+        "name": "Reviews (Google / Yelp / Tripadvisor)",
+        "category": "Reviews",
+        "howEmbedded2026": "No free official embed for a live reviews wall in 2026 — Google Places API has strict display TOS + caps to 5 reviews; Yelp/Tripadvisor require partner programs or paid widgets (EmbedSocial, Elfsight, Trustmary). Single static review can be a WEBPAGE.",
+        "effort": "L",
+        "tosRisk": "high",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "Realistic path = paid 3rd-party review-widget account, embed their hosted widget via WEBPAGE [operator brings account]. Native build = Places API plumbing + TOS compliance [L]. Mark honestly as 'bring your widget' / COMING_SOON."
+      },
+      {
+        "name": "QR code",
+        "category": "Utility",
+        "howEmbedded2026": "Native — TOUCH_QR / QR widget already in AddSidebar. No embed.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "QR is the universal fallback for every 'social/giving/newsletter' app we can't truly embed (link to the IG/Mailchimp/Tithe.ly page). Discovery service already recommends 'add a QR-code widget linking to your signup page' for Mailchimp/Tithe.ly/Pushpay. (enum-only WEBPAGE mapping; real type is TOUCH_QR.)"
+      },
+      {
+        "name": "Smart-TV streaming apps (Netflix/Disney+/etc.)",
+        "category": "Video",
+        "howEmbedded2026": "Cannot run in-WebView (DRM + licensed hardware). Our fitnessSourceCatalog already models these as STICK status — we launch the app on a connected Roku/Fire TV/Apple TV via remote-control APIs; playback happens on the stick.",
+        "effort": "L",
+        "tosRisk": "high",
+        "reusesOurWidget": "STREAMING",
+        "optiSignsHas": false,
+        "notes": "Already precedent in FITNESS_APP_LIBRARY + fitnessSourceCatalog (STICK/PARTNER/COMING tiers). Honest: these are stick-launch, not embed. Most signage app stores DON'T have these — it's a differentiator we already partly built for gyms."
+      }
+    ],
+    "uxNotes": [
+      "WHERE THE APPS ENTRY SHOULD LIVE: the template editor's left 'Add' rail is apps/web/src/components/template-builder/AddSidebar.tsx (vertical rail with Text / Image / Video / Webpage / QR / Shape). Add one more rail item: 'Apps' (grid icon). Clicking it should open a full Apps grid panel inside BuilderShell — the same surface area the VariantPicker uses.",
+      "BuilderShell.tsx is the panel dispatcher; the widgets panel today renders <VariantPicker /> (NOT the dead WidgetPalette.tsx — confirmed, see CLAUDE.md rule #9). The Apps grid should be a sibling panel keyed the same way VariantPicker is, OR a new top tab within the same picker. Do not add tiles to constants.ts WIDGET_GROUPS — those don't drive the live palette.",
+      "Precedent to copy EXACTLY: apps/web/src/components/widgets/fitness/fitnessSourceCatalog.ts. It already implements 'app registry → declarative config fields → form renders itself' for gym sources, with a status enum (READY/STICK/PARTNER/COMING) shown honestly in the UI, per-source config-field descriptors (key/label/type/placeholder/options), and a widgetType each source resolves to. A general AppsCatalog should be this exact shape, app-store-wide.",
+      "Honesty pattern is already the house style: discovery.service.ts grades every provider AVAILABLE vs COMING_SOON and FORBIDS dead Connect buttons (buildCandidate() enforces it). The Apps grid must do the same — an Instagram-feed tile that can't truly auto-update should say 'Coming soon' or 'Bring your aggregator', never a fake 'Connect'. The beta repeatedly flagged 'costume' integrations; an Apps library full of non-working tiles would reintroduce that.",
+      "Per-app config forms: today the WEBPAGE PropertiesPanel form is just 2 fields (url + refreshIntervalMs). An app tile should open a POLISHED form that hides the raw URL — e.g. YouTube = 'Paste a YouTube link', Google Slides = 'Paste your published deck URL' + an auto-advance toggle, Facebook = 'Page URL'. The form then COMPUTES the right embed URL and writes a normal WEBPAGE/STREAMING config. StreamingWidget.normalizeEmbedUrl already does YouTube/Twitch/Vimeo URL→embed normalization the form can reuse.",
+      "Brand-tile UX: each app needs a recognizable logo tile (the fitness catalog uses an emoji/brand-mark fallback field). OptiSigns/Yodeck/ScreenCloud all present apps as a logo grid with search + category filter — VariantPicker already has the search + category-chip + live-thumbnail UI to copy.",
+      "Live preview: VariantPicker renders a real live thumbnail of each variant. For apps, the tile can render a static brand logo (cheaper, and a live iframe-per-tile would be 20 proxied fetches). Save the live render for the canvas drop.",
+      "Player safety: app tiles that resolve to WEBPAGE(interactive) or HLS run on locked Chromium-83 LED controllers. Keep heavy SDKs out of the player surface — prefer iframe-embed apps over JS-SDK apps, and reuse StreamingWidget's capability detection (it already shows an honest 'Android too old for HLS' message)."
+    ],
+    "doBetterIdeas": [
+      "SMALLEST-CLEAN ARCHITECTURE: add ONE file apps/web/src/components/widgets/appsCatalog.ts modeled on fitnessSourceCatalog.ts. Each AppDef = { id, name, category, logo, status: 'AVAILABLE'|'COMING_SOON'|'BRING_ACCOUNT', resolvesTo: WidgetType (WEBPAGE|STREAMING|CALENDAR|WEATHER|MUSIC_PLAYER|RSS_FEED), configFields: SourceConfigField[], buildConfig(form) => widgetConfig }. 90% of apps resolve to WEBPAGE/STREAMING with buildConfig() computing the embed URL — so most apps need ZERO new React/backend, just a catalog entry. Only a handful (real RSS, .ics calendar) need a new backend route.",
+      "Reuse the existing config-field descriptor type (SourceConfigField in fitnessSourceCatalog.ts) verbatim so the form renderer is shared between the fitness App Library and the general Apps library — one <AppConfigForm fields={app.configFields}/> renders both. Consolidate FitnessAppLibrary's catalog into (or alongside) the general one to avoid two registries drifting.",
+      "Two genuine backend gaps to close so the marquee apps aren't costumes: (1) GET /api/v1/proxy/rss?url= — fetch+parse RSS/Atom server-side (reuse branding/safe-fetch.ts SSRF guard exactly like discovery.service.ts does) and wire RSS_FEED to render real items instead of its 5 hardcoded fakes; (2) GET /api/v1/calendar/ics?url= — fetch+parse a public .ics into the events shape our themed CALENDAR widget already consumes. Both are small, both turn a placeholder widget into a real one, both unlock multiple app tiles (News presets; Google/Outlook/Apple public calendars).",
+      "AI-CONCIERGE TIE-IN #1 (paste handle → auto-config): the discovery.service.ts pipeline already classifies a pasted URL into ranked provider candidates (Instagram/YouTube/Toast/etc.) with confidence + AVAILABLE/COMING_SOON status. Wire its output straight into the Apps grid: operator pastes their website, Concierge highlights the matching app tiles ('we found your Instagram + YouTube'), and one click pre-fills that app's config form. The classifier exists; just surface its result inside the editor's Apps panel instead of only the onboarding wizard.",
+      "AI-CONCIERGE TIE-IN #2 (paste a single handle/link → resolved embed): for a pasted @handle or share link, have the Concierge (Tier-1 platform key, the cheap setup-time tier) resolve it to the correct embed URL + warn honestly when only a single-post embed or aggregator is possible (Instagram/X/TikTok). This keeps the 30-second happy-path: paste link → app auto-detected → tile pre-configured → drop on canvas.",
+      "AI-CONCIERGE TIE-IN #3 (auto-seed a board): when an operator picks an app, offer the existing AI touch-template / signage-design service to drop a ready-made board with that app already placed and brand-applied (e.g. pick YouTube → get a 'lobby loop' board with the video zone + brand header pre-wired). This is exactly the Concierge 'build-it-for-me' vision and reuses @cms/signage-design.",
+      "HONESTY AS A DIFFERENTIATOR: OptiSigns/Yodeck app stores list Instagram/Twitter apps that quietly require a paid aggregator or break when the platform kills the embed. Our app store should label each tile with WHAT it actually needs ('Free, no account' / 'Needs your Facebook page URL' / 'Needs an aggregator account' / 'Coming soon') using the same status discipline discovery.service.ts already enforces. That candor is a selling point for non-IT operators who've been burned by dead embeds.",
+      "UNIVERSAL FALLBACK: for any social/giving/newsletter app we can't truly embed in 2026, the app's buildConfig() can fall back to a QR-code widget (TOUCH_QR) pointed at the destination — discovery.service.ts already recommends exactly this for Mailchimp/Tithe.ly/Pushpay. So even 'unembeddable' apps still produce a working, on-brand board instead of a dead tile.",
+      "Keep the catalog the single source of truth across surfaces (editor Apps grid, onboarding Concierge wizard, settings integrations page) the way packages/api-types/streaming.ts + pos.ts already are SSOT for streaming/POS. One catalog, many UIs, so a new app = one entry that lights up everywhere."
+    ],
+    "summary": "VenueOS already has the hard part built: WEBPAGE is an SSRF-guarded server proxy (GET /api/v1/proxy/web) that strips X-Frame-Options/CSP and can run a page's own JS, so ANY embeddable URL works today — this is the universal substrate an Apps library rides on. STREAMING already normalizes YouTube/Twitch/Vimeo URLs to official iframe embeds and plays HLS; MUSIC_PLAYER and WEATHER are real and fully built. The two big honesty gaps: RSS_FEED renders 5 HARDCODED fake headlines (no fetch/parse backend) and SOCIAL_FEED is an icon-only placeholder — so any 'News' or 'Instagram feed' app must NOT be presented as turnkey until a small server-side RSS/feed proxy is added (Instagram/X live feeds genuinely need OAuth or a paid aggregator in 2026; Facebook Page Plugin and Google Slides/Calendar public embeds are the viable no-auth paths). Critically, the exact 'app registry → declarative config fields → resolves to a widgetType' pattern ALREADY exists in apps/web/src/components/widgets/fitness/fitnessSourceCatalog.ts (with an honest READY/STICK/PARTNER/COMING status enum), and discovery.service.ts already classifies a pasted URL into ranked AVAILABLE/COMING_SOON provider candidates — so the smallest-clean build is one general appsCatalog.ts whose entries mostly emit WEBPAGE/STREAMING configs, an 'Apps' item added to AddSidebar.tsx opening a grid in BuilderShell (NOT the dead WidgetPalette), and a Concierge tie-in that pre-fills an app's config from a pasted handle/URL. No general 'Apps library' exists in the editor today; that is the gap.",
+    "sources": [
+      "/Users/gschiemann/Desktop/EDU CMS/apps/web/src/components/widgets/WidgetRenderer.tsx (widget case list; WebpageWidget L3808, RSSWidget L3998 [hardcoded items], SocialWidget L4030 [placeholder], CalendarWidget L2423, LIVE_DATA/CHART variant dispatch L679-719)",
+      "/Users/gschiemann/Desktop/EDU CMS/apps/web/src/components/widgets/StreamingWidget.tsx (iframe normalize for YouTube/Twitch/Vimeo, HLS via hls.js, DASH/RTMP honest fallbacks, capability detection)",
+      "/Users/gschiemann/Desktop/EDU CMS/apps/web/src/components/widgets/MusicPlayerWidget.tsx (SomaFM/NPR/NTS/custom-stream real; Apple/Spotify coming-soon)",
+      "/Users/gschiemann/Desktop/EDU CMS/apps/web/src/components/widgets/fitness/fitnessSourceCatalog.ts (THE app-registry pattern to copy: status enum + per-source config fields + widgetType resolution)",
+      "/Users/gschiemann/Desktop/EDU CMS/apps/api/src/integrations/discovery.service.ts (IntegrationCategory enum, RULES provider list, AVAILABLE/COMING_SOON honesty, paste-URL classifier)",
+      "/Users/gschiemann/Desktop/EDU CMS/apps/api/src/proxy/proxy.controller.ts (GET /api/v1/proxy/web — SSRF-guarded, strips XFO/CSP, interactive mode, per-IP throttle)",
+      "/Users/gschiemann/Desktop/EDU CMS/apps/web/src/components/template-builder/VariantPicker.tsx (live palette UI: search + category chips + live thumbnails; WIDGET_TYPE_LABELS)",
+      "/Users/gschiemann/Desktop/EDU CMS/apps/web/src/components/template-builder/AddSidebar.tsx (the Add rail: Text/Image/Video/Webpage/QR/Shape — where an 'Apps' item belongs)",
+      "/Users/gschiemann/Desktop/EDU CMS/apps/web/src/components/template-builder/PropertiesPanel.tsx (WEBPAGE config form L3727 = url + refreshIntervalMs only)",
+      "/Users/gschiemann/Desktop/EDU CMS/packages/api-types/src/streaming.ts (streaming provider catalog with auth/licensing tiers — SSOT precedent)",
+      "/Users/gschiemann/Desktop/EDU CMS/apps/web/src/components/widgets/variants-register.ts (registerVariant entries for WEBPAGE/CALENDAR/WEATHER/MUSIC_PLAYER)"
+    ]
+  }
+}

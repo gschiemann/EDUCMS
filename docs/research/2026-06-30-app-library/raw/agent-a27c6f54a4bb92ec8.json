@@ -1,0 +1,624 @@
+{
+  "label": "DEEP-RESEARCH TASK: study COMPETITOR signage app libraries — Yodeck, ScreenCloud, Rise Vi",
+  "findings": {
+    "summary": "Studied the app libraries of six signage competitors (Yodeck ~130 apps, ScreenCloud ~80, Rise Vision, Xibo, Play Digital Signage, NoviSign) plus OptiSigns (~140) as the benchmark. The market has converged on the same ~80-app spine — social, video, RSS/news, Google/Microsoft productivity, calendar, weather, clock/countdown, QR, menu boards — so a curated named-app picker is table stakes, not a differentiator. The real leapfrog lanes are: (1) DASHBOARD/BI apps done RIGHT — ScreenCloud's standout is \"Dashboards,\" a secure headless-browser that logs into auth-gated Power BI/Tableau/Grafana/Looker and screenshots them to screen (no public URL, no token in the browser); Yodeck ships 25+ named BI apps (Power BI, Tableau w/ JWT, Grafana, Looker Studio, Salesforce, Qlik, Airtable, Monday, Jira). (2) DATA-SOURCE apps — Xibo's \"DataSet\" (CSV/API/Google-Sheet → any template) and Rise Vision's Google-Sheets-as-data-feed turn spreadsheets into live boards. (3) HONEST social — every public social embed a competitor \"ships\" is really a paid third-party aggregator (Walls.io, Taggbox, EmbedSocial, Curator) because Instagram Basic Display API died Dec 2024, X's free API and public timeline embeds are gone (logged-in-only, $100/mo+), and TikTok has no feed API. Reviews (Google/Yelp/TripAdvisor) and Facebook feeds are in the same aggregator boat. Every competitor's \"Instagram app\" is either an aggregator wrapper or a personal-token profile widget — VenueOS can win by being honest and either bundling one aggregator relationship or shipping a great token-based fallback. UX-wise: ScreenCloud/OptiSigns/Yodeck all use a categorized, searchable card grid where each app has its own config form + live preview, per-app scheduling, and (Rise Vision/OptiSigns) 600-800 pre-wired templates so an app drops in already looking designed. VenueOS already has the iframe/HTML/live-data/RSS/social/weather/calendar/chart widget substrate to ride almost all of these on — most apps are an S-effort config-form-over-an-existing-widget.",
+    "apps": [
+      {
+        "name": "Instagram (feed/profile/hashtag)",
+        "category": "Social",
+        "howEmbedded2026": "Public embed is DEAD — Instagram Basic Display API shut down Dec 4 2024. Real options: (a) paid aggregator (Walls.io/Taggbox/EmbedSocial/Curator) which every competitor secretly resells; (b) Instagram Graph API with a Business/Creator account + FB-linked token (setup-heavy, profile-only). No free public feed. Single-post oembed still works for one specific post.",
+        "effort": "L",
+        "tosRisk": "high",
+        "reusesOurWidget": "SOCIAL_FEED",
+        "optiSignsHas": true,
+        "notes": "Yodeck/ScreenCloud/Play all ship it but via aggregator or personal token. Leapfrog: be honest in the config UI ('needs a Business account OR our aggregator add-on') instead of a broken 'paste your handle' box."
+      },
+      {
+        "name": "X / Twitter (timeline)",
+        "category": "Social",
+        "howEmbedded2026": "Public timeline embeds are gone — X shows embedded timelines to logged-in users only; free API killed, cheapest tier ~$100/mo. Single-tweet embed still renders. Live timeline = paid aggregator only.",
+        "effort": "L",
+        "tosRisk": "high",
+        "reusesOurWidget": "SOCIAL_FEED",
+        "optiSignsHas": true,
+        "notes": "Competitors quietly downgraded this to single-post or aggregator. Don't ship a 'live @handle timeline' promise you can't keep."
+      },
+      {
+        "name": "Facebook Page feed",
+        "category": "Social",
+        "howEmbedded2026": "Page Plugin iframe still works for a public Page's posts (official, free, no token) — this is the ONE social embed that's still legit. Personal profiles need Graph API token. Yodeck/ScreenCloud both ship 'Facebook Page' as a real iframe.",
+        "effort": "S",
+        "tosRisk": "medium",
+        "reusesOurWidget": "SOCIAL_FEED",
+        "optiSignsHas": true,
+        "notes": "Lowest-friction real social win. Ship the official Page Plugin as a first-class app."
+      },
+      {
+        "name": "TikTok",
+        "category": "Social",
+        "howEmbedded2026": "No official feed API (Display API is single-video/profile-metadata only; no 'For You'/curated feed). Live TikTok wall = aggregator (Taggbox/EmbedSocial/Curator) only. Single-video oembed works.",
+        "effort": "L",
+        "tosRisk": "high",
+        "reusesOurWidget": "SOCIAL_FEED",
+        "optiSignsHas": true,
+        "notes": "Only Yodeck/aggregator-backed players offer it. High-demand for QSR/retail/fashion — bundling one aggregator is the differentiator."
+      },
+      {
+        "name": "LinkedIn",
+        "category": "Social",
+        "howEmbedded2026": "No public post-feed API for org pages without partner approval; competitors that list it (Yodeck) use aggregators. Individual post embed code works.",
+        "effort": "L",
+        "tosRisk": "high",
+        "reusesOurWidget": "SOCIAL_FEED",
+        "optiSignsHas": true,
+        "notes": "Corporate-vertical relevant. Aggregator-only in practice."
+      },
+      {
+        "name": "Social Wall (multi-network aggregator)",
+        "category": "Social",
+        "howEmbedded2026": "Yodeck & ScreenCloud both resell Walls.io / Taggbox / Strea.ma as a native app — one widget pulls IG+FB+X+TikTok+hashtag into a moderated wall via the aggregator's iframe. This is the honest 2026 answer to 'show our socials.'",
+        "effort": "M",
+        "tosRisk": "medium",
+        "reusesOurWidget": "SOCIAL_FEED",
+        "optiSignsHas": true,
+        "notes": "LEAPFROG: strike ONE aggregator partnership (Walls.io or EmbedSocial), wrap their iframe in a branded config, and every social app 'just works' + moderated. Beats maintaining 5 broken per-network integrations."
+      },
+      {
+        "name": "YouTube (video / channel / playlist)",
+        "category": "Video",
+        "howEmbedded2026": "Official iframe embed API — free, reliable, works on Chromium-83. Channel/playlist/single-video all supported.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "STREAMING",
+        "optiSignsHas": true,
+        "notes": "Universal. Every competitor ships it. Named-app config = paste channel/playlist ID, autoplay/mute/loop toggles."
+      },
+      {
+        "name": "YouTube Live",
+        "category": "Video",
+        "howEmbedded2026": "Official live iframe — free. ScreenCloud/Rise Vision ship it as its own app.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "STREAMING",
+        "optiSignsHas": true,
+        "notes": "Split from YouTube so config can be 'always show the current live stream from channel X.'"
+      },
+      {
+        "name": "Vimeo",
+        "category": "Video",
+        "howEmbedded2026": "Official player iframe — free, reliable.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "STREAMING",
+        "optiSignsHas": true,
+        "notes": "Trivial config-over-STREAMING."
+      },
+      {
+        "name": "Twitch",
+        "category": "Video",
+        "howEmbedded2026": "Official embed iframe requires a parent= domain param (must match the hosting origin) — a known gotcha on sandboxed/null-origin iframes. Works on modern Chromium; verify on Taurus-83.",
+        "effort": "M",
+        "tosRisk": "low",
+        "reusesOurWidget": "STREAMING",
+        "optiSignsHas": true,
+        "notes": "parent-domain requirement is the config trap; we already handle STREAMING so mostly a form + docs."
+      },
+      {
+        "name": "HLS / DASH / M3U8 live stream / IPTV",
+        "category": "Video",
+        "howEmbedded2026": "Direct video element / hls.js. NoviSign ships M3U8/Ustream; Play ships 'Stream' + 'Video Input'. No third party needed.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "STREAMING",
+        "optiSignsHas": true,
+        "notes": "We already do HLS/DASH in STREAMING. Name it 'Live Stream / IPTV' as a picker app. Taurus-83: hls.js works, native HLS does not — use hls.js path."
+      },
+      {
+        "name": "RSS / Custom feed",
+        "category": "News/RSS",
+        "howEmbedded2026": "Server-side fetch + render. Universal, free. Xibo 'Ticker', NoviSign 'RSS', everyone ships it.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "RSS_FEED",
+        "optiSignsHas": true,
+        "notes": "We have RSS_FEED. The named-app layer is curated presets (below)."
+      },
+      {
+        "name": "Named news channels (CNN/BBC/ESPN/Fox/Guardian/NYT/WSJ/Al Jazeera/Bloomberg/Sky)",
+        "category": "News/RSS",
+        "howEmbedded2026": "Just curated public RSS URLs behind a friendly name + logo. Yodeck ships ~16 named news apps; ScreenCloud ships Headline/Tech/Finance/Sports/Entertainment/Natural-World news categories.",
+        "effort": "S",
+        "tosRisk": "medium",
+        "reusesOurWidget": "RSS_FEED",
+        "optiSignsHas": true,
+        "notes": "HIGH-LEVERAGE, LOW-EFFORT: ship 20 named 'CNN/ESPN/…' tiles that are pre-filled RSS_FEED configs. Operator picks a logo, not a URL. ToS: some outlets restrict commercial RSS reuse — add a fine-print note."
+      },
+      {
+        "name": "Curated news topics (Finance/Sports/Tech/Entertainment/Weather-alerts/On-This-Day)",
+        "category": "News/RSS",
+        "howEmbedded2026": "ScreenCloud's model: topic-based news apps, not just source-based. Backed by RSS/news APIs.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "RSS_FEED",
+        "optiSignsHas": false,
+        "notes": "LEAPFROG idea: topic tiles ('Sports News', 'On This Day', 'Today in History') read better for signage than raw source feeds."
+      },
+      {
+        "name": "Google Slides",
+        "category": "Productivity/Docs",
+        "howEmbedded2026": "Published-to-web slides embed via official /embed URL — free, reliable, auto-advances. THE most-used signage app. Every competitor ships it.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "Config: paste share link, we build the /embed URL + set per-slide duration. ScreenCloud auto-calculates duration from slide count — copy that."
+      },
+      {
+        "name": "Google Sheets (as display AND as data source)",
+        "category": "Productivity/Docs",
+        "howEmbedded2026": "Published sheet embeds via iframe; OR read as a live DATA SOURCE for other widgets (Rise Vision, Xibo DataSet). Free.",
+        "effort": "M",
+        "tosRisk": "low",
+        "reusesOurWidget": "LIVE_DATA",
+        "optiSignsHas": true,
+        "notes": "LEAPFROG: 'Sheet-as-data-source' — operator points a menu/list/table widget at a Google Sheet and it auto-updates. Rise Vision + Xibo both do this; it's the killer no-IT data path."
+      },
+      {
+        "name": "Google Docs",
+        "category": "Productivity/Docs",
+        "howEmbedded2026": "Published doc iframe. Play ships it.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "Config-over-WEBPAGE."
+      },
+      {
+        "name": "Microsoft PowerPoint (Office 365)",
+        "category": "Productivity/Docs",
+        "howEmbedded2026": "Office-for-web embed of a OneDrive/SharePoint-hosted deck (iframe) OR upload .pptx. Rise Vision/Yodeck/Play ship it.",
+        "effort": "M",
+        "tosRisk": "low",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "Two paths: live 365 embed (needs share link) or static .pptx→images (we already import PDFs/PPTX)."
+      },
+      {
+        "name": "Microsoft Excel / OneDrive / SharePoint",
+        "category": "Productivity/Docs",
+        "howEmbedded2026": "365 web embed via share link. ScreenCloud ships Excel, OneDrive, SharePoint as apps.",
+        "effort": "M",
+        "tosRisk": "low",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "Corporate vertical. Same iframe-over-share-link pattern."
+      },
+      {
+        "name": "Canva",
+        "category": "Productivity/Docs",
+        "howEmbedded2026": "Canva design published to web → iframe/link, OR Canva Connect OAuth import (we have keys reserved, not built). Free to embed a public design.",
+        "effort": "M",
+        "tosRisk": "low",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "Rise Vision lets you edit the Canva design inside their app (deep integration). Our reserved CANVA_CLIENT_ID path is the real version; the quick win is public-design iframe."
+      },
+      {
+        "name": "PosterMyWall",
+        "category": "Productivity/Docs",
+        "howEmbedded2026": "Design tool with signage export; Yodeck/ScreenCloud/Play all list it. Published design → image/URL.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "IMAGE",
+        "optiSignsHas": true,
+        "notes": "Alternative to Canva for template-poor operators."
+      },
+      {
+        "name": "Google Calendar",
+        "category": "Calendar",
+        "howEmbedded2026": "Public/shared calendar embeds via official iframe; private via OAuth. Free. Universal.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "CALENDAR",
+        "optiSignsHas": true,
+        "notes": "We have CALENDAR. Named app = paste calendar ID / share link + agenda vs month view."
+      },
+      {
+        "name": "Microsoft Outlook / Office 365 Calendar",
+        "category": "Calendar",
+        "howEmbedded2026": "Published calendar iframe or Graph API OAuth. ScreenCloud/Rise Vision/Yodeck ship it. Corporate staple.",
+        "effort": "M",
+        "tosRisk": "low",
+        "reusesOurWidget": "CALENDAR",
+        "optiSignsHas": true,
+        "notes": "Room-booking/meeting-room displays are a big corporate use case built on this."
+      },
+      {
+        "name": "iCal / .ics feed",
+        "category": "Calendar",
+        "howEmbedded2026": "Parse any .ics URL — free, universal, no vendor lock.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "CALENDAR",
+        "optiSignsHas": true,
+        "notes": "Catches every calendar system (Apple, school SIS exports, sports schedules) with one generic app."
+      },
+      {
+        "name": "Meeting Room / Room Booking display",
+        "category": "Calendar",
+        "howEmbedded2026": "Built on Outlook/Google/Teams calendar; ScreenCloud ships 'Meeting Room Software' + 'Zoom Rooms' + 'Teams Rooms' as apps.",
+        "effort": "M",
+        "tosRisk": "low",
+        "reusesOurWidget": "CALENDAR",
+        "optiSignsHas": true,
+        "notes": "Corporate vertical anchor app; door-mounted room status."
+      },
+      {
+        "name": "Weather (current / hourly / daily / radar / alerts)",
+        "category": "Weather",
+        "howEmbedded2026": "Weather API (OpenWeather/Weatherbit/WeatherAPI/NWS). Free tiers. Yodeck splits into 5 apps (Current/Hourly/Daily/Radar/Wall); NoviSign 1200+ cities.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "WEATHER",
+        "optiSignsHas": true,
+        "notes": "We have WEATHER. Add NWS severe-alert variant — ties into our emergency story (life-safety moat)."
+      },
+      {
+        "name": "Power BI",
+        "category": "Data/Finance",
+        "howEmbedded2026": "Two paths: (a) 'Publish to web' public embed (free, but exposes data publicly — risky); (b) SECURE: log into the Microsoft account, headless browser renders the auth-gated dashboard to screen (ScreenCloud Dashboards, Yodeck Service-Principal). The secure path is the premium differentiator.",
+        "effort": "L",
+        "tosRisk": "medium",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "BIG LEAPFROG LANE — see doBetterIdeas. Yodeck ships Power BI standard + Service Principal; ScreenCloud's whole 'Dashboards' product is this."
+      },
+      {
+        "name": "Tableau",
+        "category": "Data/Finance",
+        "howEmbedded2026": "Public viz iframe (Tableau Public, free) OR authed via JWT/connected-app (Yodeck ships 'Tableau JWT'). Secure = headless-browser screenshot.",
+        "effort": "L",
+        "tosRisk": "medium",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "Same secure-dashboard pattern as Power BI."
+      },
+      {
+        "name": "Google Looker Studio",
+        "category": "Data/Finance",
+        "howEmbedded2026": "Public report iframe (free) OR authed report needs login → headless render. Yodeck/ScreenCloud/OptiSigns all ship it.",
+        "effort": "M",
+        "tosRisk": "low",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "Public-report path is easy S-effort; authed path needs the dashboard-screenshot engine."
+      },
+      {
+        "name": "Grafana",
+        "category": "Data/Finance",
+        "howEmbedded2026": "Kiosk-mode panel URL + API-key/anonymous — self-hosted friendly. Yodeck ships it; ScreenCloud supports it in Dashboards.",
+        "effort": "M",
+        "tosRisk": "low",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "Ops/NOC/factory-floor vertical. Grafana kiosk URL is designed for exactly this."
+      },
+      {
+        "name": "Geckoboard / Domo / Qlik / Cyfe / Klipfolio",
+        "category": "Data/Finance",
+        "howEmbedded2026": "Each has a share/loop/TV-mode URL → iframe. ScreenCloud (Geckoboard), Rise Vision (Domo), Yodeck (Qlik/Cyfe) ship these.",
+        "effort": "M",
+        "tosRisk": "low",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": false,
+        "notes": "Purpose-built 'send to TV' dashboards — easiest BI wins because they expose a share URL by design."
+      },
+      {
+        "name": "SaaS metric apps (Salesforce/Google Analytics/Jira/Trello/Asana/Monday/Airtable/Zendesk/Baremetrics/ChartMogul/Chargebee/Xero)",
+        "category": "Data/Finance",
+        "howEmbedded2026": "OAuth → pull KPIs → render in our template, OR embed the tool's shared board. Yodeck ships ~15 of these; ScreenCloud ships Monday/Zendesk Reports.",
+        "effort": "L",
+        "tosRisk": "medium",
+        "reusesOurWidget": "LIVE_DATA",
+        "optiSignsHas": true,
+        "notes": "Corporate/office 'team KPI wall'. Each is its own OAuth — expensive per-app. Prioritize by vertical demand."
+      },
+      {
+        "name": "Stocks / Currencies / Crypto ticker",
+        "category": "Data/Finance",
+        "howEmbedded2026": "Finance API (free tiers exist) → ticker render. ScreenCloud ships 'Stocks & Exchanges' + 'Currencies'.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "LIVE_DATA",
+        "optiSignsHas": true,
+        "notes": "Config-over-LIVE_DATA + TICKER. Lobby/finance-office staple."
+      },
+      {
+        "name": "Google Reviews",
+        "category": "Reviews",
+        "howEmbedded2026": "Google Places API (needs key) OR aggregator (EmbedSocial/Taggbox). No free public embed. ScreenCloud ships it.",
+        "effort": "M",
+        "tosRisk": "medium",
+        "reusesOurWidget": "SOCIAL_FEED",
+        "optiSignsHas": true,
+        "notes": "Reviews wall is HUGE for retail/restaurant/hospitality. Places API is doable server-side with our own or BYOK key."
+      },
+      {
+        "name": "Yelp Reviews",
+        "category": "Reviews",
+        "howEmbedded2026": "Yelp Fusion API (key, rate-limited) or aggregator. ScreenCloud + OptiSigns ship a 'Yelp Reviews Wall' with star-rating filters.",
+        "effort": "M",
+        "tosRisk": "medium",
+        "reusesOurWidget": "SOCIAL_FEED",
+        "optiSignsHas": true,
+        "notes": "OptiSigns' star-rating filter (only 4+ stars) is a nice UX touch to copy."
+      },
+      {
+        "name": "TripAdvisor",
+        "category": "Reviews",
+        "howEmbedded2026": "Content API (partner approval) or aggregator. ScreenCloud ships it. Hospitality/tourism vertical.",
+        "effort": "L",
+        "tosRisk": "high",
+        "reusesOurWidget": "SOCIAL_FEED",
+        "optiSignsHas": false,
+        "notes": "Aggregator-only in practice."
+      },
+      {
+        "name": "Generic Web Page / Embed / Website",
+        "category": "Web/Embed",
+        "howEmbedded2026": "Sandboxed iframe of any URL — the universal fallback. Everyone ships it. We already have WEBPAGE.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "Keep it, but the whole point of the Apps library is to REDUCE how often operators fall back to this."
+      },
+      {
+        "name": "Authenticated Web Page (login-gated URL)",
+        "category": "Web/Embed",
+        "howEmbedded2026": "ScreenCloud & Rise Vision ship 'Authenticated Web Pages' — a headless browser that logs in with stored creds and renders private intranets/dashboards. Token/creds never in the player.",
+        "effort": "L",
+        "tosRisk": "medium",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "LEAPFROG — this is the same engine as secure dashboards. Unlocks intranet/Confluence/SharePoint/private BI with one capability."
+      },
+      {
+        "name": "HTML Package (.htz / zip upload)",
+        "category": "Web/Embed",
+        "howEmbedded2026": "Xibo ships '.htz' zip upload → offline-rendered self-contained HTML. Perfect for Chromium-83/offline players.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "EXTERNAL_HTML",
+        "optiSignsHas": false,
+        "notes": "We ALREADY do this (EXTERNAL_HTML boards). Expose 'upload an HTML board' as an app tile — plays to our existing strength + offline/Taurus support."
+      },
+      {
+        "name": "Webhooks / Custom data push",
+        "category": "Web/Embed",
+        "howEmbedded2026": "ScreenCloud ships 'Webhooks' app — external system POSTs content to the screen. Free, powerful.",
+        "effort": "M",
+        "tosRisk": "low",
+        "reusesOurWidget": "LIVE_DATA",
+        "optiSignsHas": false,
+        "notes": "LEAPFROG for our POS/emergency story — a webhook-in app lets any system (POS, alarm panel, CI) push to signage. We already have webhook infra."
+      },
+      {
+        "name": "Transit / Flight schedules",
+        "category": "Transit",
+        "howEmbedded2026": "ScreenCloud ships 'Transport' + 'Flight Schedules'; built on transit/aviation APIs. Corporate-lobby/hospitality vertical.",
+        "effort": "M",
+        "tosRisk": "low",
+        "reusesOurWidget": "LIVE_DATA",
+        "optiSignsHas": true,
+        "notes": "Google Traffic/Waze variants (Yodeck) are simpler map-embed versions."
+      },
+      {
+        "name": "Google Traffic / Waze / Google Maps",
+        "category": "Transit",
+        "howEmbedded2026": "Maps Embed API (we have GOOGLE_MAPS_API_KEY) — free iframe. Yodeck ships Google Traffic + Waze; Play ships Waze + Google Maps.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "WEBPAGE",
+        "optiSignsHas": true,
+        "notes": "We already have a Maps key. Lobby/commute-board app is near-free."
+      },
+      {
+        "name": "Slack",
+        "category": "Communications",
+        "howEmbedded2026": "OAuth → post a channel's messages/announcements to screen. ScreenCloud ships it. Corporate comms.",
+        "effort": "L",
+        "tosRisk": "low",
+        "reusesOurWidget": "LIVE_DATA",
+        "optiSignsHas": true,
+        "notes": "Note: our own Slack outbound is currently a costume (per audit) — this is INBOUND display, different direction, still needs the OAuth build."
+      },
+      {
+        "name": "Microsoft Teams / Viva Engage / Yammer",
+        "category": "Communications",
+        "howEmbedded2026": "365 OAuth → channel/townhall feed to screen. ScreenCloud + Yodeck ship Teams, Viva Engage, Teams Town Hall. Corporate.",
+        "effort": "L",
+        "tosRisk": "low",
+        "reusesOurWidget": "LIVE_DATA",
+        "optiSignsHas": true,
+        "notes": "Bundle with the 365 calendar/room apps as a 'Microsoft 365 pack.'"
+      },
+      {
+        "name": "Digital Menu Board",
+        "category": "Productivity/Docs",
+        "howEmbedded2026": "Purpose-built menu app; ScreenCloud 'Digital Menu Board', Yodeck 'DSMenu'. We already have menu boards + POS price/86 sync.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "EXTERNAL_HTML",
+        "optiSignsHas": true,
+        "notes": "We're AHEAD here (live POS pricing + auto-86). Surface it as a marquee app tile in the library."
+      },
+      {
+        "name": "Clock / World Clock / Word Clock / Date",
+        "category": "Utility",
+        "howEmbedded2026": "Pure client render, no API. Yodeck ships Analog/World/Word/Date; ScreenCloud ships Clock/World Clock/Date.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "new",
+        "optiSignsHas": true,
+        "notes": "We have a CLOCK widget — expose analog/world/word variants as app tiles."
+      },
+      {
+        "name": "Countdown / Count-up timer",
+        "category": "Utility",
+        "howEmbedded2026": "Client render. Everyone ships it. We have COUNTDOWN.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "new",
+        "optiSignsHas": true,
+        "notes": "Config-over-COUNTDOWN. 'Days since last incident' count-up is a nice corporate/factory variant."
+      },
+      {
+        "name": "QR Code",
+        "category": "Utility",
+        "howEmbedded2026": "Client render from a URL. Universal. We should have this as a widget.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "new",
+        "optiSignsHas": true,
+        "notes": "Cheap, high-use (WiFi share, menus, promos). Yodeck ships QR Code + WiFi Share as distinct apps."
+      },
+      {
+        "name": "Rich Text / Ticker / Scrolling announcements",
+        "category": "Utility",
+        "howEmbedded2026": "Client render. Everyone ships it. We have TEXT/RICH_TEXT/TICKER.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "new",
+        "optiSignsHas": true,
+        "notes": "Already covered; list as app tiles for discoverability."
+      },
+      {
+        "name": "Image / Video Carousel & Gallery (Dropbox/OneDrive/Drive folder)",
+        "category": "Utility",
+        "howEmbedded2026": "Point at a cloud folder → auto-slideshow. ScreenCloud 'Dropbox Gallery' + 'OneDrive'; Yodeck 'Online Slideshow'.",
+        "effort": "M",
+        "tosRisk": "low",
+        "reusesOurWidget": "IMAGE_CAROUSEL",
+        "optiSignsHas": true,
+        "notes": "'Folder-as-playlist' (drop a photo in Drive, it appears on screen) is a great no-IT UX. Rides IMAGE_CAROUSEL + a cloud connector."
+      },
+      {
+        "name": "Birthday / Anniversary / Recognition (Bonusly/Awardco/BambooHR)",
+        "category": "Utility",
+        "howEmbedded2026": "Data (HR API or CSV/Sheet) → celebration render. Yodeck 'Birthday Notification'; ScreenCloud Bonusly/Awardco.",
+        "effort": "M",
+        "tosRisk": "low",
+        "reusesOurWidget": "LIVE_DATA",
+        "optiSignsHas": false,
+        "notes": "Corporate-culture app; can ride a Google Sheet data source (no HR integration needed for v1). We already have celebration animation tech from Sports."
+      },
+      {
+        "name": "Live scores / Sports (Scorestream/ESPN)",
+        "category": "Data/Finance",
+        "howEmbedded2026": "Sports API or curated feed. ScreenCloud 'Sports Live Scores'/'Soccer Scores'/'World Cup 2026'; Rise Vision 'Scorestream'.",
+        "effort": "M",
+        "tosRisk": "medium",
+        "reusesOurWidget": "LIVE_DATA",
+        "optiSignsHas": true,
+        "notes": "We have a whole Sports vertical + live game state — a 'live scores' app is a natural cross-sell, and we can feed it from our OWN scoreboard data."
+      },
+      {
+        "name": "AI Image / Stock photo (Unsplash/Pixabay/Pexels)",
+        "category": "Utility",
+        "howEmbedded2026": "Stock API (we have PEXELS_API_KEY) or generative. Play ships AI Image + Unsplash + Pixabay; Rise Vision ships Pixabay.",
+        "effort": "S",
+        "tosRisk": "low",
+        "reusesOurWidget": "IMAGE",
+        "optiSignsHas": false,
+        "notes": "We already have Pexels + AI board generation — expose 'AI Image' and 'Stock Photo' as app tiles. We're ahead on the AI side."
+      },
+      {
+        "name": "DataSet / CSV / API data source",
+        "category": "Data/Finance",
+        "howEmbedded2026": "Xibo's flagship 'DataSet': import CSV / connect an API / Google Sheet → feed any template (list, table, ticker, menu). No public embed needed — it's YOUR data.",
+        "effort": "M",
+        "tosRisk": "low",
+        "reusesOurWidget": "LIVE_DATA",
+        "optiSignsHas": false,
+        "notes": "MAJOR LEAPFROG. A generic 'connect a data source' app (CSV upload / Sheet URL / JSON API) that binds to templates is the no-IT superpower Xibo & Rise Vision have and OptiSigns largely lacks. Feeds menus, directories, price lists, KPIs."
+      },
+      {
+        "name": "Building Directory / Wayfinding",
+        "category": "Web/Embed",
+        "howEmbedded2026": "Data-driven directory render (from Sheet/CSV/API). ScreenCloud 'Building Directory'.",
+        "effort": "M",
+        "tosRisk": "low",
+        "reusesOurWidget": "LIVE_DATA",
+        "optiSignsHas": false,
+        "notes": "Corporate-lobby/hospitality. Rides the DataSet capability above + a template."
+      },
+      {
+        "name": "Emergency / Mass-notification (CAP / Alertus / InformaCast / CrisisGo / Navigate360 / Raptor)",
+        "category": "Communications",
+        "howEmbedded2026": "CAP protocol inbound + named K-12 safety vendors. Rise Vision ships CAP + Singlewire/Alertus/CrisisGo/E2Campus/Rave/PunchAlert/I-Love-U-Guys.",
+        "effort": "L",
+        "tosRisk": "low",
+        "reusesOurWidget": "new",
+        "optiSignsHas": false,
+        "notes": "OUR MOAT. We already own native life-safety. An 'Emergency integrations' app category (CAP inbound, IPAWS, Raptor/RapidSOS) is where we should CRUSH OptiSigns — none of the signage-only players lead here, and it's on our roadmap."
+      }
+    ],
+    "uxNotes": [
+      "UNIVERSAL PATTERN: all three leaders (ScreenCloud, OptiSigns, Yodeck) present apps as a searchable CARD GRID with category filters down the left/top (ScreenCloud has 8 named categories: Internal Communication, Bespoke Content Creation, Live Feeds, Content & Files, Social Displays, External Communication, Business Intelligence). Each card has an icon, name, one-line blurb.",
+      "EACH APP HAS ITS OWN CONFIG FORM, not a raw URL box. Selecting an app opens a purpose-built form (e.g. Weather app = city + units + theme + provider dropdown; Yelp app = business + star-rating-minimum filter). This is the core difference from our current 'paste a URL into WEBPAGE' flow and the whole point of the feature.",
+      "LIVE PREVIEW BEFORE ADD: the config form renders a live preview pane so the operator sees the result before committing it to a screen. ScreenCloud and OptiSigns both do this. Critical for the '30-second, no-IT' bar.",
+      "PER-APP SCHEDULING: an app instance can be scheduled (day/time/date-range) independently, and dropped into a playlist as a timed item — apps are first-class schedulable content, not one-off embeds.",
+      "PRE-WIRED TEMPLATES ARE THE REAL MAGIC: Rise Vision (600+), Yodeck (800+), OptiSigns all ship templates where the app data is ALREADY placed in a designed layout. Operator picks 'Lunch Menu' or 'Weather + News lobby' and it's populated + styled instantly. The app is invisible; the operator sees a finished board. This is where signage 'apps' beat a widget palette.",
+      "RATINGS & POPULARITY: OptiSigns shows per-app star ratings and 'most popular' sorting (Canva 4.8, YouTube 4.5, Instagram 4.4) — social proof guides non-expert operators to the safe choices.",
+      "DASHBOARDS AS A SEPARATE PILLAR: ScreenCloud elevates 'Dashboards' to its own product/nav item (not buried in apps) because secure BI display is a distinct, high-value corporate use case. The config is 'log in with your Microsoft/Google account' then pick a dashboard from a list — zero URL wrangling.",
+      "DATA-SOURCE DECOUPLING (Xibo): the DataSet is created ONCE (CSV/API/Sheet) and then MANY widgets/templates bind to it. This separation of 'connect data' from 'design layout' is more powerful than per-app configs and is a pattern OptiSigns doesn't emphasize.",
+      "HONEST DEGRADATION: the mature products increasingly show setup requirements up front on social apps ('requires a Business account' / 'connect via our social wall add-on') rather than a broken 'paste your @handle' box — because the public-embed era is over. VenueOS can differentiate by being the MOST honest here, echoing its own CLAUDE.md discipline about costumes vs real integrations.",
+      "APP COMPATIBILITY MATRIX (Yodeck): a table shows which apps work on which player hardware (Raspberry Pi / Android / Windows / ChromeOS). Relevant to us given Taurus Chromium-83 constraints — some apps (native HLS, backdrop-filter-heavy embeds) should be flagged as 'not supported on LED controllers.'"
+    ],
+    "doBetterIdeas": [
+      "WIN THE SECURE-DASHBOARD LANE. Build ONE headless-browser 'authenticated render' engine (log in server-side, screenshot/stream the auth-gated page to the player, creds never touch the device). That single capability unlocks Power BI, Tableau, Looker, Grafana, private intranets, Confluence, SharePoint, and any login-gated web page — a whole premium corporate category OptiSigns is weak on and ScreenCloud sells as a flagship. Our sandboxed-iframe player already can't do auth'd embeds, so this is net-new leverage.",
+      "SHIP A GENERIC DATA-SOURCE APP (Xibo DataSet parity). 'Connect a data source' = CSV upload / Google Sheet URL / JSON API endpoint, then any template binds to it and auto-refreshes. This is the ultimate no-IT superpower for menus, price lists, directories, KPI walls, birthdays — and OptiSigns underinvests in it. It rides our existing LIVE_DATA widget and matches our 'operator shouldn't need a consultant' north star.",
+      "BE THE HONEST SOCIAL PLAYER via ONE aggregator partnership. Instead of 5 broken per-network 'apps', strike a single Walls.io/EmbedSocial/Taggbox relationship, wrap it in a branded 'Social Wall' app (moderated, multi-network, hashtag), AND ship a free token-based Facebook Page + Instagram Business fallback. The config UI states plainly what each path needs. This turns the industry's dirty secret (everyone resells aggregators) into a trust advantage that matches our anti-costume culture.",
+      "LEAD WITH EMERGENCY/SAFETY INTEGRATIONS as an app category no signage-only rival has. CAP inbound, IPAWS, Raptor, RapidSOS, InformaCast/Alertus as named 'apps' in the library — this is our existing moat surfaced where competitors show weather widgets. A superintendent scanning the app grid sees life-safety first-class.",
+      "MAKE EVERY APP AN AI-CONCIERGE ONE-LINER. Tie the app library to our existing Integration Concierge: operator pastes their website or types 'coffee shop in Austin', and the Concierge pre-selects + pre-configures the right apps (Google Reviews, Instagram Business, menu board with POS, local weather) AND drops a finished template. Competitors make you browse 80 cards; we can auto-assemble the starter set. This is the leapfrog on UX, not just app count.",
+      "SHIP 'FINISHED BOARD' TEMPLATES PER APP, not bare widgets. Match Rise Vision/Yodeck: every app tile has 2-3 designer-grade layouts pre-populated (leveraging our AI-Designer HTML-board engine, which already produces designer-grade boards). Operator picks a look, not a config form. Our AI board generator is a genuine edge here — competitors hand-build these templates; we can generate + brand them on the fly.",
+      "CLOUD-FOLDER-AS-PLAYLIST app: 'drop a photo/video in this Drive/Dropbox/OneDrive folder and it appears on screen.' Zero dashboard visits for daily content — the lowest-friction update loop in signage, and it rides IMAGE_CAROUSEL + a cloud connector.",
+      "WEBHOOK-IN app: let any external system POST content to a screen (POS order status, CI build result, alarm panel, sports score from our own engine). We already have webhook infrastructure; exposing an inbound-webhook app is cheap and powerful, and ScreenCloud is the only major that ships it.",
+      "FLAG TAURUS/LED COMPATIBILITY per app (copy Yodeck's compatibility matrix). Given our Chromium-83 LED controllers, mark apps that won't render on LED walls (native HLS, heavy backdrop-filter embeds, some auth flows) so operators don't put a broken app on a $30k LED wall. Turns a constraint into a trust signal.",
+      "TOPIC-BASED news + 'On This Day / Today in History / Word of the Day' filler apps: signage-optimized micro-content that reads well at 8-foot distance, cheap to build on RSS_FEED/LIVE_DATA, and makes the library feel rich for QSR/retail dead-air time."
+    ],
+    "sources": [
+      "https://www.yodeck.com/docs/user-manual/available-apps/",
+      "https://www.yodeck.com/docs/user-manual/apps-introduction/",
+      "https://www.yodeck.com/docs/user-manual/app-compatibility-table/",
+      "https://screencloud.com/apps",
+      "https://screencloud.com/dashboards",
+      "https://screencloud.com/apps/microsoftpowerbi1",
+      "https://screencloud.com/internal-communications/power-bi",
+      "https://screencloud.com/digital-signage/secure-dashboards",
+      "https://www.risevision.com/software/digital-signage/integrations",
+      "https://www.risevision.com/software/digital-signage/integrations/google-slides",
+      "https://www.risevision.com/software/digital-signage/integrations/google-sheets",
+      "https://www.risevision.com/software/digital-signage/integrations/weather",
+      "https://account.xibosignage.com/manual/en/media_datasets",
+      "https://account.xibosignage.com/manual/en/media_module_dataset",
+      "https://account.xibosignage.com/manual/en/media_module_weather",
+      "https://account.xibosignage.com/manual/en/media_module_ticker",
+      "https://account.xibosignage.com/docs/developer/widgets/index",
+      "https://playsignage.com/plugins/",
+      "https://playsignage.com/support/google-slides/",
+      "https://www.novisign.com/software/signage-widgets-apps/",
+      "https://www.optisigns.com/apps",
+      "https://support.optisigns.com/hc/en-us/categories/26318443842835-Apps-Integrations",
+      "https://support.optisigns.com/hc/en-us/articles/360038769394-How-to-create-and-use-Yelp-Reviews-Wall",
+      "https://embedsocial.com/blog/embed-instagram-feed-for-free/",
+      "https://getgrav.org/blog/instagram-feed-deprecated",
+      "https://launchwall.online/blog/why-x-twitter-embeds-stopped-working",
+      "https://developer.twitter.com/en/docs/twitter-for-websites/timelines/overview",
+      "https://curator.io/blog/embed-your-tiktok-feed-on-website",
+      "https://developers.tiktok.com/doc/display-api-get-started/",
+      "https://taggbox.com/blog/embed-tiktok-video-on-website/"
+    ]
+  }
+}
