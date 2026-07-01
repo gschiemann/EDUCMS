@@ -166,20 +166,18 @@ export function formatLaneEventLabel(currentEvent: string, heat: string): string
  * `orderHint` the caller supplies (e.g. `Date.now()` truncated, or an
  * incrementing counter) so events still sort in entry order on the board.
  *
- * IMPORTANT — `sanitizeResults` (`@cms/api-types`) clamps `order` to
- * `[0, 999]` before persistence. `eventNumber*100 + heat` exceeds that for
- * any real meet event ≥ 10 (event 12 heat 3 = 1203) — the SAME latent gap
- * exists in the CTS ingest path (`swim-timing-feed.ts`'s
- * `normalizeSwimSnapshot` computes the identical unclamped value). Rather
- * than persist a value the server will silently truncate to 999 (which
- * this module's own test would then wrongly assert), clamp here too so
- * what this function returns is byte-identical to what actually lands in
- * `Game.stats.results`. Ties at the 999 ceiling still resolve correctly
- * on the read side: `pickEvent` (sports-situational.tsx) breaks order
- * ties by array position (`eo >= bo ? e : best`), and heats are always
- * appended/replaced in chronological order, so "most recent heat wins"
- * still holds even once several heats share the clamped ceiling.
+ * `order` is clamped to the SAME bound `sanitizeResults` (`@cms/api-types`)
+ * enforces at persistence, so what this function returns is byte-identical
+ * to what actually lands in `Game.stats.results`. That bound was originally
+ * [0, 999] — which silently truncated `eventNumber*100 + heat` for any real
+ * meet event ≥ 10, collapsing distinct heats onto order=999 (found while
+ * building this module). ROOT CAUSE FIXED 2026-07-01 (launch-sprint Day 2):
+ * the sanitizer's `order` clamp is now [0, 9_999_999] (place/lane keep
+ * their tight bounds), so event 12 heat 3 persists as 1203 and meet-long
+ * ordering survives. The drift-catcher test in swim-timing-feed.spec.ts
+ * asserts the POST-sanitize value so this can never silently regress.
  */
+const SANITIZE_ORDER_MAX = 9_999_999; // MUST match sanitizeResults' order clamp
 export function buildHeatResult(
   currentEvent: string,
   heat: string,
@@ -206,7 +204,7 @@ export function buildHeatResult(
     Number.isFinite(eventNum) && eventNum > 0 && Number.isFinite(heatNum) && heatNum > 0
       ? eventNum * 100 + heatNum
       : orderHint;
-  const order = Math.max(0, Math.min(999, Math.trunc(rawOrder)));
+  const order = Math.max(0, Math.min(SANITIZE_ORDER_MAX, Math.trunc(rawOrder)));
 
   return {
     event: formatLaneEventLabel(currentEvent, heat),

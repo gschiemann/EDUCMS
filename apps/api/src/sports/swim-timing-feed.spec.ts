@@ -8,6 +8,7 @@
  * ingestSwimTimingSnapshot block).
  */
 import type { SwimTimingSnapshot } from '@cms/scoreboard-cts';
+import { sanitizeResults } from '@cms/api-types';
 import {
   formatSwimEventLabel,
   laneMark,
@@ -77,6 +78,31 @@ describe('normalizeSwimSnapshot', () => {
       { place: 1, name: '', mark: '51.90', lane: 3 },
       { place: 2, name: '', mark: '52.18', lane: 4 },
     ]);
+  });
+
+  it('order SURVIVES the sanitizeResults persistence gate (the clamp-drift catcher)', () => {
+    // 2026-07-01 (launch-sprint Day 2): sanitizeResults used to clamp `order`
+    // to [0,999], silently truncating eventNumber*100+heat for EVERY event
+    // ≥ 10 — event 12 heat 3, event 15 heat 1, and event 99 heat 9 all
+    // collapsed to order=999 and lost their meet-long ordering. The old test
+    // above only asserted the PRE-sanitize value, so the drift was invisible.
+    // This test runs the normalized result through the REAL persistence gate
+    // and asserts what actually lands in stats.results.
+    const mk = (eventNumber: number, heat: number): SwimTimingSnapshot => ({
+      ...emptySnapshot(),
+      eventHeat: { eventNumber, heat },
+      lanes: {
+        1: { lane: 1, place: 1, minutes: 0, seconds: 51, hundredths: 90, display: '51.90', blank: false },
+      },
+    });
+    const persisted = sanitizeResults([
+      normalizeSwimSnapshot(mk(12, 3)),
+      normalizeSwimSnapshot(mk(15, 1)),
+      normalizeSwimSnapshot(mk(99, 9)),
+    ]);
+    expect(persisted.map((r) => r.order)).toEqual([1203, 1501, 9909]);
+    // Distinct events keep DISTINCT, correctly ordered `order` values.
+    expect(new Set(persisted.map((r) => r.order)).size).toBe(3);
   });
 
   it('joins roster names/teams onto the matching lane', () => {

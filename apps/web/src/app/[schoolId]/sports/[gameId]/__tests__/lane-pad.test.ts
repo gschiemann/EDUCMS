@@ -172,11 +172,11 @@ describe('buildHeatResult — the exact stats.results shape written', () => {
     ];
     const result = buildHeatResult('12', '3', rows, 999);
     expect(result.event).toBe('12 — HEAT 3');
-    // eventNumber*100 + heat = 1203, but sanitizeResults clamps `order` to
-    // [0, 999] server-side — buildHeatResult clamps to the SAME ceiling so
-    // what it returns always matches what actually persists (see the
-    // function's doc comment for the shared-gap context with the CTS feed).
-    expect(result.order).toBe(999);
+    // eventNumber*100 + heat = 1203. The sanitizeResults `order` clamp was
+    // widened from [0,999] → [0,9_999_999] (root-cause fix, launch-sprint
+    // Day 2 2026-07-01), so event ≥ 10 now persists its true order — event
+    // 12 heat 3 is 1203 end-to-end, matching the CTS feed exactly.
+    expect(result.order).toBe(1203);
     expect(result.entries).toHaveLength(3); // lane 3 dropped (no data)
 
     const laneB = result.entries.find((e) => e.lane === 2)!;
@@ -220,7 +220,7 @@ describe('buildHeatResult — the exact stats.results shape written', () => {
   it('low event/heat numbers compute the real eventNumber*100+heat value under the cap', () => {
     const rows: LaneRow[] = [{ lane: 1, name: 'A', mark: '55.00' }];
     const result = buildHeatResult('2', '3', rows, 1);
-    expect(result.order).toBe(203); // well under the 999 sanitizeResults ceiling
+    expect(result.order).toBe(203); // event 2 heat 3 — persists verbatim through sanitizeResults
   });
 
   it('scratched/DQ-only heat still saves (status is data)', () => {

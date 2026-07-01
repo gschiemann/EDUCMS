@@ -352,7 +352,14 @@ export function sanitizeResults(input: unknown): MeetResult[] {
       entries.push(entry);
     }
     const result: MeetResult = { event: clampStr(r.event), entries };
-    if (typeof r.order === 'number') result.order = clampInt(r.order, 0, 999);
+    // `order` is meet-long DISPLAY ordering, not a place — writers encode it
+    // as eventNumber*100+heat (CTS swim ingest, console lane pad), so event 12
+    // heat 3 = 1203. The original [0,999] clamp silently truncated EVERY event
+    // ≥ 10 to 999, collapsing distinct heats onto the same order and losing
+    // their relative ordering (launch-sprint Day 2 fix, 2026-07-01 — found by
+    // the lane-pad build). Widened bound fits event 99999 heat 99; place/lane
+    // above keep their tight [0,999] clamps (those ARE bounded quantities).
+    if (typeof r.order === 'number') result.order = clampInt(r.order, 0, 9_999_999);
     out.push(result);
   }
   return out;
