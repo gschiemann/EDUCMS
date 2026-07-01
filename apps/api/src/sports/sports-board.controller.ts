@@ -6,6 +6,9 @@ import { SportsService } from './sports.service';
 import { verifyFeedToken } from './sports-feed-token';
 // 2026-07-01 swim/dive DEPTH pass — swim-timing-snapshot ingest.
 import type { SwimTimingSnapshot } from '@cms/scoreboard-cts';
+// 2026-07-01 launch-sprint #272a — multi-replica-safe ingest rate limiter.
+import { RedisService } from '../realtime/redis.service';
+import { checkIngestLimit } from '../security/ingest-rate-limit';
 
 /**
  * VenueOS Sports — Sprint 13. The PUBLIC scoreboard surfaces.
@@ -29,14 +32,20 @@ import type { SwimTimingSnapshot } from '@cms/scoreboard-cts';
 export class SportsBoardController {
   private readonly logger = new Logger(SportsBoardController.name);
 
-  // Per-game in-memory rate limit for the feed endpoint. A real feed pushes
+  // Per-game rate limit for the PUBLIC (non-token-checked) endpoints below
+  // (`athletes/:token`, `cts-cue-fired`) — still in-memory/per-replica; these
+  // are lower-stakes audit/read surfaces, not the token-authenticated feed
+  // ingest trio (see ingest-rate-limit.ts for those). A real feed pushes
   // ~1-10 updates/sec; 40/10s leaves headroom while stopping a flood from a
-  // leaked token. Sliding 10s window.
+  // leaked token/link. Sliding 10s window.
   private readonly feedHits = new Map<string, number[]>();
   private static readonly FEED_WINDOW_MS = 10_000;
   private static readonly FEED_MAX_PER_WINDOW = 40;
 
-  constructor(private readonly sports: SportsService) {}
+  constructor(
+    private readonly sports: SportsService,
+    private readonly redis: RedisService,
+  ) {}
 
   @Get(':id')
   board(@Param('id') id: string) {
@@ -177,18 +186,18 @@ export class SportsBoardController {
       raw?: string;
     },
   ) {
-    // Rate-limit BEFORE auth — same defensive ordering as /feed.
-    const now = Date.now();
-    const key = `cts:${id}`;
-    const recent = (this.feedHits.get(key) || []).filter(
-      (t) => t > now - SportsBoardController.FEED_WINDOW_MS,
+    // Rate-limit BEFORE auth — same defensive ordering as /feed. Multi-
+    // replica-safe (Redis-backed with in-memory fallback) — see
+    // ingest-rate-limit.ts.
+    const { limited } = await checkIngestLimit(
+      this.redis.publisher,
+      `cts:${id}`,
+      SportsBoardController.FEED_MAX_PER_WINDOW,
+      SportsBoardController.FEED_WINDOW_MS,
     );
-    if (recent.length >= SportsBoardController.FEED_MAX_PER_WINDOW) {
-      this.feedHits.set(key, recent);
+    if (limited) {
       throw new HttpException('CTS snapshot rate limit exceeded', HttpStatus.TOO_MANY_REQUESTS);
     }
-    recent.push(now);
-    this.feedHits.set(key, recent);
 
     const token = headerToken || queryToken;
     // Game-scoped HMAC, verified against the game's CURRENT feed-token version
@@ -236,17 +245,17 @@ export class SportsBoardController {
     @Query('token') queryToken: string | undefined,
     @Body() body: SwimTimingSnapshot,
   ) {
-    const now = Date.now();
-    const key = `swim:${id}`;
-    const recent = (this.feedHits.get(key) || []).filter(
-      (t) => t > now - SportsBoardController.FEED_WINDOW_MS,
+    // Multi-replica-safe (Redis-backed with in-memory fallback) — see
+    // ingest-rate-limit.ts.
+    const { limited } = await checkIngestLimit(
+      this.redis.publisher,
+      `swim:${id}`,
+      SportsBoardController.FEED_MAX_PER_WINDOW,
+      SportsBoardController.FEED_WINDOW_MS,
     );
-    if (recent.length >= SportsBoardController.FEED_MAX_PER_WINDOW) {
-      this.feedHits.set(key, recent);
+    if (limited) {
       throw new HttpException('Swim timing snapshot rate limit exceeded', HttpStatus.TOO_MANY_REQUESTS);
     }
-    recent.push(now);
-    this.feedHits.set(key, recent);
 
     const token = headerToken || queryToken;
     const swimVersion = await this.sports.getFeedTokenVersion(id);
@@ -275,16 +284,17 @@ export class SportsBoardController {
   ) {
     // Rate-limit BEFORE any work (and before the constant-time token check) so
     // a flood of bad tokens can't be used to hammer the DB or time the HMAC.
-    const now = Date.now();
-    const recent = (this.feedHits.get(id) || []).filter(
-      (t) => t > now - SportsBoardController.FEED_WINDOW_MS,
+    // Multi-replica-safe (Redis-backed with in-memory fallback) — see
+    // ingest-rate-limit.ts.
+    const { limited } = await checkIngestLimit(
+      this.redis.publisher,
+      id,
+      SportsBoardController.FEED_MAX_PER_WINDOW,
+      SportsBoardController.FEED_WINDOW_MS,
     );
-    if (recent.length >= SportsBoardController.FEED_MAX_PER_WINDOW) {
-      this.feedHits.set(id, recent);
+    if (limited) {
       throw new HttpException('Feed rate limit exceeded', HttpStatus.TOO_MANY_REQUESTS);
     }
-    recent.push(now);
-    this.feedHits.set(id, recent);
 
     // Token in the X-Feed-Token header (preferred) or ?token= (for systems
     // that can only configure a URL). Constant-time, game-scoped verification
