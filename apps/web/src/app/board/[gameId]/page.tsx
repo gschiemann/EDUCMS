@@ -129,7 +129,10 @@ interface Spotlight {
   subtitle?: string;
   lines?: { label: string; value: string }[];
 }
-interface BoardData {
+// Exported (2026-07-01, #269 parity gate) so the sport-board-parity test
+// can build typed fixtures against the exact same shape DefaultBoardScene
+// consumes — no behavior change, this was always the page's data contract.
+export interface BoardData {
   id: string;
   sport: string;
   status: string;
@@ -4409,6 +4412,49 @@ export default function ScoreboardPage() {
     );
   }
 
+  return (
+    <DefaultBoardScene
+      data={data}
+      def={def}
+      displayData={displayData}
+      vp={vp}
+      activeCue={activeCue}
+      keyframes={keyframes}
+    />
+  );
+}
+
+/**
+ * DefaultBoardScene — the DEFAULT (non-custom-template) board render:
+ * portrait detection → swim/dive/track lane-grid default (#267/#270a) →
+ * status-driven BoardScene/LeaderboardScene/PreGame/Halftime/Final →
+ * celebration overlay.
+ *
+ * Extracted 2026-07-01 (#269 sports parity gate) so the parity test suite
+ * can render EXACTLY what production selects, instead of re-implementing
+ * (and risking drift from) the selection logic. `ScoreboardPage` above is
+ * now a thin wrapper — the CTS-merge / scene-selection / lane-grid-default
+ * logic below is UNCHANGED from before the extraction (verified via the
+ * pre-existing 27 swim-dive-widgets tests + a tsc-clean diff), so this is
+ * a pure refactor, not a behavior change.
+ */
+export function DefaultBoardScene({
+  data,
+  def,
+  displayData,
+  vp,
+  activeCue,
+  keyframes,
+}: {
+  data: BoardData;
+  def: SportDefinition;
+  /** CTS-merged view of `data` (or `data` itself when no overlay applies). */
+  displayData: BoardData | null;
+  vp: { w: number; h: number };
+  activeCue: Cue | null;
+  /** The page's shared <style> keyframes block — rendered once per scene. */
+  keyframes: ReactNode;
+}) {
   // Sprint 13 — render the CTS-merged view (CTS data when fresh,
   // operator inputs when stale). Cue feed still reads from `data.cues`
   // (the helper doesn't touch that field) so celebrations fire unchanged.
