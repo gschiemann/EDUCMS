@@ -76,7 +76,27 @@ Goal: kill the two failure classes that make the app feel like a hobby —
    bridge #263) is explicitly post-launch install work.
 
 ## Day-1 dispatch log
-- Agent SPORTS-GATE (Sonnet, worktree): #269 parity gate + #270a track lanes.
+- Agent SPORTS-GATE (Sonnet, worktree): #269 parity gate + #270a track lanes. ✅ merged 5fe4a857
 - Agent MAJORS-FINDER (Sonnet, read-only): blank-screen / costume / replica /
-  swallowed-error sweeps → ranked list.
-- Lead: plan, review, merge, config checklist, Day-2 prep.
+  swallowed-error sweeps → ranked list. ✅ 01-MAJORS-FOUND.md → P0s fixed 6ff8a467
+- Lead: plan, review, merge, config checklist, Day-2 prep. ✅ Day 1 all-green @ d2983bdc
+
+## COMPRESSED SCHEDULE (rev 2, Day-1 evening — Greg: "more agents, move
+## everything up 1-2 days, buy more final-test time; and audit API/DB
+## efficiency — no waste anywhere")
+Days 2+3+4-parallelizable work now runs as ONE build wave (9 agents, airtight
+disjoint domains, lead merges sequentially). Revised:
+- **Day 2 (now):** WAVE A (usability): costume verticals · lane pad · mobile
+  bugs · Concierge onboarding. WAVE B (pulled forward): AI first-try #268
+  items 2-5 · feeds backend (RSS/ICS real fetch, Redis-cached) · player deep
+  pass · Redis feed limiter #272 · **EFFICIENCY AUDIT (new mandate)** —
+  DB (N+1/indexes/pool/write volume), API (poll cadences × fleet math,
+  payload sizes, caching), storage egress, AI token spend — read-only ranked
+  WASTE list.
+- **Day 3:** merge waves + persona happy-path proofs vs prod (lead) +
+  efficiency FIX wave + error envelopes #57 + PARITY-DEBT depth (XC/golf/
+  gym/cheer boards) + anything red from waves.
+- **Day 4:** FULL dress rehearsal (moved up): 21-section audit, fresh-tenant
+  funnel per vertical on prod, on-glass LED, load re-test.
+- **Day 5:** pure buffer — Greg's hands-on testing, bug burn-down, polish,
+  go/no-go. Two full days of test-fix instead of half of one.
