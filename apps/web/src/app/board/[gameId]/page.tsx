@@ -45,6 +45,11 @@ import { SportMark, PossessionGlyph } from '@/components/sports/SportGlyph';
 // item L (2026-06-16) — the team name auto-fits to one line so long real
 // school names never clip on a 4K board (was a fixed 54px that overflowed).
 import { FitOneLine } from '@/components/widgets/sports/FitOneLine';
+// #267 — swim/dive games render their DEDICATED default board (lane grid /
+// dive leaderboard) instead of the generic meet tally. Reuse the exact
+// SwimDiveWidgets, fed by a GameStateProvider seeded from this board's poll.
+import { GameStateProvider, type GameSnapshot } from '@/components/widgets/sports/GameStateContext';
+import { SwimLaneGridWidget, DiveLeaderboardWidget } from '@/components/widgets/sports/SwimDiveWidgets';
 // Sprint 13 — custom-template scoreboard renderer. Used iff
 // Game.scoreboardTemplateId is non-null; otherwise the legacy
 // BoardScene + status-aware scenes below render unchanged.
@@ -4423,6 +4428,12 @@ export default function ScoreboardPage() {
   // uses the dedicated LeaderboardScene instead of the head-to-head clock
   // shell that dropped a giant emoji where the clock would sit.
   const isLeaderboard = def.mode === 'LEADERBOARD';
+  // #267 — Swimming/Diving get their DEDICATED default board (the lane grid /
+  // dive leaderboard), not the generic meet tally. Covers the legacy combined
+  // `swimming_diving` key too so pre-split games benefit. Rendered across every
+  // status (pre-game = empty pool shell, live = filled lanes/places).
+  const swimDiveDefault =
+    def.key === 'swimming' || def.key === 'diving' || def.key === 'swimming_diving';
 
   // Tall-canvas (portrait) detection. When the render viewport is taller than
   // it is wide — a portrait LED poster or a column of joined posters like the
@@ -4452,6 +4463,22 @@ export default function ScoreboardPage() {
           // The portrait board is status-aware (shows the status chip + live
           // score/clock), so it replaces the entire landscape scene block.
           <PortraitBoardScene data={view} def={def} />
+        ) : swimDiveDefault ? (
+          // #267 — the swim/dive DEFAULT scoreboard IS the lane grid / dive
+          // leaderboard (no template selection needed), across every status.
+          // GameStateProvider re-polls /sports/board/:id so the widget shows
+          // live lanes/heats/places; seeded from `view` to avoid a boot flash.
+          <GameStateProvider gameId={view.id} initial={view as unknown as GameSnapshot}>
+            {def.key === 'diving' ? (
+              <DiveLeaderboardWidget
+                config={{ homeColor: view.homeColor ?? undefined, awayColor: view.awayColor ?? undefined }}
+              />
+            ) : (
+              <SwimLaneGridWidget
+                config={{ homeColor: view.homeColor ?? undefined, awayColor: view.awayColor ?? undefined }}
+              />
+            )}
+          </GameStateProvider>
         ) : (
           <>
             {isLive &&
