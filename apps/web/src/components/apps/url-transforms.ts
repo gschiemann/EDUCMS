@@ -137,6 +137,36 @@ export function toGoogleMapsEmbedUrl(query: string, opts?: { apiKey?: string; mo
   return `https://maps.google.com/maps?q=${encodeURIComponent(q)}&z=${opts?.zoom ?? 14}&output=embed`;
 }
 
+/**
+ * Google Calendar public link -> the real "Embed code" HTML view
+ * (calendar.google.com/calendar/embed?...). Unlike the .ics feed URL (which
+ * the CALENDAR widget never actually fetches — see app-registry.ts's
+ * Calendar app comment), this HTML embed is Google's own live view and
+ * works TODAY riding the WEBPAGE widget/proxy — real content, no stub.
+ * Accepts:
+ *   - an already-built /calendar/embed?... URL (operator pasted it straight
+ *     from Google Calendar Settings -> Integrate calendar -> Embed code) —
+ *     passed through untouched.
+ *   - a public .ics "Secret address" URL — converted to the matching src
+ *     calendar id where possible.
+ *   - a bare calendar id / email address (e.g. a Google Workspace resource
+ *     calendar) — wrapped directly.
+ * Falls back to passing the input through unchanged if we can't confidently
+ * extract a calendar id, so the operator's paste is never silently dropped.
+ */
+export function toGoogleCalendarEmbedUrl(input: string): string {
+  const u = (input || '').trim();
+  if (!u) return '';
+  if (/calendar\.google\.com\/calendar\/embed/i.test(u)) return u;
+  // .ics feed URL: .../calendar/ical/<id>/... or .../calendar/ical/<id>.ics
+  const icsMatch = u.match(/calendar\.google\.com\/calendar\/ical\/([^/]+)\//i);
+  const id = icsMatch ? decodeURIComponent(icsMatch[1]) : (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u) ? u : null);
+  if (id) {
+    return `https://calendar.google.com/calendar/embed?src=${encodeURIComponent(id)}&ctz=local`;
+  }
+  return u;
+}
+
 /** Bare domain -> https:// prefixed URL (WebpageWidget already does this too; kept here so the config-form preview matches what will actually render). */
 export function ensureHttps(input: string): string {
   const u = (input || '').trim();
@@ -153,4 +183,74 @@ export function toTwitchCanonicalUrl(input: string): string {
   // Bare channel name (no slashes/dots) — treat as a handle.
   if (/^[\w-]+$/.test(u)) return `https://twitch.tv/${u}`;
   return u;
+}
+
+/**
+ * detectApp — "paste anything" auto-detect (App Library world-class build,
+ * 2026-07-01, see docs/research/2026-06-30-app-library/20-WORLDCLASS-BUILD-PLAN.md
+ * Tier 1 #1).
+ *
+ * Pure, DOM-free, unit-testable: given whatever an operator pastes (a full
+ * URL, a bare Twitch handle, etc.), returns which App Registry tile it
+ * matches + the field(s) to prefill on that app's config form — WITHOUT the
+ * operator ever having to pick a tile first. Deliberately reuses the exact
+ * matchers above (no new regexes) so a match here is guaranteed to `build()`
+ * the same way the app's own form would. Runs in a fixed priority order:
+ * the most specific host match wins before the catch-all bare-URL fallback.
+ *
+ * Returns null for empty/unparsable input so callers can leave the grid
+ * exactly as-is (per the spec: "no match → grid stays").
+ */
+export interface DetectedApp {
+  appId: string;
+  /** Field values to seed into that app's AppConfigForm via `initialValues`. */
+  prefill: Record<string, string>;
+}
+
+export function detectApp(input: string): DetectedApp | null {
+  const raw = (input || '').trim();
+  if (!raw) return null;
+
+  // YouTube — watch/shorts/youtu.be/embed/live, or a bare @handle/live URL.
+  if (youtubeVideoId(raw) || /youtube\.com\/(@[\w-]+\/live|live\/)/i.test(raw)) {
+    return { appId: 'youtube', prefill: { url: raw } };
+  }
+  // Vimeo
+  if (/vimeo\.com\/(?:video\/)?\d+/i.test(raw)) {
+    return { appId: 'vimeo', prefill: { url: raw } };
+  }
+  // Twitch — full URL only for auto-detect (a bare word is too ambiguous to
+  // silently claim as a Twitch channel from a generic paste box/search box).
+  if (/twitch\.tv\/[\w-]+/i.test(raw)) {
+    return { appId: 'twitch', prefill: { channel: raw } };
+  }
+  // Google Slides
+  if (/docs\.google\.com\/presentation\//i.test(raw)) {
+    return { appId: 'google-slides', prefill: { url: raw } };
+  }
+  // Google Sheets
+  if (/docs\.google\.com\/spreadsheets\//i.test(raw)) {
+    return { appId: 'google-sheets', prefill: { url: raw } };
+  }
+  // Canva
+  if (/canva\.com\//i.test(raw)) {
+    return { appId: 'canva', prefill: { url: raw } };
+  }
+  // Google Maps (a share link, not just any google.com URL)
+  if (/(?:maps\.google\.com|google\.com\/maps)/i.test(raw)) {
+    return { appId: 'google-maps', prefill: { query: raw } };
+  }
+  // Office/OneDrive/SharePoint embed link or snippet
+  if (/onedrive\.live\.com|sharepoint\.com/i.test(raw)) {
+    return { appId: 'powerpoint-onedrive', prefill: { url: raw } };
+  }
+  // Catch-all: any other valid https(s) URL becomes the generic Web Page
+  // app, prefilled — so paste NEVER dead-ends even when we don't have a
+  // dedicated tile for it (synthesis: "the generic Web Page path always
+  // works immediately so paste never dead-ends").
+  const httpsLike = /^https?:\/\//i.test(raw) || (/^[\w.-]+\.[a-z]{2,}(\/.*)?$/i.test(raw) && !raw.includes(' '));
+  if (httpsLike) {
+    return { appId: 'web-url', prefill: { url: ensureHttps(raw) } };
+  }
+  return null;
 }
