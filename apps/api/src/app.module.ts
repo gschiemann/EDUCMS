@@ -43,6 +43,9 @@ import { ApiKeysModule } from './api-keys/api-keys.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { BrandingModule } from './branding/branding.module';
 import { DataSourceModule } from './data-source/data-source.module';
+// 2026-07-01 — Launch Sprint FEEDS domain: real RSS/Atom + ICS backend for
+// the RSS_FEED / CALENDAR widgets (see feeds.module.ts doc for auth model).
+import { FeedsModule } from './feeds/feeds.module';
 import { UsbExportModule } from './usb-export/usb-export.module';
 import { PlayerOtaModule } from './player-ota/player-ota.module';
 import { PlayerLogsModule } from './player-logs/player-logs.module';
@@ -123,6 +126,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     WebhooksModule,
     BrandingModule,
     DataSourceModule,
+    FeedsModule,
     UsbExportModule,
     PlayerOtaModule,
     PlayerLogsModule,
