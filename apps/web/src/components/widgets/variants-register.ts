@@ -969,6 +969,14 @@ import { MainScoreboardWidget } from './sports/MainScoreboardWidget';
 // 2026-07-01 — swim/dive sport split flagship widgets (see file header
 // of SwimDiveWidgets.tsx for the full swimming-vs-diving rationale).
 import { SwimLaneGridWidget, DiveLeaderboardWidget } from './sports/SwimDiveWidgets';
+// 2026-07-01 DEPTH PASS — swim/dive widgets #3-6 (relay exchange, splits
+// panel, record line, dive judges panel). See SwimDiveWidgets.tsx header.
+import {
+  SwimRelayExchangeWidget,
+  SwimSplitsPanelWidget,
+  SwimRecordLineWidget,
+  DiveJudgesPanelWidget,
+} from './sports/SwimDiveWidgets';
 // 2026-05-26 — CTS-fed ribbon scoreboard. Live game state flows from
 // the CtsBridge (Beelink mini PC reading the CTS console via Web
 // Serial) → API → signed WS → window CustomEvent → this widget.
@@ -1307,6 +1315,53 @@ registerVariant({
   description: 'Judged running-total leaderboard for diving — place, diver/team, total score. No lanes/clock/splits (diving is judged, not timed). Bind a meet; resize for any LED.',
   category: 'SPORTS',
   render: DiveLeaderboardWidget as any,
+  vertical: 'SPORTS',
+  defaultConfig: {},
+});
+
+// 2026-07-01 DEPTH PASS (docs/research/2026-06-30-swim-dive-scoreboards/
+// 00-REPORT.md parts A3/A4/A8/B4/B5) — four more swim/dive widgets, same
+// SPORTS-vertical / top-level-widgetType pattern as the two above.
+registerVariant({
+  id: 'swim-relay-exchange',
+  widgetType: 'SWIM_RELAY_EXCHANGE',
+  name: 'Swim Relay Exchange',
+  description: 'One relay lane\'s 4 legs — leg name, split, cumulative time, and exchange/takeoff time. A negative exchange auto-flags DQ. Bind a meet; resize for any LED.',
+  category: 'SPORTS',
+  render: SwimRelayExchangeWidget as any,
+  vertical: 'SPORTS',
+  defaultConfig: { laneNumber: 3 },
+});
+
+registerVariant({
+  id: 'swim-splits-panel',
+  widgetType: 'SWIM_SPLITS_PANEL',
+  name: 'Swim Splits Panel',
+  description: 'Per-length split table for one focused lane — length #, split, cumulative time, optional pace-vs-record delta. Bind a meet; resize for any LED.',
+  category: 'SPORTS',
+  render: SwimSplitsPanelWidget as any,
+  vertical: 'SPORTS',
+  defaultConfig: { showPaceDelta: true },
+});
+
+registerVariant({
+  id: 'swim-record-line',
+  widgetType: 'SWIM_RECORD_LINE',
+  name: 'Swim Record Line',
+  description: 'Record/pace reference bar — record type (WR/AR/NR/pool/meet), time + holder, live on/off-pace delta, and a RECORD flash when broken. Drop it above a lane grid or splits panel.',
+  category: 'SPORTS',
+  render: SwimRecordLineWidget as any,
+  vertical: 'SPORTS',
+  defaultConfig: {},
+});
+
+registerVariant({
+  id: 'dive-judges-panel',
+  widgetType: 'DIVE_JUDGES_PANEL',
+  name: 'Dive Judges Panel',
+  description: 'Row of judge scores (3/5/7) for the current dive — dropped high/low greyed out, dive code + Degree of Difficulty, computed dive score. Bind a meet; resize for any LED.',
+  category: 'SPORTS',
+  render: DiveJudgesPanelWidget as any,
   vertical: 'SPORTS',
   defaultConfig: {},
 });

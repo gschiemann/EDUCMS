@@ -62,6 +62,14 @@ import { ScoreHomeWidget, ScoreAwayWidget, GameClockWidget, GameSegmentWidget, G
 // the lane/heat/time board; DIVE_LEADERBOARD is the judged running-total
 // leaderboard (diving has NO lanes/clock/splits — a different sport).
 import { SwimLaneGridWidget, DiveLeaderboardWidget } from './sports/SwimDiveWidgets';
+// 2026-07-01 DEPTH PASS — swim/dive widgets #3-6 (relay exchange, splits
+// panel, record line, dive judges panel). See SwimDiveWidgets.tsx header.
+import {
+  SwimRelayExchangeWidget,
+  SwimSplitsPanelWidget,
+  SwimRecordLineWidget,
+  DiveJudgesPanelWidget,
+} from './sports/SwimDiveWidgets';
 // ── Fitness vertical (Phase 1) — these are the first widgets for a
 // non-EDU vertical. Kept in a dedicated /fitness subdir so the EDU
 // import list up top stays readable + so we can fan these into
@@ -518,6 +526,10 @@ export function WidgetPreview({ widgetType, config, width, height, live, freeze,
     case 'GAME_STAT':     return <GameStatWidget config={cfg} />;
     case 'SWIM_LANE_GRID':    return <SwimLaneGridWidget config={cfg} />;
     case 'DIVE_LEADERBOARD':  return <DiveLeaderboardWidget config={cfg} />;
+    case 'SWIM_RELAY_EXCHANGE': return <SwimRelayExchangeWidget config={cfg} />;
+    case 'SWIM_SPLITS_PANEL':   return <SwimSplitsPanelWidget config={cfg} />;
+    case 'SWIM_RECORD_LINE':    return <SwimRecordLineWidget config={cfg} />;
+    case 'DIVE_JUDGES_PANEL':   return <DiveJudgesPanelWidget config={cfg} />;
     case 'SCHEDULE_GRID': return <ScheduleGridWidget config={cfg} />;
     case 'ATTENDANCE':   return <AttendanceWidget config={cfg} />;
     case 'BIRTHDAYS':    return cfg.theme === 'rainbow-animated' ? <RainbowAnimatedBirthdays config={cfg} /> : <BirthdaysWidget config={cfg} />;

@@ -39,6 +39,36 @@
  *   - every text/color field is operator-editable via PropertiesPanel
  *     (see the SWIM_LANE_GRID / DIVE_LEADERBOARD cases there) — brand
  *     colors resolve through ColorField's "Brand primary/accent" presets.
+ *
+ * 2026-07-01 DEPTH PASS (docs/research/2026-06-30-swim-dive-scoreboards/
+ * 00-REPORT.md parts A3/A4/A8/B4/B5) adds four more widgets, same file,
+ * same ScaledScene/editable/Taurus-safe/sample-data patterns:
+ *
+ *   • <SwimRelayExchangeWidget /> (SWIM_RELAY_EXCHANGE, report A4) — a
+ *     relay lane's 4 legs: leg name, per-leg split, cumulative time, and
+ *     exchange/takeoff time. A negative exchange is an automatic DQ
+ *     (illegal early takeoff) — flagged in red.
+ *   • <SwimSplitsPanelWidget />   (SWIM_SPLITS_PANEL, report A8) — the
+ *     per-length split table for ONE focused lane: length #, split
+ *     (subtractive) + cumulative, with an optional pace-vs-record delta.
+ *   • <SwimRecordLineWidget />    (SWIM_RECORD_LINE, report A3/A8) — the
+ *     record/pace reference bar: record type (WR/AR/NR/pool/meet), time +
+ *     holder, live on/off-pace delta, and a "RECORD" flash when broken.
+ *   • <DiveJudgesPanelWidget />   (DIVE_JUDGES_PANEL, report B4/B5) — the
+ *     row of judge scores (3/5/7 judges) for the CURRENT dive, dropped
+ *     high/low greyed out, dive code + Degree of Difficulty (DD), and the
+ *     computed dive score (sum of kept scores × DD).
+ *
+ * None of these need a new data source. The relay/splits/record widgets
+ * hold their per-widget config as operator-typed sample/override rows
+ * (`legs[]` / `lengths[]`) rather than a new structured Game.stats key —
+ * consistent with CLAUDE.md's "no Prisma migration" rule and with how
+ * every other meet-sport board here renders `mark` as a free-form
+ * display-as-typed string. The judges panel reads the SAME scalar
+ * `Game.stats` sport-stat keys `SituationalRow`'s diving branch already
+ * reads (`currentDiver`, `diveCode`, `dd` — sports-situational.tsx) plus
+ * a new `judgeScores` array, so this widget and the broadcast strip can
+ * never disagree about whose dive is on the board.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -428,6 +458,604 @@ export function DiveLeaderboardWidget({ config }: WidgetProps<DiveLeaderboardCfg
             );
           })}
         </div>
+      </div>
+    </ScaledScene>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// SWIM_RELAY_EXCHANGE — one relay lane's 4 legs (report A4): leg name,
+// per-leg split, cumulative time, exchange/takeoff time. A negative
+// exchange is an automatic DQ (illegal early takeoff) — flag it in red.
+// Relay-leg data has no home in the MeetResult/ResultEntry contract (no
+// per-leg array field), so this widget's rows are operator-typed config
+// (`legs[]`), same "display-as-typed, no schema change" rule the rest of
+// this file's `mark` field already follows. The header still auto-picks
+// from `stats.results` (event/heat context), same as the other boards.
+// ════════════════════════════════════════════════════════════════════
+
+export interface SwimRelayLeg {
+  /** leg order label — "Leg 1 (Back)", "Leg 2 (Breast)", etc. */
+  legName: string;
+  /** swimmer name for this leg — display-as-typed. */
+  swimmer: string;
+  /** this leg's split (subtractive) — free-form ("28.14"). */
+  split: string;
+  /** cumulative relay time through this leg — free-form ("28.14"). */
+  cumulative: string;
+  /** exchange / takeoff reaction time. A leading "-" = illegal early
+   *  takeoff (automatic DQ) — flagged in red. Blank = not yet exchanged. */
+  exchange: string;
+}
+
+export interface SwimRelayExchangeCfg extends BaseCfg {
+  headerText?: string;
+  headerColor?: string;
+  bgColor?: string;
+  panelColor?: string;
+  laneColColor?: string;
+  homeColor?: string;
+  awayColor?: string;
+  textColor?: string;
+  eventFilter?: string;
+  /** Which lane this relay-exchange board is tracking (display only —
+   *  legs are operator-entered, not pulled from a lane row). */
+  laneNumber?: number;
+  /** Relay team name / school — display-as-typed. */
+  teamName?: string;
+  legs?: SwimRelayLeg[];
+}
+
+const SAMPLE_RELAY_LEGS: SwimRelayLeg[] = [
+  { legName: 'LEG 1 — BACK', swimmer: 'D. OKAFOR', split: '27.80', cumulative: '27.80', exchange: '0.18' },
+  { legName: 'LEG 2 — BREAST', swimmer: 'M. CHEN', split: '31.42', cumulative: '59.22', exchange: '0.21' },
+  { legName: 'LEG 3 — FLY', swimmer: 'T. NGUYEN', split: '28.95', cumulative: '1:28.17', exchange: '-0.04' },
+  { legName: 'LEG 4 — FREE', swimmer: 'J. RIVERA', split: '26.60', cumulative: '1:54.77', exchange: '' },
+];
+
+function isIllegalExchange(exchange: string): boolean {
+  const t = exchange.trim();
+  return t.startsWith('-') && t !== '-' && t !== '';
+}
+
+export function SwimRelayExchangeWidget({ config }: WidgetProps<SwimRelayExchangeCfg>) {
+  const c = config ?? {};
+  const state = useGameState();
+  const isLive = state != null;
+  const stats = (state?.snapshot?.stats ?? {}) as Record<string, unknown>;
+  const liveEvents = readResults(stats);
+  const event = isLive ? pickEvent(liveEvents, c.eventFilter) : null;
+
+  const bgColor = c.bgColor || '#050b16';
+  const panelColor = c.panelColor || '#0c1830';
+  const laneColColor = c.laneColColor || '#1e3a8a';
+  const homeColor = c.homeColor || '#1e3a8a';
+  const awayColor = c.awayColor || '#b91c1c';
+  const textColor = c.textColor || '#ffffff';
+  const laneNumber = typeof c.laneNumber === 'number' ? c.laneNumber : 3;
+
+  // Legs are always operator-config (there's no live per-leg feed yet) —
+  // sample rows only when the operator hasn't entered any, so the
+  // builder tile is never blank but a real board never shows fake legs
+  // once the operator starts typing real ones.
+  const legs: SwimRelayLeg[] = Array.isArray(c.legs) && c.legs.length > 0 ? c.legs : SAMPLE_RELAY_LEGS;
+  const teamName = c.teamName || (isLive ? '' : 'HOME RELAY A');
+  const headerText = c.headerText || event?.event || 'RELAY EXCHANGE';
+
+  return (
+    <ScaledScene bgColor={bgColor}>
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: 40, display: 'flex', flexDirection: 'column' }}>
+        {/* Header */}
+        <div
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            background: panelColor, borderRadius: 14, padding: '18px 32px',
+            marginBottom: 20, border: `2px solid ${laneColColor}`,
+          }}
+        >
+          <span style={{ fontFamily: DISPLAY_FONT, fontSize: 40, fontWeight: 800, color: c.headerColor || '#fbbf24', letterSpacing: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+            🏊 {headerText.toUpperCase()}
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', flex: 'none', marginLeft: 24 }}>
+            <div style={{
+              width: 52, height: 52, borderRadius: 10, background: laneColColor,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontFamily: DISPLAY_FONT, fontSize: 28, fontWeight: 900, color: '#ffffff', marginRight: 16,
+            }}>
+              {laneNumber}
+            </div>
+            <span style={{ fontFamily: DISPLAY_FONT, fontSize: 30, fontWeight: 800, color: textColor, maxWidth: 380, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+              {teamName || '—'}
+            </span>
+          </div>
+        </div>
+
+        {/* Column headers */}
+        <div style={{ display: 'flex', alignItems: 'center', padding: '0 24px', marginBottom: 8 }}>
+          <div style={{ flex: 1, fontFamily: DISPLAY_FONT, fontSize: 20, fontWeight: 700, color: '#64748b', letterSpacing: 2 }}>LEG / SWIMMER</div>
+          <div style={{ width: 200, fontFamily: DISPLAY_FONT, fontSize: 20, fontWeight: 700, color: '#64748b', letterSpacing: 2, textAlign: 'right' }}>SPLIT</div>
+          <div style={{ width: 220, fontFamily: DISPLAY_FONT, fontSize: 20, fontWeight: 700, color: '#64748b', letterSpacing: 2, textAlign: 'right' }}>CUMULATIVE</div>
+          <div style={{ width: 200, fontFamily: DISPLAY_FONT, fontSize: 20, fontWeight: 700, color: '#64748b', letterSpacing: 2, textAlign: 'right' }}>EXCHANGE</div>
+        </div>
+
+        {/* Leg rows */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {legs.slice(0, 4).map((leg, i) => {
+            const illegal = isIllegalExchange(leg.exchange || '');
+            return (
+              <div
+                key={`${leg.legName}-${i}`}
+                style={{
+                  display: 'flex', alignItems: 'center', flex: 1, minHeight: 0,
+                  background: i % 2 === 0 ? panelColor : 'transparent',
+                  borderRadius: 10, marginTop: 4,
+                  paddingLeft: 24, paddingRight: 24,
+                  border: illegal ? '2px solid #ef4444' : '2px solid transparent',
+                }}
+              >
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
+                  <span style={{ fontFamily: DISPLAY_FONT, fontSize: 20, fontWeight: 700, color: i % 2 === 0 ? homeColor : awayColor, letterSpacing: 1 }}>
+                    {(leg.legName || `LEG ${i + 1}`).toUpperCase()}
+                  </span>
+                  <span style={{ fontFamily: DISPLAY_FONT, fontSize: 28, fontWeight: 700, color: textColor, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                    {leg.swimmer || '—'}
+                  </span>
+                </div>
+                <div style={{ width: 200, textAlign: 'right' }}>
+                  <span style={{ fontFamily: MONO_FONT, fontSize: 30, fontWeight: 700, color: textColor, fontVariantNumeric: 'tabular-nums' }}>
+                    {leg.split || '—'}
+                  </span>
+                </div>
+                <div style={{ width: 220, textAlign: 'right' }}>
+                  <span style={{ fontFamily: MONO_FONT, fontSize: 30, fontWeight: 800, color: '#fbbf24', fontVariantNumeric: 'tabular-nums' }}>
+                    {leg.cumulative || '—'}
+                  </span>
+                </div>
+                <div style={{ width: 200, textAlign: 'right' }}>
+                  <span style={{ fontFamily: MONO_FONT, fontSize: 28, fontWeight: 800, color: illegal ? '#ef4444' : '#94a3b8', fontVariantNumeric: 'tabular-nums' }}>
+                    {illegal ? `${leg.exchange} DQ` : (leg.exchange || '—')}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </ScaledScene>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// SWIM_SPLITS_PANEL — per-length split table for ONE focused lane/heat
+// (report A8): length #, split (subtractive) + cumulative, optional
+// pace-vs-record delta row. Same "operator-typed rows" pattern as the
+// relay board above — per-length data has no home in ResultEntry.
+// ════════════════════════════════════════════════════════════════════
+
+export interface SwimSplitRow {
+  /** length number within the race (1, 2, 3, …). */
+  length: number;
+  /** this length's split (subtractive) — free-form ("28.14"). */
+  split: string;
+  /** cumulative elapsed time through this length — free-form. */
+  cumulative: string;
+  /** optional pace vs. record delta for this length — free-form
+   *  ("+0.42" behind pace, "-0.10" ahead of pace). Blank = hide the row. */
+  paceDelta?: string;
+}
+
+export interface SwimSplitsPanelCfg extends BaseCfg {
+  headerText?: string;
+  headerColor?: string;
+  bgColor?: string;
+  panelColor?: string;
+  accentColor?: string;
+  textColor?: string;
+  eventFilter?: string;
+  /** Swimmer/lane this split panel is focused on — display-as-typed. */
+  swimmerName?: string;
+  laneNumber?: number;
+  /** Show the optional pace-vs-record delta column. */
+  showPaceDelta?: boolean;
+  splits?: SwimSplitRow[];
+}
+
+const SAMPLE_SPLITS: SwimSplitRow[] = [
+  { length: 1, split: '25.40', cumulative: '25.40', paceDelta: '-0.12' },
+  { length: 2, split: '26.10', cumulative: '51.50', paceDelta: '-0.05' },
+  { length: 3, split: '26.55', cumulative: '1:18.05', paceDelta: '+0.08' },
+  { length: 4, split: '26.90', cumulative: '1:44.95', paceDelta: '+0.15' },
+];
+
+export function SwimSplitsPanelWidget({ config }: WidgetProps<SwimSplitsPanelCfg>) {
+  const c = config ?? {};
+  const state = useGameState();
+  const isLive = state != null;
+  const stats = (state?.snapshot?.stats ?? {}) as Record<string, unknown>;
+  const liveEvents = readResults(stats);
+  const event = isLive ? pickEvent(liveEvents, c.eventFilter) : null;
+
+  const bgColor = c.bgColor || '#050b16';
+  const panelColor = c.panelColor || '#0c1830';
+  const accentColor = c.accentColor || '#38bdf8';
+  const textColor = c.textColor || '#ffffff';
+  const showPaceDelta = c.showPaceDelta !== false;
+  const laneNumber = typeof c.laneNumber === 'number' ? c.laneNumber : undefined;
+
+  const splits: SwimSplitRow[] = Array.isArray(c.splits) && c.splits.length > 0 ? c.splits : SAMPLE_SPLITS;
+  const swimmerName = c.swimmerName || (isLive ? '' : 'D. OKAFOR');
+  const headerText = c.headerText || event?.event || 'SPLIT TIMES';
+
+  return (
+    <ScaledScene bgColor={bgColor}>
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: 40, display: 'flex', flexDirection: 'column' }}>
+        {/* Header */}
+        <div
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            background: panelColor, borderRadius: 14, padding: '18px 32px',
+            marginBottom: 20, border: `2px solid ${accentColor}`,
+          }}
+        >
+          <span style={{ fontFamily: DISPLAY_FONT, fontSize: 40, fontWeight: 800, color: c.headerColor || '#fbbf24', letterSpacing: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+            🏊 {headerText.toUpperCase()}
+          </span>
+          <span style={{ fontFamily: DISPLAY_FONT, fontSize: 28, fontWeight: 800, color: textColor, flex: 'none', marginLeft: 24 }}>
+            {laneNumber ? `LANE ${laneNumber} — ` : ''}{(swimmerName || '—').toUpperCase()}
+          </span>
+        </div>
+
+        {/* Column headers */}
+        <div style={{ display: 'flex', alignItems: 'center', padding: '0 24px', marginBottom: 8 }}>
+          <div style={{ width: 140, fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 700, color: '#64748b', letterSpacing: 2 }}>LENGTH</div>
+          <div style={{ flex: 1, fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 700, color: '#64748b', letterSpacing: 2, textAlign: 'right' }}>SPLIT</div>
+          <div style={{ width: 260, fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 700, color: '#64748b', letterSpacing: 2, textAlign: 'right' }}>CUMULATIVE</div>
+          {showPaceDelta && (
+            <div style={{ width: 220, fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 700, color: '#64748b', letterSpacing: 2, textAlign: 'right' }}>VS. PACE</div>
+          )}
+        </div>
+
+        {/* Length rows */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {splits.map((row, i) => {
+            const delta = (row.paceDelta || '').trim();
+            const ahead = delta.startsWith('-');
+            const behind = delta.startsWith('+');
+            return (
+              <div
+                key={`${row.length}-${i}`}
+                style={{
+                  display: 'flex', alignItems: 'center', flex: 1, minHeight: 0,
+                  background: i % 2 === 0 ? panelColor : 'transparent',
+                  borderRadius: 10, marginTop: 4, paddingLeft: 24, paddingRight: 24,
+                }}
+              >
+                <div style={{ width: 140 }}>
+                  <div style={{
+                    width: 46, height: 46, borderRadius: 10, background: accentColor,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontFamily: DISPLAY_FONT, fontSize: 24, fontWeight: 900, color: '#04121f',
+                  }}>
+                    {row.length}
+                  </div>
+                </div>
+                <div style={{ flex: 1, textAlign: 'right' }}>
+                  <span style={{ fontFamily: MONO_FONT, fontSize: 32, fontWeight: 700, color: textColor, fontVariantNumeric: 'tabular-nums' }}>
+                    {row.split || '—'}
+                  </span>
+                </div>
+                <div style={{ width: 260, textAlign: 'right' }}>
+                  <span style={{ fontFamily: MONO_FONT, fontSize: 32, fontWeight: 800, color: '#fbbf24', fontVariantNumeric: 'tabular-nums' }}>
+                    {row.cumulative || '—'}
+                  </span>
+                </div>
+                {showPaceDelta && (
+                  <div style={{ width: 220, textAlign: 'right' }}>
+                    <span style={{
+                      fontFamily: MONO_FONT, fontSize: 28, fontWeight: 800, fontVariantNumeric: 'tabular-nums',
+                      color: delta ? (ahead ? '#22c55e' : behind ? '#ef4444' : textColor) : '#475569',
+                    }}>
+                      {delta || '—'}
+                    </span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </ScaledScene>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// SWIM_RECORD_LINE — record/pace reference bar (report A3/A8): record
+// type (WR/AR/NR/pool/meet), record time + holder, live on/off-pace
+// delta, and a "RECORD" flash state when the live/finish time beats the
+// reference. A slim bar widget (not a full scene grid) meant to sit
+// above/below a SWIM_LANE_GRID or SWIM_SPLITS_PANEL on the same board.
+// ════════════════════════════════════════════════════════════════════
+
+export interface SwimRecordLineCfg extends BaseCfg {
+  /** WR / AR / NR / US OPEN / POOL / MEET — display-as-typed label. */
+  recordType?: string;
+  recordTime?: string;
+  recordHolder?: string;
+  /** Current live/finish time being compared to the record — blank =
+   *  hide the delta and just show the reference line. */
+  liveTime?: string;
+  /** Live on/off-pace delta — free-form ("-0.22" ahead, "+0.35" behind). */
+  liveDelta?: string;
+  /** Flip on when the record has been broken — flashes a RECORD badge. */
+  recordBroken?: boolean;
+  bgColor?: string;
+  panelColor?: string;
+  accentColor?: string;
+  textColor?: string;
+  recordBrokenColor?: string;
+}
+
+export function SwimRecordLineWidget({ config }: WidgetProps<SwimRecordLineCfg>) {
+  const c = config ?? {};
+  const bgColor = c.bgColor || 'transparent';
+  const panelColor = c.panelColor || '#0c1830';
+  const accentColor = c.accentColor || '#fbbf24';
+  const textColor = c.textColor || '#ffffff';
+  const recordBrokenColor = c.recordBrokenColor || '#22c55e';
+
+  const recordType = (c.recordType || 'POOL RECORD').toUpperCase();
+  const recordTime = c.recordTime || '48.42';
+  const recordHolder = c.recordHolder || 'D. OKAFOR, 2024';
+  const liveTime = c.liveTime ?? '';
+  const liveDelta = (c.liveDelta || '').trim();
+  const ahead = liveDelta.startsWith('-');
+  const behind = liveDelta.startsWith('+');
+  const broken = !!c.recordBroken;
+
+  return (
+    <ScaledScene bgColor={bgColor}>
+      <div
+        style={{
+          position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
+          display: 'flex', alignItems: 'center', padding: '0 48px',
+        }}
+      >
+        <div
+          style={{
+            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            background: broken ? `${recordBrokenColor}33` : panelColor,
+            border: `3px solid ${broken ? recordBrokenColor : accentColor}`,
+            borderRadius: 18, padding: '22px 40px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <span style={{
+              fontFamily: DISPLAY_FONT, fontSize: 30, fontWeight: 900, letterSpacing: 2,
+              color: broken ? recordBrokenColor : accentColor, marginRight: 24,
+            }}>
+              🏆 {recordType}
+            </span>
+            <span style={{ fontFamily: MONO_FONT, fontSize: 46, fontWeight: 800, color: textColor, fontVariantNumeric: 'tabular-nums', marginRight: 24 }}>
+              {recordTime}
+            </span>
+            <span style={{ fontFamily: DISPLAY_FONT, fontSize: 26, fontWeight: 700, color: '#94a3b8' }}>
+              {recordHolder}
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            {broken ? (
+              <span style={{
+                fontFamily: DISPLAY_FONT, fontSize: 34, fontWeight: 900, letterSpacing: 2,
+                color: '#04120a', background: recordBrokenColor, borderRadius: 12, padding: '10px 24px',
+              }}>
+                RECORD!
+              </span>
+            ) : (
+              <>
+                {liveTime && (
+                  <span style={{ fontFamily: MONO_FONT, fontSize: 40, fontWeight: 800, color: textColor, fontVariantNumeric: 'tabular-nums', marginRight: 20 }}>
+                    {liveTime}
+                  </span>
+                )}
+                {liveDelta && (
+                  <span style={{
+                    fontFamily: MONO_FONT, fontSize: 32, fontWeight: 800, fontVariantNumeric: 'tabular-nums',
+                    color: ahead ? '#22c55e' : behind ? '#ef4444' : textColor,
+                  }}>
+                    {ahead ? '▼' : behind ? '▲' : ''} {liveDelta} {ahead ? 'AHEAD' : behind ? 'BEHIND' : 'PACE'}
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </ScaledScene>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// DIVE_JUDGES_PANEL — the row of judge scores for the CURRENT dive
+// (report B4/B5): 3/5/7 judges, dropped high/low greyed out, dive code +
+// Degree of Difficulty (DD), computed dive score (sum of kept × DD).
+// Reads the SAME scalar Game.stats keys SituationalRow's diving branch
+// already reads (currentDiver / diveCode / dd — sports-situational.tsx)
+// plus a new `judgeScores` number array, so this widget and the
+// broadcast strip never disagree about whose dive is on the board.
+// ════════════════════════════════════════════════════════════════════
+
+/** Drop-high/drop-low rule by panel size (report B2):
+ *  3 judges → keep all 3 (no drops); 5 → drop 1 high + 1 low, sum
+ *  middle 3; 7 → drop 2 high + 2 low, sum middle 3. Any other panel
+ *  size (operator typo) falls back to "keep all" rather than guessing. */
+function keptIndices(scores: number[]): Set<number> {
+  const n = scores.length;
+  const indexed = scores.map((v, i) => ({ v, i }));
+  const sorted = [...indexed].sort((a, b) => a.v - b.v);
+  let dropLo = 0;
+  let dropHi = 0;
+  if (n === 5) { dropLo = 1; dropHi = 1; }
+  else if (n === 7) { dropLo = 2; dropHi = 2; }
+  // n === 3 (or any other size) → no drops.
+  const dropped = new Set<number>();
+  for (let k = 0; k < dropLo; k++) dropped.add(sorted[k].i);
+  for (let k = 0; k < dropHi; k++) dropped.add(sorted[n - 1 - k].i);
+  const kept = new Set<number>();
+  for (let i = 0; i < n; i++) if (!dropped.has(i)) kept.add(i);
+  return kept;
+}
+
+/** Dive score = sum of kept judge scores × DD (report B2). Returns null
+ *  when there aren't enough valid inputs to compute a real number. */
+function computeDiveScore(scores: number[], dd: number): number | null {
+  if (scores.length === 0 || !Number.isFinite(dd) || dd <= 0) return null;
+  const kept = keptIndices(scores);
+  let sum = 0;
+  kept.forEach((i) => { sum += scores[i]; });
+  return Math.round(sum * dd * 10) / 10;
+}
+
+export interface DiveJudgesPanelCfg extends BaseCfg {
+  headerColor?: string;
+  bgColor?: string;
+  panelColor?: string;
+  accentColor?: string;
+  textColor?: string;
+  droppedColor?: string;
+  /** Sample/override diver + dive info — live surfaces read
+   *  stats.currentDiver / stats.diveCode / stats.dd / stats.judgeScores
+   *  instead, matching SituationalRow's diving branch. */
+  diverName?: string;
+  diveCode?: string;
+  diveGroup?: string;
+  dd?: number;
+  judgeScores?: number[];
+}
+
+const SAMPLE_JUDGE_SCORES = [7, 7.5, 8, 7.5, 8];
+
+export function DiveJudgesPanelWidget({ config }: WidgetProps<DiveJudgesPanelCfg>) {
+  const c = config ?? {};
+  const state = useGameState();
+  const isLive = state != null;
+  const stats = (state?.snapshot?.stats ?? {}) as Record<string, unknown>;
+
+  const bgColor = c.bgColor || '#0a0714';
+  const panelColor = c.panelColor || '#160f28';
+  const accentColor = c.accentColor || '#a78bfa';
+  const textColor = c.textColor || '#ffffff';
+  const droppedColor = c.droppedColor || '#4b3f66';
+
+  // Live surfaces read the scalar Game.stats keys the console's diving
+  // panel writes (same keys SituationalRow's diving branch reads); no
+  // live data yet → an empty shell (no fabricated diver), matching the
+  // no-fake-data rule the rest of this file follows. Off-live (builder
+  // tile / no GameStateProvider) → config override, else sample dive.
+  const liveDiver = String(stats.currentDiver || '').trim();
+  const liveCode = String(stats.diveCode || '').trim();
+  const liveDd = Number(stats.dd);
+  const liveScoresRaw = stats.judgeScores;
+  const liveScores = Array.isArray(liveScoresRaw)
+    ? liveScoresRaw.map((v) => Number(v)).filter((v) => Number.isFinite(v))
+    : [];
+
+  const noLiveData = isLive && !liveDiver && liveScores.length === 0;
+
+  const diverName = isLive ? liveDiver : (c.diverName ?? 'A. WASHINGTON');
+  const diveCode = isLive ? liveCode : (c.diveCode ?? '305C');
+  const diveGroup = c.diveGroup ?? 'REVERSE 1½ SOMERSAULT TUCK';
+  const dd = isLive ? (Number.isFinite(liveDd) ? liveDd : 0) : (c.dd ?? 2.7);
+  const scores: number[] = isLive
+    ? liveScores
+    : (Array.isArray(c.judgeScores) && c.judgeScores.length > 0 ? c.judgeScores : SAMPLE_JUDGE_SCORES);
+
+  const kept = keptIndices(scores);
+  const diveScore = computeDiveScore(scores, dd);
+  const panelSize = scores.length;
+
+  return (
+    <ScaledScene bgColor={bgColor}>
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: 40, display: 'flex', flexDirection: 'column' }}>
+        {/* Header — diver + dive info */}
+        <div
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            background: panelColor, borderRadius: 14, padding: '18px 32px',
+            marginBottom: 24, border: `2px solid ${accentColor}`,
+          }}
+        >
+          <span style={{ fontFamily: DISPLAY_FONT, fontSize: 40, fontWeight: 800, color: c.headerColor || '#fbbf24', letterSpacing: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+            🤿 {noLiveData ? 'WARM-UPS' : (diverName || '—').toUpperCase()}
+          </span>
+          {!noLiveData && (
+            <span style={{ fontFamily: DISPLAY_FONT, fontSize: 26, fontWeight: 700, color: '#94a3b8', letterSpacing: 2, flex: 'none', marginLeft: 24, textAlign: 'right' }}>
+              {diveCode ? diveCode.toUpperCase() : '—'}{dd ? ` · DD ${dd.toFixed(1)}` : ''}
+            </span>
+          )}
+        </div>
+
+        {noLiveData ? (
+          <div style={{
+            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontFamily: DISPLAY_FONT, fontSize: 30, fontWeight: 700, color: '#475569',
+          }}>
+            NO DIVE IN PROGRESS
+          </div>
+        ) : (
+          <>
+            {diveGroup && (
+              <div style={{ fontFamily: DISPLAY_FONT, fontSize: 24, fontWeight: 700, color: '#94a3b8', letterSpacing: 1, marginBottom: 20, textAlign: 'center' }}>
+                {diveGroup.toUpperCase()}
+              </div>
+            )}
+
+            {/* Judge score chips */}
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {scores.map((score, i) => {
+                const isKept = kept.has(i);
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      width: 130, height: 150, borderRadius: 18, marginLeft: i === 0 ? 0 : 20,
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                      background: isKept ? panelColor : 'transparent',
+                      border: `3px solid ${isKept ? accentColor : droppedColor}`,
+                      opacity: isKept ? 1 : 0.5,
+                    }}
+                  >
+                    <span style={{ fontFamily: DISPLAY_FONT, fontSize: 16, fontWeight: 700, color: '#64748b', letterSpacing: 1, marginBottom: 8 }}>
+                      J{i + 1}
+                    </span>
+                    <span style={{ fontFamily: MONO_FONT, fontSize: 44, fontWeight: 800, color: isKept ? textColor : '#6b7280', fontVariantNumeric: 'tabular-nums' }}>
+                      {score.toFixed(1)}
+                    </span>
+                    {!isKept && (
+                      <span style={{ fontFamily: DISPLAY_FONT, fontSize: 13, fontWeight: 800, color: '#f59e0b', letterSpacing: 1, marginTop: 6 }}>
+                        DROPPED
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Panel size + computed dive score */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 24 }}>
+              <span style={{ fontFamily: DISPLAY_FONT, fontSize: 22, fontWeight: 700, color: '#64748b', letterSpacing: 2 }}>
+                {panelSize}-JUDGE PANEL
+              </span>
+              <div style={{ display: 'flex', alignItems: 'baseline' }}>
+                <span style={{ fontFamily: DISPLAY_FONT, fontSize: 24, fontWeight: 700, color: '#94a3b8', letterSpacing: 2, marginRight: 16 }}>
+                  DIVE SCORE
+                </span>
+                <span style={{ fontFamily: MONO_FONT, fontSize: 56, fontWeight: 900, color: accentColor, fontVariantNumeric: 'tabular-nums' }}>
+                  {diveScore !== null ? diveScore.toFixed(1) : '—'}
+                </span>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </ScaledScene>
   );

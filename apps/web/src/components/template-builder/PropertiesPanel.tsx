@@ -5113,6 +5113,83 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       fields.push(<ColorField key="bgColor" label="Scene background" value={cfg.bgColor || '#0a0714'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
       break;
     }
+    // 2026-07-01 DEPTH PASS (docs/research/2026-06-30-swim-dive-
+    // scoreboards/00-REPORT.md parts A3/A4/A8/B4/B5). Relay legs and
+    // split rows are operator-typed (ListItemsEditor) — there is no
+    // per-leg/per-length array field on MeetResult/ResultEntry and
+    // CLAUDE.md forbids a Prisma migration for a JSON-riding stat, so
+    // these follow the same "display-as-typed free-form" rule the rest
+    // of this file's `mark` field already uses.
+    case 'SWIM_RELAY_EXCHANGE': {
+      fields.push(<TextField key="headerText" label="Header text (blank = auto from the live event)" value={cfg.headerText || ''} placeholder="EVENT 20 — BOYS 200 MEDLEY RELAY" onChange={(v) => setField({ headerText: v })} />);
+      fields.push(<TextField key="eventFilter" label="Pin to event (exact name; blank = auto-pick current heat)" value={cfg.eventFilter || ''} placeholder="" onChange={(v) => setField({ eventFilter: v })} />);
+      fields.push(<TextField key="teamName" label="Relay team / school name" value={cfg.teamName || ''} placeholder="HOME RELAY A" onChange={(v) => setField({ teamName: v })} />);
+      fields.push(<NumField key="laneNumber" id="sre-laneNumber" label="Lane number" value={typeof cfg.laneNumber === 'number' ? cfg.laneNumber : 3} onChange={(v) => setField({ laneNumber: v })} min={1} max={12} step={1} />);
+      fields.push(<ListItemsEditor key="legs" label="Relay legs (exactly 4)" itemNoun="leg" help="Each row is one relay leg. Exchange time with a leading “-” (e.g. -0.04) auto-flags an illegal takeoff / DQ." value={cfg.legs} onChange={(v) => setField({ legs: v })} newItem={{ legName: '', swimmer: '', split: '', cumulative: '', exchange: '' }} fields={[
+        { key: 'legName', label: 'Leg name', type: 'text', placeholder: 'Leg 1 — Back' },
+        { key: 'swimmer', label: 'Swimmer', type: 'text', placeholder: 'D. Okafor' },
+        { key: 'split', label: 'Split (this leg)', type: 'text', placeholder: '27.80' },
+        { key: 'cumulative', label: 'Cumulative time', type: 'text', placeholder: '27.80' },
+        { key: 'exchange', label: 'Exchange / takeoff time', type: 'text', placeholder: '0.18 (or -0.04 for a DQ)' },
+      ]} />);
+      fields.push(<ColorField key="headerColor" label="Header text color" value={cfg.headerColor || '#fbbf24'} onChange={(v) => setField({ headerColor: v })} />);
+      fields.push(<ColorField key="textColor" label="Swimmer name color" value={cfg.textColor || '#ffffff'} onChange={(v) => setField({ textColor: v })} />);
+      fields.push(<ColorField key="laneColColor" label="Lane number chip color" value={cfg.laneColColor || '#1e3a8a'} onChange={(v) => setField({ laneColColor: v })} />);
+      fields.push(<ColorField key="homeColor" label="Leg label color (odd rows)" value={cfg.homeColor || '#1e3a8a'} onChange={(v) => setField({ homeColor: v })} />);
+      fields.push(<ColorField key="awayColor" label="Leg label color (even rows)" value={cfg.awayColor || '#b91c1c'} onChange={(v) => setField({ awayColor: v })} />);
+      fields.push(<ColorField key="panelColor" label="Row / panel background" value={cfg.panelColor || '#0c1830'} onChange={(v) => setField({ panelColor: v })} allowTransparent />);
+      fields.push(<ColorField key="bgColor" label="Scene background" value={cfg.bgColor || '#050b16'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+      break;
+    }
+    case 'SWIM_SPLITS_PANEL': {
+      fields.push(<TextField key="headerText" label="Header text (blank = auto from the live event)" value={cfg.headerText || ''} placeholder="EVENT 12 — BOYS 100 FREESTYLE" onChange={(v) => setField({ headerText: v })} />);
+      fields.push(<TextField key="eventFilter" label="Pin to event (exact name; blank = auto-pick current heat)" value={cfg.eventFilter || ''} placeholder="" onChange={(v) => setField({ eventFilter: v })} />);
+      fields.push(<TextField key="swimmerName" label="Swimmer name" value={cfg.swimmerName || ''} placeholder="D. Okafor" onChange={(v) => setField({ swimmerName: v })} />);
+      fields.push(<NumField key="laneNumber" id="ssp-laneNumber" label="Lane number (0 = hide)" value={typeof cfg.laneNumber === 'number' ? cfg.laneNumber : 3} onChange={(v) => setField({ laneNumber: v })} min={0} max={12} step={1} />);
+      fields.push(<ToggleField key="showPaceDelta" label="Show vs.-pace delta column" value={cfg.showPaceDelta !== false} onChange={(v) => setField({ showPaceDelta: v })} />);
+      fields.push(<ListItemsEditor key="splits" label="Length splits" itemNoun="length" help="Each row is one length/turn. Pace delta: a leading “-” means ahead of pace (green), “+” means behind (red)." value={cfg.splits} onChange={(v) => setField({ splits: v })} newItem={{ length: '', split: '', cumulative: '', paceDelta: '' }} fields={[
+        { key: 'length', label: 'Length #', type: 'number', placeholder: '1' },
+        { key: 'split', label: 'Split (this length)', type: 'text', placeholder: '25.40' },
+        { key: 'cumulative', label: 'Cumulative time', type: 'text', placeholder: '25.40' },
+        { key: 'paceDelta', label: 'Pace delta (optional)', type: 'text', placeholder: '-0.12' },
+      ]} />);
+      fields.push(<ColorField key="headerColor" label="Header text color" value={cfg.headerColor || '#fbbf24'} onChange={(v) => setField({ headerColor: v })} />);
+      fields.push(<ColorField key="textColor" label="Text color" value={cfg.textColor || '#ffffff'} onChange={(v) => setField({ textColor: v })} />);
+      fields.push(<ColorField key="accentColor" label="Accent color (length chips, header border)" value={cfg.accentColor || '#38bdf8'} onChange={(v) => setField({ accentColor: v })} />);
+      fields.push(<ColorField key="panelColor" label="Row / panel background" value={cfg.panelColor || '#0c1830'} onChange={(v) => setField({ panelColor: v })} allowTransparent />);
+      fields.push(<ColorField key="bgColor" label="Scene background" value={cfg.bgColor || '#050b16'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+      break;
+    }
+    case 'SWIM_RECORD_LINE': {
+      fields.push(<TextField key="recordType" label="Record type" value={cfg.recordType || ''} placeholder="POOL RECORD / WR / AR / NR / MEET" onChange={(v) => setField({ recordType: v })} />);
+      fields.push(<TextField key="recordTime" label="Record time" value={cfg.recordTime || ''} placeholder="48.42" onChange={(v) => setField({ recordTime: v })} />);
+      fields.push(<TextField key="recordHolder" label="Record holder (name, year)" value={cfg.recordHolder || ''} placeholder="D. Okafor, 2024" onChange={(v) => setField({ recordHolder: v })} />);
+      fields.push(<TextField key="liveTime" label="Live/finish time (blank = hide)" value={cfg.liveTime || ''} placeholder="48.20" onChange={(v) => setField({ liveTime: v })} />);
+      fields.push(<TextField key="liveDelta" label="Live pace delta (leading “-” = ahead, “+” = behind)" value={cfg.liveDelta || ''} placeholder="-0.22" onChange={(v) => setField({ liveDelta: v })} />);
+      fields.push(<ToggleField key="recordBroken" label="Flash “RECORD!” (record just broken)" value={!!cfg.recordBroken} onChange={(v) => setField({ recordBroken: v })} />);
+      fields.push(<ColorField key="accentColor" label="Accent color (reference state)" value={cfg.accentColor || '#fbbf24'} onChange={(v) => setField({ accentColor: v })} />);
+      fields.push(<ColorField key="recordBrokenColor" label="Record-broken flash color" value={cfg.recordBrokenColor || '#22c55e'} onChange={(v) => setField({ recordBrokenColor: v })} />);
+      fields.push(<ColorField key="textColor" label="Text color" value={cfg.textColor || '#ffffff'} onChange={(v) => setField({ textColor: v })} />);
+      fields.push(<ColorField key="panelColor" label="Bar background" value={cfg.panelColor || '#0c1830'} onChange={(v) => setField({ panelColor: v })} allowTransparent />);
+      fields.push(<ColorField key="bgColor" label="Scene background (usually transparent to sit over another board)" value={cfg.bgColor || 'transparent'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+      break;
+    }
+    case 'DIVE_JUDGES_PANEL': {
+      fields.push(<TextField key="diverName" label="Diver name (override — live surfaces read the console's current dive)" value={cfg.diverName || ''} placeholder="A. Washington" onChange={(v) => setField({ diverName: v })} />);
+      fields.push(<TextField key="diveCode" label="Dive code (override)" value={cfg.diveCode || ''} placeholder="305C" onChange={(v) => setField({ diveCode: v })} />);
+      fields.push(<TextField key="diveGroup" label="Dive group / description" value={cfg.diveGroup || ''} placeholder="Reverse 1½ Somersault Tuck" onChange={(v) => setField({ diveGroup: v })} />);
+      fields.push(<NumField key="dd" id="djp-dd" label="Degree of Difficulty (DD)" value={typeof cfg.dd === 'number' ? cfg.dd : 2.7} onChange={(v) => setField({ dd: v })} min={1.2} max={4.1} step={0.1} />);
+      fields.push(<ListItemsEditor key="judgeScores" label="Judge scores (3, 5, or 7 rows — drop-high/low applies automatically)" itemNoun="judge" help="0-10 in half-point steps. 5 judges drop 1 high + 1 low; 7 judges drop 2 + 2; 3 judges keep all." value={(cfg.judgeScores || []).map((s: number) => ({ score: s }))} onChange={(v) => setField({ judgeScores: v.map((r) => Number(r.score) || 0) })} newItem={{ score: 7 }} fields={[
+        { key: 'score', label: 'Score (0-10)', type: 'number', placeholder: '7.5' },
+      ]} />);
+      fields.push(<ColorField key="headerColor" label="Header text color" value={cfg.headerColor || '#fbbf24'} onChange={(v) => setField({ headerColor: v })} />);
+      fields.push(<ColorField key="textColor" label="Score text color" value={cfg.textColor || '#ffffff'} onChange={(v) => setField({ textColor: v })} />);
+      fields.push(<ColorField key="accentColor" label="Accent color (kept-score border, dive score)" value={cfg.accentColor || '#a78bfa'} onChange={(v) => setField({ accentColor: v })} />);
+      fields.push(<ColorField key="droppedColor" label="Dropped-score border color" value={cfg.droppedColor || '#4b3f66'} onChange={(v) => setField({ droppedColor: v })} />);
+      fields.push(<ColorField key="panelColor" label="Panel background" value={cfg.panelColor || '#160f28'} onChange={(v) => setField({ panelColor: v })} allowTransparent />);
+      fields.push(<ColorField key="bgColor" label="Scene background" value={cfg.bgColor || '#0a0714'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+      break;
+    }
     case 'FITNESS_AD_BANNER': {
       // Rotating gym promo creative. Each creative is { headline, sub,
       // ctaText, ctaUrl?, durationMs? }; we render a small array editor.

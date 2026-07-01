@@ -66,6 +66,12 @@ export type WidgetType =
   // lanes/clock/splits, a fundamentally different data model, so it's a
   // separate widget, not a SWIM_LANE_GRID config option.
   | 'SWIM_LANE_GRID' | 'DIVE_LEADERBOARD'
+  // 2026-07-01 DEPTH PASS (docs/research/2026-06-30-swim-dive-
+  // scoreboards/00-REPORT.md parts A3/A4/A8/B4/B5) — four more swim/dive
+  // widgets: relay-leg exchange board, per-length splits panel, record/
+  // pace reference bar, and the diving judges panel (drop-high/low +
+  // DD + computed dive score). See SwimDiveWidgets.tsx file header.
+  | 'SWIM_RELAY_EXCHANGE' | 'SWIM_SPLITS_PANEL' | 'SWIM_RECORD_LINE' | 'DIVE_JUDGES_PANEL'
   // VenueOS universal packs — drop-in template backgrounds and live
   // data feeds (markets, news, weather, transit). Variant-rendered;
   // each canonical type groups its pack under one picker chip.

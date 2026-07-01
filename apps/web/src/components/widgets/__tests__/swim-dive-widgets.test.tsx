@@ -15,6 +15,10 @@
  *    fields actually reach the render, not just exist in the config schema.
  *  - Neither widget uses the CSS `inset` shorthand (CLAUDE.md rule #10 —
  *    these ship to the player, including Taurus LED installs).
+ *
+ * 2026-07-01 DEPTH PASS adds the same four proofs for the report's
+ * remaining widgets: SWIM_RELAY_EXCHANGE, SWIM_SPLITS_PANEL,
+ * SWIM_RECORD_LINE, DIVE_JUDGES_PANEL.
  */
 
 import { render, screen } from '@testing-library/react';
@@ -94,5 +98,157 @@ describe('DIVE_LEADERBOARD', () => {
       const style = (el as HTMLElement).getAttribute('style') || '';
       expect(style).not.toMatch(/inset\s*:/);
     });
+  });
+});
+
+function expectNoInsetShorthand(container: HTMLElement) {
+  const styled = container.querySelectorAll('[style]');
+  styled.forEach((el) => {
+    const style = (el as HTMLElement).getAttribute('style') || '';
+    expect(style).not.toMatch(/inset\s*:/);
+  });
+}
+
+describe('SWIM_RELAY_EXCHANGE', () => {
+  it('renders the sample 4-leg relay when no legs are configured (builder tile is never blank)', () => {
+    const { container } = renderWidget('SWIM_RELAY_EXCHANGE');
+    expect(container.textContent).toContain('LEG 1');
+    expect(container.textContent).toContain('D. OKAFOR');
+    expect(container.textContent).toContain('EXCHANGE');
+  });
+
+  it('flags a negative exchange time as DQ', () => {
+    const { container } = renderWidget('SWIM_RELAY_EXCHANGE');
+    // Sample leg 3 carries exchange "-0.04" — an illegal early takeoff.
+    expect(container.textContent).toContain('DQ');
+  });
+
+  it('honors an operator-set header override and custom legs', () => {
+    const { container } = renderWidget('SWIM_RELAY_EXCHANGE', {
+      headerText: 'EVENT 20 — GIRLS 200 MEDLEY RELAY',
+      teamName: 'AWAY RELAY B',
+      legs: [
+        { legName: 'Leg 1 — Back', swimmer: 'S. Patel', split: '29.00', cumulative: '29.00', exchange: '0.20' },
+      ],
+    });
+    expect(container.textContent).toContain('EVENT 20 — GIRLS 200 MEDLEY RELAY');
+    expect(container.textContent).toContain('AWAY RELAY B');
+    expect(container.textContent).toContain('S. Patel');
+  });
+
+  it('never uses the inset shorthand (Taurus / Chromium-83 safety)', () => {
+    const { container } = renderWidget('SWIM_RELAY_EXCHANGE');
+    expectNoInsetShorthand(container);
+  });
+});
+
+describe('SWIM_SPLITS_PANEL', () => {
+  it('renders the sample 4-length split table when no splits are configured', () => {
+    const { container } = renderWidget('SWIM_SPLITS_PANEL');
+    expect(container.textContent).toContain('SPLIT');
+    expect(container.textContent).toContain('CUMULATIVE');
+    expect(container.textContent).toContain('D. OKAFOR');
+  });
+
+  it('shows the pace-vs-record delta column by default', () => {
+    const { container } = renderWidget('SWIM_SPLITS_PANEL');
+    expect(container.textContent).toContain('VS. PACE');
+    expect(container.textContent).toContain('-0.12');
+  });
+
+  it('hides the pace delta column when disabled', () => {
+    const { container } = renderWidget('SWIM_SPLITS_PANEL', { showPaceDelta: false });
+    expect(container.textContent).not.toContain('VS. PACE');
+  });
+
+  it('honors an operator-set header override', () => {
+    const { container } = renderWidget('SWIM_SPLITS_PANEL', { headerText: 'EVENT 8 — GIRLS 500 FREE' });
+    expect(container.textContent).toContain('EVENT 8 — GIRLS 500 FREE');
+  });
+
+  it('never uses the inset shorthand (Taurus / Chromium-83 safety)', () => {
+    const { container } = renderWidget('SWIM_SPLITS_PANEL');
+    expectNoInsetShorthand(container);
+  });
+});
+
+describe('SWIM_RECORD_LINE', () => {
+  it('renders the default reference line with sample record data', () => {
+    const { container } = renderWidget('SWIM_RECORD_LINE');
+    expect(container.textContent).toContain('POOL RECORD');
+    expect(container.textContent).toContain('48.42');
+    expect(container.textContent).toContain('D. OKAFOR, 2024');
+  });
+
+  it('honors operator overrides for record type/time/holder', () => {
+    const { container } = renderWidget('SWIM_RECORD_LINE', {
+      recordType: 'meet record',
+      recordTime: '1:52.10',
+      recordHolder: 'M. Chen, 2023',
+    });
+    expect(container.textContent).toContain('MEET RECORD');
+    expect(container.textContent).toContain('1:52.10');
+    expect(container.textContent).toContain('M. Chen, 2023');
+  });
+
+  it('flashes RECORD! when recordBroken is set, and hides the live delta', () => {
+    const { container } = renderWidget('SWIM_RECORD_LINE', { recordBroken: true, liveDelta: '-0.30' });
+    expect(container.textContent).toContain('RECORD!');
+  });
+
+  it('shows the live pace delta with AHEAD/BEHIND wording when not broken', () => {
+    const { container } = renderWidget('SWIM_RECORD_LINE', { liveDelta: '-0.22' });
+    expect(container.textContent).toContain('AHEAD');
+  });
+
+  it('never uses the inset shorthand (Taurus / Chromium-83 safety)', () => {
+    const { container } = renderWidget('SWIM_RECORD_LINE');
+    expectNoInsetShorthand(container);
+  });
+});
+
+describe('DIVE_JUDGES_PANEL', () => {
+  it('renders the sample dive with a 5-judge panel when no live game is bound', () => {
+    const { container } = renderWidget('DIVE_JUDGES_PANEL');
+    expect(container.textContent).toContain('A. WASHINGTON');
+    expect(container.textContent).toContain('305C');
+    expect(container.textContent).toContain('5-JUDGE PANEL');
+    expect(container.textContent).toContain('DIVE SCORE');
+    // Diving has no lanes.
+    expect(container.textContent).not.toContain('LANE');
+  });
+
+  it('drops high/low for a 5-judge panel and computes the correct dive score', () => {
+    // Scores [7, 7.5, 8, 7.5, 8], DD 2.7 → drop one 7 (low) and one 8 (high),
+    // keep {7.5, 8, 7.5} = 23 × 2.7 = 62.1.
+    const { container } = renderWidget('DIVE_JUDGES_PANEL');
+    expect(container.textContent).toContain('62.1');
+    // Exactly one score is greyed out as dropped on each end for 5 judges.
+    const dropped = screen.getAllByText('DROPPED');
+    expect(dropped.length).toBe(2);
+  });
+
+  it('keeps all scores (no drops) for a 3-judge panel', () => {
+    const { container } = renderWidget('DIVE_JUDGES_PANEL', { judgeScores: [8, 8, 8], dd: 2.0 });
+    // 8+8+8 = 24 × 2.0 = 48.0, no drops.
+    expect(container.textContent).toContain('48.0');
+    expect(container.textContent).toContain('3-JUDGE PANEL');
+    expect(screen.queryByText('DROPPED')).not.toBeInTheDocument();
+  });
+
+  it('honors operator overrides for diver/dive/DD', () => {
+    const { container } = renderWidget('DIVE_JUDGES_PANEL', {
+      diverName: 'L. Fischer',
+      diveCode: '105B',
+      dd: 1.9,
+    });
+    expect(container.textContent).toContain('L. FISCHER');
+    expect(container.textContent).toContain('105B');
+    expect(container.textContent).toContain('DD 1.9');
+  });
+
+  it('never uses the inset shorthand (Taurus / Chromium-83 safety)', () => {
+    const { container } = renderWidget('DIVE_JUDGES_PANEL');
+    expectNoInsetShorthand(container);
   });
 });

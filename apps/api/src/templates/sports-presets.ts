@@ -621,6 +621,41 @@ export const SPORTS_TEMPLATE_PRESETS: SystemPreset[] = [
       { name: 'Dive Leaderboard', widgetType: 'DIVE_LEADERBOARD', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} },
     ],
   },
+  // ── Swim/dive DEPTH boards (2026-07-01 — docs/research/2026-06-30-
+  // swim-dive-scoreboards/00-REPORT.md parts A3/A4/A8/B4/B5). Two more
+  // full-canvas scenes stacking the depth widgets: a relay board with a
+  // record reference bar pinned above it, and a diving "current dive"
+  // board pairing the judges panel with the running leaderboard.
+  {
+    id: 'sports-swim-relay-board',
+    name: '🏊 Swim Relay Exchange Board',
+    description:
+      'One relay lane\'s 4 legs — split, cumulative time, and exchange/takeoff time (illegal takeoffs auto-flag DQ) — with a record/pace reference bar pinned above. Bind a meet; resize for any LED.',
+    category: 'SCOREBOARD',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor: '#050b16',
+    zones: [
+      { name: 'Record Line', widgetType: 'SWIM_RECORD_LINE', x: 0, y: 0, width: 100, height: 14, zIndex: 2, sortOrder: 0, defaultConfig: { recordType: 'POOL RECORD' } },
+      { name: 'Relay Exchange', widgetType: 'SWIM_RELAY_EXCHANGE', x: 0, y: 14, width: 100, height: 86, zIndex: 1, sortOrder: 1, defaultConfig: { laneNumber: 3 } },
+    ],
+  },
+  {
+    id: 'sports-dive-judges-board',
+    name: '🤿 Diving Judges + Leaderboard Board',
+    description:
+      'Current dive\'s judge panel (dropped high/low greyed out, DD, computed dive score) on the left, running field leaderboard on the right. Bind a meet; resize for any LED.',
+    category: 'SCOREBOARD',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor: '#0a0714',
+    zones: [
+      { name: 'Judges Panel', widgetType: 'DIVE_JUDGES_PANEL', x: 0, y: 0, width: 58, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} },
+      { name: 'Dive Leaderboard', widgetType: 'DIVE_LEADERBOARD', x: 58, y: 0, width: 42, height: 100, zIndex: 1, sortOrder: 1, defaultConfig: { divesInList: 6 } },
+    ],
+  },
   // ── Sponsors — first-class revenue surfaces (Sprint 13 §7) ────────
   sponsorBoard(
     'sports-sponsor-rotator',
