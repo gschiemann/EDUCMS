@@ -40,6 +40,72 @@ export function scaleZoneInBox(orig: Rect, origBox: Rect, newBox: Rect): Rect {
 }
 
 /**
+ * A5 — resize modifiers. Returns the constrained rect when a modifier
+ * constraint applies, or null when none does (caller falls through to
+ * the plain per-edge resize + snap path, byte-for-byte the pre-A5
+ * behavior).
+ *
+ * Rules (muscle memory shared with Canva/Figma/PowerPoint):
+ *  - CORNER handles on IMAGE/LOGO/VIDEO zones keep the zone's aspect
+ *    ratio by DEFAULT; holding shift releases the lock.
+ *  - Corner handles on every other widget type: shift = lock aspect.
+ *  - Alt mirrors the delta around the zone center (both opposite edges
+ *    move symmetrically; the center stays put) — any handle, any type.
+ *  - While a constraint is active, edge snapping is skipped (the
+ *    constraint owns the geometry); the caller clears the guide lines.
+ */
+const ASPECT_DEFAULT_TYPES = new Set(['IMAGE', 'LOGO', 'VIDEO']);
+
+export function resizeWithModifiers(
+  orig: Rect,
+  widgetType: string,
+  handle: ResizeHandle,
+  dx: number,
+  dy: number,
+  mods: { shiftKey: boolean; altKey: boolean },
+): Rect | null {
+  const isCorner = handle.length === 2;
+  const aspectByDefault = isCorner && ASPECT_DEFAULT_TYPES.has(widgetType);
+  const aspectLock = isCorner && (aspectByDefault ? !mods.shiftKey : mods.shiftKey);
+  const fromCenter = mods.altKey;
+  if (!aspectLock && !fromCenter) return null;
+
+  // Alt doubles the effective delta — the opposite edge mirrors it.
+  const f = fromCenter ? 2 : 1;
+  let rawW = orig.width;
+  let rawH = orig.height;
+  if (handle.includes('e')) rawW = orig.width + dx * f;
+  if (handle.includes('w')) rawW = orig.width - dx * f;
+  if (handle.includes('s')) rawH = orig.height + dy * f;
+  if (handle.includes('n')) rawH = orig.height - dy * f;
+
+  let nw = Math.max(3, rawW);
+  let nh = Math.max(3, rawH);
+  if (aspectLock) {
+    // Dominant pointer axis drives the scale; the other follows the
+    // original ratio. Floored so neither dimension collapses below the
+    // 3% minimum while keeping the ratio intact.
+    const scaleW = rawW / orig.width;
+    const scaleH = rawH / orig.height;
+    let scale = Math.abs(scaleW - 1) >= Math.abs(scaleH - 1) ? scaleW : scaleH;
+    scale = Math.max(scale, 3 / orig.width, 3 / orig.height);
+    nw = orig.width * scale;
+    nh = orig.height * scale;
+  }
+
+  let nx: number;
+  let ny: number;
+  if (fromCenter) {
+    nx = orig.x + orig.width / 2 - nw / 2;
+    ny = orig.y + orig.height / 2 - nh / 2;
+  } else {
+    nx = handle.includes('w') ? orig.x + orig.width - nw : orig.x;
+    ny = handle.includes('n') ? orig.y + orig.height - nh : orig.y;
+  }
+  return { x: nx, y: ny, width: nw, height: nh };
+}
+
+/**
  * A4 — alt/option-drag duplicate. Duplicates every zone in `sourceIds`
  * (via the store's existing duplicateZone), resets each copy back to its
  * source's exact x/y (duplicateZone offsets +2/+2 for the Cmd-D case,
@@ -530,6 +596,23 @@ export function BuilderCanvas() {
       } else if (dragState.mode === 'resize') {
         const o = dragState.orig;
         const h = dragState.handle;
+        // A5 — modifier-constrained resize (aspect-lock / from-center).
+        // When a constraint is active it owns the geometry: no edge
+        // snapping, no guide lines (matching how Canva relaxes snap
+        // under modifier keys). Returns null when no modifier applies.
+        const constrained = resizeWithModifiers(
+          { x: o.x, y: o.y, width: o.width, height: o.height },
+          o.widgetType,
+          h,
+          dx,
+          dy,
+          { shiftKey: e.shiftKey, altKey: e.altKey },
+        );
+        if (constrained) {
+          setActiveSnapLines([]);
+          updateZone(dragState.zoneId, constrained);
+          return;
+        }
         let nx = o.x, ny = o.y, nw = o.width, nh = o.height;
         if (h.includes('e')) nw = Math.max(3, o.width + dx);
         if (h.includes('s')) nh = Math.max(3, o.height + dy);
