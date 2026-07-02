@@ -71,6 +71,9 @@ export function BrandKitPanel() {
   const updateZone = useBuilderStore((s) => s.updateZone);
   const updateZones = useBuilderStore((s) => s.updateZones);
   const setMeta = useBuilderStore((s) => s.setMeta);
+  // A9 — apply-brand-across-template is ONE undoable history step.
+  const beginTransaction = useBuilderStore((s) => s.beginTransaction);
+  const endTransaction = useBuilderStore((s) => s.endTransaction);
   const selectedIds = useBuilderStore((s) => s.selectedIds);
   const zones = useBuilderStore((s) => s.zones);
   const addZone = useBuilderStore((s) => s.addZone);
@@ -127,8 +130,26 @@ export function BrandKitPanel() {
    * Runs automatically right after a successful /adopt and is exposed
    * via a "Re-apply across template" button so operators can refresh
    * after manual tweaks.
+   *
+   * A9 (2026-07-02) — the whole apply is ONE undoable history step:
+   * beginTransaction() pushes the single pre-apply snapshot, the inner
+   * updateZones (commit=false) + setMeta calls coalesce into it via the
+   * store's activeTransaction guard, and endTransaction() closes it.
+   * Pre-fix, updateZones pushed NO snapshot (but still cleared the redo
+   * stack) and the trailing setMeta snapshotted the ALREADY-recolored
+   * zones — so Cmd-Z after brand-apply reverted only the background and
+   * the widget recolor stuck.
    */
   const applyBrandToAllZones = (kit: BrandKit) => {
+    beginTransaction();
+    try {
+      applyBrandToAllZonesInner(kit);
+    } finally {
+      endTransaction();
+    }
+  };
+
+  const applyBrandToAllZonesInner = (kit: BrandKit) => {
     const palette = kit.palette || {};
     const fontHeading = kit.fontHeading || null;
     const fontBody = kit.fontBody || fontHeading;
