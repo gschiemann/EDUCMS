@@ -62,14 +62,14 @@ describe('Position & size — universal Rotation + Opacity (Task 3)', () => {
   it('renders Rotation and Opacity NumFields once Position & size is expanded', () => {
     mountWithZone(seedZone());
     expandPositionSection();
-    expect(screen.getByLabelText(/Rotation/i)).toBeTruthy();
-    expect(screen.getByLabelText(/Opacity/i)).toBeTruthy();
+    expect(screen.getByRole('spinbutton', { name: /Rotation/i })).toBeTruthy();
+    expect(screen.getByRole('spinbutton', { name: /Opacity/i })).toBeTruthy();
   });
 
   it('typing a rotation writes defaultConfig._zoneRotation on the zone (normalized 0–359)', () => {
     mountWithZone(seedZone());
     expandPositionSection();
-    const rot = screen.getByLabelText(/Rotation/i);
+    const rot = screen.getByRole('spinbutton', { name: /Rotation/i });
     fireEvent.change(rot, { target: { value: '45' } });
     fireEvent.blur(rot); // NumField commits on blur
     const cfg = readZone().defaultConfig as Record<string, unknown>;
@@ -81,7 +81,7 @@ describe('Position & size — universal Rotation + Opacity (Task 3)', () => {
   it('a rotation ≥360 is normalized into 0–359 before storage', () => {
     mountWithZone(seedZone());
     expandPositionSection();
-    const rot = screen.getByLabelText(/Rotation/i);
+    const rot = screen.getByRole('spinbutton', { name: /Rotation/i });
     // NumField clamps to max=359 on commit; the onChange handler then
     // normalizes via ((n % 360) + 360) % 360. 359 stays 359.
     fireEvent.change(rot, { target: { value: '359' } });
@@ -93,7 +93,7 @@ describe('Position & size — universal Rotation + Opacity (Task 3)', () => {
   it('typing an opacity writes defaultConfig._zoneOpacity (clamped 0–1)', () => {
     mountWithZone(seedZone());
     expandPositionSection();
-    const opa = screen.getByLabelText(/Opacity/i);
+    const opa = screen.getByRole('spinbutton', { name: /Opacity/i });
     fireEvent.change(opa, { target: { value: '0.5' } });
     fireEvent.blur(opa);
     const cfg = readZone().defaultConfig as Record<string, unknown>;
@@ -104,14 +104,14 @@ describe('Position & size — universal Rotation + Opacity (Task 3)', () => {
   it('pre-set rotation/opacity load into the inputs as the current values', () => {
     mountWithZone(seedZone({ defaultConfig: { text: 'Hi', _zoneRotation: 90, _zoneOpacity: 0.4 } }));
     expandPositionSection();
-    expect((screen.getByLabelText(/Rotation/i) as HTMLInputElement).value).toBe('90');
-    expect((screen.getByLabelText(/Opacity/i) as HTMLInputElement).value).toBe('0.4');
+    expect((screen.getByRole('spinbutton', { name: /Rotation/i }) as HTMLInputElement).value).toBe('90');
+    expect((screen.getByRole('spinbutton', { name: /Opacity/i }) as HTMLInputElement).value).toBe('0.4');
   });
 
   it('rotation + opacity are independent — setting one leaves the other intact', () => {
     mountWithZone(seedZone({ defaultConfig: { text: 'Hi', _zoneRotation: 15 } }));
     expandPositionSection();
-    const opa = screen.getByLabelText(/Opacity/i);
+    const opa = screen.getByRole('spinbutton', { name: /Opacity/i });
     fireEvent.change(opa, { target: { value: '0.7' } });
     fireEvent.blur(opa);
     const cfg = readZone().defaultConfig as Record<string, unknown>;
@@ -127,10 +127,10 @@ describe('zone-style key contract (panel ↔ renderers)', () => {
   it('uses the exact keys the renderers read', () => {
     mountWithZone(seedZone());
     expandPositionSection();
-    const rot = screen.getByLabelText(/Rotation/i);
+    const rot = screen.getByRole('spinbutton', { name: /Rotation/i });
     fireEvent.change(rot, { target: { value: '30' } });
     fireEvent.blur(rot);
-    const opa = screen.getByLabelText(/Opacity/i);
+    const opa = screen.getByRole('spinbutton', { name: /Opacity/i });
     fireEvent.change(opa, { target: { value: '0.25' } });
     fireEvent.blur(opa);
     const cfg = readZone().defaultConfig as Record<string, unknown>;

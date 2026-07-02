@@ -124,7 +124,7 @@ describe('ANIMATED_BACKGROUND — real case (textless decoration)', () => {
   it('renders its real knobs (variant + confetti) and writes cfg.confettiCount', () => {
     const updateZone = jest.fn();
     render(<ContentFields zone={makeZone('ANIMATED_BACKGROUND', { confettiCount: 80 })} updateZone={updateZone} />);
-    const confetti = screen.getByLabelText(/Confetti density/i);
+    const confetti = screen.getByRole('spinbutton', { name: /Confetti density/i });
     fireEvent.change(confetti, { target: { value: '120' } });
     fireEvent.blur(confetti); // NumField commits on blur
     expect(lastCfg(updateZone).confettiCount).toBe(120);
