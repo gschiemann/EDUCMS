@@ -299,6 +299,15 @@ interface DispatchInput {
   system: string;
   userPrompt: string;
   maxTokens: number;
+  /**
+   * OPTIONAL hard override for the abort ceiling (ms). When set, this wins
+   * over the model-aware `slowModel` ceiling below — for a caller that KNOWS
+   * its call is cheap/small (e.g. the brief-extraction pass, ≤500 tokens) and
+   * wants a short, snappy timeout even on a "slow" reasoning model rather than
+   * inheriting that model's generous multi-minute ceiling. Never used to make
+   * a call wait LONGER than the model-aware ceiling would — only shorter.
+   */
+  timeoutMs?: number;
 }
 
 /** One turn in a multi-turn conversation. `assistant` = a prior model reply. */
@@ -312,6 +321,8 @@ interface DispatchMessagesInput {
   /** Catalog model id; falls back to provider default if absent. */
   model?: string;
   system: string;
+  /** See DispatchInput.timeoutMs — same optional hard override, single-turn or multi-turn. */
+  timeoutMs?: number;
   /** Full conversation so far, oldest first. MUST start with a `user` turn. */
   messages: DispatchMessage[];
   maxTokens: number;
@@ -343,6 +354,7 @@ export async function dispatchAi(
     system: input.system,
     messages: [{ role: 'user', content: input.userPrompt }],
     maxTokens: input.maxTokens,
+    timeoutMs: input.timeoutMs,
   });
 }
 
@@ -404,9 +416,17 @@ export async function dispatchAiMessages(
   const slowModel =
     isOpenAiReasoningModel(model) || /^gemini-2\.5/.test(model) || /opus/i.test(model);
   const maxTok = input.maxTokens || 1000;
-  const FETCH_TIMEOUT_MS = slowModel
+  const modelCeilingMs = slowModel
     ? Math.min(240_000, 90_000 + maxTok * 6)
     : 30_000;
+  // A caller-supplied timeoutMs (e.g. the brief-extraction pass — small,
+  // wants to fail fast rather than inherit a slow-model's multi-minute
+  // ceiling) can only SHORTEN the wait, never lengthen it past what the
+  // model-aware ceiling already allows.
+  const FETCH_TIMEOUT_MS =
+    typeof input.timeoutMs === 'number' && input.timeoutMs > 0
+      ? Math.min(input.timeoutMs, modelCeilingMs)
+      : modelCeilingMs;
 
   // Defensive: every provider requires a non-empty conversation. Callers
   // always pass at least one user turn, but guard so a bad caller gets a

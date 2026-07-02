@@ -42,6 +42,12 @@ import {
 } from './signage-concierge';
 import { AiAltTextService } from './ai-alt-text.service';
 import { StockImageService } from './stock-image.service';
+// 2026-07-01 (launch-sprint #268 item 5, AUTO-GROUND) — read-only access to
+// the tenant's REAL, live-priced menu so a menu-ish designer brief gets the
+// venue's actual items instead of the model inventing plausible-sounding
+// ones. MenuService is stateless (only depends on PrismaService); wired via
+// AiModule importing PosModule (which exports it) — no circular dependency.
+import { MenuService } from '../pos/menu.service';
 import {
   aiWindowCount,
   aiRecordEvent,
@@ -87,10 +93,18 @@ import {
 import {
   DESIGNER_SYSTEM_PROMPT,
   DESIGNER_ART_DIRECTIONS,
+  DESIGNER_CONTENT_EMPHASIS,
   buildDesignerUserPrompt,
   buildDesignerRevisePrompt,
-  summarizeHouseStyle,
+  summarizeHouseStyleWithRefines,
   sanitizeDesignerHtml,
+  buildBriefExtractionSystemPrompt,
+  buildBriefExtractionUserPrompt,
+  parseDesignerBrief,
+  sanitizeClientDesignerBrief,
+  BRIEF_EXTRACTION_MAX_TOKENS,
+  BRIEF_EXTRACTION_TIMEOUT_MS,
+  type DesignerBrief,
 } from './designer-prompt';
 import { stripInjectedRuntime } from './designer-edit-shim';
 import {
@@ -298,6 +312,11 @@ export class AiService {
     // regardless of AI provider. Degrades to the themed gradient when no
     // PEXELS_API_KEY is set (search() returns null, never throws).
     private readonly stockImages: StockImageService,
+    // 2026-07-01 (#268 item 5, AUTO-GROUND) — resolves the tenant's live menu
+    // (POS-synced or manually entered) so a menu-ish designer brief can be
+    // grounded in real items+prices. Read-only; returns an empty menu when the
+    // tenant has no catalog configured (never throws).
+    private readonly menuService: MenuService,
   ) {}
 
   // P1-14 (2026-05-28 audit) — both per-tenant hourly caps moved from
@@ -1109,6 +1128,7 @@ export class AiService {
     system: string,
     userPrompt: string,
     maxTokens: number,
+    timeoutMs?: number,
   ): Promise<string> {
     let raw: string;
     try {
@@ -1118,6 +1138,7 @@ export class AiService {
         system,
         userPrompt,
         maxTokens,
+        timeoutMs,
       });
       if (out.errorStatus) {
         // 2026-05-26 audit AI-P0-1 — out-of-credit disambiguation.
@@ -2508,15 +2529,21 @@ export class AiService {
    * the html) — it re-runs sanitizeDesignerHtml there for defense-in-depth.
    */
   /**
-   * PER-TENANT STYLE MEMORY (2026-06-30) — the AI-designer "learns" each
-   * operator's taste over time with NO model training and NO cross-tenant data:
-   * distill a compact style fingerprint (recurring palette + favored fonts +
-   * motion tendency) from the boards THIS tenant has KEPT, fed as an on-brand
-   * lean into the next generation. Deterministic (no extra AI call), strictly
-   * scoped to the tenant, no PII. Returns null for an operator with no kept
-   * designer boards yet — so a new tenant behaves exactly as before.
+   * PER-TENANT STYLE MEMORY (2026-06-30, extended 2026-07-01 #268 item 4) —
+   * the AI-designer "learns" each operator's taste over time with NO model
+   * training and NO cross-tenant data: distill a compact style fingerprint
+   * (recurring palette + favored fonts + motion tendency) from the boards
+   * THIS tenant has KEPT, PLUS a keyword-frequency read of their last ~10
+   * chat-to-edit "refine" instructions ("bigger text", "less clutter") — refines
+   * are gold preference signal we used to throw away after applying once.
+   * Both distillations are pure string heuristics (summarizeHouseStyleWithRefines
+   * in designer-prompt.ts) — no extra AI call. Fed as an on-brand lean into the
+   * next generation. Deterministic, strictly scoped to the tenant, no PII.
+   * Returns null for an operator with no kept boards AND no refine history —
+   * so a new tenant behaves exactly as before this existed.
    */
   private async deriveTenantHouseStyle(tenantId: string): Promise<string | null> {
+    const htmls: string[] = [];
     try {
       const tpls = await this.prisma.client.template.findMany({
         where: {
@@ -2527,7 +2554,6 @@ export class AiService {
         orderBy: { createdAt: 'desc' },
         take: 4,
       });
-      const htmls: string[] = [];
       for (const t of tpls) {
         const cfg = t.zones?.[0]?.defaultConfig;
         if (!cfg) continue;
@@ -2536,10 +2562,202 @@ export class AiService {
           if (typeof h === 'string') htmls.push(h);
         } catch { /* skip unparseable */ }
       }
-      return summarizeHouseStyle(htmls);
+    } catch { /* best-effort — a query hiccup must never block a generation */ }
+
+    const refineInstructions: string[] = [];
+    try {
+      const refineRows = await this.prisma.client.auditLog.findMany({
+        where: { tenantId, action: 'AI_DESIGNER_REFINE' },
+        select: { details: true },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      });
+      for (const row of refineRows) {
+        if (!row.details) continue;
+        try {
+          const instruction = (JSON.parse(row.details) as { instruction?: unknown })?.instruction;
+          if (typeof instruction === 'string' && instruction.trim()) refineInstructions.push(instruction);
+        } catch { /* skip unparseable */ }
+      }
+    } catch { /* best-effort — same fail-open contract as the kept-boards query */ }
+
+    try {
+      return summarizeHouseStyleWithRefines(htmls, refineInstructions);
     } catch {
-      return null; // best-effort — a query hiccup must never block a generation
+      return null; // best-effort — a distillation hiccup must never block a generation
     }
+  }
+
+  /**
+   * INTERPRETATION HEDGING (2026-07-01, launch-sprint #268 item 2) — a cheap
+   * small-model call that turns the operator's free-text prompt into a
+   * structured DesignerBrief BEFORE the expensive 3× fan-out, so every
+   * candidate shares one CONFIRMED reading of what's wanted instead of each
+   * art-direction call re-guessing the ambiguous brief independently.
+   *
+   * BEST-EFFORT BY DESIGN — this pass must NEVER be able to break or delay a
+   * generation past its own short ceiling: ANY failure (no provider resolved,
+   * provider error, timeout, malformed JSON) returns null and the caller
+   * proceeds exactly as it did before this feature existed. Callers should NOT
+   * await this inline in the hot generation path if they can avoid it costing
+   * the operator wall-clock time beyond the short timeout — see
+   * BRIEF_EXTRACTION_TIMEOUT_MS (~18s, independent of the model's normal
+   * ceiling via dispatchRawOrThrow's timeoutMs override).
+   *
+   * ECONOMICS — a max-500-token call is NOT recorded against the hourly
+   * generation cap or the monthly platform-usage counter (see the caller):
+   * it is a disambiguation pass, not a generation, and double-counting it
+   * would punish operators for a quality improvement they didn't ask to pay
+   * for twice. It DOES ride the same resolved provider/key (BYOK pays their
+   * own provider for it; platform-key tenants use a trivial sliver of the
+   * shared Tier-1 budget) and is recorded honestly in the
+   * AI_DESIGNER_CANDIDATES audit row as `briefExtracted: true/false` so the
+   * decision is visible, not silent.
+   */
+  private async extractDesignerBrief(opts: {
+    resolved: { provider: AiProvider; apiKey: string; model: string; source: 'tenant' | 'platform' };
+    prompt: string;
+    vertical?: string;
+    content?: string;
+  }): Promise<DesignerBrief | null> {
+    try {
+      const system = buildBriefExtractionSystemPrompt();
+      const userPrompt = buildBriefExtractionUserPrompt({
+        prompt: opts.prompt,
+        vertical: opts.vertical,
+        content: opts.content,
+      });
+      const raw = await this.dispatchRawOrThrow(
+        opts.resolved,
+        system,
+        userPrompt,
+        BRIEF_EXTRACTION_MAX_TOKENS,
+        BRIEF_EXTRACTION_TIMEOUT_MS,
+      );
+      return parseDesignerBrief(raw);
+    } catch (e: any) {
+      this.logger.warn(`Designer brief extraction skipped (best-effort): ${e?.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * BRIEF-ECHO CONFIRM (2026-07-01, launch-sprint #268 item 3) — public
+   * entrypoint for `POST /templates/generate-designer/brief`. The FE calls
+   * this FIRST (before the expensive 3× fan-out) to show the extracted brief
+   * as editable confirm chips; the operator's confirmed (possibly hand-edited)
+   * brief then rides straight into generateDesignerBoardCandidates via
+   * `opts.brief`, skipping a second extraction call.
+   *
+   * Does NOT touch the hourly generation cap or platform monthly usage — see
+   * extractDesignerBrief's economics note (this is a disambiguation pass, not
+   * a generation). Still requires a resolved provider (the call does cost the
+   * resolved key a trivial sliver of tokens) and still respects the failure
+   * cap (a tenant hammering a broken key shouldn't get free retries here
+   * either). Returns `{ brief: null }` — never throws — when extraction
+   * fails, so the FE can gracefully skip straight to generation exactly as if
+   * this endpoint didn't exist.
+   */
+  async extractDesignerBriefForConfirm(opts: {
+    tenantId: string;
+    prompt: string;
+    vertical?: string;
+    content?: string;
+  }): Promise<{ brief: DesignerBrief | null; source: 'tenant' | 'platform' | null }> {
+    await this.checkFailureCap(opts.tenantId);
+    const prompt = (opts.prompt || '').trim();
+    if (!prompt) throw new BadRequestException('Tell the AI what board to design.');
+    if (prompt.length > 4000) throw new BadRequestException('Prompt too long. Keep it under 4000 characters.');
+    const resolved = await this.resolveProviderKey(opts.tenantId);
+    if (!resolved) {
+      // No provider configured — the FE should skip straight to generation
+      // (which will throw its own actionable "AI is not configured" error).
+      return { brief: null, source: null };
+    }
+    const brief = await this.extractDesignerBrief({
+      resolved,
+      prompt,
+      vertical: opts.vertical,
+      content: opts.content,
+    });
+    return { brief, source: resolved.source };
+  }
+
+  /** Hard token/character budget for auto-grounded content appended to the
+   *  prompt — grounding must never balloon the prompt or leak the tenant's
+   *  entire catalog into a single board brief. */
+  private static readonly AUTO_GROUND_MAX_ITEMS = 12;
+  private static readonly AUTO_GROUND_MAX_CHARS = 1200;
+
+  /**
+   * AUTO-GROUND WITH TENANT DATA (2026-07-01, launch-sprint #268 item 5) —
+   * when the brief implies real content the tenant already has on file (a
+   * menu-ish brief, an address/hours-ish brief) and the operator hasn't
+   * already supplied `content`, enrich it server-side with the tenant's REAL
+   * data instead of leaving the model to invent plausible-sounding items.
+   * "Pretty board" → "MY board" is the gap this closes.
+   *
+   * READ-ONLY, hard-truncated, NEVER FABRICATES: if the tenant has no menu
+   * catalog configured (or the vertical/brief doesn't suggest one), this
+   * returns null and the caller proceeds with whatever `content` (if any)
+   * the operator supplied — zero regression for every tenant without a POS
+   * connection. Address grounding uses only the real Tenant.address column;
+   * there is no "hours" field on Tenant today, so we never invent one.
+   */
+  private async autoGroundContent(opts: {
+    tenantId: string;
+    prompt: string;
+    vertical?: string;
+    brief?: DesignerBrief | null;
+    existingContent?: string;
+  }): Promise<string | null> {
+    // Never override real operator-supplied content — grounding only fills a
+    // GAP, it never contradicts or duplicates what's already there.
+    if (opts.existingContent && opts.existingContent.trim().length > 0) return null;
+    const haystack = [opts.prompt, opts.brief?.occasion, opts.brief?.headline, ...(opts.brief?.items || [])]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    const menuVerticals = /^(qsr|restaurant|bar|hospitality)$/i;
+    const looksMenuish =
+      (opts.vertical && menuVerticals.test(opts.vertical)) ||
+      /\b(menu|happy hour|drinks?|cocktails?|food|special(s)?|entree|appetizers?|prices?)\b/.test(haystack);
+
+    const parts: string[] = [];
+    if (looksMenuish) {
+      try {
+        const resolved = await this.menuService.resolveMenuForLocation(opts.tenantId);
+        const items = (resolved?.items || []).slice(0, AiService.AUTO_GROUND_MAX_ITEMS);
+        if (items.length) {
+          const lines = items.map((it) => {
+            const price = typeof it.priceCents === 'number' ? ` — $${(it.priceCents / 100).toFixed(2)}` : '';
+            return `${it.name}${price}`;
+          });
+          parts.push(`Real menu items from this venue's live catalog (use these, not invented ones):\n${lines.join('\n')}`);
+        }
+      } catch (e: any) {
+        // Read-only best-effort — a resolver hiccup must never block generation.
+        this.logger.warn(`Auto-ground menu lookup skipped: ${e?.message}`);
+      }
+    }
+
+    const looksAddressish = /\b(address|located|location|find us|directions|visit us)\b/.test(haystack);
+    if (looksAddressish) {
+      try {
+        const tenant = await this.prisma.client.tenant.findUnique({
+          where: { id: opts.tenantId },
+          select: { name: true, address: true },
+        });
+        if (tenant?.address) {
+          parts.push(`Real venue address (use verbatim, never invent one): ${tenant.address}`);
+        }
+      } catch (e: any) {
+        this.logger.warn(`Auto-ground address lookup skipped: ${e?.message}`);
+      }
+    }
+
+    if (!parts.length) return null;
+    return parts.join('\n\n').slice(0, AiService.AUTO_GROUND_MAX_CHARS);
   }
 
   async generateDesignerBoardCandidates(opts: {
@@ -2557,6 +2775,17 @@ export class AiService {
     content?: string;
     reference?: string;
     count?: number;
+    /**
+     * BRIEF-ECHO CONFIRM (#268 item 3) — a client-CONFIRMED structured brief
+     * (from POST generate-designer/brief, possibly edited via the confirm
+     * chips). When present, this is trusted AS THE READING (still re-validated
+     * shape-wise by sanitizeClientDesignerBrief) and NO fresh extraction call
+     * is made — the operator already confirmed it, spending a second
+     * extraction call would be pure waste. When absent, generation falls back
+     * to extracting its own brief inline (or skips extraction entirely on any
+     * failure) — exactly the pre-#268 behavior.
+     */
+    brief?: unknown;
   }): Promise<{
     candidates: Array<{ name: string; html: string; screenWidth: number; screenHeight: number; taurusWarnings: string[]; artDirection: string }>;
     batchId: string;
@@ -2606,14 +2835,49 @@ export class AiService {
     // "first-try keep rate by art direction" becomes a plain DB query.
     const batchId = randomUUID();
     const system = prependVoices(DESIGNER_SYSTEM_PROMPT, opts.vertical, await this.tenantBrandVoice(opts.tenantId));
-    // PER-TENANT STYLE MEMORY — distilled once from this tenant's kept boards and
-    // shared by all candidates (null for a brand-new operator).
+    // PER-TENANT STYLE MEMORY — distilled once from this tenant's kept boards
+    // (+ recurring refine preferences) and shared by all candidates (null for
+    // a brand-new operator).
     const houseStyle = await this.deriveTenantHouseStyle(opts.tenantId);
+
+    // INTERPRETATION HEDGING (#268 item 2) — resolve ONE confirmed brief
+    // shared by every candidate: prefer a client-confirmed brief (the
+    // brief-echo confirm chips — operator already reviewed it, so re-extracting
+    // would waste a call); otherwise extract fresh, best-effort. EITHER path
+    // can yield null (no brief-echo step taken, or extraction failed) — that's
+    // fine, generation proceeds exactly as it did before #268 with no brief.
+    const clientBrief = sanitizeClientDesignerBrief(opts.brief);
+    let briefExtracted = false;
+    const brief =
+      clientBrief ??
+      (await (async () => {
+        const extracted = await this.extractDesignerBrief({
+          resolved,
+          prompt,
+          vertical: opts.vertical,
+          content: opts.content,
+        });
+        briefExtracted = !!extracted;
+        return extracted;
+      })());
+
+    // AUTO-GROUND WITH TENANT DATA (#268 item 5) — only fills a gap; never
+    // overrides operator-supplied content. Read-only, hard-truncated, and the
+    // brief (whichever source) informs whether grounding is even relevant.
+    const groundedContent = await this.autoGroundContent({
+      tenantId: opts.tenantId,
+      prompt,
+      vertical: opts.vertical,
+      brief,
+      existingContent: opts.content,
+    });
+    const content = opts.content || groundedContent || undefined;
+
     // A full premium HTML board is large — a generous output budget. (dispatchAi
     // adds reasoning headroom for gpt-5 / o-series on top of this.)
     const MAX_HTML_TOKENS = 16000;
     const settled = await Promise.allSettled(
-      directions.map((artDirection) => {
+      directions.map((artDirection, i) => {
         const userPrompt = buildDesignerUserPrompt({
           prompt,
           width: sw,
@@ -2624,10 +2888,15 @@ export class AiService {
           tagline: opts.tagline,
           logoUrl: opts.logoUrl,
           heroImageUrl: opts.heroImageUrl,
-          content: opts.content,
+          content,
           reference: opts.reference,
           artDirection,
+          // CONTENT EMPHASIS (#268 item 2) — paired index-for-index with
+          // artDirection so a subtle misread of the brief can't sink all 3
+          // candidates identically (one leads headline, one detail, one CTA).
+          contentEmphasis: DESIGNER_CONTENT_EMPHASIS[i],
           houseStyle: houseStyle || undefined,
+          brief: brief || undefined,
         });
         return this.dispatchRawOrThrow(resolved, system, userPrompt, MAX_HTML_TOKENS).then((raw) =>
           sanitizeDesignerHtml(raw),
@@ -2680,6 +2949,16 @@ export class AiService {
           provider: resolved.provider,
           model: resolved.model,
           source: resolved.source,
+          // #268 item 2 — visibility into the interpretation-hedging pass:
+          // true = a fresh extraction call ran and produced a usable brief;
+          // false = a client-confirmed brief was used instead (no extraction
+          // call) OR extraction was skipped/failed and generation proceeded
+          // unextracted. `briefUsed` distinguishes "no brief at all" from
+          // "brief came from the client" so a query can tell the two apart.
+          briefExtracted,
+          briefUsed: !!brief,
+          briefSource: clientBrief ? 'client' : briefExtracted ? 'extracted' : 'none',
+          autoGrounded: !!groundedContent,
         }),
       },
     }).catch(() => { /* audit best-effort */ });

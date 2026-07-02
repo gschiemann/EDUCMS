@@ -3,12 +3,23 @@ import {
   DESIGNER_FONTS,
   DESIGNER_SYSTEM_PROMPT,
   DESIGNER_ART_DIRECTIONS,
+  DESIGNER_CONTENT_EMPHASIS,
   DESIGNER_EXEMPLAR,
   buildDesignerUserPrompt,
   summarizeHouseStyle,
+  summarizeHouseStyleWithRefines,
+  distillRefinePreferences,
   sanitizeDesignerHtml,
   auditDesignerHtmlTaurus,
   stripGuessedStockPhotos,
+  buildBriefExtractionSystemPrompt,
+  buildBriefExtractionUserPrompt,
+  parseDesignerBrief,
+  sanitizeClientDesignerBrief,
+  formatBriefForPrompt,
+  BRIEF_EXTRACTION_MAX_TOKENS,
+  BRIEF_EXTRACTION_TIMEOUT_MS,
+  type DesignerBrief,
 } from './designer-prompt';
 import {
   DESIGNER_EDIT_SHIM,
@@ -326,5 +337,250 @@ describe('summarizeHouseStyle — per-tenant style memory', () => {
     expect(withHs).toContain('HOUSE STYLE');
     const withoutHs = buildDesignerUserPrompt({ prompt: 'welcome board', width: 1920, height: 1080 });
     expect(withoutHs).not.toContain('HOUSE STYLE');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #268 item 2 — INTERPRETATION HEDGING: the brief-extraction contract.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('brief extraction — prompt builders', () => {
+  it('system prompt demands raw JSON with the exact contract fields', () => {
+    const sys = buildBriefExtractionSystemPrompt();
+    expect(sys).toContain('"occasion"');
+    expect(sys).toContain('"headline"');
+    expect(sys).toContain('"items"');
+    expect(sys).toContain('"dateTime"');
+    expect(sys).toContain('"tone"');
+    expect(sys).toContain('"callToAction"');
+    expect(sys).toMatch(/NEVER invent/i);
+  });
+
+  it('user prompt threads the brief + optional vertical/content', () => {
+    const p = buildBriefExtractionUserPrompt({ prompt: 'happy hour board', vertical: 'bar', content: 'Draft beer 4' });
+    expect(p).toContain('happy hour board');
+    expect(p).toContain('bar');
+    expect(p).toContain('Draft beer 4');
+  });
+
+  it('is a cheap, short-timeout pass by design', () => {
+    expect(BRIEF_EXTRACTION_MAX_TOKENS).toBeLessThanOrEqual(500);
+    expect(BRIEF_EXTRACTION_TIMEOUT_MS).toBeLessThanOrEqual(20_000);
+  });
+});
+
+describe('parseDesignerBrief — defensive parse (must never throw)', () => {
+  const validJson = JSON.stringify({
+    occasion: 'happy hour',
+    headline: 'Happy Hour Every Friday',
+    items: ['House Margarita — $6', 'Loaded Nachos — $9'],
+    dateTime: 'Fridays 4-6pm',
+    tone: 'playful',
+    callToAction: 'Come thirsty',
+  });
+
+  it('parses a clean JSON reply', () => {
+    const b = parseDesignerBrief(validJson);
+    expect(b).toEqual({
+      occasion: 'happy hour',
+      headline: 'Happy Hour Every Friday',
+      items: ['House Margarita — $6', 'Loaded Nachos — $9'],
+      dateTime: 'Fridays 4-6pm',
+      tone: 'playful',
+      callToAction: 'Come thirsty',
+    });
+  });
+
+  it('strips markdown fences + leading/trailing prose', () => {
+    const wrapped = 'Here you go:\n```json\n' + validJson + '\n```\nHope that helps!';
+    const b = parseDesignerBrief(wrapped);
+    expect(b?.headline).toBe('Happy Hour Every Friday');
+  });
+
+  it('returns null (never throws) on garbage, empty, or non-string input', () => {
+    expect(parseDesignerBrief('')).toBeNull();
+    expect(parseDesignerBrief('not json at all {{{')).toBeNull();
+    expect(parseDesignerBrief(undefined)).toBeNull();
+    expect(parseDesignerBrief(null)).toBeNull();
+    expect(parseDesignerBrief(42)).toBeNull();
+    expect(parseDesignerBrief('<!doctype html><html></html>')).toBeNull();
+  });
+
+  it('returns null for an all-empty brief (no signal = no value over skipping)', () => {
+    expect(parseDesignerBrief(JSON.stringify({ occasion: '', headline: '', items: [], dateTime: '', tone: '', callToAction: '' }))).toBeNull();
+  });
+
+  it('truncates oversized fields and caps the items array, never fabricating', () => {
+    const huge = JSON.stringify({
+      occasion: 'x'.repeat(2000),
+      headline: 'ok',
+      items: Array.from({ length: 100 }, (_, i) => `item ${i}`),
+      dateTime: '',
+      tone: '',
+      callToAction: '',
+    });
+    const b = parseDesignerBrief(huge)!;
+    expect(b.occasion.length).toBeLessThanOrEqual(400);
+    expect(b.items.length).toBeLessThanOrEqual(30);
+  });
+
+  it('drops non-string item entries instead of throwing', () => {
+    const mixed = JSON.stringify({ occasion: 'x', headline: '', items: ['ok', 42, null, 'also ok'], dateTime: '', tone: '', callToAction: '' });
+    const b = parseDesignerBrief(mixed)!;
+    expect(b.items).toEqual(['ok', 'also ok']);
+  });
+});
+
+describe('sanitizeClientDesignerBrief — re-validates a client-round-tripped brief', () => {
+  it('accepts a well-formed client object', () => {
+    const b = sanitizeClientDesignerBrief({
+      occasion: 'happy hour',
+      headline: 'Client Headline',
+      items: ['Beer — $4'],
+      dateTime: '',
+      tone: 'playful',
+      callToAction: '',
+    });
+    expect(b?.headline).toBe('Client Headline');
+  });
+
+  it('rejects non-object / malformed input without throwing', () => {
+    expect(sanitizeClientDesignerBrief(null)).toBeNull();
+    expect(sanitizeClientDesignerBrief(undefined)).toBeNull();
+    expect(sanitizeClientDesignerBrief('a string')).toBeNull();
+    expect(sanitizeClientDesignerBrief(42)).toBeNull();
+  });
+
+  it('applies the SAME truncation/shape rules as the extraction parser (defense in depth)', () => {
+    const b = sanitizeClientDesignerBrief({ occasion: 'x'.repeat(2000), headline: '', items: [], dateTime: '', tone: '', callToAction: '' });
+    expect(b?.occasion.length).toBeLessThanOrEqual(400);
+  });
+});
+
+describe('formatBriefForPrompt + buildDesignerUserPrompt brief wiring', () => {
+  const brief: DesignerBrief = {
+    occasion: 'happy hour',
+    headline: 'Happy Hour Every Friday',
+    items: ['House Margarita — $6'],
+    dateTime: 'Fridays 4-6pm',
+    tone: 'playful',
+    callToAction: 'Come thirsty',
+  };
+
+  it('formats every populated field, omits empty ones', () => {
+    const text = formatBriefForPrompt(brief);
+    expect(text).toContain('CONFIRMED BRIEF');
+    expect(text).toContain('Happy Hour Every Friday');
+    expect(text).toContain('House Margarita — $6');
+    expect(text).toContain('Fridays 4-6pm');
+    expect(text).toContain('Come thirsty');
+    const noItems = formatBriefForPrompt({ ...brief, items: [], callToAction: '' });
+    expect(noItems).not.toContain('Feature these items');
+    expect(noItems).not.toContain('Call to action');
+  });
+
+  it('buildDesignerUserPrompt embeds the brief + a per-candidate content emphasis', () => {
+    const p = buildDesignerUserPrompt({
+      prompt: 'happy hour board',
+      width: 1920,
+      height: 1080,
+      brief,
+      contentEmphasis: DESIGNER_CONTENT_EMPHASIS[0],
+    });
+    expect(p).toContain('CONFIRMED BRIEF');
+    expect(p).toContain('Happy Hour Every Friday');
+    expect(p).toContain('CONTENT EMPHASIS');
+    expect(p).toContain(DESIGNER_CONTENT_EMPHASIS[0]);
+  });
+
+  it('omits brief + emphasis sections when absent (backward compatible)', () => {
+    const p = buildDesignerUserPrompt({ prompt: 'welcome board', width: 1920, height: 1080 });
+    expect(p).not.toContain('CONFIRMED BRIEF');
+    expect(p).not.toContain('CONTENT EMPHASIS');
+  });
+
+  it('exposes 3 distinct content-emphasis directions, index-paired with art directions', () => {
+    expect(DESIGNER_CONTENT_EMPHASIS).toHaveLength(DESIGNER_ART_DIRECTIONS.length);
+    expect(new Set(DESIGNER_CONTENT_EMPHASIS).size).toBe(DESIGNER_CONTENT_EMPHASIS.length);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #268 item 4 — LEARN FROM REFINES: keyword-frequency heuristic distillation.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('distillRefinePreferences — pure keyword-frequency heuristic', () => {
+  it('returns [] for no signal / a single one-off instruction (not "recurring")', () => {
+    expect(distillRefinePreferences([])).toEqual([]);
+    expect(distillRefinePreferences(['make the headline bigger'])).toEqual([]);
+  });
+
+  it('surfaces a preference once it recurs 2+ times', () => {
+    const prefs = distillRefinePreferences(['make the text bigger', 'the headline is too small to read']);
+    expect(prefs.some((p) => /BIGGER/.test(p))).toBe(true);
+  });
+
+  it('caps output at 2 lines even with many recurring signals', () => {
+    const instructions = [
+      'make it bigger', 'too small to read',
+      'less clutter please', 'too busy, simplify',
+      'use our red', 'our brand color please',
+      'make it darker', 'too light, darker theme',
+    ];
+    const prefs = distillRefinePreferences(instructions);
+    expect(prefs.length).toBeLessThanOrEqual(2);
+  });
+
+  it('ranks the MOST recurring preference first', () => {
+    const instructions = [
+      'bigger text', 'too small', 'increase the size please', // 3 hits for "bigger"
+      'less clutter', 'too busy', // 2 hits for "cleaner"
+    ];
+    const prefs = distillRefinePreferences(instructions);
+    expect(prefs[0]).toMatch(/BIGGER/);
+  });
+
+  it('never throws on garbage input', () => {
+    expect(distillRefinePreferences(null as unknown as string[])).toEqual([]);
+    expect(distillRefinePreferences([42 as unknown as string, '', 'ok bigger please', 'too small'])).toBeTruthy();
+  });
+});
+
+describe('summarizeHouseStyleWithRefines — combines keep-derived + refine-derived signal', () => {
+  const board = (extra: string) =>
+    '<!doctype html><html><head><style>.stage{width:1920px;height:1080px;background:#0b1f3a;color:#fff;font-family:Fraunces,serif}'
+    + '.s{color:#ff6b35;font-family:Inter,sans-serif}' + extra
+    + '</style></head><body><div class="stage"><div class="s">Hi there friend, this is long enough copy to pass the length floor.</div></div></body></html>';
+
+  it('falls back to plain summarizeHouseStyle output when there are no refines', () => {
+    const withRefines = summarizeHouseStyleWithRefines([board(''), board('')], []);
+    const plain = summarizeHouseStyle([board(''), board('')]);
+    expect(withRefines).toBe(plain);
+  });
+
+  it('appends a distilled refine-preference line onto the keep-derived house style', () => {
+    const out = summarizeHouseStyleWithRefines([board(''), board('')], ['bigger text please', 'too small to read']);
+    expect(out).toContain('HOUSE STYLE');
+    expect(out).toContain('#0b1f3a'); // keep-derived signal still present
+    expect(out).toMatch(/BIGGER/); // refine-derived signal appended
+  });
+
+  it('produces a house-style line from refines ALONE when there are no kept boards yet', () => {
+    const out = summarizeHouseStyleWithRefines([], ['less clutter please', 'too busy, simplify']);
+    expect(out).toContain('HOUSE STYLE');
+    expect(out).toMatch(/CLEANER/);
+  });
+
+  it('returns null when NEITHER source has signal (matches summarizeHouseStyle null contract)', () => {
+    expect(summarizeHouseStyleWithRefines([], [])).toBeNull();
+    expect(summarizeHouseStyleWithRefines(['<div>too short</div>'], ['one-off, not recurring'])).toBeNull();
+  });
+
+  it('bounds prompt-lean growth — output stays roughly the same order of size as the base house style', () => {
+    const base = summarizeHouseStyle([board(''), board('')])!;
+    const withRefines = summarizeHouseStyleWithRefines(
+      [board(''), board('')],
+      ['bigger text please', 'too small to read', 'less clutter', 'too busy'],
+    )!;
+    // At most 2 short preference lines appended — not unbounded growth.
+    expect(withRefines.length).toBeLessThan(base.length + 250);
   });
 });

@@ -68,6 +68,21 @@ export interface DesignerBoardOptions {
    * AI gets more "them" over time. Per-tenant only; null for a new operator.
    */
   houseStyle?: string;
+  /**
+   * INTERPRETATION HEDGING (2026-07-01) — the structured brief extracted (or
+   * client-confirmed) from the operator's free-text prompt BEFORE the 3× fan-out,
+   * so every candidate shares one CONFIRMED reading of what's wanted. Optional —
+   * when absent (extraction skipped/failed), generation proceeds exactly as
+   * before this feature existed.
+   */
+  brief?: DesignerBrief;
+  /**
+   * Per-candidate CONTENT EMPHASIS (paired with artDirection — see
+   * DESIGNER_CONTENT_EMPHASIS) so a misread of the brief can't sink all 3
+   * candidates identically: one leads with the headline, one with the
+   * details, one with the offer/CTA.
+   */
+  contentEmphasis?: string;
 }
 
 const FONT_LIST = DESIGNER_FONTS.join(', ');
@@ -282,7 +297,9 @@ export function buildDesignerUserPrompt(opts: DesignerBoardOptions): string {
   if (opts.heroImageUrl) lines.push(`Brand HERO PHOTO URL (the venue's OWN work photo) — USE it as the hero background/side-panel via <img data-imgslot="hero" data-img src="${opts.heroImageUrl}" ...> with a brand-palette scrim/duotone so the headline stays legible. This is a VERIFIED brand asset, NOT a guess — it makes the board look like the real brand instead of a flat gradient. Put a gradient behind it as the load fallback.`);
   if (opts.content) lines.push('', 'REAL CONTENT to feature (use verbatim — items, prices, copy):', opts.content);
   if (opts.reference) lines.push('', `Reference (match this look/brand): ${opts.reference}`);
+  if (opts.brief) lines.push('', formatBriefForPrompt(opts.brief));
   if (opts.artDirection) lines.push('', `ART DIRECTION for THIS board (make it distinct): ${opts.artDirection}`);
+  if (opts.contentEmphasis) lines.push('', `CONTENT EMPHASIS for THIS board (what gets top billing — vary this from the other candidates): ${opts.contentEmphasis}`);
   if (opts.houseStyle) lines.push('', opts.houseStyle);
   lines.push('', 'Return ONLY the complete HTML document.');
   return lines.join('\n');
@@ -368,6 +385,70 @@ export function summarizeHouseStyle(htmls: string[]): string | null {
       : 'they tend to keep boards mostly still',
   );
   return `THIS OPERATOR'S HOUSE STYLE (learned from boards they have KEPT — lean toward this established, on-brand look UNLESS the new brief clearly calls for something different; do NOT copy any past board's layout, bring this STYLE to the NEW brief): ${parts.join('; ')}.`;
+}
+
+/**
+ * LEARN FROM REFINES (2026-07-01, launch-sprint #268 item 4) — the operator's
+ * chat-to-edit "refine" instructions ("bigger text", "less clutter", "use our
+ * red") are gold signal we otherwise throw away after applying them once.
+ * Pure keyword-frequency heuristic (NO extra AI call, NO fuzzy matching) over
+ * the tenant's last ~10 AI_DESIGNER_REFINE instructions: when 2+ refines hint
+ * at the SAME recurring preference, fold it into a standing house-style line
+ * so the NEXT generation gets it right the first time instead of the operator
+ * having to ask again. Deterministic + unit-testable; returns null when there
+ * is no recurring signal (a single one-off refine is not a standing
+ * preference — needs at least 2 hits to count as "recurring").
+ */
+const REFINE_PREFERENCE_RULES: Array<{ keywords: RegExp; line: string }> = [
+  { keywords: /\b(bigger|larger|increase.*size|too small|hard to read|can'?t read)\b/i, line: 'they tend to ask for BIGGER text/headlines than the default — start larger than usual' },
+  { keywords: /\b(smaller|too big|too large|shrink|reduce.*size)\b/i, line: 'they tend to ask for smaller/more restrained sizing than the default' },
+  { keywords: /\b(less clutter|too busy|too much|simplify|cleaner|minimal)\b/i, line: 'they tend to prefer a CLEANER, less cluttered layout — favor fewer elements and more whitespace' },
+  { keywords: /\b(more (color|colou?rful)|too plain|too boring|add (some )?color)\b/i, line: 'they tend to want MORE color/vibrancy than the default' },
+  { keywords: /\b(our (red|blue|green|color|brand color)|use our|brand color)\b/i, line: 'they tend to insist on the exact brand palette over invented accents' },
+  { keywords: /\b(darker|dark (mode|theme|field)|too light|too bright)\b/i, line: 'they tend to prefer a DARKER field/theme than the default' },
+  { keywords: /\b(lighter|too dark|brighten)\b/i, line: 'they tend to prefer a LIGHTER field/theme than the default' },
+  { keywords: /\b(remove|drop|delete|get rid of|no (photo|image))\b/i, line: 'they tend to trim elements down rather than add them — when in doubt, do less' },
+  { keywords: /\b(more (playful|fun|energetic)|too serious|too formal|less (formal|stiff))\b/i, line: 'they tend to want a more PLAYFUL/energetic tone than the default' },
+  { keywords: /\b(more (premium|elegant|formal|professional)|too (playful|casual))\b/i, line: 'they tend to want a more PREMIUM/restrained tone than the default' },
+  { keywords: /\b(still|no (motion|animation)|stop (moving|animating))\b/i, line: 'they tend to prefer boards STILL — avoid animation unless asked' },
+  { keywords: /\b(animat|motion|movement|make it move)\b/i, line: 'they tend to want some MOTION on their boards' },
+];
+
+/** Cap how many distilled refine-preference lines can join houseStyle, so
+ *  prompt-lean growth stays bounded (see summarizeHouseStyleWithRefines). */
+const MAX_REFINE_PREFERENCES = 2;
+
+export function distillRefinePreferences(instructions: string[]): string[] {
+  const clean = (instructions || []).filter((s) => typeof s === 'string' && s.trim()).slice(0, 10);
+  if (!clean.length) return [];
+  const hits: Array<{ line: string; count: number }> = [];
+  for (const rule of REFINE_PREFERENCE_RULES) {
+    const count = clean.filter((s) => rule.keywords.test(s)).length;
+    if (count >= 2) hits.push({ line: rule.line, count });
+  }
+  hits.sort((a, b) => b.count - a.count);
+  return hits.slice(0, MAX_REFINE_PREFERENCES).map((h) => h.line);
+}
+
+/**
+ * Combine the keep-derived house style with the refine-derived preferences
+ * into ONE bounded house-style string. Kept as a separate composer (rather
+ * than folding into summarizeHouseStyle) so each signal source stays
+ * independently unit-testable and the caller can supply either, both, or
+ * neither without restructuring. Returns null only when NEITHER source has
+ * signal (matches summarizeHouseStyle's existing null contract).
+ */
+export function summarizeHouseStyleWithRefines(htmls: string[], refineInstructions: string[]): string | null {
+  const base = summarizeHouseStyle(htmls);
+  const refinePrefs = distillRefinePreferences(refineInstructions);
+  if (!refinePrefs.length) return base;
+  const refineLine = `Also, from their past edit requests: ${refinePrefs.join('; ')}.`;
+  if (!base) {
+    // No keep-derived signal yet, but refine history exists (e.g. an
+    // operator who has refined boards but not yet kept one via this path).
+    return `THIS OPERATOR'S HOUSE STYLE (learned from their past edit requests — lean toward this UNLESS the new brief clearly calls for something different): ${refinePrefs.join('; ')}.`;
+  }
+  return `${base} ${refineLine}`;
 }
 
 /** Three distinct art directions so a 3-candidate fan-out yields different designs. */
@@ -474,3 +555,158 @@ export function auditDesignerHtmlTaurus(html: string): string[] {
   if (/[;{]\s*mask\s*:/.test(html) && !/-webkit-mask\s*:/.test(html)) warns.push('uses `mask:` without a `-webkit-mask:` twin (Chromium 83 drops the cutout — a masked halo/donut renders as a solid disc; ship both on adjacent lines)');
   return warns;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BRIEF EXTRACTION (2026-07-01, launch-sprint #268 item 2) — "we hedge STYLE,
+// not INTERPRETATION". Before the 3× fan-out, one CHEAP small call turns the
+// operator's free-text prompt into a structured brief. All 3 candidates then
+// share a CONFIRMED reading of WHAT the customer wants (occasion/headline/
+// items/date/tone/CTA) instead of each art-direction call re-guessing the
+// same ambiguous brief independently — so a misread can't miss all 3 the
+// same way. Pure functions only (prompt + defensive parse) so this unit-tests
+// without the Nest container or a real provider call; AiService owns the
+// actual dispatch + the "never block generation" fallback.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** The structured reading of an operator's free-text signage brief. */
+export interface DesignerBrief {
+  /** What the board is for, in a few words ("happy hour promo", "back to school welcome"). */
+  occasion: string;
+  /** The single headline the board should carry, in the venue's voice. */
+  headline: string;
+  /** Concrete items/offers the board should feature (menu items, prices, features). Empty array if none apply. */
+  items: string[];
+  /** A date/time/schedule string the board should show, if the brief implies one (e.g. "Fridays 4-6pm", "Sept 12"). Empty string if none. */
+  dateTime: string;
+  /** One or two words describing the tone ("playful", "premium", "urgent", "warm"). */
+  tone: string;
+  /** A call-to-action phrase, if the brief implies one ("Order now", "RSVP today"). Empty string if none. */
+  callToAction: string;
+}
+
+/** Hard cap on brief-extraction output — this is a cheap disambiguation
+ *  pass, not a generation; keep it small on purpose (economics + speed). */
+export const BRIEF_EXTRACTION_MAX_TOKENS = 500;
+
+/** Short abort ceiling for the extraction call — it must fail fast and let
+ *  the caller fall back to the un-extracted path rather than eating into the
+ *  operator's patience before the real (expensive) 3× fan-out even starts. */
+export const BRIEF_EXTRACTION_TIMEOUT_MS = 18_000;
+
+const BRIEF_JSON_CONTRACT = [
+  '{',
+  '  "occasion": string,      // what the board is for, a few words',
+  '  "headline": string,      // the single headline the board should carry, in the venue voice',
+  '  "items": string[],       // concrete items/offers/features (menu items+prices, bullet points) — [] if none apply',
+  '  "dateTime": string,      // a date/time/schedule the board implies — "" if none',
+  '  "tone": string,          // one or two words: playful | premium | urgent | warm | bold | calm | ...',
+  '  "callToAction": string,  // e.g. "Order now" — "" if none implied',
+  '}',
+].join('\n');
+
+/** Build the system+user prompt pair for the brief-extraction call. Small,
+ *  cheap, deterministic-leaning (the caller sets a low temperature via the
+ *  normal dispatch path — this module only builds text). */
+export function buildBriefExtractionSystemPrompt(): string {
+  return [
+    'You read a signage operator\'s short brief and extract a STRUCTURED reading of what they actually want — nothing more. You are NOT designing anything; you are disambiguating the request so a downstream designer never misreads it.',
+    '',
+    'OUTPUT CONTRACT — return ONLY raw JSON matching this exact shape, no markdown fences, no commentary:',
+    BRIEF_JSON_CONTRACT,
+    '',
+    'RULES:',
+    '- Extract only what the brief actually implies. NEVER invent a date, price, or item that is not stated or strongly implied — leave the field empty ("" or []) instead of guessing.',
+    '- "items" holds concrete, nameable things (menu items, prices, features, session names) — not vague filler like "great food".',
+    '- Keep every field terse (a few words to one short sentence). This is a disambiguation summary, not a copy draft.',
+    '- If the brief is already crisp and unambiguous, your job is still to structure it faithfully — do not editorialize or add detail beyond the brief.',
+  ].join('\n');
+}
+
+export function buildBriefExtractionUserPrompt(opts: { prompt: string; vertical?: string; content?: string }): string {
+  const lines = [`Operator's brief: ${opts.prompt}`];
+  if (opts.vertical) lines.push(`Vertical: ${opts.vertical}.`);
+  if (opts.content) lines.push('', 'Content already supplied (use this to fill items/dateTime, do not contradict it):', opts.content);
+  lines.push('', 'Return ONLY the JSON object.');
+  return lines.join('\n');
+}
+
+/**
+ * Defensively parse the model's brief-extraction reply. Returns null on ANY
+ * malformed / unusable output so the caller can fall back to generating
+ * exactly as it did before this feature existed — this pass must NEVER be
+ * able to break or block a generation.
+ */
+export function parseDesignerBrief(raw: unknown): DesignerBrief | null {
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  let text = raw.trim();
+  // Strip accidental markdown fences.
+  text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  // If the model prepended/appended prose, cut to the outermost {...}.
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start === -1 || end === -1 || end <= start) return null;
+  text = text.slice(start, end + 1);
+  let parsed: any;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object') return null;
+  const str = (v: unknown): string => (typeof v === 'string' ? v.trim().slice(0, 400) : '');
+  const items = Array.isArray(parsed.items)
+    ? parsed.items.filter((i: unknown) => typeof i === 'string' && i.trim()).map((i: string) => i.trim().slice(0, 200)).slice(0, 30)
+    : [];
+  const brief: DesignerBrief = {
+    occasion: str(parsed.occasion),
+    headline: str(parsed.headline),
+    items,
+    dateTime: str(parsed.dateTime),
+    tone: str(parsed.tone),
+    callToAction: str(parsed.callToAction),
+  };
+  // Require at least SOME signal — an all-empty brief carries no value over
+  // skipping extraction, and likely means the model returned garbage.
+  if (!brief.occasion && !brief.headline && !brief.items.length && !brief.dateTime && !brief.tone && !brief.callToAction) {
+    return null;
+  }
+  return brief;
+}
+
+/** Re-validate a CLIENT-supplied brief object (the brief-echo confirm chips
+ *  round-trip through the browser) with the exact same shape rules as the
+ *  parser above, so a tampered/malformed client payload can never inject
+ *  oversized or wrong-typed fields into the designer prompt. Returns null
+ *  (never throws) on anything unusable — caller falls back to extracting
+ *  fresh / generating unextracted. */
+export function sanitizeClientDesignerBrief(input: unknown): DesignerBrief | null {
+  if (!input || typeof input !== 'object') return null;
+  return parseDesignerBrief(JSON.stringify(input));
+}
+
+/** Format a confirmed brief into the designer user-prompt as an authoritative
+ *  reading the model must honor (distinct from the raw free-text `prompt`,
+ *  which stays too as color/voice context). */
+export function formatBriefForPrompt(brief: DesignerBrief): string {
+  const lines: string[] = ['CONFIRMED BRIEF (a structured reading of the operator\'s request — treat this as authoritative for WHAT to include; the free-text brief above is supporting color/voice):'];
+  if (brief.occasion) lines.push(`- Occasion: ${brief.occasion}`);
+  if (brief.headline) lines.push(`- Headline direction: ${brief.headline}`);
+  if (brief.items.length) lines.push(`- Feature these items/offers: ${brief.items.join('; ')}`);
+  if (brief.dateTime) lines.push(`- Date/time: ${brief.dateTime}`);
+  if (brief.tone) lines.push(`- Tone: ${brief.tone}`);
+  if (brief.callToAction) lines.push(`- Call to action: ${brief.callToAction}`);
+  return lines.join('\n');
+}
+
+/**
+ * CONTENT EMPHASIS per candidate (2026-07-01) — pairs with the existing
+ * DESIGNER_ART_DIRECTIONS (which vary STYLE) to also vary WHAT gets top
+ * billing per candidate, so a subtle misread of the confirmed brief can't
+ * sink all 3 candidates identically. Same length/order as
+ * DESIGNER_ART_DIRECTIONS — index i of one pairs with index i of the other.
+ */
+export const DESIGNER_CONTENT_EMPHASIS: string[] = [
+  'HEADLINE-FORWARD — lead with the headline/occasion as the dominant hero element; items/details support it at a smaller, secondary scale.',
+  'DETAIL-FORWARD — give the concrete items/offers/schedule the most visual weight and space; the headline is present but compact, framing the details rather than dominating them.',
+  'PROMO-FORWARD — lead with the call-to-action / the single most compelling offer or date, styled as the focal point; headline and remaining items support it.',
+];

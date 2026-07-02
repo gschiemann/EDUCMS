@@ -5,6 +5,13 @@ import { AiKeyController } from './ai-key.controller';
 import { AiAltTextService } from './ai-alt-text.service';
 import { StockImageService } from './stock-image.service';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
+// 2026-07-01 (launch-sprint #268 item 5, AUTO-GROUND) — the AI Designer
+// enriches menu-ish briefs with the tenant's REAL, live-priced menu items
+// instead of the model inventing plausible-sounding ones. PosModule exports
+// MenuService (stateless — only depends on the global PrismaModule), and
+// PosModule does NOT import AiModule, so this is a clean one-way import with
+// no circular dependency.
+import { PosModule } from '../pos/pos.module';
 
 /**
  * AiModule — multi-provider content generation + BYOK key management.
@@ -34,6 +41,7 @@ import { SupabaseStorageService } from '../storage/supabase-storage.service';
  * photo at generate time.
  */
 @Module({
+  imports: [PosModule],
   controllers: [AiController, AiKeyController],
   providers: [AiService, AiAltTextService, StockImageService, SupabaseStorageService],
   exports: [AiService, AiAltTextService, StockImageService],

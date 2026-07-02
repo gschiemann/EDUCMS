@@ -44,6 +44,21 @@ import {
 
 // AI DESIGNER (2026-06-28) — request schemas for the designer-grade full-HTML
 // generation path. Kept inline (not in api-types) while the feature stabilizes.
+//
+// BRIEF-ECHO CONFIRM (2026-07-01, #268 item 3) — the shape the operator's
+// confirmed (possibly hand-edited-via-chips) structured brief travels in.
+// Shape-validated here; AiService.sanitizeClientDesignerBrief re-validates +
+// truncates server-side too (defense in depth — never trust client shape
+// alone for something that rides straight into the designer prompt).
+const DesignerBriefSchema = z.object({
+  occasion: z.string().max(400).optional().default(''),
+  headline: z.string().max(400).optional().default(''),
+  items: z.array(z.string().max(200)).max(30).optional().default([]),
+  dateTime: z.string().max(400).optional().default(''),
+  tone: z.string().max(400).optional().default(''),
+  callToAction: z.string().max(400).optional().default(''),
+}).passthrough();
+
 const DesignerGenerateSchema = z.object({
   prompt: z.string().min(1).max(4000),
   screenWidth: z.number().int().positive().max(8192).optional(),
@@ -57,8 +72,22 @@ const DesignerGenerateSchema = z.object({
   content: z.string().max(8000).optional(),
   reference: z.string().max(4000).optional(),
   count: z.number().int().min(1).max(3).optional(),
+  // #268 item 3 — the operator-confirmed brief from generate-designer/brief,
+  // ridden straight into generation so it's not extracted a second time.
+  brief: DesignerBriefSchema.optional(),
 }).passthrough();
 type DesignerGenerateInput = z.infer<typeof DesignerGenerateSchema>;
+
+// #268 item 3 — the brief-extraction pre-flight request. Same fields the
+// generate call would take that inform extraction (prompt/vertical/content);
+// deliberately does NOT take palette/logo/etc — those don't change the READING
+// of the brief, only its art direction.
+const DesignerBriefRequestSchema = z.object({
+  prompt: z.string().min(1).max(4000),
+  vertical: z.string().max(40).optional(),
+  content: z.string().max(8000).optional(),
+}).passthrough();
+type DesignerBriefRequestInput = z.infer<typeof DesignerBriefRequestSchema>;
 
 const DesignerCreateSchema = z.object({
   name: z.string().max(120).optional(),
@@ -1078,6 +1107,28 @@ export class TemplatesController {
   // create-designer below (re-sanitized + ONE EXTERNAL_HTML zone) — NOT the touch
   // sanitizer, which would strip EXTERNAL_HTML and truncate the html.
   // ───────────────────────────────────────────────────────────────────────
+  // BRIEF-ECHO CONFIRM (2026-07-01, #268 item 3) — the FE calls this FIRST,
+  // before the expensive 3× fan-out, to show the operator a 2-second-glance
+  // confirm strip (headline / items / date / tone chips, editable) built from
+  // a cheap structured read of their prompt. The confirmed (or edited) brief
+  // then rides into generate-designer/candidates as `body.brief`. Never
+  // throws on extraction failure — returns `{ brief: null }` so the FE can
+  // skip straight to generation exactly as if this endpoint didn't exist.
+  @Post('generate-designer/brief')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async generateDesignerBrief(
+    @Request() req: any,
+    @Body(new ZodValidationPipe(DesignerBriefRequestSchema)) body: DesignerBriefRequestInput,
+  ) {
+    const out = await this.ai.extractDesignerBriefForConfirm({
+      tenantId: req.user.tenantId,
+      prompt: body.prompt,
+      vertical: body.vertical,
+      content: body.content,
+    });
+    return { brief: out.brief, ai: { source: out.source } };
+  }
+
   @Post('generate-designer/candidates')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async generateDesignerCandidates(
@@ -1099,6 +1150,10 @@ export class TemplatesController {
       content: body.content,
       reference: body.reference,
       count: body.count,
+      // #268 item 3 — the operator-confirmed brief (brief-echo confirm chips),
+      // if the FE called generate-designer/brief first. AiService re-validates
+      // the shape server-side (sanitizeClientDesignerBrief) — never trusted as-is.
+      brief: body.brief,
     });
     // Bake the VOS-FIT-ENGINE into each candidate NOW (not just at save) so the
     // 3-up preview the operator sees is already collision-free + auto-fit on the

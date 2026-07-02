@@ -117,7 +117,7 @@ function makeStorageMock() {
   };
 }
 
-function buildService(publisher: any, storage?: any, stock?: any): { service: AiService; storage: any; stock: any } {
+function buildService(publisher: any, storage?: any, stock?: any, menu?: any): { service: AiService; storage: any; stock: any; menu: any } {
   const redisMock = { publisher } as unknown as RedisService;
   const storageMock = storage ?? makeStorageMock();
   // 2026-06-28 — AiService now takes AiAltTextService (Signage Concierge image
@@ -134,9 +134,16 @@ function buildService(publisher: any, storage?: any, stock?: any): { service: Ai
     isConfigured: jest.fn(() => false),
     search: jest.fn(async () => null),
   } as any;
+  // 2026-07-01 (#268 item 5) — AiService now also takes MenuService for
+  // auto-grounding menu-ish designer briefs. DEFAULT stub resolves an EMPTY
+  // menu (no catalog configured) → generation proceeds exactly as before this
+  // feature existed. The auto-ground suite passes its own with real items.
+  const menuMock = menu ?? {
+    resolveMenuForLocation: jest.fn(async () => ({ locationTenantId: 't1', generatedAt: new Date().toISOString(), categories: [], items: [] })),
+  } as any;
   // Synchronous construct — no Nest container needed, but use it for parity.
-  const service = new AiService(prismaMock as PrismaService, redisMock, storageMock as any, altTextMock, stockMock);
-  return { service, storage: storageMock, stock: stockMock };
+  const service = new AiService(prismaMock as PrismaService, redisMock, storageMock as any, altTextMock, stockMock, menuMock);
+  return { service, storage: storageMock, stock: stockMock, menu: menuMock };
 }
 
 describe('AiService — P1-14 Redis-backed rate limits', () => {
@@ -1413,6 +1420,11 @@ describe('AiService — AI Designer HTML candidates', () => {
   it('fans out 3 designer boards, sanitizes the HTML, records spend per board', async () => {
     process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
     const fake = makeFakeRedisClient();
+    // Every dispatchAi call (the brief-extraction pass + the 3 board calls)
+    // returns the same fakeBoard here. The extraction call's reply is HTML,
+    // not JSON, so parseDesignerBrief returns null — proving the #268
+    // interpretation-hedging pass degrades to "no brief" without touching the
+    // 3 real board calls' outcome (never blocks generation on a bad parse).
     dispatchMock.mockResolvedValue({ raw: fakeBoard });
     const { service } = buildService(fake);
 
@@ -1426,7 +1438,10 @@ describe('AiService — AI Designer HTML candidates', () => {
     });
 
     expect(res.candidates).toHaveLength(3);
-    expect(dispatchMock).toHaveBeenCalledTimes(3); // one provider call per board
+    // #268 item 2 — ONE extra call for the brief-extraction pass BEFORE the
+    // 3× fan-out (4 total), and it must NOT be recorded as a generation (see
+    // the hourly-accounting assertion below).
+    expect(dispatchMock).toHaveBeenCalledTimes(4);
     for (const c of res.candidates) {
       expect(c.html).toContain('<!doctype html>');
       expect(c.html).toContain('data-field="headline"');
@@ -1436,7 +1451,132 @@ describe('AiService — AI Designer HTML candidates', () => {
       expect(c.name).toBe('Chrome Coffee');
     }
     const successAdds = fake.zadd.mock.calls.filter((c) => c[0] === 'ai:rl:gen:t1');
+    // Still exactly 3 — the brief-extraction call is NOT double-counted
+    // against the hourly generation cap (economics decision, #268 item 2).
     expect(successAdds.length).toBe(3); // honest hourly accounting
+    // The extraction call used a SHORT hard timeout independent of the
+    // model's normal ceiling (dispatchAi's 4th positional arg carries it via
+    // the timeoutMs field on the input object).
+    const briefCall = dispatchMock.mock.calls.find((c) => c[1]?.maxTokens === 500);
+    expect(briefCall?.[1]?.timeoutMs).toBe(18_000);
+  });
+
+  it('extracts a structured brief and shares it across all 3 candidates (interpretation hedging)', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const fake = makeFakeRedisClient();
+    const briefJson = JSON.stringify({
+      occasion: 'happy hour',
+      headline: 'Happy Hour Every Friday',
+      items: ['House Margarita — $6', 'Loaded Nachos — $9'],
+      dateTime: 'Fridays 4-6pm',
+      tone: 'playful',
+      callToAction: 'Come thirsty',
+    });
+    dispatchMock.mockImplementation(async (_provider: any, input: any) => {
+      // The extraction call is the one with the small maxTokens budget.
+      if (input.maxTokens === 500) return { raw: briefJson };
+      return { raw: fakeBoard };
+    });
+    const { service } = buildService(fake);
+
+    await service.generateDesignerBoardCandidates({
+      tenantId: 't1',
+      prompt: 'happy hour board',
+      vertical: 'bar',
+    });
+
+    // Every board-generation call (not the extraction call) must carry the
+    // confirmed brief text in its user prompt, AND a distinct content-emphasis
+    // line per candidate (paired with the existing art-direction variance).
+    const boardCalls = dispatchMock.mock.calls.filter((c) => c[1]?.maxTokens !== 500);
+    expect(boardCalls).toHaveLength(3);
+    const emphases = new Set<string>();
+    for (const [, input] of boardCalls) {
+      expect(input.userPrompt).toContain('CONFIRMED BRIEF');
+      expect(input.userPrompt).toContain('Happy Hour Every Friday');
+      expect(input.userPrompt).toContain('House Margarita — $6');
+      const m = input.userPrompt.match(/CONTENT EMPHASIS for THIS board[^:]*: ([^\n]+)/);
+      expect(m).toBeTruthy();
+      emphases.add(m![1]);
+    }
+    expect(emphases.size).toBe(3); // headline-forward / detail-forward / promo-forward, all distinct
+
+    const auditRow = auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES');
+    const details = JSON.parse(auditRow.details);
+    expect(details.briefExtracted).toBe(true);
+    expect(details.briefUsed).toBe(true);
+    expect(details.briefSource).toBe('extracted');
+  });
+
+  it('accepts a client-confirmed brief and skips a fresh extraction call (no double-count)', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const fake = makeFakeRedisClient();
+    dispatchMock.mockResolvedValue({ raw: fakeBoard });
+    const { service } = buildService(fake);
+
+    await service.generateDesignerBoardCandidates({
+      tenantId: 't1',
+      prompt: 'happy hour board',
+      vertical: 'bar',
+      brief: {
+        occasion: 'happy hour',
+        headline: 'Client-Confirmed Headline',
+        items: ['Draft Beer — $4'],
+        dateTime: '',
+        tone: 'playful',
+        callToAction: '',
+      },
+    });
+
+    // No maxTokens:500 extraction call at all — exactly 3 board calls.
+    expect(dispatchMock).toHaveBeenCalledTimes(3);
+    expect(dispatchMock.mock.calls.every((c) => c[1]?.maxTokens !== 500)).toBe(true);
+    for (const [, input] of dispatchMock.mock.calls) {
+      expect(input.userPrompt).toContain('Client-Confirmed Headline');
+    }
+
+    const auditRow = auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES');
+    const details = JSON.parse(auditRow.details);
+    expect(details.briefExtracted).toBe(false); // no extraction call ran
+    expect(details.briefUsed).toBe(true);
+    expect(details.briefSource).toBe('client');
+  });
+
+  it('a malformed/garbage extraction reply never blocks generation (best-effort fallback)', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const fake = makeFakeRedisClient();
+    dispatchMock.mockImplementation(async (_provider: any, input: any) => {
+      if (input.maxTokens === 500) return { raw: 'not json at all {{{' };
+      return { raw: fakeBoard };
+    });
+    const { service } = buildService(fake);
+
+    const res = await service.generateDesignerBoardCandidates({
+      tenantId: 't1',
+      prompt: 'happy hour board',
+    });
+    expect(res.candidates).toHaveLength(3);
+    const auditRow = auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES');
+    const details = JSON.parse(auditRow.details);
+    expect(details.briefExtracted).toBe(false);
+    expect(details.briefUsed).toBe(false);
+    expect(details.briefSource).toBe('none');
+  });
+
+  it('a provider ERROR on the extraction call never blocks generation (best-effort fallback)', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const fake = makeFakeRedisClient();
+    dispatchMock.mockImplementation(async (_provider: any, input: any) => {
+      if (input.maxTokens === 500) return { raw: '', errorStatus: 500, errorBody: 'boom' };
+      return { raw: fakeBoard };
+    });
+    const { service } = buildService(fake);
+
+    const res = await service.generateDesignerBoardCandidates({
+      tenantId: 't1',
+      prompt: 'happy hour board',
+    });
+    expect(res.candidates).toHaveLength(3);
   });
 
   it('surfaces the provider error when EVERY board fails', async () => {
@@ -1447,5 +1587,157 @@ describe('AiService — AI Designer HTML candidates', () => {
     await expect(
       service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'x' }),
     ).rejects.toBeDefined();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #268 item 5 — AUTO-GROUND WITH TENANT DATA. Read-only, hard-truncated,
+// never fabricates. Menu grounding uses MenuService (mocked); address
+// grounding reads Tenant.address directly.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('AiService — AI Designer auto-ground with tenant data (#268 item 5)', () => {
+  const fakeBoard = '<!doctype html><html><head><style>.stage{width:1920px;height:1080px;position:absolute;top:0;left:0;background:#23282f;color:#fff}</style></head>'
+    + '<body><div class="stage"><h1 data-field="headline">Board</h1><script>var s=1;</script></div></body></html>';
+
+  beforeEach(() => {
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.AI_FREE_TIER_CAP;
+    tenantsById.clear();
+    auditRows.length = 0;
+    dispatchMock.mockReset();
+    dispatchMock.mockResolvedValue({ raw: fakeBoard });
+    tenantsById.set('t1', { id: 't1', aiProvider: null, aiKeyEncrypted: null, aiModel: null, name: 'Chrome Coffee', address: '123 Main St, Springfield' });
+  });
+
+  it('grounds a menu-ish brief with the tenant\'s REAL live-priced items', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const fake = makeFakeRedisClient();
+    const menuMock = {
+      resolveMenuForLocation: jest.fn(async () => ({
+        locationTenantId: 't1',
+        generatedAt: new Date().toISOString(),
+        categories: [],
+        items: [
+          { id: 'i1', externalId: null, name: 'Cortado', description: null, priceCents: 450, priceOverridden: false, imageUrl: null, allergens: [], tags: [], category: null, categoryId: null, sortOrder: 0, available: true, soldOut: false },
+          { id: 'i2', externalId: null, name: 'Flat White', description: null, priceCents: 500, priceOverridden: false, imageUrl: null, allergens: [], tags: [], category: null, categoryId: null, sortOrder: 1, available: true, soldOut: false },
+        ],
+      })),
+    };
+    const { service } = buildService(fake, undefined, undefined, menuMock);
+
+    await service.generateDesignerBoardCandidates({
+      tenantId: 't1',
+      prompt: 'menu board with our drinks',
+      vertical: 'qsr',
+    });
+
+    expect(menuMock.resolveMenuForLocation).toHaveBeenCalledWith('t1');
+    const boardCalls = dispatchMock.mock.calls.filter((c) => c[1]?.maxTokens !== 500);
+    for (const [, input] of boardCalls) {
+      expect(input.userPrompt).toContain('Cortado');
+      expect(input.userPrompt).toContain('$4.50');
+      expect(input.userPrompt).toContain('Real menu items');
+    }
+    const auditRow = auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES');
+    expect(JSON.parse(auditRow.details).autoGrounded).toBe(true);
+  });
+
+  it('does NOT ground when the operator already supplied content (never overrides real input)', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const fake = makeFakeRedisClient();
+    const menuMock = {
+      resolveMenuForLocation: jest.fn(async () => ({
+        locationTenantId: 't1', generatedAt: new Date().toISOString(), categories: [],
+        items: [{ id: 'i1', externalId: null, name: 'Cortado', description: null, priceCents: 450, priceOverridden: false, imageUrl: null, allergens: [], tags: [], category: null, categoryId: null, sortOrder: 0, available: true, soldOut: false }],
+      })),
+    };
+    const { service } = buildService(fake, undefined, undefined, menuMock);
+
+    await service.generateDesignerBoardCandidates({
+      tenantId: 't1',
+      prompt: 'menu board',
+      vertical: 'qsr',
+      content: 'Espresso 3.50', // operator already supplied content
+    });
+
+    expect(menuMock.resolveMenuForLocation).not.toHaveBeenCalled();
+    const boardCalls = dispatchMock.mock.calls.filter((c) => c[1]?.maxTokens !== 500);
+    for (const [, input] of boardCalls) {
+      expect(input.userPrompt).toContain('Espresso 3.50');
+      expect(input.userPrompt).not.toContain('Cortado');
+    }
+  });
+
+  it('does NOT ground a non-menu-ish brief (no keyword/vertical signal)', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const fake = makeFakeRedisClient();
+    const menuMock = { resolveMenuForLocation: jest.fn(async () => ({ locationTenantId: 't1', generatedAt: new Date().toISOString(), categories: [], items: [] })) };
+    const { service } = buildService(fake, undefined, undefined, menuMock);
+
+    await service.generateDesignerBoardCandidates({
+      tenantId: 't1',
+      prompt: 'a welcome board for our lobby',
+      vertical: 'corporate',
+    });
+
+    expect(menuMock.resolveMenuForLocation).not.toHaveBeenCalled();
+  });
+
+  it('never fabricates — an empty tenant catalog grounds nothing (no menu items invented)', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const fake = makeFakeRedisClient();
+    const menuMock = { resolveMenuForLocation: jest.fn(async () => ({ locationTenantId: 't1', generatedAt: new Date().toISOString(), categories: [], items: [] })) };
+    const { service } = buildService(fake, undefined, undefined, menuMock);
+
+    await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'happy hour menu board', vertical: 'bar' });
+
+    const auditRow = auditRows.find((r) => r.action === 'AI_DESIGNER_CANDIDATES');
+    expect(JSON.parse(auditRow.details).autoGrounded).toBe(false);
+  });
+
+  it('a menu-lookup failure is best-effort — never blocks generation', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const fake = makeFakeRedisClient();
+    const menuMock = { resolveMenuForLocation: jest.fn(async () => { throw new Error('db hiccup'); }) };
+    const { service } = buildService(fake, undefined, undefined, menuMock);
+
+    const res = await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'menu board', vertical: 'qsr' });
+    expect(res.candidates).toHaveLength(3);
+  });
+
+  it('grounds an address-ish brief with the tenant\'s REAL address (never invents one)', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const fake = makeFakeRedisClient();
+    const { service } = buildService(fake);
+
+    await service.generateDesignerBoardCandidates({
+      tenantId: 't1',
+      prompt: 'a board showing our location and directions to find us',
+      vertical: 'corporate',
+    });
+
+    const boardCalls = dispatchMock.mock.calls.filter((c) => c[1]?.maxTokens !== 500);
+    for (const [, input] of boardCalls) {
+      expect(input.userPrompt).toContain('123 Main St, Springfield');
+    }
+  });
+
+  it('grounding output is hard-truncated (never balloons the prompt)', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    const fake = makeFakeRedisClient();
+    const manyItems = Array.from({ length: 50 }, (_, i) => ({
+      id: `i${i}`, externalId: null, name: `Item Number ${i} With A Long Descriptive Name`, description: null,
+      priceCents: 999, priceOverridden: false, imageUrl: null, allergens: [], tags: [], category: null, categoryId: null,
+      sortOrder: i, available: true, soldOut: false,
+    }));
+    const menuMock = { resolveMenuForLocation: jest.fn(async () => ({ locationTenantId: 't1', generatedAt: new Date().toISOString(), categories: [], items: manyItems })) };
+    const { service } = buildService(fake, undefined, undefined, menuMock);
+
+    await service.generateDesignerBoardCandidates({ tenantId: 't1', prompt: 'menu board with lots of items', vertical: 'qsr' });
+
+    const boardCalls = dispatchMock.mock.calls.filter((c) => c[1]?.maxTokens !== 500);
+    // Only the first 12 items should appear — never the full 50-item catalog.
+    expect(boardCalls[0][1].userPrompt).toContain('Item Number 0');
+    expect(boardCalls[0][1].userPrompt).not.toContain('Item Number 49');
   });
 });
