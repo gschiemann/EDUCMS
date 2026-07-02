@@ -18,6 +18,7 @@ import { getZoneColor } from './constants';
 import { useBuilderStore } from './useBuilderStore';
 import { BuilderToolbar } from './BuilderToolbar';
 import { BuilderCanvas } from './BuilderCanvas';
+import { CanvasContextMenu } from './CanvasContextMenu';
 // WidgetPalette.tsx deleted 2026-05-12 — was imported but never rendered.
 // The widgets-panel tab renders VariantPicker (see line where panel ===
 // 'widgets' below). Three rounds of touch-widget edits landed in the
@@ -424,6 +425,39 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
     onBack();
   }, [template.id, template.name, template.isSystem, deleteTemplate, onBack, markClean]);
 
+  // Paste the zone clipboard onto the canvas (+3/+3 offset, one undo
+  // step). Shared by the ⌘V keyboard shortcut AND the A6 right-click
+  // context menu so both surfaces use the exact same clipboard + logic.
+  const pasteClipboard = useCallback(() => {
+    if (!clipboard || clipboard.length === 0) return;
+    const newIds: string[] = [];
+    const state = useBuilderStore.getState();
+    state.beginTransaction();
+    for (const src of clipboard) {
+      const nid = crypto.randomUUID();
+      newIds.push(nid);
+      useBuilderStore.setState((s) => ({
+        zones: [...s.zones, {
+          ...src,
+          id: nid,
+          name: `${src.name} copy`,
+          x: Math.min(95, src.x + 3),
+          y: Math.min(95, src.y + 3),
+          zIndex: s.zones.reduce((m, z) => Math.max(m, z.zIndex), 0) + 1,
+          sortOrder: s.zones.length,
+          locked: false,
+        }],
+        isDirty: true,
+      }));
+    }
+    // A2 — this is a one-shot action (not an ongoing drag), so close
+    // the transaction immediately. Leaving activeTransaction open
+    // would swallow the NEXT unrelated commit (e.g. typing in a
+    // field right after a paste) into this paste's history entry.
+    state.endTransaction();
+    select(newIds);
+  }, [clipboard, select]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
@@ -489,32 +523,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
 
       if (mod && e.key.toLowerCase() === 'v' && clipboard && clipboard.length > 0) {
         e.preventDefault();
-        const newIds: string[] = [];
-        const state = useBuilderStore.getState();
-        state.beginTransaction();
-        for (const src of clipboard) {
-          const nid = crypto.randomUUID();
-          newIds.push(nid);
-          useBuilderStore.setState((s) => ({
-            zones: [...s.zones, {
-              ...src,
-              id: nid,
-              name: `${src.name} copy`,
-              x: Math.min(95, src.x + 3),
-              y: Math.min(95, src.y + 3),
-              zIndex: s.zones.reduce((m, z) => Math.max(m, z.zIndex), 0) + 1,
-              sortOrder: s.zones.length,
-              locked: false,
-            }],
-            isDirty: true,
-          }));
-        }
-        // A2 — this is a one-shot action (not an ongoing drag), so close
-        // the transaction immediately. Leaving activeTransaction open
-        // would swallow the NEXT unrelated commit (e.g. typing in a
-        // field right after a paste) into this paste's history entry.
-        state.endTransaction();
-        select(newIds);
+        pasteClipboard();
         return;
       }
 
@@ -532,7 +541,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [selectedIds, clipboard, undo, redo, select, removeSelected, duplicateZone, updateZones, handleSave, handleSaveAs, showShortcuts]);
+  }, [selectedIds, clipboard, undo, redo, select, removeSelected, duplicateZone, updateZones, handleSave, handleSaveAs, showShortcuts, pasteClipboard]);
 
   useEffect(() => {
     // beforeunload is the LAST line of defence against losing unsaved
@@ -766,6 +775,15 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
               left panel + this bottom bar. */}
           <BuilderCanvas />
           {!previewMode && <BuilderBottomBar />}
+          {/* A6 — right-click context menu on zones + canvas. Shares the
+              shell's ⌘C/⌘V clipboard so both surfaces stay in sync. */}
+          {!previewMode && (
+            <CanvasContextMenu
+              clipboard={clipboard}
+              onCopy={(z) => setClipboard(z)}
+              onPaste={pasteClipboard}
+            />
+          )}
         </div>
       </div>
 
