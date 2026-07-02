@@ -1120,7 +1120,8 @@ describe('SportsService — soccer added-time auto-advance (config+api P1)', () 
     const g = await newGame(service, 'soccer'); // 40-min halves
     liveSoccer(game, 40 * 60_000 + 1_000, 0);
     expect(g.segment).toBe(1);
-    const changed = await service.autoAdvanceExpiredClocks();
+    const { found, changed } = await service.autoAdvanceExpiredClocks();
+    expect(found).toBe(1);
     expect(changed).toBe(1);
     expect(game.rows[0].segment).toBe(2);
   });
@@ -1130,7 +1131,8 @@ describe('SportsService — soccer added-time auto-advance (config+api P1)', () 
     await newGame(service, 'soccer');
     // 1 minute past regulation, 3 minutes of added time configured.
     liveSoccer(game, 40 * 60_000 + 60_000, 3);
-    const changed = await service.autoAdvanceExpiredClocks();
+    const { found, changed } = await service.autoAdvanceExpiredClocks();
+    expect(found).toBe(1); // the LIVE+running game IS seen (idle-skip signal)
     expect(changed).toBe(0);
     expect(game.rows[0].segment).toBe(1); // still in the first half
   });
@@ -1140,7 +1142,7 @@ describe('SportsService — soccer added-time auto-advance (config+api P1)', () 
     await newGame(service, 'soccer');
     // Past regulation + past the 2 minutes of added time.
     liveSoccer(game, 40 * 60_000 + 2 * 60_000 + 1_000, 2);
-    const changed = await service.autoAdvanceExpiredClocks();
+    const { changed } = await service.autoAdvanceExpiredClocks();
     expect(changed).toBe(1);
     expect(game.rows[0].segment).toBe(2);
   });
