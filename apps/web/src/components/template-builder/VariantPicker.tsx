@@ -25,6 +25,9 @@ import {
 import { useBuilderStore } from './useBuilderStore';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { WidgetErrorBoundary } from '@/components/widgets/WidgetErrorBoundary';
+// Wave B / editor-crush B6a (2026-07-02) — smart drop sizes so palette adds
+// land at their natural footprint (shared with BuilderShell.handleDragEnd).
+import { resolveDropSize } from './drop-sizes';
 
 const WIDGET_TYPE_LABELS: Record<string, string> = {
   CLOCK:           'Clocks',
@@ -341,7 +344,12 @@ export function VariantPicker() {
     // does exactly that. CLICK is the additive gesture: tap a tile, get
     // a new zone. No more accidental overwrites just because something
     // happened to be selected.
-    const id = addZone(v.widgetType);
+    //
+    // Wave B / editor-crush B6a (2026-07-02): pass the smart drop size so
+    // a LOGO, a TICKER, and a divider line land at their natural footprint
+    // instead of the generic 40×30 box (resolveDropSize returns undefined
+    // for unmapped types — addZone's default still applies there).
+    const id = addZone(v.widgetType, undefined, resolveDropSize(v.widgetType, v.id));
     updateZone(id, { defaultConfig: { ...(v.defaultConfig || {}), variant: v.id } });
   };
 

@@ -16,6 +16,9 @@ import { AssetLibraryModal, measureZoneFontSize } from './PropertiesPanel';
 import { DndContext, DragOverlay, DragEndEvent, pointerWithin } from '@dnd-kit/core';
 import { getZoneColor } from './constants';
 import { useBuilderStore } from './useBuilderStore';
+// Wave B / editor-crush B6a (2026-07-02) — smart drop sizes for palette
+// drags (shared with VariantPicker.handlePick's click-add path).
+import { resolveDropSize } from './drop-sizes';
 import { BuilderToolbar } from './BuilderToolbar';
 import { BuilderCanvas } from './BuilderCanvas';
 import { CanvasContextMenu } from './CanvasContextMenu';
@@ -639,7 +642,12 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
           y: ((cy - overRect.top) / overRect.height) * 100,
         };
       }
-      const id = addZone(type, dropAt);
+      // Wave B / editor-crush B6a (2026-07-02): thread the smart drop size
+      // so dragged tiles land at their natural footprint (LOGO small,
+      // TICKER full-width strip, divider line wide-short) instead of the
+      // generic 40×30 box. resolveDropSize returns undefined for unmapped
+      // types — addZone's existing default sizing still applies there.
+      const id = addZone(type, dropAt, resolveDropSize(type, variantId));
       // If dragged from the variant picker (no swap target), also seed
       // the variant + its defaultConfig on the new zone.
       if (isVariantTile && variantId) {
