@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { SportsService } from './sports.service';
+import { consumeClockSweepWake } from './clock-wake';
 
 /**
  * VenueOS Sports — automatic game-clock advance.
@@ -24,6 +25,15 @@ export class ClockAdvanceService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ClockAdvanceService.name);
   private timer: NodeJS.Timeout | null = null;
   private running = false;
+  // Idle-skip (efficiency audit 2026-07-01 #3): when the last sweep found
+  // ZERO live+running games, skip the DB query for the next N ticks (30s at
+  // the default 1s interval) instead of hitting Postgres 86,400×/day on an
+  // idle fleet. A clock-start mutation calls wakeClockSweep() to restore the
+  // 1s cadence immediately; every other path self-corrects within one idle
+  // window — segment lengths are minutes, so a ≤30s late first-detection
+  // cannot miss an expiry that matters.
+  private idleTicksLeft = 0;
+  private static readonly IDLE_SWEEP_EVERY_TICKS = 30;
 
   constructor(private readonly sports: SportsService) {}
 
@@ -48,9 +58,15 @@ export class ClockAdvanceService implements OnModuleInit, OnModuleDestroy {
 
   private async tick() {
     if (this.running) return; // overlap guard
+    if (consumeClockSweepWake()) this.idleTicksLeft = 0;
+    if (this.idleTicksLeft > 0) {
+      this.idleTicksLeft--;
+      return;
+    }
     this.running = true;
     try {
-      const changed = await this.sports.autoAdvanceExpiredClocks();
+      const { found, changed } = await this.sports.autoAdvanceExpiredClocks();
+      this.idleTicksLeft = found === 0 ? ClockAdvanceService.IDLE_SWEEP_EVERY_TICKS - 1 : 0;
       if (changed > 0) {
         this.logger.log(`auto-advanced ${changed} expired game clock(s)`);
       }

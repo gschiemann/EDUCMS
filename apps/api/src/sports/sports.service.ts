@@ -9,6 +9,7 @@ import {
   Inject,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { wakeClockSweep } from './clock-wake';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
@@ -1655,6 +1656,9 @@ export class SportsService {
     if (mergedStats) data.stats = mergedStats as any;
 
     const updated = await this.prisma.client.game.update({ where: { id }, data });
+    // Efficiency #3: a started clock snaps the auto-advance sweep out of its
+    // 30s idle backoff so expiry detection is 1s-fresh from the first tick.
+    if (clockRunning) wakeClockSweep();
     await this.record(id, 'CLOCK', {
       action,
       clockMs,
@@ -2565,9 +2569,10 @@ export class SportsService {
    * At the final regulation segment the clock just stops — overtime is
    * the operator's call; we never auto-force a team into OT. Clockless
    * sports (baseball, volleyball, pickleball) advance by their own
-   * rules and are skipped. Returns how many games changed.
+   * rules and are skipped. Returns how many LIVE+running games were
+   * found (drives the caller's idle-skip) and how many changed.
    */
-  async autoAdvanceExpiredClocks(): Promise<number> {
+  async autoAdvanceExpiredClocks(): Promise<{ found: number; changed: number }> {
     const games = await this.prisma.client.game.findMany({
       where: { status: 'LIVE', clockRunning: true },
     });
@@ -2734,7 +2739,7 @@ export class SportsService {
       }
       changed += 1;
     }
-    return changed;
+    return { found: games.length, changed };
   }
 
   /**

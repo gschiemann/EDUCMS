@@ -2153,6 +2153,10 @@ model Game {
   awayTeamRef Team? @relation("GameAwayTeam", fields: [awayTeamId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, status])
+  // 2026-07-02 efficiency #3 — serves ClockAdvanceService's tenant-less
+  // sweep (status='LIVE' AND clock_running=true), which can't use the
+  // (tenantId, status) index's leading column.
+  @@index([status, clockRunning])
   @@index([scoreboardTemplateId])
   @@index([ribbonTemplateId])
   @@index([scorebugTemplateId])

@@ -34,6 +34,7 @@ process.on('uncaughtException', (err) => {
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const session = require('express-session');
+const compression = require('compression');
 
 async function bootstrap() {
   // rawBody: true exposes req.rawBody (a Buffer) alongside the parsed
@@ -103,6 +104,12 @@ async function bootstrap() {
 
   app.use(expressBody.json({ limit: '5mb' }));
   app.use(expressBody.urlencoded({ limit: '5mb', extended: true }));
+
+  // 2026-07-02 efficiency #1 — gzip every JSON response over 1KB (board
+  // polls, manifests, template lists ship 3-6x smaller). Asset bytes never
+  // transit this API (they ride Supabase/CDN), so there's no
+  // double-compression risk.
+  app.use(compression({ threshold: 1024 }));
 
   // Mandatory: Helmet for basic strict transport + CSP
   app.use(
@@ -226,7 +233,11 @@ async function bootstrap() {
         },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-CSRF-Token'],
+    // If-None-Match: the player's conditional manifest poll (efficiency #2).
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-CSRF-Token', 'If-None-Match'],
+    // ETag is not a CORS-safelisted response header — without this the
+    // player's cross-origin fetch can't read it and every poll stays a 200.
+    exposedHeaders: ['ETag'],
   });
 
   // Enable graceful shutdown — Railway sends SIGTERM on redeploy; without this,

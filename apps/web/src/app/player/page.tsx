@@ -2061,6 +2061,13 @@ function PlayerPage() {
   const wsRef = useRef<WebSocket | null>(null);
   // Bullet-proof refs (Phase 1)
   const fetchFailCountRef = useRef(0);
+  // 2026-07-02 efficiency #2 — the last-seen manifest ETag. Sent as
+  // If-None-Match so an unchanged manifest costs a 304 with no body instead
+  // of a full JSON re-ship every poll. Replaced (or CLEARED) from every 200's
+  // ETag header — the emergency-manifest branch returns 200 with NO ETag, so
+  // an active alert wipes this and the post-all-clear poll can never 304 away
+  // the isEmergency:false reset.
+  const manifestEtagRef = useRef<string | null>(null);
   // Sprint 11 Phase B3 — self-heal de-escalation.
   // Without these refs the "5 consecutive failures → nativeReload"
   // path was firing on routine Vercel/Railway deploy blips (~30s of
@@ -3500,9 +3507,28 @@ function PlayerPage() {
 
       // 1. Try to fetch the specific device manifest (what it is officially scheduled to play)
       const manifestRes = await fetch(`${getApiRoot()}/api/v1/screens/${screenId}/manifest`, {
-        headers: { 'Authorization': `Bearer ${access_token}` },
+        headers: {
+          'Authorization': `Bearer ${access_token}`,
+          // Conditional poll (efficiency #2): server 304s when the payload
+          // hash (everything except generatedAt) is unchanged.
+          ...(manifestEtagRef.current ? { 'If-None-Match': manifestEtagRef.current } : {}),
+        },
         cache: 'no-store',
       });
+
+      // 304 — nothing changed since the ETag'd manifest we already applied.
+      // Same success bookkeeping as a 200, minus the re-apply.
+      if (manifestRes.status === 304) {
+        fetchFailCountRef.current = 0;
+        fetchFailStreakStartedAtRef.current = null;
+        setConnectivity({ kind: 'connected' });
+        if (tickToastRef.current) {
+          clearInterval(tickToastRef.current);
+          tickToastRef.current = null;
+        }
+        setLastSync(new Date().toLocaleTimeString());
+        return;
+      }
 
       // 401 → cached admin token has expired; bust cache and retry once next tick.
       if (manifestRes.status === 401) {
@@ -3517,6 +3543,9 @@ function PlayerPage() {
       }
 
       if (manifestRes.ok) {
+        // Replace-or-clear, never keep: a 200 without an ETag (the emergency
+        // branch) must drop the stale one or the next normal poll could 304.
+        manifestEtagRef.current = manifestRes.headers.get('etag');
         const manifest = await manifestRes.json();
         cacheManifest(manifest); // survive cold reboot
         fetchFailCountRef.current = 0; // reset on success

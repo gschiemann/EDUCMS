@@ -2976,9 +2976,14 @@ export class ScreensController {
             (screen as any).activeBoardSurface,
           ),
         };
+        // 2026-07-02 (efficiency #2 pre-req) — hash the WHOLE payload minus
+        // the per-request timestamp, not just playlists. A playlists-only
+        // hash 304s away orientation / canvas / gpio changes the moment a
+        // client actually sends If-None-Match (which the player now does).
+        const { generatedAt: _volatileBoardTs, ...hashableBoardPayload } = boardPayload;
         const boardHash = crypto
           .createHash('sha256')
-          .update(JSON.stringify(boardPayload.playlists) + id)
+          .update(JSON.stringify(hashableBoardPayload) + id)
           .digest('hex');
         res.setHeader('ETag', boardHash);
         if (activeDeviceHash === boardHash) {
@@ -3253,7 +3258,18 @@ export class ScreensController {
       playlists: dynamicPlaylists
     };
 
-    const signatureString = JSON.stringify(manifestPayload.playlists) + id;
+    // 2026-07-02 (efficiency #2 pre-req) — the hash MUST cover every field
+    // applyManifest consumes (isEmergency, orientation, canvasW/H, repeats,
+    // gpio, wiring, consoleProfile, hardwareModel, playlists…), minus the
+    // per-request generatedAt timestamp. The old playlists-only hash was
+    // harmless while no client sent If-None-Match, but the player now does —
+    // and a 304 computed from playlists alone would suppress the emergency
+    // ALL-CLEAR (isEmergency:false) on the HTTP polling backstop. (The
+    // emergency-ACTIVE branch above always returns a full 200 with no ETag,
+    // so triggering is never suppressed; the client clears its stored ETag
+    // on any 200 without one.)
+    const { generatedAt: _volatileTs, ...hashablePayload } = manifestPayload;
+    const signatureString = JSON.stringify(hashablePayload) + id;
     const versionHash = crypto.createHash('sha256').update(signatureString).digest('hex');
     res.setHeader('ETag', versionHash);
 
