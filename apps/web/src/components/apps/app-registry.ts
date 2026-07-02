@@ -747,33 +747,18 @@ export const APP_REGISTRY: AppDefinition[] = [
     icon: 'Rss',
     category: 'news',
     frictionTier: 'instant',
-    blurb: 'A scrolling headline feed from any public RSS/Atom feed. Coming soon.',
-    // World-class build (2026-07-01) — HONESTY workstream: RSSWidget
-    // (apps/web/src/components/widgets/WidgetRenderer.tsx ~line 3998)
-    // renders 5 HARDCODED placeholder headlines and never fetches
-    // config.feedUrl. Shipping this as a clickable "Instant" tile is
-    // exactly the silent-break-tile anti-pattern CLAUDE.md's Standard
-    // Audit Surface and the App Library synthesis both call out — an
-    // operator would paste their real feed, see plausible fake headlines
-    // in preview, ship it, and their screen shows fiction forever.
-    // Retiered comingSoon:true (matches the honest pattern already used
-    // for facebook-page/instagram/social-wall/google-reviews below) until
-    // a real SSRF-guarded backend fetch+parse lands — see TODO(lead) note
-    // on the `build()` below for the wiring that's already correct and
-    // ready to light up the moment the widget gets its real fetch.
-    comingSoon: true,
+    blurb: 'Live scrolling headlines from any public RSS/Atom feed.',
+    // LIVE as of 2026-07-01 (launch sprint): the feeds backend
+    // (apps/api/src/feeds/ — SSRF-guarded fetch+parse, Redis-cached 5 min so
+    // a 150-screen fleet hits the origin once per window) + RSSWidget's real
+    // fetch via useLiveRssFeed landed together, so this tile went from the
+    // honest comingSoon placeholder to genuinely instant. Every board built
+    // while it was coming-soon starts showing real headlines with zero
+    // migration — the feedUrl wiring below was correct all along.
     configSchema: [
       { key: 'feedUrl', label: 'Your news feed link (RSS/Atom)', type: 'url', placeholder: 'https://example.com/feed.xml', required: true },
       { key: 'maxItems', label: 'Headlines to show', type: 'number', defaultValue: 5, placeholder: '5' },
     ],
-    // TODO(lead): this wires the feed URL into the zone config correctly
-    // (RSS_FEED zone + feedUrl) — the MOMENT RSSWidget is upgraded to
-    // actually fetch+parse a real feed, flip comingSoon back to false/
-    // remove it and every board built with this app starts showing real
-    // headlines with zero migration. Needs a backend XML-fetch+parse
-    // endpoint (SSRF-guarded, like /proxy/web) or a keyless RSS-to-JSON
-    // service; out of scope for this pass per the "don't touch
-    // WidgetRenderer" constraint.
     build: (v) => ({
       widgetType: 'RSS_FEED',
       defaultConfig: {
