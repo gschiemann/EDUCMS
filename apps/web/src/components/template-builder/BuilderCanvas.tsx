@@ -4,6 +4,9 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { useBuilderStore } from './useBuilderStore';
 import { useTemplate } from '@/hooks/use-api';
+import { useUIStore } from '@/store/ui-store';
+import { API_URL } from '@/lib/api-url';
+import { appAlert } from '@/components/ui/app-dialog';
 import { BuilderZone } from './BuilderZone';
 import { snapMove, snapResize } from './snap-engine';
 import type { ResizeHandle, SnapLine, Zone } from './types';
@@ -37,6 +40,52 @@ export function scaleZoneInBox(orig: Rect, origBox: Rect, newBox: Rect): Rect {
     width: orig.width * scaleX,
     height: orig.height * scaleY,
   };
+}
+
+/**
+ * BONUS (Wave A) — canvas-level file drop. Uploads each dropped image
+ * through the SAME authed /assets/upload path BuilderZone's per-zone
+ * drop already uses, then places one IMAGE zone per file centered on
+ * the drop point (staggered +3%/+3% per extra file so a multi-drop
+ * doesn't stack invisibly). Exported for the file-drop regression spec.
+ * Returns the new zone ids (empty on upload failure — the operator gets
+ * the same "couldn't upload" dialog as the zone-drop path).
+ */
+export async function placeDroppedImageFiles(
+  files: File[],
+  dropAt?: { x: number; y: number },
+): Promise<string[]> {
+  const token = useUIStore.getState().token;
+  const newIds: string[] = [];
+  for (let i = 0; i < files.length; i++) {
+    try {
+      const formData = new FormData();
+      formData.append('file', files[i]);
+      const res = await fetch(`${API_URL}/assets/upload`, {
+        method: 'POST',
+        body: formData,
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+      const { url } = await res.json();
+      const st = useBuilderStore.getState();
+      const at = dropAt
+        ? { x: Math.min(100, dropAt.x + i * 3), y: Math.min(100, dropAt.y + i * 3) }
+        : undefined;
+      const id = st.addZone('IMAGE', at);
+      st.updateZone(id, { defaultConfig: { assetUrl: url } });
+      newIds.push(id);
+    } catch (err) {
+      console.error('Canvas drop upload failed:', err);
+      await appAlert({
+        title: "Couldn't upload that image",
+        message: 'The upload failed. Check your connection or try a smaller file (under 50 MB) and try again.',
+        tone: 'danger',
+      });
+      break;
+    }
+  }
+  return newIds;
 }
 
 /**
@@ -737,6 +786,52 @@ export function BuilderCanvas() {
     };
   }, [marqueeState, zones, select]);
 
+  // BONUS (Wave A) — while the builder is mounted, a stray file drop
+  // must NEVER navigate the tab to the file (which unmounts the whole
+  // builder mid-edit — the browser's default for an unhandled drop).
+  // Window-level safety net: preventDefault dragover/drop for file
+  // drags everywhere EXCEPT native file inputs (whose built-in
+  // drop-to-pick behavior we keep). Zones that accept drops already
+  // stopPropagation/preventDefault their own handling before this
+  // bubble-phase listener runs.
+  useEffect(() => {
+    const isFileDrag = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+    const onWindowDragOver = (e: DragEvent) => {
+      if (isFileDrag(e)) e.preventDefault();
+    };
+    const onWindowDrop = (e: DragEvent) => {
+      if (!isFileDrag(e)) return;
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.('input[type="file"]')) return;
+      e.preventDefault();
+    };
+    window.addEventListener('dragover', onWindowDragOver);
+    window.addEventListener('drop', onWindowDrop);
+    return () => {
+      window.removeEventListener('dragover', onWindowDragOver);
+      window.removeEventListener('drop', onWindowDrop);
+    };
+  }, []);
+
+  // BONUS (Wave A) — dropping image file(s) on the canvas (missing any
+  // image zone) uploads them and places one IMAGE zone per file at the
+  // cursor, instead of doing nothing (or worse — navigating away).
+  const [droppingFiles, setDroppingFiles] = useState(false);
+  const onCanvasDrop = useCallback((e: React.DragEvent) => {
+    setHoverFromDrag(false);
+    if (previewMode) return;
+    const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => f.type.startsWith('image/'));
+    if (files.length === 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const dropAt = rect && rect.width > 0 && rect.height > 0
+      ? { x: ((e.clientX - rect.left) / rect.width) * 100, y: ((e.clientY - rect.top) / rect.height) * 100 }
+      : undefined;
+    setDroppingFiles(true);
+    void placeDroppedImageFiles(files, dropAt).finally(() => setDroppingFiles(false));
+  }, [previewMode]);
+
   const background = meta.bgImage
     ? { backgroundImage: meta.bgImage.trim().startsWith('url(') ? meta.bgImage : `url(${meta.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }
     : meta.bgGradient
@@ -815,12 +910,24 @@ export function BuilderCanvas() {
           onPointerDown={onCanvasPointerDown}
           onDragEnter={() => setHoverFromDrag(true)}
           onDragLeave={() => setHoverFromDrag(false)}
-          onDrop={() => setHoverFromDrag(false)}
+          onDrop={onCanvasDrop}
           role="application"
           aria-label="Template canvas"
         >
           {showGrid && !previewMode && (
             <div className="absolute inset-0 pointer-events-none" style={gridBg} aria-hidden />
+          )}
+
+          {/* BONUS (Wave A) — feedback chip while a canvas-dropped file
+              uploads, so the operator isn't left wondering whether the
+              drop registered. */}
+          {droppingFiles && !previewMode && (
+            <div
+              aria-hidden
+              className="absolute top-3 right-3 z-50 px-3 py-1.5 rounded-full bg-indigo-600 text-white text-[10px] font-bold tracking-wider uppercase shadow-lg animate-pulse pointer-events-none"
+            >
+              Uploading image…
+            </div>
           )}
 
           {/* Empty-canvas onboarding (C7 from Canva parity sweep). When
