@@ -569,6 +569,12 @@ export function WidgetPreview({ widgetType, config, width, height, live, freeze,
     // clouds, sparkles, ticker, neon-buzz, pulse-glow). Pure
     // CSS keyframes, no data sources, auto-scales to any zone size.
     case 'DECORATION':   return <DecorationWidget config={cfg} />;
+    // Wave B / editor-crush B2/B5 (2026-07-02) — static design elements.
+    // SHAPE = rect/pill/circle/triangle/star/line/arrow via config.shape;
+    // ICON = lucide icon by config.icon name. Both plain SVG → crisp at
+    // LED scale + Taurus-Chromium-83-safe. No data sources.
+    case 'SHAPE':        return <ShapeWidget config={cfg} />;
+    case 'ICON':         return <IconWidget config={cfg} />;
     // Holiday lobby pack — 6 holidays × 3 grade levels = 18 templates,
     // imported from the design HTML zip. Each is a full-canvas themed
     // scene (Halloween haunted lobby, Christmas North Pole, etc).

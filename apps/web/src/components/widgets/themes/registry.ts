@@ -95,7 +95,14 @@ export type WidgetType =
   // Wave B / editor-crush B5 (2026-07-02) — searchable icon library backed
   // by lucide-react (already a dependency). `config.icon` is the lucide
   // icon name; color/size/strokeWidth are editable.
-  | 'ICON';
+  | 'ICON'
+  // Sprint 11h — drag-drop animated decorations (confetti, ribbon,
+  // balloons, clouds, sparkles, ticker, neon-buzz, pulse-glow). The
+  // canonical type existed at runtime since 2026-04-27 (WidgetRenderer
+  // case + useBuilderStore DECORATION_* canonicalization) but was never
+  // in this union — formalized 2026-07-02 when the palette registrations
+  // landed (Wave B / editor-crush B3).
+  | 'DECORATION';
 
 export interface ThemeWidgetProps {
   config: any;

@@ -40,6 +40,10 @@ import { ChatToEditBox } from '@/components/ai/ChatToEditBox';
 // 05-EDITOR-CRUSH-LENSES.md elements-assets P0/P2).
 import { StockPhotoSearch } from '@/components/assets/StockPhotoSearch';
 import { AiImageGenerateButton } from '@/components/ai/AiImageGenerateButton';
+// Wave B / editor-crush B2/B5 (2026-07-02) — SHAPE + ICON element editors.
+import { SHAPE_KINDS } from '@/components/widgets/ShapeWidget';
+import { searchIconNames, isValidIconName } from '@/components/widgets/IconWidget';
+import { DynamicIcon } from 'lucide-react/dynamic';
 // 2026-05-03 — Time formatting helpers. The BellScheduleEditor uses
 // the native `<input type="time">` picker (so the operator gets the
 // browser's familiar AM/PM toggle and HH:MM typing). We read existing
@@ -4048,7 +4052,10 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         ['neon-buzz', 'Neon Buzz'],
         ['pulse-glow', 'Pulse Glow'],
       ];
-      const v = cfg.variant || 'confetti';
+      // Normalize `decoration-<key>` registry ids (Wave B B3 palette tiles
+      // write the namespaced id into cfg.variant) back to the bare key so
+      // the Style select + per-variant conditionals below keep matching.
+      const v = String(cfg.variant || 'confetti').replace(/^decoration-/, '');
       fields.push(
         <SelectField
           key="variant"
@@ -4116,6 +4123,140 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         <NumField
           key="opacity"
           id="dec-opacity"
+          label="Opacity (0–1)"
+          value={typeof cfg.opacity === 'number' ? cfg.opacity : 1}
+          onChange={(val) => setField({ opacity: val })}
+          min={0}
+          max={1}
+          step={0.05}
+        />,
+      );
+      break;
+    }
+    // Wave B / editor-crush B2 (2026-07-02) — static SHAPE elements.
+    // Fill/border ColorFields ride ColorPickerField, so the "Brand
+    // primary"/"Brand accent" presets (var(--brand-primary) etc.) come
+    // for free — §19 brand-palette honoring.
+    case 'SHAPE': {
+      const shapeOptions: Array<[string, string]> = SHAPE_KINDS.map((s) => [s.key, s.label] as [string, string]);
+      const shape = cfg.shape || 'rectangle';
+      fields.push(
+        <SelectField
+          key="shape"
+          label="Shape"
+          value={shape}
+          options={shapeOptions}
+          onChange={(val) => setField({ shape: val })}
+        />,
+      );
+      fields.push(
+        <ColorField
+          key="fill"
+          label={shape === 'line' || shape === 'arrow' ? 'Line color' : 'Fill color'}
+          value={cfg.fill || ''}
+          onChange={(val) => setField({ fill: val })}
+        />,
+      );
+      // Border only makes sense on filled shapes; for line/arrow the
+      // stroke IS the shape (borderWidth doubles as line thickness).
+      if (shape === 'line' || shape === 'arrow') {
+        fields.push(
+          <NumField
+            key="borderWidth"
+            id="shape-thickness"
+            label="Line thickness (px)"
+            value={typeof cfg.borderWidth === 'number' ? cfg.borderWidth : 4}
+            onChange={(val) => setField({ borderWidth: val })}
+            min={1}
+            max={24}
+            step={1}
+          />,
+        );
+      } else {
+        fields.push(
+          <ColorField
+            key="borderColor"
+            label="Border color (empty = no border)"
+            value={cfg.borderColor || ''}
+            onChange={(val) => setField({ borderColor: val })}
+            allowTransparent
+          />,
+        );
+        fields.push(
+          <NumField
+            key="borderWidth"
+            id="shape-border-width"
+            label="Border width (px)"
+            value={typeof cfg.borderWidth === 'number' ? cfg.borderWidth : 0}
+            onChange={(val) => setField({ borderWidth: val })}
+            min={0}
+            max={24}
+            step={1}
+          />,
+        );
+      }
+      if (shape === 'rectangle') {
+        fields.push(
+          <NumField
+            key="radius"
+            id="shape-radius"
+            label="Corner radius (px)"
+            value={typeof cfg.radius === 'number' ? cfg.radius : 12}
+            onChange={(val) => setField({ radius: val })}
+            min={0}
+            max={100}
+            step={1}
+          />,
+        );
+      }
+      fields.push(
+        <NumField
+          key="opacity"
+          id="shape-opacity"
+          label="Opacity (0–1)"
+          value={typeof cfg.opacity === 'number' ? cfg.opacity : 1}
+          onChange={(val) => setField({ opacity: val })}
+          min={0}
+          max={1}
+          step={0.05}
+        />,
+      );
+      break;
+    }
+    // Wave B / editor-crush B5 (2026-07-02) — lucide icon element with a
+    // searchable picker (~1500 names, lazy-loaded per icon).
+    case 'ICON': {
+      fields.push(
+        <IconPickerField
+          key="icon"
+          value={cfg.icon || ''}
+          onChange={(val) => setField({ icon: val })}
+        />,
+      );
+      fields.push(
+        <ColorField
+          key="color"
+          label="Icon color"
+          value={cfg.color || ''}
+          onChange={(val) => setField({ color: val })}
+        />,
+      );
+      fields.push(
+        <NumField
+          key="strokeWidth"
+          id="icon-stroke-width"
+          label="Stroke width"
+          value={typeof cfg.strokeWidth === 'number' ? cfg.strokeWidth : 2}
+          onChange={(val) => setField({ strokeWidth: val })}
+          min={0.5}
+          max={4}
+          step={0.25}
+        />,
+      );
+      fields.push(
+        <NumField
+          key="opacity"
+          id="icon-opacity"
           label="Opacity (0–1)"
           value={typeof cfg.opacity === 'number' ? cfg.opacity : 1}
           onChange={(val) => setField({ opacity: val })}
@@ -8415,6 +8556,54 @@ function ControlledUrlInput({ value, onChange }: { value: string; onChange: (v: 
       placeholder="https://… or pick from library"
       className="w-full px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
     />
+  );
+}
+
+// Wave B / editor-crush B5 (2026-07-02) — searchable lucide icon picker for
+// the ICON widget. Type-to-filter across ~1500 icon names; the grid renders
+// the real icons (DynamicIcon lazy-loads each glyph's module, so showing 48
+// results costs 48 tiny chunks, not the whole set). Results capped so the
+// panel stays snappy on a phone.
+function IconPickerField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [query, setQuery] = useState('');
+  const results = searchIconNames(query, 48);
+  const current = isValidIconName(value) ? value : undefined;
+  return (
+    <div>
+      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">
+        Icon{current ? <span className="ml-1.5 font-mono text-slate-400">— {current}</span> : null}
+      </label>
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search icons (star, trophy, pizza…)"
+        className="w-full px-2 py-1.5 mb-1.5 text-xs rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+        aria-label="Search icons"
+      />
+      <div className="grid grid-cols-6 gap-1 max-h-44 overflow-y-auto rounded border border-slate-100 bg-slate-50/50 p-1.5">
+        {results.length === 0 ? (
+          <p className="col-span-6 text-[10px] text-slate-400 italic py-3 text-center">No icons match.</p>
+        ) : (
+          results.map((name) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => onChange(name)}
+              title={name}
+              aria-pressed={name === current}
+              className={`aspect-square rounded flex items-center justify-center transition-colors ${
+                name === current
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:border-indigo-400 hover:text-indigo-600'
+              }`}
+            >
+              <DynamicIcon name={name} className="w-4 h-4" fallback={() => null} />
+            </button>
+          ))
+        )}
+      </div>
+    </div>
   );
 }
 
