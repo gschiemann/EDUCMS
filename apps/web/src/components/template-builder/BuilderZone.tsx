@@ -66,6 +66,14 @@ interface Props {
   onResizePointerDown: (e: React.PointerEvent, zoneId: string, handle: ResizeHandle) => void;
   onSelect: (e: React.MouseEvent, zoneId: string) => void;
   onConfigChange?: (zoneId: string, patch: Record<string, any>) => void;
+  /**
+   * A3 — Group resize. When multiple zones are selected, BuilderCanvas
+   * renders ONE shared bounding-box with its own corner handles (see
+   * the `groupBox` render block) instead of each zone drawing its own
+   * 8 handles — matching Canva's multi-select affordance. Defaults to
+   * true so every existing single-zone call site is unaffected.
+   */
+  showHandles?: boolean;
 }
 
 const HANDLES: ResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
@@ -105,7 +113,7 @@ const isInvisibleTouchVariant = (z: Zone) => {
   return v === 'hotspot' || v === '';
 };
 
-function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizePointerDown, onSelect, onConfigChange }: Props) {
+function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizePointerDown, onSelect, onConfigChange, showHandles = true }: Props) {
   // 2026-04-29 — pointerdown movement tracking so we distinguish a
   // click (no movement → enter edit mode) from a drag (>4px movement
   // → move the widget). dragStartRef holds the pointer-down coords
@@ -884,7 +892,7 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         );
       })()}
 
-      {selected && !previewMode && !zone.locked && !isFullCanvasExternal && HANDLES.map((h) => (
+      {selected && !previewMode && !zone.locked && !isFullCanvasExternal && showHandles && HANDLES.map((h) => (
         <button
           key={h}
           type="button"

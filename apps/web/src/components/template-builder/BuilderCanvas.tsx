@@ -8,6 +8,37 @@ import { BuilderZone } from './BuilderZone';
 import { snapMove, snapResize } from './snap-engine';
 import type { ResizeHandle, SnapLine, Zone } from './types';
 
+interface Rect { x: number; y: number; width: number; height: number }
+
+/** A3 — bounding box of a set of zones, in template-percentage space. */
+export function boundingBoxOf(zones: Zone[]): Rect {
+  const left = Math.min(...zones.map((z) => z.x));
+  const top = Math.min(...zones.map((z) => z.y));
+  const right = Math.max(...zones.map((z) => z.x + z.width));
+  const bottom = Math.max(...zones.map((z) => z.y + z.height));
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+/**
+ * A3 — pure scaling math for group resize. Given a zone's rect AT DRAG
+ * START (`orig`), the group's bounding box AT DRAG START (`origBox`), and
+ * the group's NEW bounding box after the handle moved (`newBox`), returns
+ * the zone's new x/y/w/h scaled proportionally relative to origBox's
+ * origin. Extracted as a pure, exported function so the group-resize
+ * gesture's core math is unit-testable without mounting the full
+ * dnd-kit + React-Query BuilderCanvas tree.
+ */
+export function scaleZoneInBox(orig: Rect, origBox: Rect, newBox: Rect): Rect {
+  const scaleX = origBox.width > 0 ? newBox.width / origBox.width : 1;
+  const scaleY = origBox.height > 0 ? newBox.height / origBox.height : 1;
+  return {
+    x: newBox.x + (orig.x - origBox.x) * scaleX,
+    y: newBox.y + (orig.y - origBox.y) * scaleY,
+    width: orig.width * scaleX,
+    height: orig.height * scaleY,
+  };
+}
+
 /**
  * 2026-05-04 — Build a `<style>` block that scopes the per-template
  * brand kit's CSS custom properties (`--brand-primary`, fonts, etc.)
@@ -320,6 +351,11 @@ export function BuilderCanvas() {
   const [dragState, setDragState] = useState<
     | { mode: 'move'; zoneId: string; startX: number; startY: number; origs: Record<string, Zone> }
     | { mode: 'resize'; zoneId: string; handle: ResizeHandle; startX: number; startY: number; orig: Zone }
+    // A3 — group resize. `box` is the selection's bounding rect at drag
+    // start; `origs` holds every selected zone's own rect at drag start
+    // so each one can be scaled proportionally relative to `box`'s
+    // origin as the handle moves.
+    | { mode: 'group-resize'; handle: ResizeHandle; startX: number; startY: number; box: Rect; origs: Record<string, Zone> }
     | null
   >(null);
   const [marqueeState, setMarqueeState] = useState<{ startX: number; startY: number; currX: number; currY: number } | null>(null);
@@ -360,12 +396,37 @@ export function BuilderCanvas() {
   const onResizePointerDown = useCallback((e: React.PointerEvent, zoneId: string, handle: ResizeHandle) => {
     e.preventDefault();
     e.stopPropagation();
-    select([zoneId]);
+    // A3 — a per-zone handle only renders when showHandles is true,
+    // which BuilderCanvas already gates to single-selection (see the
+    // zones.map below), so this path stays single-zone resize exactly
+    // as before. Previously this ALSO collapsed a multi-selection down
+    // to one zone the instant a handle was touched; now the group case
+    // is handled entirely by onGroupResizePointerDown below, so this
+    // callback no longer needs to (and doesn't) reset selection when
+    // it's already a single-zone selection.
+    if (!selectedIds.includes(zoneId) || selectedIds.length !== 1) select([zoneId]);
     const orig = zones.find(z => z.id === zoneId);
     if (!orig) return;
     beginTransaction();
     setDragState({ mode: 'resize', zoneId, handle, startX: e.clientX, startY: e.clientY, orig: { ...orig } });
-  }, [zones, select, beginTransaction]);
+  }, [zones, selectedIds, select, beginTransaction]);
+
+  // A3 — group resize. Fired from the ONE shared bounding-box handle
+  // set BuilderCanvas renders when selectedIds.length > 1 (see the
+  // groupBox render block below). Captures every selected zone's rect
+  // at drag start plus the box itself so pointermove can scale each
+  // zone proportionally relative to the box's anchor corner/edge.
+  const onGroupResizePointerDown = useCallback((e: React.PointerEvent, handle: ResizeHandle) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const selected = zones.filter((z) => selectedIds.includes(z.id) && !z.locked);
+    if (selected.length < 2) return;
+    const box = boundingBoxOf(selected);
+    const origs: Record<string, Zone> = {};
+    for (const z of selected) origs[z.id] = { ...z };
+    beginTransaction();
+    setDragState({ mode: 'group-resize', handle, startX: e.clientX, startY: e.clientY, box, origs });
+  }, [zones, selectedIds, beginTransaction]);
 
   const onZoneSelect = useCallback((e: React.MouseEvent, zoneId: string) => {
     const additive = e.shiftKey || e.metaKey || e.ctrlKey;
@@ -404,7 +465,7 @@ export function BuilderCanvas() {
           const orig = dragState.origs[z.id];
           return { x: orig.x + actualDx, y: orig.y + actualDy };
         });
-      } else {
+      } else if (dragState.mode === 'resize') {
         const o = dragState.orig;
         const h = dragState.handle;
         let nx = o.x, ny = o.y, nw = o.width, nh = o.height;
@@ -420,6 +481,34 @@ export function BuilderCanvas() {
         });
         setActiveSnapLines(showGuides ? snapped.lines : []);
         updateZone(dragState.zoneId, snapped);
+      } else {
+        // A3 — group resize. Compute the new bounding-box rect using
+        // the SAME per-handle edge math as single-zone resize (dragged
+        // edge moves, opposite edge stays anchored), snap that box's
+        // moving edge against sibling zones just like single resize
+        // does, then scale every selected zone's rect proportionally
+        // relative to the ORIGINAL box's origin — the classic
+        // "one corner-handle scales the whole group" gesture.
+        const b = dragState.box;
+        const h = dragState.handle;
+        let nx = b.x, ny = b.y, nw = b.width, nh = b.height;
+        if (h.includes('e')) nw = Math.max(3, b.width + dx);
+        if (h.includes('s')) nh = Math.max(3, b.height + dy);
+        if (h.includes('w')) { const s = Math.min(dx, b.width - 3); nx = b.x + s; nw = b.width - s; }
+        if (h.includes('n')) { const s = Math.min(dy, b.height - 3); ny = b.y + s; nh = b.height - s; }
+        const ids = Object.keys(dragState.origs);
+        const others = zones.filter(z => !ids.includes(z.id));
+        const snapped = snapResize({ x: nx, y: ny, width: nw, height: nh }, others, h, {
+          gridSize,
+          snapEnabled,
+          snapGrid: showGrid,
+        });
+        setActiveSnapLines(showGuides ? snapped.lines : []);
+        const newBox: Rect = { x: snapped.x, y: snapped.y, width: snapped.width, height: snapped.height };
+        updateZones(ids, (z) => {
+          const orig = dragState.origs[z.id];
+          return scaleZoneInBox(orig, b, newBox);
+        });
       }
     };
     const onUp = () => {
@@ -624,6 +713,10 @@ export function BuilderCanvas() {
               onPointerDown={onZonePointerDown}
               onResizePointerDown={onResizePointerDown}
               onSelect={onZoneSelect}
+              // A3 — suppress per-zone resize handles when 2+ zones are
+              // selected; the shared group bounding-box (rendered below)
+              // owns resize handles for that case instead.
+              showHandles={selectedIds.length <= 1}
               // Inline-edit hook: when a widget's EditableText commits a
               // change, patch the zone's defaultConfig. `true` marks the
               // update dirty/undoable. Without this, double-clicking a
@@ -639,6 +732,56 @@ export function BuilderCanvas() {
               }}
             />
           ))}
+
+          {/* A3 — group resize. One shared bounding box with corner
+              handles when 2+ zones are selected, matching Canva's
+              multi-select affordance. Dragging any handle scales every
+              selected zone's x/y/w/h proportionally (see
+              onGroupResizePointerDown + the group-resize pointermove
+              branch above). Uses the LIVE (post-drag) zone rects each
+              render so the box tracks the group during a drag/move too. */}
+          {!previewMode && selectedIds.length > 1 && (() => {
+            const selectedZones = zones.filter((z) => selectedIds.includes(z.id));
+            if (selectedZones.length < 2) return null;
+            const box = boundingBoxOf(selectedZones);
+            const GROUP_HANDLES: ResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+            const HANDLE_POS: Record<ResizeHandle, React.CSSProperties> = {
+              nw: { top: -6, left: -6, cursor: 'nwse-resize' },
+              n:  { top: -6, left: '50%', marginLeft: -6, cursor: 'ns-resize' },
+              ne: { top: -6, right: -6, cursor: 'nesw-resize' },
+              e:  { top: '50%', right: -6, marginTop: -6, cursor: 'ew-resize' },
+              se: { bottom: -6, right: -6, cursor: 'nwse-resize' },
+              s:  { bottom: -6, left: '50%', marginLeft: -6, cursor: 'ns-resize' },
+              sw: { bottom: -6, left: -6, cursor: 'nesw-resize' },
+              w:  { top: '50%', left: -6, marginTop: -6, cursor: 'ew-resize' },
+            };
+            return (
+              <div
+                aria-hidden
+                className="absolute pointer-events-none"
+                style={{
+                  left: `${box.x}%`,
+                  top: `${box.y}%`,
+                  width: `${box.width}%`,
+                  height: `${box.height}%`,
+                  zIndex: 1001,
+                  outline: '2px dashed #6366f1',
+                  outlineOffset: 2,
+                }}
+              >
+                {GROUP_HANDLES.map((h) => (
+                  <button
+                    key={h}
+                    type="button"
+                    aria-label={`Resize group ${h}`}
+                    className="absolute w-3 h-3 rounded-sm bg-white border-2 border-indigo-500 shadow-sm hover:scale-125 transition-transform pointer-events-auto"
+                    style={HANDLE_POS[h]}
+                    onPointerDown={(e) => onGroupResizePointerDown(e, h)}
+                  />
+                ))}
+              </div>
+            );
+          })()}
 
           {showGuides && activeSnapLines.map((line, i) => {
             // Human-readable label for the snap line â€” operators
