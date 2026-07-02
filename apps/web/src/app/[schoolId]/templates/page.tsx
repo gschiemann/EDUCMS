@@ -33,12 +33,19 @@ import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
 import { AiIntakeWizard } from '@/components/templates/AiIntakeWizard';
 import { SignageConcierge } from '@/components/templates/SignageConcierge';
+import { BriefConfirmStrip } from '@/components/templates/BriefConfirmStrip';
 import {
   type AiIntakeAnswers,
   type AiIntakeRequestFields,
   DEFAULT_INTAKE_ANSWERS,
   buildIntakeRequestFields,
 } from '@/components/templates/ai-intake-contract';
+import {
+  useExtractDesignerBrief,
+  buildDesignerBriefPayload,
+  designerBriefHasSignal,
+  type DesignerBrief,
+} from '@/hooks/use-ai-designer';
 import type { ConciergeIntake, ConciergeReference } from '@cms/api-types';
 import { useParams, useRouter } from 'next/navigation';
 import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
@@ -99,6 +106,20 @@ function friendlyAiError(e: any): string {
   if (raw.includes('unreachable')) return 'Could not reach the AI service. Check your connection or retry.';
   if (status === 503 && e?.message) return e.message;
   return 'Generation failed. Try rephrasing or try again later.';
+}
+
+// Args accepted by runGenerateCandidatesCore — hoisted to module scope (2026-
+// 07-01, #268 item 3) so aiPendingGenerateArgsRef (declared before the
+// callback) can type against it without a forward-reference to the callback
+// itself. Mirrors the shape used by both the wizard and Concierge call sites.
+interface RunGenerateCandidatesCoreArgs {
+  prompt: string;
+  intakeFields: AiIntakeRequestFields | ConciergeIntake;
+  forceDesigner?: boolean;
+  designerExtras?: { palette?: string[]; venueName?: string; logoUrl?: string; heroImageUrl?: string; reference?: string };
+  /** BRIEF-ECHO CONFIRM (#268 item 3) — a client-confirmed (or chip-edited)
+   *  brief to ride straight into generation, skipping a second extraction. */
+  brief?: DesignerBrief | null;
 }
 
 const CATEGORY_TABS = [
@@ -420,7 +441,15 @@ export default function TemplatesPage() {
   // AiIntakeWizard; the wizard collects the SAME prompt plus optional directives
   // and runGenerateCandidates forwards them. aiInteractive toggles touch
   // (default) vs passive signage so the same generator serves BOTH surfaces.
-  const [aiPhase, setAiPhase] = useState<'intake' | 'pick'>('intake');
+  // (2026-07-01, #268 item 3 / task #277) — 'confirm' is a NEW phase that sits
+  // between 'intake' and 'pick', ONLY entered by the AI Designer path (the
+  // "designer branch" — aiDesignerMode / forceDesigner). It shows the
+  // brief-echo confirm strip (BriefConfirmStrip) built from a cheap
+  // pre-flight read of the prompt (POST generate-designer/brief) so the
+  // operator gets a 2-second glance-confirm BEFORE paying for the expensive
+  // 3x fan-out. It is SKIPPABLE and NEVER blocks generation (fail-open — see
+  // runGenerateCandidatesCore).
+  const [aiPhase, setAiPhase] = useState<'intake' | 'confirm' | 'pick'>('intake');
   // (2026-06-28) — the intake phase now DEFAULTS to a conversational Signage
   // Concierge chat; the guided 6-step wizard stays one click away as a
   // fallback ("Use the guided form instead"). 'chat' | 'wizard'.
@@ -439,6 +468,18 @@ export default function TemplatesPage() {
   // board (not a templated engine layout). Mutually exclusive with Touch/Set;
   // always non-touch. Routes generate→generate-designer and pick→create-designer.
   const [aiDesignerMode, setAiDesignerMode] = useState(false);
+  // BRIEF-ECHO CONFIRM (2026-07-01, #268 item 3 / task #277) — the extracted
+  // (or chip-edited) structured brief shown by the 'confirm' phase. Persisted
+  // alongside the batch cache (see persistLastBatch/resumeLastBatch below) so
+  // resuming a batch keeps its brief context. `aiBriefLoading` drives the
+  // skeleton strip for the ~3s the pre-flight extraction call can take;
+  // `aiPendingGenerateArgsRef` remembers WHAT to generate once the operator
+  // confirms or skips (the confirm phase is a pure interstitial — it never
+  // owns the generate call itself, so both the wizard path and the concierge
+  // path share one confirm→generate handoff).
+  const [aiBrief, setAiBrief] = useState<DesignerBrief | null>(null);
+  const [aiBriefLoading, setAiBriefLoading] = useState(false);
+  const aiPendingGenerateArgsRef = useRef<RunGenerateCandidatesCoreArgs | null>(null);
   // CC-1 (2026-06-27) — canvas size for the AI generate request. Without this
   // every board was generated at 1920×1080 and CLIPPED on a real screen of a
   // different aspect (the live LED is 960×1080 portrait). { w, h } is forwarded
@@ -469,8 +510,12 @@ export default function TemplatesPage() {
   // localStorage so closing the picker doesn't force a re-generate (which costs
   // an AI call). On reopen the intake offers a one-tap restore back into the
   // pick grid. Loaded when the modal opens; written after every generation.
+  // `brief` (#268 item 3, added 2026-07-01) — the confirmed brief context for
+  // this batch, if any, so resuming a cached batch keeps its brief intact
+  // (e.g. for a future "regenerate with the same brief" affordance) instead
+  // of silently dropping it.
   const [aiLastBatch, setAiLastBatch] = useState<
-    { candidates: AiTemplateCandidate[]; canvas: { w: number; h: number }; interactive: boolean; ts: number } | null
+    { candidates: AiTemplateCandidate[]; canvas: { w: number; h: number }; interactive: boolean; ts: number; brief?: DesignerBrief | null } | null
   >(null);
   // Esc-to-close — wired only when the modal is open so dashboard
   // keyboard shortcuts elsewhere aren't shadowed. Disabled while a
@@ -612,6 +657,10 @@ export default function TemplatesPage() {
   const generateDesigner = useGenerateDesignerCandidates();
   const createDesigner = useCreateDesigner();
   const refineSignage = useRefineSignageBoard();
+  // #268 item 3 / task #277 — the cheap pre-flight brief extraction behind the
+  // confirm strip. Fail-open by contract: any rejection is treated exactly
+  // like `{ brief: null }` (see startGenerateWithConfirm).
+  const extractBrief = useExtractDesignerBrief();
   // Any AI generation in flight (touch-engine OR designer) drives the spinners.
   const aiBusy = [generateCandidates, generateDesigner].some((m) => m.isPending);
   const exportTemplate = useExportTemplate();
@@ -685,6 +734,11 @@ export default function TemplatesPage() {
     setAiSavedIds({});
     setAiFullscreenIdx(null);
     setAiIntake(DEFAULT_INTAKE_ANSWERS);
+    // #268 item 3 — clear any leftover brief-echo state so a stale confirm
+    // strip / pending-generate args never survive to the next open.
+    setAiBrief(null);
+    setAiBriefLoading(false);
+    aiPendingGenerateArgsRef.current = null;
   }, []);
 
   const closeAiModal = useCallback(() => {
@@ -698,10 +752,13 @@ export default function TemplatesPage() {
   // private mode) is swallowed — the feature degrades to "not available".
   const aiBatchKey = `vos:ai:lastbatch:${params?.schoolId ?? 'x'}`;
   const persistLastBatch = useCallback(
-    (candidates: AiTemplateCandidate[]) => {
+    // #268 item 3 — `brief` carries the confirmed brief context for this
+    // batch (undefined when the confirm step wasn't taken / found no
+    // signal), so a resumed batch keeps its brief instead of losing it.
+    (candidates: AiTemplateCandidate[], brief?: DesignerBrief | null) => {
       try {
         if (!candidates?.length) return;
-        const payload = { candidates, canvas: aiCanvas, interactive: aiInteractive, ts: Date.now() };
+        const payload = { candidates, canvas: aiCanvas, interactive: aiInteractive, ts: Date.now(), brief: brief ?? null };
         const json = JSON.stringify(payload);
         if (json.length > 3_000_000) return; // don't blow the ~5MB quota
         localStorage.setItem(aiBatchKey, json);
@@ -728,6 +785,8 @@ export default function TemplatesPage() {
     setAiSavedIds({});
     setAiFullscreenIdx(null);
     setAiError(null);
+    // #268 item 3 — restore the batch's brief context alongside its candidates.
+    setAiBrief(aiLastBatch.brief ?? null);
     setAiPhase('pick');
   }, [aiLastBatch]);
 
@@ -746,23 +805,8 @@ export default function TemplatesPage() {
       intakeFields,
       forceDesigner = false,
       designerExtras,
-    }: {
-      prompt: string;
-      // The wizard passes buildIntakeRequestFields(answers); the concierge
-      // passes its ConciergeIntake directly — both are the SAME wire shape
-      // (purpose/theme/palette/background/widgets), spread straight into the
-      // body. The backend schema is `.passthrough()`.
-      intakeFields: AiIntakeRequestFields | ConciergeIntake;
-      // forceDesigner: route to the trained AI-Designer agent (full-HTML board)
-      // regardless of the mode toggle — the conversational Concierge ALWAYS uses
-      // it so a pasted URL + chat produces a designer-grade, on-brand,
-      // on-subject board (the 2026-06-29 "Domino's -> generic burger menu" fix).
-      forceDesigner?: boolean;
-      // Brand + business-type + logo distilled from the gathered references, fed
-      // straight into the designer prompt (palette = scraped brand colors;
-      // reference = the rich summary incl. "what they sell").
-      designerExtras?: { palette?: string[]; venueName?: string; logoUrl?: string; heroImageUrl?: string; reference?: string };
-    }) => {
+      brief,
+    }: RunGenerateCandidatesCoreArgs) => {
       setAiError(null);
       const prompt = rawPrompt.trim();
       if (!prompt) {
@@ -775,6 +819,11 @@ export default function TemplatesPage() {
         // pick-grid previews it via srcdoc; the raw html rides on _designerHtml
         // for persist (create-designer, base64).
         if (aiDesignerMode || forceDesigner) {
+          // #268 item 3 — the operator-confirmed (or chip-edited) brief, if the
+          // confirm strip ran. `buildDesignerBriefPayload` returns undefined for
+          // a no-signal brief so the server falls back to its own inline
+          // extraction exactly as if the confirm step never happened.
+          const briefPayload = buildDesignerBriefPayload(brief);
           const dres = await generateDesigner.mutateAsync({
             prompt,
             screenWidth: aiCanvas.w,
@@ -796,6 +845,10 @@ export default function TemplatesPage() {
                   ...(designerExtras.reference ? { reference: designerExtras.reference } : {}),
                 }
               : {}),
+            // Spread via Record<string,any> (matches the intakeFields/designerExtras
+            // pattern above) so this doesn't require widening useGenerateDesignerCandidates'
+            // mutation variable type — the backend schema `.passthrough()`es it either way.
+            ...(briefPayload ? ({ brief: briefPayload } as Record<string, any>) : {}),
           });
           const boards = dres?.candidates || [];
           if (!boards.length) {
@@ -812,7 +865,7 @@ export default function TemplatesPage() {
             _artDirection: b.artDirection,
           }));
           setAiCandidates(mapped);
-          persistLastBatch(mapped); // cache so closing the picker never forces a re-generate
+          persistLastBatch(mapped, brief); // cache so closing the picker never forces a re-generate
           // Fresh set → forget which indices were saved / open full-screen.
           setAiSavedIds({});
           setAiFullscreenIdx(null);
@@ -861,14 +914,75 @@ export default function TemplatesPage() {
     [aiInteractive, aiSetMode, aiDesignerMode, aiCanvas, tenantCopy.vertical, generateCandidates, generateDesigner, persistLastBatch],
   );
 
+  // BRIEF-ECHO CONFIRM handoff (#268 item 3 / task #277) — the shared
+  // interstitial both the wizard and the Concierge route through. Designer
+  // branch only: stash the generate args, fire the cheap extraction, and show
+  // the confirm strip. FAIL-OPEN everywhere: extraction error or a no-signal
+  // brief generates immediately, exactly as if this step didn't exist. A
+  // Regenerate from the pick grid skips the interstitial (the operator
+  // already vetted the brief) and reuses the batch's confirmed brief.
+  const startGenerateWithConfirm = useCallback(
+    (args: RunGenerateCandidatesCoreArgs) => {
+      const willUseDesigner = !!args.forceDesigner || aiDesignerMode;
+      if (!willUseDesigner) return runGenerateCandidatesCore(args);
+      if (aiPhase === 'pick') return runGenerateCandidatesCore({ ...args, brief: aiBrief });
+      aiPendingGenerateArgsRef.current = args;
+      setAiError(null);
+      setAiBrief(null);
+      setAiBriefLoading(true);
+      setAiPhase('confirm');
+      extractBrief.mutate(
+        {
+          prompt: args.prompt,
+          vertical: (tenantCopy.vertical || 'venue').toLowerCase(),
+          // The scraped-reference summary (Concierge path) is the richest
+          // extra signal we have — same text the designer prompt consumes.
+          ...(args.designerExtras?.reference ? { content: args.designerExtras.reference } : {}),
+        },
+        {
+          onSuccess: (res) => {
+            setAiBriefLoading(false);
+            if (designerBriefHasSignal(res?.brief)) {
+              setAiBrief(res.brief);
+              return; // wait in 'confirm' for the operator's glance
+            }
+            // No signal → nothing worth confirming. Generate immediately.
+            aiPendingGenerateArgsRef.current = null;
+            void runGenerateCandidatesCore(args);
+          },
+          onError: () => {
+            // Fail-open: an extraction failure is invisible by design.
+            setAiBriefLoading(false);
+            aiPendingGenerateArgsRef.current = null;
+            void runGenerateCandidatesCore(args);
+          },
+        },
+      );
+    },
+    [aiDesignerMode, aiPhase, aiBrief, extractBrief, tenantCopy.vertical, runGenerateCandidatesCore],
+  );
+
+  // "Looks right — Generate": ride the confirmed (possibly chip-edited) brief
+  // into the fan-out. "Skip": generate with no brief (server extracts inline).
+  const confirmBriefAndGenerate = useCallback(() => {
+    const args = aiPendingGenerateArgsRef.current;
+    if (!args) return;
+    void runGenerateCandidatesCore({ ...args, brief: aiBrief });
+  }, [aiBrief, runGenerateCandidatesCore]);
+  const skipBriefAndGenerate = useCallback(() => {
+    const args = aiPendingGenerateArgsRef.current;
+    if (!args) return;
+    void runGenerateCandidatesCore({ ...args, brief: null });
+  }, [runGenerateCandidatesCore]);
+
   // The WIZARD path: prompt = the wizard's prompt field; intake = the guided
   // answers resolved to wire fields. Also reused by the pick-grid "Regenerate".
   const runGenerateCandidates = useCallback(() => {
-    return runGenerateCandidatesCore({
+    return startGenerateWithConfirm({
       prompt: aiPrompt,
       intakeFields: buildIntakeRequestFields(aiIntake),
     });
-  }, [aiPrompt, aiIntake, runGenerateCandidatesCore]);
+  }, [aiPrompt, aiIntake, startGenerateWithConfirm]);
 
   // The CONCIERGE path: the chat hands us a synthesized prompt (brief) + a
   // ConciergeIntake that's ALREADY the wire shape — spread it directly (do NOT
@@ -903,7 +1017,7 @@ export default function TemplatesPage() {
       const logoUrl = refs.map((r) => (r as any).logoUrl).find((u) => typeof u === 'string' && u) || undefined;
       const heroImageUrl = refs.map((r) => r.imageUrl).find((u) => typeof u === 'string' && u) || undefined;
       const reference = refs.map((r) => r.summary).filter(Boolean).join('\n\n').slice(0, 4000) || undefined;
-      return runGenerateCandidatesCore({
+      return startGenerateWithConfirm({
         prompt,
         intakeFields: { ...args.intake },
         forceDesigner: true,
@@ -915,7 +1029,7 @@ export default function TemplatesPage() {
         },
       });
     },
-    [runGenerateCandidatesCore],
+    [startGenerateWithConfirm],
   );
 
   // ── Express lane: "Put on a screen" ──
@@ -1450,7 +1564,9 @@ export default function TemplatesPage() {
                       ? (aiSetMode
                           ? 'A cohesive multi-board loop that plays itself — open it to fine-tune any board.'
                           : 'Three takes on your idea — tap any to preview full-screen, then save the ones you like.')
-                      : (aiIntakeMode === 'chat'
+                      : aiPhase === 'confirm'
+                        ? 'One quick check — confirm what I heard before I design your boards.'
+                        : (aiIntakeMode === 'chat'
                           ? 'Chat with the Concierge — share a website or a photo of a look you like, and it designs it with you.'
                           : 'Answer a few quick questions — Claude drafts it for you, on-brand for your venue.')}
                   </p>
@@ -1466,7 +1582,7 @@ export default function TemplatesPage() {
               </button>
             </div>
 
-            {aiPhase !== 'pick' && aiLastBatch && aiLastBatch.candidates?.length ? (
+            {aiPhase === 'intake' && aiLastBatch && aiLastBatch.candidates?.length ? (
               /* Resume the last fan-out without paying for a re-generate. */
               <button
                 type="button"
@@ -1700,6 +1816,53 @@ export default function TemplatesPage() {
                   </button>
                 </div>
               </>
+            ) : aiPhase === 'confirm' ? (
+              /* ── PHASE 1.5: brief-echo confirm (designer path only) ──
+                 A 2-second glance-confirm of the AI's structured reading of
+                 the prompt BEFORE the expensive 3× fan-out. Never a gate:
+                 fail-open paths in startGenerateWithConfirm auto-generate on
+                 extraction failure / no-signal, and Skip is always available. */
+              <div className="flex flex-col gap-3">
+                {aiError && (
+                  <div
+                    role="alert"
+                    aria-live="polite"
+                    className="text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2.5"
+                  >
+                    {aiError}
+                  </div>
+                )}
+                <BriefConfirmStrip
+                  loading={aiBriefLoading}
+                  brief={aiBrief}
+                  onChange={setAiBrief}
+                  onConfirm={confirmBriefAndGenerate}
+                  onSkip={skipBriefAndGenerate}
+                  generating={aiBusy}
+                />
+                {/* The fail-open auto-generate renders no strip (no signal) —
+                    show honest progress instead of an empty modal. */}
+                {!aiBriefLoading && !designerBriefHasSignal(aiBrief) && aiBusy && (
+                  <div className="flex items-center justify-center gap-2 text-sm font-semibold text-slate-500 py-6">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Designing your boards…
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    aiPendingGenerateArgsRef.current = null;
+                    setAiBrief(null);
+                    setAiBriefLoading(false);
+                    setAiError(null);
+                    setAiPhase('intake');
+                  }}
+                  disabled={aiBusy}
+                  className="self-start px-4 py-2 text-sm font-bold rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  ← Back
+                </button>
+              </div>
             ) : (
               /* ── PHASE 1: guided intake wizard + advanced view ──
                  The wizard/advanced view collect the prompt + optional
