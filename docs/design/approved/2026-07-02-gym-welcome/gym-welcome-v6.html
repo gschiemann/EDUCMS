@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>GYM Welcome v6 — Poster (dense, no dead space)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: #0c0e12; }
+  .stage { position: relative; width: 1920px; height: 1080px; font-family: Inter, sans-serif; color: #fff;
+    background:
+      radial-gradient(900px 500px at 88% 8%, rgba(190,242,45,.10), transparent 60%),
+      radial-gradient(700px 480px at 6% 96%, rgba(56,189,248,.08), transparent 60%),
+      #0c0e12; }
+  /* active background layers — nothing is flat black */
+  .grain { position: absolute; top:0; right:0; bottom:0; left:0; opacity:.5;
+    background-image: repeating-linear-gradient(0deg, rgba(255,255,255,.022) 0 1px, transparent 1px 3px),
+                      repeating-linear-gradient(90deg, rgba(255,255,255,.015) 0 1px, transparent 1px 3px); }
+  .hazard { position:absolute; left:-120px; top:598px; width:1400px; height:150px; transform:rotate(-4deg);
+    background: repeating-linear-gradient(115deg, #bef22d 0 44px, #0c0e12 44px 88px); opacity:.16; }
+  .big01 { position:absolute; right:-30px; top:70px; font-family:Anton; font-size:800px; line-height:.85;
+    color:transparent; -webkit-text-stroke: 3px rgba(190,242,45,.14); letter-spacing:-10px; }
+  .ring { position:absolute; border-radius:50%; border:2px solid rgba(255,255,255,.06); }
+
+  /* header */
+  .head { position:absolute; top:44px; left:64px; right:64px; display:flex; align-items:center; justify-content:space-between; }
+  .brand { display:flex; align-items:center; }
+  .plate { width:64px; height:64px; border-radius:16px; background:#bef22d; display:flex; align-items:center; justify-content:center;
+    box-shadow:0 8px 24px rgba(190,242,45,.35); margin-right:20px; }
+  .plate svg { width:36px; height:36px; }
+  .brand h1 { font-family:Anton; font-size:54px; letter-spacing:1px; }
+  .brand small { display:block; font-size:15px; font-weight:800; letter-spacing:6px; color:#8b93a3; margin-top:2px; }
+  .clock { font-family:Anton; font-size:52px; color:#e8ecf3; }
+
+  /* hero (left) */
+  .hero { position:absolute; left:64px; top:210px; width:1010px; }
+  .chips { display:flex; margin-bottom:26px; }
+  .chip { font-size:20px; font-weight:800; letter-spacing:2px; padding:10px 22px; border-radius:999px; margin-right:16px; }
+  .chip.day { background:#38bdf8; color:#052033; }
+  .chip.new { background:rgba(190,242,45,.15); color:#bef22d; border:2px solid #bef22d; }
+  .hello { font-family:Anton; font-size:92px; color:#bef22d; letter-spacing:2px; }
+  .name  { font-family:Anton; font-size:230px; line-height:.95; letter-spacing:-2px;
+    text-shadow: 8px 8px 0 rgba(190,242,45,.22); }
+  .rule { width:560px; height:10px; background:linear-gradient(90deg,#bef22d,#38bdf8); margin:30px 0 24px; }
+  .motto { font-size:30px; color:#c7cdd9; max-width:900px; line-height:1.45; }
+  .motto b { color:#fff; }
+  .week { display:flex; align-items:center; margin-top:34px; }
+  .seg { width:52px; height:18px; background:#20242e; border-radius:4px; margin-right:8px; }
+  .seg.on { background:#bef22d; box-shadow:0 0 14px rgba(190,242,45,.5); }
+  .week span { font-size:19px; font-weight:800; letter-spacing:2px; color:#8b93a3; margin-left:14px; }
+
+  /* right rail — trainer, checklist, classes */
+  .rail { position:absolute; right:64px; top:190px; width:640px; }
+  .card { background:#141822; border:1px solid #232937; border-radius:22px; padding:26px 30px; margin-bottom:22px;
+    box-shadow:0 18px 40px rgba(0,0,0,.45); }
+  .card h3 { font-size:17px; font-weight:800; letter-spacing:3px; color:#8b93a3; margin-bottom:18px; }
+  .trainer { display:flex; align-items:center; }
+  .tring { width:104px; height:104px; border-radius:50%; background:conic-gradient(#bef22d 0 270deg, #2a3040 270deg 360deg);
+    display:flex; align-items:center; justify-content:center; margin-right:24px; flex-shrink:0; }
+  .tface { width:88px; height:88px; border-radius:50%; background:#222835; display:flex; align-items:center; justify-content:center;
+    font-family:Anton; font-size:38px; color:#38bdf8; }
+  .trainer h4 { font-family:Anton; font-size:40px; letter-spacing:1px; }
+  .trainer .spec { color:#38bdf8; font-size:17px; font-weight:800; letter-spacing:2px; margin:4px 0 8px; }
+  .trainer p { color:#9aa2b1; font-size:17px; line-height:1.4; }
+  .check .row { display:flex; align-items:center; padding:13px 0; border-bottom:1px dashed #262c3a; }
+  .check .row:last-child { border-bottom:none; }
+  .box { width:38px; height:38px; border-radius:10px; border:3px solid #3a4152; margin-right:18px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center; }
+  .box.done { background:#bef22d; border-color:#bef22d; }
+  .box.done svg { width:22px; height:22px; }
+  .check .t { font-size:22px; font-weight:700; color:#e8ecf3; }
+  .check .t small { display:block; font-size:15px; font-weight:600; color:#8b93a3; margin-top:2px; }
+  .classes { display:flex; }
+  .cls { flex:1; background:#1a1f2b; border-radius:14px; padding:16px 14px; margin-right:14px; border-top:4px solid #38bdf8; }
+  .cls:nth-child(2) { border-top-color:#bef22d; }
+  .cls:last-child { margin-right:0; border-top-color:#fb923c; }
+  .cls b { display:block; font-size:20px; }
+  .cls span { font-size:16px; color:#8b93a3; font-weight:700; }
+
+  /* CTA band */
+  .cta { position:absolute; left:0; right:0; bottom:0; height:118px; background:linear-gradient(90deg,#f97316,#fb5607);
+    display:flex; align-items:center; padding:0 64px; }
+  .cta .stripes { position:absolute; top:0; right:0; bottom:0; left:0;
+    background:repeating-linear-gradient(115deg, rgba(0,0,0,.08) 0 30px, transparent 30px 60px); }
+  .cta .q { font-size:19px; font-weight:800; letter-spacing:3px; color:rgba(20,10,0,.75); margin-right:26px; }
+  .cta h2 { font-family:Anton; font-size:46px; color:#1a0f00; letter-spacing:1px; flex:1; position:relative; }
+  .qr { width:86px; height:86px; background:#1a0f00; border-radius:12px; padding:9px; position:relative; }
+  .qr .m { width:100%; height:100%;
+    background:
+      linear-gradient(#fff,#fff) 0 0/22px 22px no-repeat, linear-gradient(#fff,#fff) 100% 0/22px 22px no-repeat,
+      linear-gradient(#fff,#fff) 0 100%/22px 22px no-repeat,
+      repeating-linear-gradient(0deg,#fff 0 5px, transparent 5px 11px) 32px 30px/34px 38px no-repeat,
+      repeating-linear-gradient(90deg,#fff 0 5px, transparent 5px 10px) 28px 4px/38px 20px no-repeat; }
+  .qr span { position:absolute; left:50%; transform:translateX(-50%); bottom:-26px; font-size:13px; font-weight:800; letter-spacing:2px; color:#1a0f00; white-space:nowrap; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="big01">01</div>
+  <div class="hazard"></div>
+  <div class="grain"></div>
+  <div class="ring" style="width:420px;height:420px;right:220px;top:330px;"></div>
+  <div class="ring" style="width:560px;height:560px;right:150px;top:260px;"></div>
+
+  <div class="head">
+    <div class="brand">
+      <div class="plate">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M3 9v6M6 7v10M18 7v10M21 9v6M6 12h12" stroke="#0c0e12" stroke-width="2.6" stroke-linecap="round"/></svg>
+      </div>
+      <div><h1>IRONWORKS FITNESS</h1><small>NEW MEMBER WELCOME</small></div>
+    </div>
+    <div class="clock">7:42 PM</div>
+  </div>
+
+  <div class="hero">
+    <div class="chips">
+      <div class="chip day">DAY 01</div>
+      <div class="chip new">MEMBER SINCE JUL 1</div>
+    </div>
+    <div class="hello">WELCOME,</div>
+    <div class="name">JORDAN</div>
+    <div class="rule"></div>
+    <div class="motto">You just took the hardest step. <b>Everything from here is momentum.</b></div>
+    <div class="week">
+      <div class="seg on"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div>
+      <div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div>
+      <div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div>
+      <span>WEEK 1 OF 12 — FIRST GOAL CHECK-IN</span>
+    </div>
+  </div>
+
+  <div class="rail">
+    <div class="card">
+      <h3>YOUR TRAINER</h3>
+      <div class="trainer">
+        <div class="tring"><div class="tface">MA</div></div>
+        <div>
+          <h4>COACH MAYA</h4>
+          <div class="spec">STRENGTH &amp; CONDITIONING</div>
+          <p>First-90-days onboarding &amp; form coaching. Say hi — she's expecting you.</p>
+        </div>
+      </div>
+    </div>
+    <div class="card check">
+      <h3>YOUR FIRST WEEK</h3>
+      <div class="row"><div class="box done"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4 10-10" stroke="#0c0e12" stroke-width="3.4" stroke-linecap="round"/></svg></div><div class="t">Locker assigned <small>#114 — code at the front desk</small></div></div>
+      <div class="row"><div class="box"></div><div class="t">Book your free intro session <small>with Coach Maya, 30 min</small></div></div>
+      <div class="row"><div class="box"></div><div class="t">Try your first class free <small>any class this week — just show up</small></div></div>
+    </div>
+    <div class="card">
+      <h3>TODAY'S CLASSES</h3>
+      <div class="classes">
+        <div class="cls"><b>HIIT 45</b><span>6:00 AM</span></div>
+        <div class="cls"><b>SPIN</b><span>5:30 PM</span></div>
+        <div class="cls"><b>YOGA FLOW</b><span>7:00 PM</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cta">
+    <div class="stripes"></div>
+    <div class="q" style="position:relative;">NEW HERE?</div>
+    <h2>BOOK YOUR FREE INTRO SESSION — FRONT DESK</h2>
+    <div class="qr"><div class="m"></div></div>
+  </div>
+</div>
+</body>
+</html>

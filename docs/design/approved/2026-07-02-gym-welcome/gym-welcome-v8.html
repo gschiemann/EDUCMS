@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>GYM Welcome v8 — Locker Room (full metaphor)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600;700;800&family=Caveat:wght@700&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:1920px; height:1080px; overflow:hidden; background:#14161c; }
+  .stage { position:relative; width:1920px; height:1080px; font-family:Inter,sans-serif; color:#fff;
+    background:linear-gradient(180deg,#181b22 0%,#14161c 70%,#101218 100%); }
+
+  /* header */
+  .head { position:absolute; top:0; left:0; right:0; height:92px; display:flex; align-items:center; justify-content:space-between;
+    padding:0 56px; background:#0e1015; border-bottom:1px solid #232733; z-index:8; }
+  .brand { display:flex; align-items:center; }
+  .plate { width:50px; height:50px; border-radius:13px; background:#bef22d; display:flex; align-items:center; justify-content:center; margin-right:17px; }
+  .plate svg { width:29px; height:29px; }
+  .brand h1 { font-family:Anton; font-size:40px; letter-spacing:1px; }
+  .brand small { font-size:13px; font-weight:800; letter-spacing:5px; color:#8b93a3; display:block; }
+  .clock { font-family:Anton; font-size:40px; }
+
+  /* locker wall fills the whole canvas */
+  .wall { position:absolute; top:92px; left:0; right:0; bottom:96px; display:flex; padding:34px 48px 0; }
+  .locker { position:relative; flex:1; margin:0 12px; border-radius:14px 14px 0 0; overflow:hidden;
+    background:linear-gradient(175deg,#3a4152 0%,#2c3240 30%,#262b38 100%);
+    border:2px solid #454d61; border-bottom:none; box-shadow:inset 0 2px 0 rgba(255,255,255,.12), 0 24px 50px rgba(0,0,0,.5); }
+  .numplate { position:absolute; top:26px; left:50%; transform:translateX(-50%); background:#191d26; border:2px solid #4a5268;
+    border-radius:8px; padding:7px 22px; font-family:Anton; font-size:26px; letter-spacing:2px; color:#c8cfdd; z-index:3; }
+  .vent { position:absolute; left:50%; transform:translateX(-50%); width:60%; height:9px; border-radius:5px;
+    background:linear-gradient(180deg,#1a1e28,#232837); box-shadow:inset 0 2px 3px rgba(0,0,0,.6); }
+  .handle { position:absolute; right:26px; top:47%; width:16px; height:74px; border-radius:8px;
+    background:linear-gradient(90deg,#59627a,#3d445a); box-shadow:2px 3px 6px rgba(0,0,0,.5); }
+
+  /* Jordan's OPEN locker — lime interior, filled with welcome kit */
+  .locker.open { background:linear-gradient(180deg,#20260c 0%,#171c08 100%); border-color:#bef22d;
+    box-shadow:0 0 0 3px rgba(190,242,45,.35), 0 24px 60px rgba(190,242,45,.15); }
+  .openglow { position:absolute; top:0; right:0; bottom:0; left:0; background:radial-gradient(400px 300px at 50% 30%, rgba(190,242,45,.16), transparent 70%); }
+  .doorEdge { position:absolute; top:0; bottom:0; left:-14px; width:26px; background:linear-gradient(90deg,#2c3240,#454d61);
+    transform:skewY(-2deg); box-shadow:6px 0 14px rgba(0,0,0,.5); }
+  .jname { position:absolute; top:24px; left:50%; transform:translateX(-50%); background:#bef22d; color:#141a05; border-radius:8px;
+    padding:8px 24px; font-family:Anton; font-size:28px; letter-spacing:2px; z-index:3; box-shadow:0 6px 18px rgba(190,242,45,.4); }
+  .jday { position:absolute; top:84px; left:50%; transform:translateX(-50%); font-size:16px; font-weight:800; letter-spacing:3px; color:#bef22d; }
+  .hookrail { position:absolute; top:130px; left:10%; right:10%; height:8px; background:#39421a; border-radius:4px; }
+  .hook { position:absolute; top:134px; width:10px; height:26px; border-radius:0 0 6px 6px; background:#5a682a; }
+  .towel { position:absolute; top:152px; left:16%; width:78px; height:150px; border-radius:8px;
+    background:repeating-linear-gradient(0deg,#e8ecf3 0 22px, #cdd5e4 22px 30px); transform:rotate(2deg);
+    box-shadow:0 10px 18px rgba(0,0,0,.35); }
+  .bag { position:absolute; top:168px; right:14%; width:120px; height:120px; border-radius:16px; background:#12160a;
+    border:3px solid #39421a; transform:rotate(-3deg); }
+  .bag::after { content:""; position:absolute; top:-16px; left:24px; right:24px; height:20px; border:5px solid #39421a; border-bottom:none; border-radius:12px 12px 0 0; }
+  .kit { position:absolute; left:10%; right:10%; top:330px; background:#f5f1e6; color:#232012; border-radius:6px; padding:20px 22px;
+    transform:rotate(-1.4deg); box-shadow:0 14px 26px rgba(0,0,0,.45); }
+  .kit::before { content:""; position:absolute; top:-13px; left:50%; transform:translateX(-50%) rotate(2deg); width:110px; height:26px;
+    background:rgba(190,242,45,.65); }
+  .kit h4 { font-family:Anton; font-size:23px; letter-spacing:1px; margin-bottom:12px; }
+  .kit .k { display:flex; align-items:center; font-size:18px; font-weight:700; padding:6px 0; border-bottom:1.5px dashed #cfc7ae; }
+  .kit .k:last-child { border-bottom:none; }
+  .kit .cb { width:22px; height:22px; border:2.5px solid #8f8768; border-radius:6px; margin-right:12px; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
+  .kit .cb.on { background:#232012; }
+  .kit .cb.on svg { width:14px; height:14px; }
+
+  /* neighbor lockers carry taped content — trainer / schedule / poster */
+  .paper { position:absolute; left:9%; right:9%; border-radius:6px; box-shadow:0 14px 26px rgba(0,0,0,.5); }
+  .tape { position:absolute; top:-13px; left:50%; transform:translateX(-50%) rotate(-2deg); width:100px; height:24px; background:rgba(255,255,255,.28); }
+  .polaroid { top:150px; background:#f7f7f4; padding:16px 16px 0; transform:rotate(-2.5deg); color:#232012; }
+  .pframe { background:#101722; height:210px; border-radius:4px; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; }
+  .pframe .ring2 { width:130px; height:130px; border-radius:50%; background:conic-gradient(#38bdf8 0 290deg,#26303f 290deg 360deg); display:flex; align-items:center; justify-content:center; }
+  .pframe .fc { width:110px; height:110px; border-radius:50%; background:#182131; display:flex; align-items:center; justify-content:center; font-family:Anton; font-size:44px; color:#38bdf8; }
+  .polaroid h4 { font-family:Caveat, cursive; font-size:38px; text-align:center; padding:10px 0 2px; }
+  .polaroid p { font-size:16px; font-weight:700; text-align:center; color:#5b5342; padding-bottom:14px; }
+  .badge { position:absolute; bottom:150px; left:50%; transform:translateX(-50%) rotate(2deg); background:#38bdf8; color:#052033;
+    font-weight:800; font-size:17px; letter-spacing:1px; padding:11px 18px; border-radius:10px; white-space:nowrap; box-shadow:0 10px 22px rgba(56,189,248,.35); }
+
+  .sched { top:150px; background:#f5f1e6; color:#232012; padding:20px 22px; transform:rotate(1.6deg); }
+  .sched h4 { font-family:Anton; font-size:24px; letter-spacing:1px; margin-bottom:14px; }
+  .sched .s { display:flex; justify-content:space-between; font-size:18px; font-weight:700; padding:9px 2px; border-bottom:1.5px dashed #cfc7ae; }
+  .sched .s:last-child { border-bottom:none; }
+  .sched .s span { color:#8a7f5c; font-weight:800; }
+  .freebie { position:absolute; bottom:150px; left:50%; transform:translateX(-50%) rotate(-2deg); background:#fb923c; color:#1a0f00;
+    font-family:Anton; font-size:21px; letter-spacing:1px; padding:12px 20px; border-radius:10px; white-space:nowrap; box-shadow:0 10px 22px rgba(251,146,60,.4); }
+
+  .poster { top:150px; bottom:150px; background:linear-gradient(165deg,#bef22d 0%,#8fd311 100%); color:#141a05; transform:rotate(-1.2deg);
+    display:flex; flex-direction:column; justify-content:center; padding:30px 26px; text-align:center; }
+  .poster .small { font-size:17px; font-weight:800; letter-spacing:4px; margin-bottom:16px; }
+  .poster h3 { font-family:Anton; font-size:56px; line-height:1.04; letter-spacing:1px; }
+  .poster .u { width:90px; height:8px; background:#141a05; margin:22px auto 0; }
+
+  /* floor + CTA */
+  .floor { position:absolute; left:0; right:0; bottom:96px; height:20px; background:linear-gradient(180deg,#0a0c10,#07080b); z-index:2; }
+  .cta { position:absolute; left:0; right:0; bottom:0; height:96px; background:linear-gradient(90deg,#f97316,#fb5607);
+    display:flex; align-items:center; padding:0 56px; z-index:8; }
+  .cta .stripes { position:absolute; top:0; right:0; bottom:0; left:0; background:repeating-linear-gradient(115deg, rgba(0,0,0,.08) 0 26px, transparent 26px 52px); }
+  .cta .q { position:relative; font-size:17px; font-weight:800; letter-spacing:3px; color:rgba(20,10,0,.7); margin-right:24px; }
+  .cta h2 { position:relative; font-family:Anton; font-size:38px; color:#1a0f00; letter-spacing:1px; flex:1; }
+  .cta .clockmini { position:relative; font-family:Anton; font-size:30px; color:#1a0f00; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="head">
+    <div class="brand">
+      <div class="plate"><svg viewBox="0 0 24 24" fill="none"><path d="M3 9v6M6 7v10M18 7v10M21 9v6M6 12h12" stroke="#0e1015" stroke-width="2.6" stroke-linecap="round"/></svg></div>
+      <div><h1>IRONWORKS FITNESS</h1><small>NEW MEMBER WELCOME · LOCKER ROOM</small></div>
+    </div>
+    <div class="clock">7:42 PM</div>
+  </div>
+
+  <div class="wall">
+    <div class="locker">
+      <div class="numplate">112</div>
+      <div class="vent" style="top:88px;"></div>
+      <div class="paper polaroid">
+        <div class="tape"></div>
+        <div class="pframe"><div class="ring2"><div class="fc">MA</div></div></div>
+        <h4>Coach Maya</h4>
+        <p>STRENGTH &amp; CONDITIONING<br>first-90-days onboarding</p>
+      </div>
+      <div class="badge">YOUR TRAINER — SAY HI</div>
+      <div class="vent" style="bottom:60px;"></div>
+      <div class="handle"></div>
+    </div>
+
+    <div class="locker open">
+      <div class="openglow"></div>
+      <div class="doorEdge"></div>
+      <div class="jname">JORDAN</div>
+      <div class="jday">DAY 01 · MEMBER SINCE JUL 1</div>
+      <div class="hookrail"></div>
+      <div class="hook" style="left:22%;"></div>
+      <div class="hook" style="left:50%;"></div>
+      <div class="hook" style="left:78%;"></div>
+      <div class="towel"></div>
+      <div class="bag"></div>
+      <div class="kit">
+        <h4>YOUR WELCOME KIT</h4>
+        <div class="k"><div class="cb on"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4 10-10" stroke="#f5f1e6" stroke-width="3.6" stroke-linecap="round"/></svg></div>Locker #114 — yours</div>
+        <div class="k"><div class="cb"></div>Free intro session w/ Maya</div>
+        <div class="k"><div class="cb"></div>First class free this week</div>
+        <div class="k"><div class="cb"></div>Week-1 goal check-in</div>
+      </div>
+    </div>
+
+    <div class="locker">
+      <div class="numplate">115</div>
+      <div class="vent" style="top:88px;"></div>
+      <div class="paper sched">
+        <div class="tape"></div>
+        <h4>TODAY'S CLASSES</h4>
+        <div class="s">HIIT 45 <span>6:00 AM</span></div>
+        <div class="s">SPIN <span>5:30 PM</span></div>
+        <div class="s">YOGA FLOW <span>7:00 PM</span></div>
+      </div>
+      <div class="freebie">FIRST CLASS FREE — JUST SHOW UP</div>
+      <div class="vent" style="bottom:60px;"></div>
+      <div class="handle"></div>
+    </div>
+
+    <div class="locker">
+      <div class="numplate">116</div>
+      <div class="paper poster">
+        <div class="small">DAY ONE TRUTH</div>
+        <h3>YOU JUST TOOK<br>THE HARDEST<br>STEP.</h3>
+        <div class="u"></div>
+      </div>
+      <div class="handle"></div>
+    </div>
+  </div>
+
+  <div class="floor"></div>
+  <div class="cta">
+    <div class="stripes"></div>
+    <div class="q">NEW HERE?</div>
+    <h2>BOOK YOUR FREE INTRO SESSION — FRONT DESK</h2>
+    <div class="clockmini">IRONWORKS · EST. 2019</div>
+  </div>
+</div>
+</body>
+</html>

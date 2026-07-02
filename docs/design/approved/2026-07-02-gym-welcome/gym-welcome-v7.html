@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>GYM Welcome v7 — Split Duo (dense)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:1920px; height:1080px; overflow:hidden; background:#0b0d11; }
+  .stage { position:relative; width:1920px; height:1080px; font-family:Inter,sans-serif; color:#fff; }
+
+  /* two color-blocked halves with a diagonal seam — the canvas IS the layout */
+  .half { position:absolute; top:96px; bottom:120px; width:56%; overflow:hidden; }
+  .half.left { left:0; background:linear-gradient(160deg,#151a10 0%,#10130b 60%,#0d0f09 100%);
+    clip-path:polygon(0 0, 100% 0, 82% 100%, 0 100%); }
+  .half.right { right:0; background:linear-gradient(200deg,#0e1620 0%,#0b1219 60%,#090e14 100%);
+    clip-path:polygon(18% 0, 100% 0, 100% 100%, 0 100%); }
+  .tex { position:absolute; top:0; right:0; bottom:0; left:0; opacity:.35;
+    background:repeating-linear-gradient(115deg, rgba(255,255,255,.03) 0 2px, transparent 2px 14px); }
+  .seam { position:absolute; top:96px; bottom:120px; left:50%; width:0; border-left:4px dashed rgba(255,255,255,.22); transform:translateX(-2px) skewX(-14deg); }
+  .seamplate { position:absolute; top:46%; left:50%; transform:translate(-50%,-50%); width:130px; height:130px; border-radius:50%;
+    background:#0b0d11; border:5px solid rgba(255,255,255,.2); display:flex; align-items:center; justify-content:center; z-index:5; }
+  .seamplate .inner { width:86px; height:86px; border-radius:50%; border:4px solid #fb923c; display:flex; align-items:center; justify-content:center;
+    font-family:Anton; font-size:40px; color:#fb923c; }
+  .wm { position:absolute; bottom:88px; left:50%; transform:translateX(-50%); font-family:Anton; font-size:300px; line-height:1;
+    color:transparent; -webkit-text-stroke:2px rgba(255,255,255,.07); letter-spacing:8px; z-index:1; white-space:nowrap; }
+
+  /* header band */
+  .head { position:absolute; top:0; left:0; right:0; height:96px; background:#0b0d11; display:flex; align-items:center;
+    justify-content:space-between; padding:0 56px; border-bottom:1px solid #1c212c; z-index:6; }
+  .brand { display:flex; align-items:center; }
+  .plate { width:52px; height:52px; border-radius:14px; background:#bef22d; display:flex; align-items:center; justify-content:center; margin-right:18px; }
+  .plate svg { width:30px; height:30px; }
+  .brand h1 { font-family:Anton; font-size:42px; letter-spacing:1px; }
+  .brand small { font-size:13px; font-weight:800; letter-spacing:5px; color:#8b93a3; display:block; }
+  .clock { font-family:Anton; font-size:42px; }
+
+  /* member side */
+  .mside { position:absolute; left:64px; top:150px; width:800px; z-index:4; }
+  .tag { display:inline-block; font-size:18px; font-weight:800; letter-spacing:2px; background:#38bdf8; color:#052033;
+    padding:9px 20px; border-radius:999px; margin-bottom:22px; }
+  .hello { font-family:Anton; font-size:64px; color:#bef22d; }
+  .name { font-family:Anton; font-size:190px; line-height:.95; letter-spacing:-2px; text-shadow:7px 7px 0 rgba(190,242,45,.2); }
+  .since { font-size:24px; color:#c7cdd9; margin:18px 0 30px; }
+  .since b { color:#fff; }
+  .list .row { display:flex; align-items:center; padding:12px 0; }
+  .bx { width:34px; height:34px; border-radius:9px; border:3px solid #3a4152; margin-right:16px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .bx.done { background:#bef22d; border-color:#bef22d; }
+  .bx.done svg { width:20px; height:20px; }
+  .list .t { font-size:23px; font-weight:700; }
+  .list .t small { color:#8b93a3; font-weight:600; font-size:17px; margin-left:10px; }
+  .week { display:flex; align-items:center; margin-top:36px; }
+  .seg { width:44px; height:16px; background:#242a1a; border-radius:4px; margin-right:7px; }
+  .seg.on { background:#bef22d; box-shadow:0 0 12px rgba(190,242,45,.5); }
+  .week span { font-size:17px; font-weight:800; letter-spacing:2px; color:#8b93a3; margin-left:12px; }
+
+  /* trainer side */
+  .tside { position:absolute; right:64px; top:150px; width:660px; text-align:right; z-index:4; }
+  .tag2 { display:inline-block; font-size:18px; font-weight:800; letter-spacing:2px; background:#bef22d; color:#141a05;
+    padding:9px 20px; border-radius:999px; margin-bottom:22px; }
+  .tring { width:200px; height:200px; border-radius:50%; margin:6px 0 24px auto;
+    background:conic-gradient(#38bdf8 0 300deg, #223040 300deg 360deg); display:flex; align-items:center; justify-content:center; }
+  .tface { width:172px; height:172px; border-radius:50%; background:#101722; display:flex; align-items:center; justify-content:center;
+    font-family:Anton; font-size:74px; color:#38bdf8; }
+  .tname { font-family:Anton; font-size:96px; line-height:1; }
+  .tspec { font-size:22px; font-weight:800; letter-spacing:3px; color:#38bdf8; margin:12px 0 16px; }
+  .tbio { font-size:21px; color:#9aa2b1; line-height:1.5; }
+  .tcta { display:inline-flex; align-items:center; margin-top:28px; background:#38bdf8; color:#052033; font-weight:800;
+    font-size:22px; letter-spacing:1px; padding:16px 30px; border-radius:14px; box-shadow:0 12px 30px rgba(56,189,248,.35); }
+  .tcta svg { width:26px; height:26px; margin-right:12px; }
+  .hours { display:flex; justify-content:flex-end; margin-top:38px; }
+  .hr { background:rgba(56,189,248,.08); border:1px solid rgba(56,189,248,.25); border-radius:12px; padding:14px 20px; margin-left:16px; text-align:center; }
+  .hr b { display:block; font-size:15px; font-weight:800; letter-spacing:2px; color:#7fb9d6; margin-bottom:5px; }
+  .hr span { font-family:Anton; font-size:26px; color:#e8ecf3; letter-spacing:1px; }
+
+  /* class ticker band */
+  .band { position:absolute; left:0; right:0; bottom:0; height:120px; background:linear-gradient(90deg,#f97316,#fb5607);
+    display:flex; align-items:center; padding:0 56px; z-index:6; }
+  .band .stripes { position:absolute; top:0; right:0; bottom:0; left:0; background:repeating-linear-gradient(115deg, rgba(0,0,0,.08) 0 26px, transparent 26px 52px); }
+  .band h2 { font-family:Anton; font-size:34px; color:#1a0f00; letter-spacing:1px; margin-right:38px; position:relative; }
+  .band .cls { position:relative; display:flex; align-items:center; background:rgba(26,15,0,.16); border-radius:12px; padding:12px 22px; margin-right:20px; }
+  .band .cls b { font-size:24px; color:#1a0f00; margin-right:12px; }
+  .band .cls span { font-size:19px; font-weight:800; color:rgba(26,15,0,.65); }
+  .band .free { position:relative; margin-left:auto; font-size:20px; font-weight:800; letter-spacing:2px; color:#1a0f00;
+    border:3px dashed rgba(26,15,0,.5); padding:12px 22px; border-radius:12px; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="head">
+    <div class="brand">
+      <div class="plate"><svg viewBox="0 0 24 24" fill="none"><path d="M3 9v6M6 7v10M18 7v10M21 9v6M6 12h12" stroke="#0b0d11" stroke-width="2.6" stroke-linecap="round"/></svg></div>
+      <div><h1>IRONWORKS FITNESS</h1><small>NEW MEMBER WELCOME</small></div>
+    </div>
+    <div class="clock">7:42 PM</div>
+  </div>
+
+  <div class="half left"><div class="tex"></div></div>
+  <div class="half right"><div class="tex"></div></div>
+  <div class="wm">DAY 01</div>
+  <div class="seam"></div>
+  <div class="seamplate"><div class="inner">×</div></div>
+
+  <div class="mside">
+    <div class="tag">DAY 1 · WELCOME</div>
+    <div class="hello">WELCOME,</div>
+    <div class="name">JORDAN</div>
+    <div class="since">Member since <b>Jul 1</b> — you're one of us now.</div>
+    <div class="list">
+      <div class="row"><div class="bx done"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4 10-10" stroke="#0b0d11" stroke-width="3.4" stroke-linecap="round"/></svg></div><div class="t">Locker #114 assigned <small>code at the front desk</small></div></div>
+      <div class="row"><div class="bx"></div><div class="t">Book your free intro session <small>30 min with your coach</small></div></div>
+      <div class="row"><div class="bx"></div><div class="t">First class is on us <small>any class this week</small></div></div>
+    </div>
+    <div class="week">
+      <div class="seg on"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div>
+      <div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div>
+      <div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div>
+      <span>WEEK 1 OF 12</span>
+    </div>
+  </div>
+
+  <div class="tside">
+    <div class="tag2">YOUR TRAINER</div>
+    <div class="tring"><div class="tface">MA</div></div>
+    <div class="tname">COACH MAYA</div>
+    <div class="tspec">STRENGTH &amp; CONDITIONING</div>
+    <div class="tbio">Specializes in first-90-days onboarding &amp; form coaching.<br>She already knows your name — go say hi.</div>
+    <div class="tcta"><svg viewBox="0 0 24 24" fill="none"><path d="M8 7V5a4 4 0 118 0v2M5 9h14l-1 11H6L5 9z" stroke="#052033" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>BOOK A FREE SESSION</div>
+    <div class="hours">
+      <div class="hr"><b>MON–FRI</b><span>5 AM – 11 PM</span></div>
+      <div class="hr"><b>SAT–SUN</b><span>7 AM – 9 PM</span></div>
+      <div class="hr"><b>STAFFED UNTIL</b><span>8 PM</span></div>
+    </div>
+  </div>
+
+  <div class="band">
+    <div class="stripes"></div>
+    <h2>TODAY</h2>
+    <div class="cls"><b>HIIT 45</b><span>6:00 AM</span></div>
+    <div class="cls"><b>SPIN</b><span>5:30 PM</span></div>
+    <div class="cls"><b>YOGA FLOW</b><span>7:00 PM</span></div>
+    <div class="free">FIRST CLASS FREE — JUST SHOW UP</div>
+  </div>
+</div>
+</body>
+</html>
