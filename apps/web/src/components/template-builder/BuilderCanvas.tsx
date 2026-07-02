@@ -40,6 +40,27 @@ export function scaleZoneInBox(orig: Rect, origBox: Rect, newBox: Rect): Rect {
 }
 
 /**
+ * A7 — human-readable label for a snap guide line. Canvas anchors get
+ * names (Center / Edge / Thirds), element matches get semantics
+ * (Center match / Equal spacing / Grid), and plain element-edge snaps
+ * get REAL PIXELS — the stored percent-of-canvas converted through the
+ * template's own screenWidth/screenHeight (what Canva shows instead of
+ * a meaningless raw percentage). Exported for the A7 regression spec.
+ */
+export function guideLabelFor(line: SnapLine, screenWidth: number, screenHeight: number): string {
+  const isCenterCanvas = line.kind === 'canvas' && Math.abs(line.position - 50) < 0.05;
+  const isEdgeCanvas = line.kind === 'canvas' && (line.position < 0.05 || line.position > 99.95);
+  if (isCenterCanvas) return 'Center';
+  if (isEdgeCanvas) return 'Edge';
+  if (line.kind === 'canvas') return 'Thirds';
+  if (line.kind === 'center') return 'Center match';
+  if (line.kind === 'equal-gap') return 'Equal spacing';
+  if (line.kind === 'grid') return 'Grid';
+  const dimPx = line.orientation === 'v' ? screenWidth : screenHeight;
+  return `${Math.round((line.position / 100) * (dimPx || 0))}px`;
+}
+
+/**
  * A5 — resize modifiers. Returns the constrained rect when a modifier
  * constraint applies, or null when none does (caller falls through to
  * the plain per-edge resize + snap path, byte-for-byte the pre-A5
@@ -929,35 +950,8 @@ export function BuilderCanvas() {
           })()}
 
           {showGuides && activeSnapLines.map((line, i) => {
-            // Human-readable label for the snap line â€” operators
-            // shouldn't have to guess what the pink line means. Center
-            // canvas snap â†’ "Center". Edge canvas â†’ "Edge". Element
-            // snaps â†’ real pixels (A7 â€” converted from the stored
-            // percent-of-canvas using the template's own screenWidth/
-            // screenHeight, exactly what Canva shows instead of a
-            // meaningless raw percentage).
-            const isCenterCanvas = line.kind === 'canvas' && Math.abs(line.position - 50) < 0.05;
-            const isEdgeCanvas   = line.kind === 'canvas' && (line.position < 0.05 || line.position > 99.95);
-            const isThirds       = line.kind === 'canvas' && !isCenterCanvas && !isEdgeCanvas;
-            const isCenterElem   = line.kind === 'center';
-            const isGrid         = line.kind === 'grid';
-            const isEqualGap     = line.kind === 'equal-gap';
-            const dimPx = line.orientation === 'v' ? meta.screenWidth : meta.screenHeight;
-            const px = Math.round((line.position / 100) * (dimPx || 0));
-            const label = isCenterCanvas
-              ? 'Center'
-              : isEdgeCanvas
-                ? 'Edge'
-                : isThirds
-                  ? 'Thirds'
-                  : isCenterElem
-                    ? 'Center match'
-                    : isEqualGap
-                      ? 'Equal spacing'
-                      : isGrid
-                        ? 'Grid'
-                        : `${px}px`;
-            const lineColor = isEqualGap ? '#ec4899' : line.kind === 'canvas' ? '#a855f7' : line.kind === 'grid' ? '#0ea5e9' : '#ec4899';
+            const label = guideLabelFor(line, meta.screenWidth, meta.screenHeight);
+            const lineColor = line.kind === 'equal-gap' ? '#ec4899' : line.kind === 'canvas' ? '#a855f7' : line.kind === 'grid' ? '#0ea5e9' : '#ec4899';
             return (
               <div
                 key={i}
