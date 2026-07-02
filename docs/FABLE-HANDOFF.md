@@ -87,6 +87,37 @@ and the harness task list.
   carried Greg's no-waste mandate: the feeds agent shipped Redis caching +
   fleet math; the limiter agent chose 1 Redis op over 3 and documented why.
 
+## 2b. Usage-wall pacing protocol (Greg mandate 2026-07-01: "monitor and cut it off before we hit it")
+
+**The honest constraint: there is NO gauge.** The lead cannot read "tokens
+remaining in this window" — no tool exposes it. Three walls in one day taught
+us the discipline that substitutes for the gauge:
+
+1. **Probe-first after any reset.** A reset can grant a PARTIAL window (the
+   7:10pm 2026-07-01 reset died 25 min later under a 9-unit relight). After a
+   wall, launch ONE bounded unit, see it COMPLETE, then scale. Never relight
+   the whole fleet at once.
+2. **Count what you spend; taper by count.** No gauge → self-meter. Full
+   parallelism only in the first ~2h after a confirmed-full window (the
+   12:20am-class reset). After ~3 big agents or 1 workflow have completed,
+   drop to sequential dispatch. Deep into a window, run lead-only.
+3. **Everything resumable, always.** Prefer Workflow (resumeFromRunId returns
+   completed agents from CACHE — the 2026-07-02 resume re-ran only 2 of 7
+   lenses) over raw parallel Agents for fan-outs. Build agents get worktrees
+   AND a prompt line ordering WIP commits after each workstream — a wall then
+   costs minutes, not the run.
+4. **Persist the instant output exists.** Agent returns → docs/research
+   BEFORE the next dispatch. Walls kill conversations, not disk.
+5. **SALVAGE BEFORE REMOVAL — never combine them.** The 2026-07-02 near-loss:
+   a cleanup loop ran `git status` + `worktree remove --force` in ONE command
+   and deleted 73-tool-calls of WIP the status had just revealed. Status
+   first, DECIDE, then remove. If WIP is ever destroyed: the agent transcript
+   (`tasks/<id>.output`) holds every Write/Edit — replay Writes then Edits in
+   order (recipe: `scratchpad/salvage-chips.cjs` pattern; recovered 100%).
+6. **Greg can see the gauge; the lead can't.** For a planned mega-wave, ask
+   Greg to glance at /usage first. One sentence buys certainty the API won't
+   give you.
+
 ## 3. What Opus-era patterns cost us (the honest list Greg asked for)
 
 Each of these was found and corrected during this sprint. They are PATTERNS,
@@ -152,15 +183,15 @@ not one-off bugs — watch for the pattern, not the instance:
   safe-fixes, #275 GYM mockups (re-dispatch venueos-template-designer, STOPS
   at Greg's approval), #270 sport depth, #273 needs Greg's one-sentence
   decision.
-- **The editor-vs-Canva deep dive** (Greg's latest mandate) died on the
-  session limit with ZERO lens output. Resume with:
-  `Workflow({scriptPath: ".../editor-crush-canva-critique-wf_e3dc5383-71d.js",
-  resumeFromRunId: "wf_e3dc5383-71d"})` — the script is sound (7 lenses:
-  canvas manipulation, inline text, elements/assets, AI flow, Canva
-  benchmark, the three-architecture seam, workflow/undo). Then the LEAD
-  synthesizes the ranked plan (do not trust an in-workflow synthesis step —
-  it produced a stub once; lens agents return structured findings, the lead
-  writes the plan — that division worked perfectly for the App Library).
+- **The editor-vs-Canva deep dive** (Greg's crush-Canva mandate): 5/7 lenses
+  captured + persisted at `docs/research/2026-07-01-launch-sprint/
+  05-EDITOR-CRUSH-LENSES.md` (47 findings; headline P0 = default 5%-grid
+  quantization defeating element-snap — the single biggest tactile gap vs
+  Canva). Remaining 2 lenses (ai-creator-flow, architecture-seams) resumed
+  2026-07-02 via `resumeFromRunId: "wf_e3dc5383-71d"` — cached lenses return
+  free. Then the LEAD synthesizes the ranked CRUSH plan (never trust an
+  in-workflow synthesis step — it produced a stub once; lens agents return
+  structured findings, the lead writes the plan).
 - **My hypothesis to test in that dive:** the editor's real gap vs Canva is
   (a) direct-manipulation feel — snap guides, multi-select, inline text
   editing, on-element context toolbar — and (b) the THREE editing
