@@ -117,6 +117,15 @@ us the discipline that substitutes for the gauge:
 6. **Greg can see the gauge; the lead can't.** For a planned mega-wave, ask
    Greg to glance at /usage first. One sentence buys certainty the API won't
    give you.
+7. **HARD CONCURRENCY CAP (2026-07-02 — "80% in 15 minutes"):** max TWO
+   concurrent agents mid-window, and an Opus agent counts as both slots
+   (~5x Sonnet burn). New dispatches stack behind running ones, never beside
+   them. The army is a RELAY, not a stampede — Greg pays wall-clock either
+   way; parallel just moves the cost from hours to window-percent.
+8. **Cap the fan-out INSIDE agents.** An Opus auditor given the Agent tool
+   will spawn its own Explore fleet (caught live 2026-07-02, killed just in
+   time). Every budget-sensitive dispatch prompt must say: "do NOT spawn
+   subagents — single-context only."
 
 ## 3. What Opus-era patterns cost us (the honest list Greg asked for)
 
