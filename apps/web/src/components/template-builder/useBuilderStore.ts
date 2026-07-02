@@ -58,6 +58,19 @@ interface BuilderState {
   past: HistoryEntry[];
   future: HistoryEntry[];
   isDirty: boolean;
+  /**
+   * A2 (Wave A — "Crush Canva", 2026-07-02) — undo keystroke coalescing.
+   * `true` for the duration of an open transaction (from beginTransaction()
+   * to endTransaction()/cancelTransaction()). While open, any commit=true
+   * call to updateZone/updateZones/setMeta is treated as "ensure a
+   * snapshot exists for this session" rather than "push a new snapshot" —
+   * beginTransaction already pushed the ONE snapshot the whole session
+   * (e.g. a continuous typing burst in a Properties field) undoes to.
+   * Mirrors the pattern the canvas drag already uses (beginTransaction
+   * once at pointerdown, then commit=false updates for the rest of the
+   * drag) so a field's whole edit — not each keystroke — is one Cmd-Z.
+   */
+  activeTransaction: boolean;
 
   // actions
   init(payload: { id: string; isSystem: boolean; zones: Zone[]; meta: BuilderState['meta']; isTouchEnabled?: boolean; idleResetMs?: number; scenes?: TemplateScene[] }): void;
@@ -115,6 +128,10 @@ interface BuilderState {
   undo(): void;
   redo(): void;
   beginTransaction(): void;
+  /** A2 — close an open transaction (e.g. field blur). No-op on history;
+   *  just clears the `activeTransaction` flag so the NEXT commit=true
+   *  call (a new edit session) pushes its own fresh snapshot again. */
+  endTransaction(): void;
   cancelTransaction(): void;
 }
 
@@ -162,6 +179,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   past: [],
   future: [],
   isDirty: false,
+  activeTransaction: false,
 
   init: ({ id, isSystem, zones, meta, isTouchEnabled, idleResetMs, scenes }) => {
     // Pick the default scene (or first by sort order) so the canvas
@@ -185,6 +203,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
       past: [],
       future: [],
       isDirty: false,
+      activeTransaction: false,
     });
   },
 
@@ -544,7 +563,14 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     const prev = get();
     const zones = prev.zones.map(z => z.id === id ? clampZone({ ...z, ...patch }) : z);
     const base: Partial<BuilderState> = { zones, isDirty: true, future: [] };
-    if (commit) base.past = [...prev.past, snapshot(prev)].slice(-HISTORY_LIMIT);
+    // A2 — a commit=true call inside an already-open transaction (e.g. a
+    // continuous typing burst — the field called beginTransaction() once
+    // on focus) does NOT push a second snapshot; the transaction's
+    // opening snapshot already covers the whole session. Only a
+    // commit=true call OUTSIDE any open transaction pushes its own
+    // one-off snapshot (unchanged behavior for every existing caller
+    // that doesn't wrap itself in begin/endTransaction).
+    if (commit && !prev.activeTransaction) base.past = [...prev.past, snapshot(prev)].slice(-HISTORY_LIMIT);
     set(base as BuilderState);
   },
 
@@ -553,15 +579,20 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     const idSet = new Set(ids);
     const zones = prev.zones.map(z => idSet.has(z.id) ? clampZone({ ...z, ...patcher(z) }) : z);
     const base: Partial<BuilderState> = { zones, isDirty: true, future: [] };
-    if (commit) base.past = [...prev.past, snapshot(prev)].slice(-HISTORY_LIMIT);
+    if (commit && !prev.activeTransaction) base.past = [...prev.past, snapshot(prev)].slice(-HISTORY_LIMIT);
     set(base as BuilderState);
   },
 
   setMeta: (patch) => {
     const prev = get();
     const meta = { ...prev.meta, ...patch };
-    const past = [...prev.past, snapshot(prev)].slice(-HISTORY_LIMIT);
-    set({ meta, past, future: [], isDirty: true });
+    const base: Partial<BuilderState> = { meta, isDirty: true, future: [] };
+    // A2 — same coalescing as updateZone/updateZones. setMeta previously
+    // snapshotted on EVERY call, which is what made typing a template
+    // Name/Description or dragging a background gradient/color input
+    // evict the 50-deep history one character at a time.
+    if (!prev.activeTransaction) base.past = [...prev.past, snapshot(prev)].slice(-HISTORY_LIMIT);
+    set(base as BuilderState);
   },
 
   select: (ids, additive = false) => {
@@ -665,17 +696,34 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
 
   beginTransaction: () => {
     const prev = get();
-    set({ past: [...prev.past, snapshot(prev)].slice(-HISTORY_LIMIT), future: [] });
+    // A2 — guard against a nested/re-entrant beginTransaction (e.g. a
+    // field re-focusing while `activeTransaction` is already true) from
+    // pushing a SECOND opening snapshot. The first begin already opened
+    // the session; a redundant call is a no-op history-wise.
+    if (prev.activeTransaction) return;
+    set({
+      past: [...prev.past, snapshot(prev)].slice(-HISTORY_LIMIT),
+      future: [],
+      activeTransaction: true,
+    });
+  },
+
+  endTransaction: () => {
+    set({ activeTransaction: false });
   },
 
   cancelTransaction: () => {
     const prev = get();
     const top = prev.past[prev.past.length - 1];
-    if (!top) return;
+    if (!top) {
+      set({ activeTransaction: false });
+      return;
+    }
     set({
       zones: top.zones.map(z => ({ ...z })),
       meta: { ...top.meta },
       past: prev.past.slice(0, -1),
+      activeTransaction: false,
     });
   },
 }));

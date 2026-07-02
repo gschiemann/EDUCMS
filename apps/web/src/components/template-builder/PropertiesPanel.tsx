@@ -945,6 +945,11 @@ function TemplateProperties() {
   // Atomic selectors — see PropertiesPanel above.
   const meta = useBuilderStore((s) => s.meta);
   const setMeta = useBuilderStore((s) => s.setMeta);
+  // A2 — same undo keystroke coalescing as TextField/TextAreaField:
+  // Name/Description are raw inputs (not the shared component, because
+  // they need htmlFor ids), so wire begin/end here directly.
+  const beginTransaction = useBuilderStore((s) => s.beginTransaction);
+  const endTransaction = useBuilderStore((s) => s.endTransaction);
   const isTouchEnabled = useBuilderStore((s) => s.isTouchEnabled);
   const setTouchEnabled = useBuilderStore((s) => s.setTouchEnabled);
   const zones = useBuilderStore((s) => s.zones);
@@ -990,6 +995,8 @@ function TemplateProperties() {
               id={nameId}
               type="text"
               value={meta.name}
+              onFocus={beginTransaction}
+              onBlur={endTransaction}
               onChange={(e) => setMeta({ name: e.target.value })}
               className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all shadow-sm inset-shadow-sm"
             />
@@ -1000,6 +1007,8 @@ function TemplateProperties() {
               id={descId}
               rows={2}
               value={meta.description}
+              onFocus={beginTransaction}
+              onBlur={endTransaction}
               onChange={(e) => setMeta({ description: e.target.value })}
               className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all shadow-sm inset-shadow-sm resize-y"
             />
@@ -7252,6 +7261,17 @@ function ExternalHtmlTextEditor({
 function TextField({ label, value, placeholder, onChange, onFocus }: { label: string; value: string; placeholder?: string; onChange: (v: string) => void; onFocus?: () => void }) {
   const [local, setLocal] = useState(value);
   useEffect(() => { setLocal(value); }, [value]);
+  // A2 — undo keystroke coalescing. Every TextField's onChange ultimately
+  // calls a caller-supplied setField/setMeta that commits with
+  // commit=true on EVERY keystroke; the store's activeTransaction guard
+  // (see useBuilderStore.ts) turns those into a no-op re-commit as long
+  // as a transaction is open, so wrapping focus/blur here — once, in the
+  // shared component — coalesces all 285 TextField/TextAreaField call
+  // sites into "one undo step per edit session" with zero call-site
+  // changes. beginTransaction() is idempotent (no-ops if already open),
+  // so nested/rapid focus doesn't push extra snapshots.
+  const beginTransaction = useBuilderStore((s) => s.beginTransaction);
+  const endTransaction = useBuilderStore((s) => s.endTransaction);
   return (
     <div>
       <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
@@ -7259,7 +7279,8 @@ function TextField({ label, value, placeholder, onChange, onFocus }: { label: st
         type="text"
         value={local}
         placeholder={placeholder}
-        onFocus={onFocus}
+        onFocus={() => { beginTransaction(); onFocus?.(); }}
+        onBlur={endTransaction}
         onChange={(e) => { setLocal(e.target.value); onChange(e.target.value); }}
         className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm" />
     </div>
@@ -7276,6 +7297,9 @@ function TextAreaField({ label, value, placeholder, onChange, rows = 3, onFocus 
   const [local, setLocal] = useState(value);
   // Sync when the prop changes (e.g. user selected a different zone).
   useEffect(() => { setLocal(value); }, [value]);
+  // A2 — same coalescing as TextField above.
+  const beginTransaction = useBuilderStore((s) => s.beginTransaction);
+  const endTransaction = useBuilderStore((s) => s.endTransaction);
   return (
     <div>
       <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
@@ -7283,7 +7307,8 @@ function TextAreaField({ label, value, placeholder, onChange, rows = 3, onFocus 
         value={local}
         placeholder={placeholder}
         rows={rows}
-        onFocus={onFocus}
+        onFocus={() => { beginTransaction(); onFocus?.(); }}
+        onBlur={endTransaction}
         onChange={(e) => { setLocal(e.target.value); onChange(e.target.value); }}
         className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm resize-y"
       />

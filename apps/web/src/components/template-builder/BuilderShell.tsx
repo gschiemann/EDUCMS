@@ -509,6 +509,11 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
             isDirty: true,
           }));
         }
+        // A2 — this is a one-shot action (not an ongoing drag), so close
+        // the transaction immediately. Leaving activeTransaction open
+        // would swallow the NEXT unrelated commit (e.g. typing in a
+        // field right after a paste) into this paste's history entry.
+        state.endTransaction();
         select(newIds);
         return;
       }
@@ -521,6 +526,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         const state = useBuilderStore.getState();
         state.beginTransaction();
         updateZones(selectedIds, (z) => ({ x: z.x + dx, y: z.y + dy }));
+        state.endTransaction();
         return;
       }
     };

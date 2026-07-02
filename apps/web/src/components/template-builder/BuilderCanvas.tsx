@@ -302,6 +302,11 @@ export function BuilderCanvas() {
   const updateZone = useBuilderStore((s) => s.updateZone);
   const updateZones = useBuilderStore((s) => s.updateZones);
   const beginTransaction = useBuilderStore((s) => s.beginTransaction);
+  // A2 — close the drag's transaction on pointerup so a subsequent,
+  // unrelated commit=true call (e.g. typing in a Properties field right
+  // after a drag) doesn't get silently coalesced into the drag's already-
+  // closed history entry.
+  const endTransaction = useBuilderStore((s) => s.endTransaction);
   // 2026-05-04 — per-template brand kit. Read here so the canvas can
   // inject `--brand-*` CSS vars that override the global tenant theme
   // FOR THIS TEMPLATE ONLY. Widgets read these vars and re-paint
@@ -420,6 +425,7 @@ export function BuilderCanvas() {
     const onUp = () => {
       setDragState(null);
       setActiveSnapLines([]);
+      endTransaction();
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -427,7 +433,7 @@ export function BuilderCanvas() {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
     };
-  }, [dragState, zones, gridSize, snapEnabled, showGrid, showGuides, updateZone, updateZones]);
+  }, [dragState, zones, gridSize, snapEnabled, showGrid, showGuides, updateZone, updateZones, endTransaction]);
 
   // Marquee selection
   const onCanvasPointerDown = useCallback((e: React.PointerEvent) => {
