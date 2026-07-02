@@ -27,7 +27,7 @@
  */
 
 import { Injectable, Logger, BadRequestException, ServiceUnavailableException, HttpException, HttpStatus } from '@nestjs/common';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
@@ -41,7 +41,7 @@ import {
   CONCIERGE_MAX_TOKENS,
 } from './signage-concierge';
 import { AiAltTextService } from './ai-alt-text.service';
-import { StockImageService } from './stock-image.service';
+import { StockImageService, PEXELS_IMAGE_HOST, type StockImageResult } from './stock-image.service';
 // 2026-07-01 (launch-sprint #268 item 5, AUTO-GROUND) — read-only access to
 // the tenant's REAL, live-priced menu so a menu-ish designer brief gets the
 // venue's actual items instead of the model inventing plausible-sounding
@@ -131,7 +131,7 @@ import {
 // prompts into an SSRF primitive. validatePublicUrl does the same
 // host/IP-range check the branding scraper uses (loopback, link-
 // local, RFC1918, ULA, IPv6 ::1, 0.0.0.0, multicast, etc.).
-import { validatePublicUrl } from '../branding/safe-fetch';
+import { validatePublicUrl, safeFetch } from '../branding/safe-fetch';
 // The single shared VenueOS Capability Map (venueos-capability-map.ts) — what
 // each widget DOES + the data that makes it functional. Interpolated into the
 // template-generation system prompts so the model builds FUNCTIONAL boards, not
@@ -3564,6 +3564,71 @@ export class AiService {
     }
   }
 
+  // ───────────────────────────────────────────────────────────────────────
+  // Wave B / editor-crush B1 (2026-07-02) — in-editor Pexels stock-photo
+  // search. The IMAGERY wave above already gives AI-generated boards a free
+  // stock photo automatically; this exposes the SAME search + rehost path to
+  // an OPERATOR typing a query in the builder's asset/background picker, so
+  // hand-built templates get the same photo library. Thin over
+  // StockImageService (search) + the existing rehost-into-Supabase pattern
+  // (templates.controller.ts rehostStockUrl) — zero new dependency, zero new
+  // provider, invisible when PEXELS_API_KEY is unset.
+  // ───────────────────────────────────────────────────────────────────────
+
+  /** True when PEXELS_API_KEY is configured — lets the FE hide the "Stock
+   *  photos" tab entirely rather than show an empty-forever search box. */
+  isStockConfigured(): boolean {
+    return !!this.stockImages?.isConfigured?.();
+  }
+
+  /**
+   * Search Pexels for up to `limit` results the operator can browse in a
+   * grid. Returns `[]` when PEXELS_API_KEY is unset / query is empty / any
+   * error — NEVER throws (StockImageService.searchMany swallows everything).
+   */
+  async searchStockPhotos(opts: {
+    query: string;
+    orientation?: 'landscape' | 'portrait';
+    limit?: number;
+  }): Promise<StockImageResult[]> {
+    if (!this.stockImages?.isConfigured?.()) return [];
+    return this.stockImages.searchMany(opts.query, {
+      orientation: opts.orientation,
+      limit: opts.limit,
+    });
+  }
+
+  /**
+   * Re-host ONE operator-picked Pexels photo into our own Supabase bucket so
+   * it becomes a normal, durable, offline-cacheable asset URL — mirrors
+   * templates.controller.ts's rehostStockUrl (create-from-candidate path)
+   * exactly, just reachable from the picker instead of only the AI keep flow.
+   * SSRF-safe: ONLY the trusted Pexels image host is ever fetched
+   * (isRehostablePexelsUrl), and safeFetch adds the full SSRF guard on top
+   * (DNS re-resolve, private-IP rejection, byte cap, timeout).
+   *
+   * Returns the new Supabase URL, or `undefined` on ANY failure (caller
+   * falls back to the raw Pexels URL — the photo still renders, just isn't
+   * re-hosted; same best-effort contract as the AI-keep path).
+   */
+  async rehostStockPhoto(tenantId: string, sourceUrl: string): Promise<string | undefined> {
+    if (!isRehostablePexelsUrl(sourceUrl)) return undefined;
+    try {
+      const r = await safeFetch(sourceUrl, { maxBytes: 8 * 1024 * 1024, timeoutMs: 8000 });
+      if (r.status < 200 || r.status >= 300) return undefined;
+      const ct = (r.contentType || '').toLowerCase();
+      if (!ct.startsWith('image/')) return undefined; // never store a challenge/HTML page
+      if (!r.body || !r.body.length) return undefined;
+      const ext = ct.includes('png') ? 'png' : ct.includes('webp') ? 'webp' : ct.includes('gif') ? 'gif' : 'jpg';
+      const hash = createHash('sha256').update(r.body).digest('hex').slice(0, 16);
+      const path = `ai-stock/${tenantId}/${hash}.${ext}`;
+      return await this.storage.upload(path, r.body, r.contentType || 'image/jpeg');
+    } catch (e: any) {
+      this.logger.warn(`Stock-photo rehost skipped for ${tenantId}: ${e?.message || e}`);
+      return undefined; // best-effort — caller keeps the Pexels URL
+    }
+  }
+
   /**
    * Wave 3 — generate ONE landscape background photo for a signage board and
    * return its asset URL, or `undefined` on ANY failure. NEVER throws.
@@ -4558,6 +4623,27 @@ function boardAlreadyHasPhoto(
     if (typeof url === 'string' && url.trim()) return true;
   }
   return false;
+}
+
+/**
+ * Wave B / editor-crush B1 (2026-07-02) — TRUE only for an external https URL
+ * on the trusted Pexels image CDN host. This is the SSRF allowlist gate for
+ * `rehostStockPhoto`: we only ever fetch + mirror a URL that was itself
+ * resolved from a Pexels search. Mirrors templates.controller.ts's
+ * isRehostableStockUrl exactly (kept as a local copy — AiModule must not
+ * import from TemplatesModule, which already imports FROM ai/, so a reverse
+ * import would be circular). Exact host match, no suffix trickery.
+ */
+function isRehostablePexelsUrl(url: string): boolean {
+  if (typeof url !== 'string') return false;
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== 'https:') return false;
+  return u.hostname.toLowerCase() === PEXELS_IMAGE_HOST;
 }
 
 function parseSceneSpec(raw: any, fallback?: { archetype?: string; theme?: string }): SceneSpec {

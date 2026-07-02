@@ -114,6 +114,50 @@ export class StockImageService {
       return null;
     }
   }
+
+  /**
+   * Search Pexels for UP TO `limit` results — the in-editor "Stock photos"
+   * tab (Wave B / editor-crush B1) needs a grid, not just the single best
+   * pick `search()` returns. Same graceful-degradation contract: no key /
+   * empty query / no results / any error → `[]`, NEVER throws.
+   */
+  async searchMany(
+    query: string,
+    opts?: StockSearchOptions & { limit?: number },
+  ): Promise<StockImageResult[]> {
+    const key = (process.env.PEXELS_API_KEY || '').trim();
+    if (!key) return [];
+
+    const q = (query || '').trim();
+    if (!q) return [];
+
+    const orientation = opts?.orientation === 'portrait' ? 'portrait' : 'landscape';
+    const limit = Math.max(1, Math.min(24, opts?.limit ?? 12));
+    const params = new URLSearchParams({
+      query: q.slice(0, 200),
+      per_page: String(limit),
+      page: '1',
+      orientation,
+      size: 'large',
+    });
+
+    try {
+      const res = await fetch(`${PEXELS_SEARCH_URL}?${params.toString()}`, {
+        method: 'GET',
+        headers: { Authorization: key, Accept: 'application/json' },
+        signal: AbortSignal.timeout(STOCK_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        this.logger.warn(`Pexels search HTTP ${res.status} — falling back to gradient.`);
+        return [];
+      }
+      const json: any = await res.json();
+      return pickPhotos(json, orientation);
+    } catch (e: any) {
+      this.logger.warn(`Pexels search failed: ${e?.name || e?.message || 'error'}`);
+      return [];
+    }
+  }
 }
 
 /**
@@ -131,7 +175,33 @@ export function pickBestPhoto(
 ): StockImageResult | null {
   const photos = json && Array.isArray(json.photos) ? json.photos : null;
   if (!photos || !photos.length) return null;
-  const photo = photos[0];
+  return extractPhoto(photos[0], orientation);
+}
+
+/**
+ * Extract EVERY usable photo from a Pexels search payload (Wave B in-editor
+ * grid — B1). Same defensive shape-checking as `pickBestPhoto`; entries with
+ * no usable src URL are silently dropped rather than aborting the whole list.
+ */
+export function pickPhotos(
+  json: any,
+  orientation: 'landscape' | 'portrait',
+): StockImageResult[] {
+  const photos = json && Array.isArray(json.photos) ? json.photos : null;
+  if (!photos || !photos.length) return [];
+  const out: StockImageResult[] = [];
+  for (const p of photos) {
+    const r = extractPhoto(p, orientation);
+    if (r) out.push(r);
+  }
+  return out;
+}
+
+/** Shared single-photo extractor used by both `pickBestPhoto` and `pickPhotos`. */
+function extractPhoto(
+  photo: any,
+  orientation: 'landscape' | 'portrait',
+): StockImageResult | null {
   const src = photo && typeof photo.src === 'object' ? photo.src : null;
   if (!src) return null;
 

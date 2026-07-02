@@ -13,7 +13,7 @@
  *   5. pickBestPhoto picks the best src key + the orientation crop.
  */
 
-import { StockImageService, pickBestPhoto } from './stock-image.service';
+import { StockImageService, pickBestPhoto, pickPhotos } from './stock-image.service';
 
 const PHOTO = {
   photographer: 'Jane Doe',
@@ -110,6 +110,95 @@ describe('StockImageService', () => {
     process.env.PEXELS_API_KEY = 'test-key';
     global.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => { throw new Error('bad json'); } } as any)) as any;
     await expect(svc.search('anything')).resolves.toBeNull();
+  });
+});
+
+describe('StockImageService.searchMany (Wave B / editor-crush B1 — in-editor grid)', () => {
+  const ORIG_KEY = process.env.PEXELS_API_KEY;
+  const ORIG_FETCH = global.fetch;
+  let svc: StockImageService;
+
+  beforeEach(() => {
+    svc = new StockImageService();
+  });
+  afterEach(() => {
+    if (ORIG_KEY === undefined) delete process.env.PEXELS_API_KEY;
+    else process.env.PEXELS_API_KEY = ORIG_KEY;
+    global.fetch = ORIG_FETCH;
+    jest.restoreAllMocks();
+  });
+
+  it('returns [] and NEVER calls fetch when no key is set', async () => {
+    delete process.env.PEXELS_API_KEY;
+    const fetchSpy = jest.fn();
+    global.fetch = fetchSpy as any;
+    const res = await svc.searchMany('craft beer pour bar');
+    expect(res).toEqual([]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('returns [] for an empty query (no fetch)', async () => {
+    process.env.PEXELS_API_KEY = 'test-key';
+    const fetchSpy = jest.fn();
+    global.fetch = fetchSpy as any;
+    expect(await svc.searchMany('   ')).toEqual([]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('returns every usable photo in the payload (a grid, not just #1)', async () => {
+    process.env.PEXELS_API_KEY = 'test-key';
+    const second = { ...PHOTO, photographer: 'John Roe', src: { ...PHOTO.src, large2x: 'https://images.pexels.com/photos/456/large2x.jpg' } };
+    global.fetch = mockFetchOk({ photos: [PHOTO, second] }) as any;
+    const res = await svc.searchMany('campus quad students');
+    expect(res).toHaveLength(2);
+    expect(res[0].url).toBe(PHOTO.src.large2x);
+    expect(res[1].url).toBe(second.src.large2x);
+    expect(res[1].photographer).toBe('John Roe');
+  });
+
+  it('clamps limit into [1,24] and passes it as per_page', async () => {
+    process.env.PEXELS_API_KEY = 'test-key';
+    const fetchSpy = mockFetchOk({ photos: [PHOTO] });
+    global.fetch = fetchSpy as any;
+    await svc.searchMany('sunset over stadium', { limit: 999 });
+    const [url] = fetchSpy.mock.calls[0];
+    expect(String(url)).toContain('per_page=24');
+  });
+
+  it('passes the key in the Authorization HEADER, never the URL', async () => {
+    process.env.PEXELS_API_KEY = 'secret-key-xyz';
+    const fetchSpy = mockFetchOk({ photos: [PHOTO] });
+    global.fetch = fetchSpy as any;
+    await svc.searchMany('campus quad students');
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(String(url)).not.toContain('secret-key-xyz');
+    expect((init as any).headers.Authorization).toBe('secret-key-xyz');
+  });
+
+  it('returns [] on a non-2xx response — never throws', async () => {
+    process.env.PEXELS_API_KEY = 'bad-key';
+    global.fetch = jest.fn(async () => ({ ok: false, status: 429, json: async () => ({}) } as any)) as any;
+    await expect(svc.searchMany('anything')).resolves.toEqual([]);
+  });
+
+  it('returns [] on a network error — never throws', async () => {
+    process.env.PEXELS_API_KEY = 'test-key';
+    global.fetch = jest.fn(async () => { throw new Error('ECONNRESET'); }) as any;
+    await expect(svc.searchMany('anything')).resolves.toEqual([]);
+  });
+});
+
+describe('pickPhotos', () => {
+  it('returns every extractable photo, dropping entries with no usable src', () => {
+    const bad = { photographer: 'Nobody', src: {} };
+    const res = pickPhotos({ photos: [PHOTO, bad] }, 'landscape');
+    expect(res).toHaveLength(1);
+    expect(res[0].url).toBe(PHOTO.src.large2x);
+  });
+  it('returns [] on an empty / malformed payload', () => {
+    expect(pickPhotos({}, 'landscape')).toEqual([]);
+    expect(pickPhotos({ photos: [] }, 'landscape')).toEqual([]);
+    expect(pickPhotos(null, 'landscape')).toEqual([]);
   });
 });
 

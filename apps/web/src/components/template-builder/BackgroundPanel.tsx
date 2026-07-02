@@ -9,6 +9,9 @@ import { useUIStore } from '@/store/ui-store';
 import { API_URL } from '@/lib/api-url';
 import { ColorPickerBody } from '@/components/ui/color-picker';
 import { TemplateBackdropPicker } from './PropertiesPanel';
+// Wave B / editor-crush B6c (2026-07-02) — shared "search stock photos" tab,
+// also mounted in AssetLibraryModal's image picker (PropertiesPanel.tsx).
+import { StockPhotoSearch } from '@/components/assets/StockPhotoSearch';
 
 /**
  * Background tab — top-level template-builder panel for setting the
@@ -423,6 +426,24 @@ export function BackgroundPanel() {
             );
           })}
         </div>
+      </section>
+
+      {/* STOCK PHOTOS — Wave B / editor-crush B6c (2026-07-02). A hand-built
+          template's backdrop previously had no path to a real photo without
+          leaving the app, even though AI-generated boards get one free by
+          default (StockImageService / the IMAGERY wave). Renders nothing
+          when PEXELS_API_KEY is unset (StockPhotoSearch's own gate). */}
+      <section className="border-b border-slate-200/50 p-4 space-y-2">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+          Photos
+        </div>
+        <div className="text-[11px] text-slate-500">
+          Search free stock photos and set one as your background
+        </div>
+        <StockPhotoSearch
+          orientation={(meta.screenHeight || 0) > (meta.screenWidth || 0) ? 'portrait' : 'landscape'}
+          onPick={(url) => applyImage(url)}
+        />
       </section>
 
       {/* CUSTOM IMAGE UPLOAD */}

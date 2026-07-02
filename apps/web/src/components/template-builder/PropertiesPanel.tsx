@@ -33,6 +33,13 @@ import { THEMED_WIDGET_FIELDS } from './themed-widget-defaults';
 import { AiGenerateButton } from '@/components/ai/AiGenerateButton';
 import { InlineRewriteChips } from '@/components/ai/InlineRewriteChips';
 import { ChatToEditBox } from '@/components/ai/ChatToEditBox';
+// Wave B / editor-crush B1/B6b (2026-07-02) — "Stock photos" tab + "Generate
+// with AI" inside the asset picker (both were previously stranded: the
+// Pexels service had zero operator-facing picker, and AI image-gen only
+// mounted on /assets — see docs/research/2026-07-01-launch-sprint/
+// 05-EDITOR-CRUSH-LENSES.md elements-assets P0/P2).
+import { StockPhotoSearch } from '@/components/assets/StockPhotoSearch';
+import { AiImageGenerateButton } from '@/components/ai/AiImageGenerateButton';
 // 2026-05-03 — Time formatting helpers. The BellScheduleEditor uses
 // the native `<input type="time">` picker (so the operator gets the
 // browser's familiar AM/PM toggle and HH:MM typing). We read existing
@@ -8733,6 +8740,9 @@ export function AssetLibraryModal({
   const { data: assets, isLoading } = useAssets();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // Wave B / editor-crush B1 (2026-07-02) — "Your library" vs "Stock photos"
+  // tab. Image-only; video kind never shows the tab bar so stays 'library'.
+  const [libraryTab, setLibraryTab] = useState<'library' | 'stock'>('library');
   // 2026-05-09 — operator: "for the carousel, i should be able to select
   // multiple videos or images at once". In multi mode tiles toggle into
   // a Set of picked URLs; the footer button confirms the batch.
@@ -8921,6 +8931,27 @@ export function AssetLibraryModal({
           </button>
         </div>
 
+        {/* Wave B / editor-crush B1 (2026-07-02) — "Stock photos" tab next to
+            "Your library". Image-only (Pexels has no video search); video
+            pickers never render the tab bar so nothing changes for them.
+            AiImageGenerateButton (B6b) rides the same tab bar — mounted only
+            when the tenant has an image-capable AI provider configured. */}
+        {kind === 'image' && (
+          <div className="flex gap-1 px-4 pt-3 border-b border-slate-100" role="tablist" aria-label="Image source">
+            <TabButton label="Your library" active={libraryTab === 'library'} onClick={() => setLibraryTab('library')} />
+            <TabButton label="Stock photos" active={libraryTab === 'stock'} onClick={() => setLibraryTab('stock')} />
+          </div>
+        )}
+
+        {libraryTab === 'stock' && kind === 'image' ? (
+          <div className="flex-1 overflow-y-auto p-3">
+            <StockPhotoSearch onPick={(url) => { onPick(url); }} />
+            <div className="mt-3 pt-3 border-t border-slate-100">
+              <AiImageGenerateButton onGenerated={(asset) => onPick(asset.fileUrl)} />
+            </div>
+          </div>
+        ) : (
+        <>
         {/* Upload section — operator's primary path now. Hidden file
             input + a big visible button + drag-drop helper text. */}
         <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50">
@@ -9036,8 +9067,28 @@ export function AssetLibraryModal({
             </button>
           </div>
         )}
+        </>
+        )}
       </div>
     </div>
+  );
+}
+
+function TabButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`px-3 py-1.5 text-[11px] font-bold rounded-t-lg border-b-2 transition-colors ${
+        active
+          ? 'text-indigo-600 border-indigo-600 bg-indigo-50/50'
+          : 'text-slate-500 border-transparent hover:text-slate-700 hover:bg-slate-50'
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 

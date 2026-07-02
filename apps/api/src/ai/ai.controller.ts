@@ -9,7 +9,8 @@
  * RESTRICTED_VIEWER so read-only roles can't burn AI budget.
  */
 
-import { Body, Controller, Post, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Request, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { z } from 'zod';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
@@ -86,6 +87,16 @@ const AiImageSchema = z.object({
   size: z.enum(['1024x1024', '1792x1024', '1024x1792']).optional(),
 }).passthrough();
 type AiImageBody = z.infer<typeof AiImageSchema>;
+
+// Wave B / editor-crush B1 (2026-07-02) — rehost a Pexels URL the operator
+// picked in the "Stock photos" tab into our own Supabase bucket. The
+// service re-validates the URL is actually on the trusted Pexels host
+// (isRehostablePexelsUrl) before ever fetching it — this schema just bounds
+// the shape at the API edge.
+const AiStockRehostSchema = z.object({
+  url: z.string().min(1).max(2000),
+}).passthrough();
+type AiStockRehostBody = z.infer<typeof AiStockRehostSchema>;
 
 @UseGuards(JwtAuthGuard, RbacGuard)
 @Controller('api/v1/ai')
@@ -175,5 +186,58 @@ export class AiController {
       userId: req.user.id,
       role: req.user.role,
     });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Wave B / editor-crush B1 (2026-07-02) — in-editor Pexels stock-photo
+  // search. Thin authenticated proxy over StockImageService: the Pexels key
+  // stays server-side (Authorization header, never logged — see
+  // StockImageService), and the "Stock photos" tab in the asset/background
+  // pickers calls this instead of a free-text URL. Same role gate as
+  // generate/image (ADMIN+ + CONTRIBUTOR, below RESTRICTED_VIEWER); GET
+  // because it's read-only (no cost — Pexels' free tier, no AI spend), but
+  // still throttled since it fans out to a metered third-party API.
+  // ─────────────────────────────────────────────────────────────────────
+  @Get('stock-search')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  async stockSearch(
+    @Query('q') q?: string,
+    @Query('orientation') orientation?: string,
+  ) {
+    const results = await this.ai.searchStockPhotos({
+      query: (q ?? '').slice(0, 200),
+      orientation: orientation === 'portrait' ? 'portrait' : 'landscape',
+      limit: 12,
+    });
+    // `configured` lets the FE distinguish "no key set — hide the tab" from
+    // "key set, this query just had no hits" without a second round-trip.
+    return { results, configured: this.ai.isStockConfigured() };
+  }
+
+  // Re-host an operator-picked Pexels photo into our own Supabase bucket
+  // (same durability rationale as the AI-keep flow's attachKeptBoardPhoto).
+  // Best-effort: on any failure the service returns { url: undefined } and
+  // the FE falls back to using the raw Pexels URL directly — the photo
+  // still renders, it just isn't mirrored.
+  @Post('stock-rehost')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  async stockRehost(
+    @Request() req: any,
+    @Body(new ZodValidationPipe(AiStockRehostSchema)) body: AiStockRehostBody,
+  ) {
+    const url = await this.ai.rehostStockPhoto(req.user.tenantId, body.url);
+    return { url };
   }
 }

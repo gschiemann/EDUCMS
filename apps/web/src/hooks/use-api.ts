@@ -866,6 +866,46 @@ export function useGenerateImage() {
   });
 }
 
+/**
+ * Wave B / editor-crush B1 (2026-07-02) — in-editor Pexels stock-photo
+ * search. GET /ai/stock-search (thin proxy over StockImageService). A
+ * mutation (not a query) because the picker debounces the search input
+ * itself and calls `.mutate()` on demand — a query key on free-text search
+ * input would thrash the cache on every keystroke for no benefit.
+ */
+export interface StockSearchResult {
+  url: string;
+  thumbUrl?: string;
+  photographer?: string;
+  sourceUrl?: string;
+}
+export function useStockSearch() {
+  return useMutation({
+    mutationFn: (params: { query: string; orientation?: 'landscape' | 'portrait' }) => {
+      const qs = new URLSearchParams({ q: params.query });
+      if (params.orientation) qs.set('orientation', params.orientation);
+      return apiFetch<{ results: StockSearchResult[]; configured: boolean }>(
+        `/ai/stock-search?${qs.toString()}`,
+      );
+    },
+  });
+}
+
+/**
+ * Re-host an operator-picked Pexels photo into our own Supabase bucket
+ * (durable + offline-cacheable, matches the AI-keep flow). Best-effort —
+ * the caller falls back to the raw Pexels URL when `url` comes back
+ * undefined (rehost failed but the photo itself still renders fine).
+ */
+export function useStockRehost() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (params: { url: string }) =>
+      apiFetch<{ url?: string }>('/ai/stock-rehost', { method: 'POST', body: JSON.stringify(params) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['assets'] }),
+  });
+}
+
 export function useDeleteAsset() {
   const qc = useQueryClient();
   return useMutation({
