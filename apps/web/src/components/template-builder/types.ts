@@ -156,5 +156,8 @@ export interface DragState {
 export interface SnapLine {
   orientation: 'v' | 'h';
   position: number;
-  kind: 'grid' | 'edge' | 'center' | 'canvas';
+  // 'equal-gap' — A7: the dragged element's spacing to a neighbor now
+  // matches the spacing already established between two OTHER aligned
+  // zones (Canva's pink "equal spacing" badge).
+  kind: 'grid' | 'edge' | 'center' | 'canvas' | 'equal-gap';
 }

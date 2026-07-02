@@ -638,22 +638,32 @@ export function BuilderCanvas() {
             // Human-readable label for the snap line â€” operators
             // shouldn't have to guess what the pink line means. Center
             // canvas snap â†’ "Center". Edge canvas â†’ "Edge". Element
-            // snaps â†’ the position percent rounded to 1 decimal.
-            // (Canva shows pixel offsets between elements; we'd need
-            // both end positions to compute that, so percent-of-canvas
-            // is a clean v1 â€” matches the way every editor field is
-            // already in percent units.)
+            // snaps â†’ real pixels (A7 â€” converted from the stored
+            // percent-of-canvas using the template's own screenWidth/
+            // screenHeight, exactly what Canva shows instead of a
+            // meaningless raw percentage).
             const isCenterCanvas = line.kind === 'canvas' && Math.abs(line.position - 50) < 0.05;
             const isEdgeCanvas   = line.kind === 'canvas' && (line.position < 0.05 || line.position > 99.95);
+            const isThirds       = line.kind === 'canvas' && !isCenterCanvas && !isEdgeCanvas;
             const isCenterElem   = line.kind === 'center';
+            const isGrid         = line.kind === 'grid';
+            const isEqualGap     = line.kind === 'equal-gap';
+            const dimPx = line.orientation === 'v' ? meta.screenWidth : meta.screenHeight;
+            const px = Math.round((line.position / 100) * (dimPx || 0));
             const label = isCenterCanvas
               ? 'Center'
               : isEdgeCanvas
                 ? 'Edge'
-                : isCenterElem
-                  ? 'Center match'
-                  : `${line.position.toFixed(1)}%`;
-            const lineColor = line.kind === 'canvas' ? '#a855f7' : '#ec4899';
+                : isThirds
+                  ? 'Thirds'
+                  : isCenterElem
+                    ? 'Center match'
+                    : isEqualGap
+                      ? 'Equal spacing'
+                      : isGrid
+                        ? 'Grid'
+                        : `${px}px`;
+            const lineColor = isEqualGap ? '#ec4899' : line.kind === 'canvas' ? '#a855f7' : line.kind === 'grid' ? '#0ea5e9' : '#ec4899';
             return (
               <div
                 key={i}
