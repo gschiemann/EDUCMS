@@ -85,7 +85,17 @@ export type WidgetType =
   // 2026-05-25 music-overhaul — Spotify-for-Business / Apple Music
   // for Business / SomaFM / NPR / NTS / generic stream. One widget,
   // many source providers, server-resolved station list.
-  | 'MUSIC_PLAYER';
+  | 'MUSIC_PLAYER'
+  // Wave B / editor-crush B2 (2026-07-02) — static design-element shapes
+  // (rect/pill/circle/triangle/star/line/arrow). ONE widget type; the
+  // specific primitive is `config.shape` (see ShapeWidget.tsx SHAPE_KINDS).
+  // Mirrors the DECORATION / TOUCH_POINT pattern: many picker tiles, one
+  // canonical widgetType, variant-selected primitive.
+  | 'SHAPE'
+  // Wave B / editor-crush B5 (2026-07-02) — searchable icon library backed
+  // by lucide-react (already a dependency). `config.icon` is the lucide
+  // icon name; color/size/strokeWidth are editable.
+  | 'ICON';
 
 export interface ThemeWidgetProps {
   config: any;

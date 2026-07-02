@@ -237,6 +237,9 @@ import { StorybookCafeteriaPortraitWidget } from './StorybookCafeteriaPortraitWi
 import { StorybookHallwayPortraitWidget } from './StorybookHallwayPortraitWidget';
 // Sprint 11h pre-launch: drag-drop animations as a generic decoration widget.
 import { DecorationWidget } from './DecorationWidget';
+// Wave B / editor-crush B2/B5 (2026-07-02) — static SHAPE + ICON elements.
+import { ShapeWidget } from './ShapeWidget';
+import { IconWidget } from './IconWidget';
 // Holiday lobby pack — Halloween, Thanksgiving, Christmas, Valentine's,
 // St. Patrick's, Easter × ES/MS/HS. Each renders a designed full-canvas
 // scene from /public/holiday-templates/*.html via iframe (CSS isolation).
