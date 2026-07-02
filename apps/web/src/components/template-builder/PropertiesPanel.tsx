@@ -2017,6 +2017,34 @@ function MultiZoneChatEdit() {
   );
 }
 
+/**
+ * A8 — distribute the selection evenly along one axis: the outermost
+ * zones stay anchored and the gaps between neighbors equalize (the
+ * classic Canva "Space evenly" / tidy-up). Pure + exported for the A8
+ * regression spec. Returns a zoneId → new-position map for the axis.
+ */
+export function distributeEvenly(
+  selected: Array<{ id: string; x: number; y: number; width: number; height: number }>,
+  axis: 'h' | 'v',
+): Record<string, number> {
+  const result: Record<string, number> = {};
+  if (selected.length < 3) return result;
+  const pos = (z: { x: number; y: number }) => (axis === 'h' ? z.x : z.y);
+  const size = (z: { width: number; height: number }) => (axis === 'h' ? z.width : z.height);
+  const sorted = [...selected].sort((a, b) => pos(a) - pos(b));
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  const span = (pos(last) + size(last)) - pos(first);
+  const sumSizes = sorted.reduce((m, z) => m + size(z), 0);
+  const gap = (span - sumSizes) / (sorted.length - 1);
+  let cursor = pos(first);
+  for (const z of sorted) {
+    result[z.id] = cursor;
+    cursor += size(z) + gap;
+  }
+  return result;
+}
+
 function MultiAlignButtons() {
   const zones = useBuilderStore((s) => s.zones);
   const selectedIds = useBuilderStore((s) => s.selectedIds);
@@ -2031,6 +2059,15 @@ function MultiAlignButtons() {
 
   const btnClass = "flex-1 px-2 py-2 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 hover:text-indigo-600 text-[10px] font-bold text-slate-600 transition-all shadow-sm active:scale-95";
 
+  // A8 — evenly spacing sponsor logos / menu rows / stat tiles needs 3+
+  // zones (with 2 there's nothing to distribute — align handles that).
+  const canDistribute = selected.length >= 3;
+  const runDistribute = (axis: 'h' | 'v') => {
+    const map = distributeEvenly(selected, axis);
+    const key = axis === 'h' ? 'x' : 'y';
+    updateZones(selectedIds, (z) => (map[z.id] !== undefined ? { [key]: map[z.id] } : {}), true);
+  };
+
   return (
     <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-100 shadow-sm space-y-2">
       <div className="flex gap-2">
@@ -2042,6 +2079,26 @@ function MultiAlignButtons() {
         <button type="button" onClick={() => updateZones(selectedIds, () => ({ y: topMost }), true)} className={btnClass}>Top</button>
         <button type="button" onClick={() => updateZones(selectedIds, (z) => ({ y: (topMost + bottomMost) / 2 - z.height / 2 }), true)} className={btnClass}>Center Y</button>
         <button type="button" onClick={() => updateZones(selectedIds, (z) => ({ y: bottomMost - z.height }), true)} className={btnClass}>Bottom</button>
+      </div>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={!canDistribute}
+          title={canDistribute ? 'Equalize horizontal gaps between the selected zones' : 'Select 3 or more zones to distribute'}
+          onClick={() => runDistribute('h')}
+          className={`${btnClass} disabled:opacity-40 disabled:pointer-events-none`}
+        >
+          Distribute H
+        </button>
+        <button
+          type="button"
+          disabled={!canDistribute}
+          title={canDistribute ? 'Equalize vertical gaps between the selected zones' : 'Select 3 or more zones to distribute'}
+          onClick={() => runDistribute('v')}
+          className={`${btnClass} disabled:opacity-40 disabled:pointer-events-none`}
+        >
+          Distribute V
+        </button>
       </div>
     </div>
   );
