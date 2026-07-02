@@ -40,6 +40,40 @@ export function scaleZoneInBox(orig: Rect, origBox: Rect, newBox: Rect): Rect {
 }
 
 /**
+ * A4 — alt/option-drag duplicate. Duplicates every zone in `sourceIds`
+ * (via the store's existing duplicateZone), resets each copy back to its
+ * source's exact x/y (duplicateZone offsets +2/+2 for the Cmd-D case,
+ * but an alt-drag copy must start 1:1 under the cursor so the drag
+ * doesn't visibly jump), and selects the copies. The whole thing runs
+ * inside ONE beginTransaction so the gesture is a single undo step —
+ * the caller (onZonePointerDown) starts the move drag on the copies and
+ * pointerup's endTransaction() closes it. Exported so the gesture's
+ * store mutation is unit-testable without mounting the dnd-kit tree.
+ * Returns the new copies' ids in the same order as sourceIds (skipping
+ * any id that couldn't be duplicated).
+ */
+export function altDragDuplicate(sourceIds: string[]): string[] {
+  const store = useBuilderStore.getState();
+  const sources = sourceIds
+    .map((id) => store.zones.find((z) => z.id === id))
+    .filter((z): z is Zone => !!z && !z.locked);
+  if (sources.length === 0) return [];
+  store.beginTransaction();
+  const newIds: string[] = [];
+  const origPos: Record<string, { x: number; y: number }> = {};
+  for (const src of sources) {
+    const nid = useBuilderStore.getState().duplicateZone(src.id);
+    if (nid) {
+      newIds.push(nid);
+      origPos[nid] = { x: src.x, y: src.y };
+    }
+  }
+  useBuilderStore.getState().updateZones(newIds, (z) => origPos[z.id] ?? {});
+  useBuilderStore.getState().select(newIds);
+  return newIds;
+}
+
+/**
  * 2026-05-04 — Build a `<style>` block that scopes the per-template
  * brand kit's CSS custom properties (`--brand-primary`, fonts, etc.)
  * to the canvas root. Widgets that reference `var(--brand-*)` then
@@ -378,6 +412,34 @@ export function BuilderCanvas() {
     e.preventDefault();
     const additive = e.shiftKey || e.metaKey || e.ctrlKey;
     const alreadySelected = selectedIds.includes(zoneId);
+
+    // A4 — alt/option-drag peels off a COPY and drags it, leaving the
+    // original(s) in place — the fastest repetition gesture in every
+    // design tool (menu rows, sponsor logos, stat tiles). If the pressed
+    // zone is part of the current multi-selection, the whole selection
+    // duplicates and drags together; otherwise just the pressed zone.
+    // altDragDuplicate opens the transaction (single undo step for
+    // duplicate + drag combined); pointerup's endTransaction closes it.
+    if (e.altKey && !additive) {
+      const sourceIds = alreadySelected && selectedIds.length > 0 ? selectedIds : [zoneId];
+      const newIds = altDragDuplicate(sourceIds);
+      if (newIds.length > 0) {
+        const stateZones = useBuilderStore.getState().zones;
+        const origs: Record<string, Zone> = {};
+        for (const id of newIds) {
+          const z = stateZones.find((zz) => zz.id === id);
+          if (z) origs[id] = { ...z };
+        }
+        // The drag's primary zone is the COPY of the zone the operator
+        // actually pressed; fall back to the first copy.
+        const pressedIdx = sourceIds.indexOf(zoneId);
+        const primaryId = (pressedIdx >= 0 && newIds[pressedIdx]) || newIds[0];
+        setDragState({ mode: 'move', zoneId: primaryId, startX: e.clientX, startY: e.clientY, origs });
+        return;
+      }
+      // Nothing duplicable (all locked) — fall through to normal move.
+    }
+
     if (!alreadySelected && !additive) {
       select([zoneId]);
     } else if (additive) {

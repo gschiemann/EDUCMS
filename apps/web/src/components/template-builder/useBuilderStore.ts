@@ -533,10 +533,18 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   },
 
   duplicateZone: (id) => {
-    const original = get().zones.find(z => z.id === id);
+    const prev = get();
+    const original = prev.zones.find(z => z.id === id);
     if (!original) return null;
     const newId = crypto.randomUUID();
-    const past = [...get().past, snapshot(get())].slice(-HISTORY_LIMIT);
+    // A4 — respect an open transaction: alt-drag-duplicate wraps N
+    // duplicateZone calls (one per selected zone) in a single
+    // beginTransaction so the whole gesture is ONE undo step. Outside a
+    // transaction (Cmd-D, bottom-bar button, context menu) each call
+    // pushes its own snapshot exactly as before.
+    const past = prev.activeTransaction
+      ? prev.past
+      : [...prev.past, snapshot(prev)].slice(-HISTORY_LIMIT);
     const dup: Zone = clampZone({
       ...original,
       id: newId,
