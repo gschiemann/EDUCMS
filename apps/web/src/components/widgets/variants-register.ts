@@ -101,6 +101,70 @@ registerVariant({
   previewOnly: true,
 });
 
+// ════════════════════════════════════════════════════════════════════════
+// Wave B / editor-crush B2+B3+B5 (2026-07-02) — the ELEMENTS wave.
+// Canva's Elements tray is shapes + icons + decorations; before this block
+// VenueOS had NO static shapes, NO icon library, and the 8 finished
+// Decoration animations were dead-registered (listed only in constants.ts
+// WIDGET_GROUPS, which no rendered surface imports — the exact CLAUDE.md
+// rule-#9 WidgetPalette class). Registered EARLY (right after the basic
+// content tiles) so elements sit near the top of the "All widgets" stream.
+// All previewOnly: the tile render doubles as a live preview, the canvas
+// dispatches through WidgetRenderer's SHAPE/ICON/DECORATION cases.
+// ════════════════════════════════════════════════════════════════════════
+import { ShapeWidget, SHAPE_KINDS } from './ShapeWidget';
+import { IconWidget } from './IconWidget';
+import { DecorationWidget, DECORATION_VARIANTS } from './DecorationWidget';
+
+// B2 — static shapes (rect/pill/circle/triangle/star/line/arrow). ONE
+// canonical SHAPE type; the primitive is config.shape, which ShapeWidget
+// dispatches on (config.variant — the registry id handlePick writes — is
+// ignored by the renderer, so no id/variant collision is possible here).
+for (const s of SHAPE_KINDS) {
+  registerVariant({
+    id: `shape-${s.key}`,
+    widgetType: 'SHAPE',
+    name: s.label,
+    description: s.hint,
+    category: 'MODERN',
+    render: ShapeWidget as ComponentType<ThemeWidgetProps>,
+    previewOnly: true,
+    defaultConfig: { shape: s.key },
+  });
+}
+
+// B5 — lucide icon element. ONE tile; the operator picks any of ~1,500
+// icons via the searchable picker in Properties (IconPickerField).
+registerVariant({
+  id: 'icon-element',
+  widgetType: 'ICON',
+  name: 'Icon',
+  description: 'Crisp SVG icon in your brand color — search 1,500+ (star, trophy, pizza…) in Properties.',
+  category: 'MODERN',
+  render: IconWidget as ComponentType<ThemeWidgetProps>,
+  previewOnly: true,
+  defaultConfig: { icon: 'star' },
+});
+
+// B3 — resurrect the 8 finished Decoration animations (APPROVED
+// 2026-04-27, complete widget + Properties editor, dead palette entry).
+// Ids are `decoration-<key>`; DecorationWidget normalizes the prefixed
+// registry id back to its bare variant key (same pattern TouchPointWidget
+// established for `touch-*` ids), so handlePick writing variant:
+// 'decoration-confetti' still renders the confetti animation.
+for (const d of DECORATION_VARIANTS) {
+  registerVariant({
+    id: `decoration-${d.key}`,
+    widgetType: 'DECORATION',
+    name: d.label,
+    description: d.hint,
+    category: 'MODERN',
+    render: DecorationWidget as unknown as ComponentType<ThemeWidgetProps>,
+    previewOnly: true,
+    defaultConfig: { ...d.defaults },
+  });
+}
+
 // 2026-05-25 monetize-audit — the one ad-network we can integrate
 // without partnership sign-off. Drops a rotating sponsor banner that
 // reads from the operator's own asset library. Sponsor disclosure

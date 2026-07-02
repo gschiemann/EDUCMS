@@ -66,7 +66,15 @@ const DEFAULT_BALLOON_COLORS = ['#f87171', '#fbbf24', '#34d399', '#60a5fa', '#a7
 const DEFAULT_RIBBON_COLORS = ['#ef4444', '#f97316', '#fbbf24', '#22c55e', '#3b82f6', '#a855f7'];
 
 export function DecorationWidget({ config }: { config: DecorationConfig }) {
-  const variant: DecorationVariant = config.variant || 'confetti';
+  // Normalize the variant — VariantPicker registrations namespace the
+  // registry id as `decoration-${key}` (Wave B / editor-crush B3,
+  // 2026-07-02) and handlePick writes that id into config.variant; the
+  // legacy DECORATION_* palette path wrote the bare key. Either way this
+  // widget switches on the unprefixed form — same pattern TouchPointWidget
+  // established for `touch-*` ids.
+  let rawVariant = String(config.variant || 'confetti');
+  if (rawVariant.startsWith('decoration-')) rawVariant = rawVariant.slice('decoration-'.length);
+  const variant = rawVariant as DecorationVariant;
   const speed = Math.max(0.25, Math.min(4, config.speed ?? 1));
   const opacity = Math.max(0, Math.min(1, config.opacity ?? 1));
 

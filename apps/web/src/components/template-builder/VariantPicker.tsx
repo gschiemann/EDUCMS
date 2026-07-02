@@ -50,6 +50,12 @@ const WIDGET_TYPE_LABELS: Record<string, string> = {
   // config.variant. The picker chip says "Touch" so operators can
   // filter to just the interactive set.
   TOUCH_POINT:     'Touch',
+  // Wave B / editor-crush B2/B3/B5 (2026-07-02) — the Elements wave:
+  // static shapes, the lucide icon library, and the resurrected
+  // Decoration animations each get a friendly chip.
+  SHAPE:           'Shapes',
+  ICON:            'Icons',
+  DECORATION:      'Decorations',
   // v2 canonical types — without a friendly label the picker chip +
   // locked-filter badge show the raw SCREAMING_SNAKE widgetType.
   SCOREBOARD:      'Scoreboards',
