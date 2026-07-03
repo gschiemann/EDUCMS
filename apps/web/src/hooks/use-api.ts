@@ -3233,8 +3233,19 @@ export function useGameControl(gameId: string) {
   // exactly as before. onError rolls back to the pre-tap snapshot so a
   // failed PATCH never leaves a phantom optimistic score/clock on screen.
   const snapshotGame = () => qc.getQueryData<any>(gameKey);
-  const rollback = (ctx: { prev?: any } | undefined) => {
-    if (ctx?.prev !== undefined) qc.setQueryData(gameKey, ctx.prev);
+  // 2026-07-03 overnight-review P0 fix. onError must NOT restore ctx.prev —
+  // that snapshot was captured in THIS mutation's onMutate, BEFORE any other
+  // mutation ran. With no per-game serialization, two rapid taps (or two
+  // operators) can be in flight at once; if the FIRST-issued one fails after
+  // the SECOND already succeeded (writeBack wrote the server-confirmed score),
+  // restoring the first's ctx.prev clobbers the cache back to a value that
+  // predates the second — a LIVE score that visibly DECREASES after a good
+  // tap. Instead, drop the failed optimistic guess by refetching server truth;
+  // the 4s useGame() poll is the ultimate reconcile if the refetch itself
+  // fails (offline). ctx retained in the signature for call-site stability.
+  const rollback = (_ctx: { prev?: any } | undefined) => {
+    void _ctx;
+    qc.invalidateQueries({ queryKey: gameKey });
   };
 
   const score = useMutation({

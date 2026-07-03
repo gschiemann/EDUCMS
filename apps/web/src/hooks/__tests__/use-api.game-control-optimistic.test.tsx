@@ -115,26 +115,51 @@ describe('useGameControl — score optimistic update + rollback', () => {
     });
   });
 
-  it('rolls back to the pre-tap snapshot when the PATCH fails', async () => {
-    // A caller-controlled promise (rather than an already-rejecting one) so
-    // the test can observe the optimistic write BEFORE triggering the
-    // failure — an already-settled mockRejectedValue resolves its .catch
-    // microtask before waitFor's first poll tick, so the "optimistic value
-    // landed" assertion below would otherwise race the rollback and flake.
+  it('refetches server truth on a failed PATCH — never force-restores a stale pre-tap snapshot', async () => {
+    // 2026-07-03 overnight-review P0: the old onError restored ctx.prev (the
+    // pre-tap snapshot). With no per-game serialization that clobbered a
+    // CONCURRENTLY-confirmed later score back to a stale value — a live board
+    // score visibly DECREASING after a good tap (see the concurrent-race test
+    // below). On failure we now invalidate (refetch truth) instead.
     let reject!: (e: unknown) => void;
     apiFetch.mockReturnValue(new Promise((_res, rej) => { reject = rej; }));
     const { qc, getCtl } = mountGameControl(baseGame({ homeScore: 5 }));
+    const invalidateSpy = jest.spyOn(qc, 'invalidateQueries');
 
     getCtl().score.mutate({ team: 'home', delta: 1 });
-    // Optimistic value lands first…
     await waitFor(() => {
-      expect((qc.getQueryData(GAME_KEY) as any).homeScore).toBe(6);
+      expect((qc.getQueryData(GAME_KEY) as any).homeScore).toBe(6); // optimistic lands
     });
-    // …then rolls back once the mutation rejects.
     reject(new Error('network down'));
     await waitFor(() => {
-      expect((qc.getQueryData(GAME_KEY) as any).homeScore).toBe(5);
+      expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: GAME_KEY }));
     });
+    // The stale pre-tap value (5) is NOT force-written back over the cache.
+    expect((qc.getQueryData(GAME_KEY) as any).homeScore).not.toBe(5);
+  });
+
+  it('concurrent-race regression: a failed tap does NOT clobber a later confirmed score', async () => {
+    // The bug: tap-1 issued, then tap-2 issued + SUCCEEDS (writeBack writes the
+    // server-confirmed score), then tap-1 FAILS. The old rollback restored
+    // tap-1's ctx.prev (pre-both), reverting the board to a stale value.
+    let rejectA!: (e: unknown) => void;
+    // tap-1: a caller-controlled promise we reject LAST.
+    // tap-2: resolves immediately with the server's confirmed score (8).
+    apiFetch
+      .mockReturnValueOnce(new Promise((_res, rej) => { rejectA = rej; })) // score A
+      .mockResolvedValueOnce({ ...baseGame({ homeScore: 8 }) });            // score B
+    const { qc, getCtl } = mountGameControl(baseGame({ homeScore: 6 }));
+
+    getCtl().score.mutate({ team: 'home', delta: 1 }); // A (optimistic 7)
+    getCtl().score.mutate({ team: 'home', delta: 1 }); // B (optimistic 8, then writeBack 8)
+    await waitFor(() => {
+      expect((qc.getQueryData(GAME_KEY) as any).homeScore).toBe(8); // B's confirmed truth
+    });
+    rejectA(new Error('network down')); // A fails AFTER B confirmed
+    // With the fix, A's onError invalidates (no restore) → cache stays at 8.
+    // With the old bug it would have been force-restored to 6.
+    await new Promise((r) => setTimeout(r, 0));
+    expect((qc.getQueryData(GAME_KEY) as any).homeScore).toBe(8);
   });
 
   it('writeBack reconciles the cache with the server response on success', async () => {
@@ -225,12 +250,11 @@ describe('useGameControl — clock optimistic update + rollback', () => {
     });
   });
 
-  it('rolls back the clock on a failed PATCH', async () => {
-    // Caller-controlled promise — see the score rollback test's comment for
-    // why an already-rejecting mock would race the optimistic assertion.
+  it('refetches server truth on a failed PATCH — no stale clock restore', async () => {
     let reject!: (e: unknown) => void;
     apiFetch.mockReturnValue(new Promise((_res, rej) => { reject = rej; }));
     const { qc, getCtl } = mountGameControl(baseGame({ clockRunning: false }));
+    const invalidateSpy = jest.spyOn(qc, 'invalidateQueries');
 
     getCtl().clock.mutate({ action: 'start' });
     await waitFor(() => {
@@ -238,7 +262,7 @@ describe('useGameControl — clock optimistic update + rollback', () => {
     });
     reject(new Error('network down'));
     await waitFor(() => {
-      expect((qc.getQueryData(GAME_KEY) as any).clockRunning).toBe(false);
+      expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: GAME_KEY }));
     });
   });
 });
@@ -268,12 +292,11 @@ describe('useGameControl — segment optimistic update + rollback', () => {
     });
   });
 
-  it('rolls back the segment on a failed PATCH', async () => {
-    // Caller-controlled promise — see the score rollback test's comment for
-    // why an already-rejecting mock would race the optimistic assertion.
+  it('refetches server truth on a failed PATCH — no stale segment restore', async () => {
     let reject!: (e: unknown) => void;
     apiFetch.mockReturnValue(new Promise((_res, rej) => { reject = rej; }));
     const { qc, getCtl } = mountGameControl(baseGame({ segment: 2 }));
+    const invalidateSpy = jest.spyOn(qc, 'invalidateQueries');
 
     getCtl().segment.mutate({ delta: 1 });
     await waitFor(() => {
@@ -281,8 +304,9 @@ describe('useGameControl — segment optimistic update + rollback', () => {
     });
     reject(new Error('network down'));
     await waitFor(() => {
-      expect((qc.getQueryData(GAME_KEY) as any).segment).toBe(2);
+      expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: GAME_KEY }));
     });
+    expect((qc.getQueryData(GAME_KEY) as any).segment).not.toBe(2);
   });
 });
 
@@ -303,12 +327,11 @@ describe('useGameControl — stats optimistic update + rollback', () => {
     });
   });
 
-  it('rolls back the stats merge on a failed PATCH', async () => {
-    // Caller-controlled promise — see the score rollback test's comment for
-    // why an already-rejecting mock would race the optimistic assertion.
+  it('refetches server truth on a failed PATCH — no stale stats restore', async () => {
     let reject!: (e: unknown) => void;
     apiFetch.mockReturnValue(new Promise((_res, rej) => { reject = rej; }));
     const { qc, getCtl } = mountGameControl(baseGame({ stats: { homeFouls: 2 } }));
+    const invalidateSpy = jest.spyOn(qc, 'invalidateQueries');
 
     getCtl().stats.mutate({ stats: { homeFouls: 3 } });
     await waitFor(() => {
@@ -316,7 +339,8 @@ describe('useGameControl — stats optimistic update + rollback', () => {
     });
     reject(new Error('network down'));
     await waitFor(() => {
-      expect((qc.getQueryData(GAME_KEY) as any).stats.homeFouls).toBe(2);
+      expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: GAME_KEY }));
     });
+    expect((qc.getQueryData(GAME_KEY) as any).stats.homeFouls).not.toBe(2);
   });
 });
