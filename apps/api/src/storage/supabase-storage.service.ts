@@ -126,8 +126,24 @@ export class SupabaseStorageService implements OnModuleInit {
     });
 
     if (error && !error.message?.includes('already exists') && !error.message?.includes('duplicate')) {
-      this.logger.error(`Failed to create storage bucket: ${error.message}`);
-      return;
+      // 2026-07-03 CRITICAL: do NOT `return` here. That silently ABORTED
+      // onModuleInit before the floor-plan + brand-logo buckets below were
+      // ever created — both were missing from prod (confirmed via
+      // storage.buckets), which is why #223's SVG-logo adopt still fell back
+      // to a raster (its `branding-logos` bucket never existed). The `assets`
+      // bucket already exists and uploads work; the ONLY failure here is that
+      // its requested fileSizeLimit (500MB) EXCEEDS the Supabase project's
+      // global upload cap → Supabase returns "The object exceeded the maximum
+      // allowed size" (which is not "already exists"/"duplicate"). That is
+      // non-fatal — the bucket exists and is capped by the project global
+      // regardless. Log and CONTINUE so the independent floor-plan / brand-logo
+      // buckets still get set up.
+      this.logger.warn(
+        `assets bucket create returned "${error.message}" — continuing. ` +
+        `(The bucket already exists; its per-object cap is limited by the ` +
+        `Supabase project's GLOBAL upload size — raise it in Supabase → ` +
+        `Storage → Settings if uploads larger than the global are needed.)`,
+      );
     }
 
     // updateBucket on every boot — createBucket only sets these on first
