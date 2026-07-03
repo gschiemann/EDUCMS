@@ -23,15 +23,36 @@
  * Falls back to a sample state when no bridge is connected so the
  * builder canvas + gallery thumbnails are always alive.
  *
- * NO FAKE SCORE ON A LIVE BOARD (audit P1, 2026-06-13): the SAMPLE
- * (1-0, 7:42, Q3) is for the BUILDER / gallery thumbnail ONLY. On a LIVE
- * player surface the WidgetRenderer passes `live={true}`; until a real
- * CTS `edu:cts-game-state` event arrives the board renders NEUTRAL
- * (—:— clock, "—" scores) — never the fabricated sample a water-polo
- * crowd could mistake for the real game. The old code keyed only on
- * "did a bridge event arrive?", which conflated "live board, no feed
- * yet" with "builder" — that is the bug this closes. `cfg.preview`
- * still forces the sample for an explicit off-route preview.
+ * NO FAKE SCORE ON A LIVE BOARD (audit P1, 2026-06-13; hardened task #290,
+ * 2026-07-03): the SAMPLE (1-0, 7:42, Q3) is for the BUILDER / gallery
+ * thumbnail ONLY. On a real PLAYER surface, until a real CTS
+ * `edu:cts-game-state` event arrives, the board renders NEUTRAL (—:—
+ * clock, "—" scores) — never the fabricated sample a water-polo crowd
+ * could mistake for the real game. `cfg.preview` still forces the sample
+ * for an explicit off-route preview.
+ *
+ * ── task #290: the `live` prop is NOT the player signal ────────────────
+ * The original fix (2026-06-13) keyed `isLiveSurface` off the generic
+ * `live` prop `WidgetRenderer.WidgetPreviewInner` threads into every
+ * widget (video autoplay, carousel rotation, iframe loading, etc). That
+ * prop answers "should this render as if it's actually running" — which
+ * is ALSO true for `TemplatePreviewModal` (the builder's "what does this
+ * look like on a TV?" fullscreen preview: a BUILDER surface, explicitly
+ * `live={true}` so videos autoplay) and `AppConfigForm`'s config-preview
+ * pane. Neither of those is a real screen with real CTS hardware attached
+ * — so keying the water-polo NEUTRAL/SAMPLE choice off `live` painted the
+ * fabricated 1-0 SAMPLE score onto what LOOKED like a real preview.
+ *
+ * The correct signal is `RenderSurfaceContext` (GameStateContext.tsx) —
+ * set to 'player' ONLY by the two components that render a REAL screen
+ * (apps/web/src/app/player/page.tsx, apps/web/src/components/player/
+ * TouchOverlay.tsx). `isLiveSurface` now requires BOTH `renderSurface ===
+ * 'player'` AND the caller's `live` prop truthy (defends the same "is
+ * this actually running" signal on top) — so a template preview or an
+ * App Library config-preview (`renderSurface` unset → defaults to
+ * 'builder') keeps rendering the alive SAMPLE, exactly like every other
+ * sport widget's builder canvas, while a genuine player render with no
+ * bridge feed yet renders NEUTRAL.
  *
  * Chromium-safe — uses long-hand sides for position, per-child
  * margin instead of flex gap (Chromium 83 traps, see CLAUDE.md rule
@@ -42,6 +63,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { useRenderSurface } from './GameStateContext';
 
 export interface CtsScoreboardSnapshot {
   clock: string;
@@ -107,10 +129,15 @@ export function CtsScoreboard(
   const bgColor = c.bgColor || '#0f172a';
   const accentColor = c.accentColor || '#f59e0b';
 
-  // Live player surface = WidgetRenderer passed live === true. Builder /
-  // gallery thumbnail = live falsy. `cfg.preview` forces sample for an
+  // Real player surface (task #290) = RenderSurfaceContext says 'player'
+  // (set ONLY by player/page.tsx + TouchOverlay.tsx) AND the caller's
+  // `live` flag is truthy. A template preview / App Library config
+  // preview never sets renderSurface, so it stays on the builder default
+  // and keeps the alive SAMPLE even though it passes `live={true}` for
+  // video/carousel autoplay. `cfg.preview` still forces the sample for an
   // explicit off-route preview.
-  const isLiveSurface = live === true && !c.preview;
+  const renderSurface = useRenderSurface();
+  const isLiveSurface = renderSurface === 'player' && live === true && !c.preview;
 
   const [snapshot, setSnapshot] = useState<CtsScoreboardSnapshot | null>(
     c.preview ? SAMPLE : null,

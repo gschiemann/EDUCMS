@@ -48,6 +48,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRenderSurface } from './GameStateContext';
 
 // ─── Shared snapshot shape + sample state ──────────────────────────
 
@@ -108,13 +109,28 @@ const NEUTRAL_SNAPSHOT: CtsRibbonSnapshot = {
  * returns null and the caller should fall back to SAMPLE.
  *
  * `live` flag = a real bridge event has arrived. `neutral` flag (audit
- * P1, 2026-06-13) = this is a LIVE player surface (`isLiveSurface`, set
- * from the WidgetRenderer `live` prop) that has NO feed yet — the caller
- * must render dashes, not the fabricated SAMPLE. The OLD code keyed only
- * on `live` (event arrived?) and so showed SAMPLE on a live board with
- * no feed, indistinguishable from a real score save an 8px grey dot.
+ * P1, 2026-06-13; hardened task #290, 2026-07-03) = this is a REAL player
+ * surface with NO feed yet — the caller must render dashes, not the
+ * fabricated SAMPLE.
+ *
+ * task #290: `wantsLiveSurface` (the caller's raw `live` prop from
+ * WidgetRenderer) is NOT enough on its own — that prop also reads `true`
+ * on `TemplatePreviewModal`'s builder "what does this look like on a TV?"
+ * fullscreen preview (deliberately `live={true}` so video/carousel
+ * widgets autoplay) and `AppConfigForm`'s config-preview pane. Neither is
+ * a real screen with CTS hardware attached, so keying off `live` alone
+ * painted the fabricated SAMPLE score onto what looked like a real
+ * preview. The reliable signal is `RenderSurfaceContext` — 'player' ONLY
+ * on the two components that render a REAL screen (player/page.tsx,
+ * TouchOverlay.tsx). `isLiveSurface` now requires BOTH signals: the
+ * ambient surface is genuinely 'player' AND the caller still thinks this
+ * should run live. A template preview / config preview (renderSurface
+ * unset → 'builder' default) keeps the alive SAMPLE; a real player
+ * render with no bridge feed yet renders NEUTRAL.
  */
-function useCtsGameState(isLiveSurface = false): { snap: CtsRibbonSnapshot; live: boolean; neutral: boolean } {
+function useCtsGameState(wantsLiveSurface = false): { snap: CtsRibbonSnapshot; live: boolean; neutral: boolean } {
+  const renderSurface = useRenderSurface();
+  const isLiveSurface = renderSurface === 'player' && wantsLiveSurface;
   const [snap, setSnap] = useState<CtsRibbonSnapshot | null>(null);
 
   useEffect(() => {
