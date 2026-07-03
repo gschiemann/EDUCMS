@@ -252,7 +252,7 @@ export class AssetsController {
     const explicit = (contentType || '').split(';')[0].trim().toLowerCase();
     const rejectReason = REJECTED_EXTENSIONS[ext] || REJECTED_MIMES[explicit];
     if (rejectReason) {
-      throw new HttpException(rejectReason, HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+      throw new HttpException({ code: 'ASSET_FILE_TYPE_REJECTED', message: rejectReason }, HttpStatus.UNSUPPORTED_MEDIA_TYPE);
     }
 
     // SVG gets its own friendly, actionable message — see the ALLOWED_TYPES
@@ -260,29 +260,20 @@ export class AssetsController {
     // the place SVG DOES work (Brand Kit logos) instead of a generic
     // "unsupported." Mirrors getUnsupportedReason() in the web assets page.
     if (ext === '.svg' || explicit === 'image/svg+xml') {
-      throw new HttpException(
-        "SVG isn't supported in the media library (an SVG can carry hidden scripts, so we don't store raw SVGs as content). For a logo, use Settings → Branding — that path accepts SVG safely. Otherwise export this as a PNG and upload that.",
-        HttpStatus.UNSUPPORTED_MEDIA_TYPE,
-      );
+      throw new HttpException({ code: 'ASSET_SVG_NOT_SUPPORTED', message: "SVG isn't supported in the media library (an SVG can carry hidden scripts, so we don't store raw SVGs as content). For a logo, use Settings → Branding — that path accepts SVG safely. Otherwise export this as a PNG and upload that." }, HttpStatus.UNSUPPORTED_MEDIA_TYPE);
     }
 
     const mimeType = this.normalizeMimeType(filename, contentType);
     if (!ALLOWED_TYPES.includes(mimeType)) {
-      throw new HttpException(
-        'File type is not supported. Allowed: images (JPG/PNG/WebP/GIF), MP4/WebM video, audio (MP3/OGG/WAV/M4A), PDF.',
-        HttpStatus.UNSUPPORTED_MEDIA_TYPE,
-      );
+      throw new HttpException({ code: 'ASSET_FILE_TYPE_UNSUPPORTED', message: 'File type is not supported. Allowed: images (JPG/PNG/WebP/GIF), MP4/WebM video, audio (MP3/OGG/WAV/M4A), PDF.' }, HttpStatus.UNSUPPORTED_MEDIA_TYPE);
     }
 
     if (!Number.isFinite(size) || Number(size) <= 0) {
-      throw new HttpException('File size is required.', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'ASSET_FILE_SIZE_REQUIRED', message: 'File size is required.' }, HttpStatus.BAD_REQUEST);
     }
 
     if (Number(size) > MAX_ASSET_FILE_SIZE) {
-      throw new HttpException(
-        `File is too large. Max size is ${Math.round(MAX_ASSET_FILE_SIZE / (1024 * 1024))} MB.`,
-        HttpStatus.PAYLOAD_TOO_LARGE,
-      );
+      throw new HttpException({ code: 'ASSET_FILE_TOO_LARGE', message: `File is too large. Max size is ${Math.round(MAX_ASSET_FILE_SIZE / (1024 * 1024))} MB.` }, HttpStatus.PAYLOAD_TOO_LARGE);
     }
 
     // Per-type caps (Supabase egress hardening 2026-05-23). The 500 MB
@@ -291,37 +282,25 @@ export class AssetsController {
     // messages so the operator knows what to do.
     const numSize = Number(size);
     if (mimeType.startsWith('video/') && numSize > MAX_VIDEO_SIZE) {
-      throw new HttpException(
-        `Video is too large for signage (${Math.round(numSize / (1024 * 1024))} MB). ` +
+      throw new HttpException({ code: 'ASSET_VIDEO_TOO_LARGE', message: `Video is too large for signage (${Math.round(numSize / (1024 * 1024))} MB). ` +
           `Max is ${Math.round(MAX_VIDEO_SIZE / (1024 * 1024))} MB — plenty for a clean 1080p loop ` +
           `at signage-tier quality. Compress with HandBrake (free, handbrake.fr), iMovie's ` +
-          `"Share → File → 1080p", or your phone's built-in "Save as smaller file" option, then try again.`,
-        HttpStatus.PAYLOAD_TOO_LARGE,
-      );
+          `"Share → File → 1080p", or your phone's built-in "Save as smaller file" option, then try again.` }, HttpStatus.PAYLOAD_TOO_LARGE);
     }
     if (mimeType.startsWith('image/') && numSize > MAX_IMAGE_SIZE_RAW) {
-      throw new HttpException(
-        `Image is too large (${Math.round(numSize / (1024 * 1024))} MB). ` +
+      throw new HttpException({ code: 'ASSET_IMAGE_TOO_LARGE', message: `Image is too large (${Math.round(numSize / (1024 * 1024))} MB). ` +
           `Max is ${Math.round(MAX_IMAGE_SIZE_RAW / (1024 * 1024))} MB. ` +
           `Our optimizer can shrink most raw photos to under 0.5 MB without visible loss — ` +
           `but at this size your phone may be uploading an uncompressed RAW or HEIC original. ` +
-          `Export as JPG/PNG/WebP first.`,
-        HttpStatus.PAYLOAD_TOO_LARGE,
-      );
+          `Export as JPG/PNG/WebP first.` }, HttpStatus.PAYLOAD_TOO_LARGE);
     }
     if (mimeType.startsWith('audio/') && numSize > MAX_AUDIO_SIZE) {
-      throw new HttpException(
-        `Audio is too large (${Math.round(numSize / (1024 * 1024))} MB). ` +
-          `Max is ${Math.round(MAX_AUDIO_SIZE / (1024 * 1024))} MB.`,
-        HttpStatus.PAYLOAD_TOO_LARGE,
-      );
+      throw new HttpException({ code: 'ASSET_AUDIO_TOO_LARGE', message: `Audio is too large (${Math.round(numSize / (1024 * 1024))} MB). ` +
+          `Max is ${Math.round(MAX_AUDIO_SIZE / (1024 * 1024))} MB.` }, HttpStatus.PAYLOAD_TOO_LARGE);
     }
     if (mimeType === 'application/pdf' && numSize > MAX_PDF_SIZE) {
-      throw new HttpException(
-        `PDF is too large (${Math.round(numSize / (1024 * 1024))} MB). ` +
-          `Max is ${Math.round(MAX_PDF_SIZE / (1024 * 1024))} MB.`,
-        HttpStatus.PAYLOAD_TOO_LARGE,
-      );
+      throw new HttpException({ code: 'ASSET_PDF_TOO_LARGE', message: `PDF is too large (${Math.round(numSize / (1024 * 1024))} MB). ` +
+          `Max is ${Math.round(MAX_PDF_SIZE / (1024 * 1024))} MB.` }, HttpStatus.PAYLOAD_TOO_LARGE);
     }
 
     return mimeType;
@@ -338,7 +317,7 @@ export class AssetsController {
     const folder = await this.prisma.client.assetFolder.findFirst({
       where: { id: bodyFolderId, tenantId },
     });
-    if (!folder) throw new HttpException('Folder not found', HttpStatus.NOT_FOUND);
+    if (!folder) throw new HttpException({ code: 'ASSET_FOLDER_NOT_FOUND', message: 'Folder not found' }, HttpStatus.NOT_FOUND);
     return folder.id;
   }
 
@@ -552,10 +531,7 @@ export class AssetsController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) {
-      throw new HttpException(
-        'No file uploaded, or file type is not supported. Allowed: images (JPG/PNG/WebP/GIF), MP4/WebM video, audio, PDF. QuickTime .mov and AVI are not supported — export as MP4 first. For an SVG logo, use Settings → Branding.',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException({ code: 'ASSET_FILE_TYPE_UNSUPPORTED', message: 'No file uploaded, or file type is not supported. Allowed: images (JPG/PNG/WebP/GIF), MP4/WebM video, audio, PDF. QuickTime .mov and AVI are not supported — export as MP4 first. For an SVG logo, use Settings → Branding.' }, HttpStatus.BAD_REQUEST);
     }
 
     const ext = extname(file.originalname) || '';
@@ -565,10 +541,7 @@ export class AssetsController {
     try {
       fileUrl = await this.storage.upload(storagePath, safeBuffer, file.mimetype);
     } catch (err: any) {
-      throw new HttpException(
-        `Emergency upload failed: ${err.message}`,
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw new HttpException({ code: 'ASSET_EMERGENCY_UPLOAD_FAILED', message: `Emergency upload failed: ${err.message}` }, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     const fileHash = createHash('sha256').update(safeBuffer).digest('hex');
@@ -615,10 +588,7 @@ export class AssetsController {
     try {
       signed = await this.storage.createSignedUploadUrl(storagePath);
     } catch (err: any) {
-      throw new HttpException(
-        `Unable to prepare upload: ${err.message}`,
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw new HttpException({ code: 'ASSET_PRESIGN_FAILED', message: `Unable to prepare upload: ${err.message}` }, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     return {
@@ -654,17 +624,14 @@ export class AssetsController {
       !storagePath.startsWith(`${req.user.tenantId}/`) ||
       storagePath.includes('/emergency/')
     ) {
-      throw new HttpException('Invalid upload path.', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'ASSET_UPLOAD_PATH_INVALID', message: 'Invalid upload path.' }, HttpStatus.BAD_REQUEST);
     }
 
     const folderId = await this.resolveFolderId(req.user.tenantId, body.folderId);
     try {
       await this.storage.assertObjectExists(storagePath);
     } catch (err: any) {
-      throw new HttpException(
-        `Upload did not finish in storage: ${err.message}`,
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException({ code: 'ASSET_UPLOAD_INCOMPLETE', message: `Upload did not finish in storage: ${err.message}` }, HttpStatus.BAD_REQUEST);
     }
 
     const fileHash = typeof body.fileHash === 'string' && /^[a-f0-9]{64}$/i.test(body.fileHash)
@@ -874,10 +841,7 @@ export class AssetsController {
     @Body() body: { folderId?: string } = {},
   ) {
     if (!file) {
-      throw new HttpException(
-        'No file uploaded, or file type is not supported. Allowed: images (JPG/PNG/WebP/GIF), MP4/WebM video, audio, PDF. QuickTime .mov and AVI are not supported — export as MP4 first. For an SVG logo, use Settings → Branding.',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException({ code: 'ASSET_FILE_TYPE_UNSUPPORTED', message: 'No file uploaded, or file type is not supported. Allowed: images (JPG/PNG/WebP/GIF), MP4/WebM video, audio, PDF. QuickTime .mov and AVI are not supported — export as MP4 first. For an SVG logo, use Settings → Branding.' }, HttpStatus.BAD_REQUEST);
     }
 
     // Validate the optional folderId — must belong to the caller's tenant.
@@ -889,7 +853,7 @@ export class AssetsController {
       const folder = await this.prisma.client.assetFolder.findFirst({
         where: { id: bodyFolderId, tenantId: req.user.tenantId },
       });
-      if (!folder) throw new HttpException('Folder not found', HttpStatus.NOT_FOUND);
+      if (!folder) throw new HttpException({ code: 'ASSET_FOLDER_NOT_FOUND', message: 'Folder not found' }, HttpStatus.NOT_FOUND);
       folderId = folder.id;
     }
 
@@ -952,10 +916,7 @@ export class AssetsController {
     try {
       fileUrl = await this.storage.upload(storagePath, uploadBuf, uploadMime);
     } catch (err: any) {
-      throw new HttpException(
-        `Upload failed: ${err.message}`,
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw new HttpException({ code: 'ASSET_UPLOAD_FAILED', message: `Upload failed: ${err.message}` }, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     // SHA-256 hash so the offline-cache Service Worker can detect when an
@@ -1038,26 +999,17 @@ export class AssetsController {
     const asset = await this.prisma.client.asset.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!asset) throw new HttpException('Asset not found', HttpStatus.NOT_FOUND);
+    if (!asset) throw new HttpException({ code: 'ASSET_NOT_FOUND', message: 'Asset not found' }, HttpStatus.NOT_FOUND);
     if (!(asset.mimeType || '').toLowerCase().startsWith('image/')) {
-      throw new HttpException(
-        'Alt-text generation is only available for image assets.',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException({ code: 'ASSET_ALT_TEXT_NOT_IMAGE', message: 'Alt-text generation is only available for image assets.' }, HttpStatus.BAD_REQUEST);
     }
     const storagePath = this.storage.extractPath(asset.fileUrl);
     if (!storagePath) {
-      throw new HttpException(
-        'Cannot regenerate alt-text for external URL assets.',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException({ code: 'ASSET_ALT_TEXT_EXTERNAL_URL', message: 'Cannot regenerate alt-text for external URL assets.' }, HttpStatus.BAD_REQUEST);
     }
     const buffer = await this.storage.download(storagePath);
     if (!buffer) {
-      throw new HttpException(
-        'Asset file could not be retrieved from storage.',
-        HttpStatus.NOT_FOUND,
-      );
+      throw new HttpException({ code: 'ASSET_FILE_RETRIEVAL_FAILED', message: 'Asset file could not be retrieved from storage.' }, HttpStatus.NOT_FOUND);
     }
     try {
       const result = await this.aiAltText.generateImageAltText({
@@ -1102,10 +1054,7 @@ export class AssetsController {
         );
       }
       if (e instanceof HttpException) throw e;
-      throw new HttpException(
-        `Alt-text generation failed: ${e?.message ?? 'unknown error'}`,
-        HttpStatus.SERVICE_UNAVAILABLE,
-      );
+      throw new HttpException({ code: 'ASSET_ALT_TEXT_GENERATION_FAILED', message: `Alt-text generation failed: ${e?.message ?? 'unknown error'}` }, HttpStatus.SERVICE_UNAVAILABLE);
     }
   }
 
@@ -1128,7 +1077,7 @@ export class AssetsController {
     const asset = await this.prisma.client.asset.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!asset) throw new HttpException('Asset not found', HttpStatus.NOT_FOUND);
+    if (!asset) throw new HttpException({ code: 'ASSET_NOT_FOUND', message: 'Asset not found' }, HttpStatus.NOT_FOUND);
     const raw = body.altText;
     let next: string | null;
     if (raw === null || raw === undefined || String(raw).trim() === '') {
@@ -1136,10 +1085,7 @@ export class AssetsController {
     } else {
       const trimmed = String(raw).trim();
       if (trimmed.length > 160) {
-        throw new HttpException(
-          'Alt-text is too long. Keep it under 160 characters (screen-reader best practice is ≤125).',
-          HttpStatus.BAD_REQUEST,
-        );
+        throw new HttpException({ code: 'ASSET_ALT_TEXT_TOO_LONG', message: 'Alt-text is too long. Keep it under 160 characters (screen-reader best practice is ≤125).' }, HttpStatus.BAD_REQUEST);
       }
       next = trimmed;
     }
@@ -1169,7 +1115,7 @@ export class AssetsController {
     const asset = await this.prisma.client.asset.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!asset) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!asset) throw new HttpException({ code: 'ASSET_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     const emergencyScreen = await this.prisma.client.screen.findFirst({
       where: {
@@ -1260,7 +1206,7 @@ export class AssetsController {
     @Body() body: { url: string; name?: string; folderId?: string | null },
   ) {
     if (!body.url?.trim()) {
-      throw new HttpException('URL is required', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'ASSET_URL_REQUIRED', message: 'URL is required' }, HttpStatus.BAD_REQUEST);
     }
 
     // Auto-prefix https:// if no protocol is provided
@@ -1283,7 +1229,7 @@ export class AssetsController {
       const folder = await this.prisma.client.assetFolder.findFirst({
         where: { id: bodyFolderId, tenantId: req.user.tenantId },
       });
-      if (!folder) throw new HttpException('Folder not found', HttpStatus.NOT_FOUND);
+      if (!folder) throw new HttpException({ code: 'ASSET_FOLDER_NOT_FOUND', message: 'Folder not found' }, HttpStatus.NOT_FOUND);
       folderId = folder.id;
     }
 
@@ -1338,7 +1284,7 @@ export class AssetsController {
         select: { tenantId: true, status: true },
       });
       if (!screen || screen.status === 'REVOKED') {
-        throw new HttpException('Device invalid', HttpStatus.FORBIDDEN);
+        throw new HttpException({ code: 'ASSET_DEVICE_INVALID', message: 'Device invalid' }, HttpStatus.FORBIDDEN);
       }
       scopeTenantId = screen.tenantId ?? null;
     } else if (u.role === AppRole.SUPER_ADMIN) {
@@ -1346,7 +1292,7 @@ export class AssetsController {
     } else {
       scopeTenantId = u.schoolId || u.tenantId || u.districtId || null;
       if (!scopeTenantId) {
-        throw new HttpException('Asset not found', HttpStatus.NOT_FOUND);
+        throw new HttpException({ code: 'ASSET_NOT_FOUND', message: 'Asset not found' }, HttpStatus.NOT_FOUND);
       }
     }
     const asset = await this.prisma.client.asset.findFirst({
@@ -1363,7 +1309,7 @@ export class AssetsController {
       },
     });
     if (!asset) {
-      throw new HttpException('Asset not found', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'ASSET_NOT_FOUND', message: 'Asset not found' }, HttpStatus.NOT_FOUND);
     }
     return asset;
   }
@@ -1388,7 +1334,7 @@ export class AssetsController {
     const asset = await this.prisma.client.asset.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!asset) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!asset) throw new HttpException({ code: 'ASSET_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     // Idempotent approve: target the transition only, so a concurrent
     // second call is a 0-row no-op instead of re-writing a duplicate
     // status transition (and any downstream audit/webhook side effects).
@@ -1428,7 +1374,7 @@ export class AssetsController {
     const asset = await this.prisma.client.asset.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!asset) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!asset) throw new HttpException({ code: 'ASSET_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     const updated = await this.prisma.client.asset.update({
       where: { id },
       data: { status: 'ARCHIVED' },
@@ -1458,13 +1404,13 @@ export class AssetsController {
     const asset = await this.prisma.client.asset.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!asset) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!asset) throw new HttpException({ code: 'ASSET_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     if (body.folderId) {
       const folder = await this.prisma.client.assetFolder.findFirst({
         where: { id: body.folderId, tenantId: req.user.tenantId },
       });
-      if (!folder) throw new HttpException('Folder not found', HttpStatus.NOT_FOUND);
+      if (!folder) throw new HttpException({ code: 'ASSET_FOLDER_NOT_FOUND', message: 'Folder not found' }, HttpStatus.NOT_FOUND);
     }
 
     return this.prisma.client.asset.update({
@@ -1491,7 +1437,7 @@ export class AssetsController {
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
   async createFolder(@Request() req: any, @Body() body: { name: string; parentId?: string }) {
     if (!body.name?.trim()) {
-      throw new HttpException('Folder name is required', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'ASSET_FOLDER_NAME_REQUIRED', message: 'Folder name is required' }, HttpStatus.BAD_REQUEST);
     }
     // Validate parentId belongs to THIS tenant — without this a caller
     // could nest a folder under another tenant's folder id (the rename
@@ -1502,7 +1448,7 @@ export class AssetsController {
         select: { id: true },
       });
       if (!parent) {
-        throw new HttpException('Parent folder not found', HttpStatus.BAD_REQUEST);
+        throw new HttpException({ code: 'ASSET_FOLDER_PARENT_NOT_FOUND', message: 'Parent folder not found' }, HttpStatus.BAD_REQUEST);
       }
     }
     return this.prisma.client.assetFolder.create({
@@ -1520,7 +1466,7 @@ export class AssetsController {
     const folder = await this.prisma.client.assetFolder.findFirst({
       where: { id: folderId, tenantId: req.user.tenantId },
     });
-    if (!folder) throw new HttpException('Folder not found', HttpStatus.NOT_FOUND);
+    if (!folder) throw new HttpException({ code: 'ASSET_FOLDER_NOT_FOUND', message: 'Folder not found' }, HttpStatus.NOT_FOUND);
     return this.prisma.client.assetFolder.update({
       where: { id: folderId },
       data: { name: body.name.trim() },
@@ -1533,7 +1479,7 @@ export class AssetsController {
     const folder = await this.prisma.client.assetFolder.findFirst({
       where: { id: folderId, tenantId: req.user.tenantId },
     });
-    if (!folder) throw new HttpException('Folder not found', HttpStatus.NOT_FOUND);
+    if (!folder) throw new HttpException({ code: 'ASSET_FOLDER_NOT_FOUND', message: 'Folder not found' }, HttpStatus.NOT_FOUND);
 
     // Move all assets in this folder to root
     await this.prisma.client.asset.updateMany({

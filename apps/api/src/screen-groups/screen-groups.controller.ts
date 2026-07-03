@@ -136,7 +136,7 @@ export class ScreenGroupsController {
     const group = await this.prisma.client.screenGroup.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!group) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!group) throw new HttpException({ code: 'SCREEN_GROUP_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     return this.prisma.client.screenGroup.update({
       where: { id },
@@ -150,7 +150,7 @@ export class ScreenGroupsController {
     const group = await this.prisma.client.screenGroup.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!group) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!group) throw new HttpException({ code: 'SCREEN_GROUP_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     // Assign screens to this group (tenant-scoped)
     await this.prisma.client.screen.updateMany({
@@ -170,7 +170,7 @@ export class ScreenGroupsController {
     const group = await this.prisma.client.screenGroup.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!group) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!group) throw new HttpException({ code: 'SCREEN_GROUP_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     // 2026-05-23 launch audit P1: deleting a screen group orphans
     // every Schedule that targeted it (those rows still exist but
