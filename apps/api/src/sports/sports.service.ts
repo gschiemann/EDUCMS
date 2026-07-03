@@ -697,6 +697,23 @@ export class SportsService {
   }
 
   /**
+   * Sports Wave S4-1 (P1-8) — parse the optional game kickoff date/time.
+   * `undefined` (field omitted) and `null`/`''` (explicitly cleared) both
+   * resolve to `null` — scheduledAt is optional everywhere, so a missing or
+   * blank value is never an error, just "no time set yet." An unparseable
+   * string is treated the same way rather than 400ing the whole create/
+   * update — the New Game modal's datetime-local input can't produce one,
+   * and a hand-rolled API caller shouldn't be able to wedge a bad date into
+   * an otherwise-successful game create.
+   */
+  private parseScheduledAt(value: unknown): Date | null {
+    if (value === undefined || value === null) return null;
+    if (typeof value !== 'string' || !value.trim()) return null;
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  /**
    * Lane-2 P0: verify every foreign-key the operator can set on a Game
    * (`screenGroupId` + three template IDs) belongs to the caller's tenant
    * BEFORE persisting. Without this, a SCHOOL_ADMIN could paste a foreign
@@ -767,6 +784,9 @@ export class SportsService {
       scoreboardTemplateId?: string | null;
       ribbonTemplateId?: string | null;
       scorebugTemplateId?: string | null;
+      // Sports Wave S4-1 (P1-8) — optional kickoff date/time. Absent/invalid
+      // stays legal (null) — the "When is it?" field on New Game is optional.
+      scheduledAt?: string | null;
     },
   ) {
     const def = this.sportOf(String(dto.sport || ''));
@@ -778,6 +798,7 @@ export class SportsService {
     // Lane-2 P0 ownership check — see assertOwnedGameRefs for rationale.
     await this.assertOwnedGameRefs(tenantId, dto);
     const status = dto.status && GAME_STATUSES.includes(dto.status) ? dto.status : 'SCHEDULED';
+    const scheduledAt = this.parseScheduledAt(dto.scheduledAt);
 
     // Seed per-team timeout counts to their max so the broadcast
     // timeout pips read full from the opening whistle — an unset
@@ -809,6 +830,7 @@ export class SportsService {
         scoreboardTemplateId: dto.scoreboardTemplateId || null,
         ribbonTemplateId: dto.ribbonTemplateId || null,
         scorebugTemplateId: dto.scorebugTemplateId || null,
+        scheduledAt,
       },
     });
   }
@@ -942,6 +964,9 @@ export class SportsService {
       scoreboardTemplateId?: string | null;
       ribbonTemplateId?: string | null;
       scorebugTemplateId?: string | null;
+      // Sports Wave S4-1 (P1-8) — editable any time from Setup. `null`/`''`
+      // clears it back to "no time set."
+      scheduledAt?: string | null;
     },
   ) {
     await this.owned(tenantId, id);
@@ -969,6 +994,7 @@ export class SportsService {
       data.ribbonTemplateId = dto.ribbonTemplateId || null;
     if (dto.scorebugTemplateId !== undefined)
       data.scorebugTemplateId = dto.scorebugTemplateId || null;
+    if (dto.scheduledAt !== undefined) data.scheduledAt = this.parseScheduledAt(dto.scheduledAt);
     const updated = await this.prisma.client.game.update({ where: { id }, data });
     // Lane-8 P1 (re-audit): updateGameDetails bypasses record(), so the
     // board cache wouldn't refresh on team-name/color/logo/template change

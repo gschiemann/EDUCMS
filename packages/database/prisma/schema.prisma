@@ -2141,6 +2141,15 @@ model Game {
   homeTeamId String? @map("home_team_id")
   awayTeamId String? @map("away_team_id")
 
+  // 2026-07-02 — Sports Wave S4-1 (P1-8, deep-pass audit): games had no
+  // date/time. The create modal never asked, the list was ungrouped, and
+  // COUNTDOWN/PreGameScene had no target to count down to. Optional —
+  // nullable so every existing Game row (and every SCHEDULED game created
+  // before this shipped) stays perfectly legal with no value. When set, the
+  // web list uses it to order upcoming games and render "Tonight 7:00 PM"
+  // style copy; a future COUNTDOWN wiring can target it. Purely additive.
+  scheduledAt DateTime? @map("scheduled_at")
+
   tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   events GameEvent[]
   roster RosterPlayer[]
@@ -2162,6 +2171,9 @@ model Game {
   @@index([scorebugTemplateId])
   @@index([homeTeamId])
   @@index([awayTeamId])
+  // Sports Wave S4-1 — serves the "upcoming games" list ordering query
+  // (tenant-scoped, sorted by scheduledAt).
+  @@index([tenantId, scheduledAt])
   @@map("games")
 }
 

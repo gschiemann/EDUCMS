@@ -255,6 +255,68 @@ describe('SportsService — team branding', () => {
   });
 });
 
+// Sports Wave S4-1 (P1-8, 2026-07-02 deep-pass audit): Game.scheduledAt
+// round-trip. Additive/nullable column — every assertion below also proves
+// the "empty stays legal" half of the contract (an older/undated game is
+// completely unaffected).
+describe('SportsService — scheduledAt', () => {
+  it('defaults to null when omitted on create', async () => {
+    const { service } = setup();
+    const g = await newGame(service);
+    expect(g.scheduledAt).toBeNull();
+  });
+
+  it('stores a valid ISO kickoff time on create', async () => {
+    const { service } = setup();
+    const g: any = await service.createGame(TENANT, {
+      sport: 'football',
+      homeTeam: 'Home',
+      awayTeam: 'Away',
+      scheduledAt: '2026-08-21T19:00:00.000Z',
+    });
+    expect(new Date(g.scheduledAt).toISOString()).toBe('2026-08-21T19:00:00.000Z');
+  });
+
+  it('treats an unparseable scheduledAt as unset rather than erroring', async () => {
+    const { service } = setup();
+    const g: any = await service.createGame(TENANT, {
+      sport: 'football',
+      homeTeam: 'Home',
+      awayTeam: 'Away',
+      scheduledAt: 'not-a-date',
+    });
+    expect(g.scheduledAt).toBeNull();
+  });
+
+  it('sets scheduledAt via updateGameDetails on an existing game', async () => {
+    const { service } = setup();
+    const g = await newGame(service);
+    expect((g as any).scheduledAt).toBeNull();
+    const edited: any = await service.updateGameDetails(TENANT, g.id, {
+      scheduledAt: '2026-09-05T23:30:00.000Z',
+    });
+    expect(new Date(edited.scheduledAt).toISOString()).toBe('2026-09-05T23:30:00.000Z');
+    // Editing the date alone doesn't disturb identity.
+    expect(edited.homeTeam).toBe('Home');
+  });
+
+  it('clears scheduledAt back to null when explicitly set to null', async () => {
+    const { service } = setup();
+    const g = await newGame(service);
+    await service.updateGameDetails(TENANT, g.id, { scheduledAt: '2026-09-05T23:30:00.000Z' });
+    const cleared: any = await service.updateGameDetails(TENANT, g.id, { scheduledAt: null });
+    expect(cleared.scheduledAt).toBeNull();
+  });
+
+  it('leaves scheduledAt untouched when the field is omitted from an update', async () => {
+    const { service } = setup();
+    const g = await newGame(service);
+    await service.updateGameDetails(TENANT, g.id, { scheduledAt: '2026-09-05T23:30:00.000Z' });
+    const untouched: any = await service.updateGameDetails(TENANT, g.id, { homeColor: '#111111' });
+    expect(new Date(untouched.scheduledAt).toISOString()).toBe('2026-09-05T23:30:00.000Z');
+  });
+});
+
 describe('SportsService — tenant isolation', () => {
   it('refuses to read another tenant’s game', async () => {
     const { service } = setup();

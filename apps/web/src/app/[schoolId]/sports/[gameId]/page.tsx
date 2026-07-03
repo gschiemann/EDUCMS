@@ -59,6 +59,7 @@ import {
   useSponsors,
   useUpdateSponsor,
   useTemplates,
+  useUpdateGameDetails,
   type SponsorInput,
 } from '@/hooks/use-api';
 import { findSport, formatScore, parseScoreInput, PLAYER_STATS } from '@cms/api-types';
@@ -682,6 +683,7 @@ function GameControl() {
                 Run console; come back here any time via{' '}
                 <span className="font-semibold text-slate-500">More → Set up game</span>.
               </p>
+              <ScheduledAtField gameId={gameId} scheduledAt={g.scheduledAt ?? null} />
             </Section>
 
             {/* ── 2. TEAMS ────────────────────────────────────────
@@ -6832,6 +6834,87 @@ function HoldChip({
 }
 
 // ── helpers ────────────────────────────────────────────────────
+
+/**
+ * Sports Wave S4-1 (P1-8, 2026-07-02 deep-pass audit) — the "when is it?"
+ * field, editable any time from Setup → Tonight's game. Mirrors the New
+ * Game modal's optional datetime-local field. Commits on blur/Enter (not
+ * per-keystroke) via `useUpdateGameDetails`, the same "draft locally, write
+ * once" discipline the audit called for elsewhere (P1-6 meet results) so
+ * this doesn't fire a PATCH per keystroke either. Always legal to leave
+ * blank — an older game with no scheduledAt renders an empty input, nothing
+ * else.
+ */
+function ScheduledAtField({
+  gameId,
+  scheduledAt,
+}: {
+  gameId: string;
+  scheduledAt: string | null;
+}) {
+  const update = useUpdateGameDetails(gameId);
+
+  // `datetime-local` wants "YYYY-MM-DDTHH:mm" in LOCAL time, no zone.
+  const toLocalInputValue = (iso: string | null): string => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const [draft, setDraft] = useState(() => toLocalInputValue(scheduledAt));
+  // Reconcile the draft when the server value changes from elsewhere (e.g.
+  // the 4s poll behind useGame, or an edit from another tab) — but only
+  // while the operator isn't actively mid-edit, so a keystroke never gets
+  // clobbered by a stale poll response.
+  const [dirty, setDirty] = useState(false);
+  useEffect(() => {
+    if (!dirty) setDraft(toLocalInputValue(scheduledAt));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scheduledAt]);
+
+  const commit = () => {
+    setDirty(false);
+    update.mutate({ scheduledAt: draft || null });
+  };
+
+  return (
+    <div className="mt-3 pt-3 border-t border-slate-100">
+      <label className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
+        When is it? <span className="normal-case font-normal text-slate-300">(optional)</span>
+      </label>
+      <div className="mt-1.5 flex items-center gap-2">
+        <input
+          type="datetime-local"
+          value={draft}
+          onChange={(e) => {
+            setDirty(true);
+            setDraft(e.target.value);
+          }}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          }}
+          className="w-full sm:w-64 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm bg-white"
+        />
+        {draft && (
+          <button
+            type="button"
+            onClick={() => {
+              setDirty(false);
+              setDraft('');
+              update.mutate({ scheduledAt: null });
+            }}
+            className="text-[11px] font-medium text-slate-400 hover:text-rose-600"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // item 0 (2026-06-20) — Section gains an optional "Ready ✓" completion badge so
 // Setup reads as a pre-game checklist. The badge is POSITIVE-only (shown when a

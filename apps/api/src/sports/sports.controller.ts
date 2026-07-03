@@ -145,6 +145,10 @@ export class SportsController {
       scoreboardTemplateId?: string | null;
       ribbonTemplateId?: string | null;
       scorebugTemplateId?: string | null;
+      // Sports Wave S4-1 (P1-8, 2026-07-02) — optional kickoff date/time
+      // from the New Game modal's "When is it?" field. ISO string; absent
+      // stays legal (no date set).
+      scheduledAt?: string | null;
     },
   ) {
     return this.sports.createGame(req.user.tenantId, body);
@@ -173,6 +177,8 @@ export class SportsController {
       scoreboardTemplateId?: string | null;
       ribbonTemplateId?: string | null;
       scorebugTemplateId?: string | null;
+      // Sports Wave S4-1 (P1-8) — editable any time from Setup.
+      scheduledAt?: string | null;
     },
   ) {
     return this.sports.updateGameDetails(req.user.tenantId, id, body);

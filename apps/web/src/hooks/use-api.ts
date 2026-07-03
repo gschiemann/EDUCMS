@@ -3083,6 +3083,10 @@ export function useCreateGame() {
       scoreboardTemplateId?: string | null;
       ribbonTemplateId?: string | null;
       scorebugTemplateId?: string | null;
+      // Sports Wave S4-1 (P1-8) — optional kickoff date/time from the New
+      // Game modal's "When is it?" field. ISO string; omitted/blank means
+      // no date set (fully legal — every existing game has none).
+      scheduledAt?: string | null;
     }) => apiFetch('/sports/games', { method: 'POST', body: JSON.stringify(data) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sports-games'] }),
   });
@@ -3093,6 +3097,38 @@ export function useDeleteGame() {
   return useMutation({
     mutationFn: (id: string) => apiFetch(`/sports/games/${id}`, { method: 'DELETE' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sports-games'] }),
+  });
+}
+
+/**
+ * Edit a game's identity fields any time after creation — team names,
+ * colors, logos, template reassignment, and (Sports Wave S4-1, P1-8) the
+ * scheduled kickoff date/time. PATCHes `/sports/games/:id` (the
+ * `updateGameDetails` endpoint, previously wired only server-side — the
+ * New Game modal set these at create time but nothing let an operator
+ * revisit them from the Setup screen). Writes the response straight into
+ * both caches so the console and the game list both reflect the edit
+ * immediately.
+ */
+export function useUpdateGameDetails(gameId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      homeTeam?: string;
+      awayTeam?: string;
+      homeColor?: string;
+      awayColor?: string;
+      homeLogoUrl?: string | null;
+      awayLogoUrl?: string | null;
+      scoreboardTemplateId?: string | null;
+      ribbonTemplateId?: string | null;
+      scorebugTemplateId?: string | null;
+      scheduledAt?: string | null;
+    }) => apiFetch(`/sports/games/${gameId}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    onSuccess: (game: any) => {
+      if (game?.id) qc.setQueryData(['sports-game', game.id], game);
+      qc.invalidateQueries({ queryKey: ['sports-games'] });
+    },
   });
 }
 
