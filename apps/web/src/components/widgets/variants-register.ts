@@ -1469,6 +1469,23 @@ registerVariant({
   defaultConfig: { boardStyle: 'duel', laneCount: 8 },
 });
 
+// S6 #288 (2026-07-03) — Stadium Lane v3 "Record Chase". Sibling tile of
+// stadium-meet-board-broadcast/-duel above — same STADIUM_MEET_BOARD
+// widget, same stats.results contract, `boardStyle: 'chase'` dispatches
+// to StadiumChaseScene (see StadiumMeetBoardWidget.tsx for the full
+// live-data mapping: leader-time race clock, configured pool-record-chase
+// card + progress bar, team-score chip).
+registerVariant({
+  id: 'stadium-meet-board-chase',
+  widgetType: 'STADIUM_MEET_BOARD',
+  name: 'Stadium Lane — Record Chase',
+  description: 'Record-chase board — left rail with a giant race clock + a pool-record-chase card (progress bar + gap line), right ladder of place-ordered rows with medal ranks. Bind a meet; resize for any LED.',
+  category: 'SPORTS',
+  render: StadiumMeetBoardWidget as any,
+  vertical: 'SPORTS',
+  defaultConfig: { boardStyle: 'chase', laneCount: 6 },
+});
+
 // ════════════════════════════════════════════════════════════════════
 // 2026-05-19 — Composable scoreboard ELEMENT widgets. Operator: "make
 // sure everything in these scoreboards are added as widgets and can be
