@@ -989,8 +989,12 @@ export function SwimRecordLineWidget({ config }: WidgetProps<SwimRecordLineCfg>)
 /** Drop-high/drop-low rule by panel size (report B2):
  *  3 judges → keep all 3 (no drops); 5 → drop 1 high + 1 low, sum
  *  middle 3; 7 → drop 2 high + 2 low, sum middle 3. Any other panel
- *  size (operator typo) falls back to "keep all" rather than guessing. */
-function keptIndices(scores: number[]): Set<number> {
+ *  size (operator typo) falls back to "keep all" rather than guessing.
+ *  Exported (S3-1, 2026-07-03 sports deep-pass Wave S3) so the console's
+ *  diving judge pad (sports/[gameId]/page.tsx) computes the SAME award
+ *  the board will render — one function, not a second copy that could
+ *  drift from this one. */
+export function keptIndices(scores: number[]): Set<number> {
   const n = scores.length;
   const indexed = scores.map((v, i) => ({ v, i }));
   const sorted = [...indexed].sort((a, b) => a.v - b.v);
@@ -1008,8 +1012,10 @@ function keptIndices(scores: number[]): Set<number> {
 }
 
 /** Dive score = sum of kept judge scores × DD (report B2). Returns null
- *  when there aren't enough valid inputs to compute a real number. */
-function computeDiveScore(scores: number[], dd: number): number | null {
+ *  when there aren't enough valid inputs to compute a real number.
+ *  Exported for the same reason as {@link keptIndices} — S3-1's console
+ *  judge pad reuses this exact math for the "Award" computation. */
+export function computeDiveScore(scores: number[], dd: number): number | null {
   if (scores.length === 0 || !Number.isFinite(dd) || dd <= 0) return null;
   const kept = keptIndices(scores);
   let sum = 0;
@@ -1070,7 +1076,18 @@ export function DiveJudgesPanelWidget({ config }: WidgetProps<DiveJudgesPanelCfg
 
   const diverName = isLive ? liveDiver : (c.diverName ?? 'A. WASHINGTON');
   const diveCode = isLive ? liveCode : (c.diveCode ?? '305C');
-  const diveGroup = c.diveGroup ?? 'REVERSE 1½ SOMERSAULT TUCK';
+  // S3-3 (2026-07-03, P0-3 follow-up): `diveGroup` (the dive's plain-
+  // English name, e.g. "Reverse 1½ Somersault Tuck") has no live scalar
+  // producer — it's not one of the console's stats.currentDiver/diveCode/
+  // dd/judgeScores keys, so there's nothing to READ live, only an
+  // operator-typed PropertiesPanel override to fall back to. Before this
+  // fix the fabricated sample string rendered unconditionally regardless
+  // of surface — a real, bound meet with no diveGroup configured showed
+  // an invented dive name to the crowd. Same no-fake-data rule as
+  // diverName/diveCode/dd above: on a live surface, an operator override
+  // is real data and renders; the SAMPLE string only shows in the
+  // builder/preview (matching the file's SampleWatermark contract).
+  const diveGroup = isLive ? (c.diveGroup?.trim() || '') : (c.diveGroup ?? 'REVERSE 1½ SOMERSAULT TUCK');
   const dd = isLive ? (Number.isFinite(liveDd) ? liveDd : 0) : (c.dd ?? 2.7);
   const scores: number[] = isLive
     ? liveScores
