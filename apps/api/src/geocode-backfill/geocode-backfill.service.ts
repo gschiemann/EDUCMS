@@ -60,6 +60,16 @@ export interface GeocodeBackfillSummary {
   details: GeocodeBackfillDetail[];
 }
 
+/** Thrown when a second `run()` is invoked while one is already in flight.
+ *  Controller maps this to HTTP 409 with a stable `code`. */
+export class GeocodeBackfillAlreadyRunningError extends Error {
+  readonly code = 'GEOCODE_BACKFILL_ALREADY_RUNNING' as const;
+  constructor() {
+    super('A geocode backfill run is already in progress. Wait for it to finish before starting another.');
+    this.name = 'GeocodeBackfillAlreadyRunningError';
+  }
+}
+
 @Injectable()
 export class GeocodeBackfillService {
   private readonly logger = new Logger(GeocodeBackfillService.name);
@@ -73,12 +83,42 @@ export class GeocodeBackfillService {
    *  single findMany() call bounded even if `limit` is set high. */
   private static readonly BATCH_SIZE = 20;
 
+  /** Single-flight lock (module-level, process-wide). Adversarial review
+   *  flagged that nothing stopped two concurrent invocations from each
+   *  fanning out a full sweep against the same eligible-tenant page —
+   *  wasteful at best (duplicate provider calls) and, since Prisma
+   *  `findMany`+`update` here isn't done inside a single atomic
+   *  transaction per row, a source of avoidable double-processing at
+   *  worst. A plain boolean is sufficient: this is a manually-triggered,
+   *  SUPER_ADMIN-only maintenance action (never called concurrently by
+   *  normal app traffic), a single API replica handles it, and the
+   *  window a real bug could slip through (two SUPER_ADMINs racing the
+   *  same POST within the same process) is not worth a distributed
+   *  Redis lock. We deliberately lock BOTH dry-run and real invocations
+   *  (not just non-dry-run) — simpler to reason about than a partial
+   *  lock, and a concurrent dry-run still duplicates provider calls and
+   *  wastes rate-limit headroom even though it writes nothing. Released
+   *  in a `finally` so a mid-run throw can never wedge the service. */
+  private static isRunning = false;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly geocoding: GeocodingService,
   ) {}
 
   async run(opts: GeocodeBackfillOptions = {}): Promise<GeocodeBackfillSummary> {
+    if (GeocodeBackfillService.isRunning) {
+      throw new GeocodeBackfillAlreadyRunningError();
+    }
+    GeocodeBackfillService.isRunning = true;
+    try {
+      return await this.runLocked(opts);
+    } finally {
+      GeocodeBackfillService.isRunning = false;
+    }
+  }
+
+  private async runLocked(opts: GeocodeBackfillOptions): Promise<GeocodeBackfillSummary> {
     const dryRun = opts.dryRun !== false; // default true — safest default
     const limit = this.sanitizeLimit(opts.limit);
 

@@ -7,11 +7,15 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AppRole } from '@cms/database';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
-import { GeocodeBackfillService } from './geocode-backfill.service';
+import {
+  GeocodeBackfillAlreadyRunningError,
+  GeocodeBackfillService,
+} from './geocode-backfill.service';
 
 interface GeocodeBackfillRequestBody {
   /** Default true (safe). Only `false` writes lat/lng. */
@@ -46,6 +50,14 @@ export class GeocodeBackfillController {
   constructor(private readonly backfill: GeocodeBackfillService) {}
 
   @Post()
+  // Concurrency/rate safety (adversarial review): matches the exact
+  // @Throttle signature GeocodingController uses for its own provider-
+  // backed endpoints (apps/api/src/geocoding/geocoding.controller.ts).
+  // This endpoint fans out MANY provider calls per invocation (up to
+  // `limit`, itself capped at 50 — see GeocodeBackfillService.sanitizeLimit),
+  // so it gets a tighter cap than the single-lookup geocode proxy: 2 calls
+  // per rolling 60s window, not 30.
+  @Throttle({ default: { limit: 2, ttl: 60_000 } })
   async run(@Body() body: GeocodeBackfillRequestBody, @Req() req: any) {
     try {
       const actorUserId: string | undefined = req?.user?.id;
@@ -57,6 +69,15 @@ export class GeocodeBackfillController {
       });
       return { success: true, ...summary };
     } catch (e: any) {
+      // Single-flight lock rejection (adversarial review): a second
+      // concurrent invocation gets a clear, typed 409 instead of either
+      // silently fanning out a duplicate sweep or a generic 500.
+      if (e instanceof GeocodeBackfillAlreadyRunningError) {
+        throw new HttpException(
+          { code: e.code, message: e.message },
+          HttpStatus.CONFLICT,
+        );
+      }
       throw new HttpException(
         {
           code: 'GEOCODE_BACKFILL_RUN_FAILED',

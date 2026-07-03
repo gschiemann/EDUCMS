@@ -413,4 +413,75 @@ describe('GeocodeBackfillService', () => {
       expect(tenants.get('t1')!.longitude).toBe(-180);
     });
   });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Single-flight lock (adversarial review, 2026-07-03): a second concurrent
+  // real run must be rejected immediately instead of fanning out a second
+  // sweep, and the lock must release even when the first run throws.
+  // ──────────────────────────────────────────────────────────────────────
+  describe('single-flight lock', () => {
+    it('a second concurrent real run is rejected while the first holds the lock', async () => {
+      const { prisma } = makePrismaMock([
+        { id: 't1', name: 'Alpha', address: '1 Main St', latitude: null, longitude: null },
+        { id: 't2', name: 'Beta', address: '2 Main St', latitude: null, longitude: null },
+      ]);
+      const geocoding = makeGeocodingMock(() => [
+        { display_name: 'Some Address', lat: '10', lon: '20', source: 'nominatim' },
+      ]);
+      const svc = new GeocodeBackfillService(prisma, geocoding);
+
+      // Fire the first run WITHOUT awaiting it, then immediately fire the
+      // second — the lock check is synchronous at the top of run(), so the
+      // second call rejects before the first has resolved.
+      const firstRunPromise = runWithTimers(svc.run({ dryRun: false }));
+      await expect(svc.run({ dryRun: false })).rejects.toMatchObject({
+        code: 'GEOCODE_BACKFILL_ALREADY_RUNNING',
+      });
+
+      // The first run must still complete successfully once the lock frees.
+      const firstSummary = await firstRunPromise;
+      expect(firstSummary.geocoded).toBe(2);
+    });
+
+    it('the lock is released in a finally even when the run throws, so a subsequent call can proceed', async () => {
+      const { prisma } = makePrismaMock([
+        { id: 't1', name: 'Alpha', address: '1 Main St', latitude: null, longitude: null },
+      ]);
+      const geocoding = makeGeocodingMock(() => [
+        { display_name: 'Some Address', lat: '10', lon: '20', source: 'nominatim' },
+      ]);
+      const svc = new GeocodeBackfillService(prisma, geocoding);
+
+      // Force the first run to throw by making the initial findMany() query
+      // blow up — this happens before the lock is released, proving the
+      // `finally` still runs on an unexpected failure (not just the happy
+      // path).
+      (prisma.client.tenant.findMany as jest.Mock).mockRejectedValueOnce(
+        new Error('db exploded'),
+      );
+
+      await expect(svc.run({ dryRun: false })).rejects.toThrow('db exploded');
+
+      // Lock must be free again — this call should proceed normally, not
+      // be rejected as "already running".
+      const summary = await runWithTimers(svc.run({ dryRun: false }));
+      expect(summary.geocoded).toBe(1);
+    });
+
+    it('a dry-run is also covered by the same lock (documented simplification — see service comment)', async () => {
+      const { prisma } = makePrismaMock([
+        { id: 't1', name: 'Alpha', address: '1 Main St', latitude: null, longitude: null },
+      ]);
+      const geocoding = makeGeocodingMock(() => [
+        { display_name: 'Some Address', lat: '10', lon: '20', source: 'nominatim' },
+      ]);
+      const svc = new GeocodeBackfillService(prisma, geocoding);
+
+      const firstRunPromise = runWithTimers(svc.run({ dryRun: true }));
+      await expect(svc.run({ dryRun: true })).rejects.toMatchObject({
+        code: 'GEOCODE_BACKFILL_ALREADY_RUNNING',
+      });
+      await firstRunPromise;
+    });
+  });
 });
