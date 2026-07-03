@@ -797,15 +797,16 @@ export class PlayerOtaController {
   ): Promise<void> {
     const vc = parseInt(vcParam, 10);
     if (!Number.isFinite(vc) || vc <= 0) {
-      throw new NotFoundException(`Invalid versionCode: ${vcParam}`);
+      throw new NotFoundException({ code: 'PLAYER_OTA_INVALID_VERSION_CODE', message: `Invalid versionCode: ${vcParam}` });
     }
     try {
       const buf = await ensureApkInCache(vc);
       if (!buf) {
-        throw new NotFoundException(
-          `Player APK v${vc} not found. Either no GitHub release exists with that ` +
+        throw new NotFoundException({
+          code: 'PLAYER_OTA_APK_NOT_FOUND',
+          message: `Player APK v${vc} not found. Either no GitHub release exists with that ` +
           `versionCode-derived tag, or GH_TOKEN is missing on Railway.`,
-        );
+        });
       }
       res.setHeader('Content-Type', 'application/vnd.android.package-archive');
       res.setHeader('Content-Length', String(buf.length));
@@ -828,7 +829,7 @@ export class PlayerOtaController {
     } catch (e: any) {
       if (e instanceof NotFoundException) throw e;
       this.logger.error(`APK proxy v${vc} failed: ${e?.message}`, e?.stack);
-      throw new NotFoundException(`APK proxy failed: ${e?.message}`);
+      throw new NotFoundException({ code: 'PLAYER_OTA_APK_PROXY_FAILED', message: `APK proxy failed: ${e?.message}` });
     }
   }
 }

@@ -60,13 +60,13 @@ export class YoutubeLiveController {
   @Get('resolve')
   async resolve(@Query('url') rawUrl: string): Promise<YoutubeResolveResult> {
     if (!rawUrl) {
-      throw new HttpException('url query param is required', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'YOUTUBE_LIVE_URL_REQUIRED', message: 'url query param is required' }, HttpStatus.BAD_REQUEST);
     }
 
     // ── Normalise the URL ──────────────────────────────────────────────────
     const normalised = this.normaliseYoutubeUrl(rawUrl);
     if (!normalised) {
-      throw new HttpException('Invalid YouTube URL', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'YOUTUBE_LIVE_INVALID_URL', message: 'Invalid YouTube URL' }, HttpStatus.BAD_REQUEST);
     }
 
     // ── Cache check ────────────────────────────────────────────────────────
@@ -82,13 +82,13 @@ export class YoutubeLiveController {
       html = await this.fetchHtml(normalised);
     } catch (err) {
       this.logger.warn(`Failed to fetch YouTube page: ${String(err)}`);
-      throw new HttpException('Could not fetch YouTube page', HttpStatus.BAD_GATEWAY);
+      throw new HttpException({ code: 'YOUTUBE_LIVE_FETCH_FAILED', message: 'Could not fetch YouTube page' }, HttpStatus.BAD_GATEWAY);
     }
 
     const extracted = this.extractLiveVideoId(html, normalised);
     if (!extracted) {
       this.logger.debug(`No live stream found at ${normalised}`);
-      throw new HttpException('No active live stream found on this channel', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'YOUTUBE_LIVE_NOT_FOUND', message: 'No active live stream found on this channel' }, HttpStatus.NOT_FOUND);
     }
 
     const result: YoutubeResolveResult = {

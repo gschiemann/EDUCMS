@@ -39,7 +39,7 @@ export class DevicesController {
   ) {
     const code = body.code?.trim().toUpperCase();
     const fp = body.deviceFingerprint?.trim();
-    if (!code) throw new HttpException('code is required', HttpStatus.BAD_REQUEST);
+    if (!code) throw new HttpException({ code: 'DEVICE_PAIR_CODE_REQUIRED', message: 'code is required' }, HttpStatus.BAD_REQUEST);
 
     const screen = await this.prisma.client.screen.findUnique({
       where: { pairingCode: code },
@@ -65,10 +65,10 @@ export class DevicesController {
     const target = screen;
 
     if (!target) {
-      throw new HttpException('Invalid or expired pairing code', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'DEVICE_PAIR_CODE_INVALID', message: 'Invalid or expired pairing code' }, HttpStatus.NOT_FOUND);
     }
     if (!target.tenantId || !target.tenant) {
-      throw new HttpException('This screen has not been claimed by an admin yet', HttpStatus.PRECONDITION_REQUIRED);
+      throw new HttpException({ code: 'DEVICE_PAIR_SCREEN_UNCLAIMED', message: 'This screen has not been claimed by an admin yet' }, HttpStatus.PRECONDITION_REQUIRED);
     }
 
     // Bind / refresh device-side metadata. Idempotent — re-pairs are fine.

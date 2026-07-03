@@ -66,9 +66,10 @@ export class MusicController {
   spotifyOauthStart(@Request() req: any, @Res() res: Response) {
     const clientId = process.env.SPOTIFY_BUSINESS_CLIENT_ID;
     if (!clientId) {
-      throw new ServiceUnavailableException(
-        'Spotify for Business OAuth not configured. Set SPOTIFY_BUSINESS_CLIENT_ID and SPOTIFY_BUSINESS_CLIENT_SECRET to enable.',
-      );
+      throw new ServiceUnavailableException({
+        code: 'MUSIC_SPOTIFY_NOT_CONFIGURED',
+        message: 'Spotify for Business OAuth not configured. Set SPOTIFY_BUSINESS_CLIENT_ID and SPOTIFY_BUSINESS_CLIENT_SECRET to enable.',
+      });
     }
     // Placeholder — real OAuth flow lands when commercial agreement
     // is finalized. The redirect URI must match what the operator
@@ -91,14 +92,18 @@ export class MusicController {
   appleOauthStart() {
     const teamId = process.env.APPLE_MUSIC_TEAM_ID;
     if (!teamId) {
-      throw new ServiceUnavailableException(
-        'Apple Music for Business is not configured for this deploy. The partnership / developer-token signing chain is pending — contact sales@venueos.com for activation status.',
-      );
+      throw new ServiceUnavailableException({
+        code: 'MUSIC_APPLE_NOT_CONFIGURED',
+        message: 'Apple Music for Business is not configured for this deploy. The partnership / developer-token signing chain is pending — contact sales@venueos.com for activation status.',
+      });
     }
     // Apple Music's developer-token flow is signed JWT not OAuth —
     // this endpoint exists as a uniform entry point for the widget
     // UI but the real handshake will be a different shape once we
     // light it up. Kept as placeholder.
-    throw new ServiceUnavailableException('Apple Music for Business activation in progress — sales is finalizing the agreement.');
+    throw new ServiceUnavailableException({
+      code: 'MUSIC_APPLE_ACTIVATION_PENDING',
+      message: 'Apple Music for Business activation in progress — sales is finalizing the agreement.',
+    });
   }
 }
