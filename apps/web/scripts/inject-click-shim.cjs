@@ -9,13 +9,14 @@
  *   The click-to-edit "hot zones" (click a board element → the
  *   PropertiesPanel jumps to that field's editor) are INDEPENDENT of the
  *   override-APPLY logic (brand / text / image / live-menu). Most static
- *   boards carry an apply shim from inject-shim-v2.cjs (now V6, which
- *   already bundles click-to-edit AND gallery freeze) — but the QSR /
- *   menus-pos / bar MENU boards carry a DIFFERENT, hand-crafted V5 shim whose
- *   `applyMenu()` overlays live per-location POS prices + auto-86 onto the
- *   board. That menu shim is load-bearing for the live Domino's / restaurant
- *   pilot and must NOT be clobbered. It just never grew click-to-edit OR
- *   freeze.
+ *   boards carry an apply shim from inject-shim-v2.cjs (now V7, which
+ *   already bundles click-to-edit, gallery freeze, and the CRUSH E6
+ *   `hidden` field style key) — but the QSR / menus-pos / bar MENU boards
+ *   carry a DIFFERENT, hand-crafted V5 shim whose `applyMenu()` overlays
+ *   live per-location POS prices + auto-86 onto the board. That menu shim
+ *   is load-bearing for the live Domino's / restaurant pilot and must NOT
+ *   be clobbered. It just never grew click-to-edit OR freeze (and does not
+ *   get the E6 hide/show key either — see CLAUDE.md E6 notes).
  *
  *   These shims are purely ADDITIVE: they only read the DOM, post messages
  *   (`educms-ready`, `educms-field-click`), listen for `educms-edit-mode`,
@@ -24,7 +25,7 @@
  *   shim is already there, with zero risk to rendering.
  *
  *   Per-file routing (idempotent + conflict-free):
- *     - file already carries EDUCMS-SHIM-V6 → SKIP (V6 has click + freeze).
+ *     - file already carries EDUCMS-SHIM-V6 or V7 → SKIP (both have click + freeze).
  *     - file loads the external kiosk `_edit-shim.js` → SKIP (it has both).
  *     - file has no editable `[data-field]` → SKIP (nothing to arm).
  *     - file ALREADY reports `educms-field-click` from a hand-crafted block
@@ -122,8 +123,9 @@ for (const file of files) {
 
   // Idempotent: already carries one of OUR up-to-date shims → SKIP.
   if (html.includes(MARKER) || html.includes(FREEZE_MARKER)) { skipped++; continue; }
-  // inject-shim-v2 V6 already bundles click-to-edit AND freeze → SKIP.
-  if (html.includes('EDUCMS-SHIM-V6')) { skipped++; continue; }
+  // inject-shim-v2 V6/V7 already bundle click-to-edit AND freeze → SKIP.
+  // (V7 = CRUSH E6, adds a `hidden` style key; same click/freeze contract as V6.)
+  if (html.includes('EDUCMS-SHIM-V6') || html.includes('EDUCMS-SHIM-V7')) { skipped++; continue; }
   // External kiosk shim already provides click-to-edit + freeze (+ engine hook).
   if (/src=["'][^"']*_edit-shim\.js/.test(html)) { skipped++; continue; }
   // No editable fields → nothing to arm / no point freezing a static doc here.
