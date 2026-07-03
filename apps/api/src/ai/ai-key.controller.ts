@@ -168,25 +168,19 @@ export class AiKeyController {
   async setKey(@Request() req: any, @Body() body: SetKeyBody) {
     const provider = coerceProvider(body?.provider);
     if (!provider) {
-      throw new HttpException(
-        'Pick a provider: "anthropic", "openai", or "google".',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException({ code: 'AI_KEY_PROVIDER_REQUIRED', message: 'Pick a provider: "anthropic", "openai", or "google".' }, HttpStatus.BAD_REQUEST);
     }
     const apiKey = (body?.apiKey || '').trim();
     const shapeError = validateApiKeyShape(provider, apiKey);
     if (shapeError) {
-      throw new HttpException(shapeError, HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'AI_KEY_SHAPE_INVALID', message: shapeError }, HttpStatus.BAD_REQUEST);
     }
     // Validate the requested model against our catalog. Empty string
     // / undefined means "use provider default" — accepted explicitly
     // to keep the legacy "no model column" rows working unchanged.
     const requestedModel = (body?.model || '').trim();
     if (requestedModel && !isKnownModel(provider, requestedModel)) {
-      throw new HttpException(
-        `Unknown model "${requestedModel}" for provider ${provider}. Pick one from the catalog.`,
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException({ code: 'AI_KEY_MODEL_UNKNOWN', message: `Unknown model "${requestedModel}" for provider ${provider}. Pick one from the catalog.` }, HttpStatus.BAD_REQUEST);
     }
     const model = requestedModel || defaultModelFor(provider);
 
@@ -206,6 +200,12 @@ export class AiKeyController {
       // key. 403 = key fine but lacks model permissions. Other = give
       // the status code so the operator can google.
       let detail = `Provider rejected the key (${testResult.errorStatus}).`;
+      // err-code sweep (task #57): default code mirrors the upstream
+      // status; overwritten below with the provider-specific reason
+      // when we can disambiguate one (quota code, or a 401/403/404/429
+      // status-shaped code) so the frontend can map it to a real message
+      // instead of a generic BAD_REQUEST.
+      let code = 'AI_KEY_TEST_FAILED';
       const providerLabel =
         provider === 'anthropic' ? 'Anthropic'
         : provider === 'openai' ? 'OpenAI'
@@ -217,14 +217,19 @@ export class AiKeyController {
       const quotaErr = mapProviderQuotaError(provider, testResult.errorStatus, testResult.errorBody);
       if (quotaErr) {
         detail = quotaErr.message;
+        code = quotaErr.code;
       } else if (testResult.errorStatus === 401) {
         detail = `That ${providerLabel} key was rejected. Double-check you copied the full key from your provider dashboard.`;
+        code = 'AI_KEY_REJECTED';
       } else if (testResult.errorStatus === 403) {
         detail = `Key works but doesn't have access to the "${model}" model. Pick a different model from the dropdown, or check your ${providerLabel} plan.`;
+        code = 'AI_KEY_MODEL_FORBIDDEN';
       } else if (testResult.errorStatus === 404) {
         detail = `The model "${model}" wasn't found on your ${providerLabel} account. Some models are gated by org / region — try a different one.`;
+        code = 'AI_KEY_MODEL_NOT_FOUND';
       } else if (testResult.errorStatus === 429) {
         detail = `Provider rate-limited the test request. Try again in a moment — the key itself may be fine.`;
+        code = 'AI_KEY_TEST_RATE_LIMITED';
       }
       // 2026-05-26 audit AI-P0-4 — log failed test-on-save attempts.
       // Without this, an attacker with a SCHOOL_ADMIN account can
@@ -248,7 +253,7 @@ export class AiKeyController {
           }),
         },
       }).catch(() => { /* audit best-effort */ });
-      throw new HttpException(detail, HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code, message: detail }, HttpStatus.BAD_REQUEST);
     }
 
     const sealed = sealAiKey(apiKey);
@@ -300,30 +305,21 @@ export class AiKeyController {
       select: { aiProvider: true, aiKeyEncrypted: true } as any,
     })) as any;
     if (!tenant?.aiKeyEncrypted || !tenant?.aiProvider) {
-      throw new HttpException(
-        'Connect a provider key first, then you can switch models.',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException({ code: 'AI_KEY_NOT_CONFIGURED', message: 'Connect a provider key first, then you can switch models.' }, HttpStatus.BAD_REQUEST);
     }
     const provider = coerceProvider(tenant.aiProvider);
     if (!provider) {
-      throw new HttpException('Stored AI provider is unrecognized — reconnect your key.', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'AI_KEY_PROVIDER_UNRECOGNIZED', message: 'Stored AI provider is unrecognized — reconnect your key.' }, HttpStatus.BAD_REQUEST);
     }
     const requestedModel = (body?.model || '').trim();
     if (!requestedModel || !isKnownModel(provider, requestedModel)) {
-      throw new HttpException(
-        `Unknown model "${requestedModel}" for provider ${provider}. Pick one from the list.`,
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException({ code: 'AI_KEY_MODEL_UNKNOWN', message: `Unknown model "${requestedModel}" for provider ${provider}. Pick one from the list.` }, HttpStatus.BAD_REQUEST);
     }
     let apiKey: string;
     try {
       apiKey = openAiKey(tenant.aiKeyEncrypted);
     } catch {
-      throw new HttpException(
-        'Your saved key could not be read (it may need re-entering). Use "Replace key".',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException({ code: 'AI_KEY_UNREADABLE', message: 'Your saved key could not be read (it may need re-entering). Use "Replace key".' }, HttpStatus.BAD_REQUEST);
     }
     // Re-test the STORED key against the NEW model — a model the key
     // lacks access to fails here with a clear message, not later when
@@ -349,6 +345,19 @@ export class AiKeyController {
               : testResult.errorStatus === 429
                 ? `Provider rate-limited the test — try again in a moment.`
                 : `Provider rejected the request (${testResult.errorStatus}).`;
+      // err-code sweep (task #57): same disambiguation as setKey() above —
+      // quota code wins, else a status-shaped fallback code.
+      const code = quotaErr
+        ? quotaErr.code
+        : testResult.errorStatus === 403
+          ? 'AI_KEY_MODEL_FORBIDDEN'
+          : testResult.errorStatus === 404
+            ? 'AI_KEY_MODEL_NOT_FOUND'
+            : testResult.errorStatus === 401
+              ? 'AI_KEY_REJECTED'
+              : testResult.errorStatus === 429
+                ? 'AI_KEY_TEST_RATE_LIMITED'
+                : 'AI_KEY_TEST_FAILED';
       await this.prisma.client.auditLog.create({
         data: {
           action: 'AI_KEY_TEST_FAILED',
@@ -359,7 +368,7 @@ export class AiKeyController {
           details: JSON.stringify({ provider, model: requestedModel, upstreamStatus: testResult.errorStatus, quotaError: !!quotaErr, via: 'model-switch' }),
         },
       }).catch(() => { /* audit best-effort */ });
-      throw new HttpException(detail, HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code, message: detail }, HttpStatus.BAD_REQUEST);
     }
     await this.prisma.client.tenant.update({
       where: { id: req.user.tenantId },
