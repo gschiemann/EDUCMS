@@ -1,0 +1,233 @@
+<!doctype html>
+<!-- GYM · WELCOME LOCKER ROOM — new-member welcome board (open locker + taped papers).
+     APPROVED 2026-07-02 — matches docs/design/approved/2026-07-02-gym-welcome/gym-welcome-v8.html.
+     Reviewed by Greg. DO NOT regress.
+     Pixel-faithful ×2 port of the 1920×1080 mockup to the sibling 3840×2160 signage
+     scaffold (transform:scale stage, brand-token vars the shim recognises, live clock,
+     data-field on every text, data-imgslot for trainer photo + logo). -->
+<html lang="en"><head><meta charset="utf-8"/><title>Gym · Welcome Locker Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600;700;800&family=Caveat:wght@700&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* rebrand here — names the shim's BRAND_MAP recognises */
+  --bg:#14161c;--paper:#151921;--fg:#ffffff;--mute:#8b93a3;--rule:#232733;
+  --primary:#bef22d;--primary2:#8fd311;--accent:#f97316;--accent2:#38bdf8;--good:#38bdf8;
+  --font-display:"Anton",system-ui,sans-serif;--font-grotesk:"Inter",system-ui,sans-serif;--font-mono:"Inter",system-ui,sans-serif;--font-hand:"Caveat",cursive;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden;color:var(--fg);font-family:var(--font-grotesk);
+  background:linear-gradient(180deg,#181b22 0%,#14161c 70%,#101218 100%);}
+
+/* header */
+.head{position:absolute;top:0;left:0;right:0;height:184px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 112px;background:#0e1015;border-bottom:2px solid var(--rule);z-index:8;}
+.brand{display:flex;align-items:center;}
+.plate{width:100px;height:100px;border-radius:26px;background:var(--primary);display:flex;align-items:center;justify-content:center;margin-right:34px;background-size:cover;background-position:center;}
+.plate svg{width:58px;height:58px;}
+.plate.has-img svg{display:none;}
+.brand h1{font-family:var(--font-display);font-size:80px;letter-spacing:2px;text-transform:uppercase;line-height:1;}
+.brand small{font-size:26px;font-weight:800;letter-spacing:10px;color:var(--mute);display:block;margin-top:4px;}
+.clock{font-family:var(--font-display);font-size:80px;font-variant-numeric:tabular-nums;}
+
+/* locker wall fills the whole canvas */
+.wall{position:absolute;top:184px;left:0;right:0;bottom:192px;display:flex;padding:68px 96px 0;}
+.locker{position:relative;flex:1;margin:0 24px;border-radius:28px 28px 0 0;overflow:hidden;
+  background:linear-gradient(175deg,#3a4152 0%,#2c3240 30%,#262b38 100%);
+  border:4px solid #454d61;border-bottom:none;box-shadow:inset 0 4px 0 rgba(255,255,255,.12), 0 48px 100px rgba(0,0,0,.5);}
+.numplate{position:absolute;top:52px;left:50%;transform:translateX(-50%);background:#191d26;border:4px solid #4a5268;
+  border-radius:16px;padding:14px 44px;font-family:var(--font-display);font-size:52px;letter-spacing:4px;color:#c8cfdd;z-index:3;}
+.vent{position:absolute;left:50%;transform:translateX(-50%);width:60%;height:18px;border-radius:10px;
+  background:linear-gradient(180deg,#1a1e28,#232837);box-shadow:inset 0 4px 6px rgba(0,0,0,.6);}
+.handle{position:absolute;right:52px;top:47%;width:32px;height:148px;border-radius:16px;
+  background:linear-gradient(90deg,#59627a,#3d445a);box-shadow:4px 6px 12px rgba(0,0,0,.5);}
+
+/* Jordan's OPEN locker — lime interior, filled with welcome kit */
+.locker.open{background:linear-gradient(180deg,#20260c 0%,#171c08 100%);border-color:var(--primary);
+  box-shadow:0 0 0 6px color-mix(in srgb, var(--primary) 35%, transparent), 0 48px 120px color-mix(in srgb, var(--primary) 15%, transparent);}
+.openglow{position:absolute;top:0;right:0;bottom:0;left:0;background:radial-gradient(800px 600px at 50% 30%, color-mix(in srgb, var(--primary) 16%, transparent), transparent 70%);}
+.doorEdge{position:absolute;top:0;bottom:0;left:-28px;width:52px;background:linear-gradient(90deg,#2c3240,#454d61);
+  transform:skewY(-2deg);box-shadow:12px 0 28px rgba(0,0,0,.5);}
+.jname{position:absolute;top:48px;left:50%;transform:translateX(-50%);background:var(--primary);color:#141a05;border-radius:16px;
+  padding:16px 48px;font-family:var(--font-display);font-size:56px;letter-spacing:4px;z-index:3;box-shadow:0 12px 36px color-mix(in srgb, var(--primary) 40%, transparent);text-transform:uppercase;}
+.jday{position:absolute;top:168px;left:50%;transform:translateX(-50%);font-size:32px;font-weight:800;letter-spacing:6px;color:var(--primary);white-space:nowrap;}
+.hookrail{position:absolute;top:260px;left:10%;right:10%;height:16px;background:#39421a;border-radius:8px;}
+.hook{position:absolute;top:268px;width:20px;height:52px;border-radius:0 0 12px 12px;background:#5a682a;}
+.towel{position:absolute;top:304px;left:16%;width:156px;height:300px;border-radius:16px;
+  background:repeating-linear-gradient(0deg,#e8ecf3 0 44px, #cdd5e4 44px 60px);transform:rotate(2deg);
+  box-shadow:0 20px 36px rgba(0,0,0,.35);}
+.bag{position:absolute;top:336px;right:14%;width:240px;height:240px;border-radius:32px;background:#12160a;
+  border:6px solid #39421a;transform:rotate(-3deg);}
+.bag::after{content:"";position:absolute;top:-32px;left:48px;right:48px;height:40px;border:10px solid #39421a;border-bottom:none;border-radius:24px 24px 0 0;}
+.kit{position:absolute;left:10%;right:10%;top:660px;background:#f5f1e6;color:#232012;border-radius:12px;padding:40px 44px;
+  transform:rotate(-1.4deg);box-shadow:0 28px 52px rgba(0,0,0,.45);}
+.kit::before{content:"";position:absolute;top:-26px;left:50%;transform:translateX(-50%) rotate(2deg);width:220px;height:52px;
+  background:color-mix(in srgb, var(--primary) 65%, transparent);}
+.kit h4{font-family:var(--font-display);font-size:46px;letter-spacing:2px;margin-bottom:24px;text-transform:uppercase;}
+.kit .k{display:flex;align-items:center;font-size:36px;font-weight:700;padding:12px 0;border-bottom:3px dashed #cfc7ae;}
+.kit .k:last-child{border-bottom:none;}
+.kit .cb{width:44px;height:44px;border:5px solid #8f8768;border-radius:12px;margin-right:24px;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+.kit .cb.on{background:#232012;}
+.kit .cb.on svg{width:28px;height:28px;}
+
+/* neighbor lockers carry taped content — trainer / schedule / poster */
+.paper{position:absolute;left:9%;right:9%;border-radius:12px;box-shadow:0 28px 52px rgba(0,0,0,.5);}
+.tape{position:absolute;top:-26px;left:50%;transform:translateX(-50%) rotate(-2deg);width:200px;height:48px;background:rgba(255,255,255,.28);}
+.polaroid{top:300px;background:#f7f7f4;padding:32px 32px 0;transform:rotate(-2.5deg);color:#232012;}
+.pframe{background:#101722;height:420px;border-radius:8px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;background-size:cover;background-position:center;}
+.pframe .ring2{width:260px;height:260px;border-radius:50%;background:conic-gradient(var(--accent2) 0 290deg,#26303f 290deg 360deg);display:flex;align-items:center;justify-content:center;}
+.pframe .fc{width:220px;height:220px;border-radius:50%;background:#182131;display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:88px;color:var(--accent2);}
+.pframe.has-img .ring2{display:none;}
+.polaroid h4{font-family:var(--font-hand);font-size:76px;text-align:center;padding:20px 0 4px;}
+.polaroid p{font-size:32px;font-weight:700;text-align:center;color:#5b5342;padding-bottom:28px;}
+.badge{position:absolute;bottom:300px;left:50%;transform:translateX(-50%) rotate(2deg);background:var(--accent2);color:#052033;
+  font-weight:800;font-size:34px;letter-spacing:2px;padding:22px 36px;border-radius:20px;white-space:nowrap;box-shadow:0 20px 44px color-mix(in srgb, var(--accent2) 35%, transparent);text-transform:uppercase;}
+
+.sched{top:300px;background:#f5f1e6;color:#232012;padding:40px 44px;transform:rotate(1.6deg);}
+.sched h4{font-family:var(--font-display);font-size:48px;letter-spacing:2px;margin-bottom:28px;text-transform:uppercase;}
+.sched .s{display:flex;justify-content:space-between;font-size:36px;font-weight:700;padding:18px 4px;border-bottom:3px dashed #cfc7ae;}
+.sched .s:last-child{border-bottom:none;}
+.sched .s span{color:#8a7f5c;font-weight:800;}
+.freebie{position:absolute;bottom:300px;left:50%;transform:translateX(-50%) rotate(-2deg);background:var(--accent);color:#1a0f00;
+  font-family:var(--font-display);font-size:42px;letter-spacing:2px;padding:24px 40px;border-radius:20px;white-space:nowrap;box-shadow:0 20px 44px color-mix(in srgb, var(--accent) 40%, transparent);text-transform:uppercase;}
+
+.poster{top:300px;bottom:300px;background:linear-gradient(165deg,var(--primary) 0%,var(--primary2) 100%);color:#141a05;transform:rotate(-1.2deg);
+  display:flex;flex-direction:column;justify-content:center;padding:60px 52px;text-align:center;}
+.poster .small{font-size:34px;font-weight:800;letter-spacing:8px;margin-bottom:32px;text-transform:uppercase;}
+.poster h3{font-family:var(--font-display);font-size:112px;line-height:1.04;letter-spacing:2px;text-transform:uppercase;}
+.poster .u{width:180px;height:16px;background:#141a05;margin:44px auto 0;}
+
+/* floor + CTA — SOLID opaque bar */
+.floor{position:absolute;left:0;right:0;bottom:192px;height:40px;background:linear-gradient(180deg,#0a0c10,#07080b);z-index:2;}
+.cta{position:absolute;left:0;right:0;bottom:0;height:192px;background:linear-gradient(90deg,var(--accent),#fb5607);
+  display:flex;align-items:center;padding:0 112px;z-index:8;}
+.cta .stripes{position:absolute;top:0;right:0;bottom:0;left:0;background:repeating-linear-gradient(115deg, rgba(0,0,0,.08) 0 52px, transparent 52px 104px);}
+.cta .q{position:relative;font-size:34px;font-weight:800;letter-spacing:6px;color:rgba(20,10,0,.7);margin-right:48px;}
+.cta h2{position:relative;font-family:var(--font-display);font-size:76px;color:#1a0f00;letter-spacing:2px;flex:1;text-transform:uppercase;}
+.cta .clockmini{position:relative;font-family:var(--font-display);font-size:60px;color:#1a0f00;text-transform:uppercase;}
+
+/* portrait: 2×2 locker grid */
+.stage[data-orient="portrait"] .wall{flex-wrap:wrap;padding:60px 80px 0;}
+.stage[data-orient="portrait"] .locker{flex:0 0 calc(50% - 48px);height:1560px;margin:0 24px 48px;border-radius:28px;border-bottom:4px solid #454d61;}
+.stage[data-orient="portrait"] .locker.open{border-bottom-color:var(--primary);}
+.stage[data-orient="portrait"] .poster{bottom:80px;}
+</style>
+<script>/*EDUCMS-SHIM-V6*/(function(){try{
+var editMode=false;
+// ── Gallery FREEZE mode ──────────────────────────────────────────────
+// Installed FIRST (this script is at end of <head>, before the board's own
+// <body> scripts), so the timer-wrappers below capture every timer the board
+// starts. Strict NO-OP unless the URL carries freeze=1.
+var FROZEN=(function(){try{return new URLSearchParams(location.search).get('freeze')==='1';}catch(e){return false;}})();
+var _frzStyle=null;
+function _unfreeze(){if(_frzStyle){try{if(_frzStyle.parentNode)_frzStyle.parentNode.removeChild(_frzStyle);}catch(e){}_frzStyle=null;}}
+(function(){if(!FROZEN)return;var ivs=[],tos=[],rafs=[];var _si=window.setInterval,_st=window.setTimeout,_raf=window.requestAnimationFrame;
+window.setInterval=function(){var id=_si.apply(window,arguments);try{ivs.push(id);}catch(e){}return id;};
+window.setTimeout=function(){var id=_st.apply(window,arguments);try{tos.push(id);}catch(e){}return id;};
+if(_raf)window.requestAnimationFrame=function(cb){var id=_raf.call(window,cb);try{rafs.push(id);}catch(e){}return id;};
+function freezeNow(){window.setInterval=_si;window.setTimeout=_st;if(_raf)window.requestAnimationFrame=_raf;try{for(var i=0;i<ivs.length;i++)clearInterval(ivs[i]);}catch(e){}try{for(var j=0;j<tos.length;j++)clearTimeout(tos[j]);}catch(e){}try{if(_raf)for(var k=0;k<rafs.length;k++)cancelAnimationFrame(rafs[k]);}catch(e){}try{var hi=_st(function(){},0);if(typeof hi==='number'&&hi>0){var lo=hi>100000?hi-100000:0;for(var z=hi;z>lo;z--){clearTimeout(z);clearInterval(z);}}}catch(e){}if(!_frzStyle){try{_frzStyle=document.createElement('style');_frzStyle.setAttribute('data-educms-freeze','1');_frzStyle.appendChild(document.createTextNode('*{animation:none!important;transition:none!important;}'));(document.head||document.documentElement).appendChild(_frzStyle);}catch(e){}}}
+// Settle window: let the board's auto-fit (setTimeout(autofit,500)+fonts.ready)
+// finish before killing its timers; then a brute-force id sweep catches any the
+// wrappers missed. Scheduled via the REAL setTimeout so this scheduler isn't
+// itself recorded/cleared.
+_st(freezeNow,1400);window.__educmsFreezeNow=freezeNow;}());
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold','--c-accent2'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function armEdit(){document.querySelectorAll('[data-field],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':'#06b6d4');el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(el.hasAttribute('data-field')?'text':'img');try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);if(editMode)armEdit();}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();}}}catch(_){}});
+}catch(e){}})();</script>
+</head><body>
+<div class="stage" id="stage">
+  <header class="head" data-widget="brand">
+    <div class="brand">
+      <div class="plate" data-widget="logo" data-imgslot="brand.logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M3 9v6M6 7v10M18 7v10M21 9v6M6 12h12" stroke="#0e1015" stroke-width="2.6" stroke-linecap="round"/></svg></div>
+      <div><h1 data-field="brand.name">Ironworks Fitness</h1><small data-field="brand.tag">New member welcome · Locker room</small></div>
+    </div>
+    <div class="clock" data-source="local-time" data-widget="clock"><span data-field="clock.hhmm">7:42 PM</span></div>
+  </header>
+
+  <div class="wall">
+    <div class="locker" data-widget="trainer">
+      <div class="numplate" data-field="trainer.locker">112</div>
+      <div class="vent" style="top:176px;"></div>
+      <div class="paper polaroid">
+        <div class="tape"></div>
+        <div class="pframe" data-imgslot="trainer.photo"><div class="ring2"><div class="fc"><span data-field="trainer.initials">MA</span></div></div></div>
+        <h4 data-field="trainer.name">Coach Maya</h4>
+        <p><span data-field="trainer.spec">Strength &amp; conditioning</span><br><span data-field="trainer.bio">first-90-days onboarding</span></p>
+      </div>
+      <div class="badge" data-field="trainer.badge">Your trainer — say hi</div>
+      <div class="vent" style="bottom:120px;"></div>
+      <div class="handle"></div>
+    </div>
+
+    <div class="locker open" data-widget="member">
+      <div class="openglow"></div>
+      <div class="doorEdge"></div>
+      <div class="jname" data-field="member.name">Jordan</div>
+      <div class="jday" data-field="member.day">Day 01 · Member since Jul 1</div>
+      <div class="hookrail"></div>
+      <div class="hook" style="left:22%;"></div>
+      <div class="hook" style="left:50%;"></div>
+      <div class="hook" style="left:78%;"></div>
+      <div class="towel"></div>
+      <div class="bag"></div>
+      <div class="kit" data-widget="kit">
+        <h4 data-field="kit.label">Your welcome kit</h4>
+        <div class="k" data-widget="kit.0"><div class="cb on"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4 10-10" stroke="#f5f1e6" stroke-width="3.6" stroke-linecap="round"/></svg></div><span data-field="kit.0.t">Locker #114 — yours</span></div>
+        <div class="k" data-widget="kit.1"><div class="cb"></div><span data-field="kit.1.t">Free intro session w/ Maya</span></div>
+        <div class="k" data-widget="kit.2"><div class="cb"></div><span data-field="kit.2.t">First class free this week</span></div>
+        <div class="k" data-widget="kit.3"><div class="cb"></div><span data-field="kit.3.t">Week-1 goal check-in</span></div>
+      </div>
+    </div>
+
+    <div class="locker" data-widget="classes">
+      <div class="numplate" data-field="classes.locker">115</div>
+      <div class="vent" style="top:176px;"></div>
+      <div class="paper sched">
+        <div class="tape"></div>
+        <h4 data-field="classes.label">Today's classes</h4>
+        <div class="s" data-widget="classes.0"><span data-field="classes.0.name">HIIT 45</span> <span data-field="classes.0.time">6:00 AM</span></div>
+        <div class="s" data-widget="classes.1"><span data-field="classes.1.name">Spin</span> <span data-field="classes.1.time">5:30 PM</span></div>
+        <div class="s" data-widget="classes.2"><span data-field="classes.2.name">Yoga Flow</span> <span data-field="classes.2.time">7:00 PM</span></div>
+      </div>
+      <div class="freebie" data-field="classes.free">First class free — just show up</div>
+      <div class="vent" style="bottom:120px;"></div>
+      <div class="handle"></div>
+    </div>
+
+    <div class="locker" data-widget="poster">
+      <div class="numplate" data-field="poster.locker">116</div>
+      <div class="paper poster">
+        <div class="small" data-field="poster.eyebrow">Day one truth</div>
+        <h3><span data-field="poster.line1">You just took</span><br><span data-field="poster.line2">the hardest</span><br><span data-field="poster.line3">step.</span></h3>
+        <div class="u"></div>
+      </div>
+      <div class="handle"></div>
+    </div>
+  </div>
+
+  <div class="floor"></div>
+  <footer class="cta" data-widget="cta">
+    <div class="stripes"></div>
+    <div class="q" data-field="cta.q">New here?</div>
+    <h2 data-field="cta.headline">Book your free intro session — front desk</h2>
+    <div class="clockmini" data-field="cta.est">Ironworks · Est. 2019</div>
+  </footer>
+</div>
+<script>(function(){var s=document.getElementById('stage');function fit(){var p=innerHeight>innerWidth;s.setAttribute('data-orient',p?'portrait':'landscape');var w=p?2160:3840,h=p?3840:2160;s.style.width=w+'px';s.style.height=h+'px';s.style.setProperty('--scale',Math.min(innerWidth/w,innerHeight/h));}addEventListener('resize',fit);fit();
+function clk(){var d=new Date(),h=d.getHours(),m=d.getMinutes(),ap=h<12?'AM':'PM';h=h%12||12;document.querySelectorAll('[data-field="clock.hhmm"]').forEach(function(e){e.textContent=h+':'+(m<10?'0':'')+m+' '+ap;});}clk();setInterval(clk,10000);
+})();</script></body></html>
