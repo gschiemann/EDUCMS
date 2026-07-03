@@ -689,12 +689,12 @@ export const SPORTS_TEMPLATE_PRESETS: SystemPreset[] = [
   // ── Stadium Lane flagship broadcast board (S6 #288, 2026-07-03) ────
   // Greg picked all 3 stadium designs 2026-07-03 as sports-scoreboard
   // template options (docs/design/proposals/2026-07-02-stadium-lane/
-  // README.md); v1 "Broadcast" and v2 "Dual-Meet Duel" are both built. A
-  // full-canvas single-zone scene, same pattern as sports-swim-lane-board
-  // above — reads the SAME stats.results contract, presented with the
-  // Stadium Lane visual language (angled header, gold leader glow,
-  // team-color lane washes, pool-record + sponsor footer) instead of the
-  // dense operator-configurable grid.
+  // README.md); v1 "Broadcast", v2 "Dual-Meet Duel", and v3 "Record
+  // Chase" are all built. A full-canvas single-zone scene, same pattern
+  // as sports-swim-lane-board above — reads the SAME stats.results
+  // contract, presented with the Stadium Lane visual language (angled
+  // header, gold leader glow, team-color lane washes, pool-record +
+  // sponsor footer) instead of the dense operator-configurable grid.
   {
     id: 'sports-stadium-broadcast-board',
     name: '🏊 Broadcast Meet Board',
@@ -727,6 +727,27 @@ export const SPORTS_TEMPLATE_PRESETS: SystemPreset[] = [
     bgColor: '#07090f',
     zones: [
       { name: 'Duel Board', widgetType: 'STADIUM_MEET_BOARD', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { boardStyle: 'duel', laneCount: 8 } },
+    ],
+  },
+  // ── Stadium Lane v3 "Record Chase" (S6 #288, 2026-07-03) ───────────
+  // Same widget (STADIUM_MEET_BOARD), same stats.results contract, a
+  // third `boardStyle` — a left rail with a giant race-clock readout +
+  // a configured pool-record-chase card (progress bar + gap line) + a
+  // team-score chip, alongside a right ladder of place-ordered rows
+  // (see StadiumMeetBoardWidget.tsx's StadiumChaseScene header comment
+  // for the full live-data mapping).
+  {
+    id: 'sports-stadium-chase-board',
+    name: '🏊 Record Chase Board',
+    description:
+      'Record-chase board — left rail with a giant race clock + a pool-record-chase card (progress bar + gap line) + team-score chip, right ladder of place-ordered rows with medal ranks. Bind a meet; resize for any LED.',
+    category: 'SCOREBOARD',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor: '#05070c',
+    zones: [
+      { name: 'Chase Board', widgetType: 'STADIUM_MEET_BOARD', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { boardStyle: 'chase', laneCount: 6 } },
     ],
   },
   // ── Sponsors — first-class revenue surfaces (Sprint 13 §7) ────────
