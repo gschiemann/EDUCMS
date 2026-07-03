@@ -17,7 +17,7 @@ import {
   Layers, ChevronUp, ChevronDown, Lock, Unlock, GripVertical,
   ZoomIn, ZoomOut, Maximize2, RotateCcw, RotateCw, Palette, MousePointer,
   PanelLeft, Sparkles, Search, FolderOpen, ChevronRight, Wand2, MonitorPlay,
-  Check, Expand, ChevronLeft,
+  Check, Expand, ChevronLeft, Trophy,
 } from 'lucide-react';
 import {
   useTemplates, useCreateTemplate, useDeleteTemplate, useCreateFromPreset,
@@ -2346,6 +2346,7 @@ export default function TemplatesPage() {
                     portraitSibling={portraitSiblingFor(t)}
                     onPreview={(active) => setPreviewTemplate(active)}
                     onAdaptForLED={() => setAdaptTemplate(t)}
+                    onUseForGame={() => router.push(`/${params?.schoolId ?? ''}/sports?templateId=${encodeURIComponent(t.id)}&surface=${sportsSurfaceForCategory(t.category)}&newGame=1`)}
                   />
                 ))}
               </div>
@@ -2388,6 +2389,7 @@ export default function TemplatesPage() {
                       if (ok) deleteTemplate.mutateAsync(t.id);
                     }}
                     onPreview={(active) => setPreviewTemplate(active)}
+                    onUseForGame={() => router.push(`/${params?.schoolId ?? ''}/sports?templateId=${encodeURIComponent(t.id)}&surface=${sportsSurfaceForCategory(t.category)}&newGame=1`)}
                     isViewerDisabled={isViewer}
                   />
                 ))}
@@ -2992,7 +2994,35 @@ function AdaptForLedModal({
 // GALLERY CARD — premium hover preview
 // ═════════════════════════════════════════════════════
 
-function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, onPutOnScreen, putOnScreenBusy = false, onDuplicate, onExport, onAdaptForLED, onDelete, onPreview, isViewerDisabled = false }: {
+/** Sports Wave S2-3 (2026-07-02) — categories whose cards get the
+ *  "Use for a game →" express lane (sports-presets.ts categories, see
+ *  the audit's costume-check table: Swimming/Track lane boards + Diving
+ *  Leaderboard/Judges = SCOREBOARD, Swim Relay Exchange = SCOREBOARD,
+ *  Halftime Board = GAMEDAY, plus the composable Ribbon/Scorebug
+ *  variants). Matches CLAUDE.md's exact naming in the task
+ *  (SCOREBOARD/RIBBON/SCOREBUG/GAMEDAY). */
+const SPORTS_GAME_CATEGORIES = new Set(['SCOREBOARD', 'RIBBON', 'SCOREBUG', 'GAMEDAY']);
+
+/** Which of New Game's three layout dropdowns (sports/page.tsx) this
+ *  card's category deep-links into — mirrors matchesSportsSurface in
+ *  lib/template-relevance.ts (SCOREBOARD_BOARD_CATEGORIES includes
+ *  GAMEDAY under the 'scoreboard' surface; RIBBON and SCOREBUG are each
+ *  their own surface). Getting this wrong means the preselected
+ *  template silently doesn't appear as a selected option in the modal
+ *  (the query param would still say it worked, but the dropdown
+ *  wouldn't reflect it) — verified against the same predicate the
+ *  dropdown itself filters through, not re-derived by hand. */
+function sportsSurfaceForCategory(category: string): 'scoreboard' | 'ribbon' | 'scorebug' {
+  const cat = (category || '').toUpperCase();
+  if (cat === 'RIBBON') return 'ribbon';
+  if (cat === 'SCOREBUG') return 'scorebug';
+  return 'scoreboard'; // SCOREBOARD, GAMEDAY
+}
+
+// Exported (2026-07-02, Sports Wave S2-3) so the card-action regression
+// test can render the EXACT component the gallery mounts (CLAUDE.md
+// rule #9) rather than a hand-rolled re-implementation that could drift.
+export function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, onPutOnScreen, putOnScreenBusy = false, onDuplicate, onExport, onAdaptForLED, onDelete, onPreview, onUseForGame, isViewerDisabled = false }: {
   template: Template;
   /** If this template has a portrait sibling preset, pass it here; the
    *  card shows a Landscape | Portrait toggle and renders the active
@@ -3019,6 +3049,16 @@ function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, 
   /** Called with the currently-active orientation's template (landscape
    *  by default, portrait sibling when toggled). */
   onPreview?: (which: Template) => void;
+  /**
+   * Sports Wave S2-3 (2026-07-02) — "Use for a game →" express lane for
+   * SCOREBOARD/RIBBON/SCOREBUG/GAMEDAY cards. Audit P1-12: every one of
+   * these presets tells the operator to "Bind a game/meet" in its own
+   * description, but binding only exists via New Game or the in-game
+   * Layouts panel — no gallery affordance ever pointed there. Only
+   * rendered when the card is actually a sports surface (see
+   * SPORTS_GAME_CATEGORIES below) AND the caller supplies this handler.
+   */
+  onUseForGame?: () => void;
   isViewerDisabled?: boolean;
 }) {
   // Local toggle — persists for the lifetime of the gallery render.
@@ -3075,6 +3115,13 @@ function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, 
   }, [active.isSystem, active.bgColor, active.bgGradient, brandPalette, zones]);
 
   const fire = onPreview ? () => onPreview(active) : undefined;
+  // Sports Wave S2-3 (2026-07-02) — gate the "Use for a game →" express
+  // lane on the card's OWN category (template.category, not the active
+  // orientation's — landscape/portrait siblings always share one
+  // category) so it only shows on real scoreboard/ribbon/scorebug/
+  // gameday surfaces, never a generic signage board that happens to be
+  // scheduled for the same category name.
+  const isSportsGameCard = SPORTS_GAME_CATEGORIES.has(template.category);
 
   return (
     <div className="group bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-200 transition-all duration-300 overflow-hidden">
@@ -3247,7 +3294,27 @@ function GalleryCard({ template, portraitSibling, onUse, onUsePortrait, onEdit, 
           </div>
         )}
 
-        <div className={`flex gap-2 mt-3 ${onPutOnScreen ? '' : 'pt-3 border-t border-slate-100'}`}>
+        {/* Sports Wave S2-3 (2026-07-02) — "Use for a game →" express
+            lane. Audit P1-12 (gallery bind dead-end): every scoreboard/
+            ribbon/scorebug/gameday preset's own description says "Bind
+            a game/meet," but nothing on the gallery ever routed there —
+            the only paths were New Game's layout dropdown or the
+            in-game Layouts panel, both a click-hunt away from the
+            template the operator is actually looking at. */}
+        {isSportsGameCard && onUseForGame && (
+          <div className={`mt-3 pt-3 border-t border-slate-100 ${onPutOnScreen ? 'border-t-0 mt-2 pt-0' : ''}`}>
+            <button
+              onClick={onUseForGame}
+              disabled={isViewerDisabled}
+              title={isViewerDisabled ? 'Read-only — viewer role' : 'Bind this board to a game in Game Day'}
+              className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Trophy className="w-3.5 h-3.5" /> Use for a game <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        <div className={`flex gap-2 mt-3 ${(onPutOnScreen || (isSportsGameCard && onUseForGame)) ? '' : 'pt-3 border-t border-slate-100'}`}>
           {onUse && (
             <div className="flex-1 flex gap-1">
               <button onClick={onUse} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-sm">

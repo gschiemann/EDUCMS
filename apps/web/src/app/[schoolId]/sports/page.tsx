@@ -8,8 +8,8 @@
  * operator control surface and the public scoreboard board page.
  */
 
-import { useMemo, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   Trophy, Plus, Radio, ExternalLink, Trash2, X, BadgeDollarSign, Copy,
   Loader2, ImageIcon, Globe,
@@ -54,12 +54,33 @@ export default function SportsPage() {
 function SportsHub() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const schoolId = String(params?.schoolId || '');
   const { data: games, isLoading } = useGames();
   const deleteGame = useDeleteGame();
   const duplicateGame = useDuplicateGame();
   const [creating, setCreating] = useState(false);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+  // Sports Wave S2-3 (2026-07-02) — deep-link from a template gallery
+  // card's "Use for a game →" action (templates/page.tsx). Auto-opens
+  // New Game with this template preselected in the RIGHT layout
+  // dropdown (surface tells us which of the three: scoreboard / ribbon
+  // / scorebug) instead of leaving the operator to hunt for it. Read
+  // once on mount (the query param has done its job); the modal owns
+  // the value after that. `router.replace` strips it from the URL so a
+  // page refresh / bookmark doesn't reopen the modal unexpectedly.
+  const [presetTemplate, setPresetTemplate] = useState<{ id: string; surface: 'scoreboard' | 'ribbon' | 'scorebug' } | null>(null);
+  useEffect(() => {
+    const tId = searchParams?.get('templateId');
+    const surface = searchParams?.get('surface');
+    const wantsNewGame = searchParams?.get('newGame') === '1';
+    if (wantsNewGame && tId && (surface === 'scoreboard' || surface === 'ribbon' || surface === 'scorebug')) {
+      setPresetTemplate({ id: tId, surface });
+      setCreating(true);
+      router.replace(`/${schoolId}/sports`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const list: any[] = Array.isArray(games) ? games : [];
 
@@ -218,7 +239,12 @@ function SportsHub() {
         </div>
       )}
 
-      {creating && <CreateGameModal onClose={() => setCreating(false)} />}
+      {creating && (
+        <CreateGameModal
+          onClose={() => { setCreating(false); setPresetTemplate(null); }}
+          initialPresetTemplate={presetTemplate}
+        />
+      )}
     </div>
   );
 }
@@ -246,7 +272,13 @@ function readSavedHomeTeam(schoolId: string): SavedHomeTeam | null {
   }
 }
 
-function CreateGameModal({ onClose }: { onClose: () => void }) {
+function CreateGameModal({ onClose, initialPresetTemplate = null }: {
+  onClose: () => void;
+  /** Sports Wave S2-3 (2026-07-02) — preselects the matching layout
+   *  dropdown when arriving via a gallery card's "Use for a game →"
+   *  deep link (templates/page.tsx). */
+  initialPresetTemplate?: { id: string; surface: 'scoreboard' | 'ribbon' | 'scorebug' } | null;
+}) {
   useOverlayLock(); // hide mobile tab bar so the modal footer clears it
   const params = useParams();
   const router = useRouter();
@@ -265,9 +297,9 @@ function CreateGameModal({ onClose }: { onClose: () => void }) {
   // Sprint 13 — operator-picked custom layouts. Each defaults to ''
   // ("Default — built-in layout") which sends null to the API and
   // falls back to the hardcoded /board, /ribbon, /scorebug.
-  const [scoreboardTemplateId, setScoreboardTemplateId] = useState('');
-  const [ribbonTemplateId, setRibbonTemplateId] = useState('');
-  const [scorebugTemplateId, setScorebugTemplateId] = useState('');
+  const [scoreboardTemplateId, setScoreboardTemplateId] = useState(initialPresetTemplate?.surface === 'scoreboard' ? initialPresetTemplate.id : '');
+  const [ribbonTemplateId, setRibbonTemplateId] = useState(initialPresetTemplate?.surface === 'ribbon' ? initialPresetTemplate.id : '');
+  const [scorebugTemplateId, setScorebugTemplateId] = useState(initialPresetTemplate?.surface === 'scorebug' ? initialPresetTemplate.id : '');
   const { data: templates } = useTemplates();
   // 2026-07-01 — operator: "the drop down list of templates to choose
   // from is stupid and includes our touch menu's...we should only show
