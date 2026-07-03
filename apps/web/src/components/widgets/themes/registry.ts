@@ -72,6 +72,11 @@ export type WidgetType =
   // pace reference bar, and the diving judges panel (drop-high/low +
   // DD + computed dive score). See SwimDiveWidgets.tsx file header.
   | 'SWIM_RELAY_EXCHANGE' | 'SWIM_SPLITS_PANEL' | 'SWIM_RECORD_LINE' | 'DIVE_JUDGES_PANEL'
+  // S6 #288 (2026-07-03) — Stadium Lane flagship swim-meet broadcast
+  // board (v1 "Broadcast"; v2 "Duel" / v3 "Chase" reserved for later —
+  // see StadiumMeetBoardWidget.tsx file header). Same stats.results
+  // contract as SWIM_LANE_GRID, different (broadcast) visual language.
+  | 'STADIUM_MEET_BOARD'
   // VenueOS universal packs — drop-in template backgrounds and live
   // data feeds (markets, news, weather, transit). Variant-rendered;
   // each canonical type groups its pack under one picker chip.
