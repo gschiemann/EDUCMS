@@ -28,7 +28,7 @@
  */
 
 import React from 'react';
-import { useGameState } from './GameStateContext';
+import { useGameState, useRenderSurface } from './GameStateContext';
 import { elRoot, useSubClock, type ElCfg } from './SportElementWidgets';
 import { FitOneLine, FitBox } from './FitOneLine';
 
@@ -497,15 +497,36 @@ export function TeamScoreRunningWidget({ config }: { config: ElCfg }) {
 
 // ════════════════ TRACK / SWIM (leaderboard) ════════════════
 
+/** Neutral empty shell — blank place/lane/name/time, same count as SAMPLE_ROWS. */
+const NEUTRAL_LEADERBOARD_ROWS: Array<{ place?: number | string; lane?: number | string; name?: string; time?: string }> = [
+  { place: '—', lane: '—', name: '—', time: '—' },
+  { place: '—', lane: '—', name: '—', time: '—' },
+  { place: '—', lane: '—', name: '—', time: '—' },
+  { place: '—', lane: '—', name: '—', time: '—' },
+];
+
+/**
+ * nofake-sweep (2026-07-03, docs/research/2026-07-02-sports-deep-pass/
+ * 06-OVERNIGHT-REVIEW.md P1): never called useGameState()/useRenderSurface()
+ * — config.rows defaulted straight to 4 hardcoded, named, timed fabricated
+ * rows with no surface check, indistinguishable from a real result to
+ * spectators. There's no live producer for this widget yet (same as
+ * SwimLaneGridWidget's noLiveData branch), so on a real player surface
+ * with no rows configured, render the neutral blank shell instead.
+ */
 export function LeaderboardWidget({ config }: { config: ElCfg & { rows?: Array<{ place?: number | string; lane?: number | string; name?: string; time?: string }> } }) {
   // Complex multi-row list with fixed proportional column layout — not a single text overflow.
   // The font is elRoot-driven (zone-relative via em); rows self-scroll via overflow:hidden. Left alone.
-  const rows = config.rows && config.rows.length ? config.rows : [
-    { place: 1, lane: 4, name: 'J. CARTER', time: '10.42' },
-    { place: 2, lane: 3, name: 'M. OKAFOR', time: '10.51' },
-    { place: 3, lane: 5, name: 'D. REYES', time: '10.58' },
-    { place: 4, lane: 6, name: 'T. NGUYEN', time: '10.63' },
-  ];
+  const renderSurface = useRenderSurface();
+  const isPlayerSurface = renderSurface === 'player';
+  const rows = config.rows && config.rows.length
+    ? config.rows
+    : (isPlayerSurface ? NEUTRAL_LEADERBOARD_ROWS : [
+        { place: 1, lane: 4, name: 'J. CARTER', time: '10.42' },
+        { place: 2, lane: 3, name: 'M. OKAFOR', time: '10.51' },
+        { place: 3, lane: 5, name: 'D. REYES', time: '10.58' },
+        { place: 4, lane: 6, name: 'T. NGUYEN', time: '10.63' },
+      ]);
   return (
     <div style={elRoot(config, { backgroundColor: config.bgColor ?? 'transparent', flexDirection: 'column', justifyContent: 'flex-start', padding: '0.3em 0.4em' })}>
       {rows.map((r, i) => (
