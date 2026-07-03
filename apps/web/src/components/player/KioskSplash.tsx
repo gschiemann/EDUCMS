@@ -243,12 +243,22 @@ export function KioskSplash({
         // "1 panel = 320×1080, 2 = 640×1080, 3 = 960×1080, ... up
         // to 6 = 1920×1080". Each chain size resolves --led-w to
         // the matching total width.
+        //
+        // 2026-07-03 — Rule #10 variant 3: `right`/`bottom` are DELIBERATELY
+        // OMITTED, not set to 'auto'. All four of top/right/bottom/left in
+        // one style object — even with right/bottom at 'auto' — makes the
+        // browser's CSSOM re-serialize them into the `inset` SHORTHAND in
+        // the DOM `style` attribute (`inset: 0px auto auto 0px`), which
+        // collides with the player/layout.tsx Chromium-83 polyfill's
+        // `[style*="inset: 0"]` selector and force-zeroes right/bottom.
+        // Harmless here only because width/height already pin the box, but
+        // a landmine pattern regardless — omit right/bottom so only two
+        // sides ever reach the `style` attribute (never four), which can
+        // never serialize to `inset`. Zero behavior change. CLAUDE.md rule #10.
         width: 'var(--led-w, 100vw)',
         height: 'var(--led-h, 100vh)',
         top: 0,
         left: 0,
-        right: 'auto',
-        bottom: 'auto',
       }}
     >
       <style>{CSS}</style>

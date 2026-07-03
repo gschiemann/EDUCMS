@@ -6294,9 +6294,23 @@ function PlayerPage() {
         // only the top-left canvas region) showed just the left slice on one
         // panel. The /board route already fills because it's a canvas-sized
         // iframe; plain media didn't. Falls back to 100vw/100vh on browsers /
-        // screens with no canvas configured — unchanged there. `right/bottom:
-        // auto` so the explicit width/height win over the fixed-inset shorthand.
-        right: 'auto', bottom: 'auto',
+        // screens with no canvas configured — unchanged there.
+        //
+        // 2026-07-03 — Rule #10 variant 3: `right`/`bottom` are DELIBERATELY
+        // OMITTED (not set to 'auto'). Explicitly declaring all four of
+        // top/right/bottom/left in one style object — even with right/bottom
+        // as 'auto' — makes the browser's CSSOM re-serialize them into the
+        // `inset` SHORTHAND in the DOM `style` attribute: `inset: 0px auto
+        // auto 0px`. That string STARTS WITH "inset: 0", which collides with
+        // the player/layout.tsx Chromium-83 polyfill's `[style*="inset: 0"]`
+        // selector — it force-zeroes right/bottom (!important), which
+        // happens to be harmless here ONLY because width/height already pin
+        // the box, but is a landmine pattern to avoid regardless. Omitting
+        // right/bottom entirely means only top+left ever reach the `style`
+        // attribute — never four sides — so this object can NEVER serialize
+        // to `inset` at all. Zero behavior change: an unset side and an
+        // explicit 'auto' side compute identically for a `position:fixed`
+        // box whose size comes from width/height. See CLAUDE.md rule #10.
         width: 'var(--led-w, 100vw)',
         height: 'var(--led-h, 100vh)',
         background: '#000',
