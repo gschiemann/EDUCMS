@@ -23,7 +23,7 @@ import {
   ctsFieldEligible,
   deriveCtsField,
 } from '@/components/widgets/sports/cts-fields';
-import { useAssets, usePlaylists, useTemplates, useTemplateBackdrops } from '@/hooks/use-api';
+import { useAssets, usePlaylists, useTemplates, useTemplateBackdrops, useGames } from '@/hooks/use-api';
 import { apiFetch } from '@/lib/api-client';
 import { filterRelevantTemplates } from '@/lib/template-relevance';
 import { useCustomData } from '@/lib/data/use-custom-data';
@@ -3234,6 +3234,11 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         // game; a live Game still wins over these at render time). 2026-05-29:
         // operator "make sure its editable" — type names/scores/colors here.
         if (sbVariant === 'scoreboard-main') {
+          // Sports Wave S2-2 (2026-07-02) — "Bind to game" picker, above
+          // the hand-typed fields since binding is the primary path; the
+          // hand-typed overrides below still win at render time even
+          // when a game is bound (MainScoreboardWidget's `pick()`).
+          fields.push(<GameBindField key="gameId" value={cfg.gameId || ''} onChange={(v) => setField({ gameId: v })} />);
           fields.push(<TextField key="bannerText" label="Banner text" value={cfg.bannerText ?? ''} placeholder="GAME NIGHT" onChange={(v) => setField({ bannerText: v })} />);
           fields.push(
             <div key="homeName" data-field-section="homeName">
@@ -3250,6 +3255,17 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
           fields.push(<TextField key="clock" label="Clock" value={cfg.clock ?? ''} placeholder="auto from game (e.g. 7:42)" onChange={(v) => setField({ clock: v })} />);
           fields.push(<AssetPickerField key="homeLogoUrl" label="Home logo" value={cfg.homeLogoUrl || ''} kind="image" onChange={(v) => setField({ homeLogoUrl: v })} />);
           fields.push(<AssetPickerField key="awayLogoUrl" label="Away logo" value={cfg.awayLogoUrl || ''} kind="image" onChange={(v) => setField({ awayLogoUrl: v })} />);
+          break;
+        }
+        // Sports Wave S2-2 (2026-07-02) — RibbonScoreboardWidget /
+        // ScorebugWidget (RibbonScorebugWidgets.tsx) don't have a
+        // dedicated field editor at all yet (a separate, pre-existing
+        // gap from scoreboard-main's — not built here); the ONE thing
+        // they need for S2 is the same "Bind to game" picker every other
+        // useGameState()-driven sports widget gets, so an operator can
+        // point a ribbon/scorebug zone at a specific game the same way.
+        if (sbVariant === 'ribbon-main' || sbVariant === 'scorebug-main') {
+          fields.push(<GameBindField key="gameId" value={cfg.gameId || ''} onChange={(v) => setField({ gameId: v })} />);
           break;
         }
         // ── Phase 1: LIVE DATA mapping section ──
@@ -5302,6 +5318,11 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
     // here only control presentation (header text, order, colors), not a
     // separate data source.
     case 'SWIM_LANE_GRID': {
+      // Sports Wave S2-2 (2026-07-02) — "Bind to game" picker. Wraps this
+      // zone in its own <GameStateProvider> (WidgetRenderer.tsx) whenever
+      // there's no ambient one already, independent of whichever screen
+      // this template ends up scheduled to.
+      fields.push(<GameBindField key="gameId" value={cfg.gameId || ''} onChange={(v) => setField({ gameId: v })} />);
       fields.push(<TextField key="headerText" label="Header text (blank = auto from the live event)" value={cfg.headerText || ''} placeholder="EVENT 12 — BOYS 100 FREESTYLE — HEAT 3 OF 4" onChange={(v) => setField({ headerText: v })} />);
       fields.push(<TextField key="eventFilter" label="Pin to event (exact name; blank = auto-pick current heat)" value={cfg.eventFilter || ''} placeholder="" onChange={(v) => setField({ eventFilter: v })} />);
       fields.push(<SelectField key="orderMode" label="Row order" value={String(cfg.orderMode || 'lane')} options={[['lane','Lane order (the grid spectators read)'],['place','Results order (sorted by finish place)']]} onChange={(v) => setField({ orderMode: v })} />);
@@ -5316,6 +5337,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       break;
     }
     case 'DIVE_LEADERBOARD': {
+      fields.push(<GameBindField key="gameId" value={cfg.gameId || ''} onChange={(v) => setField({ gameId: v })} />);
       fields.push(<TextField key="headerText" label="Header text (blank = auto from the live event)" value={cfg.headerText || ''} placeholder="GIRLS 1M SPRINGBOARD — FINAL" onChange={(v) => setField({ headerText: v })} />);
       fields.push(<TextField key="eventFilter" label="Pin to event (exact name; blank = auto-pick current round)" value={cfg.eventFilter || ''} placeholder="" onChange={(v) => setField({ eventFilter: v })} />);
       fields.push(<NumField key="divesInList" id="dl-divesInList" label="Dives in the list (0 = hide the count)" value={typeof cfg.divesInList === 'number' ? cfg.divesInList : 6} onChange={(v) => setField({ divesInList: v })} min={0} max={20} step={1} />);
@@ -5336,6 +5358,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
     // these follow the same "display-as-typed free-form" rule the rest
     // of this file's `mark` field already uses.
     case 'SWIM_RELAY_EXCHANGE': {
+      fields.push(<GameBindField key="gameId" value={cfg.gameId || ''} onChange={(v) => setField({ gameId: v })} />);
       fields.push(<TextField key="headerText" label="Header text (blank = auto from the live event)" value={cfg.headerText || ''} placeholder="EVENT 20 — BOYS 200 MEDLEY RELAY" onChange={(v) => setField({ headerText: v })} />);
       fields.push(<TextField key="eventFilter" label="Pin to event (exact name; blank = auto-pick current heat)" value={cfg.eventFilter || ''} placeholder="" onChange={(v) => setField({ eventFilter: v })} />);
       fields.push(<TextField key="teamName" label="Relay team / school name" value={cfg.teamName || ''} placeholder="HOME RELAY A" onChange={(v) => setField({ teamName: v })} />);
@@ -5357,6 +5380,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       break;
     }
     case 'SWIM_SPLITS_PANEL': {
+      fields.push(<GameBindField key="gameId" value={cfg.gameId || ''} onChange={(v) => setField({ gameId: v })} />);
       fields.push(<TextField key="headerText" label="Header text (blank = auto from the live event)" value={cfg.headerText || ''} placeholder="EVENT 12 — BOYS 100 FREESTYLE" onChange={(v) => setField({ headerText: v })} />);
       fields.push(<TextField key="eventFilter" label="Pin to event (exact name; blank = auto-pick current heat)" value={cfg.eventFilter || ''} placeholder="" onChange={(v) => setField({ eventFilter: v })} />);
       fields.push(<TextField key="swimmerName" label="Swimmer name" value={cfg.swimmerName || ''} placeholder="D. Okafor" onChange={(v) => setField({ swimmerName: v })} />);
@@ -5390,6 +5414,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       break;
     }
     case 'DIVE_JUDGES_PANEL': {
+      fields.push(<GameBindField key="gameId" value={cfg.gameId || ''} onChange={(v) => setField({ gameId: v })} />);
       fields.push(<TextField key="diverName" label="Diver name (override — live surfaces read the console's current dive)" value={cfg.diverName || ''} placeholder="A. Washington" onChange={(v) => setField({ diverName: v })} />);
       fields.push(<TextField key="diveCode" label="Dive code (override)" value={cfg.diveCode || ''} placeholder="305C" onChange={(v) => setField({ diveCode: v })} />);
       fields.push(<TextField key="diveGroup" label="Dive group / description" value={cfg.diveGroup || ''} placeholder="Reverse 1½ Somersault Tuck" onChange={(v) => setField({ diveGroup: v })} />);
@@ -7708,6 +7733,72 @@ function SelectField({ label, value, options, onChange }: { label: string; value
         className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm cursor-pointer">
         {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
       </select>
+    </div>
+  );
+}
+
+/**
+ * GameBindField — "Bind to game" picker (Sports Wave S2-2, 2026-07-02).
+ * ONE dropdown (Greg's law — no new settings sprawl): LIVE games first
+ * (🔴 dot in the label — native <option> elements can't carry real
+ * color, so a text glyph is the only cross-browser way to flag it),
+ * then upcoming/other games, with an explicit "Unbound (sample in
+ * builder)" first option that clears config.gameId. Setting a value
+ * makes WidgetRenderer's WidgetPreview wrap this zone in its own
+ * <GameStateProvider gameId> (see GameStateContext.tsx / WidgetRenderer.tsx)
+ * — independent of whatever ambient provider (or lack of one) the
+ * screen this template ends up scheduled to would otherwise supply.
+ *
+ * Self-fetches via useGames() (mounted here, NOT in ContentFields) —
+ * matching the file's existing convention for every other React-Query-
+ * backed field (useTemplates()/useAssets() live in their OWN leaf
+ * components, e.g. line ~1601/~9017 below, never at ContentFields' top
+ * level). Several editability-wave test suites mount ContentFields
+ * directly with no QueryClientProvider for widget types that never
+ * reach a sports case — an unconditional hook at the top of
+ * ContentFields would break every one of them.
+ */
+function GameBindField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (gameId: string) => void;
+}) {
+  const { data: gamesRaw } = useGames();
+  const list: any[] = Array.isArray(gamesRaw) ? gamesRaw : [];
+  const STATUS_RANK: Record<string, number> = { LIVE: 0, HALFTIME: 0, PRE_GAME: 1, SCHEDULED: 2, FINAL: 3 };
+  const sorted = [...list].sort((a, b) => {
+    const ra = STATUS_RANK[a.status] ?? 2;
+    const rb = STATUS_RANK[b.status] ?? 2;
+    if (ra !== rb) return ra - rb;
+    // Newest-first within the same status bucket.
+    return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+  });
+  const optionLabel = (g: any): string => {
+    const isLive = g.status === 'LIVE' || g.status === 'HALFTIME';
+    const prefix = isLive ? '🔴 LIVE — ' : g.status === 'FINAL' ? 'Final — ' : '';
+    return `${prefix}${g.homeTeam || 'Home'} vs ${g.awayTeam || 'Away'}`;
+  };
+  return (
+    <div>
+      <label htmlFor="sports-gameId" className="block text-[10px] font-semibold text-slate-500 mb-1.5">Bind to game</label>
+      <select
+        id="sports-gameId"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm cursor-pointer"
+      >
+        <option value="">Unbound (sample in builder)</option>
+        {sorted.map((g) => (
+          <option key={g.id} value={g.id}>{optionLabel(g)}</option>
+        ))}
+      </select>
+      <p className="mt-1 text-[10px] text-slate-400">
+        {value
+          ? 'On a real screen, this zone reads THIS game — never the sample, never whatever game the screen might otherwise show.'
+          : 'Unbound zones show a sample in the builder and a "bind a game" prompt on a real screen (never invented scores).'}
+      </p>
     </div>
   );
 }
