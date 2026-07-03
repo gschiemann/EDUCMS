@@ -164,7 +164,7 @@ export class PlaylistsController {
         select: { id: true },
       });
       if (!templateOwned) {
-        throw new HttpException('Template not found', HttpStatus.NOT_FOUND);
+        throw new HttpException({ code: 'PLAYLIST_TEMPLATE_NOT_FOUND', message: 'Template not found' }, HttpStatus.NOT_FOUND);
       }
     }
 
@@ -196,7 +196,7 @@ export class PlaylistsController {
     const playlist = await this.prisma.client.playlist.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!playlist) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!playlist) throw new HttpException({ code: 'PLAYLIST_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     const res = await this.prisma.client.playlist.update({
       where: { id },
@@ -217,7 +217,7 @@ export class PlaylistsController {
     const playlist = await this.prisma.client.playlist.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!playlist) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!playlist) throw new HttpException({ code: 'PLAYLIST_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     // HIGH-1 audit fix: validate every assetId in the body actually
     // belongs to the caller's tenant. Without this, a user could insert
@@ -298,7 +298,7 @@ export class PlaylistsController {
     const playlist = await this.prisma.client.playlist.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!playlist) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!playlist) throw new HttpException({ code: 'PLAYLIST_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     // Protected (emergency / panic) playlists must not have their
     // schedules toggled from this generic operator endpoint — that
     // would silently disable a panic trigger. Same guard as `remove`
@@ -356,7 +356,7 @@ export class PlaylistsController {
     const playlist = await this.prisma.client.playlist.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!playlist) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!playlist) throw new HttpException({ code: 'PLAYLIST_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     // Refuse to delete a protected (emergency) playlist. The settings
     // page manages these; deleting one would silently break a future

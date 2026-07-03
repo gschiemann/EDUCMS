@@ -139,18 +139,18 @@ export class GpioController {
   ) {
     const auth = verifyDeviceForScreen(req, screenId);
     if (!auth.ok) {
-      throw new UnauthorizedException(`Device auth required (${auth.reason})`);
+      throw new UnauthorizedException({ code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${auth.reason})` });
     }
 
     const pinRaw = (body?.pin || '').toString().trim().toLowerCase();
     if (!GPIO_IN_PINS.has(pinRaw as GpioInPin)) {
-      throw new BadRequestException(`Invalid pin '${pinRaw}'. Expected one of: ${[...GPIO_IN_PINS].join(', ')}`);
+      throw new BadRequestException({ code: 'GPIO_PIN_INVALID', message: `Invalid pin '${pinRaw}'. Expected one of: ${[...GPIO_IN_PINS].join(', ')}` });
     }
     const pin = pinRaw as GpioInPin;
 
     const stateRaw = (body?.state || '').toString().trim().toLowerCase();
     if (!GPIO_INPUT_STATES.has(stateRaw as GpioInputState)) {
-      throw new BadRequestException(`Invalid state '${stateRaw}'. Expected one of: ${[...GPIO_INPUT_STATES].join(', ')}`);
+      throw new BadRequestException({ code: 'GPIO_STATE_INVALID', message: `Invalid state '${stateRaw}'. Expected one of: ${[...GPIO_INPUT_STATES].join(', ')}` });
     }
     const state = stateRaw as GpioInputState;
 
@@ -166,10 +166,10 @@ export class GpioController {
       where: { id: screenId },
     })) as any;
     if (!screen) {
-      throw new NotFoundException('Screen not found');
+      throw new NotFoundException({ code: 'SCREEN_NOT_FOUND', message: 'Screen not found' });
     }
     if (!screen.tenantId || typeof screen.tenantId !== 'string') {
-      throw new HttpException('Screen is not assigned to a tenant', HttpStatus.CONFLICT);
+      throw new HttpException({ code: 'SCREEN_NO_TENANT', message: 'Screen is not assigned to a tenant' }, HttpStatus.CONFLICT);
     }
 
     const result = await this.gpio.handleInputEvent({
@@ -204,13 +204,13 @@ export class GpioController {
   ) {
     const pinRaw = (body?.pin || '').toString().trim().toLowerCase();
     if (!GPIO_OUT_PINS.has(pinRaw as GpioOutPin)) {
-      throw new BadRequestException(`Invalid pin '${pinRaw}'. Expected one of: ${[...GPIO_OUT_PINS].join(', ')}`);
+      throw new BadRequestException({ code: 'GPIO_PIN_INVALID', message: `Invalid pin '${pinRaw}'. Expected one of: ${[...GPIO_OUT_PINS].join(', ')}` });
     }
     const pin = pinRaw as GpioOutPin;
 
     const stateRaw = (body?.state || '').toString().trim().toLowerCase();
     if (!GPIO_OUTPUT_STATES.has(stateRaw as GpioOutputState)) {
-      throw new BadRequestException(`Invalid state '${stateRaw}'. Expected one of: ${[...GPIO_OUTPUT_STATES].join(', ')}`);
+      throw new BadRequestException({ code: 'GPIO_STATE_INVALID', message: `Invalid state '${stateRaw}'. Expected one of: ${[...GPIO_OUTPUT_STATES].join(', ')}` });
     }
     const state = stateRaw as GpioOutputState;
 
@@ -223,14 +223,14 @@ export class GpioController {
       where: { id: screenId },
     })) as any;
     if (!screen) {
-      throw new NotFoundException('Screen not found');
+      throw new NotFoundException({ code: 'SCREEN_NOT_FOUND', message: 'Screen not found' });
     }
     if (!screen.tenantId || typeof screen.tenantId !== 'string') {
-      throw new HttpException('Screen is not assigned to a tenant', HttpStatus.CONFLICT);
+      throw new HttpException({ code: 'SCREEN_NO_TENANT', message: 'Screen is not assigned to a tenant' }, HttpStatus.CONFLICT);
     }
     if (!isSuper && screen.tenantId !== callerTenantId) {
       // 404 not 403 to avoid leaking screen existence across tenants.
-      throw new NotFoundException('Screen not found');
+      throw new NotFoundException({ code: 'SCREEN_NOT_FOUND', message: 'Screen not found' });
     }
 
     await this.gpio.setOutput({

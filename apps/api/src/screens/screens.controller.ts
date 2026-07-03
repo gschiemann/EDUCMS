@@ -217,7 +217,7 @@ export class ScreensController {
     priorDeviceToken?: string;
   }, @Req() req: ExpressReq) {
     if (!body.deviceFingerprint) {
-      throw new HttpException('Device fingerprint is required', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'SCREEN_FINGERPRINT_REQUIRED', message: 'Device fingerprint is required' }, HttpStatus.BAD_REQUEST);
     }
 
     // Preview mode fingerprints (set by the dashboard's "Open in Browser" button)
@@ -254,10 +254,7 @@ export class ScreensController {
     if (!existing || !existing.tenantId) {
       const lastRegTs = _registerFpCooldown.get(fpKey);
       if (lastRegTs !== undefined && Date.now() - lastRegTs < REGISTER_FP_COOLDOWN_MS) {
-        throw new HttpException(
-          'Too Many Requests: fingerprint registered recently, retry after 15 minutes',
-          HttpStatus.TOO_MANY_REQUESTS,
-        );
+        throw new HttpException({ code: 'SCREEN_REGISTER_RATE_LIMITED', message: 'Too Many Requests: fingerprint registered recently, retry after 15 minutes' }, HttpStatus.TOO_MANY_REQUESTS);
       }
       _registerFpCooldown.set(fpKey, Date.now());
       // Prune stale entries to avoid unbounded growth.
@@ -371,10 +368,7 @@ export class ScreensController {
           // Caller supplied a token but it binds to a different screen →
           // hard reject regardless of flag. Fingerprint alone is not enough
           // to prove identity when a token was actively presented.
-          throw new HttpException(
-            'Invalid prior device token: screenId mismatch',
-            HttpStatus.UNAUTHORIZED,
-          );
+          throw new HttpException({ code: 'SCREEN_TOKEN_MISMATCH', message: 'Invalid prior device token: screenId mismatch' }, HttpStatus.UNAUTHORIZED);
         }
 
         // Determine issued TTL:
@@ -552,7 +546,7 @@ export class ScreensController {
       }),
       { label: 'screen.findUnique[fp]' },
     );
-    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     // Update lastPingAt — and if the kiosk passed its app version on
     // this heartbeat, capture it too. Operator (2026-04-27): "we
@@ -740,14 +734,14 @@ export class ScreensController {
       where: { deviceFingerprint: fingerprint },
       select: { id: true, name: true, lastOtaState: true, playerVersionCode: true },
     });
-    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     const ALLOWED = new Set([
       'CHECKING', 'DOWNLOADING', 'VERIFYING', 'INSTALLING', 'INSTALLED', 'ERROR',
     ]);
     const state = String(body?.state || '').toUpperCase().trim();
     if (!ALLOWED.has(state)) {
-      throw new HttpException(`Invalid state: ${state}`, HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'SCREEN_OTA_STATE_INVALID', message: `Invalid state: ${state}` }, HttpStatus.BAD_REQUEST);
     }
     const progress = typeof body?.progress === 'number' && Number.isFinite(body.progress)
       ? Math.max(0, Math.min(100, Math.round(body.progress)))
@@ -854,14 +848,11 @@ export class ScreensController {
       where: { deviceFingerprint: fingerprint },
       select: { id: true, name: true },
     });
-    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     const source = (body?.source || '').toLowerCase().trim();
     if (source !== 'player' && source !== 'manager') {
-      throw new HttpException(
-        `Invalid source: ${source} (expected player or manager)`,
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException({ code: 'SCREEN_CRASH_SOURCE_INVALID', message: `Invalid source: ${source} (expected player or manager)` }, HttpStatus.BAD_REQUEST);
     }
     const message = (body?.message || '').slice(0, 500) || null;
     const stack = (body?.stack || '').slice(0, 8 * 1024) || null;
@@ -1151,16 +1142,16 @@ export class ScreensController {
     @Body() body: { pairingCode: string; name?: string; screenGroupId?: string },
   ) {
     const code = body.pairingCode?.trim().toUpperCase();
-    if (!code) throw new HttpException('Pairing code is required', HttpStatus.BAD_REQUEST);
+    if (!code) throw new HttpException({ code: 'SCREEN_PAIRING_CODE_REQUIRED', message: 'Pairing code is required' }, HttpStatus.BAD_REQUEST);
 
     const screen = await this.prisma.client.screen.findUnique({
       where: { pairingCode: code },
     });
 
-    if (!screen) throw new HttpException('Invalid pairing code. Make sure the code matches what is shown on the screen.', HttpStatus.NOT_FOUND);
+    if (!screen) throw new HttpException({ code: 'SCREEN_PAIRING_CODE_INVALID', message: 'Invalid pairing code. Make sure the code matches what is shown on the screen.' }, HttpStatus.NOT_FOUND);
 
     if (screen.tenantId && screen.tenantId !== req.user.tenantId) {
-      throw new HttpException('This screen is already paired to another organization', HttpStatus.CONFLICT);
+      throw new HttpException({ code: 'SCREEN_ALREADY_PAIRED', message: 'This screen is already paired to another organization' }, HttpStatus.CONFLICT);
     }
 
     // Audit fix #10: wrap the seat-availability check + the screen claim
@@ -1291,10 +1282,7 @@ export class ScreensController {
     // Verify the caller actually owns this screen via device JWT.
     const verified = verifyDeviceForScreen(req, screen.id);
     if (!verified.ok) {
-      throw new HttpException(
-        `Unauthorized: ${verified.reason}`,
-        HttpStatus.UNAUTHORIZED,
-      );
+      throw new HttpException({ code: 'SCREEN_UNPAIR_UNAUTHORIZED', message: `Unauthorized: ${verified.reason}` }, HttpStatus.UNAUTHORIZED);
     }
 
     const previousTenantId = screen.tenantId;
@@ -1378,7 +1366,7 @@ export class ScreensController {
     const screen = await this.prisma.client.screen.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     // Resolve hardwareModel against the catalog (Agent A). Permissive
     // case/whitespace normalization via resolveHardwareModel; unknown
@@ -1403,10 +1391,7 @@ export class ScreensController {
       }
       nextHardwareModel = resolved;
       if (!HARDWARE_CATALOG[resolved]) {
-        throw new HttpException(
-          'hardware-models catalog drift detected — please report this bug',
-          HttpStatus.INTERNAL_SERVER_ERROR,
-        );
+        throw new HttpException({ code: 'SCREEN_HARDWARE_CATALOG_DRIFT', message: 'hardware-models catalog drift detected — please report this bug' }, HttpStatus.INTERNAL_SERVER_ERROR);
       }
     }
 
@@ -1453,10 +1438,7 @@ export class ScreensController {
         }
         mergedConfig = current;
       } else {
-        throw new HttpException(
-          'config must be an object (or null to clear)',
-          HttpStatus.BAD_REQUEST,
-        );
+        throw new HttpException({ code: 'SCREEN_CONFIG_INVALID', message: 'config must be an object (or null to clear)' }, HttpStatus.BAD_REQUEST);
       }
     }
 
@@ -1502,17 +1484,14 @@ export class ScreensController {
     const target = String(body.orientation || '').toUpperCase().trim();
     const ALLOWED = new Set(['LANDSCAPE', 'PORTRAIT', 'AUTO']);
     if (!ALLOWED.has(target)) {
-      throw new HttpException(
-        'orientation must be one of: LANDSCAPE, PORTRAIT, AUTO',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException({ code: 'SCREEN_ORIENTATION_INVALID', message: 'orientation must be one of: LANDSCAPE, PORTRAIT, AUTO' }, HttpStatus.BAD_REQUEST);
     }
 
     const screen = await this.prisma.client.screen.findFirst({
       where: { id, tenantId: req.user.tenantId },
       select: { id: true, name: true, orientation: true, tenantId: true },
     });
-    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     // Update + audit in a single transaction so partial state is
     // impossible. Same pattern as the OAuth-purge audit-log sweep
@@ -1591,10 +1570,7 @@ export class ScreensController {
       if (n === null || n === undefined || n === '') return null;
       const parsed = parseInt(String(n), 10);
       if (!isFinite(parsed) || parsed < 32 || parsed > 8192) {
-        throw new HttpException(
-          'canvasW/canvasH must be null OR an integer between 32 and 8192',
-          HttpStatus.BAD_REQUEST,
-        );
+        throw new HttpException({ code: 'SCREEN_CANVAS_INVALID', message: 'canvasW/canvasH must be null OR an integer between 32 and 8192' }, HttpStatus.BAD_REQUEST);
       }
       return parsed;
     };
@@ -1606,10 +1582,7 @@ export class ScreensController {
     if (body.repeats !== undefined && body.repeats !== null) {
       const r = parseInt(String(body.repeats), 10);
       if (!isFinite(r) || r < 1 || r > 12) {
-        throw new HttpException(
-          'repeats must be an integer between 1 and 12',
-          HttpStatus.BAD_REQUEST,
-        );
+        throw new HttpException({ code: 'SCREEN_CANVAS_REPEATS_INVALID', message: 'repeats must be an integer between 1 and 12' }, HttpStatus.BAD_REQUEST);
       }
       repeats = r;
     }
@@ -1618,7 +1591,7 @@ export class ScreensController {
       where: { id, tenantId: req.user.tenantId },
       select: { id: true, name: true, tenantId: true, canvasW: true, canvasH: true, repeats: true },
     });
-    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     const updated = await this.prisma.client.$transaction(async (tx) => {
       const u = await tx.screen.update({
@@ -1689,23 +1662,20 @@ export class ScreensController {
   ) {
     const auth = verifyDeviceForScreen(req, id);
     if (!auth.ok) {
-      throw new HttpException(`Device auth required (${auth.reason})`, HttpStatus.UNAUTHORIZED);
+      throw new HttpException({ code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${auth.reason})` }, HttpStatus.UNAUTHORIZED);
     }
 
     const target = String(body.orientation || '').toUpperCase().trim();
     const ALLOWED = new Set(['LANDSCAPE', 'PORTRAIT', 'AUTO']);
     if (!ALLOWED.has(target)) {
-      throw new HttpException(
-        'orientation must be one of: LANDSCAPE, PORTRAIT, AUTO',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException({ code: 'SCREEN_ORIENTATION_INVALID', message: 'orientation must be one of: LANDSCAPE, PORTRAIT, AUTO' }, HttpStatus.BAD_REQUEST);
     }
 
     const screen = await this.prisma.client.screen.findUnique({
       where: { id },
       select: { id: true, tenantId: true, orientation: true, name: true },
     });
-    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     const updated = await this.prisma.client.$transaction(async (tx) => {
       const u = await tx.screen.update({
@@ -1791,10 +1761,10 @@ export class ScreensController {
   ) {
     const auth = verifyDeviceForScreen(req, id);
     if (!auth.ok) {
-      throw new HttpException(`Device auth required (${auth.reason})`, HttpStatus.UNAUTHORIZED);
+      throw new HttpException({ code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${auth.reason})` }, HttpStatus.UNAUTHORIZED);
     }
     if (!body || typeof body !== 'object' || !body.snapshot || typeof body.snapshot !== 'object') {
-      throw new HttpException('snapshot is required', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'SCREEN_GAME_STATE_SNAPSHOT_REQUIRED', message: 'snapshot is required' }, HttpStatus.BAD_REQUEST);
     }
 
     // Per-screen rate floor: 16 Hz max. Reuses the in-memory rate
@@ -1872,7 +1842,7 @@ export class ScreensController {
     @Body() body: { cueId?: string; team?: 'home' | 'away' | 'horn' },
   ) {
     if (!body || typeof body !== 'object' || !body.cueId || typeof body.cueId !== 'string') {
-      throw new HttpException('cueId is required', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'SCREEN_GAME_STATE_CUE_ID_REQUIRED', message: 'cueId is required' }, HttpStatus.BAD_REQUEST);
     }
     const cueId = String(body.cueId).slice(0, 64);
     const team: 'home' | 'away' | 'horn' = body.team === 'away' ? 'away' : body.team === 'horn' ? 'horn' : 'home';
@@ -1883,7 +1853,7 @@ export class ScreensController {
       where: { id, tenantId: req.user.tenantId },
     });
     if (!screen) {
-      throw new HttpException('Screen not found', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Screen not found' }, HttpStatus.NOT_FOUND);
     }
 
     const signed = this.signer.signMessage('CTS_MANUAL_CUE', {
@@ -1937,13 +1907,13 @@ export class ScreensController {
     const screen = await this.prisma.client.screen.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     // Cap the address — it is interpolated into a Nominatim query string
     // and persisted to a DB column; an unbounded value bloats both.
     // Real postal addresses are short.
     if (typeof body.address === 'string' && body.address.length > 300) {
-      throw new HttpException('Address is too long (max 300 characters).', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'SCREEN_ADDRESS_TOO_LONG', message: 'Address is too long (max 300 characters).' }, HttpStatus.BAD_REQUEST);
     }
 
     let lat = body.latitude ?? screen.latitude ?? null;
@@ -2052,7 +2022,7 @@ export class ScreensController {
   ) {
     const tenantId = req.user.tenantId;
     const screen = await this.prisma.client.screen.findFirst({ where: { id, tenantId } });
-    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     // Validate every supplied playlist id belongs to the same tenant.
     // Cross-tenant assignment is silently dropped to null with an
@@ -2180,7 +2150,7 @@ export class ScreensController {
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async forceUpdateAll(@Request() req: any) {
     const tenantId = req.user.tenantId;
-    if (!tenantId) throw new HttpException('No tenant context', HttpStatus.BAD_REQUEST);
+    if (!tenantId) throw new HttpException({ code: 'SCREEN_NO_TENANT_CONTEXT', message: 'No tenant context' }, HttpStatus.BAD_REQUEST);
     // Mark every screen in the tenant as force-pending so the next
     // /update-check from each one gets the latest APK (gated 30 min).
     // Safe even when tenant.autoUpdatePlayerEnabled is false — the
@@ -2225,7 +2195,7 @@ export class ScreensController {
     const screen = await this.prisma.client.screen.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     const overrideWindow = !!body?.overrideWindow;
 
     // 2026-04-29 — Correlation ID for end-to-end OTA tracing.
@@ -2314,7 +2284,7 @@ export class ScreensController {
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async refreshWebAll(@Request() req: any) {
     const tenantId = req.user.tenantId;
-    if (!tenantId) throw new HttpException('No tenant context', HttpStatus.BAD_REQUEST);
+    if (!tenantId) throw new HttpException({ code: 'SCREEN_NO_TENANT_CONTEXT', message: 'No tenant context' }, HttpStatus.BAD_REQUEST);
     const corrId = `rw-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const signed = this.signer.signMessage('REFRESH_WEB', {
       scope: 'tenant',
@@ -2348,7 +2318,7 @@ export class ScreensController {
     const screen = await this.prisma.client.screen.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     const corrId = `rw-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const signed = this.signer.signMessage('REFRESH_WEB', {
       scope: 'screen',
@@ -2386,7 +2356,7 @@ export class ScreensController {
     const screen = await this.prisma.client.screen.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     await this.prisma.client.schedule.deleteMany({ where: { screenId: id } });
     await this.prisma.client.screen.delete({ where: { id } });
@@ -3293,7 +3263,7 @@ export class ScreensController {
       where: { id, tenantId: req.user.tenantId },
       select: { id: true, name: true, lastCacheReport: true, lastCacheReportAt: true },
     });
-    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     const report = (screen.lastCacheReport as any) || null;
     return {
@@ -3322,7 +3292,7 @@ export class ScreensController {
   ) {
     const authResult = verifyDeviceForScreen(req, id);
     if (!authResult.ok) {
-      throw new HttpException(`Device auth required (${authResult.reason})`, HttpStatus.UNAUTHORIZED);
+      throw new HttpException({ code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${authResult.reason})` }, HttpStatus.UNAUTHORIZED);
     }
     // DB-efficiency (2026-06-15): coalesce the every-30s identical cache report.
     // Same payload within 120s → no DB at all (was ~42% of total DB time). A
@@ -3331,7 +3301,7 @@ export class ScreensController {
     const sig = JSON.stringify(body ?? {});
     if (shouldSkipCacheReportWrite(id, sig)) return { ok: true };
     const screen = await this.prisma.client.screen.findUnique({ where: { id }, select: { id: true } });
-    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     await withDbRetry(() =>
       this.prisma.client.screen.update({
         where: { id },
@@ -3382,7 +3352,7 @@ export class ScreensController {
   ) {
     const authResult = verifyDeviceForScreen(req, id);
     if (!authResult.ok) {
-      throw new HttpException(`Device auth required (${authResult.reason})`, HttpStatus.UNAUTHORIZED);
+      throw new HttpException({ code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${authResult.reason})` }, HttpStatus.UNAUTHORIZED);
     }
     // DB-efficiency (2026-06-15): coalesce the every-30s render-proof write to
     // ≤1 per 40s (was ~17% of total DB time). lastRenderedAt stays < ~60s old
@@ -3390,7 +3360,7 @@ export class ScreensController {
     // stops the POSTs entirely, so this never masks one.
     if (shouldSkipRenderProofWrite(id)) return { ok: true };
     const screen = await this.prisma.client.screen.findUnique({ where: { id }, select: { id: true } });
-    if (!screen) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     // Sanitize: clamp the frame counter to a sane non-negative int and cap
     // the content hash so a misbehaving / hostile device can't bloat the row.
@@ -3433,7 +3403,7 @@ export class ScreensController {
     // answer "who asked for the lockdown video set, and when?"
     const authResult = verifyDeviceForScreen(req, id);
     if (!authResult.ok) {
-      throw new HttpException(`Device auth required (${authResult.reason})`, HttpStatus.UNAUTHORIZED);
+      throw new HttpException({ code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${authResult.reason})` }, HttpStatus.UNAUTHORIZED);
     }
 
     // 2026-05-23 launch audit P0 (efficiency): previously this fetched
@@ -3493,11 +3463,11 @@ export class ScreensController {
       },
     });
     if (!screen?.tenantId) {
-      throw new HttpException('Screen not found or not paired', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Screen not found or not paired' }, HttpStatus.NOT_FOUND);
     }
     const tenant = (screen as any).tenant;
     if (!tenant) {
-      throw new HttpException('Tenant not found', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'SCREEN_TENANT_NOT_FOUND', message: 'Tenant not found' }, HttpStatus.NOT_FOUND);
     }
 
     const playlistIds = [
@@ -3714,7 +3684,7 @@ export class ScreensController {
   ) {
     const authResult = verifyDeviceForScreen(req, id);
     if (!authResult.ok) {
-      throw new HttpException(`Device auth required (${authResult.reason})`, HttpStatus.UNAUTHORIZED);
+      throw new HttpException({ code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${authResult.reason})` }, HttpStatus.UNAUTHORIZED);
     }
 
     // When set (?includeUnavailable=1|true), 86'd / sold-out items are
@@ -3735,7 +3705,7 @@ export class ScreensController {
       },
     });
     if (!screen?.tenantId) {
-      throw new HttpException('Screen not found or not paired', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Screen not found or not paired' }, HttpStatus.NOT_FOUND);
     }
 
     // The screen's effective location tenant: the POS-location mapping

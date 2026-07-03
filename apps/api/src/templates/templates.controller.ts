@@ -719,7 +719,7 @@ export class TemplatesController {
         createdBy: { select: { id: true, email: true, role: true } },
       } as any,
     });
-    if (!template) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!template) throw new HttpException({ code: 'TEMPLATE_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     return mapTemplate(template);
   }
 
@@ -756,7 +756,7 @@ export class TemplatesController {
         select: { tenantId: true, status: true },
       });
       if (!screen || screen.status === 'REVOKED') {
-        throw new HttpException('Device invalid', HttpStatus.FORBIDDEN);
+        throw new HttpException({ code: 'TEMPLATE_DEVICE_INVALID', message: 'Device invalid' }, HttpStatus.FORBIDDEN);
       }
       scopeTenantId = screen.tenantId ?? null;
     } else if (u.role === AppRole.SUPER_ADMIN) {
@@ -786,7 +786,7 @@ export class TemplatesController {
     if (!template) {
       // 404 not 403 — same existence-leak avoidance pattern the
       // manifest endpoint uses for cross-tenant requests.
-      throw new HttpException('Template not found', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'TEMPLATE_NOT_FOUND', message: 'Template not found' }, HttpStatus.NOT_FOUND);
     }
     return mapTemplate(template);
   }
@@ -810,7 +810,7 @@ export class TemplatesController {
       where: { id, OR: [{ tenantId: req.user.tenantId }, { isSystem: true }] },
       select: { id: true } as any,
     });
-    if (!tpl) throw new HttpException('Template not found', HttpStatus.NOT_FOUND);
+    if (!tpl) throw new HttpException({ code: 'TEMPLATE_NOT_FOUND', message: 'Template not found' }, HttpStatus.NOT_FOUND);
     return (this.prisma.client as any).templateScene.findMany({
       where: { templateId: id },
       orderBy: { sortOrder: 'asc' },
@@ -826,7 +826,7 @@ export class TemplatesController {
   ) {
     const tpl = await this.assertOwnedTemplate(id, req.user.tenantId);
     const name = (body?.name || 'Untitled scene').trim().slice(0, 80);
-    if (!name) throw new HttpException('name required', HttpStatus.BAD_REQUEST);
+    if (!name) throw new HttpException({ code: 'TEMPLATE_SCENE_NAME_REQUIRED', message: 'name required' }, HttpStatus.BAD_REQUEST);
     const lastSort = await (this.prisma.client as any).templateScene.findFirst({
       where: { templateId: tpl.id },
       orderBy: { sortOrder: 'desc' },
@@ -842,7 +842,7 @@ export class TemplatesController {
     } catch (e: any) {
       // Unique (templateId, name) collision → return a friendly error.
       if (e?.code === 'P2002') {
-        throw new HttpException(`A scene named "${name}" already exists in this template`, HttpStatus.CONFLICT);
+        throw new HttpException({ code: 'TEMPLATE_SCENE_NAME_CONFLICT', message: `A scene named "${name}" already exists in this template` }, HttpStatus.CONFLICT);
       }
       throw e;
     }
@@ -860,12 +860,12 @@ export class TemplatesController {
     const scene = await (this.prisma.client as any).templateScene.findFirst({
       where: { id: sceneId, templateId: tpl.id },
     });
-    if (!scene) throw new HttpException('Scene not found', HttpStatus.NOT_FOUND);
+    if (!scene) throw new HttpException({ code: 'TEMPLATE_SCENE_NOT_FOUND', message: 'Scene not found' }, HttpStatus.NOT_FOUND);
 
     const data: any = {};
     if (body.name !== undefined) {
       const trimmed = String(body.name).trim().slice(0, 80);
-      if (!trimmed) throw new HttpException('name must be non-empty', HttpStatus.BAD_REQUEST);
+      if (!trimmed) throw new HttpException({ code: 'TEMPLATE_SCENE_NAME_REQUIRED', message: 'name must be non-empty' }, HttpStatus.BAD_REQUEST);
       data.name = trimmed;
     }
     if (body.sortOrder !== undefined) {
@@ -891,7 +891,7 @@ export class TemplatesController {
     }
 
     if (Object.keys(data).length === 0 && body.isDefault === undefined) {
-      throw new HttpException('Nothing to update', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'TEMPLATE_SCENE_NOTHING_TO_UPDATE', message: 'Nothing to update' }, HttpStatus.BAD_REQUEST);
     }
     try {
       const result = await (this.prisma.client as any).templateScene.update({
@@ -902,7 +902,7 @@ export class TemplatesController {
       return result;
     } catch (e: any) {
       if (e?.code === 'P2002') {
-        throw new HttpException(`A scene with that name already exists`, HttpStatus.CONFLICT);
+        throw new HttpException({ code: 'TEMPLATE_SCENE_NAME_CONFLICT', message: `A scene with that name already exists` }, HttpStatus.CONFLICT);
       }
       throw e;
     }
@@ -919,12 +919,9 @@ export class TemplatesController {
     const scene = await (this.prisma.client as any).templateScene.findFirst({
       where: { id: sceneId, templateId: tpl.id },
     });
-    if (!scene) throw new HttpException('Scene not found', HttpStatus.NOT_FOUND);
+    if (!scene) throw new HttpException({ code: 'TEMPLATE_SCENE_NOT_FOUND', message: 'Scene not found' }, HttpStatus.NOT_FOUND);
     if (scene.isDefault) {
-      throw new HttpException(
-        'Cannot delete the default scene. Set a different scene as default first.',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException({ code: 'TEMPLATE_SCENE_CANNOT_DELETE_DEFAULT', message: 'Cannot delete the default scene. Set a different scene as default first.' }, HttpStatus.BAD_REQUEST);
     }
     // Zones belonging to THIS scene get re-pointed to the default
     // scene so they keep rendering for the visitor. Critical: we
@@ -969,12 +966,12 @@ export class TemplatesController {
       where: { id: templateId },
       select: { id: true, tenantId: true, isSystem: true } as any,
     });
-    if (!tpl) throw new HttpException('Template not found', HttpStatus.NOT_FOUND);
+    if (!tpl) throw new HttpException({ code: 'TEMPLATE_NOT_FOUND', message: 'Template not found' }, HttpStatus.NOT_FOUND);
     if ((tpl as any).isSystem) {
-      throw new HttpException('System templates are read-only', HttpStatus.FORBIDDEN);
+      throw new HttpException({ code: 'TEMPLATE_SYSTEM_READ_ONLY', message: 'System templates are read-only' }, HttpStatus.FORBIDDEN);
     }
     if ((tpl as any).tenantId !== tenantId) {
-      throw new HttpException('Not your template', HttpStatus.FORBIDDEN);
+      throw new HttpException({ code: 'TEMPLATE_NOT_OWNER', message: 'Not your template' }, HttpStatus.FORBIDDEN);
     }
     return tpl as any;
   }
@@ -1001,7 +998,7 @@ export class TemplatesController {
     skipAudit = false,
   ) {
     if (!body.name?.trim()) {
-      throw new HttpException('Template name is required', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'TEMPLATE_NAME_REQUIRED', message: 'Template name is required' }, HttpStatus.BAD_REQUEST);
     }
 
     // Validate zones don't overflow the canvas
@@ -1478,13 +1475,13 @@ export class TemplatesController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file || !file.buffer) {
-      throw new BadRequestException('No image uploaded.');
+      throw new BadRequestException({ code: 'TEMPLATE_REFERENCE_IMAGE_MISSING', message: 'No image uploaded.' });
     }
     if (!(file.mimetype || '').toLowerCase().startsWith('image/')) {
-      throw new BadRequestException('Upload an image file (JPG, PNG, WebP, or GIF).');
+      throw new BadRequestException({ code: 'TEMPLATE_REFERENCE_IMAGE_TYPE_INVALID', message: 'Upload an image file (JPG, PNG, WebP, or GIF).' });
     }
     if (file.size > 10 * 1024 * 1024) {
-      throw new BadRequestException('Image is too large — keep it under 10MB.');
+      throw new BadRequestException({ code: 'TEMPLATE_REFERENCE_IMAGE_TOO_LARGE', message: 'Image is too large — keep it under 10MB.' });
     }
     const ref = await this.ai.analyzeDesignReferenceImage({
       tenantId: req.user.tenantId,
@@ -1518,7 +1515,7 @@ export class TemplatesController {
     // configs + SSRF targets). Anything tampered with client-side is dropped.
     const parsed = sanitizeTouchTemplate(body.candidate);
     if (!parsed.zones.length) {
-      throw new BadRequestException('That option had no usable content. Generate again.');
+      throw new BadRequestException({ code: 'TEMPLATE_CANDIDATE_EMPTY', message: 'That option had no usable content. Generate again.' });
     }
     const screenWidth = body.screenWidth || 1920;
     const screenHeight = body.screenHeight || 1080;
@@ -1634,7 +1631,7 @@ export class TemplatesController {
     // is engine-built, but defense-in-depth + it preserves our https assetUrl).
     const parsed = sanitizeTouchTemplate(board);
     if (!parsed.zones.length) {
-      throw new BadRequestException('The AI could not build a board. Try a more concrete prompt.');
+      throw new BadRequestException({ code: 'TEMPLATE_AI_GENERATION_FAILED', message: 'The AI could not build a board. Try a more concrete prompt.' });
     }
     // IMAGERY wave — re-host any external stock photo (engine fallback when no AI
     // image provider) into our bucket. The AI-generated photo is already a
@@ -1905,13 +1902,13 @@ export class TemplatesController {
       where: { id, tenantId: req.user.tenantId },
       select: { id: true, name: true, description: true, screenWidth: true, screenHeight: true },
     });
-    if (!tpl) throw new HttpException('Template not found', HttpStatus.NOT_FOUND);
+    if (!tpl) throw new HttpException({ code: 'TEMPLATE_NOT_FOUND', message: 'Template not found' }, HttpStatus.NOT_FOUND);
 
     // A real prompt is required (the operator/AffordanceFE may pass a derived one
     // from the board copy). Bounded; AiService re-clamps + brand-weaves it.
     const prompt = (body?.prompt || '').trim();
     if (!prompt) {
-      throw new BadRequestException('Describe the photo you want (or generate the board first).');
+      throw new BadRequestException({ code: 'TEMPLATE_IMAGE_PROMPT_REQUIRED', message: 'Describe the photo you want (or generate the board first).' });
     }
 
     // Generate via the existing BYOK image path (throws AI_IMAGE_UNAVAILABLE /
@@ -1968,7 +1965,7 @@ export class TemplatesController {
         SYSTEM_TEMPLATE_PRESETS.find((p) => p.id === presetId) ||
         FITNESS_TEMPLATE_PRESETS.find((p) => p.id === presetId);
       if (!preset) {
-        throw new HttpException('Preset not found', HttpStatus.NOT_FOUND);
+        throw new HttpException({ code: 'TEMPLATE_PRESET_NOT_FOUND', message: 'Preset not found' }, HttpStatus.NOT_FOUND);
       }
       // Auto-inherit tenant brand. Preset's own bgColor/zone configs
       // win — most presets are themed by design (Sunny Meadow,
@@ -2087,7 +2084,7 @@ export class TemplatesController {
       },
       include: { zones: { orderBy: { sortOrder: 'asc' } } },
     });
-    if (!source) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!source) throw new HttpException({ code: 'TEMPLATE_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     // Resolve canvas size: explicit body overrides win, otherwise inherit
     // the source's dimensions. Cap inputs at sane bounds — anything
@@ -2181,7 +2178,7 @@ export class TemplatesController {
       where: { id, OR: [{ tenantId: req.user.tenantId }, { isSystem: true }] },
       include: { zones: { orderBy: { sortOrder: 'asc' } } },
     });
-    if (!tpl) throw new HttpException('Template not found', HttpStatus.NOT_FOUND);
+    if (!tpl) throw new HttpException({ code: 'TEMPLATE_NOT_FOUND', message: 'Template not found' }, HttpStatus.NOT_FOUND);
 
     const parseCfg = (s: string | null): any => {
       if (!s) return undefined;
@@ -2235,25 +2232,16 @@ export class TemplatesController {
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async importTemplate(@Request() req: any, @Body() body: any) {
     if (!body || typeof body !== 'object' || body._format !== 'educms.template') {
-      throw new HttpException(
-        'That file is not an EduCMS template export.',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException({ code: 'TEMPLATE_IMPORT_INVALID_FILE', message: 'That file is not an EduCMS template export.' }, HttpStatus.BAD_REQUEST);
     }
     if (body._version !== 1) {
-      throw new HttpException(
-        `Unsupported template file version (${body._version}). This server expects version 1.`,
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException({ code: 'TEMPLATE_IMPORT_VERSION_UNSUPPORTED', message: `Unsupported template file version (${body._version}). This server expects version 1.` }, HttpStatus.BAD_REQUEST);
     }
     const parsed = TemplateCreateSchema.safeParse(body.template);
     if (!parsed.success) {
       const first = parsed.error.issues[0];
       const where = first?.path?.length ? ` (${first.path.join('.')})` : '';
-      throw new HttpException(
-        `Template file is malformed${where}: ${first?.message || 'invalid'}`,
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException({ code: 'TEMPLATE_IMPORT_MALFORMED', message: `Template file is malformed${where}: ${first?.message || 'invalid'}` }, HttpStatus.BAD_REQUEST);
     }
     // Reuse the standard create path verbatim — zone-bounds validation,
     // orientation derivation, tenant-brand inheritance, mapTemplate.
@@ -2287,9 +2275,9 @@ export class TemplatesController {
     const template = await this.prisma.client.template.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!template) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!template) throw new HttpException({ code: 'TEMPLATE_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     if (template.isSystem) {
-      throw new HttpException('Cannot modify system templates. Duplicate it first.', HttpStatus.FORBIDDEN);
+      throw new HttpException({ code: 'TEMPLATE_SYSTEM_READ_ONLY', message: 'Cannot modify system templates. Duplicate it first.' }, HttpStatus.FORBIDDEN);
     }
     // C2 — staleness guard. No-op (and no behavior change) when the
     // client omits expectedUpdatedAt.
@@ -2346,9 +2334,9 @@ export class TemplatesController {
     const template = await this.prisma.client.template.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!template) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!template) throw new HttpException({ code: 'TEMPLATE_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     if (template.isSystem) {
-      throw new HttpException('Cannot modify system templates. Duplicate it first.', HttpStatus.FORBIDDEN);
+      throw new HttpException({ code: 'TEMPLATE_SYSTEM_READ_ONLY', message: 'Cannot modify system templates. Duplicate it first.' }, HttpStatus.FORBIDDEN);
     }
     // C2 — staleness guard on the MOST destructive of the two save
     // calls (this is the delete-all-and-recreate). No-op when the
@@ -2379,10 +2367,7 @@ export class TemplatesController {
       const validIds = new Set((validScenes as Array<{ id: string }>).map((s) => s.id));
       const bad = referencedSceneIds.filter((sid) => !validIds.has(sid));
       if (bad.length > 0) {
-        throw new HttpException(
-          `Zones reference scene ids that don't belong to this template: ${bad.join(', ')}`,
-          HttpStatus.BAD_REQUEST,
-        );
+        throw new HttpException({ code: 'TEMPLATE_ZONE_SCENE_MISMATCH', message: `Zones reference scene ids that don't belong to this template: ${bad.join(', ')}` }, HttpStatus.BAD_REQUEST);
       }
     }
 
@@ -2465,7 +2450,7 @@ export class TemplatesController {
       where: { id, tenantId: req.user.tenantId },
       select: { id: true },
     });
-    if (!tpl) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!tpl) throw new HttpException({ code: 'TEMPLATE_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     const versions = await (this.prisma.client as any).templateVersion.findMany({
       where: { templateId: id },
       orderBy: { createdAt: 'desc' },
@@ -2519,9 +2504,9 @@ export class TemplatesController {
       where: { id, tenantId: req.user.tenantId },
       include: { zones: { orderBy: { sortOrder: 'asc' } } },
     });
-    if (!template) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!template) throw new HttpException({ code: 'TEMPLATE_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     if (template.isSystem) {
-      throw new HttpException('Cannot modify system templates. Duplicate it first.', HttpStatus.FORBIDDEN);
+      throw new HttpException({ code: 'TEMPLATE_SYSTEM_READ_ONLY', message: 'Cannot modify system templates. Duplicate it first.' }, HttpStatus.FORBIDDEN);
     }
     // C2 — staleness guard, same position/semantics as update()/replaceZones():
     // after the tenant/ownership fetch, before any destructive write. No-op
@@ -2530,7 +2515,7 @@ export class TemplatesController {
     const version = await (this.prisma.client as any).templateVersion.findFirst({
       where: { id: versionId, templateId: id },
     });
-    if (!version) throw new HttpException('Version not found', HttpStatus.NOT_FOUND);
+    if (!version) throw new HttpException({ code: 'TEMPLATE_VERSION_NOT_FOUND', message: 'Version not found' }, HttpStatus.NOT_FOUND);
 
     // Snapshot the CURRENT (pre-restore) state before touching anything
     // — see doc comment above. Uses the row we already loaded, not a
@@ -2618,9 +2603,9 @@ export class TemplatesController {
     const template = await this.prisma.client.template.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!template) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!template) throw new HttpException({ code: 'TEMPLATE_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     if (template.isSystem) {
-      throw new HttpException('Cannot delete system templates', HttpStatus.FORBIDDEN);
+      throw new HttpException({ code: 'TEMPLATE_SYSTEM_DELETE_FORBIDDEN', message: 'Cannot delete system templates' }, HttpStatus.FORBIDDEN);
     }
 
     // P0-2 (launch-sprint Day 1, 2026-07-01): Playlist.templateId is
@@ -2724,16 +2709,10 @@ export function isRehostableStockUrl(url: string): boolean {
 
 function validateZoneBounds(zone: { x: number; y: number; width: number; height: number }) {
   if (zone.x < 0 || zone.y < 0 || zone.width <= 0 || zone.height <= 0) {
-    throw new HttpException(
-      `Zone dimensions must be positive. Got x=${zone.x} y=${zone.y} w=${zone.width} h=${zone.height}`,
-      HttpStatus.BAD_REQUEST,
-    );
+    throw new HttpException({ code: 'TEMPLATE_ZONE_DIMENSIONS_INVALID', message: `Zone dimensions must be positive. Got x=${zone.x} y=${zone.y} w=${zone.width} h=${zone.height}` }, HttpStatus.BAD_REQUEST);
   }
   if (zone.x + zone.width > 100.01 || zone.y + zone.height > 100.01) {
-    throw new HttpException(
-      `Zone overflows the canvas (100×100). x+w=${zone.x + zone.width}, y+h=${zone.y + zone.height}`,
-      HttpStatus.BAD_REQUEST,
-    );
+    throw new HttpException({ code: 'TEMPLATE_ZONE_OVERFLOWS_CANVAS', message: `Zone overflows the canvas (100×100). x+w=${zone.x + zone.width}, y+h=${zone.y + zone.height}` }, HttpStatus.BAD_REQUEST);
   }
 }
 
