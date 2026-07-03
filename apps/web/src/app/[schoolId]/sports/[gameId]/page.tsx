@@ -18,6 +18,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useConsoleFit, FIT, type FitTier } from './use-console-fit';
 import { RunMoreMenu, OnAirBar } from './RunMoreMenu';
 import { useShowControl } from './useShowControl';
@@ -1472,6 +1473,7 @@ function RunMode({
                 <LanePadSection gameId={gameId} g={g} def={def} ctl={ctl} />
               ) : (
                 <MeetResultsSection
+                  gameId={gameId}
                   g={g}
                   def={def}
                   ctl={ctl}
@@ -5412,6 +5414,32 @@ function PlayerCounterPopover({
 type ResultEntry = { place: number; name: string; team?: 'home' | 'away' | null; lane?: number; mark: string };
 type ResultEvent = { event: string; order?: number; entries: ResultEntry[] };
 
+/** Parse `stats.results` into the bounded {@link ResultEvent}[] shape this
+ *  section works from — pulled out of `MeetResultsSection` so the same
+ *  parsing can run against BOTH the render-time `g.stats` prop and a fresh
+ *  read off the React Query cache (see #294 fix in `write()` below). Kept
+ *  field-for-field identical to the inline version this replaces. */
+function parseResultEvents(stats: Record<string, unknown> | null | undefined): ResultEvent[] {
+  const results = stats && Array.isArray((stats as Record<string, unknown>).results)
+    ? ((stats as Record<string, unknown>).results as unknown[])
+    : [];
+  return results
+    .filter((e): e is Record<string, unknown> => !!e && typeof e === 'object')
+    .map((e) => ({
+      event: String(e.event || ''),
+      order: typeof e.order === 'number' ? e.order : undefined,
+      entries: Array.isArray(e.entries)
+        ? (e.entries as any[]).map((en) => ({
+            place: typeof en.place === 'number' ? en.place : 0,
+            name: String(en.name || ''),
+            team: en.team === 'home' || en.team === 'away' ? en.team : null,
+            lane: typeof en.lane === 'number' ? en.lane : undefined,
+            mark: String(en.mark || ''),
+          }))
+        : [],
+    }));
+}
+
 const APPARATUS_PRESETS: Record<string, string[]> = {
   gymnastics: ['Vault', 'Bars', 'Beam', 'Floor', 'All-Around'],
   competitive_cheer: ['Round 1', 'Round 2', 'Finals', 'Game Day', 'Stunt'],
@@ -5542,36 +5570,55 @@ function ResultsGridNumberInput({
 // the one section whose per-keystroke-PATCH behavior needed a
 // component-level (not just unit-level) proof.
 export function MeetResultsSection({
+  gameId,
   g,
   def,
   ctl,
   judged,
 }: {
+  // #294 fix (2026-07-02 overnight adversarial review, P2) — optional so
+  // existing call sites/tests that predate this fix still type-check; the
+  // live console (page.tsx render below) always passes it. Without a
+  // gameId there is no cache key to re-baseline from, so `write()` falls
+  // back to the stale prop-derived `events` exactly as before (same
+  // pre-existing behavior, not a regression).
+  gameId?: string;
   g: any;
   def: SportDefinition;
   ctl: ReturnType<typeof useGameControl>;
   judged: boolean;
 }) {
+  const qc = useQueryClient();
   const stats: Record<string, unknown> = g.stats || {};
-  const events: ResultEvent[] = Array.isArray(stats.results)
-    ? (stats.results as any[])
-        .filter((e) => e && typeof e === 'object')
-        .map((e) => ({
-          event: String(e.event || ''),
-          order: typeof e.order === 'number' ? e.order : undefined,
-          entries: Array.isArray(e.entries)
-            ? (e.entries as any[]).map((en) => ({
-                place: typeof en.place === 'number' ? en.place : 0,
-                name: String(en.name || ''),
-                team: en.team === 'home' || en.team === 'away' ? en.team : null,
-                lane: typeof en.lane === 'number' ? en.lane : undefined,
-                mark: String(en.mark || ''),
-              }))
-            : [],
-        }))
-    : [];
+  const events: ResultEvent[] = parseResultEvents(stats);
 
-  const write = (next: ResultEvent[]) => ctl.stats.mutate({ stats: { results: next } });
+  // ── #294 (2026-07-02 overnight adversarial review, P2) ────────────────
+  // `write()` used to close over `events` — an array derived fresh from
+  // props ONCE per render. Two ResultsGridTextInput/NumberInput commits
+  // fired in the same browser task (fast Tab between adjacent cells,
+  // before React re-renders with the first commit's optimistic update)
+  // both computed their full stats.results array from the SAME stale
+  // `events` snapshot; the second write()'s full-array PATCH silently
+  // dropped the first cell's just-typed edit.
+  //
+  // Fix: `write` takes a FUNCTION (`recompute: (latest) => next`) instead
+  // of a precomputed array. At call time it re-reads the latest events off
+  // the React Query cache — same ['sports-game', gameId] key
+  // useGame/useGameControl already use, which `ctl.stats`'s own onMutate
+  // (use-api.ts) keeps current on EVERY commit, including one that hasn't
+  // reached this component's own re-render yet — and applies `recompute`
+  // to THAT, not the render closure. Every existing call site already
+  // expresses its edit as "take the current events array, map/filter/
+  // append" (see updateEvent/updateEntry/etc. below), so the only change
+  // at each call site is passing that same function into `write` instead
+  // of a value computed against the closure `events`.
+  const write = (recompute: (latest: ResultEvent[]) => ResultEvent[]) => {
+    const cachedGame = gameId
+      ? qc.getQueryData<{ stats?: Record<string, unknown> } | undefined>(['sports-game', gameId])
+      : undefined;
+    const latest = cachedGame?.stats ? parseResultEvents(cachedGame.stats) : events;
+    ctl.stats.mutate({ stats: { results: recompute(latest) } });
+  };
 
   const [newEvent, setNewEvent] = useState('');
   const markLabel = judged ? 'Score' : 'Mark';
@@ -5590,33 +5637,36 @@ export function MeetResultsSection({
     def.key === 'swimming_diving' || def.key === 'swimming' || def.key === 'track_and_field';
   const presets = APPARATUS_PRESETS[def.key] || [];
 
+  // #294 — every helper below now applies its edit to whatever `write`
+  // hands it (the LATEST cache-derived events, not this render's `events`
+  // closure), via a small patch FUNCTION rather than a value pre-baked
+  // against the stale closure. `updateEvent`'s `patch` param is likewise a
+  // function of the CURRENT event at that index — critical for
+  // `addEntry`/`updateEntry`/`removeEntry`, which need to read-then-write
+  // `ev.entries` atomically against the same fresh snapshot `write` just
+  // fetched, not a separate (potentially stale) `events[evIdx]` read.
   const addEvent = (name: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    write([...events, { event: trimmed, order: events.length + 1, entries: [] }]);
+    write((latest) => [...latest, { event: trimmed, order: latest.length + 1, entries: [] }]);
     setNewEvent('');
   };
-  const removeEvent = (idx: number) => write(events.filter((_, i) => i !== idx));
-  const updateEvent = (idx: number, patch: Partial<ResultEvent>) =>
-    write(events.map((e, i) => (i === idx ? { ...e, ...patch } : e)));
+  const removeEvent = (idx: number) => write((latest) => latest.filter((_, i) => i !== idx));
+  const updateEvent = (idx: number, patch: Partial<ResultEvent> | ((ev: ResultEvent) => Partial<ResultEvent>)) =>
+    write((latest) =>
+      latest.map((e, i) => (i === idx ? { ...e, ...(typeof patch === 'function' ? patch(e) : patch) } : e)),
+    );
 
-  const addEntry = (evIdx: number) => {
-    const ev = events[evIdx];
-    const nextPlace = ev.entries.length + 1;
-    updateEvent(evIdx, {
-      entries: [...ev.entries, { place: nextPlace, name: '', team: null, mark: '' }],
-    });
-  };
-  const updateEntry = (evIdx: number, enIdx: number, patch: Partial<ResultEntry>) => {
-    const ev = events[evIdx];
-    updateEvent(evIdx, {
+  const addEntry = (evIdx: number) =>
+    updateEvent(evIdx, (ev) => ({
+      entries: [...ev.entries, { place: ev.entries.length + 1, name: '', team: null, mark: '' }],
+    }));
+  const updateEntry = (evIdx: number, enIdx: number, patch: Partial<ResultEntry>) =>
+    updateEvent(evIdx, (ev) => ({
       entries: ev.entries.map((en, i) => (i === enIdx ? { ...en, ...patch } : en)),
-    });
-  };
-  const removeEntry = (evIdx: number, enIdx: number) => {
-    const ev = events[evIdx];
-    updateEvent(evIdx, { entries: ev.entries.filter((_, i) => i !== enIdx) });
-  };
+    }));
+  const removeEntry = (evIdx: number, enIdx: number) =>
+    updateEvent(evIdx, (ev) => ({ entries: ev.entries.filter((_, i) => i !== enIdx) }));
 
   return (
     <div className="bg-white border-t border-slate-200 px-4 py-4">

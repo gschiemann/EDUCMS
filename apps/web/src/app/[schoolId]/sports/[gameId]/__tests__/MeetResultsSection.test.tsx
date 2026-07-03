@@ -17,7 +17,7 @@
  * wrapper that calls the real `useGameControl` hook inside a real
  * `QueryClientProvider`.
  */
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { findSport } from '@cms/api-types';
 
@@ -60,11 +60,23 @@ function statsWithOneBlankEntry() {
 
 function renderMeetResults(initialStats: Record<string, unknown>, judged = false) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  const g = { id: GAME_ID, homeTeam: 'Home', awayTeam: 'Away', stats: initialStats };
+  // Seed the cache the SAME key useGame(gameId) would already hold live —
+  // in production `useGame` and `useGameControl` are always mounted
+  // together on this page, so `ctl.stats`'s onMutate (use-api.ts) always
+  // has a `prev` to optimistically write over. Seeding here (rather than
+  // relying on a real useGame query in this narrow component test)
+  // reproduces that same-task race precisely: the #294 fix reads this
+  // exact cache entry back out inside `write()`.
+  qc.setQueryData(['sports-game', GAME_ID], g);
   const def = findSport('track_and_field')!;
   function Inner() {
     const ctl = useGameControl(GAME_ID);
-    const g = { homeTeam: 'Home', awayTeam: 'Away', stats: initialStats };
-    return <MeetResultsSection g={g} def={def} ctl={ctl} judged={judged} />;
+    // gameId passed (matches the live console's call site in page.tsx) so
+    // the #294 fresh-cache-read path is exercised by default; the
+    // pre-existing tests above mount WITHOUT it deliberately (proving the
+    // fallback-to-props behavior for any caller that predates the fix).
+    return <MeetResultsSection gameId={GAME_ID} g={g} def={def} ctl={ctl} judged={judged} />;
   }
   return render(
     <QueryClientProvider client={qc}>
@@ -218,5 +230,127 @@ describe('MeetResultsSection — draft-then-commit (S1-4 / P1-6)', () => {
     await waitFor(() => expect(statsPatchCalls().length).toBe(1));
     const body = JSON.parse(statsPatchCalls()[0][1]?.body ?? '{}');
     expect(body.stats.results[0].entries.length).toBe(1);
+  });
+
+  // ── #294 (2026-07-02 overnight adversarial review, P2) ───────────────
+  // write() used to close over `events` — derived fresh from props ONCE
+  // per render. Two commits fired in the SAME browser task (fast Tab
+  // between adjacent cells, before React re-renders with the first
+  // commit's optimistic cache update) both computed their full
+  // stats.results array from the SAME stale `events` snapshot, so the
+  // second write() silently dropped the first cell's just-typed edit.
+  //
+  // Race-window note: `ctl.stats`'s onMutate (use-api.ts) writes its
+  // optimistic update into the query cache asynchronously — React Query
+  // schedules the mutation's execution rather than running onMutate
+  // perfectly synchronously inside `mutate()`'s own call frame. A REAL
+  // "fast Tab between cells" always spans at least one JS task/microtask
+  // boundary (a genuine keyup + focus + blur DOM event cycle), which is
+  // enough for onMutate to land — so each test below flushes exactly ONE
+  // microtask tick (`await act(async () => { await Promise.resolve(); })`)
+  // between the two commits: still WELL before a React re-render would
+  // deliver fresh `g`/`stats` PROPS to this component (the actual bug this
+  // fix targets — see the #294 fix comment on `write()` in page.tsx), but
+  // enough for the cache this fix reads from to be current.
+  describe('rapid-tab lost-edit race (#294)', () => {
+    /** Two finisher rows in ONE event — enough surface for "adjacent
+     *  cells" edits (different fields on the same OR different entries)
+     *  fired back-to-back with only a microtask between them. */
+    function statsWithTwoBlankEntries() {
+      return {
+        results: [
+          {
+            event: '100m Dash',
+            order: 1,
+            entries: [
+              { place: 1, name: '', team: null, mark: '' },
+              { place: 2, name: '', team: null, mark: '' },
+            ],
+          },
+        ],
+      };
+    }
+
+    it('two rapid commits on DIFFERENT fields of the SAME entry both persist', async () => {
+      renderMeetResults(statsWithTwoBlankEntries());
+      const nameInputs = screen.getAllByPlaceholderText('Athlete name');
+      const markInputs = screen.getAllByPlaceholderText('11.42');
+
+      // Commit #1: name on entry 0.
+      fireEvent.focus(nameInputs[0]);
+      fireEvent.change(nameInputs[0], { target: { value: 'Sha Carri' } });
+      fireEvent.blur(nameInputs[0]);
+      // One microtask tick — NOT a full render, NOT awaiting the network
+      // response — see the race-window note above.
+      await act(async () => { await Promise.resolve(); });
+
+      // Commit #2: mark on the SAME entry 0, fired immediately after.
+      fireEvent.focus(markInputs[0]);
+      fireEvent.change(markInputs[0], { target: { value: '10.65' } });
+      fireEvent.blur(markInputs[0]);
+
+      await waitFor(() => expect(statsPatchCalls().length).toBe(2));
+
+      // The LAST PATCH the endpoint saw must carry BOTH edits — if write()
+      // were still reading the stale `events` closure, the second PATCH's
+      // base snapshot would predate commit #1 and silently revert the name
+      // back to ''.
+      const lastBody = JSON.parse(statsPatchCalls()[statsPatchCalls().length - 1][1]?.body ?? '{}');
+      const entry0 = lastBody.stats.results[0].entries[0];
+      expect(entry0.name).toBe('Sha Carri');
+      expect(entry0.mark).toBe('10.65');
+    });
+
+    it('two rapid commits on the SAME field of ADJACENT entries both persist', async () => {
+      renderMeetResults(statsWithTwoBlankEntries());
+      const nameInputs = screen.getAllByPlaceholderText('Athlete name');
+
+      // Commit #1: name on entry 0.
+      fireEvent.focus(nameInputs[0]);
+      fireEvent.change(nameInputs[0], { target: { value: 'Sha Carri' } });
+      fireEvent.blur(nameInputs[0]);
+      await act(async () => { await Promise.resolve(); });
+
+      // Commit #2: name on entry 1 (adjacent row) — fired immediately after.
+      fireEvent.focus(nameInputs[1]);
+      fireEvent.change(nameInputs[1], { target: { value: 'Gabby Thomas' } });
+      fireEvent.blur(nameInputs[1]);
+
+      await waitFor(() => expect(statsPatchCalls().length).toBe(2));
+
+      const lastBody = JSON.parse(statsPatchCalls()[statsPatchCalls().length - 1][1]?.body ?? '{}');
+      const entries = lastBody.stats.results[0].entries;
+      // Both names must be present in the FINAL persisted array — neither
+      // commit dropped the other's edit.
+      expect(entries[0].name).toBe('Sha Carri');
+      expect(entries[1].name).toBe('Gabby Thomas');
+    });
+
+    it('without a gameId (no cache key to re-baseline from), falls back to the prop-derived events — pre-existing behavior, not a new regression', async () => {
+      // This documents the boundary of the fix: a caller that never wires
+      // gameId (none exist in production today — the live console always
+      // passes it) gets the SAME pre-#294 behavior, not a crash.
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+      const def = findSport('track_and_field')!;
+      function Inner() {
+        const ctl = useGameControl(GAME_ID);
+        const g = { homeTeam: 'Home', awayTeam: 'Away', stats: statsWithTwoBlankEntries() };
+        return <MeetResultsSection g={g} def={def} ctl={ctl} judged={false} />; // no gameId prop
+      }
+      render(
+        <QueryClientProvider client={qc}>
+          <Inner />
+        </QueryClientProvider>,
+      );
+
+      const nameInputs = screen.getAllByPlaceholderText('Athlete name');
+      fireEvent.focus(nameInputs[0]);
+      fireEvent.change(nameInputs[0], { target: { value: 'Sha Carri' } });
+      fireEvent.blur(nameInputs[0]);
+
+      await waitFor(() => expect(statsPatchCalls().length).toBe(1));
+      const body = JSON.parse(statsPatchCalls()[0][1]?.body ?? '{}');
+      expect(body.stats.results[0].entries[0].name).toBe('Sha Carri');
+    });
   });
 });
