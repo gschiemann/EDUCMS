@@ -1096,6 +1096,14 @@ export function useTemplate(id: string) {
     queryFn: () => apiFetch(`/templates/${id}`),
     enabled: !!id,
     staleTime: 60_000,
+    // overnight-review P2 (2026-07-03): the builder's C1 draft-recovery check
+    // (BuilderShell isDraftNewer) compares a local draft against this row's
+    // updatedAt. With staleTime 60s + global refetchOnWindowFocus:false, a
+    // remount within that window could compare against a CACHED (client-stale)
+    // updatedAt and offer a false "restore" prompt. Refetch on mount so the
+    // check always sees live server truth. Single mount-time fetch (NOT a
+    // background poll / focus storm) — mobile-perf guard is unaffected.
+    refetchOnMount: 'always',
   });
 }
 
