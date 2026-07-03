@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { randomBytes, createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -51,6 +51,8 @@ function validatePassword(password: string): void {
 
 @Injectable()
 export class OnboardingService {
+  private readonly logger = new Logger(OnboardingService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly authService: AuthService,
@@ -177,7 +179,21 @@ export class OnboardingService {
       return { tenant, user };
     });
 
-    await this.emailService.sendWelcome({ to: user.email, districtName: tenant.name, tenantSlug: tenant.slug });
+    // email-fix #2 (2026-07-03): sendWelcome runs AFTER the Tenant +
+    // DISTRICT_ADMIN User are already committed above. A throw here
+    // (unset RESEND_API_KEY in prod, or a flaky Resend call) used to 500
+    // this whole request even though the account was already created —
+    // the applicant would be stranded (a retry hits "account already
+    // exists"). Guard it: on failure, log a warning and continue — the
+    // email_logs FAILED row from EmailService's own #enqueue is the
+    // durable record, and signup must succeed regardless of mail delivery.
+    try {
+      await this.emailService.sendWelcome({ to: user.email, districtName: tenant.name, tenantSlug: tenant.slug });
+    } catch (e: any) {
+      this.logger.warn(
+        `signup(${tenant.id}): sendWelcome failed, continuing signup anyway: ${e?.message ?? e}`,
+      );
+    }
 
     // Auto-seed vertical-appropriate sample data so new tenants land on
     // a populated dashboard rather than a blank slate. Non-blocking:

@@ -278,4 +278,32 @@ describe('OnboardingService', () => {
       expect(state.auditLogs.some((a) => a.action === 'INVITE_ACCEPTED')).toBe(true);
     });
   });
+
+  // ─── email-fix #2 (2026-07-03) ────────────────────────────────────
+  //
+  // Overnight audit finding: sendWelcome runs AFTER the Tenant +
+  // DISTRICT_ADMIN User are already committed. An unset RESEND_API_KEY
+  // (or a flaky Resend call) makes EmailService throw in production
+  // (EmailService's own fail-closed #dispatch behavior — intentional,
+  // NOT touched by this fix). Signup must succeed regardless of what
+  // the welcome-email side-effect does, otherwise the applicant is
+  // stranded with an account that exists but a 500 response (a retry
+  // hits "account already exists").
+  describe('signup succeeds even when the welcome email fails (email-fix #2)', () => {
+    it('returns the normal auth token + creates the tenant/user when sendWelcome throws', async () => {
+      jest.spyOn(emailService, 'sendWelcome').mockRejectedValueOnce(new Error('RESEND_API_KEY not set'));
+
+      const result = await service.signup({
+        districtName: 'Riverside Unified',
+        slug: 'riverside',
+        adminEmail: 'admin@riverside.edu',
+        password: 'correct-horse-battery',
+      });
+
+      expect(result.access_token).toBe('signed.jwt');
+      expect(result.user.email).toBe('admin@riverside.edu');
+      expect(state.tenants.some((t) => t.slug === 'riverside')).toBe(true);
+      expect(state.users.some((u) => u.email === 'admin@riverside.edu')).toBe(true);
+    });
+  });
 });
