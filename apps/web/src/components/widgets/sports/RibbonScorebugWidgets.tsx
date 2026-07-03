@@ -101,7 +101,18 @@ export function RibbonScoreboardWidget({ config }: { config?: RibbonCfg }) {
 
   const homeColor = snap.homeColor || '#4f46e5';
   const awayColor = snap.awayColor || '#dc2626';
-  const reel = (c.messages && c.messages.length ? c.messages : [c.sponsorText || 'YOUR SPONSOR HERE', 'GO TEAM!', 'NEXT HOME GAME FRI 7PM']).join('     •     ');
+  // nofake-sweep (2026-07-03, docs/research/2026-07-02-sports-deep-pass/
+  // 06-OVERNIGHT-REVIEW.md P1): this widget DOES gate score/clock/period/
+  // abbr on isLiveNoData, but the reel was computed unconditionally — a
+  // ribbon showing correct neutral dashes for score/clock still scrolled
+  // fabricated 'YOUR SPONSOR HERE • GO TEAM! • NEXT HOME GAME FRI 7PM' to
+  // the crowd. Gate it the same way: on a live surface with no messages/
+  // sponsorText configured, render an empty reel (no divider text) instead
+  // of the SAMPLE placeholder strings. Builder (no provider) keeps SAMPLE.
+  const hasReelContent = (c.messages && c.messages.length > 0) || !!c.sponsorText;
+  const reel = hasReelContent
+    ? (c.messages && c.messages.length ? c.messages : [c.sponsorText || '']).join('     •     ')
+    : (isLiveNoData ? '' : ['YOUR SPONSOR HERE', 'GO TEAM!', 'NEXT HOME GAME FRI 7PM'].join('     •     '));
   const hasClock = def && def.clock.type !== 'none';
   // What the score/abbr/clock/segment show: real on a live feed, sample
   // in the builder, neutral on a live board with no data.
@@ -151,12 +162,14 @@ export function RibbonScoreboardWidget({ config }: { config?: RibbonCfg }) {
       </div>
       {/* divider */}
       <div style={{ width: 2, height: '60%', background: '#1e2638', flexShrink: 0 }} />
-      {/* sponsor / message reel */}
-      <div style={{ flex: 1, overflow: 'hidden', height: '100%', display: 'flex', alignItems: 'center' }}>
-        <div style={{ whiteSpace: 'nowrap', fontWeight: 800, fontSize: px(0.36), letterSpacing: 2, color: '#cbd5e1', animation: 'ribbonReel 18s linear infinite', display: 'inline-block' }}>
-          {reel}{'     •     '}{reel}
+      {/* sponsor / message reel — empty (no marquee) on a live surface with nothing configured */}
+      {reel && (
+        <div style={{ flex: 1, overflow: 'hidden', height: '100%', display: 'flex', alignItems: 'center' }}>
+          <div style={{ whiteSpace: 'nowrap', fontWeight: 800, fontSize: px(0.36), letterSpacing: 2, color: '#cbd5e1', animation: 'ribbonReel 18s linear infinite', display: 'inline-block' }}>
+            {reel}{'     •     '}{reel}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
