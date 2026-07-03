@@ -5,9 +5,10 @@
  * broadcast board (S6, #288). Greg picked all 3 stadium designs on
  * 2026-07-03 as sports-scoreboard template options
  * (docs/design/proposals/2026-07-02-stadium-lane/README.md). This file
- * ships v1 "Broadcast" — a byte-faithful port of
- * `stadium-lane-v1-broadcast.html` — AND v2 "Dual-Meet Duel", a
- * byte-faithful port of `stadium-lane-v2-duel.html` (both reference
+ * ships all three: v1 "Broadcast" — a byte-faithful port of
+ * `stadium-lane-v1-broadcast.html`; v2 "Dual-Meet Duel", a byte-faithful
+ * port of `stadium-lane-v2-duel.html`; and v3 "Record Chase", a
+ * byte-faithful port of `stadium-lane-v3-chase.html` (all three reference
  * screenshots in the same folder), each wired to LIVE game data instead
  * of its mockup's hardcoded sample swimmers/scores.
  *
@@ -31,14 +32,17 @@
  *   - `StadiumDuelScene` (boardStyle: 'duel', v2) — the dual-meet team-
  *     score header with color-flood diagonal collision + per-swimmer
  *     delta-vs-leader column + a live-only ticker.
- * v3 "Record Chase" is still reserved (`boardStyle: 'chase'` types but
- * falls back to 'broadcast' until built) — when it lands, it becomes a
- * third sibling `Stadium<X>Scene`, selected by the same `cfg.boardStyle`
- * switch. The live-data mapping shared by all three (readResults →
- * sorted/DQ'd rows, team colors/names, no-fake-data guard) lives in the
- * router, not duplicated per style; each scene's file-header-adjacent
- * comment block documents ONLY the mapping unique to that scene (team
- * scores + deltas + the omitted "up next" clause for Duel).
+ *   - `StadiumChaseScene` (boardStyle: 'chase', v3) — a left rail with a
+ *     giant race-clock readout + a configured pool-record-chase card
+ *     (value/holder/progress-bar/gap) + a team-score chip, alongside a
+ *     right ladder of place-ordered rows.
+ * All three are selected by the same `cfg.boardStyle` switch. The
+ * live-data mapping shared by all three (readResults → sorted/DQ'd rows,
+ * team colors/names, no-fake-data guard) lives in the router, not
+ * duplicated per style; each scene's file-header-adjacent comment block
+ * documents ONLY the mapping unique to that scene (team scores + deltas +
+ * the omitted "up next" clause for Duel; the race clock + record-chase
+ * card for Chase).
  *
  * ── Live data mapping (readResults → the mockup's rows) ────────────────
  * Reads `Game.stats.results` via the SAME `readResults` parser every
@@ -263,9 +267,8 @@ function isDqMark(mark: string): boolean {
 }
 
 export interface StadiumMeetBoardCfg extends BaseCfg {
-  /** v1 'broadcast' and v2 'duel' are both implemented. v3 'chase' is
-   *  reserved for the third sibling design Greg also approved
-   *  2026-07-03; selecting it today falls back to 'broadcast'. Named
+  /** v1 'broadcast', v2 'duel', and v3 'chase' are all implemented — the
+   *  three Stadium Lane designs Greg approved 2026-07-03. Named
    *  `boardStyle`, NOT `style` — `style` is BaseCfg's reserved
    *  WidgetStyle field (font/color/bg/padding/border/shadow/anim), and
    *  colliding with it would shadow every v2 widget's shared style
@@ -332,6 +335,18 @@ function parseMarkMs(mark: string): number | null {
  *  delta column). */
 function formatDeltaMs(deltaMs: number): string {
   return `+${(deltaMs / 1000).toFixed(2)}`;
+}
+
+/** Formats a raw mark string into the v3 mockup's trimmed "RACE CLOCK"
+ *  style — the mockup shows "51.9" (one decimal), not the ladder's
+ *  full-precision "51.90". Strips exactly one trailing zero off a
+ *  2-decimal seconds value so "51.90"→"51.9" but "51.05"→"51.05" (no
+ *  false precision loss when the trailing digit is meaningful). Only
+ *  ever fed a leader's already-DQ-filtered mark (see StadiumChaseScene). */
+function formatRaceClock(mark: string): string {
+  const trimmed = mark.trim();
+  const m = trimmed.match(/^(\d+)\.(\d)0$/);
+  return m ? `${m[1]}.${m[2]}` : trimmed;
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -724,9 +739,262 @@ function StadiumDuelScene({
 }
 
 // ════════════════════════════════════════════════════════════════════
+// StadiumChaseScene — v3 "Record Chase". Faithful port of
+// stadium-lane-v3-chase.html (docs/design/proposals/2026-07-02-stadium-lane/).
+// Every pixel value below is taken directly from that mockup's CSS.
+//
+// ── Live-data mapping specific to this scene (shared plumbing — sorted
+//    rows, DQ, lane chip colors, team names — lives in the router above,
+//    same as v1/v2) ──
+//   - RACE CLOCK ← the mockup's giant "51.9" readout is the LEADER'S
+//     finish time (place===1, non-DQ), the same honest signal v1/v2 use
+//     for the gold leader glow — it is a completed result already on the
+//     snapshot, not a fabricated running clock. No results yet (no
+//     leader) → "—" rather than inventing a time. Trimmed to the
+//     mockup's one-decimal style via formatRaceClock (never re-rounds a
+//     genuinely 2-decimal-significant mark).
+//   - POOL RECORD CHASE card ← NO record field exists anywhere in the
+//     data model (same "no field exists" rule as v1's footer). Fully
+//     operator-configured (recordLabel/recordValue/recordHolder/
+//     recordDelta, reusing v1's exact config keys — one record concept,
+//     one set of fields, across every Stadium Lane style). ANY of the
+//     four blank still renders what's configured; ALL four blank omits
+//     the whole card cleanly — never the mockup's fabricated "50.84 A.
+//     WASHINGTON" sample on a real board.
+//   - Progress bar fill ← computed ONLY from data already in hand: the
+//     configured recordValue parsed as a mark vs the live leader's parsed
+//     mark, clamped to [0,100]. Record pace = 100%; every ms slower than
+//     the record shrinks the fill proportionally (leaderMs can never be
+//     BELOW recordMs in a believable feed, but the clamp guards a
+//     mistyped record too). If either mark fails to parse (blank record,
+//     DQ leader, no leader) the bar is omitted rather than drawing a
+//     meaningless width — the mockup's fixed 78% was decorative sample
+//     data, never a computed ratio.
+//   - Gap line ← derived purely from the SAME two parsed marks used for
+//     the bar ("<LEADER NAME> FINISHED +<gap> OFF THE RECORD"), never
+//     re-typed. If the leader is UNDER the record, the line reads a
+//     genuine "NEW RECORD" celebration instead of a nonsensical negative
+//     gap — still pure arithmetic on real data, not fabricated copy.
+//   - Team chip ← snapshot.homeScore/awayScore + homeTeam/awayTeam (the
+//     SAME real fields the mockup's fixed "CENTRAL 96 — WESTVIEW 74"
+//     stands in for) with a real score-gap "TEAM LEAD" (or "TIED" at
+//     0 gap) instead of the mockup's hardcoded "+22".
+//   - Club label per row ← real team name (homeTeam/awayTeam by
+//     entry.team), same as v1/v2's row-level fallback-to-HOME/AWAY rule.
+// ════════════════════════════════════════════════════════════════════
+function StadiumChaseScene({
+  headerText,
+  heatLabel,
+  timeLabel,
+  rows,
+  laneCount,
+  dqReasons,
+  homeColor,
+  awayColor,
+  homeTeam,
+  awayTeam,
+  homeScore,
+  awayScore,
+  record,
+  bgColor,
+}: {
+  headerText: { eventLabel: string; eventTitle: string };
+  heatLabel: string;
+  timeLabel: string;
+  rows: ResultEntry[];
+  laneCount: number;
+  dqReasons: Record<string, string>;
+  homeColor: string | null;
+  awayColor: string | null;
+  homeTeam: string | null;
+  awayTeam: string | null;
+  homeScore: number | null;
+  awayScore: number | null;
+  record: { recordLabel: string; recordValue: string; recordHolder: string; recordDelta: string } | null;
+  bgColor: string;
+}) {
+  const visibleRows = rows.slice(0, laneCount);
+  const leader = visibleRows.find((r) => r.place === 1 && !isDqMark(r.mark)) || null;
+  const leaderMs = leader ? parseMarkMs(leader.mark) : null;
+  const raceClock = leader && leader.mark ? formatRaceClock(leader.mark) : '—';
+
+  // Record-chase progress bar + gap line — computed ONLY when BOTH a
+  // configured record value AND a real live leader mark parse cleanly.
+  // Either missing → omit the bar/gap rather than draw a meaningless or
+  // fabricated number (see file-header-adjacent comment above).
+  const recordMs = record?.recordValue ? parseMarkMs(record.recordValue) : null;
+  const chaseReady = recordMs != null && leaderMs != null && leaderMs > 0;
+  const progressPct = chaseReady ? Math.max(0, Math.min(100, (recordMs! / leaderMs!) * 100)) : null;
+  const gapLine = chaseReady
+    ? (leaderMs! <= recordMs!
+        ? `${(leader!.name || '').toUpperCase()} SET A NEW RECORD`
+        : `${(leader!.name || '').toUpperCase()} FINISHED ${formatDeltaMs(leaderMs! - recordMs!)} OFF THE RECORD`)
+    : null;
+
+  const scoreGap = homeScore != null && awayScore != null ? homeScore - awayScore : null;
+  const teamLeadLabel = scoreGap === 0 ? 'TIED' : 'TEAM LEAD';
+  const teamLeadValue = scoreGap != null ? (scoreGap === 0 ? '—' : (scoreGap > 0 ? `+${scoreGap}` : `${scoreGap}`)) : '—';
+
+  return (
+    <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, fontFamily: BODY_FONT, color: '#fff', background: `radial-gradient(1000px 700px at 82% 20%, rgba(16,185,129,.14), transparent 60%), radial-gradient(900px 600px at 8% 90%, rgba(59,130,246,.10), transparent 60%), ${bgColor}`, overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, opacity: 0.5, background: 'repeating-linear-gradient(0deg, rgba(255,255,255,.015) 0 1px, transparent 1px 4px)' }} />
+
+      {/* ── Left rail: LIVE tag, event tower, giant race clock, record-chase card, team chip ── */}
+      <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 560, padding: '52px 44px', background: 'linear-gradient(180deg,#0b1322 0%,#081020 100%)', borderRight: '1px solid #1c2740', boxSizing: 'border-box' }}>
+        <div style={{ display: 'inline-block', background: '#10b981', color: '#032117', fontSize: 18, fontWeight: 800, letterSpacing: 3, padding: '9px 20px', borderRadius: 999 }}>
+          ● LIVE{headerText.eventLabel ? ` — ${headerText.eventLabel.split(/\s*[·|]\s*/).pop()}` : ''}
+        </div>
+        <h1 style={{ fontFamily: DISPLAY_FONT, fontWeight: 400, fontSize: 66, lineHeight: 1.02, margin: '26px 0 8px' }}>
+          {headerText.eventTitle}
+        </h1>
+        {(heatLabel || headerText.eventLabel) && (
+          <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 4, color: '#6ee7b7' }}>
+            {headerText.eventLabel}{headerText.eventLabel && heatLabel ? ' · ' : ''}{heatLabel ? `HEAT ${heatLabel}` : ''}
+          </div>
+        )}
+
+        <div style={{ margin: '52px 0 10px' }}>
+          <small style={{ fontSize: 18, fontWeight: 800, letterSpacing: 4, color: '#7e8aa6' }}>RACE CLOCK</small>
+          <b style={{
+            display: 'block', fontFamily: MONO_FONT, fontSize: 150, fontWeight: 800, letterSpacing: -6, lineHeight: 1,
+            fontVariantNumeric: 'tabular-nums', textShadow: raceClock !== '—' ? '0 0 40px rgba(16,185,129,.30)' : undefined,
+          }}>
+            {raceClock}
+          </b>
+        </div>
+
+        {record && (
+          // Mockup's sample record text was pre-typed in caps (no CSS
+          // text-transform on .rec) — force uppercase on the label/holder/
+          // gap line here (same rule v1's footer uses) so an
+          // operator-typed mixed-case value still reads like the approved
+          // design. The record VALUE (a time, e.g. "50.84") is left as
+          // typed — numbers have no case.
+          <div style={{ marginTop: 44, border: '2px dashed rgba(251,191,36,.5)', borderRadius: 18, padding: '22px 24px', background: 'rgba(251,191,36,.06)', textTransform: 'uppercase' }}>
+            <small style={{ fontSize: 16, fontWeight: 800, letterSpacing: 3, color: '#fbbf24' }}>⚑ {record.recordLabel}</small>
+            <div style={{ display: 'flex', alignItems: 'baseline', marginTop: 8 }}>
+              {record.recordValue && <b style={{ fontFamily: MONO_FONT, fontSize: 56, fontWeight: 800, textTransform: 'none' }}>{record.recordValue}</b>}
+              {record.recordHolder && <span style={{ fontSize: 19, fontWeight: 700, color: '#cbd5e1', marginLeft: 16 }}>{record.recordHolder}</span>}
+            </div>
+            {progressPct != null && (
+              <div style={{ height: 14, borderRadius: 7, background: '#1a2337', marginTop: 18, overflow: 'hidden' }}>
+                <div style={{ display: 'block', height: '100%', width: `${progressPct}%`, borderRadius: 7, background: 'linear-gradient(90deg,#10b981,#fbbf24)' }} />
+              </div>
+            )}
+            {(gapLine || record.recordDelta) && (
+              <div style={{ marginTop: 10, fontSize: 18, fontWeight: 800, letterSpacing: 1, color: '#fde68a' }}>
+                {gapLine || record.recordDelta}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div style={{ position: 'absolute', left: 44, right: 44, bottom: 44, display: 'flex', alignItems: 'center', background: '#0e1730', border: '1px solid #223052', borderRadius: 16, padding: '16px 22px', boxSizing: 'border-box' }}>
+          <b style={{ fontFamily: DISPLAY_FONT, fontWeight: 400, fontSize: 30 }}>
+            {(homeTeam || 'HOME').toUpperCase()} {homeScore ?? 0} — {(awayTeam || 'AWAY').toUpperCase()} {awayScore ?? 0}
+          </b>
+          <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+            <b style={{ display: 'block', fontSize: 38, color: '#6ee7b7' }}>{teamLeadValue}</b>
+            <small style={{ display: 'block', fontSize: 13, fontWeight: 800, letterSpacing: 2, color: '#7e8aa6' }}>{teamLeadLabel}</small>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Right: the ladder — place-ordered rows, huge mono times ──
+          NOTE: deliberately top/bottom/left + `width: calc(100% - 560px)`
+          instead of all four physical sides. Supplying top AND right AND
+          bottom AND left together on one style object lets React's
+          style-object → attribute-string serializer collapse them into
+          the CSS positioning SHORTHAND in the rendered attribute — even
+          though every individual property was authored as its own
+          longhand key — and this app's Chromium-83 positioning-shorthand
+          polyfill (apps/web/src/app/player/layout.tsx) matches ANY style
+          string that STARTS WITH that shorthand's zero form (intended to
+          catch the genuinely-all-zero full-bleed case) and force-
+          `!important`-zeroes every side on it. A leading-zero-but-not-
+          uniform value (e.g. this ladder's "top/right/bottom all zero,
+          left 560") matches that same leading substring and gets
+          silently zeroed too. That collapsed this ladder's left offset
+          back to 0, stacking it directly on top of the rail (caught via
+          the Playwright screenshot harness — see
+          stadium-meet-board-chase-shot.spec.ts). Never give React all 4
+          sides on the same element in a player-shipped widget; 3 sides +
+          an explicit width/height (the same pattern the rail above and
+          v1/v2's own scenes already use) is immune to both the shorthand
+          collapse AND the underlying Chromium-83 parsing gap. */}
+      <div style={{ position: 'absolute', top: 0, bottom: 0, left: 560, width: 'calc(100% - 560px)', padding: '44px 48px', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', marginBottom: 20 }}>
+          <h2 style={{ fontFamily: DISPLAY_FONT, fontWeight: 400, fontSize: 40, letterSpacing: 1 }}>
+            RESULTS{heatLabel ? ` — HEAT ${heatLabel.split('/')[0]}` : ''}
+          </h2>
+          <span style={{ marginLeft: 'auto', fontSize: 18, fontWeight: 800, letterSpacing: 3, color: '#7e8aa6' }}>
+            PLACE ORDER{timeLabel ? ` · ${timeLabel}` : ''}
+          </span>
+        </div>
+
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          {visibleRows.map((r, i) => {
+            const dq = isDqMark(r.mark);
+            const empty = !r.name && !r.mark;
+            const reason = r.lane != null ? dqReasons[String(r.lane)] : undefined;
+            const rankBg =
+              !dq && r.place === 1 ? 'linear-gradient(160deg,#f59e0b,#fbbf24)'
+              : !dq && r.place === 2 ? 'linear-gradient(160deg,#94a3b8,#e2e8f0)'
+              : !dq && r.place === 3 ? 'linear-gradient(160deg,#b45309,#f59e0b)'
+              : 'rgba(255,255,255,.05)';
+            const rankFg = !dq && r.place === 1 ? '#3b2a00' : !dq && r.place === 2 ? '#1e293b' : !dq && r.place === 3 ? '#2f1c00' : '#fff';
+            const tc = laneChipColor(r, homeColor, awayColor);
+            const clubLabel = r.team === 'home' ? (homeTeam || 'HOME') : r.team === 'away' ? (awayTeam || 'AWAY') : null;
+            return (
+              <div
+                key={`${r.lane ?? i}-${i}`}
+                style={{
+                  position: 'relative', flex: 1, margin: '6px 0', display: 'flex', alignItems: 'center',
+                  borderRadius: 16, background: 'linear-gradient(90deg, rgba(255,255,255,.045), rgba(255,255,255,.015))',
+                  border: '1px solid rgba(255,255,255,.07)', padding: '0 30px 0 0', overflow: 'hidden', opacity: empty ? 0.35 : 1,
+                }}
+              >
+                <div style={{ width: 130, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: DISPLAY_FONT, fontWeight: 400, fontSize: 64, background: rankBg, color: rankFg, flex: 'none' }}>
+                  {empty || dq || !r.place ? '—' : r.place}
+                </div>
+                <div style={{ flex: 1, paddingLeft: 30, minWidth: 0 }}>
+                  <b style={{
+                    display: 'block', fontSize: 50, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    textTransform: 'uppercase', color: dq ? '#8ea0c2' : '#ffffff', textDecoration: dq ? 'line-through' : 'none',
+                  }}>
+                    {empty ? '—' : (r.name || '—')}
+                  </b>
+                  {clubLabel && (
+                    <small style={{ display: 'block', fontSize: 21, fontWeight: 800, letterSpacing: 3, color: '#7e8aa6', marginTop: 2 }}>
+                      {clubLabel.toUpperCase()}
+                    </small>
+                  )}
+                </div>
+                <div style={{ width: 120, textAlign: 'center', marginRight: 12, flex: 'none' }}>
+                  <b style={{ display: 'block', fontFamily: DISPLAY_FONT, fontWeight: 400, fontSize: 40, color: tc }}>{r.lane ?? '—'}</b>
+                  <small style={{ fontSize: 13, fontWeight: 800, letterSpacing: 3, color: '#5b6884' }}>LANE</small>
+                </div>
+                <div style={{
+                  fontFamily: MONO_FONT, fontWeight: 800, letterSpacing: dq ? undefined : -2, width: 360, textAlign: 'right',
+                  fontVariantNumeric: 'tabular-nums', flex: 'none',
+                  fontSize: dq ? 44 : 70, color: dq ? '#f87171' : (r.place === 1 ? '#fde047' : '#ffffff'),
+                }}>
+                  {empty ? '—' : dq ? `DQ${reason ? ` · ${reason}` : ''}` : (r.mark || '—')}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
 // StadiumMeetBoardWidget — router. Live-data plumbing + no-fake-data
 // guard live here; style-specific presentation is a sibling scene
-// (StadiumBroadcastScene / 'broadcast' + StadiumDuelScene / 'duel').
+// (StadiumBroadcastScene / 'broadcast' + StadiumDuelScene / 'duel' +
+// StadiumChaseScene / 'chase').
 // ════════════════════════════════════════════════════════════════════
 export function StadiumMeetBoardWidget({ config }: WidgetProps<StadiumMeetBoardCfg>) {
   const c = config ?? {};
@@ -748,7 +1016,10 @@ export function StadiumMeetBoardWidget({ config }: WidgetProps<StadiumMeetBoardC
   const noLiveData = isLive && !event;
 
   const laneCount = Math.max(1, Math.min(12, c.laneCount ?? (isLive ? 8 : SAMPLE_EVENT.entries.length)));
-  const bgColor = c.bgColor || '#060a14';
+  // Default scene bg is per-style (each mockup's own base color); an
+  // operator-set bgColor always wins regardless of style.
+  const defaultBgColor = c.boardStyle === 'duel' ? '#07090f' : c.boardStyle === 'chase' ? '#05070c' : '#060a14';
+  const bgColor = c.bgColor || defaultBgColor;
 
   const rows: ResultEntry[] = noLiveData
     ? []
@@ -804,15 +1075,16 @@ export function StadiumMeetBoardWidget({ config }: WidgetProps<StadiumMeetBoardC
     ? { sponsorLabel: c.sponsorLabel || 'PRESENTED BY', sponsorName: c.sponsorName || '' }
     : (!isLive ? SAMPLE_SPONSOR : null);
 
-  // v1 'broadcast' and v2 'duel' are both built; v3 'chase' is still
-  // reserved and falls back to 'broadcast' rather than rendering nothing
-  // (a not-yet-implemented style should never blank the board).
-  const boardStyle: 'broadcast' | 'duel' = c.boardStyle === 'duel' ? 'duel' : 'broadcast';
+  // v1 'broadcast', v2 'duel', and v3 'chase' are all built now — every
+  // typed boardStyle has a real scene; nothing falls back anymore.
+  const boardStyle: 'broadcast' | 'duel' | 'chase' =
+    c.boardStyle === 'duel' ? 'duel' : c.boardStyle === 'chase' ? 'chase' : 'broadcast';
 
-  // Team scores — v2-only field (v1's design has no score header at all).
-  // Real bound game's homeScore/awayScore; builder sample uses the
-  // mockup's 96/74 so the gallery tile demonstrates the "duel" moment,
-  // same "sample only off a real screen" rule as every other field here.
+  // Team scores — v2 'duel' and v3 'chase' both show a team-score chip
+  // (v1's design has no score header at all). Real bound game's
+  // homeScore/awayScore; builder sample uses the mockup's 96/74 so the
+  // gallery tile demonstrates the moment, same "sample only off a real
+  // screen" rule as every other field here.
   const homeScore = isLive ? (snapshot?.homeScore ?? 0) : 96;
   const awayScore = isLive ? (snapshot?.awayScore ?? 0) : 74;
 
@@ -850,10 +1122,24 @@ export function StadiumMeetBoardWidget({ config }: WidgetProps<StadiumMeetBoardC
           bgColor={bgColor}
         />
       )}
-      {/* v3 'chase' — reserved for the third Stadium Lane design Greg also
-          approved 2026-07-03. Rendering 'broadcast' as the fallback above
-          until it's built (boardStyle computed above maps 'chase' to the
-          'broadcast' branch). */}
+      {boardStyle === 'chase' && (
+        <StadiumChaseScene
+          headerText={headerText}
+          heatLabel={heatLabel}
+          timeLabel={timeLabel}
+          rows={rows}
+          laneCount={laneCount}
+          dqReasons={dqReasons}
+          homeColor={snapshot?.homeColor ?? null}
+          awayColor={snapshot?.awayColor ?? null}
+          homeTeam={snapshot?.homeTeam ?? null}
+          awayTeam={snapshot?.awayTeam ?? null}
+          homeScore={homeScore}
+          awayScore={awayScore}
+          record={record}
+          bgColor={bgColor}
+        />
+      )}
       {noLiveData && <BindGameCallout accent="#fbbf24" />}
       {!isLive && <SampleWatermark />}
     </ScaledScene>
