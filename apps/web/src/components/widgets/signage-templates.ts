@@ -126,6 +126,11 @@ export const SIGNAGE_TEMPLATES: SignageTemplate[] = [
   { id: "preset-sig-veterinary-02", name: "Veterinary · Adoptable Pets", group: "Veterinary", url: "/templates/signage/veterinary/02-adopt-gallery.html" },
   { id: "preset-sig-gym-01", name: "Gym · Floor Board", group: "Gym", url: "/templates/signage/gym/01-floor-board-flagship.html" },
   { id: "preset-sig-gym-02", name: "Gym · Leaderboard", group: "Gym", url: "/templates/signage/gym/02-leaderboard.html" },
+  // New-member welcome boards (2026-07-02 approved gym-welcome batch) — APPROVED
+  // by Greg, matches docs/design/approved/2026-07-02-gym-welcome/. DO NOT regress.
+  { id: "preset-sig-gym-03", name: "Gym · Welcome Poster", group: "Gym", url: "/templates/signage/gym/03-welcome-poster.html" },
+  { id: "preset-sig-gym-04", name: "Gym · Welcome Split-Duo", group: "Gym", url: "/templates/signage/gym/04-welcome-split-duo.html" },
+  { id: "preset-sig-gym-05", name: "Gym · Welcome Locker Room", group: "Gym", url: "/templates/signage/gym/05-welcome-locker-room.html" },
   { id: "preset-sig-real-estate-01", name: "Real Estate · Availability", group: "Real Estate", url: "/templates/signage/real-estate/01-availability-flagship.html" },
   { id: "preset-sig-museum-01", name: "Museum · Today", group: "Museum", url: "/templates/signage/museum/01-today-flagship.html" },
   { id: "preset-sig-office-01", name: "Office · Room Grid", group: "Office", url: "/templates/signage/office/01-room-grid-flagship.html" },
