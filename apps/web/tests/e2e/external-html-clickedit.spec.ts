@@ -56,6 +56,12 @@ const BOARDS = [
   '/templates/signage/hospitality/02-concierge-board.html',
   '/templates/signage/gym/01-floor-board-flagship.html',
   '/templates/signage/gym/02-leaderboard.html',
+  // New-member welcome boards (2026-07-02 approved gym-welcome batch) — pixel-
+  // faithful ports; CI gate so a future redesign that forgets to re-run
+  // inject-shim-v2.cjs fails the build instead of shipping un-editable.
+  '/templates/signage/gym/03-welcome-poster.html',
+  '/templates/signage/gym/04-welcome-split-duo.html',
+  '/templates/signage/gym/05-welcome-locker-room.html',
   '/templates/signage/qsr/01-drive-thru-flagship.html',     // menu-V5 + additive click
   '/templates/signage/menus-pos/01-fullservice-menu.html',  // menu-V5 + additive click
   '/templates/signage/bar/01-tap-list-flagship.html',       // menu-V5 + additive click
