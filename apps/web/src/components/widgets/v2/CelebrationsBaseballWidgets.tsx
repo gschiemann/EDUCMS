@@ -98,7 +98,17 @@ export function CelBaseballStrikeoutWidget({ config, live = true, height = 480 }
             </div>
           )}
 
-          <div style={{ position: 'absolute', left: '20%', right: '38%', top: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {/* 2026-07-03 — Rule #10 variant 3: was `{left:'20%', right:'38%',
+              top:0, bottom:0}` (4 explicit sides, non-uniform, top===0),
+              which the browser's CSSOM re-serializes to the `inset`
+              shorthand with a leading-zero value (top first: 0px, then
+              38% 0px 20%) — collides with the player/layout.tsx
+              Chromium-83 polyfill's attribute-substring selector for a
+              leading-zero inset value, force-zeroing all sides. Fixed to
+              3 sides + explicit width (100% - 20% - 38% = 42%) —
+              identical computed geometry. See CLAUDE.md rule #10
+              (2026-07-03 entry). */}
+          <div style={{ position: 'absolute', left: '20%', top: 0, bottom: 0, width: '42%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {[0, 1, 2].map(i => (
               <div key={i} style={{
                 fontFamily: r.font.family, fontWeight: r.font.weight, fontSize: px(height, 0.92), lineHeight: 1,

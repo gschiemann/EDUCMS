@@ -217,7 +217,17 @@ export function CelFootballFieldGoalWidget({ config, live = true, height = 480 }
 
       {wide ? (
         <>
-          <div style={{ position: 'absolute', left: '40%', right: '40%', top: 0, bottom: 0 }}>
+          {/* 2026-07-03 — Rule #10 variant 3: was `{left:'40%', right:'40%',
+              top:0, bottom:0}` (4 explicit sides, non-uniform, top===0),
+              which the browser's CSSOM re-serializes to the `inset`
+              shorthand with a leading-zero value (top first: 0px, then
+              40% 0px 40%) — collides with the player/layout.tsx
+              Chromium-83 polyfill's attribute-substring selector for a
+              leading-zero inset value, force-zeroing all sides. Fixed to
+              3 sides + explicit width (100% - 40% - 40% = 20%) —
+              identical computed geometry. See CLAUDE.md rule #10
+              (2026-07-03 entry). */}
+          <div style={{ position: 'absolute', left: '40%', top: 0, bottom: 0, width: '20%' }}>
             <svg viewBox="0 0 800 480" preserveAspectRatio="xMidYMid meet" width="100%" height="100%">
               <rect x="395" y="280" width="10" height="200" fill={r.accent.primary}/>
               <rect x="200" y="100" width="10" height="200" fill={r.accent.primary}/>
