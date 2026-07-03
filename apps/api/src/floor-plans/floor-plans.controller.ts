@@ -350,7 +350,7 @@ export class FloorPlansController {
       },
     });
     if (!plan) {
-      throw new HttpException('Floor plan not found', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'FLOOR_PLAN_NOT_FOUND', message: 'Floor plan not found' }, HttpStatus.NOT_FOUND);
     }
     return this.withSignedImageUrl(withLiveFloorPlanScreenStatus(plan));
   }
@@ -387,27 +387,27 @@ export class FloorPlansController {
   ) {
     if (!file) {
       throw new HttpException(
-        'No file uploaded, or file type not supported. Allowed: PNG, JPG, WEBP.',
+        { code: 'FLOOR_PLAN_FILE_MISSING', message: 'No file uploaded, or file type not supported. Allowed: PNG, JPG, WEBP.' },
         HttpStatus.BAD_REQUEST,
       );
     }
     const tenantId = req.user?.tenantId;
     const userId = req.user?.id;
     if (!tenantId) {
-      throw new HttpException('Authentication required.', HttpStatus.UNAUTHORIZED);
+      throw new HttpException({ code: 'FLOOR_PLAN_AUTH_REQUIRED', message: 'Authentication required.' }, HttpStatus.UNAUTHORIZED);
     }
     const name = (body.name || 'Untitled floor').trim().slice(0, 200);
     let widthPx = Number(body.widthPx);
     let heightPx = Number(body.heightPx);
     if (!Number.isFinite(widthPx) || !Number.isFinite(heightPx) || widthPx <= 0 || heightPx <= 0) {
       throw new HttpException(
-        'widthPx and heightPx are required and must be positive numbers (the image dimensions).',
+        { code: 'FLOOR_PLAN_DIMENSIONS_INVALID', message: 'widthPx and heightPx are required and must be positive numbers (the image dimensions).' },
         HttpStatus.BAD_REQUEST,
       );
     }
     if (widthPx > 10000 || heightPx > 10000) {
       throw new HttpException(
-        'Floor plan image must be 10000px or less in each dimension.',
+        { code: 'FLOOR_PLAN_DIMENSIONS_TOO_LARGE', message: 'Floor plan image must be 10000px or less in each dimension.' },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -499,8 +499,14 @@ export class FloorPlansController {
           : /mime|content-type|not allowed/i.test(detail)
             ? HttpStatus.UNSUPPORTED_MEDIA_TYPE
             : HttpStatus.BAD_GATEWAY;
+      const storageCode =
+        status === HttpStatus.PAYLOAD_TOO_LARGE
+          ? 'FLOOR_PLAN_UPLOAD_TOO_LARGE'
+          : status === HttpStatus.UNSUPPORTED_MEDIA_TYPE
+            ? 'FLOOR_PLAN_UPLOAD_MEDIA_TYPE_INVALID'
+            : 'FLOOR_PLAN_UPLOAD_STORAGE_FAILED';
       throw new HttpException(
-        `Could not save the floor plan to storage: ${detail}`,
+        { code: storageCode, message: `Could not save the floor plan to storage: ${detail}` },
         status,
       );
     }
@@ -565,7 +571,7 @@ export class FloorPlansController {
       where: { id, tenantId },
     });
     if (!existing) {
-      throw new HttpException('Floor plan not found', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'FLOOR_PLAN_NOT_FOUND', message: 'Floor plan not found' }, HttpStatus.NOT_FOUND);
     }
     const data: any = {};
     if (typeof body.name === 'string') data.name = body.name.trim().slice(0, 200);
@@ -585,7 +591,7 @@ export class FloorPlansController {
       where: { id, tenantId },
     });
     if (!existing) {
-      throw new HttpException('Floor plan not found', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'FLOOR_PLAN_NOT_FOUND', message: 'Floor plan not found' }, HttpStatus.NOT_FOUND);
     }
 
     // Detach all screens before delete — Screen.floorPlanId is nullable
@@ -631,22 +637,22 @@ export class FloorPlansController {
       where: { id, tenantId },
     });
     if (!plan) {
-      throw new HttpException('Floor plan not found', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'FLOOR_PLAN_NOT_FOUND', message: 'Floor plan not found' }, HttpStatus.NOT_FOUND);
     }
     const screen = await this.prisma.client.screen.findFirst({
       where: { id: screenId, tenantId },
     });
     if (!screen) {
-      throw new HttpException('Screen not found', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'FLOOR_PLAN_SCREEN_NOT_FOUND', message: 'Screen not found' }, HttpStatus.NOT_FOUND);
     }
 
     const fx = Number(body.floorX);
     const fy = Number(body.floorY);
     if (!Number.isFinite(fx) || !Number.isFinite(fy)) {
-      throw new HttpException('floorX and floorY must be numbers', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'FLOOR_PLAN_COORDINATES_INVALID', message: 'floorX and floorY must be numbers' }, HttpStatus.BAD_REQUEST);
     }
     if (fx < 0 || fy < 0 || fx > plan.widthPx || fy > plan.heightPx) {
-      throw new HttpException('Coordinates out of plan bounds', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'FLOOR_PLAN_COORDINATES_OUT_OF_BOUNDS', message: 'Coordinates out of plan bounds' }, HttpStatus.BAD_REQUEST);
     }
 
     const updated = await this.prisma.client.screen.update({
@@ -670,7 +676,7 @@ export class FloorPlansController {
       where: { id: screenId, tenantId, floorPlanId: id } as any,
     });
     if (!screen) {
-      throw new HttpException('Screen not on this plan', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'FLOOR_PLAN_SCREEN_NOT_ON_PLAN', message: 'Screen not on this plan' }, HttpStatus.NOT_FOUND);
     }
     const updated = await this.prisma.client.screen.update({
       where: { id: screenId },

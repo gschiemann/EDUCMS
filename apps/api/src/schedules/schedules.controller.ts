@@ -63,7 +63,7 @@ export class SchedulesController {
     @Body(new ZodValidationPipe(ScheduleCreateSchema)) body: ScheduleCreateInput,
   ) {
     if (!body.screenGroupId && !body.screenId) {
-      throw new HttpException('Either screenGroupId or screenId must be specified', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'SCHEDULE_TARGET_REQUIRED', message: 'Either screenGroupId or screenId must be specified' }, HttpStatus.BAD_REQUEST);
     }
 
     // auth-BUG-003: validate every foreign id in the body actually
@@ -72,14 +72,14 @@ export class SchedulesController {
     // another tenant's playlist/screen/screenGroup, leaking content
     // across tenants. Mirrors submissions.controller.ts:78-89 pattern.
     if (!body.playlistId) {
-      throw new HttpException('playlistId is required', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'SCHEDULE_PLAYLIST_ID_REQUIRED', message: 'playlistId is required' }, HttpStatus.BAD_REQUEST);
     }
     const playlistOwned = await this.prisma.client.playlist.findFirst({
       where: { id: body.playlistId, tenantId: req.user.tenantId },
       select: { id: true },
     });
     if (!playlistOwned) {
-      throw new HttpException('Playlist not found', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'SCHEDULE_PLAYLIST_NOT_FOUND', message: 'Playlist not found' }, HttpStatus.NOT_FOUND);
     }
     if (body.screenId) {
       const screenOwned = await this.prisma.client.screen.findFirst({
@@ -87,7 +87,7 @@ export class SchedulesController {
         select: { id: true },
       });
       if (!screenOwned) {
-        throw new HttpException('Screen not found', HttpStatus.NOT_FOUND);
+        throw new HttpException({ code: 'SCHEDULE_SCREEN_NOT_FOUND', message: 'Screen not found' }, HttpStatus.NOT_FOUND);
       }
     }
     if (body.screenGroupId) {
@@ -96,7 +96,7 @@ export class SchedulesController {
         select: { id: true },
       });
       if (!groupOwned) {
-        throw new HttpException('Screen group not found', HttpStatus.NOT_FOUND);
+        throw new HttpException({ code: 'SCHEDULE_SCREEN_GROUP_NOT_FOUND', message: 'Screen group not found' }, HttpStatus.NOT_FOUND);
       }
     }
 
@@ -160,7 +160,7 @@ export class SchedulesController {
     // Validate and normalize mode
     const mode = body.mode || 'replace';
     if (!['append', 'replace'].includes(mode)) {
-      throw new HttpException('Mode must be "append" or "replace"', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'SCHEDULE_MODE_INVALID', message: 'Mode must be "append" or "replace"' }, HttpStatus.BAD_REQUEST);
     }
 
     // 2026-05-05 — operator: "i only selected 2 displays and it
@@ -392,7 +392,7 @@ export class SchedulesController {
     const schedule = await this.prisma.client.schedule.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!schedule) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!schedule) throw new HttpException({ code: 'SCHEDULE_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     // auth-BUG-003: same cross-tenant validation as create — when a
     // PUT body re-targets the schedule at a different screen or group
@@ -404,7 +404,7 @@ export class SchedulesController {
         select: { id: true },
       });
       if (!playlistOwned) {
-        throw new HttpException('Playlist not found', HttpStatus.NOT_FOUND);
+        throw new HttpException({ code: 'SCHEDULE_PLAYLIST_NOT_FOUND', message: 'Playlist not found' }, HttpStatus.NOT_FOUND);
       }
     }
     if (body.screenId) {
@@ -413,7 +413,7 @@ export class SchedulesController {
         select: { id: true },
       });
       if (!screenOwned) {
-        throw new HttpException('Screen not found', HttpStatus.NOT_FOUND);
+        throw new HttpException({ code: 'SCHEDULE_SCREEN_NOT_FOUND', message: 'Screen not found' }, HttpStatus.NOT_FOUND);
       }
     }
     if (body.screenGroupId) {
@@ -422,7 +422,7 @@ export class SchedulesController {
         select: { id: true },
       });
       if (!groupOwned) {
-        throw new HttpException('Screen group not found', HttpStatus.NOT_FOUND);
+        throw new HttpException({ code: 'SCHEDULE_SCREEN_GROUP_NOT_FOUND', message: 'Screen group not found' }, HttpStatus.NOT_FOUND);
       }
     }
 
@@ -511,7 +511,7 @@ export class SchedulesController {
     const schedule = await this.prisma.client.schedule.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!schedule) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!schedule) throw new HttpException({ code: 'SCHEDULE_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     // 2026-05-23 launch audit P1: toggling a schedule active/inactive
     // directly controls what every screen plays at a given time —
@@ -567,7 +567,7 @@ export class SchedulesController {
     const schedule = await this.prisma.client.schedule.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
-    if (!schedule) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!schedule) throw new HttpException({ code: 'SCHEDULE_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
     // 2026-05-23 launch audit P1: schedule delete previously had no
     // forensic trail. Audit + delete in one transaction so partial
