@@ -61,13 +61,18 @@ import {
   useTemplates,
   useUpdateGameDetails,
   type SponsorInput,
+  type RosterPlayer,
 } from '@/hooks/use-api';
-import { findSport, formatScore, parseScoreInput, PLAYER_STATS } from '@cms/api-types';
-import type { SportDefinition, SportStatField } from '@cms/api-types';
+import { findSport, formatScore, parseScoreInput, PLAYER_STATS, sanitizeResults } from '@cms/api-types';
+import type { SportDefinition, SportStatField, MeetResult, ResultEntry as ApiResultEntry } from '@cms/api-types';
 import { computeCtsStatus, type CtsStatus } from '@/lib/cts-merge';
 import QRCode from 'qrcode';
 import { RosterPanel } from './RosterPanel';
 import { LeadersPanel } from './LeadersPanel';
+// S3-1 (P0-3) — the diving judge pad reuses the EXACT drop-high/low × DD
+// math the board renders (computeDiveScore/keptIndices), so the console's
+// "Award" total and the board's DIVE SCORE readout can never drift apart.
+import { computeDiveScore, keptIndices } from '@/components/widgets/sports/SwimDiveWidgets';
 import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 // CtsCuePanel kept in the repo (./CtsCuePanel.tsx) but no longer
 // rendered as its own tab — the existing Celebrations panel inside
@@ -1213,6 +1218,17 @@ function RunMode({
   // combined swimming_diving key — it's judged, not timed, so it belongs
   // here, not with LEADERBOARD-only swim/track).
   const isJudgedResults   = def.key === 'gymnastics' || def.key === 'competitive_cheer' || def.key === 'diving';
+  // Diving gets its own judge pad ABOVE the generic judged-results grid
+  // (S3-1, 2026-07-02/03 sports deep-pass audit P0-3) — the meet operator
+  // scores the CURRENT dive (roster-tap diver, dive code + DD, N judges'
+  // 0-10 half-point scores) and "Award" both writes stats.judgeScores
+  // (what DiveJudgesPanelWidget renders on the board) AND accumulates the
+  // computed score into the diver's running total in stats.results (what
+  // DiveLeaderboardWidget renders) — the SAME write path MeetResultsSection
+  // uses below it. gymnastics/competitive_cheer keep hand-typing their
+  // apparatus/routine score directly into the grid; diving is the only
+  // judged sport with a real per-judge panel to score.
+  const isDiving          = def.key === 'diving';
   // LANE sports (task #271, 2026-07-01 — the meet lane pad): swimming and
   // track & field assign lanes and their finish order is entirely
   // time-driven, so they get the pre-filled lane grid with auto-place
@@ -1433,6 +1449,15 @@ function RunMode({
                 />
               </div>
             )}
+            {/* Diving judge pad (S3-1, P0-3) — score the CURRENT dive with a
+                real per-judge panel; "Award" feeds both stats.judgeScores
+                (the board's judge chips) and the running-total leaderboard
+                grid immediately below. Diving-only; every other judged
+                sport keeps hand-typing its apparatus/routine score. */}
+            {showResultsGrid && isDiving && (
+              <DivingJudgePadSection gameId={gameId} g={g} def={def} ctl={ctl} />
+            )}
+
             {/* Meet results / per-apparatus grid. Leaderboard sports have
                 no team-tile scoring worth touching during a meet — finish
                 order IS the scoreboard — so the operator records places
@@ -5752,6 +5777,367 @@ export function MeetResultsSection({
               </div>
             </div>
           ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── DivingJudgePadSection ────────────────────────────────────────
+// S3-1 (P0-3, 2026-07-02/03 sports deep-pass audit): before this, NOTHING
+// on the console ever wrote `stats.judgeScores` — `DiveJudgesPanelWidget`
+// read a key with no producer, and the operator did drop-high/low × DD
+// math on paper. This is the real meet flow: current diver (free text,
+// or a one-tap roster chip when the game has roster entries) → dive code
+// + DD (both already exist as plain GameScopeStatEditor text fields,
+// rendered by the SAME def.stats declaration diving always had — this
+// pad does not duplicate them) → a judge pad of N chips, each stepped in
+// half-points from 0.0-10.0 → "Award" computes the kept-score × DD total
+// via the board's OWN `computeDiveScore`/`keptIndices` (SwimDiveWidgets,
+// exported in S3-3) and writes, in ONE `ctl.stats.mutate` call:
+//   - `judgeScores`  — what DiveJudgesPanelWidget renders as the chip row
+//   - `results`      — the diver's running total, accumulated into the
+//                       CURRENT round's MeetResult (same shape/gate
+//                       MeetResultsSection below writes, so the
+//                       leaderboard widget never has to know two
+//                       producers exist)
+// Optimistic feel is inherited for free from S1-1's `ctl.stats` onMutate
+// (use-api.ts) — this component does not re-implement any of that.
+//
+// Exported (rather than file-private like most helpers here) SOLELY so
+// S3-1's regression spec can mount it directly — same rationale
+// MeetResultsSection/LanePadSection.tsx already export for the same
+// reason: this 8000-line page can't practically be test-mounted whole.
+export function DivingJudgePadSection({
+  gameId,
+  g,
+  def,
+  ctl,
+}: {
+  gameId: string;
+  g: any;
+  def: SportDefinition;
+  ctl: ReturnType<typeof useGameControl>;
+}) {
+  const stats: Record<string, unknown> = g.stats || {};
+  const { data: rosterData } = useGameRoster(gameId);
+  const roster: RosterPlayer[] = Array.isArray(rosterData) ? rosterData : [];
+
+  // Judge panel size: remembered on stats.judgeCount (a normal scalar
+  // sport-stat — see DIVING.stats in @cms/api-types), seeded from the
+  // sport def's judgePanel.defaultCount the first time this game is
+  // scored. 3/5/7 only — the NFHS panel sizes keptIndices() understands.
+  const panelOptions = def.judgePanel?.options ?? [3, 5, 7];
+  const defaultCount = def.judgePanel?.defaultCount ?? 3;
+  const storedCount = Number(stats.judgeCount);
+  const judgeCount = panelOptions.includes(storedCount) ? storedCount : defaultCount;
+
+  // Local draft state for the CURRENT dive being scored — cleared after
+  // each "Award" so the pad is always ready for the next diver. This is
+  // deliberately NOT round-tripped through stats on every tap (that would
+  // be the S1-4 per-keystroke-PATCH mistake this whole audit wave fixed
+  // elsewhere) — only the diver name / dive code / DD / judge scores are
+  // local; those three text fields already have their own committed
+  // GameScopeStatEditor controls elsewhere on this page, which this pad
+  // reads as sensible starting defaults but does not fight over.
+  const [diverName, setDiverName] = useState('');
+  const [diveCode, setDiveCode] = useState('');
+  const [dd, setDd] = useState('');
+  const [scores, setScores] = useState<number[]>(() => Array(judgeCount).fill(0));
+  const [awarded, setAwarded] = useState<{ diver: string; score: number } | null>(null);
+
+  // Resize the score array (without losing already-tapped scores) when
+  // the operator changes panel size mid-setup.
+  const setJudgeCount = (n: number) => {
+    ctl.stats.mutate({ stats: { judgeCount: n } });
+    setScores((prev) => {
+      if (n === prev.length) return prev;
+      if (n < prev.length) return prev.slice(0, n);
+      return [...prev, ...Array(n - prev.length).fill(0)];
+    });
+  };
+  // Keep the local scores array in sync with judgeCount even when it
+  // changes via a route other than the buttons above (e.g. another
+  // operator's tab) — same "adjust during render" pattern LanePadSection
+  // uses for its roster auto-fill, not a useEffect (React 19 guidance:
+  // https://react.dev/learn/you-might-not-need-an-effect).
+  const [lastAppliedCount, setLastAppliedCount] = useState(judgeCount);
+  if (judgeCount !== lastAppliedCount) {
+    setLastAppliedCount(judgeCount);
+    setScores((prev) =>
+      judgeCount < prev.length
+        ? prev.slice(0, judgeCount)
+        : [...prev, ...Array(judgeCount - prev.length).fill(0)],
+    );
+  }
+
+  const ddNum = parseFloat(dd);
+  const kept = Number.isFinite(ddNum) ? keptIndices(scores) : new Set<number>();
+  const previewScore = computeDiveScore(scores, ddNum);
+
+  const setJudge = (i: number, v: number) => {
+    const clamped = Math.max(0, Math.min(10, Math.round(v * 2) / 2));
+    setScores((prev) => prev.map((s, idx) => (idx === i ? clamped : s)));
+  };
+
+  const canAward = diverName.trim().length > 0 && Number.isFinite(ddNum) && ddNum > 0;
+
+  const award = () => {
+    if (!canAward) return;
+    const finalScore = computeDiveScore(scores, ddNum);
+    if (finalScore === null) return;
+    const name = diverName.trim();
+
+    // Accumulate into stats.results under the CURRENT round (stats.round,
+    // same free-text field GameScopeStatEditor already exposes — default
+    // "Round 1" the first time a dive is awarded with no round set yet, so
+    // the leaderboard widget always has a real event label instead of a
+    // blank one). Find-or-create the diver's entry within that round and
+    // ADD to their existing mark (running total across the dive list),
+    // matching DiveLeaderboardWidget's "mark = running total" contract.
+    const roundLabel = String(stats.round || '').trim() || 'Round 1';
+    const priorResults: MeetResult[] = sanitizeResults(stats.results);
+    const roundEvent = priorResults.find((r) => r.event === roundLabel);
+    const restEvents = priorResults.filter((r) => r !== roundEvent);
+    const priorEntries: ApiResultEntry[] = roundEvent ? roundEvent.entries.slice() : [];
+    const existingIdx = priorEntries.findIndex((e) => e.name.toLowerCase() === name.toLowerCase());
+    const priorTotal = existingIdx >= 0 ? parseFloat(priorEntries[existingIdx].mark) || 0 : 0;
+    const runningTotal = Math.round((priorTotal + finalScore) * 100) / 100;
+    // Roster-tap diver carries a real team side; free-typed names have
+    // none (an invite meet without a roster loaded yet) — same "null =
+    // unassigned" convention every other MeetResult writer here uses.
+    const rosterMatch = roster.find((p) => p.name.toLowerCase() === name.toLowerCase());
+    const team: 'home' | 'away' | null = rosterMatch?.team === 'away' ? 'away' : rosterMatch ? 'home' : null;
+    const nextEntry: ApiResultEntry = { place: 0, name, team, mark: runningTotal.toFixed(2) };
+    const nextEntries =
+      existingIdx >= 0
+        ? priorEntries.map((e, i) => (i === existingIdx ? nextEntry : e))
+        : [...priorEntries, nextEntry];
+    // Re-rank by running total (highest first) — diving has no "place 0
+    // means unranked" convention the board needs; every entry always has
+    // a real score once awarded, so place is simply the sort order.
+    const ranked = nextEntries
+      .slice()
+      .sort((a, b) => (parseFloat(b.mark) || 0) - (parseFloat(a.mark) || 0))
+      .map((e, i) => ({ ...e, place: i + 1 }));
+    const nextResults = [...restEvents, { event: roundLabel, order: restEvents.length + 1, entries: ranked }];
+
+    ctl.stats.mutate({
+      stats: {
+        // Scalars — same keys the broadcast strip (sports-situational.tsx)
+        // and DiveJudgesPanelWidget already read; keeping the console's
+        // live display in sync with what's on the board.
+        currentDiver: name,
+        diveCode: diveCode.trim(),
+        dd: dd.trim(),
+        // Structured — judgeScores (S3-2) + the accumulated results.
+        judgeScores: scores,
+        results: nextResults,
+      },
+    });
+
+    setAwarded({ diver: name, score: finalScore });
+    // Reset the panel for the next dive — diver/code/DD/scores all clear;
+    // stats.currentDiver etc. stay live on the board until the NEXT
+    // "Award" overwrites them (matching every other GameScopeText field's
+    // "shows the last committed value" behavior).
+    setDiverName('');
+    setDiveCode('');
+    setDd('');
+    setScores(Array(judgeCount).fill(0));
+  };
+
+  return (
+    <div className="bg-slate-950 border-t border-slate-800 px-3 py-4 sm:px-4">
+      <div className="max-w-4xl mx-auto">
+        <div className="mb-3 flex items-end justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-black uppercase tracking-wide text-white">
+              Diving judge pad
+            </h3>
+            <p className="text-[11px] text-slate-400">
+              Score the current dive, then Award — updates the board&rsquo;s judge panel and running total.
+            </p>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            {panelOptions.map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setJudgeCount(n)}
+                aria-pressed={judgeCount === n}
+                className={`min-h-[44px] px-3 rounded-lg text-xs font-black transition-colors border ${
+                  judgeCount === n
+                    ? 'bg-indigo-600 text-white border-indigo-700'
+                    : 'bg-slate-900 text-slate-400 border-slate-700 hover:bg-slate-800'
+                }`}
+              >
+                {n} judges
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Diver — free text, or a one-tap roster chip row when the game
+            has roster entries loaded (RosterPanel / CSV import). */}
+        <div className="mb-3">
+          <label className="flex flex-col mb-2">
+            <span className="text-[9px] font-black tracking-widest text-slate-400 uppercase mb-0.5">
+              Current diver
+            </span>
+            <input
+              type="text"
+              value={diverName}
+              onChange={(e) => setDiverName(e.target.value)}
+              placeholder="Diver name"
+              className="min-h-[44px] max-w-xs rounded-lg border border-slate-700 bg-slate-900 px-2.5 text-sm font-bold text-white outline-none focus:border-indigo-500 placeholder:text-slate-600"
+            />
+          </label>
+          {roster.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {roster.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setDiverName(p.name)}
+                  aria-pressed={diverName.trim().toLowerCase() === p.name.trim().toLowerCase()}
+                  className={`min-h-[44px] px-3 rounded-lg text-xs font-bold border transition-colors ${
+                    diverName.trim().toLowerCase() === p.name.trim().toLowerCase()
+                      ? 'bg-indigo-600 text-white border-indigo-700'
+                      : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800'
+                  }`}
+                >
+                  {p.number ? `#${p.number} ` : ''}{p.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Dive code + DD — free text, matching the format DiveJudgesPanelWidget
+            and GameScopeStatEditor already use for these two fields. */}
+        <div className="mb-4 flex flex-wrap items-end gap-2">
+          <label className="flex flex-col">
+            <span className="text-[9px] font-black tracking-widest text-slate-400 uppercase mb-0.5">
+              Dive code
+            </span>
+            <input
+              type="text"
+              value={diveCode}
+              onChange={(e) => setDiveCode(e.target.value)}
+              placeholder="105B"
+              className="min-h-[44px] w-28 rounded-lg border border-slate-700 bg-slate-900 px-2.5 text-sm font-bold text-white outline-none focus:border-indigo-500 placeholder:text-slate-600 text-center"
+            />
+          </label>
+          <label className="flex flex-col">
+            <span className="text-[9px] font-black tracking-widest text-slate-400 uppercase mb-0.5">
+              DD
+            </span>
+            <input
+              type="text"
+              value={dd}
+              onChange={(e) => setDd(e.target.value.replace(/[^0-9.]/g, ''))}
+              placeholder="2.7"
+              inputMode="decimal"
+              className="min-h-[44px] w-24 rounded-lg border border-slate-700 bg-slate-900 px-2.5 text-sm font-bold text-white outline-none focus:border-indigo-500 placeholder:text-slate-600 text-center"
+            />
+          </label>
+          <div className="flex flex-col justify-end">
+            <span className="text-[9px] font-black tracking-widest text-slate-500 uppercase mb-0.5">
+              Preview
+            </span>
+            <span className="min-h-[44px] flex items-center text-lg font-black text-amber-400 tabular-nums">
+              {previewScore !== null ? previewScore.toFixed(1) : '—'}
+            </span>
+          </div>
+        </div>
+
+        {/* Judge chips — each opens a half-point stepper row (0.0-10.0).
+            Dropped (high/low) chips grey out live as scores change. */}
+        <div className="mb-4 flex flex-wrap gap-3">
+          {scores.map((score, i) => {
+            const isDropped = kept.size > 0 && !kept.has(i);
+            return (
+              <div
+                key={i}
+                className={`rounded-xl border px-3 py-2 ${
+                  isDropped ? 'border-slate-800 bg-slate-900/40 opacity-50' : 'border-indigo-700 bg-slate-900'
+                }`}
+              >
+                <div className="mb-1.5 flex items-center justify-between gap-3">
+                  <span className="text-[10px] font-black tracking-widest text-slate-500 uppercase">
+                    Judge {i + 1}
+                  </span>
+                  {isDropped && (
+                    <span className="text-[9px] font-black tracking-widest text-amber-500 uppercase">
+                      Dropped
+                    </span>
+                  )}
+                </div>
+                <div className="mb-1.5 text-center text-2xl font-black text-white tabular-nums">
+                  {score.toFixed(1)}
+                </div>
+                {/* Two-tap: whole-number row, then a .0/.5 toggle — both
+                    rows are 44px+ thumb targets (CLAUDE.md mobile-perf /
+                    touch-target standard). */}
+                <div className="mb-1 flex gap-1">
+                  {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((whole) => (
+                    <button
+                      key={whole}
+                      type="button"
+                      onClick={() => setJudge(i, whole + (score % 1))}
+                      aria-pressed={Math.floor(score) === whole}
+                      className={`min-h-[44px] min-w-[28px] flex-1 rounded-md text-xs font-bold ${
+                        Math.floor(score) === whole
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                      }`}
+                    >
+                      {whole}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setJudge(i, Math.floor(score))}
+                    aria-pressed={score % 1 === 0}
+                    className={`min-h-[44px] flex-1 rounded-md text-xs font-bold ${
+                      score % 1 === 0 ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                    }`}
+                  >
+                    .0
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setJudge(i, Math.floor(score) + 0.5)}
+                    aria-pressed={score % 1 === 0.5}
+                    className={`min-h-[44px] flex-1 rounded-md text-xs font-bold ${
+                      score % 1 === 0.5 ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                    }`}
+                  >
+                    .5
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Button
+            type="button"
+            onClick={award}
+            disabled={!canAward}
+            className="min-h-[44px] px-6 bg-emerald-600 hover:bg-emerald-500 text-white font-black disabled:opacity-40"
+          >
+            Award {previewScore !== null ? previewScore.toFixed(1) : ''}
+          </Button>
+          {awarded && (
+            <span className="text-xs font-bold text-emerald-400">
+              Awarded {awarded.score.toFixed(1)} to {awarded.diver} — board updated.
+            </span>
+          )}
         </div>
       </div>
     </div>
