@@ -308,7 +308,15 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
           touchAction: z.touchAction ?? null,
           sceneId: z.sceneId ?? null,
         })),
-        expectedUpdatedAt,
+        // C2 FIX (2026-07-03) — do NOT re-send the staleness guard here. The
+        // metadata PUT above already (a) ran assertNotStale against the SAME
+        // expectedUpdatedAt and (b) bumped the row's @updatedAt to a newer
+        // value; re-sending the pre-save timestamp would make the server's
+        // now-newer updatedAt always exceed it, self-409ing EVERY save on this
+        // (destructive delete-all-and-recreate) zones write. The guard only
+        // needs to fire ONCE, at the first PUT — a genuine concurrent edit is
+        // caught there BEFORE this write ever runs, so nothing is unprotected.
+        expectedUpdatedAt: undefined,
       });
       markClean();
       setSaveStatus('saved');

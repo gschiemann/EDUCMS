@@ -192,4 +192,42 @@ describe('C2 — Save staleness guard', () => {
       ).rejects.toMatchObject({ status: HttpStatus.FORBIDDEN });
     });
   });
+
+  // Regression for the 2026-07-03 lead-review catch: the client save is TWO
+  // PUTs (metadata then zones). The metadata PUT bumps the row's @updatedAt,
+  // so if the zones PUT re-sent the SAME pre-save expectedUpdatedAt, the
+  // now-newer row would ALWAYS exceed it and every save would self-409 on the
+  // destructive zones write. The original spec mocked a STATIC updatedAt and
+  // never caught this; here we advance updatedAt after the metadata update.
+  describe('two-phase client save (metadata → zones) must not self-409', () => {
+    const LATER = new Date('2026-07-02T12:00:05.000Z'); // updatedAt after the metadata PUT bumps it
+    const zone = { name: 'Header', widgetType: 'CLOCK', x: 0, y: 0, width: 50, height: 20 };
+
+    beforeEach(() => {
+      let bumped = false; // flips true once the metadata update writes
+      prismaService.client.template.findFirst = jest.fn().mockImplementation(() =>
+        Promise.resolve(baseTemplate({ updatedAt: bumped ? LATER : NOW })),
+      );
+      prismaService.client.template.findUnique = jest.fn().mockImplementation(() =>
+        Promise.resolve(baseTemplate({ zones: [], updatedAt: bumped ? LATER : NOW })),
+      );
+      prismaService.client.template.update = jest.fn().mockImplementation(({ data }: any) => {
+        bumped = true; // the real DB's @updatedAt advances on this write
+        return Promise.resolve(baseTemplate({ ...data, zones: [], updatedAt: LATER }));
+      });
+    });
+
+    it('metadata(expected=NOW) then zones(guard OMITTED, the fixed client) both succeed', async () => {
+      await controller.update(req, 'tpl1', { name: 'X', expectedUpdatedAt: NOW.toISOString() } as any);
+      const zonesResult = await controller.replaceZones(req, 'tpl1', { zones: [zone] } as any);
+      expect(zonesResult).toBeTruthy();
+    });
+
+    it('proves the bug the fix prevents: the OLD client re-sending expected=NOW to the zones PUT 409s (row is now LATER)', async () => {
+      await controller.update(req, 'tpl1', { name: 'X', expectedUpdatedAt: NOW.toISOString() } as any);
+      await expect(
+        controller.replaceZones(req, 'tpl1', { zones: [zone], expectedUpdatedAt: NOW.toISOString() } as any),
+      ).rejects.toMatchObject({ status: HttpStatus.CONFLICT, response: { code: 'TEMPLATE_STALE' } });
+    });
+  });
 });
