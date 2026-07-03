@@ -142,7 +142,7 @@ export class MfaController {
   async status(@Req() req: Request) {
     const reqUser = (req as any).user;
     if (!reqUser?.id) {
-      throw new UnauthorizedException('Authentication required');
+      throw new UnauthorizedException({ code: 'MFA_AUTH_REQUIRED', message: 'Authentication required' });
     }
     const dbUser = await this.prisma.client.user.findUnique({
       where: { id: reqUser.id },
@@ -161,7 +161,7 @@ export class MfaController {
   async enroll(@Req() req: Request) {
     const reqUser = (req as any).user;
     if (!reqUser?.id) {
-      throw new UnauthorizedException('Authentication required');
+      throw new UnauthorizedException({ code: 'MFA_AUTH_REQUIRED', message: 'Authentication required' });
     }
 
     // Re-load the user row so we have the canonical state (the JWT
@@ -177,7 +177,7 @@ export class MfaController {
       },
     });
     if (!dbUser) {
-      throw new UnauthorizedException('User not found');
+      throw new UnauthorizedException({ code: 'MFA_USER_NOT_FOUND', message: 'User not found' });
     }
 
     // Already-enrolled users must /disable first. Otherwise an
@@ -237,7 +237,7 @@ export class MfaController {
   ) {
     const reqUser = (req as any).user;
     if (!reqUser?.id) {
-      throw new UnauthorizedException('Authentication required');
+      throw new UnauthorizedException({ code: 'MFA_AUTH_REQUIRED', message: 'Authentication required' });
     }
 
     const dbUser = await this.prisma.client.user.findUnique({
@@ -330,7 +330,7 @@ export class MfaController {
   ) {
     const reqUser = (req as any).user;
     if (!reqUser?.id) {
-      throw new UnauthorizedException('Authentication required');
+      throw new UnauthorizedException({ code: 'MFA_AUTH_REQUIRED', message: 'Authentication required' });
     }
 
     const dbUser = await this.prisma.client.user.findUnique({
@@ -338,7 +338,7 @@ export class MfaController {
       select: { id: true, tenantId: true, email: true, passwordHash: true },
     });
     if (!dbUser) {
-      throw new UnauthorizedException('User not found');
+      throw new UnauthorizedException({ code: 'MFA_USER_NOT_FOUND', message: 'User not found' });
     }
 
     const passOk = await this.checkPassword(dbUser.passwordHash, body.password);
@@ -379,7 +379,7 @@ export class MfaController {
   ) {
     const reqUser = (req as any).user;
     if (!reqUser?.id) {
-      throw new UnauthorizedException('Authentication required');
+      throw new UnauthorizedException({ code: 'MFA_AUTH_REQUIRED', message: 'Authentication required' });
     }
 
     const dbUser = await this.prisma.client.user.findUnique({
@@ -392,7 +392,7 @@ export class MfaController {
       },
     });
     if (!dbUser) {
-      throw new UnauthorizedException('User not found');
+      throw new UnauthorizedException({ code: 'MFA_USER_NOT_FOUND', message: 'User not found' });
     }
     if (!dbUser.mfaTotpVerifiedAt) {
       throw new BadRequestException({

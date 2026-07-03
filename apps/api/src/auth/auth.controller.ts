@@ -51,7 +51,7 @@ export class AuthController {
       await this.auditLoginAttempt(req, body.email, null, 'AUTH_LOGIN_FAILED', {
         reason: 'invalid_credentials',
       });
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException({ code: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid credentials' });
     }
     const result = await this.authService.login(user, body.rememberMe);
     // P0-4 — credential check passed. `result` may be an MFA challenge
@@ -159,7 +159,7 @@ export class AuthController {
   async logout(@Req() req: Request) {
     const [type, token] = req.headers.authorization?.split(' ') ?? [];
     if (type !== 'Bearer' || !token) {
-      throw new UnauthorizedException('No bearer token');
+      throw new UnauthorizedException({ code: 'AUTH_NO_BEARER_TOKEN', message: 'No bearer token' });
     }
     const user = (req as any).user;
     const pub = this.redisService.publisher;
@@ -167,10 +167,7 @@ export class AuthController {
     // we cannot honor the logout — return 503 instead of pretending success.
     // Pairs with jwt-auth.guard.ts which now fails CLOSED on Redis errors.
     if (!pub) {
-      throw new HttpException(
-        'Revocation service unavailable; try again',
-        HttpStatus.SERVICE_UNAVAILABLE,
-      );
+      throw new HttpException({ code: 'AUTH_REVOCATION_SERVICE_UNAVAILABLE', message: 'Revocation service unavailable; try again' }, HttpStatus.SERVICE_UNAVAILABLE);
     }
     try {
       await pub.sadd('jwt_revoked_list', token);
@@ -178,10 +175,7 @@ export class AuthController {
       // set never grows unboundedly. Resets each logout (acceptable).
       await pub.expire('jwt_revoked_list', 60 * 60 * 24 * 30);
     } catch {
-      throw new HttpException(
-        'Revocation service unavailable; try again',
-        HttpStatus.SERVICE_UNAVAILABLE,
-      );
+      throw new HttpException({ code: 'AUTH_REVOCATION_SERVICE_UNAVAILABLE', message: 'Revocation service unavailable; try again' }, HttpStatus.SERVICE_UNAVAILABLE);
     }
     // Lane-1 P2 fix: AuditLog every logout for incident forensics
     // ("when did the attacker burn the session?"). Best-effort — never

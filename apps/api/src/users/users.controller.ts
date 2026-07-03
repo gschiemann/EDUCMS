@@ -41,10 +41,10 @@ function isRoleDowngrade(fromRole: string, toRole: string): boolean {
 
 function validatePassword(password: string): void {
   if (!password || password.length < 8) {
-    throw new BadRequestException('Password must be at least 8 characters.');
+    throw new BadRequestException({ code: 'USER_PASSWORD_TOO_SHORT', message: 'Password must be at least 8 characters.' });
   }
   if (password.length > 200) {
-    throw new BadRequestException('Password is too long.');
+    throw new BadRequestException({ code: 'USER_PASSWORD_TOO_LONG', message: 'Password is too long.' });
   }
 }
 
@@ -126,7 +126,7 @@ export class UsersController {
         canTriggerPanic: true, tenantId: true, createdAt: true,
       } as any,
     });
-    if (!me) throw new HttpException('User not found', HttpStatus.NOT_FOUND);
+    if (!me) throw new HttpException({ code: 'USER_NOT_FOUND', message: 'User not found' }, HttpStatus.NOT_FOUND);
     // 2026-06-01 — resolve the ACTIVE tenant from the JWT claim
     // (req.user.tenantId), NOT the user's home tenant relation. For a
     // multi-tenant user who switched accounts, this is the tenant they're
@@ -162,14 +162,14 @@ export class UsersController {
       if (typeof v !== 'string') return null;
       const t = v.trim();
       if (t.length === 0) return null;
-      if (t.length > 80) throw new BadRequestException('Name too long (max 80 characters)');
+      if (t.length > 80) throw new BadRequestException({ code: 'USER_NAME_TOO_LONG', message: 'Name too long (max 80 characters)' });
       return t;
     };
     const data: any = {};
     if (body.firstName !== undefined) data.firstName = trim(body.firstName);
     if (body.lastName !== undefined) data.lastName = trim(body.lastName);
     if (Object.keys(data).length === 0) {
-      throw new BadRequestException('Nothing to update');
+      throw new BadRequestException({ code: 'USER_NOTHING_TO_UPDATE', message: 'Nothing to update' });
     }
     const updated = await this.prisma.client.user.update({
       where: { id: req.user.id },
@@ -192,11 +192,11 @@ export class UsersController {
     // DISTRICT_ADMIN cannot escalate by posting role: 'SUPER_ADMIN'.
     const email = (body?.email || '').trim().toLowerCase();
     if (!isValidEmail(email)) {
-      throw new BadRequestException('A valid email is required.');
+      throw new BadRequestException({ code: 'USER_EMAIL_INVALID', message: 'A valid email is required.' });
     }
     validatePassword(body?.password);
     if (!body?.role || typeof body.role !== 'string') {
-      throw new BadRequestException('Role is required.');
+      throw new BadRequestException({ code: 'USER_ROLE_REQUIRED', message: 'Role is required.' });
     }
     assertCallerCanAssignRole(req.user.role, body.role);
 
@@ -213,7 +213,7 @@ export class UsersController {
       if (typeof v !== 'string') return null;
       const t = v.trim();
       if (!t) return null;
-      if (t.length > 80) throw new BadRequestException('Name too long (max 80 characters)');
+      if (t.length > 80) throw new BadRequestException({ code: 'USER_NAME_TOO_LONG', message: 'Name too long (max 80 characters)' });
       return t;
     };
 
@@ -258,7 +258,7 @@ export class UsersController {
     // A typo or a malicious caller riding a stolen SUPER_ADMIN session could
     // corrupt the role column. Validate against the assignable allowlist.
     if (!body?.role || typeof body.role !== 'string') {
-      throw new BadRequestException('Role is required.');
+      throw new BadRequestException({ code: 'USER_ROLE_REQUIRED', message: 'Role is required.' });
     }
     assertCallerCanAssignRole(req.user.role, body.role);
 
@@ -266,7 +266,7 @@ export class UsersController {
     const user = await this.prisma.client.user.findFirst({
       where: { id, tenantId },
     });
-    if (!user) throw new HttpException('User not found', HttpStatus.NOT_FOUND);
+    if (!user) throw new HttpException({ code: 'USER_NOT_FOUND', message: 'User not found' }, HttpStatus.NOT_FOUND);
 
     // CYCLE-4 auth-BUG-011: SUPER_ADMIN cannot strip another SUPER_ADMIN's
     // privileges. A SUPER_ADMIN may demote themselves (self-demote is
@@ -279,9 +279,7 @@ export class UsersController {
       user.id !== req.user.id &&
       body.role !== AppRole.SUPER_ADMIN
     ) {
-      throw new ForbiddenException(
-        'SUPER_ADMIN accounts cannot demote another SUPER_ADMIN. The target user must self-demote.',
-      );
+      throw new ForbiddenException({ code: 'USER_CANNOT_DEMOTE_SUPER_ADMIN', message: 'SUPER_ADMIN accounts cannot demote another SUPER_ADMIN. The target user must self-demote.' });
     }
 
     // Role change + audit row atomically. "Who made this account an admin?"
@@ -364,7 +362,7 @@ export class UsersController {
     @Body() body: { canTriggerPanic: boolean },
   ) {
     if (typeof body?.canTriggerPanic !== 'boolean') {
-      throw new BadRequestException('canTriggerPanic must be a boolean.');
+      throw new BadRequestException({ code: 'USER_CAN_TRIGGER_PANIC_INVALID', message: 'canTriggerPanic must be a boolean.' });
     }
     const callerTenantId = req.user.tenantId;
     const isSuper = req.user.role === AppRole.SUPER_ADMIN;
@@ -375,9 +373,9 @@ export class UsersController {
       where: { id },
       select: { id: true, email: true, role: true, tenantId: true, canTriggerPanic: true } as any,
     });
-    if (!target) throw new HttpException('User not found', HttpStatus.NOT_FOUND);
+    if (!target) throw new HttpException({ code: 'USER_NOT_FOUND', message: 'User not found' }, HttpStatus.NOT_FOUND);
     if (!isSuper && (target as any).tenantId !== callerTenantId) {
-      throw new ForbiddenException('Target user is not in your tenant.');
+      throw new ForbiddenException({ code: 'USER_NOT_IN_TENANT', message: 'Target user is not in your tenant.' });
     }
 
     // Defense-in-depth: never let a RESTRICTED_VIEWER carry the
@@ -390,9 +388,7 @@ export class UsersController {
       body.canTriggerPanic &&
       (target as any).role === AppRole.RESTRICTED_VIEWER
     ) {
-      throw new ForbiddenException(
-        'RESTRICTED_VIEWER cannot receive panic-trigger capability.',
-      );
+      throw new ForbiddenException({ code: 'USER_RESTRICTED_VIEWER_PANIC_FORBIDDEN', message: 'RESTRICTED_VIEWER cannot receive panic-trigger capability.' });
     }
 
     const auditTenantId = (target as any).tenantId || callerTenantId;
@@ -449,13 +445,13 @@ export class UsersController {
     // HTTP status matches the outcome.
     // Prevent self-deletion
     if (id === req.user.id) {
-      throw new HttpException('Cannot delete your own account', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'USER_CANNOT_DELETE_SELF', message: 'Cannot delete your own account' }, HttpStatus.BAD_REQUEST);
     }
 
     const user = await this.prisma.client.user.findFirst({
       where: { id, tenantId, deletedAt: null } as any,
     });
-    if (!user) throw new HttpException('User not found', HttpStatus.NOT_FOUND);
+    if (!user) throw new HttpException({ code: 'USER_NOT_FOUND', message: 'User not found' }, HttpStatus.NOT_FOUND);
 
     // Soft-delete + audit atomically. A hard delete 500'd on any user with
     // history (3 required User relations default to FK Restrict, and the
