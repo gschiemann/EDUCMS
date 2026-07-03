@@ -22,6 +22,51 @@
 import { useMutation } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 
+// ─────────────────────────────────────────────────────────────────────────
+// Wave D1 (2026-07-02, launch-sprint #282) — refine an AI-DESIGNER board
+// (full-HTML candidate) by a natural-language instruction. Mirrors the
+// route ChatToEditBox.tsx already uses in the builder (POST
+// /templates/refine-designer, base64 html in/out) — this hook exists so the
+// DEFAULT candidate picker (templates/page.tsx) and its full-screen preview
+// can call the exact same backend endpoint the legacy/engine "Tweak" box
+// already uses for spec-based candidates (useRefineSignageBoard in
+// use-api.ts). Two candidate shapes, two hooks, ONE instruction box in the
+// UI — see refineCandidate() in templates/page.tsx for the dispatch.
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface RefineDesignerBoardBody {
+  /** The current board's full HTML document (NOT base64 — this hook
+   *  handles the utf8-safe base64 encoding, matching ChatToEditBox). */
+  html: string;
+  instruction: string;
+  vertical?: string;
+}
+
+export interface RefineDesignerBoardResponse {
+  html?: string;
+}
+
+/**
+ * POST /templates/refine-designer — revise a full-HTML AI-Designer board
+ * per a plain-English instruction (e.g. "darker theme", "translate to
+ * Spanish"). Returns the NEW html to swap into the candidate in place.
+ * Same endpoint ChatToEditBox.tsx already routes EXTERNAL_HTML boards to
+ * inside the builder — this is the picker-side caller.
+ */
+export function useRefineDesignerBoard() {
+  return useMutation<RefineDesignerBoardResponse, Error, RefineDesignerBoardBody>({
+    mutationFn: ({ html, instruction, vertical }) => {
+      // utf8-safe base64 so the global request sanitizer passes the HTML
+      // through intact (a raw `html` field gets its <style>/<script> gutted).
+      const htmlBase64 = btoa(unescape(encodeURIComponent(html)));
+      return apiFetch<RefineDesignerBoardResponse>('/templates/refine-designer', {
+        method: 'POST',
+        body: JSON.stringify({ instruction, htmlBase64, ...(vertical ? { vertical } : {}) }),
+      });
+    },
+  });
+}
+
 /**
  * The structured reading of an operator's free-text signage brief. Mirrors
  * `DesignerBrief` in apps/api/src/ai/designer-prompt.ts field-for-field.

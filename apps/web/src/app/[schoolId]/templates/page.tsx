@@ -44,6 +44,7 @@ import {
   useExtractDesignerBrief,
   buildDesignerBriefPayload,
   designerBriefHasSignal,
+  useRefineDesignerBoard,
   type DesignerBrief,
 } from '@/hooks/use-ai-designer';
 import type { ConciergeIntake, ConciergeReference } from '@cms/api-types';
@@ -657,6 +658,12 @@ export default function TemplatesPage() {
   const generateDesigner = useGenerateDesignerCandidates();
   const createDesigner = useCreateDesigner();
   const refineSignage = useRefineSignageBoard();
+  // Wave D1 (2026-07-02, #282) — the designer-board counterpart of
+  // refineSignage above. Engine candidates (c.spec) refine via
+  // refine-signage; AI-Designer candidates (c._designerHtml) refine via
+  // refine-designer. Both feed the SAME "Tweak" box + translate chips in
+  // the picker — see refineCandidate() below for the dispatch.
+  const refineDesignerBoard = useRefineDesignerBoard();
   // #268 item 3 / task #277 — the cheap pre-flight brief extraction behind the
   // confirm strip. Fail-open by contract: any rejection is treated exactly
   // like `{ brief: null }` (see startGenerateWithConfirm).
@@ -1154,18 +1161,56 @@ export default function TemplatesPage() {
   }, [saveCandidate, closeAiModal, openInBuilder]);
 
   // Wave 3 — chat-to-edit. Refine candidate `index` by a natural-language tweak
-  // (delta-prompt over its spec) and REPLACE it in place. Closes the tweak box.
+  // and REPLACE it in place. Closes the tweak box.
+  //
+  // Wave D1 (2026-07-02, #282) — dispatches on candidate shape so the SAME
+  // Tweak box + translate chips work for BOTH candidate architectures the
+  // default (Concierge → AI-Designer) flow can produce:
+  //   - engine candidates (c.spec set)         → refine-signage (delta over spec)
+  //   - AI-Designer boards (c._designerHtml)   → refine-designer (revise the HTML)
+  // Before this fix, canTweak gated on `!!c.spec` alone, so on the app's
+  // DEFAULT generation path (forceDesigner, see runGenerateCandidatesCore)
+  // every candidate lacked a spec and the whole refine/translate loop
+  // silently vanished from the picker.
   const refineCandidate = useCallback(async (index: number, instruction: string) => {
     const candidate = aiCandidates[index];
     const text = instruction.trim();
-    if (!candidate || !text || !candidate.spec) return;
+    if (!candidate || !text) return;
+    const vertical = (tenantCopy.vertical || 'venue').toLowerCase();
     setAiError(null);
     setAiRefiningIdx(index);
     try {
+      if (candidate._designerHtml) {
+        const res = await refineDesignerBoard.mutateAsync({
+          html: candidate._designerHtml,
+          instruction: text,
+          vertical,
+        });
+        const newHtml = res?.html;
+        if (newHtml && newHtml.length > 200) {
+          setAiCandidates((prev) => prev.map((c, i) => (i === index ? {
+            ...c,
+            _designerHtml: newHtml,
+            zones: [{ ...(c.zones?.[0] || { name: 'board', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100 }), defaultConfig: { html: newHtml } }],
+          } : c)));
+          setAiSavedIds((prev) => {
+            if (!(index in prev)) return prev;
+            const next = { ...prev };
+            delete next[index];
+            return next;
+          });
+          setAiTweakIdx(null);
+          setAiTweakText('');
+        } else {
+          setAiError("That change couldn't be applied. Try rephrasing it.");
+        }
+        return;
+      }
+      if (!candidate.spec) return;
       const res = await refineSignage.mutateAsync({
         spec: candidate.spec,
         instruction: text,
-        vertical: (tenantCopy.vertical || 'venue').toLowerCase(),
+        vertical,
       });
       const refined = res?.candidates?.[0];
       if (refined) {
@@ -1189,7 +1234,7 @@ export default function TemplatesPage() {
     } finally {
       setAiRefiningIdx(null);
     }
-  }, [aiCandidates, refineSignage, tenantCopy.vertical]);
+  }, [aiCandidates, refineSignage, refineDesignerBoard, tenantCopy.vertical]);
 
   // Human label for a category key — reads the vertical-aware tab set
   // (same source the filter buttons render from) so the empty-state copy
@@ -1620,7 +1665,12 @@ export default function TemplatesPage() {
                     const picking = aiPicking === i;
                     const tweakOpen = aiTweakIdx === i;
                     const refining = aiRefiningIdx === i;
-                    const canTweak = !!c.spec; // engine candidates carry the spec
+                    // Wave D1 (#282) — refine works for BOTH candidate shapes:
+                    // engine candidates via their spec, AI-Designer boards via
+                    // their baked HTML (refine-designer). Before this fix only
+                    // `!!c.spec` gated Tweak, so the app's DEFAULT generation
+                    // path (forceDesigner) never showed a Tweak box at all.
+                    const canTweak = !!c.spec || !!c._designerHtml;
                     const saved = !!aiSavedIds[i]; // already persisted this session
                     const busy = aiPicking !== null || aiRefiningIdx !== null;
                     // Thumbnail fidelity (beta-QA #4): a multi-scene "set" must
@@ -2060,6 +2110,17 @@ export default function TemplatesPage() {
           })}
           onClose={() => setAiFullscreenIdx(null)}
           onSave={() => { void saveCandidate(aiFullscreenIdx); }}
+          /* Wave D1 (#282) — the SAME Tweak + Translate loop the grid cards
+             offer, reachable without leaving full-screen. canTweak mirrors
+             the grid's gate (engine spec OR AI-Designer html). */
+          canTweak={!!aiCandidates[aiFullscreenIdx].spec || !!aiCandidates[aiFullscreenIdx]._designerHtml}
+          tweakOpen={aiTweakIdx === aiFullscreenIdx}
+          tweakText={aiTweakText}
+          onTweakTextChange={setAiTweakText}
+          refining={aiRefiningIdx === aiFullscreenIdx}
+          onOpenTweak={() => { setAiTweakIdx(aiFullscreenIdx); setAiTweakText(''); setAiError(null); }}
+          onCancelTweak={() => { setAiTweakIdx(null); setAiTweakText(''); }}
+          onApplyTweak={(text) => { void refineCandidate(aiFullscreenIdx, text); }}
         />
       )}
 
@@ -2444,8 +2505,9 @@ export default function TemplatesPage() {
 // elements · Esc to close"), but takes a candidate (NOT a saved Template) so the
 // set is never discarded. Esc / Close / backdrop returns to the grid; prev/next
 // flips between candidates; Save persists this board without leaving.
-function CandidateFullscreenPreview({
+export function CandidateFullscreenPreview({
   candidate, index, total, canvas, saved, saving, onPrev, onNext, onClose, onSave,
+  canTweak, tweakOpen, tweakText, onTweakTextChange, refining, onOpenTweak, onCancelTweak, onApplyTweak,
 }: {
   candidate: AiTemplateCandidate;
   index: number;
@@ -2457,6 +2519,18 @@ function CandidateFullscreenPreview({
   onNext: () => void;
   onClose: () => void;
   onSave: () => void;
+  /** Wave D1 (#282) — refine/translate loop, reachable without leaving
+   *  full-screen. Optional so any other caller of this component (there is
+   *  none today, but the props are additive) can omit them and simply not
+   *  render the Tweak affordance. */
+  canTweak?: boolean;
+  tweakOpen?: boolean;
+  tweakText?: string;
+  onTweakTextChange?: (text: string) => void;
+  refining?: boolean;
+  onOpenTweak?: () => void;
+  onCancelTweak?: () => void;
+  onApplyTweak?: (text: string) => void;
 }) {
   // Live viewport height so the engine render fills the available area (same
   // hydration-safe pattern as TemplatePreviewModal: SSR-safe default, then bump
@@ -2581,12 +2655,88 @@ function CandidateFullscreenPreview({
         </>
       )}
 
-      {/* Floating bottom CTA — Save (non-destructive; stays full-screen). */}
+      {/* Wave D1 (#282) — Tweak + Translate panel, floating above the bottom
+          CTA pill when open. Identical instruction box + language chips as
+          the grid card's "Tweak" box (refineCandidate handles both engine
+          and AI-Designer candidates), just reachable without leaving
+          full-screen. */}
+      {canTweak && tweakOpen && (
+        <div
+          className="absolute right-0 bottom-20 left-0 flex items-center justify-center px-4 pointer-events-none"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="pointer-events-auto w-full max-w-md flex flex-col gap-1.5 p-3 bg-slate-900/95 border border-white/10 rounded-2xl shadow-2xl">
+            <input
+              autoFocus
+              value={tweakText || ''}
+              onChange={(e) => onTweakTextChange?.(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && (tweakText || '').trim()) onApplyTweak?.(tweakText || ''); }}
+              placeholder='e.g. "darker theme", "punchier headline", "add a stat"'
+              disabled={refining}
+              className="w-full px-3 py-2 text-xs rounded-lg bg-white/10 border border-white/15 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-60"
+            />
+            <div className="flex gap-1.5">
+              <button
+                type="button"
+                onClick={() => onApplyTweak?.(tweakText || '')}
+                disabled={refining || !(tweakText || '').trim()}
+                className="flex-1 px-3 py-2 text-xs font-bold rounded-lg bg-violet-600 text-white disabled:opacity-50 flex items-center justify-center gap-1"
+              >
+                {refining ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                Apply
+              </button>
+              <button
+                type="button"
+                onClick={onCancelTweak}
+                disabled={refining}
+                className="px-3 py-2 text-xs font-bold rounded-lg bg-white/10 border border-white/15 text-white/80 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+            <div className="flex flex-wrap items-center gap-1 pt-0.5">
+              <span className="text-[10px] text-white/40 mr-0.5">🌐 Translate:</span>
+              {['Spanish', 'French', 'Chinese', 'Vietnamese', 'Korean', 'Arabic'].map((lang) => (
+                <button
+                  key={lang}
+                  type="button"
+                  onClick={() => onApplyTweak?.(`Translate ALL visible copy to ${lang}. Keep the layout, theme, structure, and any prices/times/numbers identical.`)}
+                  disabled={refining}
+                  className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/10 text-white/70 hover:bg-violet-500/40 hover:text-white disabled:opacity-50"
+                >
+                  {lang}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Loading veil while a full-screen tweak/translate is in flight. */}
+      {refining && (
+        <div className="absolute top-0 right-0 bottom-0 left-0 bg-slate-950/60 flex flex-col items-center justify-center gap-2 pointer-events-none">
+          <Loader2 className="w-6 h-6 animate-spin text-violet-400" />
+          <span className="text-xs font-bold text-white">Applying your change…</span>
+        </div>
+      )}
+
+      {/* Floating bottom CTA — Tweak + Save (non-destructive; stays full-screen). */}
       <div className="absolute right-0 bottom-0 left-0 flex items-center justify-center pb-[max(1rem,env(safe-area-inset-bottom))] pointer-events-none">
         <div
           className="pointer-events-auto flex items-center gap-2 px-3 py-2 bg-slate-900/85 rounded-full shadow-2xl border border-white/10"
           onClick={(e) => e.stopPropagation()}
         >
+          {canTweak && !tweakOpen && (
+            <button
+              type="button"
+              onClick={onOpenTweak}
+              disabled={saving || refining}
+              title="Refine this board by describing a change"
+              className="px-4 py-2.5 text-sm font-bold rounded-full bg-white/10 border border-white/15 text-white hover:bg-white/20 disabled:opacity-50 flex items-center gap-1.5"
+            >
+              <Sparkles className="w-4 h-4" /> Tweak
+            </button>
+          )}
           <button
             type="button"
             onClick={onSave}
