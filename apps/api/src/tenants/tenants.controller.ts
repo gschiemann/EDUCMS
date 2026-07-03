@@ -73,7 +73,7 @@ export class TenantsController {
       where: { id: tenantId },
       select: { id: true, parentId: true },
     });
-    if (!me) throw new HttpException('Tenant not found', HttpStatus.NOT_FOUND);
+    if (!me) throw new HttpException({ code: 'TENANT_NOT_FOUND', message: 'Tenant not found' }, HttpStatus.NOT_FOUND);
     // If the current user is on a child tenant, treat their parent as the
     // district. If they're already on the district itself, use their own id.
     const districtId = me.parentId ?? me.id;
@@ -108,8 +108,8 @@ export class TenantsController {
     // it. Body.slug kept as a back-compat override for cron / API
     // callers but defaulted from name otherwise.
     const rawSlug = (body?.slug || name).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
-    if (!name) throw new HttpException('Location name is required', HttpStatus.BAD_REQUEST);
-    if (!rawSlug || rawSlug.length < 2) throw new HttpException('Name must produce a slug of at least 2 characters', HttpStatus.BAD_REQUEST);
+    if (!name) throw new HttpException({ code: 'TENANT_LOCATION_NAME_REQUIRED', message: 'Location name is required' }, HttpStatus.BAD_REQUEST);
+    if (!rawSlug || rawSlug.length < 2) throw new HttpException({ code: 'TENANT_SLUG_TOO_SHORT', message: 'Name must produce a slug of at least 2 characters' }, HttpStatus.BAD_REQUEST);
     // 2026-05-25 — optional address. Bounded length. If the client
     // used the AddressAutocomplete picker, lat/lng come along too
     // and we skip Sprint 8's geocoder roundtrip entirely. Bounds-
@@ -132,7 +132,7 @@ export class TenantsController {
       where: { id: callerTenantId },
       select: { id: true, parentId: true, name: true },
     });
-    if (!callerTenant) throw new HttpException('Caller tenant not found', HttpStatus.NOT_FOUND);
+    if (!callerTenant) throw new HttpException({ code: 'TENANT_CALLER_NOT_FOUND', message: 'Caller tenant not found' }, HttpStatus.NOT_FOUND);
     // The district is either the caller (top-level) or its parent (if
     // they're already a child). Enforces that DISTRICT_ADMIN of a child
     // can't accidentally spawn siblings — they go to the district.
@@ -140,7 +140,7 @@ export class TenantsController {
 
     // Slug uniqueness is global across all tenants, not just per-district.
     const existing = await this.prisma.client.tenant.findUnique({ where: { slug: rawSlug } });
-    if (existing) throw new HttpException('That slug is already taken', HttpStatus.CONFLICT);
+    if (existing) throw new HttpException({ code: 'TENANT_SLUG_TAKEN', message: 'That slug is already taken' }, HttpStatus.CONFLICT);
 
     const child = await this.prisma.client.$transaction(async (tx) => {
       const created = await tx.tenant.create({
@@ -194,7 +194,7 @@ export class TenantsController {
     @Body() body: { tenantId?: string },
   ) {
     const targetId = (body?.tenantId || '').trim();
-    if (!targetId) throw new HttpException('tenantId is required', HttpStatus.BAD_REQUEST);
+    if (!targetId) throw new HttpException({ code: 'TENANT_ID_REQUIRED', message: 'tenantId is required' }, HttpStatus.BAD_REQUEST);
 
     const role = req.user.role as string;
     const callerTenantId = req.user.tenantId as string;
@@ -209,7 +209,7 @@ export class TenantsController {
       // vertical. Mirror the login response shape exactly.
       select: { id: true, name: true, slug: true, parentId: true, vertical: true },
     });
-    if (!target) throw new HttpException('Target tenant not found', HttpStatus.NOT_FOUND);
+    if (!target) throw new HttpException({ code: 'TENANT_TARGET_NOT_FOUND', message: 'Target tenant not found' }, HttpStatus.NOT_FOUND);
 
     // Authorization
     let authorized = false;
@@ -226,7 +226,7 @@ export class TenantsController {
       authorized = target.id === districtId || target.parentId === districtId;
     }
     if (!authorized) {
-      throw new HttpException('You are not authorized to switch into that tenant', HttpStatus.FORBIDDEN);
+      throw new HttpException({ code: 'TENANT_SWITCH_NOT_AUTHORIZED', message: 'You are not authorized to switch into that tenant' }, HttpStatus.FORBIDDEN);
     }
 
     // Pull the user record so we have canTriggerPanic etc. in the new payload
@@ -234,7 +234,7 @@ export class TenantsController {
       where: { id: req.user.userId },
       select: { id: true, email: true, role: true, canTriggerPanic: true },
     });
-    if (!user) throw new HttpException('User not found', HttpStatus.NOT_FOUND);
+    if (!user) throw new HttpException({ code: 'TENANT_USER_NOT_FOUND', message: 'User not found' }, HttpStatus.NOT_FOUND);
 
     const payload = {
       sub: user.id,
@@ -292,7 +292,7 @@ export class TenantsController {
       const v = body.vertical.toUpperCase();
       // Validated against the canonical VERTICALS list
       // (packages/api-types/src/verticals.ts) — single source of truth.
-      if (!isVertical(v)) throw new HttpException('Invalid vertical', HttpStatus.BAD_REQUEST);
+      if (!isVertical(v)) throw new HttpException({ code: 'TENANT_VERTICAL_INVALID', message: 'Invalid vertical' }, HttpStatus.BAD_REQUEST);
       data.vertical = v;
     }
     if (body.name && body.name.trim()) data.name = body.name.trim();
@@ -324,7 +324,7 @@ export class TenantsController {
     if (typeof body.longitude === 'number' && body.longitude >= -180 && body.longitude <= 180) {
       data.longitude = body.longitude;
     }
-    if (Object.keys(data).length === 0) throw new HttpException('Nothing to update', HttpStatus.BAD_REQUEST);
+    if (Object.keys(data).length === 0) throw new HttpException({ code: 'TENANT_NOTHING_TO_UPDATE', message: 'Nothing to update' }, HttpStatus.BAD_REQUEST);
 
     const updated = await this.prisma.client.tenant.update({
       where: { id: tenantId },
@@ -358,16 +358,16 @@ export class TenantsController {
     @Request() req: any,
     @Param('id') id: string,
   ) {
-    if (!id) throw new HttpException('Tenant id required', HttpStatus.BAD_REQUEST);
+    if (!id) throw new HttpException({ code: 'TENANT_ID_REQUIRED', message: 'Tenant id required' }, HttpStatus.BAD_REQUEST);
     if (id === req.user.tenantId) {
-      throw new HttpException('You cannot delete the tenant you are currently in. Switch out first.', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'TENANT_CANNOT_DELETE_CURRENT', message: 'You cannot delete the tenant you are currently in. Switch out first.' }, HttpStatus.BAD_REQUEST);
     }
 
     const target = await this.prisma.client.tenant.findUnique({
       where: { id },
       select: { id: true, name: true, slug: true, parentId: true, emergencyStatus: true },
     });
-    if (!target) throw new HttpException('Tenant not found', HttpStatus.NOT_FOUND);
+    if (!target) throw new HttpException({ code: 'TENANT_NOT_FOUND', message: 'Tenant not found' }, HttpStatus.NOT_FOUND);
 
     // Authorization — only SUPER_ADMIN or DISTRICT_ADMIN of the parent
     if (req.user.role !== AppRole.SUPER_ADMIN) {
@@ -377,23 +377,23 @@ export class TenantsController {
       });
       const districtId = callerTenant?.parentId ?? callerTenant?.id;
       if (target.parentId !== districtId) {
-        throw new HttpException('You are not authorized to delete that tenant', HttpStatus.FORBIDDEN);
+        throw new HttpException({ code: 'TENANT_DELETE_NOT_AUTHORIZED', message: 'You are not authorized to delete that tenant' }, HttpStatus.FORBIDDEN);
       }
     }
 
     // Safety checks
     if (target.emergencyStatus && target.emergencyStatus !== 'NORMAL' && target.emergencyStatus !== '') {
-      throw new HttpException('Cannot delete a tenant with an active emergency. Clear the alert first.', HttpStatus.CONFLICT);
+      throw new HttpException({ code: 'TENANT_DELETE_ACTIVE_EMERGENCY', message: 'Cannot delete a tenant with an active emergency. Clear the alert first.' }, HttpStatus.CONFLICT);
     }
     const [childCount, screenCount] = await Promise.all([
       this.prisma.client.tenant.count({ where: { parentId: id } }),
       this.prisma.client.screen.count({ where: { tenantId: id } }),
     ]);
     if (childCount > 0) {
-      throw new HttpException(`Cannot delete: this tenant has ${childCount} child tenant(s). Delete those first.`, HttpStatus.CONFLICT);
+      throw new HttpException({ code: 'TENANT_DELETE_HAS_CHILDREN', message: `Cannot delete: this tenant has ${childCount} child tenant(s). Delete those first.` }, HttpStatus.CONFLICT);
     }
     if (screenCount > 0) {
-      throw new HttpException(`Cannot delete: this tenant has ${screenCount} paired screen(s). Unpair them first or contact support to migrate.`, HttpStatus.CONFLICT);
+      throw new HttpException({ code: 'TENANT_DELETE_HAS_SCREENS', message: `Cannot delete: this tenant has ${screenCount} paired screen(s). Unpair them first or contact support to migrate.` }, HttpStatus.CONFLICT);
     }
 
     // Audit + delete ATOMICALLY. Previously the audit write was
@@ -470,7 +470,7 @@ export class TenantsController {
       where: { id: req.user.tenantId },
       select: { requireContentApproval: true } as any,
     }) as any;
-    if (!t) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!t) throw new HttpException({ code: 'TENANT_CONTENT_APPROVAL_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     return { enabled: !!t.requireContentApproval };
   }
 
@@ -530,10 +530,7 @@ export class TenantsController {
       const ownedSet = new Set(owned.map((p) => p.id));
       const foreign = candidates.filter((id) => !ownedSet.has(id));
       if (foreign.length > 0) {
-        throw new HttpException(
-          `Playlist(s) not found in this tenant: ${foreign.join(', ')}`,
-          HttpStatus.NOT_FOUND,
-        );
+        throw new HttpException({ code: 'TENANT_PANIC_PLAYLIST_NOT_FOUND', message: `Playlist(s) not found in this tenant: ${foreign.join(', ')}` }, HttpStatus.NOT_FOUND);
       }
     }
 
@@ -602,7 +599,7 @@ export class TenantsController {
       where: { id: req.user.tenantId },
       select: { locationBasedEmergencyEnabled: true } as any,
     }) as any;
-    if (!t) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!t) throw new HttpException({ code: 'TENANT_LOCATION_EMERGENCY_CONFIG_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     return { enabled: !!t.locationBasedEmergencyEnabled };
   }
 
@@ -638,7 +635,7 @@ export class TenantsController {
       where: { id: req.user.tenantId },
       select: { autoUpdatePlayerEnabled: true } as any,
     }) as any;
-    if (!t) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!t) throw new HttpException({ code: 'TENANT_AUTO_UPDATE_CONFIG_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     return { enabled: !!t.autoUpdatePlayerEnabled };
   }
 
@@ -667,7 +664,7 @@ export class TenantsController {
         otaWindowTimezone: true,
       } as any,
     }) as any;
-    if (!t) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!t) throw new HttpException({ code: 'TENANT_OTA_WINDOW_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     return {
       start: t.otaWindowStart ?? null,
       end: t.otaWindowEnd ?? null,
@@ -690,17 +687,17 @@ export class TenantsController {
     // Validate HH:MM format when set
     const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;
     if (start && !hhmm.test(start)) {
-      throw new HttpException(`Invalid start "${start}" — expected HH:MM`, HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'TENANT_OTA_WINDOW_START_INVALID', message: `Invalid start "${start}" — expected HH:MM` }, HttpStatus.BAD_REQUEST);
     }
     if (end && !hhmm.test(end)) {
-      throw new HttpException(`Invalid end "${end}" — expected HH:MM`, HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'TENANT_OTA_WINDOW_END_INVALID', message: `Invalid end "${end}" — expected HH:MM` }, HttpStatus.BAD_REQUEST);
     }
     // Validate timezone via Intl
     if (timezone) {
       try {
         new Intl.DateTimeFormat('en-US', { timeZone: timezone });
       } catch {
-        throw new HttpException(`Invalid timezone "${timezone}"`, HttpStatus.BAD_REQUEST);
+        throw new HttpException({ code: 'TENANT_OTA_WINDOW_TIMEZONE_INVALID', message: `Invalid timezone "${timezone}"` }, HttpStatus.BAD_REQUEST);
       }
     }
 
@@ -765,7 +762,7 @@ export class TenantsController {
         canarySoakHours: true,
       } as any,
     }) as any;
-    if (!t) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!t) throw new HttpException({ code: 'TENANT_CANARY_ROLLOUT_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     return {
       percent: t.canaryFleetPercent ?? 100,
       setAt: t.canarySetAt ?? null,
@@ -789,10 +786,7 @@ export class TenantsController {
     if (body.percent !== undefined) {
       const pct = Math.floor(Number(body.percent));
       if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
-        throw new HttpException(
-          `Invalid percent "${body.percent}" — expected 0..100`,
-          HttpStatus.BAD_REQUEST,
-        );
+        throw new HttpException({ code: 'TENANT_CANARY_PERCENT_INVALID', message: `Invalid percent "${body.percent}" — expected 0..100` }, HttpStatus.BAD_REQUEST);
       }
       data.canaryFleetPercent = pct;
       // Stamp the soak-window start whenever percent moves BELOW 100.
@@ -805,16 +799,13 @@ export class TenantsController {
     if (body.soakHours !== undefined) {
       const hours = Math.floor(Number(body.soakHours));
       if (!Number.isFinite(hours) || hours < 1 || hours > 720) {
-        throw new HttpException(
-          `Invalid soakHours "${body.soakHours}" — expected 1..720`,
-          HttpStatus.BAD_REQUEST,
-        );
+        throw new HttpException({ code: 'TENANT_CANARY_SOAK_HOURS_INVALID', message: `Invalid soakHours "${body.soakHours}" — expected 1..720` }, HttpStatus.BAD_REQUEST);
       }
       data.canarySoakHours = hours;
     }
 
     if (Object.keys(data).length === 0) {
-      throw new HttpException('No fields to update', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'TENANT_CANARY_NOTHING_TO_UPDATE', message: 'No fields to update' }, HttpStatus.BAD_REQUEST);
     }
 
     const updated = await this.prisma.client.tenant.update({
@@ -859,7 +850,7 @@ export class TenantsController {
       where: { id: req.user.tenantId },
       select: { usbIngestEnabled: true, usbIngestKeyRotatedAt: true, usbIngestKey: true },
     });
-    if (!t) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!t) throw new HttpException({ code: 'TENANT_USB_INGEST_CONFIG_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     return {
       enabled: t.usbIngestEnabled,
       hasKey: !!t.usbIngestKey,
@@ -943,7 +934,7 @@ export class TenantsController {
   ) {
     const screenId = req.params?.screenId;
     if (!screenId || !body.outcome) {
-      throw new HttpException('screenId and outcome required', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'TENANT_USB_INGEST_FIELDS_REQUIRED', message: 'screenId and outcome required' }, HttpStatus.BAD_REQUEST);
     }
 
     const screen = await this.prisma.client.screen.findUnique({
@@ -953,10 +944,10 @@ export class TenantsController {
       },
     });
     if (!screen?.tenantId || !screen.tenant) {
-      throw new HttpException('Unknown or unpaired screen', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'TENANT_USB_INGEST_SCREEN_UNKNOWN', message: 'Unknown or unpaired screen' }, HttpStatus.NOT_FOUND);
     }
     if (!screen.tenant.usbIngestEnabled) {
-      throw new HttpException('USB ingest is disabled for this tenant', HttpStatus.FORBIDDEN);
+      throw new HttpException({ code: 'TENANT_USB_INGEST_DISABLED', message: 'USB ingest is disabled for this tenant' }, HttpStatus.FORBIDDEN);
     }
 
     // Optional HMAC signature verification (defense-in-depth).
@@ -970,11 +961,11 @@ export class TenantsController {
         const a = Buffer.from(expected);
         const b = Buffer.from(signature);
         if (a.length !== b.length || !timingSafeEqual(a, b)) {
-          throw new HttpException('Invalid event signature', HttpStatus.FORBIDDEN);
+          throw new HttpException({ code: 'TENANT_USB_INGEST_SIGNATURE_INVALID', message: 'Invalid event signature' }, HttpStatus.FORBIDDEN);
         }
       } catch (e) {
         if (e instanceof HttpException) throw e;
-        throw new HttpException('Signature verification failed', HttpStatus.FORBIDDEN);
+        throw new HttpException({ code: 'TENANT_USB_INGEST_SIGNATURE_VERIFICATION_FAILED', message: 'Signature verification failed' }, HttpStatus.FORBIDDEN);
       }
     }
 
