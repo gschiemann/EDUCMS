@@ -24,9 +24,33 @@
  * comes from the existing `useGameRoster` query, already shared with
  * <RosterPanel> via the React Query cache), no backdrop-blur, thumb-sized
  * (44px+) tap targets on every control.
+ *
+ * ── S1-2/S1-3 (2026-07-02 sports deep-pass audit, findings P1-4/P1-5) ──
+ *
+ * P1-4 — "wall board shows NOTHING mid-heat": every lane row lived in
+ * local React state; only `nextHeat()` ever wrote `stats.results`, so the
+ * natatorium board sat ONE HEAT BEHIND for the entire duration of manual
+ * entry (the common case — CTS auto-timing is the only live path). Fix:
+ * a debounced (~800ms after the last mark/name edit) PROVISIONAL commit of
+ * the current grid, written under the SAME event label `nextHeat()` would
+ * use. Because `mergeHeatResult` already dedupes by exact `event ===`
+ * match, each debounce tick just REPLACES the prior provisional row in
+ * place, and `nextHeat()`'s final save (same label) naturally supersedes
+ * it — no separate "provisional" flag, no `sanitizeResults` schema change
+ * (it reconstructs each `MeetResult` field-by-field and drops unknown top-
+ * level keys, so a bolted-on `provisional: true` would be silently
+ * stripped on persist — confirmed by reading the sanitizer). The board's
+ * `SwimLaneGridWidget` already renders whatever `stats.results` holds with
+ * no provisional-vs-final distinction, so this needs zero widget changes.
+ *
+ * P1-5 — Undo used to revert `stats.results` but never restored the local
+ * `rows` grid `nextHeat()` had already cleared — a correction ("wait, lane
+ * 4 was actually DQ") meant retyping the whole just-saved heat by hand.
+ * Fix: `lastSaved` now also snapshots `rows` immediately before the clear;
+ * `undoLastSave()` restores BOTH `stats.results` and the local grid.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Minus, ChevronRight, Undo2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -121,7 +145,15 @@ export function LanePadSection({
   const [rows, setRows] = useState<LaneRow[]>(() => makeLaneRows(DEFAULT_LANE_COUNT));
   const [eventText, setEventText] = useState(currentEvent);
   const [heatText, setHeatText] = useState(heat);
-  const [lastSaved, setLastSaved] = useState<{ event: string; prevResults: typeof savedResults } | null>(null);
+  // S1-3 (P1-5): `prevRows` snapshots the grid AS TYPED, immediately before
+  // `nextHeat()` clears it — `undoLastSave()` restores this alongside
+  // `stats.results`, so Undo brings back the actual typed times, not just
+  // a blank re-rolled-from-roster grid.
+  const [lastSaved, setLastSaved] = useState<{
+    event: string;
+    prevResults: typeof savedResults;
+    prevRows: LaneRow[];
+  } | null>(null);
 
   // Auto-fill roster names into blank lanes once the roster arrives (or the
   // grid is resized) — never clobbers a name the operator already typed.
@@ -143,6 +175,49 @@ export function LanePadSection({
   }
 
   const placedRows = useMemo(() => computePlaces(rows), [rows]);
+
+  // ── S1-2 (P1-4): debounced provisional mid-heat publish ────────────
+  // `savedResults` is re-derived fresh from `g.stats` every render (via
+  // `readSavedResults` at the top of this component) — a "latest" ref
+  // lets the debounce callback merge against the current server baseline
+  // WITHOUT depending on it in the effect below. Depending on it directly
+  // would retrigger the effect every time the provisional write's own
+  // `writeBack` lands (S1-1) and changes `g.stats.results`, resetting the
+  // debounce and firing an identical write again 800ms later — an
+  // infinite idle ping-pong of redundant PATCHes.
+  const savedResultsRef = useRef(savedResults);
+  savedResultsRef.current = savedResults;
+  // Cleared by `nextHeat()`/`undoLastSave()` so a debounce timer scheduled
+  // against the JUST-CLEARED heat can never land after the grid has
+  // already reset to a fresh (blank) next heat or been undone.
+  const provisionalTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelProvisionalTimer = () => {
+    if (provisionalTimer.current) {
+      clearTimeout(provisionalTimer.current);
+      provisionalTimer.current = null;
+    }
+  };
+  useEffect(() => {
+    cancelProvisionalTimer();
+    provisionalTimer.current = setTimeout(() => {
+      provisionalTimer.current = null;
+      const provisional = buildHeatResult(eventText, hasHeatField ? heatText : '', rows, Date.now());
+      // Nothing typed yet (blank/freshly-reset grid) — no-op, exactly like
+      // `nextHeat()`'s own empty-entries guard. Never write junk history.
+      if (provisional.entries.length === 0) return;
+      const merged = mergeHeatResult(savedResultsRef.current, provisional);
+      ctl.stats.mutate({ stats: { results: merged } });
+      // No local `lastSaved` bookkeeping here — Undo is scoped to the
+      // OPERATOR-INITIATED "Next heat" save (a provisional mid-heat
+      // publish auto-corrects itself on the very next keystroke or gets
+      // superseded outright by the real Next-heat save under the same
+      // event label; there's nothing distinct for Undo to revert to).
+    }, 800);
+    return cancelProvisionalTimer;
+    // savedResultsRef (not savedResults) is the intentional read here —
+    // see the comment above this effect for why.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, eventText, heatText, hasHeatField, ctl.stats]);
 
   const updateRow = (lane: number, patch: Partial<LaneRow>) => {
     setRows((prev) => prev.map((r) => (r.lane === lane ? { ...r, ...patch } : r)));
@@ -173,14 +248,22 @@ export function LanePadSection({
   };
 
   const nextHeat = () => {
+    // Cancel any pending provisional debounce BEFORE building the final
+    // result — otherwise a timer scheduled a moment ago (against THIS
+    // heat's rows) could fire after `setRows` below has already reset the
+    // grid for the NEXT heat, re-publishing stale content on top of the
+    // fresh blank grid a beat later.
+    cancelProvisionalTimer();
     const fresh = buildHeatResult(eventText, hasHeatField ? heatText : '', rows, Date.now());
     if (fresh.entries.length === 0) return; // nothing to save — no-op, avoid junk history rows
     const merged = mergeHeatResult(savedResults, fresh);
 
     // Snapshot for the one-tap Undo affordance below (client-side only —
     // reverts stats.results to what it was before this save, same
-    // ctl.stats.mutate path, no new endpoint).
-    setLastSaved({ event: fresh.event, prevResults: savedResults });
+    // ctl.stats.mutate path, no new endpoint). S1-3: also snapshots the
+    // TYPED rows (not just the persisted result) so Undo restores the
+    // actual grid the operator had, not a blank re-roll.
+    setLastSaved({ event: fresh.event, prevResults: savedResults, prevRows: rows });
 
     const patch: Record<string, unknown> = { results: merged };
     // Advance the heat number automatically when it's a plain integer —
@@ -205,7 +288,12 @@ export function LanePadSection({
 
   const undoLastSave = () => {
     if (!lastSaved) return;
+    // S1-3 (P1-5): a pending provisional debounce (armed the instant the
+    // fresh next-heat grid picked up any roster auto-fill / a stray edit)
+    // must not resurrect the just-undone save moments later.
+    cancelProvisionalTimer();
     ctl.stats.mutate({ stats: { results: lastSaved.prevResults } });
+    setRows(lastSaved.prevRows);
     setLastSaved(null);
   };
 

@@ -9,7 +9,7 @@
  * SponsorPanel.test.tsx) that every other console control uses — no new
  * endpoint.
  */
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { findSport } from '@cms/api-types';
 
@@ -174,5 +174,168 @@ describe('LanePadSection', () => {
     renderLanePad();
     const nextHeatBtn = screen.getByRole('button', { name: /Next heat/i });
     expect(nextHeatBtn).toBeDisabled();
+  });
+
+  // ── S1-2 (P1-4): debounced provisional mid-heat publish ─────────────
+  describe('provisional mid-heat publish (S1-2 / P1-4)', () => {
+    it('publishes the in-progress grid to stats.results ~800ms after the last edit, WITHOUT tapping Next heat', async () => {
+      renderLanePad({ currentEvent: '12', heat: '3' });
+      await waitFor(() => expect(screen.getByDisplayValue('A. Smith')).toBeInTheDocument());
+
+      const callsBefore = apiFetch.mock.calls.length;
+      const marks = screen.getAllByPlaceholderText('1:52.31');
+      fireEvent.change(marks[1], { target: { value: '58.00' } }); // lane 2, A. Smith
+
+      // Never clicked "Next heat" — the provisional publish is the ONLY
+      // thing that can produce this PATCH.
+      await waitFor(
+        () => {
+          const statsCalls = (apiFetch.mock.calls as [string, FetchOpts | undefined][])
+            .slice(callsBefore)
+            .filter(([path, opts]) => path === `/sports/games/${GAME_ID}/stats` && opts?.method === 'PATCH');
+          expect(statsCalls.length).toBeGreaterThan(0);
+          const lastBody = JSON.parse(statsCalls[statsCalls.length - 1][1]?.body ?? '{}');
+          expect(Array.isArray(lastBody.stats.results)).toBe(true);
+          const published = lastBody.stats.results[lastBody.stats.results.length - 1];
+          // Same event label `nextHeat()` would use — so the FINAL save
+          // later supersedes this provisional row in place (mergeHeatResult
+          // dedupes by exact event match).
+          expect(published.event).toBe('12 — HEAT 3');
+          expect(
+            published.entries.some(
+              (e: { name: string; mark: string }) => e.name === 'A. Smith' && e.mark === '58.00',
+            ),
+          ).toBe(true);
+        },
+        { timeout: 2000 },
+      );
+
+      // The grid itself is untouched by a provisional publish (unlike Next
+      // heat, which clears it) — the operator keeps typing the same heat.
+      expect((marks[1] as HTMLInputElement).value).toBe('58.00');
+    });
+
+    it('does not publish a provisional row for a still-blank grid (no fabricated finishers)', async () => {
+      // Override the module-level roster mock with an EMPTY roster for this
+      // one test — the shared ROSTER fixture auto-fills lanes 2/4, which is
+      // itself real content (a name with no mark still passes buildHeatResult's
+      // filter), so it isn't a genuinely blank grid. A truly untouched grid
+      // (no roster, no typing) is the actual "nothing to publish" case.
+      apiFetch.mockImplementation((path: string, opts?: FetchOpts) => {
+        if (path === `/sports/games/${GAME_ID}/roster`) return Promise.resolve([]);
+        return routeFetch(path, opts);
+      });
+      renderLanePad();
+      // Let the roster query resolve (to an empty array) before timing the window.
+      await waitFor(() => expect(apiFetch).toHaveBeenCalledWith(`/sports/games/${GAME_ID}/roster`, undefined));
+      const callsAtMount = apiFetch.mock.calls.length;
+
+      // Wait past the debounce window without typing anything new. Wrapped
+      // in act() — React Query's background notifyManager can flush a
+      // batched update during this real-time window with no waitFor
+      // actively polling to catch it inside act() for us.
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 1000));
+      });
+
+      const statsCalls = (apiFetch.mock.calls as [string, FetchOpts | undefined][])
+        .slice(callsAtMount)
+        .filter(([path, opts]) => path === `/sports/games/${GAME_ID}/stats` && opts?.method === 'PATCH');
+      expect(statsCalls.length).toBe(0);
+    });
+
+    it('Next heat cancels a pending provisional publish so it never lands on the freshly-reset grid', async () => {
+      // Empty roster for this test — the fresh grid `nextHeat()` re-seeds
+      // has nothing to auto-fill, so NO legitimate new provisional publish
+      // should fire for the next heat either. That isolates the assertion
+      // to exactly the property under test: a timer armed against the
+      // PRE-save heat must not survive the reset and fire stale content.
+      apiFetch.mockImplementation((path: string, opts?: FetchOpts) => {
+        if (path === `/sports/games/${GAME_ID}/roster`) return Promise.resolve([]);
+        return routeFetch(path, opts);
+      });
+      renderLanePad({ currentEvent: '12', heat: '3' });
+      await waitFor(() => expect(apiFetch).toHaveBeenCalledWith(`/sports/games/${GAME_ID}/roster`, undefined));
+
+      const marks = screen.getAllByPlaceholderText('1:52.31');
+      fireEvent.change(marks[1], { target: { value: '58.00' } });
+      // Fire Next heat IMMEDIATELY — well inside the 800ms debounce window,
+      // so a naive implementation would have a stale provisional timer
+      // still armed against the just-cleared heat.
+      fireEvent.click(screen.getByRole('button', { name: /Next heat/i }));
+
+      await waitFor(() => {
+        const saveCalls = (apiFetch.mock.calls as [string, FetchOpts | undefined][]).filter(
+          ([path, opts]) => path === `/sports/games/${GAME_ID}/stats` && opts?.method === 'PATCH',
+        );
+        expect(saveCalls.length).toBeGreaterThan(0);
+      });
+      const callsRightAfterSave = apiFetch.mock.calls.length;
+
+      // Wait past where the cancelled debounce WOULD have fired had it not
+      // been cancelled — no additional /stats PATCH should appear.
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 1000));
+      });
+      const laterCalls = apiFetch.mock.calls.slice(callsRightAfterSave);
+      expect(laterCalls.filter(([path]) => path === `/sports/games/${GAME_ID}/stats`).length).toBe(0);
+    });
+  });
+
+  // ── S1-3 (P1-5): Undo restores the typed rows, not just stats.results ──
+  describe('Undo restores the typed grid (S1-3 / P1-5)', () => {
+    it('restores the exact rows that were just saved, not a blank re-rolled grid', async () => {
+      renderLanePad({ currentEvent: '12', heat: '3' });
+      await waitFor(() => expect(screen.getByDisplayValue('A. Smith')).toBeInTheDocument());
+
+      const marks = screen.getAllByPlaceholderText('1:52.31');
+      fireEvent.change(marks[1], { target: { value: '58.00' } }); // lane 2 (A. Smith)
+      fireEvent.change(marks[3], { target: { value: '55.00' } }); // lane 4 (B. Jones)
+
+      fireEvent.click(screen.getByRole('button', { name: /Next heat/i }));
+
+      // Grid resets after the save.
+      await waitFor(() => {
+        const freshMarks = screen.getAllByPlaceholderText('1:52.31');
+        expect((freshMarks[1] as HTMLInputElement).value).toBe('');
+      });
+
+      const undoBtn = screen.getByRole('button', { name: /Undo/i });
+      fireEvent.click(undoBtn);
+
+      // The typed times are back — this is the bug fix: pre-S1-3, Undo only
+      // reverted stats.results and left the grid blank, forcing the
+      // operator to retype the whole heat by hand.
+      await waitFor(() => {
+        const restoredMarks = screen.getAllByPlaceholderText('1:52.31');
+        expect((restoredMarks[1] as HTMLInputElement).value).toBe('58.00');
+        expect((restoredMarks[3] as HTMLInputElement).value).toBe('55.00');
+      });
+      // Names round-trip too — the FULL row snapshot, not just marks.
+      expect(screen.getByDisplayValue('A. Smith')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('B. Jones')).toBeInTheDocument();
+    });
+
+    it('also reverts the persisted stats.results back to the pre-save snapshot', async () => {
+      renderLanePad({ currentEvent: '12', heat: '3' });
+      await waitFor(() => expect(screen.getByDisplayValue('A. Smith')).toBeInTheDocument());
+
+      const marks = screen.getAllByPlaceholderText('1:52.31');
+      fireEvent.change(marks[1], { target: { value: '58.00' } });
+      fireEvent.click(screen.getByRole('button', { name: /Next heat/i }));
+      await waitFor(() => screen.getByRole('button', { name: /Undo/i }));
+
+      fireEvent.click(screen.getByRole('button', { name: /Undo/i }));
+
+      await waitFor(() => {
+        const statsCalls = (apiFetch.mock.calls as [string, FetchOpts | undefined][]).filter(
+          ([path, opts]) => path === `/sports/games/${GAME_ID}/stats` && opts?.method === 'PATCH',
+        );
+        const lastBody = JSON.parse(statsCalls[statsCalls.length - 1][1]?.body ?? '{}');
+        // Pre-save snapshot was an empty results array (no heats recorded
+        // yet in this test's initial stats) — Undo must restore exactly that.
+        expect(lastBody.stats.results).toEqual([]);
+      });
+    });
   });
 });
