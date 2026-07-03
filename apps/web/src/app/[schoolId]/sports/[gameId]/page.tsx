@@ -7119,6 +7119,19 @@ function LayoutsPanel({
     return SCOREBOARD_CATS.has(cat);
   }
 
+  // P1-7 (2026-07-02 sports deep-pass audit) — suggest a ribbon ONLY when a
+  // preset exists for THIS game's sport. The old hardcoded value steered a
+  // basketball operator to the water-polo template. One entry per sport as
+  // sport-specific ribbons ship; a sport with no entry gets no suggestion —
+  // Default is the honest state, not a wrong recommendation.
+  const RIBBON_SUGGESTION_BY_SPORT: Record<string, { id: string; name: string }> = {
+    water_polo: {
+      id: 'sports-cts-water-polo-ribbon',
+      name: 'CTS Water Polo Ribbon (cinematic celebrations)',
+    },
+  };
+  const ribbonSuggestion = RIBBON_SUGGESTION_BY_SPORT[String(g.sport || '')];
+
   const ROW: Array<{
     field: 'scoreboard' | 'ribbon' | 'scorebug';
     label: string;
@@ -7138,11 +7151,8 @@ function LayoutsPanel({
       label: 'Ribbon',
       hint: 'Perimeter ribbon panel chain — /ribbon/' + g.id,
       current: g.ribbonTemplateId || '',
-      // Sports-vertical default — auto-suggest CTS Water Polo Ribbon.
-      // Future: pick the right preset per sport once we have ribbons
-      // for football / basketball / etc.
-      suggested: 'sports-cts-water-polo-ribbon',
-      suggestedName: 'CTS Water Polo Ribbon (cinematic celebrations)',
+      suggested: ribbonSuggestion?.id,
+      suggestedName: ribbonSuggestion?.name,
     },
     {
       field: 'scorebug',
@@ -7200,8 +7210,10 @@ function LayoutsPanel({
       </div>
       {/* Big call-out when ribbon is on Default — this is the source of
           the "old cues firing" + "sponsor content tiny" issue. Tell
-          the operator EXACTLY what to do. */}
-      {!g.ribbonTemplateId && (
+          the operator EXACTLY what to do. WATER POLO ONLY (P1-7): the
+          copy names water-polo animations and the CTS ribbon; showing it
+          to a basketball operator was actively wrong. */}
+      {!g.ribbonTemplateId && g.sport === 'water_polo' && (
         <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 leading-relaxed">
           <strong className="text-amber-950">💡 Heads-up — your Ribbon is on Default.</strong>
           {' '}On Default, celebrations fire the BUILT-IN water-polo animations
