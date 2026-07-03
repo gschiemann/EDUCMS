@@ -217,8 +217,14 @@ export function RibbonCelebrationStrip({
       <div
         style={{
           position: 'absolute',
+          // Rule #10 variant 3 (2026-07-03): 3 sides + explicit width, never
+          // all four. left:22%+right:22%+top:0+bottom:0 gets re-serialized to
+          // the 4-value CSS inset shorthand (its top value is a leading zero),
+          // which collides with the player/layout.tsx Chromium-83 inset-
+          // substring polyfill and force-zeroes every side. left:22% + width:56%
+          // == the old symmetric column, identical layout. CLAUDE.md rule #10.
           left: '22%',
-          right: '22%',
+          width: '56%',
           top: 0,
           bottom: 0,
           display: 'flex',
