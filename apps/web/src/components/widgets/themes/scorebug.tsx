@@ -1072,8 +1072,21 @@ export function ScorebugTicker({ config, compact }: { config: any; compact?: boo
       </div>
 
       {/* Scrolling reel */}
+      {/* 2026-07-03 — Rule #10 variant 3: was `{left, right:0, top:0, bottom:0}`
+          (4 explicit sides, non-uniform, top===0). The browser's CSSOM
+          re-serializes that into the `inset` SHORTHAND (leading value 0px,
+          i.e. "inset:" followed by "0px 0px 0px clamp(60px, 8vw, 140px)"),
+          which collides with the player/layout.tsx Chromium-83 polyfill's
+          attribute-substring selector for a leading-zero inset value — it
+          force-zeroes ALL sides (!important), destroying the intended left
+          offset and stacking the reel under the LIVE pill. Fixed to 3 sides
+          + explicit width (never serializes to the inset shorthand, which
+          requires all 4 sides) — identical computed geometry. See
+          CLAUDE.md rule #10 (2026-07-03 entry) + apps/web/tools/
+          check-inset-serialization.cjs. */}
       <div style={{
-        position: 'absolute', left: 'clamp(60px, 8vw, 140px)', right: 0, top: 0, bottom: 0,
+        position: 'absolute', left: 'clamp(60px, 8vw, 140px)', top: 0, bottom: 0,
+        width: 'calc(100% - clamp(60px, 8vw, 140px))',
         overflow: 'hidden',
         display: 'flex', alignItems: 'center',
       }}>
