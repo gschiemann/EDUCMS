@@ -217,6 +217,22 @@ export interface SportDefinition {
     short: number;
     options: number[];
   };
+  /**
+   * Sports scored by a live panel of judges (diving today; gymnastics/
+   * cheer's judged totals are hand-typed directly as the apparatus/routine
+   * mark, so they don't need a panel UI). `defaultCount` seeds the
+   * console's judge pad; the operator's actual choice for a given game is
+   * remembered on `Game.stats.judgeCount` (a normal scalar sport-stat, NOT
+   * sport-def config) so two meets on the same sport def can run different
+   * panel sizes (a 3-judge dual meet vs. a 5-judge invite). `options` are
+   * the sizes the console's selector offers — NFHS panels are 3, 5, or 7
+   * (even, so ties never split the drop-high/low). Omitted = no sport
+   * currently needs a judge-panel UI beyond the hand-typed score.
+   */
+  judgePanel?: {
+    defaultCount: number;
+    options: number[];
+  };
 }
 
 export type GameStatus = 'SCHEDULED' | 'PRE_GAME' | 'LIVE' | 'HALFTIME' | 'FINAL';
@@ -293,13 +309,28 @@ export interface PlayerExclusion {
   count: number;
 }
 
+/**
+ * Diving judge panel — the CURRENT dive's raw per-judge scores (report
+ * B2/B4/B5, Sports Wave S3 P0-3). A flat `number[]`, one entry per judge
+ * in panel order (3/5/7 judges — see `DIVING.stats.judgeCount`), each in
+ * [0,10] with half-point steps enforced by the console UI (the sanitizer
+ * itself only bounds the RANGE — a judge score of 7.3 is a fat-finger, not
+ * a security concern, so it's clamped not rejected). `DiveJudgesPanelWidget`
+ * (SwimDiveWidgets.tsx) reads this to render the judge chips + the
+ * drop-high/low computation; the console's diving judge pad is the sole
+ * producer. Replaced wholesale on every "Award" tap — there is no partial-
+ * update concept (a dive's panel is scored once, then the next dive starts
+ * a fresh panel).
+ */
+export type JudgeScores = number[];
+
 // ── Structured-stat validation (api writes; board reads) ──────────
 /**
  * The structured `Game.stats` keys the operator console writes and the
  * board reads, distinct from the scalar sport-stat keys. Anything not in
  * this set (and not a sport-stat / META key) is dropped by `updateStats`.
  */
-export const STRUCTURED_STAT_KEYS = ['results', 'playerFouls', 'playerExclusions'] as const;
+export const STRUCTURED_STAT_KEYS = ['results', 'playerFouls', 'playerExclusions', 'judgeScores'] as const;
 export type StructuredStatKey = (typeof STRUCTURED_STAT_KEYS)[number];
 
 /** Caps the validator enforces — top array, nested array, string length. */
@@ -414,6 +445,42 @@ export function sanitizePlayerExclusions(input: unknown): PlayerExclusion[] {
   return out;
 }
 
+/** Clamp a value to a finite number within [lo, hi]; non-finite → dropped
+ *  (the caller filters these out, unlike clampInt which floors to `lo`) —
+ *  a malformed judge score should vanish, not silently become a 0 that
+ *  then gets scored as a real (harsh) number. */
+function clampFiniteOrNaN(v: unknown, lo: number, hi: number): number {
+  const n = typeof v === 'number' && Number.isFinite(v) ? v : NaN;
+  if (!Number.isFinite(n)) return NaN;
+  return Math.min(hi, Math.max(lo, n));
+}
+
+/**
+ * Validate + sanitize the untrusted `judgeScores` blob into a bounded
+ * {@link JudgeScores}. Each score is clamped to [0,10] (the FINA/NFHS
+ * judged-dive scale); malformed entries (non-numeric, NaN, Infinity) are
+ * DROPPED rather than coerced to 0 — a garbage judge score disappearing
+ * from the panel is safer than it silently counting as a 0.0. Half-point
+ * granularity is a console-UI convention (the judge pad only ever taps
+ * out X.0/X.5), not enforced here — the sanitizer's job is bounding the
+ * range, not the step, so a legitimate integer or off-grid score from a
+ * future non-console producer (a CTS-style judging console feed) still
+ * persists. Caps at STRUCTURED_STAT_MAX_ENTRIES (a diving panel is never
+ * more than 7 judges, but the bound is shared with every other structured
+ * stat so one constant governs all of them). Returns [] for non-array
+ * input — same "never throws, an empty/absent key renders nothing" rule
+ * every structured-stat reader on the board side already follows.
+ */
+export function sanitizeJudgeScores(input: unknown): JudgeScores {
+  if (!Array.isArray(input)) return [];
+  const out: number[] = [];
+  for (const raw of input.slice(0, STRUCTURED_STAT_MAX_ENTRIES)) {
+    const n = clampFiniteOrNaN(raw, 0, 10);
+    if (Number.isFinite(n)) out.push(Math.round(n * 10) / 10);
+  }
+  return out;
+}
+
 /**
  * Validate one structured stat key's untrusted value into its bounded
  * shape — the single entry point `updateStats` calls. Returns the
@@ -423,7 +490,7 @@ export function sanitizePlayerExclusions(input: unknown): PlayerExclusion[] {
 export function sanitizeStructuredStat(
   key: string,
   value: unknown,
-): MeetResult[] | PlayerFoul[] | PlayerExclusion[] | undefined {
+): MeetResult[] | PlayerFoul[] | PlayerExclusion[] | JudgeScores | undefined {
   switch (key) {
     case 'results':
       return sanitizeResults(value);
@@ -431,6 +498,8 @@ export function sanitizeStructuredStat(
       return sanitizePlayerFouls(value);
     case 'playerExclusions':
       return sanitizePlayerExclusions(value);
+    case 'judgeScores':
+      return sanitizeJudgeScores(value);
     default:
       return undefined;
   }
@@ -989,6 +1058,17 @@ const SWIMMING: SportDefinition = {
  * across a fixed dive list (HS dual = 6 dives). Team total is a 2-decimal
  * judged score (e.g. 245.60) — stored as a scaled int like gymnastics'
  * 3-decimal convention, via `scoreDecimals`. See `DIVE_LEADERBOARD` widget.
+ *
+ * Sports Wave S3 (P0-3, 2026-07-02/03 sports deep-pass audit): before this,
+ * `DiveJudgesPanelWidget` read `stats.judgeScores` but NOTHING on the
+ * console ever wrote it — the judge loop (diver up → judges flash →
+ * award → running total) was impossible; the operator did drop-high/low ×
+ * DD math on paper. `judgeScores` is now a first-class STRUCTURED stat
+ * (see {@link JudgeScores} / {@link sanitizeJudgeScores} — it's a
+ * `number[]`, not a scalar, so it rides the structured-stat validation
+ * path alongside `results`, not the plain scalar allow-list below).
+ * `judgeCount` is the paired scalar: the panel size (3/5/7) the console's
+ * judge pad remembers per-game, seeded from `judgePanel.defaultCount`.
  */
 const DIVING: SportDefinition = {
   key: 'diving',
@@ -1001,6 +1081,10 @@ const DIVING: SportDefinition = {
   // gymnastics/cheer; console enters the absolute total, surfaces format it.
   score: { unit: 'points', increments: [1, 5, 10] },
   scoreDecimals: 2,
+  // NFHS dual meets run a 3-judge panel (no drops); invites/championships
+  // commonly step up to 5 or 7 (drop 1/2 high + low). 3 is the safe
+  // default for the everyday dual-meet operator this console is built for.
+  judgePanel: { defaultCount: 3, options: [3, 5, 7] },
   stats: [
     { key: 'currentDiver', label: 'Current Diver', scope: 'game', type: 'text' },
     { key: 'diveCode', label: 'Dive Code (e.g. 105B)', scope: 'game', type: 'text' },
@@ -1008,6 +1092,11 @@ const DIVING: SportDefinition = {
     // text so the operator can type "2.4" without a stepper rounding it.
     { key: 'dd', label: 'Degree of Difficulty (DD)', scope: 'game', type: 'text' },
     { key: 'round', label: 'Round (Prelim / Semi / Final)', scope: 'game', type: 'text' },
+    // Judge-panel size for THIS game — owned + rendered by the judge pad
+    // (S3-1), not GameScopeStatEditor's generic stepper (see
+    // GAME_STAT_TRAY_OWNED in the console page). A scalar, not part of
+    // STRUCTURED_STAT_KEYS, so it persists through the plain allow-list.
+    { key: 'judgeCount', label: 'Judge Panel Size', scope: 'game', type: 'number', min: 3, max: 7 },
     { key: 'homeAthletes', label: 'Home Competitors', scope: 'home', type: 'number', min: 0, max: 999 },
     { key: 'awayAthletes', label: 'Away Competitors', scope: 'away', type: 'number', min: 0, max: 999 },
   ],
