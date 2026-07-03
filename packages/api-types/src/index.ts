@@ -818,6 +818,15 @@ export const TemplateUpdateSchema = z
     bgGradient: BoundedText(1024).nullish(),
     isTouchEnabled: z.boolean().optional(),
     idleResetMs: z.number().optional(),
+    // C2 (Wave C, 2026-07-02) — optimistic-concurrency staleness guard.
+    // The client sends the `updatedAt` it loaded/last-saved; the
+    // controller 409s with {code:'TEMPLATE_STALE', serverUpdatedAt}
+    // when the row has moved since. BoundedText (not z.string().date
+    // time()) to stay lenient on exact format — the controller
+    // re-validates parseability itself before comparing, so a
+    // malformed value here just fails open (no field = old behavior).
+    // Omitted entirely by any pre-C2 client — fully backward compatible.
+    expectedUpdatedAt: BoundedText(64).nullish(),
   })
   .passthrough();
 export type TemplateUpdateInput = z.infer<typeof TemplateUpdateSchema>;
@@ -825,6 +834,10 @@ export type TemplateUpdateInput = z.infer<typeof TemplateUpdateSchema>;
 export const TemplateReplaceZonesSchema = z
   .object({
     zones: z.array(TemplateZoneBodySchema).max(500),
+    // C2 — same staleness guard, applied to the zones replace-all path
+    // (the endpoint that actually deletes+recreates every zone, the
+    // most destructive of the two save calls a stale tab could fire).
+    expectedUpdatedAt: BoundedText(64).nullish(),
   })
   .passthrough();
 export type TemplateReplaceZonesInput = z.infer<typeof TemplateReplaceZonesSchema>;

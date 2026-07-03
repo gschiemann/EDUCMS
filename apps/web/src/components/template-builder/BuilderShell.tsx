@@ -10,6 +10,11 @@ import {
   Bold, Italic, Underline, Strikethrough,
   RefreshCw, Maximize2, Clock, Thermometer, Gauge, Calendar, Globe, MousePointer,
   Layers3, Sparkles, AppWindow,
+  // Wave C (2026-07-02) — draft-recovery bar, save-conflict bar. The
+  // History panel itself reuses RefreshCw (already imported above) for
+  // its restore-in-progress spinner; its trigger icon lives in
+  // BuilderToolbar.tsx (owns the Save/SaveStatusChip cluster).
+  AlertTriangle,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { AssetLibraryModal, measureZoneFontSize } from './PropertiesPanel';
@@ -42,9 +47,13 @@ import { BrandKitPanel } from './BrandKitPanel';
 import { SuggestionsPanel } from './SuggestionsPanel';
 import { BackgroundPanel } from './BackgroundPanel';
 import { TemplatePreviewModal } from './TemplatePreviewModal';
-import { useUpdateTemplate, useUpdateTemplateZones, useCreateTemplate, useDeleteTemplate } from '@/hooks/use-api';
+import { useUpdateTemplate, useUpdateTemplateZones, useCreateTemplate, useDeleteTemplate, useTemplateVersions, useRestoreTemplateVersion } from '@/hooks/use-api';
 import { apiFetch } from '@/lib/api-client';
 import { appConfirm, appPrompt } from '@/components/ui/app-dialog';
+// Wave C / editor-crush C1+C2 (2026-07-02) — local draft autosave +
+// recovery, and the shared timestamp-parsing helper for the staleness
+// conflict bar. See autosave-draft.ts for the full contract.
+import { readDraft, clearDraft, isDraftNewer, createAutosaveScheduler, formatDraftAge, type BuilderDraft } from './autosave-draft';
 import type { Template, Zone } from './types';
 
 interface Props {
@@ -78,6 +87,10 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
   const redo = useBuilderStore((s) => s.redo);
   const markClean = useBuilderStore((s) => s.markClean);
   const addZone = useBuilderStore((s) => s.addZone);
+  // C2 — setServerUpdatedAt is called (post-save / post-reload-theirs);
+  // the value itself is always read fresh via getState() inside
+  // handleSave to avoid a stale closure, so it's not subscribed here.
+  const setServerUpdatedAt = useBuilderStore((s) => s.setServerUpdatedAt);
   const [panel, setPanel] = useState<PanelKey>('widgets');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [saveError, setSaveError] = useState<string>();
@@ -86,6 +99,18 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [clipboard, setClipboard] = useState<Zone[] | null>(null);
   const [activeDragType, setActiveDragType] = useState<string | null>(null);
+  // C1 — a local draft found on open that's newer than the server's
+  // last save. null = nothing to offer / already dismissed this session.
+  const [recoverableDraft, setRecoverableDraft] = useState<BuilderDraft | null>(null);
+  // C2 — set when a Save 409s (someone else saved since we loaded).
+  // Carries the server's current updatedAt so "Overwrite" can retry
+  // without the guard, and "Reload theirs" can show what changed.
+  const [saveConflict, setSaveConflict] = useState<{ serverUpdatedAt: string } | null>(null);
+  // C3 — version-history panel open/closed. The list query itself is
+  // gated on this (enabled: historyOpen) so opening the builder never
+  // fires a versions request the operator didn't ask for.
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [restoringVersionId, setRestoringVersionId] = useState<string | null>(null);
 
   const router = useRouter();
   const routeParams = useParams<{ schoolId: string }>();
@@ -94,6 +119,10 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
   const updateZonesApi = useUpdateTemplateZones();
   const createTemplate = useCreateTemplate();
   const deleteTemplate = useDeleteTemplate();
+  // C3 — version history. isSystem templates never save, so they never
+  // have versions; skip the request entirely for them.
+  const versionsQuery = useTemplateVersions(template.id, { enabled: historyOpen && !template.isSystem });
+  const restoreVersion = useRestoreTemplateVersion();
 
   useEffect(() => {
     init({
@@ -141,8 +170,67 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       isTouchEnabled: !!(template as any).isTouchEnabled,
       idleResetMs: (template as any).idleResetMs ?? undefined,
       scenes: template.scenes ?? [],
+      // Wave C (2026-07-02) — thread the server's updatedAt through so
+      // the draft-recovery restore bar (isDraftNewer) and the Save
+      // staleness guard (handleSave sends this back as
+      // expectedUpdatedAt) both have a baseline the moment the builder
+      // opens, not just after the first save in THIS session.
+      updatedAt: template.updatedAt ?? null,
     });
   }, [template, init]);
+
+  // C1 — on open, check for a local draft that's NEWER than the server's
+  // last known save. Runs once per template.id (not on every `template`
+  // object identity change, which can happen from React Query refetches
+  // that don't actually change which template is open) so re-fetching
+  // the same template mid-session doesn't re-pop a bar the operator
+  // already dismissed. Skipped for system presets — those never Save
+  // in place, so "restore your edits" would dangle with no Save target.
+  useEffect(() => {
+    if (template.isSystem) return;
+    const draft = readDraft(template.id);
+    if (isDraftNewer(draft, template.updatedAt ?? null)) {
+      setRecoverableDraft(draft);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [template.id]);
+
+  // C1 — the autosave scheduler: a debounced (~3s idle) + max-interval
+  // (~30s under continuous activity) local-only mirror of the dirty
+  // builder state. Subscribes to the SAME store the canvas/undo stack
+  // reads but only ever calls `.getState()` — never a store action —
+  // so it structurally cannot push a history entry or touch
+  // activeTransaction (see autosave-draft.ts header + the c1 spec's
+  // "NEVER touches store history/transactions" suite). Recreated only
+  // when the open template changes; disposed on unmount/template swap
+  // so no stale timer outlives the builder session.
+  useEffect(() => {
+    if (template.isSystem) return; // nothing to autosave into — system presets have no Save target
+    const scheduler = createAutosaveScheduler((): BuilderDraft => {
+      const s = useBuilderStore.getState();
+      return {
+        templateId: s.templateId,
+        savedAt: Date.now(),
+        zones: s.zones,
+        meta: s.meta,
+        isTouchEnabled: s.isTouchEnabled,
+        idleResetMs: s.idleResetMs,
+      };
+    });
+    // Fire on every store change, but only actually schedule a write
+    // when there are real unsaved edits (isDirty) — a clean template
+    // sitting open shouldn't churn localStorage on selection/zoom/pan
+    // changes, none of which touch isDirty.
+    const unsub = useBuilderStore.subscribe((state, prev) => {
+      if (state.isDirty && (state.zones !== prev.zones || state.meta !== prev.meta || state.isTouchEnabled !== prev.isTouchEnabled || state.idleResetMs !== prev.idleResetMs)) {
+        scheduler.notifyChange();
+      }
+    });
+    return () => {
+      unsub();
+      scheduler.dispose();
+    };
+  }, [template.id, template.isSystem]);
 
   useEffect(() => {
     return useBuilderStore.subscribe((state, prev) => {
@@ -162,12 +250,18 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
     });
   }, []);
 
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(async (opts?: { overwrite?: boolean }) => {
     setSaveStatus('saving');
     setSaveError(undefined);
+    setSaveConflict(null);
     try {
       const state = useBuilderStore.getState();
       const orientation = state.meta.screenHeight > state.meta.screenWidth ? 'PORTRAIT' : 'LANDSCAPE';
+      // C2 — the guard the client sends back. "Overwrite" (the explicit
+      // choice on the conflict bar) omits it entirely so the retry
+      // behaves exactly like a pre-C2 client: a deliberate, informed
+      // blind write, not a silent one.
+      const expectedUpdatedAt = opts?.overwrite ? undefined : (state.serverUpdatedAt ?? undefined);
       await updateTemplate.mutateAsync({
         id: template.id,
         name: state.meta.name,
@@ -192,6 +286,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         // (same additive path; only meaningful when dataSource === 'CUSTOM').
         dataUrl: state.meta.dataUrl || null,
         dataFormat: state.meta.dataFormat || 'json',
+        expectedUpdatedAt,
       } as any);
       const result = await updateZonesApi.mutateAsync({
         id: template.id,
@@ -213,17 +308,155 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
           touchAction: z.touchAction ?? null,
           sceneId: z.sceneId ?? null,
         })),
+        expectedUpdatedAt,
       });
       markClean();
       setSaveStatus('saved');
       setLastSavedAt(Date.now());
+      // C1 — the server now has this state; the local safety net for
+      // it is stale the instant Save succeeds. Clearing here (not just
+      // on unmount) means a crash 1ms later has nothing wrong to
+      // "recover" back into.
+      clearDraft(template.id);
+      // C2 — this save's result is the new baseline for the NEXT
+      // save's guard (and for isDraftNewer, if a fresh draft starts
+      // accumulating right after).
+      if (result && typeof (result as any).updatedAt === 'string') {
+        setServerUpdatedAt((result as any).updatedAt);
+      }
       onSaved(result);
       setTimeout(() => setSaveStatus((s) => (s === 'saved' ? 'idle' : s)), 2500);
-    } catch (err) {
+    } catch (err: any) {
+      // C2 — a 409 from either PUT means someone else saved since we
+      // loaded/last-saved. Surface the conflict bar instead of the
+      // generic error chip so the operator gets an actionable choice
+      // (Reload theirs / Overwrite) rather than a bare "save failed."
+      if (err?.status === 409 && err?.code === 'TEMPLATE_STALE') {
+        const serverUpdatedAt = err?.body?.serverUpdatedAt;
+        setSaveStatus('idle');
+        setSaveConflict({ serverUpdatedAt: typeof serverUpdatedAt === 'string' ? serverUpdatedAt : new Date().toISOString() });
+        return;
+      }
       setSaveStatus('error');
       setSaveError(err instanceof Error ? err.message : String(err));
     }
-  }, [template.id, updateTemplate, updateZonesApi, markClean, onSaved]);
+  }, [template.id, updateTemplate, updateZonesApi, markClean, onSaved, setServerUpdatedAt]);
+
+  // C1 — the operator's response to the draft-recovery bar.
+  const handleRestoreDraft = useCallback(() => {
+    if (!recoverableDraft) return;
+    // A deliberate, one-time, user-initiated state replacement — not
+    // something autosave itself does. Mirrors what init() already sets
+    // on a fresh load, so the canvas/undo model comes up exactly as if
+    // the operator had made these edits themselves just now: history
+    // is reset (there's nothing to "undo back to" a moment ago that
+    // predates the crash) and isDirty is true (the restored state
+    // still needs an explicit Save to reach the server — restoring
+    // does not silently persist anything, same "explicit Save is the
+    // live step" principle the whole feature is built around).
+    useBuilderStore.setState({
+      zones: recoverableDraft.zones.map((z) => ({ ...(z as Zone) })),
+      meta: { ...useBuilderStore.getState().meta, ...recoverableDraft.meta },
+      isTouchEnabled: recoverableDraft.isTouchEnabled ?? useBuilderStore.getState().isTouchEnabled,
+      idleResetMs: recoverableDraft.idleResetMs ?? useBuilderStore.getState().idleResetMs,
+      past: [],
+      future: [],
+      isDirty: true,
+    });
+    setRecoverableDraft(null);
+  }, [recoverableDraft]);
+
+  const handleDiscardDraft = useCallback(() => {
+    clearDraft(template.id);
+    setRecoverableDraft(null);
+  }, [template.id]);
+
+  // C2 — "Reload theirs": pull the current server row and re-init the
+  // store on it, discarding the operator's local edits (they explicitly
+  // chose this over Overwrite). Uses a raw GET rather than useTemplate's
+  // query object so this file doesn't need to thread a refetch callback
+  // through — same apiFetch this file already imports for save-as's
+  // scene bookkeeping.
+  const handleReloadTheirs = useCallback(async () => {
+    try {
+      const fresh = await apiFetch<Template>(`/templates/${template.id}`);
+      init({
+        id: fresh.id,
+        isSystem: !!fresh.isSystem,
+        zones: (fresh.zones || []).map((z) => ({ ...z, locked: false })),
+        meta: {
+          name: fresh.name,
+          description: fresh.description || '',
+          screenWidth: fresh.screenWidth,
+          screenHeight: fresh.screenHeight,
+          bgColor: fresh.bgColor || '',
+          bgGradient: fresh.bgGradient || '',
+          bgImage: fresh.bgImage || '',
+        },
+        isTouchEnabled: !!(fresh as any).isTouchEnabled,
+        idleResetMs: (fresh as any).idleResetMs ?? undefined,
+        scenes: fresh.scenes ?? [],
+        updatedAt: fresh.updatedAt ?? null,
+      });
+      clearDraft(template.id); // their version supersedes any local draft too
+      setSaveConflict(null);
+    } catch (err) {
+      // Reload failing (network blip) shouldn't lose the conflict
+      // banner — the operator can retry Reload or fall back to
+      // Overwrite. Surface it the same way a save error would.
+      setSaveError(err instanceof Error ? err.message : String(err));
+    }
+  }, [template.id, init]);
+
+  // C2 — "Overwrite": the operator has seen the conflict and explicitly
+  // chooses to blind-write their version anyway. Retries handleSave
+  // with the guard skipped (matches an older pre-C2 client exactly).
+  const handleOverwrite = useCallback(() => {
+    setSaveConflict(null);
+    void handleSave({ overwrite: true });
+  }, [handleSave]);
+
+  // C3 — restore one of the last 5 saved versions. The server snapshots
+  // the CURRENT state first (never destructive — see the controller's
+  // restoreVersion doc comment) and returns the fully-updated template
+  // in the same shape as GET/PUT, so re-init() is exactly the same
+  // "adopt server state" pattern handleReloadTheirs already uses.
+  const handleRestoreVersion = useCallback(async (versionId: string) => {
+    setRestoringVersionId(versionId);
+    try {
+      const restored = await restoreVersion.mutateAsync({ id: template.id, versionId });
+      const fresh = restored as unknown as Template;
+      init({
+        id: fresh.id,
+        isSystem: !!fresh.isSystem,
+        zones: (fresh.zones || []).map((z) => ({ ...z, locked: false })),
+        meta: {
+          name: fresh.name,
+          description: fresh.description || '',
+          screenWidth: fresh.screenWidth,
+          screenHeight: fresh.screenHeight,
+          bgColor: fresh.bgColor || '',
+          bgGradient: fresh.bgGradient || '',
+          bgImage: fresh.bgImage || '',
+        },
+        isTouchEnabled: !!(fresh as any).isTouchEnabled,
+        idleResetMs: (fresh as any).idleResetMs ?? undefined,
+        scenes: fresh.scenes ?? [],
+        updatedAt: fresh.updatedAt ?? null,
+      });
+      // The restore itself IS a save server-side (it wrote a fresh
+      // updatedAt) — clear any local draft so a stale autosave copy
+      // doesn't later look "newer" than the row and pop a bogus
+      // restore-draft bar.
+      clearDraft(template.id);
+      setHistoryOpen(false);
+      onSaved(fresh);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRestoringVersionId(null);
+    }
+  }, [template.id, init, restoreVersion, onSaved]);
 
   const handleSaveAs = useCallback(async (autoName?: string) => {
     const state = useBuilderStore.getState();
@@ -671,7 +904,134 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         saveStatus={saveStatus}
         saveError={saveError}
         lastSavedAt={lastSavedAt}
+        onOpenHistory={() => setHistoryOpen(true)}
       />
+
+      {/* C1 — draft-recovery bar. One bar, two buttons, no new settings
+          (Greg's law). Only shown when a local draft is strictly newer
+          than the server's last save — see the effect above that sets
+          recoverableDraft on open via isDraftNewer(). */}
+      {recoverableDraft && (
+        <div className="shrink-0 flex items-center gap-3 px-4 py-2.5 bg-indigo-50 border-b border-indigo-200">
+          <RefreshCw className="w-4 h-4 shrink-0 text-indigo-500" aria-hidden />
+          <p className="text-xs font-medium text-indigo-900 flex-1 min-w-0">
+            You have unsaved changes from {formatDraftAge(recoverableDraft.savedAt)} — this browser tab closed or crashed before you hit Save.
+          </p>
+          <button
+            type="button"
+            onClick={handleDiscardDraft}
+            className="shrink-0 px-3 py-1.5 bg-white border border-indigo-200 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          >
+            Discard
+          </button>
+          <button
+            type="button"
+            onClick={handleRestoreDraft}
+            className="shrink-0 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          >
+            Restore
+          </button>
+        </div>
+      )}
+
+      {/* C2 — save-conflict bar. Shown when a Save 409s because the row
+          moved since we loaded/last-saved it. Same one-bar-two-buttons
+          shape as the draft-recovery bar; rose tint marks it as the
+          more urgent of the two (an actual write was just blocked). */}
+      {saveConflict && (
+        <div className="shrink-0 flex items-center gap-3 px-4 py-2.5 bg-rose-50 border-b border-rose-200">
+          <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500" aria-hidden />
+          <p className="text-xs font-medium text-rose-900 flex-1 min-w-0">
+            Someone saved this template {formatDraftAge(Date.parse(saveConflict.serverUpdatedAt))} — your Save was blocked so you don&apos;t overwrite their work.
+          </p>
+          <button
+            type="button"
+            onClick={handleReloadTheirs}
+            className="shrink-0 px-3 py-1.5 bg-white border border-rose-200 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-rose-400"
+          >
+            Reload theirs
+          </button>
+          <button
+            type="button"
+            onClick={handleOverwrite}
+            className="shrink-0 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-rose-400"
+          >
+            Overwrite
+          </button>
+        </div>
+      )}
+
+      {/* C3 — version history panel. A simple anchored dropdown (not a
+          full modal) so it reads as a lightweight peek, matching the
+          "History" affordance's weight — not a destructive workflow.
+          Lists the 5 most recent saves with relative times + Restore;
+          restoring re-inits the store from the server's response
+          (same pattern as C2's "Reload theirs"). */}
+      {historyOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-[1000]"
+            onClick={() => setHistoryOpen(false)}
+            aria-hidden
+          />
+          <div
+            role="dialog"
+            aria-label="Version history"
+            className="absolute right-4 top-16 z-[1001] w-80 max-h-[70vh] overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl"
+          >
+            <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-800">Version history</h3>
+              <button
+                type="button"
+                onClick={() => setHistoryOpen(false)}
+                aria-label="Close version history"
+                className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              >
+                <X className="w-3.5 h-3.5" aria-hidden />
+              </button>
+            </div>
+            <div className="p-2">
+              {versionsQuery.isLoading && (
+                <p className="text-xs text-slate-400 px-2 py-3 text-center">Loading&hellip;</p>
+              )}
+              {versionsQuery.isError && (
+                <p className="text-xs text-rose-500 px-2 py-3 text-center">Couldn&apos;t load version history.</p>
+              )}
+              {!versionsQuery.isLoading && !versionsQuery.isError && (versionsQuery.data?.length ?? 0) === 0 && (
+                <p className="text-xs text-slate-400 px-2 py-3 text-center">
+                  No saved versions yet — history starts building after your next Save.
+                </p>
+              )}
+              {versionsQuery.data?.map((v) => (
+                <div
+                  key={v.id}
+                  className="flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-slate-50"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-semibold text-slate-700" title={new Date(v.createdAt).toLocaleString()}>
+                      {formatDraftAge(Date.parse(v.createdAt))}
+                    </div>
+                    {v.byUser?.email && (
+                      <div className="text-[10px] text-slate-400 truncate">{v.byUser.email}</div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRestoreVersion(v.id)}
+                    disabled={restoringVersionId !== null}
+                    className="shrink-0 px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold rounded-lg transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 flex items-center gap-1"
+                  >
+                    {restoringVersionId === v.id
+                      ? <RefreshCw className="w-3 h-3 animate-spin" aria-hidden />
+                      : null}
+                    Restore
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Starter-template explainer. System presets can't be overwritten;
           editing forks the operator's own copy. Without this banner the

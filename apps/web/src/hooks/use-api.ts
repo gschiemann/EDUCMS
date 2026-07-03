@@ -1200,6 +1200,18 @@ export function useUpdateTemplate() {
        *  purely-local switch. Server clamps idleResetMs to a sane range. */
       isTouchEnabled?: boolean;
       idleResetMs?: number;
+      /**
+       * C2 (Wave C, 2026-07-02) — the `updatedAt` the client loaded (or
+       * last successfully saved). The server compares it against the
+       * row's current `updatedAt` and 409s with
+       * `{code:'TEMPLATE_STALE', serverUpdatedAt}` if someone else
+       * saved in between. Omit (undefined) to skip the check entirely
+       * — both an older client that's never heard of this field AND
+       * the explicit "Overwrite" retry after a conflict use that path,
+       * so behavior for every existing caller is byte-for-byte
+       * unchanged unless they opt in.
+       */
+      expectedUpdatedAt?: string | null;
     }) => apiFetch(`/templates/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ['templates', vars.id] });
@@ -1235,7 +1247,7 @@ export function useRegenerateBoardImage() {
 export function useUpdateTemplateZones() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, zones }: {
+    mutationFn: ({ id, zones, expectedUpdatedAt }: {
       id: string;
       zones: Array<{
         name: string;
@@ -1252,9 +1264,53 @@ export function useUpdateTemplateZones() {
         /** Phase D2.5 — null = shared across every scene. */
         sceneId?: string | null;
       }>;
-    }) => apiFetch(`/templates/${id}/zones`, { method: 'PUT', body: JSON.stringify({ zones }) }),
+      /** C2 — same staleness guard as useUpdateTemplate; see that hook's
+       *  doc comment. Optional + independently omittable, since a
+       *  caller could in principle want the metadata write guarded but
+       *  not the zones write (BuilderShell's handleSave sends it to
+       *  both — see its comment for why). */
+      expectedUpdatedAt?: string | null;
+    }) => apiFetch(`/templates/${id}/zones`, { method: 'PUT', body: JSON.stringify({ zones, expectedUpdatedAt }) }),
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ['templates', vars.id] });
+      qc.invalidateQueries({ queryKey: ['templates'] });
+    },
+  });
+}
+
+/**
+ * C3 (Wave C, 2026-07-02) — version-history list for the builder's
+ * History affordance. Light payload only (id/createdAt/byUser) — see
+ * the controller's listVersions doc comment for why the full zones/
+ * meta snapshot never ships here. Disabled by default (enabled: false
+ * option) so mounting the History button doesn't fire a request until
+ * the operator actually opens the panel.
+ */
+export function useTemplateVersions(id: string | undefined, opts?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ['templates', id, 'versions'],
+    queryFn: () => apiFetch<Array<{ id: string; createdAt: string; byUser: { id: string; email: string } | null }>>(`/templates/${id}/versions`),
+    enabled: !!id && (opts?.enabled ?? true),
+    staleTime: 10_000,
+  });
+}
+
+/**
+ * C3 — restore a version. The server snapshots the CURRENT state
+ * FIRST (never destructive — see the controller's restoreVersion doc
+ * comment), then applies the old zones/meta as a normal save and
+ * returns the fully-updated template (same mapTemplate() shape as
+ * GET/PUT). BuilderShell re-inits the store on the response exactly
+ * like its "Reload theirs" (C2) path does.
+ */
+export function useRestoreTemplateVersion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, versionId }: { id: string; versionId: string }) =>
+      apiFetch(`/templates/${id}/versions/${versionId}/restore`, { method: 'POST' }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['templates', vars.id] });
+      qc.invalidateQueries({ queryKey: ['templates', vars.id, 'versions'] });
       qc.invalidateQueries({ queryKey: ['templates'] });
     },
   });
