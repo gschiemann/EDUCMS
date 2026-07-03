@@ -5430,6 +5430,38 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       fields.push(<ColorField key="bgColor" label="Scene background" value={cfg.bgColor || '#0a0714'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
       break;
     }
+    // S6 #288 (2026-07-03) — Stadium Lane flagship broadcast board. Greg
+    // picked all 3 stadium designs 2026-07-03; only v1 "Broadcast" ships
+    // today (StadiumMeetBoardWidget.tsx header has the full live-data
+    // mapping). Reads the SAME stats.results contract as SWIM_LANE_GRID
+    // above — these fields only control presentation + the two footer
+    // slots that have no home anywhere in the data model.
+    case 'STADIUM_MEET_BOARD': {
+      fields.push(<GameBindField key="gameId" value={cfg.gameId || ''} onChange={(v) => setField({ gameId: v })} />);
+      fields.push(<SelectField key="boardStyle" label="Design" value={String(cfg.boardStyle || 'broadcast')} options={[['broadcast', 'v1 — Broadcast (live)'], ['duel', 'v2 — Dual-Meet Duel (coming soon)'], ['chase', 'v3 — Record Chase (coming soon)']]} onChange={(v) => setField({ boardStyle: v })} />);
+      fields.push(<TextField key="headerText" label="Header text (blank = auto from the live event)" value={cfg.headerText || ''} placeholder="GIRLS 100M FREESTYLE — EVENT 12 — FINALS" onChange={(v) => setField({ headerText: v })} />);
+      fields.push(<TextField key="eventFilter" label="Pin to event (exact name; blank = auto-pick current heat)" value={cfg.eventFilter || ''} placeholder="" onChange={(v) => setField({ eventFilter: v })} />);
+      fields.push(<TextField key="heatLabel" label="Heat pill (e.g. “3/4”; blank = hide)" value={cfg.heatLabel ?? ''} placeholder="3/4" onChange={(v) => setField({ heatLabel: v })} />);
+      fields.push(<TextField key="timeLabel" label="Time pill (e.g. “7:42 PM”; blank = hide)" value={cfg.timeLabel ?? ''} placeholder="7:42 PM" onChange={(v) => setField({ timeLabel: v })} />);
+      fields.push(<NumField key="laneCount" id="smb-laneCount" label="Number of lanes" value={typeof cfg.laneCount === 'number' ? cfg.laneCount : 8} onChange={(v) => setField({ laneCount: v })} min={1} max={12} step={1} />);
+      fields.push(<ListItemsEditor key="dqReasons" label="DQ reasons (by lane number)" itemNoun="DQ reason" help="Shown as “DQ — <reason>” next to that lane's time. Blank reason renders just “DQ”." value={Object.entries((cfg.dqReasons || {}) as Record<string, string>).map(([lane, reason]) => ({ lane, reason }))} onChange={(v) => setField({ dqReasons: Object.fromEntries(v.filter((r) => r.lane).map((r) => [String(r.lane), String(r.reason || '')])) })} newItem={{ lane: '', reason: '' }} fields={[
+        { key: 'lane', label: 'Lane #', type: 'number', placeholder: '7' },
+        { key: 'reason', label: 'Reason', type: 'text', placeholder: 'False start' },
+      ]} />);
+      // Pool-record footer — NO field exists anywhere in the data model
+      // for this (config-or-omit: all 4 blank cleanly omits the record
+      // half of the footer bar, never a fabricated sample on a real board).
+      fields.push(<TextField key="recordLabel" label="Record label (e.g. “POOL RECORD”; blank omits the record chase)" value={cfg.recordLabel || ''} placeholder="POOL RECORD" onChange={(v) => setField({ recordLabel: v })} />);
+      fields.push(<TextField key="recordValue" label="Record time" value={cfg.recordValue || ''} placeholder="50.84" onChange={(v) => setField({ recordValue: v })} />);
+      fields.push(<TextField key="recordHolder" label="Record holder + year" value={cfg.recordHolder || ''} placeholder="A. Washington 2024" onChange={(v) => setField({ recordHolder: v })} />);
+      fields.push(<TextField key="recordDelta" label="Off-the-pace note (optional)" value={cfg.recordDelta || ''} placeholder="1.06 off the pace" onChange={(v) => setField({ recordDelta: v })} />);
+      // Sponsor slot — same "no field in the data model" rule; both blank
+      // omits the sponsor half of the footer bar.
+      fields.push(<TextField key="sponsorLabel" label="Sponsor eyebrow (e.g. “PRESENTED BY”; blank omits the sponsor slot)" value={cfg.sponsorLabel || ''} placeholder="PRESENTED BY" onChange={(v) => setField({ sponsorLabel: v })} />);
+      fields.push(<TextField key="sponsorName" label="Sponsor name" value={cfg.sponsorName || ''} placeholder="River Dental" onChange={(v) => setField({ sponsorName: v })} />);
+      fields.push(<ColorField key="bgColor" label="Scene background" value={cfg.bgColor || '#060a14'} onChange={(v) => setField({ bgColor: v })} allowTransparent />);
+      break;
+    }
     case 'FITNESS_AD_BANNER': {
       // Rotating gym promo creative. Each creative is { headline, sub,
       // ctaText, ctaUrl?, durationMs? }; we render a small array editor.

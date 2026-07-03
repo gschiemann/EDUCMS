@@ -81,6 +81,12 @@ import {
   SwimRecordLineWidget,
   DiveJudgesPanelWidget,
 } from './sports/SwimDiveWidgets';
+// S6 #288 (2026-07-03) — "Stadium Lane" flagship swim-meet broadcast
+// board (v1 "Broadcast" only — v2/v3 reserved for later). A NEW widget
+// file, not a SwimDiveWidgets reskin, so it doesn't collide with the
+// concurrent no-fake-data sweep on that file. See
+// StadiumMeetBoardWidget.tsx header for the full live-data mapping.
+import { StadiumMeetBoardWidget } from './sports/StadiumMeetBoardWidget';
 // ── Fitness vertical (Phase 1) — these are the first widgets for a
 // non-EDU vertical. Kept in a dedicated /fitness subdir so the EDU
 // import list up top stays readable + so we can fan these into
@@ -458,6 +464,7 @@ const GAME_STATE_WIDGET_TYPES = new Set([
   'SCOREBOARD', // MainScoreboardWidget + the sb-* element variants + RibbonScoreboardWidget/ScorebugWidget all dispatch through here
   'SWIM_LANE_GRID', 'DIVE_LEADERBOARD', 'SWIM_RELAY_EXCHANGE',
   'SWIM_SPLITS_PANEL', 'SWIM_RECORD_LINE', 'DIVE_JUDGES_PANEL',
+  'STADIUM_MEET_BOARD', // S6 #288 (2026-07-03) — Stadium Lane broadcast board
 ]);
 
 export function WidgetPreview(props: {
@@ -669,6 +676,7 @@ function WidgetPreviewInner({ widgetType, config, width, height, live, freeze, o
     case 'SWIM_SPLITS_PANEL':   return <SwimSplitsPanelWidget config={cfg} />;
     case 'SWIM_RECORD_LINE':    return <SwimRecordLineWidget config={cfg} />;
     case 'DIVE_JUDGES_PANEL':   return <DiveJudgesPanelWidget config={cfg} />;
+    case 'STADIUM_MEET_BOARD':  return <StadiumMeetBoardWidget config={cfg} />;
     case 'SCHEDULE_GRID': return <ScheduleGridWidget config={cfg} />;
     case 'ATTENDANCE':   return <AttendanceWidget config={cfg} />;
     case 'BIRTHDAYS':    return cfg.theme === 'rainbow-animated' ? <RainbowAnimatedBirthdays config={cfg} /> : <BirthdaysWidget config={cfg} />;

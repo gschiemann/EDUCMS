@@ -1041,6 +1041,13 @@ import {
   SwimRecordLineWidget,
   DiveJudgesPanelWidget,
 } from './sports/SwimDiveWidgets';
+// S6 #288 (2026-07-03) — "Stadium Lane" flagship swim-meet broadcast
+// board. Greg picked all 3 stadium designs 2026-07-03; only v1
+// "Broadcast" is built (StadiumMeetBoardWidget.tsx header has the full
+// rationale + live-data mapping). A NEW widget/file — NOT a SwimDiveWidgets
+// reskin — so it doesn't collide with the concurrent no-fake-data sweep
+// on that file.
+import { StadiumMeetBoardWidget } from './sports/StadiumMeetBoardWidget';
 // 2026-05-26 — CTS-fed ribbon scoreboard. Live game state flows from
 // the CtsBridge (Beelink mini PC reading the CTS console via Web
 // Serial) → API → signed WS → window CustomEvent → this widget.
@@ -1428,6 +1435,22 @@ registerVariant({
   render: DiveJudgesPanelWidget as any,
   vertical: 'SPORTS',
   defaultConfig: {},
+});
+
+// S6 #288 (2026-07-03) — Stadium Lane flagship broadcast board. Own
+// palette tile (matches the SWIM_LANE_GRID / DIVE_LEADERBOARD pattern
+// above) so an operator can drop it directly onto a custom canvas, in
+// addition to the "🏊 Broadcast Meet Board" full SCOREBOARD preset
+// (apps/api/src/templates/sports-presets.ts).
+registerVariant({
+  id: 'stadium-meet-board-broadcast',
+  widgetType: 'STADIUM_MEET_BOARD',
+  name: 'Stadium Lane — Broadcast',
+  description: 'Flagship stadium broadcast board — angled header, gold leader glow, team-color lane washes, pool-record + sponsor footer. Bind a meet; resize for any LED.',
+  category: 'SPORTS',
+  render: StadiumMeetBoardWidget as any,
+  vertical: 'SPORTS',
+  defaultConfig: { boardStyle: 'broadcast', laneCount: 8 },
 });
 
 // ════════════════════════════════════════════════════════════════════
