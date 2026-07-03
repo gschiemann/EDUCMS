@@ -366,7 +366,10 @@ function readSavedHomeTeam(schoolId: string): SavedHomeTeam | null {
   }
 }
 
-function CreateGameModal({ onClose, initialPresetTemplate = null }: {
+// Exported (not just used internally) so Sports Wave S4-3's regression test
+// can mount it directly and assert the deep-link-preselect + Advanced
+// auto-expand behavior without driving the whole SportsHub + query params.
+export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
   onClose: () => void;
   /** Sports Wave S2-3 (2026-07-02) — preselects the matching layout
    *  dropdown when arriving via a gallery card's "Use for a game →"
@@ -388,12 +391,31 @@ function CreateGameModal({ onClose, initialPresetTemplate = null }: {
   const [homeLogoUrl, setHomeLogoUrl] = useState(() => readSavedHomeTeam(schoolId)?.logoUrl || '');
   const [awayLogoUrl, setAwayLogoUrl] = useState('');
   const [homeRemembered, setHomeRemembered] = useState(() => !!readSavedHomeTeam(schoolId)?.name);
+  // Sports Wave S4-1 (P1-8) — optional kickoff date/time. `<input
+  // type="datetime-local">` value; empty stays legal (undefined → API
+  // stores null). Never required — this is a convenience, not a gate.
+  const [scheduledAt, setScheduledAt] = useState('');
+  // Sports Wave S4-3 (P2) — sport search, only shown once the grid gets
+  // big enough to need it (>8 sports). No new setting: purely a filter
+  // over the existing SPORTS list.
+  const [sportQuery, setSportQuery] = useState('');
+  const visibleSports = useMemo(() => {
+    const q = sportQuery.trim().toLowerCase();
+    if (!q) return SPORTS;
+    return SPORTS.filter((s) => s.name.toLowerCase().includes(q) || s.key.toLowerCase().includes(q));
+  }, [sportQuery]);
   // Sprint 13 — operator-picked custom layouts. Each defaults to ''
   // ("Default — built-in layout") which sends null to the API and
   // falls back to the hardcoded /board, /ribbon, /scorebug.
   const [scoreboardTemplateId, setScoreboardTemplateId] = useState(initialPresetTemplate?.surface === 'scoreboard' ? initialPresetTemplate.id : '');
   const [ribbonTemplateId, setRibbonTemplateId] = useState(initialPresetTemplate?.surface === 'ribbon' ? initialPresetTemplate.id : '');
   const [scorebugTemplateId, setScorebugTemplateId] = useState(initialPresetTemplate?.surface === 'scorebug' ? initialPresetTemplate.id : '');
+  // Sports Wave S4-3 (P2) — the three layout dropdowns duplicate the
+  // in-game Layouts panel, so they're collapsed behind an "Advanced"
+  // disclosure by default. Auto-expand when a gallery deep-link ("Use for
+  // a game →") preselected one, so the operator can SEE what got picked
+  // instead of it silently applying behind a closed panel.
+  const [layoutsOpen, setLayoutsOpen] = useState(!!initialPresetTemplate);
   const { data: templates } = useTemplates();
   // 2026-07-01 — operator: "the drop down list of templates to choose
   // from is stupid and includes our touch menu's...we should only show
@@ -449,6 +471,10 @@ function CreateGameModal({ onClose, initialPresetTemplate = null }: {
         scoreboardTemplateId: scoreboardTemplateId || null,
         ribbonTemplateId: ribbonTemplateId || null,
         scorebugTemplateId: scorebugTemplateId || null,
+        // datetime-local gives "2026-08-21T19:00" (no seconds, no zone) —
+        // `new Date(...)` on the API side parses that as local time, which
+        // is exactly what an operator typing "7:00 PM" at their venue means.
+        scheduledAt: scheduledAt || undefined,
       });
       // Remember this home team so the next New Game pre-fills it.
       try {
@@ -497,11 +523,24 @@ function CreateGameModal({ onClose, initialPresetTemplate = null }: {
         </div>
 
         {/* sport picker */}
-        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-          Sport
-        </label>
+        <div className="flex items-center justify-between gap-2">
+          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+            Sport
+          </label>
+          {SPORTS.length > 8 && (
+            <div className="relative w-40">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-300" />
+              <input
+                value={sportQuery}
+                onChange={(e) => setSportQuery(e.target.value)}
+                placeholder="Search sports…"
+                className="w-full rounded-lg border border-slate-200 bg-white pl-7 pr-2 py-1 text-[11px] text-slate-600 placeholder:text-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-300"
+              />
+            </div>
+          )}
+        </div>
         <div className="mt-2 grid grid-cols-4 gap-2">
-          {SPORTS.map((s) => (
+          {visibleSports.map((s) => (
             <button
               key={s.key}
               type="button"
@@ -516,6 +555,11 @@ function CreateGameModal({ onClose, initialPresetTemplate = null }: {
               <span className="text-[11px] font-medium text-slate-600">{s.name}</span>
             </button>
           ))}
+          {visibleSports.length === 0 && (
+            <p className="col-span-4 text-center text-xs text-slate-400 py-3">
+              No sports match &ldquo;{sportQuery}&rdquo;.
+            </p>
+          )}
         </div>
 
         {/* teams */}
@@ -573,77 +617,105 @@ function CreateGameModal({ onClose, initialPresetTemplate = null }: {
           </div>
         </div>
 
-        {/* Sprint 13 — layout pickers. Each surface picks its own
-            template; leaving any on "Default" falls back to the
-            built-in layout for that surface. */}
+        {/* Sports Wave S4-1 (P1-8) — optional kickoff date/time. Never
+            required; leaving it blank is exactly today's behavior. */}
         <div className="mt-5">
           <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-            Layouts
+            When is it? <span className="text-slate-300 normal-case font-normal">(optional)</span>
           </label>
-          <p className="mt-1 text-[11px] text-slate-400">
-            Pick a custom template per surface, or leave on Default to use the built-in layout.
-          </p>
-          <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="text-[11px] font-medium text-slate-600">Scoreboard</label>
-              <select
-                className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm bg-white"
-                value={scoreboardTemplateId}
-                onChange={(e) => setScoreboardTemplateId(e.target.value)}
-              >
-                <option value="">Default — built-in layout</option>
-                {scoreboardTemplateOptions.map((t: any) => (
-                  <option key={t.id} value={t.id}>
-                    {t.isSystem ? '★ ' : ''}{t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-[11px] font-medium text-slate-600">Ribbon</label>
-              <select
-                className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm bg-white"
-                value={ribbonTemplateId}
-                onChange={(e) => setRibbonTemplateId(e.target.value)}
-              >
-                <option value="">Default — built-in layout</option>
-                {ribbonTemplateOptions.map((t: any) => (
-                  <option key={t.id} value={t.id}>
-                    {t.isSystem ? '★ ' : ''}{t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-[11px] font-medium text-slate-600">Scorebug</label>
-              <select
-                className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm bg-white"
-                value={scorebugTemplateId}
-                onChange={(e) => setScorebugTemplateId(e.target.value)}
-              >
-                <option value="">Default — built-in layout</option>
-                {scorebugTemplateOptions.map((t: any) => (
-                  <option key={t.id} value={t.id}>
-                    {t.isSystem ? '★ ' : ''}{t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div className="mt-1.5 relative w-full sm:w-64">
+            <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300 pointer-events-none" />
+            <input
+              type="datetime-local"
+              value={scheduledAt}
+              onChange={(e) => setScheduledAt(e.target.value)}
+              className="w-full rounded-lg border border-slate-200 pl-8 pr-2 py-2 text-sm bg-white"
+            />
           </div>
-          {!showAllLayoutTemplates && (
-            scoreboardTemplateOptions.length < allTemplates.length ||
-            ribbonTemplateOptions.length < allTemplates.length ||
-            scorebugTemplateOptions.length < allTemplates.length
-          ) && (
-            <button
-              type="button"
-              onClick={() => setShowAllLayoutTemplates(true)}
-              className="mt-2 text-[11px] font-medium text-indigo-600 hover:text-indigo-700 underline underline-offset-2"
-            >
-              Show all templates ({allTemplates.length})
-            </button>
-          )}
         </div>
+
+        {/* Sports Wave S4-3 (P2) — the three layout dropdowns duplicate the
+            in-game Setup → Displays panel, so the happy path (sport + teams
+            + go) doesn't have to look at them. Collapsed by default;
+            auto-expanded when a gallery "Use for a game →" deep link
+            preselected one (see initialPresetTemplate / layoutsOpen above)
+            so the operator can see what got applied. */}
+        <details
+          className="group mt-5"
+          open={layoutsOpen}
+          onToggle={(e) => setLayoutsOpen((e.target as HTMLDetailsElement).open)}
+        >
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wide select-none">
+            <ChevronDown className="h-3.5 w-3.5 text-slate-400 transition-transform group-open:rotate-180" />
+            Advanced: pick layouts now
+          </summary>
+          <div className="mt-2">
+            <p className="text-[11px] text-slate-400">
+              Pick a custom template per surface now, or leave on Default and choose later from the
+              game&rsquo;s Setup → Displays panel.
+            </p>
+            <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="text-[11px] font-medium text-slate-600">Scoreboard</label>
+                <select
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm bg-white"
+                  value={scoreboardTemplateId}
+                  onChange={(e) => setScoreboardTemplateId(e.target.value)}
+                >
+                  <option value="">Default — built-in layout</option>
+                  {scoreboardTemplateOptions.map((t: any) => (
+                    <option key={t.id} value={t.id}>
+                      {t.isSystem ? '★ ' : ''}{t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-slate-600">Ribbon</label>
+                <select
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm bg-white"
+                  value={ribbonTemplateId}
+                  onChange={(e) => setRibbonTemplateId(e.target.value)}
+                >
+                  <option value="">Default — built-in layout</option>
+                  {ribbonTemplateOptions.map((t: any) => (
+                    <option key={t.id} value={t.id}>
+                      {t.isSystem ? '★ ' : ''}{t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-slate-600">Scorebug</label>
+                <select
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm bg-white"
+                  value={scorebugTemplateId}
+                  onChange={(e) => setScorebugTemplateId(e.target.value)}
+                >
+                  <option value="">Default — built-in layout</option>
+                  {scorebugTemplateOptions.map((t: any) => (
+                    <option key={t.id} value={t.id}>
+                      {t.isSystem ? '★ ' : ''}{t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {!showAllLayoutTemplates && (
+              scoreboardTemplateOptions.length < allTemplates.length ||
+              ribbonTemplateOptions.length < allTemplates.length ||
+              scorebugTemplateOptions.length < allTemplates.length
+            ) && (
+              <button
+                type="button"
+                onClick={() => setShowAllLayoutTemplates(true)}
+                className="mt-2 text-[11px] font-medium text-indigo-600 hover:text-indigo-700 underline underline-offset-2"
+              >
+                Show all templates ({allTemplates.length})
+              </button>
+            )}
+          </div>
+        </details>
 
         {def && (
           <p className="mt-4 text-xs text-slate-400">
