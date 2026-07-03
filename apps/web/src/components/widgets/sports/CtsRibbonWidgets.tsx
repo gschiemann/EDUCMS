@@ -703,6 +703,9 @@ const SAMPLE_SPONSORS: CtsSponsorSlot[] = [
   { text: 'PROUD PARTNER · POOL SUPPLY CO', durationMs: 4500, bgColor: '#312e81' },
 ];
 
+/** Neutral empty sentinel for a real player surface with no sponsors configured yet. */
+const NEUTRAL_SPONSOR_SLOTS: CtsSponsorSlot[] = [];
+
 /**
  * CtsSponsorRotatorWidget — operator-managed sponsor rotation.
  * Crossfades between slots. Click-through tracked via a window
@@ -711,9 +714,20 @@ const SAMPLE_SPONSORS: CtsSponsorSlot[] = [
  * In the builder this defaults to SAMPLE_SPONSORS so the operator can
  * see the rotation working without configuring it. The Properties
  * panel surfaces the `slots` array as an editable list.
+ *
+ * nofake-sweep (2026-07-03, docs/research/2026-07-02-sports-deep-pass/
+ * 06-OVERNIGHT-REVIEW.md P0): this is the file's own "operator-configured"
+ * carve-out from the CTS-FED hardening pass — but the carve-out never got
+ * its own render-surface check, so an unconfigured drop on a real ribbon
+ * fell straight through to the fabricated SAMPLE_SPONSORS reel in front of
+ * a live crowd. Gate it: on a real player surface with no auto sponsors
+ * and no manual slots configured, render an empty neutral slot instead of
+ * the SAMPLE fallback. Builder / thumbnail / preview keep the alive SAMPLE.
  */
 export function CtsSponsorRotatorWidget({ config }: { config?: SponsorRotatorCfg }) {
   const cfg = config ?? {};
+  const renderSurface = useRenderSurface();
+  const isPlayerSurface = renderSurface === 'player';
   const isAuto = cfg.dataSource === 'auto';
   const gameId = isAuto ? resolveGameId(cfg.gameId) : null;
   const board = useRibbonBoardData(gameId);
@@ -721,7 +735,8 @@ export function CtsSponsorRotatorWidget({ config }: { config?: SponsorRotatorCfg
   // Resolve the effective slot list:
   //   • auto + board available → map Sponsor rows → slots (filtered by tier)
   //   • manual + cfg.slots set → cfg.slots
-  //   • otherwise → SAMPLE_SPONSORS so the builder + offline state always renders
+  //   • real player surface, nothing configured → NEUTRAL (empty), never SAMPLE
+  //   • builder / thumbnail / preview, nothing configured → SAMPLE_SPONSORS
   const slots = useMemo<CtsSponsorSlot[]>(() => {
     if (isAuto && board && Array.isArray(board.sponsors) && board.sponsors.length) {
       let pool = board.sponsors.filter((s) => s.active !== false);
@@ -729,7 +744,7 @@ export function CtsSponsorRotatorWidget({ config }: { config?: SponsorRotatorCfg
         const t = cfg.autoTierFilter.trim().toLowerCase();
         pool = pool.filter((s) => (s.tier || '').toLowerCase() === t);
       }
-      if (!pool.length) return SAMPLE_SPONSORS;
+      if (!pool.length) return isPlayerSurface ? NEUTRAL_SPONSOR_SLOTS : SAMPLE_SPONSORS;
       // Expand by `weight` (Title sponsor with weight 3 takes 3 slots).
       const expanded: CtsSponsorSlot[] = [];
       for (const s of pool) {
@@ -746,8 +761,8 @@ export function CtsSponsorRotatorWidget({ config }: { config?: SponsorRotatorCfg
       return expanded;
     }
     if (cfg.slots && cfg.slots.length > 0) return cfg.slots;
-    return SAMPLE_SPONSORS;
-  }, [isAuto, board, cfg.slots, cfg.autoTierFilter, cfg.defaultDurationMs]);
+    return isPlayerSurface ? NEUTRAL_SPONSOR_SLOTS : SAMPLE_SPONSORS;
+  }, [isAuto, board, cfg.slots, cfg.autoTierFilter, cfg.defaultDurationMs, isPlayerSurface]);
 
   const defaultDuration = cfg.defaultDurationMs || 6000;
   const [idx, setIdx] = useState(0);
@@ -915,15 +930,29 @@ const SAMPLE_ANNOUNCEMENTS: CtsAnnouncementEntry[] = [
   { text: 'CONCESSIONS OPEN ON MEZZANINE — CASH OR CARD', durationMs: 5000 },
 ];
 
+/** Neutral empty sentinel for a real player surface with no announcements configured yet. */
+const NEUTRAL_ANNOUNCEMENTS: CtsAnnouncementEntry[] = [];
+
 /**
  * CtsAnnouncementWidget — rotating player / event announcement ticker.
  * Pure operator config — no live feed needed. Operator pre-builds the
  * announcement queue in the editor (typically the morning of the match
  * or even weeks ahead), the player rotates through them on the ribbon
  * during the game. Slide-up crossfade between entries.
+ *
+ * nofake-sweep (2026-07-03, docs/research/2026-07-02-sports-deep-pass/
+ * 06-OVERNIGHT-REVIEW.md P0): identical gap to CtsSponsorRotatorWidget —
+ * never checked render surface, so an unconfigured drop on a real ribbon
+ * scrolled fabricated, specific-sounding player/roster copy
+ * (SAMPLE_ANNOUNCEMENTS) to a live crowd. Gate it the same way: on a real
+ * player surface with no auto roster and no manual entries, render an
+ * empty neutral reel instead of SAMPLE. Builder / thumbnail / preview
+ * keep the alive SAMPLE.
  */
 export function CtsAnnouncementWidget({ config }: { config?: AnnouncementCfg }) {
   const cfg = config ?? {};
+  const renderSurface = useRenderSurface();
+  const isPlayerSurface = renderSurface === 'player';
   const isAuto = cfg.dataSource === 'auto';
   const gameId = isAuto ? resolveGameId(cfg.gameId) : null;
   const board = useRibbonBoardData(gameId);
@@ -931,7 +960,8 @@ export function CtsAnnouncementWidget({ config }: { config?: AnnouncementCfg }) 
   // Resolve the effective entry list:
   //   • auto + roster available → generate intros from templates
   //   • manual + cfg.entries set → cfg.entries
-  //   • otherwise → SAMPLE_ANNOUNCEMENTS so editor preview renders
+  //   • real player surface, nothing configured → NEUTRAL (empty), never SAMPLE
+  //   • builder / thumbnail / preview, nothing configured → SAMPLE_ANNOUNCEMENTS
   const entries = useMemo<CtsAnnouncementEntry[]>(() => {
     if (isAuto && board && Array.isArray(board.roster) && board.roster.length) {
       const tpls = { ...DEFAULT_AUTO_TEMPLATES, ...(cfg.autoTemplates || {}) };
@@ -984,11 +1014,11 @@ export function CtsAnnouncementWidget({ config }: { config?: AnnouncementCfg }) 
       if (tpls.closer) {
         out.push({ text: applyTemplate(tpls.closer, { team: homeTeam }), durationMs: dur });
       }
-      return out.length ? out : SAMPLE_ANNOUNCEMENTS;
+      return out.length ? out : (isPlayerSurface ? NEUTRAL_ANNOUNCEMENTS : SAMPLE_ANNOUNCEMENTS);
     }
     if (cfg.entries && cfg.entries.length > 0) return cfg.entries;
-    return SAMPLE_ANNOUNCEMENTS;
-  }, [isAuto, board, cfg.entries, cfg.autoTemplates, cfg.autoDurationMs]);
+    return isPlayerSurface ? NEUTRAL_ANNOUNCEMENTS : SAMPLE_ANNOUNCEMENTS;
+  }, [isAuto, board, cfg.entries, cfg.autoTemplates, cfg.autoDurationMs, isPlayerSurface]);
 
   const defaultDuration = cfg.defaultDurationMs || 5000;
   const [idx, setIdx] = useState(0);
