@@ -332,4 +332,84 @@ describe('OnboardingService', () => {
       expect(state.resets).toHaveLength(1);
     });
   });
+
+  // ─── email-fix #1 + #3 (2026-07-03) ───────────────────────────────
+  //
+  // Overnight audit finding: createInvite returned
+  // `emailDelivered: !!process.env.EMAIL_PROVIDER` -- EMAIL_PROVIDER is
+  // an orphan env var referenced nowhere else in the repo, so this flag
+  // was ALWAYS false and the invite UI always showed "email isn't
+  // configured, copy the link" even when Resend WAS wired up
+  // (email-fix #1). Separately, sendUserInvite ran unguarded AFTER the
+  // UserInvite + placeholder User were already committed -- a throw
+  // there used to 500 the whole request even though the invite row
+  // existed, with no way for the admin to recover the link
+  // (email-fix #3). Both fixes land in the same block: emailDelivered
+  // is now `emailSent && emailService.isConfigured()`.
+  describe('invite email side-effects (email-fix #1 + #3)', () => {
+    it('returns the copy-link shape (emailDelivered:false + acceptUrl) when sendUserInvite throws, instead of throwing', async () => {
+      const signup = await service.signup({
+        districtName: 'Acme',
+        slug: 'acme-invite-fail',
+        adminEmail: 'admin@acme-invite-fail.edu',
+        password: 'admin-password',
+      });
+
+      jest.spyOn(emailService, 'sendUserInvite').mockRejectedValueOnce(new Error('Resend 500'));
+
+      const result = await service.createInvite({
+        inviterId: signup.user.id,
+        tenantId: signup.user.tenantId,
+        email: 'new-teacher@acme-invite-fail.edu',
+        role: 'CONTRIBUTOR',
+      });
+
+      // Must NOT throw -- must return the same success shape the happy
+      // path uses, with emailDelivered:false so the frontend
+      // (settings/page.tsx) renders the copy-the-link fallback UX
+      // instead of "Could not send invitation."
+      expect(result.emailDelivered).toBe(false);
+      expect(result.acceptUrl).toMatch(/\/accept-invite\//);
+      // The invite + placeholder user are still durable even though
+      // the send failed.
+      expect(state.invites).toHaveLength(1);
+      expect(state.users.some((u) => u.email === 'new-teacher@acme-invite-fail.edu')).toBe(true);
+    });
+
+    it('emailDelivered reflects isConfigured() AND-ed with send success, not the dead EMAIL_PROVIDER env var', async () => {
+      const signup = await service.signup({
+        districtName: 'Acme',
+        slug: 'acme-configured',
+        adminEmail: 'admin@acme-configured.edu',
+        password: 'admin-password',
+      });
+
+      // Simulate "email IS configured" regardless of what env vars are
+      // set in the test runner -- isConfigured() is the correct gate,
+      // NOT process.env.EMAIL_PROVIDER (referenced nowhere else in the
+      // repo and always falsy).
+      jest.spyOn(emailService, 'isConfigured').mockReturnValueOnce(true);
+
+      const result = await service.createInvite({
+        inviterId: signup.user.id,
+        tenantId: signup.user.tenantId,
+        email: 'configured-invitee@acme-configured.edu',
+        role: 'CONTRIBUTOR',
+      });
+
+      expect(result.emailDelivered).toBe(true);
+
+      // And the inverse: isConfigured() false -> emailDelivered false,
+      // even though the send itself succeeds (dev-mode log-only dispatch
+      // never throws).
+      jest.spyOn(emailService, 'isConfigured').mockReturnValueOnce(false);
+      const result2 = await service.createInvite({
+        inviterId: signup.user.id,
+        tenantId: signup.user.tenantId,
+        email: 'unconfigured-invitee@acme-configured.edu',
+        role: 'CONTRIBUTOR',
+      });
+      expect(result2.emailDelivered).toBe(false);
+    });
+  });
 });

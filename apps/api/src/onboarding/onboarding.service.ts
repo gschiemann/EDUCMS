@@ -414,19 +414,34 @@ export class OnboardingService {
       return invite;
     });
 
-    await this.emailService.sendUserInvite({
-      to: email,
-      inviterEmail: inviter.email,
-      tenantName: tenant.name,
-      role,
-      inviteToken: token,
-    });
+    // email-fix #3 (2026-07-03): sendUserInvite runs AFTER the UserInvite +
+    // placeholder User are already committed above. A throw here (unset
+    // RESEND_API_KEY in prod, or a flaky Resend call) used to 500 this
+    // whole request while the invite row already existed — the admin saw
+    // "Could not send invitation" with no way to recover the link. Guard
+    // it: on failure, log (the email_logs FAILED row from EmailService's
+    // own #enqueue is the durable record) and fall through to the same
+    // success shape with emailDelivered:false so the caller gets the
+    // copy-the-link fallback UX instead of an opaque error.
+    let emailSent = true;
+    try {
+      await this.emailService.sendUserInvite({
+        to: email,
+        inviterEmail: inviter.email,
+        tenantName: tenant.name,
+        role,
+        inviteToken: token,
+      });
+    } catch (e: any) {
+      emailSent = false;
+      this.logger.warn(
+        `createInvite(${invite.id}): sendUserInvite failed, falling back to copy-link UX: ${e?.message ?? e}`,
+      );
+    }
 
-    // Email dispatch is a stub in most deployments (no SMTP/Resend/SendGrid
-    // wired up yet). Return the accept URL to the caller so the admin can
-    // copy + send it manually — otherwise invited users never learn they
-    // were invited. Once a transactional email provider is configured,
-    // the UI can hide the "copy link" panel based on EMAIL_PROVIDER env.
+    // Return the accept URL to the caller so the admin can copy + send it
+    // manually whenever email isn't configured or dispatch failed —
+    // otherwise invited users never learn they were invited.
     const baseUrl =
       process.env.PUBLIC_WEB_URL ||
       process.env.NEXT_PUBLIC_WEB_URL ||
@@ -434,13 +449,22 @@ export class OnboardingService {
       '';
     const acceptUrl = baseUrl ? `${baseUrl.replace(/\/$/, '')}/accept-invite/${token}` : `/accept-invite/${token}`;
 
+    // email-fix #1 (2026-07-03): EMAIL_PROVIDER is never set anywhere in
+    // this repo (grepped — zero other references), so this flag was
+    // ALWAYS false and the invite UI always showed the "email not
+    // configured, copy the link" fallback even when Resend WAS wired up.
+    // isConfigured() reflects RESEND_API_KEY (the actual dispatch gate),
+    // AND-ed with whether this specific send actually succeeded above —
+    // so a configured-but-transiently-failing send still tells the truth.
+    const emailDelivered = emailSent && this.emailService.isConfigured();
+
     return {
       id: invite.id,
       email,
       role,
       expiresAt,
       acceptUrl,
-      emailDelivered: !!process.env.EMAIL_PROVIDER,
+      emailDelivered,
     };
   }
 
