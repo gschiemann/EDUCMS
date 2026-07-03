@@ -306,4 +306,30 @@ describe('OnboardingService', () => {
       expect(state.users.some((u) => u.email === 'admin@riverside.edu')).toBe(true);
     });
   });
+
+  // ─── email-fix #5 (2026-07-03) ────────────────────────────────────
+  //
+  // Overnight audit finding: sendPasswordReset ran unguarded. The
+  // no-enumeration contract requires requestPasswordReset to ALWAYS
+  // return {ok:true, emailConfigured} regardless of downstream email
+  // behavior -- a Resend hiccup or unset RESEND_API_KEY must not 500
+  // this endpoint (which would also leak "this email exists" via the
+  // different error path, on top of just being broken).
+  describe('password-reset request returns {ok:true} even when the send fails (email-fix #5)', () => {
+    it('keeps the no-enumeration contract intact when sendPasswordReset throws', async () => {
+      await service.signup({
+        districtName: 'Acme',
+        slug: 'acme-pwreset',
+        adminEmail: 'reset-me@acme.edu',
+        password: 'original-password-1',
+      });
+
+      jest.spyOn(emailService, 'sendPasswordReset').mockRejectedValueOnce(new Error('Resend 500'));
+
+      const result = await service.requestPasswordReset('reset-me@acme.edu');
+      expect(result).toEqual({ ok: true, emailConfigured: expect.any(Boolean) });
+      // The token row is still durable even though the send failed.
+      expect(state.resets).toHaveLength(1);
+    });
+  });
 });

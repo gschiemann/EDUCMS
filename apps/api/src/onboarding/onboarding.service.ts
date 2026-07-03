@@ -234,7 +234,19 @@ export class OnboardingService {
       data: { userId: user.id, tokenHash, expiresAt },
     });
 
-    await this.emailService.sendPasswordReset({ to: user.email, resetToken: token });
+    // email-fix #5 (2026-07-03): guard the send so a Resend hiccup (or
+    // unset RESEND_API_KEY in prod) can't 500 this endpoint. The
+    // no-enumeration contract requires this to always return
+    // {ok:true, emailConfigured} regardless of what happened downstream —
+    // the token row is already durable, and email_logs FAILED (written by
+    // EmailService's own #enqueue) is the record of the failed send.
+    try {
+      await this.emailService.sendPasswordReset({ to: user.email, resetToken: token });
+    } catch (e: any) {
+      this.logger.warn(
+        `requestPasswordReset(${user.id}): sendPasswordReset failed, continuing (no-enumeration contract): ${e?.message ?? e}`,
+      );
+    }
     return { ok: true, emailConfigured };
   }
 
