@@ -26,6 +26,18 @@
  *     emergency override, or device pairing. It's a single-template
  *     preview for "did I build the right layout?" review before
  *     publishing.
+ *
+ * task #290 (2026-07-03) — `live={true}` here is deliberately a BUILDER
+ * signal, not a player one: it means "run this preview as if it's really
+ * playing" (autoplay video, rotate carousels) for a genuinely un-scheduled
+ * template. Do NOT add `renderSurface="player"` to the WidgetPreview call
+ * below — that prop is reserved for the two components that render a REAL
+ * screen (apps/web/src/app/player/page.tsx, apps/web/src/components/
+ * player/TouchOverlay.tsx). Sport widgets (CtsScoreboard/CtsRibbonWidgets,
+ * MainScoreboardWidget, SwimDiveWidgets) read RenderSurfaceContext to
+ * decide SAMPLE-vs-NEUTRAL; omitting `renderSurface` here (defaulting to
+ * 'builder') is what keeps this preview showing the alive SAMPLE instead
+ * of a "NO GAME BOUND" / neutral-dash state a real screen would show.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -180,7 +192,11 @@ export function TemplatePreviewModal({
                 <WidgetErrorBoundary resetKey={zone.id} widgetLabel={zone.widgetType}>
                   {/* live={true} — videos autoplay (muted), carousels
                       rotate, animations run. The WHOLE point of preview:
-                      see what the screen actually does. */}
+                      see what the screen actually does. NO `renderSurface`
+                      — this is a builder surface (task #290); sport
+                      widgets must keep showing their alive SAMPLE here,
+                      never the "no game bound" neutral state a real
+                      screen shows. */}
                   <WidgetPreview
                     widgetType={zone.widgetType}
                     config={zone.defaultConfig || {}}

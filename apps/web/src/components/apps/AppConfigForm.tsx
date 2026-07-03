@@ -279,7 +279,20 @@ export function AppConfigForm({
             a truthful preview, not a mockup that can drift from reality.
             For WEBPAGE apps this now renders the operator's ACTUAL page
             (through the SSRF-guarded proxy) once the URL is valid, instead
-            of a fake browser-chrome placeholder. */}
+            of a fake browser-chrome placeholder.
+
+            task #290 (2026-07-03): `live={previewLive}` is a BUILDER
+            signal here (gates WEBPAGE iframe autoplay-equivalent loading),
+            not a player one — this pane is the App Library's config-time
+            preview, never a scheduled screen. Deliberately NO
+            `renderSurface` prop: that's reserved for the two components
+            that render a REAL screen (player/page.tsx, TouchOverlay.tsx).
+            Today no App Library entry builds a SCOREBOARD/CTS widgetType
+            (see app-registry.ts), so this can't yet reach a sport widget
+            — but if one is added, omitting `renderSurface` (defaulting to
+            'builder' via RenderSurfaceContext) is what keeps this preview
+            on the alive SAMPLE instead of a real screen's neutral/"no
+            game bound" state. Do not add `renderSurface="player"` here. */}
         <div className="p-3 border-b border-slate-100 bg-slate-50/60">
           <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Live preview</div>
           <div className="relative w-full rounded-lg overflow-hidden border border-slate-200 bg-slate-900" style={{ aspectRatio: '16 / 9' }}>
