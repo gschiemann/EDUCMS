@@ -2,7 +2,7 @@
 
 import { useId, useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
-import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon, Tv, ExternalLink, RefreshCw, GripVertical, Hand, Globe, Play, Layers, ShieldAlert, Volume2, Webhook, Bell, Sparkles, Link2, Unlink } from 'lucide-react';
+import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon, Tv, ExternalLink, RefreshCw, GripVertical, Hand, Globe, Play, Layers, ShieldAlert, Volume2, Webhook, Bell, Sparkles, Link2, Unlink, Eye, EyeOff } from 'lucide-react';
 import type { TouchActionConfig } from './types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DndContext, PointerSensor, KeyboardSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
@@ -6672,6 +6672,11 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
 // multi-line variants exist.
 
 // Schema parity with `apps/web/src/components/widgets/hs/useTextStyleOverrides.ts#TextStyleOverride`.
+// NOTE: `hidden` is EXTERNAL_HTML-board-only (CRUSH E6, 2026-07-03) — it rides
+// the same `_styles`/`textStyles` transport but is applied ONLY by the
+// packaged-board shim (`inject-shim-v2.cjs` EDUCMS-SHIM-V7's
+// applyTextAndStyles), not by `useTextStyleOverrides.ts` (React-zone HS
+// widgets don't need it; a zone can just be deleted/hidden on the canvas).
 type FieldStyleProp =
   | 'fontSize'
   | 'color'
@@ -6680,7 +6685,8 @@ type FieldStyleProp =
   | 'textDecoration'
   | 'fontFamily'
   | 'lineHeight'
-  | 'backgroundColor';
+  | 'backgroundColor'
+  | 'hidden';
 type FieldStyle = {
   fontSize?: number;
   color?: string;
@@ -6690,6 +6696,9 @@ type FieldStyle = {
   fontFamily?: string;
   lineHeight?: number;
   backgroundColor?: string;
+  /** EXTERNAL_HTML boards only — `true` hides the element (`display:none`
+   *  via the packaged-board shim); `false`/absent shows it. See E6 note above. */
+  hidden?: boolean;
 };
 type FieldStyleMap = Record<string, FieldStyle>;
 
@@ -7310,6 +7319,29 @@ function ExternalHtmlTextEditor({
   const setStylesMap = (s: FieldStyleMap) => {
     setField({ _styles: Object.keys(s).length ? s : undefined });
   };
+  // E6 — hide/show a field on the rendered board (CRUSH Wave E, 2026-07-03).
+  // THE BUG: clearing a field's text via setOverride deletes its
+  // textOverrides entry, so the BOARD'S OWN DEFAULT COPY resurfaces — an
+  // operator had no way to actually blank an element. FIX: toggle
+  // `styles[key].hidden` in the SAME `_styles` override map the color/
+  // font-size controls already write. The packaged-board shim
+  // (inject-shim-v2.cjs EDUCMS-SHIM-V7) reads that key and sets
+  // `display:none` (or clears it back to the template's own CSS) — no new
+  // transport, no new postMessage type, reversible with one more click.
+  const toggleFieldHidden = (key: string) => {
+    const current = styles[key] || {};
+    const next: FieldStyleMap = { ...styles };
+    if (current.hidden) {
+      // Un-hide: drop the whole per-field entry if hidden was the only
+      // override set, else just clear the hidden flag.
+      const { hidden: _drop, ...rest } = current;
+      if (Object.keys(rest).length) next[key] = rest;
+      else delete next[key];
+    } else {
+      next[key] = { ...current, hidden: true };
+    }
+    setStylesMap(next);
+  };
   // G3 — set / clear a per-slot image override. Empty value removes the
   // key so the template's own placeholder shows through again.
   const setImageOverride = (key: string, value: string) => {
@@ -7452,12 +7484,43 @@ function ExternalHtmlTextEditor({
               );
             }
             const current = textOverrides[f.key] ?? f.defaultText;
+            // E6 — is this field hidden on the board right now?
+            const isHidden = !!styles[f.key]?.hidden;
             // Long text → textarea; short → single-line input. Heuristic
             // is just len < 60 in the source default; works well across
             // titles (short), descriptions (medium), and copy blocks
             // (long, multi-line).
             return (
-              <div key={f.key} className="space-y-1" data-edit-field={f.key} onFocusCapture={() => pingHighlight(f.key)}>
+              <div
+                key={f.key}
+                className={`space-y-1 rounded-lg ${isHidden ? 'opacity-50' : ''}`}
+                data-edit-field={f.key}
+                onFocusCapture={() => pingHighlight(f.key)}
+              >
+                {/* E6 — hide/show toggle, own row above the field so it never
+                    overlaps the label or input. One click sets
+                    `_styles[key].hidden` (applied by the packaged-board shim
+                    as display:none); a second click clears it and the
+                    element reappears. Dims the whole row (opacity-50 above)
+                    so a hidden field reads as hidden in the panel too, not
+                    just on the board. */}
+                <div className="flex items-center justify-end -mb-1">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); toggleFieldHidden(f.key); }}
+                    className={`flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-md transition-colors ${
+                      isHidden
+                        ? 'text-amber-700 bg-amber-100 hover:bg-amber-200'
+                        : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
+                    }`}
+                    title={isHidden ? 'Hidden on the board — click to show' : 'Hide this element on the board'}
+                    aria-label={isHidden ? `Show ${label}` : `Hide ${label}`}
+                    aria-pressed={isHidden}
+                  >
+                    {isHidden ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                    {isHidden ? 'Hidden' : ''}
+                  </button>
+                </div>
                 {f.isShortish ? (
                   <StyleableField
                     fieldName={f.key}
@@ -7479,6 +7542,11 @@ function ExternalHtmlTextEditor({
                     rows={3}
                     onChange={(v) => setOverride(f.key, v, f.defaultText)}
                   />
+                )}
+                {isHidden && (
+                  <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1">
+                    Hidden on the board — text edits above still save, they just won&apos;t show until you click the eye to restore it.
+                  </div>
                 )}
                 {/* BYO binding OVERRIDE — bind this field to a specific live
                     POS item when the auto name-match is wrong. Only on short
