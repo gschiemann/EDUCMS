@@ -4,11 +4,12 @@
  * StadiumMeetBoardWidget — the flagship "Stadium Lane" swim-meet
  * broadcast board (S6, #288). Greg picked all 3 stadium designs on
  * 2026-07-03 as sports-scoreboard template options
- * (docs/design/proposals/2026-07-02-stadium-lane/README.md); this file
+ * (docs/design/proposals/2026-07-02-stadium-lane/README.md). This file
  * ships v1 "Broadcast" — a byte-faithful port of
- * `stadium-lane-v1-broadcast.html` (reference screenshot in the same
- * folder), wired to LIVE game data instead of the mockup's hardcoded
- * sample swimmers.
+ * `stadium-lane-v1-broadcast.html` — AND v2 "Dual-Meet Duel", a
+ * byte-faithful port of `stadium-lane-v2-duel.html` (both reference
+ * screenshots in the same folder), each wired to LIVE game data instead
+ * of its mockup's hardcoded sample swimmers/scores.
  *
  * ── Why a NEW widget instead of reskinning SwimLaneGridWidget ─────────
  * SwimLaneGridWidget (SwimDiveWidgets.tsx — DO NOT EDIT, another agent
@@ -21,17 +22,23 @@
  * and per CLAUDE.md's Template Design Workflow, "if a pixel value is in
  * the mockup, keep it," not blend it into an existing component's knobs.
  *
- * ── Structure for v2/v3 (build later, not now) ─────────────────────────
+ * ── Structure — router + sibling scenes ─────────────────────────────────
  * `StadiumMeetBoardWidget` is the router: it owns live-data plumbing
  * (GameStateContext read, no-fake-data guard, config normalization) and
- * dispatches to a per-`boardStyle` presentation component. Only
- * `StadiumBroadcastScene` (boardStyle: 'broadcast', v1) is implemented.
- * When v2 "Dual-Meet Duel" and v3 "Record Chase" get built, they become
- * sibling `Stadium<X>Scene` components in this same file (or split out
- * if this file gets unwieldy), selected by the same `cfg.boardStyle` switch —
- * the live-data mapping below (readResults → sorted/DQ'd rows, team
- * colors, no-fake-data guard) is shared by all three, so it lives in the
- * router, not duplicated per style.
+ * dispatches to a per-`boardStyle` presentation component:
+ *   - `StadiumBroadcastScene` (boardStyle: 'broadcast', v1) — the single-
+ *     event lane leaderboard with pool-record + sponsor footer.
+ *   - `StadiumDuelScene` (boardStyle: 'duel', v2) — the dual-meet team-
+ *     score header with color-flood diagonal collision + per-swimmer
+ *     delta-vs-leader column + a live-only ticker.
+ * v3 "Record Chase" is still reserved (`boardStyle: 'chase'` types but
+ * falls back to 'broadcast' until built) — when it lands, it becomes a
+ * third sibling `Stadium<X>Scene`, selected by the same `cfg.boardStyle`
+ * switch. The live-data mapping shared by all three (readResults →
+ * sorted/DQ'd rows, team colors/names, no-fake-data guard) lives in the
+ * router, not duplicated per style; each scene's file-header-adjacent
+ * comment block documents ONLY the mapping unique to that scene (team
+ * scores + deltas + the omitted "up next" clause for Duel).
  *
  * ── Live data mapping (readResults → the mockup's rows) ────────────────
  * Reads `Game.stats.results` via the SAME `readResults` parser every
@@ -256,9 +263,9 @@ function isDqMark(mark: string): boolean {
 }
 
 export interface StadiumMeetBoardCfg extends BaseCfg {
-  /** v1 'broadcast' (only style implemented today) — v2 'duel' / v3
-   *  'chase' are reserved for the sibling designs Greg also approved
-   *  2026-07-03; selecting them today falls back to 'broadcast'. Named
+  /** v1 'broadcast' and v2 'duel' are both implemented. v3 'chase' is
+   *  reserved for the third sibling design Greg also approved
+   *  2026-07-03; selecting it today falls back to 'broadcast'. Named
    *  `boardStyle`, NOT `style` — `style` is BaseCfg's reserved
    *  WidgetStyle field (font/color/bg/padding/border/shadow/anim), and
    *  colliding with it would shadow every v2 widget's shared style
@@ -299,6 +306,32 @@ function laneChipColor(entry: ResultEntry, homeColor: string | null, awayColor: 
   if (entry.team === 'home') return homeColor || '#1d4ed8';
   if (entry.team === 'away') return awayColor || '#b91c1c';
   return '#334155';
+}
+
+/** Parses a result `mark` into milliseconds for delta math. Handles the
+ *  formats real meet marks show up in: plain seconds ("51.90"), mm:ss.xx
+ *  ("1:52.31"), and h:mm:ss.xx for distance events. Returns null for
+ *  anything non-numeric (DQ/SCR/NS, blank, or an unrecognized shape) so
+ *  callers can cleanly skip delta math instead of computing garbage. */
+function parseMarkMs(mark: string): number | null {
+  const m = mark.trim();
+  if (!m || isDqMark(m)) return null;
+  const parts = m.split(':');
+  if (parts.length > 3) return null;
+  const nums = parts.map((p) => Number(p));
+  if (nums.some((n) => !Number.isFinite(n))) return null;
+  let seconds = 0;
+  for (const n of nums) seconds = seconds * 60 + n;
+  return Math.round(seconds * 1000);
+}
+
+/** Formats a millisecond delta back into the mockup's "+0.28" style —
+ *  always 2 decimals, always seconds (deltas within one heat/event are
+ *  sub-minute in practice; a larger gap just prints more digits before
+ *  the decimal, never wraps to mm:ss, matching the mockup's plain-seconds
+ *  delta column). */
+function formatDeltaMs(deltaMs: number): string {
+  return `+${(deltaMs / 1000).toFixed(2)}`;
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -502,9 +535,198 @@ function StadiumBroadcastScene({
 }
 
 // ════════════════════════════════════════════════════════════════════
+// StadiumDuelScene — v2 "Dual-Meet Duel". Faithful port of
+// stadium-lane-v2-duel.html (docs/design/proposals/2026-07-02-stadium-lane/).
+// Every pixel value below is taken directly from that mockup's CSS.
+//
+// ── Live-data mapping specific to this scene (shared plumbing — sorted
+//    rows, DQ, lane chip colors — lives in the router above, same as v1) ──
+//   - team SCORES ← snapshot.homeScore / snapshot.awayScore (real dual-meet
+//     team points; NEVER fabricated — 0/0 renders honestly as "0"/"0" when
+//     a meet hasn't scored yet, same as the mockup's two big numbers but
+//     driven by the actual bound game instead of a hardcoded "96"/"74").
+//   - team NAMES ← snapshot.homeTeam / snapshot.awayTeam, falling back to
+//     HOME/AWAY only when the bound game has no name set (mirrors v1's
+//     row-level team-name fallback).
+//   - team-color floods ← snapshot.homeColor/awayColor for the two
+//     diagonal-collision panels AND each row's left accent bar — the
+//     mockup's fixed red/blue is decorative sample color, the real board
+//     always reflects the bound game's actual colors.
+//   - per-swimmer DELTA ← computed here from each row's parsed mark vs the
+//     leader's (place===1) parsed mark. The leader always shows "—" (no
+//     delta from yourself); DQ'd / unparseable marks show "—" too (there
+//     is no meaningful gap to a time that doesn't exist). This is pure
+//     arithmetic on the SAME live times already in `rows` — not a new
+//     data field, so nothing here can be fabricated.
+//   - bottom ticker's LIVE clause ← built from the current leader's name +
+//     the live team-score gap (also pure derivation from data already on
+//     the snapshot/rows — "D. OKAFOR WINS · CENTRAL LEADS BY 22" reads
+//     just like the mockup's copy but is computed, not typed).
+//   - bottom ticker's "UP NEXT" clause ← OMITTED. There is no schedule /
+//     next-event field anywhere in the data model (same "no field exists"
+//     rule v1 applies to its pool-record/sponsor footer) — rendering the
+//     mockup's fabricated "EVENT 13 · BOYS 200M IM — 8 MIN" on a real
+//     board would be exactly the kind of invented signal the no-fake-data
+//     rule forbids. The ticker simply runs LIVE-clause-only, full width.
+// ════════════════════════════════════════════════════════════════════
+function StadiumDuelScene({
+  headerText,
+  rows,
+  laneCount,
+  dqReasons,
+  homeColor,
+  awayColor,
+  homeTeam,
+  awayTeam,
+  homeScore,
+  awayScore,
+  bgColor,
+}: {
+  headerText: { eventLabel: string; eventTitle: string };
+  rows: ResultEntry[];
+  laneCount: number;
+  dqReasons: Record<string, string>;
+  homeColor: string | null;
+  awayColor: string | null;
+  homeTeam: string | null;
+  awayTeam: string | null;
+  homeScore: number | null;
+  awayScore: number | null;
+  bgColor: string;
+}) {
+  const hc = homeColor || '#dc2626';
+  const ac = awayColor || '#2563eb';
+  const homeInitials = (homeTeam || 'HOME').trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase() || 'H';
+  const awayInitials = (awayTeam || 'AWAY').trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase() || 'A';
+
+  const visibleRows = rows.slice(0, laneCount);
+  const leader = visibleRows.find((r) => r.place === 1 && !isDqMark(r.mark)) || null;
+  const leaderMs = leader ? parseMarkMs(leader.mark) : null;
+
+  // LIVE ticker clause — derived purely from data already in `rows` /
+  // `snapshot`, never fabricated. No leader yet (no results / all DQ) →
+  // a neutral "LIVE" status instead of inventing a name.
+  const scoreGap = homeScore != null && awayScore != null ? Math.abs(homeScore - awayScore) : null;
+  const leadingSide = scoreGap != null && homeScore! !== awayScore! ? (homeScore! > awayScore! ? (homeTeam || 'HOME') : (awayTeam || 'AWAY')) : null;
+  const liveClause = leader
+    ? `${(leader.name || '').toUpperCase()} LEADS THE FIELD${leadingSide && scoreGap ? ` · ${leadingSide.toUpperCase()} LEADS BY ${scoreGap}` : ''}`
+    : (leadingSide && scoreGap ? `${leadingSide.toUpperCase()} LEADS BY ${scoreGap}` : 'RESULTS UPDATING');
+
+  return (
+    <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, fontFamily: BODY_FONT, color: '#fff', background: bgColor, overflow: 'hidden' }}>
+      {/* ── The DUEL: home/away color floods collide on a diagonal ── */}
+      <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: '56%', background: `linear-gradient(115deg, ${hc} 0%, ${hc} 45%, ${hc} 100%)`, clipPath: 'polygon(0 0, 100% 0, 72% 100%, 0 100%)' }} />
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: '56%', background: `linear-gradient(245deg, ${ac} 0%, ${ac} 45%, ${ac} 100%)`, clipPath: 'polygon(28% 0, 100% 0, 100% 100%, 0 100%)' }} />
+      <div style={{ position: 'absolute', top: 150, right: 0, bottom: 0, left: 0, background: 'linear-gradient(180deg, rgba(5,8,15,.30) 0%, rgba(5,8,15,.86) 26%, rgba(5,8,15,.94) 100%)' }} />
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, opacity: 0.35, background: 'repeating-linear-gradient(115deg, rgba(255,255,255,.025) 0 2px, transparent 2px 18px)' }} />
+
+      {/* ── Header: dual-meet team scores are the story ── */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 150, display: 'flex', alignItems: 'center', padding: '0 48px' }}>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <div style={{ width: 92, height: 92, borderRadius: 22, background: 'rgba(0,0,0,.3)', border: '3px solid rgba(255,255,255,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: DISPLAY_FONT, fontWeight: 400, fontSize: 40 }}>
+            {homeInitials}
+          </div>
+          <div style={{ margin: '0 26px' }}>
+            <b style={{ display: 'block', fontFamily: DISPLAY_FONT, fontWeight: 400, fontSize: 46, letterSpacing: 1 }}>{(homeTeam || 'HOME').toUpperCase()}</b>
+            <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: 4, opacity: 0.8 }}>HOME</span>
+          </div>
+          <div style={{ fontFamily: DISPLAY_FONT, fontWeight: 400, fontSize: 98, textShadow: '0 5px 0 rgba(0,0,0,.3)' }}>{homeScore ?? 0}</div>
+        </div>
+        <div style={{ margin: '0 auto', textAlign: 'center' }}>
+          <div style={{ fontFamily: DISPLAY_FONT, fontWeight: 400, fontSize: 34, letterSpacing: 2 }}>{headerText.eventTitle}</div>
+          {headerText.eventLabel && (
+            <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: 5, color: 'rgba(255,255,255,.85)', marginTop: 4 }}>{headerText.eventLabel}</div>
+          )}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'row-reverse', alignItems: 'center', textAlign: 'right' }}>
+          <div style={{ width: 92, height: 92, borderRadius: 22, background: 'rgba(0,0,0,.3)', border: '3px solid rgba(255,255,255,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: DISPLAY_FONT, fontWeight: 400, fontSize: 40 }}>
+            {awayInitials}
+          </div>
+          <div style={{ margin: '0 26px' }}>
+            <b style={{ display: 'block', fontFamily: DISPLAY_FONT, fontWeight: 400, fontSize: 46, letterSpacing: 1 }}>{(awayTeam || 'AWAY').toUpperCase()}</b>
+            <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: 4, opacity: 0.8 }}>AWAY</span>
+          </div>
+          <div style={{ fontFamily: DISPLAY_FONT, fontWeight: 400, fontSize: 98, textShadow: '0 5px 0 rgba(0,0,0,.3)' }}>{awayScore ?? 0}</div>
+        </div>
+      </div>
+
+      {/* ── Rows: glass panels, times enormous, per-swimmer delta ── */}
+      <div style={{ position: 'absolute', top: 172, bottom: 88, left: 44, right: 44, display: 'flex', flexDirection: 'column' }}>
+        {visibleRows.map((r, i) => {
+          const dq = isDqMark(r.mark);
+          const isLeader = r.place === 1 && !dq;
+          const reason = r.lane != null ? dqReasons[String(r.lane)] : undefined;
+          const rowMs = dq ? null : parseMarkMs(r.mark);
+          const delta = isLeader || rowMs == null || leaderMs == null ? '—' : formatDeltaMs(rowMs - leaderMs);
+          const sideColor = r.team === 'home' ? hc : r.team === 'away' ? ac : '#64748b';
+          const clubLabel = r.team === 'home' ? (homeTeam || 'HOME') : r.team === 'away' ? (awayTeam || 'AWAY') : null;
+          const clubBg = r.team === 'home' ? 'rgba(239,68,68,.16)' : r.team === 'away' ? 'rgba(59,130,246,.16)' : 'rgba(255,255,255,.08)';
+          const clubFg = r.team === 'home' ? '#fca5a5' : r.team === 'away' ? '#93c5fd' : '#cbd5e1';
+          return (
+            <div
+              key={`${r.lane ?? i}-${i}`}
+              style={{
+                position: 'relative', flex: 1, margin: '6px 0', display: 'flex', alignItems: 'center',
+                borderRadius: 18, background: 'rgba(13,18,32,.72)', border: '1px solid rgba(255,255,255,.09)',
+                boxShadow: '0 10px 30px rgba(0,0,0,.35)', overflow: 'hidden',
+              }}
+            >
+              <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 14, background: sideColor }} />
+              <div style={{ width: 150, textAlign: 'center', fontFamily: DISPLAY_FONT, fontWeight: 400, fontSize: 54, color: 'rgba(255,255,255,.9)' }}>
+                {r.lane ?? '—'}
+                <small style={{ display: 'block', fontSize: 14, fontWeight: 800, letterSpacing: 4, color: '#7e8aa6', fontFamily: BODY_FONT }}>LANE</small>
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <b style={{
+                  fontSize: 54, fontWeight: 800, textTransform: 'uppercase',
+                  color: dq ? '#94a3b8' : '#ffffff', textDecoration: dq ? 'line-through' : 'none',
+                }}>
+                  {r.name || '—'}
+                </b>
+                {clubLabel && (
+                  <span style={{ display: 'inline-block', marginLeft: 22, padding: '6px 16px', borderRadius: 999, fontSize: 20, fontWeight: 800, letterSpacing: 2, background: clubBg, color: clubFg, verticalAlign: 'middle' }}>
+                    {clubLabel.toUpperCase()}
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: '#64748b', marginRight: 34, fontVariantNumeric: 'tabular-nums' }}>
+                {delta}
+              </div>
+              <div style={{
+                fontFamily: dq ? BODY_FONT : MONO_FONT, fontSize: dq ? 44 : 76, fontWeight: 800, marginRight: 34,
+                fontVariantNumeric: 'tabular-nums', letterSpacing: dq ? undefined : -2,
+                color: dq ? '#f87171' : (isLeader ? '#fde047' : '#ffffff'),
+                textShadow: isLeader ? '0 0 26px rgba(253,224,71,.35)' : undefined,
+              }}>
+                {dq ? `DQ${reason ? ` — ${reason}` : ''}` : (r.mark || '—')}
+              </div>
+              <div style={{
+                width: 104, height: 64, borderRadius: 12, marginRight: 22, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontFamily: DISPLAY_FONT, fontWeight: 400, fontSize: 38,
+                background: dq ? '#1a2337' : r.place === 1 ? 'linear-gradient(135deg,#f59e0b,#fbbf24)' : r.place === 2 ? 'linear-gradient(135deg,#94a3b8,#e2e8f0)' : r.place === 3 ? 'linear-gradient(135deg,#b45309,#f59e0b)' : '#1a2337',
+                color: dq ? '#8ea0c2' : r.place === 1 ? '#3b2a00' : r.place === 2 ? '#1e293b' : r.place === 3 ? '#2f1c00' : '#8ea0c2',
+              }}>
+                {dq || !r.place ? '—' : r.place}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Footer ticker: LIVE clause only — "UP NEXT" is omitted, no
+          schedule/next-event field exists in the data model. ── */}
+      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 76, display: 'flex', alignItems: 'center', background: 'linear-gradient(90deg,#0b101d,#101728)', borderTop: '1px solid #202b47', padding: '0 48px', fontSize: 22, fontWeight: 800, letterSpacing: 1, color: '#9fb0d0' }}>
+        <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#22c55e', marginRight: 16, boxShadow: '0 0 12px rgba(34,197,94,.8)' }} />
+        LIVE — <b style={{ color: '#fff', margin: '0 8px' }}>{liveClause}</b>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
 // StadiumMeetBoardWidget — router. Live-data plumbing + no-fake-data
 // guard live here; style-specific presentation is a sibling scene
-// (only StadiumBroadcastScene / 'broadcast' exists today).
+// (StadiumBroadcastScene / 'broadcast' + StadiumDuelScene / 'duel').
 // ════════════════════════════════════════════════════════════════════
 export function StadiumMeetBoardWidget({ config }: WidgetProps<StadiumMeetBoardCfg>) {
   const c = config ?? {};
@@ -582,10 +804,17 @@ export function StadiumMeetBoardWidget({ config }: WidgetProps<StadiumMeetBoardC
     ? { sponsorLabel: c.sponsorLabel || 'PRESENTED BY', sponsorName: c.sponsorName || '' }
     : (!isLive ? SAMPLE_SPONSOR : null);
 
-  // v2/v3 not built yet — any style other than 'broadcast' falls back to
-  // it rather than rendering nothing (a not-yet-implemented style should
-  // never blank the board).
-  const boardStyle = c.boardStyle === 'duel' || c.boardStyle === 'chase' ? c.boardStyle : 'broadcast';
+  // v1 'broadcast' and v2 'duel' are both built; v3 'chase' is still
+  // reserved and falls back to 'broadcast' rather than rendering nothing
+  // (a not-yet-implemented style should never blank the board).
+  const boardStyle: 'broadcast' | 'duel' = c.boardStyle === 'duel' ? 'duel' : 'broadcast';
+
+  // Team scores — v2-only field (v1's design has no score header at all).
+  // Real bound game's homeScore/awayScore; builder sample uses the
+  // mockup's 96/74 so the gallery tile demonstrates the "duel" moment,
+  // same "sample only off a real screen" rule as every other field here.
+  const homeScore = isLive ? (snapshot?.homeScore ?? 0) : 96;
+  const awayScore = isLive ? (snapshot?.awayScore ?? 0) : 74;
 
   return (
     <ScaledScene bgColor={bgColor}>
@@ -606,9 +835,25 @@ export function StadiumMeetBoardWidget({ config }: WidgetProps<StadiumMeetBoardC
           bgColor={bgColor}
         />
       )}
-      {/* v2 'duel' / v3 'chase' — reserved for the sibling Stadium Lane
-          designs Greg also approved 2026-07-03. Rendering 'broadcast' as
-          the fallback above until they're built. */}
+      {boardStyle === 'duel' && (
+        <StadiumDuelScene
+          headerText={headerText}
+          rows={rows}
+          laneCount={laneCount}
+          dqReasons={dqReasons}
+          homeColor={snapshot?.homeColor ?? null}
+          awayColor={snapshot?.awayColor ?? null}
+          homeTeam={snapshot?.homeTeam ?? null}
+          awayTeam={snapshot?.awayTeam ?? null}
+          homeScore={homeScore}
+          awayScore={awayScore}
+          bgColor={bgColor}
+        />
+      )}
+      {/* v3 'chase' — reserved for the third Stadium Lane design Greg also
+          approved 2026-07-03. Rendering 'broadcast' as the fallback above
+          until it's built (boardStyle computed above maps 'chase' to the
+          'broadcast' branch). */}
       {noLiveData && <BindGameCallout accent="#fbbf24" />}
       {!isLive && <SampleWatermark />}
     </ScaledScene>
