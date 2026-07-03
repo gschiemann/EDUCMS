@@ -791,7 +791,7 @@ export const SPORTS_TEMPLATE_PRESETS: SystemPreset[] = [
     id: 'sports-gameday-halftime',
     name: '⏸️ Halftime Board',
     description:
-      'Halftime / intermission board — a big “HALFTIME” callout with a rotating sponsor reel below and a be-right-back ticker. Bridges the break without dead air on the video board.',
+      'Halftime / intermission board — a big “HALFTIME” callout with a rotating sponsor reel below and a be-right-back ticker. Bridges the break without dead air on the video board. Upload your own partner logos in Properties — the three tiles below start as generic placeholders so the board is never empty out of the box.',
     category: 'GAMEDAY',
     orientation: 'LANDSCAPE',
     screenWidth: 1920,
@@ -799,8 +799,26 @@ export const SPORTS_TEMPLATE_PRESETS: SystemPreset[] = [
     bgColor: '#0a0f1d',
     zones: [
       { name: 'Halftime', widgetType: 'TEXT', x: 8, y: 8, width: 84, height: 18, zIndex: 2, sortOrder: 0, defaultConfig: { content: 'HALFTIME', fontSize: 104, alignment: 'center', color: '#67e8f9' } },
-      { name: 'Sponsor Reel', widgetType: 'IMAGE_CAROUSEL', x: 16, y: 28, width: 68, height: 52, zIndex: 2, sortOrder: 1, defaultConfig: { urls: [], intervalSec: 5, fitMode: 'contain' } },
-      { name: 'Back Soon', widgetType: 'TICKER', x: 0, y: 88, width: 100, height: 10, zIndex: 2, sortOrder: 2, defaultConfig: { theme: 'scorebug', messages: ['BACK FOR THE SECOND HALF SHORTLY', 'VISIT THE CONCESSION STAND', 'THANK YOU TO OUR SPONSORS'], speed: 'normal' } },
+      // Halftime sponsor "reel" (P1-10/S5-3, 2026-07-02) — this is a static
+      // system preset (no tenant/game context at seed time), and there's no
+      // live-data-pull mechanism for IMAGE_CAROUSEL (it's a plain `urls[]`
+      // array — see WidgetRenderer.tsx ImageCarouselWidget), so a per-tenant
+      // pull from the Sponsors library isn't feasible here without a new
+      // widget type (out of scope for this preset-only fix). Previously this
+      // zone was a single IMAGE_CAROUSEL with `urls: []`, which rendered a
+      // literal "Add Photos" placeholder box — dead air during the one
+      // moment a video board most needs to look alive. Replaced with three
+      // sb-sponsor text-slot tiles (same SponsorSlotWidget every other
+      // sponsor preset in this file uses for its "no real art yet" state —
+      // see sports-sponsor-rotator/-scorebar/-concourse/-presenting above),
+      // seeded with generic tier labels so the board is NEVER empty. Each
+      // tile is independently editable in Properties (label text or an
+      // uploaded logo via imageUrl) — this is the SAME upgrade path the
+      // other sponsor presets already offer, not a new pattern.
+      sbZone('Presenting Sponsor', 'sb-sponsor', 14, 30, 22, 40, 1, { label: 'PRESENTING SPONSOR', fontSize: 30, bgColor: 'rgba(255,255,255,0.05)' }),
+      sbZone('Gold Sponsor', 'sb-sponsor', 39, 30, 22, 40, 2, { label: 'GOLD SPONSOR', fontSize: 30, bgColor: 'rgba(255,255,255,0.05)' }),
+      sbZone('Community Partner', 'sb-sponsor', 64, 30, 22, 40, 3, { label: 'COMMUNITY PARTNER', fontSize: 26, bgColor: 'rgba(255,255,255,0.05)' }),
+      { name: 'Back Soon', widgetType: 'TICKER', x: 0, y: 88, width: 100, height: 10, zIndex: 2, sortOrder: 4, defaultConfig: { theme: 'scorebug', messages: ['BACK FOR THE SECOND HALF SHORTLY', 'VISIT THE CONCESSION STAND', 'THANK YOU TO OUR SPONSORS'], speed: 'normal' } },
     ],
   },
   // ── Game day ──────────────────────────────────────────────────
