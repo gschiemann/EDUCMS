@@ -20,8 +20,11 @@ import {
 interface GeocodeBackfillRequestBody {
   /** Default true (safe). Only `false` writes lat/lng. */
   dryRun?: boolean;
-  /** Cap on tenants processed this call. Service defaults to 50, hard
-   *  ceiling 500 — see GeocodeBackfillService.sanitizeLimit. */
+  /** Cap on tenants processed this call. Service defaults to 25, hard
+   *  ceiling 50 — see GeocodeBackfillService.sanitizeLimit. Bounded so one
+   *  synchronous invocation can never approach the platform request-
+   *  timeout edge; for larger fleets call this (idempotent) endpoint
+   *  repeatedly. */
   limit?: number;
   /** Optional — restrict to one tenant. */
   tenantId?: string;

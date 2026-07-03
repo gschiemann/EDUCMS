@@ -44,6 +44,12 @@ export interface GeocodeBackfillDetail {
 
 export interface GeocodeBackfillSummary {
   dryRun: boolean;
+  /** Total tenants matching the base eligibility filter (address set,
+   *  lat/lng both null) in the WHOLE fleet, ignoring `limit` — a separate
+   *  `count()` against the same WHERE used for `findMany`. Lets a dry-run
+   *  operator see the true remaining-work population, not just the size
+   *  of the page this call happened to pull. */
+  totalCandidates: number;
   /** Tenants matching the base filter (address set, lat/lng both null),
    *  before the `limit` cap was applied. */
   scanned: number;
@@ -129,9 +135,14 @@ export class GeocodeBackfillService {
     };
     if (opts.tenantId) where.id = opts.tenantId;
 
+    // Accurate reporting (adversarial review): a dry-run operator needs to
+    // see the TRUE remaining-work population, not just the limit-capped
+    // page size `scanned` reflects. Same WHERE as the findMany below, run
+    // as a count() so it's cheap regardless of fleet size.
+    const totalCandidates = await this.prisma.client.tenant.count({ where: where as any });
+
     // Only need enough rows to satisfy `limit`; `scanned` reports the
-    // capped page size actually pulled (not the full-fleet count) — cheap
-    // and sufficient for a summary, avoids a second COUNT query.
+    // capped page size actually pulled (not the full-fleet count).
     const candidates = await this.prisma.client.tenant.findMany({
       where: where as any,
       select: { id: true, name: true, address: true, latitude: true, longitude: true },
@@ -141,6 +152,7 @@ export class GeocodeBackfillService {
 
     const summary: GeocodeBackfillSummary = {
       dryRun,
+      totalCandidates,
       scanned: candidates.length,
       eligible: 0,
       geocoded: 0,
@@ -184,13 +196,18 @@ export class GeocodeBackfillService {
 
     for (let i = 0; i < eligible.length; i += GeocodeBackfillService.BATCH_SIZE) {
       const batch = eligible.slice(i, i + GeocodeBackfillService.BATCH_SIZE);
-      for (const tenant of batch) {
+      for (let j = 0; j < batch.length; j++) {
+        const tenant = batch[j];
         await this.processOne(tenant, dryRun, summary);
         // Rate-limit: pause between provider calls. Skip the delay after
         // the very last item so a run doesn't pay a trailing wait for
-        // nothing.
-        const isLast =
-          eligible.indexOf(tenant) === eligible.length - 1;
+        // nothing. Nit fix (adversarial review): the old
+        // `eligible.indexOf(tenant)` did an O(n) linear scan per item
+        // (O(n²) overall) AND was fragile if `eligible` ever contained
+        // duplicate-identity rows (indexOf would always resolve to the
+        // FIRST match, not the current one) — the loop index comparison
+        // below is O(1) and unambiguous.
+        const isLast = i + j === eligible.length - 1;
         if (!isLast) {
           await this.sleep(GeocodeBackfillService.DELAY_MS);
         }
@@ -318,8 +335,16 @@ export class GeocodeBackfillService {
   }
 
   private sanitizeLimit(limit?: number): number {
-    const DEFAULT = 50;
-    const MAX = 500; // hard ceiling regardless of caller input
+    // Bounded (adversarial review) so a single synchronous invocation can
+    // never approach the platform request-timeout edge (Railway's ~300s
+    // no-bytes cutoff). At the ~1.1s/tenant DELAY_MS pacing, 50 tenants is
+    // ~55s of geocode-provider round trips plus per-tenant overhead — well
+    // inside the window with headroom for provider latency spikes. This is
+    // NOT an async-job conversion; it's a hard ceiling that makes one call
+    // safe to run synchronously. Large fleets: call the (idempotent)
+    // endpoint repeatedly — see the runbook doc.
+    const DEFAULT = 25;
+    const MAX = 50; // hard ceiling regardless of caller input
     if (limit == null || !Number.isFinite(limit)) return DEFAULT;
     const n = Math.floor(limit);
     if (n <= 0) return DEFAULT;

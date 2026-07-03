@@ -29,28 +29,36 @@ function makePrismaMock(initialTenants: TenantRow[]) {
   for (const t of initialTenants) tenants.set(t.id, { ...t });
   const auditRows: any[] = [];
 
+  // Shared WHERE emulation matching what the service actually sends:
+  // address: {not: null}, latitude: null, longitude: null, optional id.
+  // Used by both findMany (paged) and count (unpaged) so `totalCandidates`
+  // and `scanned` can diverge in tests exactly like the real Prisma calls.
+  function applyWhere(where: any) {
+    let rows = Array.from(tenants.values());
+    if (where?.address?.not === null) {
+      rows = rows.filter((r) => r.address !== null);
+    }
+    if ('latitude' in (where || {}) && where.latitude === null) {
+      rows = rows.filter((r) => r.latitude === null);
+    }
+    if ('longitude' in (where || {}) && where.longitude === null) {
+      rows = rows.filter((r) => r.longitude === null);
+    }
+    if (where?.id) {
+      rows = rows.filter((r) => r.id === where.id);
+    }
+    return rows;
+  }
+
   const client = {
     tenant: {
       findMany: jest.fn(async ({ where, take }: any) => {
-        let rows = Array.from(tenants.values());
-        // Minimal WHERE emulation matching what the service actually sends:
-        // address: {not: null}, latitude: null, longitude: null, optional id.
-        if (where?.address?.not === null) {
-          rows = rows.filter((r) => r.address !== null);
-        }
-        if ('latitude' in (where || {}) && where.latitude === null) {
-          rows = rows.filter((r) => r.latitude === null);
-        }
-        if ('longitude' in (where || {}) && where.longitude === null) {
-          rows = rows.filter((r) => r.longitude === null);
-        }
-        if (where?.id) {
-          rows = rows.filter((r) => r.id === where.id);
-        }
+        let rows = applyWhere(where);
         rows.sort((a, b) => a.name.localeCompare(b.name));
         if (typeof take === 'number') rows = rows.slice(0, take);
         return rows.map((r) => ({ ...r }));
       }),
+      count: jest.fn(async ({ where }: any) => applyWhere(where).length),
       update: jest.fn(async ({ where, data }: any) => {
         const row = tenants.get(where.id);
         if (!row) throw new Error('tenant not found');
@@ -248,7 +256,10 @@ describe('GeocodeBackfillService', () => {
     expect(geocoding.search).toHaveBeenCalledTimes(2);
   });
 
-  it('defaults limit to 50 when omitted, and clamps an absurd limit to the hard ceiling (500)', async () => {
+  it('defaults limit to 25 when omitted, and clamps an absurd limit to the hard ceiling (50)', async () => {
+    // Bounded (adversarial review, 2026-07-03) so one synchronous
+    // invocation can never approach the platform request-timeout edge —
+    // default dropped 50→25, hard ceiling dropped 500→50.
     const { prisma, client } = makePrismaMock([
       { id: 't1', name: 'A', address: '1 A St', latitude: null, longitude: null },
     ]);
@@ -259,12 +270,12 @@ describe('GeocodeBackfillService', () => {
 
     await runWithTimers(svc.run({ dryRun: true }));
     expect(client.tenant.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ take: 50 }),
+      expect.objectContaining({ take: 25 }),
     );
 
     await runWithTimers(svc.run({ dryRun: true, limit: 999999 }));
     expect(client.tenant.findMany).toHaveBeenLastCalledWith(
-      expect.objectContaining({ take: 500 }),
+      expect.objectContaining({ take: 50 }),
     );
   });
 
@@ -483,5 +494,34 @@ describe('GeocodeBackfillService', () => {
       });
       await firstRunPromise;
     });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Accurate reporting (adversarial review, 2026-07-03): `totalCandidates`
+  // reflects the WHOLE eligible fleet, independent of the `limit` cap that
+  // `scanned`/`eligible` are bounded by.
+  // ──────────────────────────────────────────────────────────────────────
+  it('`totalCandidates` reports the full eligible population, independent of `limit`', async () => {
+    const many: TenantRow[] = Array.from({ length: 7 }, (_, i) => ({
+      id: `t${i}`,
+      name: `Tenant ${i}`,
+      address: `${i} Main St`,
+      latitude: null,
+      longitude: null,
+    }));
+    // Add an already-geocoded tenant that must NOT count toward
+    // totalCandidates (excluded by the WHERE, same as scanned/eligible).
+    many.push({ id: 'done1', name: 'Already Done', address: 'X St', latitude: 1, longitude: 2 });
+    const { prisma } = makePrismaMock(many);
+    const geocoding = makeGeocodingMock(() => [
+      { display_name: 'Some Address', lat: '10', lon: '20', source: 'nominatim' },
+    ]);
+    const svc = new GeocodeBackfillService(prisma, geocoding);
+
+    const summary = await runWithTimers(svc.run({ dryRun: true, limit: 3 }));
+
+    expect(summary.scanned).toBe(3);
+    expect(summary.eligible).toBe(3);
+    expect(summary.totalCandidates).toBe(7); // full eligible fleet, not capped by limit
   });
 });
