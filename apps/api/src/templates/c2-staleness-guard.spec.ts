@@ -65,8 +65,18 @@ describe('C2 — Save staleness guard', () => {
           deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
           create: jest.fn().mockResolvedValue({}),
         },
+        templateVersion: {
+          create: jest.fn().mockResolvedValue({ id: 'ver-new' }),
+          findMany: jest.fn().mockResolvedValue([]),
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
         auditLog: { create: jest.fn().mockResolvedValue({}) },
-        $transaction: jest.fn().mockImplementation((ops: any) => Promise.all(ops)),
+        // snapshotVersion (C3) uses the INTERACTIVE ($transaction(async tx =>
+        // ...)) form; replaceZones's own zone replace uses the ARRAY form.
+        // Dispatch on argument type so both call sites work against one mock.
+        $transaction: jest.fn().mockImplementation((opsOrFn: any) =>
+          typeof opsOrFn === 'function' ? opsOrFn(prismaService.client) : Promise.all(opsOrFn),
+        ),
       },
     };
 
@@ -141,10 +151,17 @@ describe('C2 — Save staleness guard', () => {
   describe('PUT /templates/:id/zones (replace-all — the most destructive path)', () => {
     const zone = { name: 'Header', widgetType: 'CLOCK', x: 0, y: 0, width: 50, height: 20 };
 
+    // NOTE: $transaction now fires TWICE per successful replaceZones — once
+    // for the destructive zone-replace itself (ARRAY form) and once inside
+    // snapshotVersion's C3 cap-eviction (INTERACTIVE/function form, made
+    // atomic 2026-07-03 — see c3-version-history.spec.ts). This C2 suite
+    // only cares about the destructive zone-replace call, so assert on the
+    // array-form call specifically rather than a raw total call count.
     it('backward compat: omitting expectedUpdatedAt replaces zones exactly as before', async () => {
       const result = await controller.replaceZones(req, 'tpl1', { zones: [zone] } as any);
       expect(result).toBeTruthy();
-      expect(prismaService.client.$transaction).toHaveBeenCalledTimes(1);
+      const arrayCalls = prismaService.client.$transaction.mock.calls.filter((c: any) => Array.isArray(c[0]));
+      expect(arrayCalls).toHaveLength(1);
     });
 
     it('succeeds when expectedUpdatedAt matches the current row', async () => {
@@ -154,7 +171,8 @@ describe('C2 — Save staleness guard', () => {
         { zones: [zone], expectedUpdatedAt: NOW.toISOString() } as any,
       );
       expect(result).toBeTruthy();
-      expect(prismaService.client.$transaction).toHaveBeenCalledTimes(1);
+      const arrayCalls = prismaService.client.$transaction.mock.calls.filter((c: any) => Array.isArray(c[0]));
+      expect(arrayCalls).toHaveLength(1);
     });
 
     it('409s with TEMPLATE_STALE and NEVER runs the delete-all-and-recreate transaction', async () => {

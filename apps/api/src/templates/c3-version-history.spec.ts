@@ -72,7 +72,14 @@ describe('C3 — version history (snapshot-on-save, cap-at-5, restore-snapshots-
           findFirst: jest.fn().mockResolvedValue(null),
         },
         auditLog: { create: jest.fn().mockResolvedValue({}) },
-        $transaction: jest.fn().mockImplementation((ops: any) => Promise.all(ops)),
+        // snapshotVersion (C3) now runs create+findMany+deleteMany inside an
+        // INTERACTIVE $transaction(async tx => ...) so the cap-eviction is
+        // atomic (see snapshotVersion's doc comment); restoreVersion's own
+        // apply-old-version step still uses the ARRAY form. Dispatch on
+        // argument type so both shapes work against the one mock below.
+        $transaction: jest.fn().mockImplementation((opsOrFn: any) =>
+          typeof opsOrFn === 'function' ? opsOrFn(prismaService.client) : Promise.all(opsOrFn),
+        ),
       },
     };
 
@@ -124,6 +131,35 @@ describe('C3 — version history (snapshot-on-save, cap-at-5, restore-snapshots-
       expect(prismaService.client.templateVersion.deleteMany).toHaveBeenCalledWith({
         where: { id: { in: ['stale-1', 'stale-2'] } },
       });
+    });
+
+    // 2026-07-03 overnight adversarial review — the doc comment on
+    // snapshotVersion claimed create+findMany+deleteMany run "in the SAME
+    // transaction so the cap can never observably slip," but the impl was
+    // three sequential non-atomic awaits. This proves the fix: all three
+    // calls go through Prisma's INTERACTIVE $transaction (a callback, not
+    // an array), so they share one transaction and can't partially land.
+    it('atomicity: create+findMany+deleteMany all run inside ONE interactive $transaction callback', async () => {
+      prismaService.client.templateVersion.findMany.mockResolvedValueOnce([{ id: 'stale-1' }]);
+      await controller.replaceZones(req, 'tpl1', { zones: [zone] } as any);
+      // replaceZones's own zone-replace uses the ARRAY form; snapshotVersion's
+      // cap-eviction must be the OTHER call — the interactive (function) form.
+      const interactiveCall = prismaService.client.$transaction.mock.calls.find(
+        (c: any) => typeof c[0] === 'function',
+      );
+      expect(interactiveCall).toBeTruthy();
+      // And the three operations really did happen (proving the callback ran
+      // to completion, not merely was passed to a jest mock).
+      expect(prismaService.client.templateVersion.create).toHaveBeenCalledTimes(1);
+      expect(prismaService.client.templateVersion.findMany).toHaveBeenCalledTimes(1);
+      expect(prismaService.client.templateVersion.deleteMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('atomicity: if the transaction throws partway through (e.g. deleteMany fails), snapshotVersion still swallows it — no version write escapes the transaction to corrupt state, and the underlying save is unaffected', async () => {
+      prismaService.client.templateVersion.findMany.mockResolvedValueOnce([{ id: 'stale-1' }]);
+      prismaService.client.templateVersion.deleteMany.mockRejectedValueOnce(new Error('cap-eviction db hiccup'));
+      const result = await controller.replaceZones(req, 'tpl1', { zones: [zone] } as any);
+      expect(result).toBeTruthy(); // the save itself must still succeed
     });
 
     it('no eviction call when there is nothing beyond the top 5', async () => {
@@ -178,8 +214,14 @@ describe('C3 — version history (snapshot-on-save, cap-at-5, restore-snapshots-
 
     it('applies the target version zones/meta via the standard transaction path', async () => {
       await controller.restoreVersion(req, 'tpl1', 'ver-old');
-      expect(prismaService.client.$transaction).toHaveBeenCalledTimes(1);
-      const ops = prismaService.client.$transaction.mock.calls[0][0];
+      // restoreVersion fires $transaction TWICE: once inside snapshotVersion's
+      // pre-restore safety snapshot (INTERACTIVE/function form, atomic since
+      // 2026-07-03 — see the "atomicity" tests above), and once for the
+      // actual apply-old-version write (ARRAY form). Find the array-form call
+      // specifically rather than assuming it's the only/first call.
+      const arrayCall = prismaService.client.$transaction.mock.calls.find((c: any) => Array.isArray(c[0]));
+      expect(arrayCall).toBeTruthy();
+      const ops = arrayCall[0];
       expect(ops.length).toBeGreaterThanOrEqual(3); // update + deleteMany + N creates + findUnique
     });
 

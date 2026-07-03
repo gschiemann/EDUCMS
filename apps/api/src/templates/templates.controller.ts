@@ -257,31 +257,45 @@ export class TemplatesController {
     meta: Record<string, unknown>,
   ): Promise<void> {
     try {
-      const created = await (this.prisma.client as any).templateVersion.create({
-        data: {
-          templateId,
-          tenantId,
-          byUserId: req?.user?.id ?? null,
-          zones: zones as any,
-          meta: meta as any,
-        },
-        select: { id: true },
-      });
-      // Keep only the newest 5 (including the one just created). Fetch
-      // the ids to delete beyond the 5th-newest rather than a raw SQL
-      // LIMIT/OFFSET delete, so this stays portable across the ORM.
-      const stale = await (this.prisma.client as any).templateVersion.findMany({
-        where: { templateId },
-        orderBy: { createdAt: 'desc' },
-        skip: 5,
-        select: { id: true },
-      });
-      if (stale.length > 0) {
-        await (this.prisma.client as any).templateVersion.deleteMany({
-          where: { id: { in: stale.map((s: { id: string }) => s.id) } },
+      // Doc/impl mismatch fix (2026-07-03, overnight adversarial review) —
+      // this used to be three sequential non-atomic awaits, so a crash (or
+      // just two concurrent saves interleaving) between the insert and the
+      // cleanup could leave 6+ rows around forever, contradicting the "cap
+      // can never observably slip" claim above. Wrapping create+findMany+
+      // deleteMany in one interactive $transaction makes the doc true:
+      // either the whole snapshot-and-evict operation lands, or none of it
+      // does. Interactive (callback) form because deleteMany's `where`
+      // depends on findMany's result — the array form of $transaction can't
+      // express that dependency. The outer try/catch is unchanged: a
+      // failure anywhere inside the transaction still only logs (same
+      // best-effort discipline as audit()) and never fails the caller's save.
+      await (this.prisma.client as any).$transaction(async (tx: any) => {
+        const created = await tx.templateVersion.create({
+          data: {
+            templateId,
+            tenantId,
+            byUserId: req?.user?.id ?? null,
+            zones: zones as any,
+            meta: meta as any,
+          },
+          select: { id: true },
         });
-      }
-      void created; // id unused today; kept for a future "jump to this version" deep link
+        // Keep only the newest 5 (including the one just created). Fetch
+        // the ids to delete beyond the 5th-newest rather than a raw SQL
+        // LIMIT/OFFSET delete, so this stays portable across the ORM.
+        const stale = await tx.templateVersion.findMany({
+          where: { templateId },
+          orderBy: { createdAt: 'desc' },
+          skip: 5,
+          select: { id: true },
+        });
+        if (stale.length > 0) {
+          await tx.templateVersion.deleteMany({
+            where: { id: { in: stale.map((s: { id: string }) => s.id) } },
+          });
+        }
+        void created; // id unused today; kept for a future "jump to this version" deep link
+      });
     } catch (e: any) {
       this.auditLogger.warn(`snapshotVersion(${templateId}) failed: ${e?.message ?? e}`);
     }
