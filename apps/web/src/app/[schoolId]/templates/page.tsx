@@ -27,8 +27,11 @@ import {
   useGenerateTouchTemplate, useExportTemplate, useImportTemplate,
   useGenerateTouchCandidates, useCreateFromCandidate, useRefineSignageBoard, type AiTemplateCandidate,
   useGenerateDesignerCandidates, useCreateDesigner,
-  useRegenerateBoardImage, useCreatePlaylist,
+  useRegenerateBoardImage,
 } from '@/hooks/use-api';
+// E3 (CRUSH Wave E, 2026-07-03) — shared "Put on a screen" express lane,
+// extracted so the editor toolbar (BuilderShell) can reuse it verbatim.
+import { usePutOnScreen } from '@/lib/put-on-screen';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
 import { AiIntakeWizard } from '@/components/templates/AiIntakeWizard';
@@ -677,10 +680,11 @@ export default function TemplatesPage() {
   // hands off to the playlists page's existing single-tenant Publish-to-Screens
   // flow (a mobile bottom-sheet). Deliberately does NOT touch openInBuilder, so
   // it works on a phone (≤1023px) where the layout editor is gated off.
-  const createPlaylist = useCreatePlaylist();
-  // The template id currently being turned into a playlist (drives the per-card
-  // spinner). null = idle.
-  const [puttingOnScreenId, setPuttingOnScreenId] = useState<string | null>(null);
+  // E3 (CRUSH Wave E, 2026-07-03) — extracted into a shared hook
+  // (lib/put-on-screen.ts) so the SAME handler is reusable from the
+  // in-editor toolbar (BuilderShell) without duplicating the mutation +
+  // navigation logic. Behavior here is byte-identical to before extraction.
+  const { putOnScreen: putOnScreenShared, puttingOnScreenId } = usePutOnScreen(params?.schoolId, isViewer);
 
   // CC-1 — real screens for the AI "Match a screen…" picker. Each option
   // resolves to a concrete pixel canvas: an explicit per-screen LED canvas
@@ -1047,35 +1051,11 @@ export default function TemplatesPage() {
   // a template playlist references the template), then deep-link the playlists
   // page to its existing Publish-to-Screens sheet (role-correct for SCHOOL_ADMIN
   // and mobile-friendly). Works identically on desktop and phone. This is the
-  // gallery card's "Put on a screen" action ONLY — the AI generation flow no
-  // longer publishes-to-screen directly (operators always tweak first, 2026-06-30).
-  const putOnScreen = useCallback(async (template: Template) => {
-    if (isViewer || puttingOnScreenId) return;
-    setPuttingOnScreenId(template.id);
-    try {
-      const created = await createPlaylist.mutateAsync({
-        // Keep the name recognizable so it's easy to find in the playlist list.
-        name: template.name,
-        templateId: template.id,
-      });
-      const playlistId = (created as { id?: string } | undefined)?.id;
-      if (!playlistId) throw new Error('Playlist was created without an id.');
-      // Hand off to the playlists page, which auto-selects this playlist and
-      // opens its Publish-to-Screens sheet (see the ?publishPlaylist= handler
-      // there). Full nav (not router.push) matches the builder-open pattern and
-      // guarantees the playlists page mounts fresh with the param.
-      window.location.href =
-        `/${params?.schoolId ?? ''}/playlists?publishPlaylist=${encodeURIComponent(playlistId)}`;
-    } catch (err) {
-      setPuttingOnScreenId(null);
-      await appAlert({
-        title: 'Could not start publishing',
-        message: (err as Error)?.message || 'We could not create a playlist from this board. Try again.',
-        tone: 'danger',
-        confirmLabel: 'Got it',
-      });
-    }
-  }, [isViewer, puttingOnScreenId, createPlaylist, params?.schoolId]);
+  // gallery card's "Put on a screen" action — E3 (2026-07-03) reuses the exact
+  // same handler (see usePutOnScreen above) from the in-editor toolbar too.
+  // The AI generation flow itself no longer publishes-to-screen directly
+  // (operators always tweak first, 2026-06-30).
+  const putOnScreen = putOnScreenShared;
 
   // Phase 2 — persist ONE candidate as a real template WITHOUT discarding the
   // set (2026-06-30). The operator can save any/all of the 3; each saved board

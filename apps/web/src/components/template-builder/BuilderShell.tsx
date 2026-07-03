@@ -54,6 +54,9 @@ import { appConfirm, appPrompt } from '@/components/ui/app-dialog';
 // recovery, and the shared timestamp-parsing helper for the staleness
 // conflict bar. See autosave-draft.ts for the full contract.
 import { readDraft, clearDraft, isDraftNewer, createAutosaveScheduler, formatDraftAge, type BuilderDraft } from './autosave-draft';
+// E3 (CRUSH Wave E, 2026-07-03) — "Put on a screen" express lane, shared
+// with the gallery's GalleryCard action (see lib/put-on-screen.ts).
+import { usePutOnScreen } from '@/lib/put-on-screen';
 import type { Template, Zone } from './types';
 
 interface Props {
@@ -127,6 +130,13 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
   // have versions; skip the request entirely for them.
   const versionsQuery = useTemplateVersions(template.id, { enabled: historyOpen && !template.isSystem });
   const restoreVersion = useRestoreTemplateVersion();
+  // E3 (CRUSH Wave E, 2026-07-03) — the same express-lane hook the gallery
+  // uses (see lib/put-on-screen.ts). `disabled` is always false here:
+  // system templates already hide the CTA in BuilderToolbar (isSystem
+  // gate), and there's no separate viewer-role check in the builder route
+  // — a RESTRICTED_VIEWER never reaches BuilderShell at all (openInBuilder
+  // / the V2 route both bounce viewers before mount).
+  const { putOnScreen, puttingOnScreenId } = usePutOnScreen(routeParams?.schoolId);
 
   useEffect(() => {
     init({
@@ -353,6 +363,27 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       setSaveError(err instanceof Error ? err.message : String(err));
     }
   }, [template.id, updateTemplate, updateZonesApi, markClean, onSaved, setServerUpdatedAt]);
+
+  // E3 (CRUSH Wave E, 2026-07-03) — "Put on a screen" from inside the
+  // editor. The template ALWAYS has a real server id by the time
+  // BuilderShell mounts (both openInBuilder and the V2 builder route only
+  // ever hand it an already-created Template — see templates/page.tsx
+  // openInBuilder / builder/[id]/page.tsx), so the only gate needed is
+  // "does the server copy reflect what's on screen": if there are unsaved
+  // edits, run the exact same handleSave the Save button uses FIRST, then
+  // publish whatever the server now has. handleSave never throws (it
+  // catches internally and drives saveStatus/saveConflict), so success is
+  // read back via isDirty — save either cleared it (markClean) or it
+  // didn't (409 conflict / network error), in which case publishing a
+  // stale server copy would be wrong and we bail with the same conflict
+  // bar already on screen.
+  const handlePutOnScreen = useCallback(async () => {
+    if (useBuilderStore.getState().isDirty) {
+      await handleSave();
+      if (useBuilderStore.getState().isDirty) return; // save didn't land — conflict/error banner is already showing
+    }
+    await putOnScreen({ id: template.id, name: useBuilderStore.getState().meta.name || template.name });
+  }, [handleSave, putOnScreen, template.id, template.name]);
 
   // C1 — the operator's response to the draft-recovery bar.
   const handleRestoreDraft = useCallback(() => {
@@ -953,6 +984,8 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         saveError={saveError}
         lastSavedAt={lastSavedAt}
         onOpenHistory={() => setHistoryOpen(true)}
+        onPutOnScreen={handlePutOnScreen}
+        puttingOnScreenBusy={puttingOnScreenId === template.id}
       />
 
       {/* C1 — draft-recovery bar. One bar, two buttons, no new settings

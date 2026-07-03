@@ -5,6 +5,8 @@ import {
   RotateCw, Loader2, CheckCircle2, AlertCircle, Trash2, X,
   // C3 (Wave C, 2026-07-02) — the History trigger button beside SaveStatusChip.
   History as HistoryIcon,
+  // E3 (CRUSH Wave E, 2026-07-03) — the "Put on a screen" express-lane arrow.
+  ArrowRight, Tv2,
 } from 'lucide-react';
 import { useMemo } from 'react';
 import { useBuilderStore } from './useBuilderStore';
@@ -33,9 +35,22 @@ interface Props {
    *  trigger button, placed beside SaveStatusChip. Hidden entirely for
    *  system templates (they never save, so they never have versions). */
   onOpenHistory?: () => void;
+  /** E3 (CRUSH Wave E, 2026-07-03) — express-lane publish, reusing the
+   *  gallery's exact `putOnScreen` handler (see lib/put-on-screen.ts).
+   *  Owned by BuilderShell (same pattern as onOpenHistory/onPreview) so
+   *  it can call handleSave first when the template is dirty. Hidden
+   *  entirely for system templates — same reasoning as onOpenHistory:
+   *  a starter preset was never saved into the operator's tenant, so
+   *  there's nothing of theirs yet to put on a screen. Renders as the
+   *  SaveStatusChip's "Saved ✓ — Put on a screen →" morph per
+   *  05-EDITOR-CRUSH-LENSES.md:353. */
+  onPutOnScreen?: () => void;
+  /** True while the express-lane playlist is being created (per
+   *  usePutOnScreen's puttingOnScreenId). Drives the CTA's spinner. */
+  puttingOnScreenBusy?: boolean;
 }
 
-export function BuilderToolbar({ onBack, onSave, onSaveAs, onCustomize, onDiscard, onPreview, saveStatus, saveError, lastSavedAt, onOpenHistory }: Props) {
+export function BuilderToolbar({ onBack, onSave, onSaveAs, onCustomize, onDiscard, onPreview, saveStatus, saveError, lastSavedAt, onOpenHistory, onPutOnScreen, puttingOnScreenBusy }: Props) {
   // Atomic selectors — one subscription per key lets Zustand skip this
   // toolbar's re-render when only zone geometry (BuilderCanvas concern)
   // or property fields (PropertiesPanel concern) changed.
@@ -139,7 +154,14 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, onCustomize, onDiscar
           {isPortrait ? 'Portrait' : 'Landscape'}
         </span>
 
-        <SaveStatusChip status={saveStatus} isDirty={isDirty} error={saveError} lastSavedAt={lastSavedAt ?? null} />
+        <SaveStatusChip
+          status={saveStatus}
+          isDirty={isDirty}
+          error={saveError}
+          lastSavedAt={lastSavedAt ?? null}
+          onPutOnScreen={!isSystem ? onPutOnScreen : undefined}
+          puttingOnScreenBusy={puttingOnScreenBusy}
+        />
 
         {/* C3 — version history. Hidden for system templates (they
             never go through Save, so they never accumulate versions). */}
@@ -274,9 +296,10 @@ function ToolbarBtn({
 }
 
 function SaveStatusChip({
-  status, isDirty, error, lastSavedAt,
+  status, isDirty, error, lastSavedAt, onPutOnScreen, puttingOnScreenBusy,
 }: {
   status: Props['saveStatus']; isDirty: boolean; error?: string; lastSavedAt: number | null;
+  onPutOnScreen?: () => void; puttingOnScreenBusy?: boolean;
 }) {
   if (status === 'saving') {
     return (
@@ -285,12 +308,42 @@ function SaveStatusChip({
       </span>
     );
   }
-  if (status === 'saved') {
-    return (
-      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded flex items-center gap-1" role="status">
-        <CheckCircle2 className="w-3 h-3" aria-hidden /> Saved
-      </span>
-    );
+  // E3 (CRUSH Wave E, 2026-07-03) — a persisted, non-dirty template has
+  // something publishable. Once Save has succeeded at least once
+  // (status==='saved' right after Save, or lastSavedAt from an earlier
+  // save this session) AND there are no unsaved edits, morph the chip
+  // into the express-lane CTA per 05-EDITOR-CRUSH-LENSES.md:353: "Saved
+  // ✓ — Put on a screen →". `onPutOnScreen` is undefined for system
+  // templates (BuilderToolbar gates it), so this simply falls through to
+  // the plain chip there.
+  if (status === 'saved' || (status === 'idle' && !isDirty && lastSavedAt)) {
+    if (onPutOnScreen) {
+      return (
+        <button
+          type="button"
+          onClick={onPutOnScreen}
+          disabled={puttingOnScreenBusy}
+          title="Create a playlist from this template and publish it to a screen"
+          className="text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-1 rounded flex items-center gap-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-400"
+        >
+          {puttingOnScreenBusy
+            ? <Loader2 className="w-3 h-3 animate-spin" aria-hidden />
+            : <CheckCircle2 className="w-3 h-3" aria-hidden />}
+          Saved
+          <span className="text-slate-400 font-normal">&middot;</span>
+          <Tv2 className="w-3 h-3" aria-hidden />
+          Put on a screen
+          <ArrowRight className="w-3 h-3" aria-hidden />
+        </button>
+      );
+    }
+    if (status === 'saved') {
+      return (
+        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded flex items-center gap-1" role="status">
+          <CheckCircle2 className="w-3 h-3" aria-hidden /> Saved
+        </span>
+      );
+    }
   }
   if (status === 'error') {
     return (
