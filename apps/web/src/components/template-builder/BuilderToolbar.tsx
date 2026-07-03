@@ -3,6 +3,8 @@
 import {
   ArrowLeft, Save, Copy, Tv,
   RotateCw, Loader2, CheckCircle2, AlertCircle, Trash2, X,
+  // C3 (Wave C, 2026-07-02) — the History trigger button beside SaveStatusChip.
+  History as HistoryIcon,
 } from 'lucide-react';
 import { useMemo } from 'react';
 import { useBuilderStore } from './useBuilderStore';
@@ -25,9 +27,15 @@ interface Props {
   saveStatus: 'idle' | 'saving' | 'saved' | 'error';
   saveError?: string;
   lastSavedAt?: number | null;
+  /** C3 (Wave C, 2026-07-02) — opens BuilderShell's version-history
+   *  panel. Owned by BuilderShell (same pattern as onPreview) so the
+   *  panel can render as its own overlay; the toolbar is just the
+   *  trigger button, placed beside SaveStatusChip. Hidden entirely for
+   *  system templates (they never save, so they never have versions). */
+  onOpenHistory?: () => void;
 }
 
-export function BuilderToolbar({ onBack, onSave, onSaveAs, onCustomize, onDiscard, onPreview, saveStatus, saveError, lastSavedAt }: Props) {
+export function BuilderToolbar({ onBack, onSave, onSaveAs, onCustomize, onDiscard, onPreview, saveStatus, saveError, lastSavedAt, onOpenHistory }: Props) {
   // Atomic selectors — one subscription per key lets Zustand skip this
   // toolbar's re-render when only zone geometry (BuilderCanvas concern)
   // or property fields (PropertiesPanel concern) changed.
@@ -132,6 +140,19 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, onCustomize, onDiscar
         </span>
 
         <SaveStatusChip status={saveStatus} isDirty={isDirty} error={saveError} lastSavedAt={lastSavedAt ?? null} />
+
+        {/* C3 — version history. Hidden for system templates (they
+            never go through Save, so they never accumulate versions). */}
+        {!isSystem && onOpenHistory && (
+          <button
+            type="button"
+            onClick={onOpenHistory}
+            title="Version history — restore one of the last 5 saves"
+            className="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          >
+            <HistoryIcon className="w-3.5 h-3.5" aria-hidden />
+          </button>
+        )}
 
         {/* Discard — delete the in-progress (non-system) template and
             exit. Red tint so it's clearly destructive; only renders when

@@ -182,6 +182,111 @@ export class TemplatesController {
     }
   }
 
+  /**
+   * C2 (Wave C — "Crush Canva" safety net, 2026-07-02) — optimistic-
+   * concurrency staleness guard.
+   *
+   * Today, Save is a blind write: the metadata PUT and the zones
+   * replace-all PUT both just overwrite whatever is in the row, with
+   * no check that the row hasn't moved since the client loaded it. Two
+   * tabs (or two operators) editing the same template silently
+   * clobber each other — a stale tab's Ctrl-S erases the fresh tab's
+   * saved work with zero warning
+   * (docs/research/.../D6_MULTIPLAYER_DEFERRED.md itself names
+   * "stale-write detection... as a stopgap" that was never built).
+   *
+   * This is exactly that stopgap, not multiplayer: the client sends
+   * back the `updatedAt` it loaded (or last successfully saved);
+   * if the row's CURRENT updatedAt is newer, someone else saved in
+   * between and we reject with 409 + the real server value so the
+   * builder can offer "Reload theirs / Overwrite."
+   *
+   * Backward compatible by construction: `expectedUpdatedAt` is
+   * optional in the Zod schema, and this guard is a no-op whenever
+   * it's null/undefined/unparseable — an older client that has never
+   * heard of this field (or the explicit "Overwrite" retry, which
+   * omits it on purpose) gets EXACTLY today's blind-write behavior.
+   * Comparison is by timestamp equality after `Date.parse` (not
+   * strict string equality) so a client that round-trips the ISO
+   * string through JSON without reformatting it still matches.
+   */
+  private assertNotStale(
+    current: { updatedAt: Date },
+    expectedUpdatedAt: string | null | undefined,
+  ): void {
+    if (!expectedUpdatedAt) return; // field omitted — guard opts out, old behavior
+    const expectedMs = Date.parse(expectedUpdatedAt);
+    if (Number.isNaN(expectedMs)) return; // malformed value — fail OPEN, never block a save on a client bug
+    const currentMs = current.updatedAt.getTime();
+    if (currentMs > expectedMs) {
+      throw new HttpException(
+        {
+          message: 'This template was changed since you opened it.',
+          code: 'TEMPLATE_STALE',
+          serverUpdatedAt: current.updatedAt.toISOString(),
+        },
+        HttpStatus.CONFLICT,
+      );
+    }
+  }
+
+  /**
+   * C3 (Wave C — "Crush Canva" safety net, 2026-07-02) — write a
+   * compact version snapshot and cap retention at the 5 most recent
+   * rows per template, in the SAME transaction so the cap can never
+   * observably slip (e.g. a crash between insert and cleanup leaving
+   * 6+ rows around forever).
+   *
+   * Called once per logical builder Save — from `replaceZones`, the
+   * LATER of the two PUTs the builder fires (metadata PUT, then zones
+   * PUT), so the snapshot's `meta` already reflects both. A snapshot
+   * failing must never fail the save itself (best-effort, like
+   * `audit()` above) — losing a history row is far less bad than
+   * losing the operator's actual edit.
+   *
+   * `meta` is intentionally the narrow subset of Template scalars the
+   * builder edits (see TemplateVersion's schema doc comment) rather
+   * than the whole row, so a version never drifts if unrelated
+   * columns change shape later.
+   */
+  private async snapshotVersion(
+    req: any,
+    templateId: string,
+    tenantId: string,
+    zones: unknown,
+    meta: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      const created = await (this.prisma.client as any).templateVersion.create({
+        data: {
+          templateId,
+          tenantId,
+          byUserId: req?.user?.id ?? null,
+          zones: zones as any,
+          meta: meta as any,
+        },
+        select: { id: true },
+      });
+      // Keep only the newest 5 (including the one just created). Fetch
+      // the ids to delete beyond the 5th-newest rather than a raw SQL
+      // LIMIT/OFFSET delete, so this stays portable across the ORM.
+      const stale = await (this.prisma.client as any).templateVersion.findMany({
+        where: { templateId },
+        orderBy: { createdAt: 'desc' },
+        skip: 5,
+        select: { id: true },
+      });
+      if (stale.length > 0) {
+        await (this.prisma.client as any).templateVersion.deleteMany({
+          where: { id: { in: stale.map((s: { id: string }) => s.id) } },
+        });
+      }
+      void created; // id unused today; kept for a future "jump to this version" deep link
+    } catch (e: any) {
+      this.auditLogger.warn(`snapshotVersion(${templateId}) failed: ${e?.message ?? e}`);
+    }
+  }
+
   // ───────────────────────────────────────────────────────
   // BRAND INHERITANCE HELPER (2026-05-04)
   // ───────────────────────────────────────────────────────
@@ -2171,6 +2276,9 @@ export class TemplatesController {
     if (template.isSystem) {
       throw new HttpException('Cannot modify system templates. Duplicate it first.', HttpStatus.FORBIDDEN);
     }
+    // C2 — staleness guard. No-op (and no behavior change) when the
+    // client omits expectedUpdatedAt.
+    this.assertNotStale(template, body.expectedUpdatedAt);
 
     // Clamp idleResetMs into a sane window so a buggy client can't
     // brick a kiosk by saving idleResetMs=0 (visitor flow returns
@@ -2227,6 +2335,10 @@ export class TemplatesController {
     if (template.isSystem) {
       throw new HttpException('Cannot modify system templates. Duplicate it first.', HttpStatus.FORBIDDEN);
     }
+    // C2 — staleness guard on the MOST destructive of the two save
+    // calls (this is the delete-all-and-recreate). No-op when the
+    // client omits expectedUpdatedAt.
+    this.assertNotStale(template, body.expectedUpdatedAt);
 
     // Validate all zones
     for (const zone of body.zones) {
@@ -2299,7 +2411,173 @@ export class TemplatesController {
       via: 'replace-zones',
       zoneCount: body.zones.length,
     });
+    // C3 — this is the LATER of the builder's two save calls (metadata
+    // PUT already landed by the time handleSave fires this one), so
+    // freshTemplate's scalars are the complete post-save state. One
+    // version row per logical builder Save. Best-effort — see
+    // snapshotVersion's doc comment.
+    if (freshTemplate) {
+      await this.snapshotVersion(req, id, req.user.tenantId, freshTemplate.zones, {
+        name: freshTemplate.name,
+        description: freshTemplate.description,
+        screenWidth: freshTemplate.screenWidth,
+        screenHeight: freshTemplate.screenHeight,
+        bgColor: freshTemplate.bgColor,
+        bgGradient: freshTemplate.bgGradient,
+        bgImage: (freshTemplate as any).bgImage,
+        isTouchEnabled: (freshTemplate as any).isTouchEnabled,
+        idleResetMs: (freshTemplate as any).idleResetMs,
+      });
+    }
     return mapTemplate(freshTemplate);
+  }
+
+  // ───────────────────────────────────────────────────────
+  // C3 — VERSION HISTORY (Wave C — "Crush Canva" safety net, 2026-07-02)
+  // ───────────────────────────────────────────────────────
+
+  /**
+   * Light list — id/createdAt/byUser only, NEVER the zones/meta JSON.
+   * The History panel just needs enough to render "3 minutes ago —
+   * Greg" per row; shipping the full snapshot payload for all 5 rows
+   * on every panel open is unnecessary weight (a snapshot's zones JSON
+   * can be sizeable — full parity with the actual template).
+   */
+  @Get(':id/versions')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  async listVersions(@Request() req: any, @Param('id') id: string) {
+    const tpl = await this.prisma.client.template.findFirst({
+      where: { id, tenantId: req.user.tenantId },
+      select: { id: true },
+    });
+    if (!tpl) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    const versions = await (this.prisma.client as any).templateVersion.findMany({
+      where: { templateId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      select: {
+        id: true,
+        createdAt: true,
+        byUser: { select: { id: true, email: true } },
+      },
+    });
+    return versions.map((v: any) => ({
+      id: v.id,
+      createdAt: v.createdAt,
+      byUser: v.byUser ? { id: v.byUser.id, email: v.byUser.email } : null,
+    }));
+  }
+
+  /**
+   * Restore is NEVER destructive of the version history itself: it
+   * snapshots the template's CURRENT state first (via the exact same
+   * snapshotVersion helper every normal Save uses), THEN applies the
+   * old version's zones/meta as an ordinary save (delete-all-and-
+   * recreate zones + update scalars, same operation replaceZones/
+   * update already perform). So "Restore" from 3 versions back always
+   * leaves a trail back to what was on-screen the instant before you
+   * restored — a bad restore is itself one more Restore away from
+   * undone.
+   *
+   * Tenant-scoped + role-guarded identically to the sibling save
+   * endpoints; system templates can't have versions in practice (they
+   * never go through update/replaceZones, which is the only writer),
+   * but the ownership check still rejects on principle.
+   */
+  @Post(':id/versions/:versionId/restore')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
+  async restoreVersion(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Param('versionId') versionId: string,
+  ) {
+    const template = await this.prisma.client.template.findFirst({
+      where: { id, tenantId: req.user.tenantId },
+      include: { zones: { orderBy: { sortOrder: 'asc' } } },
+    });
+    if (!template) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (template.isSystem) {
+      throw new HttpException('Cannot modify system templates. Duplicate it first.', HttpStatus.FORBIDDEN);
+    }
+    const version = await (this.prisma.client as any).templateVersion.findFirst({
+      where: { id: versionId, templateId: id },
+    });
+    if (!version) throw new HttpException('Version not found', HttpStatus.NOT_FOUND);
+
+    // Snapshot the CURRENT (pre-restore) state before touching anything
+    // — see doc comment above. Uses the row we already loaded, not a
+    // fresh query.
+    await this.snapshotVersion(req, id, req.user.tenantId, template.zones, {
+      name: template.name,
+      description: template.description,
+      screenWidth: template.screenWidth,
+      screenHeight: template.screenHeight,
+      bgColor: template.bgColor,
+      bgGradient: template.bgGradient,
+      bgImage: (template as any).bgImage,
+      isTouchEnabled: (template as any).isTouchEnabled,
+      idleResetMs: (template as any).idleResetMs,
+    });
+
+    const snapshotMeta = (version.meta || {}) as Record<string, any>;
+    const snapshotZones = Array.isArray(version.zones) ? version.zones : [];
+
+    // Validate the snapshot's zone bounds exactly like a normal save —
+    // a version written before a future bounds-tightening change
+    // shouldn't be able to restore an invalid layout silently.
+    for (const zone of snapshotZones) {
+      validateZoneBounds(zone);
+    }
+
+    const [, , restored] = await this.prisma.client.$transaction([
+      this.prisma.client.template.update({
+        where: { id },
+        data: {
+          ...(typeof snapshotMeta.name === 'string' && { name: snapshotMeta.name }),
+          ...(snapshotMeta.description !== undefined && { description: snapshotMeta.description }),
+          ...(typeof snapshotMeta.screenWidth === 'number' && { screenWidth: snapshotMeta.screenWidth }),
+          ...(typeof snapshotMeta.screenHeight === 'number' && { screenHeight: snapshotMeta.screenHeight }),
+          ...(snapshotMeta.bgColor !== undefined && { bgColor: snapshotMeta.bgColor }),
+          ...(snapshotMeta.bgGradient !== undefined && { bgGradient: snapshotMeta.bgGradient }),
+          ...(snapshotMeta.bgImage !== undefined && { bgImage: snapshotMeta.bgImage }),
+          ...(typeof snapshotMeta.isTouchEnabled === 'boolean' && { isTouchEnabled: snapshotMeta.isTouchEnabled }),
+          ...(typeof snapshotMeta.idleResetMs === 'number' && { idleResetMs: snapshotMeta.idleResetMs }),
+        } as any,
+      }),
+      this.prisma.client.templateZone.deleteMany({ where: { templateId: id } }),
+      ...snapshotZones.map((z: any, i: number) =>
+        this.prisma.client.templateZone.create({
+          data: {
+            templateId: id,
+            name: z.name,
+            widgetType: z.widgetType,
+            x: z.x,
+            y: z.y,
+            width: z.width,
+            height: z.height,
+            zIndex: z.zIndex ?? 0,
+            sortOrder: z.sortOrder ?? i,
+            defaultConfig: z.defaultConfig ? JSON.stringify(z.defaultConfig) : null,
+            touchAction: z.touchAction == null ? null : (z.touchAction as any),
+            sceneId: null, // Phase D2.5 scenes aren't captured in the snapshot (see model doc) — restored zones land as shared-across-scenes.
+          } as any,
+        }),
+      ),
+      this.prisma.client.template.findUnique({
+        where: { id },
+        include: {
+          zones: { orderBy: { sortOrder: 'asc' } },
+          scenes: { orderBy: { sortOrder: 'asc' } } as any,
+        } as any,
+      }),
+    ]);
+
+    await this.audit(req, 'TEMPLATE_UPDATED', id, {
+      via: 'version-restore',
+      restoredVersionId: versionId,
+    });
+
+    return mapTemplate(restored);
   }
 
   // ───────────────────────────────────────────────────────

@@ -50,6 +50,7 @@ model Tenant {
   screenGroups                    ScreenGroup[]
   screens                         Screen[]
   templates                       Template[]
+  templateVersions                TemplateVersion[]
   notifications                   Notification[]
   parent                          Tenant?            @relation("TenantHierarchy", fields: [parentId], references: [id])
   children                        Tenant[]           @relation("TenantHierarchy")
@@ -442,6 +443,7 @@ model User {
   bugsReported         Bug[]                @relation("BugReporter")
   bugsApproved         Bug[]                @relation("BugApprover")
   createdTemplates     Template[]           @relation("TemplateCreator")
+  templateVersions     TemplateVersion[]
   createdPlaylists     Playlist[]           @relation("PlaylistCreator")
   tenant               Tenant               @relation(fields: [tenantId], references: [id])
   cleverId             String?              @unique @map("clever_id")
@@ -1210,12 +1212,64 @@ model Template {
   ribbonGames     Game[] @relation("GameRibbonTemplate")
   scorebugGames   Game[] @relation("GameScorebugTemplate")
 
+  // Wave C / editor-crush C3 (2026-07-02) — last-5 version history.
+  // See TemplateVersion below; onDelete: Cascade so deleting a template
+  // doesn't leave orphaned snapshot rows behind.
+  versions        TemplateVersion[]
+
   // Gallery orders by (isSystem desc, updatedAt desc) filtered by
   // tenantId + status + vertical. Composite index covers the common
   // combinations.
   @@index([tenantId, status])
   @@index([isSystem, status, vertical, updatedAt])
   @@map("templates")
+}
+
+// Wave C / editor-crush C3 (2026-07-02) — "even last-5 snapshots kills
+// the 'one bad Save is unrecoverable' class" (06-CRUSH-CANVA-PLAN.md).
+// A compact snapshot written on every successful Save (metadata PUT +
+// zones replace-all PUT both land in the same logical save from the
+// builder, so the controller writes ONE version row per save covering
+// both). Only the newest 5 rows per template are kept — older ones are
+// deleted in the same transaction as the insert (see
+// TemplatesController.snapshotVersion). Restoring a version does NOT
+// overwrite destructively: POST .../versions/:versionId/restore itself
+// snapshots the CURRENT state first (so a bad restore is itself
+// recoverable), then applies the old zones/meta as a normal save.
+//
+// Deliberately NOT storing a `name`/`label` — this is a lightweight
+// last-5 safety net, not a full named-version feature (that's a much
+// bigger UI + retention-policy decision left for later).
+model TemplateVersion {
+  id         String   @id @default(uuid())
+  templateId String   @map("template_id")
+  tenantId   String   @map("tenant_id")
+  // Nullable — a version could in principle be written by a system
+  // process (none exist today, but don't force a fake user id if one
+  // ever does), and SetNull on the user relation must not cascade into
+  // losing the whole snapshot when a user account is deleted.
+  byUserId   String?  @map("by_user_id")
+  // Full zones[] array (same shape TemplateReplaceZonesSchema accepts)
+  // at the moment of this save.
+  zones      Json
+  // The subset of Template scalar fields the builder actually edits
+  // (name/description/screenWidth/screenHeight/bgColor/bgGradient/
+  // bgImage/isTouchEnabled/idleResetMs) — NOT the whole Template row,
+  // so this never drifts if unrelated columns (category, vertical,
+  // brandKit, …) change out from under a stale version.
+  meta       Json
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  template Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  byUser   User?    @relation(fields: [byUserId], references: [id], onDelete: SetNull)
+
+  // The History panel lists "the 5 most recent for this template" —
+  // exactly this access pattern. Also index tenantId alone so a
+  // tenant-wide cleanup/export job never needs a sequential scan.
+  @@index([templateId, createdAt])
+  @@index([tenantId])
+  @@map("template_versions")
 }
 
 model EmergencyMessage {
