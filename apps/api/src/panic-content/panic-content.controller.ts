@@ -68,7 +68,7 @@ export class PanicContentController {
 
   private validateKind(kind: string) {
     if (!(kind in PanicContentController.KIND_TO_FIELD)) {
-      throw new HttpException(`Unknown panic content kind: ${kind}`, HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'PANIC_CONTENT_KIND_UNKNOWN', message: `Unknown panic content kind: ${kind}` }, HttpStatus.BAD_REQUEST);
     }
   }
 
@@ -108,7 +108,7 @@ export class PanicContentController {
       where: { id: tenantId },
       select: { id: true, [field]: true } as any,
     });
-    if (!tenant) throw new HttpException('Tenant not found', HttpStatus.NOT_FOUND);
+    if (!tenant) throw new HttpException({ code: 'PANIC_CONTENT_TENANT_NOT_FOUND', message: 'Tenant not found' }, HttpStatus.NOT_FOUND);
 
     const existingId = (tenant as any)[field] as string | null;
     if (existingId) {
@@ -190,7 +190,7 @@ export class PanicContentController {
   ) {
     this.validateKind(kind);
     if (!body.assetId) {
-      throw new HttpException('assetId required', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'PANIC_CONTENT_ASSET_ID_REQUIRED', message: 'assetId required' }, HttpStatus.BAD_REQUEST);
     }
     const orientation = this.normalizeOrientation(orientationRaw);
     const asset = await this.prisma.client.asset.findFirst({
@@ -198,7 +198,7 @@ export class PanicContentController {
       select: { id: true, mimeType: true },
     });
     if (!asset) {
-      throw new HttpException('Asset not found in this tenant', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'PANIC_CONTENT_ASSET_NOT_FOUND', message: 'Asset not found in this tenant' }, HttpStatus.NOT_FOUND);
     }
     const playlistId = await this.ensurePlaylist(req.user.tenantId, kind as any, orientation);
     const last = await this.prisma.client.playlistItem.findFirst({
@@ -263,10 +263,10 @@ export class PanicContentController {
       include: { playlist: { select: { tenantId: true, isProtected: true, protectedKind: true } } },
     });
     if (!item || item.playlist.tenantId !== req.user.tenantId) {
-      throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'PANIC_CONTENT_ITEM_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     }
     if (!item.playlist.isProtected || item.playlist.protectedKind !== expectedProtectedKind) {
-      throw new HttpException('Item does not belong to this panic content bucket', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'PANIC_CONTENT_ITEM_KIND_MISMATCH', message: 'Item does not belong to this panic content bucket' }, HttpStatus.BAD_REQUEST);
     }
     // 2026-05-23 launch audit P1: removing emergency content is the
     // mirror life-safety mutation as adding it. Atomic delete+audit.

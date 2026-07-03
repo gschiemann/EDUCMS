@@ -68,7 +68,7 @@ export class SubmissionsController {
     const scheduleIds = body.scheduleIds || [];
 
     if (!assetIds.length && !playlistIds.length && !scheduleIds.length) {
-      throw new HttpException('Submission must include at least one asset, playlist, or schedule.', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'SUBMISSION_CONTENT_REQUIRED', message: 'Submission must include at least one asset, playlist, or schedule.' }, HttpStatus.BAD_REQUEST);
     }
 
     // Tenant-isolation check on every referenced id. Without this, a
@@ -76,15 +76,15 @@ export class SubmissionsController {
     // reviewer panel would render it.
     if (assetIds.length) {
       const owned = await this.prisma.client.asset.count({ where: { id: { in: assetIds }, tenantId } });
-      if (owned !== assetIds.length) throw new HttpException('One or more assets are not in this tenant.', HttpStatus.FORBIDDEN);
+      if (owned !== assetIds.length) throw new HttpException({ code: 'SUBMISSION_ASSETS_NOT_IN_TENANT', message: 'One or more assets are not in this tenant.' }, HttpStatus.FORBIDDEN);
     }
     if (playlistIds.length) {
       const owned = await this.prisma.client.playlist.count({ where: { id: { in: playlistIds }, tenantId } });
-      if (owned !== playlistIds.length) throw new HttpException('One or more playlists are not in this tenant.', HttpStatus.FORBIDDEN);
+      if (owned !== playlistIds.length) throw new HttpException({ code: 'SUBMISSION_PLAYLISTS_NOT_IN_TENANT', message: 'One or more playlists are not in this tenant.' }, HttpStatus.FORBIDDEN);
     }
     if (scheduleIds.length) {
       const owned = await this.prisma.client.schedule.count({ where: { id: { in: scheduleIds }, tenantId } });
-      if (owned !== scheduleIds.length) throw new HttpException('One or more schedules are not in this tenant.', HttpStatus.FORBIDDEN);
+      if (owned !== scheduleIds.length) throw new HttpException({ code: 'SUBMISSION_SCHEDULES_NOT_IN_TENANT', message: 'One or more schedules are not in this tenant.' }, HttpStatus.FORBIDDEN);
     }
 
     // Notify-user list — must all be admins in the same tenant. Drop
@@ -216,9 +216,9 @@ export class SubmissionsController {
         decidedBy:   { select: { id: true, email: true } },
       },
     });
-    if (!sub) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+    if (!sub) throw new HttpException({ code: 'SUBMISSION_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     if (!isAdmin && sub.submittedById !== userId) {
-      throw new HttpException('Not found', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'SUBMISSION_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
     }
 
     const aIds = fromCsv(sub.assetIds);
@@ -266,8 +266,8 @@ export class SubmissionsController {
     const tenantId = req.user.tenantId as string;
     const userId = req.user.id as string;
     const sub = await this.prisma.client.submission.findFirst({ where: { id, tenantId } });
-    if (!sub) throw new HttpException('Not found', HttpStatus.NOT_FOUND);
-    if (sub.status !== 'PENDING') throw new HttpException(`Already ${sub.status}`, HttpStatus.CONFLICT);
+    if (!sub) throw new HttpException({ code: 'SUBMISSION_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+    if (sub.status !== 'PENDING') throw new HttpException({ code: 'SUBMISSION_ALREADY_DECIDED', message: `Already ${sub.status}` }, HttpStatus.CONFLICT);
 
     const aIds = fromCsv(sub.assetIds);
     const pIds = fromCsv(sub.playlistIds);
