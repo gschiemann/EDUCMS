@@ -315,6 +315,8 @@ function StadiumBroadcastScene({
   dqReasons,
   homeColor,
   awayColor,
+  homeTeam,
+  awayTeam,
   record,
   sponsor,
   bgColor,
@@ -327,6 +329,8 @@ function StadiumBroadcastScene({
   dqReasons: Record<string, string>;
   homeColor: string | null;
   awayColor: string | null;
+  homeTeam: string | null;
+  awayTeam: string | null;
   record: { recordLabel: string; recordValue: string; recordHolder: string; recordDelta: string } | null;
   sponsor: { sponsorLabel: string; sponsorName: string } | null;
   bgColor: string;
@@ -426,7 +430,10 @@ function StadiumBroadcastScene({
                 </b>
                 {r.team && (
                   <span style={{ fontSize: 26, fontWeight: 700, color: '#93a4c3', marginLeft: 22, letterSpacing: 2, whiteSpace: 'nowrap' }}>
-                    {r.team === 'home' ? 'HOME' : 'AWAY'}
+                    {/* Real bound team name (a dual meet's two schools) when the
+                        game carries one; falls back to HOME/AWAY only when it
+                        doesn't (e.g. no-data surface). Never fabricated. */}
+                    {r.team === 'home' ? (homeTeam || 'HOME') : (awayTeam || 'AWAY')}
                   </span>
                 )}
               </div>
@@ -592,6 +599,8 @@ export function StadiumMeetBoardWidget({ config }: WidgetProps<StadiumMeetBoardC
           dqReasons={dqReasons}
           homeColor={snapshot?.homeColor ?? null}
           awayColor={snapshot?.awayColor ?? null}
+          homeTeam={snapshot?.homeTeam ?? null}
+          awayTeam={snapshot?.awayTeam ?? null}
           record={record}
           sponsor={sponsor}
           bgColor={bgColor}
