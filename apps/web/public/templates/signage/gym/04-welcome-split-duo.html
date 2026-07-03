@@ -1,0 +1,206 @@
+<!doctype html>
+<!-- GYM · WELCOME SPLIT-DUO — new-member welcome board (member | coach diagonal seam).
+     APPROVED 2026-07-02 — matches docs/design/approved/2026-07-02-gym-welcome/gym-welcome-v7.html.
+     Reviewed by Greg. DO NOT regress.
+     Pixel-faithful ×2 port of the 1920×1080 mockup to the sibling 3840×2160 signage
+     scaffold (transform:scale stage, brand-token vars the shim recognises, live clock,
+     data-field on every text, data-imgslot for trainer photo + logo). -->
+<html lang="en"><head><meta charset="utf-8"/><title>Gym · Welcome Split-Duo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* rebrand here — names the shim's BRAND_MAP recognises */
+  --bg:#0b0d11;--paper:#141822;--fg:#ffffff;--mute:#8b93a3;--rule:#1c212c;
+  --primary:#bef22d;--primary2:#8fd311;--accent:#f97316;--accent2:#38bdf8;--good:#38bdf8;
+  --font-display:"Anton",system-ui,sans-serif;--font-grotesk:"Inter",system-ui,sans-serif;--font-mono:"Inter",system-ui,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden;color:var(--fg);font-family:var(--font-grotesk);background:var(--bg);}
+
+/* two color-blocked halves with a diagonal seam — the canvas IS the layout */
+.half{position:absolute;top:192px;bottom:240px;width:56%;overflow:hidden;}
+.half.left{left:0;background:linear-gradient(160deg,#151a10 0%,#10130b 60%,#0d0f09 100%);
+  clip-path:polygon(0 0, 100% 0, 82% 100%, 0 100%);}
+.half.right{right:0;background:linear-gradient(200deg,#0e1620 0%,#0b1219 60%,#090e14 100%);
+  clip-path:polygon(18% 0, 100% 0, 100% 100%, 0 100%);}
+.tex{position:absolute;top:0;right:0;bottom:0;left:0;opacity:.35;
+  background:repeating-linear-gradient(115deg, rgba(255,255,255,.03) 0 4px, transparent 4px 28px);}
+.seam{position:absolute;top:192px;bottom:240px;left:50%;width:0;border-left:8px dashed rgba(255,255,255,.22);transform:translateX(-4px) skewX(-14deg);}
+.seamplate{position:absolute;top:46%;left:50%;transform:translate(-50%,-50%);width:260px;height:260px;border-radius:50%;
+  background:var(--bg);border:10px solid rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;z-index:5;}
+.seamplate .inner{width:172px;height:172px;border-radius:50%;border:8px solid var(--accent);display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-display);font-size:80px;color:var(--accent);}
+.wm{position:absolute;bottom:176px;left:50%;transform:translateX(-50%);font-family:var(--font-display);font-size:600px;line-height:1;
+  color:transparent;-webkit-text-stroke:4px rgba(255,255,255,.07);letter-spacing:16px;z-index:1;white-space:nowrap;}
+
+/* header band */
+.head{position:absolute;top:0;left:0;right:0;height:192px;background:var(--bg);display:flex;align-items:center;
+  justify-content:space-between;padding:0 112px;border-bottom:2px solid var(--rule);z-index:6;}
+.brand{display:flex;align-items:center;}
+.plate{width:104px;height:104px;border-radius:28px;background:var(--primary);display:flex;align-items:center;justify-content:center;margin-right:36px;background-size:cover;background-position:center;}
+.plate svg{width:60px;height:60px;}
+.plate.has-img svg{display:none;}
+.brand h1{font-family:var(--font-display);font-size:84px;letter-spacing:2px;text-transform:uppercase;line-height:1;}
+.brand small{font-size:26px;font-weight:800;letter-spacing:10px;color:var(--mute);display:block;margin-top:4px;}
+.clock{font-family:var(--font-display);font-size:84px;font-variant-numeric:tabular-nums;}
+
+/* member side */
+.mside{position:absolute;left:128px;top:300px;width:1600px;z-index:4;}
+.tag{display:inline-block;font-size:36px;font-weight:800;letter-spacing:4px;background:var(--accent2);color:#052033;
+  padding:18px 40px;border-radius:999px;margin-bottom:44px;}
+.hello{font-family:var(--font-display);font-size:128px;color:var(--primary);line-height:1;text-transform:uppercase;}
+.name{font-family:var(--font-display);font-size:380px;line-height:.95;letter-spacing:-4px;text-transform:uppercase;text-shadow:14px 14px 0 color-mix(in srgb, var(--primary) 20%, transparent);}
+.since{font-size:48px;color:#c7cdd9;margin:36px 0 60px;}
+.since b{color:var(--fg);}
+.list .row{display:flex;align-items:center;padding:24px 0;}
+.bx{width:68px;height:68px;border-radius:18px;border:6px solid #3a4152;margin-right:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.bx.done{background:var(--primary);border-color:var(--primary);}
+.bx.done svg{width:40px;height:40px;}
+.list .t{font-size:46px;font-weight:700;}
+.list .t small{color:var(--mute);font-weight:600;font-size:34px;margin-left:20px;}
+.week{display:flex;align-items:center;margin-top:72px;}
+.seg{width:88px;height:32px;background:#242a1a;border-radius:8px;margin-right:14px;}
+.seg.on{background:var(--primary);box-shadow:0 0 24px color-mix(in srgb, var(--primary) 50%, transparent);}
+.week span{font-size:34px;font-weight:800;letter-spacing:4px;color:var(--mute);margin-left:24px;}
+
+/* trainer side */
+.tside{position:absolute;right:128px;top:300px;width:1320px;text-align:right;z-index:4;}
+.tag2{display:inline-block;font-size:36px;font-weight:800;letter-spacing:4px;background:var(--primary);color:#141a05;
+  padding:18px 40px;border-radius:999px;margin-bottom:44px;}
+.tring{width:400px;height:400px;border-radius:50%;margin:12px 0 48px auto;
+  background:conic-gradient(var(--accent2) 0 300deg, #223040 300deg 360deg);display:flex;align-items:center;justify-content:center;}
+.tface{width:344px;height:344px;border-radius:50%;background:#101722;display:flex;align-items:center;justify-content:center;background-size:cover;background-position:center;
+  font-family:var(--font-display);font-size:148px;color:var(--accent2);}
+.tface.has-img{font-size:0;}
+.tname{font-family:var(--font-display);font-size:192px;line-height:1;text-transform:uppercase;}
+.tspec{font-size:44px;font-weight:800;letter-spacing:6px;color:var(--accent2);margin:24px 0 32px;}
+.tbio{font-size:42px;color:#9aa2b1;line-height:1.5;}
+.tcta{display:inline-flex;align-items:center;margin-top:56px;background:var(--accent2);color:#052033;font-weight:800;
+  font-size:44px;letter-spacing:2px;padding:32px 60px;border-radius:28px;box-shadow:0 24px 60px color-mix(in srgb, var(--accent2) 35%, transparent);}
+.tcta svg{width:52px;height:52px;margin-right:24px;}
+.hours{display:flex;justify-content:flex-end;margin-top:76px;}
+.hr{background:color-mix(in srgb, var(--accent2) 8%, transparent);border:2px solid color-mix(in srgb, var(--accent2) 25%, transparent);border-radius:24px;padding:28px 40px;margin-left:32px;text-align:center;}
+.hr b{display:block;font-size:30px;font-weight:800;letter-spacing:4px;color:#7fb9d6;margin-bottom:10px;}
+.hr span{font-family:var(--font-display);font-size:52px;color:#e8ecf3;letter-spacing:2px;}
+
+/* class ticker band — SOLID opaque */
+.band{position:absolute;left:0;right:0;bottom:0;height:240px;background:linear-gradient(90deg,var(--accent),#fb5607);
+  display:flex;align-items:center;padding:0 112px;z-index:6;}
+.band .stripes{position:absolute;top:0;right:0;bottom:0;left:0;background:repeating-linear-gradient(115deg, rgba(0,0,0,.08) 0 52px, transparent 52px 104px);}
+.band h2{font-family:var(--font-display);font-size:68px;color:#1a0f00;letter-spacing:2px;margin-right:76px;position:relative;text-transform:uppercase;}
+.band .cls{position:relative;display:flex;align-items:center;background:rgba(26,15,0,.16);border-radius:24px;padding:24px 44px;margin-right:40px;}
+.band .cls b{font-size:48px;color:#1a0f00;margin-right:24px;}
+.band .cls span{font-size:38px;font-weight:800;color:rgba(26,15,0,.65);}
+.band .free{position:relative;margin-left:auto;font-size:40px;font-weight:800;letter-spacing:4px;color:#1a0f00;
+  border:6px dashed rgba(26,15,0,.5);padding:24px 44px;border-radius:24px;text-transform:uppercase;}
+
+/* portrait: stack member over coach, seam becomes horizontal-ish */
+.stage[data-orient="portrait"] .half{width:100%;left:0;right:0;}
+.stage[data-orient="portrait"] .half.left{clip-path:polygon(0 0,100% 0,100% 46%,0 54%);bottom:auto;height:1800px;}
+.stage[data-orient="portrait"] .half.right{clip-path:polygon(0 54%,100% 46%,100% 100%,0 100%);top:192px;bottom:240px;}
+.stage[data-orient="portrait"] .seam,.stage[data-orient="portrait"] .seamplate,.stage[data-orient="portrait"] .wm{display:none;}
+.stage[data-orient="portrait"] .mside{left:120px;right:120px;width:auto;top:280px;}
+.stage[data-orient="portrait"] .name{font-size:300px;}
+.stage[data-orient="portrait"] .tside{left:120px;right:120px;width:auto;text-align:left;top:2060px;}
+.stage[data-orient="portrait"] .tring{margin:12px auto 48px 0;}
+.stage[data-orient="portrait"] .hours{justify-content:flex-start;}
+.stage[data-orient="portrait"] .hr{margin:0 32px 0 0;}
+</style>
+<script>/*EDUCMS-SHIM-V6*/(function(){try{
+var editMode=false;
+// ── Gallery FREEZE mode ──────────────────────────────────────────────
+// Installed FIRST (this script is at end of <head>, before the board's own
+// <body> scripts), so the timer-wrappers below capture every timer the board
+// starts. Strict NO-OP unless the URL carries freeze=1.
+var FROZEN=(function(){try{return new URLSearchParams(location.search).get('freeze')==='1';}catch(e){return false;}})();
+var _frzStyle=null;
+function _unfreeze(){if(_frzStyle){try{if(_frzStyle.parentNode)_frzStyle.parentNode.removeChild(_frzStyle);}catch(e){}_frzStyle=null;}}
+(function(){if(!FROZEN)return;var ivs=[],tos=[],rafs=[];var _si=window.setInterval,_st=window.setTimeout,_raf=window.requestAnimationFrame;
+window.setInterval=function(){var id=_si.apply(window,arguments);try{ivs.push(id);}catch(e){}return id;};
+window.setTimeout=function(){var id=_st.apply(window,arguments);try{tos.push(id);}catch(e){}return id;};
+if(_raf)window.requestAnimationFrame=function(cb){var id=_raf.call(window,cb);try{rafs.push(id);}catch(e){}return id;};
+function freezeNow(){window.setInterval=_si;window.setTimeout=_st;if(_raf)window.requestAnimationFrame=_raf;try{for(var i=0;i<ivs.length;i++)clearInterval(ivs[i]);}catch(e){}try{for(var j=0;j<tos.length;j++)clearTimeout(tos[j]);}catch(e){}try{if(_raf)for(var k=0;k<rafs.length;k++)cancelAnimationFrame(rafs[k]);}catch(e){}try{var hi=_st(function(){},0);if(typeof hi==='number'&&hi>0){var lo=hi>100000?hi-100000:0;for(var z=hi;z>lo;z--){clearTimeout(z);clearInterval(z);}}}catch(e){}if(!_frzStyle){try{_frzStyle=document.createElement('style');_frzStyle.setAttribute('data-educms-freeze','1');_frzStyle.appendChild(document.createTextNode('*{animation:none!important;transition:none!important;}'));(document.head||document.documentElement).appendChild(_frzStyle);}catch(e){}}}
+// Settle window: let the board's auto-fit (setTimeout(autofit,500)+fonts.ready)
+// finish before killing its timers; then a brute-force id sweep catches any the
+// wrappers missed. Scheduled via the REAL setTimeout so this scheduler isn't
+// itself recorded/cleared.
+_st(freezeNow,1400);window.__educmsFreezeNow=freezeNow;}());
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold','--c-accent2'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function armEdit(){document.querySelectorAll('[data-field],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':'#06b6d4');el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(el.hasAttribute('data-field')?'text':'img');try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);if(editMode)armEdit();}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();}}}catch(_){}});
+}catch(e){}})();</script>
+</head><body>
+<div class="stage" id="stage">
+  <header class="head" data-widget="brand">
+    <div class="brand">
+      <div class="plate" data-widget="logo" data-imgslot="brand.logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M3 9v6M6 7v10M18 7v10M21 9v6M6 12h12" stroke="#0b0d11" stroke-width="2.6" stroke-linecap="round"/></svg></div>
+      <div><h1 data-field="brand.name">Ironworks Fitness</h1><small data-field="brand.tag">New member welcome</small></div>
+    </div>
+    <div class="clock" data-source="local-time" data-widget="clock"><span data-field="clock.hhmm">7:42 PM</span></div>
+  </header>
+
+  <div class="half left"><div class="tex"></div></div>
+  <div class="half right"><div class="tex"></div></div>
+  <div class="wm" data-field="split.watermark">Day 01</div>
+  <div class="seam"></div>
+  <div class="seamplate"><div class="inner">&#215;</div></div>
+
+  <section class="mside" data-widget="member">
+    <div class="tag" data-field="member.tag">Day 1 · Welcome</div>
+    <div class="hello" data-field="member.hello">Welcome,</div>
+    <div class="name" data-field="member.name">Jordan</div>
+    <div class="since"><span data-field="member.since1">Member since </span><b data-field="member.since2">Jul 1</b><span data-field="member.since3"> — you're one of us now.</span></div>
+    <div class="list" data-widget="checklist">
+      <div class="row" data-widget="checklist.0"><div class="bx done"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4 10-10" stroke="#0b0d11" stroke-width="3.4" stroke-linecap="round"/></svg></div><div class="t"><span data-field="checklist.0.t">Locker #114 assigned </span><small data-field="checklist.0.s">code at the front desk</small></div></div>
+      <div class="row" data-widget="checklist.1"><div class="bx"></div><div class="t"><span data-field="checklist.1.t">Book your free intro session </span><small data-field="checklist.1.s">30 min with your coach</small></div></div>
+      <div class="row" data-widget="checklist.2"><div class="bx"></div><div class="t"><span data-field="checklist.2.t">First class is on us </span><small data-field="checklist.2.s">any class this week</small></div></div>
+    </div>
+    <div class="week" data-widget="week">
+      <div class="seg on"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div>
+      <div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div>
+      <div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div>
+      <span data-field="week.label">Week 1 of 12</span>
+    </div>
+  </section>
+
+  <section class="tside" data-widget="trainer">
+    <div class="tag2" data-field="trainer.label">Your trainer</div>
+    <div class="tring"><div class="tface" data-imgslot="trainer.photo"><span data-field="trainer.initials">MA</span></div></div>
+    <div class="tname" data-field="trainer.name">Coach Maya</div>
+    <div class="tspec" data-field="trainer.spec">Strength &amp; conditioning</div>
+    <div class="tbio"><span data-field="trainer.bio1">Specializes in first-90-days onboarding &amp; form coaching.</span><br><span data-field="trainer.bio2">She already knows your name — go say hi.</span></div>
+    <div class="tcta" data-field="trainer.cta"><svg viewBox="0 0 24 24" fill="none"><path d="M8 7V5a4 4 0 118 0v2M5 9h14l-1 11H6L5 9z" stroke="#052033" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Book a free session</div>
+    <div class="hours" data-widget="hours">
+      <div class="hr" data-widget="hours.0"><b data-field="hours.0.k">Mon–Fri</b><span data-field="hours.0.v">5 AM – 11 PM</span></div>
+      <div class="hr" data-widget="hours.1"><b data-field="hours.1.k">Sat–Sun</b><span data-field="hours.1.v">7 AM – 9 PM</span></div>
+      <div class="hr" data-widget="hours.2"><b data-field="hours.2.k">Staffed until</b><span data-field="hours.2.v">8 PM</span></div>
+    </div>
+  </section>
+
+  <footer class="band" data-widget="classes">
+    <div class="stripes"></div>
+    <h2 data-field="classes.label">Today</h2>
+    <div class="cls" data-widget="classes.0"><b data-field="classes.0.name">HIIT 45</b><span data-field="classes.0.time">6:00 AM</span></div>
+    <div class="cls" data-widget="classes.1"><b data-field="classes.1.name">Spin</b><span data-field="classes.1.time">5:30 PM</span></div>
+    <div class="cls" data-widget="classes.2"><b data-field="classes.2.name">Yoga Flow</b><span data-field="classes.2.time">7:00 PM</span></div>
+    <div class="free" data-field="classes.free">First class free — just show up</div>
+  </footer>
+</div>
+<script>(function(){var s=document.getElementById('stage');function fit(){var p=innerHeight>innerWidth;s.setAttribute('data-orient',p?'portrait':'landscape');var w=p?2160:3840,h=p?3840:2160;s.style.width=w+'px';s.style.height=h+'px';s.style.setProperty('--scale',Math.min(innerWidth/w,innerHeight/h));}addEventListener('resize',fit);fit();
+function clk(){var d=new Date(),h=d.getHours(),m=d.getMinutes(),ap=h<12?'AM':'PM';h=h%12||12;document.querySelectorAll('[data-field="clock.hhmm"]').forEach(function(e){e.textContent=h+':'+(m<10?'0':'')+m+' '+ap;});}clk();setInterval(clk,10000);
+})();</script></body></html>
