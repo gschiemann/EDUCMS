@@ -620,8 +620,18 @@ export function ScrapbookAnnouncement({ config, compact, onConfigChange }: {
         </div>
 
         {/* Horizontal ruled lines */}
+        {/* 2026-07-03 — Rule #10 variant 3: was `{left:'10%', right:0, top:0,
+            bottom:0}` (4 explicit sides, non-uniform, top===0). The
+            browser's CSSOM re-serializes that into the `inset` SHORTHAND
+            with a leading-zero value (top comes first: 0px, then 0px 0px
+            10%), which collides with the player/layout.tsx Chromium-83
+            polyfill's attribute-substring selector for a leading-zero
+            inset value — it force-zeroes ALL sides (!important), destroying
+            the intended left margin. Fixed to 3 sides + explicit width —
+            identical computed geometry. See CLAUDE.md rule #10
+            (2026-07-03 entry). */}
         <div style={{
-          position: 'absolute', left: '10%', right: 0, top: 0, bottom: 0,
+          position: 'absolute', left: '10%', top: 0, bottom: 0, width: '90%',
           backgroundImage: `repeating-linear-gradient(
             to bottom,
             transparent 0px,
