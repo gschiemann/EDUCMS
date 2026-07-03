@@ -689,12 +689,12 @@ export const SPORTS_TEMPLATE_PRESETS: SystemPreset[] = [
   // ── Stadium Lane flagship broadcast board (S6 #288, 2026-07-03) ────
   // Greg picked all 3 stadium designs 2026-07-03 as sports-scoreboard
   // template options (docs/design/proposals/2026-07-02-stadium-lane/
-  // README.md); v1 "Broadcast" is the only style built. A full-canvas
-  // single-zone scene, same pattern as sports-swim-lane-board above —
-  // reads the SAME stats.results contract, presented with the Stadium
-  // Lane visual language (angled header, gold leader glow, team-color
-  // lane washes, pool-record + sponsor footer) instead of the dense
-  // operator-configurable grid.
+  // README.md); v1 "Broadcast" and v2 "Dual-Meet Duel" are both built. A
+  // full-canvas single-zone scene, same pattern as sports-swim-lane-board
+  // above — reads the SAME stats.results contract, presented with the
+  // Stadium Lane visual language (angled header, gold leader glow,
+  // team-color lane washes, pool-record + sponsor footer) instead of the
+  // dense operator-configurable grid.
   {
     id: 'sports-stadium-broadcast-board',
     name: '🏊 Broadcast Meet Board',
@@ -707,6 +707,26 @@ export const SPORTS_TEMPLATE_PRESETS: SystemPreset[] = [
     bgColor: '#060a14',
     zones: [
       { name: 'Broadcast Board', widgetType: 'STADIUM_MEET_BOARD', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { boardStyle: 'broadcast', laneCount: 8 } },
+    ],
+  },
+  // ── Stadium Lane v2 "Dual-Meet Duel" (S6 #288, 2026-07-03) ─────────
+  // Same widget (STADIUM_MEET_BOARD), same stats.results contract, a
+  // different `boardStyle` — the dual-meet team-score header with
+  // color-flood diagonal collision, per-swimmer delta-vs-leader, and a
+  // live-only bottom ticker (see StadiumMeetBoardWidget.tsx's
+  // StadiumDuelScene header comment for the full live-data mapping).
+  {
+    id: 'sports-stadium-duel-board',
+    name: '🏊 Dual-Meet Duel Board',
+    description:
+      'Dual-meet duel board — home/away team-color floods collide on a diagonal, huge team scores up top, per-swimmer time deltas vs the leader, medal chips, live ticker. Bind a meet; resize for any LED.',
+    category: 'SCOREBOARD',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor: '#07090f',
+    zones: [
+      { name: 'Duel Board', widgetType: 'STADIUM_MEET_BOARD', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { boardStyle: 'duel', laneCount: 8 } },
     ],
   },
   // ── Sponsors — first-class revenue surfaces (Sprint 13 §7) ────────
