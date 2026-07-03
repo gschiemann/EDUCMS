@@ -1,19 +1,27 @@
-# Dependabot — weekly dependency updates for the pnpm monorepo.
+# Dependabot — dependency updates for the pnpm monorepo.
 # `npm` ecosystem covers pnpm (Dependabot reads pnpm-lock.yaml).
 # One entry per package.json directory + one for GitHub Actions.
 #
-# NOISE POLICY (2026-05-29): minor + patch bumps are GROUPED into a single
-# PR per directory. Routine MAJOR bumps are IGNORED — they break builds
-# (argon2 native compile, eslint 9->10 flat-config, prisma 5->7, typescript
-# 5->6, actions/checkout 4->6, helmet 7->8 ...; see CLAUDE.md "Deploy
-# Reliability") and must be done DELIBERATELY, not auto-PR'd. The first
-# un-filtered run opened 20 PRs (many red on breaking majors) — this stops
-# that flood.
-#   * Security updates STILL come through — Dependabot security alerts
-#     bypass version-update ignores, so a CVE patch (even a major) is not
-#     suppressed by the rule below.
-#   * To take a major on purpose: bump it in a feature branch and let CI
-#     verify it, or temporarily drop the ignore for that one dependency.
+# ⏸ PRE-LAUNCH PAUSE (2026-07-03): every block sets
+# `open-pull-requests-limit: 0`, which PAUSES routine version-update PRs.
+# Why: V1 is locked for the live pilot (additive-only), so we do NOT want
+# a stream of dependency-bump PRs merging during the pilot — and Dependabot
+# cannot regenerate a pnpm *workspace* lockfile, so every grouped bump PR
+# failed its Vercel preview build with ERR_PNPM_OUTDATED_LOCKFILE (fast 8s
+# fail — cosmetic dashboard red, zero production impact). Pausing stops that
+# noise at the source.
+#   * SECURITY updates STILL come through — Dependabot security alerts bypass
+#     `open-pull-requests-limit`, so a CVE patch is NOT suppressed by this.
+#   * TO RE-ENABLE post-launch: set each `open-pull-requests-limit` back to
+#     2–3 (the prior values) and take the accumulated bumps as a reviewed
+#     batch on a feature branch (regenerate pnpm-lock.yaml locally so the
+#     workspace lockfile is in sync before opening the PR).
+#
+# NOISE POLICY (2026-05-29, retained for when updates resume): minor + patch
+# bumps are GROUPED into a single PR per directory; routine MAJOR bumps are
+# IGNORED — they break builds (argon2 native compile, eslint 9->10 flat-config,
+# prisma 5->7, typescript 5->6, actions/checkout 4->6, helmet 7->8 ...; see
+# CLAUDE.md "Deploy Reliability") and must be done DELIBERATELY.
 # apps/player is Android/Gradle, not npm — not managed here.
 version: 2
 updates:
@@ -22,7 +30,7 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
@@ -35,7 +43,7 @@ updates:
     directory: "/apps/api"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
@@ -47,7 +55,7 @@ updates:
     directory: "/apps/web"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
@@ -59,7 +67,7 @@ updates:
     directory: "/apps/edge"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
@@ -72,7 +80,7 @@ updates:
     directory: "/packages/api-types"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 0
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
@@ -84,7 +92,7 @@ updates:
     directory: "/packages/auth-core"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 0
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
@@ -96,7 +104,7 @@ updates:
     directory: "/packages/database"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 0
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
@@ -108,7 +116,7 @@ updates:
     directory: "/packages/ws-events"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 0
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
@@ -120,7 +128,7 @@ updates:
     directory: "/packages/scoreboard-cts"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 0
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
@@ -135,7 +143,7 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0
     groups:
       actions-minor-and-patch:
         update-types: ["minor", "patch"]
