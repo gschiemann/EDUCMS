@@ -12,7 +12,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   Trophy, Plus, Radio, ExternalLink, Trash2, X, BadgeDollarSign, Copy,
-  Loader2, ImageIcon, Globe,
+  Loader2, ImageIcon, Globe, Search, ChevronDown, Clock,
 } from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,7 @@ import { appConfirm } from '@/components/ui/app-dialog';
 import { SPORTS, findSport, formatScore } from '@cms/api-types';
 import { AssetPicker } from '@/components/assets/AssetPicker';
 import { filterRelevantTemplates } from '@/lib/template-relevance';
+import { formatGameWhen, orderGames } from './game-list';
 
 const STATUS_BADGE: Record<string, string> = {
   SCHEDULED: 'bg-slate-100 text-slate-600',
@@ -83,6 +84,11 @@ function SportsHub() {
   }, []);
 
   const list: any[] = Array.isArray(games) ? games : [];
+  // Sports Wave S4-2 (P2, 2026-07-02 deep-pass audit) — LIVE first, then
+  // upcoming (dated soonest-first, undated after), then FINAL collapsed
+  // behind a single disclosure. See ./game-list.ts for the pure ordering
+  // rule + its unit tests.
+  const { live, upcoming, past } = useMemo(() => orderGames(list), [list]);
 
   const handleDelete = async (id: string, label: string) => {
     const ok = await appConfirm({
@@ -142,7 +148,7 @@ function SportsHub() {
         </div>
       </div>
 
-      {/* game grid */}
+      {/* game list — LIVE first, then upcoming, then a collapsed Past section */}
       {isLoading ? (
         <div className="text-center py-24 text-sm text-slate-400">Loading games…</div>
       ) : list.length === 0 ? (
@@ -156,86 +162,60 @@ function SportsHub() {
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {list.map((g) => {
-            const def = findSport(g.sport);
-            return (
-              <div
-                key={g.id}
-                className="rounded-2xl bg-white ring-1 ring-slate-200 p-5 hover:ring-indigo-300 transition-all"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">{def?.emoji || '🏆'}</span>
-                    <span className="text-sm font-semibold text-slate-500">
-                      {def?.name || g.sport}
-                    </span>
-                  </div>
-                  <span
-                    className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                      STATUS_BADGE[g.status] || STATUS_BADGE.SCHEDULED
-                    }`}
-                  >
-                    {g.status === 'PRE_GAME' ? 'PRE-GAME' : g.status}
-                  </span>
-                </div>
+        <div className="space-y-6">
+          {live.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {live.map((g) => (
+                <GameCard
+                  key={g.id}
+                  g={g}
+                  schoolId={schoolId}
+                  router={router}
+                  duplicatingId={duplicatingId}
+                  onDuplicate={handleDuplicate}
+                  onDelete={handleDelete}
+                />
+              ))}
+            </div>
+          )}
 
-                <div className="mt-4 flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="text-base font-bold text-slate-900 truncate">{g.homeTeam}</div>
-                    <div className="text-xs text-slate-400">Home</div>
-                  </div>
-                  <div className="px-4 text-3xl font-black text-slate-900 tabular-nums">
-                    {formatScore(def, g.homeScore)} <span className="text-slate-300">–</span> {formatScore(def, g.awayScore)}
-                  </div>
-                  <div className="flex-1 text-right">
-                    <div className="text-base font-bold text-slate-900 truncate">{g.awayTeam}</div>
-                    <div className="text-xs text-slate-400">Away</div>
-                  </div>
-                </div>
+          {upcoming.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {upcoming.map((g) => (
+                <GameCard
+                  key={g.id}
+                  g={g}
+                  schoolId={schoolId}
+                  router={router}
+                  duplicatingId={duplicatingId}
+                  onDuplicate={handleDuplicate}
+                  onDelete={handleDelete}
+                />
+              ))}
+            </div>
+          )}
 
-                <div className="mt-4 flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    className="flex-1 gap-1.5"
-                    onClick={() => router.push(`/${schoolId}/sports/${g.id}`)}
-                  >
-                    <Radio className="h-3.5 w-3.5" />
-                    Control
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-1.5"
-                    onClick={() => window.open(`/board/${g.id}`, '_blank')}
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    Scoreboard
-                  </Button>
-                  <Button
-                    size="icon-sm"
-                    variant="ghost"
-                    disabled={duplicatingId === g.id}
-                    onClick={() => handleDuplicate(g.id)}
-                    aria-label="Duplicate game (clone its content into a new game)"
-                    title="Duplicate — clone this game's content into a fresh game"
-                  >
-                    <Copy className={`h-4 w-4 text-slate-400 ${duplicatingId === g.id ? 'animate-pulse' : ''}`} />
-                  </Button>
-                  <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}>
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      onClick={() => handleDelete(g.id, `${g.homeTeam} vs ${g.awayTeam}`)}
-                      aria-label="Delete game"
-                    >
-                      <Trash2 className="h-4 w-4 text-slate-400" />
-                    </Button>
-                  </RoleGate>
-                </div>
+          {past.length > 0 && (
+            <details className="group rounded-2xl border border-slate-200 bg-white/60">
+              <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-slate-600 select-none">
+                <ChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
+                Past games ({past.length})
+              </summary>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 px-4 pb-4 pt-1">
+                {past.map((g) => (
+                  <GameCard
+                    key={g.id}
+                    g={g}
+                    schoolId={schoolId}
+                    router={router}
+                    duplicatingId={duplicatingId}
+                    onDuplicate={handleDuplicate}
+                    onDelete={handleDelete}
+                  />
+                ))}
               </div>
-            );
-          })}
+            </details>
+          )}
         </div>
       )}
 
@@ -245,6 +225,120 @@ function SportsHub() {
           initialPresetTemplate={presetTemplate}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * One game's card in the Game Day list. Extracted from SportsHub's render
+ * (Sports Wave S4-2) so the LIVE / upcoming / past sections can all reuse
+ * it. LIVE games get a pulsing dot on the status pill (audit ask: "LIVE
+ * first (pulse dot)"); upcoming games with a scheduledAt show a relative
+ * "Tonight 7:00 PM" style chip under the sport line.
+ */
+function GameCard({
+  g,
+  schoolId,
+  router,
+  duplicatingId,
+  onDuplicate,
+  onDelete,
+}: {
+  g: any;
+  schoolId: string;
+  router: ReturnType<typeof useRouter>;
+  duplicatingId: string | null;
+  onDuplicate: (id: string) => void;
+  onDelete: (id: string, label: string) => void;
+}) {
+  const def = findSport(g.sport);
+  const isLive = g.status === 'LIVE' || g.status === 'HALFTIME';
+  const when = g.scheduledAt ? formatGameWhen(g.scheduledAt) : '';
+  return (
+    <div className="rounded-2xl bg-white ring-1 ring-slate-200 p-5 hover:ring-indigo-300 transition-all">
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">{def?.emoji || '🏆'}</span>
+          <div>
+            <span className="text-sm font-semibold text-slate-500">
+              {def?.name || g.sport}
+            </span>
+            {when && (
+              <div className="flex items-center gap-1 text-[11px] text-slate-400 mt-0.5">
+                <Clock className="h-3 w-3" />
+                {when}
+              </div>
+            )}
+          </div>
+        </div>
+        <span
+          className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-full ${
+            STATUS_BADGE[g.status] || STATUS_BADGE.SCHEDULED
+          }`}
+        >
+          {isLive && (
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-600" />
+            </span>
+          )}
+          {g.status === 'PRE_GAME' ? 'PRE-GAME' : g.status}
+        </span>
+      </div>
+
+      <div className="mt-4 flex items-center justify-between">
+        <div className="flex-1">
+          <div className="text-base font-bold text-slate-900 truncate">{g.homeTeam}</div>
+          <div className="text-xs text-slate-400">Home</div>
+        </div>
+        <div className="px-4 text-3xl font-black text-slate-900 tabular-nums">
+          {formatScore(def, g.homeScore)} <span className="text-slate-300">–</span> {formatScore(def, g.awayScore)}
+        </div>
+        <div className="flex-1 text-right">
+          <div className="text-base font-bold text-slate-900 truncate">{g.awayTeam}</div>
+          <div className="text-xs text-slate-400">Away</div>
+        </div>
+      </div>
+
+      <div className="mt-4 flex items-center gap-2">
+        <Button
+          size="sm"
+          className="flex-1 gap-1.5"
+          onClick={() => router.push(`/${schoolId}/sports/${g.id}`)}
+        >
+          <Radio className="h-3.5 w-3.5" />
+          Control
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="gap-1.5"
+          onClick={() => window.open(`/board/${g.id}`, '_blank')}
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          Scoreboard
+        </Button>
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          disabled={duplicatingId === g.id}
+          onClick={() => onDuplicate(g.id)}
+          aria-label="Duplicate game (clone its content into a new game)"
+          title="Duplicate — clone this game's content into a fresh game"
+        >
+          <Copy className={`h-4 w-4 text-slate-400 ${duplicatingId === g.id ? 'animate-pulse' : ''}`} />
+        </Button>
+        <RoleGate allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={() => onDelete(g.id, `${g.homeTeam} vs ${g.awayTeam}`)}
+            aria-label="Delete game"
+          >
+            <Trash2 className="h-4 w-4 text-slate-400" />
+          </Button>
+        </RoleGate>
+      </div>
     </div>
   );
 }
