@@ -192,12 +192,15 @@ export class ImportsController {
   ) {
     if (!file) {
       throw new HttpException(
-        // 2026-05-23 launch audit P1: PPTX removed from accepted set
-        // until the PowerPoint → PDF → PNG conversion pipeline ships.
-        // Operator copy now mentions the PDF-first workaround.
-        'No file uploaded or unsupported type. Accepted: PDF, PNG, JPG, WEBP. Max 50 MB. ' +
-          'For PowerPoint / Slides: export to PDF first (File → Export → PDF in PowerPoint, ' +
-          'or Download → PDF in Google Slides / Canva).',
+        {
+          // 2026-05-23 launch audit P1: PPTX removed from accepted set
+          // until the PowerPoint → PDF → PNG conversion pipeline ships.
+          // Operator copy now mentions the PDF-first workaround.
+          code: 'IMPORTS_FILE_REQUIRED',
+          message: 'No file uploaded or unsupported type. Accepted: PDF, PNG, JPG, WEBP. Max 50 MB. ' +
+            'For PowerPoint / Slides: export to PDF first (File → Export → PDF in PowerPoint, ' +
+            'or Download → PDF in Google Slides / Canva).',
+        },
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -232,7 +235,7 @@ export class ImportsController {
         err?.stack,
       );
       throw new HttpException(
-        'Upload failed. Try again or contact support.',
+        { code: 'IMPORTS_UPLOAD_FAILED', message: 'Upload failed. Try again or contact support.' },
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
