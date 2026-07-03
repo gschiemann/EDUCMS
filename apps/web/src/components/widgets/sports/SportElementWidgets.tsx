@@ -30,7 +30,7 @@
  */
 
 import React from 'react';
-import { useGameState, type GameSnapshot } from './GameStateContext';
+import { useGameState, useRenderSurface, type GameSnapshot } from './GameStateContext';
 import { FitOneLine, FitBox } from './FitOneLine';
 import { deriveCtsField } from './cts-fields';
 
@@ -233,8 +233,27 @@ export function TeamLogoWidget({ config }: { config: ElCfg & { logoUrl?: string 
 }
 
 // ── Team record (W-L) — config-driven (no live source yet) ───────────
+/**
+ * nofake-sweep (2026-07-03, docs/research/2026-07-02-sports-deep-pass/
+ * 06-OVERNIGHT-REVIEW.md P1): this widget never checked render surface —
+ * `config.placeholder` is pre-seeded by variants-register.ts with the
+ * exact same fabricated '10-1' / '8-3' records at drop-time, so an
+ * operator who never edits the "Sample / fallback text" field gets a
+ * fabricated win-loss record on a real screen with no distinguishing
+ * watermark. There is no live producer for team record yet (same class
+ * as SwimRelayExchangeWidget's legs), so on a real player surface with
+ * no game bound, render neutral dashes instead of the seeded sample;
+ * an operator's own explicit edit to the field still renders as-is
+ * (indistinguishable from the seed at the data level, but the risk this
+ * guards against — an UNTOUCHED drop broadcasting a fake record to a
+ * real crowd — is closed for the unbound-player case either way).
+ */
 export function TeamRecordWidget({ config }: { config: ElCfg }) {
-  const display = config.placeholder ?? (config.team === 'away' ? '8-3' : '10-1');
+  const s = useGameState();
+  const renderSurface = useRenderSurface();
+  const isLiveNoData = renderSurface === 'player' && !s?.snapshot;
+  const fallback = config.team === 'away' ? '8-3' : '10-1';
+  const display = isLiveNoData ? (config.placeholder && config.placeholder !== fallback ? config.placeholder : '—') : (config.placeholder ?? fallback);
   return (
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
       <FitOneLine
