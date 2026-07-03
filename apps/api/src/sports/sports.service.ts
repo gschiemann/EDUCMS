@@ -2343,6 +2343,51 @@ export class SportsService {
     return updated;
   }
 
+  /**
+   * Legacy-EndSetMacro double-credit guard (task #289, 2026-07-02 sports
+   * deep-pass audit) — see the long comment at the `setSegment` callsite
+   * for the full mechanism. Returns true when `wonKey` was ALREADY
+   * credited for the CURRENT set by a mutation other than this method's
+   * own credit logic — i.e. the legacy client's raw stats PATCH (mutation
+   * 1 of the 4-mutation macro) racing in before this call's read.
+   *
+   * Scoped two ways so it can't false-positive on legitimate history:
+   *  - Time: only STAT events recorded since the most recent SEGMENT
+   *    event for this game (i.e. since the current set began). A credit
+   *    from a PRIOR set is irrelevant to whether THIS set was credited.
+   *  - Source: `setSegment`'s own credit STAT events always carry
+   *    `source: 'set-advance'` (recorded a few lines below this method)
+   *    — excluded here, otherwise a normal single-path advance would see
+   *    its OWN just-written trailing STAT event (timestamped right after
+   *    the SEGMENT event that anchors the time window) and wrongly
+   *    conclude the NEXT set was pre-credited, permanently disabling the
+   *    credit for every set after the first. Any OTHER source touching
+   *    `wonKey` in-window (the legacy macro's raw PATCH has none) means
+   *    an external actor already applied this set's credit.
+   */
+  private async setCreditAlreadyApplied(gameId: string, wonKey: string): Promise<boolean> {
+    const lastSegmentEvent = await this.prisma.client.gameEvent.findFirst({
+      where: { gameId, type: 'SEGMENT' },
+      orderBy: { createdAt: 'desc' },
+    });
+    const since = lastSegmentEvent?.createdAt;
+    const recentStatEvents = await this.prisma.client.gameEvent.findMany({
+      where: {
+        gameId,
+        type: 'STAT',
+        ...(since ? { createdAt: { gte: since } } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    });
+    return recentStatEvents.some((ev) => {
+      const payload = (ev.payload as Record<string, unknown> | undefined) || {};
+      if (payload.source === 'set-advance') return false;
+      const stats = (payload.stats as Record<string, unknown> | undefined) || {};
+      return Object.prototype.hasOwnProperty.call(stats, wonKey);
+    });
+  }
+
   /** Advance / set the segment (quarter, inning, set, period). */
   async setSegment(
     tenantId: string,
@@ -2412,23 +2457,54 @@ export class SportsService {
     let setGameWonKey: string | null = null;
     let setGameWonVal = 0;
     if (isSetGameSport && advancingForward) {
-      // Only zero if there's actually a carried-over score to clear.
-      if (prevHomeScore !== 0 || prevAwayScore !== 0) {
+      // Legacy-EndSetMacro double-credit guard (2026-07-02 sports deep-pass
+      // audit, task #289): the OLD (pre-S1-5) client macro fires FOUR
+      // near-simultaneous, unawaited mutations — a raw stats PATCH that
+      // credits the set-win counter, a score-zero PATCH, a cue fire, and
+      // THIS segment-advance PATCH. When the stats-credit PATCH lands on
+      // the server before this call's read, `game.stats[setGameWonKey]`
+      // already reflects that credit, and crediting again here double-
+      // counts the set (net +2 instead of +1) even though this method
+      // only runs once. The raw counter alone can't tell "the true prior
+      // count" from "the true prior count plus a credit that just raced
+      // in" — both are indistinguishable integers — so the guard consults
+      // the immutable GameEvent log (untouched by that sibling PATCH) for
+      // a STAT credit to the SAME won-key recorded since the current set
+      // began (i.e. since the last SEGMENT advance). If one already
+      // landed, the credit for this transition is already applied —
+      // skip crediting AND skip re-zeroing (the sibling score-zero PATCH
+      // owns that), and just advance the segment. The atomic
+      // `endSegmentAtomic` endpoint (S1-5) is unaffected — it never
+      // calls this method.
+      const isPickle = def.key === 'pickleball';
+      const homeLed = prevHomeScore > prevAwayScore;
+      const candidateWonKey =
+        prevHomeScore !== prevAwayScore
+          ? isPickle
+            ? homeLed
+              ? 'homeGames'
+              : 'awayGames'
+            : homeLed
+              ? 'homeSets'
+              : 'awaySets'
+          : null;
+      const alreadyCredited =
+        candidateWonKey !== null &&
+        (await this.setCreditAlreadyApplied(id, candidateWonKey));
+
+      // Only zero if there's actually a carried-over score to clear, and
+      // only if a sibling mutation hasn't already credited this set (that
+      // sibling's own score-zero PATCH — mutation 2 of the legacy macro —
+      // owns zeroing in that case, whether it has landed yet or not).
+      if (!alreadyCredited && (prevHomeScore !== 0 || prevAwayScore !== 0)) {
         data.homeScore = 0;
         data.awayScore = 0;
         zeroedScores = true;
       }
-      // Credit the set/game won to the leader of the set just finished.
-      if (prevHomeScore !== prevAwayScore) {
-        const isPickle = def.key === 'pickleball';
-        const homeLed = prevHomeScore > prevAwayScore;
-        setGameWonKey = isPickle
-          ? homeLed
-            ? 'homeGames'
-            : 'awayGames'
-          : homeLed
-            ? 'homeSets'
-            : 'awaySets';
+      // Credit the set/game won to the leader of the set just finished —
+      // unless it was already credited by a racing sibling mutation.
+      if (!alreadyCredited && candidateWonKey) {
+        setGameWonKey = candidateWonKey;
         const cur =
           game.stats && typeof game.stats === 'object'
             ? Number((game.stats as Record<string, unknown>)[setGameWonKey]) || 0

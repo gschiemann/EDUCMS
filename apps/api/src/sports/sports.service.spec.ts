@@ -1190,6 +1190,104 @@ describe('SportsService — volleyball next-set auto-zero (config+api P1)', () =
   });
 });
 
+describe('SportsService — legacy EndSetMacro double-credit guard (task #289, 2026-07-02 sports deep-pass)', () => {
+  // The OLD (pre-S1-5) console macro fires 4 near-simultaneous, unawaited
+  // mutations to end a volleyball/pickleball set: a raw stats PATCH
+  // crediting the set-win counter, a score-zero PATCH, a cue fire, and a
+  // segment-advance PATCH (→ setSegment). Because they're unawaited, the
+  // stats-credit PATCH can land on the server BEFORE setSegment's own read,
+  // so setSegment's `isSetGameSport && advancingForward` branch sees
+  // `stats.homeSets` already bumped and credits AGAIN — a double-credit
+  // in what is otherwise a single setSegment() call. Simulate that race
+  // directly: call the real `updateStats` path (the exact code the
+  // legacy client's raw PATCH hits) to pre-apply the credit, THEN call
+  // setSegment for the same transition, and assert the guard collapses
+  // it back to exactly one credit.
+
+  it('a stats-credit that races ahead of setSegment is NOT double-counted', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'volleyball');
+    // 24-20 hasn't reached the set target by 2, so applySetWin doesn't
+    // auto-fire — same fixture the existing "volleyball next-set
+    // auto-zero" tests use, so the operator ends the set by hand.
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 24 });
+    await service.adjustScore(TENANT, g.id, { team: 'away', delta: 20 });
+    // Mutation 1 of the legacy macro: raw stats PATCH crediting the set
+    // win BEFORE the segment-advance PATCH's setSegment() call runs —
+    // this is exactly what a won race looks like server-side.
+    await service.updateStats(TENANT, g.id, { stats: { homeSets: 1 } });
+    // Mutation 4 of the legacy macro: the segment-advance PATCH.
+    const r: any = await service.setSegment(TENANT, g.id, { delta: 1 });
+    expect(r.segment).toBe(2);
+    expect(r.stats.homeSets).toBe(1); // credited ONCE, not twice
+    // The sibling score-zero PATCH (mutation 2) hasn't landed in this
+    // simulation, and setSegment must not double up on it either —
+    // confirms the guard skips setSegment's OWN zero when it detects
+    // the credit already landed (the sibling PATCH owns zeroing).
+    expect(r.homeScore).toBe(24);
+    expect(r.awayScore).toBe(20);
+  });
+
+  it('scores ARE zeroed once the sibling score-zero PATCH also lands, still exactly one credit', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'volleyball');
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 24 });
+    await service.adjustScore(TENANT, g.id, { team: 'away', delta: 20 });
+    // Both racing mutations land before the segment-advance PATCH.
+    await service.updateStats(TENANT, g.id, { stats: { homeSets: 1 } });
+    await service.setScore(TENANT, g.id, { homeScore: 0, awayScore: 0 });
+    const r: any = await service.setSegment(TENANT, g.id, { delta: 1 });
+    expect(r.segment).toBe(2);
+    expect(r.stats.homeSets).toBe(1); // still exactly one credit
+    expect(r.homeScore).toBe(0);
+    expect(r.awayScore).toBe(0);
+  });
+
+  it('pickleball: a racing awayGames credit is not double-counted either', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'pickleball');
+    // 10-5 hasn't hit the 11-point game target, so no auto game-win.
+    await service.adjustScore(TENANT, g.id, { team: 'away', delta: 10 });
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 5 });
+    await service.updateStats(TENANT, g.id, { stats: { awayGames: 1 } });
+    const r: any = await service.setSegment(TENANT, g.id, { delta: 1 });
+    expect(r.segment).toBe(2);
+    expect(r.stats.awayGames).toBe(1);
+  });
+
+  it('companion: the normal single-path (no race) still credits correctly across MULTIPLE consecutive sets', async () => {
+    // Regression guard for the guard itself: the new check must not
+    // mistake setSegment's own trailing STAT event (recorded right after
+    // the SEGMENT event that anchors the "since" window) for an external
+    // credit — otherwise every set after the first would silently stop
+    // being credited.
+    const { service } = setup();
+    const g = await newGame(service, 'volleyball');
+    // Set 1: home leads 24-20, advance normally (no race).
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 24 });
+    await service.adjustScore(TENANT, g.id, { team: 'away', delta: 20 });
+    const afterSet1: any = await service.setSegment(TENANT, g.id, { delta: 1 });
+    expect(afterSet1.segment).toBe(2);
+    expect(afterSet1.stats.homeSets).toBe(1);
+
+    // Set 2: away leads this time, advance normally (no race).
+    await service.adjustScore(TENANT, g.id, { team: 'away', delta: 24 });
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 18 });
+    const afterSet2: any = await service.setSegment(TENANT, g.id, { delta: 1 });
+    expect(afterSet2.segment).toBe(3);
+    expect(afterSet2.stats.homeSets).toBe(1); // unchanged from set 1
+    expect(afterSet2.stats.awaySets).toBe(1); // set 2 credited correctly
+
+    // Set 3: home leads again, advance normally (no race).
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 24 });
+    await service.adjustScore(TENANT, g.id, { team: 'away', delta: 22 });
+    const afterSet3: any = await service.setSegment(TENANT, g.id, { delta: 1 });
+    expect(afterSet3.segment).toBe(4);
+    expect(afterSet3.stats.homeSets).toBe(2); // credited again — guard didn't jam
+    expect(afterSet3.stats.awaySets).toBe(1);
+  });
+});
+
 describe('SportsService — soccer added-time auto-advance (config+api P1)', () => {
   // Helper: stand a soccer game up LIVE with a running count-up clock
   // reading `liveMs`, with `addedTime` minutes configured.
