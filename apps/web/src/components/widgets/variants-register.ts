@@ -1453,6 +1453,22 @@ registerVariant({
   defaultConfig: { boardStyle: 'broadcast', laneCount: 8 },
 });
 
+// S6 #288 (2026-07-03) — Stadium Lane v2 "Dual-Meet Duel". Sibling tile
+// of stadium-meet-board-broadcast above — same STADIUM_MEET_BOARD widget,
+// same stats.results contract, `boardStyle: 'duel'` dispatches to
+// StadiumDuelScene (see StadiumMeetBoardWidget.tsx for the full live-data
+// mapping: team scores, per-swimmer deltas, live-only ticker).
+registerVariant({
+  id: 'stadium-meet-board-duel',
+  widgetType: 'STADIUM_MEET_BOARD',
+  name: 'Stadium Lane — Duel',
+  description: 'Dual-meet duel board — home/away team-color floods collide on a diagonal, huge team scores, per-swimmer time deltas vs the leader, medal chips, live ticker. Bind a meet; resize for any LED.',
+  category: 'SPORTS',
+  render: StadiumMeetBoardWidget as any,
+  vertical: 'SPORTS',
+  defaultConfig: { boardStyle: 'duel', laneCount: 8 },
+});
+
 // ════════════════════════════════════════════════════════════════════
 // 2026-05-19 — Composable scoreboard ELEMENT widgets. Operator: "make
 // sure everything in these scoreboards are added as widgets and can be
