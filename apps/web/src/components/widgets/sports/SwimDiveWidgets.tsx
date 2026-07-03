@@ -929,17 +929,35 @@ export interface SwimRecordLineCfg extends BaseCfg {
   recordBrokenColor?: string;
 }
 
+/**
+ * nofake-sweep (2026-07-03, docs/research/2026-07-02-sports-deep-pass/
+ * 06-OVERNIGHT-REVIEW.md P1): this is the one widget in the file that
+ * never called useGameState() — every sibling (SwimLaneGridWidget,
+ * DiveLeaderboardWidget, SwimRelayExchangeWidget, SwimSplitsPanelWidget,
+ * DiveJudgesPanelWidget) does. The record/holder fields ARE intentionally
+ * operator-typed free-form text (no live producer — same design as
+ * SwimRelayExchangeWidget's legs, per commit 43beb7ce's own doc comment),
+ * but that's a config-shape decision, not a render-surface exemption:
+ * SwimRelayExchangeWidget is built the identical way and still gates its
+ * SAMPLE_RELAY_LEGS on isLive. This widget's hardcoded '48.42' /
+ * 'D. OKAFOR, 2024' defaults were shown unconditionally, including on a
+ * real player surface with nothing typed in — gate them the same way.
+ */
 export function SwimRecordLineWidget({ config }: WidgetProps<SwimRecordLineCfg>) {
   const c = config ?? {};
+  const state = useGameState();
+  const isLive = state != null;
   const bgColor = c.bgColor || 'transparent';
   const panelColor = c.panelColor || '#0c1830';
   const accentColor = c.accentColor || '#fbbf24';
   const textColor = c.textColor || '#ffffff';
   const recordBrokenColor = c.recordBrokenColor || '#22c55e';
 
-  const recordType = (c.recordType || 'POOL RECORD').toUpperCase();
-  const recordTime = c.recordTime || '48.42';
-  const recordHolder = c.recordHolder || 'D. OKAFOR, 2024';
+  const hasTypedRecord = !!(c.recordTime || c.recordHolder);
+  const noLiveData = isLive && !hasTypedRecord;
+  const recordType = (c.recordType || (noLiveData ? '' : 'POOL RECORD')).toUpperCase();
+  const recordTime = c.recordTime || (noLiveData ? '—' : '48.42');
+  const recordHolder = c.recordHolder || (noLiveData ? '' : 'D. OKAFOR, 2024');
   const liveTime = c.liveTime ?? '';
   const liveDelta = (c.liveDelta || '').trim();
   const ahead = liveDelta.startsWith('-');
@@ -1004,6 +1022,7 @@ export function SwimRecordLineWidget({ config }: WidgetProps<SwimRecordLineCfg>)
           </div>
         </div>
       </div>
+      {!isLive && <SampleWatermark />}
     </ScaledScene>
   );
 }
