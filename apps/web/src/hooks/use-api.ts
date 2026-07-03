@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { API_URL } from '@/lib/api-url';
 import { useUIStore } from '@/store/ui-store';
+import { findSport } from '@cms/api-types';
 import type {
   ConciergeReference,
   ConciergeMessage,
@@ -3120,28 +3121,159 @@ export function useDuplicateGame() {
  */
 export function useGameControl(gameId: string) {
   const qc = useQueryClient();
+  const gameKey = ['sports-game', gameId];
   const writeBack = (game: any) => {
-    if (game && game.id) qc.setQueryData(['sports-game', gameId], game);
+    if (game && game.id) qc.setQueryData(gameKey, game);
+  };
+
+  // ── P0-1 (2026-07-02 sports deep-pass audit) ──────────────────────
+  // score/clock/segment/stats had NO onMutate while ~20 screens-hooks in
+  // this same file do (see useDeleteScreenGroup/useUpdateScreenGroup above
+  // for the canonical cancelQueries→snapshot→optimistic-write→rollback-on-
+  // error shape this mirrors). Every +1 tap waited a full RTT (300-900ms on
+  // venue Wi-Fi) before the scoreboard moved — "feels like the button did
+  // nothing," per the shotClock mutation's own comment below (:3263-3268 in
+  // the pre-audit file). Fix: apply the predictable, common-case delta to
+  // the cached game the instant the operator taps; writeBack on success
+  // stays authoritative and overwrites this local guess with the server's
+  // real (fully rule-aware) result — auto-celebrate, set/game credit, shot-
+  // clock slaving, line-score snapshots etc. all still resolve server-side
+  // exactly as before. onError rolls back to the pre-tap snapshot so a
+  // failed PATCH never leaves a phantom optimistic score/clock on screen.
+  const snapshotGame = () => qc.getQueryData<any>(gameKey);
+  const rollback = (ctx: { prev?: any } | undefined) => {
+    if (ctx?.prev !== undefined) qc.setQueryData(gameKey, ctx.prev);
   };
 
   const score = useMutation({
     mutationFn: (body: { team?: string; delta?: number; homeScore?: number; awayScore?: number }) =>
       apiFetch(`/sports/games/${gameId}/score`, { method: 'PATCH', body: JSON.stringify(body) }),
+    onMutate: async (body) => {
+      await qc.cancelQueries({ queryKey: gameKey });
+      const prev = snapshotGame();
+      if (prev) {
+        qc.setQueryData(gameKey, (old: any) => {
+          if (!old) return old;
+          // Absolute set (operator typo-fix — no `delta`) wins outright;
+          // otherwise apply the +/- delta to the tapped team, clamped at
+          // 0 exactly like the server's atomic-increment + clamp.
+          if (typeof body.delta === 'number') {
+            const team = body.team === 'away' ? 'away' : 'home';
+            const key = team === 'home' ? 'homeScore' : 'awayScore';
+            const next = Math.max(0, (Number(old[key]) || 0) + body.delta);
+            return { ...old, [key]: next };
+          }
+          const next = { ...old };
+          if (typeof body.homeScore === 'number') next.homeScore = Math.max(0, body.homeScore);
+          if (typeof body.awayScore === 'number') next.awayScore = Math.max(0, body.awayScore);
+          return next;
+        });
+      }
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => rollback(ctx),
     onSuccess: writeBack,
   });
   const clock = useMutation({
     mutationFn: (body: { action: string; ms?: number }) =>
       apiFetch(`/sports/games/${gameId}/clock`, { method: 'PATCH', body: JSON.stringify(body) }),
+    onMutate: async (body) => {
+      await qc.cancelQueries({ queryKey: gameKey });
+      const prev = snapshotGame();
+      if (prev) {
+        qc.setQueryData(gameKey, (old: any) => {
+          if (!old) return old;
+          const def = findSport(old.sport);
+          const now = new Date();
+          switch (body.action) {
+            case 'start':
+              // Re-anchor at the current reading (unchanged — the clock
+              // wasn't running a moment ago) and let it run. Mirrors
+              // clockAction's 'start' case.
+              return { ...old, clockRunning: true, clockUpdatedAt: now.toISOString() };
+            case 'pause': {
+              // Freeze at the LIVE-projected reading, same math the
+              // console's own useLiveClock ticker uses, so pausing never
+              // visibly jumps the displayed time.
+              if (!old.clockRunning || !def || def.clock.type === 'none') {
+                return { ...old, clockRunning: false, clockUpdatedAt: now.toISOString() };
+              }
+              const elapsed = now.getTime() - new Date(old.clockUpdatedAt).getTime();
+              const liveMs =
+                def.clock.type === 'countup'
+                  ? old.clockMs + elapsed
+                  : Math.max(0, old.clockMs - elapsed);
+              return { ...old, clockMs: liveMs, clockRunning: false, clockUpdatedAt: now.toISOString() };
+            }
+            case 'set':
+              if (typeof body.ms !== 'number' || body.ms < 0) return old;
+              return { ...old, clockMs: Math.round(body.ms), clockUpdatedAt: now.toISOString() };
+            case 'reset': {
+              // segmentStartMs: countdown → its configured segment length;
+              // countup/none → 0. Mirrors the server's segmentStartMs.
+              const startMs = def && def.clock.type === 'countdown' ? def.clock.segmentMs ?? 0 : 0;
+              return { ...old, clockMs: startMs, clockRunning: false, clockUpdatedAt: now.toISOString() };
+            }
+            default:
+              return old;
+          }
+        });
+      }
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => rollback(ctx),
     onSuccess: writeBack,
   });
   const segment = useMutation({
     mutationFn: (body: { segment?: number; delta?: number }) =>
       apiFetch(`/sports/games/${gameId}/segment`, { method: 'PATCH', body: JSON.stringify(body) }),
+    onMutate: async (body) => {
+      await qc.cancelQueries({ queryKey: gameKey });
+      const prev = snapshotGame();
+      if (prev) {
+        qc.setQueryData(gameKey, (old: any) => {
+          if (!old) return old;
+          const def = findSport(old.sport);
+          let next = typeof body.segment === 'number' ? Math.round(body.segment) : old.segment;
+          if (typeof body.delta === 'number') next = old.segment + Math.round(body.delta);
+          if (def) {
+            const max = def.segment.overtime ? def.segment.count + 10 : def.segment.count;
+            next = Math.min(max, Math.max(1, next));
+          }
+          // Deliberately conservative: the server also resets the clock,
+          // zeroes/credits set-and-game scores, and snapshots the line
+          // score on a segment change (setSegment, sports.service.ts) —
+          // real, sport-dependent rules not worth guessing client-side.
+          // Bumping the visible segment number is the instant feedback
+          // the operator is actually watching for; writeBack reconciles
+          // everything else the moment the PATCH resolves.
+          return { ...old, segment: next };
+        });
+      }
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => rollback(ctx),
     onSuccess: writeBack,
   });
   const stats = useMutation({
     mutationFn: (body: { stats: Record<string, unknown> }) =>
       apiFetch(`/sports/games/${gameId}/stats`, { method: 'PATCH', body: JSON.stringify(body) }),
+    onMutate: async (body) => {
+      await qc.cancelQueries({ queryKey: gameKey });
+      const prev = snapshotGame();
+      if (prev) {
+        qc.setQueryData(gameKey, (old: any) => {
+          if (!old) return old;
+          // updateStats merges dto.stats shallowly into Game.stats server-
+          // side (allow-listed keys only) — mirror the shallow merge so a
+          // stat chip/lane-pad save/GameScopeText commit reflects instantly.
+          const oldStats = old.stats && typeof old.stats === 'object' ? old.stats : {};
+          return { ...old, stats: { ...oldStats, ...(body.stats || {}) } };
+        });
+      }
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => rollback(ctx),
     onSuccess: writeBack,
   });
   const status = useMutation({
