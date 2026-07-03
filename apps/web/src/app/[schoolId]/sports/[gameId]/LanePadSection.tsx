@@ -48,10 +48,48 @@
  * 4 was actually DQ") meant retyping the whole just-saved heat by hand.
  * Fix: `lastSaved` now also snapshots `rows` immediately before the clear;
  * `undoLastSave()` restores BOTH `stats.results` and the local grid.
+ *
+ * ── #292 (2026-07-02 overnight adversarial review, P1) ──────────────────
+ *
+ * The provisional publish above and `nextHeat()`'s finalize save are two
+ * independent, unserialized `ctl.stats.mutate` calls against the SAME
+ * `PATCH /sports/games/:id/stats` endpoint, which does a WHOLE-ARRAY
+ * replace of `stats.results` server-side (not an element merge). If the
+ * network reorders so the provisional's write reaches the server AFTER
+ * the finalize's, the finalized heat's marks/DQ/SCR are silently
+ * overwritten by the stale provisional snapshot — `cancelProvisionalTimer()`
+ * only cancels a timer that hasn't fired YET; it cannot un-send a request
+ * the timer already dispatched moments earlier.
+ *
+ * Fix: `pendingProvisional` captures the in-flight provisional PATCH's
+ * PROMISE (via `ctl.stats.mutateAsync`, called at the exact moment the
+ * debounce fires) in a ref. Every finalize/revert path (`nextHeat()`,
+ * `undoLastSave()`) now does, in order: (1) `cancelProvisionalTimer()` —
+ * stop a not-yet-fired timer from ever starting a new request, (2)
+ * `await` whatever provisional PATCH is already in flight (swallowing its
+ * error — a failed provisional is not this path's problem to surface),
+ * THEN (3) dispatch the finalize/undo PATCH. Because step 2 blocks until
+ * the server has actually applied the provisional, the finalize request
+ * physically cannot be sent before the provisional's — no wire reorder is
+ * possible, with no new endpoint, no flag, no schema change.
+ *
+ * One subtlety: `stats`/`savedResults` at the top of this component are
+ * derived from the `g` PROP, which is a render-time snapshot — awaiting
+ * the provisional promise does NOT itself cause this component to
+ * re-render with fresh props. But `useGameControl`'s `stats` mutation
+ * (use-api.ts) already writes the confirmed server response into the
+ * React Query cache via its `onSuccess: writeBack` — synchronously, before
+ * the `mutateAsync` promise the drain awaits actually resolves. So
+ * `nextHeat()` re-reads the baseline via `qc.getQueryData(gameKey)`
+ * (same `['sports-game', gameId]` key `useGame`/`useGameControl` use)
+ * immediately after the drain, rather than trusting the stale `stats`
+ * closure — that guarantees the finalize save merges onto the
+ * provisional's own result, not a snapshot from before it landed.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Minus, ChevronRight, Undo2 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useGameControl, useGameRoster, type RosterPlayer } from '@/hooks/use-api';
@@ -123,6 +161,14 @@ export function LanePadSection({
 }) {
   const stats: Record<string, unknown> = g.stats || {};
   const savedResults = readSavedResults(stats);
+
+  // #292 — same query key `useGame`/`useGameControl` (use-api.ts) use for
+  // this game. Read directly from the cache (never written here — only
+  // read) so `nextHeat()` can re-baseline onto the provisional's own
+  // server-confirmed write after draining it, instead of the stale `g`
+  // prop this render closed over. See the #292 comment block above.
+  const qc = useQueryClient();
+  const gameKey = ['sports-game', gameId];
 
   // Roster join — same convention as the CTS ingest (SwimRosterEntry /
   // RosterPlayer.stats.lane), shared React Query cache with <RosterPanel>
@@ -197,6 +243,29 @@ export function LanePadSection({
       provisionalTimer.current = null;
     }
   };
+  // #292 — the in-flight provisional PATCH's own promise, captured the
+  // instant the debounce fires (mutateAsync, not mutate — mutate discards
+  // the promise, which is exactly what let the race happen). Any finalize
+  // or revert path awaits this BEFORE sending its own PATCH, guaranteeing
+  // the provisional's write reaches the server first. Never rejects visibly
+  // to a waiter — a failed provisional is caught at its own dispatch site.
+  const pendingProvisional = useRef<Promise<unknown> | null>(null);
+  /** Cancel any not-yet-fired timer, then wait out whatever provisional
+   *  PATCH is already in flight. Call this before EVERY finalize/revert
+   *  PATCH (`nextHeat()`, `undoLastSave()`) — see the #292 comment above
+   *  the component for why both steps are required. */
+  const drainProvisional = async () => {
+    cancelProvisionalTimer();
+    if (pendingProvisional.current) {
+      try {
+        await pendingProvisional.current;
+      } catch {
+        // A failed provisional write is not this caller's problem — the
+        // finalize/undo PATCH below is about to establish the true state
+        // regardless of whether the provisional succeeded.
+      }
+    }
+  };
   useEffect(() => {
     cancelProvisionalTimer();
     provisionalTimer.current = setTimeout(() => {
@@ -206,7 +275,17 @@ export function LanePadSection({
       // `nextHeat()`'s own empty-entries guard. Never write junk history.
       if (provisional.entries.length === 0) return;
       const merged = mergeHeatResult(savedResultsRef.current, provisional);
-      ctl.stats.mutate({ stats: { results: merged } });
+      // mutateAsync (not mutate) so `drainProvisional()` has a promise to
+      // await — see the #292 comment above the component. Swallow the
+      // rejection here too so an unawaited provisional failure never
+      // surfaces as an unhandled rejection.
+      const inFlight = ctl.stats.mutateAsync({ stats: { results: merged } }).catch(() => {});
+      pendingProvisional.current = inFlight;
+      inFlight.finally(() => {
+        // Only clear if nobody replaced it with a NEWER provisional while
+        // this one was in flight.
+        if (pendingProvisional.current === inFlight) pendingProvisional.current = null;
+      });
       // No local `lastSaved` bookkeeping here — Undo is scoped to the
       // OPERATOR-INITIATED "Next heat" save (a provisional mid-heat
       // publish auto-corrects itself on the very next keystroke or gets
@@ -247,23 +326,34 @@ export function LanePadSection({
     if (Object.keys(patch).length > 0) ctl.stats.mutate({ stats: patch });
   };
 
-  const nextHeat = () => {
-    // Cancel any pending provisional debounce BEFORE building the final
-    // result — otherwise a timer scheduled a moment ago (against THIS
-    // heat's rows) could fire after `setRows` below has already reset the
-    // grid for the NEXT heat, re-publishing stale content on top of the
-    // fresh blank grid a beat later.
-    cancelProvisionalTimer();
+  const nextHeat = async () => {
+    // #292 — cancel any pending provisional debounce BEFORE building the
+    // final result (a timer scheduled a moment ago against THIS heat's
+    // rows must never fire after the grid resets below), THEN wait out
+    // whatever provisional PATCH the timer already dispatched. Only once
+    // the server has applied that provisional write can the finalize PATCH
+    // be sent — otherwise a wire reorder could let the provisional's stale
+    // snapshot land AFTER (and clobber) this finalize save.
+    await drainProvisional();
     const fresh = buildHeatResult(eventText, hasHeatField ? heatText : '', rows, Date.now());
     if (fresh.entries.length === 0) return; // nothing to save — no-op, avoid junk history rows
-    const merged = mergeHeatResult(savedResults, fresh);
+    // Re-read the latest server-confirmed results straight from the React
+    // Query cache AFTER draining — the just-applied provisional (if any)
+    // already landed there via `writeBack` (use-api.ts), but this
+    // component's OWN `g`/`stats` props are a render-time snapshot that
+    // won't reflect it until the parent re-renders. Falls back to the
+    // prop-derived `savedResults` if the cache entry is ever missing
+    // (e.g. under a test harness that never seeded it).
+    const cachedGame = qc.getQueryData<{ stats?: Record<string, unknown> } | undefined>(gameKey);
+    const baseline = cachedGame?.stats ? readSavedResults(cachedGame.stats) : savedResults;
+    const merged = mergeHeatResult(baseline, fresh);
 
     // Snapshot for the one-tap Undo affordance below (client-side only —
     // reverts stats.results to what it was before this save, same
     // ctl.stats.mutate path, no new endpoint). S1-3: also snapshots the
     // TYPED rows (not just the persisted result) so Undo restores the
     // actual grid the operator had, not a blank re-roll.
-    setLastSaved({ event: fresh.event, prevResults: savedResults, prevRows: rows });
+    setLastSaved({ event: fresh.event, prevResults: baseline, prevRows: rows });
 
     const patch: Record<string, unknown> = { results: merged };
     // Advance the heat number automatically when it's a plain integer —
@@ -286,12 +376,13 @@ export function LanePadSection({
     setRows(applyRosterToLanes(makeLaneRows(laneCount), rosterEntries));
   };
 
-  const undoLastSave = () => {
+  const undoLastSave = async () => {
     if (!lastSaved) return;
-    // S1-3 (P1-5): a pending provisional debounce (armed the instant the
-    // fresh next-heat grid picked up any roster auto-fill / a stray edit)
-    // must not resurrect the just-undone save moments later.
-    cancelProvisionalTimer();
+    // S1-3 (P1-5) / #292: a pending provisional debounce (armed the instant
+    // the fresh next-heat grid picked up any roster auto-fill / a stray
+    // edit) must not resurrect the just-undone save moments later — same
+    // drain-before-write discipline as `nextHeat()`.
+    await drainProvisional();
     ctl.stats.mutate({ stats: { results: lastSaved.prevResults } });
     setRows(lastSaved.prevRows);
     setLastSaved(null);

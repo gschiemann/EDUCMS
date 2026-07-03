@@ -282,6 +282,107 @@ describe('LanePadSection', () => {
     });
   });
 
+  // ── #292 (2026-07-02 overnight adversarial review, P1) ───────────────
+  // Provisional-vs-finalize PATCH race: a debounced provisional publish and
+  // `nextHeat()`'s finalize save are two independent PATCHes against the
+  // SAME whole-array-replace endpoint. If the provisional's request is
+  // in flight when `nextHeat()` fires and resolves LATE (after the
+  // finalize's own PATCH would otherwise have already gone out), the
+  // finalized heat's marks/DQ must NOT be overwritten by the stale
+  // provisional snapshot. `drainProvisional()` (awaiting the captured
+  // `mutateAsync` promise before ever building the finalize PATCH) is the
+  // fix under test here.
+  describe('provisional-vs-finalize PATCH race (#292)', () => {
+    it('Next heat awaits an in-flight provisional PATCH before sending the finalize PATCH, so the finalized heat is the LAST write and survives', async () => {
+      // Defer the provisional's own PATCH resolution under our control —
+      // every other route (roster, any other /stats PATCH) resolves
+      // immediately as usual.
+      let resolveProvisional: ((v: unknown) => void) | null = null;
+      let provisionalPatchSeen = false;
+      apiFetch.mockImplementation((path: string, opts?: FetchOpts) => {
+        if (path === `/sports/games/${GAME_ID}/stats` && opts?.method === 'PATCH') {
+          const body = JSON.parse(opts.body ?? '{}');
+          // The FIRST /stats PATCH the debounce fires is the provisional —
+          // hold it open until the test explicitly resolves it below,
+          // simulating a slow/late-arriving network response.
+          if (!provisionalPatchSeen) {
+            provisionalPatchSeen = true;
+            return new Promise((resolve) => {
+              resolveProvisional = () =>
+                resolve({ id: GAME_ID, homeTeam: 'Home', awayTeam: 'Away', stats: body.stats });
+            });
+          }
+          return Promise.resolve({ id: GAME_ID, homeTeam: 'Home', awayTeam: 'Away', stats: body.stats });
+        }
+        return routeFetch(path, opts);
+      });
+
+      renderLanePad({ currentEvent: '12', heat: '3' });
+      await waitFor(() => expect(screen.getByDisplayValue('A. Smith')).toBeInTheDocument());
+
+      // Type lane 2's mark and let the 800ms debounce fire the provisional
+      // PATCH — it will hang, per the mock above, until we resolve it.
+      const marks = screen.getAllByPlaceholderText('1:52.31');
+      fireEvent.change(marks[1], { target: { value: '58.00' } });
+      await waitFor(() => expect(provisionalPatchSeen).toBe(true), { timeout: 2000 });
+
+      // Now change lane 2's mark AGAIN (the operator correcting a split)
+      // and immediately tap "Next heat" — WHILE the provisional PATCH
+      // above is still unresolved. A pre-#292-fix implementation would
+      // fire the finalize PATCH immediately; this fix must await the
+      // provisional first.
+      fireEvent.change(marks[1], { target: { value: '57.50' } });
+      fireEvent.click(screen.getByRole('button', { name: /Next heat/i }));
+
+      // Give the click handler's synchronous portion (up to the await)
+      // a tick, then assert NO finalize PATCH has gone out yet — it must
+      // be blocked on the still-unresolved provisional promise.
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      const callsBeforeResolve = apiFetch.mock.calls.filter(
+        ([path, opts]: [string, FetchOpts?]) =>
+          path === `/sports/games/${GAME_ID}/stats` && opts?.method === 'PATCH',
+      ).length;
+      expect(callsBeforeResolve).toBe(1); // only the provisional so far — finalize is blocked
+
+      // NOW let the provisional resolve late.
+      expect(resolveProvisional).not.toBeNull();
+      await act(async () => {
+        resolveProvisional!(undefined);
+        await Promise.resolve();
+      });
+
+      // The finalize PATCH must land AFTER the provisional resolved, and
+      // its results must be the LAST write the endpoint saw — the
+      // finalized heat's mark (57.50) must survive, not be clobbered by
+      // the provisional's earlier (58.00) snapshot.
+      await waitFor(() => {
+        const statsCalls = (apiFetch.mock.calls as [string, FetchOpts | undefined][]).filter(
+          ([path, opts]) => path === `/sports/games/${GAME_ID}/stats` && opts?.method === 'PATCH',
+        );
+        expect(statsCalls.length).toBe(2); // provisional, then finalize — no third stray write
+        const finalizeBody = JSON.parse(statsCalls[1][1]?.body ?? '{}');
+        expect(Array.isArray(finalizeBody.stats.results)).toBe(true);
+        const saved =
+          finalizeBody.stats.results[finalizeBody.stats.results.length - 1];
+        expect(saved.event).toBe('12 — HEAT 3');
+        // The corrected mark (57.50), not the stale provisional (58.00).
+        expect(
+          saved.entries.some(
+            (e: { name: string; mark: string }) => e.name === 'A. Smith' && e.mark === '57.50',
+          ),
+        ).toBe(true);
+        expect(
+          saved.entries.some(
+            (e: { name: string; mark: string }) => e.name === 'A. Smith' && e.mark === '58.00',
+          ),
+        ).toBe(false);
+      });
+    });
+  });
+
   // ── S1-3 (P1-5): Undo restores the typed rows, not just stats.results ──
   describe('Undo restores the typed grid (S1-3 / P1-5)', () => {
     it('restores the exact rows that were just saved, not a blank re-rolled grid', async () => {
