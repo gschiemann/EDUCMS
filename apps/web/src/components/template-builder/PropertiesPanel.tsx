@@ -5431,15 +5431,17 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       break;
     }
     // S6 #288 (2026-07-03) — Stadium Lane flagship broadcast board. Greg
-    // picked all 3 stadium designs 2026-07-03; v1 "Broadcast" and v2
-    // "Dual-Meet Duel" both ship today (StadiumMeetBoardWidget.tsx header
-    // has the full live-data mapping for each). Reads the SAME
-    // stats.results contract as SWIM_LANE_GRID above — these fields only
-    // control presentation + the two footer slots (v1) that have no home
-    // anywhere in the data model.
+    // picked all 3 stadium designs 2026-07-03; v1 "Broadcast", v2
+    // "Dual-Meet Duel", and v3 "Record Chase" all ship today
+    // (StadiumMeetBoardWidget.tsx header has the full live-data mapping
+    // for each). Reads the SAME stats.results contract as SWIM_LANE_GRID
+    // above — these fields only control presentation + the footer/record
+    // slots (record fields double as v1's footer AND v3's record-chase
+    // card — same config keys, same "config-or-omit" rule) that have no
+    // home anywhere in the data model.
     case 'STADIUM_MEET_BOARD': {
       fields.push(<GameBindField key="gameId" value={cfg.gameId || ''} onChange={(v) => setField({ gameId: v })} />);
-      fields.push(<SelectField key="boardStyle" label="Design" value={String(cfg.boardStyle || 'broadcast')} options={[['broadcast', 'v1 — Broadcast (live)'], ['duel', 'v2 — Dual-Meet Duel (live)'], ['chase', 'v3 — Record Chase (coming soon)']]} onChange={(v) => setField({ boardStyle: v })} />);
+      fields.push(<SelectField key="boardStyle" label="Design" value={String(cfg.boardStyle || 'broadcast')} options={[['broadcast', 'v1 — Broadcast (live)'], ['duel', 'v2 — Dual-Meet Duel (live)'], ['chase', 'v3 — Record Chase (live)']]} onChange={(v) => setField({ boardStyle: v })} />);
       fields.push(<TextField key="headerText" label="Header text (blank = auto from the live event)" value={cfg.headerText || ''} placeholder="GIRLS 100M FREESTYLE — EVENT 12 — FINALS" onChange={(v) => setField({ headerText: v })} />);
       fields.push(<TextField key="eventFilter" label="Pin to event (exact name; blank = auto-pick current heat)" value={cfg.eventFilter || ''} placeholder="" onChange={(v) => setField({ eventFilter: v })} />);
       fields.push(<TextField key="heatLabel" label="Heat pill (e.g. “3/4”; blank = hide)" value={cfg.heatLabel ?? ''} placeholder="3/4" onChange={(v) => setField({ heatLabel: v })} />);
