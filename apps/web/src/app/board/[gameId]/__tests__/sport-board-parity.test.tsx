@@ -326,16 +326,24 @@ function expectNoInsetShorthand(container: HTMLElement) {
   });
 }
 
-function renderBoard(sport: string) {
+function renderBoard(
+  sport: string,
+  opts: { status?: BoardData['status']; vp?: { w: number; h: number } } = {},
+) {
   const def = findSport(sport) as SportDefinition;
   const { stats, overrides } = sampleFor(sport);
-  const data: BoardData = { ...baseFixture(sport), stats, ...(overrides || {}) };
+  const data: BoardData = {
+    ...baseFixture(sport),
+    stats,
+    ...(overrides || {}),
+    ...(opts.status ? { status: opts.status } : {}),
+  };
   return render(
     <DefaultBoardScene
       data={data}
       def={def}
       displayData={data}
-      vp={{ w: 1920, h: 1080 }}
+      vp={opts.vp ?? { w: 1920, h: 1080 }}
       activeCue={null}
       keyframes={null}
     />,
@@ -411,6 +419,136 @@ describe('Sports default-surface parity gate (#269)', () => {
       const text = container.textContent || '';
       expect(text).toContain('SWIMMER / TEAM');
       expect(text).toContain('LANE');
+    });
+  });
+
+  // ── P1-9 (2026-07-02) — laneGrid sports get a PRE_GAME/FINAL moment ──
+  // Before this fix, DefaultBoardScene routed swim/dive/track to the lane
+  // grid across EVERY status (the ternary short-circuited before the
+  // status-scene block), so a meet that ended just kept showing the last
+  // heat forever — no winner moment. Fixed: PRE_GAME → PreGameScene,
+  // FINAL → FinalScene (dual-meet team points already live on
+  // homeScore/awayScore), grid stays for LIVE/HALFTIME.
+  describe('P1-9 — laneGrid sports get PRE_GAME/FINAL status scenes', () => {
+    for (const sport of ['swimming', 'diving', 'track_and_field']) {
+      describe(sport, () => {
+        it('renders PreGameScene at PRE_GAME (not the lane grid)', () => {
+          const { container } = renderBoard(sport, { status: 'PRE_GAME' });
+          const text = container.textContent || '';
+          expect(text).toContain('GAME DAY');
+          expect(text).not.toContain('LANE ORDER');
+          expect(text).not.toContain('DIVER / TEAM');
+        });
+
+        it('renders FinalScene at FINAL (not the lane grid)', () => {
+          const { container } = renderBoard(sport, { status: 'FINAL' });
+          const text = container.textContent || '';
+          expect(text).toContain('FINAL');
+          expect(text).not.toContain('LANE ORDER');
+        });
+
+        it('still renders the lane grid / dive leaderboard at LIVE', () => {
+          const { container } = renderBoard(sport, { status: 'LIVE' });
+          const text = container.textContent || '';
+          const markers = expectedMarkers(sport);
+          for (const marker of markers) expect(text).toContain(marker);
+        });
+
+        it('still renders the lane grid / dive leaderboard at HALFTIME', () => {
+          const { container } = renderBoard(sport, { status: 'HALFTIME' });
+          const text = container.textContent || '';
+          const markers = expectedMarkers(sport);
+          for (const marker of markers) expect(text).toContain(marker);
+        });
+      });
+    }
+  });
+
+  // ── P1-10 (2026-07-02) — portrait fit math on a real 960×1080 wall ──
+  // Before this fix, `portrait = vp.w < vp.h && !isLeaderboard` excluded
+  // every meet sport from the portrait branch, AND the laneGrid path always
+  // scaled a 1920-wide scene — so a 960×1080 wall computed
+  // fitScale = Math.min(960/1920, 1080/1080) = 0.5, letterboxing the board
+  // into a ~540px-wide strip at half text size. Fixed: laneGrid sports get
+  // their own 960-wide natural base in portrait, so fitScale should be 1.0
+  // (full canvas, no letterbox) — verified here via the SAME outer scaled
+  // wrapper DefaultBoardScene renders (width/transform), not a re-derived
+  // calculation, so a regression in the real component fails this test.
+  describe('P1-10 — portrait fit on a 960×1080 wall (no longer letterboxed)', () => {
+    function outerSceneStyle(container: HTMLElement): CSSStyleDeclaration {
+      // DefaultBoardScene's render tree is:
+      //   <container (RTL wrapper)>
+      //     <div position:absolute inset (DefaultBoardScene root)>
+      //       <div width/height/transform:scale (the fit-scaled wrapper)>
+      // i.e. the node carrying `width`/`transform` is the GRANDCHILD of the
+      // RTL container, not the direct child.
+      const outer = container.querySelector(':scope > div > div') as HTMLElement;
+      return outer.style;
+    }
+
+    it('laneGrid sports (swimming) use a 960-wide base and scale 1.0 — no letterbox', () => {
+      const { container } = renderBoard('swimming', {
+        status: 'LIVE',
+        vp: { w: 960, h: 1080 },
+      });
+      const style = outerSceneStyle(container);
+      expect(style.width).toBe('960px');
+      expect(style.transform).toContain('scale(1)');
+    });
+
+    it('laneGrid sports (diving) use a 960-wide base and scale 1.0 — no letterbox', () => {
+      const { container } = renderBoard('diving', {
+        status: 'LIVE',
+        vp: { w: 960, h: 1080 },
+      });
+      const style = outerSceneStyle(container);
+      expect(style.width).toBe('960px');
+      expect(style.transform).toContain('scale(1)');
+    });
+
+    it('the SwimLaneGridWidget itself renders in portrait mode (no landscape-only marker regression)', () => {
+      const { container } = renderBoard('swimming', {
+        status: 'LIVE',
+        vp: { w: 960, h: 1080 },
+      });
+      const text = container.textContent || '';
+      expect(text).toContain('SWIMMER / TEAM');
+      expect(text).toContain('LANE');
+    });
+
+    it('non-leaderboard head-to-head sports (football) also drop the old carve-out and get PortraitBoardScene', () => {
+      // P1-10 dropped `!isLeaderboard` from the portrait gate entirely —
+      // this proves head-to-head sports are unaffected (they always got
+      // PortraitBoardScene; this just confirms no regression from the
+      // gate's simplification).
+      const { container } = renderBoard('football', {
+        status: 'LIVE',
+        vp: { w: 960, h: 1080 },
+      });
+      const style = outerSceneStyle(container);
+      expect(style.width).toBe('960px');
+    });
+
+    it('leaderboard sports WITHOUT a lane grid (golf) now ALSO get a portrait base (carve-out dropped)', () => {
+      const { container } = renderBoard('golf', {
+        status: 'LIVE',
+        vp: { w: 960, h: 1080 },
+      });
+      const style = outerSceneStyle(container);
+      // Before the fix, golf (isLeaderboard=true) was force-landscape
+      // (baseW=1920) even on a portrait wall. Now it gets the same
+      // 960-wide PortraitBoardScene base as every other sport.
+      expect(style.width).toBe('960px');
+    });
+
+    it('landscape walls (1920×1080) are unaffected — laneGrid still scales to 1.0 on its native aspect', () => {
+      const { container } = renderBoard('swimming', {
+        status: 'LIVE',
+        vp: { w: 1920, h: 1080 },
+      });
+      const style = outerSceneStyle(container);
+      expect(style.width).toBe('1920px');
+      expect(style.transform).toContain('scale(1)');
     });
   });
 });

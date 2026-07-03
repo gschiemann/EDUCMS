@@ -70,6 +70,24 @@ describe('SWIM_LANE_GRID', () => {
       expect(style).not.toMatch(/inset\s*:/);
     });
   });
+
+  // P1-10 (2026-07-02) — the `portrait` config flag (board page sets it from
+  // its own viewport check) swaps the scene's natural width from 1920 to
+  // 960 so a portrait LED wall gets a full-canvas grid instead of a
+  // letterboxed strip. This is a scene-sizing change, not a content change
+  // — the same rows/columns render either way.
+  it('still renders every column with portrait:true (content unaffected by the sizing swap)', () => {
+    const { container } = renderWidget('SWIM_LANE_GRID', { portrait: true });
+    expect(container.textContent).toContain('J. RIVERA');
+    expect(container.textContent).toContain('LANE');
+    expect(container.textContent).toContain('SWIMMER / TEAM');
+  });
+
+  it('renders identically to landscape when portrait is unset (no regression)', () => {
+    const landscape = renderWidget('SWIM_LANE_GRID').container.textContent;
+    const portrait = renderWidget('SWIM_LANE_GRID', { portrait: false }).container.textContent;
+    expect(portrait).toBe(landscape);
+  });
 });
 
 describe('DIVE_LEADERBOARD', () => {
@@ -98,6 +116,13 @@ describe('DIVE_LEADERBOARD', () => {
       const style = (el as HTMLElement).getAttribute('style') || '';
       expect(style).not.toMatch(/inset\s*:/);
     });
+  });
+
+  // P1-10 (2026-07-02) — same portrait config flag as SWIM_LANE_GRID.
+  it('still renders the diver field with portrait:true (content unaffected by the sizing swap)', () => {
+    const { container } = renderWidget('DIVE_LEADERBOARD', { portrait: true });
+    expect(container.textContent).toContain('A. WASHINGTON');
+    expect(container.textContent).toContain('DIVER / TEAM');
   });
 });
 

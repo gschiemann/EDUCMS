@@ -106,15 +106,30 @@ function useScaleToFit(naturalW: number, naturalH: number) {
 }
 
 /** Outer scaffold every board in this file shares: measures its zone,
- *  scales a fixed 1920×1080 scene to fit (letterboxed, never distorted). */
+ *  scales a fixed natural-size scene to fit (letterboxed, never distorted).
+ *  Defaults to the original 1920×1080 landscape base — every existing
+ *  caller (relay/splits/record/judges panels) is byte-identical.
+ *
+ *  P1-10 (2026-07-02) — `naturalW`/`naturalH` are additive so
+ *  SwimLaneGridWidget/DiveLeaderboardWidget can opt into a 960×1080
+ *  PORTRAIT natural size when the board page detects a tall canvas (a
+ *  960×1080 LED wall). Without this, a portrait wall scaled the landscape
+ *  1920×1080 scene down to Math.min(960/1920, 1080/1080)=0.5× — a ~540px
+ *  half-dark letterboxed strip at half text size. The row content below is
+ *  already a flex column of full-width rows (no landscape-only layout
+ *  assumptions), so it reflows cleanly into a taller/narrower canvas. */
 function ScaledScene({
   bgColor,
   children,
+  naturalW = 1920,
+  naturalH = 1080,
 }: {
   bgColor: string;
   children: React.ReactNode;
+  naturalW?: number;
+  naturalH?: number;
 }) {
-  const { ref, scale } = useScaleToFit(1920, 1080);
+  const { ref, scale } = useScaleToFit(naturalW, naturalH);
   return (
     <div
       ref={ref}
@@ -126,7 +141,7 @@ function ScaledScene({
     >
       <div
         style={{
-          width: 1920, height: 1080, flex: 'none',
+          width: naturalW, height: naturalH, flex: 'none',
           transform: `scale(${scale})`, transformOrigin: 'center center',
           position: 'relative',
         }}
@@ -272,6 +287,16 @@ export interface SwimLaneGridCfg extends BaseCfg {
    */
   athleteLabel?: string;
   iconEmoji?: string;
+  /**
+   * P1-10 (2026-07-02) — internal caller-set flag (the board page sets this
+   * from its own viewport check), NOT a new operator-facing PropertiesPanel
+   * control — same "config swap, not a new component" pattern as
+   * athleteLabel/iconEmoji above. When true, the scene's natural size is
+   * 960×1080 (portrait) instead of 1920×1080 (landscape) so a real portrait
+   * LED wall gets full-canvas lane rows instead of a letterboxed strip.
+   * Unset/false renders byte-identical to before.
+   */
+  portrait?: boolean;
 }
 
 export function SwimLaneGridWidget({ config }: WidgetProps<SwimLaneGridCfg>) {
@@ -327,9 +352,10 @@ export function SwimLaneGridWidget({ config }: WidgetProps<SwimLaneGridCfg>) {
 
   const headerText = c.headerText || event?.event || 'HEAT — LANE ASSIGNMENTS';
   const placeText = (p: number): string => (p > 0 ? String(p) : '—');
+  const naturalW = c.portrait ? 960 : 1920;
 
   return (
-    <ScaledScene bgColor={bgColor}>
+    <ScaledScene bgColor={bgColor} naturalW={naturalW} naturalH={1080}>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: 40, display: 'flex', flexDirection: 'column' }}>
         {/* Header — event / heat title */}
         <div
@@ -436,6 +462,11 @@ export interface DiveLeaderboardCfg extends BaseCfg {
    *  only for the "X of N dives" readout; the leaderboard always shows
    *  every diver on `stats.results`. */
   divesInList?: number;
+  /** P1-10 (2026-07-02) — same internal caller-set portrait flag as
+   *  SwimLaneGridWidget.portrait: 960×1080 natural size instead of
+   *  1920×1080 when the board page is on a portrait wall. Unset/false
+   *  renders byte-identical to before. */
+  portrait?: boolean;
 }
 
 export function DiveLeaderboardWidget({ config }: WidgetProps<DiveLeaderboardCfg>) {
@@ -457,9 +488,10 @@ export function DiveLeaderboardWidget({ config }: WidgetProps<DiveLeaderboardCfg
 
   const rows: ResultEntry[] = noLiveData ? [] : (event?.entries ?? []).slice().sort((a, b) => (a.place || 9999) - (b.place || 9999));
   const headerText = c.headerText || event?.event || 'DIVING — RUNNING TOTALS';
+  const naturalW = c.portrait ? 960 : 1920;
 
   return (
-    <ScaledScene bgColor={bgColor}>
+    <ScaledScene bgColor={bgColor} naturalW={naturalW} naturalH={1080}>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: 40, display: 'flex', flexDirection: 'column' }}>
         {/* Header */}
         <div

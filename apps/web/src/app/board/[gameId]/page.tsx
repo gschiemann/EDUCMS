@@ -4492,10 +4492,26 @@ export function DefaultBoardScene({
   // operator's 3×320 = 960×1080 wall — the 16:9 landscape scenes can only
   // letterbox into a strip. Render the dedicated PortraitBoardScene at a
   // 960×1080 base instead so the DEFAULT board FILLS the canvas — no custom
-  // template required. Leaderboard meets keep the landscape scene for now.
-  const portrait = vp.w < vp.h && !isLeaderboard;
+  // template required.
+  // P1-10 (2026-07-02) — the `!isLeaderboard` carve-out left every meet
+  // sport force-landscape on a real portrait wall: golf/gym/cheer/XC via
+  // PortraitBoardScene (already sport-agnostic on homeScore/awayScore, so
+  // there's no reason to exclude them), and swim/dive/track's OWN lane grid
+  // (which always scaled a 1920×1080 base — on a 960×1080 wall that's
+  // Math.min(960/1920, 1080/1080)=0.5, a ~540px half-dark strip at half
+  // text size). Dropped the carve-out; laneGrid sports get their own
+  // portrait-shaped lane grid below (not PortraitBoardScene, which is a
+  // 2-column box score with no room for lane rows).
+  const portrait = vp.w < vp.h;
   const baseW = portrait ? 960 : 1920;
   const fitScale = Math.min(vp.w / baseW, vp.h / 1080);
+  // P1-9/P1-10 combined — laneGrid sports render their OWN grid (portrait or
+  // landscape, via the `portrait` config flag below) at LIVE/HALFTIME and any
+  // unexpected status; PRE_GAME/FINAL always go through the shared
+  // PreGameScene/FinalScene/PortraitBoardScene status scenes (landscape or
+  // portrait respectively) so a meet gets the same pre-game/winner moment a
+  // head-to-head game gets, instead of showing the lane grid forever.
+  const laneGridShowsGrid = laneGridDefault && !isPreGame && !isFinal;
 
   return (
     <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -4511,28 +4527,29 @@ export function DefaultBoardScene({
           transformOrigin: 'center center',
         }}
       >
-        {portrait ? (
-          // The portrait board is status-aware (shows the status chip + live
-          // score/clock), so it replaces the entire landscape scene block.
-          <PortraitBoardScene data={view} def={def} />
-        ) : laneGridDefault ? (
+        {laneGridShowsGrid ? (
           // #267 — the swim/dive DEFAULT scoreboard IS the lane grid / dive
-          // leaderboard (no template selection needed), across every status.
-          // #270a — track & field reuses the SAME lane grid widget with
-          // running-event copy (🏃 / ATHLETE·TEAM) via config, not a new
-          // component. GameStateProvider re-polls /sports/board/:id so the
-          // widget shows live lanes/heats/places; seeded from `view` to
-          // avoid a boot flash.
+          // leaderboard (no template selection needed) at LIVE/HALFTIME (and
+          // any unexpected status). #270a — track & field reuses the SAME
+          // lane grid widget with running-event copy (🏃 / ATHLETE·TEAM) via
+          // config, not a new component. GameStateProvider re-polls
+          // /sports/board/:id so the grid shows live lanes/heats/places;
+          // seeded from `view` to avoid a boot flash.
+          // P1-10 (2026-07-02) — `portrait` picks the grid's own
+          // portrait-shaped base (see SwimLaneGridWidget/DiveLeaderboardWidget
+          // `portrait` config) instead of letterboxing a 1920-wide scene onto
+          // a 960×1080 wall (was Math.min(960/1920,1080/1080)=0.5×).
           <GameStateProvider gameId={view.id} initial={view as unknown as GameSnapshot}>
             {def.key === 'diving' ? (
               <DiveLeaderboardWidget
-                config={{ homeColor: view.homeColor ?? undefined, awayColor: view.awayColor ?? undefined }}
+                config={{ homeColor: view.homeColor ?? undefined, awayColor: view.awayColor ?? undefined, portrait }}
               />
             ) : (
               <SwimLaneGridWidget
                 config={{
                   homeColor: view.homeColor ?? undefined,
                   awayColor: view.awayColor ?? undefined,
+                  portrait,
                   ...(trackDefault
                     ? { athleteLabel: 'ATHLETE / TEAM', iconEmoji: '🏃' }
                     : null),
@@ -4540,6 +4557,28 @@ export function DefaultBoardScene({
               />
             )}
           </GameStateProvider>
+        ) : portrait ? (
+          // The portrait board is status-aware (shows the status chip + live
+          // score/clock), so it replaces the entire landscape scene block.
+          // P1-10 — also covers laneGrid sports at PRE_GAME/FINAL in
+          // portrait (laneGridShowsGrid is false there): PortraitBoardScene
+          // is already sport-agnostic on data.homeScore/awayScore (the
+          // dual-meet team points every meet sport carries), so it doubles
+          // as the meet's pre-game/final moment without a bespoke portrait
+          // scene for the lane grid.
+          <PortraitBoardScene data={view} def={def} />
+        ) : laneGridDefault ? (
+          // P1-9 (2026-07-02) — landscape PRE_GAME/FINAL for laneGrid sports
+          // (LIVE/HALFTIME already returned via laneGridShowsGrid above).
+          // Same dedicated status scenes head-to-head sports use below —
+          // dual-meet team points already live on data.homeScore/awayScore,
+          // no new data needed — so a meet doesn't end on "last heat
+          // forever, no winner moment."
+          isPreGame ? (
+            <PreGameScene data={view} def={def} />
+          ) : (
+            <FinalScene data={view} def={def} />
+          )
         ) : (
           <>
             {isLive &&
