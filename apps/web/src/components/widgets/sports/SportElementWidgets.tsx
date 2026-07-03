@@ -252,8 +252,13 @@ export function TeamRecordWidget({ config }: { config: ElCfg }) {
   const s = useGameState();
   const renderSurface = useRenderSurface();
   const isLiveNoData = renderSurface === 'player' && !s?.snapshot;
-  const fallback = config.team === 'away' ? '8-3' : '10-1';
-  const display = isLiveNoData ? (config.placeholder && config.placeholder !== fallback ? config.placeholder : '—') : (config.placeholder ?? fallback);
+  // #295 (2026-07-03): no fabricated default record. An explicit operator
+  // entry renders as-is on every surface (a real '10-1' no longer gets
+  // false-blanked by a value-equality heuristic); an untouched widget shows
+  // an obvious 'W–L' prompt on the builder and neutral dashes on a live
+  // unbound player — never a fake '10-1' / '8-3'.
+  const record = config.placeholder?.trim();
+  const display = record ? record : (isLiveNoData ? '—' : 'W–L');
   return (
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
       <FitOneLine

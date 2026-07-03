@@ -141,28 +141,36 @@ describe('nofake-sweep — CtsAnnouncementWidget (scoreboard-cts-announcement)',
 });
 
 describe('nofake-sweep — TeamRecordWidget (sb-team-record-home / sb-team-record-away)', () => {
-  it('real player surface, freshly dropped (seeded placeholder "10-1"): renders neutral dash, never the fabricated record', () => {
-    // variants-register.ts pre-seeds defaultConfig.placeholder: '10-1' at
-    // drop-time — this reproduces exactly that untouched drop.
-    renderVariant('sb-team-record-home', { team: 'home', fontSize: 32, placeholder: '10-1' }, { renderSurface: 'player' });
+  // #295 (2026-07-03): the fabricated '10-1'/'8-3' defaultConfig seed was
+  // REMOVED from variants-register.ts. A freshly dropped record now has NO
+  // placeholder; an explicit operator entry renders as-is on every surface
+  // (no more value-equality false-blank).
+  it('real player surface, freshly dropped (no seeded record): renders neutral dash, never a fabricated record', () => {
+    renderVariant('sb-team-record-home', { team: 'home', fontSize: 32 }, { renderSurface: 'player' });
     expect(screen.queryByText('10-1')).not.toBeInTheDocument();
     expect(screen.getByText('—')).toBeInTheDocument();
   });
 
-  it('real player surface, away variant, freshly dropped (seeded "8-3"): renders neutral dash, never the fabricated record', () => {
-    renderVariant('sb-team-record-away', { team: 'away', fontSize: 32, placeholder: '8-3' }, { renderSurface: 'player' });
+  it('real player surface, away variant, freshly dropped: renders neutral dash, never a fabricated record', () => {
+    renderVariant('sb-team-record-away', { team: 'away', fontSize: 32 }, { renderSurface: 'player' });
     expect(screen.queryByText('8-3')).not.toBeInTheDocument();
     expect(screen.getByText('—')).toBeInTheDocument();
   });
 
-  it('builder (renderSurface unset), same seeded config: still shows the alive SAMPLE record', () => {
-    renderVariant('sb-team-record-home', { team: 'home', fontSize: 32, placeholder: '10-1' });
-    expect(screen.getByText('10-1')).toBeInTheDocument();
+  it('builder (renderSurface unset), freshly dropped: shows an obvious "W–L" prompt, never a fabricated sample record', () => {
+    renderVariant('sb-team-record-home', { team: 'home', fontSize: 32 });
+    expect(screen.getByText('W–L')).toBeInTheDocument();
+    expect(screen.queryByText('10-1')).not.toBeInTheDocument();
   });
 
-  it('real player surface with an operator-typed record DIFFERENT from the seed: renders the operator value, not neutral', () => {
+  it('real player surface with an operator-typed record: renders the operator value on the live board', () => {
     renderVariant('sb-team-record-home', { team: 'home', fontSize: 32, placeholder: '14-2' }, { renderSurface: 'player' });
     expect(screen.getByText('14-2')).toBeInTheDocument();
+  });
+
+  it('real player surface: a legitimately-entered "10-1" home record is NOT false-blanked (#295 fix — the old value-equality heuristic wrongly hid it)', () => {
+    renderVariant('sb-team-record-home', { team: 'home', fontSize: 32, placeholder: '10-1' }, { renderSurface: 'player' });
+    expect(screen.getByText('10-1')).toBeInTheDocument();
   });
 });
 
