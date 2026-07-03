@@ -1178,6 +1178,85 @@ The page renders inside the brand shell — same chrome, same palette, same font
     shorthand AND the long-hand on adjacent lines, so modern engines
     parse the shorthand and Chromium 83 falls back to the long-hand.)
 
+    2026-07-03: a THIRD variant, invisible to grep — no file contains the
+    word "inset" at all. A React inline `style={{ position:'absolute',
+    top:0, right:0, bottom:0, left:560 }}` object that supplies all FOUR
+    physical sides in one object literal gets **re-serialized by the
+    browser's own CSSOM** into the `inset` SHORTHAND in the element's
+    `style` DOM ATTRIBUTE STRING — regardless of what browser is
+    rendering it, this is standard CSSOM behavior, not a Chromium-83
+    quirk. A non-uniform set of values (not all four identical)
+    serializes to the multi-value form, e.g. `inset: 0px 0px 0px 560px`.
+    The Chromium-83 polyfill above (`[style*="inset: 0"]`) exists to
+    force-zero the correct, INTENTIONAL uniform case — but that same
+    substring also matches any NON-uniform case whose `top` value
+    happens to serialize starting with the digit `0` (confirmed
+    empirically: this includes bare `0`, `'0px'`, and — less obviously —
+    `'0%'` and even `'0.5%'`, since the substring test only cares about
+    the leading character, not whether the value is truly zero). The
+    polyfill then force-zeroes ALL FOUR sides `!important`, destroying
+    the intended offset. This reproduces on **modern Chromium** (the dev
+    preview browser), not just Chromium 83 — the CSSOM shorthand
+    collapse is universal; only the ORIGINAL `inset` bug (Chromium not
+    parsing the shorthand at all) is Chromium-83-specific. Confirmed live
+    in `ScorebugTicker`'s "scrolling reel" (`apps/web/src/components/
+    widgets/themes/scorebug.tsx`), three `Celebrations*Widgets.tsx`
+    symmetric-margin center columns, `scrapbook.tsx`'s ruled-lines panel,
+    and the `right:'auto', bottom:'auto'` pinning pattern in both
+    `player/page.tsx` and `KioskSplash.tsx`.
+
+    **Fix:** drop to 3 physical sides + an explicit `width`/`height`
+    matching the intended geometry — a 3-side object can never serialize
+    to the `inset` shorthand (which requires all four), so it's immune
+    to the polyfill AND computes identically on every browser:
+    ```jsx
+    // WAS (landmine): serializes to "inset: 0px 0px 0px 560px"
+    style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 560 }}
+    // FIXED: can never serialize to `inset` (only 3 sides present)
+    style={{ position: 'absolute', top: 0, bottom: 0, left: 560, width: 'calc(100% - 560px)' }}
+    ```
+    For the `right:'auto', bottom:'auto'` pinning idiom (used to let an
+    explicit `width`/`height` win over a would-be inset), just OMIT
+    `right`/`bottom` entirely rather than setting them to `'auto'` —
+    an unset side and an explicit `'auto'` side compute identically for
+    a positioned box sized by `width`/`height`, but only the omitted
+    form stays at 2 keys and can never hit 4.
+
+    **Detector:** this landmine is invisible to `grep`/regex (it can
+    span multiple lines and never contains the word "inset"), so catch
+    it with the AST-based guard `apps/web/tools/
+    check-inset-serialization.cjs` (uses the TypeScript compiler API —
+    already a repo devDependency, no new dep). It parses every
+    `style={{...}}` JSX object literal under the player/widget scan
+    paths and flags one whose top/right/bottom/left are all present,
+    not all identical, AND `top`'s value starts with the digit `0` (the
+    exact condition that collides with the polyfill's substring
+    selector — a non-uniform object with a NON-zero-leading `top`, e.g.
+    `{top:150,...}` or `{top:'12%',...}`, is reported separately as
+    informational-only because it's provably never touched by the
+    polyfill). Run: `node apps/web/tools/check-inset-serialization.cjs`.
+
+    **The polyfill itself was NOT hardened** (evaluated and rejected,
+    2026-07-03) — a precise CSS attribute-selector fix (matching only
+    the exact 1-value collapsed forms `inset: 0px`/`inset: 0%`, anchored
+    with `$=`/`*=` combinations) passes every unit tested EXCEPT that
+    container-query units (`cqi`/`cqh`/`cqw`/`cqb`/`cqmin`/`cqmax`) and
+    `ch` do NOT collapse a uniform-zero object to the 1-value shorthand
+    the way `px`/`%`/`em`/`rem`/`vh`/`vw`/`vmin`/`vmax`/`pt` do — they
+    stay in the 4-value form (`inset: 0cqi 0cqi 0cqi 0cqi`), which the
+    hardened selector would then fail to match, silently un-protecting
+    a genuinely-uniform Chromium-83 landmine that uses those units. No
+    live occurrence exists in the codebase today, but "no current
+    occurrence" isn't "provably regression-free" (cq-units are an
+    actively-used, `taurus-safety`-tracked pattern class here) — so per
+    the standing rule (never ship a polyfill change you can't prove is
+    regression-free), the fix stayed scoped to the individual widgets +
+    the detector. If a future agent wants to revisit this, the correct
+    fix is a JS-based per-element `getComputedStyle` check (compare all
+    4 resolved side values for equality) rather than another CSS
+    attribute-selector attempt — CSS selectors cannot express "are these
+    N values equal," only substring/prefix/suffix matches.
+
     Other Chromium-83 gotchas in the same vein, all already fixed but
     worth knowing exist:
     - **`gap` on flex containers** — Chrome 84+. Use per-child
