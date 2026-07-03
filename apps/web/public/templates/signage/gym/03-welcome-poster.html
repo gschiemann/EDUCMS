@@ -1,0 +1,224 @@
+<!doctype html>
+<!-- GYM · WELCOME POSTER — new-member welcome board.
+     APPROVED 2026-07-02 — matches docs/design/approved/2026-07-02-gym-welcome/gym-welcome-v6.html.
+     Reviewed by Greg. DO NOT regress.
+     Pixel-faithful ×2 port of the 1920×1080 mockup to the sibling 3840×2160 signage
+     scaffold (transform:scale stage, brand-token vars the shim recognises, live clock,
+     data-field on every text, data-imgslot for trainer photo + logo). -->
+<html lang="en"><head><meta charset="utf-8"/><title>Gym · Welcome Poster</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* rebrand here — names the shim's BRAND_MAP recognises */
+  --bg:#0c0e12;--paper:#141822;--fg:#ffffff;--mute:#8b93a3;--rule:#232937;
+  --primary:#bef22d;--primary2:#8fd311;--accent:#f97316;--accent2:#38bdf8;--good:#38bdf8;
+  --font-display:"Anton",system-ui,sans-serif;--font-grotesk:"Inter",system-ui,sans-serif;--font-mono:"Inter",system-ui,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden;color:var(--fg);font-family:var(--font-grotesk);
+  background:
+    radial-gradient(1800px 1000px at 88% 8%, color-mix(in srgb, var(--primary) 10%, transparent), transparent 60%),
+    radial-gradient(1400px 960px at 6% 96%, color-mix(in srgb, var(--accent2) 8%, transparent), transparent 60%),
+    var(--bg); }
+/* active background layers — nothing is flat black */
+.grain{position:absolute;top:0;right:0;bottom:0;left:0;opacity:.5;
+  background-image:repeating-linear-gradient(0deg, rgba(255,255,255,.022) 0 2px, transparent 2px 6px),
+                   repeating-linear-gradient(90deg, rgba(255,255,255,.015) 0 2px, transparent 2px 6px);}
+.hazard{position:absolute;left:-240px;top:1196px;width:2800px;height:300px;transform:rotate(-4deg);
+  background:repeating-linear-gradient(115deg, var(--primary) 0 88px, var(--bg) 88px 176px);opacity:.16;}
+.big01{position:absolute;right:-60px;top:140px;font-family:var(--font-display);font-size:1600px;line-height:.85;
+  color:transparent;-webkit-text-stroke:6px color-mix(in srgb, var(--primary) 14%, transparent);letter-spacing:-20px;}
+.ring{position:absolute;border-radius:50%;border:4px solid rgba(255,255,255,.06);}
+
+/* header */
+.head{position:absolute;top:88px;left:128px;right:128px;display:flex;align-items:center;justify-content:space-between;}
+.brand{display:flex;align-items:center;}
+.plate{width:128px;height:128px;border-radius:32px;background:var(--primary);display:flex;align-items:center;justify-content:center;background-size:cover;background-position:center;
+  box-shadow:0 16px 48px color-mix(in srgb, var(--primary) 35%, transparent);margin-right:40px;}
+.plate svg{width:72px;height:72px;}
+.plate.has-img svg{display:none;}
+.brand h1{font-family:var(--font-display);font-size:108px;letter-spacing:2px;text-transform:uppercase;line-height:1;}
+.brand small{display:block;font-size:30px;font-weight:800;letter-spacing:12px;color:var(--mute);margin-top:4px;}
+.clock{font-family:var(--font-display);font-size:104px;color:#e8ecf3;font-variant-numeric:tabular-nums;}
+
+/* hero (left) */
+.hero{position:absolute;left:128px;top:420px;width:2020px;}
+.chips{display:flex;margin-bottom:52px;}
+.chip{font-size:40px;font-weight:800;letter-spacing:4px;padding:20px 44px;border-radius:999px;margin-right:32px;}
+.chip.day{background:var(--accent2);color:#052033;}
+.chip.new{background:color-mix(in srgb, var(--primary) 15%, transparent);color:var(--primary);border:4px solid var(--primary);}
+.hello{font-family:var(--font-display);font-size:184px;color:var(--primary);letter-spacing:4px;line-height:1;}
+.name{font-family:var(--font-display);font-size:460px;line-height:.95;letter-spacing:-4px;text-transform:uppercase;
+  text-shadow:16px 16px 0 color-mix(in srgb, var(--primary) 22%, transparent);}
+.rule{width:1120px;height:20px;background:linear-gradient(90deg,var(--primary),var(--accent2));margin:60px 0 48px;}
+.motto{font-size:60px;color:#c7cdd9;max-width:1800px;line-height:1.45;}
+.motto b{color:var(--fg);}
+.week{display:flex;align-items:center;margin-top:68px;}
+.seg{width:104px;height:36px;background:#20242e;border-radius:8px;margin-right:16px;}
+.seg.on{background:var(--primary);box-shadow:0 0 28px color-mix(in srgb, var(--primary) 50%, transparent);}
+.week span{font-size:38px;font-weight:800;letter-spacing:4px;color:var(--mute);margin-left:28px;}
+
+/* right rail — trainer, checklist, classes */
+.rail{position:absolute;right:128px;top:380px;width:1280px;}
+.card{background:var(--paper);border:2px solid var(--rule);border-radius:44px;padding:52px 60px;margin-bottom:44px;
+  box-shadow:0 36px 80px rgba(0,0,0,.45);}
+.card h3{font-size:34px;font-weight:800;letter-spacing:6px;color:var(--mute);margin-bottom:36px;}
+.trainer{display:flex;align-items:center;}
+.tring{width:208px;height:208px;border-radius:50%;background:conic-gradient(var(--primary) 0 270deg, #2a3040 270deg 360deg);
+  display:flex;align-items:center;justify-content:center;margin-right:48px;flex-shrink:0;}
+.tface{width:176px;height:176px;border-radius:50%;background:#222835;display:flex;align-items:center;justify-content:center;background-size:cover;background-position:center;
+  font-family:var(--font-display);font-size:76px;color:var(--accent2);}
+.tface.has-img{font-size:0;}
+.trainer h4{font-family:var(--font-display);font-size:80px;letter-spacing:2px;text-transform:uppercase;line-height:1;}
+.trainer .spec{color:var(--accent2);font-size:34px;font-weight:800;letter-spacing:4px;margin:8px 0 16px;}
+.trainer p{color:#9aa2b1;font-size:34px;line-height:1.4;}
+.check .row{display:flex;align-items:center;padding:26px 0;border-bottom:2px dashed #262c3a;}
+.check .row:last-child{border-bottom:none;}
+.box{width:76px;height:76px;border-radius:20px;border:6px solid #3a4152;margin-right:36px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;}
+.box.done{background:var(--primary);border-color:var(--primary);}
+.box.done svg{width:44px;height:44px;}
+.check .t{font-size:44px;font-weight:700;color:#e8ecf3;}
+.check .t small{display:block;font-size:30px;font-weight:600;color:var(--mute);margin-top:4px;}
+.classes{display:flex;}
+.cls{flex:1;background:#1a1f2b;border-radius:28px;padding:32px 28px;margin-right:28px;border-top:8px solid var(--accent2);}
+.cls:nth-child(2){border-top-color:var(--primary);}
+.cls:last-child{margin-right:0;border-top-color:var(--accent);}
+.cls b{display:block;font-size:40px;}
+.cls span{font-size:32px;color:var(--mute);font-weight:700;}
+
+/* CTA band — SOLID opaque bar */
+.cta{position:absolute;left:0;right:0;bottom:0;height:236px;background:linear-gradient(90deg,var(--accent),#fb5607);
+  display:flex;align-items:center;padding:0 128px;}
+.cta .stripes{position:absolute;top:0;right:0;bottom:0;left:0;
+  background:repeating-linear-gradient(115deg, rgba(0,0,0,.08) 0 60px, transparent 60px 120px);}
+.cta .q{font-size:38px;font-weight:800;letter-spacing:6px;color:rgba(20,10,0,.75);margin-right:52px;position:relative;}
+.cta h2{font-family:var(--font-display);font-size:92px;color:#1a0f00;letter-spacing:2px;flex:1;position:relative;text-transform:uppercase;}
+.qr{width:172px;height:172px;background:#1a0f00;border-radius:24px;padding:18px;position:relative;flex:none;}
+.qr .m{width:100%;height:100%;
+  background:
+    linear-gradient(#fff,#fff) 0 0/44px 44px no-repeat, linear-gradient(#fff,#fff) 100% 0/44px 44px no-repeat,
+    linear-gradient(#fff,#fff) 0 100%/44px 44px no-repeat,
+    repeating-linear-gradient(0deg,#fff 0 10px, transparent 10px 22px) 64px 60px/68px 76px no-repeat,
+    repeating-linear-gradient(90deg,#fff 0 10px, transparent 10px 20px) 56px 8px/76px 40px no-repeat;}
+.qr span{position:absolute;left:50%;transform:translateX(-50%);bottom:-52px;font-size:26px;font-weight:800;letter-spacing:4px;color:#1a0f00;white-space:nowrap;}
+
+/* portrait: stack hero over rail */
+.stage[data-orient="portrait"] .big01{font-size:1100px;right:-40px;top:80px;}
+.stage[data-orient="portrait"] .hero{left:120px;right:120px;top:360px;width:auto;}
+.stage[data-orient="portrait"] .name{font-size:360px;}
+.stage[data-orient="portrait"] .rule{width:900px;}
+.stage[data-orient="portrait"] .rail{left:120px;right:120px;top:1560px;width:auto;}
+.stage[data-orient="portrait"] .hazard{top:1400px;}
+</style>
+<script>/*EDUCMS-SHIM-V6*/(function(){try{
+var editMode=false;
+// ── Gallery FREEZE mode ──────────────────────────────────────────────
+// Installed FIRST (this script is at end of <head>, before the board's own
+// <body> scripts), so the timer-wrappers below capture every timer the board
+// starts. Strict NO-OP unless the URL carries freeze=1.
+var FROZEN=(function(){try{return new URLSearchParams(location.search).get('freeze')==='1';}catch(e){return false;}})();
+var _frzStyle=null;
+function _unfreeze(){if(_frzStyle){try{if(_frzStyle.parentNode)_frzStyle.parentNode.removeChild(_frzStyle);}catch(e){}_frzStyle=null;}}
+(function(){if(!FROZEN)return;var ivs=[],tos=[],rafs=[];var _si=window.setInterval,_st=window.setTimeout,_raf=window.requestAnimationFrame;
+window.setInterval=function(){var id=_si.apply(window,arguments);try{ivs.push(id);}catch(e){}return id;};
+window.setTimeout=function(){var id=_st.apply(window,arguments);try{tos.push(id);}catch(e){}return id;};
+if(_raf)window.requestAnimationFrame=function(cb){var id=_raf.call(window,cb);try{rafs.push(id);}catch(e){}return id;};
+function freezeNow(){window.setInterval=_si;window.setTimeout=_st;if(_raf)window.requestAnimationFrame=_raf;try{for(var i=0;i<ivs.length;i++)clearInterval(ivs[i]);}catch(e){}try{for(var j=0;j<tos.length;j++)clearTimeout(tos[j]);}catch(e){}try{if(_raf)for(var k=0;k<rafs.length;k++)cancelAnimationFrame(rafs[k]);}catch(e){}try{var hi=_st(function(){},0);if(typeof hi==='number'&&hi>0){var lo=hi>100000?hi-100000:0;for(var z=hi;z>lo;z--){clearTimeout(z);clearInterval(z);}}}catch(e){}if(!_frzStyle){try{_frzStyle=document.createElement('style');_frzStyle.setAttribute('data-educms-freeze','1');_frzStyle.appendChild(document.createTextNode('*{animation:none!important;transition:none!important;}'));(document.head||document.documentElement).appendChild(_frzStyle);}catch(e){}}}
+// Settle window: let the board's auto-fit (setTimeout(autofit,500)+fonts.ready)
+// finish before killing its timers; then a brute-force id sweep catches any the
+// wrappers missed. Scheduled via the REAL setTimeout so this scheduler isn't
+// itself recorded/cleared.
+_st(freezeNow,1400);window.__educmsFreezeNow=freezeNow;}());
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold','--c-accent2'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function armEdit(){document.querySelectorAll('[data-field],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':'#06b6d4');el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(el.hasAttribute('data-field')?'text':'img');try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);if(editMode)armEdit();}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();}}}catch(_){}});
+}catch(e){}})();</script>
+</head><body>
+<div class="stage" id="stage">
+  <div class="big01" data-field="poster.watermark">01</div>
+  <div class="hazard"></div>
+  <div class="grain"></div>
+  <div class="ring" style="width:840px;height:840px;right:440px;top:660px;"></div>
+  <div class="ring" style="width:1120px;height:1120px;right:300px;top:520px;"></div>
+
+  <header class="head" data-widget="brand">
+    <div class="brand">
+      <div class="plate" data-widget="logo" data-imgslot="brand.logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M3 9v6M6 7v10M18 7v10M21 9v6M6 12h12" stroke="#0c0e12" stroke-width="2.6" stroke-linecap="round"/></svg>
+      </div>
+      <div><h1 data-field="brand.name">Ironworks Fitness</h1><small data-field="brand.tag">New member welcome</small></div>
+    </div>
+    <div class="clock" data-source="local-time" data-widget="clock"><span data-field="clock.hhmm">7:42 PM</span></div>
+  </header>
+
+  <section class="hero" data-widget="hero">
+    <div class="chips">
+      <div class="chip day" data-field="hero.day">Day 01</div>
+      <div class="chip new" data-field="hero.since">Member since Jul 1</div>
+    </div>
+    <div class="hello" data-field="hero.hello">Welcome,</div>
+    <div class="name" data-field="hero.name">Jordan</div>
+    <div class="rule"></div>
+    <div class="motto"><span data-field="hero.motto1">You just took the hardest step. </span><b data-field="hero.motto2">Everything from here is momentum.</b></div>
+    <div class="week" data-widget="week">
+      <div class="seg on"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div>
+      <div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div>
+      <div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div>
+      <span data-field="week.label">Week 1 of 12 — first goal check-in</span>
+    </div>
+  </section>
+
+  <aside class="rail">
+    <div class="card" data-widget="trainer">
+      <h3 data-field="trainer.label">Your trainer</h3>
+      <div class="trainer">
+        <div class="tring"><div class="tface" data-imgslot="trainer.photo"><span data-field="trainer.initials">MA</span></div></div>
+        <div>
+          <h4 data-field="trainer.name">Coach Maya</h4>
+          <div class="spec" data-field="trainer.spec">Strength &amp; conditioning</div>
+          <p data-field="trainer.bio">First-90-days onboarding &amp; form coaching. Say hi — she's expecting you.</p>
+        </div>
+      </div>
+    </div>
+    <div class="card check" data-widget="checklist">
+      <h3 data-field="checklist.label">Your first week</h3>
+      <div class="row" data-widget="checklist.0"><div class="box done"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4 10-10" stroke="#0c0e12" stroke-width="3.4" stroke-linecap="round"/></svg></div><div class="t"><span data-field="checklist.0.t">Locker assigned </span><small data-field="checklist.0.s">#114 — code at the front desk</small></div></div>
+      <div class="row" data-widget="checklist.1"><div class="box"></div><div class="t"><span data-field="checklist.1.t">Book your free intro session </span><small data-field="checklist.1.s">with Coach Maya, 30 min</small></div></div>
+      <div class="row" data-widget="checklist.2"><div class="box"></div><div class="t"><span data-field="checklist.2.t">Try your first class free </span><small data-field="checklist.2.s">any class this week — just show up</small></div></div>
+    </div>
+    <div class="card" data-widget="classes">
+      <h3 data-field="classes.label">Today's classes</h3>
+      <div class="classes">
+        <div class="cls" data-widget="classes.0"><b data-field="classes.0.name">HIIT 45</b><span data-field="classes.0.time">6:00 AM</span></div>
+        <div class="cls" data-widget="classes.1"><b data-field="classes.1.name">Spin</b><span data-field="classes.1.time">5:30 PM</span></div>
+        <div class="cls" data-widget="classes.2"><b data-field="classes.2.name">Yoga Flow</b><span data-field="classes.2.time">7:00 PM</span></div>
+      </div>
+    </div>
+  </aside>
+
+  <footer class="cta" data-widget="cta">
+    <div class="stripes"></div>
+    <div class="q" data-field="cta.q">New here?</div>
+    <h2 data-field="cta.headline">Book your free intro session — front desk</h2>
+    <div class="qr"><div class="m"></div></div>
+  </footer>
+</div>
+<script>(function(){var s=document.getElementById('stage');function fit(){var p=innerHeight>innerWidth;s.setAttribute('data-orient',p?'portrait':'landscape');var w=p?2160:3840,h=p?3840:2160;s.style.width=w+'px';s.style.height=h+'px';s.style.setProperty('--scale',Math.min(innerWidth/w,innerHeight/h));}addEventListener('resize',fit);fit();
+function clk(){var d=new Date(),h=d.getHours(),m=d.getMinutes(),ap=h<12?'AM':'PM';h=h%12||12;document.querySelectorAll('[data-field="clock.hhmm"]').forEach(function(e){e.textContent=h+':'+(m<10?'0':'')+m+' '+ap;});}clk();setInterval(clk,10000);
+})();</script></body></html>
