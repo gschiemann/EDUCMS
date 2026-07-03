@@ -68,6 +68,7 @@ import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import { PrismaService } from '../prisma/prisma.service';
 import { BugAnalyzerService } from './bug-analyzer.service';
 import { BugEnrichmentService } from './bug-enrichment.service';
+import { notifyBugFixProposed } from './bug-notify';
 // 2026-05-27 — operator-facing email notifications on file / fix-
 // proposed / fix-shipped. Best-effort: every email call is wrapped
 // in a try/catch so an email outage NEVER blocks the bug pipeline.
@@ -871,26 +872,17 @@ export class BugsController {
     // "Claude analyzed your bug, fix is proposed, please review."
     // Look up the reporter from the original user row (Bug.userId)
     // so the analysis email goes to the person who filed, not to
-    // the admin who clicked the writeback button.
-    if (bug.userId) {
-      this.prisma.client.user
-        .findUnique({ where: { id: bug.userId }, select: { email: true } })
-        .then((reporter) => {
-          if (!reporter?.email) return;
-          return this.email.sendBugFixProposed({
-            to: reporter.email,
-            bugId: id,
-            rootCause: normalized.rootCause,
-            confidence: normalized.confidence,
-            filesAffectedCount: normalized.filesAffected.length,
-          });
-        })
-        .catch((e) =>
-          this.logger.warn(
-            `[bug-email] sendBugFixProposed(${id}) failed: ${e?.message ?? e}`,
-          ),
-        );
-    }
+    // the admin who clicked the writeback button. Shared with the
+    // automatic AI-analysis path (BugAnalyzerService.analyze) via
+    // notifyBugFixProposed (email-fix #4, 2026-07-03) so both paths
+    // send the identical notification instead of drifting apart.
+    notifyBugFixProposed(this.prisma, this.email, this.logger, {
+      bugId: id,
+      reporterUserId: bug.userId,
+      rootCause: normalized.rootCause,
+      confidence: normalized.confidence,
+      filesAffectedCount: normalized.filesAffected.length,
+    });
 
     const reloaded = await this.prisma.client.bug.findUnique({
       where: { id },

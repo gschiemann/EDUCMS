@@ -68,6 +68,8 @@ import type {
   BugServerContext,
 } from '@cms/api-types';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmailService } from '../email/email.service';
+import { notifyBugFixProposed } from './bug-notify';
 
 // ─── Constants ──────────────────────────────────────────────────
 
@@ -239,7 +241,10 @@ const REPORT_TOOL = {
 export class BugAnalyzerService {
   private readonly logger = new Logger(BugAnalyzerService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly email: EmailService,
+  ) {}
 
   /**
    * Fire-and-forget entry point. Callers do NOT await this — the
@@ -387,6 +392,7 @@ export class BugAnalyzerService {
     const outputTokens = Number(usage?.output_tokens) || 0;
     const cost = this.computeCostUsd(inputTokens, outputTokens);
 
+    let persisted = false;
     try {
       await this.prisma.client.bug.update({
         where: { id: bugId },
@@ -399,6 +405,7 @@ export class BugAnalyzerService {
           aiCostUsd: cost,
         },
       });
+      persisted = true;
     } catch (e: any) {
       // The analysis succeeded but the write failed. Don't blow up;
       // log + audit so we can recover. Status stays ANALYZING, which
@@ -418,6 +425,25 @@ export class BugAnalyzerService {
       filesAffectedCount: analysis.filesAffected.length,
       iterated: !!iterateNotes,
     });
+
+    // email-fix #4 (2026-07-03): the automatic AI-analysis path flipped
+    // Bug.status -> 'PROPOSED' here but never notified the reporter — only
+    // the manual chat-writeback endpoint (BugsController) did. Fire the
+    // same "fix proposed" email the manual path sends, using the shared
+    // helper so both paths stay identical. Fire-and-forget: notifyBugFixProposed
+    // never throws, so a Resend failure can never break analyze() after
+    // the PROPOSED status has already landed. Only fire when the persist
+    // above actually succeeded — no point emailing about a status the DB
+    // doesn't reflect yet (an /iterate retry will get another chance).
+    if (persisted) {
+      notifyBugFixProposed(this.prisma, this.email, this.logger, {
+        bugId,
+        reporterUserId: bug.userId,
+        rootCause: analysis.rootCause,
+        confidence: analysis.confidence,
+        filesAffectedCount: analysis.filesAffected.length,
+      });
+    }
   }
 
   // ─── Internals ───────────────────────────────────────────────
