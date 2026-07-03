@@ -69,7 +69,7 @@ export class BrandingController {
   @Post('demo/scrape')
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
   async demoScrape(@Body() body: { url: string }) {
-    if (!body?.url) throw new HttpException('url is required', HttpStatus.BAD_REQUEST);
+    if (!body?.url) throw new HttpException({ code: 'BRANDING_URL_REQUIRED', message: 'url is required' }, HttpStatus.BAD_REQUEST);
     try {
       // Use the special "demo" bucket in the rate limiter
       this.limiter.check('__demo__');
@@ -89,7 +89,7 @@ export class BrandingController {
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async adopt(@Request() req: any, @Body() body: AdoptBody) {
     const tenantId = req.user.tenantId;
-    if (!body) throw new HttpException('body required', HttpStatus.BAD_REQUEST);
+    if (!body) throw new HttpException({ code: 'BRANDING_BODY_REQUIRED', message: 'body required' }, HttpStatus.BAD_REQUEST);
 
     // Re-host the logo + favicon to Supabase so we never hotlink.
     let logoUrl: string | null = null;
@@ -407,8 +407,8 @@ export class BrandingController {
     @Body() body: AdoptBody,
   ) {
     const tenantId = req.user.tenantId;
-    if (!body) throw new HttpException('body required', HttpStatus.BAD_REQUEST);
-    if (!templateId) throw new HttpException('templateId required', HttpStatus.BAD_REQUEST);
+    if (!body) throw new HttpException({ code: 'BRANDING_BODY_REQUIRED', message: 'body required' }, HttpStatus.BAD_REQUEST);
+    if (!templateId) throw new HttpException({ code: 'BRANDING_TEMPLATE_ID_REQUIRED', message: 'templateId required' }, HttpStatus.BAD_REQUEST);
 
     // Confirm the template exists and is in the caller's tenant.
     // System presets are intentionally exempt — they're shared across
@@ -418,13 +418,10 @@ export class BrandingController {
       select: { id: true, name: true, isSystem: true, brandKit: true },
     });
     if (!tpl) {
-      throw new HttpException('Template not found', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'BRANDING_TEMPLATE_NOT_FOUND', message: 'Template not found' }, HttpStatus.NOT_FOUND);
     }
     if (tpl.isSystem) {
-      throw new HttpException(
-        'System preset templates can\'t carry a per-template brand kit. Duplicate the preset first, then customize the copy.',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException({ code: 'BRANDING_SYSTEM_TEMPLATE_NOT_ALLOWED', message: 'System preset templates can\'t carry a per-template brand kit. Duplicate the preset first, then customize the copy.' }, HttpStatus.BAD_REQUEST);
     }
 
     // Process logo + favicon + palette through the shared helper.
@@ -496,7 +493,7 @@ export class BrandingController {
       where: { id: templateId, tenantId },
       select: { id: true, name: true, isSystem: true },
     });
-    if (!tpl) throw new HttpException('Template not found', HttpStatus.NOT_FOUND);
+    if (!tpl) throw new HttpException({ code: 'BRANDING_TEMPLATE_NOT_FOUND', message: 'Template not found' }, HttpStatus.NOT_FOUND);
 
     // Prisma JSON columns require an explicit `Prisma.JsonNull`
     // sentinel to clear a value — the type rejects bare `null`.
@@ -553,7 +550,7 @@ export class BrandingController {
     },
   ) {
     const tenantId = req.user.tenantId;
-    if (!tenantId) throw new HttpException('No tenant scope on session', HttpStatus.FORBIDDEN);
+    if (!tenantId) throw new HttpException({ code: 'BRANDING_NO_TENANT_SCOPE', message: 'No tenant scope on session' }, HttpStatus.FORBIDDEN);
 
     // Palette — derive from primary (+ optional accent) the same way
     // the scraper-adopt path does, so themes look consistent.
@@ -571,7 +568,7 @@ export class BrandingController {
         const b64 = match[2];
         const buf = Buffer.from(b64, 'base64');
         if (buf.byteLength > 2 * 1024 * 1024) {
-          throw new HttpException('Logo too large (max 2MB)', HttpStatus.BAD_REQUEST);
+          throw new HttpException({ code: 'BRANDING_LOGO_TOO_LARGE', message: 'Logo too large (max 2MB)' }, HttpStatus.BAD_REQUEST);
         }
         const ext = mimeType.split('/')[1].split('+')[0].replace(/[^a-z0-9]/gi, '') || 'png';
         const hash = createHash('sha256').update(buf).digest('hex').slice(0, 12);
@@ -579,7 +576,7 @@ export class BrandingController {
         logoUrl = await this.storage.upload(path, buf, mimeType);
       } catch (e: any) {
         this.logger.warn(`Manual logo upload failed for tenant ${tenantId}: ${e?.message}`);
-        throw new HttpException(`Logo upload failed: ${e?.message}`, HttpStatus.BAD_REQUEST);
+        throw new HttpException({ code: 'BRANDING_LOGO_UPLOAD_FAILED', message: `Logo upload failed: ${e?.message}` }, HttpStatus.BAD_REQUEST);
       }
     } else if (body.logoUrl) {
       // (2) Pasted URL — rehost so we don't hotlink.
@@ -600,7 +597,7 @@ export class BrandingController {
         logoUrl = await this.storage.upload(path, r.body, r.contentType || 'application/octet-stream');
       } catch (e: any) {
         this.logger.warn(`Manual logo URL rehost failed for tenant ${tenantId}: ${e?.message}`);
-        throw new HttpException(`Logo URL fetch failed: ${e?.message}`, HttpStatus.BAD_REQUEST);
+        throw new HttpException({ code: 'BRANDING_LOGO_URL_FETCH_FAILED', message: `Logo URL fetch failed: ${e?.message}` }, HttpStatus.BAD_REQUEST);
       }
     }
 
@@ -668,7 +665,7 @@ export class BrandingController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async setBrandVoice(@Request() req: any, @Body() body: { brandVoice?: string }) {
     const tenantId = req.user.tenantId;
-    if (!tenantId) throw new HttpException('No tenant scope on session', HttpStatus.FORBIDDEN);
+    if (!tenantId) throw new HttpException({ code: 'BRANDING_NO_TENANT_SCOPE', message: 'No tenant scope on session' }, HttpStatus.FORBIDDEN);
     const voice = typeof body?.brandVoice === 'string' ? body.brandVoice.trim().slice(0, 600) : '';
     await this.prisma.client.tenantBranding.upsert({
       where: { tenantId },
@@ -693,7 +690,7 @@ export class BrandingController {
   @UseGuards(JwtAuthGuard)
   derive(@Body() body: { primaryHex: string; accentHex?: string }) {
     const p = parseColor(body?.primaryHex || '');
-    if (!p) throw new HttpException('Invalid primaryHex', HttpStatus.BAD_REQUEST);
+    if (!p) throw new HttpException({ code: 'BRANDING_INVALID_PRIMARY_HEX', message: 'Invalid primaryHex' }, HttpStatus.BAD_REQUEST);
     const a = body.accentHex ? parseColor(body.accentHex) : null;
     return derivePalette(p.hex, a?.hex);
   }
@@ -737,10 +734,7 @@ export class BrandingController {
       where: { tenantId },
     });
     if (!branding) {
-      throw new HttpException(
-        'No brand kit configured for this tenant. Paste your school URL on the Brand Kit panel first.',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException({ code: 'BRANDING_NOT_CONFIGURED', message: 'No brand kit configured for this tenant. Paste your school URL on the Brand Kit panel first.' }, HttpStatus.BAD_REQUEST);
     }
     const palette = (branding.palette as any) || {};
     const fontHeading = branding.fontHeading || null;
@@ -873,7 +867,7 @@ export class BrandingController {
   async publicBySlug(@Request() req: any) {
     const slug = (req.params?.slug || '').toLowerCase().trim();
     if (!slug || !/^[a-z0-9-]{1,64}$/.test(slug)) {
-      throw new HttpException('Invalid slug', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'BRANDING_INVALID_SLUG', message: 'Invalid slug' }, HttpStatus.BAD_REQUEST);
     }
     const t = await this.prisma.client.tenant.findUnique({
       where: { slug },
@@ -890,7 +884,7 @@ export class BrandingController {
 
   private async runScrape(url: string | undefined, tenantId: string, userId: string): Promise<BrandingPreview> {
     if (!url || typeof url !== 'string') {
-      throw new HttpException('url is required', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'BRANDING_URL_REQUIRED', message: 'url is required' }, HttpStatus.BAD_REQUEST);
     }
     this.limiter.check(tenantId);
 

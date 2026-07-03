@@ -35,10 +35,7 @@ export class BillingWebhookController {
     const signature = req.headers['stripe-signature'];
     const rawBody: Buffer | undefined = req.rawBody;
     if (!rawBody || typeof signature !== 'string') {
-      throw new HttpException(
-        'Missing raw body or stripe-signature header.',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException({ code: 'BILLING_WEBHOOK_MISSING_SIGNATURE', message: 'Missing raw body or stripe-signature header.' }, HttpStatus.BAD_REQUEST);
     }
 
     let event;
@@ -46,10 +43,7 @@ export class BillingWebhookController {
       event = this.stripe.constructWebhookEvent(rawBody, signature);
     } catch (e) {
       // Signature / secret failure — not retryable; answer 400.
-      throw new HttpException(
-        `Stripe webhook verification failed: ${(e as Error).message}`,
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException({ code: 'BILLING_WEBHOOK_VERIFICATION_FAILED', message: `Stripe webhook verification failed: ${(e as Error).message}` }, HttpStatus.BAD_REQUEST);
     }
 
     // A processing failure bubbles as 500 so Stripe retries the event.

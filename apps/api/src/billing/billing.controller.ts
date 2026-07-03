@@ -77,7 +77,7 @@ export class BillingController {
       });
       return { url };
     } catch (e) {
-      throw new HttpException((e as Error).message, HttpStatus.BAD_GATEWAY);
+      throw new HttpException({ code: 'BILLING_CHECKOUT_FAILED', message: (e as Error).message }, HttpStatus.BAD_GATEWAY);
     }
   }
 
@@ -98,7 +98,7 @@ export class BillingController {
     try {
       return await this.stripe.portalForTenant(req.user.tenantId, this.billingUrl(req));
     } catch (e) {
-      throw new HttpException((e as Error).message, HttpStatus.BAD_GATEWAY);
+      throw new HttpException({ code: 'BILLING_PORTAL_FAILED', message: (e as Error).message }, HttpStatus.BAD_GATEWAY);
     }
   }
 

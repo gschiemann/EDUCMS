@@ -113,7 +113,7 @@ export class SportsController {
   async gameSponsorReport(@Request() req: any, @Param('id') id: string) {
     const result = await this.sponsors.gameReport(req.user.tenantId, id);
     if (!result) {
-      throw new NotFoundException('Game not found');
+      throw new NotFoundException({ code: 'SPORTS_GAME_NOT_FOUND', message: 'Game not found' });
     }
     return result;
   }
@@ -1101,7 +1101,7 @@ export class SportsController {
       personId: id,
     });
     if (!result) {
-      throw new NotFoundException('Athlete not found');
+      throw new NotFoundException({ code: 'SPORTS_ATHLETE_NOT_FOUND', message: 'Athlete not found' });
     }
     return result;
   }

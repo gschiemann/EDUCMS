@@ -119,7 +119,7 @@ export class SponsorsController {
     @Body() body: { gameId?: string; surfaceKind?: string },
   ) {
     if (!body || typeof body.gameId !== 'string' || !body.gameId) {
-      throw new HttpException('gameId is required', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'SPONSOR_GAME_ID_REQUIRED', message: 'gameId is required' }, HttpStatus.BAD_REQUEST);
     }
 
     // Per-game sliding-window rate limit. Keyed by game id (the natural
@@ -131,7 +131,7 @@ export class SponsorsController {
     );
     if (recent.length >= SponsorsController.IMPRESSION_MAX_PER_WINDOW) {
       this.impressionHits.set(body.gameId, recent);
-      throw new HttpException('Impression rate limit exceeded', HttpStatus.TOO_MANY_REQUESTS);
+      throw new HttpException({ code: 'SPONSOR_IMPRESSION_RATE_LIMITED', message: 'Impression rate limit exceeded' }, HttpStatus.TOO_MANY_REQUESTS);
     }
     recent.push(now);
     this.impressionHits.set(body.gameId, recent);

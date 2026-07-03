@@ -71,13 +71,13 @@ export class SportsBoardController {
     );
     if (recent.length >= SportsBoardController.FEED_MAX_PER_WINDOW) {
       this.feedHits.set(key, recent);
-      throw new HttpException('Rate limit exceeded', HttpStatus.TOO_MANY_REQUESTS);
+      throw new HttpException({ code: 'SPORTS_ATHLETE_RATE_LIMITED', message: 'Rate limit exceeded' }, HttpStatus.TOO_MANY_REQUESTS);
     }
     recent.push(now);
     this.feedHits.set(key, recent);
 
     const profile = await this.sports.getPublicAthleteProfile(token);
-    if (!profile) throw new HttpException('Athlete not found', HttpStatus.NOT_FOUND);
+    if (!profile) throw new HttpException({ code: 'SPORTS_ATHLETE_NOT_FOUND', message: 'Athlete not found' }, HttpStatus.NOT_FOUND);
     return profile;
   }
 
@@ -119,13 +119,13 @@ export class SportsBoardController {
     );
     if (recent.length >= SportsBoardController.FEED_MAX_PER_WINDOW) {
       this.feedHits.set(`cue:${id}`, recent);
-      throw new HttpException('Cue audit rate limit exceeded', HttpStatus.TOO_MANY_REQUESTS);
+      throw new HttpException({ code: 'SPORTS_CUE_AUDIT_RATE_LIMITED', message: 'Cue audit rate limit exceeded' }, HttpStatus.TOO_MANY_REQUESTS);
     }
     recent.push(now);
     this.feedHits.set(`cue:${id}`, recent);
 
     if (!body || typeof body !== 'object' || !body.cueId || typeof body.cueId !== 'string') {
-      throw new HttpException('cueId is required', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'SPORTS_CUE_ID_REQUIRED', message: 'cueId is required' }, HttpStatus.BAD_REQUEST);
     }
     try {
       await this.sports.recordCueFired(id, {
@@ -196,7 +196,7 @@ export class SportsBoardController {
       SportsBoardController.FEED_WINDOW_MS,
     );
     if (limited) {
-      throw new HttpException('CTS snapshot rate limit exceeded', HttpStatus.TOO_MANY_REQUESTS);
+      throw new HttpException({ code: 'SPORTS_CTS_SNAPSHOT_RATE_LIMITED', message: 'CTS snapshot rate limit exceeded' }, HttpStatus.TOO_MANY_REQUESTS);
     }
 
     const token = headerToken || queryToken;
@@ -206,7 +206,7 @@ export class SportsBoardController {
     // can't drive DB reads. Legacy bare tokens still verify at version 0.
     const ctsVersion = await this.sports.getFeedTokenVersion(id);
     if (!verifyFeedToken(id, token, ctsVersion)) {
-      throw new HttpException('Invalid or missing feed token', HttpStatus.UNAUTHORIZED);
+      throw new HttpException({ code: 'SPORTS_FEED_TOKEN_INVALID', message: 'Invalid or missing feed token' }, HttpStatus.UNAUTHORIZED);
     }
 
     return this.sports.ingestCtsSnapshot(id, (body || {}) as Record<string, unknown>, {
@@ -254,13 +254,13 @@ export class SportsBoardController {
       SportsBoardController.FEED_WINDOW_MS,
     );
     if (limited) {
-      throw new HttpException('Swim timing snapshot rate limit exceeded', HttpStatus.TOO_MANY_REQUESTS);
+      throw new HttpException({ code: 'SPORTS_SWIM_TIMING_RATE_LIMITED', message: 'Swim timing snapshot rate limit exceeded' }, HttpStatus.TOO_MANY_REQUESTS);
     }
 
     const token = headerToken || queryToken;
     const swimVersion = await this.sports.getFeedTokenVersion(id);
     if (!verifyFeedToken(id, token, swimVersion)) {
-      throw new HttpException('Invalid or missing feed token', HttpStatus.UNAUTHORIZED);
+      throw new HttpException({ code: 'SPORTS_FEED_TOKEN_INVALID', message: 'Invalid or missing feed token' }, HttpStatus.UNAUTHORIZED);
     }
 
     return this.sports.ingestSwimTimingSnapshot(id, body || ({} as SwimTimingSnapshot), {
@@ -293,7 +293,7 @@ export class SportsBoardController {
       SportsBoardController.FEED_WINDOW_MS,
     );
     if (limited) {
-      throw new HttpException('Feed rate limit exceeded', HttpStatus.TOO_MANY_REQUESTS);
+      throw new HttpException({ code: 'SPORTS_FEED_RATE_LIMITED', message: 'Feed rate limit exceeded' }, HttpStatus.TOO_MANY_REQUESTS);
     }
 
     // Token in the X-Feed-Token header (preferred) or ?token= (for systems
@@ -305,7 +305,7 @@ export class SportsBoardController {
     const token = headerToken || queryToken;
     const feedVersion = await this.sports.getFeedTokenVersion(id);
     if (!verifyFeedToken(id, token, feedVersion)) {
-      throw new HttpException('Invalid or missing feed token', HttpStatus.UNAUTHORIZED);
+      throw new HttpException({ code: 'SPORTS_FEED_TOKEN_INVALID', message: 'Invalid or missing feed token' }, HttpStatus.UNAUTHORIZED);
     }
 
     const applied = await this.sports.ingestByFeed(id, body || {});
