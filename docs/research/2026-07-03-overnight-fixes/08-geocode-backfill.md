@@ -2,6 +2,13 @@
 
 **Status: CODE-ONLY. Not executed against any database. Not wired to auto-run anywhere.**
 
+**2026-07-03 update — adversarial review GO_WITH_FIXES, all fixes applied.**
+An adversarial review of the original implementation returned
+`GO_WITH_FIXES` with six required changes, all additive/hardening only
+(dry-run-by-default, SUPER_ADMIN guard, no-auto-run, no migration all
+preserved). See "Adversarial-review fixes" section below for the full
+list, what changed, and why.
+
 ## What it does
 
 Some `Tenant` rows have a physical `address` (`Tenant.address`, added
@@ -74,26 +81,76 @@ directly above these fields.) No schema changes were made or needed.
   usage policy in particular asks for ≤1 req/sec). Reads are pulled in
   a single bounded `findMany` (capped by `limit`), not one query per
   tenant.
-- **Capped per invocation:** `limit` defaults to 50, hard-ceilinged at
-  500 regardless of what's passed in (`GeocodeBackfillService.sanitizeLimit`).
-  One call can never run away across an entire fleet.
+- **Capped per invocation:** `limit` defaults to **25**, hard-ceilinged at
+  **50** regardless of what's passed in (`GeocodeBackfillService.sanitizeLimit`).
+  One call can never run away across an entire fleet, AND — post-review —
+  can never approach the platform request-timeout edge (Railway's ~300s
+  no-bytes cutoff): at the ~1.1s/tenant `DELAY_MS` pacing, 50 tenants is
+  ~55s of provider round trips, comfortably inside the window with
+  headroom for provider latency spikes. This is a hard ceiling, NOT an
+  async-job conversion — for a fleet bigger than 50 rows, call the
+  (idempotent) endpoint repeatedly; each call only touches rows still
+  missing coordinates, so there's no risk of double-processing across
+  calls.
 - **Resilient:** each tenant's geocode call is wrapped in its own
-  try/catch. A thrown error, a zero-result response, or non-numeric
-  coordinates are all recorded as `status: 'failed'` for that one tenant
-  and the loop continues — nothing aborts the batch.
+  try/catch. A thrown error, a zero-result response, non-numeric
+  coordinates, or an **out-of-range / null-island** result (see coordinate
+  range guard below) are all recorded as `status: 'failed'` for that one
+  tenant and the loop continues — nothing aborts the batch.
+- **Coordinate range guard (added 2026-07-03):** before ever calling
+  `tenant.update`, the resolved lat/lng is checked against the SAME range
+  invariant the rest of the app enforces on `Tenant.latitude`/`longitude`
+  (`apps/api/src/tenants/tenants.controller.ts` —
+  `latitude >= -90 && <= 90`, `longitude >= -180 && <= 180`). Rejected
+  as `status: 'failed'`:
+  - `reason: 'coordinates_out_of_range'` — `|lat| > 90` or `|lng| > 180`,
+    or a non-finite number.
+  - `reason: 'coordinates_null_island'` — exact `(0, 0)`, which is
+    technically in-range but is the canonical low-confidence/garbage
+    result a geocoder returns when it silently failed to parse an
+    address; no real Tenant is actually sited there.
+
+  This is the only data-corruption path in the service: because the
+  eligibility WHERE clause is `latitude IS NULL`, a bad write would be
+  **sticky** — the tenant would never be picked up again by a re-run to
+  self-heal. The guard runs strictly before the write, so a bad geocode
+  result can never reach the database.
+- **Single-flight lock (added 2026-07-03):** a module-level (process-wide)
+  boolean in `GeocodeBackfillService` (`private static isRunning`)
+  rejects a second concurrent `run()` invocation immediately with
+  `GeocodeBackfillAlreadyRunningError` (`code: 'GEOCODE_BACKFILL_ALREADY_RUNNING'`),
+  which the controller maps to HTTP 409. The lock covers BOTH dry-run and
+  real invocations (simpler to reason about than a partial lock, and a
+  concurrent dry-run still duplicates provider calls / wastes rate-limit
+  headroom even though it writes nothing) and is released in a `finally`
+  so a mid-run throw can never wedge the service. A plain in-process
+  boolean — not a distributed Redis lock — is intentional: this is a
+  manually-triggered, SUPER_ADMIN-only maintenance action handled by a
+  single API replica, not normal app traffic.
+- **Throttled:** `POST /api/v1/admin/geocode-backfill` carries
+  `@Throttle({ default: { limit: 2, ttl: 60_000 } })` — 2 calls per
+  rolling 60s window per the app's global `ThrottlerGuard`. Tighter than
+  the single-lookup `/api/v1/geocode` proxy's 30/60s because this
+  endpoint fans out up to 50 provider calls per invocation, not one.
 - **Summary shape returned:**
   ```ts
   {
     dryRun: boolean,
+    totalCandidates: number, // FULL eligible fleet size, ignoring `limit`
     scanned: number,      // rows pulled (bounded by limit)
     eligible: number,      // scanned minus already-skipped rows
     geocoded: number,      // written (dryRun:false only)
     wouldGeocode: number,  // resolved but NOT written (dryRun:true)
     skipped: number,       // already had coords, or address too short
-    failed: number,        // geocode threw / no match / bad coords
+    failed: number,        // geocode threw / no match / bad coords / out-of-range
     details: [ { tenantId, name, address, status, latitude?, longitude?, source?, reason? }, ... ]
   }
   ```
+  `totalCandidates` (added 2026-07-03) is a separate `prisma.tenant.count()`
+  against the same eligibility WHERE used for the page `findMany` pulls —
+  it lets a dry-run operator see the TRUE remaining-work population
+  across the whole fleet, not just the size of the `limit`-capped page
+  this particular call happened to pull.
 - **Audited:** for a real (`dryRun:false`) run, one `AuditLog` row is
   written **per tenant actually geocoded** (`action: 'GEOCODE_BACKFILL'`,
   `targetType: 'Tenant'`, `targetId: <tenantId>`), carrying the resolved
@@ -120,9 +177,17 @@ cross-tenant (no per-tenant scope check needed — matches how `/api/v1/super/*`
 already works).
 
 Errors carry a stable `code` (task #57 convention):
-`{ code: 'GEOCODE_BACKFILL_RUN_FAILED', message }`, HTTP 500, thrown only
-if the service itself throws unexpectedly (it's designed not to, given the
-per-tenant try/catch, but the controller has a backstop).
+- `{ code: 'GEOCODE_BACKFILL_RUN_FAILED', message }`, HTTP 500, thrown only
+  if the service itself throws unexpectedly (it's designed not to, given
+  the per-tenant try/catch, but the controller has a backstop).
+- `{ code: 'GEOCODE_BACKFILL_ALREADY_RUNNING', message }`, HTTP 409,
+  thrown when a run is already in flight (single-flight lock — see
+  above). Wait for the first run's response before retrying.
+
+Also rate-limited: `@Throttle({ default: { limit: 2, ttl: 60_000 } })` —
+2 calls per rolling 60s window (same `@nestjs/throttler` mechanism as
+`GeocodingController`, tighter limit because this endpoint fans out far
+more provider calls per call).
 
 ## How to DRY-RUN it (once deployed)
 
@@ -156,10 +221,22 @@ curl -X POST https://<api-host>/api/v1/admin/geocode-backfill \
   -d '{"dryRun": false, "limit": 50}'
 ```
 
-Re-run with a higher `limit` (up to 500) or call it again (it's
-idempotent — already-geocoded tenants are skipped) to sweep more of the
-fleet. For a fleet larger than 500, call it repeatedly; each call only
-touches rows still missing coordinates.
+**For large backfills, call the endpoint repeatedly rather than one huge
+run** — `limit` is capped at 50 per invocation (dropped from the original
+500 ceiling in the 2026-07-03 adversarial-review hardening, specifically
+so one synchronous call can never approach the platform request-timeout
+edge). It's fully idempotent (already-geocoded tenants are excluded by
+the eligibility WHERE on every call), so repeated calls are safe and each
+one only touches rows still missing coordinates. At the ~1.1s/tenant
+`DELAY_MS` pacing, a 25–50-tenant run finishes in roughly 30–60 seconds
+(plus per-tenant provider latency), well inside a normal request window.
+Use the returned `totalCandidates` field from a dry-run to estimate how
+many repeat calls a full fleet sweep will need (e.g. `totalCandidates: 340`
+at `limit: 50` → ~7 calls to clear the fleet). Also respect the endpoint's
+throttle (2 calls/60s) and the single-flight lock (one run at a time,
+HTTP 409 `GEOCODE_BACKFILL_ALREADY_RUNNING` on a concurrent second call)
+when scripting repeated calls — pace them out rather than firing in a
+tight loop.
 
 ## Explicit confirmations
 
@@ -178,6 +255,60 @@ touches rows still missing coordinates.
   `/api/v1/geocode` proxy — the key stays in `GOOGLE_MAPS_API_KEY` on the
   server and is never returned to any client.
 
+## Adversarial-review fixes (2026-07-03)
+
+An adversarial review of the original implementation returned
+`GO_WITH_FIXES`. All six required changes were applied, additive/hardening
+only — dry-run-by-default, SUPER_ADMIN guard, no-auto-run, and no
+migration were all preserved unchanged:
+
+1. **MUST-FIX — coordinate range guard.** `processOne()` in
+   `geocode-backfill.service.ts` now rejects any geocoder result where
+   `!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90
+   || Math.abs(lng) > 180`, AND rejects exact `(0, 0)` "null island" as a
+   no-confidence result — both BEFORE `tenant.update` is ever called.
+   Rejections record `status: 'failed', reason: 'coordinates_out_of_range'`
+   or `reason: 'coordinates_null_island'` and write nothing. This closes
+   the only data-corruption path in the service (a bad write would have
+   been sticky under the `latitude IS NULL` idempotency filter).
+2. **Concurrency/rate safety.** `POST /api/v1/admin/geocode-backfill` now
+   carries `@Throttle({ default: { limit: 2, ttl: 60_000 } })` (same
+   `@nestjs/throttler` mechanism as `GeocodingController`). The service
+   also gained an in-process single-flight lock (`private static
+   isRunning: boolean` on `GeocodeBackfillService`) — a second concurrent
+   `run()` call throws `GeocodeBackfillAlreadyRunningError`
+   (`code: 'GEOCODE_BACKFILL_ALREADY_RUNNING'`), which the controller maps
+   to HTTP 409. The lock covers both dry-run and real invocations for
+   simplicity, and is released in a `finally` block so a mid-run throw can
+   never wedge the service permanently.
+3. **Bounded synchronous run.** `sanitizeLimit()`'s hard ceiling dropped
+   500 → **50**, and its default dropped 50 → **25**, so one call can
+   never approach the platform request-timeout edge (Railway's ~300s
+   no-bytes cutoff). No async-job conversion was needed — for large
+   fleets, call the (idempotent) endpoint repeatedly; see "How to run it
+   for real" above.
+4. **Accurate reporting.** The summary now includes a `totalCandidates`
+   field — a `prisma.tenant.count()` against the same eligibility WHERE
+   used for the `findMany` page — so a dry-run operator sees the TRUE
+   remaining-work population across the whole fleet, not just the size of
+   the `limit`-capped page this call happened to pull.
+5. **Nit — O(n²) `indexOf` replaced.** The inner processing loop's
+   `eligible.indexOf(tenant) === eligible.length - 1` last-item check
+   (an O(n) scan per item, O(n²) overall, and fragile against
+   duplicate-identity rows) was replaced with a straightforward loop-index
+   comparison (`i + j === eligible.length - 1`).
+6. **Defense-in-depth authz test.** Added
+   `geocode-backfill.controller.spec.ts` — a unit test (not a full e2e
+   HTTP harness) that: (a) reads `GeocodeBackfillController`'s real
+   `@UseGuards`/`@RequireRoles` metadata via `Reflect`/`Reflector` to
+   catch a dropped/typo'd decorator, and (b) exercises `RbacGuard`
+   directly against that real metadata to prove a CONTRIBUTOR (and
+   SCHOOL_ADMIN, DISTRICT_ADMIN) caller is rejected with
+   `ForbiddenException` (403) while SUPER_ADMIN passes, plus a
+   `JwtAuthGuard` unit test proving a request with no Authorization header
+   is rejected with `UnauthorizedException` (401) before `RbacGuard` would
+   ever run (guard order: `@UseGuards(JwtAuthGuard, RbacGuard)`).
+
 ## Checks run
 
 - `rm -f apps/api/tsconfig.build.tsbuildinfo && pnpm --filter api exec tsc --noEmit --project tsconfig.build.json`
@@ -186,11 +317,26 @@ touches rows still missing coordinates.
   whose missing `dist/` output was causing unrelated pre-existing errors
   in `ai.service.ts` / `sports.service.ts` / etc. — not touched by, or
   related to, this task.
-- `pnpm --filter api exec jest src/geocode-backfill/geocode-backfill.service.spec.ts`
-  → **PASS**, 10/10 tests green. See test names in the commit / PR — they
-  cover: dry-run writes nothing, a null-lat/lng+address tenant is
-  eligible, an already-geocoded tenant is excluded by the query AND by
-  the service's own defense-in-depth guard, one tenant's geocode
-  failure/empty-result doesn't abort the batch, `limit` is respected
-  (including the default-50 / hard-ceiling-500 clamp), and a real run
-  writes exactly one AuditLog row per tenant actually geocoded.
+- `pnpm --filter api exec jest src/geocode-backfill` → **PASS**, 27/27
+  tests green across both spec files:
+  - `geocode-backfill.service.spec.ts` (19 tests: the original 10 plus 9
+    new from this hardening pass) — dry-run writes nothing, a
+    null-lat/lng+address tenant is eligible, an already-geocoded tenant is
+    excluded by the query AND by the service's own defense-in-depth guard,
+    one tenant's geocode failure/empty-result doesn't abort the batch,
+    `limit` is respected (now default-25 / hard-ceiling-50), a real run
+    writes exactly one AuditLog row per tenant actually geocoded, PLUS the
+    new coverage: out-of-range latitude/longitude rejected and not
+    written, exact `(0,0)` null-island rejected, a valid in-range
+    coordinate still writes (no false positive), boundary values at
+    exactly ±90/±180 are accepted, a second concurrent real run is
+    rejected while the first holds the lock, the lock releases via
+    `finally` even when the run throws (proven via a forced failed
+    initial query) so a subsequent call proceeds, a concurrent dry-run is
+    also locked, and `totalCandidates` reports the full eligible
+    population independent of `limit`.
+  - `geocode-backfill.controller.spec.ts` (8 new tests) — guard/role
+    metadata presence, RbacGuard rejects CONTRIBUTOR/SCHOOL_ADMIN/
+    DISTRICT_ADMIN with 403, RbacGuard allows SUPER_ADMIN, RbacGuard
+    rejects a request with no user attached, and JwtAuthGuard rejects a
+    no-Authorization-header request with 401.
