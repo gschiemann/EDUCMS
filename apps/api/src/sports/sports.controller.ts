@@ -327,6 +327,27 @@ export class SportsController {
     return this.sports.updateStats(req.user.tenantId, id, body);
   }
 
+  /**
+   * S1-5 (P2-EndSetMacro): one-tap "End set/game" for volleyball /
+   * pickleball — credits the set/game win to the leader, zeroes both
+   * point scores, fires the win celebration cue, and advances the
+   * segment, all in ONE transaction. Replaces the console's previous
+   * four-sequential-mutation client macro (EndSetMacro), which could
+   * leave a game torn mid-sequence on a failure or slow network.
+   * `POST` (not `PATCH`) — an action/macro like `cue` and `timeout`
+   * above, not a single-field PATCH.
+   */
+  @Post('games/:id/end-segment')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  endSegment(@Request() req: any, @Param('id') id: string) {
+    return this.sports.endSegmentAtomic(req.user.tenantId, id, req?.user?.id);
+  }
+
   /** Set or clear the broadcast spotlight (featured player / promo). */
   @Patch('games/:id/spotlight')
   @RequireRoles(

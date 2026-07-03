@@ -3494,6 +3494,20 @@ export function useGameControl(gameId: string) {
   });
   // ────────────────────────────────────────────────────────────────
 
+  // S1-5 (P2-EndSetMacro, 2026-07-02 sports deep-pass audit): one atomic
+  // server-side call replacing EndSetMacro's four sequential client
+  // mutations (set-win stat credit, score zero, cue, segment advance).
+  // writeBack pushes the returned game straight into the cache — the
+  // console's score/segment tiles and set/game counters update the
+  // instant the operator taps, same as every other control here.
+  const endSegmentMacro = useMutation({
+    mutationFn: () =>
+      apiFetch(`/sports/games/${gameId}/end-segment`, { method: 'POST' }),
+    onSuccess: (result: any) => {
+      if (result?.updated) writeBack(result.updated);
+    },
+  });
+
   // ── T3-3 Show Control — recall a full-screen GAMEDAY scene to the
   // board (Halftime Board / Starting Lineup / Sponsors / …) for holdMs,
   // then it auto-reverts server-side. The board polls independently, so
@@ -3557,6 +3571,7 @@ export function useGameControl(gameId: string) {
     details,
     liveOverlay,
     clearLiveOverlay,
+    endSegmentMacro,
     scene,
     sceneClear,
     sceneExtend,

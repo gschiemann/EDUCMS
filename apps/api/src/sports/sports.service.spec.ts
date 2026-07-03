@@ -134,9 +134,34 @@ function setup() {
     const ids: string[] | undefined = where?.id?.in;
     return template.rows.filter((r) => (ids ? ids.includes(r.id) : true));
   };
-  const prisma = {
-    client: { game, gameEvent, screen, sponsor, rosterPlayer, customCue, auditLog, template },
+  const client: any = { game, gameEvent, screen, sponsor, rosterPlayer, customCue, auditLog, template };
+  // S1-5 (2026-07-02 sports deep-pass audit, P2-EndSetMacro): real
+  // rollback-simulating `$transaction`, needed to prove
+  // `endSegmentAtomic`'s "all four effects, one tx, failure atomicity"
+  // property. Snapshots every table's `rows` array (deep clone) before
+  // running the callback; if the callback throws, restores every
+  // table's rows from the snapshot before re-throwing — so a test can
+  // force a mid-transaction failure (e.g. `gameEvent.create` rejecting)
+  // and assert NOTHING persisted, not even the `game.update` that ran
+  // first. `sports-stats.service.spec.ts` uses the simpler
+  // `(fn) => fn(client)` form (adequate for its own tests, which never
+  // exercise a failure path); this fake additionally restores state on
+  // throw because S1-5's atomicity claim is specifically what's under
+  // test here.
+  const TX_TABLES = [game, gameEvent, screen, sponsor, rosterPlayer, customCue, auditLog, template];
+  client.$transaction = async (fn: (tx: unknown) => unknown) => {
+    const snapshot = TX_TABLES.map((t) => JSON.parse(JSON.stringify(t.rows)));
+    try {
+      return await fn(client);
+    } catch (e) {
+      TX_TABLES.forEach((t, i) => {
+        t.rows.length = 0;
+        t.rows.push(...snapshot[i]);
+      });
+      throw e;
+    }
   };
+  const prisma = { client };
   const redis = { publish: jest.fn().mockResolvedValue(undefined) };
   const signer = { signMessage: jest.fn(() => ({ eventId: 'e', signature: 's' })) };
   // SportsService gained a SponsorsService dependency (Phase 2 sponsorship)
@@ -2455,5 +2480,171 @@ describe('SportsService — ingestSwimTimingSnapshot()', () => {
     const updated = game.rows.find((r: any) => r.id === g.id);
     const lane2 = (updated.stats as any).results[0].entries.find((e: any) => e.lane === 2);
     expect(lane2.mark).toBe('DQ');
+  });
+});
+
+// S1-5 (P2-EndSetMacro, 2026-07-02 sports deep-pass audit) — the console's
+// EndSetMacro used to fire FOUR independent, unawaited mutations
+// (set-win stat credit, score zero, cue, segment advance); a failure
+// between any two left the game torn. `endSegmentAtomic` performs the
+// same four effects in ONE transaction. No dedicated controller spec
+// exists for this domain (sports.controller.ts is a pure pass-through —
+// every method just calls the matching service method, so the SERVICE
+// level is where the real logic lives and is tested, same convention
+// every other endpoint in this file follows).
+describe('SportsService — endSegmentAtomic (S1-5 / P2-EndSetMacro)', () => {
+  it('all four effects land from ONE transaction: set credited, score zeroed, cue fired, segment advanced', async () => {
+    const { service, game, gameEvent, auditLog } = setup();
+    const g: any = await newGame(service, 'volleyball');
+    // 24-20 — a real lead, but BELOW the 25-by-2 auto-win threshold
+    // applySetWin fires on (same fixture the existing "volleyball
+    // next-set auto-zero" suite above uses), so this proves
+    // endSegmentAtomic's OWN manual crediting, not the automatic path.
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 24 });
+    await service.adjustScore(TENANT, g.id, { team: 'away', delta: 20 });
+    const eventsBefore = gameEvent.rows.length;
+    const updatesBeforeMacro = game.updateCalls.length;
+
+    const result: any = await service.endSegmentAtomic(TENANT, g.id, 'user-1');
+
+    expect(result.ended).toBe(true);
+    // Effect 1 — set credited to home (the leader).
+    expect(result.updated.stats.homeSets).toBe(1);
+    // Effect 2 — both scores zeroed.
+    expect(result.updated.homeScore).toBe(0);
+    expect(result.updated.awayScore).toBe(0);
+    // Effect 4 — segment advanced.
+    expect(result.updated.segment).toBe(2);
+
+    // Effect 3 — the setWin cue fired (a CUE GameEvent was written).
+    const newEvents = gameEvent.rows.slice(eventsBefore);
+    const cueEvents = newEvents.filter((e: any) => e.type === 'CUE');
+    expect(cueEvents.length).toBe(1);
+    expect(cueEvents[0].payload.key).toBe('setWin');
+    expect(cueEvents[0].payload.team).toBe('home');
+
+    // GameEvent trail carries all four effect types, same shapes the
+    // four individual mutations would have produced.
+    expect(newEvents.some((e: any) => e.type === 'STAT')).toBe(true);
+    expect(newEvents.some((e: any) => e.type === 'SCORE')).toBe(true);
+    expect(newEvents.some((e: any) => e.type === 'SEGMENT')).toBe(true);
+
+    // AuditLog parity with fireCue()'s manual-cue path.
+    const auditRow = auditLog.rows.find((r: any) => r.action === 'SPORTS_CUE_FIRED');
+    expect(auditRow).toBeTruthy();
+    expect(auditRow.userId).toBe('user-1');
+
+    // Persisted in ONE Game row update, not four — the macro itself added
+    // exactly one NEW update call beyond the two setup adjustScore() calls.
+    expect(game.updateCalls.length - updatesBeforeMacro).toBe(1);
+  });
+
+  it('credits pickleball as homeGames/awayGames and fires gameWin, not setWin', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'pickleball');
+    // 10-5 — below pickleball's 11-by-2 auto-win threshold (matches the
+    // "pickleball forward advance credits awayGames" fixture above).
+    await service.adjustScore(TENANT, g.id, { team: 'away', delta: 10 });
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 5 });
+
+    const result: any = await service.endSegmentAtomic(TENANT, g.id);
+    expect(result.updated.stats.awayGames).toBe(1);
+    expect(result.updated.homeScore).toBe(0);
+    expect(result.updated.awayScore).toBe(0);
+  });
+
+  it('a tied score is a no-op — nothing is credited, zeroed, or advanced', async () => {
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'volleyball');
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 10 });
+    await service.adjustScore(TENANT, g.id, { team: 'away', delta: 10 });
+    const updatesBeforeMacro = game.updateCalls.length;
+
+    const result: any = await service.endSegmentAtomic(TENANT, g.id);
+    expect(result.ended).toBe(false);
+    expect(result.updated.homeScore).toBe(10); // untouched
+    expect(result.updated.awayScore).toBe(10);
+    expect(result.updated.segment).toBe(1); // unchanged
+    // Never even attempted a Game row update for the tied no-op — the
+    // macro itself added zero NEW update calls beyond the two setup
+    // adjustScore() calls above.
+    expect(game.updateCalls.length).toBe(updatesBeforeMacro);
+  });
+
+  it('does NOT double-credit the set win the way calling setSegment afterward would', async () => {
+    // Regression guard for the exact bug class S1-5 avoids reintroducing:
+    // setSegment's OWN isSetGameSport branch re-credits + re-zeroes when
+    // called after this macro's effects have already landed. This proves
+    // endSegmentAtomic's single write nets to +1, not +2.
+    const { service } = setup();
+    const g: any = await newGame(service, 'volleyball');
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 24 });
+    await service.adjustScore(TENANT, g.id, { team: 'away', delta: 10 });
+
+    const result: any = await service.endSegmentAtomic(TENANT, g.id);
+    expect(result.updated.stats.homeSets).toBe(1); // exactly one credit
+  });
+
+  it('404s (throws NotFoundException) for a cross-tenant game — same tenant scoping as every other mutation', async () => {
+    const { service } = setup();
+    const g: any = await newGame(service, 'volleyball');
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 24 });
+
+    await expect(service.endSegmentAtomic('some-other-tenant', g.id)).rejects.toThrow(NotFoundException);
+  });
+
+  it('FAILURE ATOMICITY: if a downstream write in the transaction throws, the Game row update does not persist either', async () => {
+    const { service, game, gameEvent } = setup();
+    const g: any = await newGame(service, 'volleyball');
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 24 });
+    await service.adjustScore(TENANT, g.id, { team: 'away', delta: 10 });
+
+    // Force the SECOND gameEvent.create call (the SCORE event, written
+    // AFTER game.update has already run inside the transaction) to fail —
+    // proving the earlier game.update doesn't survive a LATER failure.
+    let calls = 0;
+    const originalCreate = gameEvent.create;
+    gameEvent.create = async (...args: any[]) => {
+      calls++;
+      if (calls === 2) throw new Error('simulated mid-transaction failure');
+      return originalCreate(...args);
+    };
+
+    await expect(service.endSegmentAtomic(TENANT, g.id)).rejects.toThrow('simulated mid-transaction failure');
+
+    // The Game row update that ran BEFORE the simulated failure must have
+    // been rolled back — homeScore/awayScore/segment/stats all back to
+    // their pre-call values, not left half-applied.
+    const row = game.rows.find((r: any) => r.id === g.id);
+    expect(row.homeScore).toBe(24);
+    expect(row.awayScore).toBe(10);
+    expect(row.segment).toBe(1);
+    expect(row.stats?.homeSets ?? 0).toBe(0);
+
+    // The FIRST GameEvent (the STAT credit, written before the failure)
+    // must also have been rolled back — not left as an orphaned audit
+    // row with no matching Game state.
+    expect(gameEvent.rows.some((e: any) => e.type === 'STAT' && e.payload?.source === 'end-segment-macro')).toBe(
+      false,
+    );
+  });
+
+  it('FAILURE ATOMICITY: a mid-transaction failure leaves NO GameEvent rows behind at all', async () => {
+    const { service, game, gameEvent } = setup();
+    const g: any = await newGame(service, 'volleyball');
+    await service.adjustScore(TENANT, g.id, { team: 'home', delta: 24 });
+    const eventsBefore = gameEvent.rows.length;
+
+    const originalCreate = gameEvent.create;
+    gameEvent.create = async () => {
+      throw new Error('simulated failure on the very first event write');
+    };
+
+    await expect(service.endSegmentAtomic(TENANT, g.id)).rejects.toThrow();
+    gameEvent.create = originalCreate;
+
+    expect(gameEvent.rows.length).toBe(eventsBefore); // zero new rows survived
+    const row = game.rows.find((r: any) => r.id === g.id);
+    expect(row.homeScore).toBe(24); // Game row also rolled back
   });
 });

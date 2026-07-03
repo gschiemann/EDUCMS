@@ -3038,6 +3038,212 @@ export class SportsService {
   }
 
   /**
+   * S1-5 (P2-EndSetMacro, 2026-07-02 sports deep-pass audit): the ONE-TAP
+   * "End set/game" macro the operator console fires for volleyball /
+   * pickleball, made atomic. The console's `EndSetMacro` used to fire
+   * FOUR independent, unawaited mutations back-to-back (set-win stat
+   * credit, score zero, celebration cue, segment advance) — a failure or
+   * a slow network between any two of them left the game in a torn state
+   * (e.g. the set credited but the score never zeroed, or the segment
+   * advanced with the old score still showing). This performs the exact
+   * same four effects the client used to sequence, in ONE Prisma
+   * transaction: either all four land together or none do.
+   *
+   * Deliberately self-contained rather than calling `setSegment` /
+   * `adjustScore` / `fireCue` for the segment-advance/score-zero/cue
+   * steps: `setSegment`'s own `isSetGameSport && advancingForward` branch
+   * ALREADY performs the identical set-credit + score-zero a second time
+   * when called after those effects have already landed (confirmed by
+   * reading sports.service.ts — the two code paths were never meant to
+   * compose; `applySetWin` is the separate AUTOMATIC threshold-triggered
+   * path, unrelated to this MANUAL macro). Calling it here would
+   * reintroduce a double-count bug, not fix the atomicity bug. For
+   * volleyball/pickleball specifically this also loses nothing real:
+   * neither sport declares `segmentReset` (only football/basketball/
+   * hockey/lacrosse/water-polo do — `computeSegmentResets` no-ops
+   * without it), both have `clock.type: 'none'` (skips the clock-reset
+   * branch), and `computeLineScore` only fires for baseball/softball/
+   * football — so `setSegment`'s FULL machinery collapses to exactly the
+   * clamp-and-credit this method already replicates directly.
+   *
+   * Tenant-scoped (404 if the game isn't the caller's, checked INSIDE the
+   * transaction so the read and the write are one atomic unit — no
+   * TOCTOU window between "is this my game" and "update it"). Mirrors
+   * the sibling mutations' GameEvent trail (SCORE/STAT/CUE/SEGMENT, same
+   * shapes `record()` produces) and `fireCue`'s AuditLog row
+   * (SPORTS_CUE_FIRED) for cross-tenant forensics parity — all writes go
+   * through the transaction client `tx`, not `record()`/`fireCue()`
+   * (which write via the outer, non-transactional client and would break
+   * atomicity), so this duplicates their write SHAPE deliberately rather
+   * than calling them.
+   */
+  async endSegmentAtomic(tenantId: string, id: string, actorUserId?: string) {
+    const result = await this.prisma.client.$transaction(async (tx) => {
+      const game = await tx.game.findFirst({ where: { id, tenantId } });
+      if (!game) throw new NotFoundException('Game not found');
+
+      const def = this.sportOf(game.sport);
+      const home = Number(game.homeScore) || 0;
+      const away = Number(game.awayScore) || 0;
+      if (home === away) {
+        // Tie can't end a set — same no-op guard EndSetMacro's `endSet()`
+        // applies before firing anything. Returning here (rather than
+        // throwing) keeps this endpoint safe to call speculatively/
+        // idempotently the way the disabled-button UX implies.
+        return { updated: game, ended: false as const };
+      }
+      const winner: 'home' | 'away' = home > away ? 'home' : 'away';
+
+      const setKeyHome = def.stats.some((s) => s.key === 'homeSets')
+        ? 'homeSets'
+        : def.stats.some((s) => s.key === 'homeGames')
+          ? 'homeGames'
+          : null;
+      const setKeyAway =
+        setKeyHome === 'homeSets' ? 'awaySets' : setKeyHome === 'homeGames' ? 'awayGames' : null;
+      const winCueKey = def.celebrations.some((c) => c.key === 'setWin')
+        ? 'setWin'
+        : def.celebrations.some((c) => c.key === 'gameWin')
+          ? 'gameWin'
+          : null;
+
+      // Effect 1: credit the set/game win to the leader (if the sport
+      // tracks one) — merged into the same stats write as everything
+      // else so it's one Game row UPDATE, not four.
+      const currentStats: Record<string, unknown> =
+        game.stats && typeof game.stats === 'object' ? (game.stats as Record<string, unknown>) : {};
+      const nextStats = { ...currentStats };
+      const setWonKey = winner === 'home' ? setKeyHome : setKeyAway;
+      let prevSetWon: unknown;
+      if (setWonKey) {
+        prevSetWon = currentStats[setWonKey] ?? null;
+        const curWon = Number(currentStats[setWonKey]) || 0;
+        // No max-clamp here — matches EndSetMacro's CURRENT client
+        // behavior exactly (unlike setSegment's own internal credit,
+        // which clamps to the stat's configured max; this endpoint
+        // replaces the client's 4 mutations byte-for-byte, not
+        // setSegment's different rule).
+        nextStats[setWonKey] = curWon + 1;
+      }
+
+      // Effect 4: advance the segment — clamp to [1, count(+OT)], the
+      // same bound `setSegment` enforces.
+      const maxSegment = def.segment.overtime ? def.segment.count + 10 : def.segment.count;
+      const nextSegment = Math.min(maxSegment, Math.max(1, game.segment + 1));
+
+      const updated = await tx.game.update({
+        where: { id },
+        data: {
+          stats: nextStats as any,
+          homeScore: 0,
+          awayScore: 0,
+          segment: nextSegment,
+        },
+      });
+
+      // GameEvent trail — same shapes record() produces for each
+      // individual mutation, so the undo rail / forensic feed reads
+      // this macro identically to the four separate calls it replaces.
+      if (setWonKey) {
+        await tx.gameEvent.create({
+          data: {
+            gameId: id,
+            type: 'STAT',
+            payload: {
+              stats: { [setWonKey]: nextStats[setWonKey] },
+              oldValues: { [setWonKey]: prevSetWon },
+              source: 'end-segment-macro',
+            } as any,
+          },
+        });
+      }
+      await tx.gameEvent.create({
+        data: {
+          gameId: id,
+          type: 'SCORE',
+          payload: {
+            team: 'set',
+            homeScore: 0,
+            awayScore: 0,
+            prevHomeScore: home,
+            prevAwayScore: away,
+            source: 'end-segment-macro',
+          } as any,
+        },
+      });
+      let cueEventId: string | null = null;
+      if (winCueKey) {
+        const cue = def.celebrations.find((c) => c.key === winCueKey)!;
+        const cueEvent = await tx.gameEvent.create({
+          data: {
+            gameId: id,
+            type: 'CUE',
+            payload: {
+              key: cue.key,
+              label: cue.label,
+              emoji: cue.emoji,
+              target: 'ALL',
+              audioUrl: null,
+              sponsorName: null,
+              sponsorLogoUrl: null,
+              auto: false,
+              team: winner,
+              source: 'end-segment-macro',
+              snapshot: this.cueSnapshot(updated),
+            } as any,
+          },
+        });
+        cueEventId = cueEvent.id;
+        // AuditLog parity with fireCue()'s manual-cue path — best-effort
+        // (forensics only; never block the macro on an audit-log hiccup).
+        try {
+          await tx.auditLog.create({
+            data: {
+              tenantId,
+              userId: actorUserId || null,
+              action: 'SPORTS_CUE_FIRED',
+              targetType: 'Game',
+              targetId: id,
+              details: JSON.stringify({
+                eventId: cueEventId,
+                key: cue.key,
+                label: cue.label,
+                target: 'ALL',
+                team: winner,
+                hasAudio: false,
+                hasSponsor: false,
+                source: 'end-segment-macro',
+              }),
+            },
+          });
+        } catch {
+          // Same fail-open rationale as fireCue()'s writeAudit — the
+          // GameEvent is already persisted; this is forensics only.
+        }
+      }
+      await tx.gameEvent.create({
+        data: {
+          gameId: id,
+          type: 'SEGMENT',
+          payload: {
+            segment: nextSegment,
+            prevSegment: game.segment,
+            prevClockMs: game.clockMs,
+            source: 'end-segment-macro',
+          } as any,
+        },
+      });
+
+      return { updated, ended: true as const };
+    });
+
+    // Cache invalidation is a synchronous in-memory Map delete — safe to
+    // run once after commit rather than once per write inside the tx.
+    this.invalidateBoardCache(id);
+    return result;
+  }
+
+  /**
    * Atomic state push from an external score source — a console tap-off
    * box or a league-feed adapter. Any subset of fields may be provided;
    * only the fields present in the dto are written. Clock fields are

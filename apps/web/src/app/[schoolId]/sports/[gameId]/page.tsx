@@ -2620,9 +2620,20 @@ function GameScopeToggle({
 // Volleyball / pickleball: one tap to close the current set. Credits
 // the set/game-won stat to whichever side led, zeroes both point
 // scores (so a stale score never carries into the next set), fires the
-// setWin celebration cue, and advances the segment. (audit: console
-// P1 — advancing a set never zeroed the points). Safe + idempotent
-// regardless of any server-side auto-zero (config+api domain) landing.
+// setWin celebration cue, and advances the segment.
+//
+// S1-5 (P2, 2026-07-02 sports deep-pass audit): this used to fire FOUR
+// independent, unawaited mutations back-to-back — a failure or a slow
+// network between any two of them left the game torn mid-sequence
+// (e.g. the set credited but the score never zeroed). Now routes
+// through ONE atomic server transaction (`ctl.endSegmentMacro`,
+// POST /sports/games/:id/end-segment) that performs all four effects
+// together. The four-mutation client path is kept ONLY as a fallback
+// for a 404 from that endpoint (an older API deploy that predates it —
+// e.g. mid-rollout, or a rollback); any other failure is left alone,
+// matching every other fire-and-forget control on this console (none
+// surface a toast on error today — the operator sees "nothing moved"
+// and re-taps, same recovery UX as a dropped score tap).
 function EndSetMacro({
   def,
   g,
@@ -2650,7 +2661,10 @@ function EndSetMacro({
       ? 'gameWin'
       : null;
 
-  const endSet = () => {
+  // Legacy path — the exact four sequential mutations this macro used to
+  // ALWAYS fire, kept as a fallback ONLY. Non-atomic (the original bug);
+  // only reached when the atomic endpoint 404s.
+  const endSetLegacy = () => {
     if (home === away) return; // tie can't end a set — guard the no-op
     const winner: 'home' | 'away' = home > away ? 'home' : 'away';
     // 1. Credit the set/game win to the leader (if the sport counts them).
@@ -2665,6 +2679,26 @@ function EndSetMacro({
     if (winCueKey) ctl.cue.mutate({ key: winCueKey, target: 'ALL' });
     // 4. Advance to the next set / game.
     ctl.segment.mutate({ delta: 1 });
+  };
+
+  const endSet = async () => {
+    if (home === away) return; // tie can't end a set — guard the no-op, same as the server's
+    try {
+      await ctl.endSegmentMacro.mutateAsync();
+    } catch (e: any) {
+      if (e?.status === 404) {
+        // Older API without this endpoint yet — fall back to the
+        // original (non-atomic) four-mutation sequence rather than
+        // silently doing nothing.
+        endSetLegacy();
+        return;
+      }
+      // Any other failure (network blip, 500, etc.) — leave it; the
+      // operator sees the button didn't visibly do anything and re-taps,
+      // same as every other control here. Never partially apply via the
+      // legacy path on a non-404 failure — that would be MORE torn state,
+      // not less.
+    }
   };
 
   const tied = home === away;
