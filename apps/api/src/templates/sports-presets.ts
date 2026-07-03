@@ -686,6 +686,29 @@ export const SPORTS_TEMPLATE_PRESETS: SystemPreset[] = [
       { name: 'Dive Leaderboard', widgetType: 'DIVE_LEADERBOARD', x: 58, y: 0, width: 42, height: 100, zIndex: 1, sortOrder: 1, defaultConfig: { divesInList: 6 } },
     ],
   },
+  // ── Stadium Lane flagship broadcast board (S6 #288, 2026-07-03) ────
+  // Greg picked all 3 stadium designs 2026-07-03 as sports-scoreboard
+  // template options (docs/design/proposals/2026-07-02-stadium-lane/
+  // README.md); v1 "Broadcast" is the only style built. A full-canvas
+  // single-zone scene, same pattern as sports-swim-lane-board above —
+  // reads the SAME stats.results contract, presented with the Stadium
+  // Lane visual language (angled header, gold leader glow, team-color
+  // lane washes, pool-record + sponsor footer) instead of the dense
+  // operator-configurable grid.
+  {
+    id: 'sports-stadium-broadcast-board',
+    name: '🏊 Broadcast Meet Board',
+    description:
+      'Flagship stadium broadcast board — angled blue header, huge Anton event title, gold leader glow, team-color lane washes, pool-record + sponsor footer. Bind a meet; resize for any LED.',
+    category: 'SCOREBOARD',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor: '#060a14',
+    zones: [
+      { name: 'Broadcast Board', widgetType: 'STADIUM_MEET_BOARD', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { boardStyle: 'broadcast', laneCount: 8 } },
+    ],
+  },
   // ── Sponsors — first-class revenue surfaces (Sprint 13 §7) ────────
   sponsorBoard(
     'sports-sponsor-rotator',
