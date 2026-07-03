@@ -304,4 +304,113 @@ describe('GeocodeBackfillService', () => {
     expect(summary.skipped).toBe(1);
     expect(geocoding.search).not.toHaveBeenCalled();
   });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // MUST-FIX (adversarial review, 2026-07-03): coordinate range guard.
+  // This is the only data-corruption path in the service — a bad geocoder
+  // result must never reach `tenant.update`, because the eligibility WHERE
+  // (`latitude IS NULL`) makes a bad write STICKY (never revisited by a
+  // re-run).
+  // ──────────────────────────────────────────────────────────────────────
+  describe('coordinate range guard', () => {
+    it('rejects an out-of-range latitude and does NOT write it to the tenant row', async () => {
+      const { prisma, tenants, client } = makePrismaMock([
+        { id: 't1', name: 'Bad Coords Co', address: '1 Main St', latitude: null, longitude: null },
+      ]);
+      // 190 is out of the valid [-90, 90] latitude range.
+      const geocoding = makeGeocodingMock(() => [
+        { display_name: '1 Main St', lat: '190', lon: '20', source: 'nominatim' },
+      ]);
+      const svc = new GeocodeBackfillService(prisma, geocoding);
+
+      const summary = await runWithTimers(svc.run({ dryRun: false }));
+
+      expect(summary.failed).toBe(1);
+      expect(summary.geocoded).toBe(0);
+      expect(summary.details[0]).toMatchObject({
+        status: 'failed',
+        reason: 'coordinates_out_of_range',
+      });
+      expect(tenants.get('t1')!.latitude).toBeNull();
+      expect(tenants.get('t1')!.longitude).toBeNull();
+      expect(client.tenant.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects an out-of-range longitude and does NOT write it to the tenant row', async () => {
+      const { prisma, tenants, client } = makePrismaMock([
+        { id: 't1', name: 'Bad Coords Co', address: '1 Main St', latitude: null, longitude: null },
+      ]);
+      // 220 is out of the valid [-180, 180] longitude range.
+      const geocoding = makeGeocodingMock(() => [
+        { display_name: '1 Main St', lat: '40', lon: '220', source: 'nominatim' },
+      ]);
+      const svc = new GeocodeBackfillService(prisma, geocoding);
+
+      const summary = await runWithTimers(svc.run({ dryRun: false }));
+
+      expect(summary.failed).toBe(1);
+      expect(summary.geocoded).toBe(0);
+      expect(summary.details[0]).toMatchObject({
+        status: 'failed',
+        reason: 'coordinates_out_of_range',
+      });
+      expect(tenants.get('t1')!.latitude).toBeNull();
+      expect(client.tenant.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects an exact (0,0) "null island" result even though it is technically in-range', async () => {
+      const { prisma, tenants, client } = makePrismaMock([
+        { id: 't1', name: 'Null Island Co', address: '1 Main St', latitude: null, longitude: null },
+      ]);
+      const geocoding = makeGeocodingMock(() => [
+        { display_name: '1 Main St', lat: '0', lon: '0', source: 'nominatim' },
+      ]);
+      const svc = new GeocodeBackfillService(prisma, geocoding);
+
+      const summary = await runWithTimers(svc.run({ dryRun: false }));
+
+      expect(summary.failed).toBe(1);
+      expect(summary.geocoded).toBe(0);
+      expect(summary.details[0]).toMatchObject({
+        status: 'failed',
+        reason: 'coordinates_null_island',
+      });
+      expect(tenants.get('t1')!.latitude).toBeNull();
+      expect(client.tenant.update).not.toHaveBeenCalled();
+    });
+
+    it('a valid, in-range coordinate still writes normally (no false-positive rejection)', async () => {
+      const { prisma, tenants } = makePrismaMock([
+        { id: 't1', name: 'Good Coords Co', address: '1600 Pennsylvania Ave NW', latitude: null, longitude: null },
+      ]);
+      const geocoding = makeGeocodingMock(() => [
+        { display_name: '1600 Pennsylvania Ave NW', lat: '38.8977', lon: '-77.0365', source: 'nominatim' },
+      ]);
+      const svc = new GeocodeBackfillService(prisma, geocoding);
+
+      const summary = await runWithTimers(svc.run({ dryRun: false }));
+
+      expect(summary.geocoded).toBe(1);
+      expect(summary.failed).toBe(0);
+      expect(tenants.get('t1')!.latitude).toBeCloseTo(38.8977);
+      expect(tenants.get('t1')!.longitude).toBeCloseTo(-77.0365);
+    });
+
+    it('boundary values exactly at ±90/±180 are accepted (not rejected as out-of-range)', async () => {
+      const { prisma, tenants } = makePrismaMock([
+        { id: 't1', name: 'Boundary Co', address: '1 Boundary Rd', latitude: null, longitude: null },
+      ]);
+      const geocoding = makeGeocodingMock(() => [
+        { display_name: '1 Boundary Rd', lat: '90', lon: '-180', source: 'nominatim' },
+      ]);
+      const svc = new GeocodeBackfillService(prisma, geocoding);
+
+      const summary = await runWithTimers(svc.run({ dryRun: false }));
+
+      expect(summary.geocoded).toBe(1);
+      expect(summary.failed).toBe(0);
+      expect(tenants.get('t1')!.latitude).toBe(90);
+      expect(tenants.get('t1')!.longitude).toBe(-180);
+    });
+  });
 });

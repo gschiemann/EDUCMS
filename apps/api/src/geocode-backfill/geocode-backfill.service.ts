@@ -198,6 +198,41 @@ export class GeocodeBackfillService {
         return;
       }
 
+      // MUST-FIX (adversarial review): enforce the SAME lat/lng range
+      // invariant the rest of the app enforces on Tenant.latitude/longitude
+      // (see apps/api/src/tenants/tenants.controller.ts — `latitude >= -90
+      // && <= 90`, `longitude >= -180 && <= 180`). This is the only
+      // data-corruption path in this service: a misbehaving/garbage
+      // provider response could otherwise get written straight to the
+      // Tenant row. Because the eligibility WHERE clause is
+      // `latitude IS NULL`, a bad write here is STICKY — the tenant would
+      // never be picked up by a re-run to self-heal. Reject before ever
+      // reaching `tenant.update`.
+      //
+      // Exact `(0, 0)` — "null island" — is also rejected even though it
+      // is technically in-range: it's the canonical low-confidence/garbage
+      // result a geocoder returns when it silently failed to parse an
+      // address (or a caller fat-fingered a numeric-string default), and a
+      // real Tenant is never actually sited there.
+      const isNullIsland = lat === 0 && lng === 0;
+      const outOfRange = Math.abs(lat) > 90 || Math.abs(lng) > 180;
+      if (outOfRange || isNullIsland) {
+        summary.failed++;
+        summary.details.push({
+          tenantId: tenant.id,
+          name: tenant.name,
+          address,
+          status: 'failed',
+          reason: isNullIsland ? 'coordinates_null_island' : 'coordinates_out_of_range',
+        });
+        this.logger.warn(
+          `geocode-backfill: tenant ${tenant.id} geocode result rejected (${
+            isNullIsland ? 'null island' : 'out of range'
+          }): lat=${lat} lng=${lng}`,
+        );
+        return;
+      }
+
       if (dryRun) {
         summary.wouldGeocode++;
         summary.details.push({
