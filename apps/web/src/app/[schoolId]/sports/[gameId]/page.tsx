@@ -5359,7 +5359,128 @@ const APPARATUS_PRESETS: Record<string, string[]> = {
   diving: ['Prelims', 'Semifinals', 'Finals', '1m Springboard', '3m Springboard', 'Platform'],
 };
 
-function MeetResultsSection({
+/**
+ * S1-4 (P1-6, 2026-07-02 sports deep-pass audit): a bare grid-cell
+ * text input that drafts locally and commits on blur/Enter — the SAME
+ * mechanics as `GameScopeText` above (live value while idle; local
+ * `text`/`editing` state while focused), just rendered without
+ * GameScopeText's label chrome so it drops into a dense results-grid
+ * row. Before this fix every `onChange` in `MeetResultsSection` called
+ * `write()` -> `ctl.stats.mutate` -> a PATCH of the WHOLE results
+ * array — typing "Katie Ledecky" fired 13 network round-trips and, with
+ * two operators editing at once, the last keystroke to land silently
+ * won (both problems the audit flagged). Wire shape is unchanged: the
+ * commit still calls the same `onCommit` -> `updateEntry`/`updateEvent`
+ * -> `write()` path, just once per field-edit instead of once per key.
+ */
+function ResultsGridTextInput({
+  value,
+  onCommit,
+  placeholder,
+  className,
+}: {
+  value: string;
+  onCommit: (v: string) => void;
+  placeholder?: string;
+  className?: string;
+}) {
+  const [text, setText] = useState('');
+  const [editing, setEditing] = useState(false);
+  const commit = () => {
+    if (!editing) return;
+    setEditing(false);
+    if (text !== value) onCommit(text);
+  };
+  return (
+    <Input
+      value={editing ? text : value}
+      onFocus={() => {
+        setText(value);
+        setEditing(true);
+      }}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          commit();
+          e.currentTarget.blur();
+        } else if (e.key === 'Escape') {
+          setEditing(false);
+          e.currentTarget.blur();
+        }
+      }}
+      placeholder={placeholder}
+      className={className}
+    />
+  );
+}
+
+/** Same draft-then-commit shape as {@link ResultsGridTextInput}, for the
+ *  numeric place/lane cells — digits-only filtering + clamping happens
+ *  on COMMIT (blur/Enter) instead of on every keystroke, so a mid-type
+ *  value like "1" while backspacing to type "12" never round-trips
+ *  through a network PATCH. `clear` (place's "no override, blank the
+ *  cell") is distinct from a clamped 0 — undefined lane means "no lane
+ *  assigned" while place 0 renders as "—" already, so both fields pass
+ *  their raw parsed number (or undefined) straight to `onCommit`. */
+function ResultsGridNumberInput({
+  value,
+  onCommit,
+  min,
+  max,
+  placeholder,
+  className,
+}: {
+  /** '' renders a blank cell (lane unset / place not yet typed). */
+  value: string;
+  onCommit: (n: number | undefined) => void;
+  min: number;
+  max: number;
+  placeholder?: string;
+  className?: string;
+}) {
+  const [text, setText] = useState('');
+  const [editing, setEditing] = useState(false);
+  const commit = () => {
+    if (!editing) return;
+    setEditing(false);
+    const digits = text.replace(/[^0-9]/g, '');
+    const next = digits ? Math.max(min, Math.min(max, parseInt(digits, 10))) : undefined;
+    const nextText = next === undefined ? '' : String(next);
+    if (nextText !== value) onCommit(next);
+  };
+  return (
+    <Input
+      value={editing ? text : value}
+      onFocus={() => {
+        setText(value);
+        setEditing(true);
+      }}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          commit();
+          e.currentTarget.blur();
+        } else if (e.key === 'Escape') {
+          setEditing(false);
+          e.currentTarget.blur();
+        }
+      }}
+      inputMode="numeric"
+      placeholder={placeholder}
+      className={className}
+    />
+  );
+}
+
+// Exported (rather than file-private like most helpers here) SOLELY so
+// S1-4's regression spec can mount it directly — same rationale
+// LanePadSection.tsx is its own exported component: a huge page.tsx
+// like this one can't practically be test-mounted whole, and this is
+// the one section whose per-keystroke-PATCH behavior needed a
+// component-level (not just unit-level) proof.
+export function MeetResultsSection({
   g,
   def,
   ctl,
@@ -5460,19 +5581,23 @@ function MeetResultsSection({
               type="button"
               onClick={() => addEvent(p)}
               disabled={events.some((e) => e.event.toLowerCase() === p.toLowerCase())}
-              className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 disabled:opacity-30 disabled:cursor-not-allowed"
+              className="min-h-[44px] rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 disabled:opacity-30 disabled:cursor-not-allowed"
             >
               + {p}
             </button>
           ))}
+          {/* Already a local draft (plain useState, committed only via the
+              discrete addEvent() call below) — not part of the S1-4
+              per-keystroke-PATCH fix, just bumped to the same 44px floor
+              for a consistent tap target alongside the fields above. */}
           <Input
             value={newEvent}
             onChange={(e) => setNewEvent(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') addEvent(newEvent); }}
             placeholder={judged ? `New ${eventNoun}…` : 'New event (e.g. 100m Free)…'}
-            className="h-9 w-48 text-sm"
+            className="min-h-[44px] w-48 text-sm"
           />
-          <Button size="sm" onClick={() => addEvent(newEvent)} disabled={!newEvent.trim()}>
+          <Button size="sm" onClick={() => addEvent(newEvent)} disabled={!newEvent.trim()} className="min-h-[44px]">
             <Plus className="h-3.5 w-3.5 mr-1" />
             Add {eventNoun}
           </Button>
@@ -5490,17 +5615,17 @@ function MeetResultsSection({
           {events.map((ev, evIdx) => (
             <div key={evIdx} className="rounded-xl border border-slate-200 overflow-hidden">
               <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 border-b border-slate-200">
-                <Input
+                <ResultsGridTextInput
                   value={ev.event}
-                  onChange={(e) => updateEvent(evIdx, { event: e.target.value })}
+                  onCommit={(v) => updateEvent(evIdx, { event: v })}
                   placeholder={judged ? eventNoun : 'Event name'}
-                  className="h-8 flex-1 text-sm font-bold bg-white"
+                  className="min-h-[44px] flex-1 text-sm font-bold bg-white"
                 />
                 <button
                   type="button"
                   onClick={() => removeEvent(evIdx)}
                   aria-label="Remove event"
-                  className="rounded-md px-2 py-1 text-xs font-semibold text-slate-400 hover:bg-red-50 hover:text-red-600"
+                  className="min-h-[44px] rounded-md px-2 py-1 text-xs font-semibold text-slate-400 hover:bg-red-50 hover:text-red-600"
                 >
                   Remove
                 </button>
@@ -5519,33 +5644,28 @@ function MeetResultsSection({
               <div className="px-3 py-2 space-y-1.5">
                 {ev.entries.map((en, enIdx) => (
                   <div key={enIdx} className="flex items-center gap-2">
-                    <Input
+                    <ResultsGridNumberInput
                       value={String(en.place || '')}
-                      onChange={(e) =>
-                        updateEntry(evIdx, enIdx, {
-                          place: Math.max(0, Math.min(999, parseInt(e.target.value.replace(/[^0-9]/g, '') || '0', 10))),
-                        })
-                      }
-                      inputMode="numeric"
-                      className="h-9 w-12 text-center text-sm font-black"
+                      onCommit={(n) => updateEntry(evIdx, enIdx, { place: n ?? 0 })}
+                      min={0}
+                      max={999}
+                      className="min-h-[44px] w-12 text-center text-sm font-black"
                     />
                     {lanesShown && (
-                      <Input
+                      <ResultsGridNumberInput
                         value={typeof en.lane === 'number' ? String(en.lane) : ''}
-                        onChange={(e) => {
-                          const v = e.target.value.replace(/[^0-9]/g, '');
-                          updateEntry(evIdx, enIdx, { lane: v ? Math.max(0, Math.min(99, parseInt(v, 10))) : undefined });
-                        }}
-                        inputMode="numeric"
+                        onCommit={(n) => updateEntry(evIdx, enIdx, { lane: n })}
+                        min={0}
+                        max={99}
                         placeholder="—"
-                        className="h-9 w-12 text-center text-sm"
+                        className="min-h-[44px] w-12 text-center text-sm"
                       />
                     )}
-                    <Input
+                    <ResultsGridTextInput
                       value={en.name}
-                      onChange={(e) => updateEntry(evIdx, enIdx, { name: e.target.value })}
+                      onCommit={(v) => updateEntry(evIdx, enIdx, { name: v })}
                       placeholder={judged ? 'Team / athlete' : 'Athlete name'}
-                      className="h-9 flex-1 text-sm"
+                      className="min-h-[44px] flex-1 text-sm"
                     />
                     {/* Side picker — Home / Away / neutral. */}
                     <div className="flex w-20 gap-0.5">
@@ -5559,7 +5679,7 @@ function MeetResultsSection({
                           type="button"
                           onClick={() => updateEntry(evIdx, enIdx, { team: opt.v })}
                           title={opt.v === 'home' ? g.homeTeam : opt.v === 'away' ? g.awayTeam : 'Neutral'}
-                          className={`flex-1 h-9 rounded-md text-xs font-black transition-colors ${
+                          className={`flex-1 min-h-[44px] rounded-md text-xs font-black transition-colors ${
                             en.team === opt.v
                               ? 'bg-indigo-600 text-white'
                               : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
@@ -5569,17 +5689,17 @@ function MeetResultsSection({
                         </button>
                       ))}
                     </div>
-                    <Input
+                    <ResultsGridTextInput
                       value={en.mark}
-                      onChange={(e) => updateEntry(evIdx, enIdx, { mark: e.target.value })}
+                      onCommit={(v) => updateEntry(evIdx, enIdx, { mark: v })}
                       placeholder={markPlaceholder}
-                      className="h-9 w-24 text-center text-sm font-bold tabular-nums"
+                      className="min-h-[44px] w-24 text-center text-sm font-bold tabular-nums"
                     />
                     <button
                       type="button"
                       onClick={() => removeEntry(evIdx, enIdx)}
                       aria-label="Remove finisher"
-                      className="h-9 w-8 rounded-md text-slate-300 hover:bg-red-50 hover:text-red-600 font-black"
+                      className="min-h-[44px] w-8 rounded-md text-slate-300 hover:bg-red-50 hover:text-red-600 font-black"
                     >
                       ✕
                     </button>
@@ -5588,7 +5708,7 @@ function MeetResultsSection({
                 <button
                   type="button"
                   onClick={() => addEntry(evIdx)}
-                  className="mt-1 inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:border-indigo-300 hover:bg-indigo-50"
+                  className="mt-1 min-h-[44px] inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:border-indigo-300 hover:bg-indigo-50"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   {judged ? 'Add score' : 'Add finisher'}
