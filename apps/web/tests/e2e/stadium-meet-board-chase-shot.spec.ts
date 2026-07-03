@@ -109,8 +109,9 @@ function manifest() {
                 // Configured pool-record — proves the record-chase card +
                 // progress bar + gap line render from REAL config + the
                 // live leader's mark, never the mockup's fabricated
-                // "50.84 A. WASHINGTON" sample.
-                recordLabel: 'POOL RECORD',
+                // "50.84 A. WASHINGTON" sample. recordLabel is left blank
+                // on purpose so the card exercises the chase-scene DEFAULT
+                // label ("POOL RECORD CHASE"), matching the mockup.
                 recordValue: '50.84',
                 recordHolder: 'A. Washington · 2024',
               },
@@ -215,7 +216,13 @@ test('Stadium Lane v3 Record Chase — live screenshot at native 1920×1080', as
   // computed record-chase gap must be on the page (proves the live-data
   // path rendered, not "NO GAME BOUND" / the builder SAMPLE).
   await expect(page.locator('body')).toContainText('51.9');
-  await expect(page.locator('body')).toContainText('POOL RECORD');
+  // Header hierarchy matches the mockup: the EVENT NAME is the giant hero
+  // headline and the ROUND ("FINALS") is the LIVE pill's trailing text.
+  await expect(page.locator('h1', { hasText: 'GIRLS 100M FREESTYLE' })).toBeVisible();
+  await expect(page.locator('body')).toContainText('● LIVE — FINALS');
+  // The record-chase card carries the mockup's full "POOL RECORD CHASE"
+  // label, not the shorter "POOL RECORD".
+  await expect(page.locator('body')).toContainText('POOL RECORD CHASE');
   await expect(page.locator('body')).toContainText('50.84');
   // 51.90 leader vs 50.84 configured record = +1.06, computed live from
   // this test's own seeded config — NOT the mockup's hardcoded sample

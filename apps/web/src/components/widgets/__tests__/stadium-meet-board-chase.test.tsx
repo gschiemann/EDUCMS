@@ -102,10 +102,12 @@ describe('STADIUM_MEET_BOARD boardStyle=chase — builder sample (no GameStateCo
     expect(text).toContain('SAMPLE');
   });
 
-  it('renders the sample pool-record-chase card (config-or-sample, same rule as v1)', () => {
+  it('renders the sample pool-record-chase card with the mockup "POOL RECORD CHASE" label', () => {
     const { container } = renderWidget();
     const text = container.textContent || '';
-    expect(text).toContain('POOL RECORD');
+    // The chase card's default label is "POOL RECORD CHASE" (matches
+    // stadium-lane-v3-chase.png), not v1's shorter "POOL RECORD".
+    expect(text).toContain('POOL RECORD CHASE');
     expect(text).toContain('50.84');
     expect(text).toContain('A. WASHINGTON');
   });
@@ -146,6 +148,26 @@ describe('STADIUM_MEET_BOARD boardStyle=chase — live data (real GameStateProvi
     const text = container.textContent || '';
     expect(text).toContain('51.9');
     expect(text).not.toContain('SAMPLE');
+  });
+
+  it('makes the EVENT NAME the giant hero headline and the ROUND the LIVE pill (matches the mockup, inverse of v1/v2)', () => {
+    // Canonical mockup event string: "EVENT <n> · <name> — <round>".
+    const { container } = renderLive({
+      currentEvent: 'EVENT 12 · GIRLS 100M FREESTYLE — FINALS',
+      ...twoLaneResults,
+    });
+    // Hero <h1> = the bare event NAME (event-number prefix + round stripped).
+    const hero = Array.from(container.querySelectorAll('h1')).find((el) => (el.textContent || '').includes('GIRLS 100M FREESTYLE'));
+    expect(hero).toBeTruthy();
+    expect(hero!.textContent).toBe('GIRLS 100M FREESTYLE');
+    // The LIVE pill's trailing text = the round/session ("FINALS"), NOT the
+    // event name. Match the innermost pill element (textContent EQUALS the
+    // pill string), not an ancestor rail container that merely starts with it.
+    const pill = Array.from(container.querySelectorAll('div')).find((el) => el.textContent === '● LIVE — FINALS');
+    expect(pill).toBeTruthy();
+    // Subtitle keeps "EVENT 12 · HEAT …" (event number back in the subtitle).
+    const text = container.textContent || '';
+    expect(text).toContain('EVENT 12');
   });
 
   it('shows "—" for the race clock when there is no leader yet (no fabricated time)', () => {

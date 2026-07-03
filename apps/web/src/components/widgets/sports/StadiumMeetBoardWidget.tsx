@@ -835,6 +835,31 @@ function StadiumChaseScene({
   const teamLeadLabel = scoreGap === 0 ? 'TIED' : 'TEAM LEAD';
   const teamLeadValue = scoreGap != null ? (scoreGap === 0 ? '—' : (scoreGap > 0 ? `+${scoreGap}` : `${scoreGap}`)) : '—';
 
+  // ── Header derivation for the Chase rail (matches stadium-lane-v3-chase.png):
+  //    the EVENT NAME is the giant left-rail hero headline, and the
+  //    round/session label ("FINALS") is the small green LIVE pill's
+  //    trailing text — the INVERSE of v1/v2's eyebrow-over-title layout.
+  //    Derived purely from the SAME fields the shared splitHeader already
+  //    produced (router-owned; not re-parsed from a new source):
+  //      - eventTitle = the last "—"-segment  → the round/session (pill).
+  //      - eventLabel = the first "—"-segment → carries "EVENT N · <name>";
+  //        strip a leading "EVENT <n>" token off the front to get the bare
+  //        event name for the hero, and keep that "EVENT <n>" token for the
+  //        subtitle's left half. If eventLabel has no such prefix, the whole
+  //        of it IS the event name and the subtitle just shows the heat.
+  //    No-fake-data: empty header → "NO EVENT SET" hero, no pill round.
+  const eventNumMatch = headerText.eventLabel.match(/^\s*(EVENT\s+[^·|—-]+?)\s*[·|]\s*(.+)$/i);
+  const eventNumber = eventNumMatch ? eventNumMatch[1].trim().toUpperCase() : '';
+  const heroName = (eventNumMatch ? eventNumMatch[2].trim() : headerText.eventLabel).toUpperCase();
+  const roundLabel = headerText.eventTitle && headerText.eventTitle !== 'NO EVENT SET'
+    ? headerText.eventTitle
+    : '';
+  const heroHeadline = heroName || (headerText.eventTitle || 'NO EVENT SET');
+  // Subtitle keeps the mockup's "EVENT 12 · HEAT 3 OF 4" shape, built from
+  // the extracted event number + the operator-typed heat pill. Each half is
+  // shown only when present so a missing field never leaves a dangling "·".
+  const subtitleParts = [eventNumber, heatLabel ? `HEAT ${heatLabel}` : ''].filter(Boolean);
+
   return (
     <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, fontFamily: BODY_FONT, color: '#fff', background: `radial-gradient(1000px 700px at 82% 20%, rgba(16,185,129,.14), transparent 60%), radial-gradient(900px 600px at 8% 90%, rgba(59,130,246,.10), transparent 60%), ${bgColor}`, overflow: 'hidden' }}>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, opacity: 0.5, background: 'repeating-linear-gradient(0deg, rgba(255,255,255,.015) 0 1px, transparent 1px 4px)' }} />
@@ -842,14 +867,14 @@ function StadiumChaseScene({
       {/* ── Left rail: LIVE tag, event tower, giant race clock, record-chase card, team chip ── */}
       <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 560, padding: '52px 44px', background: 'linear-gradient(180deg,#0b1322 0%,#081020 100%)', borderRight: '1px solid #1c2740', boxSizing: 'border-box' }}>
         <div style={{ display: 'inline-block', background: '#10b981', color: '#032117', fontSize: 18, fontWeight: 800, letterSpacing: 3, padding: '9px 20px', borderRadius: 999 }}>
-          ● LIVE{headerText.eventLabel ? ` — ${headerText.eventLabel.split(/\s*[·|]\s*/).pop()}` : ''}
+          ● LIVE{roundLabel ? ` — ${roundLabel.toUpperCase()}` : ''}
         </div>
         <h1 style={{ fontFamily: DISPLAY_FONT, fontWeight: 400, fontSize: 66, lineHeight: 1.02, margin: '26px 0 8px' }}>
-          {headerText.eventTitle}
+          {heroHeadline}
         </h1>
-        {(heatLabel || headerText.eventLabel) && (
+        {subtitleParts.length > 0 && (
           <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 4, color: '#6ee7b7' }}>
-            {headerText.eventLabel}{headerText.eventLabel && heatLabel ? ' · ' : ''}{heatLabel ? `HEAT ${heatLabel}` : ''}
+            {subtitleParts.join(' · ')}
           </div>
         )}
 
@@ -1056,29 +1081,36 @@ export function StadiumMeetBoardWidget({ config }: WidgetProps<StadiumMeetBoardC
   const timeLabel = isLive ? (c.timeLabel || '') : (c.timeLabel ?? SAMPLE_TIME_LABEL);
   const dqReasons = c.dqReasons || (isLive ? {} : { '7': SAMPLE_DQ_REASON });
 
-  // Pool-record footer — config-or-omit. Any of the 4 fields present
-  // renders the record half; all blank (and not the builder sample)
-  // omits it. In the builder with no override, show the sample so the
-  // gallery tile demonstrates the footer moment.
+  // v1 'broadcast', v2 'duel', and v3 'chase' are all built now — every
+  // typed boardStyle has a real scene; nothing falls back anymore.
+  const boardStyle: 'broadcast' | 'duel' | 'chase' =
+    c.boardStyle === 'duel' ? 'duel' : c.boardStyle === 'chase' ? 'chase' : 'broadcast';
+
+  // Pool-record footer (v1) / record-chase card (v3) — config-or-omit. Any
+  // of the 4 fields present renders it; all blank (and not the builder
+  // sample) omits it. In the builder with no override, show the sample so
+  // the gallery tile demonstrates the moment. The default LABEL is
+  // scene-specific to match each approved mockup: v3's card reads "POOL
+  // RECORD CHASE" (stadium-lane-v3-chase.png), v1's footer reads "RECORD".
+  const defaultRecordLabel = boardStyle === 'chase' ? 'POOL RECORD CHASE' : 'RECORD';
   const recordFieldsSet = !!(c.recordLabel || c.recordValue || c.recordHolder || c.recordDelta);
   const record = recordFieldsSet
     ? {
-        recordLabel: c.recordLabel || 'RECORD',
+        recordLabel: c.recordLabel || defaultRecordLabel,
         recordValue: c.recordValue || '',
         recordHolder: c.recordHolder || '',
         recordDelta: c.recordDelta || '',
       }
-    : (!isLive ? SAMPLE_RECORD : null);
+    : (!isLive
+        // Builder sample: v3 uses the chase mockup's "POOL RECORD CHASE"
+        // label; v1/v2 use the shared SAMPLE_RECORD ("POOL RECORD").
+        ? (boardStyle === 'chase' ? { ...SAMPLE_RECORD, recordLabel: 'POOL RECORD CHASE' } : SAMPLE_RECORD)
+        : null);
 
   const sponsorFieldsSet = !!(c.sponsorLabel || c.sponsorName);
   const sponsor = sponsorFieldsSet
     ? { sponsorLabel: c.sponsorLabel || 'PRESENTED BY', sponsorName: c.sponsorName || '' }
     : (!isLive ? SAMPLE_SPONSOR : null);
-
-  // v1 'broadcast', v2 'duel', and v3 'chase' are all built now — every
-  // typed boardStyle has a real scene; nothing falls back anymore.
-  const boardStyle: 'broadcast' | 'duel' | 'chase' =
-    c.boardStyle === 'duel' ? 'duel' : c.boardStyle === 'chase' ? 'chase' : 'broadcast';
 
   // Team scores — v2 'duel' and v3 'chase' both show a team-score chip
   // (v1's design has no score header at all). Real bound game's
