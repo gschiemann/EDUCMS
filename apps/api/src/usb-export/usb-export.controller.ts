@@ -160,7 +160,7 @@ export class UsbExportController {
         emergencyPlaylistId: true,
       },
     });
-    if (!tenant) throw new HttpException('Tenant not found', HttpStatus.NOT_FOUND);
+    if (!tenant) throw new HttpException({ code: 'USB_EXPORT_TENANT_NOT_FOUND', message: 'Tenant not found' }, HttpStatus.NOT_FOUND);
 
     // FIX (player-003): refuse the export when usbIngestEnabled is false.
     // The previous behavior silently flipped the flag AND minted an HMAC
@@ -199,7 +199,7 @@ export class UsbExportController {
 
     const playlistIds = Array.isArray(body.playlistIds) ? body.playlistIds : [];
     if (playlistIds.length === 0) {
-      throw new HttpException('playlistIds is required (non-empty)', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'USB_EXPORT_PLAYLIST_IDS_REQUIRED', message: 'playlistIds is required (non-empty)' }, HttpStatus.BAD_REQUEST);
     }
 
     let screen: { id: string; tenantId: string | null } | null = null;
@@ -209,7 +209,7 @@ export class UsbExportController {
         select: { id: true, tenantId: true },
       });
       if (!screen || screen.tenantId !== tenantId) {
-        throw new HttpException('Screen not found in your tenant', HttpStatus.NOT_FOUND);
+        throw new HttpException({ code: 'USB_EXPORT_SCREEN_NOT_FOUND', message: 'Screen not found in your tenant' }, HttpStatus.NOT_FOUND);
       }
     }
 
@@ -232,7 +232,7 @@ export class UsbExportController {
       include: playlistInclude,
     });
     if (playlistsRaw.length === 0) {
-      throw new HttpException('No matching playlists in this tenant', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'USB_EXPORT_NO_MATCHING_PLAYLISTS', message: 'No matching playlists in this tenant' }, HttpStatus.NOT_FOUND);
     }
 
     const emergencyIds = body.includeEmergency

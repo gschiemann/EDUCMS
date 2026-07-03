@@ -72,7 +72,7 @@ export class SsoController {
     @Body() body: { SAMLResponse?: string; RelayState?: string },
     @Res() res: Response,
   ) {
-    if (!body?.SAMLResponse) throw new BadRequestException('Missing SAMLResponse');
+    if (!body?.SAMLResponse) throw new BadRequestException({ code: 'SSO_SAML_RESPONSE_REQUIRED', message: 'Missing SAMLResponse' });
     const profile = await this.sso.validateSamlCallback(tenantSlug, body.SAMLResponse);
     const minted = await this.sso.completeSsoLogin(tenantSlug, 'SAML', profile);
     return this.redirectWithToken(res, minted);
@@ -130,7 +130,7 @@ export class SsoController {
     @Req() req: Request,
   ) {
     const tenant = await this.prisma.client.tenant.findUnique({ where: { slug: tenantSlug } });
-    if (!tenant) throw new NotFoundException(`Tenant "${tenantSlug}" not found`);
+    if (!tenant) throw new NotFoundException({ code: 'SSO_TENANT_NOT_FOUND', message: `Tenant "${tenantSlug}" not found` });
     const baseUrl = this.baseUrl(req);
     return this.sso.buildServiceProviderMetadata(tenantSlug, baseUrl);
   }
@@ -214,14 +214,14 @@ export class SsoController {
       select: { id: true, parentId: true },
     });
     if (!target) {
-      throw new NotFoundException(`Tenant "${tenantSlug}" not found`);
+      throw new NotFoundException({ code: 'SSO_TENANT_NOT_FOUND', message: `Tenant "${tenantSlug}" not found` });
     }
 
     const user = (req as any).user as
       | { role?: string; tenantId?: string }
       | undefined;
     if (!user) {
-      throw new ForbiddenException('No user identity found in request');
+      throw new ForbiddenException({ code: 'SSO_NO_USER_IDENTITY', message: 'No user identity found in request' });
     }
 
     if (user.role === 'SUPER_ADMIN') {
@@ -238,9 +238,10 @@ export class SsoController {
       return target;
     }
 
-    throw new ForbiddenException(
-      'Access denied. Cannot manage SSO config for a tenant outside your scope.',
-    );
+    throw new ForbiddenException({
+      code: 'SSO_TENANT_OUT_OF_SCOPE',
+      message: 'Access denied. Cannot manage SSO config for a tenant outside your scope.',
+    });
   }
 
   private baseUrl(req: Request): string {

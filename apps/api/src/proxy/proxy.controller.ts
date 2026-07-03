@@ -43,7 +43,7 @@ export class ProxyController {
   ) {
     try {
       if (!url) {
-        throw new HttpException('Missing url parameter', HttpStatus.BAD_REQUEST);
+        throw new HttpException({ code: 'PROXY_URL_REQUIRED', message: 'Missing url parameter' }, HttpStatus.BAD_REQUEST);
       }
 
       // ─── INTERACTIVE MODE (v1.0.16 fix) ────────────────────────────
@@ -121,16 +121,16 @@ export class ProxyController {
           if (e instanceof SsrfError) {
             // Don't leak whether the target was private vs invalid —
             // uniform error for SSRF probing.
-            throw new HttpException(`Upstream blocked: ${e.message}`, HttpStatus.BAD_REQUEST);
+            throw new HttpException({ code: 'PROXY_UPSTREAM_BLOCKED', message: `Upstream blocked: ${e.message}` }, HttpStatus.BAD_REQUEST);
           }
           if (e instanceof FetchTooLargeError) {
-            throw new HttpException(`Upstream response too large`, HttpStatus.PAYLOAD_TOO_LARGE);
+            throw new HttpException({ code: 'PROXY_UPSTREAM_TOO_LARGE', message: `Upstream response too large` }, HttpStatus.PAYLOAD_TOO_LARGE);
           }
-          throw new HttpException(`Upstream connection failed: ${e.message}`, HttpStatus.BAD_GATEWAY);
+          throw new HttpException({ code: 'PROXY_UPSTREAM_CONNECTION_FAILED', message: `Upstream connection failed: ${e.message}` }, HttpStatus.BAD_GATEWAY);
         }
 
         if (upstream.status < 200 || upstream.status >= 300) {
-          throw new HttpException(`Upstream returned HTTP ${upstream.status}`, HttpStatus.BAD_GATEWAY);
+          throw new HttpException({ code: 'PROXY_UPSTREAM_BAD_STATUS', message: `Upstream returned HTTP ${upstream.status}` }, HttpStatus.BAD_GATEWAY);
         }
 
         contentType = upstream.contentType || 'text/html';
@@ -165,7 +165,7 @@ export class ProxyController {
       if (html === null) {
         // Should be unreachable — both branches above always set html.
         // Defensive throw rather than swallowing.
-        throw new HttpException('Renderer produced no HTML', HttpStatus.INTERNAL_SERVER_ERROR);
+        throw new HttpException({ code: 'PROXY_NO_HTML', message: 'Renderer produced no HTML' }, HttpStatus.INTERNAL_SERVER_ERROR);
       }
       res.setHeader('X-EduCms-Renderer', renderedBy);
       res.setHeader('X-EduCms-Mode', interactive ? 'interactive' : 'static');
