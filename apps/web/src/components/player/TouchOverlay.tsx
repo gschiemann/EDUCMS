@@ -451,6 +451,12 @@ export function TouchNavOverlay({
                     width={z.width}
                     height={z.height}
                     live={true}
+                    // Sports Wave S2 (2026-07-02) — this is a real kiosk
+                    // screen (a visitor navigated here), not a builder
+                    // preview. A sports widget with no bound game must
+                    // render its "bind a game" empty state, never a
+                    // fabricated sample. See GameStateContext.tsx.
+                    renderSurface="player"
                   />
                 </div>
               ))}

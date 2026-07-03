@@ -64,6 +64,11 @@ import { AnimatedWelcomePortraitWidget } from './AnimatedWelcomePortraitWidget';
 // render on /board /ribbon /scorebug; in the builder canvas (no
 // provider) they render the config's `placeholder` instead.
 import { ScoreHomeWidget, ScoreAwayWidget, GameClockWidget, GameSegmentWidget, GameStatWidget } from './sports/SportWidgets';
+// Sports Wave S2 (2026-07-02) — the per-zone `config.gameId` binding
+// (GameStateProvider) + RenderSurfaceContext (the builder-vs-real-screen
+// signal the no-fake-data guard needs). See GameStateContext.tsx's
+// file-header comment and the WidgetPreview wrapper below.
+import { GameStateProvider, RenderSurfaceProvider, useHasAmbientGameProvider } from './sports/GameStateContext';
 // 2026-07-01 — swim/dive sport split flagship widgets. SWIM_LANE_GRID is
 // the lane/heat/time board; DIVE_LEADERBOARD is the judged running-total
 // leaderboard (diving has NO lanes/clock/splits — a different sport).
@@ -441,7 +446,21 @@ function mergeCalendarEvents(
 // Master renderer — picks the right widget by type
 // ═══════════════════════════════════════════════════════
 
-export function WidgetPreview({ widgetType, config, width, height, live, freeze, onConfigChange }: {
+// Sports Wave S2 (2026-07-02) — every widgetType that reads
+// GameStateContext's `useGameState()`. Used by the WidgetPreview wrapper
+// below to decide which zones are eligible for the per-zone
+// `config.gameId` → `<GameStateProvider>` wrap (S2-2). Kept as an
+// explicit allowlist (not "any widget with a gameId key") so a
+// non-sports widget that happens to have a `gameId` field for some
+// other reason never gets wrapped by mistake.
+const GAME_STATE_WIDGET_TYPES = new Set([
+  'SCORE_HOME', 'SCORE_AWAY', 'GAME_CLOCK', 'GAME_SEGMENT', 'GAME_STAT',
+  'SCOREBOARD', // MainScoreboardWidget + the sb-* element variants + RibbonScoreboardWidget/ScorebugWidget all dispatch through here
+  'SWIM_LANE_GRID', 'DIVE_LEADERBOARD', 'SWIM_RELAY_EXCHANGE',
+  'SWIM_SPLITS_PANEL', 'SWIM_RECORD_LINE', 'DIVE_JUDGES_PANEL',
+]);
+
+export function WidgetPreview(props: {
   widgetType: string;
   config: any;
   width: number;   // percentage width of zone
@@ -455,6 +474,60 @@ export function WidgetPreview({ widgetType, config, width, height, live, freeze,
   // Optional inline-edit hook from the template builder (BuilderZone).
   // When provided, widgets that support drag-drop / inline upload can
   // call this to persist a config patch back up to the zone.
+  onConfigChange?: (patch: Record<string, any>) => void;
+  // Sports Wave S2 (2026-07-02) — set ONLY by the two components that
+  // render a REAL screen (apps/web/src/app/player/page.tsx and
+  // apps/web/src/components/player/TouchOverlay.tsx). Establishes
+  // RenderSurfaceContext so sport widgets with no bound game render a
+  // dignified empty/neutral state instead of fabricated sample data —
+  // see GameStateContext.tsx's file-header comment for the full
+  // rationale. Every other call site (builder canvas, gallery
+  // thumbnail, preview modal, App Library config preview) omits this
+  // and gets the 'builder' default, unchanged from before this prop
+  // existed.
+  renderSurface?: 'player';
+}) {
+  const { widgetType, config, renderSurface } = props;
+  const cfg = config || {};
+
+  // Per-zone game binding (S2-2). A sports widget with an explicit
+  // `config.gameId` and NO ambient <GameStateProvider> already wrapping
+  // it (the normal /board /ribbon /scorebug case, where the WHOLE
+  // template shares one ambient provider) gets its own provider for
+  // that specific game — so an operator can drop a scoreboard element
+  // onto an ordinary signage template (no ambient provider at all) and
+  // point it at a specific game via the PropertiesPanel's "Bind to
+  // game" picker, independent of whatever screen/playlist it ends up
+  // scheduled to. An ambient provider (already the right game, or
+  // deliberately wrapping the whole board) always wins over a stale
+  // per-zone gameId.
+  const gameId = typeof cfg.gameId === 'string' ? cfg.gameId.trim() : '';
+  const hasAmbientProvider = useHasAmbientGameProvider();
+  const wrapInGameProvider = !!gameId && !hasAmbientProvider && GAME_STATE_WIDGET_TYPES.has(widgetType);
+
+  // Both wraps are independent and compose — a real player rendering a
+  // gameId-bound zone gets BOTH: the RenderSurfaceContext (irrelevant
+  // once the GameStateProvider below supplies a real ambient snapshot,
+  // but still correct to set) AND the per-zone GameStateProvider. Order
+  // doesn't matter since useGameState() always prefers a real ambient
+  // snapshot over the RenderSurface-driven phantom.
+  let node = <WidgetPreviewInner {...props} />;
+  if (wrapInGameProvider) {
+    node = <GameStateProvider gameId={gameId}>{node}</GameStateProvider>;
+  }
+  if (renderSurface) {
+    node = <RenderSurfaceProvider surface={renderSurface}>{node}</RenderSurfaceProvider>;
+  }
+  return node;
+}
+
+function WidgetPreviewInner({ widgetType, config, width, height, live, freeze, onConfigChange }: {
+  widgetType: string;
+  config: any;
+  width: number;
+  height: number;
+  live?: boolean;
+  freeze?: boolean;
   onConfigChange?: (patch: Record<string, any>) => void;
 }) {
   const cfg = config || {};

@@ -210,11 +210,18 @@ export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainSc
   const NEUTRAL = liveNeutral('value');
 
   // ── view = static config overrides layered over live/sample data ──
-  const homeColor = pick(c.homeColor, snap.homeColor || DEFAULT_HOME);
-  const awayColor = pick(c.awayColor, snap.awayColor || DEFAULT_AWAY);
+  // Team NAMES + LOGOS were the actual leak the S2-1 no-fake-data audit
+  // found here (2026-07-02): score/clock/period/shot already went
+  // NEUTRAL on a live surface with no data, but `snap` still fell back
+  // to the full SAMPLE object — including SAMPLE.homeTeam ("EAGLES") /
+  // SAMPLE.awayTeam ("TIGERS") — so a real screen with no game bound
+  // showed fabricated team names even though the score read "—". Operator
+  // overrides (c.homeName / c.awayName) still win either way.
+  const homeColor = pick(c.homeColor, isLiveNoData ? DEFAULT_HOME : (snap.homeColor || DEFAULT_HOME));
+  const awayColor = pick(c.awayColor, isLiveNoData ? DEFAULT_AWAY : (snap.awayColor || DEFAULT_AWAY));
   const accent = pick(c.accentColor, ACCENT_DEFAULT);
-  const homeName = String(pick(c.homeName, snap.homeTeam) || 'HOME');
-  const awayName = String(pick(c.awayName, snap.awayTeam) || 'AWAY');
+  const homeName = String(pick(c.homeName, isLiveNoData ? 'HOME' : snap.homeTeam) || 'HOME');
+  const awayName = String(pick(c.awayName, isLiveNoData ? 'AWAY' : snap.awayTeam) || 'AWAY');
   // Score: operator override wins; else the live score; else NEUTRAL on a
   // live surface with no data (never SAMPLE's 62 / 58).
   const homeScore = pick(c.homeScore, isLiveNoData ? NEUTRAL : snap.homeScore);
@@ -442,6 +449,50 @@ export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainSc
           <div style={{ position: 'absolute', top: 28, left: '50%', transform: 'translateX(-50%)', background: '#dc2626', color: '#fff', fontWeight: 700, fontSize: 30, letterSpacing: 4, padding: '8px 26px', borderRadius: 999, display: 'flex', alignItems: 'center', boxShadow: '0 6px 16px rgba(0,0,0,0.4)', zIndex: 5 }}>
             <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#fff', marginRight: 12, animation: 'mainSbBlink 1.3s ease-in-out infinite' }} />
             LIVE
+          </div>
+        )}
+
+        {/* "SAMPLE" watermark (S2-1, 2026-07-02) — `state == null` means
+            there's truly no GameStateContext of any kind above this
+            widget (no ambient provider, no RenderSurfaceContext) — i.e.
+            genuinely the builder canvas / gallery thumbnail / preview
+            modal, self-playing the fabricated EAGLES/TIGERS SAMPLE so the
+            operator can lay out the board. A real screen ALWAYS has at
+            least the phantom-unbound state (RenderSurfaceProvider
+            surface="player"), so this can never show there. */}
+        {state == null && (
+          <div style={{ position: 'absolute', bottom: 24, right: 32, background: 'rgba(0,0,0,0.55)', color: '#facc15', fontWeight: 800, fontSize: 20, letterSpacing: 4, padding: '6px 16px', borderRadius: 8, border: '1px solid rgba(250,204,21,0.4)', zIndex: 5 }}>
+            SAMPLE
+          </div>
+        )}
+
+        {/* "Bind a game" callout (S2-1, 2026-07-02) — this is a real
+            screen (GameStateProvider mounted) with no game bound yet. The
+            chrome above already reads team-color-neutral ("HOME"/"AWAY",
+            "—" score/clock) — this banner tells the operator WHY, instead
+            of silently looking broken. Never shown in the builder (the
+            self-playing SAMPLE renders there instead) or once a real
+            game/snapshot arrives. */}
+        {isLiveNoData && (
+          <div
+            style={{
+              position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              zIndex: 6, pointerEvents: 'none',
+            }}
+          >
+            <div style={{
+              background: 'rgba(11,13,18,0.88)', border: `2px solid ${accent}`, borderRadius: 20,
+              padding: '22px 44px', display: 'flex', flexDirection: 'column', alignItems: 'center',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.55)',
+            }}>
+              <span style={{ fontWeight: 800, fontSize: 30, letterSpacing: 2, color: accent }}>
+                NO GAME BOUND
+              </span>
+              <span style={{ fontWeight: 600, fontSize: 20, color: '#cbd5e1', marginTop: 8 }}>
+                Bind a game in the score keeper to go live
+              </span>
+            </div>
           </div>
         )}
       </div>

@@ -5935,6 +5935,12 @@ function PlayerPage() {
                 width={zone.width}
                 height={zone.height}
                 live={true}
+                // Sports Wave S2 (2026-07-02) — this IS a real screen. A
+                // sports widget with no bound game (no ambient
+                // GameStateProvider, no config.gameId) must render its
+                // dignified "bind a game" empty state here, never the
+                // builder-only fabricated sample. See GameStateContext.tsx.
+                renderSurface="player"
               />
             </WidgetErrorBoundary>
           </div>

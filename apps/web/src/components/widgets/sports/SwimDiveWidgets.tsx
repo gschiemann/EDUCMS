@@ -137,6 +137,56 @@ function ScaledScene({
   );
 }
 
+/**
+ * BindGameCallout — the S2-1 (2026-07-02) "no-fake-data on a real screen"
+ * banner. Rendered ON TOP of an already-empty/neutral board shell (never
+ * instead of it — the chrome underneath still shows team-color-neutral
+ * lanes/panels) whenever a widget is on a real player surface
+ * (RenderSurfaceContext === 'player') with a GameStateProvider mounted
+ * but no game bound / no results yet. Shared by every widget in this
+ * file so the copy + look stays identical across swim/dive boards.
+ */
+function BindGameCallout({ accent = '#fbbf24' }: { accent?: string }) {
+  return (
+    <div
+      style={{
+        position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 6, pointerEvents: 'none',
+      }}
+    >
+      <div style={{
+        background: 'rgba(5,7,13,0.88)', border: `2px solid ${accent}`, borderRadius: 20,
+        padding: '22px 44px', display: 'flex', flexDirection: 'column', alignItems: 'center',
+        boxShadow: '0 20px 50px rgba(0,0,0,0.55)',
+      }}>
+        <span style={{ fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 30, letterSpacing: 2, color: accent }}>
+          NO GAME BOUND
+        </span>
+        <span style={{ fontFamily: DISPLAY_FONT, fontWeight: 600, fontSize: 20, color: '#cbd5e1', marginTop: 8 }}>
+          Bind a game in the score keeper to go live
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * SampleWatermark — the S2-1 (2026-07-02) builder/preview tag. Shown ONLY
+ * when `state == null` (no GameStateContext of any kind above this
+ * widget — genuinely the builder canvas / gallery thumbnail / preview
+ * modal rendering the fabricated SAMPLE data). A real screen always has
+ * at least the phantom-unbound state (RenderSurfaceContext), so this can
+ * never appear there — see GameStateContext.tsx.
+ */
+function SampleWatermark() {
+  return (
+    <div style={{ position: 'absolute', bottom: 24, right: 32, background: 'rgba(0,0,0,0.55)', color: '#facc15', fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 18, letterSpacing: 4, padding: '5px 14px', borderRadius: 8, border: '1px solid rgba(250,204,21,0.4)', zIndex: 6 }}>
+      SAMPLE
+    </div>
+  );
+}
+
 // ── SAMPLE data — an 8-lane heat + a 6-diver field, so the builder tile
 //    and gallery thumbnail are alive, never blank. ─────────────────────
 const SAMPLE_SWIM_EVENT: ResultEvent = {
@@ -356,6 +406,11 @@ export function SwimLaneGridWidget({ config }: WidgetProps<SwimLaneGridCfg>) {
           })}
         </div>
       </div>
+      {/* "Bind a game" callout (S2-1, 2026-07-02) — real screen, no
+          results recorded yet. The lane grid above is already an empty
+          shell (blank names/times); this banner tells the operator why. */}
+      {noLiveData && <BindGameCallout accent={c.headerColor || '#fbbf24'} />}
+      {!isLive && <SampleWatermark />}
     </ScaledScene>
   );
 }
@@ -476,6 +531,12 @@ export function DiveLeaderboardWidget({ config }: WidgetProps<DiveLeaderboardCfg
           })}
         </div>
       </div>
+      {/* "Bind a game" callout (S2-1, 2026-07-02) — distinct from "NO
+          RESULTS YET" above: this fires only when there's no game bound
+          AT ALL (no GameStateProvider snapshot), not when a bound meet
+          simply hasn't posted a result yet. */}
+      {noLiveData && <BindGameCallout accent={c.headerColor || '#fbbf24'} />}
+      {!isLive && <SampleWatermark />}
     </ScaledScene>
   );
 }
@@ -552,10 +613,21 @@ export function SwimRelayExchangeWidget({ config }: WidgetProps<SwimRelayExchang
   const laneNumber = typeof c.laneNumber === 'number' ? c.laneNumber : 3;
 
   // Legs are always operator-config (there's no live per-leg feed yet) —
-  // sample rows only when the operator hasn't entered any, so the
-  // builder tile is never blank but a real board never shows fake legs
-  // once the operator starts typing real ones.
-  const legs: SwimRelayLeg[] = Array.isArray(c.legs) && c.legs.length > 0 ? c.legs : SAMPLE_RELAY_LEGS;
+  // sample rows only when the operator hasn't entered any AND we're in
+  // the builder. On a real screen (isLive) with no operator-typed legs,
+  // render blank leg slots instead of SAMPLE_RELAY_LEGS' fabricated
+  // swimmer names (S2-1, 2026-07-02 — the same class of bug as the
+  // lane grid / dive leaderboard: this widget's SAMPLE was previously
+  // "operator hasn't typed legs" regardless of surface, which meant a
+  // real, unbound screen showed invented swimmers with zero operator
+  // action).
+  const hasTypedLegs = Array.isArray(c.legs) && c.legs.length > 0;
+  const noLiveData = isLive && !hasTypedLegs;
+  const legs: SwimRelayLeg[] = hasTypedLegs
+    ? (c.legs as SwimRelayLeg[])
+    : isLive
+      ? Array.from({ length: 4 }, (_, i) => ({ legName: `LEG ${i + 1}`, swimmer: '', split: '', cumulative: '', exchange: '' }))
+      : SAMPLE_RELAY_LEGS;
   const teamName = c.teamName || (isLive ? '' : 'HOME RELAY A');
   const headerText = c.headerText || event?.event || 'RELAY EXCHANGE';
 
@@ -638,6 +710,8 @@ export function SwimRelayExchangeWidget({ config }: WidgetProps<SwimRelayExchang
           })}
         </div>
       </div>
+      {noLiveData && <BindGameCallout accent={c.headerColor || '#fbbf24'} />}
+      {!isLive && <SampleWatermark />}
     </ScaledScene>
   );
 }
@@ -699,7 +773,16 @@ export function SwimSplitsPanelWidget({ config }: WidgetProps<SwimSplitsPanelCfg
   const showPaceDelta = c.showPaceDelta !== false;
   const laneNumber = typeof c.laneNumber === 'number' ? c.laneNumber : undefined;
 
-  const splits: SwimSplitRow[] = Array.isArray(c.splits) && c.splits.length > 0 ? c.splits : SAMPLE_SPLITS;
+  // Same S2-1 fix as the relay board above: SAMPLE_SPLITS is invented
+  // race data — only show it in the builder. A real, unbound screen
+  // gets blank length rows instead.
+  const hasTypedSplits = Array.isArray(c.splits) && c.splits.length > 0;
+  const noLiveData = isLive && !hasTypedSplits;
+  const splits: SwimSplitRow[] = hasTypedSplits
+    ? (c.splits as SwimSplitRow[])
+    : isLive
+      ? Array.from({ length: 4 }, (_, i) => ({ length: i + 1, split: '', cumulative: '' }))
+      : SAMPLE_SPLITS;
   const swimmerName = c.swimmerName || (isLive ? '' : 'D. OKAFOR');
   const headerText = c.headerText || event?.event || 'SPLIT TIMES';
 
@@ -781,6 +864,8 @@ export function SwimSplitsPanelWidget({ config }: WidgetProps<SwimSplitsPanelCfg
           })}
         </div>
       </div>
+      {noLiveData && <BindGameCallout accent={c.headerColor || '#fbbf24'} />}
+      {!isLive && <SampleWatermark />}
     </ScaledScene>
   );
 }
@@ -955,6 +1040,11 @@ export function DiveJudgesPanelWidget({ config }: WidgetProps<DiveJudgesPanelCfg
   const c = config ?? {};
   const state = useGameState();
   const isLive = state != null;
+  // Distinct from `noLiveData` below ("a dive isn't happening right
+  // now") — this is "no game has EVER been bound to this widget"
+  // (real screen, GameStateProvider mounted, but the phantom-unbound
+  // state or a fresh provider with no snapshot yet). S2-1, 2026-07-02.
+  const noGameBound = isLive && !state?.snapshot;
   const stats = (state?.snapshot?.stats ?? {}) as Record<string, unknown>;
 
   const bgColor = c.bgColor || '#0a0714';
@@ -1074,6 +1164,8 @@ export function DiveJudgesPanelWidget({ config }: WidgetProps<DiveJudgesPanelCfg
           </>
         )}
       </div>
+      {noGameBound && <BindGameCallout accent={c.headerColor || '#fbbf24'} />}
+      {!isLive && <SampleWatermark />}
     </ScaledScene>
   );
 }
