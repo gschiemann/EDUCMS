@@ -109,7 +109,7 @@ export class PlayerLogsController {
     }
 
     if (Buffer.byteLength(rawBody, 'utf8') > MAX_BODY_BYTES) {
-      throw new BadRequestException('Log body exceeds 1 MB limit');
+      throw new BadRequestException({ code: 'PLAYER_LOGS_BODY_TOO_LARGE', message: 'Log body exceeds 1 MB limit' });
     }
 
     // Verify device JWT if present. We don't hard-reject on missing auth

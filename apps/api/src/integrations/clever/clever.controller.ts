@@ -46,7 +46,10 @@ export class CleverController {
       return { url };
     } catch (err: any) {
       throw new HttpException(
-        err?.message || 'Clever integration is not configured for this deploy.',
+        {
+          code: 'CLEVER_NOT_CONFIGURED',
+          message: err?.message || 'Clever integration is not configured for this deploy.',
+        },
         HttpStatus.SERVICE_UNAVAILABLE,
       );
     }

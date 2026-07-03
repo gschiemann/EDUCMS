@@ -60,7 +60,7 @@ export class NotificationsPublicController {
   ) {
     const screenId = (body?.screenId || '').trim();
     if (!screenId) {
-      throw new HttpException('screenId required', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'NOTIFICATIONS_SCREEN_ID_REQUIRED', message: 'screenId required' }, HttpStatus.BAD_REQUEST);
     }
     const screen = await this.prisma.client.screen.findUnique({
       where: { id: screenId },
