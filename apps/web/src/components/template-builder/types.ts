@@ -124,6 +124,13 @@ export interface Template {
   status?: string;
   zones: Zone[];
   scenes?: TemplateScene[];
+  /** Wave C (2026-07-02) — the API's mapTemplate() passes the raw Prisma
+   *  row through untouched, so `updatedAt` (Template.updatedAt, ISO
+   *  string over the wire) has always been present on this payload; it
+   *  just wasn't declared here. Used by the draft-recovery restore bar
+   *  (isDraftNewer) and the Save staleness guard (client sends it back
+   *  as `expectedUpdatedAt` so the server can detect a stale write). */
+  updatedAt?: string;
 }
 
 export interface HistoryEntry {
@@ -137,6 +144,16 @@ export interface HistoryEntry {
     bgGradient: string;
     bgImage: string;
   };
+  /** Wave C / editor-crush C4 (2026-07-02) — "undo silently skips whole
+   *  classes of edits: touch mode, idle-reset." Both scalars were
+   *  explicitly excluded from HistoryEntry as "toggle-only UX"; the
+   *  fix folds them in so Cmd-Z after flipping touch mode or changing
+   *  the idle timer actually undoes THAT action instead of reverting
+   *  an unrelated earlier zone/meta edit. Optional so any snapshot
+   *  taken before this change (impossible in practice — `past`/
+   *  `future` are wiped on every init()) still type-checks. */
+  isTouchEnabled?: boolean;
+  idleResetMs?: number;
 }
 
 export type DragMode = 'move' | 'resize';

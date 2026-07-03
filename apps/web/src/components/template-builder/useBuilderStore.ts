@@ -71,11 +71,28 @@ interface BuilderState {
    * drag) so a field's whole edit — not each keystroke — is one Cmd-Z.
    */
   activeTransaction: boolean;
+  /**
+   * Wave C (2026-07-02) — the `updatedAt` the client currently believes
+   * the server has for this template. Set on init() from the loaded
+   * template, refreshed after every successful save. Two consumers:
+   *   - C1 draft recovery: a localStorage draft is only worth offering
+   *     to restore when it's NEWER than this (autosave-draft.ts
+   *     isDraftNewer) — never a pure read, this field is just data.
+   *   - C2 staleness guard: BuilderShell's handleSave sends this back
+   *     to the server as `expectedUpdatedAt`; a 409 means someone else
+   *     saved since we loaded/last-saved.
+   * Pure metadata — never part of HistoryEntry, never touched by undo.
+   */
+  serverUpdatedAt: string | null;
 
   // actions
-  init(payload: { id: string; isSystem: boolean; zones: Zone[]; meta: BuilderState['meta']; isTouchEnabled?: boolean; idleResetMs?: number; scenes?: TemplateScene[] }): void;
+  init(payload: { id: string; isSystem: boolean; zones: Zone[]; meta: BuilderState['meta']; isTouchEnabled?: boolean; idleResetMs?: number; scenes?: TemplateScene[]; updatedAt?: string | null }): void;
   setTouchEnabled(v: boolean): void;
   setIdleResetMs(n: number): void;
+  /** Wave C — record the server's current updatedAt (post-save, or after
+   *  a staleness-conflict "Reload theirs"). Pure metadata write: no
+   *  history push, no isDirty change. */
+  setServerUpdatedAt(updatedAt: string | null): void;
   /** Phase D2.8 — add a TOUCH_POINT hotspot. Unlike addZone (which
    *  creates a content-bearing zone), this is a small, transparent
    *  tap target the operator drops on TOP of existing content. Starts
@@ -135,10 +152,14 @@ interface BuilderState {
   cancelTransaction(): void;
 }
 
-function snapshot(state: Pick<BuilderState, 'zones' | 'meta'>): HistoryEntry {
+function snapshot(state: Pick<BuilderState, 'zones' | 'meta' | 'isTouchEnabled' | 'idleResetMs'>): HistoryEntry {
   return {
     zones: state.zones.map(z => ({ ...z })),
     meta: { ...state.meta },
+    // C4 — captured alongside zones/meta so a snapshot fully describes
+    // "what the operator would Save right now," touch settings included.
+    isTouchEnabled: state.isTouchEnabled,
+    idleResetMs: state.idleResetMs,
   };
 }
 
@@ -180,8 +201,9 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   future: [],
   isDirty: false,
   activeTransaction: false,
+  serverUpdatedAt: null,
 
-  init: ({ id, isSystem, zones, meta, isTouchEnabled, idleResetMs, scenes }) => {
+  init: ({ id, isSystem, zones, meta, isTouchEnabled, idleResetMs, scenes, updatedAt }) => {
     // Pick the default scene (or first by sort order) so the canvas
     // mounts on a known-good slice. Falls back to null (= show ALL
     // zones, legacy behavior) when the template has no scenes — which
@@ -204,11 +226,36 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
       future: [],
       isDirty: false,
       activeTransaction: false,
+      serverUpdatedAt: updatedAt ?? null,
     });
   },
 
-  setTouchEnabled: (v) => set({ isTouchEnabled: v, isDirty: true }),
-  setIdleResetMs: (n) => set({ idleResetMs: Math.max(5000, Math.min(600000, n)), isDirty: true }),
+  // C4 (Wave C, 2026-07-02) — "undo silently skips whole classes of
+  // edits: touch mode, idle-reset" (05-EDITOR-CRUSH-LENSES.md). Both
+  // actions previously wrote isDirty with NO history push at all, so
+  // Cmd-Z right after flipping touch mode reverted an unrelated earlier
+  // zone/meta edit instead of the toggle itself. Now they snapshot
+  // BEFORE the change (same "commit the prior state" pattern as every
+  // other mutator), respecting an open transaction exactly like
+  // updateZone/setMeta — if a caller ever wraps a burst of idle-reset
+  // changes in begin/endTransaction (e.g. a future slider control),
+  // the whole burst still collapses to one undo step instead of one
+  // snapshot per tick.
+  setTouchEnabled: (v) => {
+    const prev = get();
+    if (prev.isTouchEnabled === v) return; // no-op guard: don't spend a history slot on a redundant call
+    const base: Partial<BuilderState> = { isTouchEnabled: v, isDirty: true, future: [] };
+    if (!prev.activeTransaction) base.past = [...prev.past, snapshot(prev)].slice(-HISTORY_LIMIT);
+    set(base as BuilderState);
+  },
+  setIdleResetMs: (n) => {
+    const prev = get();
+    const clamped = Math.max(5000, Math.min(600000, n));
+    if (prev.idleResetMs === clamped) return;
+    const base: Partial<BuilderState> = { idleResetMs: clamped, isDirty: true, future: [] };
+    if (!prev.activeTransaction) base.past = [...prev.past, snapshot(prev)].slice(-HISTORY_LIMIT);
+    set(base as BuilderState);
+  },
 
   // Phase D2.8 (2026-05-12) — operator: "i dont like how the initial
   // touch point is the full screen and you need to shrink it down...
@@ -683,6 +730,12 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     set({
       zones: top.zones.map(z => ({ ...z })),
       meta: { ...top.meta },
+      // C4 — restore the touch scalars from the snapshot. `??` falls
+      // back to the CURRENT value (not a hardcoded default) so a
+      // snapshot taken before this field existed is a true no-op for
+      // these two keys rather than silently resetting them.
+      isTouchEnabled: top.isTouchEnabled ?? prev.isTouchEnabled,
+      idleResetMs: top.idleResetMs ?? prev.idleResetMs,
       past: prev.past.slice(0, -1),
       future: [snapshot(prev), ...prev.future].slice(0, HISTORY_LIMIT),
       isDirty: true,
@@ -696,6 +749,8 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     set({
       zones: top.zones.map(z => ({ ...z })),
       meta: { ...top.meta },
+      isTouchEnabled: top.isTouchEnabled ?? prev.isTouchEnabled,
+      idleResetMs: top.idleResetMs ?? prev.idleResetMs,
       past: [...prev.past, snapshot(prev)].slice(-HISTORY_LIMIT),
       future: prev.future.slice(1),
       isDirty: true,
@@ -730,8 +785,12 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     set({
       zones: top.zones.map(z => ({ ...z })),
       meta: { ...top.meta },
+      isTouchEnabled: top.isTouchEnabled ?? prev.isTouchEnabled,
+      idleResetMs: top.idleResetMs ?? prev.idleResetMs,
       past: prev.past.slice(0, -1),
       activeTransaction: false,
     });
   },
+
+  setServerUpdatedAt: (updatedAt) => set({ serverUpdatedAt: updatedAt }),
 }));
