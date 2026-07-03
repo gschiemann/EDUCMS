@@ -105,7 +105,11 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
   // C2 — set when a Save 409s (someone else saved since we loaded).
   // Carries the server's current updatedAt so "Overwrite" can retry
   // without the guard, and "Reload theirs" can show what changed.
-  const [saveConflict, setSaveConflict] = useState<{ serverUpdatedAt: string } | null>(null);
+  // C2 sweep follow-up (2026-07-03) — Restore hits the SAME 409 and reuses
+  // this exact banner (per CLAUDE.md: don't build a second conflict UI).
+  // `restoreVersionId` distinguishes which flow raised the conflict so
+  // "Overwrite" retries the RIGHT operation (Save vs. this specific Restore).
+  const [saveConflict, setSaveConflict] = useState<{ serverUpdatedAt: string; restoreVersionId?: string } | null>(null);
   // C3 — version-history panel open/closed. The list query itself is
   // gated on this (enabled: historyOpen) so opening the builder never
   // fires a versions request the operator didn't ask for.
@@ -416,23 +420,28 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
     }
   }, [template.id, init]);
 
-  // C2 — "Overwrite": the operator has seen the conflict and explicitly
-  // chooses to blind-write their version anyway. Retries handleSave
-  // with the guard skipped (matches an older pre-C2 client exactly).
-  const handleOverwrite = useCallback(() => {
-    setSaveConflict(null);
-    void handleSave({ overwrite: true });
-  }, [handleSave]);
-
   // C3 — restore one of the last 5 saved versions. The server snapshots
   // the CURRENT state first (never destructive — see the controller's
   // restoreVersion doc comment) and returns the fully-updated template
   // in the same shape as GET/PUT, so re-init() is exactly the same
   // "adopt server state" pattern handleReloadTheirs already uses.
-  const handleRestoreVersion = useCallback(async (versionId: string) => {
+  //
+  // C2 sweep follow-up (2026-07-03) — restore does the SAME destructive
+  // delete-all-zones-and-recreate + metadata overwrite handleSave's two
+  // PUTs do, so it gets the SAME staleness guard: send back the
+  // `serverUpdatedAt` this session last loaded/saved (identical source
+  // handleSave reads at the top of its try block), and on a 409 reuse
+  // the exact save-conflict banner (`saveConflict` state + its Reload
+  // theirs / Overwrite buttons) rather than inventing a second UI.
+  // `saveConflict.restoreVersionId` records which version was in flight so
+  // handleOverwrite (below) knows to retry THIS restore, not a plain Save.
+  const handleRestoreVersion = useCallback(async (versionId: string, opts?: { overwrite?: boolean }) => {
     setRestoringVersionId(versionId);
+    setSaveConflict(null);
     try {
-      const restored = await restoreVersion.mutateAsync({ id: template.id, versionId });
+      const state = useBuilderStore.getState();
+      const expectedUpdatedAt = opts?.overwrite ? undefined : (state.serverUpdatedAt ?? undefined);
+      const restored = await restoreVersion.mutateAsync({ id: template.id, versionId, expectedUpdatedAt });
       const fresh = restored as unknown as Template;
       init({
         id: fresh.id,
@@ -459,12 +468,43 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       clearDraft(template.id);
       setHistoryOpen(false);
       onSaved(fresh);
-    } catch (err) {
+    } catch (err: any) {
+      // Same 409 handling as handleSave: surface the shared conflict bar
+      // (Reload theirs / Overwrite) instead of a bare error chip. The
+      // history panel stays open underneath it so the operator can still
+      // see/retry other versions after resolving the conflict.
+      if (err?.status === 409 && err?.code === 'TEMPLATE_STALE') {
+        const serverUpdatedAt = err?.body?.serverUpdatedAt;
+        setSaveConflict({
+          serverUpdatedAt: typeof serverUpdatedAt === 'string' ? serverUpdatedAt : new Date().toISOString(),
+          restoreVersionId: versionId,
+        });
+        return;
+      }
       setSaveError(err instanceof Error ? err.message : String(err));
     } finally {
       setRestoringVersionId(null);
     }
   }, [template.id, init, restoreVersion, onSaved]);
+
+  // C2 — "Overwrite": the operator has seen the conflict and explicitly
+  // chooses to blind-write their version anyway. Retries handleSave
+  // with the guard skipped (matches an older pre-C2 client exactly).
+  //
+  // C2 sweep follow-up (2026-07-03) — the SAME banner now also fires from
+  // Restore (see handleRestoreVersion above), so Overwrite must retry
+  // WHICHEVER operation raised the conflict: `saveConflict.restoreVersionId`
+  // is only set when a Restore 409'd, so branch on its presence rather than
+  // always assuming Save.
+  const handleOverwrite = useCallback(() => {
+    const restoreVersionId = saveConflict?.restoreVersionId;
+    setSaveConflict(null);
+    if (restoreVersionId) {
+      void handleRestoreVersion(restoreVersionId, { overwrite: true });
+    } else {
+      void handleSave({ overwrite: true });
+    }
+  }, [handleSave, saveConflict, handleRestoreVersion]);
 
   const handleSaveAs = useCallback(async (autoName?: string) => {
     const state = useBuilderStore.getState();
@@ -945,12 +985,15 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       {/* C2 — save-conflict bar. Shown when a Save 409s because the row
           moved since we loaded/last-saved it. Same one-bar-two-buttons
           shape as the draft-recovery bar; rose tint marks it as the
-          more urgent of the two (an actual write was just blocked). */}
+          more urgent of the two (an actual write was just blocked).
+          C2 sweep follow-up (2026-07-03) — Restore 409s reuse this exact
+          bar (see handleRestoreVersion); only the verb in the copy
+          changes based on which operation was blocked. */}
       {saveConflict && (
         <div className="shrink-0 flex items-center gap-3 px-4 py-2.5 bg-rose-50 border-b border-rose-200">
           <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500" aria-hidden />
           <p className="text-xs font-medium text-rose-900 flex-1 min-w-0">
-            Someone saved this template {formatDraftAge(Date.parse(saveConflict.serverUpdatedAt))} — your Save was blocked so you don&apos;t overwrite their work.
+            Someone saved this template {formatDraftAge(Date.parse(saveConflict.serverUpdatedAt))} — your {saveConflict.restoreVersionId ? 'Restore' : 'Save'} was blocked so you don&apos;t overwrite their work.
           </p>
           <button
             type="button"

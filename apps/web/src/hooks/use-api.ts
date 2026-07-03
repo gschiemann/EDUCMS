@@ -1302,12 +1302,19 @@ export function useTemplateVersions(id: string | undefined, opts?: { enabled?: b
  * returns the fully-updated template (same mapTemplate() shape as
  * GET/PUT). BuilderShell re-inits the store on the response exactly
  * like its "Reload theirs" (C2) path does.
+ *
+ * C2 sweep follow-up (2026-07-03) — restore performs the SAME
+ * destructive delete-all-zones-and-recreate + metadata overwrite as
+ * update()/replaceZones(), which already send `expectedUpdatedAt`;
+ * restore was left out of the original sweep. Same optional guard,
+ * same backward-compat contract: omit it and the server behaves
+ * exactly like before this fix.
  */
 export function useRestoreTemplateVersion() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, versionId }: { id: string; versionId: string }) =>
-      apiFetch(`/templates/${id}/versions/${versionId}/restore`, { method: 'POST' }),
+    mutationFn: ({ id, versionId, expectedUpdatedAt }: { id: string; versionId: string; expectedUpdatedAt?: string | null }) =>
+      apiFetch(`/templates/${id}/versions/${versionId}/restore`, { method: 'POST', body: JSON.stringify({ expectedUpdatedAt }) }),
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ['templates', vars.id] });
       qc.invalidateQueries({ queryKey: ['templates', vars.id, 'versions'] });

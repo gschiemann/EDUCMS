@@ -40,6 +40,7 @@ import {
   TemplateReplaceZonesSchema, type TemplateReplaceZonesInput,
   ConciergeChatSchema, type ConciergeChatInput,
   ConciergeReferenceUrlSchema, type ConciergeReferenceUrlInput,
+  BoundedText,
 } from '@cms/api-types';
 
 // AI DESIGNER (2026-06-28) — request schemas for the designer-grade full-HTML
@@ -2504,6 +2505,15 @@ export class TemplatesController {
     @Request() req: any,
     @Param('id') id: string,
     @Param('versionId') versionId: string,
+    // C2 sweep follow-up (2026-07-03, overnight adversarial review) — Restore
+    // performs the SAME destructive delete-all-zones-and-recreate + metadata
+    // overwrite as update()/replaceZones(), which already carry the guard;
+    // this endpoint was left out of the original sweep. Body schema is
+    // inline (not in @cms/api-types) since restore's only field is this one
+    // optional guard — same BoundedText(64).nullish() shape as the sibling
+    // schemas, so parseability/semantics are identical.
+    @Body(new ZodValidationPipe(z.object({ expectedUpdatedAt: BoundedText(64).nullish() }).passthrough()))
+    body: { expectedUpdatedAt?: string | null },
   ) {
     const template = await this.prisma.client.template.findFirst({
       where: { id, tenantId: req.user.tenantId },
@@ -2513,6 +2523,10 @@ export class TemplatesController {
     if (template.isSystem) {
       throw new HttpException('Cannot modify system templates. Duplicate it first.', HttpStatus.FORBIDDEN);
     }
+    // C2 — staleness guard, same position/semantics as update()/replaceZones():
+    // after the tenant/ownership fetch, before any destructive write. No-op
+    // (today's blind-restore behavior) when the client omits expectedUpdatedAt.
+    this.assertNotStale(template, body?.expectedUpdatedAt);
     const version = await (this.prisma.client as any).templateVersion.findFirst({
       where: { id: versionId, templateId: id },
     });

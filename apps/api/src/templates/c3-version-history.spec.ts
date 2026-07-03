@@ -262,4 +262,83 @@ describe('C3 — version history (snapshot-on-save, cap-at-5, restore-snapshots-
       );
     });
   });
+
+  // 2026-07-03 overnight adversarial review — restore performed the SAME
+  // destructive delete-all-zones-and-recreate + metadata overwrite as
+  // update()/replaceZones() but was left out of the C2 staleness-guard
+  // sweep: a stale tab's "Restore" could silently clobber another device's
+  // fresh save with zero warning. This suite proves the fix. Uses a STATEFUL
+  // mock (the row's updatedAt actually advances after a write), matching the
+  // c2-staleness-guard.spec.ts "two-phase client save" regression suite's
+  // approach — a STATIC mock is exactly what hid the original two-phase bug,
+  // so a static mock here would be equally blind to a restore-guard bug.
+  describe('POST :id/versions/:versionId/restore — C2 staleness guard', () => {
+    const NOW = new Date('2026-07-02T12:00:00.000Z');
+    const OLDER = new Date('2026-07-02T11:00:00.000Z'); // what a stale client loaded
+    const oldZones = [{ name: 'Old', widgetType: 'TEXT', x: 0, y: 0, width: 10, height: 10, zIndex: 0, sortOrder: 0 }];
+    const oldMeta = { name: 'Old Name', description: 'old', screenWidth: 1280, screenHeight: 720, bgColor: '#000', bgGradient: null, bgImage: null, isTouchEnabled: false, idleResetMs: 60000 };
+
+    beforeEach(() => {
+      // Stateful row: findFirst always reflects the CURRENT updatedAt, and
+      // the restore's own template.update (inside $transaction) advances it
+      // — exactly like the real DB's @updatedAt on write. A static mock
+      // can't distinguish "guard never ran" from "guard ran and passed."
+      let currentUpdatedAt = NOW;
+      prismaService.client.template.findFirst = jest.fn().mockImplementation(() =>
+        Promise.resolve(baseTemplate({ zones: [], updatedAt: currentUpdatedAt })),
+      );
+      prismaService.client.template.update = jest.fn().mockImplementation(({ data }: any) => {
+        currentUpdatedAt = new Date(currentUpdatedAt.getTime() + 5000); // simulate @updatedAt advancing
+        return Promise.resolve(baseTemplate({ ...data, zones: [], updatedAt: currentUpdatedAt }));
+      });
+      prismaService.client.templateVersion.findFirst.mockResolvedValue({
+        id: 'ver-old', templateId: 'tpl1', zones: oldZones, meta: oldMeta,
+      });
+    });
+
+    it('(1) restore with a matching expectedUpdatedAt succeeds and runs the restore transaction', async () => {
+      const result = await controller.restoreVersion(req, 'tpl1', 'ver-old', { expectedUpdatedAt: NOW.toISOString() });
+      expect(result).toBeTruthy();
+      expect(prismaService.client.$transaction).toHaveBeenCalled();
+      // The restore's apply-old-version transaction is the ARRAY form (not
+      // the snapshotVersion interactive form) — find it by shape.
+      const arrayCall = prismaService.client.$transaction.mock.calls.find((c: any) => Array.isArray(c[0]));
+      expect(arrayCall).toBeTruthy();
+    });
+
+    it('(2) restore with a STALE expectedUpdatedAt 409s TEMPLATE_STALE and NEVER runs the destructive restore transaction', async () => {
+      await expect(
+        controller.restoreVersion(req, 'tpl1', 'ver-old', { expectedUpdatedAt: OLDER.toISOString() }),
+      ).rejects.toMatchObject({
+        status: HttpStatus.CONFLICT,
+        response: { code: 'TEMPLATE_STALE', serverUpdatedAt: NOW.toISOString() },
+      });
+      // Neither the pre-restore safety snapshot NOR the destructive
+      // delete-all-and-recreate transaction may run once staleness is
+      // detected — the guard fires before ANY write, matching update()/
+      // replaceZones()'s "conflict fires before destructive work" contract.
+      expect(prismaService.client.templateVersion.create).not.toHaveBeenCalled();
+      expect(prismaService.client.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('(3) omitting expectedUpdatedAt preserves the pre-fix blind-restore behavior (backward compat)', async () => {
+      const result = await controller.restoreVersion(req, 'tpl1', 'ver-old', {});
+      expect(result).toBeTruthy();
+      expect(prismaService.client.$transaction).toHaveBeenCalled();
+    });
+
+    it('backward compat: calling with NO body argument at all (pre-fix call shape) still restores', async () => {
+      const result = await controller.restoreVersion(req, 'tpl1', 'ver-old', undefined as any);
+      expect(result).toBeTruthy();
+    });
+
+    it('a stale restore never advances the row (no second write) — proves the guard runs BEFORE the pre-restore snapshot too', async () => {
+      const before = (await prismaService.client.template.findFirst()).updatedAt.getTime();
+      await expect(
+        controller.restoreVersion(req, 'tpl1', 'ver-old', { expectedUpdatedAt: OLDER.toISOString() }),
+      ).rejects.toBeInstanceOf(HttpException);
+      const after = (await prismaService.client.template.findFirst()).updatedAt.getTime();
+      expect(after).toBe(before);
+    });
+  });
 });
