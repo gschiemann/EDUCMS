@@ -38,6 +38,9 @@ import { EmailModule } from './email/email.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { SubmissionsModule } from './submissions/submissions.module';
 import { LicenseModule } from './license/license.module';
+// Task #60 — SUPER_ADMIN-only, manually-triggered lat/lng back-fill for
+// legacy Tenant rows (address set, coords null). Not a cron; not auto-run.
+import { GeocodeBackfillModule } from './geocode-backfill/geocode-backfill.module';
 // 2026-05-25 Developer area: tenant REST API tokens + outbound webhooks.
 import { ApiKeysModule } from './api-keys/api-keys.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
@@ -122,6 +125,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     NotificationsModule,
     SubmissionsModule,
     LicenseModule,
+    GeocodeBackfillModule,
     ApiKeysModule,
     WebhooksModule,
     BrandingModule,
