@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Stadium Lane v2 — Dual-Meet Duel</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@600;700;800&family=JetBrains+Mono:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1920px; height:1080px; overflow:hidden; background:#07090f; }
+  .stage { position:relative; width:1920px; height:1080px; font-family:Inter,sans-serif; color:#fff; overflow:hidden; }
+  /* the DUEL: home and away color floods meet at a diagonal */
+  .floodL { position:absolute; top:0; left:0; bottom:0; width:56%;
+    background:linear-gradient(115deg,#7f1d1d 0%,#b91c1c 45%,#dc2626 100%);
+    clip-path:polygon(0 0,100% 0,72% 100%,0 100%); }
+  .floodR { position:absolute; top:0; right:0; bottom:0; width:56%;
+    background:linear-gradient(245deg,#1e3a8a 0%,#1d4ed8 45%,#2563eb 100%);
+    clip-path:polygon(28% 0,100% 0,100% 100%,0 100%); }
+  .dark { position:absolute; top:150px; bottom:0; left:0; right:0;
+    background:linear-gradient(180deg, rgba(5,8,15,.30) 0%, rgba(5,8,15,.86) 26%, rgba(5,8,15,.94) 100%); }
+  .tex { position:absolute; top:0; right:0; bottom:0; left:0; opacity:.35;
+    background:repeating-linear-gradient(115deg, rgba(255,255,255,.025) 0 2px, transparent 2px 18px); }
+
+  /* dual-meet header: team scores are the story */
+  .head { position:absolute; top:0; left:0; right:0; height:150px; display:flex; align-items:center; padding:0 48px; }
+  .team { display:flex; align-items:center; }
+  .team .crest { width:92px; height:92px; border-radius:22px; background:rgba(0,0,0,.3);
+    border:3px solid rgba(255,255,255,.45); display:flex; align-items:center; justify-content:center;
+    font-family:Anton; font-size:40px; }
+  .team .n { margin:0 26px; }
+  .team .n b { display:block; font-family:Anton; font-size:46px; letter-spacing:1px; }
+  .team .n span { font-size:17px; font-weight:800; letter-spacing:4px; opacity:.8; }
+  .team .score { font-family:Anton; font-size:98px; text-shadow:0 5px 0 rgba(0,0,0,.3); }
+  .mid { margin:0 auto; text-align:center; }
+  .mid .evt { font-family:Anton; font-size:34px; letter-spacing:2px; }
+  .mid .sub { font-size:16px; font-weight:800; letter-spacing:5px; color:rgba(255,255,255,.85); margin-top:4px; }
+  .team.away { flex-direction:row-reverse; text-align:right; }
+
+  /* rows: glass panels, times enormous */
+  .rows { position:absolute; top:172px; bottom:88px; left:44px; right:44px; display:flex; flex-direction:column; }
+  .row { position:relative; flex:1; margin:6px 0; display:flex; align-items:center; border-radius:18px;
+    background:rgba(13,18,32,.72); border:1px solid rgba(255,255,255,.09);
+    box-shadow:0 10px 30px rgba(0,0,0,.35); overflow:hidden; }
+  .side { position:absolute; top:0; bottom:0; left:0; width:14px; background:var(--tc,#64748b); }
+  .row.home { border-left:none; } .row.home .side { background:#ef4444; }
+  .row.away .side { background:#3b82f6; }
+  .lane { width:150px; text-align:center; font-family:Anton; font-size:54px; color:rgba(255,255,255,.9); }
+  .lane small { display:block; font-size:14px; font-weight:800; letter-spacing:4px; color:#7e8aa6; }
+  .who { flex:1; }
+  .who b { font-size:54px; font-weight:800; }
+  .who .club { display:inline-block; margin-left:22px; padding:6px 16px; border-radius:999px; font-size:20px;
+    font-weight:800; letter-spacing:2px; background:var(--tcbg, rgba(255,255,255,.08)); color:var(--tcfg,#cbd5e1); vertical-align:middle; }
+  .row.home .club { background:rgba(239,68,68,.16); color:#fca5a5; }
+  .row.away .club { background:rgba(59,130,246,.16); color:#93c5fd; }
+  .delta { font-size:24px; font-weight:800; color:#64748b; margin-right:34px; font-variant-numeric:tabular-nums; }
+  .time { font-family:'JetBrains Mono',monospace; font-size:76px; font-weight:800; margin-right:34px;
+    font-variant-numeric:tabular-nums; letter-spacing:-2px; }
+  .row.first .time { color:#fde047; text-shadow:0 0 26px rgba(253,224,71,.35); }
+  .medal { width:104px; height:64px; border-radius:12px; margin-right:22px; display:flex; align-items:center;
+    justify-content:center; font-family:Anton; font-size:38px; background:#1a2337; color:#8ea0c2; }
+  .medal.m1 { background:linear-gradient(135deg,#f59e0b,#fbbf24); color:#3b2a00; }
+  .medal.m2 { background:linear-gradient(135deg,#94a3b8,#e2e8f0); color:#1e293b; }
+  .medal.m3 { background:linear-gradient(135deg,#b45309,#f59e0b); color:#2f1c00; }
+
+  /* footer ticker */
+  .foot { position:absolute; left:0; right:0; bottom:0; height:76px; display:flex; align-items:center;
+    background:linear-gradient(90deg,#0b101d,#101728); border-top:1px solid #202b47; padding:0 48px;
+    font-size:22px; font-weight:800; letter-spacing:1px; color:#9fb0d0; }
+  .foot .dot { width:10px; height:10px; border-radius:50%; background:#22c55e; margin-right:16px;
+    box-shadow:0 0 12px rgba(34,197,94,.8); }
+  .foot b { color:#fff; margin:0 8px; }
+  .foot .next { margin-left:auto; color:#7e8aa6; }
+  .foot .next b { color:#e2e8f0; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="floodL"></div><div class="floodR"></div><div class="dark"></div><div class="tex"></div>
+
+  <div class="head">
+    <div class="team home">
+      <div class="crest">CH</div>
+      <div class="n"><b>CENTRAL HAWKS</b><span>HOME</span></div>
+      <div class="score">96</div>
+    </div>
+    <div class="mid">
+      <div class="evt">EVENT 12 · GIRLS 100M FREE</div>
+      <div class="sub">FINALS — HEAT 3 OF 4</div>
+    </div>
+    <div class="team away">
+      <div class="crest">WW</div>
+      <div class="n"><b>WESTVIEW WAVES</b><span>AWAY</span></div>
+      <div class="score">74</div>
+    </div>
+  </div>
+
+  <div class="rows">
+    <div class="row home first"><div class="side"></div>
+      <div class="lane">3<small>LANE</small></div>
+      <div class="who"><b>D. OKAFOR</b><span class="club">CENTRAL</span></div>
+      <div class="delta">—</div><div class="time">51.90</div><div class="medal m1">1</div>
+    </div>
+    <div class="row away"><div class="side"></div>
+      <div class="lane">2<small>LANE</small></div>
+      <div class="who"><b>M. CHEN</b><span class="club">WESTVIEW</span></div>
+      <div class="delta">+0.28</div><div class="time">52.18</div><div class="medal m2">2</div>
+    </div>
+    <div class="row away"><div class="side"></div>
+      <div class="lane">5<small>LANE</small></div>
+      <div class="who"><b>T. NGUYEN</b><span class="club">WESTVIEW</span></div>
+      <div class="delta">+1.71</div><div class="time">53.61</div><div class="medal m3">3</div>
+    </div>
+    <div class="row home"><div class="side"></div>
+      <div class="lane">6<small>LANE</small></div>
+      <div class="who"><b>S. PATEL</b><span class="club">CENTRAL</span></div>
+      <div class="delta">+2.15</div><div class="time">54.05</div><div class="medal">4</div>
+    </div>
+    <div class="row home"><div class="side"></div>
+      <div class="lane">1<small>LANE</small></div>
+      <div class="who"><b>J. RIVERA</b><span class="club">CENTRAL</span></div>
+      <div class="delta">+3.52</div><div class="time">55.42</div><div class="medal">5</div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div class="dot"></div> LIVE — <b>D. OKAFOR</b> WINS HEAT 3 · CENTRAL EXTENDS LEAD +22
+    <div class="next">UP NEXT: <b>EVENT 13 · BOYS 200M IM</b> — 8 MIN</div>
+  </div>
+</div>
+</body>
+</html>

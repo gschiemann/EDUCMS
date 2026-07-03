@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Stadium Lane v3 — Record Chase</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@600;700;800&family=JetBrains+Mono:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1920px; height:1080px; overflow:hidden; background:#05070c; }
+  .stage { position:relative; width:1920px; height:1080px; font-family:Inter,sans-serif; color:#fff;
+    background:radial-gradient(1000px 700px at 82% 20%, rgba(16,185,129,.14), transparent 60%),
+      radial-gradient(900px 600px at 8% 90%, rgba(59,130,246,.10), transparent 60%), #05070c; }
+  .tex { position:absolute; top:0; right:0; bottom:0; left:0; opacity:.5;
+    background:repeating-linear-gradient(0deg, rgba(255,255,255,.015) 0 1px, transparent 1px 4px); }
+  .wm { position:absolute; right:-20px; bottom:-40px; font-family:Anton; font-size:560px; line-height:1;
+    color:transparent; -webkit-text-stroke:2px rgba(255,255,255,.05); letter-spacing:-8px; }
+
+  /* left rail: the giant race clock + event tower */
+  .rail { position:absolute; top:0; bottom:0; left:0; width:560px; padding:52px 44px;
+    background:linear-gradient(180deg,#0b1322 0%,#081020 100%); border-right:1px solid #1c2740; }
+  .rail .tag { display:inline-block; background:#10b981; color:#032117; font-size:18px; font-weight:800;
+    letter-spacing:3px; padding:9px 20px; border-radius:999px; }
+  .rail h1 { font-family:Anton; font-size:66px; line-height:1.02; margin:26px 0 8px; }
+  .rail .sub { font-size:22px; font-weight:800; letter-spacing:4px; color:#6ee7b7; }
+  .clock { margin:52px 0 10px; }
+  .clock small { font-size:18px; font-weight:800; letter-spacing:4px; color:#7e8aa6; }
+  .clock b { display:block; font-family:'JetBrains Mono',monospace; font-size:150px; font-weight:800;
+    letter-spacing:-6px; line-height:1; font-variant-numeric:tabular-nums;
+    text-shadow:0 0 40px rgba(16,185,129,.30); }
+  .rec { margin-top:44px; border:2px dashed rgba(251,191,36,.5); border-radius:18px; padding:22px 24px;
+    background:rgba(251,191,36,.06); }
+  .rec small { font-size:16px; font-weight:800; letter-spacing:3px; color:#fbbf24; }
+  .rec .line { display:flex; align-items:baseline; margin-top:8px; }
+  .rec .line b { font-family:'JetBrains Mono',monospace; font-size:56px; font-weight:800; }
+  .rec .line span { font-size:19px; font-weight:700; color:#cbd5e1; margin-left:16px; }
+  .bar { height:14px; border-radius:7px; background:#1a2337; margin-top:18px; overflow:hidden; }
+  .bar i { display:block; height:100%; width:78%; border-radius:7px;
+    background:linear-gradient(90deg,#10b981,#fbbf24); }
+  .rec .gap { margin-top:10px; font-size:18px; font-weight:800; letter-spacing:1px; color:#fde68a; }
+  .team { position:absolute; left:44px; right:44px; bottom:44px; display:flex; align-items:center;
+    background:#0e1730; border:1px solid #223052; border-radius:16px; padding:16px 22px; }
+  .team b { font-family:Anton; font-size:30px; }
+  .team .pts { margin-left:auto; text-align:right; }
+  .team .pts b { font-size:38px; color:#6ee7b7; }
+  .team .pts small { display:block; font-size:13px; font-weight:800; letter-spacing:2px; color:#7e8aa6; }
+
+  /* right: the ladder — place-ordered, huge times */
+  .ladder { position:absolute; top:0; bottom:0; left:560px; right:0; padding:44px 48px; display:flex; flex-direction:column; }
+  .lhead { display:flex; align-items:baseline; margin-bottom:20px; }
+  .lhead h2 { font-family:Anton; font-size:40px; letter-spacing:1px; }
+  .lhead span { margin-left:auto; font-size:18px; font-weight:800; letter-spacing:3px; color:#7e8aa6; }
+  .lrows { flex:1; display:flex; flex-direction:column; }
+  .lrow { position:relative; flex:1; margin:6px 0; display:flex; align-items:center; border-radius:16px;
+    background:linear-gradient(90deg, rgba(255,255,255,.045), rgba(255,255,255,.015));
+    border:1px solid rgba(255,255,255,.07); padding:0 30px 0 0; overflow:hidden; }
+  .rank { width:130px; height:100%; display:flex; align-items:center; justify-content:center;
+    font-family:Anton; font-size:64px; background:rgba(255,255,255,.05); }
+  .lrow.g1 .rank { background:linear-gradient(160deg,#f59e0b,#fbbf24); color:#3b2a00; }
+  .lrow.g2 .rank { background:linear-gradient(160deg,#94a3b8,#e2e8f0); color:#1e293b; }
+  .lrow.g3 .rank { background:linear-gradient(160deg,#b45309,#f59e0b); color:#2f1c00; }
+  .lwho { flex:1; padding-left:30px; }
+  .lwho b { font-size:50px; font-weight:800; }
+  .lwho small { display:block; font-size:21px; font-weight:800; letter-spacing:3px; color:#7e8aa6; margin-top:2px; }
+  .lane2 { width:120px; text-align:center; margin-right:12px; }
+  .lane2 b { display:block; font-family:Anton; font-size:40px; color:var(--tc,#93c5fd); }
+  .lane2 small { font-size:13px; font-weight:800; letter-spacing:3px; color:#5b6884; }
+  .ltime { font-family:'JetBrains Mono',monospace; font-size:70px; font-weight:800; letter-spacing:-2px;
+    font-variant-numeric:tabular-nums; width:360px; text-align:right; }
+  .lrow.g1 .ltime { color:#fde047; }
+  .lrow.dq .ltime { font-size:44px; color:#f87171; }
+  .lrow.dq .lwho b { color:#8ea0c2; text-decoration:line-through; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="tex"></div><div class="wm">12</div>
+
+  <div class="rail">
+    <div class="tag">● LIVE — FINALS</div>
+    <h1>GIRLS 100M<br>FREESTYLE</h1>
+    <div class="sub">EVENT 12 · HEAT 3 OF 4</div>
+    <div class="clock"><small>RACE CLOCK</small><b>51.9</b></div>
+    <div class="rec">
+      <small>⚑ POOL RECORD CHASE</small>
+      <div class="line"><b>50.84</b><span>A. WASHINGTON · 2024</span></div>
+      <div class="bar"><i></i></div>
+      <div class="gap">D. OKAFOR FINISHED +1.06 OFF THE RECORD</div>
+    </div>
+    <div class="team"><b>CENTRAL 96 — WESTVIEW 74</b><div class="pts"><b>+22</b><small>TEAM LEAD</small></div></div>
+  </div>
+
+  <div class="ladder">
+    <div class="lhead"><h2>RESULTS — HEAT 3</h2><span>PLACE ORDER · 7:42 PM</span></div>
+    <div class="lrows">
+      <div class="lrow g1" style="--tc:#fca5a5;"><div class="rank">1</div>
+        <div class="lwho"><b>D. OKAFOR</b><small>CENTRAL</small></div>
+        <div class="lane2"><b>3</b><small>LANE</small></div><div class="ltime">51.90</div></div>
+      <div class="lrow g2" style="--tc:#93c5fd;"><div class="rank">2</div>
+        <div class="lwho"><b>M. CHEN</b><small>WESTVIEW</small></div>
+        <div class="lane2"><b>2</b><small>LANE</small></div><div class="ltime">52.18</div></div>
+      <div class="lrow g3" style="--tc:#93c5fd;"><div class="rank">3</div>
+        <div class="lwho"><b>T. NGUYEN</b><small>WESTVIEW</small></div>
+        <div class="lane2"><b>5</b><small>LANE</small></div><div class="ltime">53.61</div></div>
+      <div class="lrow" style="--tc:#fca5a5;"><div class="rank">4</div>
+        <div class="lwho"><b>S. PATEL</b><small>CENTRAL</small></div>
+        <div class="lane2"><b>6</b><small>LANE</small></div><div class="ltime">54.05</div></div>
+      <div class="lrow" style="--tc:#fca5a5;"><div class="rank">5</div>
+        <div class="lwho"><b>J. RIVERA</b><small>CENTRAL</small></div>
+        <div class="lane2"><b>1</b><small>LANE</small></div><div class="ltime">55.42</div></div>
+      <div class="lrow dq" style="--tc:#64748b;"><div class="rank">—</div>
+        <div class="lwho"><b>K. ANDERSON</b><small>EASTON PREP</small></div>
+        <div class="lane2"><b>7</b><small>LANE</small></div><div class="ltime">DQ · FALSE START</div></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
