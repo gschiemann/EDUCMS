@@ -134,23 +134,23 @@ export class SuperLicenseController {
     @Req() req: any,
   ) {
     if (!body.tier || typeof body.seatLimit !== 'number' || body.seatLimit < 1) {
-      throw new HttpException('tier and seatLimit (>=1) required', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'LICENSE_TIER_OR_SEAT_LIMIT_REQUIRED', message: 'tier and seatLimit (>=1) required' }, HttpStatus.BAD_REQUEST);
     }
     // Enum guards. Reject silently-malformed payloads at the boundary.
     if (!ALLOWED_TIERS.has(body.tier)) {
-      throw new HttpException(`tier must be one of: ${[...ALLOWED_TIERS].join(', ')}`, HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'LICENSE_TIER_INVALID', message: `tier must be one of: ${[...ALLOWED_TIERS].join(', ')}` }, HttpStatus.BAD_REQUEST);
     }
     if (body.billingMode && !ALLOWED_BILLING_MODES.has(body.billingMode)) {
-      throw new HttpException(`billingMode must be one of: ${[...ALLOWED_BILLING_MODES].join(', ')}`, HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'LICENSE_BILLING_MODE_INVALID', message: `billingMode must be one of: ${[...ALLOWED_BILLING_MODES].join(', ')}` }, HttpStatus.BAD_REQUEST);
     }
     if (body.status && !ALLOWED_STATUSES.has(body.status)) {
-      throw new HttpException(`status must be one of: ${[...ALLOWED_STATUSES].join(', ')}`, HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'LICENSE_STATUS_INVALID', message: `status must be one of: ${[...ALLOWED_STATUSES].join(', ')}` }, HttpStatus.BAD_REQUEST);
     }
     if (body.seatLimit > 100_000) {
-      throw new HttpException('seatLimit unreasonable; cap is 100k', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'LICENSE_SEAT_LIMIT_UNREASONABLE', message: 'seatLimit unreasonable; cap is 100k' }, HttpStatus.BAD_REQUEST);
     }
     const exists = await this.prisma.client.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
-    if (!exists) throw new HttpException('Tenant not found', HttpStatus.NOT_FOUND);
+    if (!exists) throw new HttpException({ code: 'LICENSE_TENANT_NOT_FOUND', message: 'Tenant not found' }, HttpStatus.NOT_FOUND);
 
     const data: any = {
       tier: body.tier,
@@ -214,7 +214,7 @@ export class SuperLicenseController {
     @Req() req: any,
   ) {
     if (!body.status || !ALLOWED_STATUSES.has(body.status)) {
-      throw new HttpException(`status must be one of: ${[...ALLOWED_STATUSES].join(', ')}`, HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'LICENSE_STATUS_INVALID', message: `status must be one of: ${[...ALLOWED_STATUSES].join(', ')}` }, HttpStatus.BAD_REQUEST);
     }
     return this.prisma.client.$transaction(async (tx) => {
       const updated = await tx.license.update({
@@ -373,7 +373,7 @@ export class SuperLicenseController {
   ) {
     if (body?.confirm !== 'YES_WIPE_ALL_ASSETS') {
       throw new HttpException(
-        'wipe-all-assets requires { confirm: "YES_WIPE_ALL_ASSETS" } in the body.',
+        { code: 'LICENSE_WIPE_CONFIRMATION_REQUIRED', message: 'wipe-all-assets requires { confirm: "YES_WIPE_ALL_ASSETS" } in the body.' },
         HttpStatus.BAD_REQUEST,
       );
     }

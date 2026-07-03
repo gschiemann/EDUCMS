@@ -136,13 +136,13 @@ export class PosOAuthController {
     // not yet live — is rejected here.
     if (!connector || !meta || meta.integrationTier !== 'DIRECT') {
       throw new HttpException(
-        `${meta?.name || provider} is not available for self-serve OAuth connect.`,
+        { code: 'POS_OAUTH_PROVIDER_NOT_SELF_SERVE', message: `${meta?.name || provider} is not available for self-serve OAuth connect.` },
         HttpStatus.BAD_REQUEST,
       );
     }
     if (!providerOAuthConfigured(connector.envPrefix)) {
       throw new HttpException(
-        `${meta.name} OAuth not configured for this deploy. Set ${connector.envPrefix}_CLIENT_ID / ${connector.envPrefix}_CLIENT_SECRET.`,
+        { code: 'POS_OAUTH_NOT_CONFIGURED', message: `${meta.name} OAuth not configured for this deploy. Set ${connector.envPrefix}_CLIENT_ID / ${connector.envPrefix}_CLIENT_SECRET.` },
         HttpStatus.SERVICE_UNAVAILABLE,
       );
     }
@@ -155,7 +155,7 @@ export class PosOAuthController {
       const shopDomain = sanitizeShopDomain(shop);
       if (!shopDomain) {
         throw new HttpException(
-          `${meta.name} requires a store domain — pass ?shop=your-store.myshopify.com`,
+          { code: 'POS_OAUTH_SHOP_DOMAIN_REQUIRED', message: `${meta.name} requires a store domain — pass ?shop=your-store.myshopify.com` },
           HttpStatus.BAD_REQUEST,
         );
       }
@@ -278,7 +278,7 @@ export class PosOAuthController {
     const signingKey = process.env.SQUARE_WEBHOOK_SIG_KEY;
     if (!signingKey) {
       this.logger.warn('Square webhook hit but SQUARE_WEBHOOK_SIG_KEY unset; rejecting');
-      throw new HttpException('Webhook signing not configured', HttpStatus.SERVICE_UNAVAILABLE);
+      throw new HttpException({ code: 'POS_WEBHOOK_SIGNING_NOT_CONFIGURED', message: 'Webhook signing not configured' }, HttpStatus.SERVICE_UNAVAILABLE);
     }
 
     // Body must be the raw bytes Square sent; if a global json middleware
@@ -316,20 +316,20 @@ export class PosOAuthController {
       });
     if (!okSha256 && !okSha1) {
       this.logger.warn('Square webhook signature verification failed');
-      throw new HttpException('Invalid signature', HttpStatus.UNAUTHORIZED);
+      throw new HttpException({ code: 'POS_WEBHOOK_SIGNATURE_INVALID', message: 'Invalid signature' }, HttpStatus.UNAUTHORIZED);
     }
 
     let evt: any;
     try {
       evt = JSON.parse(rawBody);
     } catch {
-      throw new BadRequestException('Body is not valid JSON');
+      throw new BadRequestException({ code: 'POS_WEBHOOK_BODY_NOT_JSON', message: 'Body is not valid JSON' });
     }
     const eventId = String(evt.event_id || evt.eventId || '');
     const eventType = String(evt.type || evt.event_type || 'unknown');
     const merchantId = String(evt.merchant_id || '');
     if (!eventId || !merchantId) {
-      throw new BadRequestException('Missing event_id or merchant_id');
+      throw new BadRequestException({ code: 'POS_WEBHOOK_EVENT_FIELDS_MISSING', message: 'Missing event_id or merchant_id' });
     }
 
     // Idempotency: first delivery wins, replays no-op.
@@ -424,10 +424,10 @@ export class PosOAuthController {
   ) {
     if (providerId !== 'custom-webhook') {
       // Unknown / unsupported provider for the generic receiver.
-      throw new HttpException('Unknown webhook provider', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'POS_WEBHOOK_PROVIDER_UNKNOWN', message: 'Unknown webhook provider' }, HttpStatus.NOT_FOUND);
     }
     if (!secret) {
-      throw new HttpException('Missing X-Webhook-Secret header', HttpStatus.UNAUTHORIZED);
+      throw new HttpException({ code: 'POS_WEBHOOK_SECRET_HEADER_MISSING', message: 'Missing X-Webhook-Secret header' }, HttpStatus.UNAUTHORIZED);
     }
 
     const conn = await this.svc.findCustomWebhookConnectionBySecret(secret);
@@ -435,12 +435,12 @@ export class PosOAuthController {
       // Don't leak whether the secret was wrong vs. the connection
       // missing — both are "we can't authenticate this push."
       this.logger.warn('Custom POS webhook: no connection matched the supplied secret');
-      throw new HttpException('Invalid webhook secret', HttpStatus.UNAUTHORIZED);
+      throw new HttpException({ code: 'POS_WEBHOOK_SECRET_INVALID', message: 'Invalid webhook secret' }, HttpStatus.UNAUTHORIZED);
     }
 
     const body = (req as any).body;
     if (!body || typeof body !== 'object') {
-      throw new BadRequestException('Body must be JSON: { "menu": [ ... ] } | { "items": [ ... ] } | { "availability": [ ... ] }.');
+      throw new BadRequestException({ code: 'POS_WEBHOOK_CUSTOM_BODY_INVALID', message: 'Body must be JSON: { "menu": [ ... ] } | { "items": [ ... ] } | { "availability": [ ... ] }.' });
     }
 
     // Optional replay-safe idempotency: if the caller stamps an eventId,

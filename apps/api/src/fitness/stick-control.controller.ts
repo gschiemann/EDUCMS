@@ -141,13 +141,13 @@ export class StickControlController {
     const tenantId: string = req.user.tenantId;
 
     if (!body.name?.trim()) {
-      throw new HttpException('name is required', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'STICK_NAME_REQUIRED', message: 'name is required' }, HttpStatus.BAD_REQUEST);
     }
     if (!body.type) {
-      throw new HttpException('type is required (roku | fire-tv | apple-tv | chromecast | android-tv)', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'STICK_TYPE_REQUIRED', message: 'type is required (roku | fire-tv | apple-tv | chromecast | android-tv)' }, HttpStatus.BAD_REQUEST);
     }
     if (!body.ip?.trim()) {
-      throw new HttpException('ip is required', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'STICK_IP_REQUIRED', message: 'ip is required' }, HttpStatus.BAD_REQUEST);
     }
 
     const stick: StickRecord = {
@@ -184,7 +184,7 @@ export class StickControlController {
     const idx = sticks.findIndex((s) => s.id === stickId);
 
     if (idx === -1) {
-      throw new HttpException('Stick not found', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'STICK_NOT_FOUND', message: 'Stick not found' }, HttpStatus.NOT_FOUND);
     }
 
     sticks.splice(idx, 1);
@@ -233,16 +233,16 @@ export class StickControlController {
     const stick = sticks.find((s) => s.id === stickId);
 
     if (!stick) {
-      throw new HttpException('Stick not found', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'STICK_NOT_FOUND', message: 'Stick not found' }, HttpStatus.NOT_FOUND);
     }
 
     const cmd = body.command;
     if (!cmd) {
-      throw new HttpException('command is required', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'STICK_COMMAND_REQUIRED', message: 'command is required' }, HttpStatus.BAD_REQUEST);
     }
 
     if (cmd === 'launch_app' && !body.appId) {
-      throw new HttpException('appId is required for launch_app command', HttpStatus.BAD_REQUEST);
+      throw new HttpException({ code: 'STICK_APP_ID_REQUIRED', message: 'appId is required for launch_app command' }, HttpStatus.BAD_REQUEST);
     }
 
     // Phase-1: log command for observability.
@@ -298,7 +298,7 @@ export class StickControlController {
     const stick = getForTenant(tenantId).find((s) => s.id === stickId);
 
     if (!stick) {
-      throw new HttpException('Stick not found', HttpStatus.NOT_FOUND);
+      throw new HttpException({ code: 'STICK_NOT_FOUND', message: 'Stick not found' }, HttpStatus.NOT_FOUND);
     }
 
     const { tenantId: _t, ...rest } = stick;
