@@ -13,6 +13,38 @@ const BUCKET = 'assets';
 // CDN-cacheable `assets` bucket.
 const FLOORPLAN_BUCKET = 'floor-plans';
 
+// PUBLIC bucket for brand-kit logos (task #223 fix — the Domino's SVG
+// rasterization bug). `image/svg+xml` was REMOVED from the general `assets`
+// bucket's allowlist on 2026-05-29 (Audit 37-infra U-1) because that bucket's
+// main upload path is presign → direct browser→Supabase: the server never
+// sees those bytes, so it can't sanitize an SVG before it lands in public
+// storage — a stored-XSS vector. That hardening is correct for the media
+// library, but it silently broke a DIFFERENT, already-safe path a month
+// later: BrandingController's server-mediated logo rehost (`rehost()` /
+// `pickVectorLogoCandidate()` / `manualAdopt()`). That path NEVER uses a
+// presigned/direct-to-Supabase upload — the API server always fetches or
+// receives the bytes itself, runs sanitizeLogoSvg() (DOMPurify) to produce
+// the inline-render copy, and only THEN calls storage.upload() with a
+// server-chosen content-type. Supabase's bucket-level `allowedMimeTypes` is
+// enforced against the Content-Type header on every object write regardless
+// of caller, so once U-1 dropped image/svg+xml from `assets`, every branding
+// logo.svg upload started failing with "mime type not allowed" and silently
+// fell through to the raster fallback (og:image / favicon) — a logo scraped
+// as a crisp SVG (Domino's) came out rasterized/blurry on adopt.
+// Giving logos their own bucket lets SVG be allowed here without reopening
+// the media-library hole: there is no signed/presigned upload URL ever
+// minted against this bucket (search `createSignedUploadUrl` — it always
+// targets `BUCKET`), so the "someone hits the upload URL directly with raw
+// bytes" attack the U-1 comment warned about does not apply here. Every
+// write to this bucket is still an authenticated, server-mediated
+// `storage.upload()` call, most of them downstream of sanitizeLogoSvg().
+const LOGO_BUCKET = 'branding-logos';
+
+// Every bucket created with `public: true`. Used by uploadToBucket() to pick
+// the correct `/object/public/...` URL shape — see the PUBLIC_BUCKETS
+// callsite for why this can't just special-case the `assets` BUCKET anymore.
+const PUBLIC_BUCKETS = new Set([BUCKET, LOGO_BUCKET]);
+
 @Injectable()
 export class SupabaseStorageService implements OnModuleInit {
   private client: SupabaseClient;
@@ -141,6 +173,37 @@ export class SupabaseStorageService implements OnModuleInit {
         this.logger.log(`Supabase Storage bucket "${FLOORPLAN_BUCKET}" ready (private, cap ${FLOORPLAN_SIZE_LIMIT / (1024*1024)}MB)`);
       }
     }
+
+    // PUBLIC brand-logo bucket (task #223 — see the LOGO_BUCKET comment above
+    // for why this is separate from `assets`). Raster types are included too
+    // so BrandingController's raster fallback / manual-upload paths (which
+    // share the same `rehostUrl`/`upload` helpers) work unchanged when the
+    // scrape has no vector candidate. Small cap — logos are tiny files.
+    const LOGO_MIMES = ['image/svg+xml', 'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/x-icon', 'image/bmp'];
+    const LOGO_SIZE_LIMIT = 2 * 1024 * 1024; // 2MB — matches the branding controller's own logo-size guards
+    const { error: logoErr } = await this.client.storage.createBucket(LOGO_BUCKET, {
+      public: true,
+      fileSizeLimit: LOGO_SIZE_LIMIT,
+      allowedMimeTypes: LOGO_MIMES,
+    });
+    if (logoErr && !logoErr.message?.includes('already exists') && !logoErr.message?.includes('duplicate')) {
+      this.logger.error(`Failed to create brand-logo storage bucket: ${logoErr.message}`);
+    } else {
+      // updateBucket on every boot — createBucket only applies these on
+      // first create, so an existing bucket from before this fix (or one
+      // missing image/svg+xml because it predates it) picks up the current
+      // allowlist on the next deploy.
+      const { error: logoUpdErr } = await this.client.storage.updateBucket(LOGO_BUCKET, {
+        public: true,
+        fileSizeLimit: LOGO_SIZE_LIMIT,
+        allowedMimeTypes: LOGO_MIMES,
+      });
+      if (logoUpdErr) {
+        this.logger.warn(`Failed to update brand-logo bucket: ${logoUpdErr.message}`);
+      } else {
+        this.logger.log(`Supabase Storage bucket "${LOGO_BUCKET}" ready (cap ${LOGO_SIZE_LIMIT / (1024*1024)}MB, SVG allowed)`);
+      }
+    }
   }
 
   /**
@@ -223,6 +286,21 @@ export class SupabaseStorageService implements OnModuleInit {
   }
 
   /**
+   * Upload a brand-kit logo to the dedicated `branding-logos` bucket (task
+   * #223). Use this instead of `upload()` for every branding logo write —
+   * `image/svg+xml` is allowed here but NOT in the general `assets` bucket
+   * (see the LOGO_BUCKET comment at the top of this file for why). Returns
+   * the public URL.
+   */
+  async uploadLogo(
+    filePath: string,
+    buffer: any,
+    contentType: string,
+  ): Promise<string> {
+    return this.uploadToBucket(LOGO_BUCKET, filePath, buffer, contentType);
+  }
+
+  /**
    * Upload to an EXPLICIT bucket. The public `assets` bucket returns a public
    * URL; a private bucket (floor-plans) returns an `…/object/<bucket>/<path>`
    * URL whose bytes are only retrievable via a signed URL or service-role auth —
@@ -292,13 +370,20 @@ export class SupabaseStorageService implements OnModuleInit {
       throw new Error(`Storage upload failed (${res.status}): ${body}`);
     }
 
-    // Build the same URL shape the JS client returns. For the public bucket we
-    // return the public URL; for a private bucket the public-style URL won't
-    // resolve without a signature — callers (floor plans) re-sign on read via
-    // bucketFromObjectUrl + createSignedUrl, so we store the canonical
-    // `…/object/<bucket>/<path>` form from which both bucket and path parse back.
-    if (bucket === BUCKET) {
-      return `${url}/storage/v1/object/public/${BUCKET}/${filePath}`;
+    // Build the same URL shape the JS client returns. For a PUBLIC bucket we
+    // return the public URL (`/object/public/<bucket>/...`); for a private
+    // bucket (floor-plans) the public-style URL won't resolve without a
+    // signature — callers re-sign on read via bucketFromObjectUrl +
+    // createSignedUrl, so we store the canonical `…/object/<bucket>/<path>`
+    // form from which both bucket and path parse back.
+    //
+    // PUBLIC_BUCKETS must list every bucket created with `public: true` above
+    // — was hard-coded to just the `assets` BUCKET constant until the
+    // LOGO_BUCKET fix (task #223), which silently returned a non-public URL
+    // shape for logos (a 400/401 on load, not a rasterization, but equally
+    // broken) until this was generalized.
+    if (PUBLIC_BUCKETS.has(bucket)) {
+      return `${url}/storage/v1/object/public/${bucket}/${filePath}`;
     }
     return `${url}/storage/v1/object/${bucket}/${filePath}`;
   }
@@ -307,6 +392,12 @@ export class SupabaseStorageService implements OnModuleInit {
    *  and migration script can route uploads there without hard-coding it. */
   floorPlanBucketName(): string {
     return FLOORPLAN_BUCKET;
+  }
+
+  /** The public brand-logo bucket name (task #223). Exposed so callers that
+   *  need to build a Supabase URL manually don't have to hard-code it. */
+  logoBucketName(): string {
+    return LOGO_BUCKET;
   }
 
   publicUrlForPath(filePath: string): string {

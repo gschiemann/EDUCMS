@@ -573,7 +573,10 @@ export class BrandingController {
         const ext = mimeType.split('/')[1].split('+')[0].replace(/[^a-z0-9]/gi, '') || 'png';
         const hash = createHash('sha256').update(buf).digest('hex').slice(0, 12);
         const path = `branding/${tenantId}/manual-${hash}.${ext}`;
-        logoUrl = await this.storage.upload(path, buf, mimeType);
+        // uploadLogo (not upload) — task #223. The general `assets` bucket
+        // doesn't allow image/svg+xml; this error message explicitly offers
+        // SVG below, so it must land in the branding-logos bucket.
+        logoUrl = await this.storage.uploadLogo(path, buf, mimeType);
       } catch (e: any) {
         this.logger.warn(`Manual logo upload failed for tenant ${tenantId}: ${e?.message}`);
         throw new HttpException({ code: 'BRANDING_LOGO_UPLOAD_FAILED', message: `Logo upload failed: ${e?.message}` }, HttpStatus.BAD_REQUEST);
@@ -594,7 +597,10 @@ export class BrandingController {
         const ext = extFromContentType(r.contentType) || extFromUrl(body.logoUrl) || 'png';
         const hash = createHash('sha256').update(r.body).digest('hex').slice(0, 12);
         const path = `branding/${tenantId}/manual-${hash}.${ext}`;
-        logoUrl = await this.storage.upload(path, r.body, r.contentType || 'application/octet-stream');
+        // uploadLogo (not upload) — task #223, same reasoning as the data-URL
+        // branch above: a pasted `.svg` URL must land in the branding-logos
+        // bucket, which allows image/svg+xml.
+        logoUrl = await this.storage.uploadLogo(path, r.body, r.contentType || 'application/octet-stream');
       } catch (e: any) {
         this.logger.warn(`Manual logo URL rehost failed for tenant ${tenantId}: ${e?.message}`);
         throw new HttpException({ code: 'BRANDING_LOGO_URL_FETCH_FAILED', message: `Logo URL fetch failed: ${e?.message}` }, HttpStatus.BAD_REQUEST);
@@ -941,8 +947,10 @@ export class BrandingController {
   }
 
   /**
-   * Re-host a remote asset URL into our Supabase bucket. Returns the
-   * public Supabase URL. SSRF-protected via safeFetch.
+   * Re-host a remote asset URL into the branding-logos Supabase bucket
+   * (task #223 — NOT the general `assets` bucket, which does not allow
+   * image/svg+xml; see the LOGO_BUCKET comment in supabase-storage.service.ts).
+   * Returns the public Supabase URL. SSRF-protected via safeFetch.
    */
   private async rehostUrl(sourceUrl: string, keyPrefix: string): Promise<string> {
     const r = await safeFetch(sourceUrl, { maxBytes: 2 * 1024 * 1024, timeoutMs: 6000 });
@@ -961,12 +969,14 @@ export class BrandingController {
     const ext = extFromContentType(r.contentType) || extFromUrl(sourceUrl) || 'bin';
     const hash = createHash('sha256').update(r.body).digest('hex').slice(0, 12);
     const path = `${keyPrefix}-${hash}.${ext}`;
-    return this.storage.upload(path, r.body, r.contentType || 'application/octet-stream');
+    return this.storage.uploadLogo(path, r.body, r.contentType || 'application/octet-stream');
   }
 
   /** Decode a `data:image/...;base64,...` logo (the wizard's "upload your own
-   *  logo" escape hatch) and store it in Supabase. Shares the 2MB cap +
-   *  image-sniff guard; throws on malformed / oversized / non-image input. */
+   *  logo" escape hatch) and store it in the branding-logos bucket (task #223
+   *  — SVG data URLs must land here, not the general `assets` bucket). Shares
+   *  the 2MB cap + image-sniff guard; throws on malformed / oversized /
+   *  non-image input. */
   private async uploadLogoDataUrl(tenantId: string, dataUrl: string): Promise<string> {
     const m = /^data:(image\/[a-z0-9+.-]+);base64,(.+)$/i.exec(dataUrl || '');
     if (!m) throw new Error('not a base64 image data URL');
@@ -978,11 +988,11 @@ export class BrandingController {
     const ext = (mimeType.split('/')[1] || 'png').split('+')[0].replace(/[^a-z0-9]/gi, '') || 'png';
     const hash = createHash('sha256').update(buf).digest('hex').slice(0, 12);
     const path = `branding/${tenantId}/logo-upload-${hash}.${ext}`;
-    return this.storage.upload(path, buf, mimeType);
+    return this.storage.uploadLogo(path, buf, mimeType);
   }
 
   private async rehost(content: string, path: string, contentType: string): Promise<string> {
-    return this.storage.upload(path, Buffer.from(content, 'utf-8'), contentType);
+    return this.storage.uploadLogo(path, Buffer.from(content, 'utf-8'), contentType);
   }
 
   /**
