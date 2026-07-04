@@ -835,13 +835,29 @@ export class PosService {
   }
 
   /** Webhook idempotency — INSERT into ProcessedPosEvent. Returns true
-   *  if this is the first time we've seen the (provider, eventId);
-   *  false if it's a duplicate replay. */
-  async claimWebhookEvent(providerId: string, eventId: string, eventType: string): Promise<boolean> {
+   *  if this is the first time we've seen the (tenant, provider, eventId);
+   *  false if it's a duplicate replay.
+   *
+   *  The dedup key MUST be scoped by `tenantId` (P1 cross-tenant fix,
+   *  2026-07-03). `eventId` is free-form operator input on the
+   *  custom-webhook path (a counter, unix-second, or a literal like
+   *  `menu-update`), so two different tenants routinely emit the SAME
+   *  eventId. A tenant-agnostic `${providerId}:${eventId}` key made
+   *  Tenant B's push collide with Tenant A's row → B's menu/price/auto-86
+   *  push was silently dropped as a "duplicate" and B's live screens kept
+   *  showing stale/sold-out items. Composing the tenant into the primary
+   *  key isolates each tenant's dedup namespace. `id` is an
+   *  application-composed STRING primary key — no Prisma migration needed. */
+  async claimWebhookEvent(
+    tenantId: string,
+    providerId: string,
+    eventId: string,
+    eventType: string,
+  ): Promise<boolean> {
     try {
       await (this.prisma.client as any).processedPosEvent.create({
         data: {
-          id: `${providerId}:${eventId}`,
+          id: `${tenantId}:${providerId}:${eventId}`,
           providerId,
           eventType,
         },

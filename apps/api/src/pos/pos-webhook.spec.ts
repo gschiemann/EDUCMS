@@ -395,3 +395,182 @@ describe('Square POS webhook — raw-body HMAC verification', () => {
     });
   });
 });
+
+/**
+ * Webhook idempotency is TENANT-SCOPED (P1 cross-tenant data-loss fix,
+ * 2026-07-03).
+ * ───────────────────────────────────────────────────────────────────
+ *
+ * BUG: `claimWebhookEvent` composed the ProcessedPosEvent primary key as
+ * `${providerId}:${eventId}` — no tenant. On the `custom-webhook` provider
+ * the operator supplies `eventId` freely (a counter, a unix-second, a
+ * literal like `menu-update`), so two DIFFERENT tenants routinely emit the
+ * SAME eventId. Tenant A's `eventId:'1001'` inserted row
+ * `custom-webhook:1001`; Tenant B's own `eventId:'1001'` then hit the unique
+ * constraint (P2002) on the SAME primary key → `claimWebhookEvent` returned
+ * false → the controller replied `{ ok:true, deduped:true }` WITHOUT applying
+ * B's menu/price/auto-86 push. B's sold-out item / wrong price kept showing
+ * on B's live screens, indefinitely for any re-used eventId.
+ *
+ * FIX: the key is now `${tenantId}:${providerId}:${eventId}`, isolating each
+ * tenant's dedup namespace. A same-tenant replay of the same eventId still
+ * dedups; two tenants with the same eventId now BOTH process.
+ *
+ * These tests model the real DB behaviour: `processedPosEvent.create` throws
+ * a P2002 when (and only when) the composed `id` already exists — exactly
+ * what Postgres does for a duplicate primary key.
+ */
+describe('Webhook idempotency is tenant-scoped (P1 cross-tenant fix)', () => {
+  // A fake ProcessedPosEvent table that enforces PK-uniqueness on `id`,
+  // mirroring the Prisma/Postgres unique-constraint → P2002 behaviour that
+  // `claimWebhookEvent` catches.
+  function makeProcessedPosEventTable() {
+    const seen = new Set<string>();
+    return {
+      seen,
+      create: jest.fn(async ({ data }: { data: { id: string } }) => {
+        if (seen.has(data.id)) {
+          const err: any = new Error('Unique constraint failed on the fields: (`id`)');
+          err.code = 'P2002';
+          throw err;
+        }
+        seen.add(data.id);
+        return { ...data };
+      }),
+    };
+  }
+
+  describe('claimWebhookEvent (service unit)', () => {
+    let svc: PosService;
+    let table: ReturnType<typeof makeProcessedPosEventTable>;
+
+    beforeEach(async () => {
+      table = makeProcessedPosEventTable();
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          PosService,
+          MenuService,
+          {
+            provide: PrismaService,
+            useValue: { client: { processedPosEvent: table } },
+          },
+        ],
+      }).compile();
+      svc = module.get(PosService);
+    });
+
+    it('same tenant + same eventId → first true, replay false (still dedups)', async () => {
+      expect(await svc.claimWebhookEvent('tenant-A', 'custom-webhook', '1001', 'menu')).toBe(true);
+      expect(await svc.claimWebhookEvent('tenant-A', 'custom-webhook', '1001', 'menu')).toBe(false);
+      // Only ONE row was ever inserted for this (tenant, provider, eventId).
+      expect(table.seen.has('tenant-A:custom-webhook:1001')).toBe(true);
+      expect(table.seen.size).toBe(1);
+    });
+
+    it('TWO tenants + the SAME eventId → BOTH claim (no cross-tenant collision)', async () => {
+      // Without the fix these would collide on `custom-webhook:1001` and the
+      // second call would return false — dropping Tenant B's push.
+      expect(await svc.claimWebhookEvent('tenant-A', 'custom-webhook', '1001', 'menu')).toBe(true);
+      expect(await svc.claimWebhookEvent('tenant-B', 'custom-webhook', '1001', 'menu')).toBe(true);
+      // Two distinct rows — one per tenant.
+      expect(table.seen.has('tenant-A:custom-webhook:1001')).toBe(true);
+      expect(table.seen.has('tenant-B:custom-webhook:1001')).toBe(true);
+      expect(table.seen.size).toBe(2);
+    });
+
+    it('the composed key includes the tenant id (regression guard on the key shape)', async () => {
+      await svc.claimWebhookEvent('tenant-XYZ', 'square', 'evt-9', 'inventory');
+      expect(table.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ id: 'tenant-XYZ:square:evt-9' }),
+        }),
+      );
+    });
+  });
+
+  describe('custom-webhook controller (end-to-end through the receiver)', () => {
+    // Two tenants, two secrets, one shared eventId. Prove both pushes apply.
+    const SECRET_A = 'secret-for-tenant-A-0000000000000';
+    const SECRET_B = 'secret-for-tenant-B-1111111111111';
+
+    let controller: PosOAuthController;
+    let table: ReturnType<typeof makeProcessedPosEventTable>;
+    let posMenuItem: any;
+
+    function connRow(id: string, tenantId: string, secret: string) {
+      const sealed = sealCredentials({ webhookSecret: secret });
+      return {
+        id,
+        tenantId,
+        providerId: 'custom-webhook',
+        encryptedCreds: sealed.encryptedCreds,
+        encryptedDataKey: sealed.encryptedDataKey,
+      };
+    }
+
+    beforeEach(async () => {
+      table = makeProcessedPosEventTable();
+      posMenuItem = { upsert: jest.fn().mockResolvedValue({}) };
+      const posProviderConnection = {
+        // Both tenants' custom-webhook rows live in the same table; the
+        // receiver picks the one whose decrypted secret matches.
+        findMany: jest.fn().mockResolvedValue([
+          connRow('conn-A', 'tenant-A', SECRET_A),
+          connRow('conn-B', 'tenant-B', SECRET_B),
+        ]),
+        update: jest.fn().mockResolvedValue({}),
+      };
+
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          PosService,
+          MenuService,
+          {
+            provide: PrismaService,
+            useValue: {
+              client: { posProviderConnection, posMenuItem, processedPosEvent: table },
+            },
+          },
+        ],
+      }).compile();
+      const prisma = module.get(PrismaService);
+      const svc = module.get(PosService);
+      const menu = module.get(MenuService);
+      controller = new PosOAuthController(prisma, svc, menu);
+    });
+
+    const reqWith = (body: unknown) => ({ body }) as any;
+    const pushWithEventId = (eventId: string) =>
+      reqWith({ eventId, items: [{ id: 'burger', name: 'Burger', priceCents: 999 }] });
+
+    it('two tenants pushing the SAME eventId BOTH apply (the core cross-tenant fix)', async () => {
+      const outA = await controller.customWebhook('custom-webhook', pushWithEventId('1001'), SECRET_A);
+      const outB = await controller.customWebhook('custom-webhook', pushWithEventId('1001'), SECRET_B);
+
+      // Neither push was deduped away — both upserted their catalog.
+      expect(outA).toEqual({ ok: true, upserted: 1, skipped: 0 });
+      expect(outB).toEqual({ ok: true, upserted: 1, skipped: 0 });
+      expect((outA as any).deduped).toBeUndefined();
+      expect((outB as any).deduped).toBeUndefined();
+
+      // Each tenant's item landed under its OWN tenant.
+      const tenantsUpserted = posMenuItem.upsert.mock.calls.map(
+        (c: any[]) => c[0].create.tenantId,
+      );
+      expect(tenantsUpserted).toEqual(expect.arrayContaining(['tenant-A', 'tenant-B']));
+      // Two independent dedup rows.
+      expect(table.seen.has('tenant-A:custom-webhook:1001')).toBe(true);
+      expect(table.seen.has('tenant-B:custom-webhook:1001')).toBe(true);
+    });
+
+    it('the SAME tenant replaying the SAME eventId still dedups (no double-apply)', async () => {
+      const first = await controller.customWebhook('custom-webhook', pushWithEventId('1001'), SECRET_A);
+      const replay = await controller.customWebhook('custom-webhook', pushWithEventId('1001'), SECRET_A);
+
+      expect(first).toEqual({ ok: true, upserted: 1, skipped: 0 });
+      expect(replay).toEqual({ ok: true, deduped: true });
+      // Only the first delivery upserted.
+      expect(posMenuItem.upsert).toHaveBeenCalledTimes(1);
+    });
+  });
+});

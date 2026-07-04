@@ -347,17 +347,23 @@ export class PosOAuthController {
       throw new BadRequestException({ code: 'POS_WEBHOOK_EVENT_FIELDS_MISSING', message: 'Missing event_id or merchant_id' });
     }
 
-    // Idempotency: first delivery wins, replays no-op.
-    const first = await this.svc.claimWebhookEvent('square', eventId, eventType);
-    if (!first) {
-      this.logger.log(`Square webhook duplicate event_id=${eventId} (ignored)`);
-      return { ok: true, deduped: true };
-    }
-
+    // Resolve the connection (and therefore the tenant) BEFORE claiming the
+    // event, so the idempotency key can be scoped per-tenant. This also
+    // means an unknown-merchant event no longer burns a dedup row.
     const conn = await this.svc.findConnectionByMerchantId(merchantId);
     if (!conn) {
       this.logger.warn(`Square webhook for unknown merchant_id=${merchantId}; ignoring`);
       return { ok: true, unknownMerchant: true };
+    }
+
+    // Idempotency: first delivery wins, replays no-op. Scoped by the
+    // connection's tenant (P1 cross-tenant fix, 2026-07-03) so one tenant's
+    // event_id can never shadow another tenant's — consistent with the
+    // custom-webhook receiver.
+    const first = await this.svc.claimWebhookEvent(conn.tenantId, 'square', eventId, eventType);
+    if (!first) {
+      this.logger.log(`Square webhook duplicate tenant=${conn.tenantId} event_id=${eventId} (ignored)`);
+      return { ok: true, deduped: true };
     }
 
     // Auto-86 (menu-mgmt-at-scale 2026-05-29): an inventory.count.updated
@@ -471,9 +477,14 @@ export class PosOAuthController {
             ? 'availability'
             : 'items',
       );
-      const first = await this.svc.claimWebhookEvent('custom-webhook', eventId, eventType);
+      // Dedup is scoped by the CONNECTION's tenant (resolved from the
+      // secret above) — never by eventId alone. `eventId` here is free-form
+      // operator input, so two tenants routinely collide on the same value;
+      // a tenant-agnostic key silently dropped the second tenant's push
+      // (P1 cross-tenant fix, 2026-07-03).
+      const first = await this.svc.claimWebhookEvent(conn.tenantId, 'custom-webhook', eventId, eventType);
       if (!first) {
-        this.logger.log(`Custom POS webhook duplicate eventId=${eventId} (ignored)`);
+        this.logger.log(`Custom POS webhook duplicate tenant=${conn.tenantId} eventId=${eventId} (ignored)`);
         return { ok: true, deduped: true };
       }
     }
