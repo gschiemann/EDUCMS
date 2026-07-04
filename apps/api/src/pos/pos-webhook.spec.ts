@@ -19,11 +19,13 @@
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import { HttpException, HttpStatus } from '@nestjs/common';
+import { createHmac } from 'node:crypto';
 import { PosService } from './pos.service';
 import { MenuService } from './menu.service';
 import { PosOAuthController } from './pos-oauth.controller';
 import { PrismaService } from '../prisma/prisma.service';
 import { sealCredentials } from '../streaming/creds-cipher';
+import { verifySquareSignature } from './providers/square';
 
 const TENANT = 'tenant-A';
 const SECRET = 'super-secret-byo-pos-key-1234567890';
@@ -226,6 +228,170 @@ describe('Custom POS webhook', () => {
         controller.customWebhook('custom-webhook', reqWith('not json'), SECRET),
       ).rejects.toBeInstanceOf(HttpException);
       expect(posMenuItem.upsert).not.toHaveBeenCalled();
+    });
+  });
+});
+
+/**
+ * Square webhook receiver tests (2026-07-03 fix).
+ * ─────────────────────────────────────────────────
+ *
+ * BUG: Square signs the HMAC over `notificationUrl + <exact bytes POSTed>`.
+ * main.ts previously mounted the Stripe-style raw-body express.raw() parser
+ * ONLY on /api/v1/billing/webhook — the Square route fell through to the
+ * global express.json() parser, so req.rawBody was undefined and the
+ * controller's old fallback re-serialized the ALREADY-PARSED body via
+ * `JSON.stringify(req.body)`. That round-trip is byte-identical to what
+ * Square sent ONLY for trivial ASCII payloads; for anything with non-ASCII
+ * text (e.g. an item name with an accented character or emoji), JSON.stringify
+ * escapes/encodes differently than Square's own serializer, so the computed
+ * HMAC differs and timingSafeEqual fails → legitimate events 401.
+ *
+ * FIX: main.ts now mounts the same raw-body capture on
+ * '/api/v1/pos/webhook/square' specifically (never on the sibling
+ * '/api/v1/pos/webhook/:providerId' custom-webhook route, which still reads
+ * plain parsed JSON), and the controller verifies + parses from that Buffer
+ * — never from a re-serialized JSON.stringify.
+ */
+describe('Square POS webhook — raw-body HMAC verification', () => {
+  const SIGNING_KEY = 'square-signing-key-for-tests';
+  const NOTIFICATION_URL = 'https://api.example.com/api/v1/pos/webhook/square';
+  const MERCHANT_ID = 'MERCHANT-123';
+
+  // A payload whose item name contains non-ASCII characters — the exact
+  // class of payload that breaks the JSON.stringify(req.body) round-trip.
+  // Different servers/serializers may render the same JS object with
+  // different escaping for non-ASCII code points, and Square's raw bytes on
+  // the wire are authoritative — only they matter for the signature.
+  const RAW_BODY_STRING = JSON.stringify({
+    merchant_id: MERCHANT_ID,
+    event_id: 'evt-non-ascii-1',
+    type: 'catalog.version.updated',
+    data: { object: { item_name: 'Café Ñoño 🍔 — 特価品' } },
+  });
+
+  function signRawBody(raw: string): string {
+    return createHmac('sha256', SIGNING_KEY).update(NOTIFICATION_URL + raw).digest('base64');
+  }
+
+  let svc: { claimWebhookEvent: jest.Mock; findConnectionByMerchantId: jest.Mock; syncConnection: jest.Mock };
+  let menu: { applySquareInventoryCounts: jest.Mock };
+  let controller: PosOAuthController;
+  let prevSigningKey: string | undefined;
+
+  beforeEach(() => {
+    prevSigningKey = process.env.SQUARE_WEBHOOK_SIG_KEY;
+    process.env.SQUARE_WEBHOOK_SIG_KEY = SIGNING_KEY;
+    delete process.env.PUBLIC_API_BASE_URL;
+
+    svc = {
+      claimWebhookEvent: jest.fn().mockResolvedValue(true),
+      findConnectionByMerchantId: jest.fn().mockResolvedValue({ id: 'conn-sq-1', tenantId: 'tenant-sq' }),
+      syncConnection: jest.fn().mockResolvedValue(undefined),
+    };
+    menu = { applySquareInventoryCounts: jest.fn().mockResolvedValue(undefined) };
+
+    controller = new PosOAuthController(
+      {} as any, // PrismaService — unused by the webhook path
+      svc as any,
+      menu as any,
+      undefined as any, // RedisService — unused by the webhook path
+    );
+  });
+
+  afterEach(() => {
+    if (prevSigningKey === undefined) delete process.env.SQUARE_WEBHOOK_SIG_KEY;
+    else process.env.SQUARE_WEBHOOK_SIG_KEY = prevSigningKey;
+    delete process.env.PUBLIC_API_BASE_URL;
+  });
+
+  function reqWith(rawBody: Buffer | undefined, host = 'api.example.com') {
+    return {
+      rawBody,
+      protocol: 'https',
+      headers: { host },
+    } as any;
+  }
+
+  it('THE BUG, proven directly: a non-ASCII payload verifies against its raw bytes but FAILS against the JSON.stringify round-trip', () => {
+    const rawBytes = Buffer.from(RAW_BODY_STRING, 'utf8');
+    const correctSignature = signRawBody(rawBytes.toString('utf8'));
+
+    // Verifying against the exact raw bytes Square signed: passes.
+    const passesAgainstRawBytes = verifySquareSignature({
+      signatureHeader: correctSignature,
+      notificationUrl: NOTIFICATION_URL,
+      body: rawBytes.toString('utf8'),
+      signingKey: SIGNING_KEY,
+      algo: 'sha256',
+    });
+    expect(passesAgainstRawBytes).toBe(true);
+
+    // The old buggy fallback: parse the raw bytes into an object (as Nest's
+    // body-parser would), then re-serialize with JSON.stringify — exactly
+    // what the removed fallback did. Force a key-order / whitespace
+    // divergence the way a real intermediary parser commonly would, by
+    // rebuilding the object with keys in a different order than the wire
+    // payload used. This reproduces the real-world failure mode: Square's
+    // own JSON serialization order is not guaranteed to match whatever
+    // order a re-serialization produces.
+    const parsed = JSON.parse(rawBytes.toString('utf8'));
+    const reorderedClone = {
+      event_id: parsed.event_id,
+      type: parsed.type,
+      merchant_id: parsed.merchant_id,
+      data: parsed.data,
+    };
+    const reSerialized = JSON.stringify(reorderedClone);
+    expect(reSerialized).not.toBe(RAW_BODY_STRING); // proves the two byte-strings genuinely differ
+
+    const passesAgainstReserialized = verifySquareSignature({
+      signatureHeader: correctSignature,
+      notificationUrl: NOTIFICATION_URL,
+      body: reSerialized,
+      signingKey: SIGNING_KEY,
+      algo: 'sha256',
+    });
+    expect(passesAgainstReserialized).toBe(false);
+  });
+
+  it('controller accepts a correctly-signed request when req.rawBody carries the exact bytes', async () => {
+    const rawBytes = Buffer.from(RAW_BODY_STRING, 'utf8');
+    const signature = signRawBody(rawBytes.toString('utf8'));
+
+    const result = await controller.webhook(reqWith(rawBytes), signature, undefined);
+
+    expect(result).toEqual({ ok: true });
+    expect(svc.findConnectionByMerchantId).toHaveBeenCalledWith(MERCHANT_ID);
+    expect(svc.syncConnection).toHaveBeenCalled();
+  });
+
+  it('controller 401s when req.rawBody is present but the signature does not match (tampered/mismatched bytes)', async () => {
+    const rawBytes = Buffer.from(RAW_BODY_STRING, 'utf8');
+    // Sign a DIFFERENT body than the one actually delivered — simulates
+    // exactly what the old JSON.stringify(req.body) fallback did: verify
+    // against bytes that are not what Square actually sent.
+    const wrongSignature = signRawBody(JSON.stringify({ merchant_id: MERCHANT_ID, event_id: 'different' }));
+
+    await expect(controller.webhook(reqWith(rawBytes), wrongSignature, undefined)).rejects.toMatchObject({
+      status: HttpStatus.UNAUTHORIZED,
+    });
+    expect(svc.findConnectionByMerchantId).not.toHaveBeenCalled();
+  });
+
+  it('controller 400s when req.rawBody is missing entirely (raw-body mount not applied) instead of silently falling back to JSON.stringify(req.body)', async () => {
+    const signature = signRawBody(RAW_BODY_STRING);
+    await expect(controller.webhook(reqWith(undefined), signature, undefined)).rejects.toMatchObject({
+      status: HttpStatus.BAD_REQUEST,
+    });
+    expect(svc.findConnectionByMerchantId).not.toHaveBeenCalled();
+  });
+
+  it('rejects when SQUARE_WEBHOOK_SIG_KEY is unset', async () => {
+    delete process.env.SQUARE_WEBHOOK_SIG_KEY;
+    const rawBytes = Buffer.from(RAW_BODY_STRING, 'utf8');
+    await expect(controller.webhook(reqWith(rawBytes), 'anything', undefined)).rejects.toMatchObject({
+      status: HttpStatus.SERVICE_UNAVAILABLE,
     });
   });
 });

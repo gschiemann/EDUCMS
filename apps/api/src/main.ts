@@ -102,6 +102,30 @@ async function bootstrap() {
     }),
   );
 
+  // Square POS webhook (2026-07-03 fix) — same problem, same fix as Stripe
+  // above: Square signs the EXACT bytes it POSTed (HMAC over
+  // notificationUrl + rawBody), and any parse→re-serialize round-trip is
+  // NOT guaranteed byte-identical (non-ASCII item names, Square's own
+  // key-order/whitespace/escaping), so verifying against
+  // JSON.stringify(req.body) intermittently — and for many real payloads,
+  // reliably — fails timingSafeEqual and 401s a legitimate event. Mount a
+  // path-scoped raw parser for JUST the static `webhook/square` route,
+  // mirroring the Stripe mount exactly. Deliberately scoped to this one
+  // path (not `/api/v1/pos/webhook` broadly) so the sibling
+  // `webhook/:providerId` route (`custom-webhook`, the bring-your-own-POS
+  // escape hatch) keeps getting the normal parsed-JSON `req.body` its
+  // handler relies on — untouched, unregressed.
+  app.use(
+    '/api/v1/pos/webhook/square',
+    expressBody.raw({
+      type: '*/*',
+      limit: '1mb',
+      verify: (req: any, _res: unknown, buf: Buffer) => {
+        req.rawBody = buf;
+      },
+    }),
+  );
+
   app.use(expressBody.json({ limit: '5mb' }));
   app.use(expressBody.urlencoded({ limit: '5mb', extended: true }));
 

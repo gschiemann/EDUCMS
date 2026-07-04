@@ -281,16 +281,31 @@ export class PosOAuthController {
       throw new HttpException({ code: 'POS_WEBHOOK_SIGNING_NOT_CONFIGURED', message: 'Webhook signing not configured' }, HttpStatus.SERVICE_UNAVAILABLE);
     }
 
-    // Body must be the raw bytes Square sent; if a global json middleware
-    // already parsed it, fall back to JSON.stringify of req.body which
-    // works in practice because Square uses compact JSON. The cleaner
-    // solution is a raw-body interceptor, but mirroring the Stripe
-    // webhook's existing pattern keeps churn low.
-    const rawBody = (req as any).rawBody
-      ? Buffer.isBuffer((req as any).rawBody)
-        ? (req as any).rawBody.toString('utf8')
-        : String((req as any).rawBody)
-      : JSON.stringify((req as any).body || {});
+    // Body MUST be the exact raw bytes Square sent — Square computes its
+    // HMAC over (notificationUrl + the exact bytes it POSTed). main.ts
+    // mounts a path-scoped express.raw() for this exact route (mirroring
+    // the Stripe billing webhook mount) so req.rawBody is a Buffer here,
+    // never the globally-parsed JSON object.
+    //
+    // 2026-07-03 fix: this used to fall back to JSON.stringify(req.body)
+    // when rawBody was missing — but that re-serializes the ALREADY-PARSED
+    // object, which is NOT guaranteed byte-identical to what Square sent
+    // (non-ASCII item names, Square's own key order / whitespace /
+    // escaping all survive a round-trip differently). That silently 401'd
+    // real catalog.*/inventory.* events in prod because the raw-body mount
+    // didn't previously cover this path (global express.json() consumed
+    // the body first) — see main.ts. We now REQUIRE rawBody; if it's
+    // somehow missing (e.g. a misconfigured proxy strips it), reject with
+    // a clear 400 instead of silently verifying against reconstructed
+    // (and untrustworthy) bytes.
+    const rawBodyBuf: Buffer | undefined = Buffer.isBuffer((req as any).rawBody)
+      ? (req as any).rawBody
+      : undefined;
+    if (!rawBodyBuf) {
+      this.logger.warn('Square webhook missing raw body (raw-body mount not applied to this request)');
+      throw new HttpException({ code: 'POS_WEBHOOK_RAW_BODY_MISSING', message: 'Missing raw request body' }, HttpStatus.BAD_REQUEST);
+    }
+    const rawBody = rawBodyBuf.toString('utf8');
     const notificationUrl =
       process.env.PUBLIC_API_BASE_URL
         ? `${process.env.PUBLIC_API_BASE_URL.replace(/\/$/, '')}/api/v1/pos/webhook/square`
