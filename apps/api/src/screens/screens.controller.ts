@@ -188,21 +188,43 @@ export class ScreensController {
   //   v4: 1500/hr — operator's IP STILL hit it after a multi-hour
   //                retry storm on a fresh TB40 sideload (cumulative
   //                count over the rolling window).
-  //   v5: REMOVED — per-IP throttle on this endpoint dropped
-  //                entirely. Defense in depth comes from:
-  //                (a) per-FP 5 s cooldown (prevents rapid-fire
-  //                same-FP enumeration);
-  //                (b) global 600/min throttle on the controller
-  //                (catches bulk bursts);
-  //                (c) the natural cost of creating a Screen row
-  //                (DB write, no useful info disclosed without
-  //                pairing).
-  //                Even an unauthenticated attacker spamming
-  //                fingerprints can only create orphan Screen
-  //                rows that admins never claim — cleanup script
-  //                is a separate problem. Better than bricking
-  //                legitimate kiosks.
-  @SkipThrottle()
+  //   v5: REMOVED — per-IP throttle dropped ENTIRELY via @SkipThrottle().
+  //                The v5 comment claimed "global 600/min throttle on the
+  //                controller (catches bulk bursts)" was still a defense —
+  //                that was WRONG: @SkipThrottle() removes the global
+  //                throttler too, so there was NO IP-based limit of ANY
+  //                kind on this endpoint. Combined with the per-FP cooldown
+  //                exempting brand-new/unknown fingerprints (the cooldown
+  //                only slows a REPEAT of the SAME fp; a flood of UNIQUE
+  //                fingerprints never trips it), a single unauthenticated
+  //                source could create unbounded Screen rows (DB bloat /
+  //                resource exhaustion, fills tenant screen lists).
+  //                (sec P2 — 2026-07-03.)
+  //   v6: 120/min PER IP (@Throttle, this window). Restores a per-IP wall
+  //                that is GENEROUS enough to never brick a legit rollout
+  //                yet stops the flood:
+  //                • This is a PER-MINUTE window (ttl 60_000, matching the
+  //                  global throttler + trust-proxy-1 → keys on the real
+  //                  client IP via X-Forwarded-For). It RESETS every minute,
+  //                  so unlike the old v1-v4 HOURLY windows it never
+  //                  accumulates over a multi-hour retry storm — the exact
+  //                  cause of the v2/v4 NAT bricking is gone.
+  //                • 120/min matches player-ota `update-check` — the OTHER
+  //                  public endpoint every kiosk in a NAT'd building hits on
+  //                  boot. A synchronized reboot/OTA of a large building
+  //                  (dozens of kiosks + dashboard users on ONE public IP)
+  //                  registers ~once per kiosk; even with a retry or two it
+  //                  stays well under 120/min since register is called far
+  //                  LESS often than update-check. Legit installs of dozens
+  //                  of screens succeed.
+  //                • An attacker spamming UNIQUE fingerprints from one source
+  //                  is now capped at 120 Screen rows/min/IP instead of
+  //                  unbounded (600/min+ before). Defense-in-depth still
+  //                  includes the per-FP 5 s cooldown (rapid same-fp) and the
+  //                  natural DB-write cost. Paired kiosks re-registering are
+  //                  unaffected functionally — only the rare over-limit burst
+  //                  from ONE IP is 429'd, and the client retries.
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
   @Post('register')
   async register(@Body() body: {
     deviceFingerprint: string;
