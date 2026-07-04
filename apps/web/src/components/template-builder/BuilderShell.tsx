@@ -191,7 +191,28 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       // opens, not just after the first save in THIS session.
       updatedAt: template.updatedAt ?? null,
     });
-  }, [template, init]);
+    // Bug hunt (2026-07-03) — this effect used to depend on the WHOLE
+    // `template` object ([template, init]). Every Save bumps the row's
+    // updatedAt, so the invalidation-driven refetch that follows a save
+    // resolves to a NEW `template` object reference a few hundred ms
+    // later — which re-ran this effect and unconditionally reset
+    // zones/meta/isDirty/past/future via init(), silently discarding
+    // whatever the operator typed in that window AND wiping undo/redo.
+    // No restore bar caught it because the (correct) draft-recovery
+    // effect below is already keyed on `template.id`, not `template`;
+    // this was the one init effect still keyed on object identity.
+    // Keying on `template.id` mirrors that sibling effect: init() only
+    // (re)runs on first mount or when the operator actually switches to
+    // a different template, never on a same-id refetch. External-change
+    // detection is NOT lost by this — it never lived here. The server
+    // independently re-validates staleness on every Save via
+    // `expectedUpdatedAt: state.serverUpdatedAt` (see handleSave above),
+    // which is populated once at init and again after every successful
+    // save/reload-theirs (setServerUpdatedAt) — a concurrent edit from
+    // another device is still caught at Save time regardless of whether
+    // this effect re-fires on a same-id refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [template.id, init]);
 
   // C1 — on open, check for a local draft that's NEWER than the server's
   // last known save. Runs once per template.id (not on every `template`
