@@ -12,6 +12,10 @@ import { ZodValidationPipe } from '../security/zod-validation.pipe';
 // launch-sprint Day 1): any path that removes/deactivates schedules must
 // run the same protection.
 import { reactivateFallbackIfDark as reactivateFallbackIfDarkShared } from './go-dark-fallback';
+// Go-live displacement — shared with submissions.controller (approval path,
+// 2026-07-03): flipping a staged draft to active must displace competing live
+// schedules for the same target exactly as a direct publish does.
+import { displaceCompetingActiveSchedules } from './schedule-displacement';
 import {
   ScheduleCreateSchema, type ScheduleCreateInput,
   ScheduleUpdateSchema, type ScheduleUpdateInput,
@@ -138,23 +142,17 @@ export class SchedulesController {
        // the operator saw the new playlist on at most one screen. Fix:
        // publishing to a group also supersedes the per-screen pins on all of
        // its member screens, so the single group schedule cleanly wins.
-       const replaceOr: any[] = [];
-       if (body.screenId) replaceOr.push({ screenId: body.screenId });
-       if (body.screenGroupId) {
-         replaceOr.push({ screenGroupId: body.screenGroupId });
-         const members = await this.prisma.client.screen.findMany({
-           where: { tenantId: req.user.tenantId, screenGroupId: body.screenGroupId },
-           select: { id: true },
-         });
-         const memberIds = members.map((m) => m.id);
-         if (memberIds.length) replaceOr.push({ screenId: { in: memberIds } });
-       }
-       if (replaceOr.length) {
-         await this.prisma.client.schedule.updateMany({
-           where: { tenantId: req.user.tenantId, isActive: true, OR: replaceOr },
-           data: { isActive: false },
-         });
-       }
+       //
+       // 2026-07-03 — extracted to displaceCompetingActiveSchedules so the
+       // submit-for-review APPROVAL path (submissions.controller.decide) runs
+       // the IDENTICAL displacement when it flips a staged draft to active.
+       // Passing this.prisma.client as `tx` keeps this call byte-identical to
+       // the old inline block.
+       await displaceCompetingActiveSchedules(this.prisma.client, {
+         tenantId: req.user.tenantId,
+         screenId: body.screenId || null,
+         screenGroupId: body.screenGroupId || null,
+       });
     }
 
     // Validate and normalize mode

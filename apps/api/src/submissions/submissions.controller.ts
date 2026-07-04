@@ -35,6 +35,11 @@ import {
   SubmissionCreateSchema, type SubmissionCreateInput,
   SubmissionDecisionSchema, type SubmissionDecisionInput,
 } from '@cms/api-types';
+// Go-live displacement — shared with schedules.controller.create(). Approving a
+// staged draft flips it isActive=true; it must displace the competing LIVE
+// schedule for the same target exactly as a direct publish does, or the player
+// interleaves the old + new playlists. (P1, 2026-07-03.)
+import { displaceCompetingActiveSchedules } from '../schedules/schedule-displacement';
 
 /** Comma-separated CSV → string[] (filtered to non-empty). */
 const fromCsv = (s: string | null | undefined): string[] =>
@@ -277,14 +282,46 @@ export class SubmissionsController {
     // schedule. Reject: leave the underlying content alone — the
     // contributor edits + resubmits.
     if (decision === 'APPROVED') {
-      const ops: any[] = [];
-      if (aIds.length) {
-        ops.push(this.prisma.client.asset.updateMany({ where: { id: { in: aIds }, tenantId, status: 'PENDING_APPROVAL' }, data: { status: 'PUBLISHED' } }));
-      }
-      if (sIds.length) {
-        ops.push(this.prisma.client.schedule.updateMany({ where: { id: { in: sIds }, tenantId }, data: { isActive: true } }));
-      }
-      if (ops.length) await this.prisma.client.$transaction(ops);
+      // Load the bundled schedules' targets BEFORE the transaction so we can
+      // replicate the direct-publish go-live displacement. A bare
+      // updateMany({isActive:true}) (the old behavior) flipped the drafts
+      // active WITHOUT deactivating the competing LIVE schedule already on
+      // the same screen — so approving a draft for playlist B on a screen
+      // showing playlist A left BOTH active and the player interleaved them.
+      // The normal publish path (schedules.controller.create) runs this same
+      // displacement; the approval path must too. (P1, 2026-07-03.)
+      const scheduleRows = sIds.length
+        ? await this.prisma.client.schedule.findMany({
+            where: { id: { in: sIds }, tenantId },
+            select: { id: true, screenId: true, screenGroupId: true, mode: true },
+          })
+        : [];
+
+      await this.prisma.client.$transaction(async (tx) => {
+        if (aIds.length) {
+          await tx.asset.updateMany({ where: { id: { in: aIds }, tenantId, status: 'PENDING_APPROVAL' }, data: { status: 'PUBLISHED' } });
+        }
+        if (scheduleRows.length) {
+          // For each approved schedule going live in REPLACE mode, displace
+          // the competing active schedules for its target FIRST — exactly as a
+          // direct publish would. Append-mode schedules intentionally coexist,
+          // so they skip displacement (mirrors create()'s `mode !== 'append'`
+          // gate). excludeScheduleId guards the row itself (it's still a draft
+          // here, but be defensive about ordering).
+          for (const s of scheduleRows) {
+            if (s.mode !== 'append') {
+              await displaceCompetingActiveSchedules(tx, {
+                tenantId,
+                screenId: s.screenId,
+                screenGroupId: s.screenGroupId,
+                excludeScheduleId: s.id,
+              });
+            }
+          }
+          // Now flip every approved draft live — the competing actives are gone.
+          await tx.schedule.updateMany({ where: { id: { in: sIds }, tenantId }, data: { isActive: true } });
+        }
+      });
     }
 
     const updated = await this.prisma.client.submission.update({
