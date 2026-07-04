@@ -78,6 +78,38 @@ const DEFAULT_SOFT_CAP_BYTES = 5 * 1024 * 1024 * 1024;
 // Hard floor reserved for the emergency tier — never evicted.
 const EMERGENCY_FLOOR_BYTES = 1 * 1024 * 1024 * 1024;
 
+// BUG #5 fix — extract the trailing numeric version from a cache name
+// (`edu-player-emergency-v10` → 10). Returns -1 when there's no `-vN`
+// suffix so unversioned / malformed names always sort oldest. Kept as a
+// pure function (no I/O) so it's unit-testable.
+function cacheVersionNum(name) {
+  var m = /-v(\d+)$/.exec(String(name || ''));
+  return m ? parseInt(m[1], 10) : -1;
+}
+
+// Pick the newest cache from a list by NUMERIC version, not lexically.
+// The old code used Array.prototype.sort() (string compare), under which
+// 'edu-player-...-v10' sorts BEFORE '...-v9' ('1' < '9' at the third char),
+// so after the 10th VERSION bump it copied the STALE v9 cache forward
+// instead of v10 — losing a whole version's worth of freshly-cached
+// assets on every kiosk. Comparing the parsed integer fixes the ordering
+// for v10, v100, and beyond. Returns null for an empty list.
+function newestCacheName(names) {
+  var best = null;
+  var bestNum = -Infinity;
+  for (var i = 0; i < names.length; i++) {
+    var n = cacheVersionNum(names[i]);
+    if (n > bestNum) { bestNum = n; best = names[i]; }
+  }
+  return best;
+}
+
+// Expose the pure helpers for unit testing (Node/Jest requires the file and
+// reads self.__swTestHooks). No effect in a real SW — self is the global.
+if (typeof self !== 'undefined') {
+  self.__swTestHooks = { cacheVersionNum: cacheVersionNum, newestCacheName: newestCacheName };
+}
+
 self.addEventListener('install', (event) => {
   // Activate immediately so the page's first manifest fetch can already use us.
   event.waitUntil(self.skipWaiting());
@@ -95,12 +127,12 @@ self.addEventListener('activate', (event) => {
     const keys = await caches.keys();
     const stale = keys.filter((k) => k.startsWith('edu-player-') && !ALL_CACHES.includes(k));
 
-    // Find the most recent stale emergency + meta caches (best-effort by
-    // string ordering — versioning is monotonic vN where N grows).
-    const staleEmergency = stale.filter((k) => k.startsWith('edu-player-emergency-')).sort();
-    const staleMeta = stale.filter((k) => k.startsWith('edu-player-meta-')).sort();
-    const oldEmergencyName = staleEmergency.length ? staleEmergency[staleEmergency.length - 1] : null;
-    const oldMetaName = staleMeta.length ? staleMeta[staleMeta.length - 1] : null;
+    // Find the most recent stale emergency + meta caches by NUMERIC version
+    // (BUG #5 fix — a lexical .sort() picked v9 over v10 after the 10th bump).
+    const staleEmergency = stale.filter((k) => k.startsWith('edu-player-emergency-'));
+    const staleMeta = stale.filter((k) => k.startsWith('edu-player-meta-'));
+    const oldEmergencyName = newestCacheName(staleEmergency);
+    const oldMetaName = newestCacheName(staleMeta);
 
     if (oldEmergencyName) {
       try {
@@ -146,8 +178,8 @@ self.addEventListener('activate', (event) => {
     // by operators bumping VERSION as a "did the deploy land?" probe). Hashes
     // still match, so this is a pure local copy — no network. Mirrors the
     // emergency/meta copy-forward above.
-    const stalePlaylist = stale.filter((k) => k.startsWith('edu-player-playlist-')).sort();
-    const oldPlaylistName = stalePlaylist.length ? stalePlaylist[stalePlaylist.length - 1] : null;
+    const stalePlaylist = stale.filter((k) => k.startsWith('edu-player-playlist-'));
+    const oldPlaylistName = newestCacheName(stalePlaylist); // BUG #5 fix — numeric, not lexical
     if (oldPlaylistName) {
       try {
         const [oldPl, newPl] = await Promise.all([

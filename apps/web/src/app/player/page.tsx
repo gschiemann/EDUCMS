@@ -2773,6 +2773,15 @@ function PlayerPage() {
       // would set lastEmergencySetHashRef to the new hash and the next
       // 5-min cycle would short-circuit on the unchanged-hash check
       // forever. Only commit AFTER the SW acks ok via MessageChannel.
+      //
+      // BUG #4 note — emergency asset URLs are INTENTIONALLY cached RAW (not
+      // CDN-rewritten). The emergency media overlay (EmergencyOverlay.tsx)
+      // renders `mediaUrls` verbatim with no resolveAssetUrl call, so the
+      // cache key must stay on the raw origin URL to match its <img src>.
+      // (The emergency PLAYLIST tier — manifest.playlists during an
+      // emergency — renders through the normal playlist path, which DOES
+      // resolveAssetUrl images, and is precached via the CDN-aware playlist
+      // push above; the two stay in sync.) Do NOT wrap data.assets here.
       const ack = await precacheEmergency(data.assets || [], data.setHash || '');
       if (ack.ok) {
         lastEmergencySetHashRef.current = data.setHash || '';
@@ -3232,7 +3241,22 @@ function PlayerPage() {
             const u = item.url;
             if (u && !urls.has(u)) {
               urls.add(u);
-              playlistAssets.push({ url: u.startsWith('http') ? u : `${getApiRoot()}${u}` });
+              // BUG #4 fix — the SW must cache under the SAME URL the <img>
+              // renders, or offline images break the moment the CDN is
+              // enabled. The render path (see resolvedUrl / resUrl below)
+              // routes IMAGES through resolveAssetUrl (→ the CDN host) but
+              // leaves video/web/pdf on the raw origin URL. Mirror that here
+              // so the cache key === the rendered src. resolveAssetUrl is a
+              // no-op until NEXT_PUBLIC_ASSET_CDN is set, so the non-CDN case
+              // is byte-for-byte unchanged. Video/web/pdf stay raw so the SW
+              // Range cache keeps keying on the origin URL.
+              const absUrl = u.startsWith('http') ? u : `${getApiRoot()}${u}`;
+              const isImage = item.mime_type
+                ? String(item.mime_type).startsWith('image/')
+                : (!u.match(/\.(mp4|webm|mov|m4v)$/i)
+                  && !u.match(/\.(pdf)$/i)
+                  && !(u.match(/^https?:\/\//i) && !u.match(/\.(jpe?g|png|gif|webp|svg|avif)$/i)));
+              playlistAssets.push({ url: isImage ? resolveAssetUrl(absUrl) : absUrl });
               playlistAssetKeys.push(
                 item.item_id ||
                 item.asset_id ||
