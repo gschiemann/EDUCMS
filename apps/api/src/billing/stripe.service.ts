@@ -388,6 +388,32 @@ export class StripeService {
     return 'ACTIVE';
   }
 
+  /**
+   * Read the current billing period off a Stripe subscription.
+   *
+   * As of the pinned API version (`stripe` SDK 22.1.1 bakes in
+   * `2026-04-22.dahlia`), `current_period_start` / `current_period_end`
+   * no longer exist on the top-level `Subscription` object — Stripe
+   * moved them to the SUBSCRIPTION ITEM level (each item can have its
+   * own billing cycle since multi-price subscriptions can bill items
+   * independently). VenueOS subscriptions are always single-price
+   * (one recurring per-screen Price), so the first item's period is
+   * the subscription's period. Guarded for an empty/missing items
+   * array — returns nulls rather than throwing, matching the old
+   * behavior when the fields were absent. */
+  private subscriptionPeriod(sub: Record<string, any>): {
+    start: Date | null;
+    end: Date | null;
+  } {
+    const item = sub.items?.data?.[0];
+    const start = item?.current_period_start;
+    const end = item?.current_period_end;
+    return {
+      start: start ? new Date(start * 1000) : null,
+      end: end ? new Date(end * 1000) : null,
+    };
+  }
+
   /** AuditLog action name for a Stripe-driven mutation, e.g.
    *  `customer.subscription.updated` → `STRIPE_WEBHOOK_CUSTOMER_SUBSCRIPTION_UPDATED`.
    *  Mirrors the SUPER_ADMIN-visible audit pattern used by
@@ -454,12 +480,10 @@ export class StripeService {
     const monthlyPriceCents =
       unit == null ? null : interval === 'year' ? Math.round(unit / 12) : unit;
     const status = this.mapSubscriptionStatus(sub.status);
-    const periodStart = sub.current_period_start
-      ? new Date(sub.current_period_start * 1000)
-      : null;
-    const periodEnd = sub.current_period_end
-      ? new Date(sub.current_period_end * 1000)
-      : null;
+    // current_period_start/end moved off the top-level Subscription onto
+    // each SubscriptionItem in the pinned API version — see
+    // subscriptionPeriod() for why.
+    const { start: periodStart, end: periodEnd } = this.subscriptionPeriod(sub);
     const eventCreatedAt = new Date(event.created * 1000);
 
     // Out-of-order protection. Read the current License (if any) and

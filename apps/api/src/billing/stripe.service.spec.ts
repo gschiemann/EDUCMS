@@ -29,6 +29,8 @@ type LicenseRow = {
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
   stripeLastEventCreatedAt: Date | null;
+  currentPeriodStart?: Date | null;
+  currentPeriodEnd?: Date | null;
 };
 
 type AuditLogRow = {
@@ -156,11 +158,15 @@ function buildEvent(overrides: Partial<StripeWebhookEvent> = {}): StripeWebhookE
             {
               id: 'si_1',
               price: { unit_amount: 1500, recurring: { interval: 'month' } },
+              // Pinned API version (2026-04-22.dahlia, stripe SDK 22.1.1)
+              // moved current_period_start/end off the top-level
+              // Subscription onto each SubscriptionItem — this fixture
+              // mirrors the REAL webhook payload shape.
+              current_period_start: 1_700_000_000,
+              current_period_end: 1_702_500_000,
             },
           ],
         },
-        current_period_start: 1_700_000_000,
-        current_period_end: 1_702_500_000,
       },
     },
   };
@@ -297,6 +303,38 @@ describe('StripeService.handleWebhookEvent — P0-7 audit fixes', () => {
     expect(details.eventId).toBe('evt_audit_1');
     expect(details.toStatus).toBe('ACTIVE');
     expect(details.toTier).toBe('MONTHLY');
+  });
+
+  it('billing period: reads current_period_start/end off subscription.items.data[0] (moved off the top-level Subscription in the pinned API version)', async () => {
+    const event = buildEvent({ id: 'evt_period_1' });
+    await svc.handleWebhookEvent(event);
+
+    const license = fake.inspect.licenses.get('tenant_A');
+    expect(license?.currentPeriodStart).toEqual(new Date(1_700_000_000 * 1000));
+    expect(license?.currentPeriodEnd).toEqual(new Date(1_702_500_000 * 1000));
+  });
+
+  it('billing period: a subscription with no items array populates null periods instead of throwing', async () => {
+    const event: StripeWebhookEvent = {
+      id: 'evt_period_no_items',
+      type: 'customer.subscription.updated',
+      created: Math.floor(Date.now() / 1000),
+      data: {
+        object: {
+          id: 'sub_no_items',
+          customer: 'cus_no_items',
+          status: 'active',
+          metadata: { tenantId: 'tenant_A' },
+          // no `items` key at all — must not throw.
+        },
+      },
+    };
+    const result = await svc.handleWebhookEvent(event);
+
+    expect(result).toEqual({});
+    const license = fake.inspect.licenses.get('tenant_A');
+    expect(license?.currentPeriodStart ?? null).toBeNull();
+    expect(license?.currentPeriodEnd ?? null).toBeNull();
   });
 
   it('audit log: invoice.payment_failed records fromStatus=ACTIVE → toStatus=PAST_DUE', async () => {
