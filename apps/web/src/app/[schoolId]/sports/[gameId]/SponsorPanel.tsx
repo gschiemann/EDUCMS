@@ -493,10 +493,44 @@ interface GameReportData {
   sponsors?: GameReportSponsorRow[];
 }
 
-/** Escape a CSV cell (quote-wrap + double internal quotes). */
-function csvCell(v: string | number): string {
+/**
+ * Neutralize CSV formula injection (a.k.a. CSV/Excel injection).
+ *
+ * This proof-of-play CSV is handed to EXTERNAL sponsors, who open it in
+ * Excel / Google Sheets / LibreOffice. A cell whose value begins with
+ * `=`, `+`, `-`, `@`, a TAB (`\t`) or a CR (`\r`) is interpreted by those
+ * apps as a FORMULA — enabling data exfiltration or (via DDE) command
+ * execution in the recipient's spreadsheet. Any operator-controlled field
+ * that reaches a cell (sponsor name today, any future column) is a vector.
+ *
+ * The standard neutralizer: if the stringified value starts with a
+ * dangerous leading character, prefix a single quote (`'`). Spreadsheets
+ * treat the leading `'` as "this cell is text, not a formula" and do not
+ * render it, so a legitimate value like `=SUM(...)` still SHOWS its text
+ * while never EXECUTING. Non-dangerous values ("Acme Corp", `123`,
+ * `2026-07-03`) pass through byte-for-byte unchanged.
+ *
+ * This does NOT do CSV quoting — that's `csvCell` (quoting must wrap the
+ * ALREADY-neutralized value so the leading `'` lands inside the quotes).
+ */
+export function sanitizeCsvCell(v: string | number | null | undefined): string {
   const s = String(v ?? '');
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  // Leading TAB/CR are treated as dangerous too — some apps strip
+  // surrounding whitespace and then evaluate a leading `=`/`+`/`-`/`@`.
+  return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+}
+
+/**
+ * Escape a CSV cell: neutralize formula injection FIRST, then apply
+ * standard CSV quoting (wrap in double-quotes + double any internal
+ * double-quotes) whenever the value contains a comma, quote, or newline.
+ * Order matters — the injection guard runs on the raw value so its
+ * leading `'` sits inside the quotes, and quoting keeps commas/quotes/
+ * newlines from corrupting the row/column structure.
+ */
+function csvCell(v: string | number): string {
+  const s = sanitizeCsvCell(v);
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 /**
