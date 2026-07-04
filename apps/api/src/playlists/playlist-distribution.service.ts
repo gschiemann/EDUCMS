@@ -42,6 +42,16 @@ export class PlaylistDistributionService {
     sourcePlaylistId: string;
     totalScreens: number;
     totalLocations: number;
+    // NEW (2026-07-03, P1 fix): the publish is per-location transactional and
+    // NEVER goes dark. These roll-ups let the UI report an HONEST partial
+    // result ("published to N of M, these failed: …") instead of the old
+    // blanket throw that read as total failure even when some locations went
+    // live. `ok` is true only when every targeted location succeeded.
+    ok: boolean;
+    locationsSucceeded: number;
+    locationsFailed: number;
+    screensScheduled: number;
+    failures: Array<{ tenantId: string; tenantName: string; error: string }>;
     perLocation: Array<{
       tenantId: string;
       tenantName: string;
@@ -115,37 +125,75 @@ export class PlaylistDistributionService {
       screensScheduled: number;
       isParent: boolean;
     }> = [];
+    const failures: Array<{ tenantId: string; tenantName: string; error: string }> = [];
 
+    // Each location is published INDEPENDENTLY and is all-or-nothing. A single
+    // location failing (copy error, DB hiccup) MUST NOT abort the whole publish
+    // — the locations that already went live stay live, the failed location
+    // keeps its PREVIOUS working schedule (see scheduleLive: activate-then-
+    // deactivate + per-location transaction, so it never goes dark), and we
+    // report an HONEST partial result. The old code threw on the first error,
+    // which (a) read as "Publish failed" in the UI even though earlier
+    // locations had already committed live, and (b) could leave a screen dark.
     for (const [tenantId, tScreens] of byTenant.entries()) {
       const isParent = tenantId === parentTenantId;
-      const targetPlaylistId = isParent
-        ? source.id // same tenant → schedule the source directly, no copy
-        : await this.copyPlaylistIntoChild(source, tenantId, actorUserId);
+      const tenantName = nameByTenant.get(tenantId) ?? tenantId;
+      try {
+        const targetPlaylistId = isParent
+          ? source.id // same tenant → schedule the source directly, no copy
+          : await this.copyPlaylistIntoChild(source, tenantId, actorUserId);
 
-      for (const sc of tScreens) {
-        await this.scheduleLive(tenantId, targetPlaylistId, sc.id);
+        // Per-screen swap is atomic (activate the new schedule BEFORE standing
+        // down the old one), so a mid-swap failure rolls the whole screen back
+        // to its previous working schedule — never a dark window.
+        for (const sc of tScreens) {
+          await this.scheduleLive(tenantId, targetPlaylistId, sc.id);
+        }
+
+        await this.audit(tenantId, actorUserId, targetPlaylistId, {
+          sourcePlaylistId: source.id,
+          sourceTenantId: parentTenantId,
+          screenIds: tScreens.map((s) => s.id),
+          isParent,
+        });
+
+        perLocation.push({
+          tenantId,
+          tenantName,
+          playlistId: targetPlaylistId,
+          screensScheduled: tScreens.length,
+          isParent,
+        });
+      } catch (e: any) {
+        this.logger.error(
+          `publishToFleet: location ${tenantName} (${tenantId}) failed: ${e?.message ?? e}`,
+        );
+        failures.push({ tenantId, tenantName, error: e?.message ?? String(e) });
       }
+    }
 
-      await this.audit(tenantId, actorUserId, targetPlaylistId, {
-        sourcePlaylistId: source.id,
-        sourceTenantId: parentTenantId,
-        screenIds: tScreens.map((s) => s.id),
-        isParent,
-      });
+    const screensScheduled = perLocation.reduce((n, l) => n + l.screensScheduled, 0);
 
-      perLocation.push({
-        tenantId,
-        tenantName: nameByTenant.get(tenantId) ?? tenantId,
-        playlistId: targetPlaylistId,
-        screensScheduled: tScreens.length,
-        isParent,
-      });
+    // Every targeted location failed → this genuinely IS a total failure, so
+    // throw the way the caller/UI expects (nothing went live, nothing to keep).
+    // A PARTIAL success returns 200 with the honest breakdown below.
+    if (perLocation.length === 0 && failures.length > 0) {
+      throw new BadRequestException(
+        `Publish failed for all ${failures.length} location(s): ${failures
+          .map((f) => `${f.tenantName} (${f.error})`)
+          .join('; ')}`,
+      );
     }
 
     return {
       sourcePlaylistId: source.id,
       totalScreens: screens.length,
-      totalLocations: perLocation.length,
+      totalLocations: byTenant.size,
+      ok: failures.length === 0,
+      locationsSucceeded: perLocation.length,
+      locationsFailed: failures.length,
+      screensScheduled,
+      failures,
       perLocation,
     };
   }
@@ -228,26 +276,50 @@ export class PlaylistDistributionService {
     return created.id;
   }
 
-  /** Replace-mode schedule — make this playlist live on the screen now. */
+  /**
+   * Replace-mode schedule — make this playlist live on the screen now.
+   *
+   * NO DARK WINDOW (2026-07-03, P1 fix): the swap is ordered activate-THEN-
+   * deactivate and wrapped in a single interactive transaction, so the screen
+   * always has ≥1 active schedule at every committed point:
+   *   1. Remove any stale (this playlist, this screen) rows so re-publish stays
+   *      idempotent — this playlist is what we're about to (re)activate, so
+   *      removing its own prior rows can't leave the screen uncovered.
+   *   2. CREATE the new schedule active FIRST. The screen is now covered by the
+   *      new content.
+   *   3. Deactivate every OTHER active schedule on this screen (the previous
+   *      content) — only after the replacement is live.
+   * The old code did (deactivate-all) → (delete) → (create): a failure between
+   * the deactivate and the create left the screen with NO active schedule —
+   * dark. The transaction also makes the whole swap all-or-nothing, so a
+   * mid-swap error rolls the screen back to its PREVIOUS working schedule.
+   */
   private async scheduleLive(tenantId: string, playlistId: string, screenId: string) {
-    // Replace: stand down other active schedules on this screen, then ensure
-    // exactly one (playlist, screen) row so re-publish stays idempotent.
-    await this.prisma.client.schedule.updateMany({
-      where: { tenantId, screenId, isActive: true },
-      data: { isActive: false },
-    });
-    await this.prisma.client.schedule.deleteMany({ where: { tenantId, playlistId, screenId } });
-    await this.prisma.client.schedule.create({
-      data: {
-        tenantId,
-        playlistId,
-        screenId,
-        startTime: new Date(),
-        endTime: null,
-        priority: 0,
-        mode: 'replace',
-        isActive: true,
-      },
+    await this.prisma.client.$transaction(async (tx) => {
+      // 1. Clear this playlist's own prior rows for this screen (idempotent
+      //    re-publish). Safe because we immediately re-create it active below.
+      await tx.schedule.deleteMany({ where: { tenantId, playlistId, screenId } });
+      // 2. Activate the new content BEFORE standing down the old — the screen is
+      //    covered at every intermediate, committed state.
+      const created = await tx.schedule.create({
+        data: {
+          tenantId,
+          playlistId,
+          screenId,
+          startTime: new Date(),
+          endTime: null,
+          priority: 0,
+          mode: 'replace',
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      // 3. Now stand down every OTHER active schedule on this screen (the
+      //    previous content). Excludes the row we just created.
+      await tx.schedule.updateMany({
+        where: { tenantId, screenId, isActive: true, id: { not: created.id } },
+        data: { isActive: false },
+      });
     });
   }
 
