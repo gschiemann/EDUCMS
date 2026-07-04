@@ -80,6 +80,54 @@ const MAX_VIDEO_SIZE = 50 * 1024 * 1024;        // 50 MB — 60s 1080p @ 5Mbps
 const MAX_IMAGE_SIZE_RAW = 25 * 1024 * 1024;    // 25 MB raw — optimizer brings to ~0.5 MB WebP
 const MAX_AUDIO_SIZE = 25 * 1024 * 1024;        // 25 MB
 const MAX_PDF_SIZE = 25 * 1024 * 1024;          // 25 MB
+
+/**
+ * Single source of truth for the per-type size caps. Returns an
+ * `HttpException` (PAYLOAD_TOO_LARGE) carrying the friendly, actionable
+ * per-type message when `size` (in bytes) exceeds the cap for `mimeType`,
+ * or `null` when the size is within the cap (or unknown/non-positive).
+ *
+ * Deliberately factored out of `assertUploadIntent` so the EXACT same
+ * caps + messages can be enforced against REAL bytes, not just the
+ * client-CLAIMED size:
+ *   - #7 (legacy multipart POST /assets/upload): the real buffer length
+ *     is in-process, so we enforce here BEFORE storing.
+ *   - #6 (presigned finalize POST /assets/complete-upload): the presign
+ *     step can only see the client-CLAIMED size (inherent to presigning);
+ *     the real stored size only becomes known at finalize via
+ *     `storage.getObjectInfo()`. We re-run this check against that real
+ *     size and delete the orphaned object if it's over cap.
+ *
+ * Pure function (no `this`) so it is trivially unit-testable and can't
+ * drift from the claimed-size check inside `assertUploadIntent`.
+ */
+export function perTypeSizeCapError(mimeType: string, size: number): HttpException | null {
+  const numSize = Number(size);
+  if (!Number.isFinite(numSize) || numSize <= 0) return null;
+  const mt = (mimeType || '').toLowerCase();
+  if (mt.startsWith('video/') && numSize > MAX_VIDEO_SIZE) {
+    return new HttpException({ code: 'ASSET_VIDEO_TOO_LARGE', message: `Video is too large for signage (${Math.round(numSize / (1024 * 1024))} MB). ` +
+        `Max is ${Math.round(MAX_VIDEO_SIZE / (1024 * 1024))} MB — plenty for a clean 1080p loop ` +
+        `at signage-tier quality. Compress with HandBrake (free, handbrake.fr), iMovie's ` +
+        `"Share → File → 1080p", or your phone's built-in "Save as smaller file" option, then try again.` }, HttpStatus.PAYLOAD_TOO_LARGE);
+  }
+  if (mt.startsWith('image/') && numSize > MAX_IMAGE_SIZE_RAW) {
+    return new HttpException({ code: 'ASSET_IMAGE_TOO_LARGE', message: `Image is too large (${Math.round(numSize / (1024 * 1024))} MB). ` +
+        `Max is ${Math.round(MAX_IMAGE_SIZE_RAW / (1024 * 1024))} MB. ` +
+        `Our optimizer can shrink most raw photos to under 0.5 MB without visible loss — ` +
+        `but at this size your phone may be uploading an uncompressed RAW or HEIC original. ` +
+        `Export as JPG/PNG/WebP first.` }, HttpStatus.PAYLOAD_TOO_LARGE);
+  }
+  if (mt.startsWith('audio/') && numSize > MAX_AUDIO_SIZE) {
+    return new HttpException({ code: 'ASSET_AUDIO_TOO_LARGE', message: `Audio is too large (${Math.round(numSize / (1024 * 1024))} MB). ` +
+        `Max is ${Math.round(MAX_AUDIO_SIZE / (1024 * 1024))} MB.` }, HttpStatus.PAYLOAD_TOO_LARGE);
+  }
+  if (mt === 'application/pdf' && numSize > MAX_PDF_SIZE) {
+    return new HttpException({ code: 'ASSET_PDF_TOO_LARGE', message: `PDF is too large (${Math.round(numSize / (1024 * 1024))} MB). ` +
+        `Max is ${Math.round(MAX_PDF_SIZE / (1024 * 1024))} MB.` }, HttpStatus.PAYLOAD_TOO_LARGE);
+  }
+  return null;
+}
 const EXTENSION_MIME_TYPES: Record<string, string> = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
@@ -278,30 +326,15 @@ export class AssetsController {
 
     // Per-type caps (Supabase egress hardening 2026-05-23). The 500 MB
     // outer cap is the absolute ceiling; these tighter per-type caps
-    // are what actually keep egress bounded. Friendly per-type
-    // messages so the operator knows what to do.
-    const numSize = Number(size);
-    if (mimeType.startsWith('video/') && numSize > MAX_VIDEO_SIZE) {
-      throw new HttpException({ code: 'ASSET_VIDEO_TOO_LARGE', message: `Video is too large for signage (${Math.round(numSize / (1024 * 1024))} MB). ` +
-          `Max is ${Math.round(MAX_VIDEO_SIZE / (1024 * 1024))} MB — plenty for a clean 1080p loop ` +
-          `at signage-tier quality. Compress with HandBrake (free, handbrake.fr), iMovie's ` +
-          `"Share → File → 1080p", or your phone's built-in "Save as smaller file" option, then try again.` }, HttpStatus.PAYLOAD_TOO_LARGE);
-    }
-    if (mimeType.startsWith('image/') && numSize > MAX_IMAGE_SIZE_RAW) {
-      throw new HttpException({ code: 'ASSET_IMAGE_TOO_LARGE', message: `Image is too large (${Math.round(numSize / (1024 * 1024))} MB). ` +
-          `Max is ${Math.round(MAX_IMAGE_SIZE_RAW / (1024 * 1024))} MB. ` +
-          `Our optimizer can shrink most raw photos to under 0.5 MB without visible loss — ` +
-          `but at this size your phone may be uploading an uncompressed RAW or HEIC original. ` +
-          `Export as JPG/PNG/WebP first.` }, HttpStatus.PAYLOAD_TOO_LARGE);
-    }
-    if (mimeType.startsWith('audio/') && numSize > MAX_AUDIO_SIZE) {
-      throw new HttpException({ code: 'ASSET_AUDIO_TOO_LARGE', message: `Audio is too large (${Math.round(numSize / (1024 * 1024))} MB). ` +
-          `Max is ${Math.round(MAX_AUDIO_SIZE / (1024 * 1024))} MB.` }, HttpStatus.PAYLOAD_TOO_LARGE);
-    }
-    if (mimeType === 'application/pdf' && numSize > MAX_PDF_SIZE) {
-      throw new HttpException({ code: 'ASSET_PDF_TOO_LARGE', message: `PDF is too large (${Math.round(numSize / (1024 * 1024))} MB). ` +
-          `Max is ${Math.round(MAX_PDF_SIZE / (1024 * 1024))} MB.` }, HttpStatus.PAYLOAD_TOO_LARGE);
-    }
+    // are what actually keep egress bounded. NOTE: at this point `size`
+    // is the client-CLAIMED size (this runs pre-upload on the presign
+    // path and on the completeUpload re-validation). The claimed-size
+    // check is a fast-fail UX nicety — the AUTHORITATIVE per-type
+    // enforcement against REAL bytes happens in `upload()` (legacy
+    // multipart, buffer in-process) and `completeUpload()` (presigned,
+    // real size from storage.getObjectInfo) via `perTypeSizeCapError`.
+    const capError = perTypeSizeCapError(mimeType, Number(size));
+    if (capError) throw capError;
 
     return mimeType;
   }
@@ -647,6 +680,34 @@ export class AssetsController {
     const realMime = info?.contentType || mimeType;
     const realSize = info?.size ?? Number(body.size);
 
+    // BUG #6 FIX — per-type size cap enforcement against the REAL stored
+    // bytes. The presign step (`assertUploadIntent`) can only validate the
+    // client-CLAIMED size, which is trivially spoofable — a client can claim
+    // "5 MB" at presign, get a signed URL, then PUT a 400 MB video straight
+    // to Supabase. The egress/quality caps are meaningless if only the claim
+    // is checked. `getObjectInfo` gives us the object's ACTUAL size after the
+    // direct-to-storage PUT; enforce the per-type cap here (using the real
+    // mime when storage reports it). Over-cap → delete the orphaned object so
+    // it can't be served / eat egress, then reject with the same error
+    // envelope the claimed-size path uses.
+    //
+    // HONEST LIMITATION: if `getObjectInfo` returns null (info endpoint
+    // unavailable), `realSize` falls back to the claimed size — which was
+    // already validated at presign. We do NOT reject on a claimed-only size
+    // here (it was already accepted), so a storage-info outage degrades to
+    // the pre-fix behavior rather than blocking legitimate uploads. This is
+    // the tightest enforcement available without downloading every object.
+    if (info && typeof info.size === 'number') {
+      const realCapError = perTypeSizeCapError(realMime, info.size);
+      if (realCapError) {
+        // Remove the over-cap object we just confirmed exists — otherwise it
+        // stays in the bucket, world-readable + egress-billable, with no
+        // Asset row pointing at it (an orphan).
+        await this.storage.delete(storagePath).catch(() => undefined);
+        throw realCapError;
+      }
+    }
+
     const asset = await this.prisma.client.asset.create({
       data: {
         tenantId: req.user.tenantId,
@@ -863,6 +924,17 @@ export class AssetsController {
     // normalized bytes for both the upload AND the SHA-256 hash so we
     // never crash with ERR_INVALID_ARG_TYPE on createHash.
     const safeBuffer = this.storage.toSafeBuffer(file.buffer);
+
+    // BUG #7 FIX — per-type size cap enforcement on the legacy multipart
+    // path. Multer's `limits.fileSize` (500 MB) is the ONLY size gate this
+    // handler had; the tighter per-type egress caps (video 50 MB, image/
+    // audio/pdf 25 MB) were never applied here, so a 300 MB video sailed
+    // straight into storage. Unlike the presigned path, the REAL bytes are
+    // in-process (`safeBuffer.length` — the actual uploaded size, before any
+    // optimization), so we can enforce the exact cap authoritatively against
+    // the real mime here and reject with the shared error envelope.
+    const legacyCapError = perTypeSizeCapError(file.mimetype, safeBuffer.length);
+    if (legacyCapError) throw legacyCapError;
 
     // Audit P0-5 (2026-05-27) — sharp-based resize inline before storing.
     //   * Images (JPEG / PNG / WebP): re-encode at 1920px longest side,
