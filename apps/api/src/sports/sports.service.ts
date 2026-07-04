@@ -54,6 +54,7 @@ import {
   linkRosterPlayerToPerson,
 } from './sports-stats.service';
 import { FeatureFlagsService, FLAGS } from '../feature-flags/feature-flags.service';
+import { withDbRetry } from '../prisma/with-db-retry';
 
 /**
  * VenueOS Sports — Sprint 13. The game engine service.
@@ -236,6 +237,74 @@ export class SportsService {
    *  ownership without otherwise touching the game, e.g. feed-credentials). */
   async assertGameOwned(tenantId: string, id: string): Promise<void> {
     await this.owned(tenantId, id);
+  }
+
+  /**
+   * Sports-stats-race fix (2026-07-03, verified data race): serializes every
+   * read-modify-write on `Game.stats` for a given game.
+   *
+   * THE BUG this closes: `Game.stats` is a single JSON blob mutated by
+   * whole-blob read-modify-write from BOTH the operator's PATCH
+   * (`updateStats`) AND the ~5Hz CTS/swim-timing feed ingest
+   * (`ingestCtsSnapshot` / `ingestSwimTimingSnapshot`), plus the
+   * set-sport/segment-advance paths (`applySetWin`, `setSegment`). Two
+   * writers racing on the same row each read the SAME `{penalties:[]}`,
+   * one commits `[P1]`, and the other's stale-read write erases it —
+   * observed window ~200ms, wide open on the flagship CTS + water-polo
+   * path. This is the classic lost-update anomaly; `UPDATE ... SET
+   * stats = $1 WHERE id = $2` gives Postgres no way to know the write
+   * depends on a value that changed underneath it.
+   *
+   * THE FIX: every writer re-reads the game FRESH *inside* a
+   * `Serializable` transaction, and hands that fresh row to its own
+   * merge logic (unchanged) via `mutate`. Under SERIALIZABLE, if two
+   * transactions' read/write sets conflict, PostgreSQL's SSI aborts the
+   * loser with a 40001 (Prisma P2034) instead of silently letting a
+   * stale write land. `withDbRetry` (already used for the identical
+   * seat-claim race in `screens.controller.ts`'s `pair()` — see the
+   * P2-B comment there) treats P2034 as transient and re-runs the WHOLE
+   * thunk — including the fresh read — so the retry sees the winner's
+   * committed write and merges on top of it instead of clobbering it.
+   * A non-transient error (validation, NotFound) is not P2034 and is
+   * re-thrown immediately, no wasted retry.
+   *
+   * `mutate` receives the transaction client (`tx`) and the freshly
+   * re-read game row, and returns the Prisma `data` patch to write (the
+   * SAME shape each caller already built by hand) — merge/derivation
+   * logic is untouched, only the read+write now happen atomically
+   * against a fresh snapshot instead of a stale pre-transaction read.
+   * Returns `{ game: freshGameReadInsideTx, updated: writeResult }` so
+   * callers that need the pre-write snapshot for a diff (oldValues,
+   * prevScores, etc.) get one that is guaranteed consistent with the
+   * write that actually landed — not the possibly-stale row read before
+   * the transaction opened.
+   */
+  private async withStatsTx<D extends Record<string, unknown>>(
+    gameId: string,
+    label: string,
+    mutate: (tx: any, game: any) => Promise<D> | D,
+  ): Promise<{ game: any; updated: any }> {
+    return withDbRetry(
+      () =>
+        this.prisma.client.$transaction(
+          async (tx: any) => {
+            const fresh = await tx.game.findUnique({ where: { id: gameId } });
+            if (!fresh) throw new NotFoundException('Game not found');
+            const data = await mutate(tx, fresh);
+            const updated = await tx.game.update({ where: { id: gameId }, data });
+            return { game: fresh, updated };
+          },
+          {
+            isolationLevel: 'Serializable',
+            // Same headroom as the seat-claim tx (screens.controller.ts
+            // pair()) — Supabase pgbouncer + SERIALIZABLE can occasionally
+            // push past the 5s default on first connection.
+            timeout: 20000,
+            maxWait: 10000,
+          },
+        ),
+      { label },
+    );
   }
 
   // ── feed-token revocation (Sprint 13) ─────────────────────────
@@ -2365,13 +2434,18 @@ export class SportsService {
    *    `wonKey` in-window (the legacy macro's raw PATCH has none) means
    *    an external actor already applied this set's credit.
    */
-  private async setCreditAlreadyApplied(gameId: string, wonKey: string): Promise<boolean> {
-    const lastSegmentEvent = await this.prisma.client.gameEvent.findFirst({
+  private async setCreditAlreadyApplied(
+    gameId: string,
+    wonKey: string,
+    tx?: any,
+  ): Promise<boolean> {
+    const client = tx ?? this.prisma.client;
+    const lastSegmentEvent = await client.gameEvent.findFirst({
       where: { gameId, type: 'SEGMENT' },
       orderBy: { createdAt: 'desc' },
     });
     const since = lastSegmentEvent?.createdAt;
-    const recentStatEvents = await this.prisma.client.gameEvent.findMany({
+    const recentStatEvents = await client.gameEvent.findMany({
       where: {
         gameId,
         type: 'STAT',
@@ -2394,203 +2468,242 @@ export class SportsService {
     id: string,
     dto: { segment?: number; delta?: number },
   ) {
-    const game = await this.owned(tenantId, id);
-    const def = this.sportOf(game.sport);
-
-    // Capture prev state for undo rail before any mutation.
-    const prevSegment = game.segment;
-    const prevClockMs = game.clockMs;
-
-    let segment = game.segment;
-    if (typeof dto.segment === 'number') {
-      segment = Math.round(dto.segment);
-    } else if (typeof dto.delta === 'number') {
-      segment = game.segment + Math.round(dto.delta);
-    } else {
+    // Ownership + input validation outside the tx (cheap; a bad dto
+    // should never be retried by withDbRetry).
+    await this.owned(tenantId, id);
+    if (typeof dto.segment !== 'number' && typeof dto.delta !== 'number') {
       throw new BadRequestException('provide segment or delta');
     }
-    // Allow overtime segments past the regulation count when the sport
-    // supports OT; otherwise clamp to [1, count].
-    const max = def.segment.overtime ? def.segment.count + 10 : def.segment.count;
-    segment = Math.min(max, Math.max(1, segment));
 
-    // Advancing the segment resets the clock to the segment start and
-    // stops it — for countdown AND countup. Count-up halves restart
-    // from 0; without re-anchoring here, a running soccer clock would
-    // jump forward by the entire halftime gap. 'none' clocks (baseball,
-    // volleyball) have no clock to reset.
-    const now = new Date();
-    const data: Record<string, unknown> = { segment };
-    if (def.clock.type !== 'none') {
-      // Football OT is untimed (possession-based, 1st-and-goal from the
-      // 25 in HS/NCAA) — re-anchoring the game clock to 12:00 in OT is
-      // wrong. When football crosses past the regulation quarter count,
-      // zero the game clock (and leave it stopped) so the board hides /
-      // zeros it for OT instead of showing a fake quarter clock. Every
-      // other countdown sport, and football's regulation quarters, keep
-      // the normal segment-start re-anchor. (2026-06-13 audit P2.)
-      const footballOT =
-        def.key === 'football' && segment > def.segment.count;
-      data.clockMs = footballOT ? 0 : this.segmentStartMs(def);
-      data.clockRunning = false;
-      data.clockUpdatedAt = now;
-    }
-
-    // Volleyball / pickleball: a clockless set/game sport carries its
-    // rally score (points-to-target) across NO clock boundary — so a
-    // manual FORWARD segment advance ("next set") must zero the point
-    // score, or the new set opens showing the old set's tally. (Baseball
-    // is also clockless, but its segment is an Inning and the score is
-    // cumulative — only set/game sports zero.) Best-in-industry: credit
-    // the just-finished set/game to whichever side led it, so the match
-    // set count (e.g. 2–1) stays correct even when the operator advances
-    // by hand instead of scoring the set-winning point.
-    const isSetGameSport =
-      def.clock.type === 'none' &&
-      (def.segment.name === 'Set' || def.segment.name === 'Game');
-    const advancingForward = segment > prevSegment;
-    const prevHomeScore = Number(game.homeScore) || 0;
-    const prevAwayScore = Number(game.awayScore) || 0;
+    // Sports-stats-race fix (2026-07-03): this method merges into
+    // `Game.stats` (segment-reset stat deltas, shot-clock/play-clock
+    // reset, lineScore, and the volleyball/pickleball set-won credit) —
+    // the SAME JSON blob the ~5Hz CTS feed and the operator's stat PATCH
+    // both read-modify-write. The merge (and the prev-state snapshot
+    // used for the undo rail + line-score diff) now runs against a
+    // FRESH read taken inside a Serializable transaction via
+    // `withStatsTx`, so a concurrent CTS/operator write can't be
+    // clobbered by this segment-advance write, and a losing transaction
+    // is retried against the winner's committed state instead of
+    // silently overwriting it. Merge logic below is unchanged.
+    let segment = 0;
+    let prevSegment = 0;
+    let prevClockMs = 0;
     let zeroedScores = false;
-    // The set/game-won credit (homeSets/awaySets or homeGames/awayGames)
-    // is merged into the stats write below; null = no credit this advance.
     let setGameWonKey: string | null = null;
     let setGameWonVal = 0;
-    if (isSetGameSport && advancingForward) {
-      // Legacy-EndSetMacro double-credit guard (2026-07-02 sports deep-pass
-      // audit, task #289): the OLD (pre-S1-5) client macro fires FOUR
-      // near-simultaneous, unawaited mutations — a raw stats PATCH that
-      // credits the set-win counter, a score-zero PATCH, a cue fire, and
-      // THIS segment-advance PATCH. When the stats-credit PATCH lands on
-      // the server before this call's read, `game.stats[setGameWonKey]`
-      // already reflects that credit, and crediting again here double-
-      // counts the set (net +2 instead of +1) even though this method
-      // only runs once. The raw counter alone can't tell "the true prior
-      // count" from "the true prior count plus a credit that just raced
-      // in" — both are indistinguishable integers — so the guard consults
-      // the immutable GameEvent log (untouched by that sibling PATCH) for
-      // a STAT credit to the SAME won-key recorded since the current set
-      // began (i.e. since the last SEGMENT advance). If one already
-      // landed, the credit for this transition is already applied —
-      // skip crediting AND skip re-zeroing (the sibling score-zero PATCH
-      // owns that), and just advance the segment. The atomic
-      // `endSegmentAtomic` endpoint (S1-5) is unaffected — it never
-      // calls this method.
-      const isPickle = def.key === 'pickleball';
-      const homeLed = prevHomeScore > prevAwayScore;
-      const candidateWonKey =
-        prevHomeScore !== prevAwayScore
-          ? isPickle
-            ? homeLed
-              ? 'homeGames'
-              : 'awayGames'
-            : homeLed
-              ? 'homeSets'
-              : 'awaySets'
-          : null;
-      const alreadyCredited =
-        candidateWonKey !== null &&
-        (await this.setCreditAlreadyApplied(id, candidateWonKey));
-
-      // Only zero if there's actually a carried-over score to clear, and
-      // only if a sibling mutation hasn't already credited this set (that
-      // sibling's own score-zero PATCH — mutation 2 of the legacy macro —
-      // owns zeroing in that case, whether it has landed yet or not).
-      if (!alreadyCredited && (prevHomeScore !== 0 || prevAwayScore !== 0)) {
-        data.homeScore = 0;
-        data.awayScore = 0;
-        zeroedScores = true;
-      }
-      // Credit the set/game won to the leader of the set just finished —
-      // unless it was already credited by a racing sibling mutation.
-      if (!alreadyCredited && candidateWonKey) {
-        setGameWonKey = candidateWonKey;
-        const cur =
-          game.stats && typeof game.stats === 'object'
-            ? Number((game.stats as Record<string, unknown>)[setGameWonKey]) || 0
-            : 0;
-        // Clamp to the stat's configured max (homeSets/awaySets max 3 best-of-5,
-        // homeGames/awayGames max 2) so a stray forward advance past a finished
-        // match can't push the set/game count past its legal ceiling.
-        const wonMax = def.stats.find((s) => s.key === setGameWonKey)?.max;
-        setGameWonVal = typeof wonMax === 'number' ? Math.min(cur + 1, wonMax) : cur + 1;
-      }
-    }
-
-    // T2-10: apply per-sport segment-reset rules AND T2-7's football
-    // play-clock reset in one merged stats write. Both are
-    // complementary: T2-10 handles homeFouls/awayFouls/timeouts/shot
-    // clock per SportDefinition; T2-7 specifically resets the football
-    // play clock to 40s on quarter advance.
-    const { statDeltas, shotClockReset } = this.computeSegmentResets(
-      def,
-      game.stats,
-      segment,
-    );
-    let mergedStats: Record<string, unknown> =
-      game.stats && typeof game.stats === 'object'
-        ? { ...(game.stats as Record<string, unknown>) }
-        : {};
-    if (Object.keys(statDeltas).length > 0) {
-      mergedStats = { ...mergedStats, ...statDeltas };
-    }
-    if (shotClockReset && def.shotClock) {
-      const fullMs = def.shotClock.full * 1000;
-      // Clamp shot clock to the (just-reset) game clock — both start at
-      // their segment-start values, so this is a no-op in normal play but
-      // keeps the invariant clean (Invariant #6 from the clock state doc).
-      const gameClockMs = data.clockMs !== undefined
-        ? Number(data.clockMs)
-        : this.segmentStartMs(def);
-      const clampedMs = Math.min(fullMs, gameClockMs);
-      const prevShotClock =
-        mergedStats.shotClock && typeof mergedStats.shotClock === 'object'
-          ? (mergedStats.shotClock as Record<string, unknown>)
-          : {};
-      const len = Number(prevShotClock.len) || 0;
-      if (len > 0) {
-        // Only reset if a shot clock length is configured.
-        mergedStats.shotClock = {
-          len,
-          ms: clampedMs,
-          at: now.toISOString(),
-          running: false,
-        };
-      }
-    }
-    // T2-7: football play-clock reset to 40s on quarter advance.
-    if (def.key === 'football' && mergedStats.playClock) {
-      mergedStats.playClock = { ms: 40_000, at: now.toISOString(), running: false };
-    }
-    // LINE SCORE (2026-06-13 audit — board cross-domain contract): on a
-    // FORWARD advance for baseball/softball (per-inning) and football
-    // (per-quarter), snapshot the cumulative score at the segment boundary
-    // into stats.lineScore so the board can render the box grid. The score
-    // is NOT mutated here (innings carry runs; quarters carry points), so
-    // we read the current game totals as the boundary snapshot. The board
-    // differences consecutive snapshots for per-segment values.
+    let statDeltas: Record<string, unknown> = {};
+    let shotClockReset = false;
+    let mergedStats: Record<string, unknown> = {};
     let lineScore: Array<{ segment: number; home: number; away: number }> | null = null;
-    if (advancingForward) {
-      lineScore = this.computeLineScore(
-        def,
-        mergedStats,
-        prevSegment,
-        segment,
-        prevHomeScore,
-        prevAwayScore,
-      );
-      if (lineScore) mergedStats.lineScore = lineScore;
-    }
-    // Volleyball / pickleball: credit the just-finished set/game to its
-    // leader (computed above) into the merged stats write.
-    if (setGameWonKey) {
-      mergedStats[setGameWonKey] = setGameWonVal;
-    }
-    if (Object.keys(mergedStats).length > 0) {
-      data.stats = mergedStats as any;
-    }
+    let prevHomeScore = 0;
+    let prevAwayScore = 0;
+    // Snapshot of pre-write stats values for the STAT GameEvents' oldValues
+    // below — captured from the SAME fresh read `mutate` used for the
+    // merge (not a stale outer read), so a retry's oldValues stay
+    // consistent with whichever attempt actually committed.
+    let statsBeforeWrite: Record<string, unknown> = {};
+    let shotClockAfterWrite: unknown;
+    let sportDefShotClock: SportDefinition['shotClock'];
 
-    const updated = await this.prisma.client.game.update({ where: { id }, data });
+    const { updated } = await this.withStatsTx(id, 'sports.setSegment', async (tx, game) => {
+      const def = this.sportOf(game.sport);
+      sportDefShotClock = def.shotClock;
+      statsBeforeWrite =
+        game.stats && typeof game.stats === 'object'
+          ? (game.stats as Record<string, unknown>)
+          : {};
+
+      // Capture prev state for undo rail from THIS (fresh) read.
+      prevSegment = game.segment;
+      prevClockMs = game.clockMs;
+
+      segment = game.segment;
+      if (typeof dto.segment === 'number') {
+        segment = Math.round(dto.segment);
+      } else if (typeof dto.delta === 'number') {
+        segment = game.segment + Math.round(dto.delta);
+      }
+      // Allow overtime segments past the regulation count when the sport
+      // supports OT; otherwise clamp to [1, count].
+      const max = def.segment.overtime ? def.segment.count + 10 : def.segment.count;
+      segment = Math.min(max, Math.max(1, segment));
+
+      // Advancing the segment resets the clock to the segment start and
+      // stops it — for countdown AND countup. Count-up halves restart
+      // from 0; without re-anchoring here, a running soccer clock would
+      // jump forward by the entire halftime gap. 'none' clocks (baseball,
+      // volleyball) have no clock to reset.
+      const now = new Date();
+      const data: Record<string, unknown> = { segment };
+      if (def.clock.type !== 'none') {
+        // Football OT is untimed (possession-based, 1st-and-goal from the
+        // 25 in HS/NCAA) — re-anchoring the game clock to 12:00 in OT is
+        // wrong. When football crosses past the regulation quarter count,
+        // zero the game clock (and leave it stopped) so the board hides /
+        // zeros it for OT instead of showing a fake quarter clock. Every
+        // other countdown sport, and football's regulation quarters, keep
+        // the normal segment-start re-anchor. (2026-06-13 audit P2.)
+        const footballOT =
+          def.key === 'football' && segment > def.segment.count;
+        data.clockMs = footballOT ? 0 : this.segmentStartMs(def);
+        data.clockRunning = false;
+        data.clockUpdatedAt = now;
+      }
+
+      // Volleyball / pickleball: a clockless set/game sport carries its
+      // rally score (points-to-target) across NO clock boundary — so a
+      // manual FORWARD segment advance ("next set") must zero the point
+      // score, or the new set opens showing the old set's tally. (Baseball
+      // is also clockless, but its segment is an Inning and the score is
+      // cumulative — only set/game sports zero.) Best-in-industry: credit
+      // the just-finished set/game to whichever side led it, so the match
+      // set count (e.g. 2–1) stays correct even when the operator advances
+      // by hand instead of scoring the set-winning point.
+      const isSetGameSport =
+        def.clock.type === 'none' &&
+        (def.segment.name === 'Set' || def.segment.name === 'Game');
+      const advancingForward = segment > prevSegment;
+      prevHomeScore = Number(game.homeScore) || 0;
+      prevAwayScore = Number(game.awayScore) || 0;
+      zeroedScores = false;
+      setGameWonKey = null;
+      setGameWonVal = 0;
+      if (isSetGameSport && advancingForward) {
+        // Legacy-EndSetMacro double-credit guard (2026-07-02 sports deep-pass
+        // audit, task #289): the OLD (pre-S1-5) client macro fires FOUR
+        // near-simultaneous, unawaited mutations — a raw stats PATCH that
+        // credits the set-win counter, a score-zero PATCH, a cue fire, and
+        // THIS segment-advance PATCH. When the stats-credit PATCH lands on
+        // the server before this call's read, `game.stats[setGameWonKey]`
+        // already reflects that credit, and crediting again here double-
+        // counts the set (net +2 instead of +1) even though this method
+        // only runs once. The raw counter alone can't tell "the true prior
+        // count" from "the true prior count plus a credit that just raced
+        // in" — both are indistinguishable integers — so the guard consults
+        // the immutable GameEvent log (untouched by that sibling PATCH) for
+        // a STAT credit to the SAME won-key recorded since the current set
+        // began (i.e. since the last SEGMENT advance). If one already
+        // landed, the credit for this transition is already applied —
+        // skip crediting AND skip re-zeroing (the sibling score-zero PATCH
+        // owns that), and just advance the segment. The atomic
+        // `endSegmentAtomic` endpoint (S1-5) is unaffected — it never
+        // calls this method.
+        const isPickle = def.key === 'pickleball';
+        const homeLed = prevHomeScore > prevAwayScore;
+        const candidateWonKey =
+          prevHomeScore !== prevAwayScore
+            ? isPickle
+              ? homeLed
+                ? 'homeGames'
+                : 'awayGames'
+              : homeLed
+                ? 'homeSets'
+                : 'awaySets'
+            : null;
+        const alreadyCredited =
+          candidateWonKey !== null &&
+          (await this.setCreditAlreadyApplied(id, candidateWonKey, tx));
+
+        // Only zero if there's actually a carried-over score to clear, and
+        // only if a sibling mutation hasn't already credited this set (that
+        // sibling's own score-zero PATCH — mutation 2 of the legacy macro —
+        // owns zeroing in that case, whether it has landed yet or not).
+        if (!alreadyCredited && (prevHomeScore !== 0 || prevAwayScore !== 0)) {
+          data.homeScore = 0;
+          data.awayScore = 0;
+          zeroedScores = true;
+        }
+        // Credit the set/game won to the leader of the set just finished —
+        // unless it was already credited by a racing sibling mutation.
+        if (!alreadyCredited && candidateWonKey) {
+          setGameWonKey = candidateWonKey;
+          const cur =
+            game.stats && typeof game.stats === 'object'
+              ? Number((game.stats as Record<string, unknown>)[candidateWonKey]) || 0
+              : 0;
+          // Clamp to the stat's configured max (homeSets/awaySets max 3 best-of-5,
+          // homeGames/awayGames max 2) so a stray forward advance past a finished
+          // match can't push the set/game count past its legal ceiling.
+          const wonMax = def.stats.find((s) => s.key === candidateWonKey)?.max;
+          setGameWonVal = typeof wonMax === 'number' ? Math.min(cur + 1, wonMax) : cur + 1;
+        }
+      }
+
+      // T2-10: apply per-sport segment-reset rules AND T2-7's football
+      // play-clock reset in one merged stats write. Both are
+      // complementary: T2-10 handles homeFouls/awayFouls/timeouts/shot
+      // clock per SportDefinition; T2-7 specifically resets the football
+      // play clock to 40s on quarter advance.
+      const resets = this.computeSegmentResets(def, game.stats, segment);
+      statDeltas = resets.statDeltas;
+      shotClockReset = resets.shotClockReset;
+      mergedStats =
+        game.stats && typeof game.stats === 'object'
+          ? { ...(game.stats as Record<string, unknown>) }
+          : {};
+      if (Object.keys(statDeltas).length > 0) {
+        mergedStats = { ...mergedStats, ...statDeltas };
+      }
+      if (shotClockReset && def.shotClock) {
+        const fullMs = def.shotClock.full * 1000;
+        // Clamp shot clock to the (just-reset) game clock — both start at
+        // their segment-start values, so this is a no-op in normal play but
+        // keeps the invariant clean (Invariant #6 from the clock state doc).
+        const gameClockMs = data.clockMs !== undefined
+          ? Number(data.clockMs)
+          : this.segmentStartMs(def);
+        const clampedMs = Math.min(fullMs, gameClockMs);
+        const prevShotClock =
+          mergedStats.shotClock && typeof mergedStats.shotClock === 'object'
+            ? (mergedStats.shotClock as Record<string, unknown>)
+            : {};
+        const len = Number(prevShotClock.len) || 0;
+        if (len > 0) {
+          // Only reset if a shot clock length is configured.
+          mergedStats.shotClock = {
+            len,
+            ms: clampedMs,
+            at: now.toISOString(),
+            running: false,
+          };
+        }
+      }
+      // T2-7: football play-clock reset to 40s on quarter advance.
+      if (def.key === 'football' && mergedStats.playClock) {
+        mergedStats.playClock = { ms: 40_000, at: now.toISOString(), running: false };
+      }
+      // LINE SCORE (2026-06-13 audit — board cross-domain contract): on a
+      // FORWARD advance for baseball/softball (per-inning) and football
+      // (per-quarter), snapshot the cumulative score at the segment boundary
+      // into stats.lineScore so the board can render the box grid. The score
+      // is NOT mutated here (innings carry runs; quarters carry points), so
+      // we read the current game totals as the boundary snapshot. The board
+      // differences consecutive snapshots for per-segment values.
+      lineScore = null;
+      if (advancingForward) {
+        lineScore = this.computeLineScore(
+          def,
+          mergedStats,
+          prevSegment,
+          segment,
+          prevHomeScore,
+          prevAwayScore,
+        );
+        if (lineScore) mergedStats.lineScore = lineScore;
+      }
+      // Volleyball / pickleball: credit the just-finished set/game to its
+      // leader (computed above) into the merged stats write.
+      if (setGameWonKey) {
+        mergedStats[setGameWonKey] = setGameWonVal;
+      }
+      if (Object.keys(mergedStats).length > 0) {
+        data.stats = mergedStats as any;
+      }
+      shotClockAfterWrite = mergedStats.shotClock;
+      return data;
+    });
+
     await this.record(id, 'SEGMENT', {
       segment,
       // Undo rail: prev segment + prev clock so the inverse can restore both.
@@ -2624,10 +2737,7 @@ export class SportsService {
       });
     }
     if (setGameWonKey) {
-      const oldVal =
-        game.stats && typeof game.stats === 'object'
-          ? (game.stats as Record<string, unknown>)[setGameWonKey] ?? null
-          : null;
+      const oldVal = statsBeforeWrite[setGameWonKey] ?? null;
       await this.record(id, 'STAT', {
         stats: { [setGameWonKey]: setGameWonVal },
         oldValues: { [setGameWonKey]: oldVal },
@@ -2639,10 +2749,7 @@ export class SportsService {
     // T2-10: write individual STAT GameEvents for each reset field so the
     // undo rail can target them independently.
     for (const [key, newVal] of Object.entries(statDeltas)) {
-      const oldVal =
-        game.stats && typeof game.stats === 'object'
-          ? (game.stats as Record<string, unknown>)[key] ?? null
-          : null;
+      const oldVal = statsBeforeWrite[key] ?? null;
       await this.record(id, 'STAT', {
         stats: { [key]: newVal },
         oldValues: { [key]: oldVal },
@@ -2650,9 +2757,9 @@ export class SportsService {
         segment,
       });
     }
-    if (shotClockReset && def.shotClock) {
+    if (shotClockReset && sportDefShotClock) {
       await this.record(id, 'STAT', {
-        stats: { shotClock: mergedStats.shotClock },
+        stats: { shotClock: shotClockAfterWrite },
         source: 'segment-reset',
         segment,
       });
@@ -2858,96 +2965,122 @@ export class SportsService {
     id: string,
     dto: { stats?: Record<string, unknown> },
   ) {
-    const game = await this.owned(tenantId, id);
+    // Ownership + shape validation happen OUTSIDE the tx (cheap, and a
+    // BadRequestException here should never be retried by withDbRetry).
+    await this.owned(tenantId, id);
     if (!dto.stats || typeof dto.stats !== 'object' || Array.isArray(dto.stats)) {
       throw new BadRequestException('stats must be an object');
     }
-    const def = this.sportOf(game.sport);
-    const allowed = new Set(def.stats.map((s) => s.key));
-    // 2026-05-27 — Pure-config keys that live on Game.stats JSON but
-    // aren't sport stats (no +/- chips on the scoreboard tile). Each
-    // is operator-set in Setup mode. Add new ones here as game-level
-    // settings expand; resist the urge to add per-sport state (those
-    // belong in def.stats so the type system can constrain them).
-    const META_KEYS = new Set([
-      'celebrationPack',
-    ]);
-    // Structured (array-valued) stat keys — finish results, basketball
-    // foul-trouble, water-polo exclusions. These ride on Game.stats JSON
-    // alongside the scalar keys but are arrays, so the scalar branch below
-    // (which drops non-scalars) would otherwise reject them. Each is
-    // validated + bounded by the shared sanitizer in @cms/api-types so the
-    // board surfaces read a predictable, capped shape. Additive: any key
-    // NOT here and NOT a scalar/META key is still dropped exactly as before.
-    const STRUCTURED_KEYS = new Set<string>(STRUCTURED_STAT_KEYS);
-    const current = (game.stats as Record<string, unknown>) || {};
-    // Snapshot the old values for every key being mutated — used by the
-    // undo rail to write `oldValue` into the STAT GameEvent payload.
-    const oldValues: Record<string, unknown> = {};
-    const next: Record<string, unknown> = { ...current };
-    for (const [key, value] of Object.entries(dto.stats)) {
-      // Structured keys: validate + sanitize the whole array into its
-      // bounded shape (caps the array at 64, each nested array at 64, every
-      // string ≤64 chars, every number coerced to a finite int in bounds,
-      // malformed members dropped). The sanitizer always returns an array,
-      // so an operator clearing a list (passing []) persists an empty list.
-      if (STRUCTURED_KEYS.has(key)) {
-        const sanitized = sanitizeStructuredStat(key, value);
-        if (sanitized !== undefined) {
-          oldValues[key] = current[key] ?? null;
-          next[key] = sanitized;
+
+    // Sports-stats-race fix (2026-07-03): the merge below used to read
+    // `game.stats` from the row fetched by `owned()` ABOVE, before this
+    // request's own processing time elapsed — the exact window the ~5Hz
+    // CTS feed (`ingestCtsSnapshot`) races through. Two concurrent RMWs
+    // reading the same `{penalties:[]}` each write back a full-blob
+    // replacement; whichever commits second erases the other's edit
+    // (e.g. the operator's penalty add clobbered by a stale CTS
+    // snapshot). `withStatsTx` re-reads the game FRESH inside a
+    // Serializable transaction and retries the whole merge on conflict,
+    // so the loser of a race re-reads the winner's committed write
+    // instead of clobbering it. Merge logic below is IDENTICAL to
+    // before — only the read+write now happen atomically.
+    let next: Record<string, unknown> = {};
+    let oldValues: Record<string, unknown> = {};
+    let segmentDelta = 0;
+    let wasStrikeout = false;
+    const wasWalkRef = { current: false };
+    let dataSegment: number | undefined;
+
+    const { updated } = await this.withStatsTx(id, 'sports.updateStats', (_tx, freshGame) => {
+      const def = this.sportOf(freshGame.sport);
+      const allowed = new Set(def.stats.map((s) => s.key));
+      // 2026-05-27 — Pure-config keys that live on Game.stats JSON but
+      // aren't sport stats (no +/- chips on the scoreboard tile). Each
+      // is operator-set in Setup mode. Add new ones here as game-level
+      // settings expand; resist the urge to add per-sport state (those
+      // belong in def.stats so the type system can constrain them).
+      const META_KEYS = new Set([
+        'celebrationPack',
+      ]);
+      // Structured (array-valued) stat keys — finish results, basketball
+      // foul-trouble, water-polo exclusions. These ride on Game.stats JSON
+      // alongside the scalar keys but are arrays, so the scalar branch below
+      // (which drops non-scalars) would otherwise reject them. Each is
+      // validated + bounded by the shared sanitizer in @cms/api-types so the
+      // board surfaces read a predictable, capped shape. Additive: any key
+      // NOT here and NOT a scalar/META key is still dropped exactly as before.
+      const STRUCTURED_KEYS = new Set<string>(STRUCTURED_STAT_KEYS);
+      const current = (freshGame.stats as Record<string, unknown>) || {};
+      // Snapshot the old values for every key being mutated — used by the
+      // undo rail to write `oldValue` into the STAT GameEvent payload.
+      oldValues = {};
+      next = { ...current };
+      for (const [key, value] of Object.entries(dto.stats as Record<string, unknown>)) {
+        // Structured keys: validate + sanitize the whole array into its
+        // bounded shape (caps the array at 64, each nested array at 64, every
+        // string ≤64 chars, every number coerced to a finite int in bounds,
+        // malformed members dropped). The sanitizer always returns an array,
+        // so an operator clearing a list (passing []) persists an empty list.
+        if (STRUCTURED_KEYS.has(key)) {
+          const sanitized = sanitizeStructuredStat(key, value);
+          if (sanitized !== undefined) {
+            oldValues[key] = current[key] ?? null;
+            next[key] = sanitized;
+          }
+          continue;
         }
-        continue;
+        if (!allowed.has(key) && !META_KEYS.has(key)) continue;
+        // Bound the value: strings capped at 200 chars, numbers/booleans
+        // pass, anything else (object/array) dropped — so a stat edit
+        // can't bloat the game's stats JSON column.
+        if (typeof value === 'string') {
+          oldValues[key] = current[key] ?? null;
+          next[key] = value.slice(0, 200);
+        } else if (typeof value === 'number' || typeof value === 'boolean') {
+          oldValues[key] = current[key] ?? null;
+          next[key] = value;
+        }
       }
-      if (!allowed.has(key) && !META_KEYS.has(key)) continue;
-      // Bound the value: strings capped at 200 chars, numbers/booleans
-      // pass, anything else (object/array) dropped — so a stat edit
-      // can't bloat the game's stats JSON column.
-      if (typeof value === 'string') {
-        oldValues[key] = current[key] ?? null;
-        next[key] = value.slice(0, 200);
-      } else if (typeof value === 'number' || typeof value === 'boolean') {
-        oldValues[key] = current[key] ?? null;
-        next[key] = value;
+
+      // Sport rules: the baseball/softball count cascades automatically.
+      // T2-10: capture pre-cascade state to detect strikeout / walk events
+      // so we can fire their celebration CUEs (both were dead code before).
+      const preStrikes = typeof next.strikes === 'number' ? next.strikes : 0;
+      const preBalls = typeof next.balls === 'number' ? next.balls : 0;
+      const preOuts = typeof next.outs === 'number' ? next.outs : 0;
+      const isBaseballSport = freshGame.sport === 'baseball' || freshGame.sport === 'softball';
+      const cascade = isBaseballSport
+        ? this.applyBaseballCount(next)
+        : { segmentDelta: 0, runsScored: 0 };
+      segmentDelta = cascade.segmentDelta;
+      // Detect what event(s) the cascade produced.
+      const postStrikes = typeof next.strikes === 'number' ? next.strikes : 0;
+      const postOuts = typeof next.outs === 'number' ? next.outs : 0;
+      wasStrikeout = isBaseballSport && preStrikes >= 3 && postStrikes === 0 && postOuts > preOuts;
+      wasWalkRef.current = isBaseballSport && preBalls >= 4 && postStrikes === 0;
+
+      const data: Record<string, unknown> = { stats: next as any };
+      if (segmentDelta) {
+        const max = def.segment.overtime ? def.segment.count + 10 : def.segment.count;
+        dataSegment = Math.min(max, freshGame.segment + segmentDelta);
+        data.segment = dataSegment;
       }
-    }
+      // A bases-loaded walk forces in a run — credit it to the team at bat.
+      // Top of the inning the AWAY team bats; Bottom, the HOME team bats.
+      // `next.half` is always set by applyBaseballCount and reflects the
+      // half the walk happened in (a walk never flips the half).
+      if (cascade.runsScored > 0) {
+        const battingTop = !String(next.half ?? 'Top').toLowerCase().startsWith('b');
+        const scoreCol = battingTop ? 'awayScore' : 'homeScore';
+        data[scoreCol] = { increment: cascade.runsScored };
+      }
+      return data;
+    });
+    const wasWalk = wasWalkRef.current;
 
-    // Sport rules: the baseball/softball count cascades automatically.
-    // T2-10: capture pre-cascade state to detect strikeout / walk events
-    // so we can fire their celebration CUEs (both were dead code before).
-    const preStrikes = typeof next.strikes === 'number' ? next.strikes : 0;
-    const preBalls = typeof next.balls === 'number' ? next.balls : 0;
-    const preOuts = typeof next.outs === 'number' ? next.outs : 0;
-    const isBaseballSport = game.sport === 'baseball' || game.sport === 'softball';
-    const cascade = isBaseballSport
-      ? this.applyBaseballCount(next)
-      : { segmentDelta: 0, runsScored: 0 };
-    const segmentDelta = cascade.segmentDelta;
-    // Detect what event(s) the cascade produced.
-    const postStrikes = typeof next.strikes === 'number' ? next.strikes : 0;
-    const postOuts = typeof next.outs === 'number' ? next.outs : 0;
-    const wasStrikeout = isBaseballSport && preStrikes >= 3 && postStrikes === 0 && postOuts > preOuts;
-    const wasWalk = isBaseballSport && preBalls >= 4 && postStrikes === 0;
-
-    const data: Record<string, unknown> = { stats: next as any };
-    if (segmentDelta) {
-      const max = def.segment.overtime ? def.segment.count + 10 : def.segment.count;
-      data.segment = Math.min(max, game.segment + segmentDelta);
-    }
-    // A bases-loaded walk forces in a run — credit it to the team at bat.
-    // Top of the inning the AWAY team bats; Bottom, the HOME team bats.
-    // `next.half` is always set by applyBaseballCount and reflects the
-    // half the walk happened in (a walk never flips the half).
-    if (cascade.runsScored > 0) {
-      const battingTop = !String(next.half ?? 'Top').toLowerCase().startsWith('b');
-      const scoreCol = battingTop ? 'awayScore' : 'homeScore';
-      data[scoreCol] = { increment: cascade.runsScored };
-    }
-
-    const updated = await this.prisma.client.game.update({ where: { id }, data });
     // Include oldValues alongside newValues so the undo rail can restore.
     await this.record(id, 'STAT', { stats: next, oldValues });
-    if (segmentDelta) await this.record(id, 'SEGMENT', { segment: data.segment });
+    if (segmentDelta) await this.record(id, 'SEGMENT', { segment: dataSegment });
 
     // T2-10: fire celebration CUEs for strikeout. The walk's mechanical
     // effects (count reset, force-advance, forced run) are handled in the
@@ -2956,6 +3089,7 @@ export class SportsService {
     // 'walk' celebration.
     void wasWalk; // suppress unused warning
     if (wasStrikeout) {
+      const def = this.sportOf(updated.sport);
       const strikeoutCue = def.celebrations.find((c) => c.key === 'strikeout');
       if (strikeoutCue) {
         await this.record(id, 'CUE', {
@@ -3085,35 +3219,47 @@ export class SportsService {
     const isPickle = def.key === 'pickleball';
     const homeKey = isPickle ? 'homeGames' : 'homeSets';
     const awayKey = isPickle ? 'awayGames' : 'awaySets';
-    const stats = { ...((game.stats as Record<string, unknown>) || {}) };
-    const wonKey = winner === 'home' ? homeKey : awayKey;
-    stats[wonKey] = n(stats[wonKey]) + 1;
 
-    // Best-of: volleyball is best-of-5 (need 3 sets), pickleball
-    // best-of-3 (need 2 games). majority = ceil((count + 1) / 2).
-    const needed = Math.ceil((def.segment.count + 1) / 2);
-    const matchOver = n(stats[homeKey]) >= needed || n(stats[awayKey]) >= needed;
+    // Sports-stats-race fix (2026-07-03): the set-win credit merges into
+    // `Game.stats` (homeSets/awaySets or homeGames/awayGames), the SAME
+    // JSON blob the ~5Hz CTS feed and the operator's stat PATCH both
+    // read-modify-write. `game` here is the row `adjustScore`/`setScore`
+    // already wrote the new score to — trustworthy for the win-threshold
+    // decision above — but `game.stats` can be stale by the time this
+    // runs. Re-read stats FRESH inside a Serializable tx (via
+    // `withStatsTx`) so a concurrent CTS/operator stats write isn't
+    // clobbered by this set-credit write. Merge logic is unchanged.
+    let matchOver = false;
+    let dataSegment: number | undefined;
+    const { updated } = await this.withStatsTx(game.id, 'sports.applySetWin', (_tx, freshGame) => {
+      const stats = { ...((freshGame.stats as Record<string, unknown>) || {}) };
+      const wonKey = winner === 'home' ? homeKey : awayKey;
+      stats[wonKey] = n(stats[wonKey]) + 1;
 
-    const data: Record<string, unknown> = {
-      stats: stats as any,
-      homeScore: 0,
-      awayScore: 0,
-    };
-    if (matchOver) {
-      data.status = 'FINAL';
-      data.endedAt = new Date();
-      data.clockRunning = false;
-    } else {
-      data.segment = Math.min(def.segment.count, game.segment + 1);
-    }
-    const updated = await this.prisma.client.game.update({
-      where: { id: game.id },
-      data,
+      // Best-of: volleyball is best-of-5 (need 3 sets), pickleball
+      // best-of-3 (need 2 games). majority = ceil((count + 1) / 2).
+      const needed = Math.ceil((def.segment.count + 1) / 2);
+      matchOver = n(stats[homeKey]) >= needed || n(stats[awayKey]) >= needed;
+
+      const data: Record<string, unknown> = {
+        stats: stats as any,
+        homeScore: 0,
+        awayScore: 0,
+      };
+      if (matchOver) {
+        data.status = 'FINAL';
+        data.endedAt = new Date();
+        data.clockRunning = false;
+      } else {
+        dataSegment = Math.min(def.segment.count, freshGame.segment + 1);
+        data.segment = dataSegment;
+      }
+      return data;
     });
     await this.record(
       game.id,
       matchOver ? 'STATUS' : 'SEGMENT',
-      matchOver ? { status: 'FINAL' } : { segment: data.segment },
+      matchOver ? { status: 'FINAL' } : { segment: dataSegment },
     );
 
     // T2-10: fire the 'setWin' celebration CUE — it was dead code before
@@ -5065,13 +5211,15 @@ export class SportsService {
   ): Promise<{ ok: true; accepted: boolean; reason?: string }> {
     // Tenant-scope the load when an authenticated user is calling. The
     // public feed-token path resolves the game without a tenant filter
-    // (the token itself proves game ownership).
-    const game = auth.tenantId
+    // (the token itself proves game ownership). This first read is only
+    // an auth/existence gate + the input for the "empty snapshot" bail
+    // below — the actual merge re-reads fresh inside withStatsTx.
+    const gate = auth.tenantId
       ? await this.prisma.client.game.findFirst({
           where: { id: gameId, tenantId: auth.tenantId },
         })
       : await this.prisma.client.game.findUnique({ where: { id: gameId } });
-    if (!game) {
+    if (!gate) {
       throw new NotFoundException('Game not found');
     }
 
@@ -5099,187 +5247,220 @@ export class SportsService {
       return { ok: true, accepted: false, reason: 'empty snapshot' };
     }
 
-    const prevStats: Record<string, unknown> =
-      game.stats && typeof game.stats === 'object'
-        ? { ...(game.stats as Record<string, unknown>) }
-        : {};
-    const prevCts: Record<string, unknown> =
-      prevStats.cts && typeof prevStats.cts === 'object'
-        ? (prevStats.cts as Record<string, unknown>)
-        : {};
+    // Sports-stats-race fix (2026-07-03) — THE flagship bug: this is the
+    // ~5Hz CTS write side of the lost-update race against the operator's
+    // `updateStats` PATCH. Both used to read-modify-write the same
+    // `Game.stats` JSON blob from a plain (non-transactional) read, so
+    // whichever commit landed second silently erased the other's edit
+    // (e.g. an operator's penalty add clobbered by the next CTS tick).
+    // `withStatsTx` re-reads the game FRESH inside a Serializable
+    // transaction on every attempt; a conflicting concurrent writer
+    // aborts one side (Postgres 40001 → Prisma P2034), and `withDbRetry`
+    // re-runs this WHOLE callback — including the fresh read — so the
+    // loser merges on top of the winner's committed write instead of
+    // stomping it. All merge logic below is IDENTICAL to before; only
+    // the read+write are now atomic.
+    let prevScores = { homeScore: gate.homeScore, awayScore: gate.awayScore };
+    let scoreChanged = false;
+    let segmentChanged = false;
+    let clockRunChanged = false;
+    let horn = false;
+    let wantsAudit = false;
+    let reconnect = false;
+    let syntheticNext: any = gate;
 
-    const nowIso = new Date().toISOString();
-    const nextCts: Record<string, unknown> = {
-      ...prevCts,
-      ...cleaned,
-      lastUpdateAt: nowIso,
-    };
+    await this.withStatsTx(gameId, 'sports.ingestCtsSnapshot', async (tx, game) => {
+      const prevStats: Record<string, unknown> =
+        game.stats && typeof game.stats === 'object'
+          ? { ...(game.stats as Record<string, unknown>) }
+          : {};
+      const prevCts: Record<string, unknown> =
+        prevStats.cts && typeof prevStats.cts === 'object'
+          ? (prevStats.cts as Record<string, unknown>)
+          : {};
 
-    // What changed forensically? Score / segment / clockRunning / horn
-    // are the audit-worthy transitions; clockMs ticks are not.
-    const lastAuditAt =
-      typeof prevCts.lastAuditAt === 'string' ? Date.parse(prevCts.lastAuditAt) : 0;
-    const reconnect =
-      !Number.isFinite(Date.parse(String(prevCts.lastUpdateAt))) ||
-      Date.now() - Date.parse(String(prevCts.lastUpdateAt)) > 5000;
-    const scoreChanged =
-      (cleaned.homeScore !== undefined && cleaned.homeScore !== prevCts.homeScore) ||
-      (cleaned.awayScore !== undefined && cleaned.awayScore !== prevCts.awayScore);
-    const segmentChanged =
-      cleaned.segment !== undefined && cleaned.segment !== prevCts.segment;
-    const clockRunChanged =
-      cleaned.clockRunning !== undefined && cleaned.clockRunning !== prevCts.clockRunning;
-    const horn = cleaned.horn === true && !prevCts.horn;
-    // Audit cap: at most one audit row per 1s of forensically uninteresting
-    // updates (clock-only ticks). Score / segment / horn / reconnect always
-    // audit immediately.
-    const wantsAudit =
-      reconnect || scoreChanged || segmentChanged || clockRunChanged || horn ||
-      Date.now() - (Number.isFinite(lastAuditAt) ? lastAuditAt : 0) > 60_000;
-    if (wantsAudit) {
-      nextCts.lastAuditAt = nowIso;
-    }
-
-    // "All the same rules apply if we are doing it or the integration is
-    // doing it." (Greg's rule) — fire the same side-effect chain the
-    // operator-path helpers run, scoped to what actually changed.
-    //
-    // NOTE — write-through contract (revised 2026-06-12, sports-venue audit
-    // P0): SCORE and SEGMENT now write THROUGH to the operator columns
-    // (homeScore/awayScore/segment) when the console reports a change,
-    // guarded by a 15s manual-override window (a recent operator SCORE
-    // event wins until the console's value next changes). Why the old
-    // overlay-only design was a game-night bug, twice over:
-    //   1. When the CTS feed dropped, the 5s render freshness window
-    //      expired and every public surface reverted to the operator
-    //      columns — which still said 0-0 from pre-game. The crowd saw the
-    //      wrong score within seconds of a serial hiccup.
-    //   2. AUTO celebrations compute deltas vs the operator columns; since
-    //      CTS never moved them, goal #2 arrived as delta=2 (no water-polo
-    //      cue matches) and auto-celebration silently died after goal #1.
-    // CLOCK columns (clockMs/clockRunning) intentionally REMAIN overlay-
-    // only: the 5 Hz tick stays out of the columns, and the penalty-box /
-    // shot-clock sync helpers below already consume the CTS-reported
-    // running state directly.
-
-    // Prev scores come from OPERATOR columns, not from stats.cts, so the
-    // delta math is consistent with adjustScore/setScore.
-    const prevScores = { homeScore: game.homeScore, awayScore: game.awayScore };
-    const now = new Date();
-
-    // Build the merged stats write so we do a single DB update.
-    // Clock-running transition: slave the penalty box and shot clock —
-    // same helper chain clockAction uses, same "clockMutated = true" flag.
-    let mergedStatsForWrite: Record<string, unknown> = { ...prevStats, cts: nextCts };
-
-    // T2-1: merge CTS exclusions into stats.penalties (top-level, source:'cts')
-    // so the existing penalty-box render path can consume them alongside
-    // operator-entered penalties.  We replace only the 'cts'-sourced slots;
-    // operator-entered penalties (source != 'cts') are preserved.
-    if (cleaned.homeExclusions !== undefined || cleaned.awayExclusions !== undefined) {
-      const prevPenalties = Array.isArray(mergedStatsForWrite.penalties)
-        ? (mergedStatsForWrite.penalties as unknown[]).filter(
-            (p) => p && typeof p === 'object' && (p as Record<string, unknown>).source !== 'cts',
-          )
-        : [];
-      const ctsPenalties: unknown[] = [];
-      if (cleaned.homeExclusions) {
-        cleaned.homeExclusions.forEach((slot, i) => {
-          if (slot && (slot.playerJersey > 0 || slot.secondsRemaining > 0)) {
-            ctsPenalties.push({
-              source: 'cts',
-              team: 'home',
-              slot: i,
-              playerJersey: slot.playerJersey,
-              secondsRemaining: slot.secondsRemaining,
-            });
-          }
-        });
-      }
-      if (cleaned.awayExclusions) {
-        cleaned.awayExclusions.forEach((slot, i) => {
-          if (slot && (slot.playerJersey > 0 || slot.secondsRemaining > 0)) {
-            ctsPenalties.push({
-              source: 'cts',
-              team: 'away',
-              slot: i,
-              playerJersey: slot.playerJersey,
-              secondsRemaining: slot.secondsRemaining,
-            });
-          }
-        });
-      }
-      mergedStatsForWrite = {
-        ...mergedStatsForWrite,
-        penalties: [...prevPenalties, ...ctsPenalties],
-        cts: nextCts,
+      const nowIso = new Date().toISOString();
+      const nextCts: Record<string, unknown> = {
+        ...prevCts,
+        ...cleaned,
+        lastUpdateAt: nowIso,
       };
-    }
 
-    // T2-1: merge CTS timeouts into stats.homeTimeouts / awayTimeouts.
-    // Only overwrites when CTS is the source so operator adjustments
-    // are not stomped when these fields are absent from the snapshot.
-    if (cleaned.homeTimeoutsRemaining !== undefined) {
-      mergedStatsForWrite = {
-        ...mergedStatsForWrite,
-        homeTimeouts: cleaned.homeTimeoutsRemaining,
-        cts: nextCts,
-      };
-    }
-    if (cleaned.awayTimeoutsRemaining !== undefined) {
-      mergedStatsForWrite = {
-        ...mergedStatsForWrite,
-        awayTimeouts: cleaned.awayTimeoutsRemaining,
-        cts: nextCts,
-      };
-    }
-
-    if (clockRunChanged && cleaned.clockRunning !== undefined) {
-      const running = cleaned.clockRunning;
-      let synced = this.syncPenaltiesToClock(mergedStatsForWrite, running, now);
-      const base = synced ?? mergedStatsForWrite;
-      // T2-10: pass the CTS-reported game clock for clamping (Invariant #6).
-      const ctsGameClockMs = cleaned.clockMs !== undefined ? Number(cleaned.clockMs) : undefined;
-      const shotSynced = this.syncShotClockToGameClock(base, true, running, now, ctsGameClockMs);
-      if (shotSynced) synced = shotSynced;
-      if (synced) mergedStatsForWrite = { ...mergedStatsForWrite, ...synced, cts: nextCts };
-    }
-
-    // 2026-06-12 P0 — score/segment write-through (see contract note above).
-    // Guard: a manual operator SCORE within the last 15s wins; the console
-    // re-asserts on its NEXT score change, so a typo-fix sticks until the
-    // real score moves again.
-    const columnWrites: Record<string, unknown> = {};
-    if (scoreChanged) {
-      let manualOverride = false;
-      try {
-        const lastScore = await this.prisma.client.gameEvent.findFirst({
-          where: {
-            gameId,
-            type: 'SCORE',
-            createdAt: { gte: new Date(Date.now() - 15_000) },
-          },
-          orderBy: { createdAt: 'desc' },
-        });
-        const p = lastScore?.payload as { source?: unknown; team?: unknown } | null;
-        manualOverride = !!lastScore && p?.source !== 'cts' && p?.team !== 'cts';
-      } catch { /* guard is best-effort — write-through proceeds */ }
-      if (!manualOverride) {
-        if (cleaned.homeScore !== undefined) columnWrites.homeScore = cleaned.homeScore;
-        if (cleaned.awayScore !== undefined) columnWrites.awayScore = cleaned.awayScore;
-      } else {
-        this.logger.debug(
-          `cts write-through deferred for game ${gameId}: manual score within guard window`,
-        );
+      // What changed forensically? Score / segment / clockRunning / horn
+      // are the audit-worthy transitions; clockMs ticks are not.
+      const lastAuditAt =
+        typeof prevCts.lastAuditAt === 'string' ? Date.parse(prevCts.lastAuditAt) : 0;
+      reconnect =
+        !Number.isFinite(Date.parse(String(prevCts.lastUpdateAt))) ||
+        Date.now() - Date.parse(String(prevCts.lastUpdateAt)) > 5000;
+      scoreChanged =
+        (cleaned.homeScore !== undefined && cleaned.homeScore !== prevCts.homeScore) ||
+        (cleaned.awayScore !== undefined && cleaned.awayScore !== prevCts.awayScore);
+      segmentChanged =
+        cleaned.segment !== undefined && cleaned.segment !== prevCts.segment;
+      clockRunChanged =
+        cleaned.clockRunning !== undefined && cleaned.clockRunning !== prevCts.clockRunning;
+      horn = cleaned.horn === true && !prevCts.horn;
+      // Audit cap: at most one audit row per 1s of forensically uninteresting
+      // updates (clock-only ticks). Score / segment / horn / reconnect always
+      // audit immediately.
+      wantsAudit =
+        reconnect || scoreChanged || segmentChanged || clockRunChanged || horn ||
+        Date.now() - (Number.isFinite(lastAuditAt) ? lastAuditAt : 0) > 60_000;
+      if (wantsAudit) {
+        nextCts.lastAuditAt = nowIso;
       }
-    }
-    if (segmentChanged && cleaned.segment !== undefined) {
-      columnWrites.segment = cleaned.segment;
-    }
 
-    await this.prisma.client.game.update({
-      where: { id: gameId },
-      data: { stats: mergedStatsForWrite as any, ...columnWrites },
+      // "All the same rules apply if we are doing it or the integration is
+      // doing it." (Greg's rule) — fire the same side-effect chain the
+      // operator-path helpers run, scoped to what actually changed.
+      //
+      // NOTE — write-through contract (revised 2026-06-12, sports-venue audit
+      // P0): SCORE and SEGMENT now write THROUGH to the operator columns
+      // (homeScore/awayScore/segment) when the console reports a change,
+      // guarded by a 15s manual-override window (a recent operator SCORE
+      // event wins until the console's value next changes). Why the old
+      // overlay-only design was a game-night bug, twice over:
+      //   1. When the CTS feed dropped, the 5s render freshness window
+      //      expired and every public surface reverted to the operator
+      //      columns — which still said 0-0 from pre-game. The crowd saw the
+      //      wrong score within seconds of a serial hiccup.
+      //   2. AUTO celebrations compute deltas vs the operator columns; since
+      //      CTS never moved them, goal #2 arrived as delta=2 (no water-polo
+      //      cue matches) and auto-celebration silently died after goal #1.
+      // CLOCK columns (clockMs/clockRunning) intentionally REMAIN overlay-
+      // only: the 5 Hz tick stays out of the columns, and the penalty-box /
+      // shot-clock sync helpers below already consume the CTS-reported
+      // running state directly.
+
+      // Prev scores come from OPERATOR columns, not from stats.cts, so the
+      // delta math is consistent with adjustScore/setScore. Read from THIS
+      // fresh row, not the pre-tx `gate` read, so a retry compares against
+      // the state it's actually merging on top of.
+      prevScores = { homeScore: game.homeScore, awayScore: game.awayScore };
+      const now = new Date();
+
+      // Build the merged stats write so we do a single DB update.
+      // Clock-running transition: slave the penalty box and shot clock —
+      // same helper chain clockAction uses, same "clockMutated = true" flag.
+      let mergedStatsForWrite: Record<string, unknown> = { ...prevStats, cts: nextCts };
+
+      // T2-1: merge CTS exclusions into stats.penalties (top-level, source:'cts')
+      // so the existing penalty-box render path can consume them alongside
+      // operator-entered penalties.  We replace only the 'cts'-sourced slots;
+      // operator-entered penalties (source != 'cts') are preserved.
+      if (cleaned.homeExclusions !== undefined || cleaned.awayExclusions !== undefined) {
+        const prevPenalties = Array.isArray(mergedStatsForWrite.penalties)
+          ? (mergedStatsForWrite.penalties as unknown[]).filter(
+              (p) => p && typeof p === 'object' && (p as Record<string, unknown>).source !== 'cts',
+            )
+          : [];
+        const ctsPenalties: unknown[] = [];
+        if (cleaned.homeExclusions) {
+          cleaned.homeExclusions.forEach((slot, i) => {
+            if (slot && (slot.playerJersey > 0 || slot.secondsRemaining > 0)) {
+              ctsPenalties.push({
+                source: 'cts',
+                team: 'home',
+                slot: i,
+                playerJersey: slot.playerJersey,
+                secondsRemaining: slot.secondsRemaining,
+              });
+            }
+          });
+        }
+        if (cleaned.awayExclusions) {
+          cleaned.awayExclusions.forEach((slot, i) => {
+            if (slot && (slot.playerJersey > 0 || slot.secondsRemaining > 0)) {
+              ctsPenalties.push({
+                source: 'cts',
+                team: 'away',
+                slot: i,
+                playerJersey: slot.playerJersey,
+                secondsRemaining: slot.secondsRemaining,
+              });
+            }
+          });
+        }
+        mergedStatsForWrite = {
+          ...mergedStatsForWrite,
+          penalties: [...prevPenalties, ...ctsPenalties],
+          cts: nextCts,
+        };
+      }
+
+      // T2-1: merge CTS timeouts into stats.homeTimeouts / awayTimeouts.
+      // Only overwrites when CTS is the source so operator adjustments
+      // are not stomped when these fields are absent from the snapshot.
+      if (cleaned.homeTimeoutsRemaining !== undefined) {
+        mergedStatsForWrite = {
+          ...mergedStatsForWrite,
+          homeTimeouts: cleaned.homeTimeoutsRemaining,
+          cts: nextCts,
+        };
+      }
+      if (cleaned.awayTimeoutsRemaining !== undefined) {
+        mergedStatsForWrite = {
+          ...mergedStatsForWrite,
+          awayTimeouts: cleaned.awayTimeoutsRemaining,
+          cts: nextCts,
+        };
+      }
+
+      if (clockRunChanged && cleaned.clockRunning !== undefined) {
+        const running = cleaned.clockRunning;
+        let synced = this.syncPenaltiesToClock(mergedStatsForWrite, running, now);
+        const base = synced ?? mergedStatsForWrite;
+        // T2-10: pass the CTS-reported game clock for clamping (Invariant #6).
+        const ctsGameClockMs = cleaned.clockMs !== undefined ? Number(cleaned.clockMs) : undefined;
+        const shotSynced = this.syncShotClockToGameClock(base, true, running, now, ctsGameClockMs);
+        if (shotSynced) synced = shotSynced;
+        if (synced) mergedStatsForWrite = { ...mergedStatsForWrite, ...synced, cts: nextCts };
+      }
+
+      // 2026-06-12 P0 — score/segment write-through (see contract note above).
+      // Guard: a manual operator SCORE within the last 15s wins; the console
+      // re-asserts on its NEXT score change, so a typo-fix sticks until the
+      // real score moves again. Read through `tx` so this guard's view of
+      // recent GameEvents is consistent with the same serializable snapshot
+      // the stats merge is using.
+      const columnWrites: Record<string, unknown> = {};
+      if (scoreChanged) {
+        let manualOverride = false;
+        try {
+          const lastScore = await tx.gameEvent.findFirst({
+            where: {
+              gameId,
+              type: 'SCORE',
+              createdAt: { gte: new Date(Date.now() - 15_000) },
+            },
+            orderBy: { createdAt: 'desc' },
+          });
+          const p = lastScore?.payload as { source?: unknown; team?: unknown } | null;
+          manualOverride = !!lastScore && p?.source !== 'cts' && p?.team !== 'cts';
+        } catch { /* guard is best-effort — write-through proceeds */ }
+        if (!manualOverride) {
+          if (cleaned.homeScore !== undefined) columnWrites.homeScore = cleaned.homeScore;
+          if (cleaned.awayScore !== undefined) columnWrites.awayScore = cleaned.awayScore;
+        } else {
+          this.logger.debug(
+            `cts write-through deferred for game ${gameId}: manual score within guard window`,
+          );
+        }
+      }
+      if (segmentChanged && cleaned.segment !== undefined) {
+        columnWrites.segment = cleaned.segment;
+      }
+
+      // Synthetic "next" game row for maybeAutoCelebrate (after the tx
+      // commits) — it only reads .homeScore, .awayScore, .sport, .tenantId.
+      syntheticNext = {
+        ...game,
+        homeScore: cleaned.homeScore !== undefined ? cleaned.homeScore : game.homeScore,
+        awayScore: cleaned.awayScore !== undefined ? cleaned.awayScore : game.awayScore,
+      };
+
+      return { stats: mergedStatsForWrite as any, ...columnWrites };
     });
     // Invalidate the board cache so the next /board/:id poll sees this
     // snapshot instantly. Without this the TTL would mask up to 1s of
@@ -5289,16 +5470,10 @@ export class SportsService {
     // Score GameEvent + AUTO celebration — same paper trail as adjustScore.
     // Only fires when the CTS-reported score differs from the prior CTS
     // value (scoreChanged guard above), so a 5 Hz re-send of the same score
-    // doesn't produce duplicate SCORE events.
+    // doesn't produce duplicate SCORE events. `syntheticNext` was built
+    // INSIDE the transaction (above) from the fresh row the merge actually
+    // wrote on top of, not the pre-tx `gate` read.
     if (scoreChanged) {
-      // Build a synthetic "next" game row that reflects the CTS scores for
-      // maybeAutoCelebrate — it only reads .homeScore, .awayScore, .sport
-      // and .tenantId, so we don't need a full DB refetch.
-      const syntheticNext = {
-        ...game,
-        homeScore: cleaned.homeScore !== undefined ? cleaned.homeScore : game.homeScore,
-        awayScore: cleaned.awayScore !== undefined ? cleaned.awayScore : game.awayScore,
-      };
       try {
         await this.record(gameId, 'SCORE', {
           team: 'cts',
@@ -5331,7 +5506,7 @@ export class SportsService {
       try {
         await this.prisma.client.auditLog.create({
           data: {
-            tenantId: game.tenantId,
+            tenantId: gate.tenantId,
             userId: auth.actorUserId || null,
             action: 'CTS_SNAPSHOT_INGEST',
             targetType: 'Game',
@@ -5389,12 +5564,13 @@ export class SportsService {
     snapshot: SwimTimingSnapshot,
     auth: { tenantId?: string | null; actorUserId?: string | null; source?: string },
   ): Promise<{ ok: true; accepted: boolean; reason?: string }> {
-    const game = auth.tenantId
+    // Auth/existence gate only — the merge re-reads fresh inside withStatsTx.
+    const gate = auth.tenantId
       ? await this.prisma.client.game.findFirst({
           where: { id: gameId, tenantId: auth.tenantId },
         })
       : await this.prisma.client.game.findUnique({ where: { id: gameId } });
-    if (!game) {
+    if (!gate) {
       throw new NotFoundException('Game not found');
     }
 
@@ -5444,46 +5620,66 @@ export class SportsService {
 
     const fresh = normalizeSwimSnapshot(snapshot, rosterEntries, heatOver);
 
-    const prevStats: Record<string, unknown> =
-      game.stats && typeof game.stats === 'object' ? { ...(game.stats as Record<string, unknown>) } : {};
-    const prevResults = sanitizeResults(prevStats.results);
-    const mergedResults = mergeSwimResult(prevResults, fresh);
-    const sanitized = sanitizeResults(mergedResults as unknown);
+    // Sports-stats-race fix (2026-07-03): swim timing is the SAME
+    // ~5-10Hz whole-blob RMW pattern as ingestCtsSnapshot, racing against
+    // the operator's Meet-Results edits / `updateStats` PATCH on the same
+    // `Game.stats` blob. Re-read fresh inside a Serializable tx (via
+    // `withStatsTx`) so a concurrent writer can't be clobbered; a
+    // conflict aborts one side and `withDbRetry` re-runs the whole merge
+    // against the winner's committed state. Bonus fix while in here: the
+    // OLD code did the main stats write, then a SEPARATE unguarded
+    // `game.update` a few lines later to stamp the audit-cadence marker
+    // — a second, narrower RMW window on the SAME blob, racing against
+    // anything that landed between the two writes. Folded into ONE
+    // merged write below so there is only ever one write per ingest.
+    let wantsAudit = false;
+    let placesChanged = false;
 
-    const nextStats: Record<string, unknown> = { ...prevStats, results: sanitized };
+    await this.withStatsTx(gameId, 'sports.ingestSwimTimingSnapshot', (_tx, game) => {
+      const prevStats: Record<string, unknown> =
+        game.stats && typeof game.stats === 'object' ? { ...(game.stats as Record<string, unknown>) } : {};
+      const prevResults = sanitizeResults(prevStats.results);
+      const mergedResults = mergeSwimResult(prevResults, fresh);
+      const sanitized = sanitizeResults(mergedResults as unknown);
 
-    // Team score (dual meets, report A7 module 0x0D) folds into the same
-    // homeTimeouts-style scalar convention ingestCtsSnapshot uses for its
-    // T2-1 fields — a plain scalar pair on stats, not a new structured key.
-    const teamScore = extractSwimTeamScore(snapshot);
-    if (teamScore) {
-      nextStats.swimHomeScore = teamScore.homeScore;
-      nextStats.swimAwayScore = teamScore.awayScore;
-    }
+      const nextStats: Record<string, unknown> = { ...prevStats, results: sanitized };
 
-    await this.prisma.client.game.update({
-      where: { id: gameId },
-      data: { stats: nextStats as any },
+      // Team score (dual meets, report A7 module 0x0D) folds into the same
+      // homeTimeouts-style scalar convention ingestCtsSnapshot uses for its
+      // T2-1 fields — a plain scalar pair on stats, not a new structured key.
+      const teamScore = extractSwimTeamScore(snapshot);
+      if (teamScore) {
+        nextStats.swimHomeScore = teamScore.homeScore;
+        nextStats.swimAwayScore = teamScore.awayScore;
+      }
+
+      // Sampled audit — mirrors ingestCtsSnapshot's cadence discipline (a
+      // 5-10Hz timing feed would otherwise flood AuditLog). Audit-worthy:
+      // a new/changed event-heat header, any place change (someone
+      // finished), or at most once per 60s otherwise.
+      const prevEventHeat = prevResults.find((r) => r.event === fresh.event);
+      placesChanged =
+        !prevEventHeat ||
+        prevEventHeat.entries.length !== fresh.entries.length ||
+        fresh.entries.some((e, i) => prevEventHeat.entries[i]?.place !== e.place || prevEventHeat.entries[i]?.mark !== e.mark);
+      const prevAuditKey = `swimAuditAt:${fresh.event}`;
+      const lastAuditAt = typeof prevStats[prevAuditKey] === 'number' ? (prevStats[prevAuditKey] as number) : 0;
+      wantsAudit = placesChanged || Date.now() - lastAuditAt > 60_000;
+      if (wantsAudit) {
+        // Stamp the audit-cadence marker into the SAME write (was a
+        // separate unguarded game.update before this fix).
+        nextStats[prevAuditKey] = Date.now();
+      }
+
+      return { stats: nextStats as any };
     });
     this.invalidateBoardCache(gameId);
 
-    // Sampled audit — mirrors ingestCtsSnapshot's cadence discipline (a
-    // 5-10Hz timing feed would otherwise flood AuditLog). Audit-worthy:
-    // a new/changed event-heat header, any place change (someone
-    // finished), or at most once per 60s otherwise.
-    const prevEventHeat = prevResults.find((r) => r.event === fresh.event);
-    const placesChanged =
-      !prevEventHeat ||
-      prevEventHeat.entries.length !== fresh.entries.length ||
-      fresh.entries.some((e, i) => prevEventHeat.entries[i]?.place !== e.place || prevEventHeat.entries[i]?.mark !== e.mark);
-    const prevAuditKey = `swimAuditAt:${fresh.event}`;
-    const lastAuditAt = typeof prevStats[prevAuditKey] === 'number' ? (prevStats[prevAuditKey] as number) : 0;
-    const wantsAudit = placesChanged || Date.now() - lastAuditAt > 60_000;
     if (wantsAudit) {
       try {
         await this.prisma.client.auditLog.create({
           data: {
-            tenantId: game.tenantId,
+            tenantId: gate.tenantId,
             userId: auth.actorUserId || null,
             action: 'SWIM_TIMING_SNAPSHOT_INGEST',
             targetType: 'Game',
@@ -5500,16 +5696,6 @@ export class SportsService {
       } catch {
         // Audit best-effort — never let a logging failure block the
         // snapshot write.
-      }
-      // Stamp the audit-cadence marker into stats so the next ingest can
-      // compute the 60s window without a separate table.
-      try {
-        await this.prisma.client.game.update({
-          where: { id: gameId },
-          data: { stats: { ...nextStats, [prevAuditKey]: Date.now() } as any },
-        });
-      } catch {
-        /* best-effort cadence marker */
       }
     }
 
