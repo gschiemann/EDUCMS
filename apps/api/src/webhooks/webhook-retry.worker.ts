@@ -87,6 +87,45 @@ export class WebhookRetryWorker implements OnModuleInit, OnModuleDestroy {
   private async drainOnce(): Promise<{ claimed: number; delivered: number; failed: number }> {
     const batch = Number(process.env.WEBHOOK_RETRY_BATCH) || 50;
 
+    // ── RECLAIM stranded in-flight deliveries (2026-07-04) ──────────────
+    // The claim below sets `next_retry_at = NULL` to hold a row OUT of the due
+    // set while it's being attempted, and applyOutcome() later either resolves
+    // it (DELIVERED/FAILED) or re-arms `next_retry_at`. If the pod DIES between
+    // the claim and applyOutcome (mid-drain crash), the row is left PENDING with
+    // `next_retry_at IS NULL` — which the claim's own `next_retry_at IS NOT NULL`
+    // filter makes INVISIBLE forever. That silently strands the delivery,
+    // including any `emergency.triggered` webhook. Re-arm rows that have been
+    // "in flight" longer than any legitimate attempt could take (a live attempt
+    // updates the row within seconds; the HTTP dispatch is bounded well under a
+    // minute) so the next claim redelivers them. At-least-once semantics — a
+    // reclaimed-then-redelivered row may double-send, which receivers dedup by
+    // eventId and emergency consumers already treat idempotently. Never touches
+    // a row a healthy replica is actively working (its updated_at is recent).
+    const reclaimMs = Number(process.env.WEBHOOK_RETRY_RECLAIM_MS) || 120_000;
+    try {
+      const reclaimed = await this.prisma.client.$executeRawUnsafe(
+        `
+        UPDATE "webhook_deliveries"
+           SET "next_retry_at" = NOW()
+         WHERE "status" = 'PENDING'
+           AND "next_retry_at" IS NULL
+           AND "updated_at" < NOW() - (INTERVAL '1 millisecond' * ${Math.max(30_000, Math.floor(reclaimMs))})
+        `,
+      );
+      if (typeof reclaimed === 'number' && reclaimed > 0) {
+        this.logger.warn(
+          `Webhook retry: reclaimed ${reclaimed} stranded in-flight ` +
+            `deliveries (claimed but never resolved — likely a mid-drain pod ` +
+            `crash) and re-armed them for redelivery. This recovers any ` +
+            `emergency.triggered webhook that was stuck.`,
+        );
+      }
+    } catch (e: any) {
+      // Reclaim is best-effort hardening; a failure here must not abort the
+      // normal drain below.
+      this.logger.warn(`Webhook retry reclaim failed (continuing to drain): ${e?.message ?? e}`);
+    }
+
     // Atomically claim due rows. FOR UPDATE SKIP LOCKED guarantees no two
     // replicas claim the same delivery. attempts++ lands here so the
     // returned row already carries its post-attempt count.
