@@ -171,7 +171,14 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         decoded.groupId = screen.screenGroupId ?? undefined;
       }
 
-      ctx.deviceId = decoded.deviceId;
+      // EMERGENCY-PATH FIX (2026-07-04): resolve the device identity the SAME
+      // way the screenId is resolved above (line ~147) — `decoded.deviceId ||
+      // decoded.sub`. A device JWT can carry the screen id in EITHER claim;
+      // Android kiosks whose token uses `sub` were getting ctx.deviceId=undefined,
+      // so they (a) never registered in the tenant/group device sets below and
+      // (b) never matched a per-device emergency in broadcastToScope()
+      // (`type==='device' && ctx.deviceId===id`) — a silent per-screen alert miss.
+      ctx.deviceId = decoded.deviceId || decoded.sub;
       ctx.tenantId = decoded.tenantId;
       ctx.groupId = decoded.groupId;
       ctx.isAuthenticated = true;

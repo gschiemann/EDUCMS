@@ -169,6 +169,54 @@ describe('RealtimeGateway', () => {
       expect(JSON.parse((mockWs.send as jest.Mock).mock.calls[0][0]).type).toBe('EMERGENCY_OVERRIDE');
     });
 
+    /**
+     * EMERGENCY-PATH regression (2026-07-04). A device JWT can carry the screen
+     * id in EITHER `deviceId` OR the registered `sub` claim — the screen-lookup
+     * above already resolves `decoded.deviceId || decoded.sub`, but ctx.deviceId
+     * was set from `decoded.deviceId` ALONE. Android kiosks whose token uses
+     * `sub` got ctx.deviceId=undefined, so they never registered in the device
+     * set AND never matched a per-DEVICE emergency (broadcastToScope
+     * type==='device' && ctx.deviceId===id) — a silent per-screen alert miss.
+     */
+    it('device scope: resolves ctx.deviceId from the JWT `sub` claim (not just deviceId) and delivers per-device emergencies', async () => {
+      const mockWs = { send: jest.fn(), close: jest.fn(), on: jest.fn(), readyState: WebSocket.OPEN } as unknown as WebSocket;
+      const secret = 'test_device_jwt_secret_at_least_32_chars_long_xx';
+      process.env.DEVICE_JWT_SECRET = secret;
+
+      // The paired screen id lives in the token's `sub` (the Android-kiosk shape).
+      (gateway as any).prisma.client.screen.findUnique.mockResolvedValueOnce({
+        id: 'screen-sub-999', tenantId: 'tenant_1', screenGroupId: null,
+      });
+
+      // NOTE: no `deviceId` claim — only `sub`.
+      const token = jwt.sign(
+        { sub: 'screen-sub-999', tenantId: 'tenant_1' },
+        secret,
+        { expiresIn: '1h' },
+      );
+
+      gateway.handleConnection(mockWs);
+      await (gateway as any).processHello(mockWs, { token });
+
+      const ctx = (gateway as any).clients.get(mockWs);
+      expect(ctx.isAuthenticated).toBe(true);
+      // THE FIX: ctx.deviceId falls back to `sub` (was undefined before).
+      expect(ctx.deviceId).toBe('screen-sub-999');
+      // Registered in the tenant device set (the `if (ctx.deviceId && …)` guard
+      // was false when deviceId was undefined, so this never ran before).
+      expect(redisService.publisher!.sadd).toHaveBeenCalledWith('tenant:tenant_1:devices', 'screen-sub-999');
+
+      // A per-DEVICE emergency (scopeType:'device', scopeId:<screenId>) now
+      // actually reaches this connected Android kiosk.
+      (mockWs.send as jest.Mock).mockClear();
+      gateway.broadcastToScope('device', 'screen-sub-999', {
+        type: 'EMERGENCY_OVERRIDE',
+        payload: { type: 'LOCKDOWN', severity: 'CRITICAL' },
+      });
+      expect(mockWs.send).toHaveBeenCalledTimes(1);
+      expect(JSON.parse((mockWs.send as jest.Mock).mock.calls[0][0]).type).toBe('EMERGENCY_OVERRIDE');
+    });
+
     it('should reject invalid JWT and close connection', async () => {
       const mockWs = { send: jest.fn(), close: jest.fn(), on: jest.fn(), readyState: WebSocket.OPEN } as unknown as WebSocket;
 
