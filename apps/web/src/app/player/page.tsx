@@ -13,6 +13,7 @@ import { TouchOverlay, TouchNavOverlay } from '@/components/player/TouchOverlay'
 // status when WS is unavailable, and accepts WS-pushed messages via
 // the `message` prop.
 import { EmergencyOverlay, type EmergencyMessageView } from '@/components/player/EmergencyOverlay';
+import { reconcileStrandedEmergency } from './emergencyReconcile';
 // Sprint 13 — Colorado Time Systems (CTS) System 6/Gen 6 scoreboard
 // bridge. Mounts on the player page when the URL carries `?cts=1` (so
 // regular signage screens never see the bridge UI). The bridge reads
@@ -2431,6 +2432,58 @@ function PlayerPage() {
   // tenant-wide LOCKDOWN-style overrides) so the two systems can
   // coexist — a SOS can fire on a screen that's already in lockdown.
   const [pushedEmergencyMessage, setPushedEmergencyMessage] = useState<EmergencyMessageView | null>(null);
+
+  // ── LIFE-SAFETY BACKSTOP (2026-07-04) — HTTP reconcile for a stranded
+  // pushed emergency. `pushedEmergencyMessage` is set by WS/SSE and was
+  // cleared ONLY by an ALL_CLEAR_MESSAGE over that same transport; if that
+  // clear is dropped (WS blip) or freshness-gated (clock-skewed kiosk past the
+  // 30s staleness gate), the SOS / broadcast / media-alert takeover strands on
+  // the wall forever — and EmergencyOverlay's own self-poll is DISABLED while a
+  // pushed `message` prop is present. This poll makes the SERVER the sole
+  // arbiter for the pushed message too (the same principle the manifest already
+  // applies to tenant-wide lockdowns): if the device-authed /emergency/messages
+  // endpoint no longer lists the shown message as active, clear it. FAIL-SAFE
+  // toward OVER-alerting — see reconcileStrandedEmergency(): only a SUCCESSFUL
+  // poll that confirms absence TWICE in a row clears it; an offline/erroring
+  // poll leaves the alert up untouched.
+  useEffect(() => {
+    if (!pushedEmergencyMessage) return; // nothing on screen to reconcile
+    const token = getDeviceToken();
+    if (!token) return; // only paired devices ever receive a WS-pushed message
+    let stopped = false;
+    let consecutiveMisses = 0;
+    const shownId = pushedEmergencyMessage.id;
+    const reconcile = async () => {
+      try {
+        const res = await fetch(`${getApiRoot()}/api/v1/emergency/messages`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (stopped || !res.ok) return; // transient failure ≠ a confirmed clear
+        const json = await res.json();
+        const activeIds = new Set<string>(
+          (Array.isArray(json.active) ? json.active : []).map((r: { id: string }) => r.id),
+        );
+        const decision = reconcileStrandedEmergency(activeIds, shownId, consecutiveMisses);
+        consecutiveMisses = decision.consecutiveMisses;
+        if (decision.clear) {
+          console.warn(
+            `[Player] emergency message ${shownId} no longer active server-side — ` +
+              `clearing stranded overlay (missed ALL_CLEAR_MESSAGE backstop)`,
+          );
+          setPushedEmergencyMessage(null);
+        }
+      } catch {
+        /* offline — keep the alert up (fail-safe toward over-alerting) */
+      }
+    };
+    // Interval-only (no immediate tick): the server persists the message row
+    // BEFORE publishing the WS push, so by the first poll a still-live message
+    // is guaranteed to be in the active set — the grace period prevents a
+    // just-pushed alert from being reconciled away in a persist/poll race.
+    const h = setInterval(reconcile, 12_000);
+    return () => { stopped = true; clearInterval(h); };
+  }, [pushedEmergencyMessage]);
+
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null);
   // Sprint 13 — live CTS scoreboard state pushed from the CtsBridge via
   // the API's signed-WS broadcast on `device:<screenId>` channel. Any
