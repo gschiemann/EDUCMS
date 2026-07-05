@@ -20,6 +20,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
+import { withDbRetry } from '../prisma/with-db-retry';
 
 /** The Stripe SDK client instance type. `Stripe` is a value + a merged
  *  namespace, so the instance type must be taken via InstanceType. */
@@ -216,7 +217,7 @@ export class StripeService {
     period: 'monthly' | 'annual';
     successUrl: string;
     cancelUrl: string;
-  }): Promise<{ url: string }> {
+  }): Promise<{ url: string; existing?: boolean }> {
     const stripe = this.getClient();
     if (!stripe) throw new Error('Stripe is not configured on this deployment.');
     const price = this.priceIdFor(opts.period);
@@ -229,6 +230,32 @@ export class StripeService {
     const license = await this.prisma.client.license.findUnique({
       where: { tenantId: opts.tenantId },
     });
+
+    // IDEMPOTENCY (2026-07-04): if the tenant already has a LIVE (non-cancelled)
+    // subscription, do NOT create a second one. A duplicate Checkout would mint
+    // a second Stripe subscription that double-bills the customer AND orphans
+    // the first when the webhook overwrites the License's single
+    // `stripeSubscriptionId`. Instead, send them to the Customer Portal to
+    // manage the existing subscription (change plan / update card / cancel). A
+    // CANCELLED license may freely re-subscribe (falls through to Checkout).
+    if (
+      license?.stripeSubscriptionId &&
+      license.status &&
+      license.status !== 'CANCELLED'
+    ) {
+      const portal = await this.portalForTenant(opts.tenantId, opts.successUrl);
+      if ('url' in portal) {
+        this.logger.warn(
+          `checkout: tenant ${opts.tenantId} already has a ${license.status} ` +
+            `subscription (${license.stripeSubscriptionId}) — routing to the ` +
+            `Customer Portal instead of creating a duplicate`,
+        );
+        return { url: portal.url, existing: true };
+      }
+      // Portal unexpectedly unavailable (no stripeCustomerId) — fall through to
+      // Checkout as a last resort rather than blocking the operator entirely.
+    }
+
     const quantity = Math.max(1, await this.seatCount(opts.tenantId));
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
@@ -370,8 +397,14 @@ export class StripeService {
       case 'customer.subscription.deleted': {
         return await this.applySubscriptionDeleted(event);
       }
-      case 'invoice.payment_failed': {
-        return await this.applyPaymentFailed(event);
+      case 'invoice.payment_failed':
+      case 'invoice.payment_succeeded':
+      case 'invoice.paid': {
+        // All three ride the SAME ordering-immune, live-refetch path so that
+        // (a) a decline can't be swallowed by a benign quantity-sync's
+        // watermark and (b) a successful payment actually RECOVERS PAST_DUE →
+        // ACTIVE (there was previously no success handler at all).
+        return await this.applyInvoicePaymentStatus(event, stripe);
       }
       default:
         this.logger.debug(`webhook: ignoring ${event.type}`);
@@ -493,80 +526,97 @@ export class StripeService {
     // idempotency ledger, so an equal timestamp here only happens
     // when two events were minted within the same second (Stripe's
     // resolution); applying both is fine.
-    const existing = await this.prisma.client.license.findUnique({
-      where: { tenantId },
-      select: {
-        id: true,
-        status: true,
-        tier: true,
-        stripeLastEventCreatedAt: true,
-      },
-    });
-    if (
-      existing?.stripeLastEventCreatedAt &&
-      existing.stripeLastEventCreatedAt.getTime() > eventCreatedAt.getTime()
-    ) {
+    // TOCTOU FIX (2026-07-04): the out-of-order freshness check must be ATOMIC
+    // with the write. The watermark was previously read OUTSIDE the transaction,
+    // so two concurrent events for the same tenant could both pass the check and
+    // the older one commit last, silently corrupting License state. The read +
+    // check + upsert now run in a single SERIALIZABLE transaction, retried on the
+    // 40001/P2034 serialization conflict via withDbRetry (the exact pattern the
+    // seat-claim tx uses in screens.controller.ts pair()).
+    let staleOutOfOrder = false;
+    await withDbRetry(
+      () =>
+        this.prisma.client.$transaction(
+          async (tx) => {
+            const existing = await tx.license.findUnique({
+              where: { tenantId: tenantId! },
+              select: {
+                id: true,
+                status: true,
+                tier: true,
+                stripeLastEventCreatedAt: true,
+              },
+            });
+            if (
+              existing?.stripeLastEventCreatedAt &&
+              existing.stripeLastEventCreatedAt.getTime() > eventCreatedAt.getTime()
+            ) {
+              staleOutOfOrder = true;
+              return;
+            }
+            const fromStatus = existing?.status ?? null;
+            const fromTier = existing?.tier ?? null;
+            const license = await tx.license.upsert({
+              where: { tenantId: tenantId! },
+              create: {
+                tenantId: tenantId!,
+                tier,
+                billingMode: 'CARD',
+                status,
+                seatLimit: PAID_SEAT_LIMIT,
+                monthlyPriceCents,
+                stripeCustomerId: customerId,
+                stripeSubscriptionId: sub.id,
+                currentPeriodStart: periodStart,
+                currentPeriodEnd: periodEnd,
+                stripeLastEventCreatedAt: eventCreatedAt,
+              },
+              update: {
+                tier,
+                billingMode: 'CARD',
+                status,
+                monthlyPriceCents,
+                stripeCustomerId: customerId,
+                stripeSubscriptionId: sub.id,
+                currentPeriodStart: periodStart,
+                currentPeriodEnd: periodEnd,
+                stripeLastEventCreatedAt: eventCreatedAt,
+              },
+            });
+            await tx.auditLog.create({
+              data: {
+                tenantId: tenantId!,
+                userId: null,
+                action: this.auditActionFor(event.type),
+                targetType: 'License',
+                targetId: license.id,
+                details: JSON.stringify({
+                  eventId: event.id,
+                  eventType: event.type,
+                  eventCreated: event.created,
+                  subscriptionId: sub.id,
+                  stripeCustomerId: customerId,
+                  fromStatus,
+                  toStatus: status,
+                  fromTier,
+                  toTier: tier,
+                  monthlyPriceCents,
+                }),
+              },
+            });
+          },
+          { isolationLevel: 'Serializable', timeout: 20000, maxWait: 10000 },
+        ),
+      { label: 'stripe.syncLicenseFromSubscription' },
+    );
+    if (staleOutOfOrder) {
       this.logger.warn(
         `webhook: event ${event.id} (${event.type}) for tenant ${tenantId} ` +
-          `created ${eventCreatedAt.toISOString()} is older than last-applied ` +
-          `${existing.stripeLastEventCreatedAt.toISOString()} — skipped (out-of-order)`,
+          `created ${eventCreatedAt.toISOString()} is older than the last-applied ` +
+          `watermark — skipped (out-of-order)`,
       );
       return { staleOutOfOrder: true };
     }
-
-    const fromStatus = existing?.status ?? null;
-    const fromTier = existing?.tier ?? null;
-
-    await this.prisma.client.$transaction(async (tx) => {
-      const license = await tx.license.upsert({
-        where: { tenantId: tenantId! },
-        create: {
-          tenantId: tenantId!,
-          tier,
-          billingMode: 'CARD',
-          status,
-          seatLimit: PAID_SEAT_LIMIT,
-          monthlyPriceCents,
-          stripeCustomerId: customerId,
-          stripeSubscriptionId: sub.id,
-          currentPeriodStart: periodStart,
-          currentPeriodEnd: periodEnd,
-          stripeLastEventCreatedAt: eventCreatedAt,
-        },
-        update: {
-          tier,
-          billingMode: 'CARD',
-          status,
-          monthlyPriceCents,
-          stripeCustomerId: customerId,
-          stripeSubscriptionId: sub.id,
-          currentPeriodStart: periodStart,
-          currentPeriodEnd: periodEnd,
-          stripeLastEventCreatedAt: eventCreatedAt,
-        },
-      });
-      await tx.auditLog.create({
-        data: {
-          tenantId: tenantId!,
-          userId: null,
-          action: this.auditActionFor(event.type),
-          targetType: 'License',
-          targetId: license.id,
-          details: JSON.stringify({
-            eventId: event.id,
-            eventType: event.type,
-            eventCreated: event.created,
-            subscriptionId: sub.id,
-            stripeCustomerId: customerId,
-            fromStatus,
-            toStatus: status,
-            fromTier,
-            toTier: tier,
-            monthlyPriceCents,
-          }),
-        },
-      });
-    });
     this.logger.log(
       `webhook: License synced for tenant ${tenantId} → ${tier} / ${status} ` +
         `(event ${event.id})`,
@@ -647,23 +697,46 @@ export class StripeService {
   }
 
   /**
-   * `invoice.payment_failed` handler.
+   * Invoice payment-status handler — `invoice.payment_failed` /
+   * `invoice.payment_succeeded` / `invoice.paid`.
    *
-   * 2026-05-26 P0-7 audit: was `updateMany` keyed on stripeCustomerId
-   * with no audit + no out-of-order protection. Re-shaped here to
-   * (a) refuse to overwrite a fresher event's state and (b) leave an
-   * AuditLog row so the operator can answer "why did this tenant
-   * get downgraded to PAST_DUE Tuesday?".
+   * 2026-07-04 — ORDERING-IMMUNE rewrite (was `applyPaymentFailed`).
+   *
+   * The prior handler gated on the shared `License.stripeLastEventCreatedAt`
+   * watermark, which EVERY benign `customer.subscription.updated` advances
+   * (our own `syncSubscriptionQuantity` fires one on each screen pair/unpair).
+   * Stripe does not guarantee cross-object event ordering and delivers out of
+   * order, so a genuinely-newer-in-INTENT but older-in-TIMESTAMP
+   * `invoice.payment_failed` was rejected as "stale" — the unpaid tenant was
+   * NEVER downgraded and kept full paid service. And there was no
+   * `payment_succeeded`/`paid` handler, so PAST_DUE never recovered via the
+   * invoice path either.
+   *
+   * Fix: don't trust event ordering for payment status. Re-fetch the LIVE
+   * subscription from Stripe and set `License.status` from its real current
+   * status (`mapSubscriptionStatus`). This is ordering-immune — a stale or
+   * late invoice event still resolves to the truth, and a payment that was
+   * already recovered by the time we process a late failure correctly stays
+   * ACTIVE. It needs NO schema change.
+   *
+   * Watermark asymmetry (the key correctness property): an invoice event NEVER
+   * READ-gates on `stripeLastEventCreatedAt` (so a benign quantity-sync's
+   * watermark can't block a decline), but it DOES ADVANCE it to max(current,
+   * event.created). That forward-bump means a genuinely-stale (older-created)
+   * `customer.subscription.updated` — delivered out of order after the payment
+   * event — is still refused by the sub handler's watermark check and can't undo
+   * the payment-driven status. Still writes the AuditLog row.
    */
-  private async applyPaymentFailed(
+  private async applyInvoicePaymentStatus(
     event: StripeWebhookEvent,
+    stripe: StripeClient,
   ): Promise<WebhookHandlerResult> {
     const inv = event.data.object;
     const customerId =
       typeof inv.customer === 'string' ? inv.customer : inv.customer?.id;
     if (!customerId) {
       this.logger.warn(
-        `webhook: invoice ${inv.id} payment_failed but no customer id — skipped`,
+        `webhook: invoice ${inv.id} ${event.type} but no customer id — skipped`,
       );
       return { noTenantId: true };
     }
@@ -672,30 +745,50 @@ export class StripeService {
     });
     if (!license) {
       this.logger.warn(
-        `webhook: payment failed for customer ${customerId} but no License row matches`,
+        `webhook: ${event.type} for customer ${customerId} but no License row matches`,
       );
       return { noTenantId: true };
     }
+
+    // Ordering-immune status: read LIVE Stripe truth, not the (possibly stale /
+    // out-of-order) event. Fall back to the event-implied status only when the
+    // subscription can't be re-fetched — a real failure must never go unrecorded.
+    const subId =
+      typeof inv.subscription === 'string'
+        ? inv.subscription
+        : (inv.subscription as { id?: string } | null | undefined)?.id;
+    let status: string | null = null;
+    let liveStatusUsed = false;
+    if (subId) {
+      try {
+        const sub = await stripe.subscriptions.retrieve(subId);
+        status = this.mapSubscriptionStatus(sub.status);
+        liveStatusUsed = true;
+      } catch (e: any) {
+        this.logger.warn(
+          `webhook: ${event.type} — could not re-fetch subscription ${subId} ` +
+            `(${e?.message ?? e}); falling back to the event-implied status`,
+        );
+      }
+    }
+    if (!status) {
+      status = event.type === 'invoice.payment_failed' ? 'PAST_DUE' : 'ACTIVE';
+    }
+
+    const fromStatus = license.status;
     const eventCreatedAt = new Date(event.created * 1000);
-    if (
+    // Advance-only watermark (never read-gated — see docblock): keep the newer
+    // of the current watermark and this event, so a later stale subscription
+    // event can't roll the payment status back.
+    const nextWatermark =
       license.stripeLastEventCreatedAt &&
       license.stripeLastEventCreatedAt.getTime() > eventCreatedAt.getTime()
-    ) {
-      this.logger.warn(
-        `webhook: event ${event.id} (${event.type}) for License ${license.id} ` +
-          `created ${eventCreatedAt.toISOString()} is older than last-applied ` +
-          `${license.stripeLastEventCreatedAt.toISOString()} — skipped (out-of-order)`,
-      );
-      return { staleOutOfOrder: true };
-    }
-    const fromStatus = license.status;
+        ? license.stripeLastEventCreatedAt
+        : eventCreatedAt;
     await this.prisma.client.$transaction(async (tx) => {
       await tx.license.update({
         where: { id: license.id },
-        data: {
-          status: 'PAST_DUE',
-          stripeLastEventCreatedAt: eventCreatedAt,
-        },
+        data: { status, stripeLastEventCreatedAt: nextWatermark },
       });
       await tx.auditLog.create({
         data: {
@@ -709,18 +802,19 @@ export class StripeService {
             eventType: event.type,
             eventCreated: event.created,
             invoiceId: inv.id,
+            subscriptionId: subId ?? null,
             stripeCustomerId: customerId,
             fromStatus,
-            toStatus: 'PAST_DUE',
-            fromTier: license.tier,
-            toTier: license.tier,
+            toStatus: status,
+            liveStatusUsed,
           }),
         },
       });
     });
-    this.logger.warn(
-      `webhook: payment failed for customer ${customerId} → tenant ` +
-        `${license.tenantId} PAST_DUE (event ${event.id})`,
+    this.logger[status === 'PAST_DUE' || status === 'SUSPENDED' ? 'warn' : 'log'](
+      `webhook: ${event.type} for customer ${customerId} → tenant ` +
+        `${license.tenantId} ${fromStatus ?? 'none'} → ${status} ` +
+        `(event ${event.id}, ${liveStatusUsed ? 'live-refetch' : 'event-implied'})`,
     );
     return {};
   }
