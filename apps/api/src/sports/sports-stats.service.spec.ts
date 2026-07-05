@@ -190,6 +190,13 @@ describe('computePlayerSurfaces', () => {
 import { finalizeGameStats, getStatLeaders } from './sports-stats.service';
 
 /** Stable compound-unique serializers for the season/career fakes. */
+// NOTE: this in-memory mock keys by (person, season, statKey) only — it does
+// NOT model the `sport` dimension of the real DB unique key (added 2026-07-04:
+// `person_season_stat` = [personId, season, statKey, sport]). Every test here
+// uses a single sport, so the mock's dedup is faithful for these cases; the
+// multi-sport separation is enforced by the real DB constraint + migration
+// (20260704120000_add_sport_to_player_stat_unique_keys) and validated by tsc
+// against the regenerated client, not this mock.
 function seasonKey(personId: string, season: string, statKey: string): string {
   return `${personId}|${season}|${statKey}`;
 }

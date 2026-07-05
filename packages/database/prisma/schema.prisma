@@ -2556,7 +2556,12 @@ model PlayerSeasonStat {
   person SportsPerson @relation(fields: [personId], references: [id], onDelete: Cascade)
   Tenant Tenant       @relation(fields: [tenantId], references: [id])
 
-  @@unique([personId, season, statKey], name: "person_season_stat")
+  // `sport` is part of the identity (2026-07-04): a SportsPerson is ONE
+  // persistent athlete across ANY sport, and PLAYER_STATS codes collide across
+  // sports (AST/PTS/G/A/BLK/TD/HR…). Without `sport` in the key, a multi-sport
+  // athlete's same-code stats merged into one row, corrupting per-sport
+  // leaderboards + the record book.
+  @@unique([personId, season, statKey, sport], name: "person_season_stat")
   @@index([tenantId, sport, season, statKey, statValue(sort: Desc)])
   @@map("player_season_stats")
 }
@@ -2579,7 +2584,8 @@ model PlayerCareerStat {
   person SportsPerson @relation(fields: [personId], references: [id], onDelete: Cascade)
   Tenant Tenant       @relation(fields: [tenantId], references: [id])
 
-  @@unique([personId, statKey], name: "person_career_stat")
+  // `sport` is part of the identity — see PlayerSeasonStat above (2026-07-04).
+  @@unique([personId, statKey, sport], name: "person_career_stat")
   @@index([tenantId, sport, statKey, statValue(sort: Desc)])
   @@map("player_career_stats")
 }

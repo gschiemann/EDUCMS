@@ -700,7 +700,7 @@ export async function finalizeGameStats(
             // ── SEASON upsert: ADD the delta ──
             const existingSeason = await tx.playerSeasonStat.findUnique({
               where: {
-                person_season_stat: { personId, season, statKey },
+                person_season_stat: { personId, season, statKey, sport },
               },
               select: { statValue: true, gamesPlayed: true },
             });
@@ -709,7 +709,7 @@ export async function finalizeGameStats(
 
             await tx.playerSeasonStat.upsert({
               where: {
-                person_season_stat: { personId, season, statKey },
+                person_season_stat: { personId, season, statKey, sport },
               },
               update: {
                 statValue: newSeasonValue,
@@ -733,17 +733,22 @@ export async function finalizeGameStats(
             });
 
             // ── CAREER recompute: SUM all of this person's season rows
-            //    for this statKey (canonical — converges even if a season
-            //    row is later corrected). ──
+            //    for this statKey IN THIS SPORT (canonical — converges even if
+            //    a season row is later corrected). MUST be sport-scoped: a
+            //    SportsPerson can play multiple sports whose PLAYER_STATS codes
+            //    collide (AST/PTS/G/A…); without the `sport` filter a multi-sport
+            //    athlete's career total would sum unrelated sports' same-code
+            //    stats into one figure (the same merge the unique-key fix closes
+            //    on the write side). ──
             const seasonRows = await tx.playerSeasonStat.findMany({
-              where: { personId, statKey },
+              where: { personId, statKey, sport },
               select: { statValue: true, gamesPlayed: true },
             });
             const careerValue = seasonRows.reduce((s, r) => s + r.statValue, 0);
             const careerGames = seasonRows.reduce((s, r) => s + r.gamesPlayed, 0);
 
             await tx.playerCareerStat.upsert({
-              where: { person_career_stat: { personId, statKey } },
+              where: { person_career_stat: { personId, statKey, sport } },
               update: {
                 statValue: careerValue,
                 gamesPlayed: careerGames,
