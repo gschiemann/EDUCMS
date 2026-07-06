@@ -36,8 +36,16 @@ const SAMPLE_RSS = `<rss version="2.0"><channel><title>Sample</title>
   <item><title>Hello</title><link>https://example.com/a</link></item>
 </channel></rss>`;
 
+// DTSTART is computed 2 days out (in ICS basic UTC form YYYYMMDDTHHMMSSZ) so
+// the fixture never rolls into the past — parseIcs drops one-off events before
+// "now", which silently zeroed this out once the clock passed a hardcoded date.
+// 2 days is comfortably inside parseIcs's 120-day one-off horizon.
+const ICS_DTSTART = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000)
+  .toISOString()
+  .replace(/[-:]/g, '')
+  .replace(/\.\d{3}Z$/, 'Z');
 const SAMPLE_ICS = `BEGIN:VCALENDAR\r\nVERSION:2.0\r\n` +
-  `BEGIN:VEVENT\r\nDTSTART:20260705T140000Z\r\nSUMMARY:Meeting\r\nEND:VEVENT\r\n` +
+  `BEGIN:VEVENT\r\nDTSTART:${ICS_DTSTART}\r\nSUMMARY:Meeting\r\nEND:VEVENT\r\n` +
   `END:VCALENDAR\r\n`;
 
 beforeAll(() => {
