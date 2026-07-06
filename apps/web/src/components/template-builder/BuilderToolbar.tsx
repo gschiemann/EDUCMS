@@ -11,6 +11,7 @@ import {
 import { useMemo } from 'react';
 import { useBuilderStore } from './useBuilderStore';
 import { validateTouchHitTargets } from './constants';
+import { TranslateBoardButton } from '@/components/ai/TranslateBoardButton';
 
 interface Props {
   onBack: () => void;
@@ -65,6 +66,9 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, onCustomize, onDiscar
   // when touch mode is on (the toggle lives in Properties panel now).
   const isTouchEnabled = useBuilderStore((s) => s.isTouchEnabled);
   const flipCanvas = useBuilderStore((s) => s.flipCanvas);
+  // Whole-board Translate (2026-07-05) commits like PropertiesPanel's
+  // ChatToEditBox — one updateZones call = one undo step.
+  const updateZones = useBuilderStore((s) => s.updateZones);
 
   const touchWarnings = useMemo(
     () => isTouchEnabled ? validateTouchHitTargets(zones, meta.screenWidth, meta.screenHeight).warnings : [],
@@ -124,6 +128,29 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, onCustomize, onDiscar
             <span className="ml-1 text-[10px] font-bold uppercase tracking-wider hidden md:inline">Preview</span>
           </ToolbarBtn>
         )}
+
+        {/* Whole-board Translate (2026-07-05, #282) — localize every text
+            element in one undoable commit. Self-gates: hidden unless AI is
+            configured AND the board has translatable text. */}
+        <TranslateBoardButton
+          zones={zones as any}
+          vertical={(meta as any).vertical}
+          onApply={(diff) => {
+            const byId = new Map(diff.map((d) => [d.zoneId, d.patch]));
+            updateZones(
+              diff.map((d) => d.zoneId),
+              (z: any) => {
+                const p = byId.get(z.id);
+                if (!p) return {};
+                const { defaultConfig: cfgPatch, ...zoneKeys } = p;
+                const merged: Record<string, any> = { ...zoneKeys };
+                if (cfgPatch) merged.defaultConfig = { ...(z.defaultConfig || {}), ...cfgPatch };
+                return merged;
+              },
+              true,
+            );
+          }}
+        />
         {isTouchEnabled && touchWarnings.length > 0 && (
           <span
             className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded flex items-center gap-1"
