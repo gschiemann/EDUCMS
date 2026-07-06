@@ -590,6 +590,93 @@ describe('AiService — Slice 2a-multi chat-to-edit multi-zone', () => {
   });
 });
 
+// ── Whole-board TRANSLATE (2026-07-05) ──
+describe('AiService — whole-board translate', () => {
+  beforeEach(() => {
+    delete process.env.AI_FREE_TIER_CAP;
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    tenantsById.clear();
+    auditRows.length = 0;
+    dispatchMock.mockReset();
+    tenantsById.set('t1', { id: 't1', aiProvider: null, aiKeyEncrypted: null, aiModel: null });
+  });
+
+  it('rejects an unsupported language at the boundary — no provider call', async () => {
+    const { service } = buildService(makeFakeRedisClient());
+    await expect(
+      service.translateBoard({
+        tenantId: 't1',
+        targetLang: 'xx',
+        zones: [{ id: 'z1', widgetType: 'TEXT', defaultConfig: { content: 'Welcome' } }],
+      }),
+    ).rejects.toBeTruthy();
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a board with no editable text — no provider call', async () => {
+    const { service } = buildService(makeFakeRedisClient());
+    await expect(
+      service.translateBoard({
+        tenantId: 't1',
+        targetLang: 'es',
+        zones: [{ id: 'c1', widgetType: 'CLOCK', defaultConfig: {} }],
+      }),
+    ).rejects.toBeTruthy();
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+
+  it('is TEXT-ONLY: strips any geometry/style the model tries to sneak in', async () => {
+    // Model returns a translation PLUS a font-size bump, a move, and a colour —
+    // the translate post-filter must keep ONLY the translated text.
+    dispatchMock.mockResolvedValue({
+      raw: JSON.stringify({ edits: [{ zoneId: 'z1', text: 'Bienvenidos', fontSize: 200, x: 50, color: 'brand red' }] }),
+    });
+    const { service } = buildService(makeFakeRedisClient());
+    const r = await service.translateBoard({
+      tenantId: 't1',
+      targetLang: 'es',
+      zones: [{ id: 'z1', widgetType: 'TEXT', defaultConfig: { content: 'Welcome', fontSize: 80 } }],
+    });
+    expect(r.diff.length).toBe(1);
+    expect(r.diff[0].patch).toEqual({ defaultConfig: { content: 'Bienvenidos' } }); // text ONLY
+    expect(r.diff[0].patch.fontSize).toBeUndefined();
+    expect(r.diff[0].patch.x).toBeUndefined();
+    expect(r.diff[0].patch.defaultConfig.color).toBeUndefined();
+    expect(r.targetLangLabel).toBe('Spanish');
+  });
+
+  it('translates the WHOLE board — more than chat-edit’s 12-zone cap', async () => {
+    // 20 text zones — the regression guard for the maxEdits=40 fix. Before it,
+    // validateChatEditDiff sliced to 12 and left 8 zones un-translated.
+    const zones = Array.from({ length: 20 }, (_, i) => ({
+      id: `z${i}`,
+      widgetType: 'TEXT',
+      defaultConfig: { content: `Item ${i}` },
+    }));
+    dispatchMock.mockResolvedValue({
+      raw: JSON.stringify({ edits: zones.map((z, i) => ({ zoneId: z.id, text: `Artículo ${i}` })) }),
+    });
+    const { service } = buildService(makeFakeRedisClient());
+    const r = await service.translateBoard({ tenantId: 't1', targetLang: 'es', zones });
+    expect(r.translated).toBe(20);
+    expect(r.diff.length).toBe(20);
+    expect(r.diff.every((d: any) => /^Artículo /.test(d.patch.defaultConfig.content))).toBe(true);
+  });
+
+  it('records exactly one success slot and writes an AI_TRANSLATE_BOARD audit row', async () => {
+    dispatchMock.mockResolvedValue({ raw: JSON.stringify({ edits: [{ zoneId: 'z1', text: 'Hola' }] }) });
+    const fake = makeFakeRedisClient();
+    const { service } = buildService(fake);
+    await service.translateBoard({
+      tenantId: 't1',
+      targetLang: 'es',
+      zones: [{ id: 'z1', widgetType: 'TEXT', defaultConfig: { content: 'Hi' } }],
+    });
+    expect(fake.zadd.mock.calls.filter((c) => c[0] === 'ai:rl:gen:t1').length).toBe(1);
+    expect(auditRows.some((r) => r.action === 'AI_TRANSLATE_BOARD')).toBe(true);
+  });
+});
+
 // ── Slice 1b — per-tenant brand voice + chat-edit add/delete intent ──
 describe('AiService — Slice 1b brand voice + add/delete intent', () => {
   beforeEach(() => {

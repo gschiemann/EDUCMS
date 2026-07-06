@@ -79,6 +79,22 @@ const AiChatEditSchema = z.object({
 }).passthrough();
 type AiChatEditBody = z.infer<typeof AiChatEditSchema>;
 
+// Whole-board TRANSLATE (2026-07-05) — localize every text element in one
+// click. The service re-validates the model output through the chat-edit
+// security spine (validateChatEditDiff) and strips to text-only, so this
+// schema only bounds inputs: a language code + the board's zones (cap 40 so a
+// tampered client can't DoS the provider).
+const AiTranslateSchema = z.object({
+  targetLang: z.string().min(2).max(10),
+  zones: z.array(z.object({
+    id: z.string().min(1).max(128),
+    widgetType: z.string().min(1).max(64),
+    defaultConfig: z.record(z.string(), z.any()).optional(),
+  }).passthrough()).min(1).max(40),
+  vertical: z.string().min(1).max(40).optional(),
+}).passthrough();
+type AiTranslateBody = z.infer<typeof AiTranslateSchema>;
+
 // 2026-06-26 — AI image generation. The prompt drives a paid image-model
 // call (~$0.04+/image), so the API boundary caps it tight: non-empty,
 // ≤1000 chars, and a fixed orientation enum the service re-validates.
@@ -156,6 +172,27 @@ export class AiController {
     @Body(new ZodValidationPipe(AiChatEditSchema)) body: AiChatEditBody,
   ) {
     return this.ai.resolveChatEdit({
+      ...body,
+      tenantId: req.user.tenantId,
+      userId: req.user.id,
+    });
+  }
+
+  // Whole-board TRANSLATE (2026-07-05) — one click localizes every text
+  // element. Returns a server-validated, TEXT-ONLY diff the FE applies as one
+  // undoable commit. Same roles as chat-edit.
+  @Post('translate')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  async translateBoard(
+    @Request() req: any,
+    @Body(new ZodValidationPipe(AiTranslateSchema)) body: AiTranslateBody,
+  ) {
+    return this.ai.translateBoard({
       ...body,
       tenantId: req.user.tenantId,
       userId: req.user.id,
