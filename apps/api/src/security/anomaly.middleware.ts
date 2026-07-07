@@ -1,12 +1,13 @@
 import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
+import { clientIpFromRequest } from './client-ip';
 
 @Injectable()
 export class AnomalyMiddleware implements NestMiddleware {
   private readonly logger = new Logger('SecurityAnomaly');
 
   use(req: Request, res: Response, next: NextFunction) {
-    const ip = req.ip;
+    const ip = clientIpFromRequest(req);
     const userAgent = req.headers['user-agent'];
     const deviceId = req.headers['x-device-id'] || 'unknown';
 

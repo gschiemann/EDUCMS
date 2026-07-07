@@ -1,6 +1,7 @@
 import { Injectable, NestMiddleware, Logger, ForbiddenException } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { randomBytes, timingSafeEqual } from 'crypto';
+import { clientIpFromRequest } from './client-ip';
 
 export const CSRF_COOKIE_NAME = 'csrf-token';
 export const CSRF_HEADER_NAME = 'x-csrf-token';
@@ -237,7 +238,7 @@ export class CsrfMiddleware implements NestMiddleware {
       reason,
       method: req.method,
       path: req.path,
-      ip: req.ip,
+      ip: clientIpFromRequest(req),
     };
 
     if (this.enforce) {

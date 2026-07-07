@@ -8,6 +8,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 import { RedisService } from '../realtime/redis.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SYSTEM_TENANT_ID, ensureSystemTenant } from '../security/system-tenant';
+import { clientIpFromRequest } from '../security/client-ip';
 import type { Request } from 'express';
 
 @Controller('api/v1/auth')
@@ -96,10 +97,7 @@ export class AuthController {
       resolvedTenantId = await this.authService.tenantIdForEmail(email);
     }
 
-    const ip =
-      (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ||
-      req.ip ||
-      null;
+    const ip = clientIpFromRequest(req);
     const ua = ((req.headers['user-agent'] as string | undefined) || '').slice(0, 256);
     // Don't store the raw email in `details` (PII); a SHA-256 prefix is
     // enough to correlate repeated attempts against the same account
@@ -198,7 +196,7 @@ export class AuthController {
             targetType: 'User',
             targetId: user?.userId || user?.id || null,
             details: JSON.stringify({
-              ip: req.ip || req.headers['x-forwarded-for'] || null,
+              ip: clientIpFromRequest(req),
               ua: (req.headers['user-agent'] || '').slice(0, 256),
             }),
           },

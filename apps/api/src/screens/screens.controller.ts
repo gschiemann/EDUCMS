@@ -26,6 +26,7 @@ import { StripeService } from '../billing/stripe.service';
 // resolves the screen's location → per-location menu via MenuService.
 import { MenuService } from '../pos/menu.service';
 import { requireSecret } from '../security/required-secret';
+import { clientIpFromRequest } from '../security/client-ip';
 import {
   getTenantState,
   setTenantState,
@@ -435,7 +436,7 @@ export class ScreensController {
             osInfo: body.osInfo || existing.osInfo,
             browserInfo: body.browserInfo || existing.browserInfo,
             userAgent: body.userAgent || existing.userAgent,
-            ipAddress: req.ip || req.socket.remoteAddress || null,
+            ipAddress: clientIpFromRequest(req),
             lastPingAt: new Date(),
             status: 'ONLINE',
             ...(detectedHardware ? { hardwareModel: detectedHardware } : {}),
@@ -467,7 +468,7 @@ export class ScreensController {
           osInfo: body.osInfo || existing.osInfo,
           browserInfo: body.browserInfo || existing.browserInfo,
           userAgent: body.userAgent || existing.userAgent,
-          ipAddress: req.ip || req.socket.remoteAddress || null,
+          ipAddress: clientIpFromRequest(req),
           lastPingAt: new Date(),
           status: 'PENDING',
           ...(detectedHardwareUnpaired ? { hardwareModel: detectedHardwareUnpaired } : {}),
@@ -526,7 +527,7 @@ export class ScreensController {
         osInfo: body.osInfo || null,
         browserInfo: body.browserInfo || null,
         userAgent: body.userAgent || null,
-        ipAddress: req.ip || req.socket.remoteAddress || null,
+        ipAddress: clientIpFromRequest(req),
         lastPingAt: new Date(),
         ...(detectedHardware ? { hardwareModel: detectedHardware } : {}),
       },

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
+import { clientIpFromRequest } from './client-ip';
 
 /**
  * Custom ThrottlerGuard that derives a STABLE per-client tracker behind
@@ -56,21 +57,10 @@ export class ClientIpThrottlerGuard extends ThrottlerGuard {
   private static readonly DIAG_BUDGET = 3;
 
   protected async getTracker(req: Record<string, any>): Promise<string> {
-    let tracker = '';
-    try {
-      const xff = req?.headers?.['x-forwarded-for'];
-      const raw = Array.isArray(xff) ? xff[0] : xff;
-      if (typeof raw === 'string' && raw.length) {
-        const first = raw.split(',')[0]?.trim();
-        if (first) tracker = first;
-      }
-    } catch {
-      /* fall through to req.ip below */
-    }
-    if (!tracker) {
-      const ip = req?.ip;
-      tracker = typeof ip === 'string' && ip.length ? ip : 'unknown';
-    }
+    // Shared leftmost-XFF resolution (also used by AuditLog/RequestLog so the
+    // throttle key and the forensic IP agree). A tracker key must be a
+    // non-null string, so coalesce the helper's null to 'unknown'.
+    const tracker = clientIpFromRequest(req) ?? 'unknown';
 
     if (this.diagLogged < ClientIpThrottlerGuard.DIAG_BUDGET) {
       this.diagLogged += 1;

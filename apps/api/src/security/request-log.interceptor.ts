@@ -2,6 +2,7 @@ import { Injectable, NestInterceptor, ExecutionContext, CallHandler, Logger } fr
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { Request } from 'express';
+import { clientIpFromRequest } from './client-ip';
 
 /**
  * RequestLogInterceptor — structured stdout request log for mutating
@@ -42,7 +43,10 @@ export class RequestLogInterceptor implements NestInterceptor {
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const req = context.switchToHttp().getRequest<Request>();
-    const { method, url, ip } = req;
+    const { method, url } = req;
+    // Real client IP behind Railway's multi-hop proxy — NOT req.ip, which
+    // resolves to a rotating internal hop (see client-ip.ts, 2026-07-07).
+    const ip = clientIpFromRequest(req);
 
     const isMutation = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method);
     if (!isMutation) {
