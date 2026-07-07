@@ -15,6 +15,7 @@ import { use, useEffect, useState } from 'react';
 import { API_URL } from '@/lib/api-url';
 
 interface StatLine {
+  sport: string;
   statKey: string;
   statValue: number;
   displayValue: string | null;
@@ -48,6 +49,16 @@ interface Profile {
 
 const fmtDate = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+
+/** Sport keys are stored lowercase/snake_case (e.g. "water_polo"); label them. */
+const fmtSport = (sport: string) =>
+  sport
+    .split('_')
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(' ');
+
+/** Distinct sports present in a set of stat lines, in first-seen order. */
+const sportsOf = (lines: { sport: string }[]) => [...new Set(lines.map((l) => l.sport))];
 
 export default function AthletePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params);
@@ -103,6 +114,22 @@ export default function AthletePage({ params }: { params: Promise<{ token: strin
   }
 
   const seasons = [...new Set(p.season.map((s) => s.season))].sort().reverse();
+  // Only disambiguate by sport when the athlete actually plays >1 sport —
+  // single-sport athletes (the common case) render exactly as before, no
+  // noisy labels. Stat codes collide across sports (soccer 'G' goals vs
+  // basketball 'G' games), so a two-sport athlete needs the sport shown.
+  const careerSports = sportsOf(p.career);
+  const multiSport = new Set([...p.career, ...p.season].map((l) => l.sport)).size > 1;
+
+  // A career stat tile — shared by the flat and grouped layouts.
+  const careerTile = (c: StatLine) => (
+    <div key={`${c.sport}-${c.statKey}`} className="rounded-xl bg-white border border-slate-200 px-3 py-3 text-center">
+      <div className="text-2xl font-black text-slate-900 tabular-nums leading-none">
+        {c.displayValue ?? c.statValue}
+      </div>
+      <div className="mt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{c.statKey}</div>
+    </div>
+  );
 
   return (
     <main className="min-h-dvh bg-slate-50 pb-16">
@@ -136,19 +163,23 @@ export default function AthletePage({ params }: { params: Promise<{ token: strin
             <p className="rounded-xl border border-dashed border-slate-300 py-5 text-center text-sm text-slate-400">
               No career stats logged yet.
             </p>
-          ) : (
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-              {p.career.map((c) => (
-                <div key={c.statKey} className="rounded-xl bg-white border border-slate-200 px-3 py-3 text-center">
-                  <div className="text-2xl font-black text-slate-900 tabular-nums leading-none">
-                    {c.displayValue ?? c.statValue}
-                  </div>
-                  <div className="mt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    {c.statKey}
+          ) : multiSport ? (
+            // Multi-sport: group tiles under a small sport heading so a
+            // parent can tell soccer goals from basketball games.
+            <div className="space-y-4">
+              {careerSports.map((sport) => (
+                <div key={sport}>
+                  <h3 className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                    {fmtSport(sport)}
+                  </h3>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                    {p.career.filter((c) => c.sport === sport).map(careerTile)}
                   </div>
                 </div>
               ))}
             </div>
+          ) : (
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">{p.career.map(careerTile)}</div>
           )}
         </section>
 
@@ -159,17 +190,34 @@ export default function AthletePage({ params }: { params: Promise<{ token: strin
             <div className="space-y-3">
               {seasons.map((sn) => {
                 const rows = p.season.filter((s) => s.season === sn);
+                const seasonSports = sportsOf(rows);
+                const statSpan = (r: SeasonLine) => (
+                  <span key={`${r.sport}-${r.statKey}`} className="text-sm tabular-nums">
+                    <span className="font-black text-slate-900">{r.displayValue ?? r.statValue}</span>{' '}
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{r.statKey}</span>
+                  </span>
+                );
                 return (
                   <div key={sn} className="rounded-xl bg-white border border-slate-200 overflow-hidden">
                     <div className="px-3 py-2 text-sm font-bold text-slate-700 border-b border-slate-100">{sn}</div>
-                    <div className="flex flex-wrap gap-x-5 gap-y-1.5 px-3 py-2.5">
-                      {rows.map((r) => (
-                        <span key={r.statKey} className="text-sm tabular-nums">
-                          <span className="font-black text-slate-900">{r.displayValue ?? r.statValue}</span>{' '}
-                          <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{r.statKey}</span>
-                        </span>
-                      ))}
-                    </div>
+                    {multiSport && seasonSports.length > 1 ? (
+                      // Multiple sports in one season → one stat row per sport,
+                      // each tagged, so identical codes stay distinguishable.
+                      <div className="divide-y divide-slate-100">
+                        {seasonSports.map((sport) => (
+                          <div key={sport} className="px-3 py-2.5">
+                            <div className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                              {fmtSport(sport)}
+                            </div>
+                            <div className="flex flex-wrap gap-x-5 gap-y-1.5">
+                              {rows.filter((r) => r.sport === sport).map(statSpan)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-x-5 gap-y-1.5 px-3 py-2.5">{rows.map(statSpan)}</div>
+                    )}
                   </div>
                 );
               })}

@@ -409,12 +409,14 @@ export interface AthleteCareer {
   gradYear: number | null;
   season: Array<{
     season: string;
+    sport: string;
     statKey: string;
     statValue: number;
     displayValue: string | null;
     gamesPlayed: number;
   }>;
   career: Array<{
+    sport: string;
     statKey: string;
     statValue: number;
     displayValue: string | null;
@@ -929,6 +931,7 @@ export async function getAthleteCareer(
           orderBy: [{ season: 'desc' }, { statKey: 'asc' }],
           select: {
             season: true,
+            sport: true,
             statKey: true,
             statValue: true,
             displayValue: true,
@@ -939,6 +942,7 @@ export async function getAthleteCareer(
           where: { tenantId, personId },
           orderBy: { statKey: 'asc' },
           select: {
+            sport: true,
             statKey: true,
             statValue: true,
             displayValue: true,
@@ -959,12 +963,14 @@ export async function getAthleteCareer(
     gradYear: person.gradYear ?? null,
     season: seasonRows.map((r) => ({
       season: r.season,
+      sport: r.sport,
       statKey: r.statKey,
       statValue: r.statValue,
       displayValue: r.displayValue ?? null,
       gamesPlayed: r.gamesPlayed,
     })),
     career: careerRows.map((r) => ({
+      sport: r.sport,
       statKey: r.statKey,
       statValue: r.statValue,
       displayValue: r.displayValue ?? null,

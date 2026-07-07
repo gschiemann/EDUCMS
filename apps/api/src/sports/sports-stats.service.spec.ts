@@ -639,3 +639,117 @@ describe('getStatLeaders', () => {
     expect(leaders[0].personId).toBe('p-2');
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────
+// getAthleteCareer — READ-PATH sport surfacing (regression for the
+// write/read asymmetry after the sport-unique-key fix, a56aebec).
+//
+// The write path now stores a multi-sport athlete's colliding stat codes
+// (soccer 'G' goals vs basketball 'G' games) as SEPARATE rows per sport.
+// This proves the READ path SELECTs + surfaces `sport` on every career and
+// season row, so those rows don't collapse into one ambiguous entry on the
+// public athlete profile. The fake below PROJECTS ONLY the columns the
+// service `select`s — so if `sport` is dropped from the select (the pre-fix
+// state), it never reaches the output and these assertions fail.
+// ──────────────────────────────────────────────────────────────────────
+import { getAthleteCareer } from './sports-stats.service';
+
+interface FakeStatRow {
+  tenantId: string;
+  personId: string;
+  sport: string;
+  season?: string;
+  statKey: string;
+  statValue: number;
+  gamesPlayed: number;
+  displayValue: string | null;
+}
+
+/** A Prisma-faithful fake that returns ONLY the `select`ed fields. */
+function selectProject(row: FakeStatRow, select?: Record<string, boolean>): any {
+  if (!select) return { ...row };
+  const out: any = {};
+  for (const k of Object.keys(select)) if (select[k]) out[k] = (row as any)[k];
+  return out;
+}
+
+function careerPrisma(seasonRows: FakeStatRow[], careerRows: FakeStatRow[]) {
+  return {
+    sportsPerson: {
+      findFirst: async ({ where, select }: any) => {
+        if (where.id !== 'p-multi' || where.tenantId !== T) return null;
+        const person: any = {
+          id: 'p-multi', fullName: 'Jordan Rivers', number: '10',
+          position: 'MF', photoUrl: null, teamId: 'team-1', gradYear: 2027,
+        };
+        if (!select) return person;
+        const out: any = {};
+        for (const k of Object.keys(select)) if (select[k]) out[k] = person[k];
+        return out;
+      },
+    },
+    playerSeasonStat: {
+      findMany: async ({ where, select }: any) =>
+        seasonRows
+          .filter((r) => r.personId === where.personId && r.tenantId === where.tenantId)
+          .map((r) => selectProject(r, select)),
+    },
+    playerCareerStat: {
+      findMany: async ({ where, select }: any) =>
+        careerRows
+          .filter((r) => r.personId === where.personId && r.tenantId === where.tenantId)
+          .map((r) => selectProject(r, select)),
+    },
+  } as any;
+}
+
+describe('getAthleteCareer — multi-sport read path', () => {
+  // Same stat code 'G' means DIFFERENT things per sport (soccer goals vs
+  // basketball games), stored as two rows now that `sport` is in the key.
+  const seasonRows: FakeStatRow[] = [
+    { tenantId: T, personId: 'p-multi', sport: 'soccer', season: '2025-26', statKey: 'G', statValue: 12, gamesPlayed: 15, displayValue: '12' },
+    { tenantId: T, personId: 'p-multi', sport: 'basketball', season: '2025-26', statKey: 'G', statValue: 22, gamesPlayed: 22, displayValue: '22' },
+  ];
+  const careerRows: FakeStatRow[] = [
+    { tenantId: T, personId: 'p-multi', sport: 'soccer', statKey: 'G', statValue: 30, gamesPlayed: 40, displayValue: '30' },
+    { tenantId: T, personId: 'p-multi', sport: 'basketball', statKey: 'G', statValue: 48, gamesPlayed: 48, displayValue: '48' },
+  ];
+
+  it('surfaces `sport` on every career row', async () => {
+    const prisma = careerPrisma(seasonRows, careerRows);
+    const out = await getAthleteCareer(prisma, { tenantId: T, personId: 'p-multi' });
+    expect(out).not.toBeNull();
+    for (const c of out!.career) expect(typeof c.sport).toBe('string');
+    expect(out!.career.every((c) => c.sport && c.sport.length > 0)).toBe(true);
+  });
+
+  it('surfaces `sport` on every season row', async () => {
+    const prisma = careerPrisma(seasonRows, careerRows);
+    const out = await getAthleteCareer(prisma, { tenantId: T, personId: 'p-multi' });
+    for (const s of out!.season) expect(typeof s.sport).toBe('string');
+    expect(out!.season.every((s) => s.sport && s.sport.length > 0)).toBe(true);
+  });
+
+  it('keeps a colliding statKey as TWO DISTINCT career entries (not collapsed)', async () => {
+    const prisma = careerPrisma(seasonRows, careerRows);
+    const out = await getAthleteCareer(prisma, { tenantId: T, personId: 'p-multi' });
+    const gRows = out!.career.filter((c) => c.statKey === 'G');
+    expect(gRows).toHaveLength(2);
+    // Distinguishable by sport, with their own (different) values preserved.
+    const bySport = Object.fromEntries(gRows.map((c) => [c.sport, c.statValue]));
+    expect(bySport.soccer).toBe(30);
+    expect(bySport.basketball).toBe(48);
+    expect(new Set(gRows.map((c) => c.sport)).size).toBe(2);
+  });
+
+  it('keeps a colliding statKey as TWO DISTINCT season entries (not collapsed)', async () => {
+    const prisma = careerPrisma(seasonRows, careerRows);
+    const out = await getAthleteCareer(prisma, { tenantId: T, personId: 'p-multi' });
+    const gRows = out!.season.filter((s) => s.statKey === 'G' && s.season === '2025-26');
+    expect(gRows).toHaveLength(2);
+    const bySport = Object.fromEntries(gRows.map((s) => [s.sport, s.statValue]));
+    expect(bySport.soccer).toBe(12);
+    expect(bySport.basketball).toBe(22);
+    expect(new Set(gRows.map((s) => s.sport)).size).toBe(2);
+  });
+});
