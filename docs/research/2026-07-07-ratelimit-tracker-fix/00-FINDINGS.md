@@ -83,7 +83,29 @@ never fired at all.
 
 Exactly the behavior that was impossible before. **Closed.**
 
-## Follow-up (optional, non-blocking)
+## Follow-up: AuditLog / RequestLog IP forensic fix — DONE + LIVE-VERIFIED (`d2497d1d`)
+
+The same rotating-`req.ip` root cause also made every forensic `ipAddress` sink
+record the internal hop. Fixed by extracting the leftmost-XFF resolution into a
+shared, defensive helper `apps/api/src/security/client-ip.ts`
+(`clientIpFromRequest`) and wiring it into: `request-log.interceptor.ts`,
+`auth.controller.ts` (login + logout AuditLog), `screens.controller.ts`
+(Screen.ipAddress ×3), `anomaly.middleware.ts`, `csrf.middleware.ts`. The
+throttler guard now delegates to the same helper so the throttle key and the
+forensic IP agree. `trust proxy` was NOT changed globally (Railway hop count
+varies; leftmost-XFF is robust to a variable chain). 8 helper + 7 guard unit
+tests; 136 security/auth/throttler tests green.
+
+**Live-verified (deploy `d2497d1d`):**
+- `AUTH_LOGIN_FAILED` AuditLog rows stored `ip: 99.65.178.111`, which EXACTLY
+  matches the test client's independently-confirmed egress (`api.ipify.org` →
+  `99.65.178.111`). Ground-truth match — before the fix this would have been a
+  rotating internal hop.
+- RequestLog stdout `HTTP_MUTATION` breadcrumbs now show a stable real public
+  client IP (`216.241.83.102`) for organic device traffic — no internal
+  `10.x`/`152.x` addresses.
+
+## Residual follow-up (optional, non-blocking)
 
 - The `[tracker-diag]` WARN log is self-limited to 3/process and harmless
   (client IPs already appear in RequestLog). It can be removed in a future
