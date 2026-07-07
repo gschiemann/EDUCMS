@@ -785,32 +785,42 @@ export class StripeService {
       license.stripeLastEventCreatedAt.getTime() > eventCreatedAt.getTime()
         ? license.stripeLastEventCreatedAt
         : eventCreatedAt;
-    await this.prisma.client.$transaction(async (tx) => {
-      await tx.license.update({
-        where: { id: license.id },
-        data: { status, stripeLastEventCreatedAt: nextWatermark },
-      });
-      await tx.auditLog.create({
-        data: {
-          tenantId: license.tenantId,
-          userId: null,
-          action: this.auditActionFor(event.type),
-          targetType: 'License',
-          targetId: license.id,
-          details: JSON.stringify({
-            eventId: event.id,
-            eventType: event.type,
-            eventCreated: event.created,
-            invoiceId: inv.id,
-            subscriptionId: subId ?? null,
-            stripeCustomerId: customerId,
-            fromStatus,
-            toStatus: status,
-            liveStatusUsed,
-          }),
-        },
-      });
-    });
+    // withDbRetry to match the sibling syncLicenseFromSubscription tx (same
+    // commit wrapped that one but left this invoice path bare). Without it a
+    // transient pgbouncer blip here bubbles → the webhook controller returns
+    // 500 → Stripe retries the SAME event.id → the commit-before-work
+    // idempotency gate (processedStripeEvent) short-circuits the retry as a
+    // duplicate → a real payment_failed downgrade or payment_succeeded recovery
+    // is permanently lost (unpaid tenant stays ACTIVE / paying customer stuck
+    // PAST_DUE). Retrying the transient failure closes that window.
+    await withDbRetry(() =>
+      this.prisma.client.$transaction(async (tx) => {
+        await tx.license.update({
+          where: { id: license.id },
+          data: { status, stripeLastEventCreatedAt: nextWatermark },
+        });
+        await tx.auditLog.create({
+          data: {
+            tenantId: license.tenantId,
+            userId: null,
+            action: this.auditActionFor(event.type),
+            targetType: 'License',
+            targetId: license.id,
+            details: JSON.stringify({
+              eventId: event.id,
+              eventType: event.type,
+              eventCreated: event.created,
+              invoiceId: inv.id,
+              subscriptionId: subId ?? null,
+              stripeCustomerId: customerId,
+              fromStatus,
+              toStatus: status,
+              liveStatusUsed,
+            }),
+          },
+        });
+      }),
+    );
     this.logger[status === 'PAST_DUE' || status === 'SUSPENDED' ? 'warn' : 'log'](
       `webhook: ${event.type} for customer ${customerId} → tenant ` +
         `${license.tenantId} ${fromStatus ?? 'none'} → ${status} ` +

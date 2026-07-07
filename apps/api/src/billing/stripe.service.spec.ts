@@ -370,6 +370,33 @@ describe('StripeService.handleWebhookEvent — P0-7 audit fixes', () => {
     );
   });
 
+  it('invoice tx is retried on a transient pgbouncer blip — the downgrade is NOT lost to the idempotency gate', async () => {
+    fake.inspect.licenses.set('tenant_A', {
+      id: 'lic_tenant_A', tenantId: 'tenant_A', status: 'ACTIVE', tier: 'MONTHLY',
+      stripeCustomerId: 'cus_retry', stripeSubscriptionId: 'sub_retry', stripeLastEventCreatedAt: null,
+    });
+    // First $transaction attempt throws a transient pool timeout (P2024); the
+    // second succeeds. Without the withDbRetry wrapper the throw bubbles → the
+    // webhook controller returns 500 → Stripe retries the SAME event.id → the
+    // commit-before-work idempotency gate short-circuits it as a duplicate and
+    // the PAST_DUE downgrade is permanently lost (unpaid tenant stays ACTIVE).
+    let attempts = 0;
+    fake.inspect.clientMocks.$transaction.mockImplementation(async (fn: any) => {
+      attempts += 1;
+      if (attempts === 1) { const e: any = new Error('pgbouncer pool timeout'); e.code = 'P2024'; throw e; }
+      return fn(fake.inspect.txMocks);
+    });
+
+    await svc.handleWebhookEvent({
+      id: 'evt_retry_1', type: 'invoice.payment_failed',
+      created: Math.floor(Date.now() / 1000),
+      data: { object: { id: 'in_retry', customer: 'cus_retry' } },
+    });
+
+    expect(attempts).toBeGreaterThanOrEqual(2); // retried, not lost
+    expect(fake.inspect.licenses.get('tenant_A')?.status).toBe('PAST_DUE'); // downgrade applied
+  });
+
   it('audit log: customer.subscription.deleted records fromStatus → CANCELLED', async () => {
     fake.inspect.licenses.set('tenant_A', {
       id: 'lic_tenant_A',
