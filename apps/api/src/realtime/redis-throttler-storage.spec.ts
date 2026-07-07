@@ -159,13 +159,31 @@ describe('RedisThrottlerStorage', () => {
       expect(r2.totalHits).toBe(2);
     });
 
-    it('falls back to in-memory storage when Redis is not in the ready state', async () => {
+    it('still attempts the SHARED Redis eval on a transient (non-ready) status — no strict ready-gate', async () => {
+      // The old strict `status === 'ready'` gate forced a PERMANENT fail-open to
+      // per-replica memory on multi-replica prod (16 rapid bad logins → zero 429,
+      // reproduced live). We now attempt the eval regardless of a transient status;
+      // ioredis queues briefly if reconnecting, and the bounded timeout+catch fail
+      // us open only if Redis is truly down. So a 'reconnecting' client whose eval
+      // resolves uses the SHARED counter (the fix).
       const { evalFn } = makeFakeRedisEval();
       const storage = makeStorage(evalFn, 'reconnecting');
       const r = await storage.increment('2.2.2.2', TTL, LIMIT, BLOCK, NAME);
+      expect(evalFn).toHaveBeenCalledTimes(1); // shared eval attempted, NOT skipped
       expect(r.totalHits).toBe(1);
-      // eval must NOT be called when the client isn't ready.
-      expect(evalFn).not.toHaveBeenCalled();
+    });
+
+    it('fails open (never hangs) when the Redis eval does not resolve within the timeout', async () => {
+      // A stuck / unreachable Redis: the eval promise never settles. The bounded
+      // race must reject via timeout and fall open to per-replica memory rather
+      // than hang the login on ioredis's offline queue.
+      const evalFn = jest.fn().mockReturnValue(new Promise(() => undefined)); // never resolves
+      const storage = makeStorage(evalFn);
+      const r = await storage.increment('4.4.4.4', TTL, LIMIT, BLOCK, NAME);
+      expect(evalFn).toHaveBeenCalledTimes(1);
+      expect(r).toEqual(
+        expect.objectContaining({ totalHits: 1, isBlocked: false }),
+      );
     });
 
     it('falls back to in-memory (never throws) when eval rejects mid-flight', async () => {

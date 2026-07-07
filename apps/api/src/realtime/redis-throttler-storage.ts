@@ -69,6 +69,13 @@ export class RedisThrottlerStorage implements ThrottlerStorage {
   private warnedFailOpen = false;
 
   /**
+   * Max time to wait for the Redis EVAL before failing open to memory. A
+   * healthy pooled EVAL is sub-5ms; 250ms is generous headroom while still
+   * bounding a login's added latency if Redis is unreachable.
+   */
+  private static readonly EVAL_TIMEOUT_MS = 250;
+
+  /**
    * Atomic INCR + first-hit-PEXPIRE + block bookkeeping in one round-trip.
    *
    * KEYS[1] = hit-count key, KEYS[2] = block-marker key
@@ -139,14 +146,20 @@ return { hits, hitPttl, 0, 0 }
   ): Promise<ThrottlerStorageRecord> {
     const client = this.redis.publisher;
 
-    // FAIL-OPEN: no Redis configured / not connected → in-memory fallback.
-    // Never throw: a Redis outage must not block authentication.
-    if (!client || client.status !== 'ready') {
+    // FAIL-OPEN only when there is genuinely NO client. We deliberately do NOT
+    // gate on `client.status === 'ready'` (2026-07-06 fix): on multi-replica
+    // prod that strict check was forcing a PERMANENT fail-open to per-replica
+    // memory — the cap never fired 429 (16 rapid bad logins, zero 429, live).
+    // ioredis reports transient statuses ('connecting'/'reconnecting') even when
+    // the connection is usable and its offline queue would run the command the
+    // instant it's ready. Instead we ATTEMPT the eval under a short timeout
+    // (below); if Redis is truly down the timeout+catch fail us open FAST, so a
+    // login is never blocked or hung.
+    if (!client) {
       if (!this.warnedFailOpen) {
         this.warnedFailOpen = true;
         this.logger.warn(
-          `Redis throttler fail-open (status branch): publisher status="${client?.status ?? 'null'}". ` +
-            `Rate-limit caps are counted PER-REPLICA (not shared) until Redis is ready.`,
+          'Redis throttler fail-open: no publisher client — rate-limit caps are PER-REPLICA (not shared).',
         );
       }
       return this.memoryFallback.increment(
@@ -164,15 +177,28 @@ return { hits, hitPttl, 0, 0 }
     const blockKey = `throttle:block:${throttlerName}:${key}`;
 
     try {
-      const res = (await client.eval(
-        RedisThrottlerStorage.INCREMENT_LUA,
-        2,
-        hitKey,
-        blockKey,
-        String(ttl),
-        String(limit),
-        String(blockDuration),
-      )) as [number, number, number, number];
+      // Bounded eval: a healthy Redis EVAL is sub-5ms. Racing it against a
+      // short timeout means that if the connection is mid-reconnect or Redis is
+      // genuinely down, we fail OPEN fast (via catch) instead of hanging the
+      // login on ioredis's offline queue. This is what makes it safe to have
+      // dropped the strict `status === 'ready'` pre-gate above.
+      const res = (await Promise.race([
+        client.eval(
+          RedisThrottlerStorage.INCREMENT_LUA,
+          2,
+          hitKey,
+          blockKey,
+          String(ttl),
+          String(limit),
+          String(blockDuration),
+        ),
+        new Promise((_resolve, reject) =>
+          setTimeout(
+            () => reject(new Error('throttler eval timeout')),
+            RedisThrottlerStorage.EVAL_TIMEOUT_MS,
+          ),
+        ),
+      ])) as [number, number, number, number];
 
       const [totalHits, timeToExpireMs, isBlocked, timeToBlockExpireMs] = res;
 
