@@ -59,6 +59,16 @@ export class RedisThrottlerStorage implements ThrottlerStorage {
   private readonly memoryFallback = new ThrottlerStorageService();
 
   /**
+   * One-shot fail-open warning latch (2026-07-06). The fail-open path used to
+   * log at .debug() (dropped by Railway), so a silent, permanent fail-open to
+   * per-replica memory — which defeats the shared brute-force cap across
+   * replicas — was invisible in prod. Warn ONCE (not per-request) the first
+   * time we fall open, naming the branch + reason, so the condition is
+   * diagnosable without spamming the log.
+   */
+  private warnedFailOpen = false;
+
+  /**
    * Atomic INCR + first-hit-PEXPIRE + block bookkeeping in one round-trip.
    *
    * KEYS[1] = hit-count key, KEYS[2] = block-marker key
@@ -102,8 +112,16 @@ if hitPttl < 0 then
 end
 
 if hits > limit then
-  -- Trip the block: freeze further hits for blockDuration.
-  redis.call('SET', blockKey, '1', 'PX', blockDur)
+  -- Trip the block: freeze further hits for blockDuration. Guard blockDur>0:
+  -- Redis SET ... PX 0 (or negative) is an "invalid expire time" ERROR that
+  -- would throw out of EVAL and force the whole throttler to fail-open to
+  -- per-replica memory — silently defeating the shared cap. When no
+  -- blockDuration is configured we simply don't set a separate block key; the
+  -- count still exceeds the limit within the window so this branch keeps
+  -- returning isBlocked=1 on every subsequent hit until the window lapses.
+  if blockDur > 0 then
+    redis.call('SET', blockKey, '1', 'PX', blockDur)
+  end
   return { hits, hitPttl, 1, blockDur }
 end
 
@@ -124,6 +142,13 @@ return { hits, hitPttl, 0, 0 }
     // FAIL-OPEN: no Redis configured / not connected → in-memory fallback.
     // Never throw: a Redis outage must not block authentication.
     if (!client || client.status !== 'ready') {
+      if (!this.warnedFailOpen) {
+        this.warnedFailOpen = true;
+        this.logger.warn(
+          `Redis throttler fail-open (status branch): publisher status="${client?.status ?? 'null'}". ` +
+            `Rate-limit caps are counted PER-REPLICA (not shared) until Redis is ready.`,
+        );
+      }
       return this.memoryFallback.increment(
         key,
         ttl,
@@ -162,12 +187,17 @@ return { hits, hitPttl, 0, 0 }
       };
     } catch (err) {
       // Redis errored mid-flight — fail OPEN to the in-memory bucket rather
-      // than 500/lock-out. Logged at debug so a flapping Redis doesn't spam.
-      this.logger.debug(
-        `Redis throttler increment failed (fail-open to memory): ${
-          (err as Error)?.message ?? err
-        }`,
-      );
+      // than 500/lock-out. Warn ONCE (not per-request) so a real, persistent
+      // EVAL failure (which silently defeats the shared cap) is visible in
+      // Railway logs, while a one-off flap doesn't spam.
+      if (!this.warnedFailOpen) {
+        this.warnedFailOpen = true;
+        this.logger.warn(
+          `Redis throttler fail-open (EVAL error): ${
+            (err as Error)?.message ?? err
+          } — rate-limit caps counted PER-REPLICA until this clears.`,
+        );
+      }
       return this.memoryFallback.increment(
         key,
         ttl,
