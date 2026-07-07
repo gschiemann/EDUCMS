@@ -94,8 +94,9 @@ import { BugsController } from './bugs/bugs.controller';
 import { EfficiencyModule } from './efficiency/efficiency.module';
 import { EfficiencyInterceptor } from './efficiency/efficiency.interceptor';
 import { ScreenWedgeDetectorCron } from './screens/screen-wedge-detector.cron';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { RedisThrottlerStorage } from './realtime/redis-throttler-storage';
+import { ClientIpThrottlerGuard } from './security/client-ip-throttler.guard';
 import { RedisService } from './realtime/redis.service';
 import { APP_FILTER, APP_GUARD, APP_PIPE, APP_INTERCEPTOR } from '@nestjs/core';
 import { SanitizationPipe } from './security/sanitization.pipe';
@@ -244,8 +245,12 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
       useClass: SentryGlobalFilter,
     },
     {
+      // ClientIpThrottlerGuard (not the stock ThrottlerGuard): derives a
+      // STABLE per-client tracker from the leftmost X-Forwarded-For entry so
+      // the per-IP brute-force caps actually accumulate behind Railway's
+      // multi-hop proxy. See the guard file for the live root-cause (2026-07-07).
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: ClientIpThrottlerGuard,
     },
     {
       provide: APP_PIPE,
