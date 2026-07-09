@@ -142,6 +142,24 @@ function useImageDimensions(url: string | null) {
   return dims;
 }
 
+// True stored dimensions, measured server-side by sharp at upload time
+// (processing_meta.processedDimensions = the file we actually store and
+// serve to screens). THE BUG THIS FIXES (2026-07-09): the grid badge and
+// the detail panel both stamped `naturalWidth×naturalHeight` of the
+// ~320px TRANSFORMED thumbnail (`/render/image/…?width=320`), so the UI
+// showed the thumbnail's size, not the asset's — operator: "i upload
+// images in our system and its not the same as every other CMS." Always
+// prefer these server-measured dims; only fall back to client measuring
+// when meta is missing (legacy pre-transcoder uploads), and then ONLY
+// against the ORIGINAL file URL, never a transformed thumbnail.
+function metaDims(a: any): { w: number; h: number } | null {
+  const pm = a?.processingMeta;
+  const d = pm?.processedDimensions ?? pm?.originalDimensions;
+  return d && typeof d.w === 'number' && typeof d.h === 'number'
+    ? { w: d.w, h: d.h }
+    : null;
+}
+
 export default function AssetsPage() {
   const userRole = useUIStore((s) => s.user?.role);
   const isViewer = userRole === 'RESTRICTED_VIEWER';
@@ -588,7 +606,17 @@ export default function AssetsPage() {
   const assetName = (a: any) => a.originalName || (a.mimeType === 'text/html' ? a.fileUrl : a.fileUrl?.split('/').pop()) || 'Untitled';
 
   const selectedThumb = selectedAsset ? thumbUrl(selectedAsset) : null;
-  const selectedDims = useImageDimensions(selectedThumb);
+  // Server-measured dims first (see metaDims). Legacy assets without
+  // processing meta fall back to client measuring — against the ORIGINAL
+  // file URL, never the 320px transformed thumbnail (measuring the thumb
+  // was the "wrong resolution vs every other CMS" bug, 2026-07-09).
+  const selectedMetaDims = selectedAsset ? metaDims(selectedAsset) : null;
+  const selectedRawUrl =
+    selectedAsset?.fileUrl && selectedAsset.mimeType?.startsWith('image/')
+      ? (selectedAsset.fileUrl.startsWith('http') ? selectedAsset.fileUrl : `${apiBase}${selectedAsset.fileUrl}`)
+      : null;
+  const measuredDims = useImageDimensions(selectedMetaDims ? null : selectedRawUrl);
+  const selectedDims = selectedMetaDims ?? measuredDims;
 
   // Close folder context menu on outside click
   useEffect(() => {
@@ -1029,6 +1057,7 @@ export default function AssetsPage() {
           {filtered.map((a: any) => {
             const thumb = thumbUrl(a);
             const name = assetName(a);
+            const dims = metaDims(a); // server-measured truth for the res badge
             const isSelected = selectedIds.includes(a.id);
             return (
               // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
@@ -1109,9 +1138,19 @@ export default function AssetsPage() {
                       decoding="async"
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       onLoad={(e) => {
+                        // Fallback for legacy assets with no server-measured
+                        // dims — and ONLY when the loaded file is not the
+                        // downscaled /render/image/ thumbnail. Stamping the
+                        // thumbnail's naturalWidth here was the "resolution
+                        // doesn't match any other CMS" bug (2026-07-09):
+                        // the badge showed ~320×360 instead of the asset's
+                        // true size. Server-measured dims render directly
+                        // in the badge span below.
                         const img = e.currentTarget;
                         const badge = img.parentElement?.querySelector('[data-res]') as HTMLElement;
-                        if (badge && img.naturalWidth) badge.textContent = `${img.naturalWidth}×${img.naturalHeight}`;
+                        if (badge && !dims && img.naturalWidth && !img.src.includes('/render/image/')) {
+                          badge.textContent = `${img.naturalWidth}×${img.naturalHeight}`;
+                        }
                       }}
                       // mshots sometimes returns an image that fails to
                       // decode on a brand-new URL (the service hasn't
@@ -1149,9 +1188,15 @@ export default function AssetsPage() {
                       No hover-hide needed — it no longer contends with the
                       trash, so the tag stays consistently visible. */}
                   <div className="absolute bottom-1.5 left-1.5">{typeBadge(a.mimeType, { onImage: true })}</div>
-                  {thumb && (
+                  {thumb && (dims ? (
+                    // Server-measured dims (React-owned text).
+                    <span className="absolute bottom-1.5 right-1.5 text-[9px] font-bold text-white bg-black/50 backdrop-blur-sm px-1.5 py-0.5 rounded">{`${dims.w}×${dims.h}`}</span>
+                  ) : (
+                    // Legacy fallback target: stays CHILDLESS so the img
+                    // onLoad's imperative textContent stamp never fights
+                    // React over a text node it owns.
                     <span data-res="" className="absolute bottom-1.5 right-1.5 text-[9px] font-bold text-white bg-black/50 backdrop-blur-sm px-1.5 py-0.5 rounded" />
-                  )}
+                  ))}
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
                     <div className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all scale-75 group-hover:scale-100 shadow-lg mt-4">
                       {isUrl(a) ? <Globe className="w-4 h-4 text-emerald-600" /> : <Eye className="w-4 h-4 text-slate-700" />}
