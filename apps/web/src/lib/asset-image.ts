@@ -82,7 +82,14 @@ export function transformedImageUrl(
     );
     // Strip any existing query string and append our transform params.
     const base = transformed.split('?')[0];
-    return `${base}?width=${width}&quality=${quality}`;
+    // DISTORTION FIX (2026-07-09, verified empirically against our live
+    // bucket): Supabase's render endpoint with ONLY `width` does NOT
+    // auto-scale height — it squeezes width and keeps the original height
+    // (a 1182×1330 source at width=320 came back 320×1330: warped). Every
+    // thumbnail in the app was distorted. A square width×height box with
+    // resize=contain returns an ASPECT-TRUE image whose longest side is
+    // `width` (same source → 284×320). Callers keep the one-number API.
+    return `${base}?width=${width}&height=${width}&resize=contain&quality=${quality}`;
   } catch {
     // Defensive: if anything in the URL munging throws, return the original.
     return fileUrl;

@@ -171,6 +171,11 @@ export default function AssetsPage() {
   const [webUrl, setWebUrl] = useState('');
   const [selectedAsset, setSelectedAsset] = useState<any>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  // Quick Look (2026-07-09): hover a grid image ~350ms → full uncropped
+  // preview floats over the page (macOS spacebar-style). Desktop-only —
+  // gated on (hover:hover) so touch taps go straight to the detail panel.
+  const [peek, setPeek] = useState<{ url: string; name: string; dims: { w: number; h: number } | null } | null>(null);
+  const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
 
   // "Create playlist" from the current selection: stash the ids in
@@ -1053,15 +1058,28 @@ export default function AssetsPage() {
           <p className="text-xs font-semibold text-slate-400">{search || filter !== 'all' ? 'No assets match your search' : 'Empty library — upload files to get started'}</p>
         </div>
       ) : viewMode === 'grid' ? (
-        <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 list-none p-0 m-0">
+        // 2026-07-09 — MASONRY grid (operator: "i cant really tell what any
+        // of these images are from the preview page"). Was a uniform CSS
+        // grid with fixed 16:9 media boxes + object-cover: portrait signage
+        // (1182×1330, 941×1672…) rendered as a zoom-cropped horizontal band.
+        // Now: CSS multi-column masonry; each tile's media box adopts the
+        // image's own aspect ratio (server-measured dims), so the WHOLE
+        // image is visible with zero cropping and zero letterbox bars.
+        <ul className="columns-2 sm:columns-3 lg:columns-4 xl:columns-5 gap-4 list-none p-0 m-0">
           {filtered.map((a: any) => {
             const thumb = thumbUrl(a);
             const name = assetName(a);
-            const dims = metaDims(a); // server-measured truth for the res badge
+            const dims = metaDims(a); // server-measured truth for badge + tile aspect
+            // Tile media aspect = the image's own ratio, clamped so an
+            // extreme banner (e.g. a 320×1080 LED strip) can't produce an
+            // absurdly tall/flat tile — clamped cases take a mild crop.
+            const tileRatio = dims
+              ? Math.min(2.4, Math.max(0.55, dims.w / dims.h))
+              : null;
             const isSelected = selectedIds.includes(a.id);
             return (
               // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
-              <li key={a.id} draggable={!isViewer} onDragStart={e => { if (isViewer) { e.preventDefault(); return; } e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }} className={`bg-white rounded-3xl overflow-hidden group transition-all duration-300 relative border-2 ${isSelected ? 'border-indigo-500 shadow-[0_8px_30px_rgb(99,102,241,0.2)]' : 'border-transparent hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]'}`}>
+              <li key={a.id} draggable={!isViewer} onDragStart={e => { if (isViewer) { e.preventDefault(); return; } e.dataTransfer.setData('assetId', a.id); e.dataTransfer.effectAllowed = 'move'; }} className={`mb-4 break-inside-avoid bg-white rounded-3xl overflow-hidden group transition-all duration-300 relative border-2 ${isSelected ? 'border-indigo-500 shadow-[0_8px_30px_rgb(99,102,241,0.2)]' : 'border-transparent hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]'}`}>
                 {/* Selection Checkbox Trigger.
                     2026-05-29 (mobile P1) — was opacity-0 + group-hover
                     reveal, which never fires on touch (no :hover on a
@@ -1108,10 +1126,33 @@ export default function AssetsPage() {
                       setSelectedAsset(a);
                     }
                   }}
+                  // Quick Look: linger ~350ms on an image tile → full
+                  // uncropped preview. Hover-capable pointers only (iOS
+                  // fires mouseenter on tap — the matchMedia gate keeps
+                  // taps going straight to the detail panel).
+                  onMouseEnter={() => {
+                    if (!a.mimeType?.startsWith('image/') || !a.fileUrl) return;
+                    if (!window.matchMedia?.('(hover: hover)').matches) return;
+                    if (peekTimer.current) clearTimeout(peekTimer.current);
+                    const raw = a.fileUrl.startsWith('http') ? a.fileUrl : `${apiBase}${a.fileUrl}`;
+                    peekTimer.current = setTimeout(() => {
+                      setPeek({ url: transformedImageUrl(raw, { width: 1280, quality: 75 }), name, dims });
+                    }, 350);
+                  }}
+                  onMouseLeave={() => {
+                    if (peekTimer.current) clearTimeout(peekTimer.current);
+                    setPeek(null);
+                  }}
                   aria-label={isUrl(a) ? `Open ${name} in a new tab` : `View details for ${name}`}
                   className="w-full text-left cursor-pointer hover:-translate-y-0 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500"
                 >
-                <div className="aspect-video bg-slate-50 flex items-center justify-center relative overflow-hidden">
+                <div
+                  className="bg-slate-50 flex items-center justify-center relative overflow-hidden"
+                  // Image tiles adopt the image's own (clamped) aspect ratio
+                  // so object-cover shows the FULL image un-cropped. Videos,
+                  // PDFs, URLs and dimension-less legacy assets keep 16:9.
+                  style={{ aspectRatio: tileRatio ? String(tileRatio) : '16 / 9' }}
+                >
                   {thumb && isVideo(a) ? (
                     // 2026-06-16 — show a real first-frame POSTER on load
                     // (operator: "videos dont have previews"). The old
@@ -1580,6 +1621,28 @@ export default function AssetsPage() {
             }
           }}
         />
+      )}
+
+      {/* Quick Look — full uncropped hover preview (2026-07-09). Pure
+          pointer-events-none overlay: clicks pass through to the tile
+          beneath and mouseleave on the tile dismisses it, so it can never
+          trap focus or block the detail panel. Desktop-only by
+          construction (only the hover handler sets `peek`). */}
+      {peek && (
+        <div className="fixed top-0 right-0 bottom-0 left-0 z-[70] pointer-events-none flex items-center justify-center p-8 bg-black/60">
+          <div className="flex flex-col items-center gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={peek.url}
+              alt={peek.name}
+              className="max-h-[78vh] max-w-[82vw] object-contain rounded-2xl shadow-2xl bg-white"
+            />
+            <div className="px-3.5 py-1.5 rounded-full bg-black/75 text-white text-xs font-semibold max-w-[70vw] truncate">
+              {peek.name}
+              {peek.dims ? `  ·  ${peek.dims.w}×${peek.dims.h}` : ''}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
