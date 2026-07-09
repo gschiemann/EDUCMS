@@ -1315,9 +1315,19 @@ export default function AssetsPage() {
       {selectedAsset && (
         <div className="fixed inset-0 z-50 flex">
           <button aria-label="Close detail panel" className="absolute inset-0 bg-black/50 backdrop-blur-sm cursor-default" onClick={() => setSelectedAsset(null)} />
-          <div className="ml-auto w-full max-w-xl bg-white shadow-2xl relative z-10 flex flex-col animate-in slide-in-from-right">
+          {/* 2026-07-09 — centered two-column detail modal (operator:
+              "center the preview, enlarge it a little and use some of the
+              extra wasted space"). Was a narrow right-side drawer with a
+              fixed 16:9 preview strip — portrait signage letterboxed into
+              a small band while ~60% of the screen sat as dimmed backdrop.
+              Now: centered modal; preview owns the full-height left stage
+              (flex-1), metadata is a fixed 400px column right. On phones it
+              stacks (preview strip on top, details scroll below). */}
+          <div className="m-auto w-full h-full md:h-[85vh] md:max-w-5xl bg-white shadow-2xl relative z-10 flex flex-col md:flex-row overflow-hidden md:rounded-3xl animate-in zoom-in-95 fade-in duration-200">
             {/* Preview */}
-            <div className="aspect-video bg-slate-900 flex items-center justify-center relative overflow-hidden shrink-0">
+            {/* Preview stage: full-height left column on desktop (no more
+                fixed 16:9 letterbox band); 45vh strip on phones. */}
+            <div className="h-[45vh] shrink-0 md:h-auto md:flex-1 bg-slate-900 flex items-center justify-center relative overflow-hidden">
               {selectedAsset.mimeType?.startsWith('image/') ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={selectedAsset.fileUrl?.startsWith('http') ? selectedAsset.fileUrl : `${apiBase}${selectedAsset.fileUrl}`} alt="" className="max-w-full max-h-full object-contain" />
@@ -1342,13 +1352,17 @@ export default function AssetsPage() {
               ) : (
                 <div className="text-center text-white">{typeIcon(selectedAsset.mimeType, 'w-16 h-16 mx-auto')}<p className="mt-3 text-xs opacity-50">Preview not available</p></div>
               )}
-              <button onClick={() => setSelectedAsset(null)} className="absolute top-3 right-3 w-8 h-8 bg-black/40 hover:bg-black/60 rounded-full flex items-center justify-center text-white transition-colors">
-                <X className="w-4 h-4" />
-              </button>
             </div>
 
+            {/* Close — pinned to the MODAL's top-right corner (not the
+                preview pane's) so it stays in the expected spot in the
+                two-column desktop layout. */}
+            <button onClick={() => setSelectedAsset(null)} aria-label="Close" className="absolute top-3 right-3 z-20 w-8 h-8 bg-slate-900/50 hover:bg-slate-900/70 rounded-full flex items-center justify-center text-white transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+
             {/* Metadata */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="flex-1 md:flex-none md:w-[400px] md:border-l md:border-slate-100 overflow-y-auto p-6 space-y-6">
               <div>
                 <h2 className="text-base font-bold text-slate-800 break-all">{assetName(selectedAsset)}</h2>
                 <p className="text-xs text-slate-400 mt-1">Uploaded {fmtDate(selectedAsset.createdAt)}</p>
