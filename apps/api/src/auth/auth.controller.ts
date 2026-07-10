@@ -161,9 +161,17 @@ export class AuthController {
     }
     const user = (req as any).user;
     const pub = this.redisService.publisher;
-    // Lane-1 P2 fix: Redis is the ONLY revocation store. If it's unreachable
-    // we cannot honor the logout — return 503 instead of pretending success.
-    // Pairs with jwt-auth.guard.ts which now fails CLOSED on Redis errors.
+    // Durable mirror FIRST (2026-07-10 durable-revocation fix; best-effort,
+    // never throws): mirror the revocation to Postgres so it survives a
+    // Redis outage/flush — JwtAuthGuard/SSE/WS fall back to this row when
+    // Redis can't answer. Written before the Redis calls so the row lands
+    // even on the 503 paths below; a mirror failure never fails the logout.
+    await this.redisService.mirrorRevokedTokenDurable(token);
+    // Lane-1 P2 fix: Redis is the PRIMARY revocation store. If it's
+    // unreachable we cannot confirm the logout took on the hot path —
+    // return 503 instead of pretending success (the durable mirror above
+    // is a backstop, not the success criterion). Pairs with
+    // jwt-auth.guard.ts which fails CLOSED on Redis errors.
     if (!pub) {
       throw new HttpException({ code: 'AUTH_REVOCATION_SERVICE_UNAVAILABLE', message: 'Revocation service unavailable; try again' }, HttpStatus.SERVICE_UNAVAILABLE);
     }

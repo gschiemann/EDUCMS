@@ -1,7 +1,39 @@
-import { Injectable, OnModuleDestroy, OnModuleInit, Logger } from '@nestjs/common';
+import { Injectable, OnModuleDestroy, OnModuleInit, Logger, Optional } from '@nestjs/common';
 import { Redis } from 'ioredis';
+import { createHash } from 'crypto';
 import { requireSecret } from '../security/required-secret';
 import { verifyWsHmac } from '../security/ws-signature';
+import { PrismaService } from '../prisma/prisma.service';
+
+// ───────────────────────────────────────────────────────────────────
+// Durable revocation backstop (2026-07-10 — external-audit fix).
+//
+// Redis is the PRIMARY revocation store (hot path, no DB reads while
+// Redis answers). Every revocation write is ALSO mirrored to the
+// Postgres `revoked_credentials` table so a previously-revoked
+// credential stays revoked while Redis is degraded or down — the
+// pre-fix behavior was fail-OPEN (`sismember` returned false on any
+// Redis failure), letting revoked tokens back in for the duration of
+// a Redis outage. Only if BOTH Redis and Postgres are unreachable does
+// each check keep its pre-fix total-outage behavior (see the fallback
+// semantics on each method), logged loudly once.
+// ───────────────────────────────────────────────────────────────────
+
+/** Postgres mirror row kinds (RevokedCredential.kind). */
+export const REVOKED_KIND_JTI = 'jti';
+export const REVOKED_KIND_USER_INVALID_BEFORE = 'user_invalid_before';
+
+/**
+ * The Postgres mirror stores a sha256 of the bearer token, never the
+ * raw token — a DB dump must not contain live credentials. (Redis keeps
+ * the raw token in `jwt_revoked_list`, unchanged — existing behavior.)
+ */
+export function hashRevokedToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+/** 30 days — the rememberMe ceiling; matches the Redis TTLs. */
+const REVOKED_MIRROR_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
@@ -10,6 +42,24 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   public subscriber: Redis | null = null;
   private gateway: any;
   private connected = false;
+
+  // In-memory TTL cache for the Redis-DOWN fallback path only (never
+  // consulted while Redis answers), so a sustained Redis outage doesn't
+  // hammer Postgres on every request. Positive AND negative results are
+  // cached. Per-replica + 30s TTL = bounded staleness: a revocation
+  // written DURING an outage is enforced within 30s on every replica
+  // (immediately on the replica that wrote it — writes invalidate).
+  private static readonly FALLBACK_CACHE_TTL_MS = 30_000;
+  private static readonly FALLBACK_CACHE_MAX = 5_000;
+  private readonly revocationFallbackCache = new Map<
+    string,
+    { value: boolean | number | null; expiresAt: number }
+  >();
+  // One-shot loud warning for the both-stores-down state (per process).
+  private warnedRevocationTotalOutage = false;
+  // Opportunistic prune of expired mirror rows — at most once/hour per
+  // process, piggybacked on the (rare) mirror writes. No cron needed.
+  private lastMirrorPruneAt = 0;
 
   // Same key + dev-fallback the signer uses, so HMAC verify matches signing
   // byte-for-byte. This is the SERVER-SIDE emergency gate: every message
@@ -20,7 +70,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     devFallback: 'dev_only_device_secret_CHANGE_ME',
   });
 
-  constructor() {
+  // @Optional so test contexts that `new RedisService()` directly (and
+  // module setups without PrismaModule) still construct fine. In the
+  // real app PrismaModule is @Global, so this is always injected. When
+  // absent, every durable-mirror path degrades to the pre-fix behavior.
+  constructor(@Optional() private readonly prismaService?: PrismaService) {
     // Skip Redis entirely when explicitly disabled OR when no URL is set in production.
     // Railway deploys without a Redis plugin should boot cleanly and fall through
     // to HTTP-polling realtime — we do NOT want a missing REDIS_URL to crash the API.
@@ -166,18 +220,57 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Check if a value is a member of a Redis set.
-   * Used by JwtAuthGuard for token revocation checking.
-   * Returns false if Redis is unavailable (fail-open for dev).
+   * Used by JwtAuthGuard / SSE / WS gateway for token revocation checks.
+   *
+   * Fallback semantics (2026-07-10 durable-revocation fix):
+   * - Redis up            → Redis answer, byte-identical to before, NO DB read.
+   * - Redis down/erroring → for `jwt_revoked_list` only: Postgres
+   *   `revoked_credentials` lookup (30s in-memory cached) instead of the
+   *   old blanket `false`.
+   * - Redis AND Postgres down → false (pre-fix fail-open preserved —
+   *   never lock every request out on a total infra outage), with a
+   *   one-shot loud warn.
    */
   async sismember(key: string, member: string): Promise<boolean> {
-    if (!this.connected || !this.publisher) {
-      this.logger.warn('Redis unavailable — token revocation check skipped (fail-open)');
+    if (this.connected && this.publisher) {
+      try {
+        const result = await this.publisher.sismember(key, member);
+        return result === 1;
+      } catch {
+        // Redis answered with an error — fall through to the durable store.
+      }
+    } else {
+      this.logger.warn('Redis unavailable — token revocation check falling back to durable store');
+    }
+    // Durable fallback exists only for the token-revocation set. Any
+    // other set keeps the legacy fail-open false (no mirror to consult).
+    if (key !== 'jwt_revoked_list') return false;
+    return this.isTokenRevokedInDurableStore(member);
+  }
+
+  /**
+   * Postgres side of the single-token revocation check (Redis-down path
+   * only). Never throws: a Postgres failure here is the both-stores-down
+   * state — preserve the pre-fix fail-open `false` and warn once.
+   */
+  private async isTokenRevokedInDurableStore(token: string): Promise<boolean> {
+    const cacheKey = `${REVOKED_KIND_JTI}:${hashRevokedToken(token)}`;
+    const cached = this.fallbackCacheGet(cacheKey);
+    if (cached !== undefined) return cached.value === true;
+    if (!this.prismaService) {
+      this.warnRevocationTotalOutage('no Prisma service wired');
       return false;
     }
     try {
-      const result = await this.publisher.sismember(key, member);
-      return result === 1;
-    } catch {
+      const row = await this.prismaService.client.revokedCredential.findUnique({
+        where: { kind_key: { kind: REVOKED_KIND_JTI, key: hashRevokedToken(token) } },
+      });
+      // An expired mirror row is inert — the JWT itself has expired.
+      const revoked = !!row && (row.expiresAt == null || row.expiresAt.getTime() > Date.now());
+      this.fallbackCacheSet(cacheKey, revoked);
+      return revoked;
+    } catch (e) {
+      this.warnRevocationTotalOutage(e instanceof Error ? e.message : String(e));
       return false;
     }
   }
@@ -194,9 +287,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   // per-user "invalid-before" epoch; the guard rejects any token whose
   // `iat` predates it. One key, all sessions, no jti needed.
   //
-  // Redis is the source of truth (same accepted tradeoff as
-  // jwt_revoked_list — see auth.controller.ts logout: "Redis is the
-  // ONLY revocation store"). The guard fails CLOSED on read error.
+  // Redis is the PRIMARY store (same tradeoff as jwt_revoked_list — see
+  // auth.controller.ts logout); since 2026-07-10 every write is ALSO
+  // mirrored to Postgres `revoked_credentials` so the marker survives a
+  // Redis outage. The guard still fails CLOSED when Redis errors AND the
+  // Postgres mirror can't answer either.
   // ───────────────────────────────────────────────────────────────────
 
   /** Redis key holding the per-user "all tokens issued before this epoch are invalid" marker. */
@@ -217,12 +312,20 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
    * than pretending the session was burned).
    */
   async markUserTokensInvalid(userId: string, atEpochSeconds?: number): Promise<void> {
-    if (!this.publisher) {
-      throw new Error('Redis unavailable — cannot revoke user tokens');
-    }
     // +1s so a token minted in the SAME second as the revocation (its
     // `iat` floors to whole seconds) is still caught: iat < epoch.
     const epoch = (atEpochSeconds ?? Math.floor(Date.now() / 1000)) + 1;
+
+    // Durable mirror FIRST (best-effort, never throws): if Redis is down
+    // this row is exactly what keeps the revocation enforced (the guard
+    // falls back to Postgres), so it must land even when the Redis write
+    // below throws. The method's external contract is unchanged — it
+    // still throws on Redis failure so callers surface it.
+    await this.mirrorUserInvalidBeforeDurable(userId, epoch);
+
+    if (!this.publisher) {
+      throw new Error('Redis unavailable — cannot revoke user tokens');
+    }
     const key = this.tokenInvalidBeforeKey(userId);
     // Monotonic: never move the marker backwards if two tightenings race
     // (or this runs on multiple replicas) — keep the latest cutoff.
@@ -232,22 +335,206 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Postgres mirror of the per-user invalid-before marker. Best-effort:
+   * logs at warn on failure, never throws (a DB hiccup must not fail the
+   * privilege-tightening flow — Redis remains the primary store).
+   * Monotonic via read-then-max, the same accepted race tradeoff as the
+   * Redis GET/SET pair above.
+   */
+  private async mirrorUserInvalidBeforeDurable(userId: string, epoch: number): Promise<void> {
+    if (!this.prismaService) return;
+    try {
+      const where = { kind_key: { kind: REVOKED_KIND_USER_INVALID_BEFORE, key: userId } };
+      const existing = await this.prismaService.client.revokedCredential.findUnique({ where });
+      const prev = existing?.value ? parseInt(existing.value, 10) : NaN;
+      const next = Number.isFinite(prev) ? Math.max(prev, epoch) : epoch;
+      const expiresAt = new Date(Date.now() + REVOKED_MIRROR_TTL_MS);
+      await this.prismaService.client.revokedCredential.upsert({
+        where,
+        create: {
+          kind: REVOKED_KIND_USER_INVALID_BEFORE,
+          key: userId,
+          value: String(next),
+          expiresAt,
+        },
+        update: { value: String(next), expiresAt },
+      });
+      // Fresh marker must be visible to this replica's fallback reads
+      // immediately, not after the 30s cache TTL.
+      this.revocationFallbackCache.delete(`${REVOKED_KIND_USER_INVALID_BEFORE}:${userId}`);
+      this.pruneExpiredMirrorRows();
+    } catch (e) {
+      this.logger.warn(
+        `Durable revocation mirror write failed for user ${userId}: ${e instanceof Error ? e.message : e}`,
+      );
+    }
+  }
+
+  /**
+   * Postgres mirror of a single revoked bearer token (`jwt_revoked_list`
+   * SADD in auth.controller logout). Best-effort: logs at warn on
+   * failure, never throws — the logout flow decides success/failure on
+   * the Redis write, exactly as before. Stores sha256(token), never the
+   * raw token; expiry mirrors the JWT's own `exp` claim when decodable
+   * (falling back to the 30d rememberMe ceiling).
+   */
+  async mirrorRevokedTokenDurable(token: string): Promise<void> {
+    if (!this.prismaService) return;
+    try {
+      let expiresAt = new Date(Date.now() + REVOKED_MIRROR_TTL_MS);
+      try {
+        const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+        if (typeof payload?.exp === 'number' && Number.isFinite(payload.exp)) {
+          expiresAt = new Date(payload.exp * 1000);
+        }
+      } catch {
+        /* not a decodable JWT — keep the 30d ceiling */
+      }
+      const tokenHash = hashRevokedToken(token);
+      const where = { kind_key: { kind: REVOKED_KIND_JTI, key: tokenHash } };
+      await this.prismaService.client.revokedCredential.upsert({
+        where,
+        create: { kind: REVOKED_KIND_JTI, key: tokenHash, expiresAt },
+        update: { expiresAt },
+      });
+      // Same-replica fallback reads must see the revocation immediately.
+      this.revocationFallbackCache.delete(`${REVOKED_KIND_JTI}:${tokenHash}`);
+      this.pruneExpiredMirrorRows();
+    } catch (e) {
+      this.logger.warn(
+        `Durable revocation mirror write failed for token: ${e instanceof Error ? e.message : e}`,
+      );
+    }
+  }
+
+  /**
+   * Opportunistic cleanup: expired mirror rows are inert (the JWT itself
+   * has expired), but without pruning they'd accumulate forever. Fired
+   * fire-and-forget from the mirror writes, gated to once/hour per
+   * process, best-effort — a failure only defers cleanup.
+   */
+  private pruneExpiredMirrorRows(): void {
+    if (!this.prismaService) return;
+    const now = Date.now();
+    if (now - this.lastMirrorPruneAt < 60 * 60 * 1000) return;
+    this.lastMirrorPruneAt = now;
+    this.prismaService.client.revokedCredential
+      .deleteMany({ where: { expiresAt: { lt: new Date(now) } } })
+      .then((res) => {
+        if (res.count > 0) this.logger.log(`Pruned ${res.count} expired revocation mirror rows`);
+      })
+      .catch((e) => {
+        this.logger.warn(
+          `Expired revocation mirror prune failed (deferred): ${e instanceof Error ? e.message : e}`,
+        );
+      });
+  }
+
+  /**
    * Return the per-user "invalid-before" epoch (seconds) or null if no
    * marker is set. Used by JwtAuthGuard to reject pre-revocation tokens.
-   * THROWS on Redis error (unlike `sismember`, which fails open) so the
-   * guard's fail-CLOSED catch handles a Redis outage as deny-and-retry.
+   *
+   * Fallback semantics (2026-07-10 durable-revocation fix):
+   * - Redis up               → Redis answer, byte-identical to before,
+   *   NO DB read.
+   * - Redis configured but erroring → Postgres mirror lookup (30s
+   *   cached). If Postgres ALSO fails, rethrow the ORIGINAL Redis error
+   *   — preserving the pre-fix contract where the guard's catch fails
+   *   CLOSED (deny-and-retry) on this path.
+   * - No Redis configured (publisher null, dev / Redis-less deploy) →
+   *   Postgres mirror lookup (previously an unconditional null — the
+   *   mirror is strictly safer); if Postgres fails too, the pre-fix
+   *   fail-open null is preserved (don't brick every request in dev),
+   *   with a one-shot loud warn.
    */
   async getTokenInvalidBefore(userId: string): Promise<number | null> {
-    if (!this.publisher) {
-      // No Redis configured (dev / Redis-less deploy). No marker can
-      // exist, so there is nothing to enforce — return null. (In prod a
-      // missing publisher is itself a misconfiguration the boot guard
-      // catches; here we don't want to brick every request in dev.)
-      return null;
+    if (this.publisher) {
+      try {
+        const raw = await this.publisher.get(this.tokenInvalidBeforeKey(userId));
+        if (raw == null) return null;
+        const n = parseInt(raw, 10);
+        return Number.isFinite(n) ? n : null;
+      } catch (redisError) {
+        try {
+          return await this.getInvalidBeforeFromDurableStore(userId);
+        } catch (dbError) {
+          this.warnRevocationTotalOutage(dbError instanceof Error ? dbError.message : String(dbError));
+          throw redisError; // guard keeps failing CLOSED, as before
+        }
+      }
     }
-    const raw = await this.publisher.get(this.tokenInvalidBeforeKey(userId));
-    if (raw == null) return null;
-    const n = parseInt(raw, 10);
-    return Number.isFinite(n) ? n : null;
+    try {
+      return await this.getInvalidBeforeFromDurableStore(userId);
+    } catch (dbError) {
+      this.warnRevocationTotalOutage(dbError instanceof Error ? dbError.message : String(dbError));
+      return null; // pre-fix behavior for a Redis-less deploy
+    }
+  }
+
+  /**
+   * Postgres side of the invalid-before lookup (Redis-down path only).
+   * THROWS on DB failure — each caller above decides between the
+   * fail-closed rethrow and the fail-open null.
+   */
+  private async getInvalidBeforeFromDurableStore(userId: string): Promise<number | null> {
+    const cacheKey = `${REVOKED_KIND_USER_INVALID_BEFORE}:${userId}`;
+    const cached = this.fallbackCacheGet(cacheKey);
+    if (cached !== undefined) return cached.value as number | null;
+    if (!this.prismaService) {
+      throw new Error('durable revocation store unavailable (no Prisma service wired)');
+    }
+    const row = await this.prismaService.client.revokedCredential.findUnique({
+      where: { kind_key: { kind: REVOKED_KIND_USER_INVALID_BEFORE, key: userId } },
+    });
+    let epoch: number | null = null;
+    if (row && (row.expiresAt == null || row.expiresAt.getTime() > Date.now())) {
+      const n = parseInt(row.value ?? '', 10);
+      epoch = Number.isFinite(n) ? n : null;
+    }
+    this.fallbackCacheSet(cacheKey, epoch);
+    return epoch;
+  }
+
+  // ── Fallback-path plumbing (Redis-down only — never on the hot path) ──
+
+  private fallbackCacheGet(
+    key: string,
+  ): { value: boolean | number | null } | undefined {
+    const hit = this.revocationFallbackCache.get(key);
+    if (!hit) return undefined;
+    if (hit.expiresAt <= Date.now()) {
+      this.revocationFallbackCache.delete(key);
+      return undefined;
+    }
+    return hit;
+  }
+
+  private fallbackCacheSet(key: string, value: boolean | number | null): void {
+    // Bounded memory during a long outage: evict the oldest entry
+    // (Map preserves insertion order) once at capacity.
+    if (this.revocationFallbackCache.size >= RedisService.FALLBACK_CACHE_MAX) {
+      const oldest = this.revocationFallbackCache.keys().next().value;
+      if (oldest !== undefined) this.revocationFallbackCache.delete(oldest);
+    }
+    this.revocationFallbackCache.set(key, {
+      value,
+      expiresAt: Date.now() + RedisService.FALLBACK_CACHE_TTL_MS,
+    });
+  }
+
+  /**
+   * BOTH revocation stores are unreachable — the one state where the
+   * legacy fail-open behavior is deliberately preserved (a total infra
+   * outage must never lock the fleet out of emergency data). Loud, at
+   * warn, ONCE per process — not per request.
+   */
+  private warnRevocationTotalOutage(detail: string): void {
+    if (this.warnedRevocationTotalOutage) return;
+    this.warnedRevocationTotalOutage = true;
+    this.logger.warn(
+      'REVOCATION BACKSTOP UNAVAILABLE: Redis AND Postgres are both unreachable ' +
+        `(${detail}). Previously-revoked tokens may be accepted until either store ` +
+        'recovers (legacy fail-open preserved). This warning logs once per process.',
+    );
   }
 }

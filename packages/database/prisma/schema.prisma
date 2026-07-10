@@ -2665,3 +2665,36 @@ model PlayerMilestone {
   @@index([tenantId, gameId])
   @@map("player_milestones")
 }
+
+// Durable revocation backstop (2026-07-10 — external-audit fix).
+// Redis stays the PRIMARY, hot-path revocation store (`jwt_revoked_list`
+// + `jwt_invalid_before:<userId>`); every revocation write is MIRRORED
+// here so a previously-revoked credential stays revoked while Redis is
+// degraded or down. Read ONLY on the Redis-unavailable fallback path in
+// RedisService — never on the redis-up hot path.
+//
+// kind = 'jti'                 → key = sha256 hex of the exact bearer
+//                                token (never the raw token: a DB dump
+//                                must not contain live credentials),
+//                                value unused.
+// kind = 'user_invalid_before' → key = userId, value = epoch SECONDS;
+//                                any user JWT with iat < value is dead.
+//
+// expiresAt mirrors the Redis TTL (30d rememberMe ceiling) — by then the
+// underlying JWT has expired on its own, so expired rows are inert and
+// prunable at leisure.
+model RevokedCredential {
+  id        String    @id @default(uuid())
+  kind      String // 'jti' | 'user_invalid_before'
+  key       String
+  value     String?
+  createdAt DateTime  @default(now()) @map("created_at")
+  expiresAt DateTime? @map("expires_at")
+
+  // The fallback lookup is exactly (kind, key) → row; unique also makes
+  // the dual-write an idempotent upsert.
+  @@unique([kind, key])
+  // Opportunistic pruning of expired rows without a seq scan.
+  @@index([expiresAt])
+  @@map("revoked_credentials")
+}
