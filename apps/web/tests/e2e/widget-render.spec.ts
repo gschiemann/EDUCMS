@@ -324,20 +324,37 @@ test.describe('Widget render — WebKit + Chromium smoke (P1-12)', () => {
   // The e2e webServer runs `pnpm dev` (Next dev), so /player is COMPILED on
   // the first request. Under CI load that cold compile can blow past the
   // per-test boot budget → intermittent "Player never fetched the manifest —
-  // boot got stuck" failures (flaked twice 2026-06-02, green on no-change
-  // re-run). Warm the route ONCE here so the compile happens OUTSIDE the timed
-  // test. Fail-soft: a warm-up hiccup must never red the suite (the test's own
-  // waits + the 2 CI retries still cover a cold route).
+  // boot got stuck" failures (flaked twice 2026-06-02, again 2026-07-09 on a
+  // commit that didn't touch the player; green on no-change re-run each time).
+  //
+  // 2026-07-09 — hardened from fail-soft to BLOCKING-with-retries. The
+  // fail-soft version silently swallowed a warm-up failure, so under heavy
+  // runner load EVERY test retry re-ate the cold compile inside its own 30s
+  // manifest budget → 3× red in BOTH engines. Now: up to 3 warm-up attempts
+  // × 90s each; if all fail we throw HERE with an honest infra message
+  // instead of letting the timed test fail with a misleading render one.
   test.beforeAll(async ({ browser }) => {
     const warm = await browser.newPage();
     try {
-      await warm.goto('http://localhost:3000/player?fp=warmup', {
-        waitUntil: 'domcontentloaded',
-        timeout: 90_000,
-      });
-      await warm.waitForTimeout(1500);
-    } catch {
-      /* best-effort warm-up only */
+      let warmed = false;
+      let lastErr: unknown = null;
+      for (let attempt = 1; attempt <= 3 && !warmed; attempt++) {
+        try {
+          await warm.goto('http://localhost:3000/player?fp=warmup', {
+            waitUntil: 'domcontentloaded',
+            timeout: 90_000,
+          });
+          await warm.waitForTimeout(1500);
+          warmed = true;
+        } catch (err) {
+          lastErr = err;
+        }
+      }
+      if (!warmed) {
+        throw new Error(
+          `Player route warm-up failed after 3 attempts — dev server never served /player (infra/compile, not a render bug): ${String(lastErr).slice(0, 300)}`,
+        );
+      }
     } finally {
       await warm.close();
     }
@@ -368,14 +385,17 @@ test.describe('Widget render — WebKit + Chromium smoke (P1-12)', () => {
     // real headroom beyond the 20s default so a cold/contended CI run can't
     // flake on slow boot — the route is pre-warmed in beforeAll, the 2 CI
     // retries are the final backstop.
-    test.setTimeout(60_000);
+    test.setTimeout(120_000);
     await page.goto('/player?fp=' + FAKE_FINGERPRINT, { waitUntil: 'domcontentloaded' });
 
     // Wait for the manifest to land (player reached connecting→playing).
+    // 60s (not 30s): even with the blocking warm-up, a contended CI runner
+    // can stall the dev server's request handling — the poll budget is the
+    // last line before a misleading red on the load-bearing player gate.
     await expect
       .poll(() => counters.manifestCalls, {
         message: 'Player never fetched the manifest — boot got stuck',
-        timeout: 30_000,
+        timeout: 60_000,
       })
       .toBeGreaterThanOrEqual(1);
 
