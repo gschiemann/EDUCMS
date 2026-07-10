@@ -129,6 +129,34 @@ jobs:
           fi
           echo "OK: zero conditional-hook violations"
 
+  dependency-audit:
+    name: Production Dependency Audit
+    # Prod-graph advisory gate (2026-07-10): fails on any HIGH/CRITICAL
+    # advisory in the production dependency graph. Runs as its own
+    # parallel job (no install needed — `pnpm audit` reads the lockfile
+    # and queries the registry directly) so it adds nothing to the
+    # build-and-test critical path. Moderates/lows are reported but do
+    # not fail the gate; fix floors live in the root package.json
+    # `pnpm.overrides` block.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Audit production dependencies (fail on HIGH/CRITICAL)
+        run: pnpm audit --prod --audit-level high
+
   secret-scan:
     name: Secret Leak Scan (gitleaks)
     # Operational gap O2 (2026-05-25): no automated secret-leak gate
