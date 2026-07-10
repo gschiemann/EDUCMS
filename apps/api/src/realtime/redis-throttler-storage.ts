@@ -192,12 +192,18 @@ return { hits, hitPttl, 0, 0 }
           String(limit),
           String(blockDuration),
         ),
-        new Promise((_resolve, reject) =>
-          setTimeout(
+        new Promise((_resolve, reject) => {
+          const timer = setTimeout(
             () => reject(new Error('throttler eval timeout')),
             RedisThrottlerStorage.EVAL_TIMEOUT_MS,
-          ),
-        ),
+          );
+          // Exit hygiene only — this 250ms bound must never be the thing
+          // keeping the process (or a Jest worker) alive after the eval
+          // has already settled. unref() is behavior-neutral at runtime:
+          // the timer still fires on schedule; rejecting a race that has
+          // already been won is a no-op.
+          timer.unref?.();
+        }),
       ])) as [number, number, number, number];
 
       const [totalHits, timeToExpireMs, isBlocked, timeToBlockExpireMs] = res;

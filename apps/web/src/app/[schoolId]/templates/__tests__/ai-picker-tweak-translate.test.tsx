@@ -28,7 +28,17 @@
  * predicate page.tsx uses (`!!c.spec || !!c._designerHtml`) below.
  */
 
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
+
+// Test-noise silencer: engine (spec) candidates render
+// ScaledTemplateThumbnail, whose inner WidgetPreview is a next/dynamic()
+// Loadable. The dynamic module resolution is async and can land AFTER
+// the test body, firing a one-off "not wrapped in act(...)" warning
+// from ForwardRef(LoadableComponent). Flush pending resolutions inside
+// act() after each test so they never escape the act scope.
+afterEach(async () => {
+  await act(async () => {});
+});
 
 // Engine (spec) candidates render via ScaledTemplateThumbnail, which
 // measures its container with a ResizeObserver — same polyfill as
@@ -110,13 +120,17 @@ describe('D1 — CandidateFullscreenPreview renders Tweak for AI-Designer AND en
     expect(screen.getByRole('button', { name: /tweak/i })).toBeInTheDocument();
   });
 
-  it('shows the Tweak button for an engine (spec) candidate', () => {
+  it('shows the Tweak button for an engine (spec) candidate', async () => {
     const c = engineCandidate();
     render(
       <CandidateFullscreenPreview
         {...baseProps(c, { canTweak: canTweakFor(c), onOpenTweak: jest.fn() })}
       />,
     );
+    // First engine mount triggers ScaledTemplateThumbnail's one-shot
+    // next/dynamic WidgetPreview load — flush its resolution inside act
+    // so it can't fire a mid-test "not wrapped in act(...)" warning.
+    await act(async () => {});
     expect(screen.getByRole('button', { name: /tweak/i })).toBeInTheDocument();
   });
 

@@ -61,6 +61,23 @@ describe('RealtimeGateway', () => {
     gateway = module.get<RealtimeGateway>(RealtimeGateway);
   });
 
+  afterEach(() => {
+    // Open-handle hygiene: handleConnection arms a 10s auth timeout that
+    // is only cleared on successful auth or on disconnect. Tests that
+    // leave a client unauthenticated (e.g. the invalid-JWT reject path)
+    // would otherwise leave that timer pending and keep the Jest worker
+    // alive ("A worker process has failed to exit gracefully…"). Clear
+    // every connected client's timer the way handleDisconnect would.
+    const clients = (gateway as any).clients as Map<
+      unknown,
+      { authTimeout?: NodeJS.Timeout }
+    >;
+    for (const ctx of clients.values()) {
+      if (ctx.authTimeout) clearTimeout(ctx.authTimeout);
+    }
+    clients.clear();
+  });
+
   describe('handleConnection', () => {
     it('should initialize connection and set timeout', () => {
       jest.useFakeTimers();

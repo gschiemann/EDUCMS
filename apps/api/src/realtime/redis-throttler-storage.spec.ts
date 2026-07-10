@@ -69,11 +69,37 @@ function makeFakeRedisEval() {
   return { evalFn, hits, blocks };
 }
 
+/**
+ * Open-handle hygiene: every RedisThrottlerStorage owns an in-memory
+ * ThrottlerStorageService fallback whose increment() schedules a
+ * setTimeout(ttl) per key (60s here). Any test that exercises the
+ * fail-open path leaves those timers pending, which keeps the Jest
+ * worker alive ("A worker process has failed to exit gracefully…").
+ * Track every storage built in this file and clear the fallback's
+ * timers after each test via the library's own shutdown hook.
+ */
+const trackedStorages: RedisThrottlerStorage[] = [];
+
+function track(storage: RedisThrottlerStorage): RedisThrottlerStorage {
+  trackedStorages.push(storage);
+  return storage;
+}
+
+afterEach(() => {
+  for (const storage of trackedStorages.splice(0)) {
+    (
+      storage as unknown as {
+        memoryFallback: { onApplicationShutdown(): void };
+      }
+    ).memoryFallback.onApplicationShutdown();
+  }
+});
+
 function makeStorage(evalFn: jest.Mock, status: string = 'ready') {
   const redis = {
     publisher: { status, eval: evalFn },
   } as unknown as RedisService;
-  return new RedisThrottlerStorage(redis);
+  return track(new RedisThrottlerStorage(redis));
 }
 
 describe('RedisThrottlerStorage', () => {
@@ -149,7 +175,7 @@ describe('RedisThrottlerStorage', () => {
   describe('fail-open behaviour (Redis must never lock out logins)', () => {
     it('falls back to in-memory storage when there is no Redis publisher', async () => {
       const redis = { publisher: null } as unknown as RedisService;
-      const storage = new RedisThrottlerStorage(redis);
+      const storage = track(new RedisThrottlerStorage(redis));
 
       const r1 = await storage.increment('1.1.1.1', TTL, LIMIT, BLOCK, NAME);
       expect(r1.totalHits).toBe(1);

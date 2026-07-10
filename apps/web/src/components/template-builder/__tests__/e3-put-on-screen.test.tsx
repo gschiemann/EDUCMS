@@ -13,6 +13,18 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { BuilderToolbar } from '../BuilderToolbar';
 import { useBuilderStore } from '../useBuilderStore';
 
+// Test-noise silencer: BuilderToolbar mounts AI affordances (e.g.
+// TranslateBoardButton), each of which probes GET /ai/key through
+// apiFetch() on mount. In jsdom that probe can only fail — spamming
+// console.error from the api-client logger — and its .then(setState)
+// lands AFTER the test's act() scope, firing "not wrapped in act(...)"
+// warnings. This suite does not test the AI affordances, so keep the
+// probe permanently pending.
+jest.mock('@/lib/api-client', () => ({
+  ...jest.requireActual('@/lib/api-client'),
+  apiFetch: jest.fn(() => new Promise(() => undefined)),
+}));
+
 function resetStore(overrides: Partial<ReturnType<typeof useBuilderStore.getState>> = {}) {
   useBuilderStore.setState({
     templateId: 'tpl-1',

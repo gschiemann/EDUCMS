@@ -20,6 +20,19 @@
 import fs from 'fs';
 import path from 'path';
 import { render, waitFor } from '@testing-library/react';
+
+// Test-noise silencer: the builder UI mounts the AI affordances
+// (AiGenerateButton / ChatToEditBox / …) plus the POS panel, all of
+// which call apiFetch() on mount. The global.fetch stub below returns
+// the Domino's board HTML for EVERY url, so those API probes "succeed"
+// with HTML and apiFetch spams console.error ("Failed to parse JSON
+// response") for each. This suite only tests the EXTERNAL_HTML field
+// discovery (which fetches the template HTML directly, NOT through
+// apiFetch), so keep every apiFetch call permanently pending instead.
+jest.mock('@/lib/api-client', () => ({
+  ...jest.requireActual('@/lib/api-client'),
+  apiFetch: jest.fn(() => new Promise(() => undefined)),
+}));
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PropertiesPanel } from '../PropertiesPanel';
 import { useBuilderStore } from '../useBuilderStore';

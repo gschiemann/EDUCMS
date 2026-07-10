@@ -27,6 +27,20 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ContentFields } from '../PropertiesPanel';
 
+// Test-noise silencer: the builder UI mounts the AI affordances
+// (AiGenerateButton / ChatToEditBox / InlineRewriteChips / …), each of
+// which probes GET /ai/key through apiFetch() on mount. In jsdom that
+// probe can only fail — spamming console.error from the api-client
+// logger — and its .then(setState) lands AFTER the test's act() scope,
+// firing "not wrapped in act(...)" warnings. This suite does not test
+// the AI affordances, so keep the probe permanently pending. (The G3
+// section's global.fetch mock is unaffected — the EXTERNAL_HTML field
+// discovery fetches the template HTML directly, not through apiFetch.)
+jest.mock('@/lib/api-client', () => ({
+  ...jest.requireActual('@/lib/api-client'),
+  apiFetch: jest.fn(() => new Promise(() => undefined)),
+}));
+
 function makeZone(widgetType: string, defaultConfig: Record<string, unknown> = {}) {
   return { id: 'gap-zone', widgetType, defaultConfig };
 }

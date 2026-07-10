@@ -10,7 +10,7 @@
  * beginTransaction/endTransaction: a single Cmd-Z restores the exact
  * prior look (zones AND background together).
  */
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { BrandKitPanel } from '../BrandKitPanel';
 import { useBuilderStore } from '../useBuilderStore';
 import type { Zone } from '../types';
@@ -103,7 +103,8 @@ describe('A9 — brand-apply is ONE undoable history step', () => {
     expect((zoneById('ticker').defaultConfig as any).bgColor).toBe('#112233');
     expect(useBuilderStore.getState().meta.bgGradient).not.toBe('');
 
-    useBuilderStore.getState().undo();
+    // act(): the store set re-renders the mounted BrandKitPanel.
+    act(() => useBuilderStore.getState().undo());
 
     // Pre-fix drift: undo restored ONLY the background while the widget
     // recolor stuck. Post-fix everything reverts together.
@@ -118,10 +119,10 @@ describe('A9 — brand-apply is ONE undoable history step', () => {
     render(<BrandKitPanel />);
 
     fireEvent.click(screen.getByRole('button', { name: /apply brand across template/i }));
-    useBuilderStore.getState().undo();
+    act(() => useBuilderStore.getState().undo());
     expect((zoneById('ticker').defaultConfig as any).bgColor).toBeUndefined();
 
-    useBuilderStore.getState().redo();
+    act(() => useBuilderStore.getState().redo());
     expect((zoneById('ticker').defaultConfig as any).bgColor).toBe('#112233');
     expect(useBuilderStore.getState().meta.bgGradient).toContain('#112233');
   });
@@ -138,11 +139,11 @@ describe('A9 — brand-apply is ONE undoable history step', () => {
     fireEvent.click(screen.getByRole('button', { name: /apply brand across template/i }));
     expect(useBuilderStore.getState().past.length).toBe(2);
 
-    useBuilderStore.getState().undo(); // undoes brand-apply
+    act(() => useBuilderStore.getState().undo()); // undoes brand-apply
     expect((zoneById('text').defaultConfig as any).fontFamily).toBeUndefined();
     expect(zoneById('text').x).toBe(30);
 
-    useBuilderStore.getState().undo(); // undoes the x edit
+    act(() => useBuilderStore.getState().undo()); // undoes the x edit
     expect(zoneById('text').x).toBe(10);
   });
 });

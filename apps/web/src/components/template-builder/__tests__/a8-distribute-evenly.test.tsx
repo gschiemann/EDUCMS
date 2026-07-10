@@ -8,10 +8,22 @@
  * and the align/distribute row renders DIRECTLY in the multi-select
  * panel (not inside any collapsed section).
  */
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { PropertiesPanel, distributeEvenly } from '../PropertiesPanel';
 import { useBuilderStore } from '../useBuilderStore';
 import type { Zone } from '../types';
+
+// Test-noise silencer: the builder UI mounts the AI affordances
+// (ChatToEditBox / MultiZoneChatEdit / …), each of which probes GET
+// /ai/key through apiFetch() on mount. In jsdom that probe can only
+// fail — spamming console.error from the api-client logger — and its
+// .then(setState) lands AFTER the test's act() scope, firing "not
+// wrapped in act(...)" warnings. This suite does not test the AI
+// affordances, so keep the probe permanently pending.
+jest.mock('@/lib/api-client', () => ({
+  ...jest.requireActual('@/lib/api-client'),
+  apiFetch: jest.fn(() => new Promise(() => undefined)),
+}));
 
 function makeZone(over: Partial<Zone>): Zone {
   return {
@@ -105,9 +117,10 @@ describe('A8 — Distribute buttons in the multi-select panel', () => {
     expect(zoneById('a').x).toBeCloseTo(0, 5);
     expect(zoneById('b').x).toBeCloseTo(20, 5);
     expect(zoneById('c').x).toBeCloseTo(40, 5);
-    // One undoable step.
+    // One undoable step. (act(): the store set re-renders the mounted
+    // PropertiesPanel.)
     expect(useBuilderStore.getState().past.length).toBe(1);
-    useBuilderStore.getState().undo();
+    act(() => useBuilderStore.getState().undo());
     expect(zoneById('b').x).toBe(12);
   });
 
