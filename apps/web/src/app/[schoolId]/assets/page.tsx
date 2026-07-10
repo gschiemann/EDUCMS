@@ -546,6 +546,27 @@ export default function AssetsPage() {
 
   const handleAddUrl = async () => {
     if (!webUrl.trim()) return;
+    // HONESTY GATE (2026-07-10 — operator pushed a peacocktv.com playback
+    // URL to an LED wall and got "browser isn't supported"): DRM-protected
+    // streaming services can NEVER play inside a signage iframe/proxy —
+    // Widevine/FairPlay refuse unrecognized embedded browsers by design,
+    // on every signage CMS. Blocking with a clear explanation beats
+    // letting the operator publish a guaranteed-black screen.
+    const DRM_STREAMING = /(^|\.)(peacocktv|netflix|hulu|disneyplus|max|primevideo|paramountplus|fubo|sling)\.com$|(^|\.)tv\.apple\.com$/i;
+    try {
+      const host = new URL(webUrl.trim().startsWith('http') ? webUrl.trim() : `https://${webUrl.trim()}`).hostname;
+      if (DRM_STREAMING.test(host)) {
+        await appConfirm({
+          title: "Streaming services can't play on signage",
+          message:
+            `${host} uses DRM copy-protection that blocks playback inside any signage player (this is true on every signage platform, not just VenueOS). ` +
+            `For live video on screens, use a YouTube/Twitch/Vimeo embed, an HLS stream URL, or an HDMI source into the display.`,
+          tone: 'danger',
+          confirmLabel: 'Got it',
+        });
+        return;
+      }
+    } catch { /* unparseable URL — let the backend validate */ }
     // Route to the current folder so the newly-added URL appears
     // where the operator is standing, not at root (the old behavior
     // made the asset "vanish" for anyone inside a folder).

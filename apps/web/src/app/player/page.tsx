@@ -629,6 +629,101 @@ function getApiRoot(): string {
 // `loop` attribute for browser-handled seamless restart with zero
 // React re-render gap. The play/pause effect is a no-op for solo
 // playlists because isActive stays true forever.
+// ─── ScaledWebFrame (2026-07-10) ─────────────────────────────────────
+// URL-asset auto-fit for narrow LED canvases. Operator pushed a web URL
+// to the 960×1080 daisy-chain wall and it "didn't auto fit": the playlist
+// iframe fills the canvas region 1:1, so the site laid out at a 960px
+// viewport (squeezed tablet layout) instead of reading like a desktop
+// page fitted to the board. Fix: when the LED canvas (--led-w/--led-h,
+// set by player/layout.tsx from the screen's canvasW/canvasH) is
+// narrower than a desktop breakpoint, render the iframe at a VIRTUAL
+// 1280-wide viewport and transform:scale it down to the canvas — the
+// site sees a desktop viewport, the wall shows the whole page. Canvases
+// ≥1280 (every normal TV) keep the exact pre-fix direct iframe: zero
+// regression. Automatic — no per-screen setting.
+//
+// Taurus rule #10: absolute + top/left + explicit width/height only
+// (two physical sides — can never serialize to the `inset` shorthand);
+// transform:scale is fine on Chromium 83.
+const SCALED_WEB_VIRTUAL_W = 1280;
+
+function ScaledWebFrame({
+  src,
+  classes,
+  title,
+  onLoad,
+  onError,
+}: {
+  src: string;
+  classes: string;
+  title: string;
+  onLoad: (e: React.SyntheticEvent<HTMLIFrameElement>) => void;
+  onError: () => void;
+}) {
+  // Canvas dims resolve post-mount (SSR/hydration safe): first paint is
+  // the plain iframe, the effect upgrades to the scaled wrapper only on
+  // sub-1280 canvases. One boot-time remount on LED walls — irrelevant
+  // for a long-lived kiosk surface.
+  //
+  // Source precedence mirrors the app's own canvas chain (page.tsx
+  // canvas-resize handler + layout.tsx pin script): URL param →
+  // localStorage → --led-w CSS var. Reading params/localStorage first
+  // (not just the CSS var) matters because a React root regeneration
+  // after a hydration mismatch can wipe documentElement's inline styles
+  // — observed under `next dev`; the durable sources are immune.
+  const [canvas, setCanvas] = useState<{ w: number; h: number } | null>(null);
+  useEffect(() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const pick = (urlKey: string, lsKey: string, cssVar: string) => {
+        const fromUrl = parseInt(p.get(urlKey) || '', 10);
+        if (Number.isFinite(fromUrl) && fromUrl > 0) return fromUrl;
+        const fromLs = parseInt(localStorage.getItem(lsKey) || '', 10);
+        if (Number.isFinite(fromLs) && fromLs > 0) return fromLs;
+        const fromCss = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(cssVar));
+        return Number.isFinite(fromCss) && fromCss > 0 ? fromCss : 0;
+      };
+      const w = pick('canvasW', 'edu_canvasW', '--led-w');
+      const h = pick('canvasH', 'edu_canvasH', '--led-h');
+      if (w > 0 && w < SCALED_WEB_VIRTUAL_W && h > 0) {
+        setCanvas({ w, h });
+      }
+    } catch {
+      /* no canvas pin → keep direct iframe */
+    }
+  }, []);
+
+  if (!canvas) {
+    return <iframe src={src} className={classes} title={title} onLoad={onLoad} onError={onError} />;
+  }
+
+  const scale = canvas.w / SCALED_WEB_VIRTUAL_W;
+  const virtualH = Math.round(canvas.h / scale);
+  return (
+    // Wrapper carries the playlist transition/opacity/z classes so
+    // fades/slides behave exactly as before; the iframe inside is a
+    // static desktop-viewport surface scaled to the canvas.
+    <div className={classes} style={{ overflow: 'hidden' }}>
+      <iframe
+        src={src}
+        title={title}
+        onLoad={onLoad}
+        onError={onError}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: SCALED_WEB_VIRTUAL_W,
+          height: virtualH,
+          border: 0,
+          transform: `scale(${scale})`,
+          transformOrigin: 'top left',
+        }}
+      />
+    </div>
+  );
+}
+
 function PlayerVideoSlide({
   src,
   isActive,
@@ -6570,6 +6665,34 @@ function PlayerPage() {
               const iframeSrc = isPdf
                 ? resUrl
                 : `${getApiRoot()}/api/v1/proxy/web?url=${encodeURIComponent(resUrl)}&v=2&interactive=true`;
+              // Web pages route through ScaledWebFrame so narrow LED
+              // canvases (<1280px) get a desktop-viewport render scaled
+              // to fit instead of a squeezed 960px layout. PDFs keep the
+              // direct iframe — the native viewer already fits pages.
+              if (!isPdf) {
+                return (
+                  <ScaledWebFrame
+                    key={item.id}
+                    src={iframeSrc}
+                    classes={classes}
+                    title={item.id}
+                    onLoad={(e) => {
+                      const frame = e.currentTarget as HTMLIFrameElement;
+                      import('@/components/widgets/webpage-spatial-nav').then(({ injectSpatialNav }) => {
+                        if (injectSpatialNav(frame)) {
+                          try { frame.contentWindow?.focus(); } catch { /* noop */ }
+                        }
+                      }).catch(() => { /* never block playback on injection */ });
+                      markItemSucceeded();
+                    }}
+                    onError={() => {
+                      console.warn('[Player] iframe error, skipping:', iframeSrc);
+                      markItemFailed(item.id);
+                      setCurrentIndex(prev => prev + 1);
+                    }}
+                  />
+                );
+              }
               return <iframe
                 key={item.id}
                 src={iframeSrc}
