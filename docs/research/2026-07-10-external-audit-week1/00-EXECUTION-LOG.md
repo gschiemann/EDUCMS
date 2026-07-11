@@ -36,7 +36,50 @@
 - **Lead decision open:** logout still 503s when Redis is down (durable row already landed; revocation IS enforced via fallback). Could be flipped to succeed-on-mirror — deliberate scope hold.
 - **Process note:** agent disclosed one `git stash -u` (rule violation), immediately popped with zero loss and re-proved state; no cross-agent damage observed. Rule reinforced.
 
-## State after the wave
-- master `875df82b`; worktrees back to 1; tree clean; final CI watch running.
-- **Week-1 audit list: ①②③④ done · ⑤ test-noise queued.**
-- Next in queue: Greg's LED URL-fit on the 960×1080 daisy-chain + Peacock DRM honesty (was mid-diagnosis when the audit arrived), then Week 2-4 items (authed axe + keyboard emergency E2E, WebKit discovery over all boards, integration/data-health dashboard).
+## Item #5 — test noise: CLOSED (`7bb3fa06`, agent-built, lead-merged)
+- API Jest now **exits cleanly with zero open handles** (was "worker process
+  failed to exit gracefully"). Culprits: per-key 60s timers in the throttler's
+  in-memory fallback (test teardown via the library's own
+  `onApplicationShutdown()`), the gateway's 10s auth timeout left armed by the
+  invalid-JWT test, and the throttler's 250ms eval-timeout timer (ONE
+  behavior-neutral source touch: `timer.unref?.()` — timer still fires, just
+  can't pin the process).
+- Web test output **7,033 → 193 lines; 119 act-warnings → 0; 86 `[api]`
+  console errors → 0**. Root cause A: AI affordances probe `GET /ai/key` on
+  mount → per-suite `jest.mock('@/lib/api-client')` keeping the probe pending
+  (requireActual preserves everything else). Root cause B: direct
+  `useBuilderStore` mutations outside `act()` in 3 suites.
+- All counts unchanged-green: API 111 suites / 1557 tests, web 67 / 709.
+- One REAL bug surfaced by de-noising: `LunchOpsInventoryWidget` keyless
+  fragment (missing React key) → flagged as background task chip.
+
+## Greg's live items — CLOSED same session (`f0f4949b`)
+- **LED URL auto-fit**: playlist iframe filled the 960×1080 canvas 1:1 →
+  sites laid out at a squeezed 960px viewport. `ScaledWebFrame` renders
+  text/html assets at a virtual 1280-wide desktop viewport scaled
+  (transform, top-left origin) to any canvas <1280; canvas source = URL
+  param → localStorage → --led-w (durable chain; the CSS var alone gets
+  wiped by dev-mode hydration root-regen). Canvases ≥1280 + PDFs keep the
+  pre-fix direct iframe. NEW permanent gate `url-asset-ledfit.spec.ts`
+  (real /player, mocked FLAT-shape asset manifest — items are
+  `{item_id,url,mime_type,duration_ms,sequence}`, NOT nested assets):
+  4/4 chromium+webkit (scaled contract + no-pin control).
+- **Peacock/DRM honesty**: Widevine/FairPlay services can never play in a
+  signage iframe/proxy on any platform. Add URL now blocks known DRM
+  streaming hosts with a plain-English explanation + alternatives
+  (YouTube/Twitch/Vimeo embeds, HLS, HDMI).
+- **Wine-list POS keys**: 12 legacy `nm` name keys → `n` (Greg's
+  "no customers" call = no saved overrides to migrate); POS name-matching
+  now engages; clickedit 46/46.
+
+## Final state
+- master `7bb3fa06`; worktrees 1; tree clean.
+- **Week-1 audit list: ①②③④⑤ ALL DONE.** Plus Greg's LED + Peacock + the
+  two "lead decision" holds resolved.
+- CI green on every push in the wave (flake-class hardening included).
+- Remaining for launch = Greg's config only: rotate `JWT_SECRET`/
+  `SESSION_SECRET`, Stripe test→live + live webhook secret, verify
+  Resend `EMAIL_FROM` domain, review stray `GH_TOKEN` in the API env.
+- Next code work (Week 2-4, audit's "operator confidence"): authed axe +
+  keyboard emergency E2E, WebKit discovery over all holiday/external
+  boards, integration/data-health dashboard.
