@@ -37,16 +37,32 @@ const prisma = new PrismaClient();
 // ── Configuration ────────────────────────────────────────────────
 
 const API_BASE = process.env.RAILWAY_API_URL ?? 'https://api-production-39a1.up.railway.app/api/v1';
-// Hardcode the Railway production secret so the test always generates a
-// token Railway can verify. dotenv.config above loads the local /.env
-// which has a DIFFERENT (dev-only) DEVICE_SECRET_KEY — using that value
-// would produce a 401 against production. The honest signing secret
-// belongs to Railway, not local dev. To target a different deploy,
-// override CTS_TEST_FEED_SECRET in your shell env.
-const FEED_SECRET =
-  process.env.CTS_TEST_FEED_SECRET ??
-  '7eeeb64064c2f895821be797a3e478fd3085efe5d24d5676ea7350a37ffe1634';
-const TENANT_ID = '28d09f9d-0a6c-4828-b46d-38712eb69f1f'; // Dodgers (water-polo pilot tenant)
+// The feed-signing secret is NEVER hardcoded here. It must match the target
+// deploy's SPORTS_FEED_SECRET (or, if that is unset there, its
+// DEVICE_SECRET_KEY — see feedSecret() in src/sports/sports-feed-token.ts).
+// Provide it at run time via CTS_TEST_FEED_SECRET (falling back to a
+// SPORTS_FEED_SECRET already in your shell env). The script exits before any
+// network call if neither is set — see the guard below.
+//
+// SECURITY (2026-07-12 world-class audit P0): this file previously baked in a
+// literal that its own comment identified as the Railway PRODUCTION signing
+// secret, in a PUBLIC repo. Because feedSecret() falls back to
+// DEVICE_SECRET_KEY, a live match could mint feed tokens for arbitrary games.
+// The literal is gone; the exposed value must still be ROTATED out-of-band
+// (that is a Railway env change, not a code change).
+const FEED_SECRET = process.env.CTS_TEST_FEED_SECRET ?? process.env.SPORTS_FEED_SECRET ?? '';
+if (!FEED_SECRET || FEED_SECRET.trim().length < 16) {
+  console.error(
+    'Refusing to run: set CTS_TEST_FEED_SECRET (or SPORTS_FEED_SECRET) to the ' +
+      "target deploy's feed-signing secret. It is never hardcoded.",
+  );
+  process.exit(1);
+}
+const TENANT_ID = process.env.CTS_TEST_TENANT_ID ?? ''; // set to the pilot tenant at run time
+if (!TENANT_ID) {
+  console.error('Refusing to run: set CTS_TEST_TENANT_ID to the target tenant id.');
+  process.exit(1);
+}
 const REPORT_DIR = path.join(
   __dirname,
   '..',
