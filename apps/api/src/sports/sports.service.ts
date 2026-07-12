@@ -5718,15 +5718,11 @@ export class SportsService {
       rosterEntries = [];
     }
 
-    // "Heat over" heuristic: at least one lane has posted a real finish
-    // AND every non-blank lane has one too (no lane is still mid-race).
-    // Conservative on purpose — mid-heat we never guess a DQ.
-    const laneStates = Object.values(snapshot.lanes ?? {});
-    const anyFinished = laneStates.some((l) => l.place > 0);
-    const noneStillRacing = laneStates.every((l) => l.blank || l.place > 0 || l.display !== '');
-    const heatOver = anyFinished && noneStillRacing && laneStates.length > 0;
-
-    const fresh = normalizeSwimSnapshot(snapshot, rosterEntries, heatOver);
+    // The feed never fabricates a DQ (2026-07-12 world-class audit P0), so
+    // there is no "heat over" inference to do here — a lane with no time is
+    // simply blank, and DQ/SCR come from the operator's lane pad, not the
+    // timer. normalizeSwimSnapshot renders time-or-blank per lane.
+    const fresh = normalizeSwimSnapshot(snapshot, rosterEntries);
 
     // Sports-stats-race fix (2026-07-03): swim timing is the SAME
     // ~5-10Hz whole-blob RMW pattern as ingestCtsSnapshot, racing against

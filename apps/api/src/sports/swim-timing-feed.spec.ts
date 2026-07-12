@@ -38,20 +38,19 @@ describe('formatSwimEventLabel', () => {
 
 describe('laneMark', () => {
   it('returns the display time when the lane has one', () => {
-    expect(laneMark({ display: '52.18', blank: false }, false)).toBe('52.18');
-    expect(laneMark({ display: '52.18', blank: false }, true)).toBe('52.18');
+    expect(laneMark({ display: '52.18', blank: false })).toBe('52.18');
   });
 
-  it('returns DQ for a blank lane once the heat is over', () => {
-    expect(laneMark({ display: '', blank: true }, true)).toBe('DQ');
-  });
-
-  it('returns blank (not DQ) for a blank lane mid-race — never invents a DQ early', () => {
-    expect(laneMark({ display: '', blank: true }, false)).toBe('');
+  // 2026-07-12 world-class audit P0: the feed NEVER fabricates a "DQ". A
+  // blank lane is empty/no-swimmer — DQ/SCR come from the operator's lane
+  // pad, not the timer. Painting DQ on blank lanes showed red DQs on
+  // genuinely-empty lanes mid-race.
+  it('returns blank for a blank lane — never fabricates a DQ', () => {
+    expect(laneMark({ display: '', blank: true })).toBe('');
   });
 
   it('returns blank for a lane with no time and not blank (still racing, timer just hasn\'t posted yet)', () => {
-    expect(laneMark({ display: '', blank: false }, false)).toBe('');
+    expect(laneMark({ display: '', blank: false })).toBe('');
   });
 });
 
@@ -142,15 +141,18 @@ describe('normalizeSwimSnapshot', () => {
     expect(result.entries.map((e) => e.lane)).toEqual([1, 6]);
   });
 
-  it('marks a blank lane as DQ when heatOver is true', () => {
+  it('leaves a blank (no-swimmer) lane with an empty mark — never a fabricated DQ', () => {
     const snapshot: SwimTimingSnapshot = {
       ...emptySnapshot(),
       lanes: {
         7: { lane: 7, place: 0, minutes: 0, seconds: 0, hundredths: 0, display: '', blank: true },
       },
     };
-    const result = normalizeSwimSnapshot(snapshot, [], true);
-    expect(result.entries[0].mark).toBe('DQ');
+    const result = normalizeSwimSnapshot(snapshot);
+    // Empty lane → empty mark AND empty name; readResults drops such rows
+    // downstream, so the board shows nothing here (not a red DQ).
+    expect(result.entries[0].mark).toBe('');
+    expect(result.entries[0].name).toBe('');
   });
 
   it('never assigns a "team" field when the roster entry has none', () => {

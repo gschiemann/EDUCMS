@@ -2621,7 +2621,11 @@ describe('SportsService — ingestSwimTimingSnapshot()', () => {
     expect(lane2.mark).toBe('');
   });
 
-  it('marks a blank lane as DQ once every other lane in the heat has finished', async () => {
+  it('leaves a blank (no-swimmer) lane empty even after other lanes finish — never a fabricated DQ', async () => {
+    // 2026-07-12 world-class audit P0: an empty lane in a short heat used to
+    // flash a red "DQ" the instant the first swimmer touched. The timer only
+    // knows lane TIMES; a DQ is a referee decision the operator enters via
+    // the lane pad, not something the feed invents.
     const { service, game } = setup();
     const g: any = await newGame(service, 'swimming');
 
@@ -2639,7 +2643,7 @@ describe('SportsService — ingestSwimTimingSnapshot()', () => {
 
     const updated = game.rows.find((r: any) => r.id === g.id);
     const lane2 = (updated.stats as any).results[0].entries.find((e: any) => e.lane === 2);
-    expect(lane2.mark).toBe('DQ');
+    expect(lane2.mark).toBe('');
   });
 });
 

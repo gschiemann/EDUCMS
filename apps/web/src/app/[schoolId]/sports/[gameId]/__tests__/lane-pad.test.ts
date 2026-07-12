@@ -217,6 +217,27 @@ describe('buildHeatResult — the exact stats.results shape written', () => {
     expect(result.order).toBe(42);
   });
 
+  // 2026-07-12 world-class audit P0: a DISTANCE-named event ("500 Free")
+  // must NOT be read as event number 500 — that sorts it after every later
+  // event and freezes the board on the 500 Free for the back half of the
+  // meet. A named event falls to orderHint (entry recency) so the newest
+  // heat is current.
+  it('does not parse a distance from a NAMED event ("500 Free" is not event 500)', () => {
+    const rows: LaneRow[] = [{ lane: 4, name: 'Ana', mark: '5:12.00' }];
+    // Even WITH a heat number present, "500 Free" is a name, not a number.
+    const fiveHundred = buildHeatResult('500 Free', '1', rows, 7);
+    expect(fiveHundred.order).toBe(7); // orderHint, NOT 50001
+    // A later event entered afterward gets a higher recency order (8 > 7) and
+    // wins "current", instead of losing to the 500's fabricated 50001.
+    const oneHundredBack = buildHeatResult('100 Back', '1', rows, 8);
+    expect(oneHundredBack.order).toBe(8);
+  });
+
+  it('still honors a BARE event/heat number ("12"/"3" → 1203)', () => {
+    const rows: LaneRow[] = [{ lane: 1, name: 'A', mark: '55.00' }];
+    expect(buildHeatResult('12', '3', rows, 1).order).toBe(1203);
+  });
+
   it('low event/heat numbers compute the real eventNumber*100+heat value under the cap', () => {
     const rows: LaneRow[] = [{ lane: 1, name: 'A', mark: '55.00' }];
     const result = buildHeatResult('2', '3', rows, 1);

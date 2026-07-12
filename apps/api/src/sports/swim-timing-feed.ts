@@ -53,22 +53,20 @@ export function formatSwimEventLabel(eventNumber: number, heat: number): string 
 
 /**
  * Decide the display `mark` for one lane from its decoded timing state.
- * Priority: a real finish time wins; else "DQ" once the heat is over and
- * the lane never posted a time (report A5 lane states); else blank
- * (mid-race / no swimmer) so the board shows an empty row, never a
- * fabricated placeholder.
+ * A real finish time from the timer wins; otherwise the mark is BLANK.
  *
- * `heatOver` is true once at least one lane in the heat has a place > 0
- * AND every lane's timing module has stopped changing — the caller
- * (ingestSwimTimingSnapshot) derives this from console heartbeat/place
- * data; this pure function just applies the rule given the flag, so the
- * "when is a heat over" policy stays testable independently of the DQ
- * inference itself.
+ * The feed NEVER fabricates a "DQ" (2026-07-12 world-class audit P0). The
+ * CTS timing console only knows lane TIMES — a disqualification is a
+ * referee decision entered separately (the console lane pad's DQ/SCR
+ * chips), and a lane that posts no time is simply empty / a no-show, not
+ * disqualified. The old code painted a red "DQ" on any blank lane the
+ * instant a heat *looked* over — so a 6-swimmer heat in an 8-lane pool
+ * flashed DQs on the two genuinely-empty lanes mid-race. Blank stays
+ * blank; a name-less blank row is then dropped downstream (readResults),
+ * so empty lanes vanish instead of inventing a placeholder.
  */
-export function laneMark(lane: { display: string; blank: boolean }, heatOver: boolean): string {
-  if (lane.display) return lane.display;
-  if (heatOver && lane.blank) return 'DQ';
-  return '';
+export function laneMark(lane: { display: string; blank: boolean }): string {
+  return lane.display || '';
 }
 
 /**
@@ -76,18 +74,13 @@ export function laneMark(lane: { display: string; blank: boolean }, heatOver: bo
  * {@link MeetResult} for the CURRENT event/heat, joining lane → roster
  * name/team when a roster entry claims that lane. Lanes with no roster
  * entry render lane + time only (name '') — report A7/A5: "if absent,
- * render lane+time only — never fabricate names."
- *
- * `heatOver` lets the caller (which has visibility into console
- * heartbeat / elapsed time the pure decoder doesn't) flag "this heat is
- * done, so a blank lane really means DQ/SCR" vs. "still racing, a blank
- * lane just hasn't finished yet." Defaults to false (the conservative
- * choice — never invents a DQ mid-race).
+ * render lane+time only — never fabricate names." A lane with neither a
+ * name nor a time is dropped downstream (readResults), so empty lanes
+ * never show as a fabricated row.
  */
 export function normalizeSwimSnapshot(
   snapshot: SwimTimingSnapshot,
   roster: SwimRosterEntry[] = [],
-  heatOver = false,
 ): MeetResult {
   const rosterByLane = new Map<number, SwimRosterEntry>();
   for (const r of roster) {
@@ -102,7 +95,7 @@ export function normalizeSwimSnapshot(
     const entry: ResultEntry = {
       place: laneState.place,
       name: rosterEntry?.name ?? '',
-      mark: laneMark(laneState, heatOver),
+      mark: laneMark(laneState),
       lane: laneState.lane,
     };
     if (rosterEntry?.team) entry.team = rosterEntry.team;

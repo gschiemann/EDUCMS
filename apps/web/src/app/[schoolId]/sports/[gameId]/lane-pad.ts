@@ -198,8 +198,20 @@ export function buildHeatResult(
       return entry;
     });
 
-  const eventNum = parseInt(currentEvent.trim(), 10);
-  const heatNum = parseInt(heat.trim(), 10);
+  // Derive a deterministic order (eventNumber*100+heat) ONLY when BOTH the
+  // event and heat fields are bare integers — the operator typed a real
+  // event NUMBER ("12", "3"). If the event field holds a NAME — even one
+  // that starts with digits, like "500 Free" (500 is the distance, not the
+  // event number) — parseInt would grab that distance and sort the event
+  // AFTER every later event, freezing the board/ribbon on the 500 Free for
+  // the back half of the meet (2026-07-12 world-class audit P0). A named
+  // event falls back to `orderHint` (entry recency), so the most recently
+  // entered heat is the current one and corrections replace-in-place without
+  // jumping to "current".
+  const eventTrim = currentEvent.trim();
+  const heatTrim = heat.trim();
+  const eventNum = /^\d+$/.test(eventTrim) ? parseInt(eventTrim, 10) : NaN;
+  const heatNum = /^\d+$/.test(heatTrim) ? parseInt(heatTrim, 10) : NaN;
   const rawOrder =
     Number.isFinite(eventNum) && eventNum > 0 && Number.isFinite(heatNum) && heatNum > 0
       ? eventNum * 100 + heatNum
