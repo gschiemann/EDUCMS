@@ -3703,6 +3703,13 @@ function PlayerActionMenu({
       // Server stores the jersey/cap number (digits only); water-polo
       // exclusions are tracked by cap #, which is what the box list shows.
       player: String(player.number || ''),
+      // 2026-07-12 world-class audit P1 — water polo's one-tap exclusion
+      // now also bumps the player's major-foul count ("X of 3"/EJECTED
+      // panel) and the team EXCL stat in the SAME server write, so the
+      // three surfaces can't drift under game pace. The Players stepper
+      // stays the manual correction path (it SETs absolute counts).
+      exclusion: def.key === 'water_polo',
+      playerName: playerName || undefined,
     });
     onClose();
   };

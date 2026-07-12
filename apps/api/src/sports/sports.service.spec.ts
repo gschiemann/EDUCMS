@@ -2808,3 +2808,129 @@ describe('SportsService — endSegmentAtomic (S1-5 / P2-EndSetMacro)', () => {
     expect(row.homeScore).toBe(24); // Game row also rolled back
   });
 });
+
+// ── 2026-07-12 world-class audit P1s (water polo) ────────────────
+// P1-1: per-game regulation period length (stats.clockSegmentMs, picked
+// from clock.segmentMsOptions) + 3:00 OT via clock.otSegmentMs.
+// P1-2: one-tap exclusion — setPenalties add {exclusion:true} bumps the
+// box timer, the per-player major-foul count, and the team EXCL stat in
+// ONE write so the three surfaces can never drift.
+describe('SportsService — per-game period length (water polo 7:00 HS)', () => {
+  const HS = 7 * 60_000;
+
+  it('createGame stores a published clockSegmentMs pick and opens the clock at it', async () => {
+    const { service } = setup();
+    const g = await service.createGame(TENANT, {
+      sport: 'water_polo',
+      homeTeam: 'Home',
+      awayTeam: 'Away',
+      clockSegmentMs: HS,
+    });
+    expect(g.clockMs).toBe(HS);
+    expect((g.stats as any).clockSegmentMs).toBe(HS);
+  });
+
+  it('createGame silently ignores a length that is not a published option', async () => {
+    const { service } = setup();
+    const g = await service.createGame(TENANT, {
+      sport: 'water_polo',
+      homeTeam: 'Home',
+      awayTeam: 'Away',
+      clockSegmentMs: 123_456,
+    });
+    expect(g.clockMs).toBe(8 * 60_000); // sport default
+    expect((g.stats as any).clockSegmentMs).toBeUndefined();
+  });
+
+  it('segment advances reset to the per-game length, and OT resets to otSegmentMs (3:00)', async () => {
+    const { service } = setup();
+    const g = await service.createGame(TENANT, {
+      sport: 'water_polo',
+      homeTeam: 'Home',
+      awayTeam: 'Away',
+      clockSegmentMs: HS,
+    });
+    const q2 = await service.setSegment(TENANT, g.id, { delta: 1 });
+    expect(q2.segment).toBe(2);
+    expect(q2.clockMs).toBe(HS); // NOT the 8:00 default
+    const ot = await service.setSegment(TENANT, g.id, { segment: 5 });
+    expect(ot.segment).toBe(5);
+    expect(ot.clockMs).toBe(3 * 60_000); // OT period, not another quarter
+  });
+
+  it('duplicateGame carries the per-game length onto the copy', async () => {
+    const { service } = setup();
+    const g = await service.createGame(TENANT, {
+      sport: 'water_polo',
+      homeTeam: 'Home',
+      awayTeam: 'Away',
+      clockSegmentMs: HS,
+    });
+    const copy = await service.duplicateGame(TENANT, g.id);
+    expect((copy.stats as any).clockSegmentMs).toBe(HS);
+    expect(copy.clockMs).toBe(HS);
+  });
+});
+
+describe('SportsService — one-tap water polo exclusion (box + player count + team stat)', () => {
+  it('add {exclusion:true} bumps all three surfaces in one write, and stacks on repeat', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'water_polo');
+
+    const first = await service.setPenalties(TENANT, g.id, {
+      action: 'add',
+      team: 'home',
+      lenSec: 20,
+      label: 'Exclusion :20',
+      player: '7',
+      exclusion: true,
+      playerName: 'Rivera',
+    });
+    const s1 = first.stats as any;
+    expect(s1.penalties).toHaveLength(1);
+    expect(s1.penalties[0].player).toBe('7');
+    expect(s1.playerExclusions).toEqual([
+      { team: 'home', jersey: 7, name: 'Rivera', count: 1 },
+    ]);
+    expect(s1.homeExclusions).toBe(1);
+
+    const second = await service.setPenalties(TENANT, g.id, {
+      action: 'add',
+      team: 'home',
+      lenSec: 20,
+      label: 'Exclusion :20',
+      player: '7',
+      exclusion: true,
+    });
+    const s2 = second.stats as any;
+    expect(s2.playerExclusions[0].count).toBe(2);
+    expect(s2.playerExclusions[0].name).toBe('Rivera'); // name kept
+    expect(s2.homeExclusions).toBe(2);
+  });
+
+  it('a plain add (no flag) and a non-water-polo add change no exclusion counts', async () => {
+    const { service } = setup();
+    const wp = await newGame(service, 'water_polo');
+    const plain = await service.setPenalties(TENANT, wp.id, {
+      action: 'add',
+      team: 'away',
+      lenSec: 240,
+      label: 'Misconduct 4:00',
+      player: '9',
+    });
+    expect((plain.stats as any).playerExclusions).toBeUndefined();
+    expect((plain.stats as any).awayExclusions).toBeUndefined();
+
+    const hockey = await newGame(service, 'hockey');
+    const hk = await service.setPenalties(TENANT, hockey.id, {
+      action: 'add',
+      team: 'home',
+      lenSec: 120,
+      label: 'Minor 2:00',
+      player: '4',
+      exclusion: true, // wrong sport — must be a no-op for counts
+    });
+    expect((hk.stats as any).playerExclusions).toBeUndefined();
+    expect((hk.stats as any).homeExclusions).toBeUndefined();
+  });
+});

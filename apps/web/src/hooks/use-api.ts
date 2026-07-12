@@ -3158,6 +3158,9 @@ export function useCreateGame() {
       // Game modal's "When is it?" field. ISO string; omitted/blank means
       // no date set (fully legal — every existing game has none).
       scheduledAt?: string | null;
+      // Per-game regulation period length (water polo 7:00 HS vs 8:00
+      // NCAA) — only offered when the sport publishes segmentMsOptions.
+      clockSegmentMs?: number;
     }) => apiFetch('/sports/games', { method: 'POST', body: JSON.stringify(data) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sports-games'] }),
   });
@@ -3328,8 +3331,17 @@ export function useGameControl(gameId: string) {
               return { ...old, clockMs: Math.round(body.ms), clockUpdatedAt: now.toISOString() };
             case 'reset': {
               // segmentStartMs: countdown → its configured segment length;
-              // countup/none → 0. Mirrors the server's segmentStartMs.
-              const startMs = def && def.clock.type === 'countdown' ? def.clock.segmentMs ?? 0 : 0;
+              // countup/none → 0. Mirrors the server's segmentStartMs,
+              // including the per-game stats.clockSegmentMs override (7:00
+              // HS water polo) so the optimistic reset doesn't flash 8:00.
+              const override = old?.stats?.clockSegmentMs;
+              const startMs =
+                def && def.clock.type === 'countdown'
+                  ? (typeof override === 'number' &&
+                     def.clock.segmentMsOptions?.some((o: { ms: number }) => o.ms === override)
+                      ? override
+                      : def.clock.segmentMs ?? 0)
+                  : 0;
               return { ...old, clockMs: startMs, clockRunning: false, clockUpdatedAt: now.toISOString() };
             }
             default:
@@ -3546,6 +3558,11 @@ export function useGameControl(gameId: string) {
       lenSec?: number;
       label?: string;
       player?: string;
+      // Water polo one-tap exclusion — the server bumps the per-player
+      // major-foul count + team EXCL stat in the same write as the box
+      // timer (see sports.service.ts penalties 'add').
+      exclusion?: boolean;
+      playerName?: string;
     }) =>
       apiFetch(`/sports/games/${gameId}/penalties`, {
         method: 'PATCH',

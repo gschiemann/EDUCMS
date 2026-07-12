@@ -175,10 +175,44 @@ export class SportsService {
     return def;
   }
 
-  /** Starting clock reading for a fresh game / a segment reset. */
-  private segmentStartMs(def: SportDefinition): number {
-    if (def.clock.type === 'countdown') return def.clock.segmentMs ?? 0;
-    return 0; // countup starts at 0; "none" has no clock
+  /** Starting clock reading for a fresh game / a segment reset.
+   *
+   *  `stats` (the game's stats blob) may carry a per-game regulation
+   *  length override — `stats.clockSegmentMs`, picked at game creation
+   *  when the sport publishes `clock.segmentMsOptions` (water polo 7:00
+   *  NFHS HS vs 8:00 NCAA). The override is honored ONLY when it matches
+   *  one of the sport's published options, so a corrupted/foreign value
+   *  can never produce a nonsense clock.
+   *
+   *  `segment` enables the OT rule: when the sport defines
+   *  `clock.otSegmentMs` and the target segment is past regulation,
+   *  resets use the OT length (water polo OT is 3:00, not another 8:00).
+   */
+  private segmentStartMs(
+    def: SportDefinition,
+    stats?: unknown,
+    segment?: number,
+  ): number {
+    if (def.clock.type !== 'countdown') return 0; // countup starts at 0; "none" has no clock
+    if (
+      typeof segment === 'number' &&
+      def.segment.overtime &&
+      segment > def.segment.count &&
+      typeof def.clock.otSegmentMs === 'number'
+    ) {
+      return def.clock.otSegmentMs;
+    }
+    const override =
+      stats && typeof stats === 'object'
+        ? (stats as Record<string, unknown>).clockSegmentMs
+        : undefined;
+    if (
+      typeof override === 'number' &&
+      def.clock.segmentMsOptions?.some((o) => o.ms === override)
+    ) {
+      return override;
+    }
+    return def.clock.segmentMs ?? 0;
   }
 
   /**
@@ -856,6 +890,11 @@ export class SportsService {
       // Sports Wave S4-1 (P1-8) — optional kickoff date/time. Absent/invalid
       // stays legal (null) — the "When is it?" field on New Game is optional.
       scheduledAt?: string | null;
+      // 2026-07-12 world-class audit P1 — per-game regulation period length
+      // for sports that publish clock.segmentMsOptions (water polo 7:00 HS
+      // vs 8:00 NCAA). Validated against the sport's options; anything else
+      // silently falls back to the sport default.
+      clockSegmentMs?: number;
     },
   ) {
     const def = this.sportOf(String(dto.sport || ''));
@@ -878,6 +917,16 @@ export class SportsService {
       const field = def.stats.find((s) => s.key === key);
       if (field && typeof field.max === 'number') initialStats[key] = field.max;
     }
+    // Per-game period length (only when it matches a published option) —
+    // stored in stats so every later clock reset (segment advance, clock
+    // reset, auto-advance, integration ingest) picks it up via
+    // segmentStartMs with zero schema change.
+    if (
+      typeof dto.clockSegmentMs === 'number' &&
+      def.clock.segmentMsOptions?.some((o) => o.ms === dto.clockSegmentMs)
+    ) {
+      initialStats.clockSegmentMs = dto.clockSegmentMs;
+    }
 
     return this.prisma.client.game.create({
       data: {
@@ -892,7 +941,7 @@ export class SportsService {
         screenGroupId: dto.screenGroupId || null,
         status,
         segment: 1,
-        clockMs: this.segmentStartMs(def),
+        clockMs: this.segmentStartMs(def, initialStats),
         clockRunning: false,
         clockUpdatedAt: new Date(),
         stats: initialStats,
@@ -958,6 +1007,19 @@ export class SportsService {
       const field = def.stats.find((s) => s.key === key);
       if (field && typeof field.max === 'number') initialStats[key] = field.max;
     }
+    // Carry the source's per-game period length (part of the reusable
+    // presentation setup — a 7:00 HS water polo game duplicates to
+    // another 7:00 game). Same validation as createGame.
+    const srcSegmentMs =
+      src.stats && typeof src.stats === 'object'
+        ? (src.stats as Record<string, unknown>).clockSegmentMs
+        : undefined;
+    if (
+      typeof srcSegmentMs === 'number' &&
+      def.clock.segmentMsOptions?.some((o) => o.ms === srcSegmentMs)
+    ) {
+      initialStats.clockSegmentMs = srcSegmentMs;
+    }
 
     const copy = await this.prisma.client.game.create({
       data: {
@@ -972,7 +1034,7 @@ export class SportsService {
         screenGroupId: null, // never inherit the source's live screen binding
         status: 'SCHEDULED',
         segment: 1,
-        clockMs: this.segmentStartMs(def),
+        clockMs: this.segmentStartMs(def, initialStats),
         clockRunning: false,
         clockUpdatedAt: new Date(),
         stats: initialStats,
@@ -1701,7 +1763,7 @@ export class SportsService {
         break;
       }
       case 'reset':
-        clockMs = this.segmentStartMs(def);
+        clockMs = this.segmentStartMs(def, game.stats, game.segment);
         clockRunning = false;
         break;
       default:
@@ -2345,6 +2407,16 @@ export class SportsService {
       lenSec?: number;
       label?: string;
       player?: string;
+      // 2026-07-12 world-class audit P1 — water polo's most repeated action
+      // (a major-foul exclusion, ~8-14/game) used to take THREE disconnected
+      // writes: this box timer, the per-player stats.playerExclusions count
+      // ("2 of 3"/EJECTED panel on the board), and the team EXCL stat. Under
+      // game pace they silently drifted. `exclusion: true` (sent by the
+      // console's roster one-tap) makes ONE call bump all three atomically.
+      // `playerName` labels the playerExclusions row so the board shows the
+      // name, matching the manual stepper's rows.
+      exclusion?: boolean;
+      playerName?: string;
     },
   ) {
     const game = await this.owned(tenantId, id);
@@ -2374,21 +2446,55 @@ export class SportsService {
         if (list.length >= 12) {
           throw new BadRequestException('Penalty box is full (12 max)');
         }
+        const team = dto.team === 'away' ? 'away' : 'home';
+        // Jersey number — digits only, ≤ 3 (00–999 covers every code).
+        const jerseyStr = String(dto.player || '').replace(/[^0-9]/g, '').slice(0, 3);
         list = [
           ...list,
           {
             id: `pen_${now.getTime().toString(36)}_${Math.random()
               .toString(36)
               .slice(2, 7)}`,
-            team: dto.team === 'away' ? 'away' : 'home',
+            team,
             label: String(dto.label || '').slice(0, 24),
-            // Jersey number — digits only, ≤ 3 (00–999 covers every code).
-            player: String(dto.player || '').replace(/[^0-9]/g, '').slice(0, 3),
+            player: jerseyStr,
             ms: sec * 1000,
             at: now.toISOString(),
             running,
           },
         ];
+
+        // One-tap exclusion capture (water polo only — see dto comment).
+        // Bumps the per-player major-foul count AND the team EXCL stat in
+        // the SAME stats write as the box timer, so the three surfaces can
+        // never drift. The manual PlayerExclusionStepper stays the
+        // correction path (it SETs absolute counts, so no double-count).
+        if (dto.exclusion === true && jerseyStr) {
+          const def = this.sportOf(game.sport);
+          if (def.key === 'water_polo') {
+            const jersey = Number(jerseyStr);
+            const name = String(dto.playerName || '').slice(0, 40) || undefined;
+            const rows = Array.isArray(baseStats.playerExclusions)
+              ? (baseStats.playerExclusions as Record<string, unknown>[]).map((r) => ({ ...r }))
+              : [];
+            const row = rows.find((r) => r.team === team && Number(r.jersey) === jersey);
+            if (row) {
+              // Same 0-9 clamp as the console stepper.
+              row.count = Math.min(9, (Number(row.count) || 0) + 1);
+              if (name && !row.name) row.name = name;
+            } else {
+              rows.push({ team, jersey, name, count: 1 });
+            }
+            baseStats.playerExclusions = rows;
+
+            const teamKey = team === 'away' ? 'awayExclusions' : 'homeExclusions';
+            const max = def.stats.find((s) => s.key === teamKey)?.max ?? 30;
+            baseStats[teamKey] = Math.min(
+              typeof max === 'number' ? max : 30,
+              (Number(baseStats[teamKey]) || 0) + 1,
+            );
+          }
+        }
         break;
       }
       case 'remove': {
@@ -2546,7 +2652,9 @@ export class SportsService {
         // the normal segment-start re-anchor. (2026-06-13 audit P2.)
         const footballOT =
           def.key === 'football' && segment > def.segment.count;
-        data.clockMs = footballOT ? 0 : this.segmentStartMs(def);
+        data.clockMs = footballOT
+          ? 0
+          : this.segmentStartMs(def, game.stats, segment);
         data.clockRunning = false;
         data.clockUpdatedAt = now;
       }
@@ -2652,7 +2760,7 @@ export class SportsService {
         // keeps the invariant clean (Invariant #6 from the clock state doc).
         const gameClockMs = data.clockMs !== undefined
           ? Number(data.clockMs)
-          : this.segmentStartMs(def);
+          : this.segmentStartMs(def, game.stats, segment);
         const clampedMs = Math.min(fullMs, gameClockMs);
         const prevShotClock =
           mergedStats.shotClock && typeof mergedStats.shotClock === 'object'
@@ -2848,7 +2956,7 @@ export class SportsService {
       } else {
         // Roll to the next segment with a fresh, stopped clock.
         const segment = game.segment + 1;
-        const segmentClockMs = this.segmentStartMs(def);
+        const segmentClockMs = this.segmentStartMs(def, game.stats, segment);
         const autoData: Record<string, unknown> = {
           segment,
           clockMs: segmentClockMs,
@@ -3570,7 +3678,7 @@ export class SportsService {
         // Mirror setSegment: reset + stop the clock when segment advances.
         const def = this.sportOf(game.sport);
         if (def.clock.type !== 'none') {
-          data.clockMs = this.segmentStartMs(def);
+          data.clockMs = this.segmentStartMs(def, game.stats, v);
           data.clockRunning = false;
           data.clockUpdatedAt = new Date();
         }

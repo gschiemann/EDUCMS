@@ -142,8 +142,22 @@ export interface SportDefinition {
   emoji: string;
   mode: SportMode;
   /** countdown = clock runs to 0 (US football/basketball); countup =
-   *  clock counts up (soccer); none = no clock (baseball/volleyball) */
-  clock: { type: ClockType; segmentMs?: number };
+   *  clock counts up (soccer); none = no clock (baseball/volleyball).
+   *  `segmentMsOptions` — when present, the operator picks the regulation
+   *  period length at game creation (e.g. water polo 8:00 NCAA vs 7:00
+   *  NFHS HS vs shorter age-group quarters). The pick is stored per-game
+   *  as `stats.clockSegmentMs` (validated against this list) and every
+   *  clock reset honors it; `segmentMs` stays the default. Omitted = the
+   *  length is fixed.
+   *  `otSegmentMs` — overtime period length when it differs from
+   *  regulation (water polo OT is 3:00, not another 8:00). Resets past
+   *  the regulation segment count use this instead of `segmentMs`. */
+  clock: {
+    type: ClockType;
+    segmentMs?: number;
+    segmentMsOptions?: { label: string; ms: number }[];
+    otSegmentMs?: number;
+  };
   /** the period structure — "Quarter" × 4, "Inning" × 7, "Set" × 5 …
    *  `countOptions` — when present, the operator picks the regulation
    *  segment count at setup (e.g. golf 9-hole vs 18-hole HS matches).
@@ -875,8 +889,24 @@ const WATER_POLO: SportDefinition = {
   name: 'Water Polo',
   emoji: '🤽',
   mode: 'HEAD_TO_HEAD',
-  // NFHS / NCAA / FINA regulation quarters are 8:00 (was 7:00).
-  clock: { type: 'countdown', segmentMs: 8 * 60_000 },
+  // Quarter length varies by level: NCAA / World Aquatics play 8:00 but
+  // NFHS HIGH SCHOOL plays 7:00 and age-group/club commonly 5:00-6:00
+  // (2026-07-12 world-class audit P1 — the old comment claimed NFHS was
+  // 8:00, which is wrong, and the fixed length forced HS operators to
+  // hand-set the clock every quarter). 8:00 stays the default; the New
+  // Game modal offers the pick, stored per-game as stats.clockSegmentMs.
+  // OT periods are 3:00 (NCAA), not another full quarter.
+  clock: {
+    type: 'countdown',
+    segmentMs: 8 * 60_000,
+    otSegmentMs: 3 * 60_000,
+    segmentMsOptions: [
+      { label: '8:00 — NCAA / World Aquatics', ms: 8 * 60_000 },
+      { label: '7:00 — NFHS high school', ms: 7 * 60_000 },
+      { label: '6:00 — age group', ms: 6 * 60_000 },
+      { label: '5:00 — age group / club', ms: 5 * 60_000 },
+    ],
+  },
   segment: { name: 'Quarter', count: 4, overtime: true },
   score: { unit: 'goals', increments: [1] },
   // 30s shot clock, resets to 20 on offensive rebound / corner /

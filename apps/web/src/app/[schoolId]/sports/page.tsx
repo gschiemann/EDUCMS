@@ -395,6 +395,12 @@ export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
   // type="datetime-local">` value; empty stays legal (undefined → API
   // stores null). Never required — this is a convenience, not a gate.
   const [scheduledAt, setScheduledAt] = useState('');
+  // 2026-07-12 world-class audit P1 — regulation period length for sports
+  // that publish clock.segmentMsOptions (water polo 8:00 NCAA vs 7:00 NFHS
+  // HS vs age-group). '' = the sport default; resets when the sport
+  // changes. Stored per-game — every clock reset honors it, so a HS
+  // operator never hand-sets 7:00 four times a game.
+  const [clockSegmentMs, setClockSegmentMs] = useState('');
   // Sports Wave S4-3 (P2) — sport search, only shown once the grid gets
   // big enough to need it (>8 sports). No new setting: purely a filter
   // over the existing SPORTS list.
@@ -475,6 +481,9 @@ export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
         // `new Date(...)` on the API side parses that as local time, which
         // is exactly what an operator typing "7:00 PM" at their venue means.
         scheduledAt: scheduledAt || undefined,
+        // Regulation period length pick (only sent when it differs from
+        // the sport default — the server validates against the options).
+        clockSegmentMs: clockSegmentMs ? Number(clockSegmentMs) : undefined,
       });
       // Remember this home team so the next New Game pre-fills it.
       try {
@@ -544,7 +553,12 @@ export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
             <button
               key={s.key}
               type="button"
-              onClick={() => setSport(s.key)}
+              onClick={() => {
+                setSport(s.key);
+                // Period length is sport-specific — never carry a water
+                // polo 7:00 pick onto another sport.
+                setClockSegmentMs('');
+              }}
               className={`flex flex-col items-center gap-1 rounded-xl border-2 py-2.5 transition-colors ${
                 sport === s.key
                   ? 'border-indigo-500 bg-indigo-50'
@@ -616,6 +630,39 @@ export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
             />
           </div>
         </div>
+
+        {/* 2026-07-12 world-class audit P1 — regulation period length, only
+            for sports that publish options (water polo: 8:00 NCAA is the
+            default, HS plays 7:00, age-group 5:00-6:00). One pick at game
+            creation; every clock reset honors it for the whole game. */}
+        {def?.clock?.segmentMsOptions && def.clock.segmentMsOptions.length > 0 && (
+          <div className="mt-5">
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              {def.segment.name} length
+            </label>
+            <div className="mt-1.5 flex flex-wrap gap-2">
+              {def.clock.segmentMsOptions.map((o) => {
+                const selected = clockSegmentMs
+                  ? Number(clockSegmentMs) === o.ms
+                  : o.ms === def.clock.segmentMs;
+                return (
+                  <button
+                    key={o.ms}
+                    type="button"
+                    onClick={() => setClockSegmentMs(String(o.ms))}
+                    className={`rounded-lg border-2 px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      selected
+                        ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                        : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Sports Wave S4-1 (P1-8) — optional kickoff date/time. Never
             required; leaving it blank is exactly today's behavior. */}
