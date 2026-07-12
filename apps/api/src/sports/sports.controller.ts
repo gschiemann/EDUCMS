@@ -149,6 +149,10 @@ export class SportsController {
       // from the New Game modal's "When is it?" field. ISO string; absent
       // stays legal (no date set).
       scheduledAt?: string | null;
+      // 2026-07-12 world-class audit P1 — per-game regulation period length
+      // for sports that publish clock.segmentMsOptions (water polo 7:00 HS
+      // vs 8:00 NCAA). Validated in the service against the sport's options.
+      clockSegmentMs?: number;
     },
   ) {
     return this.sports.createGame(req.user.tenantId, body);
@@ -298,6 +302,11 @@ export class SportsController {
       lenSec?: number;
       label?: string;
       player?: string;
+      // 2026-07-12 world-class audit P1 — water polo one-tap exclusion:
+      // also bump the per-player major-foul count + team EXCL stat in the
+      // same write (water polo only; validated in setPenalties).
+      exclusion?: boolean;
+      playerName?: string;
     },
   ) {
     return this.sports.setPenalties(req.user.tenantId, id, body);
