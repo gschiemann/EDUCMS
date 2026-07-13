@@ -550,6 +550,11 @@ const FOOTBALL: SportDefinition = {
     { key: 'firstDown', label: 'First Down', emoji: '📍' },
     { key: 'sack', label: 'Sack', emoji: '💥' },
     { key: 'turnover', label: 'Turnover', emoji: '🔄' },
+    // 2026-07-12 world-class audit (football P1) — a penalty flag is routine
+    // every drive and a pro board flashes "FLAG"; this gives the operator a
+    // one-tap FLAG overlay from the CueLaunchpad. No autoPoints (never
+    // auto-fires) — it's a manual crowd-prompt cue like the horn.
+    { key: 'flag', label: 'Flag', emoji: '🚩' },
     // T1-5: Horn fires automatically at clock expiry; also available as manual cue.
     { key: 'horn', label: 'Horn', emoji: '📯' },
   ],

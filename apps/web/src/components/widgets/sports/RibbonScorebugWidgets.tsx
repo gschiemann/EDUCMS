@@ -209,7 +209,7 @@ export function ScorebugWidget({ config }: { config?: ScorebugCfg }) {
   const segmentText = isLiveNoData ? '' : (def ? fmtSegment(snap.sport, snap.segment) : '');
   // sport situational line (compact) — suppressed on a live board with no data.
   let sit = '';
-  if (!isLiveNoData && def?.key === 'football') { const d = snap.stats?.down, dist = snap.stats?.distance; if (d) sit = `${['','1ST','2ND','3RD','4TH'][Number(d)] || ''} & ${dist ?? ''}`; }
+  if (!isLiveNoData && def?.key === 'football') { const d = snap.stats?.down, dist = snap.stats?.distance; if (d) sit = `${['','1ST','2ND','3RD','4TH'][Number(d)] || ''} & ${Number(dist) === 0 ? 'GOAL' : (dist ?? '')}`; }
   else if (!isLiveNoData && (def?.key === 'baseball' || def?.key === 'softball')) { sit = `${snap.stats?.balls ?? 0}-${snap.stats?.strikes ?? 0}, ${snap.stats?.outs ?? 0} OUT`; }
 
   const TeamBlock = ({ abbrText, scoreText, color }: { abbrText: string; scoreText: string; color: string }) => (

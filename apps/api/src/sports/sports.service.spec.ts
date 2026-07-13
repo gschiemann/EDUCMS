@@ -2938,3 +2938,28 @@ describe('SportsService — one-tap water polo exclusion (box + player count + t
     expect((hk.stats as any).homeExclusions).toBeUndefined();
   });
 });
+
+// ── 2026-07-12 world-class audit (football P1) — getBoard possession mirror ──
+// The first-class Game.possession column was never in the getBoard select, so
+// it never reached any surface (the run-bar arrow chip that writes ONLY the
+// column was a no-op on the board). getBoard now ships the column top-level
+// AND mirrors it into stats.possession so every reader sees one value.
+describe('SportsService — getBoard() possession mirror', () => {
+  it('ships Game.possession top-level AND mirrors it into stats.possession', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'football');
+    await service.setPossession(TENANT, g.id, { team: 'away' });
+
+    const board: any = await service.getBoard(g.id);
+    expect(board.possession).toBe('away');
+    expect(board.stats.possession).toBe('away');
+  });
+
+  it('leaves stats untouched when no possession is set (null column, no stats key)', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'football');
+    const board: any = await service.getBoard(g.id);
+    expect(board.possession).toBeNull();
+    expect(board.stats.possession).toBeUndefined();
+  });
+});

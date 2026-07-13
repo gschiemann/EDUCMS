@@ -86,6 +86,29 @@ type ClockAction = 'start' | 'pause' | 'set' | 'reset';
 const GAME_STATUSES = ['SCHEDULED', 'PRE_GAME', 'LIVE', 'HALFTIME', 'FINAL'];
 const CUE_FEED_WINDOW_MS = 20_000;
 
+/**
+ * Board-payload normalization (2026-07-12 world-class audit, football P1):
+ * fold the first-class `Game.possession` column into the returned
+ * `stats.possession` so EVERY board/ribbon/widget reader sees one value,
+ * regardless of which control wrote it (the run-bar arrow chip writes the
+ * column; the football tray toggle also writes the column post-fix). The
+ * column wins when set; otherwise the existing stats.possession is kept for
+ * legacy rows written before the column existed. Pure + additive — a null
+ * column on a game with no stats.possession leaves the blob untouched.
+ */
+function mirrorPossessionIntoStats(
+  rawStats: unknown,
+  possession: string | null | undefined,
+): unknown {
+  if (!rawStats || typeof rawStats !== 'object') {
+    return possession ? { possession } : rawStats;
+  }
+  const stats = rawStats as Record<string, unknown>;
+  const resolved = possession ?? (stats.possession as string | undefined);
+  if (!resolved || resolved === stats.possession) return stats;
+  return { ...stats, possession: resolved };
+}
+
 // ── CTS cue-fired audit — fabrication / inflation guards (Task D) ──
 //
 // /sports/board/:id/cts-cue-fired is intentionally PUBLIC and tokenless:
@@ -572,6 +595,13 @@ export class SportsService {
         homeColor: true, awayColor: true, homeLogoUrl: true, awayLogoUrl: true,
         clockMs: true, clockRunning: true, clockUpdatedAt: true,
         startedAt: true, stats: true, spotlight: true,
+        // 2026-07-12 world-class audit (football P1) — the first-class
+        // Game.possession column was NEVER in this select, so it never
+        // reached the board: `data.possession` was always undefined and every
+        // surface silently fell back to stats.possession. That made the
+        // run-bar possession-arrow chip (which writes ONLY the column) a
+        // no-op on the board. Ship the column + mirror it into stats below.
+        possession: true,
         scoreboardTemplateId: true, ribbonTemplateId: true, scorebugTemplateId: true,
       },
     });
@@ -698,7 +728,13 @@ export class SportsService {
       clockMs: game.clockMs,
       clockRunning: game.clockRunning,
       clockUpdatedAt: game.clockUpdatedAt,
-      stats: game.stats,
+      // First-class possession column (football/basketball). Exposed
+      // top-level for the board's `data.possession` read AND mirrored into
+      // stats.possession below so the shared SituationalRow (and any widget)
+      // that reads stats.possession sees the SAME value — one source of
+      // truth, whichever control wrote it (2026-07-12 world-class audit).
+      possession: game.possession ?? null,
+      stats: mirrorPossessionIntoStats(game.stats, game.possession),
       spotlight: game.spotlight,
       cues: cues.map((c) => {
         const p = (c.payload as Record<string, unknown>) ?? {};

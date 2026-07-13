@@ -1551,6 +1551,12 @@ function RunMode({
                       def={def}
                       stats={stats}
                       onStat={(s) => ctl.stats.mutate({ stats: s })}
+                      // Read the first-class column first (board/ribbon do the
+                      // same), falling back to legacy stats.possession; write
+                      // via the dedicated setPossession — same store as the
+                      // run-bar arrow chip (2026-07-12 world-class audit P1).
+                      possession={String(g.possession ?? stats.possession ?? '')}
+                      onPossession={(team) => ctl.setPossession.mutate({ team })}
                     />
                     <PlayClockBtn
                       stats={stats}
@@ -4426,10 +4432,20 @@ function FootballControls({
   def,
   stats,
   onStat,
+  possession,
+  onPossession,
 }: {
   def: SportDefinition;
   stats: Record<string, unknown>;
   onStat: (s: Record<string, number | string>) => void;
+  // 2026-07-12 world-class audit P1 — possession is the first-class
+  // Game.possession column (board/ribbon read it FIRST, falling back to
+  // stats.possession). This tray toggle previously wrote only
+  // stats.possession via onStat, so once the run-bar arrow chip had set the
+  // column, this toggle was silently ignored and the board showed the wrong
+  // team with the ball. It now reads + writes the SAME column as the arrow.
+  possession: string;
+  onPossession: (team: 'home' | 'away') => void;
 }) {
   const distF = def.stats.find((s) => s.key === 'distance');
   const ballF = def.stats.find((s) => s.key === 'ballOn');
@@ -4467,8 +4483,8 @@ function FootballControls({
       />
       <PossessionToggle
         label="Ball"
-        value={stats.possession}
-        onSet={(v) => onStat({ possession: v })}
+        value={possession}
+        onSet={(v) => onPossession(v as 'home' | 'away')}
       />
     </div>
   );
