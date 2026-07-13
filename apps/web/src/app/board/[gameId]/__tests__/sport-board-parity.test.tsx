@@ -440,11 +440,19 @@ describe('Sports default-surface parity gate (#269)', () => {
           expect(text).not.toContain('DIVER / TEAM');
         });
 
-        it('renders FinalScene at FINAL (not the lane grid)', () => {
+        it('renders the right FINAL scene (diving keeps its standings; swim/track get FinalScene)', () => {
           const { container } = renderBoard(sport, { status: 'FINAL' });
           const text = container.textContent || '';
-          expect(text).toContain('FINAL');
-          expect(text).not.toContain('LANE ORDER');
+          if (sport === 'diving') {
+            // 2026-07-12 world-class audit P1 — diving's FINAL is its diver
+            // STANDINGS (winner ranked #1), not the two-number FinalScene the
+            // judge pad never populates (would read 0.00-0.00 and hide the
+            // standings). The dive leaderboard stays up at FINAL.
+            expect(text).toContain('DIVER / TEAM');
+          } else {
+            expect(text).toContain('FINAL');
+            expect(text).not.toContain('LANE ORDER');
+          }
         });
 
         it('still renders the lane grid / dive leaderboard at LIVE', () => {

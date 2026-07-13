@@ -6104,7 +6104,7 @@ export function DivingJudgePadSection({
               Preview
             </span>
             <span className="min-h-[44px] flex items-center text-lg font-black text-amber-400 tabular-nums">
-              {previewScore !== null ? previewScore.toFixed(1) : '—'}
+              {previewScore !== null ? previewScore.toFixed(2) : '—'}
             </span>
           </div>
         </div>
@@ -6188,11 +6188,11 @@ export function DivingJudgePadSection({
             disabled={!canAward}
             className="min-h-[44px] px-6 bg-emerald-600 hover:bg-emerald-500 text-white font-black disabled:opacity-40"
           >
-            Award {previewScore !== null ? previewScore.toFixed(1) : ''}
+            Award {previewScore !== null ? previewScore.toFixed(2) : ''}
           </Button>
           {awarded && (
             <span className="text-xs font-bold text-emerald-400">
-              Awarded {awarded.score.toFixed(1)} to {awarded.diver} — board updated.
+              Awarded {awarded.score.toFixed(2)} to {awarded.diver} — board updated.
             </span>
           )}
         </div>

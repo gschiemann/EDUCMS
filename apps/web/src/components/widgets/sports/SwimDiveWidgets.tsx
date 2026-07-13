@@ -1065,13 +1065,20 @@ export function keptIndices(scores: number[]): Set<number> {
 /** Dive score = sum of kept judge scores × DD (report B2). Returns null
  *  when there aren't enough valid inputs to compute a real number.
  *  Exported for the same reason as {@link keptIndices} — S3-1's console
- *  judge pad reuses this exact math for the "Award" computation. */
+ *  judge pad reuses this exact math for the "Award" computation.
+ *
+ *  Rounded to TWO decimals (2026-07-12 world-class audit P1): official
+ *  per-dive scores carry 2 dp — 3×7.5 kept × DD 2.7 = 60.75, and a
+ *  Daktronics/CTS board never shows that as 60.8. The old 1-dp rounding
+ *  also drifted 6-dive totals by up to ~0.3 vs the official scorer's
+ *  sheet. (Judge chips stay half-point 1-dp; only the computed award is
+ *  2-dp — matching the sport's scoreDecimals: 2 team total.) */
 export function computeDiveScore(scores: number[], dd: number): number | null {
   if (scores.length === 0 || !Number.isFinite(dd) || dd <= 0) return null;
   const kept = keptIndices(scores);
   let sum = 0;
   kept.forEach((i) => { sum += scores[i]; });
-  return Math.round(sum * dd * 10) / 10;
+  return Math.round(sum * dd * 100) / 100;
 }
 
 export interface DiveJudgesPanelCfg extends BaseCfg {
@@ -1225,7 +1232,7 @@ export function DiveJudgesPanelWidget({ config }: WidgetProps<DiveJudgesPanelCfg
                   DIVE SCORE
                 </span>
                 <span style={{ fontFamily: MONO_FONT, fontSize: 56, fontWeight: 900, color: accentColor, fontVariantNumeric: 'tabular-nums' }}>
-                  {diveScore !== null ? diveScore.toFixed(1) : '—'}
+                  {diveScore !== null ? diveScore.toFixed(2) : '—'}
                 </span>
               </div>
             </div>

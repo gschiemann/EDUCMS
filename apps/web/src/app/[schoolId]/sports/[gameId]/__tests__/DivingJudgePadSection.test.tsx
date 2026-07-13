@@ -170,9 +170,9 @@ describe('DivingJudgePadSection — Award writes judgeScores + accumulated resul
 
     await waitFor(() => expect(statsPatchCalls().length).toBe(1));
     const body = lastPatchBody();
-    // 7 + 7.5 + 8 = 22.5 × DD 2.7 = 60.75 → sanitizeJudgeScores rounds to
-    // 1dp on the SERVER side; the console's own math (computeDiveScore)
-    // rounds to 1dp too — 60.8 (Math.round(22.5*2.7*10)/10 = 60.75 → 60.8).
+    // 7 + 7.5 + 8 = 22.5 × DD 2.7 = 60.75. 2026-07-12 world-class audit P1 —
+    // computeDiveScore now rounds to TWO decimals (official per-dive scoring),
+    // so the awarded mark is exactly 60.75, not the old 1dp 60.8.
     expect(body.stats.judgeScores).toEqual([7, 7.5, 8]);
     expect(body.stats.currentDiver).toBe('R. Tanaka');
     expect(body.stats.diveCode).toBe('305C');
@@ -183,7 +183,7 @@ describe('DivingJudgePadSection — Award writes judgeScores + accumulated resul
     expect(round.entries).toHaveLength(1);
     expect(round.entries[0].name).toBe('R. Tanaka');
     expect(round.entries[0].place).toBe(1);
-    expect(parseFloat(round.entries[0].mark)).toBeCloseTo(60.8, 1);
+    expect(round.entries[0].mark).toBe('60.75');
   });
 
   it('a second dive for the SAME diver in the SAME round ADDS to their running total, not overwrites', async () => {

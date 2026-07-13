@@ -4511,7 +4511,15 @@ export function DefaultBoardScene({
   // PreGameScene/FinalScene/PortraitBoardScene status scenes (landscape or
   // portrait respectively) so a meet gets the same pre-game/winner moment a
   // head-to-head game gets, instead of showing the lane grid forever.
-  const laneGridShowsGrid = laneGridDefault && !isPreGame && !isFinal;
+  // Diving's FINAL "winner moment" IS its standings leaderboard (winner
+  // ranked #1), NOT the shared two-number FinalScene (2026-07-12 world-class
+  // audit P1): the judge pad writes per-diver `results` but never a dual-meet
+  // homeScore/awayScore, so FinalScene would crown nobody with a 0.00-0.00
+  // team score AND hide the diver standings exactly when the crowd wants to
+  // see who won. Swimming/track keep FinalScene — their dual-meet team points
+  // ride homeScore/awayScore, so their FINAL two-number moment is real.
+  const laneGridShowsGrid =
+    laneGridDefault && !isPreGame && (!isFinal || def.key === 'diving');
 
   return (
     <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
