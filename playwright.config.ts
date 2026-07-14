@@ -38,13 +38,19 @@ export default defineConfig({
       command: 'pnpm --filter api run start:dev',
       url: 'http://localhost:8080/api/v1/health',
       reuseExistingServer: !process.env.CI,
-      timeout: 180_000, // Nest ts watch-compile on a cold CI runner
+      // Nest ts watch-compile from cold takes minutes on a 2-vCPU CI
+      // runner — 180s timed out on the first real CI run (2026-07-14).
+      timeout: 300_000,
+      stdout: 'pipe', // boot logs land in CI output when startup fails
+      stderr: 'pipe',
     },
     {
       command: 'pnpm --filter web run dev',
       url: 'http://localhost:3000',
       reuseExistingServer: !process.env.CI,
-      timeout: 180_000,
+      timeout: 300_000,
+      stdout: 'pipe',
+      stderr: 'pipe',
     },
   ],
 });

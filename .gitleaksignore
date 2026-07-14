@@ -11,3 +11,8 @@
 #      (a token-like word in design notes). Not a credential.
 62716ae30d7fbbe5a78bcf545c9add6c510620b6:docs/research/2026-06-25-live-test-everything/01-WAVE1-DIGEST.md:generic-api-key:32
 62716ae30d7fbbe5a78bcf545c9add6c510620b6:docs/research/2026-06-21-console-fit-redesign/stats-raw-workflow.json:generic-api-key:177
+
+# 2026-07-14 — W0-03 dead-model purge: a code COMMENT naming the catalog
+# model id ("300 max_tokens, claude-haiku-4-5") pattern-matched the
+# generic-api-key rule. It is a public Anthropic model id, not a credential.
+6cb4230f18e3a9318ce329fecce4fb5187cf196f:apps/web/src/components/ai/AiGenerateButton.tsx:generic-api-key:12
