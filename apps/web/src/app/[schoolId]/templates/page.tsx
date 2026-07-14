@@ -32,6 +32,7 @@ import {
 // E3 (CRUSH Wave E, 2026-07-03) — shared "Put on a screen" express lane,
 // extracted so the editor toolbar (BuilderShell) can reuse it verbatim.
 import { usePutOnScreen } from '@/lib/put-on-screen';
+import { buildSafeDesignerSrcdoc } from '@/lib/designer-safe-srcdoc';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
 import { AiIntakeWizard } from '@/components/templates/AiIntakeWizard';
@@ -1681,14 +1682,16 @@ export default function TemplatesPage() {
                           style={{ aspectRatio: '16 / 9' }}
                         >
                           {c._designerHtml ? (
-                            // AI Designer board: render the authored HTML directly as a
-                            // srcdoc preview. The board's own self-scale script fits its
-                            // 1920×1080 stage to this iframe, so each option shows its REAL
-                            // design (not a placeholder). pointer-events-none so the
-                            // wrapping button still receives the click.
+                            // AI Designer board: render the authored HTML as a srcdoc
+                            // preview through the W0-02 containment wrapper (model
+                            // scripts stripped + CSP; the trusted VOS-STAGE-SCALE
+                            // runtime fits the fixed stage to this iframe), so each
+                            // option shows its REAL design (not a placeholder).
+                            // pointer-events-none so the wrapping button still
+                            // receives the click.
                             <iframe
                               title={c.name}
-                              srcDoc={c._designerHtml}
+                              srcDoc={buildSafeDesignerSrcdoc(c._designerHtml)}
                               loading="lazy"
                               sandbox="allow-scripts"
                               className="absolute top-0 right-0 bottom-0 left-0 w-full h-full"
@@ -2562,12 +2565,13 @@ export function CandidateFullscreenPreview({
         onClick={(e) => e.stopPropagation()}
       >
         {candidate._designerHtml ? (
-          // AI Designer board — render the authored HTML full-screen. Its own
-          // self-scale script fits the 1920×1080 stage to this frame. NOT
-          // pointer-events-none here (full-screen is interactive-allowed).
+          // AI Designer board — render the authored HTML full-screen through
+          // the W0-02 containment wrapper (model scripts stripped + CSP; the
+          // trusted VOS-STAGE-SCALE runtime fits the stage to this frame).
+          // NOT pointer-events-none here (full-screen is interactive-allowed).
           <iframe
             title={candidate.name}
-            srcDoc={candidate._designerHtml}
+            srcDoc={buildSafeDesignerSrcdoc(candidate._designerHtml)}
             sandbox="allow-scripts"
             className="w-full h-full bg-black rounded-lg shadow-2xl"
             style={{ border: 0, maxWidth: `${(maxH * sw) / sh}px`, maxHeight: `${maxH}px`, aspectRatio: `${sw} / ${sh}` }}

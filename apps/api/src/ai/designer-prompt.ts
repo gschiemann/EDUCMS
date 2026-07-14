@@ -125,7 +125,7 @@ export const DESIGNER_EXEMPLAR = [
   '.cta{display:inline-block;margin-top:40px;font-family:Inter,sans-serif;font-weight:800;font-size:34px;letter-spacing:.01em;color:#15181c;background:#f0523d;border-radius:10px;padding:16px 26px}',
   '</style></head><body><div id="fit"><div class="stage">',
   '<div class="photo" data-imgslot="hero" data-photo-query="latte art espresso cup"></div>',
-  '<div class="fit" id="cc">',
+  '<div class="fit" id="cc" data-fit-col>',
   '<div class="eyebrow" data-field="eyebrow"><i></i>Brentwood · Est. 2019</div>',
   '<div class="wordmark" data-field="venue" data-fit data-fit-min="56">Chrome<span>.</span></div>',
   '<div class="tag" data-field="tagline">Single-origin espresso &amp; slow mornings</div>',
@@ -139,10 +139,9 @@ export const DESIGNER_EXEMPLAR = [
   '</div>',
   '<div class="foot"><b data-field="hours">Open 6a–4p daily</b>&nbsp;·&nbsp;11700 San Vicente Blvd</div>',
   '</div></div>',
-  '<script>(function(){var W=1920,H=1080,FOOT=150,fit=document.getElementById("fit"),col=document.getElementById("cc");',
-  'function fitCol(){if(!col)return;col.style.transform="none";var avail=H-90-FOOT,h=col.offsetHeight;if(h>avail)col.style.transform="scale("+(avail/h)+")";}',
-  'function fitStage(){var k=Math.min(window.innerWidth/W,window.innerHeight/H);fit.style.transform="scale("+k+")";fit.style.left=((window.innerWidth-W*k)/2)+"px";fit.style.top=((window.innerHeight-H*k)/2)+"px";}',
-  'fitCol();fitStage();window.addEventListener("resize",fitStage);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(fitCol);}setTimeout(fitCol,900);})();</script>',
+  // W0-02: the exemplar carries NO script — the platform runtime scales the
+  // first-child stage and shrink-fits [data-fit-col]. Teaching a script here
+  // taught the model to author executable code; that path is closed.
   '</body></html>',
 ].join('');
 
@@ -206,7 +205,7 @@ const CRAFT_SEEDS: string[] = [
 export const DESIGNER_SYSTEM_PROMPT = [
   'You are a world-class graphic + signage designer (think Pentagram / Aesop / Kinfolk / a great cafe chalk-artist) building ONE digital-signage board as a COMPLETE, self-contained HTML document. Your work hangs on a wall and must look like a human designer labored over it for days — NOT like a template or a slide.',
   '',
-  'OUTPUT CONTRACT — return ONLY the raw HTML document. Start with <!doctype html>. NO markdown fences, NO commentary, NO explanation before or after. One document, fully self-contained (inline <style>; one <link> to Google Fonts for the families you use; inline <script> only if needed for self-scaling).',
+  'OUTPUT CONTRACT — return ONLY the raw HTML document. Start with <!doctype html>. NO markdown fences, NO commentary, NO explanation before or after. One document, fully self-contained (inline <style>; one <link> to Google Fonts for the families you use). Write NO <script> tags of any kind — the platform strips every script you write and injects its own trusted runtime that scales the stage to the screen and auto-fits overflowing columns; a script you author is wasted tokens.',
   '',
   'TYPOGRAPHY IS PRIORITY ONE (the operator\'s explicit #1 mandate — obey this BEFORE composition, color, or imagery; a board with flawless type and a plain layout beats a clever layout with broken type every time):',
   '- THE #1 LAW — NO REDACTION BARS. NEVER place a solid/opaque background fill behind an individual word, a menu/stat VALUE, a price, a headline emphasis span, an eyebrow, a badge, or a label. A high-contrast solid block (especially white) behind text reads as a censorship/redaction bar or a ransom-note tile — the exact "serial killer" look we are eliminating. This is an automatic FAIL. Count the filled boxes in your CSS before you output: anything other than AT MOST ONE CTA button (below) means redesign.',
@@ -245,16 +244,16 @@ export const DESIGNER_SYSTEM_PROMPT = [
   'EDITABILITY — every text element a human might change gets data-field="<shortKey>" (e.g. data-field="headline", data-field="item.0.name", data-field="item.0.price"); every photo gets data-imgslot="<key>". Keep keys short + stable. (A later layer reads these for click-to-edit; the board must still render perfectly with none of them touched.)',
   '',
   'TECH + HARD CONSTRAINTS — the board ships to locked-down LED controllers (Chromium 83) and a sandboxed iframe:',
-  '- The board is EXACTLY the given pixel size. Wrap everything in a fixed-size stage div at that exact width/height, then scale it to fit the viewport with transform:scale + a tiny inline script (measure the iframe, scale = min(vw/W, vh/H), transform-origin top-left, center it). This is the only inline JS you need.',
+  '- The board is EXACTLY the given pixel size. Wrap everything in ONE fixed-size stage div at that exact width/height as the FIRST child of <body>. Do NOT write a scaling script — the platform runtime finds that first-child stage, scales it to fit the viewport (min(vw/W, vh/H), top-left origin, centered), and re-runs on resize + font load.',
   '- Chromium-83 SAFE CSS ONLY: NEVER use the `inset` shorthand (use top/right/bottom/left longhand). NEVER use `gap` on flex/grid (use margins). NO :has(), NO container queries, NO CSS nesting, NO color-mix()/oklch(). Prefer flexbox + absolute positioning. backdrop-filter is unreliable — avoid or provide a solid fallback.',
-  '- NO external <script src> (no remote code). NO <iframe>/<object>/<embed>. Inline <style> + the one self-scaling <script> + the fonts <link> + <img> from https only.',
+  '- NO <script> of ANY kind (inline or external — everything you write is stripped; the platform injects the runtime). NO <iframe>/<object>/<embed>, NO on* handler attributes, NO javascript: URLs. Inline <style> + the fonts <link> + <img> from https only.',
   '',
   'LAYOUT CONTRACT — the #2 failure to avoid is content overflowing or COLLIDING with the footer. Obey this exactly:',
   '- Think in BANDS: a header band (top), a content band (middle), and a RESERVED footer band (bottom, ~110-160px). The footer (hours/address/CTA) lives ONLY in its own pinned band; NOTHING else may enter it. Pin the footer with position:absolute; bottom:Npx and keep the content column ABOVE it.',
   '- COUNT the items you were given and make ALL of them fit with breathing room. Choose row height / font size for the actual count. If there are more rows than fit one column comfortably (roughly 7+ on landscape), use TWO columns — never shrink to illegible or clip the last rows.',
   '- HEADLINE / WORDMARK clearance: size the display headline to fit on ONE line within its column (reduce its font-size for a long venue name) OR let it wrap in normal document flow so whatever follows is pushed DOWN. NEVER give the wordmark a fixed height, and never absolutely-position a label/eyebrow on top of it — a 2-line name must not collide with the next element.',
   '- IMAGE-PANEL CLEARANCE (the "headline runs under the photo" clip): if a hero photo/graphic occupies one side or a band, the CONTENT column MUST be constrained to the REMAINING width/height only — every headline, row, and word lives entirely in the content area and NEVER extends under, into, or behind the image panel. Give the content column an explicit width = canvas width − panel width (minus padding) and let the headline wrap or shrink within THAT width. A word touching/!crossing the panel edge is a defect.',
-  '- REQUIRED auto-fit safety net: give the content column an id and, in your inline script (in addition to the stage self-scale), measure it and if it is taller than the space above the footer band, apply transform:scale(avail/height) with transform-origin top-left. Re-run it on document.fonts.ready and via a setTimeout — web fonts load late and change the height. This GUARANTEES nothing overflows or collides even if your size estimate is off. (See the exemplar script: fitCol + fitStage.)',
+  '- REQUIRED auto-fit safety net: put data-fit-col on the content column (the element holding the rows/body that could overflow). The platform runtime measures it after fonts load and shrink-scales it to fit above the footer band if your size estimate ran long — nothing overflows or collides. Do NOT write this script yourself; the attribute is the whole contract.',
   '- ONE SPACING GRID: pick a single 8px base unit and make EVERY margin/padding/offset/band-size an integer multiple of it (8/16/24/32/48/64/80/96). Declare tokens once as CSS custom properties (--pad, --gap-tight, --gap, --gap-section) and reuse them. No one-off "nudge" pixels (no margin:32px 0 28px 2px).',
   '- SAFE-AREA FRAME: apply ONE symmetric inset (--pad, ~72-96px) to the top, right, bottom AND left of every band; the footer bottom margin MUST equal the side margin; no element touches a canvas edge.',
   '- PHOTO-PANEL GUTTER: when a side photo/graphic panel of width P exists, set the content band right edge to calc(P + gutter) with gutter >= 48px (ideally 64-80px) of REAL empty canvas — never let content butt the panel, and never use an edge-fade gradient to hide crowding.',
@@ -276,7 +275,7 @@ export const DESIGNER_SYSTEM_PROMPT = [
   '',
   ...CRAFT_SEEDS,
   '',
-  'STUDY THIS EXEMPLAR for the craft level + the exact technical contract (fixed stage; the fitStage + fitCol scripts; a photo CONFINED to a side panel with a scrim so the content stays the hero; a reserved footer band the content never enters; eyebrow, characterful wordmark, dotted-leader rows, tabular prices; data-field/data-imgslot hooks; NO inset/gap). MATCH THIS QUALITY for the real brief — adapt the layout, palette, type, and content to the actual venue; do NOT copy it verbatim or reuse its coffee content:',
+  'STUDY THIS EXEMPLAR for the craft level + the exact technical contract (fixed first-child stage; data-fit-col on the content column — NO scripts, the platform runtime does all scaling/fitting; a photo CONFINED to a side panel with a scrim so the content stays the hero; a reserved footer band the content never enters; eyebrow, characterful wordmark, dotted-leader rows, tabular prices; data-field/data-imgslot hooks; NO inset/gap). MATCH THIS QUALITY for the real brief — adapt the layout, palette, type, and content to the actual venue; do NOT copy it verbatim or reuse its coffee content:',
   DESIGNER_EXEMPLAR,
   '',
   'Deliver the single best board you can — gallery-grade, on-brand, complete. Return ONLY the HTML.',
@@ -491,6 +490,18 @@ export function stripGuessedStockPhotos(html: string): string {
     );
 }
 
+/**
+ * W0-02 operational kill switch. Set AI_DESIGNER_DISABLED=1 (or true/yes) to
+ * stop NEW raw-HTML Designer generation, refinement, and publishing without a
+ * deploy — the containment emergency brake the audit requires. Existing
+ * persisted boards keep rendering (they pass through the render-side
+ * sanitizer + CSP in apps/web/src/lib/designer-safe-srcdoc.ts).
+ */
+export function designerKillSwitchOn(): boolean {
+  const v = String(process.env.AI_DESIGNER_DISABLED || '').trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
 /** Result of sanitizing AI-authored board HTML. */
 export interface SanitizedDesignerHtml {
   html: string;
@@ -501,11 +512,19 @@ export interface SanitizedDesignerHtml {
 /**
  * Sanitize AI-authored board HTML for the sandboxed-iframe render. The iframe is
  * null-origin (sandbox="allow-scripts", NO allow-same-origin) so the document
- * can't reach the parent, cookies, or storage — that's the primary containment.
- * Here we additionally strip remote-code + nested-framing vectors and validate
- * the doc is real. Throws on unusable input. Inline <script> is KEPT (the board's
- * own self-scaling JS; contained by the sandbox), matching the existing
- * EXTERNAL_HTML trust model.
+ * can't reach the parent, cookies, or storage.
+ *
+ * W0-02 (audit 2026-07-12, P0 "AI-authored JavaScript can control the
+ * player"): model-authored JavaScript is NO LONGER preserved. The sandbox
+ * blocks cookies/parent-DOM but NOT script execution, postMessage, outbound
+ * requests, or CPU burn — so every <script>, on* handler attribute,
+ * javascript: URL, and meta-refresh the model writes is stripped here, at
+ * the source. The jobs those scripts used to do (stage self-scale, column
+ * auto-fit) are performed by TRUSTED platform runtimes instead: the baked
+ * EDUCMS-SHIM-V6 + VOS-FIT-ENGINE at persist, and VOS-STAGE-SCALE injected
+ * at render (apps/web/src/lib/designer-safe-srcdoc.ts — which also strips
+ * again and adds a nonce CSP, containing LEGACY persisted boards).
+ * Throws on unusable input.
  */
 export function sanitizeDesignerHtml(raw: unknown): SanitizedDesignerHtml {
   if (typeof raw !== 'string') throw new Error('Designer HTML must be a string.');
@@ -519,13 +538,28 @@ export function sanitizeDesignerHtml(raw: unknown): SanitizedDesignerHtml {
   if (html.length < 200 || !/<(body|main|div|section|html)[\s>]/i.test(html)) {
     throw new Error('Designer HTML is not a usable document.');
   }
-  // SECURITY: drop remote-code + nested-framing vectors. Inline scripts stay
-  // (sandbox-contained; needed for self-scaling).
+  // SECURITY (W0-02): drop EVERY script (inline included), event-handler
+  // attribute, javascript: URL, meta refresh, <base>, and nested-framing
+  // vector the model authored. Trusted runtimes are injected AFTER this.
   html = html
-    .replace(/<script\b[^>]*\bsrc\s*=[^>]*>\s*<\/script>/gi, '') // external scripts
-    .replace(/<script\b[^>]*\bsrc\s*=[^>]*\/?>/gi, '')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
+    .replace(/<script\b[^>]*\/?>/gi, '')
     .replace(/<(iframe|object|embed)\b[\s\S]*?<\/\1>/gi, '')
-    .replace(/<(iframe|object|embed)\b[^>]*\/?>/gi, '');
+    .replace(/<(iframe|object|embed)\b[^>]*\/?>/gi, '')
+    .replace(/<meta\b[^>]*http-equiv\s*=\s*["']?refresh[^>]*>/gi, '')
+    .replace(/<base\b[^>]*>/gi, '')
+    .replace(/((?:href|src|action|formaction|xlink:href)\s*=\s*)(['"]?)\s*javascript:[^'">\s]*(\2)/gi, '$1$2#$3');
+  // on* handler attributes — looped: removing one can expose another match.
+  {
+    const onAttr = /(<[a-zA-Z][^>]*?)\s+on[a-zA-Z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/g;
+    let prev = '';
+    let guard = 0;
+    while (html !== prev && guard < 10) {
+      prev = html;
+      html = html.replace(onAttr, '$1');
+      guard++;
+    }
+  }
   // IMAGERY GUARD (2026-06-29 "sunset on a Domino's board"): the model cannot
   // know what an opaque stock-photo ID actually depicts, so any hand-written
   // stock URL resolves to a RANDOM, usually-wrong image. Strip the src from any

@@ -1,7 +1,7 @@
 import {
   Controller, Get, Post, Put, Delete, Body, Param, Query,
   UseGuards, Request, HttpException, HttpStatus, Header, Logger,
-  BadRequestException, UseInterceptors, UploadedFile,
+  BadRequestException, ServiceUnavailableException, UseInterceptors, UploadedFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -15,7 +15,7 @@ import { FITNESS_TEMPLATE_PRESETS } from './fitness-presets';
 import { verticalMatchOr } from './ensure-system-presets';
 import { AiService, sanitizeTouchTemplate } from '../ai/ai.service';
 import { parseGuidedIntake } from '../ai/guided-intake';
-import { sanitizeDesignerHtml } from '../ai/designer-prompt';
+import { sanitizeDesignerHtml, designerKillSwitchOn } from '../ai/designer-prompt';
 import { injectDesignerEditShim, injectDesignerLayoutEngine } from '../ai/designer-edit-shim';
 import { z } from 'zod';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
@@ -1293,6 +1293,15 @@ export class TemplatesController {
     @Request() req: any,
     @Body(new ZodValidationPipe(DesignerCreateSchema)) body: DesignerCreateInput,
   ) {
+    // W0-02 kill switch — when AI_DESIGNER_DISABLED is set, no NEW raw
+    // Designer board can be published (generation/refine are gated in
+    // AiService with the same flag).
+    if (designerKillSwitchOn()) {
+      throw new ServiceUnavailableException({
+        code: 'AI_DESIGNER_DISABLED',
+        message: 'The AI Designer is temporarily disabled by the administrator.',
+      });
+    }
     // Decode the base64 transport (preferred — survives the global
     // SanitizationPipe intact), falling back to a raw `html` field for
     // older callers. Re-sanitize the round-tripped HTML (client JSON is

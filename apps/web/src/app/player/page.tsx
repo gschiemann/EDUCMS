@@ -27,6 +27,7 @@ import { isFlexGapSupported, applyFlexGapPolyfill } from '@/lib/flex-gap-polyfil
 import { isCqUnitSupported, applyCqUnitPolyfill } from '@/lib/cq-unit-polyfill';
 import { resolveAssetUrl } from '@/lib/asset-cdn';
 import { AllAssetsFailedTracker } from '@/lib/all-assets-failed-tracker';
+import { lookupKioskFrame } from '@/lib/kiosk-frame-registry';
 import {
   registerOfflineCache,
   precachePlaylist,
@@ -4969,15 +4970,31 @@ function PlayerPage() {
   // javascript:). Only the player mounts this — the builder preview never
   // executes, it just previews. zoneId carries the kiosk field key so the
   // touch-analytics queue attributes the tap.
+  //
+  // W0-02 HARDENING (audit 2026-07-12, P0 "AI-authored JavaScript can
+  // control the player"): this handler used to execute the action OBJECT
+  // carried in the message, from ANY window. Now:
+  //   1. `event.source` must be a board iframe WE mounted (the
+  //      kiosk-frame-registry — sibling/foreign windows are rejected);
+  //   2. the tapped `key` is resolved against that zone's OPERATOR-SAVED
+  //      action map (config.actionOverrides). The `action` field in the
+  //      message is IGNORED — an in-frame script can never supply its own
+  //      action. Lossless: the shim itself only fires for keys present in
+  //      the same overrides map, so every legitimately wired button still
+  //      resolves.
   useEffect(() => {
     const onKioskAction = (e: MessageEvent) => {
       const d = e.data as { type?: string; key?: string; action?: unknown } | null;
       if (!d || typeof d !== 'object' || d.type !== 'educms-action') return;
-      if (!d.action || typeof d.action !== 'object') return;
-      dispatchTouchAction(d.action, {
+      const savedActions = lookupKioskFrame(e.source);
+      if (!savedActions) return; // not a frame we mounted — reject
+      const key = typeof d.key === 'string' ? d.key : '';
+      const action = key ? savedActions[key] : undefined;
+      if (!action || typeof action !== 'object') return; // no approved key → no exec
+      dispatchTouchAction(action, {
         screenId,
         tenantId,
-        zoneId: typeof d.key === 'string' ? `kiosk:${d.key}` : null,
+        zoneId: `kiosk:${key}`,
       });
     };
     window.addEventListener('message', onKioskAction);

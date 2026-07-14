@@ -98,6 +98,7 @@ import {
   buildDesignerRevisePrompt,
   summarizeHouseStyleWithRefines,
   sanitizeDesignerHtml,
+  designerKillSwitchOn,
   buildBriefExtractionSystemPrompt,
   buildBriefExtractionUserPrompt,
   parseDesignerBrief,
@@ -2967,6 +2968,12 @@ export class AiService {
     source: 'tenant' | 'platform';
     usage: { used: number; cap: number; resetAt: string } | null;
   }> {
+    if (designerKillSwitchOn()) {
+      throw new ServiceUnavailableException({
+        code: 'AI_DESIGNER_DISABLED',
+        message: 'The AI Designer is temporarily disabled by the administrator.',
+      });
+    }
     await this.checkFailureCap(opts.tenantId);
     const resolved = await this.resolveProviderKey(opts.tenantId);
     if (!resolved) {
@@ -3168,6 +3175,12 @@ export class AiService {
     vertical?: string;
     palette?: string[];
   }): Promise<{ html: string; source: 'tenant' | 'platform'; usage: { used: number; cap: number; resetAt: string } | null }> {
+    if (designerKillSwitchOn()) {
+      throw new ServiceUnavailableException({
+        code: 'AI_DESIGNER_DISABLED',
+        message: 'The AI Designer is temporarily disabled by the administrator.',
+      });
+    }
     await this.checkFailureCap(opts.tenantId);
     const resolved = await this.resolveProviderKey(opts.tenantId);
     if (!resolved) {

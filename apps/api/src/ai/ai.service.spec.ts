@@ -1534,8 +1534,10 @@ describe('AiService — AI Designer HTML candidates', () => {
     for (const c of res.candidates) {
       expect(c.html).toContain('<!doctype html>');
       expect(c.html).toContain('data-field="headline"');
-      expect(c.html).toContain('var s=1'); // inline self-scale script kept
-      expect(c.html).not.toMatch(/<script[^>]*src=/i); // remote script stripped
+      // W0-02: model-authored scripts (inline AND remote) are ALL stripped —
+      // the platform injects its own trusted scale/fit runtime instead.
+      expect(c.html).not.toContain('var s=1');
+      expect(c.html).not.toMatch(/<script/i);
       expect(c.screenWidth).toBe(1920);
       expect(c.name).toBe('Chrome Coffee');
     }

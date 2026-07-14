@@ -22,6 +22,8 @@ import {
 import { formatTime12 } from '@/lib/format-time';
 import { useCustomData } from '@/lib/data/use-custom-data';
 import { usePosMenuItems } from '@/lib/menu/use-pos-menu-items';
+import { buildSafeDesignerSrcdoc } from '@/lib/designer-safe-srcdoc';
+import { registerKioskFrame, unregisterKioskFrame } from '@/lib/kiosk-frame-registry';
 // Launch Sprint FEEDS domain (2026-07-01) — real RSS/Atom + ICS backend for
 // RSSWidget / CalendarWidget. See use-live-feed.ts for the auth-model note
 // (no JWT — this hits the public, SSRF-guarded /api/v1/feeds/* endpoints so
@@ -3936,6 +3938,36 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
     return () => { el.removeEventListener('load', postDesignerOverrides); };
   }, [postDesignerOverrides]);
 
+  // W0-02 (2026-07-13) — register this board frame's window + its
+  // OPERATOR-SAVED action map with the parent-side registry. The player's
+  // `educms-action` handler executes ONLY actions resolved by key from this
+  // registry, bound to a registered contentWindow — a message from any
+  // other window (or carrying its own action object) is rejected. Covers
+  // both the srcdoc (AI Designer) and url (kiosk/static board) iframes;
+  // re-registers on every frame load and when the operator rewires actions.
+  useEffect(() => {
+    const el = frameRef.current;
+    if (!el) return;
+    const reg = () => registerKioskFrame(el.contentWindow, (config?.actionOverrides as Record<string, unknown>) ?? {});
+    reg();
+    el.addEventListener('load', reg);
+    return () => {
+      el.removeEventListener('load', reg);
+      unregisterKioskFrame(el.contentWindow);
+    };
+  }, [config?.actionOverrides, inlineHtml]);
+
+  // W0-02 — every srcdoc render passes through the containment wrapper:
+  // model-authored scripts stripped (only the baked EDUCMS/VOS runtimes
+  // survive, nonce-stamped), on*/javascript:/meta-refresh/nested-frame
+  // vectors removed, strict CSP injected (no fetch/XHR/forms; scripts by
+  // nonce only), and the trusted VOS-STAGE-SCALE runtime replaces the
+  // model's stripped self-scaler.
+  const safeInlineHtml = useMemo(
+    () => (inlineHtml ? buildSafeDesignerSrcdoc(inlineHtml) : inlineHtml),
+    [inlineHtml],
+  );
+
   // AI DESIGNER — inline HTML board. Same null-origin sandbox as the url path;
   // rendered via `srcdoc`. `key` on a cheap length+head hash so an edit reloads
   // the frame. Overrides (brand/text/img) apply via postMessage to the baked
@@ -3946,7 +3978,7 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
       <iframe
         key={`srcdoc:${inlineHtml.length}:${inlineHtml.slice(0, 64)}`}
         ref={frameRef}
-        srcDoc={inlineHtml}
+        srcDoc={safeInlineHtml}
         title="AI-designed signage board"
         loading="lazy"
         sandbox="allow-scripts"
