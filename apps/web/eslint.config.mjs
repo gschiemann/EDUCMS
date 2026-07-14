@@ -5,11 +5,19 @@ import nextTs from "eslint-config-next/typescript";
 // eslint-config-next already registers the jsx-a11y plugin in its flat-config
 // spread. We extend rules here without re-registering the plugin, which would
 // cause a "Cannot redefine plugin" ConfigError in ESLint 9.
+//
+// CRITICAL (2026-07-13, audit W0-05): this rules object MUST carry the same
+// `files` scope as eslint-config-next's plugin-registering object
+// ('**/*.{js,jsx,mjs,ts,tsx,mts,cts}' — note: NO .cjs). A scopeless rules
+// object applies to every file ESLint visits, including .cjs scripts where
+// the jsx-a11y plugin is NOT registered → "could not find plugin 'jsx-a11y'"
+// ConfigError, exit 2, and the whole lint run dies before checking anything.
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   // Accessibility rules — WCAG 2.2 AA target for K-12 CMS
   {
+    files: ["**/*.{js,jsx,mjs,ts,tsx,mts,cts}"],
     rules: {
       "jsx-a11y/alt-text": "error",
       "jsx-a11y/anchor-has-content": "error",

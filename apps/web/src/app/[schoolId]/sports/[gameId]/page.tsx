@@ -65,7 +65,7 @@ import {
   type RosterPlayer,
 } from '@/hooks/use-api';
 import { findSport, formatScore, parseScoreInput, PLAYER_STATS, sanitizeResults } from '@cms/api-types';
-import type { SportDefinition, SportStatField, MeetResult, ResultEntry as ApiResultEntry } from '@cms/api-types';
+import type { SportDefinition, MeetResult, ResultEntry as ApiResultEntry } from '@cms/api-types';
 import { computeCtsStatus, type CtsStatus } from '@/lib/cts-merge';
 import QRCode from 'qrcode';
 import { RosterPanel } from './RosterPanel';
@@ -8157,72 +8157,6 @@ function SpotlightControl({
     </div>
   );
 }
-
-// ── Unused import guard (StatField kept for possible future use) ─
-// StatField was used in the old scrolling layout for the stats
-// section inside the live-control group. In the v4 layout the same
-// data is surfaced via ScoreTile (per-team), GameScopeStatEditor
-// (game-scope text / number), and the sport bottom trays.
-// Keeping it here avoids a "declared but never used" TS error while
-// the hook signature types still reference SportStatField.
-function _StatField({
-  field,
-  value,
-  onCommit,
-}: {
-  field: SportStatField;
-  value: unknown;
-  onCommit: (v: number | string) => void;
-}) {
-  const [local, setLocal] = useState<string>(
-    value === undefined || value === null ? '' : String(value),
-  );
-  const focused = useRef(false);
-  useEffect(() => {
-    if (!focused.current) {
-      setLocal(value === undefined || value === null ? '' : String(value));
-    }
-  }, [value]);
-
-  const commit = () => {
-    if (field.type === 'number') {
-      let n = parseInt(local, 10);
-      if (Number.isNaN(n)) n = field.min ?? 0;
-      if (field.min !== undefined) n = Math.max(field.min, n);
-      if (field.max !== undefined) n = Math.min(field.max, n);
-      setLocal(String(n));
-      onCommit(n);
-    } else {
-      onCommit(local);
-    }
-  };
-
-  return (
-    <div>
-      <label className="text-xs font-semibold text-slate-500">{field.label}</label>
-      <Input
-        className="mt-1"
-        type={field.type === 'number' ? 'number' : 'text'}
-        value={local}
-        min={field.min}
-        max={field.max}
-        onFocus={() => {
-          focused.current = true;
-        }}
-        onChange={(e) => setLocal(e.target.value)}
-        onBlur={() => {
-          focused.current = false;
-          commit();
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-        }}
-      />
-    </div>
-  );
-}
-// Suppress "declared but never read" for the guard above.
-void _StatField;
 
 // ── Celebration pack picker ────────────────────────────────────
 //

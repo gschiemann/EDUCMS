@@ -32,6 +32,13 @@ jobs:
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: AI model retirement gate (audit W0-03)
+        # Fails if any AI model we ship is past its provider's announced
+        # shutdown date; warns 60 days out. This is how we avoid re-living
+        # 2026-07: three catalog/image models were ALREADY provider-dead
+        # (404 on every call) and green CI never said a word.
+        run: node apps/api/tools/check-model-retirements.cjs
+
       - name: Build workspace packages (API tests import @cms/* by package name)
         # The API jest suite imports @cms/api-types, @cms/auth-core, etc. by
         # package name → resolves to each package's `main` (dist/). Those MUST
@@ -81,21 +88,44 @@ jobs:
         # We keep a baseline count of pre-existing jsx-a11y errors committed
         # at the repo root (.a11y-baseline) and only fail CI when the count
         # grows. Lets us land new code without being blocked by a backlog
-        # of 20+ form-label issues that need a dedicated a11y sprint; also
-        # makes any NEW a11y regression a hard CI stop.
+        # that needs a dedicated a11y sprint; also makes any NEW a11y
+        # regression a hard CI stop.
+        #
+        # 2026-07-13 (audit W0-05): this step used to be FALSE-GREEN. ESLint
+        # was crashing (exit 2 — "could not find plugin jsx-a11y", from a
+        # scopeless rules object hitting .cjs files) and `|| true` + a grep
+        # over the crash text printed success anyway. Rules now: pipeline
+        # exit status is preserved; exit >= 2 (config crash) fails CI before
+        # any counting; exit 1 must come with a real ESLint problem summary;
+        # the baseline may only be RATCHETED DOWN — raising it is not an
+        # accepted fix for a red build.
         run: |
-          pnpm --filter web lint 2>&1 | tee /tmp/lint.txt || true
+          set -o pipefail
+          CODE=0
+          pnpm --filter web lint 2>&1 | tee /tmp/lint.txt || CODE=$?
+          echo "eslint exit code: $CODE"
+          if [ "$CODE" -ge 2 ]; then
+            echo "FAIL: ESLint crashed (exit $CODE). That is a configuration error, not a lint result."
+            exit "$CODE"
+          fi
+          if [ "$CODE" -eq 1 ] && ! grep -qE "[0-9]+ problems" /tmp/lint.txt; then
+            echo "FAIL: ESLint exited 1 without a problem summary — broken run, not a lint result."
+            exit 1
+          fi
           # Count lines that have BOTH 'error' and 'jsx-a11y/' — warnings
           # are ignored.
-          ACTUAL=$(grep -E "error[[:space:]]+.*jsx-a11y/" /tmp/lint.txt | wc -l | tr -d ' ')
-          BASELINE=$(cat .a11y-baseline 2>/dev/null || echo 0)
+          ACTUAL=$(grep -cE "error[[:space:]]+.*jsx-a11y/" /tmp/lint.txt || true)
+          BASELINE=$(cat .a11y-baseline)
           echo "a11y errors — actual=$ACTUAL baseline=$BASELINE"
           if [ "$ACTUAL" -gt "$BASELINE" ]; then
             echo "FAIL: a11y error count increased. New violations:"
             grep -E "error[[:space:]]+.*jsx-a11y/" /tmp/lint.txt
             echo ""
-            echo "Fix the new ones OR raise the baseline in .a11y-baseline if intentional."
+            echo "Fix the new violations. Do NOT raise .a11y-baseline to get green."
             exit 1
+          fi
+          if [ "$ACTUAL" -lt "$BASELINE" ]; then
+            echo "::notice::a11y errors dropped to $ACTUAL (baseline $BASELINE). Ratchet down: echo $ACTUAL > .a11y-baseline"
           fi
           echo "OK: a11y errors did not increase"
 
@@ -115,19 +145,35 @@ jobs:
         # weren't checking the output for hook-rule errors. Adding that
         # check here. Zero tolerance — these are ALWAYS real bugs that
         # crash the page at runtime, never style preferences.
+        #
+        # 2026-07-13 (audit W0-05): while ESLint was crashing (see step
+        # above) this grep ran over the crash message, found 0 matches, and
+        # printed success — during which 14 violations shipped unseen. 4 are
+        # fixed; the 10 survivors all live in WidgetRenderer.tsx's giant
+        # per-widget-case component (stable per mount, but still #310
+        # landmines if a mounted widget's type/config branch flips). They're
+        # held in .hooks-baseline and may only be RATCHETED DOWN as
+        # WidgetRenderer cases get extracted into real components. Zero
+        # tolerance still applies to every NEW violation anywhere.
         run: |
-          HOOK_ERRS=$(grep -E "error[[:space:]]+.*react-hooks/rules-of-hooks" /tmp/lint.txt | wc -l | tr -d ' ')
-          echo "react-hooks/rules-of-hooks errors: $HOOK_ERRS"
-          if [ "$HOOK_ERRS" -gt 0 ]; then
+          HOOK_ERRS=$(grep -cE "error[[:space:]]+.*react-hooks/rules-of-hooks" /tmp/lint.txt || true)
+          HOOK_BASELINE=$(cat .hooks-baseline)
+          echo "react-hooks/rules-of-hooks errors: $HOOK_ERRS (baseline $HOOK_BASELINE)"
+          if [ "$HOOK_ERRS" -gt "$HOOK_BASELINE" ]; then
             echo ""
-            echo "FAIL: conditional-hook violations detected."
+            echo "FAIL: NEW conditional-hook violations detected."
             echo "These crash the page at runtime with React error #310"
             echo "the moment the conditional branch flips."
             echo ""
             grep -B1 -A4 "react-hooks/rules-of-hooks" /tmp/lint.txt
+            echo ""
+            echo "Fix them. Do NOT raise .hooks-baseline to get green."
             exit 1
           fi
-          echo "OK: zero conditional-hook violations"
+          if [ "$HOOK_ERRS" -lt "$HOOK_BASELINE" ]; then
+            echo "::notice::hooks violations dropped to $HOOK_ERRS (baseline $HOOK_BASELINE). Ratchet down: echo $HOOK_ERRS > .hooks-baseline"
+          fi
+          echo "OK: no new conditional-hook violations"
 
   dependency-audit:
     name: Production Dependency Audit
@@ -256,8 +302,27 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    # Run only on pull requests to keep free-tier minutes low
-    if: github.event_name == 'pull_request'
+    # 2026-07-13 (audit W0-06): this job used to be PR-only — and this repo
+    # ships by direct push to master, so the gate NEVER ran; nobody noticed
+    # that collection was broken ("Total: 0 tests in 0 files"). It now runs
+    # on every push AND PR (repo is public — Actions minutes are free), on
+    # an ephemeral Postgres so no test can ever touch production data.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: educms_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/educms_e2e
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/educms_e2e
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -277,6 +342,25 @@ jobs:
 
       - name: Install Playwright Chromium
         run: pnpm exec playwright install chromium --with-deps
+
+      - name: Gate — Playwright collection must be real (audit W0-06)
+        # A broken collection (config crash, stray Jest files, mass skip)
+        # used to report "Total: 0 tests" while the job stayed green. The
+        # floor is 30 discovered tests; lower it ONLY with a written reason
+        # in the commit that lowers it.
+        run: |
+          set -o pipefail
+          pnpm exec playwright test --list 2>&1 | tee /tmp/pw-list.txt
+          COUNT=$(grep -oE "Total: [0-9]+ tests" /tmp/pw-list.txt | grep -oE "[0-9]+" || echo 0)
+          echo "Discovered tests: $COUNT (floor: 30)"
+          if [ "$COUNT" -lt 30 ]; then
+            echo "FAIL: Playwright discovered $COUNT tests — below the floor of 30."
+            echo "Collection is broken or tests were deleted without replacing coverage."
+            exit 1
+          fi
+
+      - name: Apply Prisma schema to ephemeral Postgres
+        run: pnpm db:push
 
       - name: Run E2E Tests
         run: pnpm test:e2e

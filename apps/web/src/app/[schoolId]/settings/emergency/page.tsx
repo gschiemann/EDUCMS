@@ -120,6 +120,10 @@ export default function EmergencySettingsPage() {
 function EmergencyConfigurator() {
   const tenantCopy = useTenantCopy();
   const { data: tenant } = useTenant();
+  // Hook must run unconditionally — this component has an early return
+  // below, and calling useParams inside the post-return JSX flips hook
+  // order between renders (React error #310).
+  const routeParams = useParams<{ schoolId: string }>();
   const tenantId = (tenant as any)?.id ?? '';
   const isK12 = tenantCopy.vertical === 'K12';
 
@@ -217,7 +221,7 @@ function EmergencyConfigurator() {
   return (
     <>
       <StatusCard isK12={isK12} onTurnOff={handleTurnOff} />
-      <ModeAndEditor schoolId={(useParams<{ schoolId: string }>().schoolId as string) || ''} />
+      <ModeAndEditor schoolId={(routeParams.schoolId as string) || ''} />
     </>
   );
 }
