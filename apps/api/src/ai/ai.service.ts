@@ -2058,16 +2058,23 @@ export class AiService {
     const interactive = opts.interactive !== false; // default: touch
     const count = Math.min(Math.max(opts.count ?? 3, 1), 3);
 
-    // Up-front caps — need headroom for at least one. Same shared Redis
-    // hourly window + monthly platform cap as the single-shot path.
-    if ((await this.windowCount(this.RL_SUCCESS_PREFIX, opts.tenantId)) >= this.HOURLY_CAP) {
+    // Up-front caps — reserve headroom for the WHOLE fan-out, not just one.
+    // 2026-07-14 (audit W0-09): this batch generates `count` (up to 3)
+    // candidates and records a spend per successful candidate, but the check
+    // used to verify only a SINGLE free slot (`>= CAP`). So a batch could pass
+    // a 1-slot check at cap-1 and then spend 3 — a 3× over-run on both the
+    // abuse window AND the platform-DOLLAR counter. Require headroom for the
+    // full `count` up front. (This does not close the cross-request race — two
+    // simultaneous batches can still both pass; the atomic USD reservation is
+    // the larger AI-003A follow-up. This closes the single-batch over-spend.)
+    if ((await this.windowCount(this.RL_SUCCESS_PREFIX, opts.tenantId)) + count > this.HOURLY_CAP) {
       throw new BadRequestException(
         `Hit the hourly AI cap (${this.HOURLY_CAP} generations/hour). Try again later.`,
       );
     }
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
-      if (u.used >= u.cap) {
+      if (u.used + count > u.cap) {
         throw new HttpException(
           {
             message: `Hit the monthly free AI cap (${u.cap} generations). Add your own provider key in Settings → AI provider for unlimited.`,
@@ -2582,16 +2589,18 @@ export class AiService {
     }
     const count = Math.min(Math.max(opts.count ?? 3, 1), 3);
 
-    // Up-front caps (need headroom for at least one). Same shared Redis hourly
-    // window + monthly platform cap as every other generator.
-    if ((await this.windowCount(this.RL_SUCCESS_PREFIX, opts.tenantId)) >= this.HOURLY_CAP) {
+    // Up-front caps — reserve headroom for the WHOLE fan-out (audit W0-09).
+    // This builds `count` candidates and records a spend per successful one,
+    // so the check must verify `count` free slots, not just one — otherwise a
+    // batch over-runs both the abuse window and the platform-dollar counter.
+    if ((await this.windowCount(this.RL_SUCCESS_PREFIX, opts.tenantId)) + count > this.HOURLY_CAP) {
       throw new BadRequestException(
         `Hit the hourly AI cap (${this.HOURLY_CAP} generations/hour). Try again later.`,
       );
     }
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
-      if (u.used >= u.cap) {
+      if (u.used + count > u.cap) {
         throw new HttpException(
           {
             message: `Hit the monthly free AI cap (${u.cap} generations). Add your own provider key in Settings → AI provider for unlimited.`,
@@ -2988,16 +2997,19 @@ export class AiService {
     const sw = opts.screenWidth || 1920;
     const sh = opts.screenHeight || 1080;
 
-    // Up-front caps — need headroom for at least one. Same shared Redis hourly
-    // window + monthly platform cap as every other generator.
-    if ((await this.windowCount(this.RL_SUCCESS_PREFIX, opts.tenantId)) >= this.HOURLY_CAP) {
+    // Up-front caps — reserve headroom for the WHOLE fan-out (audit W0-09).
+    // The Designer batch builds `count` candidates (the most expensive path —
+    // full HTML boards) and records a spend per successful one, so the check
+    // must verify `count` free slots, not just one. Otherwise a batch at cap-1
+    // over-runs both the abuse window and the platform-dollar counter.
+    if ((await this.windowCount(this.RL_SUCCESS_PREFIX, opts.tenantId)) + count > this.HOURLY_CAP) {
       throw new BadRequestException(
         `Hit the hourly AI cap (${this.HOURLY_CAP} generations/hour). Try again later or contact sales for a higher tier.`,
       );
     }
     if (resolved.source === 'platform') {
       const u = await this.readPlatformUsage(opts.tenantId);
-      if (u.used >= u.cap) {
+      if (u.used + count > u.cap) {
         throw new HttpException(
           {
             message: `Hit the monthly free AI cap (${u.cap} generations). Add your own provider key in Settings → AI provider for unlimited.`,

@@ -379,6 +379,42 @@ describe('AiService — Slice 1c 3-candidate generation', () => {
     const successAdds = fake.zadd.mock.calls.filter((c) => c[0] === 'ai:rl:gen:t1');
     expect(successAdds.length).toBe(0);
   });
+
+  // ── W0-09 (2026-07-14) — the fan-out must reserve headroom for the WHOLE
+  // batch, not one slot. A 3-candidate batch used to pass a 1-slot check
+  // (`count >= cap`) at cap-1 and then spend 3 — a 3× over-run on the abuse
+  // window AND the platform-dollar counter. Now the check is `used + count > cap`.
+  it('W0-09: rejects the whole fan-out BEFORE dispatch when the batch would exceed the hourly cap', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    process.env.AI_HOURLY_CAP = '2'; // cap 2, but a default batch wants 3 slots
+    const fake = makeFakeRedisClient();
+    dispatchMock.mockResolvedValue({ raw: tpl() });
+    const { service } = buildService(fake); // reads AI_HOURLY_CAP at construction
+
+    await expect(
+      service.generateTouchTemplateCandidates({ tenantId: 't1', prompt: 'lobby kiosk' }),
+    ).rejects.toThrow(/hourly AI cap/i);
+    // Rejected up front: no provider call, no slot burned (the old code would
+    // have dispatched 3 and spent 3 against a 2-slot budget).
+    expect(dispatchMock).not.toHaveBeenCalled();
+    const successAdds = fake.zadd.mock.calls.filter((c) => c[0] === 'ai:rl:gen:t1');
+    expect(successAdds.length).toBe(0);
+    delete process.env.AI_HOURLY_CAP;
+  });
+
+  it('W0-09: admits the fan-out when the batch exactly fits the remaining headroom', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    process.env.AI_HOURLY_CAP = '3'; // exactly enough for a 3-candidate batch from empty
+    const fake = makeFakeRedisClient();
+    dispatchMock.mockResolvedValue({ raw: tpl() });
+    const { service } = buildService(fake);
+
+    const res = await service.generateTouchTemplateCandidates({ tenantId: 't1', prompt: 'lobby kiosk' });
+
+    expect(res.candidates.length).toBe(3);
+    expect(dispatchMock).toHaveBeenCalledTimes(3);
+    delete process.env.AI_HOURLY_CAP;
+  });
 });
 
 // ── Slice 1d (2026-06-16) — inline text rewrite ──
