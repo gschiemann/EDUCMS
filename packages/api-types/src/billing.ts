@@ -23,8 +23,8 @@
 // real demand from a specific buyer makes them worth supporting.
 export type LicenseTierId =
   | 'FREE_TRIAL'   // 14-day free, 3 screens, no credit card needed
-  | 'MONTHLY'      // $15 / screen / month, billed monthly
-  | 'ANNUAL'       // $150 / screen / year, billed annually (2 months free vs monthly)
+  | 'MONTHLY'      // $25 / screen / month, billed monthly
+  | 'ANNUAL'       // $240 / screen / year = $20/mo effective (save 20% vs monthly)
   | 'COMP'         // Internal / partner — admin only
   | 'CUSTOM';      // Negotiated — admin only
 
@@ -79,8 +79,8 @@ export const LICENSE_TIERS: ReadonlyArray<LicenseTier> = [
   {
     id: 'MONTHLY',
     name: 'Monthly',
-    blurb: '$15 per screen, billed monthly. Cancel anytime.',
-    monthlyPriceCents: 1500,
+    blurb: '$25 per screen, billed monthly. Cancel anytime.',
+    monthlyPriceCents: 2500,
     annualPriceCents: null,
     seatLimit: null,
     bestFor: [],
@@ -98,14 +98,14 @@ export const LICENSE_TIERS: ReadonlyArray<LicenseTier> = [
   {
     id: 'ANNUAL',
     name: 'Annual',
-    blurb: '$150 per screen, billed yearly. Save 17% vs monthly.',
+    blurb: '$240 per screen / year — $20/mo effective. Save 20% vs monthly.',
     monthlyPriceCents: null,
-    annualPriceCents: 15000,
+    annualPriceCents: 24000,
     seatLimit: null,
     bestFor: [],
     features: [
       'Per-screen billing',
-      'Save 17% vs monthly',
+      'Save 20% vs monthly ($20/mo effective)',
       'Full template library',
       'All integrations (streaming, POS, ads)',
       'Emergency alerts',

@@ -262,7 +262,7 @@ export default function SignupPage() {
         <div className="flex-1 flex flex-col justify-center py-10">
           <div className="w-full max-w-md mx-auto lg:mx-0">
             <span className="text-xs font-semibold tracking-[0.14em] uppercase text-indigo-600">
-              Free pilot — first 10 screens, no card
+              Free 14-day trial — up to 3 screens, no card
             </span>
             <h1 className="mt-3 text-3xl md:text-[34px] font-semibold tracking-tight text-slate-900 leading-[1.1]">
               Start your free workspace.

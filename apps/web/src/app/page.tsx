@@ -463,7 +463,7 @@ function PricingTeaser() {
           Simple per-screen pricing.
         </h2>
         <p className="mt-3 text-base md:text-lg text-slate-600">
-          $25 per screen per month — $20 once you reach five. Every feature on every
+          $25 per screen per month — or $20 when you pay yearly. Every feature on every
           plan, unlimited users, no add-ons.
         </p>
         <div className="mt-7">

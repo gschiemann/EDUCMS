@@ -105,15 +105,15 @@ All required env vars for `.env` (gitignored):
 | `CANVA_CLIENT_ID` / `CANVA_CLIENT_SECRET` | OAuth client for Canva Connect (Stage-2 design imports — **NOT built yet, Sprint 11**). Apply at canva.dev/docs/connect. Setting these alone does NOT enable a working "Sign in with Canva" flow — the OAuth picker isn't implemented. Today: PDF/image uploads work at `/[schoolId]/templates/imports` without these keys. | (from canva.dev developer portal) |
 | `STRIPE_SECRET_KEY` | Stripe API key. When set, billing goes live — `/billing/checkout`, `/billing/portal`, `/billing/invoices`, and the webhook all work. When unset, `StripeService.enabled()` is false and every billing endpoint degrades gracefully (checkout/portal return `{enabled:false}`, invoices `[]`), so a deploy with no billing is unaffected. | `sk_test_…` / `sk_live_…` |
 | `STRIPE_WEBHOOK_SECRET` | Signing secret for the Stripe webhook (`POST /api/v1/billing/webhook`). Every event is verified against it; without it the webhook 400s. From the Stripe dashboard webhook config (or `stripe listen`). | `whsec_…` |
-| `STRIPE_PRICE_MONTHLY` | Stripe recurring Price id for the $15/screen/month plan. | `price_…` |
-| `STRIPE_PRICE_ANNUAL` | Stripe recurring Price id for the $150/screen/year plan. | `price_…` |
+| `STRIPE_PRICE_MONTHLY` | Stripe recurring Price id for the $25/screen/month plan. | `price_…` |
+| `STRIPE_PRICE_ANNUAL` | Stripe recurring Price id for the $240/screen/year plan ($20/mo effective). | `price_…` |
 
 Never commit `.env`. Use `.env.example` as a template.
 
 **Stripe billing setup.** Billing (Settings → Billing) is fully built
 but dormant until Stripe is configured. To turn it on: (1) create a
 free Stripe account; (2) in Stripe, create two recurring
-Products/Prices — $15 per screen / month and $150 per screen / year;
+Products/Prices — $25 per screen / month and $240 per screen / year;
 (3) set `STRIPE_SECRET_KEY`, `STRIPE_PRICE_MONTHLY`,
 `STRIPE_PRICE_ANNUAL` in the API env (test keys first); (4) add a
 Stripe webhook endpoint pointing at `POST /api/v1/billing/webhook`

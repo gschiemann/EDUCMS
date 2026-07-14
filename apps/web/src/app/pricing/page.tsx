@@ -5,43 +5,44 @@ import { PublicShell } from '@/components/marketing/PublicShell';
 export const metadata = {
   title: 'Pricing — VenueOS',
   description:
-    'Simple per-screen pricing for VenueOS — $25 per screen per month, $20 at five or more. Every feature included: signage, kiosks, live scoreboards, and emergency alerts.',
+    'Simple per-screen pricing for VenueOS — $25 per screen per month, or $20 per screen per month when billed annually. Every feature included: signage, kiosks, live scoreboards, and emergency alerts.',
 };
 
 const NAVY = '#070a14';
 
 /**
- * Per-screen pricing. The first four screens are $25/mo each; at five
- * or more, every screen is $20/mo (a flat 20% volume cut, applied to
- * the whole account). Annual billing is 10× the monthly rate — two
- * months free. Enterprise is a custom volume agreement.
+ * Two per-screen SKUs — the exact plans the billing catalog
+ * (packages/api-types/src/billing.ts) charges, so the page and the
+ * checkout never disagree:
+ *   - Monthly: $25 / screen / month.
+ *   - Annual:  $240 / screen / year = $20 / screen / month, save 20%.
+ * Enterprise is a custom volume agreement (sales-led, not self-serve).
  *
- * No feature gating between tiers — every plan ships the whole
- * product. The only thing that changes with scale is the per-screen
- * price.
+ * No feature gating between plans — every plan ships the whole product.
+ * The only thing that changes is the billing cadence.
  */
 const TIERS: {
   name: string;
   monthly: number;
-  annual: number;
+  sub: string;
   range: string;
   blurb: string;
   featured: boolean;
 }[] = [
   {
-    name: 'Per Screen',
+    name: 'Monthly',
     monthly: 25,
-    annual: 250,
-    range: 'For 1–4 screens',
-    blurb: 'Everything VenueOS does, billed per screen you connect.',
+    sub: 'Billed monthly — cancel anytime',
+    range: 'Pay as you go',
+    blurb: 'Everything VenueOS does, billed per screen you connect. No commitment.',
     featured: false,
   },
   {
-    name: 'Volume',
+    name: 'Annual',
     monthly: 20,
-    annual: 200,
-    range: '5 screens or more',
-    blurb: 'Reach five screens and every screen drops to $20 — a 20% cut, applied automatically.',
+    sub: '$240 / screen billed yearly — save 20%',
+    range: 'Best value',
+    blurb: 'Same product, billed once a year. Two-and-a-half months free vs monthly.',
     featured: true,
   },
 ];
@@ -60,7 +61,7 @@ const INCLUDED = [
 const FAQ = [
   {
     q: 'How does per-screen pricing work?',
-    a: "You're billed for each screen you connect to VenueOS. The first four screens are $25 each per month; once you reach five, every screen is $20. Add or remove screens anytime — we prorate the change.",
+    a: "You're billed for each screen you connect to VenueOS — $25 per screen per month, or $20 per screen per month when you pay annually. Add or remove screens anytime; we prorate the change.",
   },
   {
     q: 'What counts as a screen?',
@@ -68,11 +69,11 @@ const FAQ = [
   },
   {
     q: 'Can we try it before we pay?',
-    a: 'Yes. Start free with no credit card, connect a screen, and use every feature. Add billing when you’re ready to go live.',
+    a: 'Yes. Start a free 14-day trial with no credit card — connect up to 3 screens and use every feature. Add billing when you’re ready to go live.',
   },
   {
     q: 'Is annual billing cheaper?',
-    a: 'Yes — pay annually and two months are free: $250 per screen per year, or $200 per screen at five or more.',
+    a: 'Yes — pay annually and every screen is $240 per year, which works out to $20 per screen per month. That’s 20% off the monthly rate.',
   },
   {
     q: 'Do you take purchase orders or invoices?',
@@ -105,7 +106,7 @@ export default function PricingPage() {
           </h1>
           <p className="mt-6 text-base md:text-lg text-slate-400 leading-relaxed max-w-xl mx-auto">
             Every feature on every plan — signage, kiosks, live scoreboards, and
-            emergency alerts. The more screens you run, the less each one costs.
+            emergency alerts. $25 per screen monthly, or $20 when you pay yearly.
           </p>
         </div>
       </section>
@@ -136,9 +137,7 @@ export default function PricingPage() {
                 </span>
                 <span className="text-sm text-slate-500">/ screen / month</span>
               </div>
-              <p className="mt-1.5 text-xs text-slate-500">
-                or ${t.annual}/screen billed annually — 2 months free
-              </p>
+              <p className="mt-1.5 text-xs text-slate-500">{t.sub}</p>
               <p className="mt-4 text-sm font-semibold text-slate-900">{t.range}</p>
               <p className="mt-1 text-sm text-slate-600 leading-relaxed flex-1">{t.blurb}</p>
               <Link
@@ -183,7 +182,7 @@ export default function PricingPage() {
 
         <p className="mt-8 text-center text-xs text-slate-500 max-w-xl mx-auto px-6">
           Prices in USD. Screens are billed as you connect them — add or remove anytime,
-          and the volume rate kicks in automatically at five.
+          and we prorate the change. Pay yearly to lock in the $20/screen rate.
         </p>
       </section>
 

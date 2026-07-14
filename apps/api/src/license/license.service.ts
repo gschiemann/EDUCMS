@@ -5,7 +5,14 @@ import { PrismaService } from '../prisma/prisma.service';
  * Per-tenant license enforcement.
  *
  * Pilot tier (no License row):
- *   - 3 seats, perpetual, COMP billing.
+ *   - INTERNAL testing accommodation. Seat ceiling = env `PILOT_SEAT_LIMIT`
+ *     (default 1000), status ACTIVE, no expiry. This is NOT the plan we
+ *     advertise — the advertised customer trial is 14 days / 3 screens
+ *     (`FREE_TRIAL` in @cms/api-types billing catalog). A real trial is
+ *     enforced once a License/Trial row exists; until the PLAN-001A
+ *     entitlement backfill lands, no-license tenants stay on this generous
+ *     internal default so the test fleet isn't gated. Set PILOT_SEAT_LIMIT
+ *     lower (e.g. 3) to enforce the real trial cap.
  *
  * Standard / Enterprise / vertical tiers:
  *   - whatever License.seatLimit says, expires per License.expiresAt /
@@ -21,16 +28,37 @@ export class LicenseService {
   constructor(private readonly prisma: PrismaService) {}
 
   // 2026-05-04 — operator (testing fleet, no paying customers yet):
-  // "bro WTF, your keeping me from testing". Both prior tenant-scoped
-  // seat-bump migrations failed to take effect (slug mismatch?
-  // pgbouncer transaction-mode rejecting DDL? unclear). Until we
-  // have a real customer requiring strict metering, raise the default
-  // pilot ceiling to 1000 so internal testing isn't gated by a
-  // metering check that exists primarily for billing.
-  // When we onboard the first paying customer, drop this back to 3
-  // (or whatever the contracted seat count is) and verify the
-  // License upsert path works end-to-end.
-  static readonly PILOT_SEAT_LIMIT = 1000;
+  // "bro WTF, your keeping me from testing". The no-license default seat
+  // ceiling exists primarily for billing; gating it low blocked internal
+  // testing.
+  //
+  // 2026-07-13 (audit W0-07/PLAN-001A): the ceiling used to be a silent
+  // hardcoded 1000 while the doc claimed "3 seats" — a product-truth lie.
+  // It is now an EXPLICIT env override (`PILOT_SEAT_LIMIT`, default 1000)
+  // logged at boot, so nobody mistakes it for the advertised 3-screen /
+  // 14-day trial. The real trial cap is enforced by a Trial/License row
+  // (PLAN-001A backfill); until then this stays generous so the test fleet
+  // keeps pairing. To enforce the advertised cap early, set PILOT_SEAT_LIMIT=3.
+  static readonly PILOT_SEAT_LIMIT = LicenseService.resolvePilotSeatLimit();
+
+  private static resolvePilotSeatLimit(): number {
+    const raw = process.env.PILOT_SEAT_LIMIT;
+    const parsed = raw != null ? Number(raw) : NaN;
+    const limit = Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1000;
+    // One-time boot visibility so the generous internal ceiling is never
+    // silent again (it is NOT the advertised 3-screen trial).
+    if (raw == null) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[license] PILOT_SEAT_LIMIT unset — no-license tenants get the internal ${limit}-screen ` +
+          'pilot ceiling (NOT the advertised 14-day/3-screen trial). Set PILOT_SEAT_LIMIT=3 to enforce the real cap.',
+      );
+    } else {
+      // eslint-disable-next-line no-console
+      console.log(`[license] PILOT_SEAT_LIMIT=${limit} (no-license tenant seat ceiling).`);
+    }
+    return limit;
+  }
 
   /** Effective limit + tier for a tenant, falling back to PILOT defaults.
    *  Optionally takes a Prisma transaction client — callers inside a
