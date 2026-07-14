@@ -91,7 +91,32 @@ interface ManifestPlaylist {
   items: ManifestPlaylistItem[];
 }
 
+/**
+ * Flat, top-level asset descriptor — THE contract the Android player reads.
+ * `UsbIngester.kt` verifies `{ sha256, localPath }`; `UsbCacheIndex.kt` maps
+ * `url → localPath` so the WebView serves the on-disk copy. `localPath` is the
+ * path relative to the bundle root (`assets/<sha>.<ext>`), split on '/' into
+ * exactly two parts by the ingester.
+ */
+interface TopLevelAsset {
+  url: string;
+  sha256: string;
+  localPath: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
 interface SignedManifest {
+  // Android contract fields (UsbIngester.kt) — REQUIRED for the player to
+  // accept the bundle. `schema` is the exact string the ingester gates on;
+  // `bundleVersion` is a monotonic epoch-ms string for old-bundle rejection;
+  // `assets` is the flat array both the ingester and UsbCacheIndex read.
+  schema: 'edu-cms-usb-bundle/v1';
+  bundleVersion: string;
+  assets: TopLevelAsset[];
+  // Rich rendering fields — the WebView player renders playlists/templates
+  // from these. `version` stays for the renderer's own schema tracking; it is
+  // NOT what the ingester checks (that's `schema`).
   version: 1;
   tenantId: string;
   tenantSlug: string | null;
@@ -250,6 +275,9 @@ export class UsbExportController {
     const root = zip.folder('edu-cms-content')!;
     const assetsDir = root.folder('assets')!;
     const seenHashes = new Set<string>();
+    // The flat top-level asset array the Android player reads (deduped by
+    // hash, same set as the files written into assets/).
+    const topLevelAssets: TopLevelAsset[] = [];
     let totalBytes = 0;
     let assetCount = 0;
     let truncated = false;
@@ -308,6 +336,16 @@ export class UsbExportController {
             seenHashes.add(hash);
             totalBytes += fetched.body.byteLength;
             assetCount += 1;
+            // Record the flat top-level entry the Android player reads. Only
+            // on first sight of a hash — this array is deduped exactly like
+            // the files written into assets/.
+            topLevelAssets.push({
+              url: asset.fileUrl,
+              sha256: hash,
+              localPath: storagePath, // "assets/<sha>.<ext>"
+              mimeType: asset.mimeType || 'application/octet-stream',
+              sizeBytes: fetched.body.byteLength,
+            });
           } catch (e: any) {
             this.logger.warn(`Asset fetch failed for ${asset.fileUrl}: ${e?.message}`);
           }
@@ -338,14 +376,23 @@ export class UsbExportController {
     const emergencyPlaylists: ManifestPlaylist[] = [];
     for (const p of emergencyRaw) emergencyPlaylists.push(await processPlaylist(p));
 
+    const now = Date.now();
     const manifest: SignedManifest = {
+      // ── Android ingester contract (UsbIngester.kt / UsbCacheIndex.kt) ──
+      schema: 'edu-cms-usb-bundle/v1',
+      // Monotonic, comparable version so the player can reject a bundle older
+      // than what it already has. Epoch-ms as a string (the ingester reads it
+      // as an opaque string; numeric string sorts/compares correctly).
+      bundleVersion: String(now),
+      assets: topLevelAssets,
+      // ── Rich renderer fields (unchanged) ──
       version: 1,
       tenantId: tenant.id,
       tenantSlug: tenant.slug,
       screenId: screen?.id ?? null,
       bundleLabel: (body.bundleLabel || '').slice(0, 200) || null,
-      createdAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + BUNDLE_VALID_DAYS * 86400_000).toISOString(),
+      createdAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + BUNDLE_VALID_DAYS * 86400_000).toISOString(),
       playlists,
       emergencyPlaylists,
       assetCount,
@@ -372,12 +419,17 @@ export class UsbExportController {
         truncated ? '⚠ TRUNCATED — bundle hit size/count cap. Consider splitting across multiple USBs.' : '',
         '',
         'How to use:',
-        '  1. Plug this USB stick into a paired EDU CMS player.',
-        '  2. The player prompts for an admin PIN before ingesting.',
-        '  3. Content stays on-device and keeps playing offline.',
+        '  1. Enable USB ingest for this screen (Settings -> USB) and pair it,',
+        '     so the player holds this tenant\'s signing key.',
+        '  2. Plug this USB stick into the paired EDU CMS player.',
+        '  3. Confirm the ingest prompt. The player verifies the tenant, the',
+        '     manifest signature, and every asset hash before accepting.',
+        '  4. Content stays on-device and keeps playing offline.',
         '',
-        'Do NOT modify manifest.json or manifest.sig — the player will',
-        'reject any bundle whose signature does not match.',
+        'Security: ingest is gated by the per-tenant USB feature flag and this',
+        'HMAC-signed manifest — NOT by a PIN. Do NOT modify manifest.json or',
+        'manifest.sig; the player rejects any bundle whose signature or asset',
+        'hashes do not match.',
       ].filter(Boolean).join('\n'),
     );
 
