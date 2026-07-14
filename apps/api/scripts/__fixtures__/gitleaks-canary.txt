@@ -1,0 +1,12 @@
+gitleaks canary fixture — audit W0-01.12
+
+This file exists ONLY to prove the custom `venueos-hardcoded-256bit-hex-secret`
+rule in .gitleaks.toml actually fires on the shape that leaked in production
+(a bare 256-bit hex literal assigned as a signing-secret fallback).
+
+The value below is NOT a real secret — it is the SHA-256 of the string
+"venueos-gitleaks-canary-not-a-real-secret", generated purely so this rule has
+something to catch. It is deliberately OUTSIDE the __fixtures__ path allowlist
+when scanned directly (see verify command in .gitleaks.toml header).
+
+const SPORTS_FEED_SECRET = "a3f1c9e04b7d2865fedc0918a2b4c6d8e0f13579bdf2468ace013579bdf2468a"; // canary

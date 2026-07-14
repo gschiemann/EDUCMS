@@ -33,7 +33,7 @@ import {
 } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
-import { makeFeedToken } from './sports-feed-token';
+import { makeFeedToken, DEFAULT_FEED_TOKEN_TTL_SEC } from './sports-feed-token';
 // 2026-07-01 swim/dive DEPTH pass — CTS SWIMMING scoreboard-serial ingest
 // (docs/research/2026-06-30-swim-dive-scoreboards/00-REPORT.md part A7).
 import type { SwimTimingSnapshot } from '@cms/scoreboard-cts';
@@ -398,7 +398,12 @@ export class SportsService {
     tenantId: string,
     gameId: string,
     actorUserId?: string,
-  ): Promise<{ success: true; feedTokenVersion: number; token: string }> {
+  ): Promise<{
+    success: true;
+    feedTokenVersion: number;
+    token: string;
+    tokenExpiresAt: string;
+  }> {
     // Ownership gate (throws NotFound if the game isn't this tenant's).
     await this.owned(tenantId, gameId);
 
@@ -424,10 +429,14 @@ export class SportsService {
       });
     } catch { /* best-effort */ }
 
+    // 2026-07-13 (audit W0-01.5): the replacement credential carries a TTL —
+    // we no longer issue immortal bearer material anywhere. The operator can
+    // mint a differently-scoped one via feed-credentials?ttlSeconds=…
     return {
       success: true,
       feedTokenVersion: version,
-      token: makeFeedToken(gameId, { version }),
+      token: makeFeedToken(gameId, { version, ttlSeconds: DEFAULT_FEED_TOKEN_TTL_SEC }),
+      tokenExpiresAt: new Date(Date.now() + DEFAULT_FEED_TOKEN_TTL_SEC * 1000).toISOString(),
     };
   }
 

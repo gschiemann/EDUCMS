@@ -1,0 +1,48 @@
+# gitleaks configuration — EDU CMS / VenueOS
+#
+# 2026-07-13 (world-class audit W0-01.12): the default gitleaks ruleset did
+# NOT catch the production feed-signing secret that shipped in a public repo
+# (a bare 64-hex literal assigned as a secret fallback in
+# apps/api/scripts/cts-live-integration-test.ts — removed in 58363762). Default
+# rules treat a lone 64-hex string as an innocent hash. This config extends the
+# defaults with a rule that catches exactly that shape: a hard-coded 256-bit
+# hex secret sitting in source/scripts.
+#
+# Verified regression-free before commit:
+#   gitleaks detect --no-git --config .gitleaks.toml   → 0 findings on the tree
+#   gitleaks detect against the canary fixture          → rule fires
+# (see apps/api/scripts/__fixtures__/gitleaks-canary.txt)
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "venueos-hardcoded-256bit-hex-secret"
+description = "Hard-coded 256-bit (64-hex) secret literal — device/feed/JWT signing material must come from env, never a source literal"
+# A quoted 64-hex literal (exactly 256 bits — the width of every signing key in
+# this app: DEVICE_SECRET_KEY, SPORTS_FEED_SECRET, JWT_SECRET, SESSION_SECRET).
+# Word boundaries stop it matching the tail of a 128-hex string.
+regex = '''['"`]\b[0-9a-f]{64}\b['"`]'''
+keywords = []
+entropy = 3.5
+
+[rules.allowlist]
+regexTarget = "match"
+# Obvious non-secret 256-bit hex constants that legitimately appear as test
+# vectors — never real keys:
+regexes = [
+  # Sequential placeholder "0123456789abcdef" × 4 (MFA/Clever cipher specs).
+  '''(?:0123456789abcdef){4}''',
+  # SHA-256 of the empty string — a well-known constant used in sync tests.
+  '''e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855''',
+]
+
+[allowlist]
+description = "Global path allowlist — test/spec/fixture files carry deliberate fake keys"
+paths = [
+  '''.*\.spec\.(ts|tsx|js)$''',
+  '''.*\.test\.(ts|tsx|js)$''',
+  '''.*/__tests__/.*''',
+  '''.*/__fixtures__/.*''',
+  '''.*\.env\.example$''',
+]

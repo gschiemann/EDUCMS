@@ -17,7 +17,12 @@ import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { SportsService } from './sports.service';
 import { SponsorsService } from './sponsors.service';
-import { makeFeedToken } from './sports-feed-token';
+import {
+  makeFeedToken,
+  DEFAULT_FEED_TOKEN_TTL_SEC,
+  MIN_FEED_TOKEN_TTL_SEC,
+  MAX_FEED_TOKEN_TTL_SEC,
+} from './sports-feed-token';
 
 /** Editable fields for one roster player. The service sanitizes every
  *  value — the photo URL is produced by the existing /assets/upload. */
@@ -499,15 +504,29 @@ export class SportsController {
     AppRole.SCHOOL_ADMIN,
     AppRole.CONTRIBUTOR,
   )
-  async feedCredentials(@Request() req: any, @Param('id') id: string) {
+  async feedCredentials(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Query('ttlSeconds') ttlSecondsRaw?: string,
+  ) {
     // Ownership check (throws NotFound if the game isn't this tenant's).
     await this.sports.assertGameOwned(req.user.tenantId, id);
-    // Mint at the game's CURRENT feed-token version so re-copying credentials
-    // after a revocation hands the vendor the live token, not the dead one.
-    // Version 0 (never revoked) yields the byte-for-byte LEGACY bare token, so
-    // games that have never been revoked are unaffected.
+    // 2026-07-13 (audit W0-01.5): this endpoint used to hand out the
+    // NON-EXPIRING bare token — reusable bearer material with no death date.
+    // Every minted credential now carries a TTL (default 30 days, clamp
+    // [300s, 30d] via ?ttlSeconds=). Legacy bare tokens vendors already hold
+    // keep verifying at version 0 — nothing already deployed breaks; we just
+    // stop ISSUING immortal credentials. For URL-only adapter boxes, request
+    // ttlSeconds <= 604800 (7 days) — that's the cap the ?token= query path
+    // accepts on ingest.
     const feedTokenVersion = await this.sports.getFeedTokenVersion(id);
-    const token = makeFeedToken(id, { version: feedTokenVersion });
+    const requested = Number(ttlSecondsRaw);
+    const ttlSeconds =
+      Number.isFinite(requested) && requested > 0
+        ? Math.min(MAX_FEED_TOKEN_TTL_SEC, Math.max(MIN_FEED_TOKEN_TTL_SEC, Math.floor(requested)))
+        : DEFAULT_FEED_TOKEN_TTL_SEC;
+    const token = makeFeedToken(id, { version: feedTokenVersion, ttlSeconds });
+    const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
     const host = req.get?.('host') || process.env.RAILWAY_PUBLIC_DOMAIN || 'localhost';
     const proto = (req.headers?.['x-forwarded-proto'] as string) || req.protocol || 'https';
     const ingestUrl = `${proto}://${host}/api/v1/sports/board/${id}/feed`;
@@ -516,6 +535,8 @@ export class SportsController {
       ingestUrl,
       tokenHeader: 'x-feed-token',
       token,
+      tokenTtlSeconds: ttlSeconds,
+      expiresAt,
       // The current feed-token version. POST games/:id/revoke-feed-token bumps
       // it, instantly invalidating every previously-issued token for this game.
       feedTokenVersion,
@@ -525,7 +546,10 @@ export class SportsController {
         `-H "x-feed-token: ${token}" -H "Content-Type: application/json" ` +
         `-d '{"homeScore":14,"awayScore":7,"clockMs":420000,"clockRunning":true,"segment":2}'`,
       accepts: ['homeScore', 'awayScore', 'clockMs', 'clockRunning', 'segment'],
-      note: 'Any subset of fields may be sent; omitted fields are unchanged. Rate limit: 40 requests / 10s per game.',
+      note:
+        'Any subset of fields may be sent; omitted fields are unchanged. Rate limit: 40 requests / 10s per game. ' +
+        `Token expires ${expiresAt} — re-copy credentials here for a fresh one. ` +
+        'URL-only integrations may pass ?token= instead of the header ONLY for tokens minted with ttlSeconds <= 604800.',
     };
   }
 

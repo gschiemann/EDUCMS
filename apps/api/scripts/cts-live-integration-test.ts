@@ -25,7 +25,6 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import * as crypto from 'crypto';
 import * as dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 
@@ -36,25 +35,42 @@ const prisma = new PrismaClient();
 
 // ── Configuration ────────────────────────────────────────────────
 
-const API_BASE = process.env.RAILWAY_API_URL ?? 'https://api-production-39a1.up.railway.app/api/v1';
-// The feed-signing secret is NEVER hardcoded here. It must match the target
-// deploy's SPORTS_FEED_SECRET (or, if that is unset there, its
-// DEVICE_SECRET_KEY — see feedSecret() in src/sports/sports-feed-token.ts).
-// Provide it at run time via CTS_TEST_FEED_SECRET (falling back to a
-// SPORTS_FEED_SECRET already in your shell env). The script exits before any
-// network call if neither is set — see the guard below.
+// SECURITY MODEL (2026-07-13, world-class audit W0-01.6):
+// This script NEVER holds SPORTS_FEED_SECRET or DEVICE_SECRET_KEY. It used to
+// mint feed tokens locally from the root signing secret — which is exactly how
+// the production secret ended up committed to a public repo (removed in
+// 58363762). Now it authenticates with an ordinary API-issued admin JWT and
+// asks the API for a SHORT-LIVED, game-scoped feed token via
+// GET /sports/games/:id/feed-credentials?ttlSeconds=900. No signing material
+// touches this process; the token it does hold expires in 15 minutes and is
+// revoked in `finally`.
 //
-// SECURITY (2026-07-12 world-class audit P0): this file previously baked in a
-// literal that its own comment identified as the Railway PRODUCTION signing
-// secret, in a PUBLIC repo. Because feedSecret() falls back to
-// DEVICE_SECRET_KEY, a live match could mint feed tokens for arbitrary games.
-// The literal is gone; the exposed value must still be ROTATED out-of-band
-// (that is a Railway env change, not a code change).
-const FEED_SECRET = process.env.CTS_TEST_FEED_SECRET ?? process.env.SPORTS_FEED_SECRET ?? '';
-if (!FEED_SECRET || FEED_SECRET.trim().length < 16) {
+// Defaults to STAGING. Running against a production host requires an explicit
+// break-glass acknowledgement (CTS_TEST_ALLOW_PROD=i-understand) so nobody
+// mutates a live tenant by leaving an env var set.
+const API_BASE =
+  process.env.CTS_TEST_API_URL ??
+  process.env.RAILWAY_API_URL ??
+  'https://staging-api.venue-os.app/api/v1';
+
+const PROD_HOST_RE = /(^|\/\/)([^/]*\bapi-production\b[^/]*|api\.venue-os\.app)(\/|$)/i;
+if (PROD_HOST_RE.test(API_BASE) && process.env.CTS_TEST_ALLOW_PROD !== 'i-understand') {
   console.error(
-    'Refusing to run: set CTS_TEST_FEED_SECRET (or SPORTS_FEED_SECRET) to the ' +
-      "target deploy's feed-signing secret. It is never hardcoded.",
+    `Refusing to run against a production host (${API_BASE}).\n` +
+      'This test creates + mutates a game. Point CTS_TEST_API_URL at staging, or ' +
+      'set CTS_TEST_ALLOW_PROD=i-understand to acknowledge a break-glass production run.',
+  );
+  process.exit(1);
+}
+
+// An API-issued admin JWT for the target tenant (NOT a signing secret). Copy it
+// from an authenticated dashboard session (Application → localStorage →
+// edu_cms_token) or a service login. It only needs to own the test tenant.
+const ADMIN_TOKEN = process.env.CTS_TEST_ADMIN_TOKEN ?? '';
+if (!ADMIN_TOKEN) {
+  console.error(
+    'Refusing to run: set CTS_TEST_ADMIN_TOKEN to an API-issued admin JWT for the ' +
+      'target tenant. This script no longer accepts a raw feed-signing secret.',
   );
   process.exit(1);
 }
@@ -62,6 +78,12 @@ const TENANT_ID = process.env.CTS_TEST_TENANT_ID ?? ''; // set to the pilot tena
 if (!TENANT_ID) {
   console.error('Refusing to run: set CTS_TEST_TENANT_ID to the target tenant id.');
   process.exit(1);
+}
+
+/** Mask a bearer/token for logs — never print more than a short prefix. */
+function redact(secretish: string): string {
+  if (!secretish) return '<empty>';
+  return `${secretish.slice(0, 6)}…(${secretish.length} chars)`;
 }
 const REPORT_DIR = path.join(
   __dirname,
@@ -74,12 +96,30 @@ const REPORT_DIR = path.join(
 );
 fs.mkdirSync(REPORT_DIR, { recursive: true });
 
-function makeFeedToken(gameId: string): string {
-  return crypto
-    .createHmac('sha256', FEED_SECRET)
-    .update(`feed:${gameId}`)
-    .digest('hex')
-    .slice(0, 32);
+/**
+ * Obtain a short-lived, game-scoped feed token from the API using the admin
+ * JWT — the API mints and signs it; this process never sees signing material.
+ */
+async function fetchFeedToken(gameId: string): Promise<{ token: string; expiresAt: string }> {
+  const res = await fetch(
+    `${API_BASE}/sports/games/${gameId}/feed-credentials?ttlSeconds=900`,
+    { headers: { authorization: `Bearer ${ADMIN_TOKEN}` } },
+  );
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '<unreadable>');
+    throw new Error(`feed-credentials failed: HTTP ${res.status} ${detail}`);
+  }
+  const body: any = await res.json();
+  if (!body?.token) throw new Error('feed-credentials returned no token');
+  return { token: body.token, expiresAt: body.expiresAt ?? '<unknown>' };
+}
+
+/** Revoke every outstanding feed token for a game (bumps feedTokenVersion). */
+async function revokeFeedToken(gameId: string): Promise<void> {
+  await fetch(`${API_BASE}/sports/games/${gameId}/revoke-feed-token`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${ADMIN_TOKEN}`, 'content-type': 'application/json' },
+  });
 }
 
 // ── Test runner ──────────────────────────────────────────────────
@@ -215,8 +255,8 @@ async function main() {
   });
   console.log(`Provisioned test game ${createdGame.id}`);
 
-  const token = makeFeedToken(gameId);
-  console.log(`Feed token: ${token}`);
+  const { token, expiresAt } = await fetchFeedToken(gameId);
+  console.log(`Feed token (API-issued, short-lived): ${redact(token)} — expires ${expiresAt}`);
 
   try {
     // ── Step 1: clock start
@@ -453,14 +493,20 @@ async function main() {
       };
     });
   } finally {
-    // Always clean up. NOTE: audit_logs are append-only at the DB
-    // level (P0-6 immutability trigger) — we deliberately CAN'T
-    // delete them, by design. The few rows this test wrote will
-    // forever live in the AuditLog with this game's targetId, even
-    // though the game itself is gone. That's the correct forensic
-    // semantics: an audit trail you can scrub on demand isn't an
+    // Always clean up. First REVOKE the short-lived feed token (defence in
+    // depth — it also self-expires in 15 min) so a copy captured mid-run can
+    // never be replayed against the tenant. Then delete the disposable game.
+    // NOTE: audit_logs are append-only at the DB level (P0-6 immutability
+    // trigger) — we deliberately CAN'T delete them, by design. The few rows
+    // this test wrote will forever live in the AuditLog with this game's
+    // targetId, even though the game itself is gone. That's the correct
+    // forensic semantics: an audit trail you can scrub on demand isn't an
     // audit trail.
-    console.log('\nCleaning up test game…');
+    console.log('\nRevoking feed token…');
+    await revokeFeedToken(gameId).catch((e) =>
+      console.warn(`  (revoke best-effort failed: ${e?.message ?? e})`),
+    );
+    console.log('Cleaning up test game…');
     await prisma.gameEvent.deleteMany({ where: { gameId } });
     await prisma.game.delete({ where: { id: gameId } });
     console.log('Test game deleted (audit_logs retained per DB immutability rule).');
@@ -528,8 +574,9 @@ async function main() {
     `RS232 is converted by \`CtsBridge\` to a JSON snapshot identical in`,
     `shape to what this test POSTed. That snapshot flows through:`,
     ``,
-    `1. The unauthenticated feed-token endpoint at`,
-    `   \`/api/v1/sports/board/:id/cts-snapshot\` (rate-limited, HMAC-verified).`,
+    `1. The feed-token-authenticated ingest endpoint at`,
+    `   \`/api/v1/sports/board/:id/cts-snapshot\` (rate-limited, HMAC-verified,`,
+    `   short-lived API-issued token — no dashboard session).`,
     `2. \`SportsService.ingestCtsSnapshot()\` — the single source of truth.`,
     `3. \`cleanCtsSnapshot()\` — sanitizer that accepts the T2-1 fields`,
     `   (per-side shot clocks, exclusions, timeouts remaining).`,

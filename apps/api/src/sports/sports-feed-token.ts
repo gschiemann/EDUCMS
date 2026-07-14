@@ -47,6 +47,11 @@ import { requireSecret } from '../security/required-secret';
  *    PER-GAME kill-switch.
  */
 
+// One-shot advisory flags so a busy feed (~5 Hz CTS snapshots) can't
+// turn boot advisories into log spam.
+let warnedNoDedicatedSecret = false;
+let warnedShortDedicatedSecret = false;
+
 function feedSecret(): string {
   // A dedicated SPORTS_FEED_SECRET wins if set. Otherwise fall back to
   // DEVICE_SECRET_KEY via requireSecret, which THROWS in production when it
@@ -56,7 +61,32 @@ function feedSecret(): string {
   // in prod only by transitive boot-gate luck. Now it's explicit + consistent
   // with the other secret call-sites.
   const dedicated = process.env.SPORTS_FEED_SECRET;
-  if (dedicated && dedicated.trim().length >= 16) return dedicated;
+  if (dedicated && dedicated.trim().length >= 16) {
+    if (dedicated.trim().length < 64 && !warnedShortDedicatedSecret) {
+      warnedShortDedicatedSecret = true;
+      console.warn(
+        '[sports-feed-token] SPORTS_FEED_SECRET is set but shorter than 64 chars. ' +
+          'Generate a full-strength value: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
+      );
+    }
+    return dedicated;
+  }
+  // 2026-07-13 (audit W0-01.3): sharing DEVICE_SECRET_KEY couples the sports
+  // feed to the key that also signs WS/Redis control traffic and wraps
+  // BYOK/MFA/streaming credentials — a leaked feed credential becomes a
+  // platform-wide incident. Production must run a DEDICATED key. We warn
+  // loudly instead of refusing to boot so a deploy that predates the Railway
+  // env change cannot take the emergency path down; the rotation runbook
+  // (docs/research/2026-07-12-world-class-fullapp-audit/, Part II.F) flips
+  // this env var and then this warning goes silent.
+  if (process.env.NODE_ENV === 'production' && !warnedNoDedicatedSecret) {
+    warnedNoDedicatedSecret = true;
+    console.error(
+      '[sports-feed-token] ACTION REQUIRED: SPORTS_FEED_SECRET is not set in production. ' +
+        'Feed tokens are deriving from DEVICE_SECRET_KEY (shared blast radius). ' +
+        'Set a dedicated 64-hex SPORTS_FEED_SECRET in the API environment — see the W0-01 rotation runbook.',
+    );
+  }
   return requireSecret('DEVICE_SECRET_KEY', {
     devFallback: 'dev_only_feed_secret_CHANGE_ME',
   });
@@ -191,4 +221,53 @@ export function verifyFeedToken(
   if (token.length !== MAC_HEX_LEN) return false;
   if (ver !== 0) return false;
   return safeEqHex(bareMac(gameId), token);
+}
+
+/**
+ * Default TTL for tokens minted by the feed-credentials / revoke endpoints:
+ * 30 days. Feed tokens are per-GAME, and a game is a matchday object — a
+ * 30-day structured token comfortably covers any tournament while still
+ * guaranteeing every issued credential dies on its own. (Audit W0-01.5 —
+ * "stop returning non-expiring reusable bearer material".)
+ */
+export const DEFAULT_FEED_TOKEN_TTL_SEC = 30 * 24 * 3600;
+
+/** Floor/ceiling for operator-requested TTLs on the credentials endpoint. */
+export const MIN_FEED_TOKEN_TTL_SEC = 300;
+export const MAX_FEED_TOKEN_TTL_SEC = DEFAULT_FEED_TOKEN_TTL_SEC;
+
+/**
+ * Cap for tokens presented in the `?token=` QUERY parameter: 7 days.
+ *
+ * Query strings leak into proxy/CDN/WAF access logs, browser history, and
+ * Referer headers — so a URL-carried credential must be short-lived. The
+ * header path (`x-feed-token`) has no such cap. 7 days covers a tournament
+ * week for the URL-only CTS-adapter boxes that can't set headers.
+ * (Audit W0-01.4 — "remove query-string feed authentication": long-lived and
+ * legacy bare tokens are now header-only; the query path only accepts
+ * short-lived structured tokens.)
+ */
+export const MAX_QUERY_TOKEN_TTL_SEC = 7 * 24 * 3600;
+
+/**
+ * Verify a token presented via the `?token=` QUERY parameter.
+ *
+ * Stricter than `verifyFeedToken`: bare legacy tokens and structured tokens
+ * without an expiry (ttl 0) or with a ttl over MAX_QUERY_TOKEN_TTL_SEC are
+ * REJECTED regardless of MAC validity — non-expiring credentials must never
+ * ride in URLs. Everything that passes the shape gate goes through the same
+ * constant-time MAC + version + expiry verification as the header path.
+ */
+export function verifyFeedTokenFromQuery(
+  gameId: string,
+  token: unknown,
+  currentVersion: number = 0,
+): boolean {
+  if (typeof token !== 'string' || !gameId) return false;
+  const parts = token.split('.');
+  if (parts.length !== 4) return false; // bare tokens: header-only
+  if (!/^\d+$/.test(parts[2])) return false;
+  const ttlSec = Number(parts[2]);
+  if (ttlSec <= 0 || ttlSec > MAX_QUERY_TOKEN_TTL_SEC) return false;
+  return verifyFeedToken(gameId, token, currentVersion);
 }

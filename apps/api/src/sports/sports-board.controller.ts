@@ -3,7 +3,7 @@ import {
   HttpException, HttpStatus, Logger,
 } from '@nestjs/common';
 import { SportsService } from './sports.service';
-import { verifyFeedToken } from './sports-feed-token';
+import { verifyFeedToken, verifyFeedTokenFromQuery } from './sports-feed-token';
 // 2026-07-01 swim/dive DEPTH pass — swim-timing-snapshot ingest.
 import type { SwimTimingSnapshot } from '@cms/scoreboard-cts';
 // 2026-07-01 launch-sprint #272a — multi-replica-safe ingest rate limiter.
@@ -141,6 +141,58 @@ export class SportsBoardController {
   }
 
   /**
+   * Feed auth for the three ingest endpoints (/feed, /cts-snapshot,
+   * /swim-timing-snapshot).
+   *
+   * HEADER (`x-feed-token`) accepts every valid token shape — legacy bare
+   * (v0) and structured. QUERY (`?token=`) accepts ONLY short-lived
+   * structured tokens (0 < ttl ≤ 7 days): query strings leak into
+   * proxy/CDN/WAF access logs, so a non-expiring credential must never ride
+   * in a URL (audit W0-01.4). URL-only CTS-adapter boxes stay supported —
+   * the operator mints a short-lived URL token with
+   * `GET /sports/games/:id/feed-credentials?ttlSeconds=…` (≤ 604800).
+   *
+   * When a token is VALID but arrives via query in a non-compliant shape
+   * (bare or ttl too long) we return a distinct code telling the integrator
+   * exactly how to fix their setup instead of a generic "invalid token".
+   */
+  private assertFeedAuth(
+    gameId: string,
+    headerToken: string | undefined,
+    queryToken: string | undefined,
+    currentVersion: number,
+  ): void {
+    if (headerToken) {
+      if (verifyFeedToken(gameId, headerToken, currentVersion)) return;
+    } else if (verifyFeedTokenFromQuery(gameId, queryToken, currentVersion)) {
+      return;
+    }
+    // Distinguish "wrong channel" from "bad token" for query-only callers:
+    // the token verifies fine, it just may not travel in a URL. No oracle is
+    // opened — a caller holding a valid token can already confirm validity
+    // via the header path.
+    const validButWrongChannel =
+      !headerToken &&
+      typeof queryToken === 'string' &&
+      queryToken.length > 0 &&
+      verifyFeedToken(gameId, queryToken, currentVersion);
+    if (validButWrongChannel) {
+      throw new HttpException(
+        {
+          code: 'SPORTS_FEED_QUERY_TOKEN_NOT_SHORT_LIVED',
+          message:
+            'This token is only accepted in the x-feed-token header. ?token= accepts short-lived tokens only (ttl <= 7 days) — mint one with GET /sports/games/:id/feed-credentials?ttlSeconds=604800 or less.',
+        },
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+    throw new HttpException(
+      { code: 'SPORTS_FEED_TOKEN_INVALID', message: 'Invalid or missing feed token' },
+      HttpStatus.UNAUTHORIZED,
+    );
+  }
+
+  /**
    * Sprint 13 — CTS console snapshot ingest.
    *
    * The CtsBridge in apps/web/src/components/player/CtsBridge.tsx parses
@@ -149,7 +201,8 @@ export class SportsBoardController {
    * — see SportsService.ingestCtsSnapshot for the source-of-truth rule.
    *
    * Auth: x-feed-token header (preferred) or ?token= query (for the
-   * weird cases where only a URL is configurable on a CTS-adapter box).
+   * weird cases where only a URL is configurable on a CTS-adapter box —
+   * short-lived structured tokens only, ttl ≤ 7 days; audit W0-01.4).
    * Same stateless game-scoped HMAC as `/feed`. Reuses the feed rate-limit
    * pool — a misbehaving bridge can't fan out to more than 80 POSTs / 10 s
    * total (40 to /feed + 40 here).
@@ -199,15 +252,14 @@ export class SportsBoardController {
       throw new HttpException({ code: 'SPORTS_CTS_SNAPSHOT_RATE_LIMITED', message: 'CTS snapshot rate limit exceeded' }, HttpStatus.TOO_MANY_REQUESTS);
     }
 
-    const token = headerToken || queryToken;
     // Game-scoped HMAC, verified against the game's CURRENT feed-token version
     // (incrementing Game.feedTokenVersion revokes all outstanding tokens).
     // The version read happens AFTER the rate-limit gate so a bad-token flood
-    // can't drive DB reads. Legacy bare tokens still verify at version 0.
+    // can't drive DB reads. Header accepts every valid shape (legacy bare
+    // still verifies at v0); ?token= is short-lived-structured only — see
+    // assertFeedAuth (audit W0-01.4).
     const ctsVersion = await this.sports.getFeedTokenVersion(id);
-    if (!verifyFeedToken(id, token, ctsVersion)) {
-      throw new HttpException({ code: 'SPORTS_FEED_TOKEN_INVALID', message: 'Invalid or missing feed token' }, HttpStatus.UNAUTHORIZED);
-    }
+    this.assertFeedAuth(id, headerToken, queryToken, ctsVersion);
 
     return this.sports.ingestCtsSnapshot(id, (body || {}) as Record<string, unknown>, {
       source: 'cts-feed',
@@ -229,7 +281,8 @@ export class SportsBoardController {
    *
    * Auth: identical stateless game-scoped HMAC feed token as every other
    * console-facing endpoint on this controller (x-feed-token header
-   * preferred, ?token= fallback). Same rate-limit pool (40/10s per game,
+   * preferred; short-lived ?token= fallback — audit W0-01.4). Same
+   * rate-limit pool (40/10s per game,
    * keyed separately so a swim bridge and a water-polo bridge on two
    * different games never share a bucket).
    *
@@ -257,11 +310,10 @@ export class SportsBoardController {
       throw new HttpException({ code: 'SPORTS_SWIM_TIMING_RATE_LIMITED', message: 'Swim timing snapshot rate limit exceeded' }, HttpStatus.TOO_MANY_REQUESTS);
     }
 
-    const token = headerToken || queryToken;
+    // Header accepts every valid shape; ?token= is short-lived-structured
+    // only — see assertFeedAuth (audit W0-01.4).
     const swimVersion = await this.sports.getFeedTokenVersion(id);
-    if (!verifyFeedToken(id, token, swimVersion)) {
-      throw new HttpException({ code: 'SPORTS_FEED_TOKEN_INVALID', message: 'Invalid or missing feed token' }, HttpStatus.UNAUTHORIZED);
-    }
+    this.assertFeedAuth(id, headerToken, queryToken, swimVersion);
 
     return this.sports.ingestSwimTimingSnapshot(id, body || ({} as SwimTimingSnapshot), {
       source: 'swim-timing-feed',
@@ -296,17 +348,15 @@ export class SportsBoardController {
       throw new HttpException({ code: 'SPORTS_FEED_RATE_LIMITED', message: 'Feed rate limit exceeded' }, HttpStatus.TOO_MANY_REQUESTS);
     }
 
-    // Token in the X-Feed-Token header (preferred) or ?token= (for systems
-    // that can only configure a URL). Constant-time, game-scoped verification
-    // against the game's CURRENT feed-token version — incrementing
-    // Game.feedTokenVersion revokes every outstanding token for the game.
-    // The version read happens AFTER the rate-limit gate so a bad-token flood
-    // can't drive DB reads. Legacy bare tokens still verify at version 0.
-    const token = headerToken || queryToken;
+    // Token in the X-Feed-Token header (preferred) or ?token= (URL-only
+    // systems; short-lived structured tokens only — audit W0-01.4).
+    // Constant-time, game-scoped verification against the game's CURRENT
+    // feed-token version — incrementing Game.feedTokenVersion revokes every
+    // outstanding token for the game. The version read happens AFTER the
+    // rate-limit gate so a bad-token flood can't drive DB reads. Legacy bare
+    // tokens still verify at version 0 via the header.
     const feedVersion = await this.sports.getFeedTokenVersion(id);
-    if (!verifyFeedToken(id, token, feedVersion)) {
-      throw new HttpException({ code: 'SPORTS_FEED_TOKEN_INVALID', message: 'Invalid or missing feed token' }, HttpStatus.UNAUTHORIZED);
-    }
+    this.assertFeedAuth(id, headerToken, queryToken, feedVersion);
 
     const applied = await this.sports.ingestByFeed(id, body || {});
     return { ok: true, applied };
