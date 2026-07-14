@@ -343,6 +343,14 @@ jobs:
       - name: Install Playwright Chromium
         run: pnpm exec playwright install chromium --with-deps
 
+      - name: Build workspace packages (the API dev server imports @cms/* by package name)
+        # Same reason as build-and-test: each job is a fresh runner, and
+        # `nest start --watch` can't compile until @cms/* dist/ exists —
+        # without this the webServer boot dies on TS2307 "Cannot find
+        # module '@cms/api-types'" and Playwright times out (CLAUDE.md
+        # deploy-reliability failure mode #3, e2e-job edition).
+        run: pnpm --filter @cms/api-types --filter @cms/auth-core --filter @cms/ws-events --filter @cms/scoreboard-cts --filter @cms/signage-design build
+
       - name: Gate — Playwright collection must be real (audit W0-06)
         # A broken collection (config crash, stray Jest files, mass skip)
         # used to report "Total: 0 tests" while the job stayed green. The
