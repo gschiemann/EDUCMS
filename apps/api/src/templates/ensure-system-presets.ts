@@ -24,6 +24,75 @@ const ALL_PRESETS = [
   ...SPORTS_TEMPLATE_PRESETS,
   ...WORSHIP_TEMPLATE_PRESETS,
 ];
+
+// ─── Interim quarantine denylist (2026-07-13, audit W0-08) ───
+// The 2026-07-12 world-class audit named these EXTERNAL_HTML boards as
+// launch-blockers: visible dimension-placeholder content, confirmed clipping,
+// or a demo-only brand-licensing risk (the Domino's pilot pack, marked
+// "pilot-demo-only" in its CREDITS.txt). Until the real TemplateRelease
+// approval pipeline (TPL-002) exists, these are QUARANTINED — seeded/kept as
+// ARCHIVED so they never appear in a customer gallery, while any existing
+// playlist that references one keeps rendering (ARCHIVED preserves references,
+// exactly like the legacy-archive pass below). Matched by the EXTERNAL_HTML
+// zone's `defaultConfig.url` so it's robust to preset-id naming.
+//
+// Removing an entry here is a deliberate "this board passed review" decision —
+// pair it with the board actually being fixed. See
+// docs/research/2026-07-12-world-class-fullapp-audit/07-template-catalog-remediation.md.
+export const QUARANTINED_BOARD_URLS: ReadonlySet<string> = new Set([
+  // Dimension-placeholder boards
+  '/templates/signage/bar/05-now-pouring.html',
+  '/templates/signage/corporate/07-cafeteria.html',
+  '/templates/signage/fashion/01-lookbook-flagship.html',
+  '/templates/signage/fashion/02-editorial.html',
+  '/templates/signage/fashion/04-new-arrivals.html',
+  '/templates/signage/fashion/05-event-trunkshow.html',
+  '/templates/signage/fashion/07-shoppable-window.html',
+  '/templates/signage/fashion/08-campaign.html',
+  '/templates/signage/hospitality/01-lobby-welcome-flagship.html',
+  '/templates/signage/hospitality/02-concierge-board.html',
+  '/templates/signage/hospitality/04-pool-spa-day.html',
+  '/templates/signage/hospitality/07-group-welcome.html',
+  '/templates/signage/hospitality/10-brand-story.html',
+  '/templates/signage/menus-pos/03-daily-special.html',
+  '/templates/signage/qsr/01-drive-thru-flagship.html',
+  '/templates/signage/qsr/05-combos-deals.html',
+  '/templates/signage/qsr/06-beverages.html',
+  // Confirmed clipping candidates
+  '/templates/signage/qsr/02-counter-menu.html',
+  '/templates/signage/qsr/04-lto-promo.html',
+  '/templates/signage/hospitality/05-dining-tonight.html',
+  // Brand-licensing risk — Domino's pilot-demo-only asset pack
+  '/templates/signage/qsr/11-dominos-pizza-board.html',
+]);
+
+/** The EXTERNAL_HTML zone url for a preset, if it is a single-scene board. */
+function presetBoardUrl(preset: any): string | undefined {
+  const zones = preset?.zones;
+  if (!Array.isArray(zones)) return undefined;
+  for (const z of zones) {
+    const url = z?.defaultConfig?.url;
+    if (typeof url === 'string' && url) return url;
+  }
+  return undefined;
+}
+
+/** True when a preset is on the interim quarantine denylist. */
+function isQuarantinedPreset(preset: any): boolean {
+  const url = presetBoardUrl(preset);
+  return url != null && QUARANTINED_BOARD_URLS.has(url);
+}
+
+/** Preset ids that are quarantined (resolved from ALL_PRESETS at boot). */
+export const QUARANTINED_PRESET_IDS: ReadonlySet<string> = new Set(
+  ALL_PRESETS.filter(isQuarantinedPreset).map((p: any) => p.id as string),
+);
+
+/** URLs on the denylist that matched NO preset — a typo/stale-path guard for
+ *  the test below. Empty in a healthy tree. */
+export const QUARANTINED_URLS_WITHOUT_PRESET: ReadonlyArray<string> = [
+  ...QUARANTINED_BOARD_URLS,
+].filter((url) => !ALL_PRESETS.some((p: any) => presetBoardUrl(p) === url));
 const PRESET_VERTICAL: Map<string, string> = new Map();
 SYSTEM_TEMPLATE_PRESETS.forEach((p) => PRESET_VERTICAL.set(p.id, 'K12'));
 // 2026-05-02 — VenueOS launch verticals are K12 / GYM / RETAIL /
@@ -370,7 +439,9 @@ export async function ensureSystemPresets(prisma: PrismaService) {
             bgGradient: preset.bgGradient,
             bgImage: (preset as any).bgImage ?? null,
             isSystem: true,
-            status: 'ACTIVE' as any,
+            // Audit W0-08: a quarantined board is seeded ARCHIVED, never
+            // ACTIVE — "source exists" must not mean "published to customers."
+            status: (QUARANTINED_PRESET_IDS.has(preset.id) ? 'ARCHIVED' : 'ACTIVE') as any,
             tenantId: null,
             // Tag each preset with its vertical so the templates list
             // endpoint can filter it out for tenants in other verticals.
@@ -566,6 +637,29 @@ export async function ensureSystemPresets(prisma: PrismaService) {
       }
     } catch (e) {
       logger.warn(`Archive pass failed: ${(e as Error).message}`);
+    }
+
+    // ─── Quarantine pass (audit W0-08) ───
+    // Archive any board on the interim quarantine denylist that is still
+    // ACTIVE in this DB (an older seed activated it before the denylist
+    // existed). ARCHIVED hides it from the gallery without breaking any
+    // playlist that already references it — same non-destructive contract as
+    // the legacy-archive pass above.
+    if (QUARANTINED_PRESET_IDS.size > 0) {
+      try {
+        const res = await prisma.client.template.updateMany({
+          where: {
+            id: { in: [...QUARANTINED_PRESET_IDS] },
+            status: 'ACTIVE' as any,
+          },
+          data: { status: 'ARCHIVED' as any },
+        });
+        if (res.count > 0) {
+          logger.log(`Quarantined ${res.count} audit-flagged board(s) (placeholder/clipping/brand-licensing).`);
+        }
+      } catch (e) {
+        logger.warn(`Quarantine pass failed: ${(e as Error).message}`);
+      }
     }
 
     // ─── Same-name duplicate cleanup ───
