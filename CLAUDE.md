@@ -4,7 +4,7 @@
 
 **VenueOS** — a secure, real-time signage + emergency-alert CMS. Born in K-12 (interactive displays, digital signage, and life-safety lockdown / weather / evacuation alerts across thousands of screens) and now **multi-vertical**: K-12 districts (the beachhead + the emergency moat), live **sports venues** (Sprint 13 — scoreboards, ribbon boards, game presentation), and QSR / restaurant / retail / worship / corporate. The wedge: ONE platform that runs everyday signage **and** native life-safety **and** (in sports) full game presentation on the same screens — so the board earns its keep 5 days a week, not just on Friday night.
 
-> **READ FIRST — current state of the app:** `docs/research/2026-05-28-opus48-audit/00-MASTER-SYNTHESIS.md` is the canonical, code-verified status. New here? Start with `CONTRIBUTING.md`. Pre-launch April-2026 design docs in `docs/archive/` are HISTORICAL ONLY — ignore them.
+> **READ FIRST — current audit + remediation program (2026-07-12):** `docs/research/2026-07-12-world-class-fullapp-audit/VENUEOS-WORLD-CLASS-AI-DEVELOPER-BRIEF.md` is the self-contained execution brief for AI development agents — master remediation program + nine evidence appendices, code-verified against the full 21-section Standard Audit Surface (humans: `00-MASTER-REMEDIATION.md` in the same folder). Older background: `docs/research/2026-05-28-opus48-audit/00-MASTER-SYNTHESIS.md`. New here? Start with `CONTRIBUTING.md`. Pre-launch April-2026 design docs in `docs/archive/` are HISTORICAL ONLY — ignore them.
 
 Ambition: the default operating system for every screen a school, venue, or multi-location operator runs.
 
