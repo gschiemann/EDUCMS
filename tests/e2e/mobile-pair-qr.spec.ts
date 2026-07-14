@@ -24,6 +24,14 @@ test.describe('Mobile QR pairing', () => {
     await page.goto('/pair');
     await expect(page.getByRole('heading', { name: /pair a screen/i })).toBeVisible();
 
+    // The /pair page exposes window.__pairFromQrData from a mount effect —
+    // wait for it before calling (previously flaky: the evaluate raced the
+    // effect and threw "__pairFromQrData is not a function").
+    await page.waitForFunction(
+      () => typeof (window as unknown as { __pairFromQrData?: unknown }).__pairFromQrData === 'function',
+      { timeout: 10_000 },
+    );
+
     // Simulate a QR decoder firing with a URL-form payload (as the admin
     // "Scan instead" QR encodes it).
     await page.evaluate(() => {
