@@ -82,7 +82,7 @@ export function AiProviderRow() {
   }, []);
 
   // Resolve provider + model labels from catalog (so the row reads
-  // "Anthropic · Claude 3.5 Haiku" not "anthropic · claude-3-5-haiku-20241022").
+  // "Anthropic · Claude Haiku 4.5" not "anthropic · claude-haiku-4-5").
   const providerInfo = catalog?.find((p) => p.id === status?.provider);
   const modelInfo = providerInfo?.models.find((m) => m.id === status?.model);
 

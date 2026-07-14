@@ -31,7 +31,7 @@ import { randomUUID, createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
-import { dispatchAi, dispatchAiMessages, mapProviderQuotaError, type AiProvider, coerceProvider, defaultModelFor } from './ai-providers';
+import { dispatchAi, dispatchAiMessages, mapProviderQuotaError, type AiProvider, coerceProvider, defaultModelFor, healLegacyModelId } from './ai-providers';
 // Signage Concierge (2026-06-28) — the conversational intake brain. The PURE
 // module owns the persona/contract + defensive parsing; AiService.conciergeChat
 // orchestrates it through the SAME resolve-key/caps/audit plumbing as generate().
@@ -529,7 +529,10 @@ export class AiService {
           return {
             provider,
             apiKey,
-            model: typeof tenant.aiModel === 'string' ? tenant.aiModel : '',
+            // Heal retired/renamed saved ids (W0-03) — a tenant who saved a
+            // model the provider has since shut down must fall forward to
+            // its successor (or the provider default), never 404 forever.
+            model: healLegacyModelId(provider, tenant.aiModel),
             source: 'tenant',
           };
         } catch (e: any) {
@@ -3860,14 +3863,14 @@ export class AiService {
    * missing image leg.
    *
    *   - OpenAI (provider==='openai'): POST /v1/images/generations with
-   *     gpt-image-1 (falls back to dall-e-3 if the account lacks
-   *     gpt-image-1 access), n:1, base64 output. The orientation enum
-   *     (square/landscape/portrait) is carried as the dall-e-3 size
-   *     vocabulary; callOpenAiImage re-maps it to the TARGET model's
-   *     sizes (gpt-image-1 wants 1536x1024 / 1024x1536, NOT the dall-e-3
-   *     1792x1024 / 1024x1792 — sending those to gpt-image-1 400s).
+   *     gpt-image-2 (falls back to gpt-image-1 if the account lacks
+   *     gpt-image-2 access), n:1, base64 output. The orientation enum
+   *     (square/landscape/portrait) is carried as the legacy dall-e-3
+   *     size vocabulary; callOpenAiImage re-maps it to the gpt-image
+   *     sizes (1536x1024 / 1024x1536, NOT 1792x1024 / 1024x1792 —
+   *     sending those to the gpt-image family 400s).
    *   - Google (provider==='google'): Imagen via the Generative Language
-   *     API (models/imagen-3.0-generate-002:predict), base64 output.
+   *     API (models/imagen-4.0-generate-001:predict), base64 output.
    *   - Anthropic / platform-fallback: Anthropic has NO image model →
    *     graceful AI_IMAGE_UNAVAILABLE (NOT a 500). The whole point is it
    *     degrades exactly like the text features do.
@@ -4131,11 +4134,14 @@ export class AiService {
 
   /**
    * OpenAI image generation. POST /v1/images/generations with
-   * gpt-image-1 (the current image model); on a 404/400 that signals the
-   * account lacks gpt-image-1 access (it's gated behind org
-   * verification), fall back to dall-e-3 ONCE so an older account still
-   * works. Requests base64 (`response_format: b64_json`) so we never have
-   * to round-trip a temporary URL. 60s timeout — image gen is slow.
+   * gpt-image-2 (the current image model per the 2026-07 OpenAI model
+   * page — gpt-image-1/1.5 and dall-e-3 are all marked deprecated); on a
+   * 404/403/400-model-missing that signals the account lacks gpt-image-2
+   * access, fall back ONCE to gpt-image-1 (deprecated but still served)
+   * so an older account keeps working. dall-e-3 was dropped from the
+   * chain (W0-03): two dead-family fallbacks deep is theater. The
+   * gpt-image family always returns b64_json so we never round-trip a
+   * temporary URL. 60s timeout — image gen is slow.
    *
    * Throws the SHARED provider-error mapping (out-of-credit 402, BYOK
    * key-rejected, 429, generic) so the FE branches identically to text.
@@ -4145,22 +4151,15 @@ export class AiService {
     prompt: string,
     size: '1024x1024' | '1792x1024' | '1024x1792',
   ): Promise<Buffer> {
-    // The two OpenAI image models speak DIFFERENT size vocabularies, and
-    // they do NOT overlap on the non-square sizes:
-    //   gpt-image-1: 1024x1024 | 1536x1024 (landscape) | 1024x1536 (portrait)
-    //   dall-e-3:    1024x1024 | 1792x1024 (landscape) | 1024x1792 (portrait)
-    // The FE/enum carries the orientation as the DALL-E vocabulary
-    // (1792x1024 / 1024x1792). Sending those verbatim to gpt-image-1 makes
-    // it 400 with "Invalid size '1792x1024'…" — the live beta bug. So map
-    // the requested orientation to the size the TARGET model accepts.
-    const sizeForModel = (model: string): string => {
+    // The FE/enum still carries orientation in the legacy DALL-E size
+    // vocabulary (1792x1024 / 1024x1792). The gpt-image family rejects
+    // those exact strings with "Invalid size '1792x1024'…" — map the
+    // orientation to the sizes gpt-image-1/2 accept:
+    //   1024x1024 | 1536x1024 (landscape) | 1024x1536 (portrait)
+    const sizeForModel = (_model: string): string => {
       const landscape = size === '1792x1024';
       const portrait = size === '1024x1792';
-      if (model === 'gpt-image-1') {
-        return landscape ? '1536x1024' : portrait ? '1024x1536' : '1024x1024';
-      }
-      // dall-e-3 — the incoming enum is already its vocabulary.
-      return size;
+      return landscape ? '1536x1024' : portrait ? '1024x1536' : '1024x1024';
     };
     const attempt = async (model: string): Promise<{ ok: true; buf: Buffer } | { ok: false; status: number; body: string }> => {
       const body: Record<string, any> = {
@@ -4168,9 +4167,6 @@ export class AiService {
         prompt,
         n: 1,
         size: sizeForModel(model),
-        // gpt-image-1 ALWAYS returns b64_json and rejects response_format;
-        // dall-e-3 needs it explicitly to avoid a temporary URL.
-        ...(model === 'dall-e-3' ? { response_format: 'b64_json' } : {}),
       };
       const res = await fetch('https://api.openai.com/v1/images/generations', {
         method: 'POST',
@@ -4193,13 +4189,13 @@ export class AiService {
       return { ok: true, buf: Buffer.from(b64, 'base64') };
     };
 
-    let out = await attempt('gpt-image-1');
-    // Fallback: account doesn't have gpt-image-1 (org unverified) → 403/404,
+    let out = await attempt('gpt-image-2');
+    // Fallback: account doesn't have gpt-image-2 (org gating) → 403/404,
     // or the model id is rejected → 400 with a model-related message.
     if (!out.ok && (out.status === 404 || out.status === 403 ||
-        (out.status === 400 && /model|gpt-image-1|not.*(found|exist|access)/i.test(out.body)))) {
-      this.logger.warn(`OpenAI gpt-image-1 unavailable (${out.status}); falling back to dall-e-3.`);
-      out = await attempt('dall-e-3');
+        (out.status === 400 && /model|gpt-image-[12]|not.*(found|exist|access)/i.test(out.body)))) {
+      this.logger.warn(`OpenAI gpt-image-2 unavailable (${out.status}); falling back to gpt-image-1.`);
+      out = await attempt('gpt-image-1');
     }
     if (!out.ok) {
       this.throwImageProviderError('openai', out.status, out.body);
@@ -4215,11 +4211,21 @@ export class AiService {
    *   → predictions[0].bytesBase64Encoded
    *
    * The tenant's saved gemini-* model is a TEXT model, so we don't use it
-   * for image gen — we pin the current Imagen model
-   * (imagen-3.0-generate-002). Imagen exposes aspect ratios (1:1, 16:9,
-   * 9:16) rather than pixel sizes, so we map our size enum to the nearest
-   * ratio. Key goes in the x-goog-api-key HEADER (never the URL — Google
-   * echoes the URL in error bodies).
+   * for image gen — we pin the current Imagen model.
+   *
+   * W0-03 (2026-07-13): imagen-3.0-generate-002 was SHUT DOWN by Google on
+   * 2025-11-10 — this path had been 100% dead for eight months. Now pins
+   * imagen-4.0-generate-001 (same :predict wire shape, $0.04/image).
+   * ⚠ Google has ALREADY scheduled imagen-4.0-generate-001's shutdown for
+   * 2026-08-17, replacement gemini-3.1-flash-image — which is a DIFFERENT
+   * API shape (generateContent, not :predict), so that migration is a real
+   * code change, not an id swap. tools/check-model-retirements.cjs starts
+   * failing CI 60 days before that date.
+   *
+   * Imagen exposes aspect ratios (1:1, 16:9, 9:16) rather than pixel
+   * sizes, so we map our size enum to the nearest ratio. Key goes in the
+   * x-goog-api-key HEADER (never the URL — Google echoes the URL in error
+   * bodies).
    */
   private async callGoogleImage(
     apiKey: string,
@@ -4228,7 +4234,7 @@ export class AiService {
     size: '1024x1024' | '1792x1024' | '1024x1792',
   ): Promise<Buffer> {
     const aspectRatio = size === '1792x1024' ? '16:9' : size === '1024x1792' ? '9:16' : '1:1';
-    const imagenModel = 'imagen-3.0-generate-002';
+    const imagenModel = 'imagen-4.0-generate-001';
     const url =
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(imagenModel)}:predict`;
     const res = await fetch(url, {

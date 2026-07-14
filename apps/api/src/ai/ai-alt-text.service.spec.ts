@@ -290,7 +290,7 @@ describe('AiAltTextService (P1-2)', () => {
 
     expect(result).not.toBeNull();
     expect(result!.provider).toBe('anthropic');
-    expect(result!.model).toBe('claude-3-5-haiku-20241022');
+    expect(result!.model).toBe('claude-haiku-4-5');
     expect(result!.altText).toBe('A red brick schoolhouse.');
   });
 

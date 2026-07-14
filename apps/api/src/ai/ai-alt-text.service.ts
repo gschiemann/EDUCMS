@@ -10,7 +10,7 @@
  * Architecture:
  *   - Provider order: OpenAI 4o-mini vision (cheapest at $0.002/call)
  *     when an OPENAI_API_KEY is available on the tenant OR platform.
- *     Falls back to Anthropic claude-3-5-haiku with vision (similar
+ *     Falls back to Anthropic Claude Haiku 4.5 with vision (similar
  *     cost) when only an ANTHROPIC_API_KEY is configured.
  *   - Google/Gemini vision IS now supported (2026-05-29 audit §3/§4
  *     fix). The Gemini 2.x models are natively multimodal; we send the
@@ -49,7 +49,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { openAiKey } from './ai-key-cipher';
-import { mapProviderQuotaError, defaultModelFor } from './ai-providers';
+import { mapProviderQuotaError, defaultModelFor, healLegacyModelId } from './ai-providers';
 import { aiWindowCount, aiRecordEvent, resolveAiHourlyCap } from './ai-hourly-cap';
 
 /** Providers whose vision API alt-text supports. All three of the
@@ -64,7 +64,7 @@ type AltTextProvider = 'openai' | 'anthropic' | 'google';
 //   * gpt-4o-mini   $0.15/M in, $0.60/M out → ~$0.0010-0.0025/call
 //                   with image input (varies with image size; ~0.002
 //                   for a 1920px JPEG)
-//   * claude-3-5-haiku  $1.00/M in, $5.00/M out → ~$0.003-0.005/call
+//   * claude-haiku-4-5  $1.00/M in, $5.00/M out → ~$0.003-0.005/call
 const OPENAI_EST_COST_USD = 0.002;
 const ANTHROPIC_EST_COST_USD = 0.004;
 //   * gemini-2.5-flash  $0.075/M in, $0.30/M out → ~$0.0005-0.0015/call
@@ -199,7 +199,7 @@ export class AiAltTextService {
    *
    * All three catalog providers now support vision alt-text:
    *   - OpenAI    gpt-4o-mini (BYOK or platform OPENAI_API_KEY)
-   *   - Anthropic claude-3-5-haiku (BYOK or platform ANTHROPIC_API_KEY)
+   *   - Anthropic claude-haiku-4-5 (BYOK or platform ANTHROPIC_API_KEY)
    *   - Google    the tenant's gemini-* model (BYOK only — the platform
    *               fallback keys are OpenAI→Anthropic, never Google)
    *
@@ -239,12 +239,12 @@ export class AiAltTextService {
           // For Google we need the tenant's chosen gemini model (it
           // drives the :generateContent URL). OpenAI/Anthropic pin a
           // fixed cheap vision model below in generateImageAltText, so
-          // their model field here is unused. Fall back to the catalog
-          // default if the tenant somehow has no model saved.
+          // their model field here is unused. Saved ids are HEALED
+          // (W0-03): a retired/renamed id maps to its successor and an
+          // unknown id falls back to the catalog default — never send a
+          // dead model to the wire.
           const model = provider === 'google'
-            ? (typeof tenant.aiModel === 'string' && tenant.aiModel.trim()
-                ? tenant.aiModel.trim()
-                : defaultModelFor('google'))
+            ? (healLegacyModelId('google', tenant.aiModel) || defaultModelFor('google'))
             : '';
           return {
             resolved: {
@@ -464,7 +464,10 @@ export class AiAltTextService {
         altText = await this.callGoogle(resolved.apiKey, base64, mime, args.contextHint, model);
         estCost = GOOGLE_EST_COST_USD;
       } else {
-        model = 'claude-3-5-haiku-20241022';
+        // W0-03 (2026-07-13): claude-3-5-haiku-20241022 was RETIRED by
+        // Anthropic on 2026-02-19 — keep this pinned to the catalog's
+        // Standard-tier Anthropic id (see ai-providers.ts lock-step note).
+        model = 'claude-haiku-4-5';
         altText = await this.callAnthropic(resolved.apiKey, base64, mime, args.contextHint, model);
         estCost = ANTHROPIC_EST_COST_USD;
       }
@@ -657,7 +660,10 @@ export class AiAltTextService {
       } else if (resolved.provider === 'google') {
         model = resolved.model || defaultModelFor('google');
       } else {
-        model = 'claude-3-5-haiku-20241022';
+        // W0-03 (2026-07-13): claude-3-5-haiku-20241022 was RETIRED by
+        // Anthropic on 2026-02-19 — keep this pinned to the catalog's
+        // Standard-tier Anthropic id (see ai-providers.ts lock-step note).
+        model = 'claude-haiku-4-5';
       }
       raw = await this.callVisionRaw(
         resolved.provider,

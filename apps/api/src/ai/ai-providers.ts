@@ -146,19 +146,26 @@ function estCost(inputPer1M: number, outputPer1M: number): number {
 // REFRESH CADENCE: review this catalog roughly quarterly, or whenever a
 // provider's pricing page gets a refresh.
 //
-// 2026-05-30 staleness refresh (audit §3) — bumped the two aging
-// Anthropic dated IDs to their current-GA successors:
-//   • Balanced: claude-3-5-sonnet-20241022 → claude-sonnet-4-5-20250929
-//     (Claude Sonnet 4.5, GA 2025-09).
-//   • Premium:  claude-opus-4-20250514     → claude-opus-4-1-20250805
-//     (Claude Opus 4.1, GA 2025-08).
-// Standard stays on claude-3-5-haiku-20241022 — it's still GA, is the
-// cheapest vision-capable Anthropic model, and is the exact id the
-// alt-text vision path (ai-alt-text.service.ts) pins; keeping them in
-// lock-step avoids a Standard-tier price surprise on the platform key.
-// OpenAI (gpt-4o-mini / gpt-4.1 / gpt-5) and Google
-// (gemini-2.5-flash / gemini-2.0-flash / gemini-2.5-pro) ids are all
-// current GA as of this refresh and left unchanged.
+// 2026-07-13 dead-model purge (audit W0-03) — the 2026-05-30 refresh
+// aged badly; two catalog entries were serving 404s to customers:
+//   • claude-3-5-haiku-20241022 RETIRED 2026-02-19 (was the Anthropic
+//     DEFAULT — every Standard-tier Anthropic call died) → claude-haiku-4-5.
+//   • gemini-2.0-flash SHUT DOWN 2026-06-01 → replaced by
+//     gemini-3.5-flash (GA, free tier).
+//   • claude-opus-4-1-20250805 is deprecated and RETIRES 2026-08-05 (three
+//     weeks out) → claude-opus-4-6 ($5/$25 — a price DROP from 4.1's
+//     $15/$75). Balanced bumped claude-sonnet-4-5 → claude-sonnet-4-6
+//     (same price, current generation, identical request shape).
+//   • gemini-2.5-flash/pro PRICES corrected against the live pricing page
+//     (2.5-flash is $0.30/$2.50, not the $0.075/$0.30 we showed). Both are
+//     deprecated with a 2026-10-16 shutdown — still runnable + free-tier,
+//     kept until then; tools/check-model-retirements.cjs warns 60 days out.
+//   • gpt-5 is marked deprecated by OpenAI (no shutdown date published; the
+//     GPT-5.5/5.6 successor API ids are not verifiable from the public
+//     model page yet). It runs fine today — kept, tracked in the
+//     retirement checker; swap when the successor id is confirmed.
+// Alt-text vision (ai-alt-text.service.ts) pins the same Standard-tier
+// Anthropic id — keep them in lock-step (both claude-haiku-4-5 today).
 export const AI_PROVIDERS: AiProviderInfo[] = [
   {
     id: 'anthropic',
@@ -167,26 +174,26 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
     getKeyUrl: 'https://console.anthropic.com/settings/keys',
     models: [
       {
-        id: 'claude-3-5-haiku-20241022',
-        label: 'Standard — Claude 3.5 Haiku',
+        id: 'claude-haiku-4-5',
+        label: 'Standard — Claude Haiku 4.5',
         tagline: 'Best for everyday copy and announcements.',
-        inputPer1M: 0.80, outputPer1M: 4.00,
-        estCostPerCallUsd: estCost(0.80, 4.00),
+        inputPer1M: 1.00, outputPer1M: 5.00,
+        estCostPerCallUsd: estCost(1.00, 5.00),
         default: true,
       },
       {
-        id: 'claude-sonnet-4-5-20250929',
-        label: 'Balanced — Claude Sonnet 4.5',
+        id: 'claude-sonnet-4-6',
+        label: 'Balanced — Claude Sonnet 4.6',
         tagline: 'Better for longer copy.',
         inputPer1M: 3.00, outputPer1M: 15.00,
         estCostPerCallUsd: estCost(3.00, 15.00),
       },
       {
-        id: 'claude-opus-4-1-20250805',
-        label: 'Premium — Claude Opus 4.1',
+        id: 'claude-opus-4-6',
+        label: 'Premium — Claude Opus 4.6',
         tagline: 'Best for AI-generated template designs.',
-        inputPer1M: 15.00, outputPer1M: 75.00,
-        estCostPerCallUsd: estCost(15.00, 75.00),
+        inputPer1M: 5.00, outputPer1M: 25.00,
+        estCostPerCallUsd: estCost(5.00, 25.00),
       },
     ],
   },
@@ -236,27 +243,34 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
       //
       // 2.5-pro is gated behind paid tier on AI Studio — flagged in
       // its tagline so the operator knows before picking it.
+      // 2026-07-13 (W0-03): gemini-2.0-flash was SHUT DOWN by Google on
+      // 2026-06-01 — every call 404'd. Replaced with gemini-3.5-flash
+      // (current GA generation, free tier). 2.5-flash stays the default:
+      // it is deprecated (shutdown 2026-10-16, tracked in
+      // check-model-retirements.cjs) but remains the cheapest free-tier
+      // option until then. Prices below re-verified against
+      // ai.google.dev/gemini-api/docs/pricing on 2026-07-13.
       {
         id: 'gemini-2.5-flash',
         label: 'Standard — Gemini 2.5 Flash',
         tagline: 'Best for everyday copy and announcements. Free tier covers 1500 calls/day.',
-        inputPer1M: 0.075, outputPer1M: 0.30,
-        estCostPerCallUsd: estCost(0.075, 0.30),
+        inputPer1M: 0.30, outputPer1M: 2.50,
+        estCostPerCallUsd: estCost(0.30, 2.50),
         default: true,
       },
       {
-        id: 'gemini-2.0-flash',
-        label: 'Balanced — Gemini 2.0 Flash',
-        tagline: 'Older flash model — pick this if 2.5 is unavailable in your region.',
-        inputPer1M: 0.10, outputPer1M: 0.40,
-        estCostPerCallUsd: estCost(0.10, 0.40),
+        id: 'gemini-3.5-flash',
+        label: 'Balanced — Gemini 3.5 Flash',
+        tagline: 'Current-generation flash model. Free tier available.',
+        inputPer1M: 1.50, outputPer1M: 9.00,
+        estCostPerCallUsd: estCost(1.50, 9.00),
       },
       {
         id: 'gemini-2.5-pro',
         label: 'Premium — Gemini 2.5 Pro',
         tagline: 'Best for AI-generated template designs. Requires paid AI Studio tier.',
-        inputPer1M: 2.50, outputPer1M: 10.00,
-        estCostPerCallUsd: estCost(2.50, 10.00),
+        inputPer1M: 1.25, outputPer1M: 10.00,
+        estCostPerCallUsd: estCost(1.25, 10.00),
       },
     ],
   },
@@ -290,6 +304,46 @@ export function defaultModelFor(provider: AiProvider): string {
  */
 export function isKnownModel(provider: AiProvider, modelId: string): boolean {
   return !!getModelInfo(provider, modelId);
+}
+
+/**
+ * Legacy → current model aliases (audit W0-03, 2026-07-13).
+ *
+ * Tenants persist their chosen model id in Tenant.aiModel. When a provider
+ * retires a model, every tenant who saved it starts 404ing on EVERY
+ * generation until they happen to revisit settings — that is exactly how
+ * the retired claude-3-5-haiku default broke Standard-tier Anthropic
+ * calls fleet-wide. This map heals saved ids at resolution time.
+ */
+const LEGACY_MODEL_ALIASES: Record<AiProvider, Record<string, string>> = {
+  anthropic: {
+    'claude-3-5-haiku-20241022': 'claude-haiku-4-5',   // retired 2026-02-19
+    'claude-3-5-sonnet-20241022': 'claude-sonnet-4-6', // retired 2025-10-28
+    'claude-sonnet-4-5-20250929': 'claude-sonnet-4-6', // catalog bump 2026-07-13
+    'claude-opus-4-20250514': 'claude-opus-4-6',       // deprecated
+    'claude-opus-4-1-20250805': 'claude-opus-4-6',     // retires 2026-08-05
+  },
+  openai: {},
+  google: {
+    'gemini-1.5-flash': 'gemini-2.5-flash', // retired for new projects 2025
+    'gemini-1.5-pro': 'gemini-2.5-pro',
+    'gemini-2.0-flash': 'gemini-3.5-flash', // shut down 2026-06-01
+  },
+};
+
+/**
+ * Resolve a SAVED tenant model id to something runnable today:
+ *   - still in the catalog → unchanged;
+ *   - known legacy id → its current successor;
+ *   - anything else (typo, removed, unknown) → '' so dispatch falls back
+ *     to the provider default instead of sending a dead id to the wire.
+ * Never throws; '' is the safe value everywhere model is optional.
+ */
+export function healLegacyModelId(provider: AiProvider, modelId: unknown): string {
+  if (typeof modelId !== 'string' || !modelId.trim()) return '';
+  const id = modelId.trim();
+  if (isKnownModel(provider, id)) return id;
+  return LEGACY_MODEL_ALIASES[provider]?.[id] ?? '';
 }
 
 interface DispatchInput {

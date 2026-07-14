@@ -9,7 +9,7 @@
  * and get 3 options back, ranked. Pick → fills the target field.
  *
  * Backend: POST /api/v1/ai/generate (apps/api/src/ai/ai.service.ts).
- * Cost-capped at 30 calls/hour/tenant, 300 max_tokens, claude-3-5-haiku.
+ * Cost-capped at 30 calls/hour/tenant, 300 max_tokens, claude-haiku-4-5.
  *
  * Why this is THE differentiator:
  *   - Yodeck / Rise Vision / BrightSign: zero AI features.

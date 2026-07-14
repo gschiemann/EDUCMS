@@ -824,45 +824,46 @@ describe('AiService — AI image generation', () => {
     expect(details.promptLen).toBeGreaterThan(0);
   });
 
-  // REGRESSION (live beta 2026-06-26): the FE/enum carries orientation as
-  // the DALL-E size vocabulary (1792x1024 / 1024x1792), but gpt-image-1
-  // ONLY accepts 1024x1024 / 1536x1024 / 1024x1536 and 400s on a DALL-E
-  // size ("Invalid size '1792x1024'…"). callOpenAiImage must re-map the
-  // requested orientation to the gpt-image-1 vocabulary before sending.
-  it('OpenAI gpt-image-1 → landscape 1792x1024 is re-mapped to 1536x1024 in the request body', async () => {
+  // REGRESSION (live beta 2026-06-26; W0-03 2026-07-13): the FE/enum
+  // carries orientation as the legacy DALL-E size vocabulary (1792x1024 /
+  // 1024x1792), but the gpt-image family ONLY accepts 1024x1024 /
+  // 1536x1024 / 1024x1536 and 400s on a DALL-E size ("Invalid size
+  // '1792x1024'…"). callOpenAiImage must re-map the requested orientation
+  // to the gpt-image vocabulary before sending.
+  it('OpenAI gpt-image-2 → landscape 1792x1024 is re-mapped to 1536x1024 in the request body', async () => {
     tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'gpt-4o-mini' });
     jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-test');
     fetchSpy.mockResolvedValue(okJson({ data: [{ b64_json: TINY_PNG_B64 }] }));
     const { service } = buildService(makeFakeRedisClient());
     await service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'wide stadium banner', size: '1792x1024' });
     const reqBody = JSON.parse(String(fetchSpy.mock.calls[0][1].body));
-    expect(reqBody.model).toBe('gpt-image-1');
-    expect(reqBody.size).toBe('1536x1024'); // gpt-image-1 vocabulary, NOT the DALL-E 1792x1024
+    expect(reqBody.model).toBe('gpt-image-2');
+    expect(reqBody.size).toBe('1536x1024'); // gpt-image vocabulary, NOT the DALL-E 1792x1024
   });
 
-  it('OpenAI gpt-image-1 → portrait 1024x1792 is re-mapped to 1024x1536 in the request body', async () => {
+  it('OpenAI gpt-image-2 → portrait 1024x1792 is re-mapped to 1024x1536 in the request body', async () => {
     tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'gpt-4o-mini' });
     jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-test');
     fetchSpy.mockResolvedValue(okJson({ data: [{ b64_json: TINY_PNG_B64 }] }));
     const { service } = buildService(makeFakeRedisClient());
     await service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'tall poster', size: '1024x1792' });
     const reqBody = JSON.parse(String(fetchSpy.mock.calls[0][1].body));
-    expect(reqBody.size).toBe('1024x1536'); // gpt-image-1 vocabulary, NOT the DALL-E 1024x1792
+    expect(reqBody.size).toBe('1024x1536'); // gpt-image vocabulary, NOT the DALL-E 1024x1792
   });
 
-  it('OpenAI dall-e-3 fallback → keeps the DALL-E size vocabulary (1792x1024) it actually accepts', async () => {
+  it('OpenAI gpt-image-1 fallback → fires when gpt-image-2 is unavailable, same gpt-image sizes', async () => {
     tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'gpt-4o-mini' });
     jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-test');
-    // First call (gpt-image-1) 404s "model not found" → triggers the dall-e-3 fallback.
+    // First call (gpt-image-2) 404s "model not found" → triggers the gpt-image-1 fallback.
     fetchSpy
-      .mockResolvedValueOnce(errResp(404, JSON.stringify({ error: { message: 'The model gpt-image-1 does not exist' } })))
+      .mockResolvedValueOnce(errResp(404, JSON.stringify({ error: { message: 'The model gpt-image-2 does not exist' } })))
       .mockResolvedValueOnce(okJson({ data: [{ b64_json: TINY_PNG_B64 }] }));
     const { service } = buildService(makeFakeRedisClient());
     await service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'wide banner', size: '1792x1024' });
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     const fallbackBody = JSON.parse(String(fetchSpy.mock.calls[1][1].body));
-    expect(fallbackBody.model).toBe('dall-e-3');
-    expect(fallbackBody.size).toBe('1792x1024'); // valid for dall-e-3 — must NOT be re-mapped
+    expect(fallbackBody.model).toBe('gpt-image-1');
+    expect(fallbackBody.size).toBe('1536x1024'); // gpt-image vocabulary for both chain models
   });
 
   it('CONTRIBUTOR role → generated image lands in the review queue (PENDING_APPROVAL)', async () => {
@@ -901,7 +902,7 @@ describe('AiService — AI image generation', () => {
     const { service, storage } = buildService(makeFakeRedisClient());
     const res = await service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'sunset over a stadium', size: '1792x1024' });
     const calledUrl = String(fetchSpy.mock.calls[0][0]);
-    expect(calledUrl).toContain('imagen-3.0-generate-002:predict');
+    expect(calledUrl).toContain('imagen-4.0-generate-001:predict');
     // Aspect ratio mapped from the landscape size.
     const reqBody = JSON.parse(String(fetchSpy.mock.calls[0][1].body));
     expect(reqBody.parameters.aspectRatio).toBe('16:9');
@@ -1140,7 +1141,8 @@ describe('AiService — generateSignageBoard Wave 3 background imagery', () => {
     tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'gpt-4o-mini' });
     jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-openai-test');
     dispatchMock.mockResolvedValue({ raw: boardSpec({ mode: 'generate', prompt: 'a packed arena' }) });
-    // gpt-image-1 AND the dall-e-3 fallback both 500 → callOpenAiImage throws,
+    // gpt-image-2 500s (a 500 does NOT trigger the gpt-image-1 fallback —
+    // only 404/403/400-model-missing do) → callOpenAiImage throws,
     // generateBoardBackground swallows it → board rides the gradient.
     fetchSpy.mockResolvedValue({ ok: false, status: 500, json: async () => ({}), text: async () => 'upstream boom' } as any);
     const { service } = buildService(makeFakeRedisClient());
@@ -1188,7 +1190,7 @@ describe('AiService — refineSignageBoard keeps every scene of a SET', () => {
     // BYOK Anthropic tenant → resolveProviderKey returns a usable provider so
     // the refine path runs end-to-end (dispatchAi is mocked). openAiKey() is the
     // generic decrypt for every provider's sealed key (see resolveProviderKey).
-    tenantsById.set('t1', { id: 't1', aiProvider: 'anthropic', aiKeyEncrypted: 'enc', aiModel: 'claude-3-5-haiku' });
+    tenantsById.set('t1', { id: 't1', aiProvider: 'anthropic', aiKeyEncrypted: 'enc', aiModel: 'claude-haiku-4-5' });
     jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('sk-ant-byok');
   });
 
