@@ -281,6 +281,19 @@ export class EfficiencyMetricsService implements OnModuleInit {
   /** Check egress anomaly and return one if it should fire this hour. */
   shouldAlertAnomaly(): { ratio: number; currentHourGb: number } | null {
     const currentHourBytes = this.hourlyEgressBytes[this.currentHourIndex];
+
+    // ── Absolute floor (2026-07-16 — the "This hour: 0 GB, 4.68x baseline"
+    // email). The baseline is the average of the NON-ZERO trailing hours, so
+    // on an idle/test fleet it's a few hundred KB — and any dashboard session
+    // is instantly "4-5x baseline" while moving less than a megabyte. A ratio
+    // alarm with no magnitude gate turns kilobytes into pages. Require the
+    // current hour to move real bytes before the ratio can alert. Tunable via
+    // EGRESS_ANOMALY_MIN_GB (default 1 GB — the incident class this monitor
+    // exists for, the 2026-05-23 cache-miss storm, was 5.79 GB).
+    const minGbRaw = parseFloat(process.env.EGRESS_ANOMALY_MIN_GB || '1');
+    const floorBytes = (Number.isFinite(minGbRaw) && minGbRaw >= 0 ? minGbRaw : 1) * 1e9;
+    if (currentHourBytes < floorBytes) return null;
+
     const trailing = [...this.hourlyEgressBytes];
     trailing.splice(this.currentHourIndex, 1);
     const baseline = trailing.filter(v => v > 0);

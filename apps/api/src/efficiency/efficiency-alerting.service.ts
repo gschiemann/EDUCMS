@@ -104,20 +104,40 @@ export class EfficiencyAlertingService implements OnModuleInit, OnModuleDestroy 
     }
   }
 
-  private async sendAlertEmail(subject: string, body: string, kind: string) {
-    // Find all SUPER_ADMIN users to notify
-    let superAdmins: Array<{ email: string }> = [];
+  /**
+   * Who receives platform-ops alerts.
+   *
+   * 2026-07-16 — egress alerts landed in the operator's WORK inbox because his
+   * work-email TEST user carries SUPER_ADMIN, and this used to mail every
+   * SUPER_ADMIN row. Platform cost telemetry is owner-ops mail, not
+   * role-derived mail: set PLATFORM_ALERT_EMAILS (comma-separated) and alerts
+   * go ONLY there. When unset, we fall back to the SUPER_ADMIN sweep so a
+   * deploy that predates the env var keeps alerting SOMEONE rather than
+   * going silent.
+   */
+  private async resolveAlertRecipients(): Promise<string[]> {
+    const configured = (process.env.PLATFORM_ALERT_EMAILS || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.includes('@'));
+    if (configured.length > 0) return [...new Set(configured)];
+
     try {
-      superAdmins = await this.prisma.client.user.findMany({
+      const superAdmins = await this.prisma.client.user.findMany({
         where: { role: 'SUPER_ADMIN' as any },
         select: { email: true },
       });
+      return superAdmins.map((a: { email: string }) => a.email);
     } catch (err: any) {
       this.logger.warn(`Failed to fetch SUPER_ADMIN list for alert: ${err?.message}`);
-      return;
+      return [];
     }
+  }
 
-    for (const admin of superAdmins) {
+  private async sendAlertEmail(subject: string, body: string, kind: string) {
+    const recipients = await this.resolveAlertRecipients();
+    for (const email of recipients) {
+      const admin = { email };
       try {
         let row: any;
         try {
