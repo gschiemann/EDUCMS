@@ -86,10 +86,16 @@ const INDUSTRIES: Industry[] = [
       'Push an LTO or combo to every store at once',
       'Runs on the screens you already own',
     ],
+    // 2026-07-16 (audit S3) — the QSR menu boards (drive-thru / counter /
+    // combos / beverages) are all QUARANTINED (placeholder / clipping), so the
+    // public homepage hero must NOT point at one. Order-Ready is a real,
+    // non-quarantined QSR board that renders clean. staticImage dropped: the
+    // only pre-rendered JPG was a snapshot of the quarantined drive-thru board
+    // (it shows the placeholder too), so mobile falls back to the clean
+    // gradient+label card instead.
     template: {
-      src: '/templates/signage/qsr/01-drive-thru-flagship.html',
-      staticImage: '/demo/templates/qsr-drive-thru.jpg',
-      label: 'Drive-Thru Menu Board',
+      src: '/templates/signage/qsr/03-order-ready.html',
+      label: 'Order-Ready Board',
     },
   },
   {
@@ -137,10 +143,15 @@ const INDUSTRIES: Industry[] = [
       'Runway and lookbook layouts, recolored to your brand',
       'Fitting-room and window displays from one dashboard',
     ],
+    // 2026-07-16 (audit S3) — the lookbook / editorial / campaign fashion
+    // flagships are QUARANTINED (placeholder "Drop look photo" boxes), so the
+    // public homepage hero repoints to Fitting-Room, a real non-quarantined
+    // fashion board that renders clean. staticImage dropped: its only
+    // pre-rendered JPG was a snapshot of the quarantined lookbook (placeholder
+    // and all), so mobile falls back to the clean gradient+label card.
     template: {
-      src: '/templates/signage/fashion/01-lookbook-flagship.html',
-      staticImage: '/demo/templates/fashion-lookbook.jpg',
-      label: 'Boutique Lookbook',
+      src: '/templates/signage/fashion/06-fitting-room.html',
+      label: 'Fitting-Room Board',
     },
   },
   {

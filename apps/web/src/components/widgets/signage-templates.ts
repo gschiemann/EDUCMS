@@ -3,6 +3,8 @@
 // templates. Backs the "Industry Signage Template" widget picker tile
 // and its template dropdown in the builder Properties panel.
 
+import { QUARANTINED_BOARD_URLS } from '@cms/api-types';
+
 export interface SignageTemplate {
   /** matches the system-presets.ts preset id */
   id: string;
@@ -147,3 +149,15 @@ export const SIGNAGE_TEMPLATES: SignageTemplate[] = [
   { id: "preset-school-ms-lobby-2", name: "Middle School · Lobby Welcome — Light", group: "Middle School", url: "/templates/school/ms-lobby-v2.html" },
   { id: "preset-school-ms-lobby-3", name: "Middle School · Lobby Welcome — Dark", group: "Middle School", url: "/templates/school/ms-lobby-v3.html" },
 ];
+
+// Boards the operator may OFFER as a NEW choice in the builder's "Industry
+// Signage" picker. Quarantined boards (audit W0-08 — placeholder / clipping /
+// brand-licensing risk) are filtered out against the SAME shared denylist the
+// API seeds ARCHIVED, so a quarantined board can never be selected and
+// published to a live screen. `SIGNAGE_TEMPLATES` stays the FULL catalog on
+// purpose — it's still used to resolve the display name of a board a legacy
+// playlist already references, which must keep rendering. See
+// `@cms/api-types` (quarantine.ts) for the single source of truth.
+export const SELECTABLE_SIGNAGE_TEMPLATES: SignageTemplate[] = SIGNAGE_TEMPLATES.filter(
+  (t) => !QUARANTINED_BOARD_URLS.has(t.url),
+);

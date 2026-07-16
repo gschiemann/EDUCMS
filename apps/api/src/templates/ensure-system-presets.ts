@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { QUARANTINED_BOARD_URLS } from '@cms/api-types';
 import type { PrismaService } from '../prisma/prisma.service';
 import { SYSTEM_TEMPLATE_PRESETS } from './system-presets';
 import { FITNESS_TEMPLATE_PRESETS } from './fitness-presets';
@@ -36,35 +37,16 @@ const ALL_PRESETS = [
 // exactly like the legacy-archive pass below). Matched by the EXTERNAL_HTML
 // zone's `defaultConfig.url` so it's robust to preset-id naming.
 //
-// Removing an entry here is a deliberate "this board passed review" decision —
+// The canonical URL list now lives in `@cms/api-types` (`quarantine.ts`) so the
+// web layer (builder "Industry Signage" picker + public homepage) filters
+// against the EXACT same set — one source of truth that can never drift. We
+// re-export it here so every existing API consumer of
+// `QUARANTINED_BOARD_URLS` keeps working unchanged (byte-identical Set).
+//
+// Removing an entry there is a deliberate "this board passed review" decision —
 // pair it with the board actually being fixed. See
 // docs/research/2026-07-12-world-class-fullapp-audit/07-template-catalog-remediation.md.
-export const QUARANTINED_BOARD_URLS: ReadonlySet<string> = new Set([
-  // Dimension-placeholder boards
-  '/templates/signage/bar/05-now-pouring.html',
-  '/templates/signage/corporate/07-cafeteria.html',
-  '/templates/signage/fashion/01-lookbook-flagship.html',
-  '/templates/signage/fashion/02-editorial.html',
-  '/templates/signage/fashion/04-new-arrivals.html',
-  '/templates/signage/fashion/05-event-trunkshow.html',
-  '/templates/signage/fashion/07-shoppable-window.html',
-  '/templates/signage/fashion/08-campaign.html',
-  '/templates/signage/hospitality/01-lobby-welcome-flagship.html',
-  '/templates/signage/hospitality/02-concierge-board.html',
-  '/templates/signage/hospitality/04-pool-spa-day.html',
-  '/templates/signage/hospitality/07-group-welcome.html',
-  '/templates/signage/hospitality/10-brand-story.html',
-  '/templates/signage/menus-pos/03-daily-special.html',
-  '/templates/signage/qsr/01-drive-thru-flagship.html',
-  '/templates/signage/qsr/05-combos-deals.html',
-  '/templates/signage/qsr/06-beverages.html',
-  // Confirmed clipping candidates
-  '/templates/signage/qsr/02-counter-menu.html',
-  '/templates/signage/qsr/04-lto-promo.html',
-  '/templates/signage/hospitality/05-dining-tonight.html',
-  // Brand-licensing risk — Domino's pilot-demo-only asset pack
-  '/templates/signage/qsr/11-dominos-pizza-board.html',
-]);
+export { QUARANTINED_BOARD_URLS };
 
 /** The EXTERNAL_HTML zone url for a preset, if it is a single-scene board. */
 function presetBoardUrl(preset: any): string | undefined {

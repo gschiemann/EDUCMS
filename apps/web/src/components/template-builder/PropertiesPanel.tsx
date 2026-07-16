@@ -136,7 +136,7 @@ import { DEFAULTS as HS_ZINE_DEFAULTS } from '@/components/widgets/hs/HsZineWidg
 // Replaces the plain text 'Time' / 'Date' inputs in HS landscape
 // editors so operators get a dropdown instead of a free-text field.
 import { US_TIMEZONE_OPTIONS } from '@/components/widgets/hs/useHsLiveClock';
-import { SIGNAGE_TEMPLATES } from '@/components/widgets/signage-templates';
+import { SIGNAGE_TEMPLATES, SELECTABLE_SIGNAGE_TEMPLATES } from '@/components/widgets/signage-templates';
 // 2026-05-07 — Holiday lobby pack static field schema. Each variant +
 // grade combo (18 total) has a hand-extracted [data-field] schema so
 // PropertiesPanel can render editable TextFields synchronously when an
@@ -2558,9 +2558,13 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
             className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
           >
             <option value="">— pick a template —</option>
-            {Array.from(new Set(SIGNAGE_TEMPLATES.map((t) => t.group))).map((group) => (
+            {/* Offer only NON-quarantined boards (audit W0-08). `currentTpl`
+                above still resolves a legacy quarantined board's name for the
+                collapsed "Template: …" summary, but a quarantined URL is never
+                a selectable NEW choice here. */}
+            {Array.from(new Set(SELECTABLE_SIGNAGE_TEMPLATES.map((t) => t.group))).map((group) => (
               <optgroup key={group} label={group}>
-                {SIGNAGE_TEMPLATES.filter((t) => t.group === group).map((t) => (
+                {SELECTABLE_SIGNAGE_TEMPLATES.filter((t) => t.group === group).map((t) => (
                   <option key={t.id} value={t.url}>{t.name}</option>
                 ))}
               </optgroup>

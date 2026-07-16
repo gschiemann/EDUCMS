@@ -12,7 +12,7 @@ import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { SYSTEM_TEMPLATE_PRESETS } from './system-presets';
 import { FITNESS_TEMPLATE_PRESETS } from './fitness-presets';
-import { verticalMatchOr } from './ensure-system-presets';
+import { verticalMatchOr, QUARANTINED_PRESET_IDS } from './ensure-system-presets';
 import { AiService, sanitizeTouchTemplate } from '../ai/ai.service';
 import { parseGuidedIntake } from '../ai/guided-intake';
 import { sanitizeDesignerHtml, designerKillSwitchOn } from '../ai/designer-prompt';
@@ -1959,6 +1959,19 @@ export class TemplatesController {
     @Param('presetId') presetId: string,
     @Body(new ZodValidationPipe(TemplateNameOnlySchema)) body: TemplateNameOnlyInput,
   ) {
+    // Quarantine gate (audit W0-08 / S16). A quarantined preset is seeded/kept
+    // ARCHIVED so it never shows in the gallery — but the ARCHIVED row still
+    // exists with `isSystem: true`, and the in-memory preset packs still carry
+    // the definition, so a known/guessable preset id would otherwise clone it
+    // into a live ACTIVE tenant template. Reject BEFORE either the DB or the
+    // in-memory clone path runs (both resolve the same `presetId`).
+    if (QUARANTINED_PRESET_IDS.has(presetId)) {
+      throw new HttpException(
+        { code: 'TEMPLATE_NOT_AVAILABLE', message: 'This template is not available' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
     // Try database first (seeded system templates)
     let source = await this.prisma.client.template.findFirst({
       where: { id: presetId, isSystem: true },
