@@ -19,6 +19,34 @@ import {
 import { sealCredentials, openCredentials } from './creds-cipher';
 import { safeFetch, validatePublicUrl, SsrfError } from '../branding/safe-fetch';
 
+/** True when a stored externalId is itself a playable http(s) URL.
+ *  Manually-pasted YouTube/Twitch/Vimeo/HLS channels persist the raw
+ *  URL in externalId; preset (public-broadcaster) channels store a
+ *  slug id here instead, so we must never treat those as playback URLs. */
+function isHttpUrl(value: unknown): value is string {
+  return typeof value === 'string' && /^https?:\/\//i.test(value.trim());
+}
+
+/**
+ * The URL the player should actually load for a channel.
+ *
+ * Launch-audit S1 fix (2026-07-16): manually-pasted iframe channels
+ * (YouTube/Twitch/Vimeo) historically persisted the URL ONLY into
+ * `externalId`, leaving `playbackUrl` null — so the picker copied an
+ * undefined playbackUrl/embedUrl into the widget config and the
+ * StreamingWidget rendered "No channel selected". Fall back to
+ * `externalId` whenever it holds a real URL so BOTH already-saved
+ * (buggy) channels and newly-saved ones resolve to a playable URL.
+ */
+function effectivePlaybackUrl(ch: {
+  playbackUrl?: string | null;
+  externalId?: string | null;
+}): string | undefined {
+  if (ch.playbackUrl) return ch.playbackUrl;
+  if (isHttpUrl(ch.externalId)) return ch.externalId;
+  return undefined;
+}
+
 @Injectable()
 export class StreamingService {
   constructor(private readonly prisma: PrismaService) {}
@@ -213,7 +241,9 @@ export class StreamingService {
       description: c.description || undefined,
       thumbnailUrl: c.thumbnailUrl || undefined,
       category: c.category || undefined,
-      playbackUrl: c.playbackUrl || undefined,
+      // S1 fix: fall back to externalId for manually-pasted iframe
+      // channels whose URL was only ever stored in externalId.
+      playbackUrl: effectivePlaybackUrl(c),
       playbackType: c.playbackType || undefined,
       allowAdOverlay: c.allowAdOverlay,
       status: c.status,
@@ -286,8 +316,15 @@ export class StreamingService {
       where: { id: channelId, tenantId },
     });
     if (!ch) throw new NotFoundException('Channel not found.');
+    // S1 fix: resolve the effective URL (falls back to externalId for
+    // manually-pasted iframe channels). For iframe providers this same
+    // URL is the embed URL — expose it explicitly so a `/play` consumer
+    // doesn't have to re-derive it.
+    const playbackUrl = effectivePlaybackUrl(ch);
     return {
-      playbackUrl: ch.playbackUrl,
+      playbackUrl,
+      embedUrl: ch.playbackType === 'iframe' ? playbackUrl : undefined,
+      externalId: ch.externalId,
       playbackType: ch.playbackType,
       title: ch.title,
       allowAdOverlay: ch.allowAdOverlay,

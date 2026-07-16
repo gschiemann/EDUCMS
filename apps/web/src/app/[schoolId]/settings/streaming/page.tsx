@@ -767,7 +767,14 @@ function ChannelPickerModal({ connection, onClose, onChanged }: {
       connectionId: connection.id,
       externalId: externalId.slice(0, 250),
       title: manualTitle || manualUrl.slice(0, 80),
-      playbackUrl: playbackType === 'iframe' ? undefined : manualUrl,
+      // S1 fix (2026-07-16): persist the pasted URL into playbackUrl for
+      // iframe channels too. Previously this was `undefined` for iframe,
+      // leaving the URL only in externalId — the picker then copied an
+      // undefined playbackUrl/embedUrl into the widget and it rendered
+      // "No channel selected". The StreamingWidget/IframeStream normalize
+      // a raw YouTube/Twitch/Vimeo watch URL into its embed form, so the
+      // full URL is exactly what the iframe path needs.
+      playbackUrl: manualUrl,
       playbackType,
       kind: 'LIVE',
     });
