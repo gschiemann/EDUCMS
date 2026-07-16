@@ -284,6 +284,94 @@ describe('AiService — P1-14 Redis-backed rate limits', () => {
   });
 });
 
+// ── S5 (2026-07-16) — economic-model safety: a configured-but-unreadable ──
+// BYOK key must NEVER silently fall through to the platform (Tier-1) key.
+// The old resolveProviderKey caught a decrypt failure, logged it, and
+// returned the platform key + cheapest model — quietly spending VenueOS's
+// Tier-1 budget on the tenant's Tier-2/BYOK action while its comment claimed
+// the operator would see "AI is not configured" (FALSE whenever
+// ANTHROPIC_API_KEY is set, which it is for the Concierge). Now every SPEND
+// path throws an actionable AI_KEY_UNREADABLE; only a tenant that NEVER
+// configured a key falls back to platform; the status READ (getUsage) stays
+// tolerant so the settings page keeps rendering.
+describe('AiService — S5 BYOK unreadable-key must not spend platform (Tier-1)', () => {
+  beforeEach(() => {
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.AI_FREE_TIER_CAP;
+    tenantsById.clear();
+    auditRows.length = 0;
+    dispatchMock.mockReset();
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('BYOK configured + decrypt throws → AI_KEY_UNREADABLE (503), NO platform provider call', async () => {
+    // The trap: a BYOK key IS saved, and the platform key IS set (Concierge).
+    tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'gpt-4o-mini' });
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockImplementation(() => {
+      throw new Error('decrypt failed — DEVICE_SECRET_KEY rotated');
+    });
+    dispatchMock.mockResolvedValue({ raw: JSON.stringify([{ text: 'should never run' }]) });
+    const { service } = buildService(makeFakeRedisClient());
+
+    let caught: any;
+    try {
+      await service.generate({ tenantId: 't1', intent: 'announcement', context: 'spring sale' });
+    } catch (e) { caught = e; }
+    expect(caught).toBeDefined();
+    expect(caught.getStatus()).toBe(503);
+    expect(caught.getResponse()).toMatchObject({ code: 'AI_KEY_UNREADABLE' });
+    // THE ASSERTION THAT MATTERS: the provider was NEVER called on the
+    // platform key — no silent Tier-1 spend.
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+
+  it('BYOK key present but provider unknown/legacy → AI_KEY_UNREADABLE, NO platform call', async () => {
+    tenantsById.set('t1', { id: 't1', aiProvider: 'some-legacy-provider', aiKeyEncrypted: 'enc', aiModel: null });
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    dispatchMock.mockResolvedValue({ raw: JSON.stringify([{ text: 'should never run' }]) });
+    const { service } = buildService(makeFakeRedisClient());
+
+    let caught: any;
+    try {
+      await service.generate({ tenantId: 't1', intent: 'announcement', context: 'spring sale' });
+    } catch (e) { caught = e; }
+    expect(caught).toBeDefined();
+    expect(caught.getStatus()).toBe(503);
+    expect(caught.getResponse()).toMatchObject({ code: 'AI_KEY_UNREADABLE' });
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+
+  it('NO BYOK key configured + platform key set → platform fallback STILL works (unchanged)', async () => {
+    tenantsById.set('t1', { id: 't1', aiProvider: null, aiKeyEncrypted: null, aiModel: null });
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    dispatchMock.mockResolvedValue({ raw: JSON.stringify([{ text: 'Spring sale starts today.' }]) });
+    const { service } = buildService(makeFakeRedisClient());
+
+    const res = await service.generate({ tenantId: 't1', intent: 'announcement', context: 'spring sale' });
+    // Platform fallback is intact for a tenant that never configured a key.
+    expect(res.options.length).toBeGreaterThan(0);
+    expect(dispatchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('getUsage stays tolerant when a BYOK key is unreadable (status read never throws)', async () => {
+    tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'gpt-4o-mini' });
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockImplementation(() => {
+      throw new Error('decrypt failed');
+    });
+    const { service } = buildService(makeFakeRedisClient());
+    // Must NOT throw — the settings status endpoint reports keyHealthy
+    // separately; a read spends nothing.
+    const usage = await service.getUsage('t1');
+    expect(usage).toBeDefined();
+    // Tolerant fall-through to the platform snapshot (the pre-S5 behaviour).
+    expect(usage.source).toBe('platform');
+  });
+});
+
 // ── Slice 1c (2026-06-16) — 3-candidate "pick-a-winner" generation ──
 // generateTouchTemplateCandidates fans out N drafts with diversified
 // design-direction seeds, returns sanitized drafts (NOT persisted), and
@@ -968,6 +1056,28 @@ describe('AiService — AI image generation', () => {
     await expect(service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: '   ' }))
       .rejects.toMatchObject({ status: 400 });
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  // S5 (2026-07-16) — a BYOK image tenant whose key can't be decrypted must
+  // NOT silently fall through to the platform key. generateImage() throws
+  // AI_KEY_UNREADABLE and never touches the provider / storage / DB.
+  it('S5: BYOK image tenant + decrypt throws → AI_KEY_UNREADABLE, no fetch/upload/asset', async () => {
+    tenantsById.set('t1', { id: 't1', aiProvider: 'openai', aiKeyEncrypted: 'enc', aiModel: 'gpt-4o-mini' });
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-platform'; // platform key set — the trap
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockImplementation(() => {
+      throw new Error('decrypt failed');
+    });
+    const { service, storage } = buildService(makeFakeRedisClient());
+    let caught: any;
+    try {
+      await service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'a blue mascot' });
+    } catch (e) { caught = e; }
+    expect(caught).toBeDefined();
+    expect(caught.getStatus()).toBe(503);
+    expect(caught.getResponse()).toMatchObject({ code: 'AI_KEY_UNREADABLE' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(storage.upload).not.toHaveBeenCalled();
+    expect(prismaMock.client.asset.create).not.toHaveBeenCalled();
   });
 });
 

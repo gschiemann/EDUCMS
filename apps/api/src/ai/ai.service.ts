@@ -498,7 +498,11 @@ export class AiService {
    * trip. BYOK tenants get used=0/cap=null.
    */
   async getUsage(tenantId: string): Promise<{ source: 'tenant' | 'platform' | 'none'; used: number; cap: number | null; resetAt: string | null }> {
-    const resolved = await this.resolveProviderKey(tenantId);
+    // Status-only read: stay tolerant of an unreadable BYOK key so the
+    // settings page still renders (it reports keyHealthy separately). This
+    // is a read — no AI spend happens here, so the S5 hard-error is scoped
+    // to the actual generate/image spend paths (default 'throw').
+    const resolved = await this.resolveProviderKey(tenantId, 'platform');
     if (!resolved) return { source: 'none', used: 0, cap: null, resetAt: null };
     if (resolved.source === 'tenant') return { source: 'tenant', used: 0, cap: null, resetAt: null };
     const u = await this.readPlatformUsage(tenantId);
@@ -507,10 +511,37 @@ export class AiService {
 
   /**
    * Resolve which provider key to use for this tenant. BYOK wins;
-   * platform key is the trial-mode fallback. Returns null if neither
-   * is configured — caller surfaces the friendly 503.
+   * platform key is the trial-mode fallback. Returns null if NEITHER
+   * a BYOK key NOR the platform key is configured — caller surfaces the
+   * friendly "AI is not configured" 503.
+   *
+   * S5 — ECONOMIC-MODEL SAFETY (2026-07-16). The platform key
+   * (ANTHROPIC_API_KEY) is Tier-1 budget: VenueOS pays for it, and it is
+   * reserved for the setup-time Concierge, NOT for a tenant's everyday
+   * (Tier-2 / BYOK) creative work. So the platform key may be used ONLY
+   * when the tenant NEVER configured a BYOK key (`aiKeyEncrypted` is
+   * null/absent). If the tenant DID configure a key but we cannot read it
+   * (master-key rotation, corrupted blob, unknown/legacy provider), the
+   * old code silently fell through to the platform key — quietly spending
+   * Tier-1 budget on the tenant's Tier-2 action while telling the operator
+   * nothing (its "operator will see 'AI is not configured'" comment was
+   * FALSE whenever ANTHROPIC_API_KEY is set, which it is for the Concierge).
+   * That silent fall-through is now a hard, actionable error
+   * (`AI_KEY_UNREADABLE`) on every spend path so the operator re-enters the
+   * key instead of burning platform credit on the cheapest model.
+   *
+   * `onUnreadableKey`:
+   *   - `'throw'` (default — every generate/image spend path): a
+   *     configured-but-unreadable BYOK key throws `AI_KEY_UNREADABLE`.
+   *   - `'platform'` (status-only reads, e.g. getUsage): preserve the
+   *     tolerant fall-through so the settings status endpoint keeps
+   *     rendering (it independently reports `keyHealthy: false`); no spend
+   *     happens on a read.
    */
-  private async resolveProviderKey(tenantId: string): Promise<{
+  private async resolveProviderKey(
+    tenantId: string,
+    onUnreadableKey: 'throw' | 'platform' = 'throw',
+  ): Promise<{
     provider: AiProvider;
     apiKey: string;
     /** Catalog model id; empty string means dispatch uses provider default. */
@@ -523,6 +554,9 @@ export class AiService {
       select: { aiProvider: true, aiKeyEncrypted: true, aiModel: true } as any,
     }) as any;
     if (tenant?.aiKeyEncrypted) {
+      // A BYOK key IS configured. From here we must NEVER silently spend the
+      // platform (Tier-1) key — either we return the tenant's own key, or (on
+      // a spend path) we surface AI_KEY_UNREADABLE.
       const provider = coerceProvider(tenant.aiProvider);
       if (provider) {
         try {
@@ -538,14 +572,20 @@ export class AiService {
           };
         } catch (e: any) {
           // Decryption failed (master key rotation, corrupted blob).
-          // Don't crash the request — log + fall through to platform.
-          // Operator will see "AI is not configured" and re-enter the
-          // key from settings.
           this.logger.error(`Failed to decrypt tenant AI key (${tenantId}): ${e?.message}`);
+          if (onUnreadableKey === 'throw') this.throwUnreadableKey();
+          // 'platform' (status read) → fall through to the platform snapshot.
         }
+      } else {
+        // Key present but the saved provider is unknown/legacy — still a
+        // configured-BYOK tenant, so do NOT silently spend Tier-1 budget.
+        this.logger.error(
+          `Tenant ${tenantId} has a saved AI key but an unknown provider (${String(tenant.aiProvider)}).`,
+        );
+        if (onUnreadableKey === 'throw') this.throwUnreadableKey();
       }
     }
-    // 2) Platform fallback (current behavior — ANTHROPIC_API_KEY env).
+    // 2) Platform fallback — ONLY when no BYOK key was ever configured.
     // No model selection on platform fallback; the dispatcher picks
     // the provider default (cheapest tier) so platform spend is
     // bounded.
@@ -554,6 +594,19 @@ export class AiService {
       return { provider: 'anthropic', apiKey: platformKey, model: '', source: 'platform' };
     }
     return null;
+  }
+
+  /**
+   * S5 — a BYOK key is configured but unreadable. Throw an actionable 503
+   * (never a silent platform-key fall-through) so the operator re-enters
+   * the key instead of us quietly spending Tier-1 budget on their behalf.
+   */
+  private throwUnreadableKey(): never {
+    throw new ServiceUnavailableException({
+      code: 'AI_KEY_UNREADABLE',
+      message:
+        'Your saved AI key could not be read — re-enter it in Settings → AI provider.',
+    });
   }
 
   /**
