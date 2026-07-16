@@ -178,12 +178,18 @@ jobs:
   dependency-audit:
     name: Production Dependency Audit
     # Prod-graph advisory gate (2026-07-10): fails on any HIGH/CRITICAL
-    # advisory in the production dependency graph. Runs as its own
-    # parallel job (no install needed — `pnpm audit` reads the lockfile
-    # and queries the registry directly) so it adds nothing to the
-    # build-and-test critical path. Moderates/lows are reported but do
-    # not fail the gate; fix floors live in the root package.json
-    # `pnpm.overrides` block.
+    # advisory in the production dependency graph. Moderates/lows are
+    # reported but do not fail the gate; fix floors live in the root
+    # package.json `pnpm.overrides` block.
+    #
+    # 2026-07-16: `pnpm audit` broke — npm retired the legacy audit endpoint
+    # it calls (HTTP 410 "use the bulk advisory endpoint"); pnpm 9 AND 10 both
+    # still hit the dead endpoint, so no version bump fixes it. Replaced with
+    # scripts/npm-advisory-audit.cjs, which enumerates the prod closure via
+    # `pnpm ls --prod` and queries npm's bulk advisory endpoint directly —
+    # SAME contract (prod graph, HIGH/CRITICAL = red), zero new deps. It needs
+    # node_modules (hence the install step this job previously skipped); the
+    # job still runs in parallel, off the build-and-test critical path.
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -199,9 +205,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: pnpm
+
+      - name: Install Dependencies (needed for prod-graph enumeration)
+        # --ignore-scripts: we only need the resolved tree for `pnpm ls`, not
+        # built native modules (argon2/bcrypt) — skipping their node-gyp build
+        # keeps this parallel job fast.
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Audit production dependencies (fail on HIGH/CRITICAL)
-        run: pnpm audit --prod --audit-level high
+        run: node scripts/npm-advisory-audit.cjs
 
   secret-scan:
     name: Secret Leak Scan (gitleaks)
