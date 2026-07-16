@@ -2,6 +2,21 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
+ * The Resend "shared" sender we fall back to when EMAIL_FROM is unset.
+ * Resend only DELIVERS mail from this address to the email that OWNS the
+ * Resend account — every other recipient is silently dropped / spam-filtered.
+ * So being on this sender means "configured to send, but NOT deliverable to
+ * arbitrary recipients." Keep this in sync with the fallback in #dispatch.
+ */
+const DEFAULT_EMAIL_FROM = 'VenueOS <onboarding@resend.dev>';
+
+/**
+ * Matches any EMAIL_FROM whose address is the shared Resend sender — bare,
+ * or wrapped in a display name like "Foo <onboarding@resend.dev>".
+ */
+const SHARED_RESEND_SENDER_RE = /onboarding@resend\.dev/i;
+
+/**
  * EmailService — stub queue.
  *
  * For now every outbound message is persisted to the `email_logs` table with
@@ -113,10 +128,16 @@ export class EmailService {
     }
 
     try {
-      await this.#dispatch(params);
+      // #dispatch returns 'SENT' for a genuinely-deliverable send, or
+      // 'SENT_UNVERIFIED' when we handed the message to Resend but we're on
+      // the shared onboarding@resend.dev sender (only the Resend account
+      // owner will actually receive it — see #dispatch). Recording the
+      // distinction on the durable row keeps us from over-claiming a
+      // confident "SENT" for arbitrary recipients.
+      const sendStatus = await this.#dispatch(params);
       await this.prisma.client.emailLog.update({
         where: { id: row.id },
-        data: { status: 'SENT', sentAt: new Date() },
+        data: { status: sendStatus, sentAt: new Date() },
       });
     } catch (err: any) {
       this.logger.warn(
@@ -380,7 +401,35 @@ export class EmailService {
     return !!process.env.RESEND_API_KEY;
   }
 
-  async #dispatch(params: { to: string; subject: string; body: string; kind: string }): Promise<void> {
+  /**
+   * True only when EMAIL_FROM is a real, domain-verified sender — i.e. Resend
+   * will actually deliver to ARBITRARY recipients, not just the Resend account
+   * owner.
+   *
+   * Even with RESEND_API_KEY set and a 200 back from the Resend API, mail sent
+   * from the shared `onboarding@resend.dev` sender (our default when
+   * EMAIL_FROM is unset) is delivered ONLY to the address that owns the Resend
+   * account; every other recipient (other admins, operators, parents) is
+   * silently dropped / spam-filtered. Callers and the integrations-health
+   * probe use this to avoid claiming a confident "sent / check your inbox"
+   * when we're on the default sender.
+   *
+   * This checks the sender IDENTITY only (independent of RESEND_API_KEY) so
+   * "can this FROM reach anyone?" stays orthogonal to isConfigured() ("is a
+   * key present?"). The health probe combines both.
+   *   - unset            → false (falls back to the shared sender)
+   *   - shared sender     → false (bare or "Name <onboarding@resend.dev>")
+   *   - custom domain     → true
+   */
+  isDeliverableToArbitraryRecipients(): boolean {
+    const from = (process.env.EMAIL_FROM || '').trim();
+    if (!from) return false;
+    return !SHARED_RESEND_SENDER_RE.test(from);
+  }
+
+  async #dispatch(
+    params: { to: string; subject: string; body: string; kind: string },
+  ): Promise<'SENT' | 'SENT_UNVERIFIED'> {
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
       // Production fail-closed (2026-05-23 launch audit P0): in prod a
@@ -406,10 +455,11 @@ export class EmailService {
       // durable record (#enqueue already wrote it), so recovery is just
       // "set the env var + replay QUEUED rows" if we ever need to.
       this.logger.log(`[email stub:${params.kind}] to=${params.to} subject="${params.subject}" — set RESEND_API_KEY to actually send`);
-      return;
+      return 'SENT';
     }
 
-    const from = process.env.EMAIL_FROM || 'VenueOS <onboarding@resend.dev>';
+    const from = process.env.EMAIL_FROM || DEFAULT_EMAIL_FROM;
+    const deliverable = this.isDeliverableToArbitraryRecipients();
     const replyTo = process.env.EMAIL_REPLY_TO || undefined;
     // Body is plain text today — Resend accepts `text` without `html`
     // and the few inline links still render as clickable in every major
@@ -439,5 +489,23 @@ export class EmailService {
       const text = await resp.text().catch(() => '');
       throw new Error(`Resend ${resp.status}: ${text.slice(0, 500)}`);
     }
+
+    // Resend accepted the message — but if we're on the shared
+    // onboarding@resend.dev sender it will ONLY be delivered to the Resend
+    // account owner; every other recipient is silently dropped. Don't let a
+    // 200 masquerade as a confident "sent to anyone": warn loudly and report
+    // SENT_UNVERIFIED so the durable row + logs tell the truth.
+    if (!deliverable) {
+      this.logger.warn(
+        `[email] Handed "${params.kind}" to Resend from the shared sender ` +
+          `(${from}), but Resend only DELIVERS that to the Resend account ` +
+          `owner — every other recipient (to=${params.to}) is silently ` +
+          `dropped. Set EMAIL_FROM to a verified custom sending domain to ` +
+          `deliver to anyone. Marking email_log SENT_UNVERIFIED.`,
+      );
+      return 'SENT_UNVERIFIED';
+    }
+
+    return 'SENT';
   }
 }

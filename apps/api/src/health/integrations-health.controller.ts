@@ -688,6 +688,18 @@ export class IntegrationsHealthController {
 
   private async probeCommunications(checkedAt: string): Promise<IntegrationRow[]> {
     const emailConfigured = this.email.isConfigured();
+    // A set RESEND_API_KEY is NOT enough to actually deliver mail: if
+    // EMAIL_FROM is the shared onboarding@resend.dev sender (our unset
+    // default) Resend only delivers to the Resend account owner and silently
+    // drops everyone else. Report that half-configured state as DEGRADED, not
+    // a confident READY, so a district doesn't trust invites/password-resets
+    // that never land for anyone but the account owner.
+    const emailDeliverable = this.email.isDeliverableToArbitraryRecipients();
+    const emailStatus: IntegrationStatus = !emailConfigured
+      ? 'NOT_CONFIGURED'
+      : emailDeliverable
+        ? 'READY'
+        : 'DEGRADED';
     // Twilio + Slack have NO send code yet (audit 2026-05-31, §9 Communications).
     // They are reported COMING_SOON regardless of env so that setting
     // TWILIO_ACCOUNT_SID / SLACK_WEBHOOK_URL never implies "ready, just
@@ -699,10 +711,12 @@ export class IntegrationsHealthController {
         id: 'comms-email',
         name: 'Email (Resend)',
         category: 'communications',
-        status: emailConfigured ? 'READY' : 'NOT_CONFIGURED',
-        message: emailConfigured
-          ? 'RESEND_API_KEY set — invite + password-reset emails go out to the operator\'s inbox.'
-          : 'RESEND_API_KEY not set. Invite emails fall back to copy-the-link UX. Set in Railway env to enable real delivery.',
+        status: emailStatus,
+        message: !emailConfigured
+          ? 'RESEND_API_KEY not set. Invite emails fall back to copy-the-link UX. Set in Railway env to enable real delivery.'
+          : emailDeliverable
+            ? 'RESEND_API_KEY set — invite + password-reset emails go out to the operator\'s inbox.'
+            : 'RESEND_API_KEY set, but EMAIL_FROM is the shared onboarding@resend.dev sender — Resend only delivers that to the Resend account owner; every other recipient is silently dropped. Set EMAIL_FROM to a verified custom sending domain to deliver to anyone.',
         latencyMs: null,
         checkedAt,
         docsUrl: 'https://resend.com',

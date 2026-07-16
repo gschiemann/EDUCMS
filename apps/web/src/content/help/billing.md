@@ -1,57 +1,60 @@
 ---
 title: Billing and invoicing
 category: Billing
-updated: 2026-04-16
-excerpt: How invoicing works, when you get charged, and how to upgrade or cancel.
+updated: 2026-07-16
+excerpt: How per-screen pricing works, the free trial, paying by card, and how to change or cancel.
+<!-- SUPPORT DOMAIN NOTE — confirm venue-os.app vs venueos.app before launch. That split is config-gated and still unresolved; this article uses venue-os.app to stay consistent with /terms, /privacy, and the other live help pages. This line lives in the frontmatter block, which the loader strips, so it never renders. -->
 ---
 
 # Billing and invoicing
 
-VenueOS bills per building (tenant), not per screen or per user. Here's how it works.
+VenueOS is priced **per screen** — you pay for each display you connect, and every plan includes the entire product. There's no feature gating: one screen or a thousand, you get signage, kiosks, live scoreboards, and emergency alerts.
 
-## Billing cycles
+## What you pay
 
-We offer two cycles:
+- **Monthly** — **$25 per screen per month**, billed on the same day each month. Cancel anytime.
+- **Annual** — **$240 per screen per year**, which works out to **$20 per screen per month** — a 20% saving over monthly.
 
-- **Monthly** — charged on the same day of each month
-- **Annual** — charged once a year, with a 15% discount
+Admin and operator logins are always **free and unlimited** — you're only billed for connected screens. Add or remove screens whenever you like and we prorate the change automatically.
 
-District plans default to annual billing with a purchase order option. Single-school plans default to monthly credit card.
+Larger districts, chains, and venues can also talk to us about a custom **Enterprise** volume agreement — see **Purchase orders and invoicing** below.
 
-## Free pilot period
+## Free trial
 
-Every new account gets a **30-day free pilot** with no credit card required. At day 25, we'll email an admin a reminder. On day 30, if you haven't added a payment method or PO, your screens will continue to show content but new changes will be blocked until billing is set up. Content already scheduled keeps running — we never let a billing issue cause an emergency alert to fail.
+Every new account starts with a **14-day free trial** — **no credit card required**. Connect up to **3 screens** and use every feature while you evaluate. Add a payment method whenever you're ready to go live or to connect more than three screens.
 
-## Paying with a purchase order (PO)
+Emergency alerts always work, on every screen, regardless of your billing status — we never let a billing issue interrupt a life-safety alert.
 
-Most districts pay by PO rather than credit card. To set up invoice billing:
+## Paying by card (self-serve)
 
-1. Go to **Settings → Billing → Payment method → Add purchase order**.
-2. Enter your PO number, billing contact, and district business office email.
-3. We'll email a W-9 and our vendor packet on request.
+When you're ready to pay, go to **Settings → Billing** and choose the monthly or annual plan. You'll be taken to Stripe's secure hosted checkout to enter your card — **VenueOS never sees or stores your card details**.
 
-Invoices are due **net 30** from issue date. Payments can be made by ACH, check, or wire. We do not accept credit cards for invoice-billed accounts.
+After checkout, the same Settings → Billing page opens the **Stripe Customer Portal**, where you can update your card, switch between monthly and annual, download invoices and receipts, and cancel — all yourself, no email tickets required.
 
-## Upgrading mid-cycle
+## Purchase orders and invoicing (Enterprise)
 
-Moving from Single School to District: pro-rates automatically. We'll credit the unused portion of your Single School plan against the first District invoice.
+Prefer to pay by purchase order or invoice instead of a card? That's handled through an **Enterprise** agreement — it's sales-led, not self-serve, so we can set up PO billing, net-30 invoicing, and volume pricing for your fleet. Email billing@venue-os.app and we'll get you set up.
 
-Moving from District to Enterprise: needs a contract. Contact sales.
+There's no "add a purchase order" button in the app today — PO and invoice billing is arranged with our team, not configured yourself.
 
-## Downgrading / canceling
+## Changing or canceling
 
-Cancel anytime from **Settings → Billing → Cancel subscription**. Your account stays active through the end of the current billing period, then switches to a **read-only 90-day grace window**. During grace, you can export templates and audit logs but cannot schedule new content.
+- **Add or remove screens** anytime. We prorate the difference on your next invoice.
+- **Switch monthly ↔ annual** from the Stripe Customer Portal.
+- **Cancel** from the Customer Portal. Your account stays active through the end of the period you've already paid for.
 
-After 90 days, data is permanently deleted unless you've requested an extension in writing.
+If a card payment fails, we retry and give you a short grace period to update your card before the account moves to read-only — your screens keep showing already-scheduled content in the meantime.
+
+Once a paid period ends (or after you cancel), the account moves to **read-only**. You keep a **90-day window to export** your templates, assets, and audit logs. See our [terms of service](/terms) for the full billing and termination language.
 
 ## Refunds
 
-We offer prorated refunds for annual plans if you cancel within the first 60 days. After that, annual plans are non-refundable but can be paused.
+Annual plans are prepaid for the year; annual customers are honored through their current term. If you think you've been billed in error, email billing@venue-os.app and we'll look into it.
 
 ## Who to contact
 
-- Billing questions: billing@venue-os.app
-- PO setup / W-9: ap@venue-os.app
-- Refund requests: must come from a SCHOOL_ADMIN or higher via billing@venue-os.app
+- **Billing questions / a charge you don't recognize**: billing@venue-os.app
+- **Enterprise, purchase orders, or invoicing**: billing@venue-os.app — tell us your organization and rough screen count and we'll set up a PO/invoice agreement.
+- **General help**: support@venue-os.app
 
-(Email addresses are placeholders — the user will fill in real support contacts before launch.)
+For the full legal terms, see our [terms of service](/terms) and [pricing page](/pricing).
