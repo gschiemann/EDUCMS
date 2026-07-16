@@ -31,7 +31,7 @@ import {
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
-import { createHmac } from 'crypto';
+import { createHash, createHmac } from 'crypto';
 import JSZip from 'jszip';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -177,11 +177,11 @@ export class UsbExportController {
       where: { id: tenantId },
       select: {
         id: true, slug: true, usbIngestEnabled: true, usbIngestKey: true,
-        // Emergency playlist — schema currently has a single
-        // emergencyPlaylistId; emergency type (lockdown/evacuate/weather/
-        // all-clear) is distinguished at trigger time, not per-playlist.
-        // If we ever split these into four distinct playlists, expand
-        // the select + the emergencyIds array below.
+        // Tenant-wide DEFAULT emergency playlist. The per-screen per-type
+        // boards (lockdown/evacuate/weather/hold/secure/medical + portrait
+        // variants) live on the Screen model and are folded into
+        // emergencyIds below when body.screenId is set (S13) — so an
+        // offline kiosk gets the exact life-safety board it would show live.
         emergencyPlaylistId: true,
       },
     });
@@ -227,11 +227,47 @@ export class UsbExportController {
       throw new HttpException({ code: 'USB_EXPORT_PLAYLIST_IDS_REQUIRED', message: 'playlistIds is required (non-empty)' }, HttpStatus.BAD_REQUEST);
     }
 
-    let screen: { id: string; tenantId: string | null } | null = null;
+    let screen:
+      | {
+          id: string;
+          tenantId: string | null;
+          // Per-screen per-type emergency playlists (S13). Landscape + portrait.
+          emergencyLockdownPlaylistId: string | null;
+          emergencyEvacuatePlaylistId: string | null;
+          emergencyWeatherPlaylistId: string | null;
+          emergencyHoldPlaylistId: string | null;
+          emergencySecurePlaylistId: string | null;
+          emergencyMedicalPlaylistId: string | null;
+          emergencyLockdownPortraitPlaylistId: string | null;
+          emergencyEvacuatePortraitPlaylistId: string | null;
+          emergencyWeatherPortraitPlaylistId: string | null;
+          emergencyHoldPortraitPlaylistId: string | null;
+          emergencySecurePortraitPlaylistId: string | null;
+          emergencyMedicalPortraitPlaylistId: string | null;
+        }
+      | null = null;
     if (body.screenId) {
       screen = await this.prisma.client.screen.findUnique({
         where: { id: body.screenId },
-        select: { id: true, tenantId: true },
+        select: {
+          id: true,
+          tenantId: true,
+          // Life-safety boards this specific screen would show on each panic
+          // type — folded into emergencyIds so an offline USB bundle carries
+          // the evacuate/lockdown/etc. board, not just the tenant default.
+          emergencyLockdownPlaylistId: true,
+          emergencyEvacuatePlaylistId: true,
+          emergencyWeatherPlaylistId: true,
+          emergencyHoldPlaylistId: true,
+          emergencySecurePlaylistId: true,
+          emergencyMedicalPlaylistId: true,
+          emergencyLockdownPortraitPlaylistId: true,
+          emergencyEvacuatePortraitPlaylistId: true,
+          emergencyWeatherPortraitPlaylistId: true,
+          emergencyHoldPortraitPlaylistId: true,
+          emergencySecurePortraitPlaylistId: true,
+          emergencyMedicalPortraitPlaylistId: true,
+        },
       });
       if (!screen || screen.tenantId !== tenantId) {
         throw new HttpException({ code: 'USB_EXPORT_SCREEN_NOT_FOUND', message: 'Screen not found in your tenant' }, HttpStatus.NOT_FOUND);
@@ -260,8 +296,31 @@ export class UsbExportController {
       throw new HttpException({ code: 'USB_EXPORT_NO_MATCHING_PLAYLISTS', message: 'No matching playlists in this tenant' }, HttpStatus.NOT_FOUND);
     }
 
+    // S13: bundle every emergency board this screen could show, not just the
+    // tenant default. When a screen is targeted we also pull its per-type
+    // (lockdown/evacuate/weather/hold/secure/medical) playlists + portrait
+    // variants. Deduped (a screen may reuse the tenant default), then the
+    // findMany's `tenantId` where-clause drops any that don't resolve.
     const emergencyIds = body.includeEmergency
-      ? [tenant.emergencyPlaylistId].filter((x): x is string => !!x)
+      ? Array.from(
+          new Set(
+            [
+              tenant.emergencyPlaylistId,
+              screen?.emergencyLockdownPlaylistId,
+              screen?.emergencyEvacuatePlaylistId,
+              screen?.emergencyWeatherPlaylistId,
+              screen?.emergencyHoldPlaylistId,
+              screen?.emergencySecurePlaylistId,
+              screen?.emergencyMedicalPlaylistId,
+              screen?.emergencyLockdownPortraitPlaylistId,
+              screen?.emergencyEvacuatePortraitPlaylistId,
+              screen?.emergencyWeatherPortraitPlaylistId,
+              screen?.emergencyHoldPortraitPlaylistId,
+              screen?.emergencySecurePortraitPlaylistId,
+              screen?.emergencyMedicalPortraitPlaylistId,
+            ].filter((x): x is string => !!x),
+          ),
+        )
       : [];
     const emergencyRaw = emergencyIds.length
       ? await this.prisma.client.playlist.findMany({
@@ -313,42 +372,85 @@ export class UsbExportController {
         const asset = it.asset;
         if (!asset?.fileUrl) continue;
 
-        const hash = asset.fileHash?.trim();
-        if (!hash) {
-          this.logger.warn(`Skipping asset ${asset.id} — no fileHash`);
+        const ext = extFromMimeOrUrl(asset.mimeType, asset.fileUrl);
+        // The stored SHA-256 (computed at upload time). May be absent — the
+        // /assets presign path never sends one, so a freshly-uploaded asset
+        // has a null fileHash. S12: instead of DROPPING those (which left the
+        // offline kiosk playing a playlist with silently-missing items), we
+        // hash the bytes we download below and self-heal the DB.
+        let hash: string = asset.fileHash?.trim() || '';
+
+        // Fast path: known hash already bundled → reuse the on-disk copy, no
+        // re-fetch. (Preserves the original dedup optimization exactly.)
+        if (hash && seenHashes.has(hash)) {
+          items.push({
+            url: asset.fileUrl,
+            duration_ms: it.durationMs,
+            sequence: it.sequenceOrder,
+            transition_type: it.transitionType ?? null,
+            asset: {
+              url: asset.fileUrl,
+              storagePath: `assets/${hash}.${ext}`,
+              sha256: hash,
+              mimeType: asset.mimeType || 'application/octet-stream',
+              sizeBytes: asset.fileSize || 0,
+            },
+          });
           continue;
         }
-        const ext = extFromMimeOrUrl(asset.mimeType, asset.fileUrl);
+
+        // We need the bytes: either to write a not-yet-seen asset, or to
+        // compute a missing hash. Same safeFetch the known-hash path uses.
+        if (assetCount >= MAX_ASSETS_PER_BUNDLE) { truncated = true; break; }
+        let body: Buffer | null = null;
+        try {
+          const fetched = await safeFetch(asset.fileUrl, {
+            maxBytes: 200 * 1024 * 1024,
+            timeoutMs: MAX_ASSET_FETCH_TIMEOUT_MS,
+          });
+          body = fetched.body;
+        } catch (e: any) {
+          this.logger.warn(`Asset fetch failed for ${asset.fileUrl}: ${e?.message}`);
+        }
+
+        if (!hash) {
+          // No stored hash → the ONLY way to identify/name this asset is to
+          // hash the bytes we just downloaded. If the fetch failed we can't,
+          // so we skip (can't fabricate a content hash) — but that's the rare
+          // failure case, not the routine "fresh upload has no hash" case.
+          if (!body) {
+            this.logger.warn(`Skipping asset ${asset.id} — no fileHash and fetch failed`);
+            continue;
+          }
+          hash = createHash('sha256').update(body).digest('hex');
+          // Self-heal: persist the computed hash so the next export dedups
+          // without a re-fetch. Best-effort — a failed write never blocks the
+          // bundle (the bundle is already correct with the computed hash).
+          this.prisma.client.asset
+            .update({ where: { id: asset.id }, data: { fileHash: hash } })
+            .catch(() => { /* non-fatal: bundle is correct regardless */ });
+        }
         const storagePath = `assets/${hash}.${ext}`;
 
-        if (!seenHashes.has(hash)) {
-          if (assetCount >= MAX_ASSETS_PER_BUNDLE) { truncated = true; break; }
-          try {
-            const fetched = await safeFetch(asset.fileUrl, {
-              maxBytes: 200 * 1024 * 1024,
-              timeoutMs: MAX_ASSET_FETCH_TIMEOUT_MS,
-            });
-            if (totalBytes + fetched.body.byteLength > MAX_BYTES_PER_BUNDLE) {
-              truncated = true;
-              break;
-            }
-            assetsDir.file(`${hash}.${ext}`, fetched.body);
-            seenHashes.add(hash);
-            totalBytes += fetched.body.byteLength;
-            assetCount += 1;
-            // Record the flat top-level entry the Android player reads. Only
-            // on first sight of a hash — this array is deduped exactly like
-            // the files written into assets/.
-            topLevelAssets.push({
-              url: asset.fileUrl,
-              sha256: hash,
-              localPath: storagePath, // "assets/<sha>.<ext>"
-              mimeType: asset.mimeType || 'application/octet-stream',
-              sizeBytes: fetched.body.byteLength,
-            });
-          } catch (e: any) {
-            this.logger.warn(`Asset fetch failed for ${asset.fileUrl}: ${e?.message}`);
+        // Write the file + record the flat top-level entry on first sight of a
+        // hash. A null-hash asset whose bytes re-hash to an already-seen value
+        // (true duplicate) skips the write here but still gets its item below.
+        if (body && !seenHashes.has(hash)) {
+          if (totalBytes + body.byteLength > MAX_BYTES_PER_BUNDLE) {
+            truncated = true;
+            break;
           }
+          assetsDir.file(`${hash}.${ext}`, body);
+          seenHashes.add(hash);
+          totalBytes += body.byteLength;
+          assetCount += 1;
+          topLevelAssets.push({
+            url: asset.fileUrl,
+            sha256: hash,
+            localPath: storagePath, // "assets/<sha>.<ext>"
+            mimeType: asset.mimeType || 'application/octet-stream',
+            sizeBytes: body.byteLength,
+          });
         }
 
         items.push({
@@ -361,7 +463,7 @@ export class UsbExportController {
             storagePath,
             sha256: hash,
             mimeType: asset.mimeType || 'application/octet-stream',
-            sizeBytes: asset.fileSize || 0,
+            sizeBytes: asset.fileSize || (body ? body.byteLength : 0),
           },
         });
       }
