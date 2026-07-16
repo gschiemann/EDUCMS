@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import type { Response } from 'express';
+import { RedisService } from './redis.service';
 
 /**
  * SseService — Sprint 11 Phase B realtime fallback.
@@ -46,6 +47,9 @@ interface SseClient {
   groupId: string | null;
   deviceId: string | null;
   res: Response;
+  /** The device JWT this stream authenticated with — re-checked for
+   *  revocation periodically (S15). Absent for internal/test clients. */
+  token: string | null;
   /** When this client connected (ms epoch) — useful for telemetry. */
   connectedAt: number;
 }
@@ -55,14 +59,30 @@ export class SseService {
   private readonly logger = new Logger(SseService.name);
   private readonly clients = new Map<string, SseClient>();
   private keepaliveTimer: NodeJS.Timeout | null = null;
+  private revocationTimer: NodeJS.Timeout | null = null;
 
-  constructor() {
+  // How often to re-check open streams for a now-revoked device token (S15).
+  private static readonly REVOCATION_SWEEP_MS = 30_000;
+
+  constructor(@Optional() private readonly redis?: RedisService) {
     // Process-internal keepalive ticker. ":<comment>" SSE lines are
     // ignored by EventSource but keep upstream proxies' connection
     // tracker alive. 25s is below most defaults (30s for AWS ELB,
     // 60s for Cloudflare, ~30s for Squid/nginx).
     this.keepaliveTimer = setInterval(() => this.tickKeepalive(), 25_000);
     this.keepaliveTimer.unref?.();
+
+    // S15 (launch-readiness): the controller checks jwt_revoked_list once at
+    // stream OPEN, but an already-open stream would keep delivering after a
+    // device token is revoked/unpaired until the client happened to reconnect.
+    // Re-check every 30s so a revoked device stops receiving within ~30s.
+    // FAIL-OPEN (unlike the open gate): a transient Redis error must NOT drop a
+    // legitimate device's emergency stream — we only close on a definitive
+    // "revoked". The open gate remains the strong fail-closed admission check.
+    this.revocationTimer = setInterval(() => {
+      void this.tickRevocation();
+    }, SseService.REVOCATION_SWEEP_MS);
+    this.revocationTimer.unref?.();
   }
 
   /** Total number of currently-connected SSE clients (telemetry). */
@@ -81,6 +101,9 @@ export class SseService {
     groupId?: string | null;
     deviceId: string | null;
     res: Response;
+    /** The device JWT this stream authenticated with (for periodic
+     *  revocation re-checks). Optional so internal callers/tests can omit it. */
+    token?: string | null;
   }): string {
     const id = `sse-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
     const client: SseClient = {
@@ -89,6 +112,7 @@ export class SseService {
       groupId: opts.groupId ?? null,
       deviceId: opts.deviceId,
       res: opts.res,
+      token: opts.token ?? null,
       connectedAt: Date.now(),
     };
     this.clients.set(id, client);
@@ -169,5 +193,35 @@ export class SseService {
         // handler do final cleanup.
       }
     }
+  }
+
+  /**
+   * Periodically close any open stream whose device token has since been
+   * revoked (S15). Mirrors the controller's open-time
+   * `sismember('jwt_revoked_list', token)` check. FAIL-OPEN: a Redis error
+   * or missing client leaves the stream untouched — we only disconnect on a
+   * definitive revoked=true, so an emergency stream is never dropped on a
+   * transient blip. Exposed for tests via the return of closed client ids.
+   */
+  async tickRevocation(): Promise<string[]> {
+    if (this.clients.size === 0 || !this.redis) return [];
+    const closed: string[] = [];
+    for (const client of [...this.clients.values()]) {
+      if (!client.token) continue; // internal/test client — nothing to re-check
+      let revoked = false;
+      try {
+        revoked = await this.redis.sismember('jwt_revoked_list', client.token);
+      } catch {
+        continue; // fail-open: transient Redis error must not drop the stream
+      }
+      if (!revoked) continue;
+      // Definitive revocation — tell the client and close the stream.
+      this.writeEvent(client, 'TOKEN_REVOKED', { ts: Date.now(), reason: 'device token revoked' });
+      try { client.res.end(); } catch { /* swallow */ }
+      this.clients.delete(client.id);
+      closed.push(client.id);
+      this.logger.log(`[SSE] closed revoked stream id=${client.id} device=${client.deviceId || '-'}`);
+    }
+    return closed;
   }
 }

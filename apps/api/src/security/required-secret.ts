@@ -47,3 +47,35 @@ export function requireSecret(
   );
   return opts.devFallback;
 }
+
+/**
+ * The load-bearing secrets that MUST be present in production. CLAUDE.md
+ * documents that the API "refuses to start if any of these are missing."
+ */
+export const BOOT_REQUIRED_SECRETS = [
+  'JWT_SECRET',
+  'SESSION_SECRET',
+  'DEVICE_SECRET_KEY',
+  'DEVICE_JWT_SECRET',
+] as const;
+
+/**
+ * Validate every load-bearing secret at BOOT, not lazily.
+ *
+ * 2026-07-16 (launch-readiness S14): `requireSecret` was only invoked at each
+ * secret's first USE. JWT_SECRET / SESSION_SECRET happen to be read during
+ * module init (so they fail fast), but DEVICE_JWT_SECRET and DEVICE_SECRET_KEY
+ * were validated LAZILY on the first device/WS request. A prod deploy missing
+ * one of those passed the Railway healthcheck, then 500'd every device auth /
+ * WS-signature call afterward — contradicting the documented boot guarantee.
+ * Calling this from bootstrap() before `app.listen()` makes the guarantee
+ * real: a missing secret throws at boot and the container exits before serving.
+ * In dev/test each missing secret still just warns (via requireSecret).
+ */
+export function assertRequiredSecretsAtBoot(): void {
+  for (const name of BOOT_REQUIRED_SECRETS) {
+    // Values are discarded — we want the throw-in-prod side effect. The
+    // devFallback only matters outside production (warn + continue).
+    requireSecret(name, { devFallback: `dev_only_${name.toLowerCase()}_CHANGE_ME` });
+  }
+}

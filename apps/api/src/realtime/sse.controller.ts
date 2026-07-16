@@ -124,8 +124,9 @@ export class SseController {
     res.flushHeaders();
 
     // Hand off to the SSE service. It tracks the client, fires keepalives,
-    // and writes broadcast events when Redis fan-out arrives.
-    this.sse.register({ tenantId, groupId, deviceId, res });
+    // and writes broadcast events when Redis fan-out arrives. The token is
+    // passed so the service can re-check revocation on an open stream (S15).
+    this.sse.register({ tenantId, groupId, deviceId, res, token });
 
     // Don't return — let the stream stay open until the client
     // disconnects. The `close` event in SseService.register handles

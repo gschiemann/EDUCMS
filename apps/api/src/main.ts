@@ -15,7 +15,7 @@ import { WsAdapter } from '@nestjs/platform-ws';
 import { PrismaService } from './prisma/prisma.service';
 import { ensureSystemPresets } from './templates/ensure-system-presets';
 import { backfillManagedAssetHashes } from './maintenance/backfill-asset-hashes';
-import { requireSecret } from './security/required-secret';
+import { requireSecret, assertRequiredSecretsAtBoot } from './security/required-secret';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
 
 // Last-resort crash guards. ioredis, Prisma, and passport-saml can all
@@ -37,6 +37,12 @@ const session = require('express-session');
 const compression = require('compression');
 
 async function bootstrap() {
+  // Launch-readiness S14: validate ALL load-bearing secrets up front so a
+  // prod deploy missing DEVICE_JWT_SECRET / DEVICE_SECRET_KEY fails at boot
+  // (before the healthcheck passes) instead of 500'ing every device/WS call
+  // later. In dev/test each missing secret just warns.
+  assertRequiredSecretsAtBoot();
+
   // rawBody: true exposes req.rawBody (a Buffer) alongside the parsed
   // body — required for Stripe webhook signature verification. Purely
   // additive; req.body is unchanged for every other route.

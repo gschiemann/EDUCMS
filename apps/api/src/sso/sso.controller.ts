@@ -15,6 +15,7 @@ import {
 import type { Request, Response } from 'express';
 import { SsoService } from './sso.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../realtime/redis.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
@@ -34,7 +35,57 @@ export class SsoController {
   constructor(
     private readonly sso: SsoService,
     private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
   ) {}
+
+  // OIDC login state (state/nonce/tenant) is stashed between the login
+  // redirect and the callback. Launch-readiness S9: express-session uses the
+  // default in-memory MemoryStore, so on a multi-replica deploy the callback
+  // can land on a DIFFERENT replica than the login redirect and find an empty
+  // session → the OIDC state check fails and login breaks intermittently. We
+  // mirror the state into Redis keyed by the (unguessable, IdP-echoed) state
+  // value so any replica can complete the flow. The session write stays as a
+  // same-replica / Redis-down fallback, so nothing regresses single-replica.
+  private static readonly OIDC_STATE_TTL_SEC = 600; // 10 min — one login round-trip
+  private oidcStateKey(state: string): string {
+    return `sso:oidc:state:${state}`;
+  }
+
+  private async stashOidcState(
+    state: string,
+    payload: { nonce: string; tenantSlug: string },
+  ): Promise<void> {
+    const pub = this.redis.publisher;
+    if (!pub || !state) return; // fail-open: session fallback still covers single-replica
+    try {
+      await pub.set(
+        this.oidcStateKey(state),
+        JSON.stringify({ nonce: payload.nonce, tenantSlug: payload.tenantSlug }),
+        'EX',
+        SsoController.OIDC_STATE_TTL_SEC,
+      );
+    } catch {
+      /* best-effort — session fallback remains */
+    }
+  }
+
+  /** Read + delete (single-use) the Redis-stashed OIDC state, or null. */
+  private async takeOidcState(
+    state: string | undefined,
+  ): Promise<{ nonce: string; tenantSlug: string } | null> {
+    const pub = this.redis.publisher;
+    if (!pub || !state) return null;
+    try {
+      const raw = await pub.get(this.oidcStateKey(state));
+      if (!raw) return null;
+      await pub.del(this.oidcStateKey(state)); // single-use — prevent replay
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.nonce === 'string') return parsed;
+      return null;
+    } catch {
+      return null;
+    }
+  }
 
   // -----------------------------------------------------------------
   // Public helper — what domains are SSO-configured? (used by login page)
@@ -89,8 +140,9 @@ export class SsoController {
   ) {
     const baseUrl = this.baseUrl(req);
     const { url, state, nonce } = await this.sso.buildOidcLoginUrl(tenantSlug, baseUrl);
-    // State + nonce persisted in a short-lived session cookie so the callback
-    // can verify them. (express-session is already configured in main.ts.)
+    // Persist state+nonce for the callback. Redis keyed by state (multi-replica
+    // safe, S9) PLUS the session cookie (same-replica / Redis-down fallback).
+    await this.stashOidcState(state, { nonce, tenantSlug });
     const session = (req as any).session;
     if (session) {
       session.ssoOidcState = state;
@@ -109,10 +161,18 @@ export class SsoController {
   ) {
     const baseUrl = this.baseUrl(req);
     const session = (req as any).session ?? {};
-    const expected = { state: session.ssoOidcState, nonce: session.ssoOidcNonce };
+    // Prefer the Redis-stashed state (works even if the callback lands on a
+    // different replica than the login redirect); fall back to the session
+    // cookie. The `expected.state` we compare against is always the state we
+    // issued at login — for the Redis path that is the query state we just
+    // matched a stored record for; for the session path it is the cookie copy.
+    const stashed = await this.takeOidcState(query.state);
+    const expected = stashed
+      ? { state: query.state, nonce: stashed.nonce }
+      : { state: session.ssoOidcState, nonce: session.ssoOidcNonce };
     const profile = await this.sso.validateOidcCallback(tenantSlug, query, baseUrl, expected);
     const minted = await this.sso.completeSsoLogin(tenantSlug, 'OIDC', profile);
-    // Clean up
+    // Clean up the session copy (Redis copy is single-use, already deleted).
     if (session) {
       delete session.ssoOidcState;
       delete session.ssoOidcNonce;
