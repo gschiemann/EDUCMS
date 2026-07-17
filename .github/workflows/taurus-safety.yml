@@ -25,3 +25,13 @@ jobs:
           node-version: '20'
       - name: Check Chromium-83 forbidden patterns (flex gap, container queries)
         run: node apps/web/tools/check-taurus-safety.cjs
+
+      # Launch-readiness S20: the inset-serialization AST guard detects the
+      # grep-INVISIBLE Taurus landmine (a React style object with all four
+      # physical sides that the browser CSSOM re-serializes to the `inset`
+      # shorthand, which Chromium-83 drops → widget renders 0x0). It existed
+      # (apps/web/tools/check-inset-serialization.cjs, CLAUDE.md rule #10,
+      # 2026-07-03) but ran in NO workflow — so the only detector for that
+      # landmine class was manual-run-only. Wire it in as a hard gate.
+      - name: Check inset-shorthand CSSOM-serialization landmine (player/widget styles)
+        run: node apps/web/tools/check-inset-serialization.cjs

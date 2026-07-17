@@ -41,19 +41,58 @@ function luminance(hex: string) { const {r,g,b}=hexToRgb(hex); return 0.2126*cha
 function contrast(a: string, b: string) { const la=luminance(a), lb=luminance(b); const [L1,L2]=la>lb?[la,lb]:[lb,la]; return (L1+0.05)/(L2+0.05); }
 const bestTextOn = (bg: string) => contrast(bg, '#ffffff') >= contrast(bg, '#111111') ? '#ffffff' : '#111111';
 
+/**
+ * Port of the server's ensureContrast (color-utils.ts): nudge `bg` in HSL
+ * lightness (binary search) until contrast(bg, fg) >= target. Returns the
+ * original if it already passes. S17 (launch-readiness): the client preview
+ * used to pick ink for the RAW brand color, so a mid-tone primary/accent left
+ * button text below WCAG AA (4.5:1). The server path already AA-nudges the bg;
+ * this brings the client demo/preview into sync so no surface shows sub-AA text.
+ */
+export const AA_CONTRAST = 4.5;
+function ensureContrast(bg: string, fg: string, target = AA_CONTRAST): string {
+  if (contrast(bg, fg) >= target) return bg;
+  const bgHsl = hexToHsl(bg);
+  const goLighter = luminance(fg) < luminance(bg);
+  let lo = bgHsl.l;
+  let hi = goLighter ? 100 : 0;
+  let bestHex = bg;
+  let bestRatio = contrast(bg, fg);
+  for (let i = 0; i < 14; i++) {
+    const mid = (lo + hi) / 2;
+    const cand = hslToHex({ h: bgHsl.h, s: bgHsl.s, l: clamp(mid) });
+    const r = contrast(cand, fg);
+    if (r > bestRatio) { bestRatio = r; bestHex = cand; }
+    if (r >= target) { hi = mid; } else { lo = mid; } // still short → keep moving toward the extreme
+  }
+  return bestHex;
+}
+
+/** Pick the max-contrast ink AND nudge the bg so the pairing meets AA. */
+function aaPair(bg: string): { bg: string; ink: string } {
+  const ink = bestTextOn(bg);
+  return { bg: ensureContrast(bg, ink), ink };
+}
+
 export function derivePaletteClient(primary: string, accent?: string) {
   const p = hexToHsl(primary);
   const autoAccent = accent || hslToHex({ h: (p.h + 180) % 360, s: clamp(p.s, 40, 85), l: clamp(p.l, 40, 65) });
+  // AA-safe button pairings — keep the raw brand color for "undo" (mirrors the
+  // server's primaryRaw/accentRaw), surface the AA-nudged color as primary/accent.
+  const primaryAA = aaPair(primary);
+  const accentAA = aaPair(autoAccent);
   return {
-    primary,
-    primaryHover: hslToHex({ ...p, l: clamp(p.l - 8, 20, 55) }),
-    primaryActive: hslToHex({ ...p, l: clamp(p.l - 16, 15, 45) }),
+    primary: primaryAA.bg,
+    primaryRaw: primary,
+    primaryHover: hslToHex({ ...hexToHsl(primaryAA.bg), l: clamp(hexToHsl(primaryAA.bg).l - 8, 20, 55) }),
+    primaryActive: hslToHex({ ...hexToHsl(primaryAA.bg), l: clamp(hexToHsl(primaryAA.bg).l - 16, 15, 45) }),
     primarySoft: hslToHex({ ...p, s: clamp(p.s * 0.55, 15, 55), l: 94 }),
-    primaryInk: bestTextOn(primary),
-    accent: autoAccent,
-    accentHover: darken(autoAccent, 8),
-    accentSoft: lighten(autoAccent, 38),
-    accentInk: bestTextOn(autoAccent),
+    primaryInk: primaryAA.ink,
+    accent: accentAA.bg,
+    accentRaw: autoAccent,
+    accentHover: darken(accentAA.bg, 8),
+    accentSoft: lighten(accentAA.bg, 38),
+    accentInk: accentAA.ink,
     ink: '#0f172a',
     inkMuted: '#475569',
     surface: '#ffffff',
