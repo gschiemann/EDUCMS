@@ -1,0 +1,38 @@
+# Tenant-isolation static gate (audit TEN-001 / §16).
+#
+# Fails CI when a NEW unscoped bare-id Prisma lookup lands on a tenant-owned
+# model — `prisma.client.<model>.findUnique/update/delete({ where: { id } })`
+# with no tenantId constraint. That pattern lets a tenant-A user pass a
+# tenant-B object id and read/mutate another tenant's data unless ownership is
+# separately asserted; this gate makes the whole surface visible and prevents
+# regressions while the deny-by-default typed-tenant-repository migration
+# (TEN-001 full) burns the baseline down.
+#
+# Existing sites are captured in apps/api/tools/tenant-isolation-baseline.json
+# and the baseline ratchets DOWN only. Uses the TypeScript compiler API, so it
+# needs deps installed (--ignore-scripts is enough — no native builds needed),
+# same lesson as the taurus-safety inset guard.
+name: Tenant Isolation
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  tenant-isolation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Check tenant-isolation (no new unscoped bare-id access)
+        run: node apps/api/tools/check-tenant-isolation.cjs
