@@ -1,0 +1,35 @@
+# Capability Registry gate — §21 verification-before-claim enforcement.
+#
+# Fails CI when the capability registry (packages/api-types/src/capability-
+# registry.ts) makes a dishonest claim: a VERIFIED/PRODUCTION/HARDWARE_CERTIFIED
+# capability with no resolvable evidence, or a customer-facing publicClaim on an
+# unbuilt/experimental/deprecated feature. This is the mechanism that makes
+# "green CI mean something" and stops the coming-soon-in-a-real-button-costume
+# problem across every domain. Consumer of the registry — without it the
+# registry would be a dead catalog.
+name: Capability Registry
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  capability-registry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Build @cms/api-types
+        run: pnpm --filter @cms/api-types build
+      - name: Check capability-registry truth (§21)
+        run: node scripts/check-capability-registry.cjs

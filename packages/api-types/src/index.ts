@@ -874,3 +874,6 @@ export * from './hardware';
 // apps/web (capture bundle + review pages) and apps/api (controller
 // + AI analyzer service). See bugs.ts for the full pipeline spec.
 export * from './bugs';
+// Capability Registry — §21 verification-before-claim keystone (its CI
+// consumer is scripts/check-capability-registry.cjs).
+export * from './capability-registry';
