@@ -273,6 +273,22 @@ export const CAPABILITY_REGISTRY: ReadonlyArray<Capability> = [
     dependsOn: [],
   },
 
+  {
+    id: 'audit-log-append-only',
+    name: 'Audit history is append-only at the storage layer (UPDATE/DELETE/TRUNCATE blocked)',
+    domain: 'forensics',
+    state: 'VERIFIED',
+    owner: 'security/backend',
+    surface: 'audit_logs DB triggers',
+    publicClaim: null,
+    evidenceTest: 'apps/api/src/security/audit-immutability.spec.ts',
+    verifiedAt: '2026-07-17',
+    expiresAt: null,
+    limitations:
+      'Row trigger blocks UPDATE/DELETE (permitting only FK user-id anonymization); statement trigger blocks TRUNCATE. Behaviorally proven on real Postgres 16 (docker) and re-applied on every deploy via prisma migrate deploy. The API DB-role privilege restriction (INSERT/SELECT-only) + WORM export are the remaining §16 hardening, not done.',
+    dependsOn: [],
+  },
+
   // ── Honestly NOT verified / not built — NO false publicClaim ──
   {
     id: 'saml-sso',
