@@ -90,6 +90,18 @@ function makeFakePrisma() {
         }
         throw Object.assign(new Error('not found'), { code: 'P2025' });
       }),
+      updateMany: jest.fn(async (args: any) => {
+        // TEN-001 burn-down: webhook license writes are {id, tenantId}-scoped.
+        const id = args.where.id as string;
+        let count = 0;
+        for (const [k, v] of licenses) {
+          if (v.id === id && (args.where.tenantId === undefined || v.tenantId === args.where.tenantId)) {
+            licenses.set(k, { ...v, ...args.data });
+            count++;
+          }
+        }
+        return { count };
+      }),
     },
     auditLog: {
       create: jest.fn(async (args: any) => {

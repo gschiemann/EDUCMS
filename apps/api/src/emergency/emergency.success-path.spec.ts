@@ -131,6 +131,13 @@ describe('Emergency broadcast SUCCESS path (end-to-end, stateful)', () => {
         if (row) Object.assign(row, data);
         return Promise.resolve(row);
       }),
+      updateMany: jest.fn().mockImplementation(({ where, data }: any) => {
+        const rows = messages.filter(
+          (m) => m.id === where.id && (where.tenantId === undefined || m.tenantId === where.tenantId),
+        );
+        rows.forEach((row) => Object.assign(row, data));
+        return Promise.resolve({ count: rows.length });
+      }),
     };
 
     const prismaService: any = {

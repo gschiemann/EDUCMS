@@ -204,6 +204,7 @@ export class ScreenEmergencyController {
       // SUPER_ADMIN path — look up by id only. No cross-tenant leak
       // possible because only SUPER_ADMIN reaches this branch (see
       // requireTenantId).
+      // ten-ok: SUPER_ADMIN-only branch (requireTenantId returns null ONLY for SUPER_ADMIN) — cross-tenant by design; non-super path below is scoped
       const screen = await this.prisma.client.screen.findUnique({
         where: { id: screenId },
       });

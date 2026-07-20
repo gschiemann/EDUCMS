@@ -31,6 +31,20 @@
  * gate is never a pass — W0-05 discipline).
  *
  * Regenerate the baseline deliberately after review:  UPDATE_BASELINE=1 node apps/api/tools/check-tenant-isolation.cjs
+ *
+ * REVIEWED-SAFE ESCAPE HATCH (2026-07-20 burn-down): a site that is safe BY
+ * DESIGN can carry `// ten-ok: <reason>` on the call's first line or the line
+ * directly above it (mirrors perf-allow / taurus-safety culture — the reason is
+ * mandatory and shows up in PR review). Legitimate uses ONLY:
+ *   (a) ownership RESOLVERS — read an entity's tenantId in order to verify the
+ *       caller owns it immediately after (403 on mismatch);
+ *   (b) identity-derived self-lookups — the id IS the authenticated principal
+ *       (device token sub, JWT sub), so there is no narrower scope;
+ *   (c) system/webhook paths with no caller tenant, where tenant scope is
+ *       derived FROM the row and verified against the event source.
+ * An annotated site is reported as reviewed-safe and leaves the baseline —
+ * "I'll check ownership later, trust me" is NOT a valid reason; scope the query
+ * instead.
  */
 
 const fs = require('fs');
@@ -130,9 +144,16 @@ function fingerprint(relPath, model, method, whereText) {
 
 /** Scan one source string for unscoped bare-id tenant-resource access.
  *  Factored out so tests can exercise it on inline fixtures. */
+// A reviewed-safe annotation is a `ten-ok:` comment WITH a real reason (≥10
+// chars) on the call's first line or the line directly above. `//` or `*`
+// prefix so a string literal can't accidentally arm it.
+const TEN_OK_RE = /(?:\/\/|\*)\s*ten-ok:\s*\S.{9,}/;
+
 function scanSourceText(text, relPath, accessors) {
   const sf = ts.createSourceFile(relPath, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const lines = text.split(/\r?\n/);
   const findings = [];
+  findings.reviewed = []; // reviewed-safe (ten-ok annotated) sites, non-enumerable via spread
   const visit = (node) => {
     if (
       ts.isCallExpression(node) &&
@@ -146,13 +167,19 @@ function scanSourceText(text, relPath, accessors) {
         const where = whereArg(node);
         if (where && whereIsUnscopedById(where)) {
           const { line } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
-          findings.push({
-            fp: fingerprint(relPath, model, method, where.getText(sf)),
-            file: relPath,
-            line: line + 1,
-            model,
-            method,
-          });
+          const annotated =
+            TEN_OK_RE.test(lines[line] || '') || TEN_OK_RE.test(lines[line - 1] || '');
+          if (annotated) {
+            findings.reviewed.push({ file: relPath, line: line + 1, model, method });
+          } else {
+            findings.push({
+              fp: fingerprint(relPath, model, method, where.getText(sf)),
+              file: relPath,
+              line: line + 1,
+              model,
+              method,
+            });
+          }
         }
       }
     }
@@ -171,11 +198,14 @@ function scan() {
   const files = [];
   walk(SCAN_ROOT, files);
   const findings = [];
+  let reviewedCount = 0;
   for (const file of files) {
     const text = fs.readFileSync(file, 'utf8');
-    findings.push(...scanSourceText(text, path.relative(REPO_ROOT, file), accessors));
+    const r = scanSourceText(text, path.relative(REPO_ROOT, file), accessors);
+    findings.push(...r);
+    reviewedCount += r.reviewed ? r.reviewed.length : 0;
   }
-  return { findings, modelCount: accessors.size };
+  return { findings, modelCount: accessors.size, reviewedCount };
 }
 
 module.exports = { scanSourceText, whereIsUnscopedById, tenantOwnedAccessors };
@@ -190,9 +220,12 @@ function loadBaseline() {
 }
 
 function main() {
-  const { findings, modelCount } = scan();
+  const { findings, modelCount, reviewedCount } = scan();
   const current = findings.map((f) => f.fp);
-  console.log(`Tenant-isolation scan: ${modelCount} tenant-owned models, ${findings.length} unscoped bare-id access(es) in apps/api/src.`);
+  console.log(
+    `Tenant-isolation scan: ${modelCount} tenant-owned models, ${findings.length} unscoped bare-id access(es), ` +
+    `${reviewedCount} reviewed-safe (ten-ok) in apps/api/src.`,
+  );
 
   if (process.env.UPDATE_BASELINE === '1') {
     fs.writeFileSync(

@@ -661,8 +661,8 @@ export class StripeService {
     }
     const fromStatus = license.status;
     await this.prisma.client.$transaction(async (tx) => {
-      await tx.license.update({
-        where: { id: license.id },
+      await tx.license.updateMany({
+        where: { id: license.id, tenantId: license.tenantId },
         data: {
           status: 'CANCELLED',
           stripeLastEventCreatedAt: eventCreatedAt,
@@ -795,8 +795,8 @@ export class StripeService {
     // PAST_DUE). Retrying the transient failure closes that window.
     await withDbRetry(() =>
       this.prisma.client.$transaction(async (tx) => {
-        await tx.license.update({
-          where: { id: license.id },
+        await tx.license.updateMany({
+          where: { id: license.id, tenantId: license.tenantId },
           data: { status, stripeLastEventCreatedAt: nextWatermark },
         });
         await tx.auditLog.create({

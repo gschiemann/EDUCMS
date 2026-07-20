@@ -230,6 +230,7 @@ export class TenantsController {
     }
 
     // Pull the user record so we have canTriggerPanic etc. in the new payload
+    // ten-ok: identity SELF-lookup — id is the authenticated JWT principal building its own switch payload
     const user = await this.prisma.client.user.findUnique({
       where: { id: req.user.userId },
       select: { id: true, email: true, role: true, canTriggerPanic: true },
@@ -937,6 +938,7 @@ export class TenantsController {
       throw new HttpException({ code: 'TENANT_USB_INGEST_FIELDS_REQUIRED', message: 'screenId and outcome required' }, HttpStatus.BAD_REQUEST);
     }
 
+    // ten-ok: device-reported telemetry — the screen row IS the tenant resolver; usbIngestEnabled + optional HMAC verified directly below
     const screen = await this.prisma.client.screen.findUnique({
       where: { id: screenId },
       include: {

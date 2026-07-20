@@ -43,6 +43,29 @@ describe('check-tenant-isolation analyzer', () => {
     expect(scan(`prisma.client.template.findFirst({ where: { slug, tenantId } });`)).toHaveLength(0);
   });
 
+  it('reviewed-safe: a `ten-ok:` annotation WITH a reason suppresses (same line or line directly above) and is counted as reviewed', () => {
+    const above = scan(
+      `// ten-ok: ownership resolver — verified with 403 below\nprisma.client.template.findUnique({ where: { id } });`,
+    );
+    expect(above).toHaveLength(0);
+    expect((above as any).reviewed).toHaveLength(1);
+    const inline = scan(
+      `prisma.client.template.findUnique({ where: { id } }); // ten-ok: verified against caller tenant right here`,
+    );
+    expect(inline).toHaveLength(0);
+  });
+
+  it('a `ten-ok:` with NO real reason does NOT suppress — the reason is mandatory', () => {
+    expect(scan(`// ten-ok:\nprisma.client.template.findUnique({ where: { id } });`)).toHaveLength(1);
+    expect(scan(`// ten-ok: ok\nprisma.client.template.findUnique({ where: { id } });`)).toHaveLength(1);
+  });
+
+  it('a `ten-ok:` two or more lines above does NOT suppress — the annotation must touch the call', () => {
+    expect(
+      scan(`// ten-ok: some plausible reason written far away\n\nprisma.client.template.findUnique({ where: { id } });`),
+    ).toHaveLength(1);
+  });
+
   it('derives 40+ tenant-owned accessors from the live schema', () => {
     const set = gate.tenantOwnedAccessors();
     expect(set.size).toBeGreaterThan(40);

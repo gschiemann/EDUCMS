@@ -118,6 +118,7 @@ export class UsersController {
   // it's purely cosmetic and doesn't change permissions.
   @Get('me')
   async getMe(@Request() req: any) {
+    // ten-ok: identity SELF-lookup — id IS the authenticated JWT principal; no narrower scope exists
     const me = await this.prisma.client.user.findUnique({
       where: { id: req.user.id },
       select: {
@@ -171,6 +172,7 @@ export class UsersController {
     if (Object.keys(data).length === 0) {
       throw new BadRequestException({ code: 'USER_NOTHING_TO_UPDATE', message: 'Nothing to update' });
     }
+    // ten-ok: identity SELF-update — only touches the authenticated JWT principal's own row
     const updated = await this.prisma.client.user.update({
       where: { id: req.user.id },
       data,
@@ -286,11 +288,17 @@ export class UsersController {
     // must always be answerable; a privilege escalation with no record is
     // exactly the gap this closes.
     const updated = await this.prisma.client.$transaction(async (tx: any) => {
-      const u = await tx.user.update({
-        where: { id },
+      // Scoped by the caller's tenant — defense-in-depth on a PRIVILEGE
+      // write (the same {id, tenantId} pair verified above; updateMany
+      // because a compound {id, tenantId} isn't a Prisma unique input).
+      const cnt = await tx.user.updateMany({
+        where: { id, tenantId },
         data: { role: body.role },
-        select: { id: true, email: true, role: true },
       });
+      if (cnt.count !== 1) {
+        throw new HttpException({ code: 'USER_NOT_FOUND', message: 'User not found' }, HttpStatus.NOT_FOUND);
+      }
+      const u = { id, email: user.email, role: body.role };
       await tx.auditLog.create({
         data: {
           tenantId,
@@ -369,6 +377,7 @@ export class UsersController {
 
     // Tenant scoping: SUPER_ADMIN may target any user; others are
     // confined to their own tenant. Mirrors the /:id/role endpoint.
+    // ten-ok: resolve-then-verify — target tenant asserted with 403 directly below; SUPER_ADMIN cross-tenant by design
     const target = await this.prisma.client.user.findUnique({
       where: { id },
       select: { id: true, email: true, role: true, tenantId: true, canTriggerPanic: true } as any,
@@ -399,6 +408,7 @@ export class UsersController {
     // a forensic timeline shows "admin attempted to flip but it was
     // already there". Cheap; the value is small.
     const updated = await this.prisma.client.$transaction(async (tx: any) => {
+      // ten-ok: write follows the resolve-then-verify above (403 on tenant mismatch); SUPER_ADMIN cross-tenant by design
       const u = await tx.user.update({
         where: { id },
         data: { canTriggerPanic: toValue } as any,
@@ -471,13 +481,18 @@ export class UsersController {
           details: JSON.stringify({ email: user.email, role: user.role }),
         },
       });
-      await tx.user.update({
-        where: { id },
+      // Tenant-scoped soft-delete (defense-in-depth; the audit row above
+      // rolls back if the verified row vanished between check and write).
+      const cnt = await tx.user.updateMany({
+        where: { id, tenantId },
         data: {
           deletedAt: new Date(),
           email: `deleted+${id}@deleted.local`,
         } as any,
       });
+      if (cnt.count !== 1) {
+        throw new HttpException({ code: 'USER_NOT_FOUND', message: 'User not found' }, HttpStatus.NOT_FOUND);
+      }
     });
     // Burn the deleted user's live sessions immediately. Best-effort: the row
     // is already soft-deleted and the email freed, so they cannot re-login even

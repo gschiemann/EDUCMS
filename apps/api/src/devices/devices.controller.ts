@@ -76,8 +76,8 @@ export class DevicesController {
     // Pairing mints a 365-day device JWT; that's a privileged action and
     // needs a forensic trail ("when did device X get bound to tenant Y?").
     await this.prisma.client.$transaction(async (tx) => {
-      await tx.screen.update({
-        where: { id: target.id },
+      await tx.screen.updateMany({
+        where: { id: target.id, tenantId: target.tenantId! },
         data: {
           deviceFingerprint: fp || target.deviceFingerprint,
           osInfo: body.os || target.osInfo,

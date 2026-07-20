@@ -51,6 +51,7 @@ describe('EmergencyController', () => {
             id: 'msg_1', tenantId: 't1', scopeType: 'tenant', scopeId: 't1', type: 'TEXT_BROADCAST',
           }),
           update: jest.fn().mockResolvedValue({}),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
           findMany: jest.fn().mockResolvedValue([]),
         },
         // After audit fix #12 the trigger/all-clear flow wraps state +
@@ -413,8 +414,10 @@ describe('EmergencyController', () => {
     const res = await controller.clearMessage('msg_1', req);
 
     expect(res.success).toBe(true);
-    expect(prismaService.client.emergencyMessage.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'msg_1' }, data: expect.objectContaining({ clearedByUserId: 'admin1' }) }),
+    // Tenant-scoped clear (TEN-001 burn-down): the where MUST carry the
+    // verified owning tenant, not just the bare message id.
+    expect(prismaService.client.emergencyMessage.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'msg_1', tenantId: 't1' }, data: expect.objectContaining({ clearedByUserId: 'admin1' }) }),
     );
     expect(prismaService.client.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ action: 'CLEAR_EMERGENCY_MESSAGE' }) }),

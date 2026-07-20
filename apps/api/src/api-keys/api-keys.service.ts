@@ -131,8 +131,8 @@ export class ApiKeysService {
     if (row.revokedAt) return { ok: true, alreadyRevoked: true };
 
     await this.prisma.client.$transaction(async (tx: any) => {
-      await tx.tenantApiKey.update({
-        where: { id: row.id },
+      await tx.tenantApiKey.updateMany({
+        where: { id: row.id, tenantId: opts.tenantId },
         data: { revokedAt: new Date() },
       });
       await tx.auditLog.create({
@@ -184,7 +184,7 @@ export class ApiKeysService {
     // Fire-and-forget lastUsedAt update. We don't await — the request
     // path must not block on this audit-y write.
     this.prisma.client.tenantApiKey
-      .update({ where: { id: row.id }, data: { lastUsedAt: new Date() } })
+      .updateMany({ where: { id: row.id, tenantId: row.tenantId }, data: { lastUsedAt: new Date() } })
       .catch(() => { /* non-fatal — next request retries */ });
 
     return { id: row.id, tenantId: row.tenantId, role: row.role };

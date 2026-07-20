@@ -278,6 +278,7 @@ export class EmergencyController {
     if (scopeType === 'tenant') {
       owningTenantId = scopeId;
     } else if (scopeType === 'group') {
+      // ten-ok: ownership RESOLVER — reads tenantId to verify the caller owns it (403 below); SUPER_ADMIN cross-tenant by design
       const group = await this.prisma.client.screenGroup.findUnique({
         where: { id: scopeId },
         select: { tenantId: true },
@@ -287,6 +288,7 @@ export class EmergencyController {
       }
       owningTenantId = group.tenantId;
     } else if (scopeType === 'device') {
+      // ten-ok: ownership RESOLVER — reads tenantId to verify the caller owns it (403 below); SUPER_ADMIN cross-tenant by design
       const screen = await this.prisma.client.screen.findUnique({
         where: { id: scopeId },
         select: { tenantId: true },
@@ -330,6 +332,7 @@ export class EmergencyController {
     try {
       if (scopeType === 'tenant') return scopeId;
       if (scopeType === 'group') {
+        // ten-ok: read-path audit-tenant RESOLVER — derives the owning tenant for audit rows; never grants access
         const g = await this.prisma.client.screenGroup.findUnique({
           where: { id: scopeId },
           select: { tenantId: true },
@@ -337,6 +340,7 @@ export class EmergencyController {
         if (g?.tenantId) return g.tenantId;
       }
       if (scopeType === 'device') {
+        // ten-ok: read-path audit-tenant RESOLVER — derives the owning tenant for audit rows; never grants access
         const s = await this.prisma.client.screen.findUnique({
           where: { id: scopeId },
           select: { tenantId: true },
@@ -1111,6 +1115,7 @@ export class EmergencyController {
     @Req() req: any,
   ) {
     const user = req.user || {};
+    // ten-ok: resolve-then-verify — tenant ownership asserted with 403 directly below; SUPER_ADMIN cross-tenant by design
     const existing = await this.prisma.client.emergencyMessage.findUnique({ where: { id: messageId } });
     if (!existing) {
       // Return 404-style response rather than swallowing — caller should know the message doesn't exist.
@@ -1129,8 +1134,11 @@ export class EmergencyController {
     // Atomic clear + audit — if audit fails we must not leave the
     // message marked cleared with no trail of who did it.
     await this.prisma.client.$transaction([
-      this.prisma.client.emergencyMessage.update({
-        where: { id: messageId },
+      // Scoped by the VERIFIED owning tenant (defense-in-depth vs the
+      // ownership check above racing a re-parent — updateMany because a
+      // compound {id, tenantId} isn't a Prisma unique input).
+      this.prisma.client.emergencyMessage.updateMany({
+        where: { id: messageId, tenantId: existing.tenantId },
         data: { clearedAt: new Date(), clearedByUserId: user.id || null },
       }),
       this.prisma.client.auditLog.create({
@@ -1292,6 +1300,7 @@ export class EmergencyController {
       throw new ForbiddenException('Device authentication required');
     }
 
+    // ten-ok: device SELF-lookup — id IS the HMAC-signed device principal (u.sub); the live row is the authoritative tenant source (stale-claim defense)
     const screen = await this.prisma.client.screen.findUnique({
       where: { id: u.sub },
       select: { id: true, tenantId: true, screenGroupId: true, status: true },

@@ -144,6 +144,7 @@ export class MfaController {
     if (!reqUser?.id) {
       throw new UnauthorizedException({ code: 'MFA_AUTH_REQUIRED', message: 'Authentication required' });
     }
+    // ten-ok: identity SELF-lookup — id IS the authenticated JWT principal; no narrower scope exists
     const dbUser = await this.prisma.client.user.findUnique({
       where: { id: reqUser.id },
       select: { mfaTotpVerifiedAt: true },
@@ -167,6 +168,7 @@ export class MfaController {
     // Re-load the user row so we have the canonical state (the JWT
     // claims may be stale if the user just changed MFA from another
     // session).
+    // ten-ok: identity SELF-lookup — id IS the authenticated JWT principal; no narrower scope exists
     const dbUser = await this.prisma.client.user.findUnique({
       where: { id: reqUser.id },
       select: {
@@ -193,6 +195,7 @@ export class MfaController {
     const { secretBase32 } = generateTotpSecret();
     const otpauthUrl = buildOtpauthUrl(secretBase32, ISSUER_NAME, dbUser.email);
 
+    // ten-ok: identity SELF-update — dbUser was loaded by the authenticated JWT principal's own id
     await this.prisma.client.user.update({
       where: { id: dbUser.id },
       data: {
@@ -240,6 +243,7 @@ export class MfaController {
       throw new UnauthorizedException({ code: 'MFA_AUTH_REQUIRED', message: 'Authentication required' });
     }
 
+    // ten-ok: identity SELF-lookup — id IS the authenticated JWT principal; no narrower scope exists
     const dbUser = await this.prisma.client.user.findUnique({
       where: { id: reqUser.id },
       select: {
@@ -297,6 +301,7 @@ export class MfaController {
       });
     }
 
+    // ten-ok: identity SELF-update — dbUser was loaded by the authenticated JWT principal's own id
     await this.prisma.client.user.update({
       where: { id: dbUser.id },
       data: {
@@ -333,6 +338,7 @@ export class MfaController {
       throw new UnauthorizedException({ code: 'MFA_AUTH_REQUIRED', message: 'Authentication required' });
     }
 
+    // ten-ok: identity SELF-lookup — id IS the authenticated JWT principal; no narrower scope exists
     const dbUser = await this.prisma.client.user.findUnique({
       where: { id: reqUser.id },
       select: { id: true, tenantId: true, email: true, passwordHash: true },
@@ -352,6 +358,7 @@ export class MfaController {
       });
     }
 
+    // ten-ok: identity SELF-update — dbUser was loaded by the authenticated JWT principal's own id
     await this.prisma.client.user.update({
       where: { id: dbUser.id },
       data: {
@@ -382,6 +389,7 @@ export class MfaController {
       throw new UnauthorizedException({ code: 'MFA_AUTH_REQUIRED', message: 'Authentication required' });
     }
 
+    // ten-ok: identity SELF-lookup — id IS the authenticated JWT principal; no narrower scope exists
     const dbUser = await this.prisma.client.user.findUnique({
       where: { id: reqUser.id },
       select: {
@@ -421,6 +429,7 @@ export class MfaController {
       });
     }
 
+    // ten-ok: identity SELF-update — dbUser was loaded by the authenticated JWT principal's own id
     await this.prisma.client.user.update({
       where: { id: dbUser.id },
       data: { mfaBackupCodes: stored as any },
@@ -470,6 +479,7 @@ export class MfaController {
     //    verify operations).
     this.rateLimiter.check(userId);
 
+    // ten-ok: identity SELF-lookup — userId is the sub of the VERIFIED partial mfaToken minted at password-check
     const dbUser = await this.prisma.client.user.findUnique({
       where: { id: userId },
       select: {
@@ -559,6 +569,7 @@ export class MfaController {
     //    this AFTER rate-limiter record so a DB error here doesn't
     //    burn a code without the user knowing).
     if (usedBackup && updatedBackupCodes) {
+      // ten-ok: identity SELF-update — dbUser was loaded by the verified mfaToken principal's own id
       await this.prisma.client.user.update({
         where: { id: dbUser.id },
         data: { mfaBackupCodes: updatedBackupCodes as any },

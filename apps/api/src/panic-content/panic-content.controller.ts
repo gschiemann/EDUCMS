@@ -116,11 +116,13 @@ export class PanicContentController {
       // Self-heal: if an admin somehow deleted the underlying playlist row
       // out-of-band, re-create one so the system never enters a state
       // where the panic-type column points at a missing playlist.
-      const existing = await this.prisma.client.playlist.findUnique({ where: { id: existingId } });
+      // Tenant-scoped: if the tenant's panic column ever pointed at another
+      // tenant's playlist, treat it as missing and re-create our own below.
+      const existing = await this.prisma.client.playlist.findFirst({ where: { id: existingId, tenantId } });
       if (existing) {
         if (!existing.isProtected || existing.protectedKind !== pKind) {
-          await this.prisma.client.playlist.update({
-            where: { id: existing.id },
+          await this.prisma.client.playlist.updateMany({
+            where: { id: existing.id, tenantId },
             data: { isProtected: true, protectedKind: pKind },
           });
         }

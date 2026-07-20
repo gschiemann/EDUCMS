@@ -18,7 +18,10 @@ import { UsersController } from './users.controller';
 function makePrisma() {
   // $transaction(cb) runs cb against a tx client that mirrors the real one.
   const tx = {
-    user: { update: jest.fn(async ({ data }: any) => ({ id: 'target-1', email: 't@s.edu', ...data })) },
+    user: {
+      update: jest.fn(async ({ data }: any) => ({ id: 'target-1', email: 't@s.edu', ...data })),
+      updateMany: jest.fn(async () => ({ count: 1 })),
+    },
     auditLog: { create: jest.fn(async () => ({})) },
   };
   const client = {
@@ -26,6 +29,7 @@ function makePrisma() {
       findFirst: jest.fn(),
       findUnique: jest.fn(),
       update: tx.user.update,
+      updateMany: tx.user.updateMany,
     },
     auditLog: { create: tx.auditLog.create },
     $transaction: jest.fn(async (cb: any) => cb(tx)),
