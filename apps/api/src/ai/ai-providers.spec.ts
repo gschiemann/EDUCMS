@@ -79,6 +79,40 @@ describe('dispatchAi — temperature parity', () => {
   });
 });
 
+describe('dispatchAi — Anthropic prompt-cache invariant (efficiency audit 2026-07-20)', () => {
+  beforeEach(() => fetchMock.mockReset());
+
+  it('system rides the block-array form with ephemeral cache_control (the ~90% repeat-call discount)', async () => {
+    fetchMock.mockResolvedValue(okJson({ content: [{ text: 'hi' }] }));
+    await dispatchAi('anthropic', {
+      apiKey: 'sk-ant-x', model: 'claude-haiku-4-5',
+      system: 'a large static designer prompt', userPrompt: 'u', maxTokens: 300,
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    // A refactor that silently reverts to the plain-string `system` form
+    // drops the cache marker with zero behavior change in tests — this
+    // pin is what makes that regression visible.
+    expect(Array.isArray(body.system)).toBe(true);
+    expect(body.system[0]).toMatchObject({
+      type: 'text',
+      text: 'a large static designer prompt',
+      cache_control: { type: 'ephemeral' },
+    });
+    // Volatile content (the user turn) stays AFTER the cached prefix.
+    expect(body.messages[0]).toMatchObject({ role: 'user', content: 'u' });
+  });
+
+  it('OpenAI + Google paths do NOT carry Anthropic cache_control', async () => {
+    fetchMock.mockResolvedValue(okJson({ choices: [{ message: { content: 'hi' } }] }));
+    await dispatchAi('openai', {
+      apiKey: 'sk-x', model: 'gpt-4o-mini',
+      system: 's', userPrompt: 'u', maxTokens: 300,
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(JSON.stringify(body)).not.toContain('cache_control');
+  });
+});
+
 describe('dispatchAi — OpenAI reasoning-model contract (gpt-5 fix)', () => {
   beforeEach(() => fetchMock.mockReset());
 
