@@ -1,0 +1,5 @@
+{
+  "_comment": "Bundle-size ceilings (F3). Ratchets DOWN only — regenerate deliberately after a real reduction: UPDATE_BASELINE=1 node apps/web/tools/check-bundle-budget.cjs. Growth past tolerance REDS CI; do not bump to get green.",
+  "maxChunkBytes": 3520599,
+  "totalBytes": 24477143
+}

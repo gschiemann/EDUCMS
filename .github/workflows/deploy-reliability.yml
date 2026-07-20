@@ -177,6 +177,12 @@ jobs:
         env:
           NEXT_PUBLIC_API_URL: https://api-production-39a1.up.railway.app/api/v1
         run: pnpm --filter web build
+      # Bundle-budget ratchet (efficiency audit 2026-07-20, F3) — the widget
+      # world already compiles to ~3.4 MB chunks; this locks today's sizes as
+      # the CEILING (down-only, like taurus-safety) so growth reds the build
+      # instead of silently landing on player CPUs.
+      - name: Bundle budget (ratchet down only)
+        run: node apps/web/tools/check-bundle-budget.cjs
 
   docker-build:
     name: Docker build + boot smoke test
