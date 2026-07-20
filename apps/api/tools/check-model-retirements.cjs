@@ -43,7 +43,7 @@ const TRACKED = [
     id: 'imagen-4.0-generate-001',
     shutdown: '2026-08-17',
     replacement: 'gemini-3.1-flash-image',
-    note: 'replacement uses generateContent, NOT :predict — a real code change in callGoogleImage, not an id swap',
+    note: 'MIGRATED 2026-07-20 — callGoogleImage now speaks gemini-3.1-flash-image generateContent. Entry kept as a tripwire: any re-introduced imagen reference reds CI after the shutdown date.',
   },
   {
     id: 'gpt-5',

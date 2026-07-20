@@ -1019,19 +1019,48 @@ describe('AiService — AI image generation', () => {
     expect(fetchSpy).not.toHaveBeenCalled(); // door-check, never hits the provider
   });
 
-  it('(e) Google (BYOK) tenant → hits the Imagen :predict endpoint and persists', async () => {
+  it('(e) Google (BYOK) tenant → gemini-3.1-flash-image generateContent and persists (imagen-4.0 dies 2026-08-17)', async () => {
     tenantsById.set('t1', { id: 't1', aiProvider: 'google', aiKeyEncrypted: 'enc', aiModel: 'gemini-2.5-flash' });
     jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('AIzaTestKey');
-    fetchSpy.mockResolvedValue(okJson({ predictions: [{ bytesBase64Encoded: TINY_PNG_B64 }] }));
+    // Image models interleave TEXT + IMAGE parts — the parser must scan
+    // parts for inlineData, not read parts[0].
+    fetchSpy.mockResolvedValue(okJson({
+      candidates: [{
+        finishReason: 'STOP',
+        content: { parts: [
+          { text: 'Here is your image.' },
+          { inlineData: { mimeType: 'image/png', data: TINY_PNG_B64 } },
+        ] },
+      }],
+    }));
     const { service, storage } = buildService(makeFakeRedisClient());
     const res = await service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'sunset over a stadium', size: '1792x1024' });
     const calledUrl = String(fetchSpy.mock.calls[0][0]);
-    expect(calledUrl).toContain('imagen-4.0-generate-001:predict');
-    // Aspect ratio mapped from the landscape size.
+    expect(calledUrl).toContain('gemini-3.1-flash-image:generateContent');
+    expect(calledUrl).not.toContain(':predict'); // the dead imagen wire shape
+    expect(calledUrl).not.toContain('AIzaTestKey'); // key rides the header, never the URL
     const reqBody = JSON.parse(String(fetchSpy.mock.calls[0][1].body));
-    expect(reqBody.parameters.aspectRatio).toBe('16:9');
+    expect(reqBody.contents[0].parts[0].text).toContain('sunset over a stadium');
+    // Aspect ratio mapped from the landscape size.
+    expect(reqBody.generationConfig.imageConfig.aspectRatio).toBe('16:9');
     expect(storage.upload).toHaveBeenCalledTimes(1);
     expect(res).toMatchObject({ provider: 'google', id: 'asset_generated_1' });
+  });
+
+  it('(e2) Google safety-block (no image part) → actionable 503 with the block reason, nothing persisted', async () => {
+    tenantsById.set('t1', { id: 't1', aiProvider: 'google', aiKeyEncrypted: 'enc', aiModel: 'gemini-2.5-flash' });
+    jest.spyOn(require('./ai-key-cipher'), 'openAiKey').mockReturnValue('AIzaTestKey');
+    fetchSpy.mockResolvedValue(okJson({ promptFeedback: { blockReason: 'PROHIBITED_CONTENT' }, candidates: [] }));
+    const { service, storage } = buildService(makeFakeRedisClient());
+    let caught: any;
+    try {
+      await service.generateImage({ tenantId: 't1', role: 'SCHOOL_ADMIN', prompt: 'something blocked' });
+    } catch (e) { caught = e; }
+    expect(caught).toBeDefined();
+    expect(caught.getStatus()).toBe(503);
+    expect(String(caught.message)).toContain('PROHIBITED_CONTENT');
+    expect(storage.upload).not.toHaveBeenCalled();
+    expect(prismaMock.client.asset.create).not.toHaveBeenCalled();
   });
 
   it('out-of-credit OpenAI → structured 402 AI_PROVIDER_OUT_OF_CREDIT (no asset persisted)', async () => {

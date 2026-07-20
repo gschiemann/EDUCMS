@@ -309,15 +309,15 @@ export const CAPABILITY_REGISTRY: ReadonlyArray<Capability> = [
     id: 'google-byok-image-gen',
     name: 'Google BYOK AI image generation',
     domain: 'ai',
-    state: 'DEPRECATED',
+    state: 'VERIFIED',
     owner: 'ai platform',
     surface: 'AI image (Google provider, tenant BYOK key)',
     publicClaim: null,
-    evidenceTest: null,
-    verifiedAt: null,
-    expiresAt: '2026-08-17', // imagen-4.0-generate-001 shutdown
+    evidenceTest: 'apps/api/src/ai/ai.service.spec.ts',
+    verifiedAt: '2026-07-20',
+    expiresAt: null,
     limitations:
-      'Runs on imagen-4.0-generate-001, which Google shuts down 2026-08-17. Migration to gemini-3.1-flash-image is code-drafted but NOT live-verified; must land + be canary-tested before the shutdown. BYOK only (no platform spend).',
+      'Migrated 2026-07-20 off imagen-4.0-generate-001/:predict (Google shutdown 2026-08-17) to gemini-3.1-flash-image via generateContent. Spec-verified against the documented wire shape (mocked provider); a LIVE canary needs a tenant Google BYOK key — no platform Google key exists by design. BYOK only (no platform spend).',
     dependsOn: [],
   },
   {

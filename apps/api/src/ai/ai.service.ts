@@ -3947,8 +3947,9 @@ export class AiService {
    *     size vocabulary; callOpenAiImage re-maps it to the gpt-image
    *     sizes (1536x1024 / 1024x1536, NOT 1792x1024 / 1024x1792 —
    *     sending those to the gpt-image family 400s).
-   *   - Google (provider==='google'): Imagen via the Generative Language
-   *     API (models/imagen-4.0-generate-001:predict), base64 output.
+   *   - Google (provider==='google'): gemini-3.1-flash-image via the
+   *     Generative Language API generateContent (image comes back as a
+   *     base64 inlineData part; was imagen-4.0 :predict until 2026-07-20).
    *   - Anthropic / platform-fallback: Anthropic has NO image model →
    *     graceful AI_IMAGE_UNAVAILABLE (NOT a 500). The whole point is it
    *     degrades exactly like the text features do.
@@ -4282,25 +4283,29 @@ export class AiService {
   }
 
   /**
-   * Google Imagen image generation via the Generative Language API.
+   * Google image generation via the Generative Language API.
    *
-   *   POST …/v1beta/models/<imagen-model>:predict
-   *   body: { instances: [{ prompt }], parameters: { sampleCount, aspectRatio } }
-   *   → predictions[0].bytesBase64Encoded
+   *   POST …/v1beta/models/gemini-3.1-flash-image:generateContent
+   *   body: { contents: [{ parts: [{ text: prompt }] }],
+   *           generationConfig: { imageConfig: { aspectRatio } } }
+   *   → candidates[0].content.parts[] → first part carrying inlineData.data
+   *     (base64; image models interleave, so a text part may come first)
    *
    * The tenant's saved gemini-* model is a TEXT model, so we don't use it
-   * for image gen — we pin the current Imagen model.
+   * for image gen — we pin the current image model.
    *
-   * W0-03 (2026-07-13): imagen-3.0-generate-002 was SHUT DOWN by Google on
-   * 2025-11-10 — this path had been 100% dead for eight months. Now pins
-   * imagen-4.0-generate-001 (same :predict wire shape, $0.04/image).
-   * ⚠ Google has ALREADY scheduled imagen-4.0-generate-001's shutdown for
-   * 2026-08-17, replacement gemini-3.1-flash-image — which is a DIFFERENT
-   * API shape (generateContent, not :predict), so that migration is a real
-   * code change, not an id swap. tools/check-model-retirements.cjs starts
-   * failing CI 60 days before that date.
+   * MIGRATED 2026-07-20 (§3 launch hardening): imagen-4.0-generate-001 and
+   * its :predict wire shape are GONE — Google shuts that model down
+   * 2026-08-17, and tools/check-model-retirements.cjs reds CI on any
+   * reference that lingers past the date. gemini-3.1-flash-image is
+   * Google's designated replacement (per their deprecations page, tracked
+   * in the checker since W0-03) with a different shape: generateContent.
+   * Deliberately NO imagen fallback — a fallback that dies on a calendar
+   * date is the dead-route theater W0-03 purged. responseModalities is
+   * intentionally OMITTED: image models default to image output, and
+   * over-specifying modalities is the 400 risk, not the fix.
    *
-   * Imagen exposes aspect ratios (1:1, 16:9, 9:16) rather than pixel
+   * Image models expose aspect ratios (1:1, 16:9, 9:16) rather than pixel
    * sizes, so we map our size enum to the nearest ratio. Key goes in the
    * x-goog-api-key HEADER (never the URL — Google echoes the URL in error
    * bodies).
@@ -4312,9 +4317,9 @@ export class AiService {
     size: '1024x1024' | '1792x1024' | '1024x1792',
   ): Promise<Buffer> {
     const aspectRatio = size === '1792x1024' ? '16:9' : size === '1024x1792' ? '9:16' : '1:1';
-    const imagenModel = 'imagen-4.0-generate-001';
+    const imageModel = 'gemini-3.1-flash-image';
     const url =
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(imagenModel)}:predict`;
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(imageModel)}:generateContent`;
     const res = await fetch(url, {
       method: 'POST',
       headers: {
@@ -4322,8 +4327,8 @@ export class AiService {
         'x-goog-api-key': apiKey,
       },
       body: JSON.stringify({
-        instances: [{ prompt }],
-        parameters: { sampleCount: 1, aspectRatio },
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { imageConfig: { aspectRatio } },
       }),
       signal: AbortSignal.timeout(this.IMAGE_FETCH_TIMEOUT_MS),
     });
@@ -4334,18 +4339,27 @@ export class AiService {
       this.throwImageProviderError('google', res.status, body);
     }
     const json = (await res.json()) as any;
-    const b64 =
-      json?.predictions?.[0]?.bytesBase64Encoded ??
-      json?.predictions?.[0]?.image?.bytesBase64Encoded;
+    // REST replies in camelCase; accept snake_case too so a proxy that
+    // re-cases the payload can't blank the image.
+    const parts = json?.candidates?.[0]?.content?.parts;
+    const b64 = Array.isArray(parts)
+      ? parts
+          .map((p: any) => p?.inlineData?.data ?? p?.inline_data?.data)
+          .find((d: any) => typeof d === 'string' && d.length > 0)
+      : undefined;
     if (typeof b64 !== 'string' || !b64) {
-      // Imagen blocks unsafe prompts with an empty predictions array +
-      // a filter reason. Surface something actionable.
+      // Safety-blocked prompts come back with no image part plus a block
+      // reason (promptFeedback.blockReason) or a non-STOP finishReason
+      // (IMAGE_SAFETY / PROHIBITED_CONTENT / …). Surface something
+      // actionable — same contract the old Imagen raiFilteredReason had.
+      const finish = json?.candidates?.[0]?.finishReason;
       const reason =
-        json?.predictions?.[0]?.raiFilteredReason ||
+        json?.promptFeedback?.blockReason ||
+        (finish && finish !== 'STOP' ? finish : undefined) ||
         json?.error?.message ||
         'no image returned';
       throw new ServiceUnavailableException(
-        `Google Imagen returned no image (${String(reason).slice(0, 160)}). Try rephrasing your prompt.`,
+        `Google image model returned no image (${String(reason).slice(0, 160)}). Try rephrasing your prompt.`,
       );
     }
     return Buffer.from(b64, 'base64');
