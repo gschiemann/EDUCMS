@@ -62,7 +62,68 @@ function loadRegistry() {
   return m.exports;
 }
 
-(function main() {
+// ── TRUTH-001: public-surface claim scan (2026-07-20) ─────────────────────
+// High-risk feature phrases appearing on PUBLIC surfaces must map to a
+// registered capability in a customer-claimable state. Deterministic curated
+// regex list — no NLP, no false-positive machine. Entries whose capability is
+// NOT registered are TRIPWIRES: the moment marketing copy adds that phrase,
+// CI reds until a real capability is registered honestly (or the copy is cut).
+const PUBLIC_SURFACES = [
+  'apps/web/src/app/page.tsx', // marketing landing
+  'apps/web/src/app/signup/page.tsx', // signup promises
+];
+
+const CLAIM_PHRASES = [
+  { re: /\bSAML\b/i, capability: 'saml-sso', label: 'SAML SSO' },
+  { re: /\bSSO\b|single sign[- ]?on/i, capability: 'oidc-multi-replica-login', label: 'SSO sign-in' },
+  { re: /\bClever\b/, capability: 'clever-rostering', label: 'Clever rostering' },
+  { re: /free (trial|pilot)|no credit card/i, capability: 'free-trial-14d-3screen', label: 'free trial' },
+  { re: /per screen per month|\$25[^0-9][^.]{0,24}screen/i, capability: 'pricing-plan-truth', label: 'per-screen pricing' },
+  { re: /\bIPAWS\b/i, capability: 'ipaws-inbound', label: 'IPAWS alerts' },
+  { re: /Common Alerting Protocol|\bCAP feeds\b/i, capability: 'cap-inbound', label: 'CAP alerts' },
+  { re: /\bCanva\b/i, capability: 'canva-import', label: 'Canva import' },
+  { re: /\bFigma\b/i, capability: 'figma-import', label: 'Figma import' },
+  { re: /Google Slides|PowerPoint Online/i, capability: 'slides-import', label: 'cloud slides import' },
+  // FERPA/COPPA on signup are links to our PUBLISHED policy commitments —
+  // backed by a registered capability. Certification-style claims (SOC 2 /
+  // HIPAA / PCI) remain unregistered tripwires: we hold no such attestations.
+  { re: /\bFERPA\b|\bCOPPA\b/i, capability: 'ferpa-coppa-commitments', label: 'FERPA/COPPA commitments' },
+  { re: /\bSOC ?2\b|\bHIPAA\b|\bPCI[- ]DSS\b/i, capability: 'compliance-attestation', label: 'compliance attestation' },
+  { re: /99\.9\d*\s?%|uptime (guarantee|SLA)/i, capability: 'uptime-sla', label: 'uptime SLA' },
+];
+
+/** Scan public surfaces for claim phrases lacking a claimable capability.
+ *  `surfaces` may be injected for tests: [{file, text}]. Returns problem strings. */
+function scanPublicClaims(caps, claimableStates, surfaces) {
+  const byId = new Map(caps.map((c) => [c.id, c]));
+  const list =
+    surfaces ||
+    PUBLIC_SURFACES.map((rel) => {
+      const abs = path.join(REPO_ROOT, rel);
+      return fs.existsSync(abs) ? { file: rel, text: fs.readFileSync(abs, 'utf8') } : null;
+    }).filter(Boolean);
+  const problems = [];
+  for (const s of list) {
+    for (const p of CLAIM_PHRASES) {
+      if (!p.re.test(s.text)) continue;
+      const cap = byId.get(p.capability);
+      if (!cap) {
+        problems.push(
+          `${s.file}: public copy claims "${p.label}" but capability "${p.capability}" is not registered — register it honestly or cut the copy.`,
+        );
+      } else if (!(claimableStates.has ? claimableStates.has(cap.state) : false)) {
+        problems.push(
+          `${s.file}: public copy claims "${p.label}" but capability "${p.capability}" is ${cap.state} — not customer-claimable.`,
+        );
+      }
+    }
+  }
+  return problems;
+}
+
+module.exports = { scanPublicClaims, CLAIM_PHRASES, PUBLIC_SURFACES };
+
+function main() {
   let reg;
   try {
     reg = loadRegistry();
@@ -113,7 +174,11 @@ function loadRegistry() {
     }
   }
 
-  console.log(`Capability registry: ${caps.length} capabilities checked.`);
+  // TRUTH-001 — public marketing/signup copy must not out-claim the registry.
+  const claimProblems = scanPublicClaims(caps, CLAIMABLE);
+  errors.push(...claimProblems);
+
+  console.log(`Capability registry: ${caps.length} capabilities checked; TRUTH-001 scanned ${PUBLIC_SURFACES.length} public surfaces × ${CLAIM_PHRASES.length} claim phrases.`);
   for (const w of warnings) console.log(`  ::warning:: ${w}`);
 
   if (errors.length) {
@@ -122,6 +187,8 @@ function loadRegistry() {
     console.error('\nFix the registry to reflect reality (state, evidenceTest, publicClaim). Do NOT mark VERIFIED without evidence, and do NOT publicly claim an unbuilt feature.');
     process.exit(1);
   }
-  console.log('OK: every VERIFIED capability has resolvable evidence; no unbuilt feature carries a public claim.');
+  console.log('OK: every VERIFIED capability has resolvable evidence; no unbuilt feature carries a public claim; public copy is registry-backed.');
   process.exit(0);
-})();
+}
+
+if (require.main === module) main();

@@ -44,6 +44,41 @@ describe('capability registry — §21 truth invariants', () => {
     expect(offenders).toEqual([]);
   });
 
+  describe('TRUTH-001 — public-surface claim scan (2026-07-20)', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const gate = require('../../../../scripts/check-capability-registry.cjs');
+
+    it('the LIVE marketing + signup surfaces carry no unbacked feature claims', () => {
+      const problems = gate.scanPublicClaims(CAPABILITY_REGISTRY, CLAIMABLE_STATES);
+      expect(problems).toEqual([]);
+    });
+
+    it('a claim on an unbuilt capability (SAML) would FAIL the gate', () => {
+      const problems = gate.scanPublicClaims(CAPABILITY_REGISTRY, CLAIMABLE_STATES, [
+        { file: 'fixture.tsx', text: 'Enterprise SAML single sign-on, included on every plan!' },
+      ]);
+      expect(problems.some((p: string) => /SAML/.test(p) && /not customer-claimable/.test(p))).toBe(true);
+    });
+
+    it('a claim with NO registered capability (IPAWS / uptime SLA) would FAIL as unregistered', () => {
+      const problems = gate.scanPublicClaims(CAPABILITY_REGISTRY, CLAIMABLE_STATES, [
+        { file: 'fixture.tsx', text: 'Receives IPAWS national alerts with a 99.99% uptime guarantee.' },
+      ]);
+      expect(problems.some((p: string) => /IPAWS/.test(p) && /not registered/.test(p))).toBe(true);
+      expect(problems.some((p: string) => /uptime/.test(p) && /not registered/.test(p))).toBe(true);
+    });
+
+    it('backed claims (SSO / free trial / per-screen pricing / Clever) pass', () => {
+      const problems = gate.scanPublicClaims(CAPABILITY_REGISTRY, CLAIMABLE_STATES, [
+        {
+          file: 'fixture.tsx',
+          text: 'SSO sign-in, Clever rostering, free trial, no credit card — $25 per screen per month.',
+        },
+      ]);
+      expect(problems).toEqual([]);
+    });
+  });
+
   it('SAML is not claimed as shipped (it is removed / NOT_BUILT)', () => {
     const saml = CAPABILITY_REGISTRY.find((c) => c.id === 'saml-sso');
     expect(saml).toBeDefined();

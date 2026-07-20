@@ -19,9 +19,10 @@
  * is only allowed when the state is one a customer can rely on — never on
  * NOT_BUILT / EXPERIMENTAL / DEPRECATED / RETIRED. The gate enforces both.
  *
- * NEXT EXTENSION (documented, not yet built): scan public marketing/help
- * surfaces and fail CI when a shipped claim has no registered capability
- * (audit TRUTH-001). This registry is the substrate that makes that possible.
+ * TRUTH-001 (built 2026-07-20): the gate also scans the public marketing +
+ * signup surfaces against a curated claim-phrase list and fails CI when copy
+ * claims a feature with no registered claimable capability — see
+ * scanPublicClaims in scripts/check-capability-registry.cjs.
  */
 
 /** Lifecycle state of a capability. Ordered least→most production-ready. */
@@ -290,6 +291,36 @@ export const CAPABILITY_REGISTRY: ReadonlyArray<Capability> = [
   },
 
   // ── Honestly NOT verified / not built — NO false publicClaim ──
+  {
+    id: 'clever-rostering',
+    name: 'Clever SIS rostering + staff sync',
+    domain: 'auth',
+    state: 'CONFIGURED',
+    owner: 'integrations',
+    surface: 'marketing landing / Clever integration (apps/api/src/integrations/clever/)',
+    publicClaim: 'K-12 districts get Clever rostering with staff sync built in.',
+    evidenceTest: null,
+    verifiedAt: null,
+    expiresAt: null,
+    limitations:
+      'Clever OAuth + roster/staff sync service is wired (integration audit 2026-06-26 graded it REAL), but there is no automated CI evidence against a live Clever sandbox — hence CONFIGURED, not VERIFIED. Registered 2026-07-20 because the marketing landing already makes this claim (TRUTH-001).',
+    dependsOn: [],
+  },
+  {
+    id: 'ferpa-coppa-commitments',
+    name: 'FERPA / COPPA data-commitment policy pages',
+    domain: 'compliance',
+    state: 'CONFIGURED',
+    owner: 'legal/product',
+    surface: '/ferpa + /coppa policy pages, linked from signup + footer',
+    publicClaim: 'K-12 signups agree to our FERPA / COPPA data commitments (published policy pages).',
+    evidenceTest: null,
+    verifiedAt: null,
+    expiresAt: null,
+    limitations:
+      'Published data-handling COMMITMENTS (policy pages at apps/web/src/app/ferpa + /coppa), NOT third-party certifications or audits. Certification-style claims (SOC 2 / HIPAA / PCI) remain TRUTH-001 tripwires via the unregistered compliance-attestation id.',
+    dependsOn: [],
+  },
   {
     id: 'saml-sso',
     name: 'SAML single sign-on',
