@@ -38,7 +38,10 @@ export class ProofOfPlaySampler implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ProofOfPlaySampler.name);
   private timer: NodeJS.Timeout | null = null;
   private firstRun: NodeJS.Timeout | null = null;
+  private purgeTimer: NodeJS.Timeout | null = null;
+  private firstPurge: NodeJS.Timeout | null = null;
   private running = false;
+  private purging = false;
 
   /** A screen counts as "online" if it pinged within this window. */
   private readonly ONLINE_WINDOW_MS = 6 * 60_000;
@@ -58,9 +61,18 @@ export class ProofOfPlaySampler implements OnModuleInit, OnModuleDestroy {
     // losing a whole interval (and the feature is testable in seconds
     // once the migration is applied).
     this.firstRun = setTimeout(() => void this.tick(), 30_000);
+    // Retention sweep (efficiency audit 2026-07-20): once a day + once
+    // shortly after boot, purge samples older than the retention window
+    // so the table stops growing forever (it had reached 38% of the DB
+    // with no reader). 90s boot delay keeps the first sweep off the
+    // boot-critical path.
+    this.purgeTimer = setInterval(() => void this.purgeTick(), 24 * 3_600_000);
+    this.firstPurge = setTimeout(() => void this.purgeTick(), 90_000);
     // Don't keep the Node event loop alive on shutdown.
     this.timer.unref?.();
     this.firstRun.unref?.();
+    this.purgeTimer.unref?.();
+    this.firstPurge.unref?.();
   }
 
   onModuleDestroy() {
@@ -71,6 +83,54 @@ export class ProofOfPlaySampler implements OnModuleInit, OnModuleDestroy {
     if (this.firstRun) {
       clearTimeout(this.firstRun);
       this.firstRun = null;
+    }
+    if (this.purgeTimer) {
+      clearInterval(this.purgeTimer);
+      this.purgeTimer = null;
+    }
+    if (this.firstPurge) {
+      clearTimeout(this.firstPurge);
+      this.firstPurge = null;
+    }
+  }
+
+  /**
+   * Nightly retention purge. PROOF_OF_PLAY_RETENTION_DAYS (default 90 —
+   * matches the report UI's largest window; ≤0 disables). Runs inside a
+   * transaction holding pg_try_advisory_xact_lock so concurrent replicas
+   * don't duplicate the sweep — xact-scoped (NOT session-scoped) because
+   * session advisory locks are unreliable through pgBouncer transaction
+   * pooling: the unlock can land on a different pooled connection and
+   * strand the lock. The xact lock auto-releases at commit.
+   */
+  async purgeTick(): Promise<number> {
+    if (this.purging) return 0;
+    this.purging = true;
+    try {
+      const days = process.env.PROOF_OF_PLAY_RETENTION_DAYS === undefined
+        ? 90
+        : Number(process.env.PROOF_OF_PLAY_RETENTION_DAYS);
+      if (!Number.isFinite(days) || days <= 0) return 0;
+      const cutoff = new Date(Date.now() - days * 86_400_000);
+      const deleted = await this.prisma.client.$transaction(async (tx: any) => {
+        const rows: Array<{ locked: boolean }> =
+          await tx.$queryRaw`SELECT pg_try_advisory_xact_lock(424302) AS locked`;
+        if (!rows?.[0]?.locked) return -1; // another replica is sweeping
+        const res = await tx.playbackSample.deleteMany({
+          where: { sampledAt: { lt: cutoff } },
+        });
+        return res.count as number;
+      });
+      if (deleted > 0) {
+        this.logger.log(`proof-of-play retention: purged ${deleted} sample(s) older than ${days}d`);
+      }
+      return Math.max(0, deleted);
+    } catch (e: any) {
+      // Best-effort — a missing table or pool blip must never crash the API.
+      this.logger.warn(`proof-of-play retention purge failed: ${e?.message ?? e}`);
+      return 0;
+    } finally {
+      this.purging = false;
     }
   }
 
@@ -155,10 +215,24 @@ export class ProofOfPlaySampler implements OnModuleInit, OnModuleDestroy {
       }
 
       if (rows.length > 0) {
-        await (this.prisma.client as any).playbackSample.createMany({
-          data: rows.map((r) => ({ ...r, sampledAt: now })),
+        // Replica guard (efficiency audit 2026-07-20): every replica runs
+        // this setInterval, so without a lock a 2-replica deploy would
+        // silently DOUBLE-COUNT every sample. xact-scoped advisory lock
+        // (pgBouncer-safe — see purgeTick) makes same-instant ticks
+        // single-writer; interval drift between replicas is inherent
+        // cadence jitter and acceptable for an interval-grained estimate.
+        const wrote = await this.prisma.client.$transaction(async (tx: any) => {
+          const locked: Array<{ locked: boolean }> =
+            await tx.$queryRaw`SELECT pg_try_advisory_xact_lock(424301) AS locked`;
+          if (!locked?.[0]?.locked) return false;
+          await tx.playbackSample.createMany({
+            data: rows.map((r) => ({ ...r, sampledAt: now })),
+          });
+          return true;
         });
-        this.logger.log(`proof-of-play: wrote ${rows.length} playback sample(s)`);
+        if (wrote) {
+          this.logger.log(`proof-of-play: wrote ${rows.length} playback sample(s)`);
+        }
       }
     } catch (e: any) {
       // Best-effort — a missing table (migration not yet applied) or a

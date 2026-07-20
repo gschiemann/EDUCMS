@@ -1412,11 +1412,14 @@ model PlaybackSample {
   playlistId String   @map("playlist_id")
   sampledAt  DateTime @default(now()) @map("sampled_at")
 
-  // Hot path: "display time per playlist / screen for this tenant
-  // over the last N days".
+  // Hot path: the proof-of-play report aggregates inside a per-tenant
+  // window → (tenantId, sampledAt) serves every report query. The plain
+  // sampledAt index serves the nightly retention purge. The per-column
+  // playlistId/screenId indexes were DROPPED 2026-07-20 (efficiency
+  // audit): 0–1 scans ever in production while costing 62% of the
+  // table's disk footprint — grouping happens inside the tenant window.
   @@index([tenantId, sampledAt])
-  @@index([playlistId, sampledAt])
-  @@index([screenId, sampledAt])
+  @@index([sampledAt])
   @@map("playback_samples")
 }
 
