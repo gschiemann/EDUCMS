@@ -1,63 +1,41 @@
 ---
-title: Setting up SSO (Google, Microsoft, SAML)
+title: Setting up single sign-on (SSO)
 category: SSO
-updated: 2026-04-16
-excerpt: Configure district-wide single sign-on so staff never have to remember another password.
+updated: 2026-07-21
+excerpt: Let staff sign in with the account they already use — Google Workspace, Microsoft Entra ID, Okta, or any OIDC identity provider.
 ---
 
-# Setting up SSO
+# Setting up single sign-on
 
-VenueOS supports three SSO paths on District and Enterprise plans:
+With SSO, staff sign in with the work account they already have — no new password to remember, and offboarding happens in your identity provider, not screen by screen.
 
-- **Google Workspace** (OIDC)
-- **Microsoft Entra ID / Azure AD** (OIDC)
-- **Generic SAML 2.0 or OIDC** IdPs (Okta, OneLogin, Clever, Classlink)
+VenueOS connects to any **OpenID Connect (OIDC)** identity provider. That covers:
 
-## Why SSO
+- **Google Workspace**
+- **Microsoft Entra ID** (Azure AD)
+- **Okta, OneLogin, Auth0, Classlink**, and other OIDC-capable IdPs
 
-- Staff use existing credentials — fewer passwords to leak or reset
-- When someone leaves the district, de-provisioning from your IdP removes their access everywhere
-- Enforces MFA at the district level without each vendor building their own
+> Need a different enterprise IdP protocol? It's on our roadmap — contact support and we'll walk through your identity setup together.
 
-## Google Workspace (OIDC)
+## Connect your identity provider
 
-1. Go to **Settings → Authentication → Add identity provider**.
-2. Pick **Google**.
-3. In your Google Admin console, add VenueOS as an OAuth client. The redirect URI we require is:
-   `https://your-domain.venue-os.app/api/v1/auth/oidc/callback`
-4. Paste the client ID and secret back into the VenueOS dashboard.
-5. Restrict sign-in to users whose email ends in your district domain (e.g. `@lincolnusd.org`).
-6. Click **Test connection**, then **Enable**.
+1. In your IdP, create a new **OIDC web application**. Use the **redirect URI** shown on our settings page (step 2) — it must match exactly, including `https`.
+2. Open **Settings → SSO** in VenueOS. Your workspace's redirect URI and identifiers are there ready to copy.
+3. Paste in from your IdP: the **Issuer URL**, **Client ID**, and **Client Secret**.
+4. Optionally restrict sign-ins to your email domain (e.g. `yourschool.org`) and choose the **default role** new SSO users receive.
+5. Save, then test it from the login page.
 
-## Microsoft Entra ID (OIDC)
+## How staff sign in
 
-1. In the Azure portal, register a new **App** with the redirect URI above.
-2. Under **API Permissions**, add `openid`, `profile`, `email`.
-3. Copy the tenant ID, client ID, and generate a client secret.
-4. In VenueOS: **Settings → Authentication → Add identity provider → Microsoft**, and paste the three values.
-5. Test, then enable.
+On the login page, staff click **Sign in with SSO** and enter your organization's short name once. They land in your IdP's familiar sign-in screen; after that it's one click.
 
-## Generic SAML 2.0
+## Roles and provisioning
 
-Harder but fully supported. From **Settings → Authentication → Add identity provider → SAML**, we provide:
-
-- **Entity ID** (unique per tenant)
-- **ACS URL** (the reply URL you paste into your IdP)
-- **Metadata URL** (your IdP can auto-import our config)
-
-On your IdP, create a new SAML app with those values. Required attributes:
-
-- `email` (NameID format)
-- `firstName`
-- `lastName`
-- *(Optional)* `role` — if you send this, we map it to VenueOS roles; otherwise everyone comes in as CONTRIBUTOR and admins promote from there.
-
-## Just-In-Time (JIT) provisioning
-
-By default, first-time SSO users are created automatically with the CONTRIBUTOR role. You can disable JIT (**Settings → Authentication → Allow JIT creation**) if you want to pre-provision every user through Clever rostering instead.
+- First-time SSO users are created automatically with the **default role** you chose. Prefer invite-only? Turn auto-provisioning off in the same settings.
+- Adjust any individual any time in **Settings → Team**.
 
 ## Troubleshooting
 
-- **Redirect loop**: your IdP is sending a different email domain than we expect. Check the domain restriction setting.
-- **"No matching tenant"**: the user's email domain isn't registered on any tenant. Add it under **Settings → Domains**.
-- **"Role not found"**: your SAML `role` attribute isn't in our allowed values. The canonical set is `SUPER_ADMIN`, `DISTRICT_ADMIN`, `SCHOOL_ADMIN`, `CONTRIBUTOR`, `RESTRICTED_VIEWER`.
+- **"SSO is not enabled" on the login page** — the organization short name was typed differently than your workspace's, or SSO hasn't been saved yet.
+- **Redirect error inside your IdP** — the redirect URI in the IdP app doesn't exactly match the one on our settings page.
+- **Signed in, wrong permissions** — check the default role under **Settings → SSO**, then adjust the person under **Settings → Team**.

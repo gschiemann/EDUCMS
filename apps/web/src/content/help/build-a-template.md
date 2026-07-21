@@ -7,17 +7,17 @@ excerpt: Use the drag-and-drop template builder to design your own layout from s
 
 # Building a custom template
 
-Templates define the *layout* of a screen — where the clock goes, where the announcements ticker runs, which corner shows the lunch menu. You can either pick one of the 17 system presets or build your own.
+Templates define the *layout* of a screen — where the clock goes, where the announcements ticker runs, which corner shows the menu. You can start from the ready-made gallery (tailored to your industry) or build your own from scratch. Prefer to describe what you want in a sentence? See *Designing with AI*. Already have designs in Canva or PDF? See *Importing designs*.
 
-## Start from a system preset (recommended)
+## Start from a ready-made template (recommended)
 
-Every system template is read-only, but one click makes an editable copy:
+Every ready-made template is a starting point — customizing it creates your own editable copy:
 
-1. Open **Templates** in the sidebar.
-2. Hover the preset you like and click **Use as starting point**.
-3. Give your copy a name (e.g. "Lincoln ES — Main Hallway").
+1. Open **Templates** in the sidebar and browse or filter the gallery.
+2. Click a template to preview it full-screen, then click **Customize**.
+3. Edit anything you like in the builder, then click **Save to my templates** and give your copy a name (e.g. "Main Hallway — Fall").
 
-You now have a fully editable copy in your tenant's template library.
+The original stays pristine in the gallery; your copy lives in your template library.
 
 ## Anatomy of a template
 

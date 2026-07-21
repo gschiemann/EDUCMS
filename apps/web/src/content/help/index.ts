@@ -35,8 +35,12 @@ function parse(slug: string, raw: string): HelpArticle {
 
 const SLUG_ORDER = [
   'getting-started',
+  'industries',
   'invite-users',
   'build-a-template',
+  'generate-with-ai',
+  'import-designs',
+  'brand-your-cms',
   'template-best-practices',
   'assets',
   'pair-a-screen',
@@ -50,6 +54,7 @@ const SLUG_ORDER = [
   'sports-cues',
   'sports-ribbon',
   'sports-screens',
+  'menu-boards-pos',
   'sso',
   'clever',
   'billing',

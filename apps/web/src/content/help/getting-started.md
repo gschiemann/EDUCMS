@@ -9,11 +9,11 @@ excerpt: A 10-minute walkthrough from creating your tenant to showing content on
 
 Welcome! This guide will get your first screen running in about 10 minutes. You'll create an account, add a screen, and schedule a playlist.
 
-## 1. Create your school account
+## 1. Create your workspace
 
-Go to **venue-os.app/signup** and sign up with your `.edu` or district email. Your account becomes a *tenant* — a workspace that holds every screen, template, and user for your building. If you're a district, a SUPER_ADMIN or district admin can add child schools under your district tenant later.
+Go to **venue-os.app/signup** and sign up with your work email. Pick your **industry** — school, restaurant, gym, sports venue, retail, office, and more — and VenueOS tailors the templates, categories, and defaults to your world (see the *Industries* guide). Your account becomes a *workspace* that holds every screen, template, and user for your location; groups with multiple locations (a district, a chain, a franchise) can add child locations under a parent later.
 
-You'll be assigned the **SCHOOL_ADMIN** role by default when you sign up yourself. Admins invited later start as **CONTRIBUTOR** and can be upgraded.
+You'll be the admin of your workspace when you sign up yourself. Teammates you invite later start as **CONTRIBUTOR** and can be upgraded.
 
 ## 2. Add your first screen
 

@@ -190,6 +190,11 @@ jobs:
       - name: Player SW shell invariants
         run: node apps/web/tools/check-sw-shell.cjs
 
+      # Every registered help article must actually prerender with content —
+      # caught one silently rendering as "Article not found" in a green build.
+      - name: Help-center prerender integrity
+        run: node apps/web/tools/check-help-prerender.cjs
+
   docker-build:
     name: Docker build + boot smoke test
     runs-on: ubuntu-latest
