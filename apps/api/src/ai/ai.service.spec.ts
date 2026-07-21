@@ -21,7 +21,7 @@
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { AiService, sanitizeRewriteText, validateChatEditDiff, resolveChatColor, brandVoiceClause, prependVoices, parseArtDirectorSpec, signageCandidatePlan } from './ai.service';
+import { AiService, sanitizeRewriteText, validateChatEditDiff, resolveChatColor, chatEditableFieldKeys, brandVoiceClause, prependVoices, parseArtDirectorSpec, signageCandidatePlan } from './ai.service';
 import { ARCHETYPE_IDS } from '@cms/signage-design';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
@@ -620,9 +620,57 @@ describe('AiService — Slice 2a chat-to-edit', () => {
     expect(r.diff.length).toBe(1);
     expect(r.diff[0].zoneId).toBe('z1');
     expect(r.diff[0].patch.defaultConfig.content).toBe('Friday Night Lights');
-    expect(r.diff[0].patch.defaultConfig.fontSize).toBe(400); // clamped to max
+    // Relative clamp (field-audit fix): one edit can never jump the type more
+    // than 2× — current 80px caps at 160, NOT the absolute 400 ceiling.
+    expect(r.diff[0].patch.defaultConfig.fontSize).toBe(160);
     expect(r.diff[0].patch.defaultConfig.color).toBe('var(--brand-primary)');
     expect(r.unresolved).toContain('make it sparkle');
+  });
+
+  it('validateChatEditDiff: naked fontSize on an auto-sizing engine board is REFUSED with a helpful note (the 2026-07-20 blowup class)', () => {
+    // STADIUM_MEET_BOARD-style zone: rich config, NO zone-level fontSize.
+    const zones = [{ id: 'z1', widgetType: 'STADIUM_MEET_BOARD', defaultConfig: { headerText: 'GIRLS 100M FREESTYLE', recordTime: '50.84' } }];
+    const r = validateChatEditDiff({ edits: [{ zoneId: 'z1', fontSize: 72 }] }, zones);
+    expect(r.diff.length).toBe(0); // no patch — the board's base scale is untouchable
+    expect(r.unresolved.some((u: string) => /sizes its text automatically/.test(u))).toBe(true);
+  });
+
+  it('validateChatEditDiff: named FIELDS edit rich-board config keys with target-labelled summaries; blocked/unknown keys dropped', () => {
+    const zones = [{
+      id: 'z1', widgetType: 'STADIUM_MEET_BOARD',
+      defaultConfig: { headerText: 'GIRLS 100M FREESTYLE', recordTime: '50.84', sponsorName: 'River Dental', boardUrl: '/templates/x.html', laneCount: 6 },
+    }];
+    const r = validateChatEditDiff({
+      edits: [{ zoneId: 'z1', fields: {
+        headerText: 'GIRLS 200M MEDLEY',
+        recordTime: '49.99',
+        laneCount: 8,
+        boardUrl: 'https://evil.example',   // blocked key pattern (url) — dropped
+        notARealKey: 'nope',                // not in the zone's config — dropped
+      } }],
+    }, zones);
+    expect(r.diff.length).toBe(1);
+    const cfg = r.diff[0].patch.defaultConfig;
+    expect(cfg.headerText).toBe('GIRLS 200M MEDLEY');
+    expect(cfg.recordTime).toBe('49.99');
+    expect(cfg.laneCount).toBe(8);
+    expect(cfg.boardUrl).toBeUndefined();
+    expect(cfg.notARealKey).toBeUndefined();
+    // Proposal card names every target — no bare "Size → 72px" orphans.
+    expect(r.diff[0].summary.some((s: string) => s.startsWith('Header text →'))).toBe(true);
+    expect(r.diff[0].summary.some((s: string) => s.startsWith('Record time →'))).toBe(true);
+  });
+
+  it('chatEditableFieldKeys: exposes primitive content keys, blocks url/code/id-ish keys', () => {
+    const keys = chatEditableFieldKeys({
+      headerText: 'x', recordTime: '50.84', laneCount: 6,
+      boardUrl: '/x', imageSrc: '/y', apiToken: 'z', screenId: 'a',
+      nested: { no: true }, flag: true,
+    });
+    expect(keys).toEqual(expect.arrayContaining(['headerText', 'recordTime', 'laneCount']));
+    for (const bad of ['boardUrl', 'imageSrc', 'apiToken', 'screenId', 'nested', 'flag']) {
+      expect(keys).not.toContain(bad);
+    }
   });
 
   it('validateChatEditDiff: drops edits for zoneIds not in the selection (no escalation)', () => {

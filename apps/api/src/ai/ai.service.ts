@@ -5396,12 +5396,14 @@ selected one or more on-screen elements and typed an instruction. Return
 ONLY a JSON object describing the edits to apply — no markdown, no prose.
 
 SHAPE:
-{ "edits": [ { "zoneId": string, "text"?: string, "fontSize"?: number, "color"?: string, "bgColor"?: string, "bold"?: boolean, "align"?: "left"|"center"|"right", "lineHeight"?: number, "x"?: number, "y"?: number, "width"?: number, "height"?: number, "zIndex"?: number } ], "unresolved"?: string[] }
+{ "edits": [ { "zoneId": string, "text"?: string, "fields"?: { [fieldKey: string]: string | number }, "fontSize"?: number, "color"?: string, "bgColor"?: string, "bold"?: boolean, "align"?: "left"|"center"|"right", "lineHeight"?: number, "x"?: number, "y"?: number, "width"?: number, "height"?: number, "zIndex"?: number } ], "unresolved"?: string[] }
 
 RULES:
 - Only include the keys you are actually changing. Only use zoneId values from the provided list.
 - "text": the new text content for that element.
-- "fontSize": a number in pixels. You may scale relative to the current size (bigger ≈ 1.25×, smaller ≈ 0.8×).
+- "fields": for elements that list EDITABLE FIELDS below (rich boards), target the SPECIFIC field the operator names — use the exact field key from the list ("the event title" → the header/title field, "the record time" → the record field). Prefer "fields" over zone-wide keys on rich boards. A COMPOUND instruction becomes MULTIPLE field entries in one edit.
+- "fontSize": a number in pixels — ONLY for elements whose current fontSize is listed (simple text elements). Rich boards size their own text: for those, change the named field instead, and if the operator asks for a size change you cannot target, put it in "unresolved".
+- You may scale fontSize relative to the current size (bigger ≈ 1.25×, smaller ≈ 0.8×).
 - "color" / "bgColor": output "brand-primary" or "brand-accent" when the operator names a brand color; otherwise output a #RRGGBB hex (convert color names like "navy" to their hex).
 - "bold": true to bold, false to un-bold. "align": text alignment. "lineHeight": line spacing 0.8–3.
 - "x","y","width","height": POSITION + SIZE as PERCENT of the canvas (0–100). Each element's current values are given below. Compute new absolute values from them: "move to the bottom" → y = 100 − height; "top" → y = 0; "center horizontally" → x = (100 − width) / 2; "make it wider" → width × 1.25 (keep ≤ 100). Keep the element on-canvas.
@@ -5419,10 +5421,18 @@ function buildChatEditUserPrompt(
     const cfg = z.defaultConfig || {};
     const key = primaryTextFieldKey(z.widgetType);
     const curText = key ? String(cfg[key] ?? '').slice(0, 200) : '(no text)';
-    const size = cfg.fontSize != null ? `${cfg.fontSize}px` : 'default';
+    const size = cfg.fontSize != null ? `${cfg.fontSize}px` : 'auto (not editable — use fields)';
     const color = cfg.color != null ? String(cfg.color) : 'default';
     const geo = `pos ${pct(z.x)},${pct(z.y)} size ${pct(z.width)}×${pct(z.height)} layer ${z.zIndex ?? 0}`;
-    return `- zoneId ${z.id} (${z.widgetType}): text="${curText}", fontSize=${size}, color=${color}, ${geo}`;
+    const base = `- zoneId ${z.id} (${z.widgetType}): text="${curText}", fontSize=${size}, color=${color}, ${geo}`;
+    // Rich boards (engine-driven configs): expose their editable FIELD list so
+    // the model can target "the event title" / "the record time" by key.
+    const fieldKeys = chatEditableFieldKeys(cfg);
+    if (!fieldKeys.length) return base;
+    const fields = fieldKeys
+      .map((k) => `${k}=${JSON.stringify(String(cfg[k]).slice(0, 60))}`)
+      .join(', ');
+    return `${base}\n  EDITABLE FIELDS: ${fields}`;
   });
   return [
     `Instruction: ${instruction}`,
@@ -5510,13 +5520,43 @@ function resolveChatColor(v: unknown): { value: string; label: string } | null {
 }
 
 /**
+ * Which of a zone's defaultConfig keys may be edited by chat, and listed to
+ * the model as targets. THE PRINCIPLE (2026-07-21, field-audit fix): chat may
+ * only touch keys the widget ALREADY carries, with primitive values, whose
+ * names don't smell like URLs / code / identity — so a rich engine board's
+ * text fields ("headerText", "recordTime", "sponsorName") become addressable
+ * ("the event title", "the record time") while structural config stays out
+ * of reach.
+ */
+const CHAT_FIELD_KEY_RE = /^[a-zA-Z][a-zA-Z0-9]{1,39}$/;
+const CHAT_FIELD_KEY_BLOCK_RE = /url|href|link|src|path|html|css|script|json|code|token|key|secret|id$/i;
+function chatEditableFieldKeys(cfg: Record<string, any>): string[] {
+  return Object.keys(cfg || {})
+    .filter((k) =>
+      CHAT_FIELD_KEY_RE.test(k) &&
+      !CHAT_FIELD_KEY_BLOCK_RE.test(k) &&
+      (typeof cfg[k] === 'string' || typeof cfg[k] === 'number') &&
+      String(cfg[k]).length <= 400,
+    )
+    .slice(0, 16);
+}
+
+/** "recordHolderYear" → "Record holder year" — proposal cards name their target. */
+function humanizeFieldKey(k: string): string {
+  const spaced = k.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').toLowerCase();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+/**
  * Validate + clamp the model's chat-edit diff against the field-map. The
  * model output is UNTRUSTED — drop unknown zoneIds, drop fields not allowed
  * for that widget, clamp numerics, resolve brand tokens, sanitize text, and
- * reject any value that isn't a typed primitive (no raw HTML/CSS/URL). MVP
- * scope: text + fontSize + color + bgColor. Returns the validated diff
- * (each `patch.defaultConfig` carries ONLY the changed keys; the FE merges
- * it onto the live zone) plus the `unresolved` notes.
+ * reject any value that isn't a typed primitive (no raw HTML/CSS/URL).
+ * Scope: text + named FIELDS (keys the zone already carries — see
+ * chatEditableFieldKeys) + fontSize (ONLY where the zone already uses it,
+ * relatively clamped) + color/bgColor + bold/align/lineHeight + geometry.
+ * Returns the validated diff (each `patch.defaultConfig` carries ONLY the
+ * changed keys; the FE merges it onto the live zone) plus `unresolved`.
  */
 function validateChatEditDiff(
   raw: any,
@@ -5528,6 +5568,9 @@ function validateChatEditDiff(
   const zoneMap = new Map(zones.map((z) => [z.id, z]));
   const edits = raw && Array.isArray(raw.edits) ? raw.edits : [];
   const diff: Array<{ zoneId: string; patch: Record<string, any>; summary: string[] }> = [];
+  // Server-generated notes (e.g. a fontSize we refused on an auto-sizing
+  // board) — merged with the model's own `unresolved` at the end.
+  const localUnresolved: string[] = [];
   const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
   const round1 = (n: number) => Math.round(n * 10) / 10;
   const truncate = (s: string) => (s.length > 32 ? `${s.slice(0, 31)}…` : s);
@@ -5553,11 +5596,43 @@ function validateChatEditDiff(
         if (clean) { cfg[key] = clean; summary.push(`Text → “${truncate(clean)}”`); }
       }
     }
-    // fontSize → clamped int.
+    // fields → NAMED config keys (rich engine boards). Only keys the zone
+    // already carries (chatEditableFieldKeys), value type must match the
+    // current value's type, strings sanitized, numbers magnitude-clamped.
+    // Summaries NAME the target — the proposal card must never say a bare
+    // "Size → 72px" with no owner (the field-audit blowup class).
+    if (e.fields && typeof e.fields === 'object' && !Array.isArray(e.fields)) {
+      const editable = new Set(chatEditableFieldKeys(zone.defaultConfig || {}));
+      for (const [fk, fv] of Object.entries(e.fields).slice(0, 16)) {
+        if (!editable.has(fk)) continue;
+        const cur = (zone.defaultConfig || {})[fk];
+        if (typeof cur === 'string' && typeof fv === 'string') {
+          const clean = sanitizeRewriteText(fv, 'plain').slice(0, 400);
+          if (clean) { cfg[fk] = clean; summary.push(`${humanizeFieldKey(fk)} → “${truncate(clean)}”`); }
+        } else if (typeof cur === 'number') {
+          const nv = num(fv);
+          if (nv != null) {
+            const v = round1(clamp(nv, -100000, 100000));
+            cfg[fk] = v; summary.push(`${humanizeFieldKey(fk)} → ${v}`);
+          }
+        }
+      }
+    }
+    // fontSize → ONLY where the zone already uses zone-level fontSize (simple
+    // text widgets). Rich engine boards size their own type — writing a naked
+    // fontSize there detonates the whole board's base scale (field-audit
+    // 2026-07-20: "make the title bigger" → 72px → layout destroyed). Where
+    // allowed, clamp RELATIVE to the current value so one edit can never jump
+    // the type more than 2× in either direction.
     const fs = num(e.fontSize);
     if (fs != null) {
-      const v = Math.round(clamp(fs, 8, 400));
-      cfg.fontSize = v; summary.push(`Size → ${v}px`);
+      const curFs = num((zone.defaultConfig || {}).fontSize);
+      if (curFs == null) {
+        localUnresolved.push('This board sizes its text automatically — name the element (e.g. “the header”) instead of a font size.');
+      } else {
+        const v = Math.round(clamp(fs, Math.max(8, curFs * 0.5), Math.min(400, curFs * 2)));
+        cfg.fontSize = v; summary.push(`Font size → ${v}px (was ${Math.round(curFs)})`);
+      }
     }
     // color / bgColor → brand token or validated hex; anything else dropped.
     const c = resolveChatColor(e.color);
@@ -5589,12 +5664,12 @@ function validateChatEditDiff(
     }
   }
 
-  const unresolved = Array.isArray(raw?.unresolved)
+  const modelUnresolved = Array.isArray(raw?.unresolved)
     ? raw.unresolved
         .filter((u: any) => typeof u === 'string' && u.trim())
         .map((u: string) => u.trim().slice(0, 160))
-        .slice(0, 8)
     : [];
+  const unresolved = [...new Set([...localUnresolved, ...modelUnresolved])].slice(0, 8);
 
   return { diff, unresolved };
 }
@@ -5889,4 +5964,4 @@ function scrubConfigLeaves(value: any, depth = 0): any {
 }
 
 // Export the sanitizers + validators + voice helpers for unit testing.
-export { sanitizeTouchTemplate, scrubConfigLeaves, sanitizeRewriteText, validateChatEditDiff, resolveChatColor, brandVoiceClause, prependVoices, parseArtDirectorSpec };
+export { sanitizeTouchTemplate, scrubConfigLeaves, sanitizeRewriteText, validateChatEditDiff, resolveChatColor, chatEditableFieldKeys, brandVoiceClause, prependVoices, parseArtDirectorSpec };
