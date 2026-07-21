@@ -109,6 +109,17 @@ describe('TenantsController.deleteChild — emergency-status calm set', () => {
     expect(tenant.delete).not.toHaveBeenCalled();
   });
 
+  it('maps the FK-restrict failure (immutable audit rows) to an honest 409, not a 500', async () => {
+    const { controller, tenant } = makeController();
+    tenant.findUnique.mockResolvedValue({
+      id: 'kid-4', name: 'Has History', slug: 'hist', parentId: 'parent-1', emergencyStatus: 'INACTIVE',
+    });
+    tenant.delete.mockRejectedValue(Object.assign(new Error('FK violation'), { code: 'P2003' }));
+    await expect(controller.deleteChild(req as any, 'kid-4')).rejects.toMatchObject({
+      response: { code: 'TENANT_DELETE_HAS_HISTORY' },
+    });
+  });
+
   it("treats 'NORMAL', '' and null as calm too (legacy vocabulary keeps working)", async () => {
     for (const calm of ['NORMAL', '', null]) {
       const { controller, tenant } = makeController();

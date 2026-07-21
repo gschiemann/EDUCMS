@@ -411,19 +411,37 @@ export class TenantsController {
     // audit can't be written, the delete rolls back and nothing is lost.
     // The audit is scoped to the PARENT tenant (when present) so it survives
     // the child's cascade delete.
-    await this.prisma.client.$transaction(async (tx) => {
-      await tx.auditLog.create({
-        data: {
-          tenantId: target.parentId || target.id,
-          userId: req.user.userId,
-          action: 'CHILD_TENANT_DELETED',
-          targetType: 'Tenant',
-          targetId: target.id,
-          details: JSON.stringify({ name: target.name, slug: target.slug, parentTenantId: target.parentId }),
-        },
+    try {
+      await this.prisma.client.$transaction(async (tx) => {
+        await tx.auditLog.create({
+          data: {
+            tenantId: target.parentId || target.id,
+            userId: req.user.userId,
+            action: 'CHILD_TENANT_DELETED',
+            targetType: 'Tenant',
+            targetId: target.id,
+            details: JSON.stringify({ name: target.name, slug: target.slug, parentTenantId: target.parentId }),
+          },
+        });
+        await tx.tenant.delete({ where: { id } });
       });
-      await tx.tenant.delete({ where: { id } });
-    });
+    } catch (e: any) {
+      // 2026-07-21 (functional depth audit) — a tenant that has EVER done an
+      // audited action carries audit_logs rows that are FK-RESTRICT'd AND
+      // protected by the DB-level immutability trigger (§16 — never weaken).
+      // Hard delete is therefore architecturally impossible for any tenant
+      // with history; the old behavior surfaced that as an opaque 500
+      // DATABASE_ERROR. Be honest instead. The real product answer is
+      // archive/soft-delete (same precedent as user soft-delete, which hit
+      // this exact wall) — tracked as a follow-up.
+      if (e?.code === 'P2003') {
+        throw new HttpException({
+          code: 'TENANT_DELETE_HAS_HISTORY',
+          message: 'This location has activity history (audit records) that is retained for compliance, so it cannot be permanently deleted. Location archiving is the supported path — contact support if you need this location hidden.',
+        }, HttpStatus.CONFLICT);
+      }
+      throw e;
+    }
     return { success: true, deletedId: id };
   }
 
