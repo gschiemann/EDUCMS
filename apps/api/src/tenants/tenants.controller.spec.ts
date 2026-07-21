@@ -22,13 +22,22 @@
 import { TenantsController } from './tenants.controller';
 
 function makeController() {
-  const tenant = { findUnique: jest.fn(), update: jest.fn() };
+  const tenant = {
+    findUnique: jest.fn(), update: jest.fn(),
+    count: jest.fn().mockResolvedValue(0), delete: jest.fn().mockResolvedValue({}),
+  };
   const user = { findUnique: jest.fn() };
+  const screen = { count: jest.fn().mockResolvedValue(0) };
   const auditLog = { create: jest.fn().mockResolvedValue({}) };
-  const prisma: any = { client: { tenant, user, auditLog } };
+  const prisma: any = {
+    client: {
+      tenant, user, screen, auditLog,
+      $transaction: jest.fn(async (cb: any) => cb({ auditLog, tenant })),
+    },
+  };
   const jwt: any = { sign: jest.fn().mockReturnValue('signed.jwt.token') };
   const controller = new TenantsController(prisma, jwt);
-  return { controller, tenant, user, auditLog, jwt };
+  return { controller, tenant, user, screen, auditLog, jwt };
 }
 
 describe('TenantsController.switchTenant — industry safety', () => {
@@ -66,5 +75,48 @@ describe('TenantsController.switchTenant — industry safety', () => {
 
     // The whole point: a switch must not mutate the customer's tenant row.
     expect(tenant.update).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * 2026-07-21 functional-depth-audit regression — the delete guard treated
+ * anything except 'NORMAL'/'' as an active emergency, but the fleet's at-rest
+ * value is 'INACTIVE' (all-clear writes it), so EVERY tenant 409'd as
+ * "active emergency" and location deletion NEVER worked. Caught live on prod
+ * trying to remove the audit's disposable vertical-test tenants.
+ */
+describe('TenantsController.deleteChild — emergency-status calm set', () => {
+  const req = { user: { userId: 'u1', role: 'SUPER_ADMIN', tenantId: 'parent-1' } };
+
+  it("deletes a calm tenant whose status is 'INACTIVE' (the fleet's at-rest value — the exact false-409 bug)", async () => {
+    const { controller, tenant } = makeController();
+    tenant.findUnique.mockResolvedValue({
+      id: 'kid-1', name: 'Audit QSR', slug: 'audit-qsr', parentId: 'parent-1', emergencyStatus: 'INACTIVE',
+    });
+    const res: any = await controller.deleteChild(req as any, 'kid-1');
+    expect(res.success).toBe(true);
+    expect(tenant.delete).toHaveBeenCalledWith({ where: { id: 'kid-1' } });
+  });
+
+  it("still BLOCKS deletion during a real active emergency (severity string, e.g. 'CRITICAL')", async () => {
+    const { controller, tenant } = makeController();
+    tenant.findUnique.mockResolvedValue({
+      id: 'kid-2', name: 'Hot Tenant', slug: 'hot', parentId: 'parent-1', emergencyStatus: 'CRITICAL',
+    });
+    await expect(controller.deleteChild(req as any, 'kid-2')).rejects.toMatchObject({
+      response: { code: 'TENANT_DELETE_ACTIVE_EMERGENCY' },
+    });
+    expect(tenant.delete).not.toHaveBeenCalled();
+  });
+
+  it("treats 'NORMAL', '' and null as calm too (legacy vocabulary keeps working)", async () => {
+    for (const calm of ['NORMAL', '', null]) {
+      const { controller, tenant } = makeController();
+      tenant.findUnique.mockResolvedValue({
+        id: 'kid-3', name: 'Calm', slug: 'calm', parentId: 'parent-1', emergencyStatus: calm,
+      });
+      const res: any = await controller.deleteChild(req as any, 'kid-3');
+      expect(res.success).toBe(true);
+    }
   });
 });

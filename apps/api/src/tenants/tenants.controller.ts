@@ -383,7 +383,14 @@ export class TenantsController {
     }
 
     // Safety checks
-    if (target.emergencyStatus && target.emergencyStatus !== 'NORMAL' && target.emergencyStatus !== '') {
+    // 2026-07-21 (functional depth audit) — the guard used to treat anything
+    // other than 'NORMAL'/'' as an active emergency, but the fleet's at-rest
+    // value is 'INACTIVE' (all-clear writes it; every calm tenant carries it)
+    // — so EVERY tenant 409'd as "active emergency" and location deletion
+    // NEVER worked, with an alarming false message. Calm set below; anything
+    // else is a real severity written by the trigger path (e.g. CRITICAL).
+    const CALM_EMERGENCY_STATUSES = ['', 'NORMAL', 'INACTIVE'];
+    if (target.emergencyStatus && !CALM_EMERGENCY_STATUSES.includes(target.emergencyStatus)) {
       throw new HttpException({ code: 'TENANT_DELETE_ACTIVE_EMERGENCY', message: 'Cannot delete a tenant with an active emergency. Clear the alert first.' }, HttpStatus.CONFLICT);
     }
     const [childCount, screenCount] = await Promise.all([
