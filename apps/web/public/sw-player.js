@@ -433,6 +433,17 @@ self.addEventListener('message', (event) => {
 // online load), falling back to the cached document so a cold OFFLINE boot
 // still renders. Cache key is the pathname only — /player?screen=X and
 // /player?screen=Y are the same shell document.
+//
+// ⚠ FIELD INCIDENT (2026-07-21, Greg's tablet): the first version of this
+// fallback returned HTTP **503**. Android WebView treats ANY non-2xx
+// top-level document as a load failure (net::ERR_HTTP_RESPONSE_CODE_FAILURE)
+// and shows its dead "Webpage not available" page INSTEAD of our HTML — and
+// that native error page never retries, so a kiosk that blipped offline
+// stayed stuck AFTER the network returned, unreachable by REFRESH_WEB
+// (no page = no WS/poll). The fallback is therefore a **200** (WebView
+// renders it) that SELF-HEALS: it probes the network every 5s + listens for
+// the `online` event and reloads the real player the moment the route is
+// reachable. Do NOT change the status back to an error code.
 async function shellNavigate(req) {
   const docKey = new Request(new URL(req.url).pathname, { credentials: 'same-origin' });
   const cache = await caches.open(SHELL_CACHE);
@@ -443,12 +454,18 @@ async function shellNavigate(req) {
   } catch (e) {
     const cached = await cache.match(docKey);
     if (cached) return cached;
+    const target = new URL(req.url).pathname || '/player';
     return new Response(
-      '<!doctype html><meta charset="utf-8"><title>Offline</title>' +
+      '<!doctype html><meta charset="utf-8"><title>Reconnecting…</title>' +
       '<body style="background:#0b1020;color:#e2e8f0;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">' +
-      '<div style="text-align:center"><h1 style="font-size:28px;margin:0 0 8px">Offline</h1>' +
-      '<p style="opacity:.7;margin:0">No cached player shell yet — reconnect once to prime it.</p></div>',
-      { status: 503, headers: { 'content-type': 'text/html' } },
+      '<div style="text-align:center"><div style="width:34px;height:34px;margin:0 auto 14px;border:3px solid rgba(226,232,240,.25);border-top-color:#818cf8;border-radius:50%;animation:sp 1s linear infinite"></div>' +
+      '<h1 style="font-size:26px;margin:0 0 8px">Waiting for network…</h1>' +
+      '<p style="opacity:.7;margin:0">This screen reconnects automatically. Nothing to do.</p></div>' +
+      '<style>@keyframes sp{to{transform:rotate(360deg)}}</style>' +
+      '<script>(function(){var t="' + target.replace(/"/g, '') + '";function go(){location.replace(t)}\n' +
+      'function probe(){fetch(t,{method:"HEAD",cache:"no-store"}).then(function(r){if(r&&(r.ok||r.status===304)){go()}}).catch(function(){})}\n' +
+      'addEventListener("online",probe);setInterval(probe,5000);probe();})()</script>',
+      { status: 200, headers: { 'content-type': 'text/html', 'cache-control': 'no-store' } },
     );
   }
 }

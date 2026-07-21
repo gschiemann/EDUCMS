@@ -106,6 +106,18 @@ check('step-3 guard comment present (lazy player chunks need manifest-driven pru
 check('navigation requests get network-first + cached-document fallback',
   /mode === 'navigate'/.test(src) && /shellNavigate/.test(src),
   'without a cached DOCUMENT, cold-boot-offline dies before any chunk cache matters');
+// Field incident 2026-07-21: Android WebView shows its dead native error page
+// for ANY non-2xx top-level document (ERR_HTTP_RESPONSE_CODE_FAILURE) and
+// never retries — a kiosk stayed stuck after the network came back. The
+// offline fallback MUST be a 200 that self-heals.
+{
+  const navStart = src.indexOf('async function shellNavigate');
+  const navBody = navStart >= 0 ? src.slice(navStart, src.indexOf('async function shellFetch')) : '';
+  check('offline navigation fallback is HTTP 200 (Android WebView reds any non-2xx document)',
+    navStart >= 0 && /status:\s*200/.test(navBody) && !/status:\s*50[0-9]/.test(navBody));
+  check('offline fallback page SELF-HEALS (online listener + interval probe + reload)',
+    /addEventListener\("online"/.test(navBody) && /setInterval\(probe/.test(navBody) && /location\.replace/.test(navBody));
+}
 check('precacheAppShell pins the document alongside its chunks',
   /wanted\.add\(route\)/.test(src));
 
