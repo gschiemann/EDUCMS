@@ -31,6 +31,7 @@ import { lookupKioskFrame } from '@/lib/kiosk-frame-registry';
 import {
   registerOfflineCache,
   precachePlaylist,
+  precacheAppShell,
   precacheEmergency,
   getCacheStatus,
   formatBytes,
@@ -2719,7 +2720,11 @@ function PlayerPage() {
     const t = setInterval(() => {
       getCacheStatus().then(setCacheStatus).catch(() => {});
     }, 30_000);
-    return () => clearInterval(t);
+    // App-shell refresh, idle-timed so it never competes with first paint
+    // or the media precache burst. Covers deploys that changed chunk names
+    // without changing sw-player.js (no activate fires on those).
+    const shellT = setTimeout(() => { precacheAppShell().catch(() => {}); }, 8_000);
+    return () => { clearInterval(t); clearTimeout(shellT); };
   }, []);
 
   // Listen for SW cache-progress events. The SW emits PRECACHE_PROGRESS

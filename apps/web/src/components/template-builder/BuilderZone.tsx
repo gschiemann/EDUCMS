@@ -6,7 +6,18 @@ import { useUIStore } from '@/store/ui-store';
 import { API_URL } from '@/lib/api-url';
 import type { Zone, ResizeHandle } from './types';
 import { getZoneColor, widgetIcon, widgetLabel } from './constants';
-import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
+import dynamic from 'next/dynamic';
+
+// Bundle-split step 2 (2026-07-20): WidgetRenderer is the widget world —
+// a ~3.4 MB chunk when bundled statically. Load it on demand so this
+// dashboard surface's first paint doesn't parse every widget theme. Same
+// pattern as ScaledTemplateThumbnail (the repo's blessed dynamic mount).
+// Player + board routes intentionally keep STATIC imports (offline
+// life-safety rendering must never wait on a lazy chunk).
+const WidgetPreview = dynamic(
+  () => import('@/components/widgets/WidgetRenderer').then((m) => ({ default: m.WidgetPreview })),
+  { ssr: false, loading: () => null },
+);
 import { WidgetErrorBoundary } from '@/components/widgets/WidgetErrorBoundary';
 import { appAlert } from '@/components/ui/app-dialog';
 import { useBuilderStore } from './useBuilderStore';

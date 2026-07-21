@@ -184,6 +184,12 @@ jobs:
       - name: Bundle budget (ratchet down only)
         run: node apps/web/tools/check-bundle-budget.cjs
 
+      # Player SW invariants: app-shell tier present + BUG #5 version-sort
+      # regression cases (migrated from a .test.ts that NO runner executed —
+      # apps/web has no unit-test script; this gate actually runs).
+      - name: Player SW shell invariants
+        run: node apps/web/tools/check-sw-shell.cjs
+
   docker-build:
     name: Docker build + boot smoke test
     runs-on: ubuntu-latest

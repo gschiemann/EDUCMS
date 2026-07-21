@@ -13,6 +13,8 @@ export type CacheStatus = {
   supported: boolean;
   playlist: { count: number; bytes: number };
   emergency: { count: number; bytes: number; floorBytes: number };
+  /** App-shell tier (/_next/static build assets) — bundle-split step 1. */
+  shell: { count: number; bytes: number };
 };
 
 const SW_PATH = '/sw-player.js';
@@ -102,10 +104,24 @@ export async function precacheEmergency(
   });
 }
 
+/**
+ * Ask the SW to refresh the app-shell cache (parse the player route's HTML,
+ * pull any new /_next/static chunks, prune stale ones). Fire-and-forget —
+ * called idle after boot so a deploy that changed chunk names without
+ * changing sw-player.js itself still gets a fresh offline shell.
+ */
+export async function precacheAppShell(): Promise<void> {
+  const sw = await activeWorker();
+  if (!sw) return;
+  sw.postMessage({ type: 'PRECACHE_SHELL' });
+}
+
+const EMPTY_SHELL = { count: 0, bytes: 0 };
+
 /** Ask the SW for its current cache utilisation. Resolves with null if SW absent. */
 export async function getCacheStatus(): Promise<CacheStatus | null> {
   const sw = await activeWorker();
-  if (!sw) return { supported: false, playlist: { count: 0, bytes: 0 }, emergency: { count: 0, bytes: 0, floorBytes: 0 } };
+  if (!sw) return { supported: false, playlist: { count: 0, bytes: 0 }, emergency: { count: 0, bytes: 0, floorBytes: 0 }, shell: EMPTY_SHELL };
   return new Promise((resolve) => {
     let settled = false;
     const onMsg = (e: MessageEvent) => {
@@ -116,6 +132,9 @@ export async function getCacheStatus(): Promise<CacheStatus | null> {
           supported: true,
           playlist: e.data.playlist,
           emergency: e.data.emergency,
+          // Defensive default: an in-flight OLD SW (pre-shell) replies
+          // without the field during the upgrade window.
+          shell: e.data.shell ?? EMPTY_SHELL,
         });
       }
     };
@@ -124,7 +143,7 @@ export async function getCacheStatus(): Promise<CacheStatus | null> {
     setTimeout(() => {
       if (!settled) {
         navigator.serviceWorker.removeEventListener('message', onMsg);
-        resolve({ supported: true, playlist: { count: 0, bytes: 0 }, emergency: { count: 0, bytes: 0, floorBytes: 0 } });
+        resolve({ supported: true, playlist: { count: 0, bytes: 0 }, emergency: { count: 0, bytes: 0, floorBytes: 0 }, shell: EMPTY_SHELL });
       }
     }, 2_000);
   });

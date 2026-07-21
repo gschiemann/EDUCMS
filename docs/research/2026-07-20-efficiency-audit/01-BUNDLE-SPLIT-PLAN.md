@@ -1,4 +1,34 @@
-# F3 Bundle Split — Execution Plan (deferred deliberately, 2026-07-20)
+# F3 Bundle Split — Execution Plan (steps 1–2 EXECUTED 2026-07-20 launch-week wave)
+
+> **EXECUTED (same day, launch-week wave):**
+> **Step 1 SHIPPED + live-drilled** — sw-player.js gained the SHELL_CACHE tier:
+> route-HTML parse + runtime capture for `/_next/static`, **navigation
+> network-first with cached-document fallback** (the original design cached
+> only subresources — a cold offline boot died fetching the HTML itself;
+> caught in the live walk-through and fixed before claiming the win), prune
+> guarded for step 3, copy-forward on VERSION bump. Verified two ways:
+> `apps/web/tools/check-sw-shell.cjs` (24 assertions, wired into
+> deploy-reliability next to the bundle gate — it also RESURRECTS the BUG #5
+> version-sort cases from `sw-cache-version-sort.test.ts`, which NO runner
+> ever executed; that dead file is deleted) + a REAL offline drill in a prod
+> build: server killed → /player rendered its full branded splash from
+> `edu-player-shell-v9` (35 entries incl. the document).
+> **Step 2 SHIPPED** — the 6 static dashboard/demo `WidgetPreview` mounts
+> (templates gallery, TemplatePreviewModal, BuilderZone, AppConfigForm, 2
+> demo pages) now use the blessed ScaledTemplateThumbnail dynamic pattern.
+> Result (client-reference-manifest verified): mega-chunks 4×3.4 MB →
+> 3×3.3 MB; the shared chunk is STATIC for /player (by design) and LAZY for
+> gallery/demo; one chunk is pure on-demand. Bundle baseline ratcheted
+> 23.34 → **20.07 MB** total (−14%). Live render of the lazy path verified
+> in a prod build (zone-test: all widget variants correct).
+> **REMAINING (the next cut): the builder route still carries its own
+> 3.3 MB static copy** — root cause is NOT the preview mount (converted) but
+> `PropertiesPanel.tsx` importing config CONSTANTS (DEFAULTS / SHAPE_KINDS /
+> field metadata) from ~15 widget component modules, dragging each full
+> component in. Right fix = extract those constants into light
+> `*.config.ts` modules; broad touch of the §19 flagship surface →
+> deliberately NOT rushed into launch week. Step 3 (player long-tail lazy +
+> SW manifest-driven prune) unchanged below.
 
 ## What shipped now
 The **bundle-budget ratchet gate** (`apps/web/tools/check-bundle-budget.cjs` + baseline, wired into the deploy-reliability web-build job): largest chunk and total chunk payload are locked at today's measurements as down-only ceilings. Growth reds CI immediately.

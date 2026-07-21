@@ -2,20 +2,34 @@
 /**
  * EduCMS Player — Service Worker
  *
- * Two cache tiers:
+ * Three cache tiers:
  *   1. PLAYLIST_CACHE — assets in active playlists. LRU on PRECACHE_PLAYLIST
  *      messages (we drop entries no longer referenced by the latest manifest).
  *   2. EMERGENCY_CACHE — assets across all 4 panic-type playlists. NEVER
  *      evicted automatically. Refreshed on PRECACHE_EMERGENCY messages.
+ *   3. SHELL_CACHE (2026-07-20, bundle-split step 1) — the app shell:
+ *      /_next/static build assets (js/css/fonts), so a cold-boot-OFFLINE
+ *      player can still execute the page, not just show cached media.
+ *      Filled three ways: activate-time parse of the player route HTML,
+ *      page-triggered PRECACHE_SHELL (idle after boot — covers deploys
+ *      that change chunks without changing this SW file), and runtime
+ *      capture in the fetch handler (hashed URLs are immutable, so
+ *      cache-first is always correct). Pruned to the currently-referenced
+ *      set on each refresh. ⚠ STEP-3 GUARD: today every player chunk is
+ *      statically referenced in the route HTML, so prune-to-parsed-set is
+ *      complete; if PLAYER code ever starts lazy-importing chunks, the
+ *      prune MUST move to a build-manifest-driven list first or it will
+ *      evict the lazy chunks it just captured.
  *
- * Both tiers serve fetches transparently to the page so <img src=…> and
+ * All tiers serve fetches transparently to the page so <img src=…> and
  * <video src=…> stay completely unaware of caching.
  *
  * The page communicates via postMessage:
  *   { type: 'PRECACHE_PLAYLIST',  assets: [{url,sha256?,size?}] }
  *   { type: 'PRECACHE_EMERGENCY', assets: [{url,sha256?,size?}], setHash }
+ *   { type: 'PRECACHE_SHELL',     routes?: string[] }   → PRECACHE_SHELL_DONE
  *   { type: 'STATUS_REQUEST' }                         → STATUS_REPLY
- *   { type: 'CLEAR_CACHE',        tier: 'playlist'|'emergency'|'all' }
+ *   { type: 'CLEAR_CACHE',        tier: 'playlist'|'emergency'|'shell'|'all' }
  */
 
 // Bump VERSION to force existing players to drop stale caches on activate.
@@ -63,7 +77,12 @@ const VERSION = 'v9';
 const PLAYLIST_CACHE = `edu-player-playlist-${VERSION}`;
 const EMERGENCY_CACHE = `edu-player-emergency-${VERSION}`;
 const META_CACHE = `edu-player-meta-${VERSION}`; // stores sha hashes per URL
-const ALL_CACHES = [PLAYLIST_CACHE, EMERGENCY_CACHE, META_CACHE];
+const SHELL_CACHE = `edu-player-shell-${VERSION}`; // /_next/static app shell
+const ALL_CACHES = [PLAYLIST_CACHE, EMERGENCY_CACHE, META_CACHE, SHELL_CACHE];
+
+// Routes whose HTML we parse to enumerate the app shell. The SW is scoped
+// to /player, so the player route is the only entry it controls.
+const SHELL_ROUTES = ['/player'];
 
 // Per-URL byte sizes captured at fetch time. Survives SW restarts via the
 // META_CACHE (we mirror this map into Cache Storage on every write so a
@@ -104,10 +123,35 @@ function newestCacheName(names) {
   return best;
 }
 
-// Expose the pure helpers for unit testing (Node/Jest requires the file and
-// reads self.__swTestHooks). No effect in a real SW — self is the global.
+// Extract app-shell asset paths from a route's HTML. Pure (no I/O) so the
+// CI gate can exercise it. Handles both raw `/_next/static/...` references
+// and the JSON-escaped `\/_next\/static\/...` form Next embeds in flight
+// data, dedupes, and keeps only real build assets (js/css/fonts/wasm) —
+// never the image optimizer or data routes.
+function extractShellUrls(html) {
+  const out = [];
+  const seen = {};
+  const text = String(html || '').replace(/\\\//g, '/');
+  const re = /\/_next\/static\/[A-Za-z0-9_\-./~%[\]@]+/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    let u = m[0].replace(/[.,]+$/, ''); // trim sentence-ish trailing punctuation
+    if (!/\.(js|css|woff2?|wasm)$/.test(u)) continue;
+    if (seen[u]) continue;
+    seen[u] = true;
+    out.push(u);
+  }
+  return out;
+}
+
+// Expose the pure helpers for the CI gate (apps/web/tools/check-sw-shell.cjs
+// vm-loads this file and reads self.__swTestHooks). No effect in a real SW.
 if (typeof self !== 'undefined') {
-  self.__swTestHooks = { cacheVersionNum: cacheVersionNum, newestCacheName: newestCacheName };
+  self.__swTestHooks = {
+    cacheVersionNum: cacheVersionNum,
+    newestCacheName: newestCacheName,
+    extractShellUrls: extractShellUrls,
+  };
 }
 
 self.addEventListener('install', (event) => {
@@ -196,9 +240,34 @@ self.addEventListener('activate', (event) => {
       }
     }
 
+    // Shell copy-forward on VERSION bump: hashed /_next/static URLs are
+    // immutable (same URL = same bytes forever), so a pure local copy is
+    // always correct and saves a fleet-wide chunk re-download.
+    const staleShell = stale.filter((k) => k.startsWith('edu-player-shell-'));
+    const oldShellName = newestCacheName(staleShell);
+    if (oldShellName) {
+      try {
+        const [oldSh, newSh] = await Promise.all([
+          caches.open(oldShellName),
+          caches.open(SHELL_CACHE),
+        ]);
+        const oldKeys = await oldSh.keys();
+        for (const req of oldKeys) {
+          const res = await oldSh.match(req);
+          if (res) await newSh.put(req, res.clone());
+        }
+      } catch (e) {
+        console.warn('[SW] activate: failed to copy old shell cache', e);
+      }
+    }
+
     // Now safe to delete stale versioned caches.
     await Promise.all(stale.map((k) => caches.delete(k)));
     await self.clients.claim();
+
+    // Refresh the app shell for the build we just activated under. Failure
+    // is non-fatal (offline activate keeps whatever shell we carried over).
+    try { await precacheAppShell(); } catch (e) { /* best-effort */ }
   })());
 });
 
@@ -252,9 +321,26 @@ self.addEventListener('fetch', (event) => {
   // Only intercept GETs for things that look like media assets we might cache.
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  // Skip our own meta endpoint, /api/, /_next/, etc — only intercept what
-  // looks like an asset URL.
-  if (url.pathname.startsWith('/_next/')) return;
+  // App-shell: the DOCUMENT itself, network-first with cached fallback.
+  // Without this, a cold-boot-offline kiosk dies fetching /player HTML
+  // before a single cached chunk matters. Network-first keeps deploys
+  // instant when online; offline serves the last-good document whose
+  // chunks the shell tier below has pinned.
+  if (req.mode === 'navigate' && url.origin === self.location.origin) {
+    event.respondWith(shellNavigate(req));
+    return;
+  }
+
+  // App-shell tier: cache-first for same-origin /_next/static build assets
+  // (immutable hashed URLs — a cache hit is always correct; a network miss
+  // while offline is the exact cold-boot failure this tier removes). The
+  // REST of /_next/ (image optimizer, data routes) stays browser-native.
+  if (url.pathname.startsWith('/_next/')) {
+    if (url.origin === self.location.origin && url.pathname.startsWith('/_next/static/')) {
+      event.respondWith(shellFetch(req));
+    }
+    return;
+  }
   if (url.pathname.includes('/api/v1/')) return;
 
   event.respondWith((async () => {
@@ -332,12 +418,114 @@ self.addEventListener('message', (event) => {
     // page only commits its lastEmergencySetHashRef on full success.
     const ackPort = (event.ports && event.ports[0]) || null;
     event.waitUntil(precacheEmergency(msg.assets || [], msg.setHash || '', ackPort));
+  } else if (msg.type === 'PRECACHE_SHELL') {
+    event.waitUntil(precacheAppShell(msg.routes));
   } else if (msg.type === 'STATUS_REQUEST') {
     event.waitUntil(replyStatus(event.source));
   } else if (msg.type === 'CLEAR_CACHE') {
     event.waitUntil(clearCache(msg.tier || 'all'));
   }
 });
+
+// ─── App-shell tier (bundle-split step 1) ───
+
+// Navigation requests: network-first (a deploy shows up on the very next
+// online load), falling back to the cached document so a cold OFFLINE boot
+// still renders. Cache key is the pathname only — /player?screen=X and
+// /player?screen=Y are the same shell document.
+async function shellNavigate(req) {
+  const docKey = new Request(new URL(req.url).pathname, { credentials: 'same-origin' });
+  const cache = await caches.open(SHELL_CACHE);
+  try {
+    const res = await fetch(req);
+    if (res && res.ok) cache.put(docKey, res.clone()).catch(() => {});
+    return res;
+  } catch (e) {
+    const cached = await cache.match(docKey);
+    if (cached) return cached;
+    return new Response(
+      '<!doctype html><meta charset="utf-8"><title>Offline</title>' +
+      '<body style="background:#0b1020;color:#e2e8f0;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">' +
+      '<div style="text-align:center"><h1 style="font-size:28px;margin:0 0 8px">Offline</h1>' +
+      '<p style="opacity:.7;margin:0">No cached player shell yet — reconnect once to prime it.</p></div>',
+      { status: 503, headers: { 'content-type': 'text/html' } },
+    );
+  }
+}
+
+// Cache-first for immutable /_next/static assets + runtime capture of
+// anything the page loads that the HTML parse missed.
+async function shellFetch(req) {
+  try {
+    const cache = await caches.open(SHELL_CACHE);
+    const hit = await cache.match(req);
+    if (hit) return hit;
+    const res = await fetch(req);
+    if (res && res.ok) cache.put(req, res.clone()).catch(() => {});
+    return res;
+  } catch (e) {
+    // Offline + not in shell yet → same failure the page would see with no
+    // SW. Stub response keeps the error contained to the one asset.
+    return new Response('', { status: 504, statusText: 'Offline / shell miss' });
+  }
+}
+
+// Enumerate the current build's shell by parsing the player route HTML,
+// fetch what's missing, prune what's no longer referenced. See the
+// header's STEP-3 GUARD before changing the prune rule.
+async function precacheAppShell(routes) {
+  const cache = await caches.open(SHELL_CACHE);
+  const wanted = new Set();
+  const routeList = routes && routes.length ? routes : SHELL_ROUTES;
+  for (const route of routeList) {
+    try {
+      const res = await fetch(new Request(route, { cache: 'no-store', credentials: 'same-origin' }));
+      if (!res || !res.ok) continue;
+      const resForCache = res.clone();
+      const html = await res.text();
+      const urls = extractShellUrls(html);
+      if (urls.length === 0) continue; // not an app document — don't cache it
+      // Pin the DOCUMENT alongside its chunks so a cold offline boot has a
+      // complete shell. Route path goes into `wanted` so prune keeps it.
+      await cache.put(new Request(route, { credentials: 'same-origin' }), resForCache);
+      wanted.add(route);
+      for (const u of urls) wanted.add(u);
+    } catch (e) {
+      // Offline boot — keep whatever shell we already have; the page-side
+      // idle retry will refresh once the network returns.
+    }
+  }
+  if (wanted.size === 0) {
+    await broadcast({ type: 'PRECACHE_SHELL_DONE', count: 0, added: 0 });
+    return;
+  }
+  let added = 0;
+  for (const u of wanted) {
+    const req = new Request(u, { credentials: 'same-origin' });
+    const existing = await cache.match(req);
+    if (existing) continue;
+    try {
+      const res = await fetch(req);
+      if (res && res.ok) {
+        await cache.put(req, res.clone());
+        added += 1;
+      }
+    } catch (e) {
+      // Partial shell is still strictly better than none — hashed URLs
+      // mean whatever DID land stays valid forever.
+    }
+  }
+  // Prune entries the current build no longer references (step-3 guard in
+  // the header applies — complete today because the player has no lazy
+  // chunks).
+  const keys = await cache.keys();
+  for (const req of keys) {
+    try {
+      if (!wanted.has(new URL(req.url).pathname)) await cache.delete(req);
+    } catch (e) { /* keep unparseable entries */ }
+  }
+  await broadcast({ type: 'PRECACHE_SHELL_DONE', count: wanted.size, added });
+}
 
 // ─── Pre-cache a list of playlist assets, evicting LRU over the soft cap ───
 async function precachePlaylist(assets, softCapBytes) {
@@ -605,20 +793,24 @@ async function measureResponseSize(res, asset) {
 
 async function replyStatus(client) {
   if (!client) return;
-  const [pl, em] = await Promise.all([caches.open(PLAYLIST_CACHE), caches.open(EMERGENCY_CACHE)]);
-  const [plKeys, emKeys, plBytes, emBytes] = await Promise.all([
-    pl.keys(), em.keys(), sumCacheBytes(pl), sumCacheBytes(em),
+  const [pl, em, sh] = await Promise.all([
+    caches.open(PLAYLIST_CACHE), caches.open(EMERGENCY_CACHE), caches.open(SHELL_CACHE),
+  ]);
+  const [plKeys, emKeys, shKeys, plBytes, emBytes, shBytes] = await Promise.all([
+    pl.keys(), em.keys(), sh.keys(), sumCacheBytes(pl), sumCacheBytes(em), sumCacheBytes(sh),
   ]);
   client.postMessage({
     type: 'STATUS_REPLY',
     playlist: { count: plKeys.length, bytes: plBytes },
     emergency: { count: emKeys.length, bytes: emBytes, floorBytes: EMERGENCY_FLOOR_BYTES },
+    shell: { count: shKeys.length, bytes: shBytes },
   });
 }
 
 async function clearCache(tier) {
   if (tier === 'all' || tier === 'playlist') await caches.delete(PLAYLIST_CACHE);
   if (tier === 'all' || tier === 'emergency') await caches.delete(EMERGENCY_CACHE);
+  if (tier === 'all' || tier === 'shell') await caches.delete(SHELL_CACHE);
   if (tier === 'all') await caches.delete(META_CACHE);
 }
 

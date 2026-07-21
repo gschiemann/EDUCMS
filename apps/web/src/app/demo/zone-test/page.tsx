@@ -10,7 +10,18 @@
  */
 
 import { Type, Image as ImageIcon, Globe, Megaphone, Clock } from 'lucide-react';
-import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
+import dynamic from 'next/dynamic';
+
+// Bundle-split step 2 (2026-07-20): WidgetRenderer is the widget world —
+// a ~3.4 MB chunk when bundled statically. Load it on demand so this
+// dashboard surface's first paint doesn't parse every widget theme. Same
+// pattern as ScaledTemplateThumbnail (the repo's blessed dynamic mount).
+// Player + board routes intentionally keep STATIC imports (offline
+// life-safety rendering must never wait on a lazy chunk).
+const WidgetPreview = dynamic(
+  () => import('@/components/widgets/WidgetRenderer').then((m) => ({ default: m.WidgetPreview })),
+  { ssr: false, loading: () => null },
+);
 // Force the variants registry to register at module-load time so
 // `getVariant('clock-dark-pill')` resolves below.
 import '@/components/widgets/variants-register';

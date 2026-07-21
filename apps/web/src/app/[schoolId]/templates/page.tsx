@@ -33,7 +33,18 @@ import {
 // extracted so the editor toolbar (BuilderShell) can reuse it verbatim.
 import { usePutOnScreen } from '@/lib/put-on-screen';
 import { buildSafeDesignerSrcdoc } from '@/lib/designer-safe-srcdoc';
-import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
+import dynamic from 'next/dynamic';
+
+// Bundle-split step 2 (2026-07-20): WidgetRenderer is the widget world —
+// a ~3.4 MB chunk when bundled statically. Load it on demand so this
+// dashboard surface's first paint doesn't parse every widget theme. Same
+// pattern as ScaledTemplateThumbnail (the repo's blessed dynamic mount).
+// Player + board routes intentionally keep STATIC imports (offline
+// life-safety rendering must never wait on a lazy chunk).
+const WidgetPreview = dynamic(
+  () => import('@/components/widgets/WidgetRenderer').then((m) => ({ default: m.WidgetPreview })),
+  { ssr: false, loading: () => null },
+);
 import { ScaledTemplateThumbnail } from '@/components/templates/ScaledTemplateThumbnail';
 import { AiIntakeWizard } from '@/components/templates/AiIntakeWizard';
 import { SignageConcierge } from '@/components/templates/SignageConcierge';
