@@ -4,6 +4,7 @@ import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff
 import { createPortal } from 'react-dom';
 import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useUpdateScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout, useSetScreenOrientation, useSetScreenCanvas, useHardwareCatalog, useSetScreenHardwareModel, useSetScreenConsoleProfile } from '@/hooks/use-api';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { useTranslations } from 'next-intl';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 import { ReturnToFleetBanner } from '@/components/screens/ReturnToFleetBanner';
 import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
@@ -265,6 +266,7 @@ function PlayerKindChip({ screen }: { screen: any }) {
 // Per the operator note "don't add new pages" — this enhances the
 // existing dashboard rather than a separate fleet console.
 function FleetSummaryStrip({ screens }: { screens: any[] }) {
+  const t = useTranslations();
   const canary = useCanaryRollout();
   const total = screens.length;
   const online = screens.filter((s) => s.status === 'ONLINE').length;
@@ -295,10 +297,10 @@ function FleetSummaryStrip({ screens }: { screens: any[] }) {
 
   return (
     <div className="flex flex-wrap gap-3">
-      {tile('Total', total, 'neutral')}
-      {tile('Online', online, online === total && total > 0 ? 'ok' : 'neutral')}
-      {tile('Offline', offline, offline > 0 ? 'warn' : 'neutral')}
-      {tile('Emergency', emergencyActive, emergencyActive > 0 ? 'alert' : 'neutral')}
+      {tile(t('screens.total'), total, 'neutral')}
+      {tile(t('screens.online'), online, online === total && total > 0 ? 'ok' : 'neutral')}
+      {tile(t('screens.offline'), offline, offline > 0 ? 'warn' : 'neutral')}
+      {tile(t('screens.emergency'), emergencyActive, emergencyActive > 0 ? 'alert' : 'neutral')}
       {canaryActive && (
         <CanaryRolloutTile canary={canary.data!} />
       )}
@@ -362,6 +364,7 @@ function CanaryRolloutTile({ canary }: { canary: { percent: number; setAt: strin
 // gear popover next to the screen row. No new endpoint — purely a
 // presentation enhancement.
 function ScreenDiagnostics({ screen }: { screen: any }) {
+  const t = useTranslations();
   // 2026-05-24 — per-screen orientation lock control. Lives inside the
   // diagnostics drawer (right next to Resolution) so operators with a
   // sideways-mounted Goodview / Taurus screen can flip orientation in
@@ -422,7 +425,7 @@ function ScreenDiagnostics({ screen }: { screen: any }) {
             to flip LANDSCAPE / PORTRAIT / AUTO; signed WS broadcast +
             manifest poll converge the kiosk within ~10s. */}
         <div className="flex flex-col min-w-0">
-          <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Orientation</div>
+          <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{t('screens.orientation')}</div>
           <select
             value={currentOrientation}
             disabled={setOrientation.isPending}
@@ -434,9 +437,9 @@ function ScreenDiagnostics({ screen }: { screen: any }) {
             className="text-[11px] font-medium text-slate-700 bg-white border border-slate-200 rounded px-1.5 py-0.5 mt-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
             title="Flip the kiosk between landscape, portrait, or sensor-decides (AUTO). Takes effect on the device within ~10s via signed WS broadcast."
           >
-            <option value="LANDSCAPE">Landscape</option>
-            <option value="PORTRAIT">Portrait</option>
-            <option value="AUTO">Auto (sensor)</option>
+            <option value="LANDSCAPE">{t('screens.landscape')}</option>
+            <option value="PORTRAIT">{t('screens.portrait')}</option>
+            <option value="AUTO">{t('screens.autoSensor')}</option>
           </select>
         </div>
         {/* 2026-05-26 — LED canvas (daisy-chained 320×1080 panels).
@@ -770,6 +773,7 @@ function ScreenHardwarePanel({ screen }: { screen: any }) {
 }
 
 function DeviceFingerprintRow({ fingerprint }: { fingerprint: string }) {
+  const t = useTranslations();
   const [copied, setCopied] = useState(false);
 
   if (!fingerprint) {
@@ -823,12 +827,12 @@ function DeviceFingerprintRow({ fingerprint }: { fingerprint: string }) {
           {copied ? (
             <>
               <Check className="w-3 h-3 text-emerald-600" />
-              <span className="text-emerald-700">Copied</span>
+              <span className="text-emerald-700">{t('screens.copied')}</span>
             </>
           ) : (
             <>
               <Copy className="w-3 h-3" />
-              <span>Copy</span>
+              <span>{t('screens.copy')}</span>
             </>
           )}
         </button>
@@ -857,6 +861,7 @@ function ScreenSettingsMenu({
   refreshWebPending: boolean;
   previewHref: string;
 }) {
+  const t = useTranslations();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -1035,7 +1040,7 @@ function ScreenSettingsMenu({
             <button
               type="button"
               onClick={() => setOpen(false)}
-              aria-label="Close settings"
+              aria-label={t('screens.closeSettings')}
               className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 active:bg-slate-200"
             >
               <X className="w-4 h-4" />
@@ -1053,17 +1058,17 @@ function ScreenSettingsMenu({
               this is the available version and have me click a
               button to push the upgrade." */}
           <div className="px-3.5 py-2.5 border-b border-slate-100 bg-slate-50/40">
-            <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Player version</div>
+            <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">{t('screens.playerVersion')}</div>
             <div className="flex items-center justify-between gap-2 text-[11px]">
               <div>
-                <div className="text-slate-400">Current</div>
+                <div className="text-slate-400">{t('screens.current')}</div>
                 <div className="font-bold text-slate-800">
-                  {currentVersion ? `v${currentVersion}` : 'Not reported'}
+                  {currentVersion ? `v${currentVersion}` : t('screens.notReported')}
                 </div>
               </div>
               <div className="text-slate-300">→</div>
               <div className="text-right">
-                <div className="text-slate-400">Latest</div>
+                <div className="text-slate-400">{t('screens.latest')}</div>
                 <div className="font-bold text-slate-800">
                   {latestVersion ? `v${latestVersion}` : <Loader2 className="w-3 h-3 inline animate-spin text-slate-300" />}
                 </div>
@@ -1271,7 +1276,7 @@ function ScreenSettingsMenu({
       <button
         ref={buttonRef}
         onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
-        title="Screen settings"
+        title={t('screens.screenSettings')}
         aria-haspopup="true"
         aria-expanded={open}
         className="flex items-center justify-center h-11 w-11 sm:h-auto sm:w-auto sm:p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-slate-800 hover:border-slate-300 hover:bg-slate-50 transition-all shadow-sm"
@@ -1308,6 +1313,7 @@ function ScreenSettingsMenu({
  * and a legacy `execCommand('copy')` fallback.
  */
 function CopyUrlButton({ url }: { url: string }) {
+  const t = useTranslations();
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1355,12 +1361,13 @@ function CopyUrlButton({ url }: { url: string }) {
       style={{ background: copied ? '#16a34a' : 'var(--brand-primary, #4f46e5)' }}
     >
       {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-      {copied ? 'Copied!' : 'Copy URL'}
+      {copied ? t('screens.copiedBang') : t('screens.copyUrl')}
     </button>
   );
 }
 
 export default function ScreensPage() {
+  const t = useTranslations();
   const { data: groups, isLoading, isError, refetch } = useScreenGroups();
   const { data: allScreens, refetch: refetchScreens } = useScreens();
   const userRole = useUIStore((s) => s.user?.role);
@@ -1594,9 +1601,9 @@ export default function ScreensPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-800 flex items-center gap-2">
             <MonitorPlay className="w-7 h-7" style={{ color: 'var(--brand-primary, #6366f1)' }} />
-            Screens
+            {t('screens.title')}
           </h1>
-          <p className="text-sm text-slate-500 mt-0.5">Pair devices, organize into groups, and manage your display fleet.</p>
+          <p className="text-sm text-slate-500 mt-0.5">{t('screens.subtitle')}</p>
         </div>
         {/* Mobile (<sm): the control cluster goes full-width and wraps so
             nothing (notably "New Group") is clipped off the right edge —
@@ -1619,18 +1626,18 @@ export default function ScreensPage() {
           <div className="flex w-full sm:inline-flex sm:w-auto bg-slate-100 rounded-lg p-0.5 border border-slate-200">
             <button onClick={() => setViewMode('list')}
               className={`flex-1 sm:flex-none justify-center px-3 py-2 sm:py-1.5 text-xs font-bold rounded-md flex items-center gap-1.5 transition-colors ${viewMode === 'list' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-              <ListIcon className="w-3.5 h-3.5" /> List
+              <ListIcon className="w-3.5 h-3.5" /> {t('screens.viewList')}
             </button>
             <button onClick={() => setViewMode('map')}
               className={`flex-1 sm:flex-none justify-center px-3 py-2 sm:py-1.5 text-xs font-bold rounded-md flex items-center gap-1.5 transition-colors ${viewMode === 'map' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-              <MapIcon className="w-3.5 h-3.5" /> Map
+              <MapIcon className="w-3.5 h-3.5" /> {t('screens.viewMap')}
             </button>
             <button
               onClick={() => setViewMode('floor')}
               className={`flex-1 sm:flex-none justify-center px-3 py-2 sm:py-1.5 text-xs font-bold rounded-md flex items-center gap-1.5 transition-colors ${viewMode === 'floor' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-              title="View floor plans (drag screens onto a building map)"
+              title={t('screens.viewFloorPlans')}
             >
-              <MapPin className="w-3.5 h-3.5" /> Floor plans
+              <MapPin className="w-3.5 h-3.5" /> {t('screens.viewFloor')}
             </button>
           </div>
           {/* Per-device OTA push lives inline on each row (download
@@ -1653,14 +1660,14 @@ export default function ScreensPage() {
                 title={isViewer ? 'Read-only — viewer role' : undefined}
                 className="flex-1 sm:flex-none justify-center px-4 py-2.5 sm:py-2 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ background: 'var(--brand-accent, var(--brand-primary, #4f46e5))' }}>
-                <Wifi className="w-4 h-4" /> Pair Screen
+                <Wifi className="w-4 h-4" /> {t('screens.pairScreenBtn')}
               </button>
               <button onClick={() => setShowCreateGroup(true)}
                 disabled={isViewer}
                 title={isViewer ? 'Read-only — viewer role' : undefined}
                 className="flex-1 sm:flex-none justify-center px-4 py-2.5 sm:py-2 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ background: 'var(--brand-primary, #4f46e5)' }}>
-                <Plus className="w-4 h-4" /> New Group
+                <Plus className="w-4 h-4" /> {t('screens.newGroupBtn')}
               </button>
             </>
           )}
@@ -1734,27 +1741,27 @@ export default function ScreensPage() {
       <>
       {/* How it works banner */}
       <div className="bg-gradient-to-br from-emerald-50 to-teal-50/50 rounded-3xl border-transparent p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-        <h3 className="text-sm font-bold text-slate-800 mb-4">How to Connect a Screen</h3>
+        <h3 className="text-sm font-bold text-slate-800 mb-4">{t('screens.howToConnect')}</h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           <div className="flex gap-3.5 items-center">
             <div className="w-10 h-10 rounded-2xl text-white flex items-center justify-center text-sm font-black shrink-0" style={{ background: 'var(--brand-primary, #4f46e5)', boxShadow: '0 1px 2px color-mix(in srgb, var(--brand-primary, #4f46e5) 30%, transparent)' }}>1</div>
             <div>
-              <p className="text-sm font-bold text-slate-700">Open the Player URL</p>
-              <p className="text-xs text-slate-500">On any device browser</p>
+              <p className="text-sm font-bold text-slate-700">{t('screens.step1')}</p>
+              <p className="text-xs text-slate-500">{t('screens.step1Sub')}</p>
             </div>
           </div>
           <div className="flex gap-3.5 items-center">
             <div className="w-10 h-10 rounded-2xl text-white flex items-center justify-center text-sm font-black shrink-0" style={{ background: 'var(--brand-primary, #4f46e5)', boxShadow: '0 1px 2px color-mix(in srgb, var(--brand-primary, #4f46e5) 30%, transparent)' }}>2</div>
             <div>
-              <p className="text-sm font-bold text-slate-700">Get Pairing Code</p>
-              <p className="text-xs text-slate-500">6 digits on screen</p>
+              <p className="text-sm font-bold text-slate-700">{t('screens.step2')}</p>
+              <p className="text-xs text-slate-500">{t('screens.step2Sub')}</p>
             </div>
           </div>
           <div className="flex gap-3.5 items-center">
             <div className="w-10 h-10 rounded-2xl text-white flex items-center justify-center text-sm font-black shrink-0" style={{ background: 'var(--brand-primary, #4f46e5)', boxShadow: '0 1px 2px color-mix(in srgb, var(--brand-primary, #4f46e5) 30%, transparent)' }}>3</div>
             <div>
-              <p className="text-sm font-bold text-slate-700">Pair it Here</p>
-              <p className="text-xs text-slate-500">Click &quot;Pair Screen&quot;</p>
+              <p className="text-sm font-bold text-slate-700">{t('screens.step3')}</p>
+              <p className="text-xs text-slate-500">{t('screens.step3Sub')}</p>
             </div>
           </div>
         </div>
@@ -1769,10 +1776,10 @@ export default function ScreensPage() {
       {/* Create Group Form */}
       {showCreateGroup && (
         <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-6">
-          <h3 className="text-sm font-bold text-slate-800 mb-3">New Screen Group</h3>
+          <h3 className="text-sm font-bold text-slate-800 mb-3">{t('screens.newGroup')}</h3>
           <div className="flex gap-3">
             <input ref={newGroupInputRef} value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)}
-              placeholder="e.g., Main Hallway, Cafeteria, Library"
+              placeholder={t('screens.groupNamePlaceholder')}
               className="flex-1 px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2"
               style={{ '--tw-ring-color': 'var(--brand-primary, #6366f1)' } as React.CSSProperties}
               onKeyDown={(e) => e.key === 'Enter' && handleCreateGroup()} />
@@ -1781,7 +1788,7 @@ export default function ScreensPage() {
               style={{ background: 'var(--brand-primary, #4f46e5)' }}>
               {createGroup.isPending ? 'Creating...' : 'Create'}
             </button>
-            <button onClick={() => setShowCreateGroup(false)} className="px-3 py-2 text-slate-400 hover:text-slate-600 text-sm">Cancel</button>
+            <button onClick={() => setShowCreateGroup(false)} className="px-3 py-2 text-slate-400 hover:text-slate-600 text-sm">{t('screens.cancel')}</button>
           </div>
         </div>
       )}
@@ -1846,7 +1853,7 @@ export default function ScreensPage() {
                         <button
                           type="button"
                           onClick={() => { setEditingGroupId(group.id); setEditGroupName(group.name); }}
-                          title="Click to rename group"
+                          title={t('screens.clickToRenameGroup')}
                           className="text-[15px] font-bold text-slate-800 text-left hover:text-indigo-600 transition-colors"
                         >
                           {group.name}
@@ -1867,10 +1874,10 @@ export default function ScreensPage() {
                         affordance. */}
                     <button onClick={() => { setShowPairModal(true); setPairGroupId(group.id); setPairCode(''); setPairName(''); setPairError(''); }}
                       className="screens-pair-btn px-4 py-2 transition-colors text-xs font-bold rounded-xl flex items-center gap-1.5"
-                      title="Pair a screen to this group">
+                      title={t('screens.pairToGroup')}>
                       <Plus className="w-4 h-4" /> Pair
                     </button>
-                    <button onClick={async () => { if (await appConfirm({ title: 'Delete group?', message: `"${group.name}" will be deleted. Screens in it won't be deleted.`, tone: 'danger', confirmLabel: 'Delete' })) deleteGroup.mutate(group.id); }}
+                    <button onClick={async () => { if (await appConfirm({ title: t('screens.deleteGroupTitle'), message: `"${group.name}" will be deleted. Screens in it won't be deleted.`, tone: 'danger', confirmLabel: 'Delete' })) deleteGroup.mutate(group.id); }}
                       className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors">
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -1899,14 +1906,14 @@ export default function ScreensPage() {
                               <input ref={editNameInputRef} value={editName} onChange={e => setEditName(e.target.value)}
                                 className="px-2 py-1 text-xs border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
                                 onKeyDown={e => e.key === 'Enter' && handleRename(screen.id)} />
-                              <button onClick={() => handleRename(screen.id)} className="text-emerald-600 hover:underline text-xs font-bold">Save</button>
-                              <button onClick={() => setEditingScreen(null)} className="text-slate-400 hover:text-slate-600 text-xs font-semibold">Cancel</button>
+                              <button onClick={() => handleRename(screen.id)} className="text-emerald-600 hover:underline text-xs font-bold">{t('screens.save')}</button>
+                              <button onClick={() => setEditingScreen(null)} className="text-slate-400 hover:text-slate-600 text-xs font-semibold">{t('screens.cancel')}</button>
                             </div>
                           ) : (
                             <button
                               className="screens-name-btn text-sm font-bold text-slate-700 transition-colors text-left"
                               onClick={() => { setEditingScreen(screen.id); setEditName(screen.name); }}
-                              title="Click to rename"
+                              title={t('screens.clickToRename')}
                             >
                               {screen.name}
                             </button>
@@ -1975,7 +1982,7 @@ export default function ScreensPage() {
                             : screen.status === 'PENDING' ? 'bg-amber-50 text-amber-600'
                             : 'bg-slate-100 text-slate-500'
                         }`}>
-                          {screen.status || 'OFFLINE'}
+                          {screen.status === 'ONLINE' ? t('screens.statusOnline') : screen.status === 'PENDING' ? t('screens.statusPending') : t('screens.statusOffline')}
                         </span>
                         {/* Emergency offline-cache readiness chip — green = assets on disk,
                             amber = no report yet, red = reported empty (would fetch from network) */}
@@ -2029,9 +2036,9 @@ export default function ScreensPage() {
                             grey by default; only turns red on hover, so
                             an accidental tap is one explicit step away
                             from triggering the mutate. */}
-                        <button onClick={async () => { if (await appConfirm({ title: 'Delete screen?', message: `"${screen.name}" will be removed and unpaired — this cannot be undone.`, tone: 'danger', confirmLabel: 'Delete' })) deleteScreen.mutate(screen.id); }}
+                        <button onClick={async () => { if (await appConfirm({ title: t('screens.deleteScreenTitle'), message: `"${screen.name}" will be removed and unpaired — this cannot be undone.`, tone: 'danger', confirmLabel: 'Delete' })) deleteScreen.mutate(screen.id); }}
                           className="flex items-center justify-center h-11 w-11 sm:h-auto sm:w-auto sm:p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-red-500 hover:border-red-100 hover:bg-red-50 transition-all shadow-sm"
-                          title="Delete screen">
+                          title={t('screens.deleteScreen')}>
                           <Trash2 className="w-4 h-4" />
                         </button>
                         {/* Per-screen settings popover. ALWAYS visible
@@ -2065,7 +2072,7 @@ export default function ScreensPage() {
                   // to its content — the "+ Pair" button in the
                   // header is the only CTA the operator needs.
                   <div className="px-5 py-2 text-center">
-                    <p className="text-[11px] text-slate-400">No screens yet — use <span className="font-semibold text-slate-500">+ Pair</span> above.</p>
+                    <p className="text-[11px] text-slate-400">{t('screens.noScreensYet')} <span className="font-semibold text-slate-500">+ Pair</span></p>
                   </div>
                 )}
 
@@ -2088,8 +2095,8 @@ export default function ScreensPage() {
           {groups.length === 0 && (
             <div className="bg-slate-50 rounded-2xl border border-dashed border-slate-300 p-12 text-center">
               <MonitorPlay className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-slate-700">No Screen Groups Yet</h3>
-              <p className="text-sm text-slate-500 mt-2 mb-4">Create a group, then pair screens to it.</p>
+              <h3 className="text-lg font-semibold text-slate-700">{t('screens.noGroupsTitle')}</h3>
+              <p className="text-sm text-slate-500 mt-2 mb-4">{t('screens.noGroupsDesc')}</p>
               <button onClick={() => setShowCreateGroup(true)}
                 className="px-4 py-2 text-white text-sm font-semibold rounded-lg inline-flex items-center gap-1.5"
                 style={{ background: 'var(--brand-primary, #4f46e5)' }}>
@@ -2106,8 +2113,8 @@ export default function ScreensPage() {
                     <Monitor className="w-5 h-5 text-slate-500" />
                   </div>
                   <div>
-                    <h3 className="text-[15px] font-bold text-slate-800">Ungrouped Screens</h3>
-                    <p className="text-xs font-medium text-slate-400 mt-0.5">Screens paired but not assigned to a group</p>
+                    <h3 className="text-[15px] font-bold text-slate-800">{t('screens.ungrouped')}</h3>
+                    <p className="text-xs font-medium text-slate-400 mt-0.5">{t('screens.ungroupedDesc')}</p>
                   </div>
                 </div>
               </div>
@@ -2128,14 +2135,14 @@ export default function ScreensPage() {
                           <input ref={editNameInputRef} value={editName} onChange={e => setEditName(e.target.value)}
                             className="px-2 py-1 text-xs border border-indigo-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none"
                             onKeyDown={e => e.key === 'Enter' && handleRename(screen.id)} />
-                          <button onClick={() => handleRename(screen.id)} className="text-emerald-600 hover:underline text-xs font-bold">Save</button>
-                          <button onClick={() => setEditingScreen(null)} className="text-slate-400 hover:text-slate-600 text-xs font-semibold">Cancel</button>
+                          <button onClick={() => handleRename(screen.id)} className="text-emerald-600 hover:underline text-xs font-bold">{t('screens.save')}</button>
+                          <button onClick={() => setEditingScreen(null)} className="text-slate-400 hover:text-slate-600 text-xs font-semibold">{t('screens.cancel')}</button>
                         </div>
                       ) : (
                         <button
                           className="screens-name-btn text-sm font-bold text-slate-700 transition-colors text-left"
                           onClick={() => { setEditingScreen(screen.id); setEditName(screen.name); }}
-                          title="Click to rename"
+                          title={t('screens.clickToRename')}
                         >
                           {screen.name}
                         </button>
@@ -2174,7 +2181,7 @@ export default function ScreensPage() {
                         }}
                         value=""
                       >
-                        <option value="" disabled>Move to group...</option>
+                        <option value="" disabled>{t('screens.moveToGroup')}</option>
                         {groups?.map((g: any) => (
                           <option key={g.id} value={g.id}>{g.name}</option>
                         ))}
@@ -2188,7 +2195,7 @@ export default function ScreensPage() {
                         : screen.status === 'PENDING' ? 'bg-amber-50 text-amber-600'
                         : 'bg-slate-100 text-slate-500'
                     }`}>
-                      {screen.status || 'OFFLINE'}
+                      {screen.status === 'ONLINE' ? t('screens.statusOnline') : screen.status === 'PENDING' ? t('screens.statusPending') : t('screens.statusOffline')}
                     </span>
                     {screen.lastPingAt && (
                       <span
@@ -2203,9 +2210,9 @@ export default function ScreensPage() {
                     {/* Action group — 44px-target row above its own
                         divider on mobile; sm:contents on desktop. */}
                     <div className="flex items-center gap-2 pt-2 border-t border-slate-100 sm:contents sm:border-0 sm:pt-0">
-                    <button onClick={async () => { if (await appConfirm({ title: 'Delete screen?', message: `"${screen.name}" will be removed and unpaired — this cannot be undone.`, tone: 'danger', confirmLabel: 'Delete' })) deleteScreen.mutate(screen.id); }}
+                    <button onClick={async () => { if (await appConfirm({ title: t('screens.deleteScreenTitle'), message: `"${screen.name}" will be removed and unpaired — this cannot be undone.`, tone: 'danger', confirmLabel: 'Delete' })) deleteScreen.mutate(screen.id); }}
                       className="flex items-center justify-center h-11 w-11 sm:h-auto sm:w-auto sm:p-2 bg-white border border-slate-100 rounded-lg text-slate-400 hover:text-red-500 hover:border-red-100 hover:bg-red-50 transition-all shadow-sm"
-                      title="Delete screen">
+                      title={t('screens.deleteScreen')}>
                       <Trash2 className="w-4 h-4" />
                     </button>
                     {/* Gear popover — always visible; preview lives
@@ -2232,12 +2239,12 @@ export default function ScreensPage() {
 
       {/* ─── Pair Screen Modal ─── */}
       {showPairModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Pair a Screen">
-          <button className="absolute inset-0 cursor-default" aria-label="Close dialog" onClick={() => { setShowPairModal(false); }} />
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={t('screens.pairScreen')}>
+          <button className="absolute inset-0 cursor-default" aria-label={t('screens.closeDialog')} onClick={() => { setShowPairModal(false); }} />
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative z-10 max-h-[92vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <Wifi className="w-5 h-5 text-emerald-600" /> Pair a Screen
+                <Wifi className="w-5 h-5 text-emerald-600" /> {t('screens.pairModalTitle')}
               </h3>
               <button onClick={() => { setShowPairModal(false); }} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
@@ -2245,7 +2252,7 @@ export default function ScreensPage() {
             </div>
 
             <p className="text-sm text-slate-500 mb-5">
-              Enter the 6-digit code shown on the screen device.
+              {t('screens.pairModalSubtitle')}
             </p>
 
             <div className="space-y-4">
@@ -2265,13 +2272,13 @@ export default function ScreensPage() {
                   lamp) move to the per-screen settings page where
                   they belong — never block pairing. */}
               <div>
-                <label htmlFor="pair-code-input" className="block text-xs font-semibold text-slate-600 mb-1.5">Pairing Code</label>
+                <label htmlFor="pair-code-input" className="block text-xs font-semibold text-slate-600 mb-1.5">{t('screens.pairingCode')}</label>
                 <input
                   id="pair-code-input"
                   ref={pairCodeInputRef}
                   value={pairCode}
                   onChange={e => setPairCode(e.target.value.toUpperCase())}
-                  placeholder="e.g., ABC123"
+                  placeholder={t('screens.pairingCodePlaceholder')}
                   maxLength={6}
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center text-2xl font-mono font-bold tracking-[0.3em] outline-none focus:ring-2 focus:ring-emerald-500 uppercase"
                   onKeyDown={e => e.key === 'Enter' && handlePairScreen()}
@@ -2279,25 +2286,25 @@ export default function ScreensPage() {
               </div>
 
               <div>
-                <label htmlFor="pair-name-input" className="block text-xs font-semibold text-slate-600 mb-1.5">Screen Name (optional)</label>
+                <label htmlFor="pair-name-input" className="block text-xs font-semibold text-slate-600 mb-1.5">{t('screens.screenNameOptional')}</label>
                 <input
                   id="pair-name-input"
                   value={pairName}
                   onChange={e => setPairName(e.target.value)}
-                  placeholder="e.g., Lobby Display, Room 201"
+                  placeholder={t('screens.screenNamePlaceholder')}
                   className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
 
               <div>
-                <label htmlFor="pair-group-select" className="block text-xs font-semibold text-slate-600 mb-1.5">Assign to Group</label>
+                <label htmlFor="pair-group-select" className="block text-xs font-semibold text-slate-600 mb-1.5">{t('screens.assignToGroup')}</label>
                 <select
                   id="pair-group-select"
                   value={pairGroupId}
                   onChange={e => setPairGroupId(e.target.value)}
                   className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500"
                 >
-                  <option value="">-- No group (assign later) --</option>
+                  <option value="">{t('screens.noGroupAssignLater')}</option>
                   {groups?.map((g: any) => (
                     <option key={g.id} value={g.id}>{g.name}</option>
                   ))}
@@ -2316,7 +2323,7 @@ export default function ScreensPage() {
                 className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl flex items-center justify-center gap-2"
               >
                 {pairing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wifi className="w-4 h-4" />}
-                {pairing ? 'Pairing...' : 'Pair Screen'}
+                {pairing ? t('screens.pairing') : t('screens.pairScreenBtn')}
               </button>
 
               <button
@@ -2328,7 +2335,7 @@ export default function ScreensPage() {
                 data-testid="scan-instead-button"
               >
                 <QrCode className="w-4 h-4" />
-                {showQrForScan ? 'Hide QR code' : 'Scan instead with phone'}
+                {showQrForScan ? t('screens.hideQr') : t('screens.scanWithPhone')}
               </button>
 
               {showQrForScan && qrDataUrl && (
