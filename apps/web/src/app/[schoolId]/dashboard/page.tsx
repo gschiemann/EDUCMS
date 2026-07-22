@@ -41,9 +41,11 @@ import { FleetRollup } from '@/components/screens/FleetRollup';
 import Link from 'next/link';
 import { usePathname, useParams } from 'next/navigation';
 import { useEffect, useState, useMemo } from 'react';
+import { useTranslations } from 'next-intl';
 import { transformedImageUrl } from '@/lib/asset-image';
 
 export default function DashboardPage() {
+  const t = useTranslations();
   const isMobile = useIsMobile();
   const params = useParams<{ schoolId?: string }>();
   // HQ fleet command center (Corporate dashboard). Admin-gated; a leaf tenant
@@ -288,10 +290,10 @@ export default function DashboardPage() {
     if (!now) return 'Hello';
     const h = now.getHours();
     if (h < 5) return 'Working late';
-    if (h < 12) return 'Good morning';
-    if (h < 17) return 'Good afternoon';
-    if (h < 21) return 'Good evening';
-    return 'Good night';
+    if (h < 12) return t('dashboard.greetingMorning');
+    if (h < 17) return t('dashboard.greetingAfternoon');
+    if (h < 21) return t('dashboard.greetingEvening');
+    return t('dashboard.greetingNight');
   })();
 
   // Incident count rolls up everything actionable into one number —
@@ -393,14 +395,14 @@ export default function DashboardPage() {
                   <>
                     <span className="text-slate-300">·</span>
                     <span>
-                      {screens.filter((s: any) => s.status === 'ONLINE').length} of {screens.length} screens online
+                      {t('dashboard.screensOnlineOf', { online: screens.filter((s: any) => s.status === 'ONLINE').length, total: screens.length })}
                     </span>
                   </>
                 )}
                 {Array.isArray(schedules) && schedules.length > 0 && (
                   <>
                     <span className="text-slate-300">·</span>
-                    <span>{schedules.length} schedules</span>
+                    <span>{t('dashboard.schedulesCount', { count: schedules.length })}</span>
                   </>
                 )}
               </div>
@@ -410,7 +412,7 @@ export default function DashboardPage() {
                 {now ? now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''}
               </div>
               <div className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">
-                Local time
+                {t('dashboard.localTime')}
               </div>
             </div>
           </div>
@@ -429,7 +431,7 @@ export default function DashboardPage() {
             <div className="text-2xl font-bold text-slate-800 tabular-nums">
               {now ? now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''}
             </div>
-            <div className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">Local time</div>
+            <div className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">{t('dashboard.localTime')}</div>
           </div>
         </header>
       )}
@@ -442,16 +444,16 @@ export default function DashboardPage() {
         <div className="rounded-xl bg-white border border-rose-200 px-5 py-4 flex items-center gap-4 flex-wrap">
           <AlertTriangle className="w-6 h-6 text-rose-500 shrink-0" />
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-bold text-slate-800">Couldn&apos;t load your dashboard</div>
+            <div className="text-sm font-bold text-slate-800">{t('dashboard.loadError')}</div>
             <div className="text-[13px] text-slate-500 mt-0.5">
-              Some data failed to load — the numbers below may be incomplete. Check your connection and try again.
+              {t('dashboard.loadErrorDesc')}
             </div>
           </div>
           <button
             onClick={retryLoad}
             className="shrink-0 px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold inline-flex items-center gap-1.5"
           >
-            <RefreshCw className="w-4 h-4" /> Retry
+            <RefreshCw className="w-4 h-4" /> {t('dashboard.retry')}
           </button>
         </div>
       )}
@@ -474,15 +476,15 @@ export default function DashboardPage() {
               <Siren className="w-7 h-7" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-[11px] font-bold tracking-widest uppercase opacity-90">Active Emergency</div>
-              <div className="text-xl font-bold mt-0.5">{emergencyMode || 'Emergency Alert Active'}</div>
-              <div className="text-sm opacity-90 mt-0.5">All screens are displaying the emergency override.</div>
+              <div className="text-[11px] font-bold tracking-widest uppercase opacity-90">{t('dashboard.activeEmergency')}</div>
+              <div className="text-xl font-bold mt-0.5">{emergencyMode || t('dashboard.emergencyAlertActive')}</div>
+              <div className="text-sm opacity-90 mt-0.5">{t('dashboard.emergencyOverrideAll')}</div>
             </div>
             <Link
               href={`${tenantBase}/emergency/broadcast`}
               className="shrink-0 px-4 py-2.5 rounded-xl bg-white/95 text-red-600 text-sm font-bold hover:bg-white shadow-sm transition-colors"
             >
-              Emergency Console
+              {t('dashboard.emergencyConsole')}
             </Link>
           </div>
         </div>
@@ -494,14 +496,14 @@ export default function DashboardPage() {
               <span className={`relative rounded-full h-2.5 w-2.5 ${incidentCount > 0 ? 'bg-amber-500' : 'bg-emerald-500'}`} />
             </span>
             <span className="text-sm font-bold text-slate-800">
-              {incidentCount > 0 ? `${incidentCount} ${incidentCount === 1 ? 'item needs' : 'items need'} attention` : 'All systems normal'}
+              {incidentCount > 0 ? t('dashboard.itemsNeedAttention', { count: incidentCount }) : t('dashboard.allSystemsNormal')}
             </span>
           </div>
           <div className="h-5 w-px bg-slate-200" />
           <div className="flex items-center gap-2 text-xs text-slate-600">
             <Activity className="w-3.5 h-3.5 text-slate-400" />
             <span className="font-semibold">{fleet.online.toLocaleString()}</span>
-            <span className="text-slate-400">/ {fleet.total.toLocaleString()} screens online</span>
+            <span className="text-slate-400">{t('dashboard.fleetOnlineOf', { total: fleet.total.toLocaleString() })}</span>
           </div>
           {liveNowCount > 0 && (
             <>
@@ -509,7 +511,7 @@ export default function DashboardPage() {
               <div className="flex items-center gap-2 text-xs text-slate-600">
                 <MonitorPlay className="w-3.5 h-3.5" style={{ color: 'var(--brand-primary, #6366f1)' }} />
                 <span className="font-semibold">{liveNowCount}</span>
-                <span className="text-slate-400">schedule{liveNowCount === 1 ? '' : 's'} playing now</span>
+                <span className="text-slate-400">{t('dashboard.schedulesPlayingNow', { count: liveNowCount })}</span>
               </div>
             </>
           )}
@@ -519,7 +521,7 @@ export default function DashboardPage() {
               <div className="flex items-center gap-2 text-xs text-amber-700">
                 <AlertTriangle className="w-3.5 h-3.5" />
                 <span className="font-semibold">{fleet.stale}</span>
-                <span>reporting stale</span>
+                <span>{t('dashboard.reportingStale')}</span>
               </div>
             </>
           )}
@@ -546,22 +548,22 @@ export default function DashboardPage() {
           <button
             type="button"
             onClick={dismissHint}
-            title="Hide this guide"
-            aria-label="Hide getting-started guide"
+            title={t('dashboard.hideGuide')}
+            aria-label={t('dashboard.hideGuideAria')}
             className="absolute top-3 right-3 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-white/70 transition-colors"
           >
             <X className="w-4 h-4" aria-hidden />
           </button>
-          <h2 className="text-lg font-bold text-slate-800 mb-2">Getting started</h2>
-          <p className="text-sm text-slate-600 mb-6">Three steps to get your displays running. Dismiss this when you&rsquo;re set up.</p>
+          <h2 className="text-lg font-bold text-slate-800 mb-2">{t('dashboard.gettingStarted')}</h2>
+          <p className="text-sm text-slate-600 mb-6">{t('dashboard.gettingStartedDesc')}</p>
           {/* Step order reflects the real setup flow: you can't pick a
               target for a playlist if no screens are paired yet, so
               "Connect a Screen" is step 1. Assets comes next (what
               will play), then Playlist (what to play + where). */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <OnboardStep href={`${tenantBase}/screens`} step={1} color="emerald" Icon={MonitorPlay} title="Connect a Screen" desc="Pair the devices that will display your content — or open the web player anywhere." cta="Go to Screens" />
-            <OnboardStep href={`${tenantBase}/assets`} step={2} color="sky" Icon={Upload} title="Upload Content" desc="Add images, videos, PDFs, or web URLs to your media library." cta="Go to Assets" />
-            <OnboardStep href={`${tenantBase}/playlists`} step={3} color="violet" Icon={ListVideo} title="Build a Playlist" desc="Assemble a playlist from your assets, then publish it to the screens you connected." cta="Go to Playlists" />
+            <OnboardStep href={`${tenantBase}/screens`} step={1} color="emerald" Icon={MonitorPlay} title={t('dashboard.step1Title')} desc={t('dashboard.step1Desc')} cta={t('dashboard.step1Cta')} />
+            <OnboardStep href={`${tenantBase}/assets`} step={2} color="sky" Icon={Upload} title={t('dashboard.step2Title')} desc={t('dashboard.step2Desc')} cta={t('dashboard.step2Cta')} />
+            <OnboardStep href={`${tenantBase}/playlists`} step={3} color="violet" Icon={ListVideo} title={t('dashboard.step3Title')} desc={t('dashboard.step3Desc')} cta={t('dashboard.step3Cta')} />
           </div>
         </div>
       )}
@@ -570,33 +572,33 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <KpiCard
           href={`${tenantBase}/screens`}
-          label="Fleet Health"
+          label={t('dashboard.fleetHealth')}
           bigValue={`${fleet.onlinePct.toFixed(fleet.onlinePct === 100 ? 0 : 1)}%`}
           sub={`${fleet.online.toLocaleString()} / ${fleet.total.toLocaleString()} online`}
           tone={fleet.onlinePct >= 99 ? 'emerald' : fleet.onlinePct >= 90 ? 'amber' : 'rose'}
           Icon={MonitorCheck}
-          emptyText={fleet.total === 0 ? 'No screens paired yet' : undefined}
+          emptyText={fleet.total === 0 ? t('dashboard.noScreensPaired') : undefined}
         />
         <KpiCard
           href={`${tenantBase}/screens`}
-          label="Down"
+          label={t('dashboard.down')}
           bigValue={fleet.offline.toLocaleString()}
-          sub={fleet.offline > 0 ? `${fleet.stale} stale pings` : 'all reporting in'}
+          sub={fleet.offline > 0 ? t('dashboard.stalePings', { count: fleet.stale }) : t('dashboard.allReportingIn')}
           tone={fleet.offline > 0 ? 'rose' : 'slate'}
           Icon={CloudOff}
           mutedWhenZero
         />
         <KpiCard
           href={`${tenantBase}/playlists`}
-          label="Playing Now"
+          label={t('dashboard.playingNow')}
           bigValue={liveNowCount.toLocaleString()}
-          sub={`${todaysSchedules.length} scheduled today`}
+          sub={t('dashboard.scheduledToday', { count: todaysSchedules.length })}
           tone="indigo"
           Icon={MonitorPlay}
         />
         <KpiCard
           href={`${tenantBase}/assets`}
-          label={pendingAssets.length > 0 ? 'Awaiting Approval' : 'Library'}
+          label={pendingAssets.length > 0 ? t('dashboard.awaitingApproval') : t('dashboard.library')}
           bigValue={pendingAssets.length > 0 ? pendingAssets.length.toLocaleString() : (assets?.length || 0).toLocaleString()}
           sub={pendingAssets.length > 0
             ? 'queued for review'
@@ -606,7 +608,7 @@ export default function DashboardPage() {
         />
         <KpiCard
           href={`${tenantBase}/screens`}
-          label="Sites"
+          label={t('dashboard.sites')}
           bigValue={sites.length.toLocaleString()}
           sub={`${(playlists?.length || 0).toLocaleString()} playlists`}
           tone="violet"
@@ -701,7 +703,7 @@ export default function DashboardPage() {
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4" style={{ color: 'var(--brand-primary, #6366f1)' }} />
-              <h2 className="text-sm font-bold text-slate-700">Today's Schedule</h2>
+              <h2 className="text-sm font-bold text-slate-700">{t('dashboard.todaysSchedule')}</h2>
               {todaysSchedules.length > 0 && (
                 <span className="text-[11px] text-slate-400 font-semibold">
                   {liveNowCount} playing · {todaysSchedules.length} total
@@ -716,7 +718,7 @@ export default function DashboardPage() {
             {todaysSchedules.length === 0 ? (
               <div className="p-8 text-center">
                 <Calendar className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                <p className="text-sm text-slate-500">Nothing scheduled for today.</p>
+                <p className="text-sm text-slate-500">{t('dashboard.nothingScheduled')}</p>
                 <Link href={`${tenantBase}/playlists`} className="dash-link text-xs font-semibold mt-2 inline-flex items-center gap-1">
                   Create schedule <ArrowRight className="w-3 h-3" />
                 </Link>
@@ -763,7 +765,7 @@ export default function DashboardPage() {
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
             <Clock className="w-4 h-4 text-slate-500" />
-            <h2 className="text-sm font-bold text-slate-700">Recent Activity</h2>
+            <h2 className="text-sm font-bold text-slate-700">{t('dashboard.recentActivity')}</h2>
           </div>
           <div className="divide-y divide-slate-50">
             {activity && activity.length > 0 ? (
@@ -782,7 +784,7 @@ export default function DashboardPage() {
               ))
             ) : (
               <div className="p-8 text-center">
-                <p className="text-xs text-slate-400">Activity will appear here.</p>
+                <p className="text-xs text-slate-400">{t('dashboard.activityAppearHere')}</p>
               </div>
             )}
           </div>
@@ -797,7 +799,7 @@ export default function DashboardPage() {
               <div className="px-5 py-4 border-b border-amber-100 flex items-center justify-between bg-amber-50/50">
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-amber-600" />
-                  <h2 className="text-sm font-bold text-slate-800">Pending Approvals</h2>
+                  <h2 className="text-sm font-bold text-slate-800">{t('dashboard.pendingApprovals')}</h2>
                   <span className="text-[11px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
                     {pendingAssets.length}
                   </span>
@@ -819,7 +821,7 @@ export default function DashboardPage() {
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold text-slate-800 truncate">{a.originalName || a.fileUrl?.split('/').pop() || 'Untitled'}</div>
+                      <div className="text-sm font-semibold text-slate-800 truncate">{a.originalName || a.fileUrl?.split('/').pop() || t('dashboard.untitled')}</div>
                       <div className="text-[11px] text-slate-500">
                         {a.uploadedByUser?.email || 'Unknown uploader'} · {new Date(a.createdAt).toLocaleDateString()}
                       </div>
@@ -827,10 +829,10 @@ export default function DashboardPage() {
                     <button
                       onClick={() => approveAsset.mutate(a.id)}
                       disabled={approveAsset.isPending || isViewer}
-                      title={isViewer ? 'Read-only — viewer role' : undefined}
+                      title={isViewer ? t('dashboard.readOnlyViewer') : undefined}
                       className="shrink-0 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold disabled:opacity-50"
                     >
-                      Approve
+                      {t('dashboard.approve')}
                     </button>
                   </div>
                 ))}
@@ -843,7 +845,7 @@ export default function DashboardPage() {
               <div className="px-5 py-4 border-b border-red-100 flex items-center justify-between bg-red-50/50">
                 <div className="flex items-center gap-2">
                   <CloudOff className="w-4 h-4 text-red-600" />
-                  <h2 className="text-sm font-bold text-slate-800">Screens Down</h2>
+                  <h2 className="text-sm font-bold text-slate-800">{t('dashboard.screensDown')}</h2>
                   <span className="text-[11px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full">
                     {downScreens.length}
                   </span>
@@ -874,7 +876,7 @@ export default function DashboardPage() {
               <div className="px-5 py-4 border-b border-indigo-100 flex items-center justify-between bg-indigo-50/50">
                 <div className="flex items-center gap-2">
                   <ListVideo className="w-4 h-4 text-indigo-600" />
-                  <h2 className="text-sm font-bold text-slate-800">My Submissions</h2>
+                  <h2 className="text-sm font-bold text-slate-800">{t('dashboard.mySubmissions')}</h2>
                 </div>
                 <Link href={`${tenantBase}/reviews`} className="text-[11px] font-semibold text-indigo-700 hover:text-indigo-800">
                   View all →
@@ -886,7 +888,7 @@ export default function DashboardPage() {
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-semibold text-slate-800">
-                          {sub.assetIds.length + sub.playlistIds.length + sub.scheduleIds.length} item{sub.assetIds.length + sub.playlistIds.length + sub.scheduleIds.length === 1 ? '' : 's'}
+                          {t('dashboard.submissionItems', { count: sub.assetIds.length + sub.playlistIds.length + sub.scheduleIds.length })}
                         </div>
                         <div className="text-[11px] text-slate-500 mt-0.5">
                           {new Date(sub.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
@@ -906,16 +908,16 @@ export default function DashboardPage() {
           {isContributor && (mySubmissions || []).length === 0 && (
             <div className="bg-white rounded-2xl border border-slate-200 p-6 text-center">
               <ListVideo className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-              <p className="text-sm font-semibold text-slate-700">No submissions yet.</p>
-              <p className="text-xs text-slate-500 mt-1">Build a playlist and click Submit for Review to send it to an admin.</p>
+              <p className="text-sm font-semibold text-slate-700">{t('dashboard.noSubmissions')}</p>
+              <p className="text-xs text-slate-500 mt-1">{t('dashboard.buildAndSubmit')}</p>
             </div>
           )}
 
           {pendingAssets.length === 0 && downScreens.length === 0 && !isContributor && !isEmpty && (
             <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
               <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-              <p className="text-sm font-semibold text-slate-700">Nothing needs attention.</p>
-              <p className="text-xs text-slate-500 mt-1">No pending approvals, no offline screens.</p>
+              <p className="text-sm font-semibold text-slate-700">{t('dashboard.nothingNeedsAttention')}</p>
+              <p className="text-xs text-slate-500 mt-1">{t('dashboard.noPendingNoOffline')}</p>
             </div>
           )}
         </div>
@@ -925,11 +927,11 @@ export default function DashboardPage() {
             <Zap className="w-4 h-4 text-amber-500" /> Quick Actions
           </h2>
           <div className="space-y-1.5">
-            <QuickLink href={`${tenantBase}/assets`} Icon={Upload} label="Upload Content" tone="sky" />
-            <QuickLink href={`${tenantBase}/playlists`} Icon={Plus} label="New Playlist" tone="indigo" />
-            <QuickLink href={`${tenantBase}/templates`} Icon={ListVideo} label="Pick a Template" tone="violet" />
-            <QuickLink href={`${tenantBase}/screens`} Icon={MonitorPlay} label="Pair a Screen" tone="emerald" />
-            <QuickLink href={`${tenantBase}/settings`} Icon={UsersIcon} label="Invite Teammate" tone="slate" />
+            <QuickLink href={`${tenantBase}/assets`} Icon={Upload} label={t('dashboard.uploadContent')} tone="sky" />
+            <QuickLink href={`${tenantBase}/playlists`} Icon={Plus} label={t('dashboard.newPlaylist')} tone="indigo" />
+            <QuickLink href={`${tenantBase}/templates`} Icon={ListVideo} label={t('dashboard.pickTemplate')} tone="violet" />
+            <QuickLink href={`${tenantBase}/screens`} Icon={MonitorPlay} label={t('dashboard.pairScreen')} tone="emerald" />
+            <QuickLink href={`${tenantBase}/settings`} Icon={UsersIcon} label={t('dashboard.inviteTeammate')} tone="slate" />
           </div>
         </div>
       </div>
@@ -1039,10 +1041,15 @@ function OnboardStep({
 }
 
 function SubmissionStatusPill({ status }: { status: SubmissionRow['status'] }) {
+  const tPill = useTranslations();
   const cls = status === 'PENDING'
     ? 'bg-amber-100 text-amber-700'
     : status === 'APPROVED'
       ? 'bg-emerald-100 text-emerald-700'
       : 'bg-rose-100 text-rose-700';
-  return <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded ${cls}`}>{status}</span>;
+  const label = status === 'PENDING' ? tPill('dashboard.statusPending')
+    : status === 'APPROVED' ? tPill('dashboard.statusApproved')
+    : status === 'REJECTED' ? tPill('dashboard.statusRejected')
+    : status;
+  return <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded ${cls}`}>{label}</span>;
 }

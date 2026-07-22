@@ -41,8 +41,10 @@ import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { useAppStore } from '@/lib/store';
 import { firstName as userFirstName } from '@/lib/user-display';
 import { cn } from '@/lib/utils';
+import { useTranslations } from 'next-intl';
 
 export function MobileDashboard({ schoolId }: { schoolId: string }) {
+  const t = useTranslations();
   const user = useAppStore((s) => s.user);
   const role = user?.role;
   const isContributor = role === 'CONTRIBUTOR';
@@ -63,9 +65,9 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
     if (!mounted) return 'Hello';
     const h = new Date().getHours();
     if (h < 5) return 'Working late';
-    if (h < 12) return 'Good morning';
-    if (h < 18) return 'Good afternoon';
-    return 'Good evening';
+    if (h < 12) return t('dashboard.greetingMorning');
+    if (h < 18) return t('dashboard.greetingAfternoon');
+    return t('dashboard.greetingEvening');
   })();
 
   const { data: screens } = useScreens();
@@ -137,7 +139,11 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
               <Siren className="w-6 h-6" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-base font-extrabold leading-tight">Emergency triggers</div>
+              <div className="text-base font-extrabold leading-tight">{t('dashboard.emergencyTriggers')}</div>
+              {/* i18n: panic-type taxonomy left English on purpose — the whole
+                  emergency system (trigger flow, typed-confirm, panic editor)
+                  gets ONE coordinated reviewed pass so these category names
+                  never half-translate. See docs/research/2026-07-22-i18n-es-zh/00-HANDOFF.md. */}
               <div className="text-xs text-rose-100 leading-snug mt-0.5">
                 Lockdown · Evacuate · Weather · Medical · All-clear
               </div>
@@ -156,8 +162,8 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
           <QuickAction
             href={`/${schoolId}/sports`}
             icon={Trophy}
-            label="Game day"
-            sub="Scoreboard & cues"
+            label={t('dashboard.gameDay')}
+            sub={t('dashboard.gameDaySub')}
             color="amber"
           />
         )}
@@ -170,8 +176,8 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
           <QuickAction
             href={`/${schoolId}/assets`}
             icon={UploadCloud}
-            label="Upload asset"
-            sub="Photos, video, links"
+            label={t('dashboard.uploadAsset')}
+            sub={t('dashboard.photosVideoLinks')}
             color="indigo"
           />
         )}
@@ -179,24 +185,24 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
           <QuickAction
             href={`/${schoolId}/playlists`}
             icon={ListMusic}
-            label="New playlist"
-            sub="Bundle assets"
+            label={t('dashboard.newPlaylist')}
+            sub={t('dashboard.bundleAssets')}
             color="emerald"
           />
         )}
         <QuickAction
           href={`/${schoolId}/screens`}
           icon={MonitorPlay}
-          label="Screens"
-          sub={`${onlineScreens} online`}
+          label={t('dashboard.screens')}
+          sub={t('dashboard.onlineCount', { count: onlineScreens })}
           color="sky"
         />
         {!isViewer && !isContributor && (
           <QuickAction
             href={`/${schoolId}/playlists`}
             icon={CalendarClock}
-            label="Schedule"
-            sub={`${activeSchedules} active`}
+            label={t('dashboard.scheduleLabel')}
+            sub={t('dashboard.activeCount', { count: activeSchedules })}
             color="violet"
           />
         )}
@@ -204,7 +210,7 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
           <QuickAction
             href={`/${schoolId}/reviews?tab=mine`}
             icon={CheckCircle2}
-            label="My submissions"
+            label={t('dashboard.mySubmissions')}
             sub={`${pendingCount} pending`}
             color="amber"
           />
@@ -219,11 +225,11 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
       <div className="rounded-2xl bg-white border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-100">
           <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-            <Activity className="w-3 h-3" /> Right now
+            <Activity className="w-3 h-3" /> {t('dashboard.rightNow')}
           </div>
         </div>
         <StatusRow
-          label="Screens online"
+          label={t('dashboard.screensOnlineStat')}
           value={totalScreens > 0 ? `${onlineScreens} / ${totalScreens}` : '—'}
           tone={offlineScreens === 0 ? 'good' : 'warn'}
           icon={MonitorPlay}
@@ -231,8 +237,8 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
         />
         {!isContributor && (
           <StatusRow
-            label="Pending reviews"
-            value={pendingCount > 0 ? `${pendingCount}` : 'All caught up'}
+            label={t('dashboard.pendingReviews')}
+            value={pendingCount > 0 ? `${pendingCount}` : t('dashboard.allCaughtUp')}
             tone={pendingCount > 0 ? 'warn' : 'good'}
             icon={CheckCircle2}
             href={`/${schoolId}/reviews`}
@@ -241,7 +247,7 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
         )}
         {isContributor && (
           <StatusRow
-            label="My submissions"
+            label={t('dashboard.mySubmissions')}
             value={pendingCount > 0 ? `${pendingCount} pending` : 'No pending'}
             tone="info"
             icon={Clock}
@@ -250,7 +256,7 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
           />
         )}
         <StatusRow
-          label="Assets in library"
+          label={t('dashboard.assetsInLibrary')}
           value={`${totalContent}`}
           tone="info"
           icon={FolderOpen}
@@ -264,7 +270,7 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
         <div className="rounded-2xl bg-white border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-100">
             <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-              <Sparkles className="w-3 h-3" /> Playing right now
+              <Sparkles className="w-3 h-3" /> {t('dashboard.playingRightNow')}
             </div>
           </div>
           <div className="divide-y divide-slate-100">
@@ -278,9 +284,9 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
                 >
                   <div className="shrink-0 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-bold text-slate-900 truncate">{pl?.name || 'Playlist'}</div>
+                    <div className="text-sm font-bold text-slate-900 truncate">{pl?.name || t('dashboard.playlistFallback')}</div>
                     <div className="text-[11px] text-slate-500 truncate">
-                      {sch.timeStart && sch.timeEnd ? `${sch.timeStart} – ${sch.timeEnd}` : 'All day'}
+                      {sch.timeStart && sch.timeEnd ? `${sch.timeStart} – ${sch.timeEnd}` : t('dashboard.allDay')}
                     </div>
                   </div>
                   <ChevronRight className="w-4 h-4 text-slate-300" />
