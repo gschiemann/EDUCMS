@@ -169,6 +169,7 @@ function assetName(asset: any) {
 
 // --- Sortable item ---
 function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSelected, onToggle, isViewer }: any) {
+  const t = useTranslations();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   const [showSettings, setShowSettings] = useState(false);
   const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 50 : undefined, opacity: isDragging ? 0.5 : 1 };
@@ -234,7 +235,7 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
         <button
           type="button"
           {...(isViewer ? {} : listeners)}
-          aria-label="Drag to reorder"
+          aria-label={t('playlistsPage.dragToReorder')}
           disabled={isViewer}
           className={`shrink-0 -ml-0.5 md:-ml-1 px-1 py-2 md:py-1 rounded touch-none ${isViewer ? 'opacity-40 cursor-not-allowed' : 'text-slate-400 md:text-slate-300 hover:text-indigo-500 hover:bg-slate-100 cursor-grab active:cursor-grabbing active:bg-slate-200'}`}
           style={{ touchAction: 'none' }}
@@ -253,7 +254,7 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             <p className="text-xs font-medium text-slate-700 truncate" title={name}>{name}</p>
-            {isScheduled && <span title="Time Restricted" className="shrink-0"><Clock className="w-3 h-3 text-indigo-500" /></span>}
+            {isScheduled && <span title={t('playlistsPage.timeRestricted')} className="shrink-0"><Clock className="w-3 h-3 text-indigo-500" /></span>}
           </div>
           {/* Mime label is desktop-only — secondary info, eats a
               line on mobile that we can't afford. Available via
@@ -270,7 +271,7 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
           // Video & audio play their full length, then the playlist
           // advances/loops — read-only "Auto", no editable seconds.
           // (2026-06-16 — extended to audio to match the New-Playlist wizard.)
-          <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 md:px-3 py-1 rounded-md uppercase tracking-wide shrink-0">Auto</span>
+          <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 md:px-3 py-1 rounded-md uppercase tracking-wide shrink-0">{t('playlistsPage.auto')}</span>
         ) : (
           <>
             <input
@@ -278,28 +279,28 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
               value={Math.round((item.durationMs || 10000) / 1000)}
               onChange={(e) => onDurationChange(item.id, parseInt(e.target.value) || 10)}
               disabled={isViewer}
-              title={isViewer ? 'Read-only — viewer role' : 'Duration in seconds'}
+              title={isViewer ? t('playlistsPage.readOnlyViewer') : t('playlistsPage.durationSeconds')}
               data-allow-small-input
               className="w-12 md:w-14 px-1.5 py-2 md:py-1 text-xs bg-slate-50 border border-slate-200 rounded-md text-center font-medium outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
             />
             {/* "sec" label desktop-only — input context makes it
                 obvious on mobile. */}
-            <span className="text-[10px] text-slate-400 font-medium hidden md:inline">sec</span>
+            <span className="text-[10px] text-slate-400 font-medium hidden md:inline">{t('playlistsPage.sec')}</span>
           </>
         )}
         <button
           onClick={() => setShowSettings(!showSettings)}
           className={`p-1 transition-all shrink-0 ${showSettings || isScheduled ? 'text-indigo-500 hover:text-indigo-600' : 'text-slate-400 md:text-slate-300 hover:text-indigo-500 md:opacity-0 md:group-hover:opacity-100'}`}
-          aria-label="Slide settings"
+          aria-label={t('playlistsPage.slideSettings')}
         >
           <Settings className="w-4 h-4" />
         </button>
         <button
           onClick={() => onRemove(item.id)}
           disabled={isViewer}
-          title={isViewer ? 'Read-only — viewer role' : 'Remove'}
+          title={isViewer ? t('playlistsPage.readOnlyViewer') : t('playlistsPage.remove')}
           className="p-1 text-slate-400 md:text-slate-300 hover:text-red-500 md:opacity-0 md:group-hover:opacity-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-          aria-label="Remove slide"
+          aria-label={t('playlistsPage.removeSlide')}
         >
           <Trash2 className="w-4 h-4" />
         </button>
@@ -307,18 +308,18 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
 
       {showSettings && (
         <div className="border-t border-slate-100 bg-slate-50/50 p-4">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Slide Scheduling</p>
-          <p className="text-[10px] text-slate-400 mb-3">If scheduled is set, this slide will ONLY play during the specified limits. Otherwise it plays all day.</p>
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">{t('playlistsPage.slideScheduling')}</p>
+          <p className="text-[10px] text-slate-400 mb-3">{t('playlistsPage.slideSchedulingHint')}</p>
           
           <div className="flex gap-2 mb-3">
-            <button onClick={() => onUpdate(item.id, { daysOfWeek: null, timeStart: null, timeEnd: null })} className={`px-3 py-1.5 text-[10px] font-semibold rounded-lg border transition-colors ${!isScheduled ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'border-slate-200 text-slate-400 bg-white hover:bg-slate-50'}`}>Always Show</button>
-            <button onClick={() => { if (!isScheduled) onUpdate(item.id, { timeStart: '08:00', timeEnd: '12:00' }); }} className={`px-3 py-1.5 text-[10px] font-semibold rounded-lg border transition-colors ${isScheduled ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-400 bg-white hover:bg-slate-50'}`}>Scheduled Block</button>
+            <button onClick={() => onUpdate(item.id, { daysOfWeek: null, timeStart: null, timeEnd: null })} className={`px-3 py-1.5 text-[10px] font-semibold rounded-lg border transition-colors ${!isScheduled ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'border-slate-200 text-slate-400 bg-white hover:bg-slate-50'}`}>{t('playlistsPage.alwaysShow')}</button>
+            <button onClick={() => { if (!isScheduled) onUpdate(item.id, { timeStart: '08:00', timeEnd: '12:00' }); }} className={`px-3 py-1.5 text-[10px] font-semibold rounded-lg border transition-colors ${isScheduled ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-400 bg-white hover:bg-slate-50'}`}>{t('playlistsPage.scheduledBlock')}</button>
           </div>
 
           {isScheduled && (
             <div className="space-y-3 bg-white p-3 rounded-lg border border-slate-100">
               <div>
-                <p className="text-[10px] font-bold text-slate-400 mb-1">Active Days</p>
+                <p className="text-[10px] font-bold text-slate-400 mb-1">{t('playlistsPage.activeDays')}</p>
                 <div className="flex gap-1 flex-wrap">
                   {DAYS.map(d => {
                     const daysArr = item.daysOfWeek ? item.daysOfWeek.split(',') : [...DAYS];
@@ -333,7 +334,7 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
                          else onUpdate(item.id, { daysOfWeek: nextArr.join(',') });
                       }}
                       className={`px-2 py-1 text-[10px] font-bold rounded transition-colors ${isActive ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
-                        {d}
+                        {t(`playlistsPage.day${d}`)}
                       </button>
                     )
                   })}
@@ -341,11 +342,11 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
               </div>
               <div className="flex gap-4">
                 <div className="flex-1">
-                  <label htmlFor={`time-start-${item.id}`} className="text-[10px] font-bold text-slate-400 mb-0.5 block">Start Time (HH:MM)</label>
+                  <label htmlFor={`time-start-${item.id}`} className="text-[10px] font-bold text-slate-400 mb-0.5 block">{t('playlistsPage.startTime')}</label>
                   <input id={`time-start-${item.id}`} type="time" value={item.timeStart || ''} onChange={e => onUpdate(item.id, { timeStart: e.target.value || null })} className="w-full px-2 py-1 text-sm font-semibold border border-slate-200 rounded-md" />
                 </div>
                 <div className="flex-1">
-                  <label htmlFor={`time-end-${item.id}`} className="text-[10px] font-bold text-slate-400 mb-0.5 block">End Time (HH:MM)</label>
+                  <label htmlFor={`time-end-${item.id}`} className="text-[10px] font-bold text-slate-400 mb-0.5 block">{t('playlistsPage.endTime')}</label>
                   <input id={`time-end-${item.id}`} type="time" value={item.timeEnd || ''} onChange={e => onUpdate(item.id, { timeEnd: e.target.value || null })} className="w-full px-2 py-1 text-sm font-semibold border border-slate-200 rounded-md" />
                 </div>
               </div>
@@ -353,19 +354,19 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
           )}
 
           <div className="mt-4 pt-4 border-t border-slate-200/60">
-            <label htmlFor={`transition-${item.id}`} className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 block">Slide Transition Effect</label>
+            <label htmlFor={`transition-${item.id}`} className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 block">{t('playlistsPage.transitionEffect')}</label>
             <select
               id={`transition-${item.id}`}
               value={item.transitionType || 'FADE'}
               onChange={(e) => onUpdate(item.id, { transitionType: e.target.value })}
               className="w-full xl:w-1/2 px-2 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
             >
-              <option value="NONE">None</option>
-              <option value="FADE">Fade</option>
-              <option value="SLIDE_LEFT">Slide Left</option>
-              <option value="SLIDE_RIGHT">Slide Right</option>
-              <option value="SLIDE_UP">Slide Up</option>
-              <option value="SLIDE_DOWN">Slide Down</option>
+              <option value="NONE">{t('playlistsPage.transNone')}</option>
+              <option value="FADE">{t('playlistsPage.transFade')}</option>
+              <option value="SLIDE_LEFT">{t('playlistsPage.transSlideLeft')}</option>
+              <option value="SLIDE_RIGHT">{t('playlistsPage.transSlideRight')}</option>
+              <option value="SLIDE_UP">{t('playlistsPage.transSlideUp')}</option>
+              <option value="SLIDE_DOWN">{t('playlistsPage.transSlideDown')}</option>
             </select>
           </div>
 
@@ -380,12 +381,12 @@ function SortableItem({ item, index, onRemove, onDurationChange, onUpdate, isSel
               paused first frame if Chrome blocks autoplay-with-sound. */}
           {item.asset?.mimeType?.startsWith('video/') && (
             <div className="mt-4 pt-4 border-t border-slate-200/60">
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Audio</p>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">{t('playlistsPage.audio')}</p>
               <button
                 type="button"
                 onClick={() => onUpdate(item.id, { muted: !(item.muted === false ? false : true) })}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-semibold transition-colors ${item.muted === false ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                title={item.muted === false ? 'Sound on — video plays with audio' : 'Muted — video plays silently'}
+                title={item.muted === false ? t('playlistsPage.soundOn') : t('playlistsPage.muted')}
               >
                 <span className={`inline-flex items-center justify-center w-4 h-4 rounded ${item.muted === false ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
                   {item.muted === false ? '♪' : '🔇'}
@@ -428,6 +429,7 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
    * Built by the caller from useTemplates() data. */
   templateLookup?: Record<string, TemplateLookupEntry | undefined>;
 }) {
+  const t = useTranslations();
   const isTemplate = !!playlist.template;
   const slideCount = playlist.items?.length || 0;
   const hasScreens = screenMap.screens.length > 0 || screenMap.groups.length > 0;
@@ -524,7 +526,7 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
                 {isLive ? '● Live' : '○ Off'}
               </span>
             ) : (
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-amber-50 text-amber-600">Unscheduled</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-amber-50 text-amber-600">{t('playlistsPage.unscheduled')}</span>
             )}
           </div>
           {/* On/off toggle */}
@@ -678,7 +680,7 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
           ) : (
             <div className="flex items-center gap-2 py-3 px-3 rounded-lg bg-amber-50/60 border border-amber-100/60">
               <WifiOff className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span className="text-[11px] text-amber-600 font-medium">Not assigned to any screen</span>
+              <span className="text-[11px] text-amber-600 font-medium">{t('playlistsPage.notAssigned')}</span>
             </div>
           )}
         </div>
@@ -911,7 +913,7 @@ export default function PlaylistsPage() {
       setSubmitTargets([]);
       setSubmitSchedMode('always');
       await appAlert({
-        title: 'Submitted for review',
+        title: t('playlistsPage.submittedForReview'),
         message: draftScheduleIds.length > 0
           ? `Sent to your reviewer with ${draftScheduleIds.length} draft schedule${draftScheduleIds.length === 1 ? '' : 's'}. The schedule${draftScheduleIds.length === 1 ? '' : 's'} will activate automatically when they approve.`
           : 'The reviewer(s) you picked will see it on their Reviews page. You’ll be notified once they approve or send it back.',
@@ -1434,7 +1436,7 @@ export default function PlaylistsPage() {
       } catch (err: any) {
         console.error('[playlists] publish failed:', err);
         await appAlert({
-          title: 'Publish encountered an error',
+          title: t('playlistsPage.publishError'),
           message: err?.message || 'Some schedules may not have been created. Check the Schedules tab and republish any that are missing.',
           tone: 'danger',
         });
@@ -1737,11 +1739,11 @@ export default function PlaylistsPage() {
                     <div className="flex items-center gap-2">
                       {selectedItemIds.size > 0 && (
                         <div className="flex items-center gap-1 bg-white p-1 rounded-lg shadow-sm border border-slate-200/60 mr-2">
-                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mx-2">Assign Block:</span>
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mx-2">{t('playlistsPage.assignBlock')}</span>
                           <select id="bulk-block-select" className="px-2 py-1 text-[10px] font-bold bg-slate-50 border border-slate-100 rounded outline-none w-32">
-                            <option value="none">Always Show</option>
-                            <option value="08:00|11:59">Breakfast (8a - 12p)</option>
-                            <option value="12:00|15:00">Lunch (12p - 3p)</option>
+                            <option value="none">{t('playlistsPage.alwaysShow')}</option>
+                            <option value="08:00|11:59">{t('playlistsPage.blockBreakfast')}</option>
+                            <option value="12:00|15:00">{t('playlistsPage.blockLunch')}</option>
                           </select>
                           <button
                             onClick={() => {
@@ -1769,7 +1771,7 @@ export default function PlaylistsPage() {
                       <div className="flex items-center gap-2 bg-white p-1 rounded-lg shadow-sm border border-slate-200/60">
                         <div className="flex items-center pl-2 pr-1 gap-1">
                         <Clock className="w-3.5 h-3.5 text-indigo-400" />
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mx-1">Set All</span>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mx-1">{t('playlistsPage.setAll')}</span>
                       </div>
                       <input 
                         type="number" 
@@ -1816,8 +1818,8 @@ export default function PlaylistsPage() {
               ) : (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
                   <Play className="w-10 h-10 text-slate-200 mb-3" />
-                  <p className="text-sm font-medium text-slate-400">Empty playlist</p>
-                  <p className="text-xs text-slate-300 mt-1 mb-4">Click &quot;Add Media&quot; to add content from your library</p>
+                  <p className="text-sm font-medium text-slate-400">{t('playlistsPage.emptyPlaylist')}</p>
+                  <p className="text-xs text-slate-300 mt-1 mb-4">{t('playlistsPage.emptyPlaylistHint')}</p>
                   <button
                     onClick={() => setShowPicker(true)}
                     disabled={isViewer}
@@ -1833,8 +1835,8 @@ export default function PlaylistsPage() {
                 {playlistSchedules.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 text-center">
                     <CalendarDays className="w-10 h-10 text-slate-200 mb-3" />
-                    <p className="text-sm font-medium text-slate-400">No schedules yet</p>
-                    <p className="text-xs text-slate-300 mt-1 mb-4">Publish this playlist to a screen with optional time scheduling</p>
+                    <p className="text-sm font-medium text-slate-400">{t('playlistsPage.noSchedulesYet')}</p>
+                    <p className="text-xs text-slate-300 mt-1 mb-4">{t('playlistsPage.noSchedulesHint')}</p>
                     <button
                       onClick={() => { setEditingScheduleId(null); setSchedTargets([]); setSchedMode('always'); setSchedMuted(true); setShowPublishModal(true); }}
                       disabled={isViewer}
@@ -1861,12 +1863,12 @@ export default function PlaylistsPage() {
                               {sched.daysOfWeek ? (
                                 <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">{sched.daysOfWeek}</span>
                               ) : (
-                                <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded">Every day</span>
+                                <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded">{t('playlistsPage.everyDay')}</span>
                               )}
                               {sched.timeStart && sched.timeEnd ? (
                                 <span className="bg-sky-100 text-sky-700 px-2 py-0.5 rounded">{sched.timeStart} - {sched.timeEnd}</span>
                               ) : (
-                                <span className="bg-sky-100 text-sky-700 px-2 py-0.5 rounded">All day</span>
+                                <span className="bg-sky-100 text-sky-700 px-2 py-0.5 rounded">{t('playlistsPage.allDay')}</span>
                               )}
                               {/* 2026-05-05 — audio override pill so the
                                   operator can confirm at a glance whether
@@ -1876,15 +1878,15 @@ export default function PlaylistsPage() {
                                   "Per-video" so it's not mistaken for
                                   forced mute. */}
                               {sched.mutedOverride === false ? (
-                                <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded inline-flex items-center gap-1" title="Videos play with sound on this schedule">
+                                <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded inline-flex items-center gap-1" title={t('playlistsPage.audioSoundOn')}>
                                   ♪ Sound on
                                 </span>
                               ) : sched.mutedOverride === true ? (
-                                <span className="bg-slate-200 text-slate-600 px-2 py-0.5 rounded inline-flex items-center gap-1" title="Videos play silently on this schedule">
+                                <span className="bg-slate-200 text-slate-600 px-2 py-0.5 rounded inline-flex items-center gap-1" title={t('playlistsPage.audioSilent')}>
                                   🔇 Muted
                                 </span>
                               ) : (
-                                <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded" title="Audio decided per video item (default = muted)">
+                                <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded" title={t('playlistsPage.audioPerItem')}>
                                   Per-video audio
                                 </span>
                               )}
@@ -1924,7 +1926,7 @@ export default function PlaylistsPage() {
                               <Power className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={async () => { if (await appConfirm({ title: 'Delete schedule?', message: 'This schedule will be removed — its playlist stops running on the assigned screens at these times.', tone: 'danger', confirmLabel: 'Delete' })) deleteSchedule.mutate(sched.id); }}
+                              onClick={async () => { if (await appConfirm({ title: t('playlistsPage.deleteScheduleTitle'), message: 'This schedule will be removed — its playlist stops running on the assigned screens at these times.', tone: 'danger', confirmLabel: 'Delete' })) deleteSchedule.mutate(sched.id); }}
                               disabled={isViewer}
                               title={isViewer ? 'Read-only — viewer role' : undefined}
                               className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1951,7 +1953,7 @@ export default function PlaylistsPage() {
             }}
             role="dialog"
             aria-modal="true"
-            aria-label="Choose Media"
+            aria-label={t('playlistsPage.chooseMedia')}
           >
             <button className="absolute top-0 right-0 bottom-0 left-0 cursor-default" aria-label="Close dialog" onClick={() => setShowPicker(false)} />
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col relative z-10">
@@ -1964,7 +1966,7 @@ export default function PlaylistsPage() {
                   but lets them drop to their own full row on a phone. */}
               <div className="px-4 sm:px-5 py-3 sm:py-4 border-b border-slate-100 flex flex-wrap items-center gap-x-3 gap-y-2 bg-white z-10">
                 <div className="flex items-center gap-2 min-w-0">
-                  <h3 className="text-base font-bold text-slate-800 truncate">Choose Media</h3>
+                  <h3 className="text-base font-bold text-slate-800 truncate">{t('playlistsPage.chooseMedia')}</h3>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">{selectedPickerAssets.size} selected</span>
                 </div>
                 <div className="flex items-center gap-2 ml-auto shrink-0">
@@ -2072,7 +2074,7 @@ export default function PlaylistsPage() {
                             </div>
                           )}
                           {u.phase === 'error' && <div className="text-[11px] text-rose-600 font-medium">{u.error}</div>}
-                          {u.phase === 'success' && <div className="text-[11px] text-emerald-600 font-medium">Uploaded — added to selection</div>}
+                          {u.phase === 'success' && <div className="text-[11px] text-emerald-600 font-medium">{t('playlistsPage.uploadedAdded')}</div>}
                         </div>
                         {u.phase === 'error' && (
                           <button
@@ -2108,7 +2110,7 @@ export default function PlaylistsPage() {
                 
                 {/* Assets */}
                 {pickerAssets.length === 0 ? (
-                  <div className="text-center py-12 text-sm text-slate-400">No assets in this folder.</div>
+                  <div className="text-center py-12 text-sm text-slate-400">{t('playlistsPage.noAssetsInFolder')}</div>
                 ) : (
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     {pickerAssets.map((asset: any) => {
@@ -2158,17 +2160,17 @@ export default function PlaylistsPage() {
 
         {/* ─── Submit for Review Modal (CONTRIBUTOR) ─── */}
         {showSubmitModal && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Submit for review">
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={t('playlistsPage.submitForReviewAria')}>
             <button className="absolute inset-0 cursor-default" aria-label="Close dialog" onClick={() => setShowSubmitModal(false)} />
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col p-6 relative z-10">
-              <h3 className="text-lg font-bold text-slate-800 mb-1">Submit for Review</h3>
+              <h3 className="text-lg font-bold text-slate-800 mb-1">{t('playlistsPage.submitForReview')}</h3>
               <p className="text-sm text-slate-500 mb-5">
                 Send this playlist to an admin for approval. You&rsquo;ll get a notification when they approve or send feedback.
               </p>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Notify reviewer(s)</label>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">{t('playlistsPage.notifyReviewers')}</label>
               <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200 mb-4">
                 {tenantAdmins.length === 0 ? (
-                  <div className="p-3 text-xs text-slate-400">No admins configured for this tenant.</div>
+                  <div className="p-3 text-xs text-slate-400">{t('playlistsPage.noAdmins')}</div>
                 ) : (
                   tenantAdmins.map((u: any) => {
                     const checked = submitReviewerIds.includes(u.id);
@@ -2187,11 +2189,11 @@ export default function PlaylistsPage() {
                   })
                 )}
               </div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Note for reviewer (optional)</label>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">{t('playlistsPage.noteForReviewer')}</label>
               <textarea
                 value={submitNote}
                 onChange={(e) => setSubmitNote(e.target.value)}
-                placeholder="Quick context — what is this playlist for, anything to look at first…"
+                placeholder={t('playlistsPage.notePlaceholder')}
                 rows={3}
                 className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 mb-4"
               />
@@ -2207,7 +2209,7 @@ export default function PlaylistsPage() {
               </label>
               <div className="max-h-32 overflow-y-auto rounded-lg border border-slate-200 mb-3">
                 {(!screens || screens.length === 0) && (!screenGroups || screenGroups.length === 0) ? (
-                  <div className="p-3 text-xs text-slate-400">No screens or groups yet.</div>
+                  <div className="p-3 text-xs text-slate-400">{t('playlistsPage.noScreensOrGroups')}</div>
                 ) : (
                   <>
                     {(screenGroups || []).map((g: any) => (
@@ -2219,7 +2221,7 @@ export default function PlaylistsPage() {
                           className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-400"
                         />
                         <span className="font-semibold text-slate-700">{g.name}</span>
-                        <span className="text-[10px] text-slate-400 uppercase ml-auto">Group</span>
+                        <span className="text-[10px] text-slate-400 uppercase ml-auto">{t('playlistsPage.group')}</span>
                       </label>
                     ))}
                     {(screens || []).map((s: any) => (
@@ -2231,7 +2233,7 @@ export default function PlaylistsPage() {
                           className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-400"
                         />
                         <span className="font-semibold text-slate-700">{s.name}</span>
-                        <span className="text-[10px] text-slate-400 uppercase ml-auto">Screen</span>
+                        <span className="text-[10px] text-slate-400 uppercase ml-auto">{t('playlistsPage.screen')}</span>
                       </label>
                     ))}
                   </>
@@ -2240,7 +2242,7 @@ export default function PlaylistsPage() {
 
               {submitTargets.length > 0 && (
                 <>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">When?</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">{t('playlistsPage.whenLabel')}</label>
                   <div className="inline-flex rounded-md bg-slate-100 p-1 mb-3">
                     <button
                       type="button"
@@ -2276,14 +2278,14 @@ export default function PlaylistsPage() {
                         ))}
                       </div>
                       <div className="flex items-center text-xs text-slate-600">
-                        <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mr-2">From</span>
+                        <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mr-2">{t('playlistsPage.fromLabel')}</span>
                         <input
                           type="time"
                           value={submitSchedTimeStart}
                           onChange={(e) => setSubmitSchedTimeStart(e.target.value)}
                           className="px-2 py-1 rounded border border-slate-200 bg-white"
                         />
-                        <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mx-2">to</span>
+                        <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mx-2">{t('playlistsPage.toLabel')}</span>
                         <input
                           type="time"
                           value={submitSchedTimeEnd}
@@ -2313,7 +2315,7 @@ export default function PlaylistsPage() {
                 </button>
               </div>
               {submitReviewerIds.length === 0 && tenantAdmins.length > 0 && (
-                <p className="text-[10px] text-amber-600 mt-2 text-center">Pick at least one reviewer.</p>
+                <p className="text-[10px] text-amber-600 mt-2 text-center">{t('playlistsPage.pickReviewer')}</p>
               )}
             </div>
           </div>
@@ -2347,7 +2349,7 @@ export default function PlaylistsPage() {
               </div>
               {/* Sticky header */}
               <div className="px-5 md:px-6 pt-4 md:pt-6 pb-3 border-b border-slate-100">
-                <h3 className="text-lg font-bold text-slate-800 mb-1">Publish to Screens</h3>
+                <h3 className="text-lg font-bold text-slate-800 mb-1">{t('playlistsPage.publishToScreens')}</h3>
                 <p className="text-sm text-slate-500">
                   Schedule <span className="font-bold text-slate-800">{selectedPlaylist?.name}</span> to play on a screen or group.
                 </p>
@@ -2357,7 +2359,7 @@ export default function PlaylistsPage() {
               <div className="flex-1 overflow-y-auto px-5 md:px-6 py-4">
 
               <div className="mb-4">
-                <p className="block text-xs font-semibold text-slate-600 mb-1.5">Publish Targets</p>
+                <p className="block text-xs font-semibold text-slate-600 mb-1.5">{t('playlistsPage.publishTargets')}</p>
                 <div className="w-full max-h-48 overflow-y-auto px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none space-y-2">
                   {screenGroups && screenGroups.map((g: any) => (
                     <div key={`g-${g.id}`} className="flex flex-col">
@@ -2379,7 +2381,7 @@ export default function PlaylistsPage() {
                   ))}
                   {screens && screens.filter((s:any) => !s.screenGroupId).length > 0 && (
                     <div className="flex flex-col mt-2 pt-2 border-t border-slate-200">
-                      <span className="px-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Ungrouped Screens</span>
+                      <span className="px-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{t('playlistsPage.ungroupedScreens')}</span>
                       {screens.filter((s:any) => !s.screenGroupId).map((s: any) => (
                         <label key={`s-${s.id}`} className="flex items-center gap-2 px-1 py-1 hover:bg-slate-100 rounded cursor-pointer">
                           <input type="checkbox" checked={schedTargets.includes(`screen-${s.id}`)} onChange={() => toggleTarget(`screen-${s.id}`)} className="rounded border-slate-300 text-sky-600 focus:ring-sky-500" />
@@ -2389,13 +2391,13 @@ export default function PlaylistsPage() {
                     </div>
                   )}
                   {(!screenGroups || screenGroups.length === 0) && (!screens || screens.length === 0) && (
-                    <p className="text-[10px] text-amber-600 p-1">No screens or groups exist. Pair a device on the Screens page first.</p>
+                    <p className="text-[10px] text-amber-600 p-1">{t('playlistsPage.noScreensPairFirst')}</p>
                   )}
                 </div>
               </div>
 
               <div className="mb-4">
-                <p className="block text-xs font-semibold text-slate-600 mb-1.5">When to Play</p>
+                <p className="block text-xs font-semibold text-slate-600 mb-1.5">{t('playlistsPage.whenToPlay')}</p>
                 <div className="flex bg-slate-100 rounded-lg p-0.5">
                   <button
                     onClick={() => setSchedMode('always')}
@@ -2414,7 +2416,7 @@ export default function PlaylistsPage() {
 
               {!editingScheduleId && (
                 <div className="mb-4">
-                  <p className="block text-xs font-semibold text-slate-600 mb-1.5">Conflict Resolution</p>
+                  <p className="block text-xs font-semibold text-slate-600 mb-1.5">{t('playlistsPage.conflictResolution')}</p>
                   <div className="flex bg-slate-100 rounded-lg p-0.5">
                     <button
                       onClick={() => setPublishMode('replace')}
@@ -2430,9 +2432,9 @@ export default function PlaylistsPage() {
                     </button>
                   </div>
                   {publishMode === 'replace' ? (
-                    <p className="text-[10px] text-amber-600 mt-1.5 leading-tight">Removes existing content scheduled to this hardware.</p>
+                    <p className="text-[10px] text-amber-600 mt-1.5 leading-tight">{t('playlistsPage.conflictReplace')}</p>
                   ) : (
-                    <p className="text-[10px] text-sky-600 mt-1.5 leading-tight">Will play sequentially alongside existing scheduled playlists.</p>
+                    <p className="text-[10px] text-sky-600 mt-1.5 leading-tight">{t('playlistsPage.conflictAppend')}</p>
                   )}
                 </div>
               )}
@@ -2446,7 +2448,7 @@ export default function PlaylistsPage() {
                   same playlist muted in the lobby and unmuted in the
                   cafeteria without re-editing the source playlist. */}
               <div className="mb-4">
-                <p className="block text-xs font-semibold text-slate-600 mb-1.5">Mute Playback</p>
+                <p className="block text-xs font-semibold text-slate-600 mb-1.5">{t('playlistsPage.mutePlayback')}</p>
                 <div className="flex bg-slate-100 rounded-lg p-0.5">
                   <button
                     type="button"
@@ -2523,12 +2525,12 @@ export default function PlaylistsPage() {
                   disabled={schedTargets.length === 0 || publishSubmitting || isViewer}
                   onClick={handleSaveDraft}
                   className="flex-1 md:flex-initial px-4 md:px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-slate-700 text-sm font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
-                  title={isViewer ? 'Read-only — viewer role' : "Save this schedule as a draft — won't go live until you turn the playlist on"}
+                  title={isViewer ? t('playlistsPage.readOnlyViewer') : t('playlistsPage.saveScheduleHint')}
                 >
                   {publishSubmitting ? (
-                    <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
+                    <><Loader2 className="w-4 h-4 animate-spin" /> {t('playlistsPage.saving')}</>
                   ) : (
-                    <><Save className="w-4 h-4" /> Save</>
+                    <><Save className="w-4 h-4" /> {t('playlistsPage.save')}</>
                   )}
                 </button>
                 <button
@@ -2538,9 +2540,9 @@ export default function PlaylistsPage() {
                   className="flex-1 md:flex-initial px-4 md:px-5 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
                 >
                   {publishSubmitting ? (
-                    <><Loader2 className="w-4 h-4 animate-spin" /> Publishing…</>
+                    <><Loader2 className="w-4 h-4 animate-spin" /> {t('playlistsPage.publishing')}</>
                   ) : (
-                    <><CalendarDays className="w-4 h-4" /> Publish</>
+                    <><CalendarDays className="w-4 h-4" /> {t('playlistsPage.publish')}</>
                   )}
                 </button>
               </div>
