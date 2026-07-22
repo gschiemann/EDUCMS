@@ -50,7 +50,10 @@ export function LanguageMenuRows({ onPicked }: { onPicked?: () => void }) {
 export function LanguageSwitcherInline({ className }: { className?: string }) {
   const { locale, setLocale } = useLocaleSwitch();
   return (
-    <div className={cn('flex items-center justify-center gap-1 text-xs text-slate-400', className)}>
+    // a11y: slate-600, NOT slate-400 — the /login bg (#fafbfc) fails WCAG at
+    // slate-400 (~2.5:1); slate-600 is ~7.9:1. Same fix history as the login
+    // footer nav (2026-05-26) — axe reds all 9 unauthenticated routes on it.
+    <div className={cn('flex items-center justify-center gap-1 text-xs text-slate-600', className)}>
       <Globe className="w-3.5 h-3.5 mr-0.5" aria-hidden />
       {LOCALES.map((l, i) => (
         <span key={l} className="flex items-center gap-1">
@@ -59,8 +62,8 @@ export function LanguageSwitcherInline({ className }: { className?: string }) {
             type="button"
             onClick={() => setLocale(l)}
             className={cn(
-              'px-1 py-0.5 rounded transition-colors hover:text-slate-700',
-              l === locale && 'font-semibold text-slate-700',
+              'px-1 py-0.5 rounded transition-colors hover:text-slate-800',
+              l === locale && 'font-semibold text-slate-800',
             )}
             aria-pressed={l === locale}
           >
