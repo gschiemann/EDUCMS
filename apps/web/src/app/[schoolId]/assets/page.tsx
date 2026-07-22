@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { UploadCloud, Globe, X, CheckCircle2, File, Link2, Trash2, Grid3X3, List, Search, Eye, Image as ImageIcon, Video, Music, FileText, Download, Clock, HardDrive, Maximize2, Info, FolderPlus, Folder, FolderOpen, FolderInput, ChevronRight, Pencil, Home, MoreVertical, Check, Trash, AlertCircle, RefreshCw, ChevronDown, ChevronUp, Sparkles, Loader2, ListPlus } from 'lucide-react';
@@ -161,6 +162,7 @@ function metaDims(a: any): { w: number; h: number } | null {
 }
 
 export default function AssetsPage() {
+  const t = useTranslations();
   const userRole = useUIStore((s) => s.user?.role);
   const isViewer = userRole === 'RESTRICTED_VIEWER';
   const [uploads, setUploads] = useState<UploadItem[]>([]);
@@ -251,7 +253,7 @@ export default function AssetsPage() {
   const currentFolder = currentFolderId ? (folders || []).find((f: any) => f.id === currentFolderId) : null;
 
   // Build breadcrumb trail
-  const breadcrumbs: { id: string | null; name: string }[] = [{ id: null, name: 'All Files' }];
+  const breadcrumbs: { id: string | null; name: string }[] = [{ id: null, name: t('assetsLib.allFiles') }];
   if (currentFolder) {
     const trail: any[] = [];
     let f = currentFolder;
@@ -278,10 +280,10 @@ export default function AssetsPage() {
 
   const handleDeleteFolder = async (id: string) => {
     const ok = await appConfirm({
-      title: 'Delete folder?',
-      message: 'Files inside will be moved to the parent folder.',
+      title: t('assetsLib.deleteFolderTitle'),
+      message: t('assetsLib.deleteFolderMsg'),
       tone: 'warn',
-      confirmLabel: 'Delete folder',
+      confirmLabel: t('assetsLib.deleteFolder'),
     });
     if (ok) {
       await deleteFolderMut.mutateAsync(id);
@@ -296,7 +298,7 @@ export default function AssetsPage() {
   const handleBulkDelete = async () => {
     if (selectedIds.length === 0) return;
     const ok = await appConfirm({
-      title: 'Delete selected assets?',
+      title: t('assetsLib.deleteSelectedTitle'),
       message: `${selectedIds.length} asset${selectedIds.length === 1 ? '' : 's'} will be permanently deleted.`,
       tone: 'danger',
       confirmLabel: 'Delete',
@@ -538,7 +540,7 @@ export default function AssetsPage() {
       queryClient.invalidateQueries({ queryKey: ['assets'] });
     } catch (err: any) {
       const elapsedMs = Math.round(performance.now() - started);
-      const msg = err?.message || 'Upload failed';
+      const msg = err?.message || t('assetsLib.uploadFailed');
       clog.error('upload', 'Failed', { id: item.id, name: item.file.name, msg, elapsedMs });
       setUploads(p => p.map(u => u.id === item.id ? { ...u, phase: 'error', error: msg } : u));
     }
@@ -562,7 +564,7 @@ export default function AssetsPage() {
             `${host} uses DRM copy-protection that blocks playback inside any signage player (this is true on every signage platform, not just VenueOS). ` +
             `For live video on screens, use a YouTube/Twitch/Vimeo embed, an HLS stream URL, or an HDMI source into the display.`,
           tone: 'danger',
-          confirmLabel: 'Got it',
+          confirmLabel: t('assetsLib.gotIt'),
         });
         return;
       }
@@ -667,8 +669,8 @@ export default function AssetsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-800">Media Library</h1>
-          <p className="text-sm text-slate-500 mt-0.5">{counts.all} assets — drag files or click to upload</p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-800">{t('assetsLib.title')}</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{t('assetsLib.subtitle', { count: counts.all })}</p>
         </div>
         <div className="flex gap-2">
           {selectedIds.length > 0 && (
@@ -720,7 +722,7 @@ export default function AssetsPage() {
                44px touch minimum. Bump to min-h-11 on touch, compact on ≥sm. */
             className="min-h-11 sm:min-h-0 px-3 py-2 bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Link2 className="w-3.5 h-3.5 text-indigo-500" /> Add URL
+            <Link2 className="w-3.5 h-3.5 text-indigo-500" /> {t('assetsLib.addUrlToggle')}
           </button>
           {/* Single Upload button — opens the searchable FolderPicker
               first so the operator picks a destination (with root as
@@ -735,7 +737,7 @@ export default function AssetsPage() {
             title={isViewer ? 'Read-only — viewer role' : 'Pick a destination folder (root is an option), then select files'}
           >
             <UploadCloud className="w-4 h-4" />
-            Upload
+            {t('assetsLib.upload')}
           </button>
           <input
             type="file"
@@ -774,7 +776,7 @@ export default function AssetsPage() {
             disabled={addWebUrl.isPending || isViewer}
             title={isViewer ? 'Read-only — viewer role' : undefined}
             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg"
-          >{addWebUrl.isPending ? 'Adding...' : 'Add'}</button>
+          >{addWebUrl.isPending ? t('assetsLib.adding') : t('assetsLib.addUrl')}</button>
           <button onClick={() => setShowUrlForm(false)} className="px-2 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
         </div>
       )}
@@ -788,7 +790,7 @@ export default function AssetsPage() {
         role="button"
         tabIndex={isViewer ? -1 : 0}
         aria-disabled={isViewer || undefined}
-        aria-label={isViewer ? 'Upload disabled — viewer role' : 'Upload files — drag and drop or press Enter to browse'}
+        aria-label={isViewer ? t('assetsLib.uploadDisabledViewer') : t('assetsLib.uploadAria')}
         title={isViewer ? 'Read-only — viewer role' : undefined}
         onDragOver={e => { if (isViewer) return; e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => { if (isViewer) return; setDragOver(false); }}
@@ -815,8 +817,8 @@ export default function AssetsPage() {
             <UploadCloud className="w-5 h-5 text-indigo-500" />
           </div>
           <div className="text-left">
-            <p className="text-xs font-bold text-slate-700">{dragOver ? 'Drop files to pick a folder' : 'Drag & drop files or click to browse'}</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">Choose a folder (or root) next — images, video, audio, PDF, up to 500 MB</p>
+            <p className="text-xs font-bold text-slate-700">{dragOver ? t('assetsLib.dropToPickFolder') : t('assetsLib.dragOrBrowse')}</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">{t('assetsLib.dropHint')}</p>
           </div>
         </div>
       </div>
@@ -825,8 +827,8 @@ export default function AssetsPage() {
       {uploads.length > 0 && (
         <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
           <div className="px-5 py-3.5 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Uploads</span>
-            <button onClick={() => setUploads(p => p.filter(u => u.phase === 'uploading'))} className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold">Clear done</button>
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t('assetsLib.uploads')}</span>
+            <button onClick={() => setUploads(p => p.filter(u => u.phase === 'uploading'))} className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold">{t('assetsLib.clearDone')}</button>
           </div>
           <div className="divide-y divide-slate-50 max-h-64 overflow-y-auto">
             {uploads.map(u => (
@@ -858,19 +860,19 @@ export default function AssetsPage() {
         <div className="flex gap-0.5 bg-slate-100 rounded-lg p-0.5">
           {(['all','images','videos','audio','urls','documents'] as FilterType[]).map(f => (
             <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1.5 text-[11px] font-bold rounded-md transition-all ${filter===f ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-              {f === 'all' ? 'All' : f.charAt(0).toUpperCase()+f.slice(1)}{counts[f]>0 ? ` (${counts[f]})` : ''}
+              {t(`assetsLib.filter${f.charAt(0).toUpperCase()+f.slice(1)}`)}{counts[f]>0 ? ` (${counts[f]})` : ''}
             </button>
           ))}
         </div>
         <div className="flex gap-2 items-center">
-          <div className="relative"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" /><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search..." className="pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] outline-none focus:ring-2 focus:ring-indigo-500 w-44" /></div>
+          <div className="relative"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" /><input value={search} onChange={e=>setSearch(e.target.value)} placeholder={t('assetsLib.search')} className="pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] outline-none focus:ring-2 focus:ring-indigo-500 w-44" /></div>
           {/* 2026-05-29 (mobile P1) — the grid/list toggles were p-1.5 ≈
               26px, well under the 44px touch minimum and jammed together
               (mis-tap magnet). Give each a 44×44 hit area on touch via
               min-w/min-h-11 + centered icon; compact p-1.5 on ≥sm. */}
           <div className="flex border border-slate-200 rounded-lg overflow-hidden">
-            <button onClick={()=>setViewMode('grid')} aria-label="Grid view" aria-pressed={viewMode==='grid'} className={`min-w-11 min-h-11 sm:min-w-0 sm:min-h-0 flex items-center justify-center p-1.5 ${viewMode==='grid'?'bg-slate-100 text-slate-700':'text-slate-400'}`}><Grid3X3 className="w-3.5 h-3.5" /></button>
-            <button onClick={()=>setViewMode('list')} aria-label="List view" aria-pressed={viewMode==='list'} className={`min-w-11 min-h-11 sm:min-w-0 sm:min-h-0 flex items-center justify-center p-1.5 ${viewMode==='list'?'bg-slate-100 text-slate-700':'text-slate-400'}`}><List className="w-3.5 h-3.5" /></button>
+            <button onClick={()=>setViewMode('grid')} aria-label={t('assetsLib.gridView')} aria-pressed={viewMode==='grid'} className={`min-w-11 min-h-11 sm:min-w-0 sm:min-h-0 flex items-center justify-center p-1.5 ${viewMode==='grid'?'bg-slate-100 text-slate-700':'text-slate-400'}`}><Grid3X3 className="w-3.5 h-3.5" /></button>
+            <button onClick={()=>setViewMode('list')} aria-label={t('assetsLib.listView')} aria-pressed={viewMode==='list'} className={`min-w-11 min-h-11 sm:min-w-0 sm:min-h-0 flex items-center justify-center p-1.5 ${viewMode==='list'?'bg-slate-100 text-slate-700':'text-slate-400'}`}><List className="w-3.5 h-3.5" /></button>
           </div>
         </div>
       </div>
@@ -901,7 +903,7 @@ export default function AssetsPage() {
           title={isViewer ? 'Read-only — viewer role' : undefined}
           className="px-3 py-1.5 bg-white border border-slate-200 hover:border-indigo-300 text-slate-600 text-[11px] font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <FolderPlus className="w-3.5 h-3.5 text-indigo-500" /> New Folder
+          <FolderPlus className="w-3.5 h-3.5 text-indigo-500" /> {t('assetsLib.newFolder')}
         </button>
       </div>
 
@@ -913,7 +915,7 @@ export default function AssetsPage() {
             ref={newFolderInputRef}
             value={newFolderName}
             onChange={e => setNewFolderName(e.target.value)}
-            placeholder="Folder name..."
+            placeholder={t('assetsLib.folderNamePlaceholder')}
             className="flex-1 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-400"
             onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') { setShowNewFolder(false); setNewFolderName(''); } }}
           />
@@ -957,9 +959,9 @@ export default function AssetsPage() {
                 className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
               >
                 {showAllFolders ? (
-                  <>Collapse <ChevronUp className="w-3 h-3" /></>
+                  <>{t('assetsLib.collapse')} <ChevronUp className="w-3 h-3" /></>
                 ) : (
-                  <>Show all ({currentFolderChildren.length}) <ChevronDown className="w-3 h-3" /></>
+                  <>{t('assetsLib.showAll', { count: currentFolderChildren.length })} <ChevronDown className="w-3 h-3" /></>
                 )}
               </button>
             )}
@@ -1076,7 +1078,7 @@ export default function AssetsPage() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-3xl border border-transparent shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
           <UploadCloud className="w-10 h-10 text-slate-200 mx-auto mb-3" />
-          <p className="text-xs font-semibold text-slate-400">{search || filter !== 'all' ? 'No assets match your search' : 'Empty library — upload files to get started'}</p>
+          <p className="text-xs font-semibold text-slate-400">{search || filter !== 'all' ? t('assetsLib.noMatch') : t('assetsLib.emptyLibrary')}</p>
         </div>
       ) : viewMode === 'grid' ? (
         // 2026-07-09 — UNIFORM grid with SQUARE, object-contain tiles.
@@ -1119,7 +1121,7 @@ export default function AssetsPage() {
                 {/* Quick Delete Trash Trigger — same touch-visibility fix
                     as the select checkbox above. 44px tap target on touch. */}
                 <button
-                  onClick={(e) => { e.stopPropagation(); appConfirm({ title: 'Delete asset?', message: `"${name}" will be permanently deleted.`, tone: 'danger', confirmLabel: 'Delete' }).then(ok => { if (ok) deleteAsset.mutate(a.id); }); }}
+                  onClick={(e) => { e.stopPropagation(); appConfirm({ title: t('assetsLib.deleteAssetTitle'), message: `"${name}" will be permanently deleted.`, tone: 'danger', confirmLabel: 'Delete' }).then(ok => { if (ok) deleteAsset.mutate(a.id); }); }}
                   disabled={isViewer}
                   title={isViewer ? 'Read-only — viewer role' : undefined}
                   aria-label={`Delete ${name}`}
@@ -1314,7 +1316,7 @@ export default function AssetsPage() {
                       hover only on hover-capable pointers. 44px tap target
                       on touch, compact 24px on ≥sm. */}
                   <button
-                    onClick={(e) => { e.stopPropagation(); appConfirm({ title: 'Delete asset?', message: `"${name}" will be permanently deleted.`, tone: 'danger', confirmLabel: 'Delete' }).then(ok => { if (ok) deleteAsset.mutate(a.id); }); }}
+                    onClick={(e) => { e.stopPropagation(); appConfirm({ title: t('assetsLib.deleteAssetTitle'), message: `"${name}" will be permanently deleted.`, tone: 'danger', confirmLabel: 'Delete' }).then(ok => { if (ok) deleteAsset.mutate(a.id); }); }}
                     disabled={isViewer}
                     title={isViewer ? 'Read-only — viewer role' : undefined}
                     aria-label={`Delete ${name}`}
@@ -1335,7 +1337,7 @@ export default function AssetsPage() {
       {/* Detail Panel (slide-over) */}
       {selectedAsset && (
         <div className="fixed inset-0 z-50 flex">
-          <button aria-label="Close detail panel" className="absolute inset-0 bg-black/50 backdrop-blur-sm cursor-default" onClick={() => setSelectedAsset(null)} />
+          <button aria-label={t('assetsLib.closeDetail')} className="absolute inset-0 bg-black/50 backdrop-blur-sm cursor-default" onClick={() => setSelectedAsset(null)} />
           {/* 2026-07-09 — centered two-column detail modal (operator:
               "center the preview, enlarge it a little and use some of the
               extra wasted space"). Was a narrow right-side drawer with a
@@ -1371,7 +1373,7 @@ export default function AssetsPage() {
                   className="w-full h-full border-0 bg-white"
                 />
               ) : (
-                <div className="text-center text-white">{typeIcon(selectedAsset.mimeType, 'w-16 h-16 mx-auto')}<p className="mt-3 text-xs opacity-50">Preview not available</p></div>
+                <div className="text-center text-white">{typeIcon(selectedAsset.mimeType, 'w-16 h-16 mx-auto')}<p className="mt-3 text-xs opacity-50">{t('assetsLib.previewNotAvailable')}</p></div>
               )}
             </div>
 
@@ -1386,7 +1388,7 @@ export default function AssetsPage() {
             <div className="flex-1 md:flex-none md:w-[400px] md:border-l md:border-slate-100 overflow-y-auto p-6 space-y-6">
               <div>
                 <h2 className="text-base font-bold text-slate-800 break-all">{assetName(selectedAsset)}</h2>
-                <p className="text-xs text-slate-400 mt-1">Uploaded {fmtDate(selectedAsset.createdAt)}</p>
+                <p className="text-xs text-slate-400 mt-1">{t('assetsLib.uploadedAt', { date: fmtDate(selectedAsset.createdAt) })}</p>
               </div>
 
               {/* Info grid */}
@@ -1394,14 +1396,14 @@ export default function AssetsPage() {
                 <div className="bg-slate-50 rounded-lg p-3">
                   <div className="flex items-center gap-1.5 mb-1">
                     <Info className="w-3 h-3 text-slate-400" />
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">Type</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">{t('assetsLib.labelType')}</span>
                   </div>
                   <p className="text-xs font-semibold text-slate-700">{selectedAsset.mimeType}</p>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-3">
                   <div className="flex items-center gap-1.5 mb-1">
                     <HardDrive className="w-3 h-3 text-slate-400" />
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">Size</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">{t('assetsLib.labelSize')}</span>
                   </div>
                   <p className="text-xs font-semibold text-slate-700">{fmtSize(selectedAsset.fileSize)}</p>
                 </div>
@@ -1409,7 +1411,7 @@ export default function AssetsPage() {
                   <div className="bg-slate-50 rounded-lg p-3">
                     <div className="flex items-center gap-1.5 mb-1">
                       <Maximize2 className="w-3 h-3 text-slate-400" />
-                      <span className="text-[10px] font-bold text-slate-400 uppercase">Resolution</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">{t('assetsLib.labelResolution')}</span>
                     </div>
                     <p className="text-xs font-semibold text-slate-700">{selectedDims.w} × {selectedDims.h} px</p>
                   </div>
@@ -1417,7 +1419,7 @@ export default function AssetsPage() {
                 <div className="bg-slate-50 rounded-lg p-3">
                   <div className="flex items-center gap-1.5 mb-1">
                     <Clock className="w-3 h-3 text-slate-400" />
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">Uploaded</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">{t('assetsLib.labelUploaded')}</span>
                   </div>
                   <p className="text-xs font-semibold text-slate-700">{fmtDate(selectedAsset.createdAt)}</p>
                 </div>
@@ -1430,13 +1432,13 @@ export default function AssetsPage() {
                 </div>
                 <div>
                   <p className="text-xs font-semibold text-slate-700">{selectedAsset.uploadedBy?.email || 'System'}</p>
-                  <p className="text-[10px] text-slate-400">Uploader</p>
+                  <p className="text-[10px] text-slate-400">{t('assetsLib.labelUploader')}</p>
                 </div>
               </div>
 
               {/* Status */}
               <div className="flex items-center justify-between bg-slate-50 rounded-lg p-3">
-                <span className="text-[10px] font-bold text-slate-400 uppercase">Status</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase">{t('assetsLib.labelStatus')}</span>
                 <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${selectedAsset.status === 'PUBLISHED' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
                   {selectedAsset.status === 'PUBLISHED' ? '● Published' : '○ Pending'}
                 </span>
@@ -1444,7 +1446,7 @@ export default function AssetsPage() {
 
               {/* Folder */}
               <div className="flex items-center justify-between bg-slate-50 rounded-lg p-3">
-                <span className="text-[10px] font-bold text-slate-400 uppercase">Folder</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase">{t('assetsLib.labelFolder')}</span>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
                     <Folder className="w-3 h-3 text-amber-400" />
@@ -1471,7 +1473,7 @@ export default function AssetsPage() {
               {(selectedAsset.mimeType || '').startsWith('image/') && (
                 <div className="bg-slate-50 rounded-lg p-3 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">Alt text</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">{t('assetsLib.altText')}</span>
                     <span className={`text-[10px] font-bold ${altTextDraft.length > 125 ? 'text-amber-600' : 'text-slate-400'}`}>
                       {altTextDraft.length}/160
                     </span>
@@ -1483,7 +1485,7 @@ export default function AssetsPage() {
                       setAltTextDraft(v);
                       setAltTextDirty(v !== (selectedAsset.altText ?? ''));
                     }}
-                    placeholder={selectedAsset.altText === null || selectedAsset.altText === undefined ? 'No alt text yet. Click ✨ Generate to use AI, or type a description.' : ''}
+                    placeholder={selectedAsset.altText === null || selectedAsset.altText === undefined ? t('assetsLib.altPlaceholder') : ''}
                     disabled={isViewer}
                     rows={2}
                     maxLength={160}
@@ -1515,7 +1517,7 @@ export default function AssetsPage() {
                           } else if (code === 'AI_ALT_TEXT_UNAVAILABLE') {
                             await appConfirm({
                               title: 'AI not configured',
-                              message: 'Configure an AI provider key in Settings → AI provider to enable alt-text generation.',
+                              message: t('assetsLib.aiConfigureHint'),
                               tone: 'warn',
                               confirmLabel: 'OK',
                             });
@@ -1525,18 +1527,18 @@ export default function AssetsPage() {
                         }
                       }}
                       disabled={isViewer || generateAltText.isPending}
-                      title={isViewer ? 'Read-only — viewer role' : 'Generate alt text from this image using AI'}
+                      title={isViewer ? t('assetsLib.readOnlyViewer') : t('assetsLib.generateAltTitle')}
                       className="flex-1 px-2 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold rounded flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {generateAltText.isPending ? (
                         <>
                           <Loader2 className="w-3 h-3 animate-spin" />
-                          Generating…
+                          {t('assetsLib.generating')}
                         </>
                       ) : (
                         <>
                           <Sparkles className="w-3 h-3" />
-                          {selectedAsset.altText ? 'Regenerate' : 'Generate alt text'}
+                          {selectedAsset.altText ? t('assetsLib.regenerate') : t('assetsLib.generateAlt')}
                         </>
                       )}
                     </button>
@@ -1572,7 +1574,7 @@ export default function AssetsPage() {
                   <Download className="w-3.5 h-3.5" /> Download
                 </a>
                 <button
-                  onClick={async () => { if (await appConfirm({ title: 'Delete asset?', message: `"${assetName(selectedAsset)}" will be permanently deleted.`, tone: 'danger', confirmLabel: 'Delete' })) { deleteAsset.mutate(selectedAsset.id); setSelectedAsset(null); }}}
+                  onClick={async () => { if (await appConfirm({ title: t('assetsLib.deleteAssetTitle'), message: `"${assetName(selectedAsset)}" will be permanently deleted.`, tone: 'danger', confirmLabel: 'Delete' })) { deleteAsset.mutate(selectedAsset.id); setSelectedAsset(null); }}}
                   disabled={isViewer}
                   title={isViewer ? 'Read-only — viewer role' : undefined}
                   className="px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1604,9 +1606,9 @@ export default function AssetsPage() {
           title={
             showFolderPicker === 'upload'
               ? (pendingFiles.length > 0
-                  ? `Upload ${pendingFiles.length} file${pendingFiles.length === 1 ? '' : 's'} to…`
-                  : 'Upload files to which folder?')
-              : `Move ${selectedIds.length} item${selectedIds.length === 1 ? '' : 's'} to which folder?`
+                  ? t('assetsLib.uploadToFolder', { count: pendingFiles.length })
+                  : t('assetsLib.uploadWhichFolder'))
+              : t('assetsLib.moveToWhichFolder', { count: selectedIds.length })
           }
           subtitle={
             showFolderPicker === 'upload' && pendingFiles.length > 0
