@@ -195,6 +195,12 @@ jobs:
       - name: Help-center prerender integrity
         run: node apps/web/tools/check-help-prerender.cjs
 
+      # Brand palettes must never make chrome unreadable (VisionCore cream
+      # incident): the Tailwind-scale takeover serves contrast-guaranteed
+      # derivatives; this gate runs the literal incident palette.
+      - name: Brand contrast contract
+        run: node apps/web/tools/check-brand-contrast.cjs
+
   docker-build:
     name: Docker build + boot smoke test
     runs-on: ubuntu-latest

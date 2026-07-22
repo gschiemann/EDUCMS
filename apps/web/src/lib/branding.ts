@@ -6,6 +6,7 @@
  */
 
 import { API_URL } from './api-url';
+import { contrastRatio, ensureReadableOnWhite } from './brand-contrast';
 
 export interface BrandPalette {
   primary: string;
@@ -168,6 +169,27 @@ export function brandDefaultPalette(colors: {
   };
 }
 
+// ── Usage-contrast guarantee (2026-07-22, VisionCore incident) ─────────────
+// A beta tenant's scraper picked their site BACKGROUND (#fcf9e2 cream) as
+// brand primary. The palette pipeline honestly validated ink-ON-primary
+// (17.8:1 ✓) — but the chrome ALSO consumes primary AS text/icon color and
+// as solid-button bg under white text via the Tailwind scale takeover in
+// globals.css (indigo-500/600 ← --brand-primary). Cream in those ROLES is
+// invisible (~1.06:1). Nobody checked the second pair.
+//
+// THE CONTRACT: the tenant's chosen color stays THEIRS (--brand-primary is
+// never altered — decorative fills, washes, gradients keep full character),
+// but the Tailwind workhorse shades are served CONTRAST-GUARANTEED
+// derivatives of that hue: strong ≥4.5:1 vs white (text-on-white + white-
+// text-on-it — contrast is symmetric), strongHover ≥5.2, stronger ≥7,
+// mid ≥2.5 (decorative icons/hovers). A healthy dark brand passes untouched
+// (derivation returns the input), so nobody else's dashboard shifts.
+// Derived HERE (the one runtime painter — BrandStyleInjector) so every
+// legacy/cached palette heals on next page load without a re-scrape. If the
+// API ever persists palette.primaryStrong etc., those win (see below). Math
+// is pinned by the CI gate apps/web/tools/check-brand-contrast.cjs (runs the
+// literal VisionCore cream fixture).
+
 export function cssVarsFromPalette(p: BrandPalette | null | undefined, fontHeading?: string | null, fontBody?: string | null): Record<string, string> {
   const out: Record<string, string> = {};
   if (!p) return out;
@@ -187,6 +209,24 @@ export function cssVarsFromPalette(p: BrandPalette | null | undefined, fontHeadi
   set('--brand-surface', p.surface);
   set('--brand-surface-alt', p.surfaceAlt);
   set('--brand-border', p.border);
+  // Contrast-guaranteed workhorse shades (see contract above). Prefer values
+  // the API already persisted (palette.primaryStrong etc.); derive locally
+  // when absent so legacy/cached palettes heal too.
+  const pAny = p as any;
+  const pri = hex(p.primary);
+  const acc = hex(p.accent);
+  if (pri) {
+    set('--brand-primary-mid', hex(pAny.primaryMid) ?? ensureReadableOnWhite(pri, 2.5));
+    set('--brand-primary-strong', hex(pAny.primaryStrong) ?? ensureReadableOnWhite(pri, 4.5));
+    set('--brand-primary-strong-hover', hex(pAny.primaryStrongHover) ?? ensureReadableOnWhite(pri, 5.2));
+    set('--brand-primary-stronger', hex(pAny.primaryStronger) ?? ensureReadableOnWhite(pri, 7));
+  }
+  if (acc) {
+    set('--brand-accent-mid', hex(pAny.accentMid) ?? ensureReadableOnWhite(acc, 2.5));
+    set('--brand-accent-strong', hex(pAny.accentStrong) ?? ensureReadableOnWhite(acc, 4.5));
+    set('--brand-accent-strong-hover', hex(pAny.accentStrongHover) ?? ensureReadableOnWhite(acc, 5.2));
+    set('--brand-accent-stronger', hex(pAny.accentStronger) ?? ensureReadableOnWhite(acc, 7));
+  }
   const FONT_RE = /^[a-zA-Z0-9 \-_,'"]{1,80}$/;
   if (fontHeading && FONT_RE.test(fontHeading)) out['--brand-font-heading'] = `"${fontHeading}", ui-sans-serif, system-ui, sans-serif`;
   if (fontBody && FONT_RE.test(fontBody)) out['--brand-font-body'] = `"${fontBody}", ui-sans-serif, system-ui, sans-serif`;

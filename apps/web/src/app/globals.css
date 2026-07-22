@@ -80,9 +80,9 @@
 /* Utility classes so feature code can opt-in by classname */
 .bg-brand { background-color: var(--brand-primary); color: var(--brand-primary-ink); }
 .bg-brand-soft { background-color: var(--brand-primary-soft); color: var(--brand-ink); }
-.text-brand { color: var(--brand-primary); }
-.border-brand { border-color: var(--brand-primary); }
-.ring-brand { --tw-ring-color: var(--brand-primary); }
+.text-brand { color: var(--brand-primary-strong, var(--brand-primary)); }
+.border-brand { border-color: var(--brand-primary-strong, var(--brand-primary)); }
+.ring-brand { --tw-ring-color: var(--brand-primary-strong, var(--brand-primary)); }
 .hover\:bg-brand-hover:hover { background-color: var(--brand-primary-hover); }
 .font-brand-heading { font-family: var(--brand-font-heading); }
 .font-brand-body { font-family: var(--brand-font-body); }
@@ -98,29 +98,36 @@
 @theme {
   /* Primary brand — hijack the whole indigo scale. Most of the dashboard
      uses bg-indigo-600 / text-indigo-700 for CTAs. */
+  /* Shade-role CONTRACTS (2026-07-22, VisionCore cream incident): 500-950
+     consume contrast-GUARANTEED derivatives (strong >=4.5:1 vs white,
+     strong-hover >=5.2, stronger >=7, mid >=2.5) computed in
+     lib/branding.ts cssVarsFromPalette — a pale brand color can never
+     become invisible text or a white-on-pale button again. 50-200 washes
+     + --brand-primary itself stay EXACTLY the tenant's chosen color.
+     Pinned by apps/web/tools/check-brand-contrast.cjs. */
   --color-indigo-50:  var(--brand-primary-soft, #eef2ff);
   --color-indigo-100: var(--brand-primary-soft, #e0e7ff);
   --color-indigo-200: var(--brand-primary-soft, #c7d2fe);
-  --color-indigo-300: var(--brand-primary-hover, #a5b4fc);
-  --color-indigo-400: var(--brand-primary-hover, #818cf8);
-  --color-indigo-500: var(--brand-primary, #6366f1);
-  --color-indigo-600: var(--brand-primary, #4f46e5);
-  --color-indigo-700: var(--brand-primary-hover, #4338ca);
-  --color-indigo-800: var(--brand-primary-active, #3730a3);
-  --color-indigo-900: var(--brand-primary-active, #312e81);
-  --color-indigo-950: var(--brand-primary-active, #1e1b4b);
+  --color-indigo-300: var(--brand-primary-mid, #a5b4fc);
+  --color-indigo-400: var(--brand-primary-mid, #818cf8);
+  --color-indigo-500: var(--brand-primary-strong, #6366f1);
+  --color-indigo-600: var(--brand-primary-strong, #4f46e5);
+  --color-indigo-700: var(--brand-primary-strong-hover, #4338ca);
+  --color-indigo-800: var(--brand-primary-stronger, #3730a3);
+  --color-indigo-900: var(--brand-primary-stronger, #312e81);
+  --color-indigo-950: var(--brand-primary-stronger, #1e1b4b);
 
   /* Accent — violet scale also remaps to brand accent. */
   --color-violet-50:  var(--brand-accent-soft, #f5f3ff);
   --color-violet-100: var(--brand-accent-soft, #ede9fe);
   --color-violet-200: var(--brand-accent-soft, #ddd6fe);
-  --color-violet-300: var(--brand-accent-hover, #c4b5fd);
-  --color-violet-400: var(--brand-accent-hover, #a78bfa);
-  --color-violet-500: var(--brand-accent, #8b5cf6);
-  --color-violet-600: var(--brand-accent, #7c3aed);
-  --color-violet-700: var(--brand-accent-hover, #6d28d9);
-  --color-violet-800: var(--brand-accent-hover, #5b21b6);
-  --color-violet-900: var(--brand-accent-hover, #4c1d95);
+  --color-violet-300: var(--brand-accent-mid, #c4b5fd);
+  --color-violet-400: var(--brand-accent-mid, #a78bfa);
+  --color-violet-500: var(--brand-accent-strong, #8b5cf6);
+  --color-violet-600: var(--brand-accent-strong, #7c3aed);
+  --color-violet-700: var(--brand-accent-strong-hover, #6d28d9);
+  --color-violet-800: var(--brand-accent-stronger, #5b21b6);
+  --color-violet-900: var(--brand-accent-stronger, #4c1d95);
 
   /* Schedule / playlist pages + several modals use bg-sky-* as a
      secondary CTA color, not semantic blue. Without this remap the
@@ -129,13 +136,13 @@
   --color-sky-50:  var(--brand-primary-soft, #f0f9ff);
   --color-sky-100: var(--brand-primary-soft, #e0f2fe);
   --color-sky-200: var(--brand-primary-soft, #bae6fd);
-  --color-sky-300: var(--brand-primary-hover, #7dd3fc);
-  --color-sky-400: var(--brand-primary-hover, #38bdf8);
-  --color-sky-500: var(--brand-primary, #0ea5e9);
-  --color-sky-600: var(--brand-primary, #0284c7);
-  --color-sky-700: var(--brand-primary-hover, #0369a1);
-  --color-sky-800: var(--brand-primary-active, #075985);
-  --color-sky-900: var(--brand-primary-active, #0c4a6e);
+  --color-sky-300: var(--brand-primary-mid, #7dd3fc);
+  --color-sky-400: var(--brand-primary-mid, #38bdf8);
+  --color-sky-500: var(--brand-primary-strong, #0ea5e9);
+  --color-sky-600: var(--brand-primary-strong, #0284c7);
+  --color-sky-700: var(--brand-primary-strong-hover, #0369a1);
+  --color-sky-800: var(--brand-primary-stronger, #075985);
+  --color-sky-900: var(--brand-primary-stronger, #0c4a6e);
 
   /* Same story for bg-blue-* — 'Publish' / 'Apply' modals in the
      schedule builder, some legacy pages. Hijack to brand primary. */
