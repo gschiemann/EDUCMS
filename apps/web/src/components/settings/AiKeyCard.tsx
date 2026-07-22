@@ -23,6 +23,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { apiFetch } from '@/lib/api-client';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { Sparkles, Key, Loader2, Check, AlertCircle, Trash2, Eye, EyeOff } from 'lucide-react';
@@ -56,14 +57,15 @@ interface AiProviderInfo {
   models: AiModelInfo[];
 }
 
-function formatPerCallCost(usd: number): string {
+function formatPerCallCost(t: ReturnType<typeof useTranslations>, usd: number): string {
   if (usd <= 0) return '—';
-  if (usd < 0.001) return `< $0.001 / generation`;
-  if (usd < 0.01) return `~$${usd.toFixed(4)} / generation`;
-  return `~$${usd.toFixed(3)} / generation`;
+  if (usd < 0.001) return t('settings.ai.costUnderThousandth');
+  if (usd < 0.01) return t('settings.ai.costPerGeneration', { cost: `$${usd.toFixed(4)}` });
+  return t('settings.ai.costPerGeneration', { cost: `$${usd.toFixed(3)}` });
 }
 
 export function AiKeyCard() {
+  const t = useTranslations();
   const [status, setStatus] = useState<AiKeyStatus | null>(null);
   const [catalog, setCatalog] = useState<AiProviderInfo[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -135,9 +137,9 @@ export function AiKeyCard() {
       const pInfo = catalog?.find((p) => p.id === res.provider);
       const mInfo = pInfo?.models.find((m) => m.id === res.model);
       setStatus((s) => (s ? { ...s, model: res.model } : s));
-      setMsg({ kind: 'ok', text: `Switched to ${mInfo?.label || res.model}. New AI generations use it now.` });
+      setMsg({ kind: 'ok', text: t('settings.ai.switchedModel', { model: mInfo?.label || res.model }) });
     } catch (e: any) {
-      setMsg({ kind: 'err', text: e?.message || 'Could not switch model.' });
+      setMsg({ kind: 'err', text: e?.message || t('settings.ai.switchModelFailed') });
     } finally {
       setSwitchingModel(false);
     }
@@ -153,12 +155,12 @@ export function AiKeyCard() {
       });
       const providerLabel = catalog?.find((p) => p.id === res.provider)?.label || res.provider;
       const modelLabel = catalog?.find((p) => p.id === res.provider)?.models.find((m) => m.id === res.model)?.label || res.model;
-      setMsg({ kind: 'ok', text: `Saved. AI generations now route through ${providerLabel} (${modelLabel}).` });
+      setMsg({ kind: 'ok', text: t('settings.ai.savedRoute', { provider: providerLabel, model: modelLabel }) });
       setApiKey('');
       setEditing(false);
       await load();
     } catch (e: any) {
-      setMsg({ kind: 'err', text: e?.message || 'Could not save the key.' });
+      setMsg({ kind: 'err', text: e?.message || t('settings.ai.saveKeyFailed') });
     } finally {
       setSaving(false);
     }
@@ -166,21 +168,21 @@ export function AiKeyCard() {
 
   const handleDisconnect = async () => {
     if (!(await appConfirm({
-      title: 'Disconnect AI?',
-      message: 'Generations will fall back to the platform free trial (if available) or stop working until you reconnect.',
-      confirmLabel: 'Disconnect',
+      title: t('settings.ai.disconnectConfirmTitle'),
+      message: t('settings.ai.disconnectConfirmMessage'),
+      confirmLabel: t('settings.common.disconnect'),
       tone: 'danger',
     }))) return;
     setSaving(true);
     setMsg(null);
     try {
       await apiFetch('/ai/key', { method: 'DELETE' });
-      setMsg({ kind: 'ok', text: 'Disconnected. Add a new key any time.' });
+      setMsg({ kind: 'ok', text: t('settings.ai.disconnected') });
       setApiKey('');
       setEditing(false);
       await load();
     } catch (e: any) {
-      setMsg({ kind: 'err', text: e?.message || 'Could not disconnect.' });
+      setMsg({ kind: 'err', text: e?.message || t('settings.ai.disconnectFailed') });
     } finally {
       setSaving(false);
     }
@@ -189,7 +191,7 @@ export function AiKeyCard() {
   if (loading) {
     return (
       <div className="rounded-2xl bg-white border border-slate-200 p-6 flex items-center gap-3 text-slate-500">
-        <Loader2 className="w-4 h-4 animate-spin" /> Loading AI integration…
+        <Loader2 className="w-4 h-4 animate-spin" /> {t('settings.ai.loadingIntegration')}
       </div>
     );
   }
@@ -210,7 +212,7 @@ export function AiKeyCard() {
             <Check className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
               <div className="text-sm font-semibold text-emerald-900">
-                Connected — {cfgProvider?.label || status.provider}
+                {t('settings.ai.connectedTo', { provider: cfgProvider?.label || status.provider || '' })}
                 {cfgModel && (
                   <span className="font-normal text-emerald-800"> · {cfgModel.label}</span>
                 )}
@@ -218,12 +220,12 @@ export function AiKeyCard() {
               <div className="text-xs text-emerald-700 mt-0.5 font-mono truncate">{status.keyMask}</div>
               {cfgModel && (
                 <div className="text-[11px] text-emerald-700/80 mt-0.5">
-                  {formatPerCallCost(cfgModel.estCostPerCallUsd)} — paid to {cfgProvider?.label}.
+                  {t('settings.ai.paidTo', { cost: formatPerCallCost(t, cfgModel.estCostPerCallUsd), provider: cfgProvider?.label || '' })}
                 </div>
               )}
               {status.setAt && (
                 <div className="text-[11px] text-emerald-700/80 mt-0.5">
-                  Set {new Date(status.setAt).toLocaleDateString()} {new Date(status.setAt).toLocaleTimeString()}
+                  {t('settings.ai.setAt', { date: `${new Date(status.setAt).toLocaleDateString()} ${new Date(status.setAt).toLocaleTimeString()}` })}
                 </div>
               )}
             </div>
@@ -233,23 +235,23 @@ export function AiKeyCard() {
               picker; the only way to switch was Replace-key + retype. */}
           {cfgProvider && cfgProvider.models.length > 0 && (
             <div>
-              <label className="block text-[11px] font-bold text-emerald-900 mb-1">Model</label>
+              <label className="block text-[11px] font-bold text-emerald-900 mb-1">{t('settings.ai.modelLabel')}</label>
               <select
                 value={status.model || ''}
                 disabled={switchingModel || saving}
                 onChange={(e) => handleModelChange(e.target.value)}
                 className="w-full rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 disabled:opacity-60"
               >
-                {!status.model && <option value="">Choose a model…</option>}
+                {!status.model && <option value="">{t('settings.ai.chooseModel')}</option>}
                 {cfgProvider.models.map((m) => (
                   <option key={m.id} value={m.id}>{m.label}</option>
                 ))}
               </select>
               <div className="text-[11px] text-emerald-700/80 mt-1 inline-flex items-center gap-1">
                 {switchingModel ? (
-                  <><Loader2 className="w-3 h-3 animate-spin" /> Switching — testing your key on the new model…</>
+                  <><Loader2 className="w-3 h-3 animate-spin" /> {t('settings.ai.switchingModel')}</>
                 ) : (
-                  'Switch models anytime — uses your saved key, no need to re-enter it.'
+                  t('settings.ai.switchAnytime')
                 )}
               </div>
             </div>
@@ -260,7 +262,7 @@ export function AiKeyCard() {
               onClick={() => { setEditing(true); setMsg(null); setApiKey(''); }}
               className="flex-1 px-3 py-2 rounded-lg text-xs font-bold bg-white border border-emerald-200 text-emerald-800 hover:bg-emerald-50"
             >
-              Replace key
+              {t('settings.ai.replaceKey')}
             </button>
             <button
               type="button"
@@ -268,7 +270,7 @@ export function AiKeyCard() {
               disabled={saving}
               className="px-3 py-2 rounded-lg text-xs font-bold bg-white border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-60 inline-flex items-center gap-1"
             >
-              <Trash2 className="w-3 h-3" /> Disconnect
+              <Trash2 className="w-3 h-3" /> {t('settings.common.disconnect')}
             </button>
           </div>
         </div>
@@ -278,13 +280,13 @@ export function AiKeyCard() {
       {/* 2026-05-25 — slimmed both banners to one line each, no jargon. */}
       {!status?.configured && status?.platformFallbackAvailable && (
         <div className="rounded-lg border border-violet-200 bg-violet-50/50 px-4 py-3 text-xs text-violet-800">
-          You&rsquo;re on our free trial. Add a key to remove the cap.
+          {t('settings.ai.freeTrialBanner')}
         </div>
       )}
       {!status?.configured && !status?.platformFallbackAvailable && (
         <div className="rounded-lg border border-amber-200 bg-amber-50/50 px-4 py-3 text-xs text-amber-900 flex items-start gap-2">
           <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          <div>Add a provider key below to turn on AI.</div>
+          <div>{t('settings.ai.addKeyBanner')}</div>
         </div>
       )}
 
@@ -295,7 +297,7 @@ export function AiKeyCard() {
               FE picks up new providers (e.g. Google added 2026-05-25)
               without a redeploy of this card. */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-2">Provider</label>
+            <label className="block text-xs font-bold text-slate-700 mb-2">{t('settings.ai.providerLabel')}</label>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {(catalog || []).map((p) => (
                 <label
@@ -321,7 +323,7 @@ export function AiKeyCard() {
                     className="text-[11px] text-violet-600 hover:text-violet-700 font-medium mt-auto"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    Get a key →
+                    {t('settings.ai.getKey')}
                   </a>
                 </label>
               ))}
@@ -337,7 +339,7 @@ export function AiKeyCard() {
               admins. */}
           {currentProviderInfo && (
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">Model</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">{t('settings.ai.modelLabel')}</label>
               <select
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
@@ -345,7 +347,7 @@ export function AiKeyCard() {
               >
                 {currentProviderInfo.models.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.label} — {formatPerCallCost(m.estCostPerCallUsd)}
+                    {m.label} — {formatPerCallCost(t, m.estCostPerCallUsd)}
                   </option>
                 ))}
               </select>
@@ -357,7 +359,7 @@ export function AiKeyCard() {
 
           {/* Key input */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">API key</label>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">{t('settings.ai.apiKeyLabel')}</label>
             <div className="relative">
               <input
                 type={showKey ? 'text' : 'password'}
@@ -377,13 +379,13 @@ export function AiKeyCard() {
                 type="button"
                 onClick={() => setShowKey((s) => !s)}
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
-                aria-label={showKey ? 'Hide key' : 'Show key'}
+                aria-label={showKey ? t('settings.ai.hideKey') : t('settings.ai.showKey')}
               >
                 {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
             <p className="text-[11px] text-slate-500 mt-1.5">
-              We test the key before saving. Invalid keys are rejected.
+              {t('settings.ai.testBeforeSave')}
             </p>
           </div>
 
@@ -396,7 +398,7 @@ export function AiKeyCard() {
               className="flex-1 px-4 py-2.5 rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white text-sm font-bold inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:from-violet-700 hover:to-fuchsia-700"
             >
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-              {saving ? 'Testing key…' : 'Test & save'}
+              {saving ? t('settings.ai.testingKey') : t('settings.ai.testAndSave')}
             </button>
             {editing && (
               <button
@@ -404,7 +406,7 @@ export function AiKeyCard() {
                 onClick={() => { setEditing(false); setMsg(null); setApiKey(''); }}
                 className="px-4 py-2.5 rounded-lg bg-slate-100 text-slate-700 text-sm font-bold hover:bg-slate-200"
               >
-                Cancel
+                {t('settings.common.cancel')}
               </button>
             )}
           </div>

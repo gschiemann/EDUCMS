@@ -17,6 +17,7 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { ArrowLeft, Sparkles } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { AiKeyCard } from '@/components/settings/AiKeyCard';
 import { BrandVoiceCard } from '@/components/settings/BrandVoiceCard';
 import { RoleGate } from '@/components/RoleGate';
@@ -24,6 +25,7 @@ import { RoleGate } from '@/components/RoleGate';
 export default function SettingsAiPage() {
   const params = useParams();
   const schoolId = params?.schoolId as string;
+  const t = useTranslations();
 
   // 2026-05-25 — header pattern unified with /settings/emergency
   // per operator: "did you determine to not round the top menu
@@ -38,14 +40,14 @@ export default function SettingsAiPage() {
           href={`/${schoolId}/settings`}
           className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 mb-2"
         >
-          <ArrowLeft className="w-3.5 h-3.5" /> Settings
+          <ArrowLeft className="w-3.5 h-3.5" /> {t('settings.common.back')}
         </Link>
         <h1 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2">
           <Sparkles className="w-6 h-6 text-indigo-500" />
-          AI provider
+          {t('settings.ai.title')}
         </h1>
         <p className="text-sm text-slate-500 mt-1 max-w-2xl">
-          Pick a provider and model. You pay your provider directly.
+          {t('settings.ai.subtitle')}
         </p>
       </header>
 
@@ -53,8 +55,7 @@ export default function SettingsAiPage() {
         allowedRoles={['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}
         fallback={
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            Only district + school admins can configure the AI provider. Ask
-            your administrator if you need this changed.
+            {t('settings.ai.adminOnlyNote')}
           </div>
         }
       >

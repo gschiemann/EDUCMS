@@ -20,9 +20,11 @@
  */
 
 import { ShieldCheck, ShieldOff, Loader2, ClipboardCheck } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useContentApprovalConfig, useToggleContentApproval } from '@/hooks/use-api';
 
 export function ContentApprovalCard() {
+  const t = useTranslations();
   const { data: cfg, isLoading, isError } = useContentApprovalConfig();
   const toggle = useToggleContentApproval();
 
@@ -39,10 +41,9 @@ export function ContentApprovalCard() {
           <ClipboardCheck className="w-4 h-4 text-indigo-600" />
         </div>
         <div className="min-w-0">
-          <div className="text-sm font-bold text-slate-800">Require approval before content goes live</div>
+          <div className="text-sm font-bold text-slate-800">{t('settings.approval.title')}</div>
           <div className="text-[11px] text-slate-500">
-            When on, an Editor&apos;s publish is sent to the review queue for an
-            admin to approve first. Admins still publish directly.
+            {t('settings.approval.description')}
           </div>
         </div>
       </div>
@@ -56,7 +57,7 @@ export function ContentApprovalCard() {
             ? 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
             : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-400'
         } disabled:opacity-60 disabled:cursor-not-allowed`}
-        title={enabled ? 'Turn off the approval gate' : 'Require admin approval before content goes live'}
+        title={enabled ? t('settings.approval.turnOffTitle') : t('settings.approval.turnOnTitle')}
       >
         {toggle.isPending || isLoading ? (
           <Loader2 className="w-4 h-4 animate-spin" />
@@ -65,7 +66,7 @@ export function ContentApprovalCard() {
         ) : (
           <ShieldOff className="w-4 h-4" />
         )}
-        <span>{isLoading ? 'Loading' : isError ? 'Unavailable' : `Approval ${enabled ? 'On' : 'Off'}`}</span>
+        <span>{isLoading ? t('settings.common.loading') : isError ? t('settings.common.unavailable') : (enabled ? t('settings.approval.stateOn') : t('settings.approval.stateOff'))}</span>
       </button>
     </div>
   );

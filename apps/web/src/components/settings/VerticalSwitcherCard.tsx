@@ -25,6 +25,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Loader2, ArrowRightLeft, ChevronDown, Check } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useUIStore } from '@/store/ui-store';
 import { apiFetch } from '@/lib/api-client';
 import {
@@ -43,6 +44,7 @@ import {
 import { VERTICAL_ICONS } from '@/lib/vertical-icons';
 
 export function VerticalSwitcherCard() {
+  const t = useTranslations();
   const user = useUIStore((s) => s.user);
   const role = user?.role || '';
   const isAdmin = role === 'SUPER_ADMIN' || role === 'DISTRICT_ADMIN';
@@ -135,7 +137,7 @@ export function VerticalSwitcherCard() {
       // across the dashboard chrome.
       window.location.reload();
     } catch (e: any) {
-      setError(e?.message || 'Switch failed.');
+      setError(e?.message || t('settings.vertical.switchFailed'));
       setPending(null);
     }
   };
@@ -151,7 +153,7 @@ export function VerticalSwitcherCard() {
           single flex row. Description truncates on narrow viewports
           so the layout stays one line. */}
       <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
-        <span className="text-xs font-bold text-slate-700 shrink-0">Industry:</span>
+        <span className="text-xs font-bold text-slate-700 shrink-0">{t('settings.vertical.industryLabel')}</span>
         <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-[11px] font-bold text-indigo-700">
           {(() => {
             const Icon = VERTICAL_ICONS[currentVertical];
@@ -159,7 +161,7 @@ export function VerticalSwitcherCard() {
           })()}
           <span>{currentLabel.singular}</span>
         </span>
-        <span className="text-[11px] text-slate-500 truncate">Switch industry</span>
+        <span className="text-[11px] text-slate-500 truncate">{t('settings.vertical.switchIndustry')}</span>
       </div>
       <div className="relative shrink-0" ref={popoverRef}>
         <button
@@ -175,7 +177,7 @@ export function VerticalSwitcherCard() {
           ) : (
             <ChevronDown className="w-3.5 h-3.5" />
           )}
-          <span>Switch</span>
+          <span>{t('settings.vertical.switch')}</span>
         </button>
         {open && (
           <div

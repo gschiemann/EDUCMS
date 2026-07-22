@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { ArrowLeft, Lock } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { MfaCard } from '@/components/settings/MfaCard';
 
 /**
@@ -15,6 +16,7 @@ import { MfaCard } from '@/components/settings/MfaCard';
  */
 export default function SecuritySettingsPage() {
   const { schoolId } = useParams<{ schoolId: string }>();
+  const t = useTranslations();
 
   return (
     <div className="max-w-4xl space-y-8">
@@ -22,17 +24,16 @@ export default function SecuritySettingsPage() {
         href={`/${schoolId}/settings`}
         className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600"
       >
-        <ArrowLeft className="w-3.5 h-3.5" /> Settings
+        <ArrowLeft className="w-3.5 h-3.5" /> {t('settings.common.back')}
       </Link>
 
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-800 flex items-center gap-2">
           <Lock className="w-7 h-7 text-indigo-500" />
-          Security
+          {t('settings.security.title')}
         </h1>
         <p className="text-sm text-slate-500 mt-0.5">
-          Protect your account. Two-factor authentication adds a second step to
-          sign-in using a code from your phone.
+          {t('settings.security.subtitle')}
         </p>
       </div>
 

@@ -12,9 +12,11 @@
 
 import { useEffect, useState } from 'react';
 import { Loader2, Check, Wand2 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { apiFetch } from '@/lib/api-client';
 
 export function BrandVoiceCard() {
+  const t = useTranslations();
   const [voice, setVoice] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -38,7 +40,7 @@ export function BrandVoiceCard() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (e: any) {
-      setError(e?.message || 'Could not save. Try again.');
+      setError(e?.message || t('settings.aiVoice.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -48,12 +50,10 @@ export function BrandVoiceCard() {
     <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-3">
       <div className="flex items-center gap-2">
         <Wand2 className="w-4 h-4 text-violet-500" />
-        <h2 className="font-bold text-slate-800">Brand voice</h2>
+        <h2 className="font-bold text-slate-800">{t('settings.aiVoice.title')}</h2>
       </div>
       <p className="text-sm text-slate-500">
-        One or two sentences on how your copy should sound. Every AI feature —
-        Generate, Rewrite, and Edit-with-words — writes in this voice on top of
-        the audience tone. Leave it blank to use just the default tone.
+        {t('settings.aiVoice.description')}
       </p>
       <textarea
         value={voice}
@@ -61,8 +61,8 @@ export function BrandVoiceCard() {
         maxLength={600}
         rows={3}
         disabled={!loaded || saving}
-        aria-label="Brand voice"
-        placeholder="e.g. Warm and plainspoken, a little playful, proud of our community. Never corporate or stiff."
+        aria-label={t('settings.aiVoice.title')}
+        placeholder={t('settings.aiVoice.placeholder')}
         className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-60"
       />
       {error && <div role="alert" className="text-xs font-semibold text-rose-700">{error}</div>}
@@ -75,7 +75,7 @@ export function BrandVoiceCard() {
           className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-bold rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50"
         >
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <Check className="w-4 h-4" /> : null}
-          {saving ? 'Saving…' : saved ? 'Saved' : 'Save voice'}
+          {saving ? t('settings.common.saving') : saved ? t('settings.common.saved') : t('settings.aiVoice.saveButton')}
         </button>
       </div>
     </div>

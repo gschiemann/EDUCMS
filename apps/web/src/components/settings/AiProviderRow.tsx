@@ -19,6 +19,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Sparkles, AlertCircle, Check, Loader2, Lock } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { apiFetch } from '@/lib/api-client';
 import { useAppStore } from '@/lib/store';
 
@@ -47,6 +48,7 @@ interface AiProviderInfo {
 }
 
 export function AiProviderRow() {
+  const t = useTranslations();
   const params = useParams();
   const schoolId = params?.schoolId as string;
   const user = useAppStore((s) => s.user);
@@ -96,34 +98,34 @@ export function AiProviderRow() {
     if (loading) {
       return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-[11px] font-bold text-slate-500">
-          <Loader2 className="w-3 h-3 animate-spin" /> Loading
+          <Loader2 className="w-3 h-3 animate-spin" /> {t('settings.common.loading')}
         </span>
       );
     }
     if (status?.configured && status?.keyHealthy === false) {
       return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 text-[11px] font-bold text-rose-700">
-          <AlertCircle className="w-3 h-3" /> Key broken
+          <AlertCircle className="w-3 h-3" /> {t('settings.ai.keyBroken')}
         </span>
       );
     }
     if (status?.configured) {
       return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-[11px] font-bold text-emerald-700">
-          <Check className="w-3 h-3" /> Connected
+          <Check className="w-3 h-3" /> {t('settings.ai.connected')}
         </span>
       );
     }
     if (status?.platformFallbackAvailable) {
       return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-100 text-[11px] font-bold text-violet-700">
-          Free trial
+          {t('settings.ai.freeTrial')}
         </span>
       );
     }
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-[11px] font-bold text-slate-500">
-        Not set up
+        {t('settings.ai.notSetUp')}
       </span>
     );
   };
@@ -131,7 +133,7 @@ export function AiProviderRow() {
   const renderInlineCopy = () => {
     if (loading) return null;
     if (status?.configured && status.keyHealthy === false) {
-      return 'Your saved key can’t be decrypted. Re-enter it to restore AI.';
+      return t('settings.ai.keyBrokenHint');
     }
     if (status?.configured && providerInfo && modelInfo) {
       return `${providerInfo.label} · ${modelInfo.label}`;
@@ -140,9 +142,9 @@ export function AiProviderRow() {
       return providerInfo.label;
     }
     if (status?.platformFallbackAvailable) {
-      return 'Try AI on our free trial. Add your own key when ready.';
+      return t('settings.ai.freeTrialHint');
     }
-    return 'Pick a provider, paste a key, choose a model.';
+    return t('settings.ai.setupHint');
   };
 
   // 2026-05-25 — colors normalized to indigo to match the Brand
@@ -161,7 +163,7 @@ export function AiProviderRow() {
           <Sparkles className="w-4 h-4 text-indigo-600" />
         </div>
         <div className="min-w-0 flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-bold text-slate-800 shrink-0">AI provider</span>
+          <span className="text-sm font-bold text-slate-800 shrink-0">{t('settings.ai.title')}</span>
           {renderStatusPill()}
           <span className="text-[11px] text-slate-500 truncate">{renderInlineCopy()}</span>
         </div>
@@ -176,14 +178,14 @@ export function AiProviderRow() {
           href={`/${schoolId}/settings/ai`}
           className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-colors"
         >
-          {status?.configured ? 'Manage' : 'Configure'}
+          {status?.configured ? t('settings.common.manage') : t('settings.common.configure')}
         </Link>
       ) : (
         <span
           className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-100 text-slate-500 text-xs font-bold cursor-not-allowed"
-          title="Ask your admin to configure AI for this site"
+          title={t('settings.ai.adminOnlyTooltip')}
         >
-          <Lock className="w-3 h-3" /> Admin only
+          <Lock className="w-3 h-3" /> {t('settings.common.adminOnly')}
         </span>
       )}
     </div>

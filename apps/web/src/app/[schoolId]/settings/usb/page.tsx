@@ -27,6 +27,7 @@ import { useParams } from 'next/navigation';
 import JSZip from 'jszip';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { ArrowLeft, Usb, KeyRound, ShieldCheck, Download, Check, Loader2, AlertTriangle, Copy, RefreshCw, Power } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { apiFetch, getApiUrl } from '@/lib/api-client';
 import { useUIStore } from '@/store/ui-store';
 import { usePlaylists, useScreens } from '@/hooks/use-api';
@@ -39,6 +40,7 @@ interface UsbConfig {
 }
 
 export default function UsbExportPage() {
+  const t = useTranslations();
   const params = useParams();
   const schoolId = params?.schoolId as string;
   const token = useUIStore((s) => s.token);
@@ -81,10 +83,10 @@ export default function UsbExportPage() {
   const handleRotate = async () => {
     if (config?.hasKey) {
       const ok = await appConfirm({
-        title: 'Generate a new USB key?',
-        message: 'Any USB bundle signed with the current key will stop working immediately. Only operators with the new key (or the in-app export flow) can ingest going forward. Safe to do — the signing happens server-side on every export.',
+        title: t('settings.usb.newKeyConfirmTitle'),
+        message: t('settings.usb.newKeyConfirmMessage'),
         tone: 'warn',
-        confirmLabel: 'Generate new key',
+        confirmLabel: t('settings.usb.newKeyConfirmLabel'),
       });
       if (!ok) return;
     }
@@ -100,7 +102,7 @@ export default function UsbExportPage() {
 
   const handleExport = async () => {
     if (!canExport) return;
-    setStatus({ phase: 'fetching', message: 'Building signed bundle on the server…' });
+    setStatus({ phase: 'fetching', message: t('settings.usb.buildingBundle') });
 
     let dirHandle: any = null;
     // Ask for the USB folder FIRST — Chromium requires a user gesture,
@@ -136,7 +138,7 @@ export default function UsbExportPage() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.message || `Export failed (${res.status})`);
+        throw new Error(body.message || t('settings.usb.exportFailedStatus', { status: res.status }));
       }
       const assetCount = res.headers.get('X-Bundle-Asset-Count') || '?';
       const truncated = res.headers.get('X-Bundle-Truncated') === 'true';
@@ -145,7 +147,7 @@ export default function UsbExportPage() {
 
       if (dirHandle) {
         // Extract the ZIP directly into the picked USB folder.
-        setStatus({ phase: 'extracting', pct: 0, message: `Writing ${assetCount} assets (${sizeMb} MB) to USB…` });
+        setStatus({ phase: 'extracting', pct: 0, message: t('settings.usb.writingAssets', { count: assetCount, size: sizeMb }) });
         const zip = await JSZip.loadAsync(buf);
         const entries = Object.entries(zip.files).filter(([, f]) => !f.dir);
         let done = 0;
@@ -166,14 +168,14 @@ export default function UsbExportPage() {
           setStatus({
             phase: 'extracting',
             pct: Math.round((done / entries.length) * 100),
-            message: `Writing ${done} / ${entries.length}: ${filename}`,
+            message: t('settings.usb.writingProgress', { done, total: entries.length, filename }),
           });
         }
         setStatus({
           phase: 'done',
           message: truncated
-            ? `Wrote ${assetCount} assets to USB (${sizeMb} MB). ⚠ Bundle hit the size cap — some assets were left out.`
-            : `✓ Wrote ${assetCount} assets to USB (${sizeMb} MB). Plug the USB into a paired player to ingest.`,
+            ? t('settings.usb.wroteTruncated', { count: assetCount, size: sizeMb })
+            : t('settings.usb.wroteComplete', { count: assetCount, size: sizeMb }),
         });
       } else {
         // Fallback: browser doesn't support directory picker OR user cancelled.
@@ -188,11 +190,11 @@ export default function UsbExportPage() {
         URL.revokeObjectURL(url);
         setStatus({
           phase: 'done',
-          message: `Downloaded bundle (${assetCount} assets, ${sizeMb} MB). Extract it to your USB root as-is. ${fsAccessSupported ? '' : 'Use Chrome/Edge for direct-to-USB writing.'}`,
+          message: `${t('settings.usb.downloadedBundle', { count: assetCount, size: sizeMb })} ${fsAccessSupported ? '' : t('settings.usb.useChromeEdge')}`,
         });
       }
     } catch (e: any) {
-      setStatus({ phase: 'error', message: e?.message || 'Export failed' });
+      setStatus({ phase: 'error', message: e?.message || t('settings.usb.exportFailed') });
     }
   };
 
@@ -202,15 +204,15 @@ export default function UsbExportPage() {
         href={`/${schoolId}/settings`}
         className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600"
       >
-        <ArrowLeft className="w-3.5 h-3.5" /> Settings
+        <ArrowLeft className="w-3.5 h-3.5" /> {t('settings.common.back')}
       </Link>
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-800 flex items-center gap-2">
           <Usb className="w-7 h-7 text-indigo-500" />
-          USB Content Export
+          {t('settings.usb.title')}
         </h1>
         <p className="text-sm text-slate-500 mt-0.5">
-          Plug a USB stick in, pick playlists, and we&rsquo;ll sign + download the bundle straight to it.
+          {t('settings.usb.subtitle')}
         </p>
       </div>
 
@@ -219,7 +221,7 @@ export default function UsbExportPage() {
         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
           <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2">
             <KeyRound className="w-4 h-4 text-indigo-500" />
-            USB ingest security
+            {t('settings.usb.securityHeading')}
           </h2>
         </div>
         <div className="p-6 space-y-4">
@@ -235,10 +237,10 @@ export default function UsbExportPage() {
               }`}
             >
               <Power className="w-3.5 h-3.5" />
-              {config?.enabled ? 'USB ingest ENABLED' : 'USB ingest DISABLED'}
+              {config?.enabled ? t('settings.usb.ingestEnabled') : t('settings.usb.ingestDisabled')}
             </button>
             <p className="text-xs text-slate-500 flex-1">
-              When disabled, paired screens will reject any USB bundle — even signed ones. Disabling does not invalidate existing keys; you can re-enable later without losing state.
+              {t('settings.usb.ingestToggleHint')}
             </p>
           </div>
           <div className="flex items-start gap-3 pt-3 border-t border-slate-100">
@@ -249,15 +251,18 @@ export default function UsbExportPage() {
               className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 disabled:opacity-50"
             >
               {rotateKeyMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-              {config?.hasKey ? 'Generate NEW key' : 'Generate signing key'}
+              {config?.hasKey ? t('settings.usb.generateNewKey') : t('settings.usb.generateSigningKey')}
             </button>
             <div className="flex-1 text-xs text-slate-500">
               {config?.hasKey ? (
                 <>
-                  Signing key is set{config.keyRotatedAt ? ` (rotated ${new Date(config.keyRotatedAt).toLocaleString()})` : ''}. Click to generate a fresh one — the in-app export below uses it automatically; you only need the raw key for the standalone <code className="font-mono">usb-bundler</code> CLI.
+                  {t.rich('settings.usb.keySetHint', {
+                    rotated: config.keyRotatedAt ? ` ${t('settings.usb.rotatedAt', { date: new Date(config.keyRotatedAt).toLocaleString() })}` : '',
+                    code: (chunks) => <code className="font-mono">{chunks}</code>,
+                  })}
                 </>
               ) : (
-                <>No signing key yet. Generate one before exporting.</>
+                <>{t('settings.usb.noKeyHint')}</>
               )}
             </div>
           </div>
@@ -267,8 +272,8 @@ export default function UsbExportPage() {
               <div className="flex items-start gap-2 mb-3">
                 <AlertTriangle className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
                 <div className="text-xs font-bold text-amber-900">
-                  Save this key now if you plan to use the standalone CLI.
-                  <span className="font-normal"> For in-app USB exports you don&rsquo;t need it — the server signs each bundle automatically. You can generate a new key any time without losing anything.</span>
+                  {t('settings.usb.saveKeyNow')}
+                  <span className="font-normal"> {t('settings.usb.saveKeyNowDetail')}</span>
                 </div>
               </div>
               <div className="flex gap-2">
@@ -283,14 +288,14 @@ export default function UsbExportPage() {
                   onClick={() => navigator.clipboard?.writeText(newKeyReveal)}
                   className="px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5"
                 >
-                  <Copy className="w-3.5 h-3.5" /> Copy
+                  <Copy className="w-3.5 h-3.5" /> {t('settings.common.copy')}
                 </button>
                 <button
                   type="button"
                   onClick={() => setNewKeyReveal(null)}
                   className="px-3 py-2 bg-white border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg hover:bg-slate-50"
                 >
-                  Hide
+                  {t('settings.usb.hide')}
                 </button>
               </div>
             </div>
@@ -303,49 +308,49 @@ export default function UsbExportPage() {
         <div className="px-6 py-4 border-b border-slate-100">
           <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2">
             <Download className="w-4 h-4 text-indigo-500" />
-            Build &amp; download a bundle
+            {t('settings.usb.buildHeading')}
           </h2>
           <p className="text-[11px] text-slate-400 mt-0.5">
             {fsAccessSupported
-              ? 'Chrome / Edge: we\u2019ll ask you to pick the USB drive, then write every file directly into it.'
-              : 'Your browser doesn\u2019t support direct-to-USB writes. We\u2019ll download a .zip you can extract onto the stick.'}
+              ? t('settings.usb.fsSupported')
+              : t('settings.usb.fsUnsupported')}
           </p>
         </div>
         <div className="p-6 space-y-5">
           <div>
             <label htmlFor="bundle-label" className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              Bundle label (optional)
+              {t('settings.usb.bundleLabel')}
             </label>
             <input
               id="bundle-label"
               value={bundleLabel}
               onChange={(e) => setBundleLabel(e.target.value)}
-              placeholder="e.g. 'Lobby A — week of Apr 21'"
+              placeholder={t('settings.usb.bundleLabelPlaceholder')}
               className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
           </div>
 
           <div>
-            <label htmlFor="screen-select" className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Target screen (optional)</label>
+            <label htmlFor="screen-select" className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{t('settings.usb.targetScreen')}</label>
             <select
               id="screen-select"
               value={screenId}
               onChange={(e) => setScreenId(e.target.value)}
               className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm"
             >
-              <option value="">Any paired player (no screen scope)</option>
+              <option value="">{t('settings.usb.anyPairedPlayer')}</option>
               {(screens || []).map((s: any) => (
                 <option key={s.id} value={s.id}>{s.name || s.id.slice(0, 8)}</option>
               ))}
             </select>
             <p className="text-[11px] text-slate-400 mt-1">
-              Scoping to a screen embeds its id in the manifest so the player can warn if the stick is for the wrong display.
+              {t('settings.usb.screenScopeHint')}
             </p>
           </div>
 
           <div>
             <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">
-              Playlists ({selectedPlaylistIds.length} selected)
+              {t('settings.usb.playlistsSelected', { count: selectedPlaylistIds.length })}
             </div>
             <div className="rounded-lg border border-slate-200 divide-y divide-slate-100 max-h-80 overflow-y-auto">
               {(playlists || []).map((p: any) => {
@@ -359,12 +364,12 @@ export default function UsbExportPage() {
                       className="w-4 h-4 accent-indigo-600"
                     />
                     <span className="flex-1 truncate">{p.name}</span>
-                    <span className="text-[10px] text-slate-400">{p.items?.length || 0} items</span>
+                    <span className="text-[10px] text-slate-400">{t('settings.usb.itemCount', { count: p.items?.length || 0 })}</span>
                   </label>
                 );
               })}
               {(!playlists || playlists.length === 0) && (
-                <div className="px-3 py-4 text-xs text-slate-400 text-center">No playlists yet.</div>
+                <div className="px-3 py-4 text-xs text-slate-400 text-center">{t('settings.usb.noPlaylists')}</div>
               )}
             </div>
           </div>
@@ -377,7 +382,7 @@ export default function UsbExportPage() {
               className="w-4 h-4 accent-rose-600"
             />
             <ShieldCheck className="w-3.5 h-3.5 text-rose-600" />
-            Also include the tenant&rsquo;s emergency playlist (recommended — keeps lockdown content on the player without WiFi)
+            {t('settings.usb.includeEmergency')}
           </label>
 
           <div className="pt-4 border-t border-slate-100 flex items-center gap-3">
@@ -392,10 +397,10 @@ export default function UsbExportPage() {
               ) : (
                 <Usb className="w-4 h-4" />
               )}
-              {fsAccessSupported ? 'Pick USB & download' : 'Download signed bundle'}
+              {fsAccessSupported ? t('settings.usb.pickAndDownload') : t('settings.usb.downloadSigned')}
             </button>
-            {!config?.enabled && <span className="text-xs text-amber-700">Enable USB ingest first (above).</span>}
-            {config?.enabled && !config?.hasKey && <span className="text-xs text-amber-700">Generate a signing key first (above).</span>}
+            {!config?.enabled && <span className="text-xs text-amber-700">{t('settings.usb.enableFirst')}</span>}
+            {config?.enabled && !config?.hasKey && <span className="text-xs text-amber-700">{t('settings.usb.generateKeyFirst')}</span>}
           </div>
 
           {status.phase !== 'idle' && (

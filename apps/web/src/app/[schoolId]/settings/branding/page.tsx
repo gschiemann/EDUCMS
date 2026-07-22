@@ -8,6 +8,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { apiFetch } from '@/lib/api-client';
 import { BrandingWizard, BrandingPreview } from '@/components/branding/BrandingWizard';
 import { BrandingSettingsCard } from '@/components/settings/BrandingSettingsCard';
@@ -17,6 +18,7 @@ import { pushBrandingPreview } from '@/components/branding/BrandStyleInjector';
 import { useTenant, useTenantBranding, useInvalidateTenantBranding } from '@/hooks/use-api';
 
 export default function SettingsBrandingPage() {
+  const t = useTranslations();
   const { data: tenant } = useTenant();
   const params = useParams();
   const schoolId = params?.schoolId as string;
@@ -107,27 +109,27 @@ export default function SettingsBrandingPage() {
             href={`/${schoolId}/settings`}
             className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 mb-2"
           >
-            <ArrowLeft className="w-3.5 h-3.5" /> Settings
+            <ArrowLeft className="w-3.5 h-3.5" /> {t('settings.common.back')}
           </Link>
           <h1 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2">
             <Paintbrush className="w-6 h-6 text-indigo-500" />
-            Branding
+            {t('settings.branding.title')}
           </h1>
           <p className="text-sm text-slate-500 mt-1 max-w-2xl">
-            Your CMS looks like your school. Paste a URL or tweak below.
+            {t('settings.branding.subtitle')}
           </p>
         </div>
         {current && (
           <div className="mt-1">
             {confirmRevert ? (
               <div className="flex gap-2 items-center text-sm">
-                <span>Revert to default theme?</span>
-                <Button variant="outline" size="sm" onClick={() => setConfirmRevert(false)}>Cancel</Button>
-                <Button variant="destructive" size="sm" onClick={revert}>Revert</Button>
+                <span>{t('settings.branding.revertPrompt')}</span>
+                <Button variant="outline" size="sm" onClick={() => setConfirmRevert(false)}>{t('settings.common.cancel')}</Button>
+                <Button variant="destructive" size="sm" onClick={revert}>{t('settings.branding.revert')}</Button>
               </div>
             ) : (
               <Button variant="outline" size="sm" onClick={() => setConfirmRevert(true)}>
-                <Trash2 className="h-4 w-4 mr-1.5" /> Revert to default
+                <Trash2 className="h-4 w-4 mr-1.5" /> {t('settings.branding.revertToDefault')}
               </Button>
             )}
           </div>
@@ -149,7 +151,7 @@ export default function SettingsBrandingPage() {
           /settings (kept), and wanted it BELOW the wizard on
           /settings/branding (was reversed; now correct). */}
       {loading ? (
-        <div className="p-10 text-center text-slate-500">Loading…</div>
+        <div className="p-10 text-center text-slate-500">{t('settings.common.loadingEllipsis')}</div>
       ) : (
         <>
           <BrandingWizard

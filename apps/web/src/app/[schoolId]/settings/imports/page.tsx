@@ -29,11 +29,13 @@
 import { useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 export default function DesignImportsRedirect() {
   const params = useParams();
   const router = useRouter();
   const schoolId = params?.schoolId as string;
+  const t = useTranslations();
 
   useEffect(() => {
     if (!schoolId) return;
@@ -45,7 +47,7 @@ export default function DesignImportsRedirect() {
   return (
     <div className="min-h-[40vh] flex flex-col items-center justify-center gap-3 text-slate-400 text-sm">
       <Loader2 className="w-6 h-6 animate-spin" />
-      <p>Design imports moved to Templates — redirecting…</p>
+      <p>{t('settings.imports.redirecting')}</p>
     </div>
   );
 }

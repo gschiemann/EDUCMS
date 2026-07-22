@@ -25,6 +25,7 @@ import {
   User, Mail, Shield, LogOut, Settings, Pencil, Building2,
   ChevronRight, Info, Bell, Bug,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useAppStore } from '@/lib/store';
 import { useTenantStatus } from '@/hooks/use-api';
 import { fullName as userFullName, firstName as userFirstName } from '@/lib/user-display';
@@ -33,6 +34,7 @@ import { appConfirm } from '@/components/ui/app-dialog';
 import { cn } from '@/lib/utils';
 
 export default function AccountPage() {
+  const t = useTranslations();
   const router = useRouter();
   const params = useParams<{ schoolId?: string }>();
   const schoolId = params?.schoolId || '';
@@ -50,9 +52,9 @@ export default function AccountPage() {
 
   const handleSignOut = async () => {
     const ok = await appConfirm({
-      title: 'Sign out?',
-      message: 'You’ll need to sign in again to manage screens and content.',
-      confirmLabel: 'Sign out',
+      title: t('account.signOutTitle'),
+      message: t('account.signOutMessage'),
+      confirmLabel: t('account.signOut'),
       tone: 'danger',
     });
     if (!ok) return;
@@ -62,12 +64,12 @@ export default function AccountPage() {
 
   const roleLabel = (() => {
     switch (user?.role) {
-      case 'SUPER_ADMIN':       return 'Super Admin';
-      case 'DISTRICT_ADMIN':    return 'District Admin';
-      case 'SCHOOL_ADMIN':      return 'School Admin';
-      case 'CONTRIBUTOR':       return 'Contributor';
-      case 'RESTRICTED_VIEWER': return 'Viewer';
-      default:                  return user?.role || 'Unknown';
+      case 'SUPER_ADMIN':       return t('account.roleSuperAdmin');
+      case 'DISTRICT_ADMIN':    return t('account.roleDistrictAdmin');
+      case 'SCHOOL_ADMIN':      return t('account.roleSchoolAdmin');
+      case 'CONTRIBUTOR':       return t('account.roleContributor');
+      case 'RESTRICTED_VIEWER': return t('account.roleViewer');
+      default:                  return user?.role || t('account.roleUnknown');
     }
   })();
 
@@ -85,7 +87,7 @@ export default function AccountPage() {
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-lg font-bold text-slate-900 truncate">
-              {userFullName(user) || userFirstName(user) || 'Account'}
+              {userFullName(user) || userFirstName(user) || t('account.title')}
             </div>
             <div className="text-xs text-slate-500 truncate flex items-center gap-1">
               <Mail className="w-3 h-3" /> {user?.email || '—'}
@@ -100,31 +102,31 @@ export default function AccountPage() {
           onClick={() => setEditOpen(true)}
           className="mt-4 w-full py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-sm font-bold flex items-center justify-center gap-1.5 transition-colors"
         >
-          <Pencil className="w-3.5 h-3.5" /> Edit profile
+          <Pencil className="w-3.5 h-3.5" /> {t('account.editProfile')}
         </button>
       </div>
 
       {/* Tenant info */}
-      <Section title="School">
-        <Row icon={Building2} label={tenant?.name || 'Loading…'} sub="Current school" />
+      <Section title={t('account.sectionSchool')}>
+        <Row icon={Building2} label={tenant?.name || t('settings.common.loadingEllipsis')} sub={t('account.currentSchool')} />
         {(user?.role === 'SUPER_ADMIN' ||
           user?.role === 'DISTRICT_ADMIN' ||
           user?.role === 'SCHOOL_ADMIN') && (
           <LinkRow
             icon={Settings}
-            label="School settings"
-            sub="Branding, emergency content, integrations"
+            label={t('account.schoolSettings')}
+            sub={t('account.schoolSettingsSub')}
             href={`/${schoolId}/settings`}
           />
         )}
       </Section>
 
       {/* Notifications */}
-      <Section title="Notifications">
+      <Section title={t('account.sectionNotifications')}>
         <LinkRow
           icon={Bell}
-          label="Notification settings"
-          sub="Push, email, in-app preferences"
+          label={t('account.notificationSettings')}
+          sub={t('account.notificationSettingsSub')}
           href={`/${schoolId}/settings`}
         />
       </Section>
@@ -135,14 +137,14 @@ export default function AccountPage() {
         onClick={handleSignOut}
         className="w-full py-3 rounded-2xl bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 active:scale-[0.99] transition-all font-bold text-sm flex items-center justify-center gap-2 shadow-sm"
       >
-        <LogOut className="w-4 h-4" /> Sign out
+        <LogOut className="w-4 h-4" /> {t('account.signOut')}
       </button>
 
       {/* App info — bottom, muted */}
       <div className="pt-4 pb-2 text-center">
         <div className="text-[11px] text-slate-400 flex items-center justify-center gap-1.5">
           <Info className="w-3 h-3" />
-          Venue OS dashboard
+          {t('account.appInfo')}
           {buildSha && <span className="font-mono">· {buildSha}</span>}
         </div>
       </div>

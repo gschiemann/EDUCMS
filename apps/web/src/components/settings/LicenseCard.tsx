@@ -23,6 +23,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { CreditCard, Loader2, AlertTriangle, ArrowUpCircle } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useLicense } from '@/hooks/use-api';
 
 // 2026-05-25 — tier display labels generalized. Operator: "i see
@@ -33,15 +34,17 @@ import { useLicense } from '@/hooks/use-api';
 // for SUPER_ADMIN-comped accounts but reads as "Education" in the
 // UI so the rest of the customer base doesn't see schools-only
 // terminology.
-const TIER_LABEL: Record<string, string> = {
-  PILOT: 'Pilot',
-  STANDARD: 'Standard',
-  ENTERPRISE: 'Enterprise',
-  EDU_DISTRICT: 'Education',
-  RESTAURANT_CHAIN: 'Chain',
+// i18n: the map holds catalog keys, resolved via t() at render time.
+const TIER_LABEL_KEY: Record<string, string> = {
+  PILOT: 'settings.license.tierPilot',
+  STANDARD: 'settings.license.tierStandard',
+  ENTERPRISE: 'settings.license.tierEnterprise',
+  EDU_DISTRICT: 'settings.license.tierEducation',
+  RESTAURANT_CHAIN: 'settings.license.tierChain',
 };
 
 export function LicenseCard() {
+  const t = useTranslations();
   const { data, isLoading } = useLicense();
   const pathname = usePathname() || '';
   const billingHref = pathname ? `${pathname}/billing` : '/billing';
@@ -54,14 +57,14 @@ export function LicenseCard() {
           <div className="w-9 h-9 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center shrink-0">
             <CreditCard className="w-4 h-4 text-indigo-600" />
           </div>
-          <span className="text-sm font-bold text-slate-800">Plan &amp; screens</span>
+          <span className="text-sm font-bold text-slate-800">{t('settings.license.title')}</span>
           <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />
         </div>
       </div>
     );
   }
 
-  const tierLabel = TIER_LABEL[data.tier] || data.tier;
+  const tierLabel = TIER_LABEL_KEY[data.tier] ? t(TIER_LABEL_KEY[data.tier]) : data.tier;
   // Stripe sometimes returns a tier with no seatLimit (truly unlimited
   // enterprise plans). Show "Unlimited" instead of NaN.
   const hasLimit = typeof data.seatLimit === 'number' && data.seatLimit > 0;
@@ -76,7 +79,7 @@ export function LicenseCard() {
           <CreditCard className="w-4 h-4 text-indigo-600" />
         </div>
         <div className="min-w-0 flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-bold text-slate-800 shrink-0">Plan &amp; screens</span>
+          <span className="text-sm font-bold text-slate-800 shrink-0">{t('settings.license.title')}</span>
           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-[11px] font-bold text-indigo-700">
             {tierLabel}
           </span>
@@ -87,9 +90,9 @@ export function LicenseCard() {
           )}
           <span className={`text-[11px] truncate ${data.atLimit ? 'text-rose-700 font-bold' : isWarning ? 'text-amber-700 font-semibold' : 'text-slate-500'}`}>
             <span className="font-bold">{data.seatsUsed}</span>
-            {hasLimit ? <> of {seatLimit}</> : ''}
-            {' screens'}
-            {data.atLimit && ' — limit reached'}
+            {hasLimit ? <> {t('settings.license.ofLimit', { limit: seatLimit })}</> : ''}
+            {' '}{t('settings.license.screensWord')}
+            {data.atLimit && <> {t('settings.license.limitReached')}</>}
           </span>
           {/* Inline usage bar — tucked under the title row when there's
               space, otherwise wraps. Color tracks state: indigo by
@@ -123,10 +126,10 @@ export function LicenseCard() {
       >
         {data.isPilot ? (
           <>
-            <ArrowUpCircle className="w-3.5 h-3.5" /> Upgrade
+            <ArrowUpCircle className="w-3.5 h-3.5" /> {t('settings.license.upgrade')}
           </>
         ) : (
-          'Manage'
+          t('settings.common.manage')
         )}
       </Link>
     </div>
