@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { Play, Plus, Clock, Loader2, Trash2, Save, GripVertical, Image as ImageIcon, Video, Music, Globe, File, Calendar, CalendarDays, Power, Eye, LayoutTemplate, Pencil, Monitor, Layers, ChevronRight, ChevronLeft, Tv2, Wifi, WifiOff, ArrowLeft, Smartphone, FolderOpen, Home, CheckSquare, Search, Settings, Upload, AlertCircle, Download, Usb, Check, RefreshCw, Building2 } from 'lucide-react';
 import { useUIStore } from '@/store/ui-store';
 import { PlaylistPreviewThumb, derivePlaylistContentLabel, type TemplateLookupEntry } from '@/components/playlists/PlaylistPreviewThumb';
@@ -699,6 +700,7 @@ function PlaylistCard({ playlist, screenMap, onOpen, onDelete, onToggleActive, t
 
 // --- Main page ---
 export default function PlaylistsPage() {
+  const t = useTranslations();
   const { data: playlists, isLoading, isError, refetch } = usePlaylists();
   const { data: assets } = useAssets();
   const { data: folders } = useAssetFolders();
@@ -2555,36 +2557,36 @@ export default function PlaylistsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-800">Playlists</h1>
-          <p className="text-sm text-slate-500 mt-0.5">See what&apos;s playing on every screen at a glance.</p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-800">{t('playlistsPage.title')}</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{t('playlistsPage.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
           {/* Tile / Line view toggle — tile shows per-playlist asset
               thumbs, line mode hides them so more rows fit on screen. */}
-          <div className="flex border border-slate-200 rounded-lg overflow-hidden" role="group" aria-label="Playlist view mode">
+          <div className="flex border border-slate-200 rounded-lg overflow-hidden" role="group" aria-label={t('playlistsPage.viewModeAria')}>
             <button
               onClick={() => setPlaylistView('grid')}
               aria-pressed={playlistView === 'grid'}
-              title="Tile view — shows asset thumbnails"
+              title={t('playlistsPage.tileView')}
               className={`px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${playlistView === 'grid' ? 'bg-slate-100 text-slate-800' : 'bg-white text-slate-400 hover:text-slate-600'}`}
             >
               <Layers className="w-3.5 h-3.5" />
-              Tile
+              {t('playlistsPage.tile')}
             </button>
             <button
               onClick={() => setPlaylistView('list')}
               aria-pressed={playlistView === 'list'}
-              title="Line view — more playlists per window"
+              title={t('playlistsPage.lineView')}
               className={`px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors flex items-center gap-1.5 border-l border-slate-200 ${playlistView === 'list' ? 'bg-slate-100 text-slate-800' : 'bg-white text-slate-400 hover:text-slate-600'}`}
             >
               <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" aria-hidden="true"><line x1="2" y1="4" x2="14" y2="4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="2" y1="12" x2="14" y2="12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-              Line
+              {t('playlistsPage.line')}
             </button>
           </div>
           {isHQ && !isViewer && (
             <button
               onClick={() => setShowPublishToLocations(true)}
-              title="Copy this content to screens across all your locations"
+              title={t('playlistsPage.publishToLocations')}
               className="px-4 py-2 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-1.5"
               style={{ background: 'var(--brand-primary, #4f46e5)' }}
             >
@@ -2597,7 +2599,7 @@ export default function PlaylistsPage() {
             title={isViewer ? 'Read-only — viewer role' : undefined}
             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Plus className="w-4 h-4" /> New Playlist
+            <Plus className="w-4 h-4" /> {t('playlistsPage.newPlaylist')}
           </button>
         </div>
       </div>
@@ -2621,7 +2623,7 @@ export default function PlaylistsPage() {
               </div>
               <span className="text-lg font-bold text-slate-800">{totalScreensOnline}<span className="text-sm text-slate-400 font-normal">/{totalScreens}</span></span>
             </div>
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Screens Online</p>
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{t('playlistsPage.screensOnline')}</p>
           </div>
           <div className="bg-white rounded-2xl border border-slate-100 px-4 py-3">
             <div className="flex items-center gap-2 mb-1">
@@ -2630,7 +2632,7 @@ export default function PlaylistsPage() {
               </div>
               <span className="text-lg font-bold text-slate-800">{activeSchedules}</span>
             </div>
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Active Schedules</p>
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{t('playlistsPage.activeSchedules')}</p>
           </div>
           <div className="bg-white rounded-2xl border border-slate-100 px-4 py-3">
             <div className="flex items-center gap-2 mb-1">
@@ -2639,7 +2641,7 @@ export default function PlaylistsPage() {
               </div>
               <span className="text-lg font-bold text-slate-800">{unassignedPlaylists}</span>
             </div>
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Unassigned</p>
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{t('playlistsPage.unassigned')}</p>
           </div>
         </div>
       )}
@@ -2653,35 +2655,35 @@ export default function PlaylistsPage() {
               <input
                 value={playlistSearch}
                 onChange={(e) => setPlaylistSearch(e.target.value)}
-                placeholder="Search playlist, creator, or screen"
+                placeholder={t('playlistsPage.searchPlaceholder')}
                 className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </label>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 lg:w-[720px]">
               <select value={playlistSort} onChange={(e) => setPlaylistSort(e.target.value as PlaylistSort)} className="px-2 py-2 text-xs font-semibold border border-slate-200 rounded-lg bg-white text-slate-600 outline-none">
-                <option value="latest">Latest saved</option>
-                <option value="oldest">Oldest created</option>
-                <option value="az">A to Z</option>
-                <option value="za">Z to A</option>
-                <option value="creator">Created by</option>
-                <option value="modified">Last modified</option>
-                <option value="assigned">Assigned screen</option>
+                <option value="latest">{t('playlistsPage.sortLatest')}</option>
+                <option value="oldest">{t('playlistsPage.sortOldest')}</option>
+                <option value="az">{t('playlistsPage.sortAz')}</option>
+                <option value="za">{t('playlistsPage.sortZa')}</option>
+                <option value="creator">{t('playlistsPage.sortCreator')}</option>
+                <option value="modified">{t('playlistsPage.sortModified')}</option>
+                <option value="assigned">{t('playlistsPage.sortAssigned')}</option>
               </select>
               <select value={creatorFilter} onChange={(e) => setCreatorFilter(e.target.value)} className="px-2 py-2 text-xs font-semibold border border-slate-200 rounded-lg bg-white text-slate-600 outline-none">
-                <option value="all">All creators</option>
-                <option value="me">Created by me</option>
-                <option value="others">Created by others</option>
+                <option value="all">{t('playlistsPage.creatorAll')}</option>
+                <option value="me">{t('playlistsPage.creatorMe')}</option>
+                <option value="others">{t('playlistsPage.creatorOthers')}</option>
                 {creatorOptions.map(([id, email]) => (
                   <option key={id} value={`user:${id}`}>{email}</option>
                 ))}
               </select>
               <select value={assignmentFilter} onChange={(e) => setAssignmentFilter(e.target.value as AssignmentFilter)} className="px-2 py-2 text-xs font-semibold border border-slate-200 rounded-lg bg-white text-slate-600 outline-none">
-                <option value="all">All assignments</option>
-                <option value="assigned">Assigned</option>
-                <option value="unassigned">Unassigned</option>
+                <option value="all">{t('playlistsPage.assignAll')}</option>
+                <option value="assigned">{t('playlistsPage.assignAssigned')}</option>
+                <option value="unassigned">{t('playlistsPage.unassigned')}</option>
               </select>
               <select value={targetFilter} onChange={(e) => setTargetFilter(e.target.value)} className="px-2 py-2 text-xs font-semibold border border-slate-200 rounded-lg bg-white text-slate-600 outline-none">
-                <option value="all">All screens</option>
+                <option value="all">{t('playlistsPage.targetAll')}</option>
                 {(screens || []).map((screen: any) => (
                   <option key={screen.id} value={`screen:${screen.id}`}>{screen.name}</option>
                 ))}
@@ -2746,8 +2748,8 @@ export default function PlaylistsPage() {
       {isError && !isLoading && !showCreate && (
         <div className="flex flex-col items-center justify-center py-16 text-center bg-white rounded-2xl border border-slate-100">
           <AlertCircle className="w-12 h-12 text-rose-500 mb-4" />
-          <h3 className="text-lg font-bold text-slate-900 mb-2">Couldn&apos;t load playlists</h3>
-          <p className="text-sm text-slate-500 mb-5">Check your connection and try again.</p>
+          <h3 className="text-lg font-bold text-slate-900 mb-2">{t('playlistsPage.loadError')}</h3>
+          <p className="text-sm text-slate-500 mb-5">{t('playlistsPage.loadErrorDesc')}</p>
           <button
             onClick={() => refetch()}
             className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-colors inline-flex items-center gap-1.5"
@@ -2928,8 +2930,8 @@ export default function PlaylistsPage() {
       {playlists && playlists.length > 0 && displayedPlaylists.length === 0 && !showCreate && (
         <div className="flex flex-col items-center justify-center py-16 text-center bg-white rounded-2xl border border-slate-100">
           <Search className="w-12 h-12 text-slate-300 mb-4" />
-          <h3 className="text-lg font-bold text-slate-900 mb-2">No playlists match those filters</h3>
-          <p className="text-sm text-slate-500 mb-5">Clear the search or filters to get back to the full playlist library.</p>
+          <h3 className="text-lg font-bold text-slate-900 mb-2">{t('playlistsPage.noMatch')}</h3>
+          <p className="text-sm text-slate-500 mb-5">{t('playlistsPage.noMatchDesc')}</p>
           <button
             onClick={() => {
               setPlaylistSearch('');
@@ -2940,7 +2942,7 @@ export default function PlaylistsPage() {
             }}
             className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-colors"
           >
-            Reset filters
+            {t('playlistsPage.resetFilters')}
           </button>
         </div>
       )}
@@ -2950,15 +2952,15 @@ export default function PlaylistsPage() {
           <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
             <Play className="w-8 h-8 text-slate-300" />
           </div>
-          <h3 className="text-base font-bold text-slate-600 mb-1">No playlists yet</h3>
-          <p className="text-sm text-slate-400 mb-5 max-w-sm">Create your first playlist to start scheduling content to your screens.</p>
+          <h3 className="text-base font-bold text-slate-600 mb-1">{t('playlistsPage.noPlaylists')}</h3>
+          <p className="text-sm text-slate-400 mb-5 max-w-sm">{t('playlistsPage.noPlaylistsDesc')}</p>
           <button
             onClick={() => setShowCreate(true)}
             disabled={isViewer}
             title={isViewer ? 'Read-only — viewer role' : undefined}
             className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Plus className="w-4 h-4" /> Create First Playlist
+            <Plus className="w-4 h-4" /> {t('playlistsPage.createFirst')}
           </button>
         </div>
       )}
@@ -2984,6 +2986,7 @@ export default function PlaylistsPage() {
  * showDirectoryPicker (Safari / Firefox).
  */
 function InlineDownloadButton({ playlistId, playlistName }: { playlistId: string; playlistName: string }) {
+  const t = useTranslations();
   const token = useUIStore((s) => s.token);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<null | 'desktop' | 'usb'>(null);
@@ -3079,8 +3082,8 @@ function InlineDownloadButton({ playlistId, playlistName }: { playlistId: string
           >
             <Monitor className="w-4 h-4 text-slate-500" />
             <div className="flex-1">
-              <div className="text-xs font-semibold text-slate-800">Download to Desktop</div>
-              <div className="text-[10px] text-slate-400">Plain .zip</div>
+              <div className="text-xs font-semibold text-slate-800">{t('playlistsPage.downloadDesktop')}</div>
+              <div className="text-[10px] text-slate-400">{t('playlistsPage.plainZip')}</div>
             </div>
           </button>
           <button
@@ -3090,7 +3093,7 @@ function InlineDownloadButton({ playlistId, playlistName }: { playlistId: string
           >
             <Usb className="w-4 h-4 text-indigo-600" />
             <div className="flex-1">
-              <div className="text-xs font-semibold text-slate-800">Download to USB</div>
+              <div className="text-xs font-semibold text-slate-800">{t('playlistsPage.downloadUsb')}</div>
               <div className="text-[10px] text-slate-400">
                 {fsAccess ? 'Pick a USB folder, we write straight in' : '.zip fallback — extract manually'}
               </div>
