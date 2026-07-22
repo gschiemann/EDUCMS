@@ -40,6 +40,35 @@ export function isAppLocale(v: string | null | undefined): v is AppLocale {
   return !!v && (LOCALES as readonly string[]).includes(v);
 }
 
+/**
+ * Map the device's preferred-language list (navigator.languages order) to an
+ * app locale. Walks the user's preference order and returns the FIRST tag we
+ * ship — so ['fr-FR','es-ES'] → es (their best supported choice) while
+ * ['en-US','zh-CN'] → en (they genuinely prefer English). `zh` matches every
+ * Chinese variant (zh-CN/zh-TW/zh-Hans/zh-Hant/zh-HK) — we ship Simplified
+ * today; a Traditional catalog can split this later. No match → en.
+ * Pure + exported so it can be unit-checked directly.
+ */
+export function pickLocaleFromLanguages(langs: readonly string[]): AppLocale {
+  for (const raw of langs) {
+    const tag = (raw || '').toLowerCase();
+    if (tag === 'es' || tag.startsWith('es-')) return 'es';
+    if (tag === 'zh' || tag.startsWith('zh-')) return 'zh';
+    if (tag === 'en' || tag.startsWith('en-')) return 'en';
+  }
+  return DEFAULT_LOCALE;
+}
+
+/** Device-language detection for first visits (no cookie yet). */
+export function detectDeviceLocale(): AppLocale {
+  if (typeof navigator === 'undefined') return DEFAULT_LOCALE;
+  const langs =
+    navigator.languages && navigator.languages.length
+      ? navigator.languages
+      : [navigator.language];
+  return pickLocaleFromLanguages(langs.filter(Boolean) as string[]);
+}
+
 export function readLocaleCookie(): AppLocale | null {
   if (typeof document === 'undefined') return null;
   const m = document.cookie.match(/(?:^|;\s*)venueos_locale=([a-zA-Z-]+)/);

@@ -18,6 +18,7 @@ import {
   type AppLocale,
   DEFAULT_LOCALE,
   LOCALE_HTML_LANG,
+  detectDeviceLocale,
   readLocaleCookie,
   writeLocaleCookie,
 } from './config';
@@ -56,12 +57,16 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     document.documentElement.lang = LOCALE_HTML_LANG[l];
   }, []);
 
-  // Adopt the persisted choice AFTER mount (never during SSR/first paint —
-  // that's what keeps hydration clean against the English static shell).
+  // AFTER mount (never during SSR/first paint — that's what keeps hydration
+  // clean against the English static shell): an EXPLICIT saved choice always
+  // wins; otherwise auto-pick from the device's preferred languages. The
+  // auto-pick deliberately does NOT write the cookie — only an explicit
+  // switch persists — so a device-language user keeps getting the best match
+  // as we ship more languages, while a chosen language sticks forever.
   useEffect(() => {
     setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
-    const saved = readLocaleCookie();
-    if (saved && saved !== DEFAULT_LOCALE) void apply(saved);
+    const target = readLocaleCookie() ?? detectDeviceLocale();
+    if (target !== DEFAULT_LOCALE) void apply(target);
   }, [apply]);
 
   const setLocale = useCallback(
