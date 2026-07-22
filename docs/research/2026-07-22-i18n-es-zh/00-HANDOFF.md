@@ -46,6 +46,16 @@ Each was told: strings→t() only (zero logic changes), keys in ALL 3 catalogs i
 7. **Remove each merged worktree SAME TURN:** `git worktree remove --force .claude/worktrees/agent-<id> && git branch -D worktree-agent-<id>`. End state: `git worktree list` = main tree only.
 8. Tell Greg: what shipped, proof screenshots, honest remainder list.
 
+## MOBILE APP LANGUAGES (Greg 2026-07-22: "dont forget the mobile app")
+
+Three distinct mobile surfaces — do not conflate:
+
+1. **Operator PWA (the dashboard on a phone — what Greg usually means by "our mobile app"):** ALREADY covered by the web i18n above (MobileTabBar/More sheet shipped in `e0fcb128`; page content comes with the agent wave). Mobile-specific leftovers: the **/panic page** (mobile emergency trigger — falls under the careful emergency pass below) and **`apps/web/public/manifest.webmanifest`** (PWA name + shortcut labels are static English; localized manifests are possible but low-priority — note to Greg rather than build speculatively).
+2. **Android PLAYER APK (`apps/player/app`):** native Kotlin. Only `src/main/res/values/strings.xml` (English) exists — VERIFIED no `values-es`/`values-zh-rCN` dirs. Work: sweep Kotlin sources for hardcoded UI literals → extract to strings.xml, then add `values-es/strings.xml` + `values-zh-rCN/strings.xml` with real translations. Android auto-picks by device locale (satisfies Greg's auto-detect requirement natively; no in-app switcher needed for v1 — the kiosk mostly renders web content anyway, so the strings that matter are pairing/setup/offline-error surfaces a venue's IT staff sees). RELEASE TRAP: any player release must bump gradle versionCode/versionName BEFORE tagging `player-v*` (memory `feedback_player_release_tagging.md`; use release-apk.sh) — do NOT tag a release just for string files without the bump.
+3. **Android MANAGER APK (`apps/player/manager`):** same treatment, same trap (`manager-v*` tags).
+
+The web player surfaces a kiosk shows (offline self-heal page in `apps/web/public/sw-player.js`, pairing/splash screens under `apps/web/src/app/player/` + `KioskSplash.tsx`) are WEB code — if translating those, mind the Taurus/Chromium-83 rules (CLAUDE.md #10) and that sw-player.js edits must keep `check-sw-shell.cjs` green (26 assertions, incl. the HTTP-200 self-heal contract).
+
 ## AFTER THIS WAVE (not yet done — do not claim otherwise)
 
 - **Emergency surfaces** (components/emergency/**, settings/emergency): deliberately excluded from agents. Translate STRINGS ONLY in a careful solo pass (CLAUDE.md: emergency changes need review; never touch @AllowPanicBypass/audit logic). Hold-to-trigger instructions + typed-confirm words need special care — the typed confirmation word should probably stay English-insensitive; flag to Greg for decision.
