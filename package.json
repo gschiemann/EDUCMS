@@ -62,8 +62,9 @@
     "comment-overrides": "Patched floors for transitive advisories, all within-major (patch/minor) bumps. First block: dev-only toolchains (the @wdio/cli Android-E2E tree). Second block (2026-07-10 prod-audit remediation): PROD-graph transitives — ws (@nestjs/platform-ws + @supabase/realtime-js, memory-exhaustion DoS), multer 2.x (@nestjs/platform-express upload path, nested-field DoS), undici 7.x (cheerio/jsdom scraping, TLS-bypass + WS DoS), plus moderate cleanups (dompurify, postcss, qs, uuid, ip-address, brace-expansion, js-yaml, @opentelemetry/core). Selectors are version-scoped so other majors (e.g. multer 1.x direct dep, js-yaml 3.x, uuid 8.x) are untouched.",
     "overrides": {
       "undici@<6.24.0": "^6.24.0",
+      "sharp@<0.35.0": "^0.35.3",
       "basic-ftp@<5.3.1": "^5.3.1",
-      "fast-uri@<3.1.2": "^3.1.2",
+      "fast-uri@<3.1.4": "^3.1.4",
       "fast-xml-builder@<1.1.7": "^1.1.7",
       "fast-xml-parser@<5.7.0": "^5.7.0",
       "tmp@<0.2.6": "^0.2.6",
