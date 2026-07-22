@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
 import { BrandingProvider } from '@/lib/branding-context';
+import { I18nProvider } from '@/i18n/I18nProvider';
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -41,7 +42,12 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       {/* BrandingProvider must be INSIDE QueryClientProvider — it uses
           useTenantBranding() which is a useQuery hook. Outside, the
           hook throws "No QueryClient set." */}
-      <BrandingProvider>{children}</BrandingProvider>
+      {/* I18nProvider is client-side by design (static prerender stays
+          intact — see src/i18n/config.ts). It renders English on the
+          server/first paint and applies the saved language after mount. */}
+      <I18nProvider>
+        <BrandingProvider>{children}</BrandingProvider>
+      </I18nProvider>
     </QueryClientProvider>
   );
 }

@@ -4,6 +4,8 @@ import { useAppStore } from '@/lib/store';
 import { RoleGate } from '../RoleGate';
 import { fullName as userFullName, initials as userInitials } from '@/lib/user-display';
 import { ShieldAlert, LogOut, Menu, UserCog } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { LanguageMenuRows } from './LanguageMenu';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useTenantStatus } from '@/hooks/use-api';
@@ -16,6 +18,7 @@ import { ProfileEditModal } from './ProfileEditModal';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 
 export function TopToolbar() {
+  const t = useTranslations();
   const isEmergencyActive = useAppStore((state) => state.isEmergencyActive);
   const user = useAppStore((state) => state.user);
   // 2026-05-25 — resolve user.role through useTenantCopy so the
@@ -75,7 +78,7 @@ export function TopToolbar() {
             onMouseLeave={(e) => {
               e.currentTarget.style.color = '';
             }}
-            aria-label="Open navigation menu"
+            aria-label={t('toolbar.openNav')}
           >
             <Menu className="w-5 h-5" aria-hidden="true" />
           </button>
@@ -101,23 +104,23 @@ export function TopToolbar() {
               {isEmergencyActive ? (
                 <span className="inline-flex items-center gap-1.5 px-3 min-h-[44px] rounded-xl bg-red-600 text-white text-xs font-bold animate-pulse">
                   <ShieldAlert className="w-4 h-4" aria-hidden />
-                  <span className="hidden sm:inline">Emergency Active</span>
+                  <span className="hidden sm:inline">{t('emergency.active')}</span>
                 </span>
               ) : hasEmergencyContent ? (
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(true)}
-                  aria-label="Trigger emergency"
+                  aria-label={t('emergency.triggerAria')}
                   className="inline-flex items-center gap-1.5 px-3 min-h-[44px] rounded-xl bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-bold shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-red-400"
                 >
                   <ShieldAlert className="w-4 h-4" aria-hidden />
-                  <span className="hidden sm:inline">Emergency</span>
+                  <span className="hidden sm:inline">{t('emergency.trigger')}</span>
                 </button>
               ) : (
                 <Link
                   href={`/${schoolId}/settings/emergency`}
-                  aria-label="Set up emergency alerts"
-                  title="Set up emergency alerts so the trigger is safe to use"
+                  aria-label={t('emergency.setUpAria')}
+                  title={t('emergency.setUpTitle')}
                   className="inline-flex items-center justify-center w-11 h-11 rounded-xl text-rose-500 hover:bg-rose-50 transition-colors"
                 >
                   <ShieldAlert className="w-5 h-5" aria-hidden />
@@ -173,13 +176,14 @@ export function TopToolbar() {
                   onClick={() => { setShowUserMenu(false); setShowProfileModal(true); }}
                   className="w-full text-left px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2"
                 >
-                  <UserCog className="w-3.5 h-3.5 text-slate-400" /> Edit profile
+                  <UserCog className="w-3.5 h-3.5 text-slate-400" /> {t('toolbar.editProfile')}
                 </button>
+                <LanguageMenuRows onPicked={() => setShowUserMenu(false)} />
                 <button
                   onClick={() => { setShowUserMenu(false); logout(); window.location.replace('/login'); }}
                   className="w-full text-left px-4 py-2 text-xs font-medium text-red-600 hover:bg-red-50 flex items-center gap-2 border-t border-slate-100"
                 >
-                  <LogOut className="w-3.5 h-3.5" /> Sign Out
+                  <LogOut className="w-3.5 h-3.5" /> {t('toolbar.signOut')}
                 </button>
               </div>
             )}

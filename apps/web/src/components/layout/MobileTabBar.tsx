@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { useAppStore } from '@/lib/store';
 import { useNotifications } from '@/hooks/use-api';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
+import { useTranslations } from 'next-intl';
 
 /**
  * Bottom-tab navigation for mobile. Renders only when the viewport is
@@ -35,6 +36,7 @@ import { useTenantCopy } from '@/hooks/use-tenant-copy';
  * accident while navigating.
  */
 export function MobileTabBar() {
+  const t = useTranslations();
   const pathname = usePathname() || '';
   const params = useParams<{ schoolId?: string }>();
   const schoolId = params?.schoolId || '';
@@ -113,10 +115,10 @@ export function MobileTabBar() {
   // tenant) still falls back to `/`.
   const homeHref = base ? `${base}/dashboard` : '/';
   const primaryTabs: Tab[] = [
-    { key: 'home',      label: 'Home',      icon: Home,        href: homeHref, badge: unreadCount },
-    { key: 'assets',    label: 'Assets',    icon: FolderOpen,  href: `${base}/assets` },
-    { key: 'playlists', label: 'Playlists', icon: ListMusic,   href: `${base}/playlists` },
-    { key: 'screens',   label: 'Screens',  icon: MonitorPlay, href: `${base}/screens` },
+    { key: 'home',      label: t('nav.home'),      icon: Home,        href: homeHref, badge: unreadCount },
+    { key: 'assets',    label: t('nav.assets'),    icon: FolderOpen,  href: `${base}/assets` },
+    { key: 'playlists', label: t('nav.playlists'), icon: ListMusic,   href: `${base}/playlists` },
+    { key: 'screens',   label: t('nav.screens'),  icon: MonitorPlay, href: `${base}/screens` },
   ];
 
   // The "More" sheet — everything the desktop sidebar reaches that is
@@ -125,20 +127,20 @@ export function MobileTabBar() {
   type MoreItem = { key: string; label: string; icon: typeof Home; href: string };
   const moreItems: MoreItem[] = [
     ...(isSportsVertical
-      ? [{ key: 'sports', label: 'Sports', icon: Trophy, href: `${base}/sports` }]
+      ? [{ key: 'sports', label: t('nav.sports'), icon: Trophy, href: `${base}/sports` }]
       : []),
     ...(isMenuVertical
-      ? [{ key: 'menu', label: 'Menu', icon: UtensilsCrossed, href: `${base}/menu` }]
+      ? [{ key: 'menu', label: t('nav.menu'), icon: UtensilsCrossed, href: `${base}/menu` }]
       : []),
-    { key: 'templates', label: 'Templates', icon: LayoutTemplate, href: `${base}/templates` },
+    { key: 'templates', label: t('nav.templates'), icon: LayoutTemplate, href: `${base}/templates` },
     ...(isAdmin
       ? [
-          { key: 'reviews', label: 'Reviews', icon: ClipboardCheck, href: `${base}/reviews` },
-          { key: 'audit', label: 'Audit Log', icon: FileClock, href: `${base}/audit` },
+          { key: 'reviews', label: t('nav.reviews'), icon: ClipboardCheck, href: `${base}/reviews` },
+          { key: 'audit', label: t('nav.audit'), icon: FileClock, href: `${base}/audit` },
         ]
       : []),
-    { key: 'settings', label: 'Settings', icon: Settings, href: `${base}/settings` },
-    { key: 'account', label: 'Account', icon: User, href: `${base}/account` },
+    { key: 'settings', label: t('nav.settings'), icon: Settings, href: `${base}/settings` },
+    { key: 'account', label: t('nav.account'), icon: User, href: `${base}/account` },
   ];
 
   // Smart "active" detection — prefix match, with a couple of special
@@ -172,11 +174,11 @@ export function MobileTabBar() {
           className="md:hidden fixed top-0 right-0 bottom-0 left-0 z-[61]"
           role="dialog"
           aria-modal="true"
-          aria-label="More navigation"
+          aria-label={t('toolbar.moreNavigation')}
         >
           <button
             type="button"
-            aria-label="Close menu"
+            aria-label={t('toolbar.closeMenu')}
             onClick={() => setMoreOpen(false)}
             className="absolute top-0 right-0 bottom-0 left-0 bg-slate-900/40 animate-in fade-in duration-150"
           />
@@ -190,11 +192,11 @@ export function MobileTabBar() {
             className="absolute bottom-0 right-0 left-0 bg-white rounded-t-2xl shadow-[0_-8px_30px_rgba(0,0,0,0.14)] pb-[calc(64px+env(safe-area-inset-bottom))] animate-in slide-in-from-bottom duration-200"
           >
             <div className="flex items-center justify-between px-5 pt-4 pb-1.5">
-              <span className="text-sm font-bold text-slate-800">More</span>
+              <span className="text-sm font-bold text-slate-800">{t('nav.more')}</span>
               <button
                 type="button"
                 onClick={() => setMoreOpen(false)}
-                aria-label="Close"
+                aria-label={t('toolbar.close')}
                 className="p-1.5 -mr-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
               >
                 <X className="w-5 h-5" />
@@ -293,7 +295,7 @@ export function MobileTabBar() {
               className={cn('w-5 h-5 transition-transform', (moreActive || moreOpen) && 'scale-110')}
               aria-hidden
             />
-            <span className="text-[10px] font-bold tracking-wide leading-none">More</span>
+            <span className="text-[10px] font-bold tracking-wide leading-none">{t('nav.more')}</span>
             {moreActive && (
               <span
                 className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-indigo-500"

@@ -14,7 +14,10 @@ if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
   axeCore.default(require('react'), ReactDOM, 1000);
 }
 
-const inter = Inter({ subsets: ['latin'] });
+// `variable` exposed so the zh CJK font-stack rule in globals.css can keep
+// the optimized Inter for Latin glyphs while swapping in PingFang/YaHei/Noto
+// for Chinese (html[lang^="zh"] — set by I18nProvider on language switch).
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
 // Rounded, friendly display font — used by playful template themes (e.g. Sunny Meadow).
 // Exposed as a CSS variable so widget components can opt-in per theme.
@@ -110,7 +113,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.className} ${fredoka.variable} ${caveat.variable} min-h-screen bg-slate-50 text-slate-900 antialiased`} suppressHydrationWarning>
+      <body className={`${inter.className} ${inter.variable} ${fredoka.variable} ${caveat.variable} min-h-screen bg-slate-50 text-slate-900 antialiased`} suppressHydrationWarning>
         <Providers>
           <TooltipProvider>
             {/* BrandStyleInjector moved to DashboardLayout — tenant

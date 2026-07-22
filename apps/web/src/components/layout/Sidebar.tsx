@@ -15,6 +15,7 @@ import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { useTenantStatus } from '@/hooks/use-api';
 import type { TenantBranding } from '@/lib/branding';
 import { useLogoTone } from '@/components/branding/useLogoTone';
+import { useTranslations } from 'next-intl';
 
 // Must match the PER-TENANT key format BrandStyleInjector writes to.
 // Mobile-Claude's cross-tenant fix moved the injector to per-tenant
@@ -25,6 +26,7 @@ const BRAND_LS_PREFIX = 'edu-cms-branding-cache-v1:';
 const BRAND_LS_LEGACY = 'edu-cms-branding-cache-v1';
 
 export function Sidebar() {
+  const t = useTranslations();
   const pathname = usePathname() || '';
   const activeTenant = useAppStore((state) => state.activeTenant);
   const user = useAppStore((state) => state.user);
@@ -234,26 +236,26 @@ export function Sidebar() {
   // Hydration-safe: gated together with isSportsVertical's `mounted`.
   const sportsAllowed = isSportsVertical && user?.role !== 'RESTRICTED_VIEWER';
   const navItems = [
-    { name: 'Dashboard', href: hrefFor('/dashboard'), icon: LayoutDashboard },
+    { name: t('nav.dashboard'), href: hrefFor('/dashboard'), icon: LayoutDashboard },
     // Floor-plans is now a tab inside Screens (List | Floor Plans toggle),
     // not a standalone sidebar entry — operator pointed out the duplicate
     // "this is just another way to look at screens" was sidebar bloat.
-    { name: 'Screens', href: hrefFor('/screens'), icon: MonitorPlay },
-    { name: 'Assets', href: hrefFor('/assets'), icon: Upload },
-    { name: 'Templates', href: hrefFor('/templates'), icon: LayoutTemplate },
-    { name: 'Playlists', href: hrefFor('/playlists'), icon: Folders },
+    { name: t('nav.screens'), href: hrefFor('/screens'), icon: MonitorPlay },
+    { name: t('nav.assets'), href: hrefFor('/assets'), icon: Upload },
+    { name: t('nav.templates'), href: hrefFor('/templates'), icon: LayoutTemplate },
+    { name: t('nav.playlists'), href: hrefFor('/playlists'), icon: Folders },
     // Sports (live scoreboard + game-day control) — only for
     // SPORTS-vertical tenants. K-12 / GYM / RESTAURANT / etc. don't
     // see it. /sports is still reachable by typing the URL.
     ...(sportsAllowed
-      ? [{ name: 'Sports', href: hrefFor('/sports'), icon: Trophy }]
+      ? [{ name: t('nav.sports'), href: hrefFor('/sports'), icon: Trophy }]
       : []),
     // Menu & pricing (multi-location price book + 86) — RESTAURANT /
     // RETAIL only.
     ...(isMenuVertical
-      ? [{ name: 'Menu', href: hrefFor('/menu'), icon: UtensilsCrossed }]
+      ? [{ name: t('nav.menu'), href: hrefFor('/menu'), icon: UtensilsCrossed }]
       : []),
-    { name: 'Settings', href: hrefFor('/settings'), icon: Settings },
+    { name: t('nav.settings'), href: hrefFor('/settings'), icon: Settings },
   ];
 
   // Hydration safety: `user` is loaded from localStorage on the client
@@ -294,7 +296,7 @@ export function Sidebar() {
   // its own tab." Audit Log dropped from the standalone sidebar nav; it
   // now lives as a card on the Settings page (→ /audit route unchanged).
   const adminNavItems = [
-    { name: 'Reviews', href: hrefFor('/reviews'), icon: ClipboardCheck, badge: pendingCount > 0 ? pendingCount : null },
+    { name: t('nav.reviews'), href: hrefFor('/reviews'), icon: ClipboardCheck, badge: pendingCount > 0 ? pendingCount : null },
   ];
 
   return (
@@ -308,7 +310,7 @@ export function Sidebar() {
       {mobileSidebarOpen && (
         <button
           type="button"
-          aria-label="Close navigation menu"
+          aria-label={t('toolbar.closeMenu')}
           onClick={() => setMobileSidebarOpen(false)}
           // 2026-06-16 mobile-perf: dropped backdrop-blur-sm. This backdrop is
           // mobile-only (md:hidden) so the blur was pure phone-GPU cost while
@@ -498,7 +500,7 @@ export function Sidebar() {
             type="button"
             onClick={() => setMobileSidebarOpen(false)}
             className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
-            aria-label="Close navigation menu"
+            aria-label={t('toolbar.closeMenu')}
           >
             <X className="w-5 h-5" />
           </button>
@@ -629,7 +631,7 @@ export function Sidebar() {
               {isEmergencyActive ? (
                 <div className="inline-flex px-5 py-2 rounded-full bg-red-600 text-white text-xs font-bold items-center gap-1.5 shadow-md shadow-red-600/20 animate-pulse">
                   <ShieldAlert className="w-3.5 h-3.5" />
-                  Emergency Active
+                  {t('emergency.active')}
                 </div>
               ) : hasEmergencyContent ? (
                 <button
@@ -642,16 +644,16 @@ export function Sidebar() {
                   className="inline-flex px-5 py-2 min-h-[44px] rounded-full bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-bold items-center gap-1.5 shadow-md shadow-red-600/20 transition-colors focus:outline-none focus:ring-2 focus:ring-red-400"
                 >
                   <ShieldAlert className="w-3.5 h-3.5" />
-                  Emergency
+                  {t('emergency.trigger')}
                 </button>
               ) : (
                 <Link
                   href={`/${sidebarSchoolId}/settings/emergency`}
                   className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 hover:text-rose-600 transition-colors"
-                  title="No emergency content configured yet — set it up so the trigger button is safe to use"
+                  title={t('emergency.notConfiguredTitle')}
                 >
                   <ShieldAlert className="w-3.5 h-3.5" />
-                  Set up alerts
+                  {t('emergency.setUp')}
                 </Link>
               )}
             </div>
@@ -669,7 +671,7 @@ export function Sidebar() {
                   on the primary line, email subdued underneath when we have
                   a real name. Operator: "say Hi Greg not gschiemann." */}
               <p className="text-[11px] font-semibold text-slate-700 truncate">
-                {mounted ? (userFullName(user) || 'User') : '\u00A0'}
+                {mounted ? (userFullName(user) || t('toolbar.user')) : '\u00A0'}
               </p>
               {mounted && (user?.firstName || user?.lastName) && user?.email && (
                 <p className="text-[9px] text-slate-400 truncate">{user.email}</p>
@@ -680,14 +682,14 @@ export function Sidebar() {
                 // stays reachable from the chrome.
                 <Link
                   href="/super"
-                  title="Open the Owner Console (cross-tenant god mode)"
+                  title={t('toolbar.ownerConsoleTitle')}
                   className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-[1px] rounded bg-amber-500 text-amber-950 text-[8px] font-bold uppercase tracking-wider hover:bg-amber-400 transition-colors"
                 >
                   <Crown className="w-2.5 h-2.5" aria-hidden="true" />
-                  Super Admin
+                  {t('toolbar.superAdmin')}
                 </Link>
               ) : (
-                <p className="text-[9px] text-slate-400">{mounted ? (tenantCopyForBrand.roleLabel(user?.role || '') || 'Role') : '\u00A0'}</p>
+                <p className="text-[9px] text-slate-400">{mounted ? (tenantCopyForBrand.roleLabel(user?.role || '') || t('toolbar.role')) : '\u00A0'}</p>
               )}
             </div>
             <button
@@ -699,8 +701,8 @@ export function Sidebar() {
               // pulls the wider hit box back to the row's right edge so the
               // visual layout is unchanged on desktop.
               className="flex items-center justify-center min-w-[44px] min-h-[44px] -mr-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
-              title="Sign out"
-              aria-label="Sign out"
+              title={t('toolbar.signOut')}
+              aria-label={t('toolbar.signOut')}
             >
               <LogOut className="w-4 h-4" />
             </button>

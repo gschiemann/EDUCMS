@@ -563,3 +563,15 @@
     font-size: max(16px, 1em) !important;
   }
 }
+
+/* ── i18n: Chinese font stack (2026-07-22) ─────────────────────────────
+   When the operator switches to 中文 (I18nProvider sets html lang="zh-CN"),
+   prefer high-quality system CJK sans for Chinese glyphs. Without this,
+   Windows can fall back to serif SimSun via the Arial-adjusted next/font
+   fallback — instantly "broken-looking" UI. Latin glyphs still come from
+   the optimized Inter (--font-inter, set in layout.tsx). !important is
+   deliberate: it must beat next/font's own body class at equal specificity. */
+html[lang^="zh"] body {
+  font-family: var(--font-inter), 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Noto Sans SC', system-ui, sans-serif !important;
+}

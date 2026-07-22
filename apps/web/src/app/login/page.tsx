@@ -10,6 +10,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { API_URL, warnIfMisconfigured, isLikelyMisconfigured } from '@/lib/api-url';
 import { clog } from '@/lib/client-logger';
 import { getClientBrand } from '@/lib/brand';
+import { useTranslations } from 'next-intl';
+import { LanguageSwitcherInline } from '@/components/layout/LanguageMenu';
 
 const INPUT_CLS =
   'w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 ' +
@@ -24,6 +26,7 @@ export default function LoginPage() {
 }
 
 function LoginContent() {
+  const t = useTranslations('auth');
   // 2026-05-05 — operator: "the login screen still says k-12 when
   // entering your credentials" + "lets change the default to Venue
   // OS right?". Pulls brand identity from getClientBrand() so the
@@ -247,13 +250,11 @@ function LoginContent() {
             <polygon points="22,16 19,21.2 13,21.2 10,16 13,10.8 19,10.8" fill="#a5b4fc" />
           </svg>
           <h1 className="mt-4 text-xl font-semibold tracking-tight text-slate-900">
-            {mfaToken ? 'Two-factor verification' : `Sign in to ${brand.name}`}
+            {mfaToken ? t('twoFactorTitle') : t('signInTitle', { brand: brand.name })}
           </h1>
           <p className="mt-1 text-sm text-slate-500">
             {mfaToken
-              ? (useBackupCode
-                  ? 'Enter one of your saved backup codes to finish signing in.'
-                  : 'Enter the 6-digit code from your authenticator app to finish signing in.')
+              ? (useBackupCode ? t('mfaEnterBackup') : t('mfaEnterCode'))
               : brand.tagline}
           </p>
         </div>
@@ -270,7 +271,7 @@ function LoginContent() {
               </div>
               <div>
                 <label htmlFor="mfa-code" className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  {useBackupCode ? 'Backup code' : 'Authentication code'}
+                  {useBackupCode ? t('backupCode') : t('authCode')}
                 </label>
                 <input
                   id="mfa-code"
@@ -287,9 +288,7 @@ function LoginContent() {
                   aria-describedby="mfa-help"
                 />
                 <p id="mfa-help" className="mt-1.5 text-[11px] text-slate-400">
-                  {useBackupCode
-                    ? 'Each backup code works once.'
-                    : 'Open your authenticator app (Google Authenticator, 1Password, Authy) for the current code.'}
+                  {useBackupCode ? t('backupCodeOnce') : t('openAuthenticator')}
                 </p>
               </div>
 
@@ -306,9 +305,9 @@ function LoginContent() {
                 className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
               >
                 {mfaSubmitting ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Verifying…</>
+                  <><Loader2 className="w-4 h-4 animate-spin" /> {t('verifying')}</>
                 ) : (
-                  'Verify & sign in'
+                  t('verifySignIn')
                 )}
               </button>
 
@@ -318,14 +317,14 @@ function LoginContent() {
                   onClick={cancelMfa}
                   className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700"
                 >
-                  <ArrowLeft className="w-3.5 h-3.5" /> Back
+                  <ArrowLeft className="w-3.5 h-3.5" /> {t('back')}
                 </button>
                 <button
                   type="button"
                   onClick={() => { setUseBackupCode((v) => !v); setMfaCode(''); setError(''); }}
                   className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
                 >
-                  {useBackupCode ? 'Use authenticator code' : 'Use a backup code'}
+                  {useBackupCode ? t('useAuthCode') : t('useBackupCode')}
                 </button>
               </div>
             </form>
@@ -333,21 +332,21 @@ function LoginContent() {
           <>
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label htmlFor="login-email" className="block text-xs font-semibold text-slate-700 mb-1.5">Email</label>
+              <label htmlFor="login-email" className="block text-xs font-semibold text-slate-700 mb-1.5">{t('email')}</label>
               <input
                 id="login-email"
                 type="email"
                 required
                 autoFocus
                 autoComplete="email"
-                placeholder="you@company.com"
+                placeholder={t('emailPlaceholder')}
                 className={INPUT_CLS}
                 value={email}
                 onChange={e => setEmail(e.target.value)}
               />
             </div>
             <div>
-              <label htmlFor="login-password" className="block text-xs font-semibold text-slate-700 mb-1.5">Password</label>
+              <label htmlFor="login-password" className="block text-xs font-semibold text-slate-700 mb-1.5">{t('password')}</label>
               <input
                 id="login-password"
                 type="password"
@@ -368,13 +367,13 @@ function LoginContent() {
                   onChange={e => setRememberMe(e.target.checked)}
                   className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                 />
-                <span className="text-xs font-medium text-slate-600">Keep me signed in</span>
+                <span className="text-xs font-medium text-slate-600">{t('keepSignedIn')}</span>
               </label>
               <Link
                 href="/reset-password/request"
                 className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
               >
-                Forgot password?
+                {t('forgotPassword')}
               </Link>
             </div>
 
@@ -389,15 +388,17 @@ function LoginContent() {
                 aria-describedby="eula-text"
               />
               <span id="eula-text" className="text-[11px] leading-snug text-slate-600">
-                I have read and agree to the{' '}
-                <Link
-                  href="/terms/eula"
-                  target="_blank"
-                  className="text-indigo-600 hover:text-indigo-700 underline underline-offset-2 font-semibold"
-                >
-                  End User License Agreement
-                </Link>
-                , including the emergency-features disclaimer and limitation of liability.
+                {t.rich('eulaAgree', {
+                  link: (chunks) => (
+                    <Link
+                      href="/terms/eula"
+                      target="_blank"
+                      className="text-indigo-600 hover:text-indigo-700 underline underline-offset-2 font-semibold"
+                    >
+                      {chunks}
+                    </Link>
+                  ),
+                })}
               </span>
             </label>
 
@@ -405,7 +406,7 @@ function LoginContent() {
               <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg">
                 <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                 <p className="text-xs text-amber-800 font-medium">
-                  Your session expired. Please sign in again to continue.
+                  {t('sessionExpired')}
                 </p>
               </div>
             )}
@@ -428,9 +429,9 @@ function LoginContent() {
               className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
             >
               {loading ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> Signing in…</>
+                <><Loader2 className="w-4 h-4 animate-spin" /> {t('signingIn')}</>
               ) : (
-                'Sign in'
+                t('signIn')
               )}
             </button>
           </form>
@@ -443,12 +444,12 @@ function LoginContent() {
                 onClick={() => { setSsoOpen(true); setError(''); }}
                 className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 transition-colors"
               >
-                <KeyRound className="w-4 h-4" /> Sign in with SSO
+                <KeyRound className="w-4 h-4" /> {t('signInWithSSO')}
               </button>
             ) : (
               <form onSubmit={handleSsoStart} className="space-y-3">
                 <label htmlFor="sso-slug" className="block text-xs font-semibold text-slate-700">
-                  Organization slug
+                  {t('orgSlug')}
                 </label>
                 <input
                   id="sso-slug"
@@ -465,14 +466,14 @@ function LoginContent() {
                     disabled={ssoChecking}
                     className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2"
                   >
-                    {ssoChecking ? <><Loader2 className="w-4 h-4 animate-spin" /> Redirecting…</> : 'Continue with SSO'}
+                    {ssoChecking ? <><Loader2 className="w-4 h-4 animate-spin" /> {t('redirecting')}</> : t('continueSSO')}
                   </button>
                   <button
                     type="button"
                     onClick={() => setSsoOpen(false)}
                     className="px-4 py-2.5 text-slate-500 hover:text-slate-700 text-xs font-semibold"
                   >
-                    Cancel
+                    {t('cancel')}
                   </button>
                 </div>
               </form>
@@ -483,7 +484,7 @@ function LoginContent() {
         </div>
 
         <p className="text-center text-xs text-slate-500 mt-6">
-          New here? <Link href="/signup" className="text-indigo-600 hover:text-indigo-700 font-semibold">Create a workspace</Link>
+          {t('newHere')} <Link href="/signup" className="text-indigo-600 hover:text-indigo-700 font-semibold">{t('createWorkspace')}</Link>
         </p>
 
         {/* a11y (2026-05-26): bumped text-slate-400 (2.53:1 fail on #fafbfc bg)
@@ -492,12 +493,16 @@ function LoginContent() {
             darken-on-hover affordance. Same source renders on every
             unauthenticated redirect, so this fixes all 9 axe routes at once. */}
         <nav className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[11px] text-slate-600">
-          <Link href="/" className="hover:text-slate-800 transition">Home</Link>
-          <Link href="/pricing" className="hover:text-slate-800 transition">Pricing</Link>
-          <Link href="/help" className="hover:text-slate-800 transition">Help</Link>
-          <Link href="/privacy" className="hover:text-slate-800 transition">Privacy</Link>
-          <Link href="/terms" className="hover:text-slate-800 transition">Terms</Link>
+          <Link href="/" className="hover:text-slate-800 transition">{t('home')}</Link>
+          <Link href="/pricing" className="hover:text-slate-800 transition">{t('pricing')}</Link>
+          <Link href="/help" className="hover:text-slate-800 transition">{t('help')}</Link>
+          <Link href="/privacy" className="hover:text-slate-800 transition">{t('privacy')}</Link>
+          <Link href="/terms" className="hover:text-slate-800 transition">{t('terms')}</Link>
         </nav>
+
+        {/* Language switcher — pre-auth operators need a way in before they
+            can reach the avatar-menu switcher. */}
+        <LanguageSwitcherInline className="mt-4" />
       </div>
     </div>
   );
