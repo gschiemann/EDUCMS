@@ -13,26 +13,17 @@ waiting — zh coverage of the operator journey is the priority.**
 | `e0fcb128` | i18n foundation: next-intl client-side, catalogs en/es/zh, chrome (Sidebar/TopToolbar/MobileTabBar) + full login page translated, switcher in avatar menu + /login. Verified in browser all 3 languages |
 | `825d6a6f` | Scraper hardening (bg-color demotion, font sanitize, persisted shades) — reviewed + merged from Greg's spawned task |
 | `88b6c0ca` | Device-language auto-detect (explicit pick always wins + persists; auto-detect never writes cookie). 17-case matrix verified |
-| `e53b815b` | **CURRENT HEAD.** a11y fix: login switcher slate-400→slate-600 (axe redded all 9 unauth routes on e0fcb128 — 11/12 was that one red). **FIRST TASK for the wrap-up session: confirm 12/12 green on e53b815b** (ci-watch.sh, edit sha= line) |
+| `e53b815b` | a11y fix: login switcher slate-400→slate-600 (axe redded all 9 unauth routes on e0fcb128). **Verified 12/12 green on `ba59d55a`** (the e53b815b runs were cancelled by the doc commits right after it — concurrency group; ba59d55a is the same tree + docs) |
+| `98e51bfd` | **settings + account pages es/zh** (198 keys). The settings agent (`d797a729`, cherry-picked just before) had extracted 14 files to t() but died before writing ANY catalog keys — this authored them all. Verified: tsc/build clean, lockstep, live zh sweep of 6 routes, 0 unresolved keys |
+| `12f415a1` | **CURRENT HEAD (Opus session).** settings INDEX page es/zh (26 strings — the surface every operator lands on; the agent never reached it). Emergency block on that page deliberately deferred to the reviewed pass. tsc/build/gates green |
 
 Architecture doc: memory `project_i18n_es_zh_2026_07_22.md` + `apps/web/src/i18n/config.ts` header comment. **NEVER add a server-side next-intl request config — it kills static prerender and reds check-help-prerender.cjs.**
 
-## IN FLIGHT: 4 background agents translating page content
+## AGENT WAVE OUTCOME (settled — 2026-07-22 Opus session)
 
-Dispatched with `isolation: "worktree"`, all forked from `825d6a6f`. Worktrees under `.claude/worktrees/agent-*`:
+Fable hit its wall and stopped all 4 agents. Only the **settings agent** (`a2ad095fe0b052c5c`) had produced work; the other three (`dashboard+screens`, `assets+playlists`, `templates+signup+onboarding`) died in their read/plan phase with ZERO files written — their worktrees auto-cleaned (nothing to salvage; transcripts under `tasks/<id>.output` confirm no `"file_path"` writes). **All 4 worktrees are gone; `git worktree list` = main tree only.**
 
-| Worktree suffix | Scope | Namespaces |
-|---|---|---|
-| `aa2c114770ffb1a99` | app/[schoolId]/dashboard+screens + components/dashboard+screens | `dashboard`, `screens` |
-| `a764fd99b927f2ef8` | app/[schoolId]/assets+playlists + components/assets+playlists | `assetsPage`, `playlists` |
-| `a2ad095fe0b052c5c` | app/[schoolId]/settings+account + components/settings (NO emergency) | `settings`, `account` |
-| `a1b274f7e2ef4ca16` | app/[schoolId]/templates (no builder) + components/templates + signup + onboarding | `templatesPage`, `signup`, `onboarding` |
-
-Each was told: strings→t() only (zero logic changes), keys in ALL 3 catalogs in lockstep, author real es/zh translations, never touch i18n/config.ts / I18nProvider / providers / layout / globals.css / emergency / ui / layout components / lockfile, verify tsc+build+lockstep in worktree, commit to branch.
-
-**Check status:** `for w in .claude/worktrees/agent-*; do git -C "$w" log master..HEAD --oneline | head -2; git -C "$w" status --short | head -3; done`
-
-**If an agent died on the usage wall** (memory `feedback_usage_wall_pacing.md`): its committed work is on its branch; uncommitted work is dirty in the worktree (commit it yourself from inside the worktree). Full transcripts: `/private/tmp/claude-501/-Users-gschiemann-Desktop-EDU-CMS/bb3735e7-af27-4fa5-8f9a-269159786661/tasks/<id>.output` (grep `"file_path"` to list its writes). If a scope produced nothing, redo it by hand — the pattern is mechanical (see any merged agent's diff).
+The settings agent's extraction was cherry-picked (`d797a729`) and its missing translations authored by hand (`98e51bfd`); its worktree removed. So the namespaces `dashboard`, `screens`, `assetsPage`, `playlists`, `templatesPage`, `signup`, `onboarding` were **never created** — those page surfaces are still English and remain TODO (redo by hand, mechanical — see any translated file + the `settings`/`account` catalog blocks as the pattern). `settings.*` and `account.*` ARE done (minus the emergency block on the settings index).
 
 ## MERGE CYCLE (lead owns it — per CLAUDE.md Agent Dispatch Protocol)
 
@@ -56,9 +47,11 @@ Secondary (kiosk hardware, NOT the operator mobile app — lower priority):
 
 The web player surfaces a kiosk shows (offline self-heal page in `apps/web/public/sw-player.js`, pairing/splash screens under `apps/web/src/app/player/` + `KioskSplash.tsx`) are WEB code — if translating those, mind the Taurus/Chromium-83 rules (CLAUDE.md #10) and that sw-player.js edits must keep `check-sw-shell.cjs` green (26 assertions, incl. the HTTP-200 self-heal contract).
 
-## AFTER THIS WAVE (not yet done — do not claim otherwise)
+## STILL ENGLISH — TODO (not yet done — do not claim otherwise)
 
-- **Emergency surfaces** (components/emergency/**, settings/emergency): deliberately excluded from agents. Translate STRINGS ONLY in a careful solo pass (CLAUDE.md: emergency changes need review; never touch @AllowPanicBypass/audit logic). Hold-to-trigger instructions + typed-confirm words need special care — the typed confirmation word should probably stay English-insensitive; flag to Greg for decision.
+- **Page surfaces the dead agents never touched:** dashboard, screens, assets, playlists, templates index, signup, onboarding (and their components/*). Mechanical redo — same pattern as the shipped `settings`/`account` work: `const t = useTranslations()`, extract strings to a new namespace, author en/es/zh in lockstep. Priority for the Chinese customer's journey: **dashboard → screens → assets → playlists**.
+- **Settings components still English** (separate files, not in the agent's set): `BrandingSettingsCard`, `DistrictSchoolsCard`, `MfaCard`, plus the deeper settings pages `billing`, `developer`, `monetize`, `pos`, `sso`, `streaming`, `test-integrations`.
+- **Emergency surfaces** (components/emergency/**, settings/emergency, the emergency block INSIDE settings/page.tsx — Critical/life-safety panic labels + mode toggles, left intact this session): deliberately excluded. Translate STRINGS ONLY in a careful solo pass (CLAUDE.md: emergency changes need review; never touch @AllowPanicBypass/audit logic). Hold-to-trigger instructions + typed-confirm words need special care — the typed confirmation word should probably stay English-insensitive; flag to Greg for decision.
 - `useTenantCopy` role labels + vertical copy ("Admin", "Add a School/Store/Gym") — its own pass.
 - Help center: 24 articles × es/zh — content translation project.
 - API-originated strings (login errors, toasts carrying error.message) — needs API i18n or client-side error-code mapping.
