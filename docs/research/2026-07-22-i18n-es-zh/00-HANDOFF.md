@@ -47,9 +47,20 @@ Secondary (kiosk hardware, NOT the operator mobile app — lower priority):
 
 The web player surfaces a kiosk shows (offline self-heal page in `apps/web/public/sw-player.js`, pairing/splash screens under `apps/web/src/app/player/` + `KioskSplash.tsx`) are WEB code — if translating those, mind the Taurus/Chromium-83 rules (CLAUDE.md #10) and that sw-player.js edits must keep `check-sw-shell.cjs` green (26 assertions, incl. the HTTP-200 self-heal contract).
 
+## CORE-JOURNEY PAGES — SHIPPED (2026-07-22 Opus session)
+
+The Chinese customer's whole operator journey is now translated + live-verified in zh:
+- **Dashboard** (desktop + mobile) — `82e0ab1c`, namespace `dashboard` (83 keys)
+- **Screens** (list + full pair-screen modal, 6 components) — `f0612de2`, namespace `screens` (70 keys)
+- **Assets / media library** — `393bd8ba`, namespace `assetsLib` (63 keys)
+- **Playlists list surface** — `be58685e`, namespace `playlistsPage` (37 keys)
+
+All: hook wired into every component, tsc/build/gates green, lockstep + ICU parity, live zh browser proof (desktop + mobile where relevant), zero unresolved keys. Deferred within these: the dashboard mobile panic-type taxonomy (emergency pass); the playlists inline slide/schedule editor + Publish-to-Screens/Submit-for-Review modal (~57 strings) + the 2,783-line PlaylistCreateWizard.
+
 ## STILL ENGLISH — TODO (not yet done — do not claim otherwise)
 
-- **Page surfaces the dead agents never touched:** dashboard, screens, assets, playlists, templates index, signup, onboarding (and their components/*). Mechanical redo — same pattern as the shipped `settings`/`account` work: `const t = useTranslations()`, extract strings to a new namespace, author en/es/zh in lockstep. Priority for the Chinese customer's journey: **dashboard → screens → assets → playlists**.
+- **Playlists deep modals** (same page, follow-up): inline slide-settings + per-slide scheduling editor, schedule builder, Publish-to-Screens / Submit-for-Review modal (~57 strings), and `PlaylistCreateWizard.tsx` (2,783 lines — the biggest single remaining file).
+- **Other page surfaces the dead agents never touched:** templates index, signup, onboarding (and their components/*), plus reviews, audit, analytics, announcements, floor-plans, sports, menu. Mechanical — same proven pattern (`const t = useTranslations()`, new namespace, en/es/zh in lockstep, wire the hook into EVERY component in a multi-component file — tsc lists which ones need it).
 - **Settings components still English** (separate files, not in the agent's set): `BrandingSettingsCard`, `DistrictSchoolsCard`, `MfaCard`, plus the deeper settings pages `billing`, `developer`, `monetize`, `pos`, `sso`, `streaming`, `test-integrations`.
 - **Emergency surfaces** (components/emergency/**, settings/emergency, the emergency block INSIDE settings/page.tsx — Critical/life-safety panic labels + mode toggles, left intact this session): deliberately excluded. Translate STRINGS ONLY in a careful solo pass (CLAUDE.md: emergency changes need review; never touch @AllowPanicBypass/audit logic). Hold-to-trigger instructions + typed-confirm words need special care — the typed confirmation word should probably stay English-insensitive; flag to Greg for decision.
 - `useTenantCopy` role labels + vertical copy ("Admin", "Add a School/Store/Gym") — its own pass.
