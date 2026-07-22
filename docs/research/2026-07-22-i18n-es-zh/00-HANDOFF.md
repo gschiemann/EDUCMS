@@ -12,7 +12,8 @@ waiting — zh coverage of the operator journey is the priority.**
 | `c898f29e` | sharp ≥0.35.3 + fast-uri ≥3.1.4 advisory pins (12/12 green, prod-deployed) |
 | `e0fcb128` | i18n foundation: next-intl client-side, catalogs en/es/zh, chrome (Sidebar/TopToolbar/MobileTabBar) + full login page translated, switcher in avatar menu + /login. Verified in browser all 3 languages |
 | `825d6a6f` | Scraper hardening (bg-color demotion, font sanitize, persisted shades) — reviewed + merged from Greg's spawned task |
-| `88b6c0ca` | Device-language auto-detect (explicit pick always wins + persists; auto-detect never writes cookie). 17-case matrix verified. **CI watch not completed for this sha — verify 12/12 before claiming green** |
+| `88b6c0ca` | Device-language auto-detect (explicit pick always wins + persists; auto-detect never writes cookie). 17-case matrix verified |
+| `e53b815b` | **CURRENT HEAD.** a11y fix: login switcher slate-400→slate-600 (axe redded all 9 unauth routes on e0fcb128 — 11/12 was that one red). **FIRST TASK for the wrap-up session: confirm 12/12 green on e53b815b** (ci-watch.sh, edit sha= line) |
 
 Architecture doc: memory `project_i18n_es_zh_2026_07_22.md` + `apps/web/src/i18n/config.ts` header comment. **NEVER add a server-side next-intl request config — it kills static prerender and reds check-help-prerender.cjs.**
 
