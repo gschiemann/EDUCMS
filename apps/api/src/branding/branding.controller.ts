@@ -36,10 +36,10 @@ import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole, Prisma } from '@cms/database';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
 
-import { BrandingScraperService, BrandingPreview } from './branding-scraper.service';
+import { BrandingScraperService, BrandingPreview, sanitizeFontFamilyName } from './branding-scraper.service';
 import { BrandingRateLimiter } from './branding-rate-limiter';
 import { safeFetch, SsrfError } from './safe-fetch';
-import { derivePalette, parseColor, ensureContrast, contrastRatio, bestTextOn, ContrastReport } from './color-utils';
+import { derivePalette, parseColor, ensureContrast, contrastRatio, bestTextOn, deriveReadableShades, readableShadeAdjustments, ContrastReport } from './color-utils';
 import { sanitizeLogoSvg } from './sanitize-svg';
 import { selectVectorLogo } from './select-vector-logo';
 
@@ -315,6 +315,13 @@ export class BrandingController {
     const finalAccent = body.palette?.accent;
     const palette = enforcePaletteContrast({ ...derivePalette(finalPrimary, finalAccent), ...(body.palette || {}) });
 
+    // VisionCore hardening (2026-07-21): a mangled family name (")",
+    // "var(--hover-font") must never be persisted. The adopt body is a
+    // client round-trip of the preview, so re-sanitize at the persist
+    // boundary — not only at scrape time.
+    const fontHeading = sanitizeFontFamilyName(body.fonts?.heading?.googleFont ?? body.fonts?.heading?.family ?? null);
+    const fontBody = sanitizeFontFamilyName(body.fonts?.body?.googleFont ?? body.fonts?.body?.family ?? null);
+
     const record = await this.prisma.client.tenantBranding.upsert({
       where: { tenantId },
       create: {
@@ -326,8 +333,8 @@ export class BrandingController {
         faviconUrl,
         ogImageUrl,
         palette: palette as any,
-        fontHeading: body.fonts?.heading?.googleFont ?? body.fonts?.heading?.family ?? null,
-        fontBody: body.fonts?.body?.googleFont ?? body.fonts?.body?.family ?? null,
+        fontHeading,
+        fontBody,
         fontHeadingUrl: body.fontsCssUrl ?? null,
         fontBodyUrl: body.fontsCssUrl ?? null,
         heroImages: (body.heroImages ?? []) as any,
@@ -344,8 +351,8 @@ export class BrandingController {
         faviconUrl: faviconUrl ?? undefined,
         ogImageUrl: ogImageUrl ?? undefined,
         palette: palette as any,
-        fontHeading: body.fonts?.heading?.googleFont ?? body.fonts?.heading?.family ?? null,
-        fontBody: body.fonts?.body?.googleFont ?? body.fonts?.body?.family ?? null,
+        fontHeading,
+        fontBody,
         fontHeadingUrl: body.fontsCssUrl ?? null,
         fontBodyUrl: body.fontsCssUrl ?? null,
         heroImages: (body.heroImages ?? []) as any,
@@ -439,8 +446,10 @@ export class BrandingController {
       logoUrl: assets.logoUrl,
       logoSvgInline: assets.logoSvgInline,
       faviconUrl: assets.faviconUrl,
-      fontHeading: body.fonts?.heading?.googleFont ?? body.fonts?.heading?.family ?? null,
-      fontBody: body.fonts?.body?.googleFont ?? body.fonts?.body?.family ?? null,
+      // VisionCore hardening: never persist a mangled family name (")",
+      // "var(--hover-font") — the body is a client round-trip.
+      fontHeading: sanitizeFontFamilyName(body.fonts?.heading?.googleFont ?? body.fonts?.heading?.family ?? null),
+      fontBody: sanitizeFontFamilyName(body.fonts?.body?.googleFont ?? body.fonts?.body?.family ?? null),
       fontHeadingUrl: body.fontsCssUrl ?? null,
       fontBodyUrl: body.fontsCssUrl ?? null,
       displayName: body.displayName ?? null,
@@ -1212,10 +1221,29 @@ function enforcePaletteContrast(palette: any, target: number = 4.5): any {
     });
   }
 
+  // VisionCore hardening (2026-07-21): (re)derive the contrast-guaranteed
+  // workhorse shades from the FINAL adjusted primary/accent. These fields
+  // are machine-owned derivatives — the client spread may carry stale or
+  // hand-mangled values, and the web painter PREFERS persisted values, so
+  // what hits the DB must always be consistent with the persisted base.
+  for (const key of ['primary', 'accent'] as const) {
+    const base = typeof out[key] === 'string' ? out[key] : null;
+    if (!base) continue;
+    const shades = deriveReadableShades(base);
+    out[`${key}Mid`] = shades.mid;
+    out[`${key}Strong`] = shades.strong;
+    out[`${key}StrongHover`] = shades.strongHover;
+    out[`${key}Stronger`] = shades.stronger;
+    adjustments.push(...readableShadeAdjustments(key, base, shades));
+  }
+
   const report: ContrastReport = {
     target,
     adjustments,
-    anyAdjusted: adjustments.some((a) => a.adjusted),
+    // anyAdjusted = "did we move a color the operator picked?" — derived
+    // shade rows always differ from a light base by design, so they are
+    // excluded (same semantics as derivePalette's report).
+    anyAdjusted: adjustments.some((a) => (a.key === 'primary' || a.key === 'accent') && a.adjusted),
     anyCapped: adjustments.some((a) => a.capped),
   };
   out.contrastReport = report;

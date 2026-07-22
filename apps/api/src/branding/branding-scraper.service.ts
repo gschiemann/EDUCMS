@@ -17,7 +17,7 @@ import postcss from 'postcss';
 import valueParser from 'postcss-value-parser';
 
 import { safeFetch, SsrfError } from './safe-fetch';
-import { parseColor, derivePalette, contrastRatio, wcagGrade, DerivedPalette, ContrastReport } from './color-utils';
+import { parseColor, derivePalette, contrastRatio, wcagGrade, relativeLuminance, DerivedPalette, ContrastReport } from './color-utils';
 import { matchGoogleFont, buildGoogleFontsUrl } from './google-fonts';
 
 // ── Types (also exported to the web via api-types later) ──────────
@@ -198,6 +198,65 @@ function isNoiseColor(hex: string): boolean {
   const max = Math.max(r, g, b), min = Math.min(r, g, b);
   if (max - min < 12) return true;                 // near-grey
   return false;
+}
+
+// ── Background-ish color demotion (2026-07-21 VisionCore incident) ────────
+//
+// The scraper stored a Wix site's page BACKGROUND (#fcf9e2 cream) as
+// palette.primary: background declarations carry the highest prop weight
+// (1.5) and a page-wide canvas color appears in dozens of rules, so the
+// cream out-scored the real saturated brand color on occurrences alone. A
+// near-white is almost never the brand primary — it's the canvas the brand
+// sits ON.
+//
+// Demote, never hard-reject (some brands are legitimately pale, and when no
+// saturated candidate exists the pale one must still win): any color whose
+// WCAG relative luminance exceeds 0.8 has its per-hit weight scaled down —
+// hardest when the hit came from a background-ish declaration
+// (background*/bgcolor), mildly elsewhere. The ramp reaches its floor by
+// luminance ≈0.92, so true near-whites (cream 0.94, ivory, eggshell) are
+// decisively out-scored by ANY saturated mid-lightness candidate.
+
+const BACKGROUNDISH_LUM_THRESHOLD = 0.8;
+
+export function backgroundishColorDemotion(hex: string, isBackgroundContext: boolean): number {
+  const lum = relativeLuminance(hex);
+  if (lum <= BACKGROUNDISH_LUM_THRESHOLD) return 1;
+  const t = Math.min(1, (lum - BACKGROUNDISH_LUM_THRESHOLD) / 0.12);
+  const floor = isBackgroundContext ? 0.1 : 0.4;
+  return 1 - t * (1 - floor);
+}
+
+// ── Font-family sanitization (2026-07-21 VisionCore incident) ─────────────
+//
+// The same scrape persisted font_heading = ")" and rankedFonts entries like
+// "))" and "var(--hover-font": the `font:` shorthand extractor + the naive
+// comma-split mangle CSS var() indirections into paren fragments. The web
+// injector's FONT_RE keeps them out of the style tag (inert), but they must
+// never be STORED as a brand font in the first place. A real font family
+// name is short and alphanumeric-ish; anything else returns null.
+
+const FONT_FAMILY_NAME_RE = /^[a-z0-9][a-z0-9 '&.-]{1,39}$/i;
+
+/**
+ * Reduce a raw font-family value to a single clean family name, or null.
+ * Takes the FIRST family in a comma list, strips quotes, collapses
+ * whitespace; rejects var() indirections, paren fragments, and anything
+ * outside FONT_FAMILY_NAME_RE. Applied at capture time (fontHeading /
+ * fontBody / rankedFonts all flow from there) AND at the adopt persist
+ * boundary in branding.controller.ts (client round-trips are untrusted).
+ */
+export function sanitizeFontFamilyName(raw: string | null | undefined): string | null {
+  if (!raw || typeof raw !== 'string') return null;
+  const first = raw
+    .split(',')[0]
+    .replace(/^\s*['"]+|['"]+\s*$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!first) return null;
+  if (/var\(/i.test(first) || first.includes('(') || first.includes(')')) return null;
+  if (!FONT_FAMILY_NAME_RE.test(first)) return null;
+  return first;
 }
 
 /**
@@ -847,7 +906,9 @@ export class BrandingScraperService {
         if (isNoiseColor(c.hex)) continue;
         const prev = colorScores.get(c.hex) ?? { hex: c.hex, score: 0, weight: 1, occurrences: 0 };
         prev.occurrences += 1;
-        prev.score += 0.5;
+        // Same near-white demotion as the CSS path (bgcolor = background
+        // context) — VisionCore hardening.
+        prev.score += 0.5 * backgroundishColorDemotion(c.hex, a === 'bgcolor');
         colorScores.set(c.hex, prev);
       }
     });
@@ -1039,7 +1100,9 @@ export class BrandingScraperService {
         // ── COLORS ──────────────────────────────────────────────
         if (/color|background|border|fill|stroke|shadow/i.test(prop)) {
           const weight = this.propColorWeight(prop) * selectorWeight;
-          this.captureColors(val, weight, colors, selector);
+          // background*/bgcolor declarations are "canvas" evidence — a
+          // near-white here gets the hard demotion (VisionCore).
+          this.captureColors(val, weight, colors, selector, false, /^background/.test(prop));
         }
 
         // ── FONTS ───────────────────────────────────────────────
@@ -1081,22 +1144,30 @@ export class BrandingScraperService {
     map: Map<string, RankedColor>,
     sampleSelector: string,
     isCustomProp = false,
+    isBackgroundContext = false,
   ): void {
     // Walk every word of the value; PostCSS value parser picks up fns + literals
     try {
       const parsed = valueParser(val);
+      // VisionCore hardening: near-white hits are demoted per-color (hard in
+      // background declarations, mildly elsewhere) so a page canvas can't
+      // out-score the saturated brand color. See backgroundishColorDemotion.
+      const add = (hex: string) => {
+        const w = weight * backgroundishColorDemotion(hex, isBackgroundContext);
+        this.bumpColor(map, hex, w, sampleSelector, isCustomProp);
+      };
       const visit = (nodes: any[]) => {
         for (const n of nodes) {
           if (n.type === 'word' && /^#[0-9a-fA-F]{3,8}$/.test(n.value)) {
             const c = parseColor(n.value);
             if (c && c.alpha >= 0.5 && !isNoiseColor(c.hex)) {
-              this.bumpColor(map, c.hex, weight, sampleSelector, isCustomProp);
+              add(c.hex);
             }
           } else if (n.type === 'function' && /^(rgb|rgba|hsl|hsla)$/i.test(n.value)) {
             const text = valueParser.stringify(n);
             const c = parseColor(text);
             if (c && c.alpha >= 0.5 && !isNoiseColor(c.hex)) {
-              this.bumpColor(map, c.hex, weight, sampleSelector, isCustomProp);
+              add(c.hex);
             }
           }
           if (n.nodes) visit(n.nodes);
@@ -1138,8 +1209,10 @@ export class BrandingScraperService {
     map: Map<string, RankedFont>,
   ): void {
     if (!stack) return;
-    const families = stack.split(',').map(s => s.trim().replace(/^['"]|['"]$/g, ''));
-    const first = families[0];
+    // VisionCore hardening (2026-07-21): mangled `font:` shorthand
+    // extractions and var() indirections must never become a candidate —
+    // ")", "))", "var(--hover-font" all reached a real tenant_branding row.
+    const first = sanitizeFontFamilyName(stack);
     if (!first) return;
     // Skip generic system stacks and CSS keywords
     if (/^(inherit|initial|unset|revert|sans-serif|serif|monospace|cursive|fantasy|system-ui|-apple-system|BlinkMacSystemFont)$/i.test(first)) return;

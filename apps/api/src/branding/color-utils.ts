@@ -274,6 +274,77 @@ export function ensureBgInkContrast(
   };
 }
 
+// ── Readable-on-white workhorse shades (2026-07-21 VisionCore incident) ──
+//
+// The scraper stored a tenant's near-white page BACKGROUND (#fcf9e2 cream)
+// as palette.primary. The old pipeline honestly validated ink-ON-primary
+// (dark text on cream: 17.8:1 ✓) — but the web chrome ALSO consumes primary
+// AS text/icon color and as solid-button bg under white text, and cream in
+// those roles is invisible (~1.06:1). The web painter now derives
+// contrast-guaranteed workhorse shades at paint time
+// (apps/web/src/lib/brand-contrast.ts, commit 41d4c944) and PREFERS
+// persisted values (palette.primaryStrong etc.) when the API provides them.
+// This block is the API side of that contract: the same darken-along-hue
+// math and the same targets, persisted at derive/adopt time.
+//
+// The tenant's chosen color itself is never altered — these are ADDITIVE
+// derivative fields. A brand that already passes a target comes back
+// UNCHANGED, so a healthy dark brand gets strong shades identical to its
+// primary.
+
+/**
+ * Contrast targets (vs white) for the persisted workhorse shades. MUST stay
+ * in lockstep with apps/web/src/lib/branding.ts cssVarsFromPalette, which
+ * derives the same values at paint time when these fields are absent.
+ */
+export const READABLE_SHADE_TARGETS = {
+  mid: 2.5,          // decorative icons / subtle hovers
+  strong: 4.5,       // WCAG AA — text-on-white + solid button bg under white text
+  strongHover: 5.2,  // hover state, visibly darker than strong
+  stronger: 7,       // WCAG AAA — small text, high-emphasis chrome
+} as const;
+
+/**
+ * Darken `hex` along its own hue until it contrasts ≥ `target` vs white.
+ * Mirror of apps/web/src/lib/brand-contrast.ts ensureReadableOnWhite:
+ * already-passing colors return UNCHANGED, and the binary search keeps the
+ * closest passing lightness, so a cream becomes a deep gold — never #000.
+ * Non-color input passes through untouched.
+ */
+export function ensureReadableOnWhite(hexIn: string, target: number): string {
+  const parsed = parseColor(hexIn);
+  if (!parsed) return hexIn;
+  const WHITE = '#ffffff';
+  if (contrastRatio(parsed.hex, WHITE) >= target) return hexIn;
+  const { h, s, l } = hexToHsl(parsed.hex);
+  let lo = 0;
+  let hi = l;
+  let best = hslToHex({ h, s, l: 0 });
+  for (let i = 0; i < 14; i++) {
+    const mid = (lo + hi) / 2;
+    const cand = hslToHex({ h, s, l: mid });
+    if (contrastRatio(cand, WHITE) >= target) { best = cand; lo = mid; } else { hi = mid; }
+  }
+  return best;
+}
+
+export interface ReadableShades {
+  mid: string;
+  strong: string;
+  strongHover: string;
+  stronger: string;
+}
+
+/** All four workhorse shades of `base` (see READABLE_SHADE_TARGETS). */
+export function deriveReadableShades(base: string): ReadableShades {
+  return {
+    mid: ensureReadableOnWhite(base, READABLE_SHADE_TARGETS.mid),
+    strong: ensureReadableOnWhite(base, READABLE_SHADE_TARGETS.strong),
+    strongHover: ensureReadableOnWhite(base, READABLE_SHADE_TARGETS.strongHover),
+    stronger: ensureReadableOnWhite(base, READABLE_SHADE_TARGETS.stronger),
+  };
+}
+
 // ── Palette derivation ────────────────────────────────────────────
 
 export interface ContrastAdjustment {
@@ -312,6 +383,45 @@ export interface ContrastReport {
   anyCapped: boolean;
 }
 
+/**
+ * ContrastReport entries for the derived workhorse shades — provenance the
+ * wizard can surface ("your cream primary serves a deep gold for button/text
+ * roles"). On these rows `adjusted` means "the shade differs from the base
+ * color", which is EXPECTED for light brands — it does NOT mean "we changed
+ * the color the operator picked", so `anyAdjusted` deliberately ignores
+ * these rows (see derivePalette / enforcePaletteContrast).
+ */
+export function readableShadeAdjustments(
+  prefix: 'primary' | 'accent',
+  base: string,
+  shades: ReadableShades,
+): ContrastAdjustment[] {
+  const WHITE = '#ffffff';
+  const fromRatio = contrastRatio(base, WHITE);
+  const rows: Array<[string, keyof typeof READABLE_SHADE_TARGETS]> = [
+    [`${prefix}Mid`, 'mid'],
+    [`${prefix}Strong`, 'strong'],
+    [`${prefix}StrongHover`, 'strongHover'],
+    [`${prefix}Stronger`, 'stronger'],
+  ];
+  return rows.map(([key, shadeKey]) => {
+    const target = READABLE_SHADE_TARGETS[shadeKey];
+    const to = shades[shadeKey];
+    const toRatio = contrastRatio(to, WHITE);
+    return {
+      key,
+      from: base,
+      to,
+      ink: WHITE,
+      fromRatio: +fromRatio.toFixed(2),
+      toRatio: +toRatio.toFixed(2),
+      target,
+      adjusted: to.toLowerCase() !== base.toLowerCase(),
+      capped: toRatio < target,
+    };
+  });
+}
+
 export interface DerivedPalette {
   primary: string;
   /** Original primary BEFORE WCAG nudge — preserves the operator's scraped color for "undo". */
@@ -322,6 +432,18 @@ export interface DerivedPalette {
   primaryActive: string;
   primarySoft: string;
   primaryInk: string;        // best contrast text color on primary
+  /**
+   * Contrast-guaranteed workhorse shades of `primary` (VisionCore contract,
+   * 2026-07-21): same hue, darkened until they pass their target vs WHITE —
+   * mid ≥2.5, strong ≥4.5 (AA), strongHover ≥5.2, stronger ≥7 (AAA). The web
+   * painter (apps/web/src/lib/branding.ts cssVarsFromPalette) prefers these
+   * persisted values over its own paint-time derivation. A dark brand that
+   * already passes gets its primary back unchanged.
+   */
+  primaryMid: string;
+  primaryStrong: string;
+  primaryStrongHover: string;
+  primaryStronger: string;
   accent: string;
   /** Original accent BEFORE WCAG nudge. */
   accentRaw: string;
@@ -330,6 +452,11 @@ export interface DerivedPalette {
   accentHover: string;
   accentSoft: string;
   accentInk: string;
+  /** Same VisionCore contract as the primary* shades, for `accent`. */
+  accentMid: string;
+  accentStrong: string;
+  accentStrongHover: string;
+  accentStronger: string;
   ink: string;               // primary text
   inkMuted: string;
   surface: string;
@@ -406,6 +533,13 @@ export function derivePalette(
     '900': hslToHex({ h: pHsl.h, s: clamp(pHsl.s, 30, 85), l: clamp(pHsl.l - 32, 5, 25) }),
   };
 
+  // ── Step 3b: contrast-guaranteed workhorse shades (VisionCore) ──
+  // Derived from the ADJUSTED colors — the same values persisted as
+  // palette.primary/accent — so the persisted shade fields can never be
+  // stale relative to the persisted base color.
+  const primaryShades = deriveReadableShades(primaryAdjusted);
+  const accentShades = deriveReadableShades(accentAdjusted);
+
   // ── Step 4: Build the contrast report ─────────────────────────
   const adjustments: ContrastAdjustment[] = [
     {
@@ -430,11 +564,17 @@ export function derivePalette(
       adjusted: accentAdjusted.toLowerCase() !== accentRaw.toLowerCase(),
       capped: accentToRatio < contrastTarget,
     },
+    ...readableShadeAdjustments('primary', primaryAdjusted, primaryShades),
+    ...readableShadeAdjustments('accent', accentAdjusted, accentShades),
   ];
   const contrastReport: ContrastReport = {
     target: contrastTarget,
     adjustments,
-    anyAdjusted: adjustments.some((a) => a.adjusted),
+    // anyAdjusted answers "did we move a color the operator picked?" —
+    // the derived *Mid/*Strong rows always differ from a light base by
+    // design, so they're excluded here. (They also can never cap for any
+    // target ≤ 21: their binary search bottoms out at pure black.)
+    anyAdjusted: adjustments.some((a) => (a.key === 'primary' || a.key === 'accent') && a.adjusted),
     anyCapped: adjustments.some((a) => a.capped),
   };
 
@@ -446,12 +586,20 @@ export function derivePalette(
     primaryActive: ramp['700'],
     primarySoft: ramp['100'],
     primaryInk: primaryOn,
+    primaryMid: primaryShades.mid,
+    primaryStrong: primaryShades.strong,
+    primaryStrongHover: primaryShades.strongHover,
+    primaryStronger: primaryShades.stronger,
     accent: accentAdjusted,
     accentRaw,
     accentOn,
     accentHover: darken(accentAdjusted, 8),
     accentSoft: lighten(accentAdjusted, 38),
     accentInk: accentOn,
+    accentMid: accentShades.mid,
+    accentStrong: accentShades.strong,
+    accentStrongHover: accentShades.strongHover,
+    accentStronger: accentShades.stronger,
     ink: '#0f172a',
     inkMuted: '#475569',
     surface: '#ffffff',

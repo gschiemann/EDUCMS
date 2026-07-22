@@ -5,8 +5,20 @@
  * (2026-06-01): dominos.com has no og:site_name, so the scraper landed the
  * full SEO title "Pizza Delivery & Carryout, Pasta, Wings & More | Domino's"
  * as the display name. The brand is the short trailing segment.
+ *
+ * Plus VisionCore-incident hardening (2026-07-21): background-ish
+ * near-white demotion in color ranking + font-family sanitization — the
+ * scrape of a Wix site stored the page background (#fcf9e2 cream) as
+ * palette.primary and junk like ")" / "var(--hover-font" as brand fonts.
  */
-import { pickBrandSegment } from './branding-scraper.service';
+import {
+  pickBrandSegment,
+  sanitizeFontFamilyName,
+  backgroundishColorDemotion,
+  BrandingScraperService,
+  RankedColor,
+  RankedFont,
+} from './branding-scraper.service';
 
 describe('pickBrandSegment', () => {
   it('pulls the brand out of a "<SEO phrase> | Brand" title (Domino\'s)', () => {
@@ -57,5 +69,121 @@ describe('pickBrandSegment', () => {
   it('handles null safely', () => {
     expect(pickBrandSegment(null)).toBeNull();
     expect(pickBrandSegment(undefined)).toBeNull();
+  });
+});
+
+describe('sanitizeFontFamilyName (VisionCore junk-font hardening, 2026-07-21)', () => {
+  it('rejects the literal junk that reached the VisionCore tenant_branding row', () => {
+    expect(sanitizeFontFamilyName(')')).toBeNull();
+    expect(sanitizeFontFamilyName('))')).toBeNull();
+    expect(sanitizeFontFamilyName('var(--hover-font')).toBeNull();
+  });
+
+  it('rejects var() indirections wholesale (the first family IS the var)', () => {
+    expect(sanitizeFontFamilyName('var(--font-main), "Roboto", sans-serif')).toBeNull();
+    expect(sanitizeFontFamilyName('VAR(--x)')).toBeNull();
+    expect(sanitizeFontFamilyName('var(--font-body, Arial)')).toBeNull();
+  });
+
+  it('takes the first family in a comma list and strips quotes', () => {
+    expect(sanitizeFontFamilyName('"Playfair Display", Georgia, serif')).toBe('Playfair Display');
+    expect(sanitizeFontFamilyName("'Inter'")).toBe('Inter');
+    expect(sanitizeFontFamilyName('  Open Sans  ')).toBe('Open Sans');
+    expect(sanitizeFontFamilyName('Lato, sans-serif')).toBe('Lato');
+  });
+
+  it('accepts real-world names with digits, spaces, ampersands, dots, hyphens', () => {
+    expect(sanitizeFontFamilyName('Source Sans 3')).toBe('Source Sans 3');
+    expect(sanitizeFontFamilyName('M PLUS 1p')).toBe('M PLUS 1p');
+    expect(sanitizeFontFamilyName('IBM Plex Sans')).toBe('IBM Plex Sans');
+  });
+
+  it('rejects empties, leading punctuation, over-long names, and CSS junk', () => {
+    expect(sanitizeFontFamilyName('')).toBeNull();
+    expect(sanitizeFontFamilyName(null)).toBeNull();
+    expect(sanitizeFontFamilyName(undefined)).toBeNull();
+    expect(sanitizeFontFamilyName('-apple-system')).toBeNull(); // must start alphanumeric
+    expect(sanitizeFontFamilyName('a'.repeat(41))).toBeNull();  // 40-char cap
+    expect(sanitizeFontFamilyName('!important')).toBeNull();
+    expect(sanitizeFontFamilyName('"\u200b"')).toBeNull(); // zero-width-space junk
+  });
+});
+
+describe('backgroundishColorDemotion (VisionCore cream-as-primary hardening)', () => {
+  it('leaves saturated mid-lightness colors untouched (factor 1) in any context', () => {
+    expect(backgroundishColorDemotion('#7c1034', true)).toBe(1);
+    expect(backgroundishColorDemotion('#7c1034', false)).toBe(1);
+    expect(backgroundishColorDemotion('#4f46e5', true)).toBe(1);
+    expect(backgroundishColorDemotion('#ffd700', true)).toBe(1); // gold lum ≈0.71 — below threshold
+  });
+
+  it('demotes the VisionCore cream hard in background context — but never to zero', () => {
+    const f = backgroundishColorDemotion('#fcf9e2', true); // lum ≈0.94
+    expect(f).toBeLessThanOrEqual(0.15);
+    expect(f).toBeGreaterThan(0); // demoted, never hard-rejected
+  });
+
+  it('demotes near-white only mildly outside background context', () => {
+    const bg = backgroundishColorDemotion('#fcf9e2', true);
+    const fg = backgroundishColorDemotion('#fcf9e2', false);
+    expect(fg).toBeGreaterThan(bg);
+    expect(fg).toBeLessThan(1);
+  });
+
+  it('ramps: a barely-over-threshold pale gets a gentle nudge, not the floor', () => {
+    // ~lum 0.82 pale pink — inside the ramp, far from the floor.
+    const f = backgroundishColorDemotion('#ffe4ec', true);
+    expect(f).toBeGreaterThan(0.5);
+    expect(f).toBeLessThan(1);
+  });
+});
+
+describe('extractFromCss — demotion + font sanitization through the real parser', () => {
+  const runCss = (css: string) => {
+    const svc = new BrandingScraperService();
+    const colors = new Map<string, RankedColor>();
+    const fonts = new Map<string, RankedFont>();
+    (svc as any).extractFromCss(css, colors, fonts);
+    return { colors, fonts };
+  };
+
+  it('a page-background cream no longer out-scores the saturated button color (the VisionCore failure)', () => {
+    // Cream as the page canvas in MANY rules; the real brand color in a
+    // handful of brand-ish spots. Pre-fix, the cream won on occurrences.
+    const creamRules = Array.from({ length: 20 }, (_, i) => `.section-${i} { background-color: #fcf9e2; }`).join('\n');
+    const css = `
+      body { background: #fcf9e2; }
+      ${creamRules}
+      .btn-primary { background-color: #7c1034; color: #fdfdfd; }
+      a:hover { color: #7c1034; }
+    `;
+    const { colors } = runCss(css);
+    const ranked = [...colors.values()].sort((a, b) => b.score - a.score);
+    expect(ranked[0].hex).toBe('#7c1034');
+    // Demoted, NOT rejected — the cream stays available as a candidate.
+    expect(colors.has('#fcf9e2')).toBe(true);
+  });
+
+  it('a legitimately pale brand still wins when no saturated candidate exists', () => {
+    const { colors } = runCss('body { background: #fcf9e2; } .card { background: #fcf9e2; }');
+    const ranked = [...colors.values()].sort((a, b) => b.score - a.score);
+    expect(ranked[0].hex).toBe('#fcf9e2');
+  });
+
+  it('var()-mangled font declarations never become candidates; real fonts do', () => {
+    const css = `
+      h1 { font-family: var(--hover-font, sans-serif); }
+      h2 { font: 700 24px/1.2 var(--font-x); }
+      .title { font-family: "Playfair Display", Georgia, serif; }
+      body { font-family: 'Lato', sans-serif; }
+    `;
+    const { fonts } = runCss(css);
+    const families = [...fonts.values()].map((f) => f.family);
+    expect(families).toContain('Playfair Display');
+    expect(families).toContain('Lato');
+    for (const f of families) {
+      expect(f).not.toMatch(/[()]/);
+      expect(f.toLowerCase()).not.toContain('var(');
+    }
   });
 });
