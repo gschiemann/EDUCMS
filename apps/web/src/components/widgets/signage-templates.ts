@@ -62,6 +62,7 @@ export const SIGNAGE_TEMPLATES: SignageTemplate[] = [
   { id: "preset-sig-corporate-08", name: "Corporate · Shuttle", group: "Corporate", url: "/templates/signage/corporate/08-shuttle-board.html" },
   { id: "preset-sig-corporate-09", name: "Corporate · Events", group: "Corporate", url: "/templates/signage/corporate/09-events-week.html" },
   { id: "preset-sig-corporate-10", name: "Corporate · Emergency", group: "Corporate", url: "/templates/signage/corporate/10-emergency-info.html" },
+  { id: "preset-sig-corporate-11", name: "Corporate · Signal", group: "Corporate", url: "/templates/signage/corporate/11-corporate-signal.html" },
   { id: "preset-sig-fashion-01", name: "Fashion · Lookbook", group: "Fashion", url: "/templates/signage/fashion/01-lookbook-flagship.html" },
   { id: "preset-sig-fashion-02", name: "Fashion · Editorial", group: "Fashion", url: "/templates/signage/fashion/02-editorial.html" },
   { id: "preset-sig-fashion-03", name: "Fashion · Sale", group: "Fashion", url: "/templates/signage/fashion/03-sale.html" },
