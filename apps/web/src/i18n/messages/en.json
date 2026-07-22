@@ -299,5 +299,33 @@
       "switch": "Switch",
       "switchFailed": "Switch failed."
     }
+  },
+  "settingsIndex": {
+    "title": "Settings",
+    "subtitle": "Manage team members, roles, and system info.",
+    "security": "Security & two-factor",
+    "securityDesc": "Add a 6-digit code from your phone to every sign-in. Manage backup codes here too.",
+    "adminRequired": "Admin Access Required",
+    "adminRequiredDesc": "Contact your administrator to manage settings.",
+    "streaming": "Streaming providers",
+    "streamingDesc": "Connect Atmosphere, public broadcasters, YouTube, Twitch, custom HLS — pick channels for the streaming widget.",
+    "pos": "POS catalog sync",
+    "posDesc": "Connect Square / Toast / Clover / Shopify / Stripe / MINDBODY — menu boards auto-update from your live catalog.",
+    "monetize": "Monetize your screens",
+    "monetizeDesc": "Programmatic DOOH — Hivestack, Vistar, Place Exchange. Earn per impression, full content controls.",
+    "imports": "Design imports",
+    "importsDesc": "Drop a PDF / PPTX / image from Canva, Google Slides, PowerPoint, Figma, or Adobe Express. We turn it into a screen-ready playlist.",
+    "testIntegrations": "Test integrations",
+    "testIntegrationsDesc": "One-click sample data for streaming / POS / ads — demo every feature without vendor sandbox accounts.",
+    "audit": "Audit log",
+    "auditDesc": "Immutable activity history — every emergency trigger, login, and admin action, with who and when.",
+    "developer": "Developer",
+    "apk": "Download Player APK",
+    "apkDesc": "Android kiosk build — Nova Taurus, generic Android 7+. Sideload once; updates are manual unless you opt in below.",
+    "usbAdvanced": "Advanced: USB sneakernet ingest",
+    "usbAdvancedDesc": "Manage USB security keys + offline content delivery — separate from the per-playlist download button.",
+    "firstNameOptional": "First name (optional)",
+    "lastNameOptional": "Last name (optional)",
+    "tempPassword": "Temporary password (min 8 chars)"
   }
 }

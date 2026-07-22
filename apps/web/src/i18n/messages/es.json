@@ -299,5 +299,33 @@
       "switch": "Cambiar",
       "switchFailed": "No se pudo cambiar."
     }
+  },
+  "settingsIndex": {
+    "title": "Ajustes",
+    "subtitle": "Gestiona miembros del equipo, roles e información del sistema.",
+    "security": "Seguridad y verificación en dos pasos",
+    "securityDesc": "Añade un código de 6 dígitos desde tu teléfono en cada inicio de sesión. Gestiona aquí también los códigos de respaldo.",
+    "adminRequired": "Se requiere acceso de administrador",
+    "adminRequiredDesc": "Contacta con tu administrador para gestionar los ajustes.",
+    "streaming": "Proveedores de streaming",
+    "streamingDesc": "Conecta Atmosphere, cadenas públicas, YouTube, Twitch o HLS personalizado, y elige canales para el widget de streaming.",
+    "pos": "Sincronización del catálogo POS",
+    "posDesc": "Conecta Square / Toast / Clover / Shopify / Stripe / MINDBODY: los menús se actualizan solos desde tu catálogo en vivo.",
+    "monetize": "Monetiza tus pantallas",
+    "monetizeDesc": "DOOH programático: Hivestack, Vistar, Place Exchange. Gana por impresión con control total del contenido.",
+    "imports": "Importación de diseños",
+    "importsDesc": "Suelta un PDF / PPTX / imagen de Canva, Google Slides, PowerPoint, Figma o Adobe Express. Lo convertimos en una lista lista para pantalla.",
+    "testIntegrations": "Probar integraciones",
+    "testIntegrationsDesc": "Datos de ejemplo en un clic para streaming / POS / anuncios: prueba cada función sin cuentas sandbox del proveedor.",
+    "audit": "Registro de actividad",
+    "auditDesc": "Historial de actividad inmutable: cada activación de emergencia, inicio de sesión y acción de administrador, con quién y cuándo.",
+    "developer": "Desarrollador",
+    "apk": "Descargar APK del reproductor",
+    "apkDesc": "Compilación kiosco para Android: Nova Taurus y Android 7+ genérico. Instálalo una vez; las actualizaciones son manuales salvo que las actives abajo.",
+    "usbAdvanced": "Avanzado: carga por USB",
+    "usbAdvancedDesc": "Gestiona las claves de seguridad USB y la entrega de contenido sin conexión, independiente del botón de descarga por lista.",
+    "firstNameOptional": "Nombre (opcional)",
+    "lastNameOptional": "Apellido (opcional)",
+    "tempPassword": "Contraseña temporal (mín. 8 caracteres)"
   }
 }

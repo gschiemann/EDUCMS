@@ -24,6 +24,7 @@ import { ContentApprovalCard } from '@/components/settings/ContentApprovalCard';
 import { VerticalSwitcherCard } from '@/components/settings/VerticalSwitcherCard';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
+import { useTranslations } from 'next-intl';
 
 const ROLES = ['SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN', 'CONTRIBUTOR', 'RESTRICTED_VIEWER'] as const;
 
@@ -43,6 +44,7 @@ const ROLE_COLORS: Record<string, string> = {
 };
 
 export default function SettingsPage() {
+  const t = useTranslations();
   const pathname = usePathname();
   const tenantCopy = useTenantCopy();
   const { data: users, isLoading: usersLoading } = useUsers();
@@ -131,9 +133,9 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-800 flex items-center gap-2">
           <SettingsIcon className="w-7 h-7" style={{ color: 'var(--brand-primary, #6366f1)' }} />
-          Settings
+          {t('settingsIndex.title')}
         </h1>
-        <p className="text-sm text-slate-500 mt-0.5">Manage team members, roles, and system info.</p>
+        <p className="text-sm text-slate-500 mt-0.5">{t('settingsIndex.subtitle')}</p>
       </div>
 
       {/* Account security (per-USER, every role). 2026-05-28 — entry
@@ -151,8 +153,8 @@ export default function SettingsPage() {
             <Lock className="w-4 h-4 text-indigo-600" />
           </div>
           <div>
-            <div className="text-sm font-bold text-slate-800">Security &amp; two-factor</div>
-            <div className="text-[11px] text-slate-500">Add a 6-digit code from your phone to every sign-in. Manage backup codes here too.</div>
+            <div className="text-sm font-bold text-slate-800">{t('settingsIndex.security')}</div>
+            <div className="text-[11px] text-slate-500">{t('settingsIndex.securityDesc')}</div>
           </div>
         </div>
         <span className="text-xs text-indigo-600 font-bold">Manage →</span>
@@ -177,8 +179,8 @@ export default function SettingsPage() {
         fallback={
           <div className="bg-slate-50 p-8 rounded-xl border border-slate-200 text-center">
             <Key className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-            <h3 className="text-sm font-bold text-slate-700">Admin Access Required</h3>
-            <p className="text-xs text-slate-500 mt-2">Contact your administrator to manage settings.</p>
+            <h3 className="text-sm font-bold text-slate-700">{t('settingsIndex.adminRequired')}</h3>
+            <p className="text-xs text-slate-500 mt-2">{t('settingsIndex.adminRequiredDesc')}</p>
           </div>
         }
       >
@@ -264,8 +266,8 @@ export default function SettingsPage() {
                 <MonitorPlay className="w-4 h-4 text-violet-600" />
               </div>
               <div>
-                <div className="text-sm font-bold text-slate-800">Streaming providers</div>
-                <div className="text-[11px] text-slate-500 hidden sm:block">Connect Atmosphere, public broadcasters, YouTube, Twitch, custom HLS — pick channels for the streaming widget.</div>
+                <div className="text-sm font-bold text-slate-800">{t('settingsIndex.streaming')}</div>
+                <div className="text-[11px] text-slate-500 hidden sm:block">{t('settingsIndex.streamingDesc')}</div>
               </div>
             </div>
             <span className="text-xs text-violet-600 font-bold">Manage →</span>
@@ -290,8 +292,8 @@ export default function SettingsPage() {
                 <MonitorPlay className="w-4 h-4 text-amber-600" />
               </div>
               <div>
-                <div className="text-sm font-bold text-slate-800">POS catalog sync</div>
-                <div className="text-[11px] text-slate-500 hidden sm:block">Connect Square / Toast / Clover / Shopify / Stripe / MINDBODY — menu boards auto-update from your live catalog.</div>
+                <div className="text-sm font-bold text-slate-800">{t('settingsIndex.pos')}</div>
+                <div className="text-[11px] text-slate-500 hidden sm:block">{t('settingsIndex.posDesc')}</div>
               </div>
             </div>
             <span className="text-xs text-amber-600 font-bold">Connect →</span>
@@ -306,8 +308,8 @@ export default function SettingsPage() {
                 <Building2 className="w-4 h-4 text-emerald-600" />
               </div>
               <div>
-                <div className="text-sm font-bold text-slate-800">Monetize your screens</div>
-                <div className="text-[11px] text-slate-500 hidden sm:block">Programmatic DOOH — Hivestack, Vistar, Place Exchange. Earn per impression, full content controls.</div>
+                <div className="text-sm font-bold text-slate-800">{t('settingsIndex.monetize')}</div>
+                <div className="text-[11px] text-slate-500 hidden sm:block">{t('settingsIndex.monetizeDesc')}</div>
               </div>
             </div>
             <span className="text-xs text-emerald-600 font-bold">Earn →</span>
@@ -326,8 +328,8 @@ export default function SettingsPage() {
                 <MonitorPlay className="w-4 h-4 text-emerald-600" />
               </div>
               <div>
-                <div className="text-sm font-bold text-slate-800">Design imports</div>
-                <div className="text-[11px] text-slate-500 hidden sm:block">Drop a PDF / PPTX / image from Canva, Google Slides, PowerPoint, Figma, or Adobe Express. We turn it into a screen-ready playlist.</div>
+                <div className="text-sm font-bold text-slate-800">{t('settingsIndex.imports')}</div>
+                <div className="text-[11px] text-slate-500 hidden sm:block">{t('settingsIndex.importsDesc')}</div>
               </div>
             </div>
             <span className="text-xs text-emerald-600 font-bold">Import →</span>
@@ -346,8 +348,8 @@ export default function SettingsPage() {
                 <MonitorPlay className="w-4 h-4 text-pink-600" />
               </div>
               <div>
-                <div className="text-sm font-bold text-slate-800">Test integrations</div>
-                <div className="text-[11px] text-slate-500 hidden sm:block">One-click sample data for streaming / POS / ads — demo every feature without vendor sandbox accounts.</div>
+                <div className="text-sm font-bold text-slate-800">{t('settingsIndex.testIntegrations')}</div>
+                <div className="text-[11px] text-slate-500 hidden sm:block">{t('settingsIndex.testIntegrationsDesc')}</div>
               </div>
             </div>
             <span className="text-xs text-pink-600 font-bold">Try →</span>
@@ -365,8 +367,8 @@ export default function SettingsPage() {
                 <FileClock className="w-4 h-4 text-slate-600" />
               </div>
               <div>
-                <div className="text-sm font-bold text-slate-800">Audit log</div>
-                <div className="text-[11px] text-slate-500 hidden sm:block">Immutable activity history — every emergency trigger, login, and admin action, with who and when.</div>
+                <div className="text-sm font-bold text-slate-800">{t('settingsIndex.audit')}</div>
+                <div className="text-[11px] text-slate-500 hidden sm:block">{t('settingsIndex.auditDesc')}</div>
               </div>
             </div>
             <span className="text-xs text-slate-600 font-bold">View →</span>
@@ -387,7 +389,7 @@ export default function SettingsPage() {
                 <Code2 className="w-4 h-4 text-indigo-600" />
               </div>
               <div>
-                <div className="text-sm font-bold text-slate-800">Developer</div>
+                <div className="text-sm font-bold text-slate-800">{t('settingsIndex.developer')}</div>
                 <div className="text-[11px] text-slate-500 hidden sm:block">API endpoints, integrations, REST tokens + webhooks (coming next release), and SDK documentation.</div>
               </div>
             </div>
@@ -419,8 +421,8 @@ export default function SettingsPage() {
                   <MonitorPlay className="w-4 h-4 text-emerald-600" />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-sm font-bold text-slate-800">Download Player APK</div>
-                  <div className="text-[11px] text-slate-500">Android kiosk build — Nova Taurus, generic Android 7+. Sideload once; updates are manual unless you opt in below.</div>
+                  <div className="text-sm font-bold text-slate-800">{t('settingsIndex.apk')}</div>
+                  <div className="text-[11px] text-slate-500">{t('settingsIndex.apkDesc')}</div>
                 </div>
               </div>
               <a
@@ -465,8 +467,8 @@ export default function SettingsPage() {
                   <Usb className="w-4 h-4 text-violet-500" />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-sm font-bold text-slate-800">Advanced: USB sneakernet ingest</div>
-                  <div className="text-[11px] text-slate-500">Manage USB security keys + offline content delivery — separate from the per-playlist download button.</div>
+                  <div className="text-sm font-bold text-slate-800">{t('settingsIndex.usbAdvanced')}</div>
+                  <div className="text-[11px] text-slate-500">{t('settingsIndex.usbAdvancedDesc')}</div>
                 </div>
               </div>
               <ChevronDown className="w-4 h-4 text-slate-400 shrink-0 transition-transform group-open:rotate-180" />
@@ -553,10 +555,10 @@ export default function SettingsPage() {
                     on first login. Both optional — falls back to
                     email-prefix display when omitted. */}
                 <input value={newFirstName} onChange={(e) => setNewFirstName(e.target.value)}
-                  placeholder="First name (optional)" type="text" maxLength={80}
+                  placeholder={t('settingsIndex.firstNameOptional')} type="text" maxLength={80}
                   className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500" />
                 <input value={newLastName} onChange={(e) => setNewLastName(e.target.value)}
-                  placeholder="Last name (optional)" type="text" maxLength={80}
+                  placeholder={t('settingsIndex.lastNameOptional')} type="text" maxLength={80}
                   className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500" />
                 <input ref={inviteEmailRef} value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder={tenantCopy.vertical === 'K12' ? 'teacher@school.edu' : 'colleague@yourcompany.com'} type="email"
                   className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500" />
@@ -569,7 +571,7 @@ export default function SettingsPage() {
                     type="text"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Temporary password (min 8 chars)"
+                    placeholder={t('settingsIndex.tempPassword')}
                     autoComplete="new-password"
                     className="md:col-span-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-mono outline-none focus:ring-2 focus:ring-indigo-500"
                   />

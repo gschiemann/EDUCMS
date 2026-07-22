@@ -299,5 +299,33 @@
       "switch": "切换",
       "switchFailed": "切换失败。"
     }
+  },
+  "settingsIndex": {
+    "title": "设置",
+    "subtitle": "管理团队成员、角色和系统信息。",
+    "security": "安全与两步验证",
+    "securityDesc": "每次登录时输入手机上的 6 位验证码。备用码也在此管理。",
+    "adminRequired": "需要管理员权限",
+    "adminRequiredDesc": "请联系管理员以管理设置。",
+    "streaming": "流媒体服务商",
+    "streamingDesc": "连接 Atmosphere、公共广播、YouTube、Twitch 或自定义 HLS — 为流媒体组件选择频道。",
+    "pos": "POS 商品目录同步",
+    "posDesc": "连接 Square / Toast / Clover / Shopify / Stripe / MINDBODY — 菜单看板将根据你的实时商品目录自动更新。",
+    "monetize": "让屏幕产生收益",
+    "monetizeDesc": "程序化户外广告 — Hivestack、Vistar、Place Exchange。按曝光计费，内容完全可控。",
+    "imports": "设计导入",
+    "importsDesc": "拖入来自 Canva、Google 幻灯片、PowerPoint、Figma 或 Adobe Express 的 PDF / PPTX / 图片，我们会将其转换为可直接播放的列表。",
+    "testIntegrations": "测试集成",
+    "testIntegrationsDesc": "一键生成流媒体 / POS / 广告的示例数据 — 无需厂商沙盒账户即可演示所有功能。",
+    "audit": "审计日志",
+    "auditDesc": "不可篡改的活动记录 — 每次紧急触发、登录和管理操作，含操作人与时间。",
+    "developer": "开发者",
+    "apk": "下载播放器 APK",
+    "apkDesc": "Android 自助终端版本 — 支持 Nova Taurus 及通用 Android 7 以上。旁加载一次即可；除非在下方开启，否则更新需手动进行。",
+    "usbAdvanced": "高级：U 盘离线导入",
+    "usbAdvancedDesc": "管理 U 盘安全密钥与离线内容分发 — 与每个播放列表的下载按钮相互独立。",
+    "firstNameOptional": "名字（可选）",
+    "lastNameOptional": "姓氏（可选）",
+    "tempPassword": "临时密码（至少 8 位）"
   }
 }
