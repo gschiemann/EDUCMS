@@ -55,9 +55,7 @@ if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded'
 try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
 addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();}}}catch(_){}});
 }catch(e){}})();</script>
-</head><body><div class="stage" id="stage"><div class="frame" style="async function readFile(path) {
-    return rpc({ op: 'readFile', path: String(path) });
-  }">
+</head><body><div class="stage" id="stage"><div class="frame">
 <div style="position:relative;height:100%">
 <div class="ph" style="position:absolute;top:0;right:0;bottom:0;left:0;border:none;border-radius:0" data-widget="image-slot" data-slot="cam" data-aspect="3840x2160" data-field="cam.photo_url"><div class="ph-i"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3"><rect x="6" y="12" width="52" height="40" rx="4"/><circle cx="22" cy="26" r="4"/><path d="M6 46 L22 32 L34 42 L44 34 L58 46"/></svg><div class="l">Full-bleed campaign</div><div class="d">3840 × 2160</div></div></div>
 <div style="position:absolute;left:120px;top:120px;color:#fff;text-shadow:0 4px 32px rgba(0,0,0,.5);max-width:2200px">
