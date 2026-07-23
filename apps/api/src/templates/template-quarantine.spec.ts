@@ -23,9 +23,11 @@ describe('template quarantine denylist (W0-08)', () => {
   });
 
   it('resolves the full audit list to preset ids', () => {
-    // 21 boards: 17 dimension-placeholder + 3 clipping + 1 Domino's brand risk.
-    expect(QUARANTINED_BOARD_URLS.size).toBe(21);
-    expect(QUARANTINED_PRESET_IDS.size).toBe(21);
+    // 19 boards: 15 dimension-placeholder + 3 clipping + 1 Domino's brand risk.
+    // (Was 21; fashion/02 + fashion/05 were un-quarantined 2026-07-23 after the
+    // redesign cleared the W0-08 trigger — verified per-board, see quarantine.ts.)
+    expect(QUARANTINED_BOARD_URLS.size).toBe(19);
+    expect(QUARANTINED_PRESET_IDS.size).toBe(19);
   });
 
   it('quarantines the Domino’s demo-only brand board (licensing risk)', () => {
