@@ -34,14 +34,16 @@ transcript dir; full return payload in the task output.
 | 08 Campaign | ✗ (not redesigned) | **keep-quarantined** | Still shows "Full-bleed campaign" + raw "3840 × 2160" (default state). + injection artifact. |
 
 ## Action taken (2026-07-23)
-- **Un-quarantined 02 + 05**: removed their URLs from `quarantine.ts` (denylist
-  21→19), updated `template-quarantine.spec.ts`, and re-activated the 2 DB rows
+- **Un-quarantined 02 + 05** first: removed their URLs from `quarantine.ts`,
+  updated the test, re-activated the 2 DB rows
   (`scripts/reactivate-dequarantined-boards.cjs`, ARCHIVED→ACTIVE, audit-logged).
-- **01 + 04 stay quarantined** pending a decision: their default no-photo state
-  shows a prominent empty image drop-zone. Options: (a) bake in a default
-  stock/sample photo, (b) soften/hide the label to the 02/05 standard (and make
-  04's hardcoded labels editable — also satisfies the "all fields editable"
-  requirement), or (c) leave hidden. Design call for the lead.
+- **01 + 04**: lead chose "bake in stock photos." Downloaded free-license Pexels
+  photos to `public/templates/signage/fashion/_img/` (self-hosted — durable +
+  offline-safe, not hotlinked) and baked them into the empty image slots via
+  `data-img` (denim-stack hero + denim thumbs for 01; four white-sneaker shots
+  for 04). Render-verified both look finished; slots stay operator-editable
+  (`data-imgslot`). Then un-quarantined 01 + 04 too. Final denylist 21→17 (all 4
+  redesigned fashion boards now ACTIVE).
 - **07 + 08 stay quarantined** (never redesigned; still show raw dimensions).
 
 ## Separate finding — injection artifact in 4 non-redesigned boards

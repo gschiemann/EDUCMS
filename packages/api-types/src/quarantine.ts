@@ -26,16 +26,15 @@ export const QUARANTINED_BOARD_URL_LIST: readonly string[] = [
   // Dimension-placeholder boards
   '/templates/signage/bar/05-now-pouring.html',
   '/templates/signage/corporate/07-cafeteria.html',
-  '/templates/signage/fashion/01-lookbook-flagship.html',
-  // fashion/02 + fashion/05 REMOVED from quarantine 2026-07-23: the redesign
-  // (f4eee79c) genuinely cleared the W0-08 dimension-placeholder trigger.
-  // Verified by an adversarial per-board review (docs/research/2026-07-23-
-  // fashion-quarantine-verify/) — real editorial copy, editable (SHIM-V7 +
-  // data-fields), Taurus-safe, no visible placeholder/measurement text. The
-  // drop-zone label hides on photo-attach (accepted affordance). 01 + 04 STAY
-  // quarantined: their default no-photo state still shows a prominent empty
-  // image drop-zone ("CAMPAIGN / LOOK PHOTO" / 4× hardcoded "Product photo").
-  '/templates/signage/fashion/04-new-arrivals.html',
+  // ALL 4 redesigned fashion boards (01, 02, 04, 05) REMOVED from quarantine
+  // 2026-07-23: the redesign (f4eee79c) cleared the W0-08 dimension-placeholder
+  // trigger. 02 + 05 verified clean by an adversarial per-board review
+  // (docs/research/2026-07-23-fashion-quarantine-verify/). 01 + 04 had prominent
+  // EMPTY image drop-zones in their default state ("CAMPAIGN / LOOK PHOTO";
+  // 4× "Product photo") — fixed by baking real stock photos into the image
+  // slots (public/templates/signage/fashion/_img/, via data-img), so they now
+  // render finished; the slots stay operator-editable (data-imgslot). 07 + 08
+  // STAY quarantined: never redesigned; still show raw dimension text.
   '/templates/signage/fashion/07-shoppable-window.html',
   '/templates/signage/fashion/08-campaign.html',
   '/templates/signage/hospitality/01-lobby-welcome-flagship.html',

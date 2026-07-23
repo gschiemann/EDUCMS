@@ -48,7 +48,9 @@ if (!process.env.DATABASE_URL) { console.error('DATABASE_URL not set'); process.
 // docs/research/2026-07-23-fashion-quarantine-verify/). Add ids here ONLY
 // after removing the matching URL from quarantine.ts AND verifying the board.
 const REACTIVATE = [
+  { id: 'preset-sig-fashion-01', name: 'Fashion · Lookbook' }, // photos baked 2026-07-23
   { id: 'preset-sig-fashion-02', name: 'Fashion · Editorial' },
+  { id: 'preset-sig-fashion-04', name: 'Fashion · New Arrivals' }, // photos baked 2026-07-23
   { id: 'preset-sig-fashion-05', name: 'Fashion · Event' },
 ];
 const SYSTEM_TENANT = '00000000-0000-0000-0000-000000000000';
