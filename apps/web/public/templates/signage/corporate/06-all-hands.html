@@ -37,7 +37,7 @@ html,body{margin:0;padding:0;height:100%;width:100%;background:#0b0d12;overflow:
 /* countdown ring */
 .count{display:flex;flex-direction:column;align-items:center;justify-content:center}
 .count .ring{width:760px;height:760px;border-radius:50%;background:conic-gradient(var(--accent) 0 290deg,rgba(255,255,255,.12) 290deg 360deg);display:grid;place-items:center;position:relative;box-shadow:0 40px 100px rgba(0,0,0,.4)}
-.count .ring::after{content:"";position:absolute;inset:44px;border-radius:50%;background:#0c1322}
+.count .ring::after{content:"";position:absolute;top:44px;right:44px;bottom:44px;left:44px;border-radius:50%;background:#0c1322}
 .count .inner{position:relative;text-align:center;z-index:1}
 .count .inner .lbl{font:700 36px/1 var(--font-grotesk);letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.6)}
 .count .inner .num{font:700 320px/.78 var(--font-display);letter-spacing:-.05em;margin:14px 0 0}
