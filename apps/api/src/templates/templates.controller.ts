@@ -161,7 +161,7 @@ export class TemplatesController {
    */
   private async audit(
     req: any,
-    action: 'TEMPLATE_CREATED' | 'TEMPLATE_UPDATED' | 'TEMPLATE_DELETED' | 'TEMPLATE_IMPORTED',
+    action: 'TEMPLATE_CREATED' | 'TEMPLATE_UPDATED' | 'TEMPLATE_DELETED' | 'TEMPLATE_IMPORTED' | 'TEMPLATE_FORCE_UNLINKED',
     templateId: string | null,
     details: Record<string, unknown> = {},
   ): Promise<void> {
@@ -2621,7 +2621,7 @@ export class TemplatesController {
 
   @Delete(':id')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async remove(@Request() req: any, @Param('id') id: string) {
+  async remove(@Request() req: any, @Param('id') id: string, @Query('force') force?: string) {
     const template = await this.prisma.client.template.findFirst({
       where: { id, tenantId: req.user.tenantId },
     });
@@ -2642,22 +2642,39 @@ export class TemplatesController {
       take: 6,
     });
     if (inUse.length > 0) {
-      const total = await this.prisma.client.playlist.count({
+      // 2026-07-24 — `?force=true` is the operator EXPLICITLY choosing to
+      // delete anyway after being told which playlists use it (the web
+      // client shows a "Delete anyway" confirm carrying the playlist names).
+      // That's informed, not the silent strip P0-2 guarded against — so
+      // unlink the template from those playlists (they fall back to their
+      // next layout) + audit, then delete. Without force we still block.
+      if (force !== 'true') {
+        const total = await this.prisma.client.playlist.count({
+          where: { templateId: id, tenantId: req.user.tenantId },
+        });
+        const names = inUse.map((p) => `“${p.name}”`).join(', ');
+        throw new HttpException(
+          {
+            code: 'TEMPLATE_IN_USE',
+            message:
+              `This template is used by ${total} playlist${total === 1 ? '' : 's'} ` +
+              `(${names}${total > inUse.length ? ', …' : ''}). ` +
+              `Delete anyway to remove it from ${total === 1 ? 'that playlist' : 'those playlists'}, ` +
+              `or switch them to another template first.`,
+            playlists: inUse,
+            total,
+          },
+          HttpStatus.CONFLICT,
+        );
+      }
+      const unlinked = await this.prisma.client.playlist.updateMany({
         where: { templateId: id, tenantId: req.user.tenantId },
+        data: { templateId: null },
       });
-      const names = inUse.map((p) => `“${p.name}”`).join(', ');
-      throw new HttpException(
-        {
-          code: 'TEMPLATE_IN_USE',
-          message:
-            `This template is used by ${total} playlist${total === 1 ? '' : 's'} ` +
-            `(${names}${total > inUse.length ? ', …' : ''}). ` +
-            `Switch those playlists to another template first, then delete.`,
-          playlists: inUse,
-          total,
-        },
-        HttpStatus.CONFLICT,
-      );
+      await this.audit(req, 'TEMPLATE_FORCE_UNLINKED', id, {
+        name: template.name,
+        playlistsUnlinked: unlinked.count,
+      });
     }
 
     // Cascade deletes zones automatically via Prisma relation

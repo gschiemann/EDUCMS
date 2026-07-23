@@ -2441,7 +2441,44 @@ export default function TemplatesPage() {
                         tone: 'danger',
                         confirmLabel: 'Delete template',
                       });
-                      if (ok) deleteTemplate.mutateAsync(t.id);
+                      if (!ok) return;
+                      // 2026-07-24 — the delete mutation was fire-and-forget
+                      // (unawaited, no catch), so a failed delete (e.g. 409:
+                      // the template is still in a playlist) rolled the
+                      // optimistic removal back + refetched — the card just
+                      // "came back" with ZERO feedback. Operator: "they go away
+                      // and then it refreshes and they all come back so i can't
+                      // delete them." Await + surface the real reason, and offer
+                      // "Delete anyway" (force-unlink) so junk in a draft
+                      // playlist can still be cleared.
+                      try {
+                        await deleteTemplate.mutateAsync({ id: t.id });
+                      } catch (err: any) {
+                        if (err?.code === 'TEMPLATE_IN_USE') {
+                          const forceOk = await appConfirm({
+                            title: 'Delete anyway?',
+                            message: `${err.message}`,
+                            tone: 'danger',
+                            confirmLabel: 'Delete anyway',
+                          });
+                          if (!forceOk) return;
+                          try {
+                            await deleteTemplate.mutateAsync({ id: t.id, force: true });
+                          } catch (err2: any) {
+                            await appAlert({
+                              title: 'Couldn’t delete this template',
+                              message: err2?.message || 'Something went wrong. Please try again.',
+                            });
+                          }
+                          return;
+                        }
+                        await appAlert({
+                          title: 'Couldn’t delete this template',
+                          message:
+                            err?.message ||
+                            'Something went wrong deleting this template. Please try again.',
+                        });
+                      }
                     }}
                     onPreview={(active) => setPreviewTemplate(active)}
                     onUseForGame={() => router.push(`/${params?.schoolId ?? ''}/sports?templateId=${encodeURIComponent(t.id)}&surface=${sportsSurfaceForCategory(t.category)}&newGame=1`)}

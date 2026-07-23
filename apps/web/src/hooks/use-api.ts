@@ -1334,8 +1334,16 @@ export function useRestoreTemplateVersion() {
 export function useDeleteTemplate() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => apiFetch(`/templates/${id}`, { method: 'DELETE' }),
-    onMutate: async (id) => {
+    // Accepts a bare id (back-compat) OR { id, force } — force=true asks the
+    // server to unlink the template from any playlists and delete anyway (the
+    // gallery's "Delete anyway" confirm after a TEMPLATE_IN_USE 409).
+    mutationFn: (vars: string | { id: string; force?: boolean }) => {
+      const id = typeof vars === 'string' ? vars : vars.id;
+      const force = typeof vars === 'string' ? false : !!vars.force;
+      return apiFetch(`/templates/${id}${force ? '?force=true' : ''}`, { method: 'DELETE' });
+    },
+    onMutate: async (vars) => {
+      const id = typeof vars === 'string' ? vars : vars.id;
       // Templates are cached under multiple keys (root list + per-category
       // filtered list). Snapshot + patch every cache that's currently set.
       await qc.cancelQueries({ queryKey: ['templates'] });
@@ -1347,7 +1355,7 @@ export function useDeleteTemplate() {
       }
       return { snapshots };
     },
-    onError: (_e, _id, ctx) => {
+    onError: (_e, _vars, ctx) => {
       if (ctx?.snapshots) {
         for (const [key, val] of ctx.snapshots) qc.setQueryData(key, val);
       }
