@@ -10,13 +10,13 @@
 *,*::before,*::after{box-sizing:border-box}
 html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
 .stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--ink);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
-.frame{position:absolute;inset:0;display:grid;grid-template-columns:1.5fr 1fr}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-columns:1.5fr 1fr}
 
 /* image side */
 .shot{position:relative;overflow:hidden;background:#ded5c7}
-.shot .photo{position:absolute;inset:0;background-size:cover;background-position:center}
+.shot .photo{position:absolute;top:0;right:0;bottom:0;left:0;background-size:cover;background-position:center}
 .shot .photo.placeholder{background:linear-gradient(145deg,#c6d0e0,#8394b2 52%,#44526e)}
-.shot .photo.placeholder::after{content:"";position:absolute;inset:0;background:radial-gradient(56% 46% at 58% 30%,rgba(255,255,255,.3),transparent 62%)}
+.shot .photo.placeholder::after{content:"";position:absolute;top:0;right:0;bottom:0;left:0;background:radial-gradient(56% 46% at 58% 30%,rgba(255,255,255,.3),transparent 62%)}
 .shot .drop{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:22px;color:rgba(255,255,255,.9);text-align:center}
 .shot .photo.has-img .drop{display:none}
 .shot .drop svg{width:150px;height:150px;opacity:.85}
@@ -42,7 +42,7 @@ html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hid
 .items{margin-top:40px;display:flex;flex-direction:column;gap:24px;flex:1;justify-content:space-between}
 .item{display:grid;grid-template-columns:190px 1fr auto;align-items:center;gap:36px;flex:1;background:var(--bg);border-radius:22px;padding:26px 30px;overflow:hidden}
 .item .thumb{width:190px;height:190px;flex:none;border-radius:16px;background:#c6d0e0;background-size:cover;background-position:center;position:relative;overflow:hidden}
-.item .thumb .ph{position:absolute;inset:0;display:grid;place-items:center;color:rgba(20,17,13,.35)}
+.item .thumb .ph{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;color:rgba(20,17,13,.35)}
 .item .thumb.has-img .ph{display:none}
 .item .thumb .ph svg{width:78px;height:78px}
 .item .mid{min-width:0}

@@ -9,15 +9,15 @@
 *,*::before,*::after{box-sizing:border-box}
 html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
 .stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--ink);color:var(--paper);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
-.photo{position:absolute;inset:0;background-size:cover;background-position:center}
+.photo{position:absolute;top:0;right:0;bottom:0;left:0;background-size:cover;background-position:center}
 .photo.placeholder{background:linear-gradient(120deg,#1b2a1f 0%,#33472f 46%,#5f7a52 100%)}
-.photo.placeholder::after{content:"";position:absolute;inset:0;background:radial-gradient(70% 60% at 70% 30%,rgba(157,185,143,.3),transparent 62%)}
+.photo.placeholder::after{content:"";position:absolute;top:0;right:0;bottom:0;left:0;background:radial-gradient(70% 60% at 70% 30%,rgba(157,185,143,.3),transparent 62%)}
 .drop{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:22px;color:rgba(255,255,255,.85);text-align:center}
 .photo.has-img .drop{display:none}
 .drop svg{width:150px;height:150px;opacity:.8}
 .drop b{font:600 var(--t-tertiary)/1.1 var(--font-grotesk);letter-spacing:.14em;text-transform:uppercase}
-.scrim{position:absolute;inset:0;background:linear-gradient(0deg,rgba(13,10,8,.95),rgba(13,10,8,.15) 46%,transparent 72%),linear-gradient(90deg,rgba(13,10,8,.7),transparent 46%)}
-.frame{position:absolute;inset:0;display:flex;flex-direction:column;padding:88px 96px}
+.scrim{position:absolute;top:0;right:0;bottom:0;left:0;background:linear-gradient(0deg,rgba(13,10,8,.95),rgba(13,10,8,.15) 46%,transparent 72%),linear-gradient(90deg,rgba(13,10,8,.7),transparent 46%)}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:flex;flex-direction:column;padding:88px 96px}
 .top{display:flex;align-items:center;gap:30px}
 .logo{font:500 var(--t-secondary)/.9 var(--font-display);font-style:italic}
 .issue{margin-left:auto;font:600 var(--t-tertiary)/1 var(--font-grotesk);letter-spacing:.24em;text-transform:uppercase;color:var(--accent)}
