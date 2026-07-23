@@ -1085,7 +1085,11 @@ export class ScreensController {
     const sel = { id: true, name: true, slug: true, latitude: true, longitude: true, address: true } as const;
     const self = await this.prisma.client.tenant.findUnique({ where: { id: rootId }, select: sel });
     const children = await this.prisma.client.tenant.findMany({
-      where: { parentId: rootId },
+      // archivedAt: null — an archived child location must NOT count toward the
+      // fleet, or a parent with only archived/test children reads as a
+      // multi-location "HQ" and the dashboard map appears when it shouldn't
+      // (the 2026-07-23 Dodgers incident: two archived test children).
+      where: { parentId: rootId, archivedAt: null },
       select: sel,
       orderBy: { name: 'asc' },
     });

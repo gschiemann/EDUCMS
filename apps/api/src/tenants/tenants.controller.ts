@@ -30,6 +30,7 @@ export class TenantsController {
 
     if (role === AppRole.SUPER_ADMIN) {
       const all = await this.prisma.client.tenant.findMany({
+        where: { archivedAt: null }, // archived (retired/test) tenants hidden from the switcher
         select: { id: true, name: true, slug: true, parentId: true },
         orderBy: [{ parentId: 'asc' }, { name: 'asc' }],
       });
@@ -45,7 +46,7 @@ export class TenantsController {
       const districtId = me?.parentId ?? me?.id;
       if (!districtId) return { current: tenantId, tenants: me ? [me] : [] };
       const tenants = await this.prisma.client.tenant.findMany({
-        where: { OR: [{ id: districtId }, { parentId: districtId }] },
+        where: { AND: [{ archivedAt: null }, { OR: [{ id: districtId }, { parentId: districtId }] }] },
         select: { id: true, name: true, slug: true, parentId: true },
         orderBy: [{ parentId: 'asc' }, { name: 'asc' }],
       });
@@ -78,7 +79,7 @@ export class TenantsController {
     // district. If they're already on the district itself, use their own id.
     const districtId = me.parentId ?? me.id;
     const children = await this.prisma.client.tenant.findMany({
-      where: { parentId: districtId },
+      where: { parentId: districtId, archivedAt: null }, // archived children excluded from the locations list + count
       select: {
         id: true, name: true, slug: true, createdAt: true,
         _count: { select: { screens: true, users: true } },
@@ -443,6 +444,76 @@ export class TenantsController {
       throw e;
     }
     return { success: true, deletedId: id };
+  }
+
+  // ── Tenant archive (soft-delete) ──────────────────────────────────────
+  // Hard delete is architecturally impossible for any tenant with audit
+  // history (audit_logs FK RESTRICT + §16 immutability trigger). Archiving is
+  // the supported retire/cleanup path: it's REVERSIBLE (unarchive), sets
+  // archived_at, and every fleet/list/count/cascade query filters archivedAt:
+  // null — so an archived location stops making a parent read as multi-location
+  // "HQ" (the map goes away) and drops out of the switcher, without a data wipe.
+  private readonly CALM_EMERGENCY = ['', 'NORMAL', 'INACTIVE'];
+
+  private async setArchived(reqUser: any, id: string, archived: boolean) {
+    if (!id) throw new HttpException({ code: 'TENANT_ID_REQUIRED', message: 'Tenant id required' }, HttpStatus.BAD_REQUEST);
+    if (id === reqUser.tenantId) {
+      throw new HttpException({ code: 'TENANT_CANNOT_ARCHIVE_CURRENT', message: 'You cannot archive the tenant you are currently in. Switch out first.' }, HttpStatus.BAD_REQUEST);
+    }
+    const target = await this.prisma.client.tenant.findUnique({
+      where: { id },
+      select: { id: true, name: true, slug: true, parentId: true, emergencyStatus: true, archivedAt: true },
+    });
+    if (!target) throw new HttpException({ code: 'TENANT_NOT_FOUND', message: 'Tenant not found' }, HttpStatus.NOT_FOUND);
+    // Never archive a tenant mid-emergency (would hide an active life-safety
+    // surface). Only a real severity blocks it; the at-rest 'INACTIVE' is calm.
+    if (archived && target.emergencyStatus && !this.CALM_EMERGENCY.includes(target.emergencyStatus)) {
+      throw new HttpException({ code: 'TENANT_ARCHIVE_ACTIVE_EMERGENCY', message: 'Cannot archive a tenant with an active emergency. Clear the alert first.' }, HttpStatus.CONFLICT);
+    }
+    // Audit + flip atomically. Audit is scoped to the PARENT when present so it
+    // survives independent of the (now-hidden) child.
+    await this.prisma.client.$transaction(async (tx) => {
+      await tx.auditLog.create({
+        data: {
+          tenantId: target.parentId || target.id,
+          userId: reqUser.userId,
+          action: archived ? 'TENANT_ARCHIVED' : 'TENANT_UNARCHIVED',
+          targetType: 'Tenant',
+          targetId: target.id,
+          details: JSON.stringify({ name: target.name, slug: target.slug, parentTenantId: target.parentId }),
+        },
+      });
+      await tx.tenant.update({ where: { id }, data: { archivedAt: archived ? new Date() : null } });
+    });
+    return { success: true, id, archived };
+  }
+
+  @Post(':id/archive')
+  @RequireRoles(AppRole.SUPER_ADMIN)
+  async archiveTenant(@Request() req: any, @Param('id') id: string) {
+    return this.setArchived(req.user, id, true);
+  }
+
+  @Post(':id/unarchive')
+  @RequireRoles(AppRole.SUPER_ADMIN)
+  async unarchiveTenant(@Request() req: any, @Param('id') id: string) {
+    return this.setArchived(req.user, id, false);
+  }
+
+  // Bulk archive — SUPER_ADMIN cleanup of a reviewed id list. Per-id failures
+  // (emergency / current / not-found) are collected, never aborting the batch.
+  @Post('archive-bulk')
+  @RequireRoles(AppRole.SUPER_ADMIN)
+  async archiveBulk(@Request() req: any, @Body() body: { ids?: string[] }) {
+    const ids = Array.isArray(body?.ids) ? body.ids.filter((x) => typeof x === 'string') : [];
+    if (!ids.length) throw new HttpException({ code: 'TENANT_IDS_REQUIRED', message: 'ids[] required' }, HttpStatus.BAD_REQUEST);
+    const archived: string[] = [];
+    const skipped: Array<{ id: string; code: string }> = [];
+    for (const id of ids) {
+      try { await this.setArchived(req.user, id, true); archived.push(id); }
+      catch (e: any) { skipped.push({ id, code: e?.response?.code || e?.code || 'ERROR' }); }
+    }
+    return { success: true, archivedCount: archived.length, archived, skipped };
   }
 
   @Get()

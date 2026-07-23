@@ -16,6 +16,15 @@ model Tenant {
   slug                            String             @unique
   emergencyStatus                 String             @default("INACTIVE") @map("emergency_status")
   createdAt                       DateTime           @default(now()) @map("created_at")
+  // 2026-07-23 — tenant soft-delete (archive). Hard-delete is architecturally
+  // impossible for any tenant with audit history (audit_logs FK RESTRICT + the
+  // §16 immutability trigger), so archiving is the supported way to retire a
+  // location / clean up test accounts. Reversible: archive sets this, unarchive
+  // clears it. Archived tenants are EXCLUDED from every fleet/location/list/
+  // count/cascade query (so an archived child stops making a parent read as
+  // multi-location "HQ"), but remain reachable by direct id (auth, unarchive,
+  // audit lineage) — soft-delete, never a data wipe.
+  archivedAt                      DateTime?          @map("archived_at")
   emergencyPlaylistId             String?            @map("emergency_playlist_id")
   panicEvacuatePlaylistId         String?            @map("panic_evacuate_playlist_id")
   panicLockdownPlaylistId         String?            @map("panic_lockdown_playlist_id")

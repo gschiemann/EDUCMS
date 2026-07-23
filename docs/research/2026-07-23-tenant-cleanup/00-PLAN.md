@@ -54,3 +54,13 @@ It's a production schema migration touching the emergency-adjacent tenant model 
 a mass state-change of live tenants — needs focused care + a deploy cycle + can't be
 applied from a read-only session. Build it as its own reviewed change. NEVER weaken
 the audit immutability (§16) or the emergency guards while doing it.
+
+## SHIPPED (2026-07-23)
+Archive feature built: `Tenant.archivedAt` (migration `20260723140000_tenant_archived_at`),
+`archivedAt: null` exclusion added to fleet children (screens.controller `/screens/fleet` →
+**fixes the Dodgers map**), tenant switcher + children lists (tenants.controller), super
+console list (super-license, `?includeArchived=1` to see them), and playlist fleet cascade.
+Endpoints (SUPER_ADMIN): `POST /tenants/:id/archive` · `/unarchive` · `/archive-bulk` — each
+audit-logged, emergency-guarded, can't-archive-current. Apply tool:
+`scripts/archive-test-tenants.cjs` (dry-run default, `--apply`, `--restore <id>`), keep-list
+= 11 real/system/springfield tenants. RUN AFTER the migration deploys to prod.

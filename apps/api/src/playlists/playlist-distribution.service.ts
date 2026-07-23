@@ -89,7 +89,7 @@ export class PlaylistDistributionService {
     // 3. Targets must be the parent itself or one of its DIRECT children
     //    (parent→child authority). Anything else is rejected.
     const children = await this.prisma.client.tenant.findMany({
-      where: { parentId: parentTenantId },
+      where: { parentId: parentTenantId, archivedAt: null }, // never cascade fleet content into an archived location
       select: { id: true, name: true },
     });
     const parentRow = await this.prisma.client.tenant.findUnique({

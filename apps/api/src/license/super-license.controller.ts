@@ -47,11 +47,16 @@ export class SuperLicenseController {
    *  per-row ONLINE/OFFLINE chip threshold.
    */
   @Get('tenants')
-  async listTenants() {
+  async listTenants(@Query('includeArchived') includeArchived?: string) {
+    // Archived (retired / cleaned-up test) tenants are hidden by default so the
+    // owner console reads as the real customer roster; pass ?includeArchived=1
+    // to see them (e.g. to restore one).
+    const showArchived = includeArchived === '1' || includeArchived === 'true';
     const tenants = await this.prisma.client.tenant.findMany({
+      where: showArchived ? {} : { archivedAt: null },
       select: {
         id: true, name: true, slug: true, vertical: true, parentId: true, createdAt: true,
-        emergencyStatus: true,
+        emergencyStatus: true, archivedAt: true,
         canaryFleetPercent: true,
         license: true,
         _count: { select: { screens: { where: { pairedAt: { not: null } } } } },
