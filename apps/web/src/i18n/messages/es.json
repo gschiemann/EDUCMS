@@ -15,7 +15,8 @@
     "reviews": "Revisiones",
     "audit": "Registro de actividad",
     "account": "Cuenta",
-    "more": "Más"
+    "more": "Más",
+    "mainMenu": "Menú principal"
   },
   "toolbar": {
     "openNav": "Abrir el menú de navegación",
@@ -27,7 +28,8 @@
     "superAdmin": "Superadmin",
     "ownerConsoleTitle": "Abrir la consola del propietario (todas las organizaciones)",
     "user": "Usuario",
-    "role": "Rol"
+    "role": "Rol",
+    "skipToMain": "Saltar al contenido principal"
   },
   "emergency": {
     "active": "Emergencia activa",
@@ -316,6 +318,37 @@
       "sending": "Enviando…",
       "createUser": "Crear usuario",
       "sendInvitation": "Enviar invitación"
+    },
+    "ota": {
+      "playerApkTitle": "APK del reproductor",
+      "playerApkSubtitle": "Descarga la compilación de kiosco Android y decide si las pantallas vinculadas se actualizan solas.",
+      "downloadApk": "Descargar APK",
+      "autoUpdateTitle": "Actualización automática del APK",
+      "on": "Activado",
+      "offRecommended": "Desactivado (recomendado)",
+      "autoUpdateOnDesc": "Los kioscos vinculados descargan nuevas versiones del APK cada 6 horas: sin intervención, pero una versión con errores puede dañar pantallas en uso.",
+      "autoUpdateOffDesc": "Los kioscos permanecen en su versión actual del APK. Los administradores envían actualizaciones por pantalla con el icono de engranaje de cada tarjeta.",
+      "latestPublished": "Última publicada:",
+      "autoUpdate": "Actualización automática",
+      "stateOn": "Activada",
+      "stateOff": "Desactivada",
+      "installWindowTitle": "Ventana de instalación",
+      "notSetInstallsImmediately": "Sin definir — se instala de inmediato",
+      "installWindowDesc": "Cuando se define, el botón \"Enviar actualización\" del panel sigue funcionando, pero la instalación solo SE APLICA dentro de esta ventana diaria en la zona horaria configurada. Las descargas ocurren en segundo plano en cualquier momento (sin interrupción). Úsalo para no interrumpir las pantallas de cara al público en horario comercial.",
+      "wraparoundPrefix": "Se admite horario nocturno (p. ej.",
+      "wraparoundSuffix": "significa \"de 22:00 a 04:00 del día siguiente\"). Puedes anularlo por envío en el diálogo de envío de la pantalla.",
+      "start": "Inicio",
+      "end": "Fin",
+      "timezoneIana": "Zona horaria (IANA)",
+      "save": "Guardar",
+      "canaryTitle": "Despliegue canario por fases",
+      "percentCohort": "grupo del {percent}%",
+      "fullRollout": "100% — despliegue completo",
+      "canaryDesc": "Baja el porcentaje para desplegar por fases. Solo el grupo hash de pantallas (determinista por ID de pantalla, nunca se recalcula) recibe el nuevo APK; el resto se queda en su versión actual. Cuando pasa la ventana de observación sin errores de instalación en el grupo, la promoción automática vuelve al 100%.",
+      "canaryHelp": "Usa 5–10% para una versión arriesgada; 25–50% para actualizaciones rutinarias. Pon 0 para pausar por completo las actualizaciones OTA (p. ej. en semana de exámenes).",
+      "cohortPercent": "Grupo %",
+      "soakHours": "Observación (horas)",
+      "autoPromoteAfterSoak": "Promover automáticamente tras la observación"
     }
   },
   "settingsIndex": {

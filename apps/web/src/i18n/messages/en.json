@@ -15,7 +15,8 @@
     "reviews": "Reviews",
     "audit": "Audit Log",
     "account": "Account",
-    "more": "More"
+    "more": "More",
+    "mainMenu": "Main Menu"
   },
   "toolbar": {
     "openNav": "Open navigation menu",
@@ -27,7 +28,8 @@
     "superAdmin": "Super Admin",
     "ownerConsoleTitle": "Open the Owner Console (cross-tenant god mode)",
     "user": "User",
-    "role": "Role"
+    "role": "Role",
+    "skipToMain": "Skip to main content"
   },
   "emergency": {
     "active": "Emergency Active",
@@ -316,6 +318,37 @@
       "sending": "Sending…",
       "createUser": "Create user",
       "sendInvitation": "Send invitation"
+    },
+    "ota": {
+      "playerApkTitle": "Player APK",
+      "playerApkSubtitle": "Download the Android kiosk build and decide whether paired screens auto-update.",
+      "downloadApk": "Download APK",
+      "autoUpdateTitle": "Auto-update Player APK",
+      "on": "On",
+      "offRecommended": "Off (recommended)",
+      "autoUpdateOnDesc": "Paired kiosks pull new APK builds on their 6-hour cadence — hands-off but a buggy release can break working screens.",
+      "autoUpdateOffDesc": "Kiosks stay pinned at their current APK version. Admins push updates per-screen via the gear icon on each screen card.",
+      "latestPublished": "Latest published:",
+      "autoUpdate": "Auto-update",
+      "stateOn": "On",
+      "stateOff": "Off",
+      "installWindowTitle": "Update install window",
+      "notSetInstallsImmediately": "Not set — installs immediately",
+      "installWindowDesc": "When set, dashboard \"Push update\" still works — but the install only APPLIES during this daily window in the configured timezone. Downloads happen anytime in the background (no disruption). Use this to keep customer-facing screens uninterrupted during business hours.",
+      "wraparoundPrefix": "Wraparound supported (e.g.",
+      "wraparoundSuffix": "means \"10 PM to 4 AM next day\"). Per-push override available on the screen Push dialog.",
+      "start": "Start",
+      "end": "End",
+      "timezoneIana": "Timezone (IANA)",
+      "save": "Save",
+      "canaryTitle": "Staged canary rollout",
+      "percentCohort": "{percent}% cohort",
+      "fullRollout": "100% — full rollout",
+      "canaryDesc": "Lower the percentage to stage a release. Only the hashed cohort of screens (deterministic from screen ID, never re-rolled) receives the new APK; the rest stay on their current version. After the soak window elapses without any install errors in the cohort, auto-promote bumps back to 100%.",
+      "canaryHelp": "Use 5–10% for a risky release; 25–50% for routine updates. Set to 0 to pause OTA entirely (e.g. during finals week).",
+      "cohortPercent": "Cohort %",
+      "soakHours": "Soak (hours)",
+      "autoPromoteAfterSoak": "Auto-promote after soak"
     }
   },
   "settingsIndex": {

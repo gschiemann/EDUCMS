@@ -15,7 +15,8 @@
     "reviews": "审核",
     "audit": "审计日志",
     "account": "账户",
-    "more": "更多"
+    "more": "更多",
+    "mainMenu": "主菜单"
   },
   "toolbar": {
     "openNav": "打开导航菜单",
@@ -27,7 +28,8 @@
     "superAdmin": "超级管理员",
     "ownerConsoleTitle": "打开所有者控制台（跨组织管理）",
     "user": "用户",
-    "role": "角色"
+    "role": "角色",
+    "skipToMain": "跳到主要内容"
   },
   "emergency": {
     "active": "紧急状态已激活",
@@ -316,6 +318,37 @@
       "sending": "正在发送…",
       "createUser": "创建用户",
       "sendInvitation": "发送邀请"
+    },
+    "ota": {
+      "playerApkTitle": "播放器 APK",
+      "playerApkSubtitle": "下载 Android 自助终端版本，并决定已配对的屏幕是否自动更新。",
+      "downloadApk": "下载 APK",
+      "autoUpdateTitle": "自动更新播放器 APK",
+      "on": "开启",
+      "offRecommended": "关闭（推荐）",
+      "autoUpdateOnDesc": "已配对的自助终端会按 6 小时周期拉取新的 APK 版本 — 无需人工干预，但有缺陷的版本可能导致正常屏幕故障。",
+      "autoUpdateOffDesc": "自助终端保持在当前 APK 版本。管理员通过每个屏幕卡片上的齿轮图标逐屏推送更新。",
+      "latestPublished": "最新发布：",
+      "autoUpdate": "自动更新",
+      "stateOn": "已开启",
+      "stateOff": "已关闭",
+      "installWindowTitle": "更新安装时段",
+      "notSetInstallsImmediately": "未设置 — 立即安装",
+      "installWindowDesc": "设置后，控制台的“推送更新”仍然有效，但安装仅在所配置时区的此每日时段内生效。下载会在后台随时进行（不打扰）。用它可让面向顾客的屏幕在营业时间内不受打扰。",
+      "wraparoundPrefix": "支持跨夜时段（例如",
+      "wraparoundSuffix": "表示“晚上 10 点到次日凌晨 4 点”）。可在屏幕的推送对话框中按次覆盖。",
+      "start": "开始",
+      "end": "结束",
+      "timezoneIana": "时区（IANA）",
+      "save": "保存",
+      "canaryTitle": "分批灰度发布",
+      "percentCohort": "{percent}% 灰度群体",
+      "fullRollout": "100% — 全量发布",
+      "canaryDesc": "降低百分比即可分批发布。仅哈希选中的屏幕群体（由屏幕 ID 确定，不会重新抽取）会收到新 APK；其余屏幕保持当前版本。观察期结束且群体内无安装错误后，自动晋级会回到 100%。",
+      "canaryHelp": "高风险版本用 5–10%；常规更新用 25–50%。设为 0 可完全暂停 OTA 更新（例如考试周期间）。",
+      "cohortPercent": "灰度比例 %",
+      "soakHours": "观察期（小时）",
+      "autoPromoteAfterSoak": "观察期后自动晋级"
     }
   },
   "settingsIndex": {

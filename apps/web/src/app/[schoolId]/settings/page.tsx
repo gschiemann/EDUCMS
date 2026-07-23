@@ -406,10 +406,10 @@ export default function SettingsPage() {
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mt-4">
             <div className="px-6 py-4 border-b border-slate-100">
               <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                <MonitorPlay className="w-4 h-4 text-emerald-600" /> Player APK
+                <MonitorPlay className="w-4 h-4 text-emerald-600" /> {t('settings.ota.playerApkTitle')}
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                Download the Android kiosk build and decide whether paired screens auto-update.
+                {t('settings.ota.playerApkSubtitle')}
               </p>
             </div>
 
@@ -430,7 +430,7 @@ export default function SettingsPage() {
                 target="_blank" rel="noopener"
                 className="shrink-0 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg"
               >
-                Download APK
+                {t('settings.ota.downloadApk')}
               </a>
             </div>
 
@@ -1102,6 +1102,7 @@ function EmbeddedLocationMode({
  * release cadence and want hands-off updates.
  */
 function AutoUpdatePlayerToggle() {
+  const t = useTranslations();
   const { data: cfg } = useAutoUpdatePlayerConfig();
   const { data: latest } = useLatestPlayerVersion();
   const toggle = useToggleAutoUpdatePlayer();
@@ -1134,19 +1135,19 @@ function AutoUpdatePlayerToggle() {
         </div>
         <div className="min-w-0">
           <div className="text-sm font-bold text-slate-800 flex items-center gap-2">
-            Auto-update Player APK
+            {t('settings.ota.autoUpdateTitle')}
             {enabled ? (
-              <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">On</span>
+              <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">{t('settings.ota.on')}</span>
             ) : (
-              <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">Off (recommended)</span>
+              <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">{t('settings.ota.offRecommended')}</span>
             )}
           </div>
           <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
             {enabled
-              ? 'Paired kiosks pull new APK builds on their 6-hour cadence — hands-off but a buggy release can break working screens.'
-              : 'Kiosks stay pinned at their current APK version. Admins push updates per-screen via the gear icon on each screen card.'}
+              ? t('settings.ota.autoUpdateOnDesc')
+              : t('settings.ota.autoUpdateOffDesc')}
             {latest?.versionName && (
-              <span className="block mt-0.5 text-slate-400">Latest published: <span className="font-semibold">v{latest.versionName}</span></span>
+              <span className="block mt-0.5 text-slate-400">{t('settings.ota.latestPublished')} <span className="font-semibold">v{latest.versionName}</span></span>
             )}
           </p>
         </div>
@@ -1163,7 +1164,7 @@ function AutoUpdatePlayerToggle() {
         } disabled:opacity-60 disabled:cursor-not-allowed`}
       >
         {toggle.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : enabled ? <ShieldCheck className="w-4 h-4" /> : <ShieldOff className="w-4 h-4" />}
-        <span>Auto-update {enabled ? 'On' : 'Off'}</span>
+        <span>{t('settings.ota.autoUpdate')} {enabled ? t('settings.ota.stateOn') : t('settings.ota.stateOff')}</span>
       </button>
     </div>
   );
@@ -1175,6 +1176,7 @@ function AutoUpdatePlayerToggle() {
 // all three (window unconfigured = updates apply immediately, current
 // behavior).
 function OtaMaintenanceWindowCard() {
+  const t = useTranslations();
   const { data: cfg, isLoading } = useOtaWindowConfig();
   const update = useUpdateOtaWindow();
   // Local edit state so the user can tweak before saving
@@ -1221,20 +1223,20 @@ function OtaMaintenanceWindowCard() {
         </div>
         <div className="min-w-0">
           <div className="text-sm font-bold text-slate-800 flex items-center gap-2">
-            Update install window
+            {t('settings.ota.installWindowTitle')}
             {configured ? (
               <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
                 {cfg!.start}–{cfg!.end} {cfg!.timezone}
               </span>
             ) : (
-              <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">Not set — installs immediately</span>
+              <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">{t('settings.ota.notSetInstallsImmediately')}</span>
             )}
           </div>
           <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-            When set, dashboard &quot;Push update&quot; still works — but the install only APPLIES during this daily window in the configured timezone. Downloads happen anytime in the background (no disruption). Use this to keep customer-facing screens uninterrupted during business hours.
+            {t('settings.ota.installWindowDesc')}
           </p>
           <p className="text-[10px] text-slate-400 mt-1">
-            Wraparound supported (e.g. <span className="font-mono">22:00 → 04:00</span> means &quot;10 PM to 4 AM next day&quot;). Per-push override available on the screen Push dialog.
+            {t('settings.ota.wraparoundPrefix')} <span className="font-mono">22:00 → 04:00</span> {t('settings.ota.wraparoundSuffix')}
           </p>
         </div>
       </div>
@@ -1244,7 +1246,7 @@ function OtaMaintenanceWindowCard() {
       ) : (
         <div className="flex flex-wrap items-end gap-2 pl-12">
           <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
-            Start
+            {t('settings.ota.start')}
             <input
               type="time"
               value={start}
@@ -1253,7 +1255,7 @@ function OtaMaintenanceWindowCard() {
             />
           </label>
           <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
-            End
+            {t('settings.ota.end')}
             <input
               type="time"
               value={end}
@@ -1262,7 +1264,7 @@ function OtaMaintenanceWindowCard() {
             />
           </label>
           <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide flex-1 min-w-[180px]">
-            Timezone (IANA)
+            {t('settings.ota.timezoneIana')}
             <input
               type="text"
               value={timezone}
@@ -1278,7 +1280,7 @@ function OtaMaintenanceWindowCard() {
             className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide rounded-lg text-white disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ background: 'var(--brand-primary, #4f46e5)' }}
           >
-            {update.isPending ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'Save'}
+            {update.isPending ? <Loader2 className="w-4 h-4 animate-spin inline" /> : t('settings.ota.save')}
           </button>
           {configured && (
             <button
@@ -1301,6 +1303,7 @@ function OtaMaintenanceWindowCard() {
 // before auto-promote fires. Default 100 = full rollout (preserves
 // existing behavior). Operators dial down for risky pushes.
 function CanaryRolloutCard() {
+  const t = useTranslations();
   const { data: cfg, isLoading } = useCanaryRollout();
   const update = useUpdateCanaryRollout();
   const [percent, setPercent] = useState<number>(100);
@@ -1345,14 +1348,14 @@ function CanaryRolloutCard() {
         </div>
         <div className="min-w-0">
           <div className="text-sm font-bold text-slate-800 flex items-center gap-2 flex-wrap">
-            Staged canary rollout
+            {t('settings.ota.canaryTitle')}
             {active ? (
               <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-                {cfg!.percent}% cohort
+                {t('settings.ota.percentCohort', { percent: cfg!.percent })}
               </span>
             ) : (
               <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                100% — full rollout
+                {t('settings.ota.fullRollout')}
               </span>
             )}
             {remainingLabel && (
@@ -1362,14 +1365,10 @@ function CanaryRolloutCard() {
             )}
           </div>
           <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-            Lower the percentage to stage a release. Only the hashed cohort of screens
-            (deterministic from screen ID, never re-rolled) receives the new APK; the
-            rest stay on their current version. After the soak window elapses without
-            any install errors in the cohort, auto-promote bumps back to 100%.
+            {t('settings.ota.canaryDesc')}
           </p>
           <p className="text-[10px] text-slate-400 mt-1">
-            Use 5–10% for a risky release; 25–50% for routine updates. Set to 0 to
-            pause OTA entirely (e.g. during finals week).
+            {t('settings.ota.canaryHelp')}
           </p>
         </div>
       </div>
@@ -1379,7 +1378,7 @@ function CanaryRolloutCard() {
       ) : (
         <div className="flex flex-wrap items-end gap-3 pl-12">
           <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
-            Cohort %
+            {t('settings.ota.cohortPercent')}
             <input
               type="number"
               min={0}
@@ -1391,7 +1390,7 @@ function CanaryRolloutCard() {
             />
           </label>
           <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
-            Soak (hours)
+            {t('settings.ota.soakHours')}
             <input
               type="number"
               min={1}
@@ -1409,7 +1408,7 @@ function CanaryRolloutCard() {
               onChange={(e) => { setAutoPromote(e.target.checked); setDirty(true); }}
               className="w-3.5 h-3.5 accent-indigo-500"
             />
-            Auto-promote after soak
+            {t('settings.ota.autoPromoteAfterSoak')}
           </label>
           <button
             type="button"
@@ -1418,7 +1417,7 @@ function CanaryRolloutCard() {
             className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide rounded-lg text-white disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ background: 'var(--brand-primary, #4f46e5)' }}
           >
-            {update.isPending ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'Save'}
+            {update.isPending ? <Loader2 className="w-4 h-4 animate-spin inline" /> : t('settings.ota.save')}
           </button>
           {active && (
             <button

@@ -508,7 +508,7 @@ export function Sidebar() {
 
         <nav className="flex-1 py-6 px-4 space-y-1 overflow-y-auto">
           <div className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-4 px-4">
-            Main Menu
+            {t('nav.mainMenu')}
           </div>
           {/*
             BULLETPROOF HYDRATION GATE

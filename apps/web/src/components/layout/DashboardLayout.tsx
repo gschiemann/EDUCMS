@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { usePathname } from 'next/navigation';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
@@ -18,6 +19,7 @@ import { AppDialogHost } from '@/components/ui/app-dialog';
 import { BrandStyleInjector } from '@/components/branding/BrandStyleInjector';
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const t = useTranslations();
   const isEmergencyActive = useAppStore((state) => state.isEmergencyActive);
   const setEmergencyActive = useAppStore((state) => state.setEmergencyActive);
   const { data: tenant } = useTenantStatus();
@@ -105,7 +107,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[10001] focus:px-4 focus:py-2 focus:rounded-lg focus:bg-indigo-600 focus:text-white focus:text-sm focus:font-bold focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-400"
       >
-        Skip to main content
+        {t('toolbar.skipToMain')}
       </a>
 
       {/* Decorative blobs — brand-aware ambient lighting.
