@@ -1,0 +1,39 @@
+# Gallery-poster freshness guard.
+#
+# The templates gallery shows a pre-rendered static poster PNG per board
+# (apps/web/public/templates/_thumbs/<rel>.png), NOT a live iframe (perf: 114
+# live 4K iframes pegged the main thread). Failure mode: edit a board's HTML but
+# forget to regenerate its poster -> the gallery shows the OLD board forever.
+# That burned a full session on 2026-07-24 (redesigned + photo-baked fashion
+# boards, gallery still showed the June posters). Operator: "dont ever let the
+# previews not get updated when we update templates."
+#
+# This gate FAILS if any board HTML changed without its poster PNG changing too.
+# Dependency-free (git + node built-ins), <1 min.
+name: Poster Freshness
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  poster-freshness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need the base ref for the diff
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check gallery posters were regenerated for changed boards
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="origin/${{ github.base_ref }}"
+          else
+            BASE="${{ github.event.before }}"
+          fi
+          echo "poster-freshness base ref: $BASE"
+          POSTER_CHECK_BASE="$BASE" node apps/web/tools/check-poster-freshness.cjs
