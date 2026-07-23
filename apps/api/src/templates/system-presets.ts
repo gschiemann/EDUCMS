@@ -1703,6 +1703,16 @@ const RAW_SYSTEM_PRESETS: SystemPreset[] = [
     zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/corporate/11-corporate-signal.html' } }],
   },
   {
+    // Codex 2026-07-23 release: a SEPARATE Corporate Signal option (Ribbon
+    // Edition), kept alongside the newer 11-signal-beacon direction.
+    id: 'preset-sig-corporate-12',
+    name: "Corporate · Signal (Ribbon)",
+    description: "Cinematic brand moment — Ribbon Edition — 3840×2160 industry digital-signage template.",
+    category: 'CORPORATE', orientation: 'LANDSCAPE',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#05070d',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/corporate/12-signal-ribbon.html' } }],
+  },
+  {
     id: 'preset-sig-fashion-01',
     name: "Fashion · Lookbook",
     description: "Lookbook — 3840×2160 industry digital-signage template.",

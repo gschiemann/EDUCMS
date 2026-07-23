@@ -115,7 +115,7 @@ function posterFor(zones: Zone[]): string | null {
 
 /** Bump on every poster regeneration so browsers/CDN refetch the new PNGs.
  *  Date-based; append a letter for multiple regens in one day (…24b). */
-const POSTER_VERSION = '20260724b';
+const POSTER_VERSION = '20260724c';
 
 export function ScaledTemplateThumbnail({
   zones, screenWidth, screenHeight, bgImage, bgGradient, bgColor, maxHeight = 150, freeze = false,
