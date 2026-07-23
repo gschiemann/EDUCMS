@@ -1,21 +1,48 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>New Hires</title><style>
-:root{--bg:#0c0e12;--fg:#eef2f8;--mute:#7a8595;--paper:#141823;--rule:rgba(238,242,248,.12);--primary:#3b82f6;--accent:#10b981;--gold:#f59e0b;--danger:#ef4444;--font-display:Georgia,serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif;--font-mono:"SF Mono",Menlo,Consolas,monospace}
-*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
-.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--fg);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
-.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;padding:80px;row-gap:40px}
-.top{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--rule);padding-bottom:24px}
-.logo{font:700 88px/.95 var(--font-display);letter-spacing:-.02em}
-.tag{font:500 36px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute);margin-left:32px}
-.live{display:inline-flex;align-items:center;gap:16px;font:700 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-left:24px}
-.live::before{content:"";width:18px;height:18px;border-radius:50%;background:var(--accent);animation:p 1.6s infinite}
-@keyframes p{0%{box-shadow:0 0 0 0 rgba(16,185,129,.7)}70%{box-shadow:0 0 0 18px rgba(16,185,129,0)}100%{box-shadow:0 0 0 0 rgba(16,185,129,0)}}
-.clock{font:600 88px/1 var(--font-grotesk);font-variant-numeric:tabular-nums}
-.foot{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:32px;border-top:2px solid var(--rule);padding-top:24px}
-.fc{border:3px solid var(--rule);border-radius:32px;padding:24px 44px;display:flex;flex-direction:column;gap:8px}
-.fc.accent{background:linear-gradient(135deg,var(--primary) 0%,#1d4ed8 100%);border:none}
-.fc.accent .l{color:rgba(255,255,255,.85)}.fc.accent .v{color:#fff}
-.fc .l{font:600 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
-.fc .v{font:700 72px/.92 var(--font-condensed);letter-spacing:-.02em}
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Corporate · New Hires</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#eef1f7;--paper:#ffffff;--panel:#f6f8fc;--ink:#0e1626;--ink2:#475068;--mute:#8a93a8;--rule:#e3e8f1;
+  --primary:#3551e6;--primary2:#2138b8;--accent:#15b59a;--gold:#e0a020;--coral:#f0743a;--violet:#7b5cf0;
+  --font-display:"Space Grotesk",system-ui,sans-serif;--font-grotesk:"Hanken Grotesk",system-ui,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;width:100%;background:#0b0d12;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--ink);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
+.stage::before{content:"";position:absolute;top:-300px;left:-200px;width:1500px;height:1500px;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--primary) 13%,transparent),transparent 62%);pointer-events:none}
+.stage::after{content:"";position:absolute;bottom:-300px;right:-200px;width:1400px;height:1400px;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--accent) 12%,transparent),transparent 62%);pointer-events:none}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:auto 1fr;padding:84px 92px;row-gap:52px;z-index:1}
+
+.top{display:flex;align-items:center;gap:30px}
+.logo{width:104px;height:104px;flex:none;border-radius:26px;background:linear-gradient(150deg,var(--primary),var(--primary2));display:grid;place-items:center;color:#fff;box-shadow:0 16px 34px color-mix(in srgb,var(--primary) 28%,transparent);background-size:cover;background-position:center}
+.logo svg{width:54px;height:54px}.logo.has-img{font-size:0}
+.brand{min-width:0}
+.brand .eye{font:700 38px/1 var(--font-grotesk);letter-spacing:.2em;text-transform:uppercase;color:var(--primary)}
+.brand .n{font:700 116px/.86 var(--font-display);letter-spacing:-.03em;margin-top:14px}
+.brand .n em{font-style:normal;color:var(--primary)}
+.count{margin-left:auto;text-align:right}
+.count .v{font:700 150px/.82 var(--font-display);letter-spacing:-.04em;color:var(--accent)}
+.count .l{font:600 38px/1.1 var(--font-grotesk);letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin-top:6px}
+
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:40px;min-height:0}
+.card{background:var(--paper);border-radius:40px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(14,22,38,.08);position:relative}
+.card .photo{flex:1;min-height:0;background-size:cover;background-position:center;position:relative;display:grid;place-items:center}
+.card:nth-child(1) .photo{background:linear-gradient(160deg,#c3cdff,var(--primary))}
+.card:nth-child(2) .photo{background:linear-gradient(160deg,#a8ecdd,var(--accent))}
+.card:nth-child(3) .photo{background:linear-gradient(160deg,#ffd2bd,var(--coral))}
+.card:nth-child(4) .photo{background:linear-gradient(160deg,#d8ccff,var(--violet))}
+.card .photo .mono{font:700 150px/1 var(--font-display);color:rgba(255,255,255,.92);letter-spacing:-.02em}
+.card .photo.has-img .mono{display:none}
+.card .wave{position:absolute;top:32px;right:32px;width:84px;height:84px;border-radius:50%;background:rgba(255,255,255,.92);display:grid;place-items:center;font-size:46px;box-shadow:0 8px 20px rgba(0,0,0,.16)}
+.card .b{flex:none;padding:40px 44px 44px}
+.card .nm{font:700 64px/.92 var(--font-display);letter-spacing:-.02em;color:var(--ink)}
+.card .role{font:600 42px/1.12 var(--font-grotesk);color:var(--primary);margin-top:14px}
+.card:nth-child(2) .role{color:var(--accent)}.card:nth-child(3) .role{color:var(--coral)}.card:nth-child(4) .role{color:var(--violet)}
+.card .dept{font:500 38px/1.15 var(--font-grotesk);color:var(--ink2);margin-top:14px}
+.card .fun{font:500 36px/1.25 var(--font-grotesk);color:var(--mute);margin-top:18px;padding-top:18px;border-top:2px solid var(--rule)}
+
+.stage[data-orient="portrait"] .grid{grid-template-columns:repeat(2,1fr);grid-auto-rows:1fr}
+.stage[data-orient="portrait"] .brand .n{font-size:96px}
 </style><script>/*EDUCMS-SHIM-V7*/(function(){try{
 var editMode=false;
 // ── Gallery FREEZE mode ──────────────────────────────────────────────
@@ -52,33 +79,23 @@ if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded'
 try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
 addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();}}}catch(_){}});
 }catch(e){}})();</script>
-</head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">NORTH STAR</span><span class="tag" data-field="brand.tag">New this week</span></div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">9:42 AM</span></div></header>
-<main style="display:grid;grid-template-columns:repeat(4,1fr);gap:32px;min-height:0;align-content:center">
+</head><body>
+<div class="stage" id="stage"><div class="frame">
 
-<article style="background:var(--paper);border:3px solid var(--rule);border-radius:32px;padding:64px 48px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:32px">
-<div style="width:280px;height:280px;border-radius:50%;background:linear-gradient(135deg,var(--primary),#1d4ed8);color:#fff;display:flex;align-items:center;justify-content:center;font:900 144px/1 var(--font-condensed);letter-spacing:-.02em">MR</div>
-<div data-field="h.0.name" style="font:600 64px/1 var(--font-display);letter-spacing:-.02em">Maya Reyes</div>
-<div data-field="h.0.role" style="font:500 36px/1.2 var(--font-grotesk);color:var(--mute);min-height:88px">Senior PM · Platform</div>
-<div data-field="h.0.when" style="font:700 28px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent);padding:14px 24px;background:rgba(16,185,129,.16);border-radius:999px">Joins Mon</div>
-</article>
-<article style="background:var(--paper);border:3px solid var(--rule);border-radius:32px;padding:64px 48px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:32px">
-<div style="width:280px;height:280px;border-radius:50%;background:linear-gradient(135deg,var(--primary),#1d4ed8);color:#fff;display:flex;align-items:center;justify-content:center;font:900 144px/1 var(--font-condensed);letter-spacing:-.02em">JK</div>
-<div data-field="h.1.name" style="font:600 64px/1 var(--font-display);letter-spacing:-.02em">Jordan Kim</div>
-<div data-field="h.1.role" style="font:500 36px/1.2 var(--font-grotesk);color:var(--mute);min-height:88px">Staff Engineer · ML</div>
-<div data-field="h.1.when" style="font:700 28px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent);padding:14px 24px;background:rgba(16,185,129,.16);border-radius:999px">Joins Mon</div>
-</article>
-<article style="background:var(--paper);border:3px solid var(--rule);border-radius:32px;padding:64px 48px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:32px">
-<div style="width:280px;height:280px;border-radius:50%;background:linear-gradient(135deg,var(--primary),#1d4ed8);color:#fff;display:flex;align-items:center;justify-content:center;font:900 144px/1 var(--font-condensed);letter-spacing:-.02em">PA</div>
-<div data-field="h.2.name" style="font:600 64px/1 var(--font-display);letter-spacing:-.02em">Priya Anand</div>
-<div data-field="h.2.role" style="font:500 36px/1.2 var(--font-grotesk);color:var(--mute);min-height:88px">Director · CS</div>
-<div data-field="h.2.when" style="font:700 28px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent);padding:14px 24px;background:rgba(16,185,129,.16);border-radius:999px">Joins Tue</div>
-</article>
-<article style="background:var(--paper);border:3px solid var(--rule);border-radius:32px;padding:64px 48px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:32px">
-<div style="width:280px;height:280px;border-radius:50%;background:linear-gradient(135deg,var(--primary),#1d4ed8);color:#fff;display:flex;align-items:center;justify-content:center;font:900 144px/1 var(--font-condensed);letter-spacing:-.02em">DC</div>
-<div data-field="h.3.name" style="font:600 64px/1 var(--font-display);letter-spacing:-.02em">David Castellanos</div>
-<div data-field="h.3.role" style="font:500 36px/1.2 var(--font-grotesk);color:var(--mute);min-height:88px">VP · Sales</div>
-<div data-field="h.3.when" style="font:700 28px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent);padding:14px 24px;background:rgba(16,185,129,.16);border-radius:999px">Joins Wed</div>
-</article>
-</main>
-<footer class="foot"><div class="fc accent"><div class="l">New hires · Q2</div><div class="v">38 of 50</div></div><div class="fc"><div class="l">Welcome event</div><div class="v" data-field="evt">Fri · 4 PM rooftop</div></div><div class="fc"><div class="l">Refer a friend</div><div class="v" style="font-size:52px">careers@northstar.co</div></div></footer>
-</div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>
+  <header class="top" data-widget="brand">
+    <div class="logo" data-widget="logo" data-imgslot="brand.logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2 3 7v10l9 5 9-5V7z"/></svg></div>
+    <div class="brand"><div class="eye" data-field="brand.eye">North Star · People team</div><div class="n"><span data-field="brand.t1">Welcome to the </span><em data-field="brand.t2">team!</em></div></div>
+    <div class="count" data-widget="count"><div class="v" data-field="count.v">4</div><div class="l" data-field="count.l">joining this week</div></div>
+  </header>
+
+  <section class="grid" data-widget="hires" data-source="hris" data-feed="/api/corp/new-hires" data-refresh="3600s">
+    <article class="card" data-widget="h.0"><div class="photo" data-imgslot="h.0.photo"><span class="mono" data-field="h.0.ini">AR</span></div><div class="wave" aria-hidden="true">👋</div><div class="b"><div class="nm" data-field="h.0.nm">Aisha Rahman</div><div class="role" data-field="h.0.role">Senior Product Designer</div><div class="dept" data-field="h.0.dept">Design · reports to M. Liu</div><div class="fun" data-field="h.0.fun">Ask her about trail running &amp; ceramics.</div></div></article>
+    <article class="card" data-widget="h.1"><div class="photo" data-imgslot="h.1.photo"><span class="mono" data-field="h.1.ini">DC</span></div><div class="wave" aria-hidden="true">👋</div><div class="b"><div class="nm" data-field="h.1.nm">Diego Castro</div><div class="role" data-field="h.1.role">Staff Engineer</div><div class="dept" data-field="h.1.dept">Platform · reports to P. Shah</div><div class="fun" data-field="h.1.fun">Once biked across three countries.</div></div></article>
+    <article class="card" data-widget="h.2"><div class="photo" data-imgslot="h.2.photo"><span class="mono" data-field="h.2.ini">JK</span></div><div class="wave" aria-hidden="true">👋</div><div class="b"><div class="nm" data-field="h.2.nm">Jin Kim</div><div class="role" data-field="h.2.role">Account Executive</div><div class="dept" data-field="h.2.dept">Sales · reports to R. Ortiz</div><div class="fun" data-field="h.2.fun">Competitive trivia champion.</div></div></article>
+    <article class="card" data-widget="h.3"><div class="photo" data-imgslot="h.3.photo"><span class="mono" data-field="h.3.ini">MO</span></div><div class="wave" aria-hidden="true">👋</div><div class="b"><div class="nm" data-field="h.3.nm">Maya Owens</div><div class="role" data-field="h.3.role">People Partner</div><div class="dept" data-field="h.3.dept">People · reports to S. Vance</div><div class="fun" data-field="h.3.fun">Will beat you at chess. Be nice anyway.</div></div></article>
+  </section>
+
+</div></div>
+<script>(function(){var s=document.getElementById('stage');function fit(){var p=innerHeight>innerWidth;s.setAttribute('data-orient',p?'portrait':'landscape');var w=p?2160:3840,h=p?3840:2160;s.style.width=w+'px';s.style.height=h+'px';s.style.setProperty('--scale',Math.min(innerWidth/w,innerHeight/h));}addEventListener('resize',fit);fit();
+document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img');if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
+})();</script></body></html>

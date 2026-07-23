@@ -1,21 +1,71 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>KPI Dashboard</title><style>
-:root{--bg:#0c0e12;--fg:#eef2f8;--mute:#7a8595;--paper:#141823;--rule:rgba(238,242,248,.12);--primary:#3b82f6;--accent:#10b981;--gold:#f59e0b;--danger:#ef4444;--font-display:Georgia,serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif;--font-mono:"SF Mono",Menlo,Consolas,monospace}
-*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
-.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--fg);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
-.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;padding:80px;row-gap:40px}
-.top{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--rule);padding-bottom:24px}
-.logo{font:700 88px/.95 var(--font-display);letter-spacing:-.02em}
-.tag{font:500 36px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute);margin-left:32px}
-.live{display:inline-flex;align-items:center;gap:16px;font:700 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-left:24px}
-.live::before{content:"";width:18px;height:18px;border-radius:50%;background:var(--accent);animation:p 1.6s infinite}
-@keyframes p{0%{box-shadow:0 0 0 0 rgba(16,185,129,.7)}70%{box-shadow:0 0 0 18px rgba(16,185,129,0)}100%{box-shadow:0 0 0 0 rgba(16,185,129,0)}}
-.clock{font:600 88px/1 var(--font-grotesk);font-variant-numeric:tabular-nums}
-.foot{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:32px;border-top:2px solid var(--rule);padding-top:24px}
-.fc{border:3px solid var(--rule);border-radius:32px;padding:24px 44px;display:flex;flex-direction:column;gap:8px}
-.fc.accent{background:linear-gradient(135deg,var(--primary) 0%,#1d4ed8 100%);border:none}
-.fc.accent .l{color:rgba(255,255,255,.85)}.fc.accent .v{color:#fff}
-.fc .l{font:600 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
-.fc .v{font:700 72px/.92 var(--font-condensed);letter-spacing:-.02em}
+<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Corporate · Executive Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#eef1f7;--paper:#ffffff;--panel:#f6f8fc;--ink:#0e1626;--ink2:#475068;--mute:#8a93a8;--rule:#e3e8f1;
+  --primary:#3551e6;--primary2:#2138b8;--accent:#15b59a;--gold:#e0a020;--danger:#e2533d;--up:#13a97b;--down:#e2533d;
+  --font-display:"Space Grotesk",system-ui,sans-serif;--font-grotesk:"Hanken Grotesk",system-ui,sans-serif;--font-mono:"JetBrains Mono",monospace;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;width:100%;background:#0b0d12;overflow:hidden;font-family:var(--font-grotesk)}
+.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--ink);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;overflow:hidden}
+.stage::before{content:"";position:absolute;top:0;right:0;bottom:0;left:0;background:linear-gradient(var(--rule) 1px,transparent 1px),linear-gradient(90deg,var(--rule) 1px,transparent 1px);background-size:120px 120px;opacity:.5;mask:radial-gradient(120% 100% at 15% 0,#000,transparent 75%);pointer-events:none}
+.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:auto auto 1fr;padding:80px 88px;row-gap:40px}
+
+.top{display:flex;align-items:center;gap:30px;padding-bottom:30px;border-bottom:2px solid var(--rule)}
+.logo{width:100px;height:100px;flex:none;border-radius:24px;background:linear-gradient(150deg,var(--primary),var(--primary2));display:grid;place-items:center;color:#fff;box-shadow:0 14px 30px color-mix(in srgb,var(--primary) 28%,transparent)}
+.logo svg{width:52px;height:52px}
+.brand .n{font:700 70px/.9 var(--font-display);letter-spacing:-.02em}
+.brand .t{font:600 32px/1 var(--font-grotesk);letter-spacing:.2em;text-transform:uppercase;color:var(--mute);margin-top:8px}
+.period{margin-left:auto;background:var(--ink);color:#fff;font:600 40px/1 var(--font-display);padding:20px 40px;border-radius:18px;letter-spacing:-.01em;white-space:nowrap}
+.upd{font:600 30px/1 var(--font-grotesk);letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin-left:28px}
+
+/* hero metric band */
+.band{display:grid;grid-template-columns:1.7fr 1fr 1fr;gap:36px}
+.hcard{background:linear-gradient(150deg,var(--primary),var(--primary2));color:#fff;border-radius:40px;padding:52px 60px;position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:center}
+.hcard .l{font:600 36px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.82)}
+.hcard .v{font:700 200px/.84 var(--font-display);letter-spacing:-.04em;margin:14px 0 0;display:flex;align-items:baseline;gap:24px}
+.hcard .v .d{font:700 56px/1 var(--font-grotesk);background:rgba(255,255,255,.18);padding:14px 26px;border-radius:16px;letter-spacing:0}
+.hcard .spark{position:absolute;right:0;bottom:0;width:60%;height:55%;opacity:.5}
+.hcard .sub{font:500 40px/1.1 var(--font-grotesk);color:rgba(255,255,255,.86);margin-top:14px}
+.mcard{background:var(--paper);border-radius:40px;padding:48px 52px;box-shadow:0 24px 60px rgba(14,22,38,.07);display:flex;flex-direction:column;justify-content:center}
+.mcard .l{font:600 34px/1 var(--font-grotesk);letter-spacing:.16em;text-transform:uppercase;color:var(--mute)}
+.mcard .v{font:700 132px/.84 var(--font-display);letter-spacing:-.03em;margin:14px 0 8px;color:var(--ink)}
+.mcard .d{font:700 44px/1 var(--font-grotesk)}
+.d.up{color:var(--up)}.d.down{color:var(--down)}
+.d.up::before{content:"▲ "}.d.down::before{content:"▼ "}
+
+/* lower: KPI grid + goal thermo */
+.lower{display:grid;grid-template-columns:1fr 1fr 1fr 980px;gap:36px;min-height:0}
+.kp{background:var(--paper);border-radius:36px;padding:52px 56px;box-shadow:0 24px 60px rgba(14,22,38,.06);display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden}
+.kp .l{font:600 34px/1.1 var(--font-grotesk);letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+.kp .mid{display:flex;align-items:flex-end;gap:28px;flex-wrap:wrap}
+.kp .v{font:700 188px/.8 var(--font-display);letter-spacing:-.03em;color:var(--ink)}
+.kp .v.p{color:var(--primary)}.kp .v.a{color:var(--accent)}.kp .v.g{color:var(--gold)}
+.kp .d{font:700 46px/1 var(--font-grotesk);padding-bottom:22px;white-space:nowrap}
+.kp .trend{height:120px;margin:8px -56px 0;display:flex;align-items:flex-end;gap:14px;padding:0 56px}
+.kp .trend span{flex:1;border-radius:8px 8px 0 0;background:color-mix(in srgb,var(--primary) 16%,transparent)}
+.kp.a2 .trend span{background:color-mix(in srgb,var(--accent) 18%,transparent)}
+.kp.g2 .trend span{background:color-mix(in srgb,var(--gold) 22%,transparent)}
+.kp .trend span:last-child{background:var(--primary)}
+.kp.a2 .trend span:last-child{background:var(--accent)}
+.kp.g2 .trend span:last-child{background:var(--gold)}
+.kp .meta{font:500 36px/1.25 var(--font-grotesk);color:var(--ink2)}
+.goal{background:var(--ink);color:#fff;border-radius:40px;padding:56px 64px;display:flex;flex-direction:column}
+.goal .l{font:600 36px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.7)}
+.goal h2{font:700 72px/.92 var(--font-display);letter-spacing:-.02em;margin:16px 0 0}
+.goal h2 em{font-style:normal;color:var(--accent)}
+.thermo{margin-top:auto;display:flex;align-items:flex-end;gap:40px}
+.thermo .track{flex:1;height:280px;border-radius:28px;background:rgba(255,255,255,.12);position:relative;overflow:hidden}
+.thermo .fill{position:absolute;left:0;right:0;bottom:0;height:74%;background:linear-gradient(0deg,var(--accent),#48d9bf);border-radius:0 0 28px 28px}
+.thermo .fill::before{content:attr(data-pct);position:absolute;top:24px;left:0;right:0;text-align:center;font:700 64px/1 var(--font-display);color:#06241d}
+.thermo .nums{text-align:right;white-space:nowrap}
+.thermo .nums .cur{font:700 104px/.86 var(--font-display);letter-spacing:-.03em}
+.thermo .nums .tot{font:600 44px/1.1 var(--font-grotesk);color:rgba(255,255,255,.7);margin-top:10px}
+
+.stage[data-orient="portrait"] .band{grid-template-columns:1fr;grid-auto-rows:auto}
+.stage[data-orient="portrait"] .lower{grid-template-columns:1fr 1fr;grid-auto-rows:1fr}
+.stage[data-orient="portrait"] .goal{grid-column:1/-1}
 </style><script>/*EDUCMS-SHIM-V7*/(function(){try{
 var editMode=false;
 // ── Gallery FREEZE mode ──────────────────────────────────────────────
@@ -52,57 +102,41 @@ if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded'
 try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
 addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();}}}catch(_){}});
 }catch(e){}})();</script>
-</head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">NORTH STAR</span><span class="tag" data-field="brand.tag">Exec dashboard · Q2</span><span class="live">Live</span></div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">9:42 AM</span></div></header>
-<main style="display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(2,1fr);gap:32px;min-height:0">
+</head><body>
+<div class="stage" id="stage"><div class="frame">
 
-<article style="background:var(--paper);border:3px solid var(--rule);border-radius:32px;padding:48px 56px;display:flex;flex-direction:column;justify-content:space-between">
-<div class="l" data-field="k.0.k">ARR</div>
-<div>
-<div style="font:700 144px/.9 var(--font-condensed);letter-spacing:-.04em" data-field="k.0.v">$48.2M</div>
-<div style="margin-top:14px;font:600 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent)" data-field="k.0.d">+18% QoQ</div>
-</div></article>
-<article style="background:var(--paper);border:3px solid var(--rule);border-radius:32px;padding:48px 56px;display:flex;flex-direction:column;justify-content:space-between">
-<div class="l" data-field="k.1.k">NRR</div>
-<div>
-<div style="font:700 144px/.9 var(--font-condensed);letter-spacing:-.04em" data-field="k.1.v">118%</div>
-<div style="margin-top:14px;font:600 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent)" data-field="k.1.d">+3 pts</div>
-</div></article>
-<article style="background:var(--paper);border:3px solid var(--rule);border-radius:32px;padding:48px 56px;display:flex;flex-direction:column;justify-content:space-between">
-<div class="l" data-field="k.2.k">Pipeline</div>
-<div>
-<div style="font:700 144px/.9 var(--font-condensed);letter-spacing:-.04em" data-field="k.2.v">$142M</div>
-<div style="margin-top:14px;font:600 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--gold)" data-field="k.2.d">3.2× quota</div>
-</div></article>
-<article style="background:var(--paper);border:3px solid var(--rule);border-radius:32px;padding:48px 56px;display:flex;flex-direction:column;justify-content:space-between">
-<div class="l" data-field="k.3.k">CAC payback</div>
-<div>
-<div style="font:700 144px/.9 var(--font-condensed);letter-spacing:-.04em" data-field="k.3.v">11 mo</div>
-<div style="margin-top:14px;font:600 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent)" data-field="k.3.d">-2 mo</div>
-</div></article>
-<article style="background:var(--paper);border:3px solid var(--rule);border-radius:32px;padding:48px 56px;display:flex;flex-direction:column;justify-content:space-between">
-<div class="l" data-field="k.4.k">Logos won</div>
-<div>
-<div style="font:700 144px/.9 var(--font-condensed);letter-spacing:-.04em" data-field="k.4.v">1,248</div>
-<div style="margin-top:14px;font:600 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent)" data-field="k.4.d">+42 wk</div>
-</div></article>
-<article style="background:var(--paper);border:3px solid var(--rule);border-radius:32px;padding:48px 56px;display:flex;flex-direction:column;justify-content:space-between">
-<div class="l" data-field="k.5.k">NPS</div>
-<div>
-<div style="font:700 144px/.9 var(--font-condensed);letter-spacing:-.04em" data-field="k.5.v">62</div>
-<div style="margin-top:14px;font:600 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent)" data-field="k.5.d">All-time</div>
-</div></article>
-<article style="background:var(--paper);border:3px solid var(--rule);border-radius:32px;padding:48px 56px;display:flex;flex-direction:column;justify-content:space-between">
-<div class="l" data-field="k.6.k">Eng velocity</div>
-<div>
-<div style="font:700 144px/.9 var(--font-condensed);letter-spacing:-.04em" data-field="k.6.v">+24%</div>
-<div style="margin-top:14px;font:600 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--accent)" data-field="k.6.d">3 sprints</div>
-</div></article>
-<article style="background:var(--paper);border:3px solid var(--rule);border-radius:32px;padding:48px 56px;display:flex;flex-direction:column;justify-content:space-between">
-<div class="l" data-field="k.7.k">Open roles</div>
-<div>
-<div style="font:700 144px/.9 var(--font-condensed);letter-spacing:-.04em" data-field="k.7.v">38</div>
-<div style="margin-top:14px;font:600 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--gold)" data-field="k.7.d">Hiring</div>
-</div></article>
-</main>
-<footer class="foot"><div class="fc accent"><div class="l">Source</div><div class="v" style="font-size:52px">Snowflake + Looker</div></div><div class="fc"><div class="l">Refreshed</div><div class="v" data-field="kpi.upd">2 sec ago</div></div><div class="fc"><div class="l">Quarter ends</div><div class="v" data-field="kpi.qend">42 days</div></div></footer>
-</div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>
+  <header class="top" data-widget="brand">
+    <div class="logo" data-widget="logo" data-imgslot="brand.logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg></div>
+    <div class="brand"><div class="n" data-field="brand.name">North Star</div><div class="t" data-field="brand.tag">Company Scorecard</div></div>
+    <div class="period" data-field="brand.period">Q2 · FY26</div>
+    <div class="upd" data-source="local-time"><span data-field="brand.upd">Updated 9:42 AM</span></div>
+  </header>
+
+  <section class="band" data-widget="hero" data-source="bi" data-feed="/api/corp/scorecard" data-refresh="300s">
+    <div class="hcard" data-widget="revenue">
+      <div class="l" data-field="h.l">Quarter revenue</div>
+      <div class="v"><span data-field="h.v">$48.2M</span><span class="d" data-field="h.d">+14%</span></div>
+      <div class="sub" data-field="h.s">Pacing 6% ahead of plan · 82% to quarterly target</div>
+      <svg class="spark" viewBox="0 0 300 100" preserveAspectRatio="none" aria-hidden="true"><polyline points="0,82 40,76 80,80 120,60 160,64 200,44 240,40 300,18" fill="none" stroke="#fff" stroke-width="4"/><polygon points="0,82 40,76 80,80 120,60 160,64 200,44 240,40 300,18 300,100 0,100" fill="rgba(255,255,255,.16)"/></svg>
+    </div>
+    <div class="mcard" data-widget="nps"><div class="l" data-field="m0l">Customer NPS</div><div class="v" data-field="m0v">71</div><div class="d up" data-field="m0d">+6 vs Q1</div></div>
+    <div class="mcard" data-widget="uptime"><div class="l" data-field="m1l">Platform uptime</div><div class="v" data-field="m1v">99.98%</div><div class="d up" data-field="m1d">SLA met</div></div>
+  </section>
+
+  <section class="lower">
+    <div class="kp" data-widget="k.0"><div class="l" data-field="k0l">New logos · QTD</div><div class="mid"><div class="v p" data-field="k0v">38</div><div class="d up" data-field="k0d">+11</div></div><div class="trend"><span style="height:32%"></span><span style="height:44%"></span><span style="height:38%"></span><span style="height:58%"></span><span style="height:70%"></span><span style="height:64%"></span><span style="height:88%"></span></div><div class="meta" data-field="k0m">Mid-market leading, +4 enterprise</div></div>
+    <div class="kp a2" data-widget="k.1"><div class="l" data-field="k1l">Net retention</div><div class="mid"><div class="v a" data-field="k1v">118%</div><div class="d up" data-field="k1d">+3 pts</div></div><div class="trend"><span style="height:60%"></span><span style="height:64%"></span><span style="height:58%"></span><span style="height:72%"></span><span style="height:76%"></span><span style="height:82%"></span><span style="height:90%"></span></div><div class="meta" data-field="k1m">Expansion outpacing churn</div></div>
+    <div class="kp g2" data-widget="k.2"><div class="l" data-field="k2l">Open roles</div><div class="mid"><div class="v g" data-field="k2v">24</div><div class="d down" data-field="k2d">-6 filled</div></div><div class="trend"><span style="height:88%"></span><span style="height:80%"></span><span style="height:74%"></span><span style="height:66%"></span><span style="height:60%"></span><span style="height:52%"></span><span style="height:46%"></span></div><div class="meta" data-field="k2m">Eng &amp; GTM prioritized this month</div></div>
+    <div class="goal" data-widget="goal">
+      <div class="l" data-field="g.l">Annual goal · ARR</div>
+      <h2><span data-field="g.t1">Road to </span><em data-field="g.t2">$220M</em></h2>
+      <div class="thermo"><div class="track"><div class="fill" data-field="g.fill" data-pct="74%"></div></div><div class="nums"><div class="cur" data-field="g.cur">$163M</div><div class="tot" data-field="g.tot">of $220M committed</div></div></div>
+    </div>
+  </section>
+
+</div></div>
+<script>(function(){var s=document.getElementById('stage');function fit(){var p=innerHeight>innerWidth;s.setAttribute('data-orient',p?'portrait':'landscape');var w=p?2160:3840,h=p?3840:2160;s.style.width=w+'px';s.style.height=h+'px';s.style.setProperty('--scale',Math.min(innerWidth/w,innerHeight/h));}addEventListener('resize',fit);fit();
+document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img');if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
+var f=document.querySelector('.thermo .fill');if(f){f.style.height=(f.getAttribute('data-pct')||'74%');}
+function clk(){var d=new Date(),h=d.getHours(),m=d.getMinutes(),ap=h<12?'AM':'PM';h=h%12||12;document.querySelectorAll('[data-field="brand.upd"]').forEach(function(e){if(!e.hasAttribute('data-pin'))e.textContent='Updated '+h+':'+(m<10?'0':'')+m+' '+ap;});}clk();setInterval(clk,30000);
+})();</script></body></html>
