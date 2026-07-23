@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { ArrowLeft, Shield, Loader2, CheckCircle2, AlertCircle, KeyRound, Copy } from 'lucide-react';
@@ -72,6 +73,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
 }
 
 export default function SsoSettingsPage() {
+  const t = useTranslations();
   const { schoolId } = useParams<{ schoolId: string }>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -206,16 +208,15 @@ export default function SsoSettingsPage() {
         href={`/${schoolId}/settings`}
         className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600"
       >
-        <ArrowLeft className="w-3.5 h-3.5" /> Settings
+        <ArrowLeft className="w-3.5 h-3.5" /> {t('streamingSso.settings')}
       </Link>
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-800 flex items-center gap-2">
           <Shield className="w-7 h-7 text-indigo-500" />
-          Single Sign-On (SSO)
+          {t('streamingSso.ssoHeading')}
         </h1>
         <p className="text-sm text-slate-500 mt-0.5">
-          Connect your identity provider (Google Workspace, Microsoft Entra, Okta, ADFS) so admins
-          can sign in with their work account.
+          {t('streamingSso.ssoSubtitle')}
         </p>
       </div>
 
@@ -224,9 +225,9 @@ export default function SsoSettingsPage() {
         fallback={
           <div className="bg-slate-50 p-8 rounded-xl border border-slate-200 text-center">
             <KeyRound className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-            <h3 className="text-sm font-bold text-slate-700">District Admin Access Required</h3>
+            <h3 className="text-sm font-bold text-slate-700">{t('streamingSso.districtAdminAccessRequired')}</h3>
             <p className="text-xs text-slate-500 mt-2">
-              Only District Admins can configure SSO. Contact your district administrator.
+              {t('streamingSso.onlyDistrictAdmins')}
             </p>
           </div>
         }
@@ -240,12 +241,12 @@ export default function SsoSettingsPage() {
             {sp && (
               <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
                 <h2 className="text-sm font-bold text-slate-700 mb-4">
-                  Service Provider metadata (give these to your IdP)
+                  {t('streamingSso.spMetadata')}
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <CopyField label="Entity ID / Audience" value={sp.entityId} />
+                  <CopyField label={t('streamingSso.entityIdAudience')} value={sp.entityId} />
                   <CopyField label="SAML ACS URL" value={sp.acsUrl} />
-                  <CopyField label="OIDC Redirect URI" value={sp.oidcRedirectUri} />
+                  <CopyField label={t('streamingSso.oidcRedirectUri')} value={sp.oidcRedirectUri} />
                 </div>
               </div>
             )}
@@ -256,11 +257,11 @@ export default function SsoSettingsPage() {
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-sm font-bold text-slate-700">Identity Provider</h2>
+                  <h2 className="text-sm font-bold text-slate-700">{t('streamingSso.identityProvider')}</h2>
                   <p className="text-xs text-slate-500 mt-0.5">
                     {config?.enabled
-                      ? 'SSO is currently enabled for this tenant.'
-                      : 'SSO is not enabled — admins can still sign in with email/password.'}
+                      ? t('streamingSso.ssoEnabledForTenant')
+                      : t('streamingSso.ssoNotEnabled')}
                   </p>
                 </div>
                 {/* SAML is intentionally non-armable in this build:
@@ -278,20 +279,20 @@ export default function SsoSettingsPage() {
                     onChange={(e) => setEnabled(e.target.checked)}
                     className="w-4 h-4 rounded border-slate-300 disabled:opacity-50"
                   />
-                  Enabled
+                  {t('streamingSso.enabled')}
                 </label>
               </div>
 
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">
-                  Provider type
+                  {t('streamingSso.providerType')}
                 </label>
                 <select
                   value={provider}
                   onChange={(e) => setProvider(e.target.value as Provider)}
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white"
                 >
-                  <option value="SAML">SAML 2.0 (ADFS, Okta, Entra) — temporarily unavailable</option>
+                  <option value="SAML">{t('streamingSso.samlOption')}</option>
                   <option value="OIDC">OIDC (Google Workspace, Auth0, Azure AD)</option>
                 </select>
               </div>
@@ -306,7 +307,7 @@ export default function SsoSettingsPage() {
                   <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg">
                     <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                     <p className="text-xs text-amber-800 font-medium leading-relaxed">
-                      <span className="font-bold">SAML sign-in is temporarily unavailable.</span>{' '}
+                      <span className="font-bold">{t('streamingSso.samlUnavailableBold')}</span>{' '}
                       The SAML library was removed to remediate a security advisory
                       (CVE-2025-54419) and returns in a follow-up. You can save your
                       SAML configuration below so it&rsquo;s ready when it ships, but it
@@ -315,29 +316,29 @@ export default function SsoSettingsPage() {
                     </p>
                   </div>
                   <Field
-                    label="Metadata URL / SSO Entry Point"
+                    label={t('streamingSso.metadataUrlLabel')}
                     value={metadataUrl}
                     onChange={setMetadataUrl}
                     placeholder="https://idp.example.com/saml/sso"
                   />
                   <Field
-                    label="IdP Entity ID (optional override)"
+                    label={t('streamingSso.idpEntityIdLabel')}
                     value={entityId}
                     onChange={setEntityId}
                     placeholder="https://idp.example.com/saml/metadata"
                   />
                   <Field
-                    label="ACS URL (optional override)"
+                    label={t('streamingSso.acsUrlLabel')}
                     value={acsUrl}
                     onChange={setAcsUrl}
                     placeholder={sp?.acsUrl}
                   />
                   <div>
                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">
-                      IdP signing certificate (x509, PEM)
+                      {t('streamingSso.idpSigningCert')}
                       {config?.hasX509Cert && (
                         <span className="ml-2 text-emerald-600 normal-case font-normal">
-                          (currently set — leave blank to keep)
+                          {t('streamingSso.currentlySetLeaveBlank')}
                         </span>
                       )}
                     </label>
@@ -353,23 +354,23 @@ export default function SsoSettingsPage() {
               ) : (
                 <div className="space-y-3">
                   <Field
-                    label="OIDC Issuer URL"
+                    label={t('streamingSso.oidcIssuerUrl')}
                     value={oidcIssuer}
                     onChange={setOidcIssuer}
                     placeholder="https://accounts.google.com"
                   />
                   <Field
-                    label="Client ID"
+                    label={t('streamingSso.clientId')}
                     value={oidcClientId}
                     onChange={setOidcClientId}
                     placeholder="abc.apps.googleusercontent.com"
                   />
                   <div>
                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">
-                      Client Secret
+                      {t('streamingSso.clientSecret')}
                       {config?.hasOidcClientSecret && (
                         <span className="ml-2 text-emerald-600 normal-case font-normal">
-                          (currently set — leave blank to keep)
+                          {t('streamingSso.currentlySetLeaveBlank')}
                         </span>
                       )}
                     </label>
@@ -389,7 +390,7 @@ export default function SsoSettingsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">
-                    Default role for new users
+                    {t('streamingSso.defaultRoleNewUsers')}
                   </label>
                   <select
                     value={defaultRole}
@@ -404,7 +405,7 @@ export default function SsoSettingsPage() {
                   </select>
                 </div>
                 <Field
-                  label="Allowed email domain"
+                  label={t('streamingSso.allowedEmailDomain')}
                   value={allowedEmailDomain}
                   onChange={setAllowedEmailDomain}
                   placeholder="acme.edu"
@@ -418,7 +419,7 @@ export default function SsoSettingsPage() {
                   onChange={(e) => setAutoProvision(e.target.checked)}
                   className="w-4 h-4 rounded border-slate-300"
                 />
-                Auto-create user accounts on first successful SSO login
+                {t('streamingSso.autoCreateAccounts')}
               </label>
 
               {error && (
@@ -451,7 +452,7 @@ export default function SsoSettingsPage() {
                   disabled={saving}
                   className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold rounded-lg"
                 >
-                  {saving ? 'Saving...' : 'Save SSO configuration'}
+                  {saving ? t('streamingSso.saving') : t('streamingSso.saveSsoConfig')}
                 </button>
                 <button
                   type="button"
@@ -459,7 +460,7 @@ export default function SsoSettingsPage() {
                   disabled={testing}
                   className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg"
                 >
-                  {testing ? 'Testing...' : 'Test connection'}
+                  {testing ? t('streamingSso.testing') : t('streamingSso.testConnection')}
                 </button>
               </div>
             </form>
