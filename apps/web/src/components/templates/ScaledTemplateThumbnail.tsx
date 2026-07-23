@@ -106,8 +106,16 @@ function posterFor(zones: Zone[]): string | null {
   if (typeof url !== 'string' || !url.startsWith('/templates/')) return null;
   const clean = url.split('?')[0].split('#')[0];
   if (!clean.endsWith('.html')) return null;
-  return clean.replace('/templates/', '/templates/_thumbs/').replace(/\.html$/, '.png');
+  // Cache-bust: poster PNGs live at a stable URL, so a browser (and Vercel's
+  // edge) hard-cache the OLD image after we regenerate a board's poster. Append
+  // a version query so an updated poster is actually fetched. BUMP POSTER_VERSION
+  // every time posters are regenerated (gen-template-posters.cjs / regen-*).
+  return clean.replace('/templates/', '/templates/_thumbs/').replace(/\.html$/, '.png') + `?v=${POSTER_VERSION}`;
 }
+
+/** Bump on every poster regeneration so browsers/CDN refetch the new PNGs.
+ *  Date-based; append a letter for multiple regens in one day (…24b). */
+const POSTER_VERSION = '20260724a';
 
 export function ScaledTemplateThumbnail({
   zones, screenWidth, screenHeight, bgImage, bgGradient, bgColor, maxHeight = 150, freeze = false,
