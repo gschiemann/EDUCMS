@@ -82,9 +82,17 @@ export const QUARANTINED_PRESET_IDS: ReadonlySet<string> = new Set(
  * endcap / wayfinding) here as their codex replacements are ported + verified.
  */
 export const SUPERSEDED_PRESET_IDS: ReadonlySet<string> = new Set<string>([
+  // Replaced by the redesigned photo HTML fashion boards (2026-07-24):
   'retail-sale-bogo-promo', // -> Fashion · Sale
   'retail-new-arrivals-lookbook', // -> Fashion · New Arrivals + Lookbook
   'retail-loyalty-spotlight', // -> Fashion · Members
+  // Replaced by the codex Store redesign set (preset-sig-retail-01..08), shipped
+  // + verified live 2026-07-24 so no gap:
+  'retail-storefront-welcome', // -> Store · Storefront (Gallery/Aperture)
+  'retail-window-display-portrait', // -> Store · Storefront
+  'retail-endcap-featured', // -> Store · End-Cap (Kinetic/Object/Drop)
+  'retail-aisle-wayfinding', // -> Store · Wayfinding (Signal/Daylight/Monolith)
+  // retail-holiday-seasonal is KEPT — no codex replacement (Seasonal category).
 ]);
 
 /** URLs on the denylist that matched NO preset — a typo/stale-path guard for
