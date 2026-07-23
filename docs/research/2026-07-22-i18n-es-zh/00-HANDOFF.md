@@ -79,3 +79,27 @@ Same proven pattern every time: `const t = useTranslations()`, new namespace, au
 - Every new user-facing string ships in en+es+zh same commit (memory `feedback_all_features_all_languages.md`).
 - Absence claims need two independent verification methods (memory `feedback_audit_grep_and_seed_timing.md`).
 - Watch CI to green before saying "shipped". Verify render trees before editing UI. `command grep`, not bare grep.
+
+---
+
+## SESSION 3 (Opus, 2026-07-22 pm) — settings deep-fix + workflow batch
+
+**CRITICAL LESSON — verify with a FULL-DOM detector, NOT hand-picked string lists.** My earlier "settings done" was wrong because I checked for specific known strings. The right tool (paste in browser console on any zh page, returns every English text node still rendering):
+```js
+(function(){const B=/^(VenueOS|Venue OS|Stripe|Square|Toast|Clover|Shopify|MINDBODY|Okta|Google|Android|APK|SSO|OIDC|SAML|IANA|CMS|AI|OFF|ON|SAVE|URL|HLS|RTSP|PDF|Canva|Figma|QSR|Lockdown|Evacuate|Weather|Medical|All-clear)$/i;const w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);const o=new Set();let n;while((n=w.nextNode())){const s=(n.textContent||'').trim();if(!s||s.length<2)continue;const e=n.parentElement;if(!e)continue;if(['SCRIPT','STYLE','CODE','INPUT','TEXTAREA','OPTION'].includes(e.tagName))continue;const c=getComputedStyle(e);if(c.display==='none'||c.visibility==='hidden')continue;if(/[一-鿿]/.test(s))continue;if(!/[A-Za-z]{2,}\s+[A-Za-z]{2,}/.test(s)){if(!/^[A-Za-z][A-Za-z'’\-]{2,}$/.test(s)||B.test(s))continue;}if(B.test(s))continue;o.add(s.slice(0,80));}return JSON.stringify([...o]);})()
+```
+**RE-AUDIT EVERY "done" PAGE WITH THIS.** Dashboard re-audited clean (only "Wei" = data). screens/assets/playlists NOT yet re-audited with it — DO THAT.
+
+**Shipped this session (all on master, HEAD `0193967f`):**
+- `3d925b3b` locale-aware tenantCopy (root cause of settings leaks — vertical nouns/hierarchy/roles, en byte-identical) + settings page leaks (Manage, emergency card)
+- `ae577d2d` Greg's Corporate Signal template (cherry-picked from PR #58 — recovered a wrong-branch slip; PR #58 now redundant)
+- `e83e9d88` 7 workflow surfaces: brandingCard, locationsCard, mfaCard, menuPage, reviewsPage, opsPages, onboardingPages + Team Members section
+- `02323cec` streaming + SSO
+- `5e2846b1` settings OTA/Player-APK section + Main Menu/skip-link chrome (found by the detector)
+- `0193967f` billing + POS (billingCommerce spec)
+
+**Settings page: FULLY zh — detector returns 0 English.** Verified live.
+
+**Workflow tooling (reusable, in scratchpad `/private/tmp/claude-501/.../scratchpad/`):** `apply_spec.py` (applies an agent spec: exact find/replace + catalog merge + import), `add_hooks.py` (tsc-driven `const t=useTranslations()` insertion), specs in `specs/*.json`. The workflow ran 10 agents returning structured specs; lead applied centrally (no worktree/catalog conflicts).
+
+**DEFERRED (module-scope t() problem — agents wrapped module-scope config-object values in t() which fails; reverted to English):** signup, monetize. FIX = move the config to keys-not-values, resolve via t() inside the component. Still TODO: templates (4947L), sports (deferred — wrong vertical for retail), plus complex flagged strings (SAML CVE notice, link-fractured sentences, status-enum badges).
