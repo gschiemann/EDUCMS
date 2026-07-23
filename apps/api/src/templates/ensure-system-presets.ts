@@ -70,6 +70,23 @@ export const QUARANTINED_PRESET_IDS: ReadonlySet<string> = new Set(
   ALL_PRESETS.filter(isQuarantinedPreset).map((p: any) => p.id as string),
 );
 
+/**
+ * Presets SUPERSEDED by a newer redesign — retired from the gallery. Unlike the
+ * quarantine denylist (quality/legal holds), these are intentional retirements:
+ * archived (not deleted) so any playlist referencing one keeps working and they
+ * can be restored by flipping status back to ACTIVE. The boot pass below archives
+ * any that are still ACTIVE.
+ *
+ * 2026-07-24: the old emoji React-zone RETAIL presets replaced by the redesigned
+ * photo HTML fashion boards. Add the remaining old retail presets (storefront /
+ * endcap / wayfinding) here as their codex replacements are ported + verified.
+ */
+export const SUPERSEDED_PRESET_IDS: ReadonlySet<string> = new Set<string>([
+  'retail-sale-bogo-promo', // -> Fashion · Sale
+  'retail-new-arrivals-lookbook', // -> Fashion · New Arrivals + Lookbook
+  'retail-loyalty-spotlight', // -> Fashion · Members
+]);
+
 /** URLs on the denylist that matched NO preset — a typo/stale-path guard for
  *  the test below. Empty in a healthy tree. */
 export const QUARANTINED_URLS_WITHOUT_PRESET: ReadonlyArray<string> = [
@@ -667,6 +684,28 @@ export async function ensureSystemPresets(prisma: PrismaService) {
         }
       } catch (e) {
         logger.warn(`Quarantine pass failed: ${(e as Error).message}`);
+      }
+    }
+
+    // ─── Superseded-preset retirement pass ───
+    // Archive any preset SUPERSEDED by a newer redesign that is still ACTIVE.
+    // Same non-destructive contract as the quarantine pass: ARCHIVED hides it
+    // from the gallery but keeps the id referenceable by existing playlists, and
+    // it's one status flip to restore. See SUPERSEDED_PRESET_IDS.
+    if (SUPERSEDED_PRESET_IDS.size > 0) {
+      try {
+        const res = await prisma.client.template.updateMany({
+          where: {
+            id: { in: [...SUPERSEDED_PRESET_IDS] },
+            status: 'ACTIVE' as any,
+          },
+          data: { status: 'ARCHIVED' as any },
+        });
+        if (res.count > 0) {
+          logger.log(`Retired ${res.count} superseded preset(s) (replaced by newer redesigns).`);
+        }
+      } catch (e) {
+        logger.warn(`Superseded-retirement pass failed: ${(e as Error).message}`);
       }
     }
 
