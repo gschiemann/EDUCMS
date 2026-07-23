@@ -20,6 +20,7 @@
  * Per-provider sync handlers will ship in apps/api/src/pos/providers/<id>.ts.
  */
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -63,14 +64,15 @@ interface PosConnection {
 }
 
 const SCOPE_LABELS: Record<string, string> = {
-  'restaurant-qsr': '🍔 Restaurant / QSR',
-  'restaurant-table': '🍽 Full-service dining',
-  'retail': '🛍 Retail',
-  'bar': '🍺 Bar',
-  'universal': '🔗 Universal',
+  'restaurant-qsr': "🍔 Restaurant / QSR",
+  'restaurant-table': "🍽 Full-service dining",
+  'retail': "🛍 Retail",
+  'bar': "🍺 Bar",
+  'universal': "🔗 Universal",
 };
 
 export default function PosSettingsPage() {
+  const t = useTranslations();
   const params = useParams();
   const schoolId = params?.schoolId as string;
   const qc = useQueryClient();
@@ -89,16 +91,16 @@ export default function PosSettingsPage() {
         href={`/${schoolId}/settings`}
         className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-orange-600"
       >
-        <ArrowLeft className="w-3.5 h-3.5" /> Settings
+        <ArrowLeft className="w-3.5 h-3.5" /> {t('billingCommerce.settings')}
       </Link>
       <div className="rounded-2xl bg-gradient-to-br from-amber-600 via-orange-600 to-red-600 p-6 text-white relative overflow-hidden">
         <div className="absolute top-0 right-0 bottom-0 left-0 opacity-10" style={{ backgroundImage: 'radial-gradient(white 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
         <div className="relative">
           <h1 className="text-2xl font-extrabold tracking-tight flex items-center gap-2">
-            <Utensils className="w-6 h-6" /> POS catalog sync
+            <Utensils className="w-6 h-6" /> {t('billingCommerce.posCatalogSync')}
           </h1>
           <p className="text-amber-50 mt-1.5 text-sm max-w-xl">
-            Connect your point-of-sale. Menu boards, price callouts, and inventory widgets auto-sync from the live catalog. No more &ldquo;we changed the burger price three weeks ago and the screens still say $7.99.&rdquo;
+            {t('billingCommerce.posHeroSubtitle')}
           </p>
         </div>
       </div>
@@ -107,18 +109,14 @@ export default function PosSettingsPage() {
       <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 flex items-start gap-3 text-emerald-900">
         <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
         <div className="text-xs leading-relaxed">
-          <strong className="font-bold">Catalog sync is live</strong> for the self-serve providers
-          (Square, Clover, Lightspeed, Shopify) — connect, and your items, prices, and
-          availability sync automatically to your menu boards. <strong>Multi-location chains:</strong>{' '}
-          once connected, map each store to one of your locations under <em>Stores</em> below and
-          the POS drives each location&rsquo;s own prices. Partner providers (Toast, etc.) still
-          show an honest &ldquo;in development&rdquo; panel until their connector ships.
+          <strong className="font-bold">{t('billingCommerce.catalogSyncIsLive')}</strong> {t('billingCommerce.catalogSyncLiveDetail')} <strong>{t('billingCommerce.multiLocationChains')}</strong>{' '}
+          {t('billingCommerce.onceConnectedMapStore')} <em>{t('billingCommerce.storesLabel')}</em> {t('billingCommerce.posDrivesPricesDetail')}
         </div>
       </div>
 
       {/* Connections */}
       <section>
-        <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Your connections</h2>
+        <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">{t('billingCommerce.yourConnections')}</h2>
         {connections.isLoading ? (
           <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-slate-400" /></div>
         ) : connections.data && connections.data.length > 0 ? (
@@ -129,14 +127,14 @@ export default function PosSettingsPage() {
                 connection={c}
                 onSync={async () => {
                   const r: any = await apiFetch(`/pos/connections/${c.id}/sync`, { method: 'POST' });
-                  if (r?.message) await appAlert({ title: 'POS sync', message: r.message, tone: 'info' });
+                  if (r?.message) await appAlert({ title: t('billingCommerce.posSync'), message: r.message, tone: 'info' });
                   qc.invalidateQueries({ queryKey: ['pos-connections'] });
                 }}
                 onDisconnect={async () => {
                   if (!(await appConfirm({
-                    title: 'Disconnect POS provider?',
-                    message: `${c.providerName} will be disconnected and synced menu items removed from your screens.`,
-                    confirmLabel: 'Disconnect',
+                    title: t('billingCommerce.disconnectPosProvider'),
+                    message: t('billingCommerce.posDisconnectMessage', { name: c.providerName }),
+                    confirmLabel: t('billingCommerce.disconnect'),
                     tone: 'danger',
                   }))) return;
                   await apiFetch(`/pos/connections/${c.id}`, { method: 'DELETE' });
@@ -147,14 +145,14 @@ export default function PosSettingsPage() {
           </div>
         ) : (
           <div className="rounded-xl border-2 border-dashed border-slate-200 bg-white p-6 text-center text-sm text-slate-500">
-            No POS connected yet. Pick one below to get started.
+            {t('billingCommerce.noPosConnected')}
           </div>
         )}
       </section>
 
       {/* Provider catalog */}
       <section>
-        <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Available POS providers</h2>
+        <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">{t('billingCommerce.availablePosProviders')}</h2>
         {providers.isLoading ? (
           <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-slate-400" /></div>
         ) : (
@@ -195,13 +193,14 @@ export default function PosSettingsPage() {
 }
 
 function ConnectionRow({ connection, onSync, onDisconnect }: { connection: PosConnection; onSync: () => void; onDisconnect: () => void }) {
+  const t = useTranslations();
   const statusColor =
     connection.status === 'ACTIVE' ? 'text-emerald-700 bg-emerald-50 border-emerald-200' :
     connection.status === 'PENDING' ? 'text-amber-700 bg-amber-50 border-amber-200' :
     'text-rose-700 bg-rose-50 border-rose-200';
   const lastSync = connection.lastSyncedAt
     ? new Date(connection.lastSyncedAt).toLocaleString()
-    : 'never';
+    : t('billingCommerce.never');
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
       <div className="flex items-center gap-3 p-4">
@@ -216,14 +215,14 @@ function ConnectionRow({ connection, onSync, onDisconnect }: { connection: PosCo
             </span>
           </div>
           <div className="text-xs text-slate-500 mt-0.5">
-            {connection.itemCount} item{connection.itemCount === 1 ? '' : 's'} · last synced {lastSync}
+            {t('billingCommerce.itemsLastSynced', { count: connection.itemCount, lastSync })}
             {connection.statusReason && <span className="ml-2 text-rose-600">· {connection.statusReason}</span>}
           </div>
         </div>
         <button onClick={onSync} className="px-3 py-1.5 text-xs font-bold rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 inline-flex items-center gap-1.5">
-          <RefreshCw className="w-3 h-3" /> Sync now
+          <RefreshCw className="w-3 h-3" /> {t('billingCommerce.syncNow')}
         </button>
-        <button onClick={onDisconnect} aria-label="Disconnect" className="p-1.5 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600">
+        <button onClick={onDisconnect} aria-label={t('billingCommerce.disconnect')} className="p-1.5 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600">
           <Trash2 className="w-4 h-4" />
         </button>
       </div>
@@ -246,6 +245,7 @@ function ConnectionRow({ connection, onSync, onDisconnect }: { connection: PosCo
  */
 interface PosStore { id: string; externalId: string; name: string; address?: string | null; locationTenantId?: string | null; isActive?: boolean }
 function StoreMappingPanel({ connectionId }: { connectionId: string }) {
+  const t = useTranslations();
   const qc = useQueryClient();
   const locations = useQuery({
     queryKey: ['pos-locations', connectionId],
@@ -274,8 +274,8 @@ function StoreMappingPanel({ connectionId }: { connectionId: string }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
       <div className="text-xs font-bold text-slate-600 mb-2">
-        Stores ({stores.length}) · {mapped}/{stores.length} mapped
-        <span className="font-normal text-slate-400"> — map each store to a location so its screens show that store&rsquo;s live prices</span>
+        {t('billingCommerce.storesMappedCount', { total: stores.length, mapped })}
+        <span className="font-normal text-slate-400">{t('billingCommerce.mapStoreHint')}</span>
       </div>
       <div className="space-y-1.5">
         {stores.map((s) => (
@@ -289,7 +289,7 @@ function StoreMappingPanel({ connectionId }: { connectionId: string }) {
               onChange={(e) => mapStore.mutate({ locationId: s.id, locationTenantId: e.target.value || null })}
               className="px-2 py-1 rounded-md border border-slate-300 bg-white text-slate-700 max-w-[13rem]"
             >
-              <option value="">— Not mapped —</option>
+              <option value="">{t('billingCommerce.notMapped')}</option>
               {kids.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}
             </select>
           </div>
@@ -297,7 +297,7 @@ function StoreMappingPanel({ connectionId }: { connectionId: string }) {
       </div>
       {kids.length === 0 && (
         <p className="mt-2 text-[11px] text-slate-400">
-          No locations found under this account. Add your locations first, then map each store here.
+          {t('billingCommerce.noLocationsFound')}
         </p>
       )}
     </div>
@@ -305,6 +305,7 @@ function StoreMappingPanel({ connectionId }: { connectionId: string }) {
 }
 
 function ProviderTile({ provider, connected, onConnect }: { provider: PosProvider; connected?: boolean; onConnect: () => void }) {
+  const t = useTranslations();
   const caps = provider.capabilities;
   const isClosed = provider.integrationTier === 'CLOSED';
   const isPartner = provider.integrationTier === 'PARTNER';
@@ -323,10 +324,10 @@ function ProviderTile({ provider, connected, onConnect }: { provider: PosProvide
         <div className="text-2xl">{provider.iconEmoji || '🛒'}</div>
         <div className="flex items-center gap-1">
           {connected && <CheckCircle2 className="w-5 h-5 text-emerald-600" />}
-          {isClosed && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 uppercase tracking-wider">Info only</span>}
-          {isPartner && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 uppercase tracking-wider">Partnership</span>}
+          {isClosed && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 uppercase tracking-wider">{t('billingCommerce.infoOnly')}</span>}
+          {isPartner && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 uppercase tracking-wider">{t('billingCommerce.partnership')}</span>}
           {provider.integrationTier === 'DIRECT' && !connected && (
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 uppercase tracking-wider">Self-serve</span>
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 uppercase tracking-wider">{t('billingCommerce.selfServe')}</span>
           )}
         </div>
       </div>
@@ -340,10 +341,10 @@ function ProviderTile({ provider, connected, onConnect }: { provider: PosProvide
           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{provider.pricingNote}</span>
         )}
         {caps.realtimeUpdates && (
-          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">⚡ realtime</span>
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">{t('billingCommerce.realtimeBadge')}</span>
         )}
         {caps.locationsSync && (
-          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">multi-loc</span>
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">{t('billingCommerce.multiLoc')}</span>
         )}
       </div>
     </button>
@@ -351,6 +352,7 @@ function ProviderTile({ provider, connected, onConnect }: { provider: PosProvide
 }
 
 function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvider; onClose: () => void; onConnected: () => void }) {
+  const t = useTranslations();
   useOverlayLock(); // hide mobile tab bar so the modal footer clears it
   const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [displayName, setDisplayName] = useState('');
@@ -379,7 +381,7 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
           <div className="flex items-center gap-3">
             <div className="text-4xl">{provider.iconEmoji || '🛒'}</div>
             <div>
-              <h2 className="text-lg font-bold text-slate-800">Connect {provider.name}</h2>
+              <h2 className="text-lg font-bold text-slate-800">{t('billingCommerce.connectProvider', { name: provider.name })}</h2>
               <p className="text-xs text-slate-500">{provider.blurb}</p>
             </div>
           </div>
@@ -388,7 +390,7 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
 
         {provider.docsUrl && (
           <a href={provider.docsUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-amber-600 hover:underline">
-            <ExternalLink className="w-3 h-3" /> Provider documentation
+            <ExternalLink className="w-3 h-3" /> {t('billingCommerce.providerDocumentation')}
           </a>
         )}
 
@@ -403,44 +405,42 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
           {provider.integrationTier === 'PARTNER' ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800 space-y-2">
               <p className="font-bold flex items-center gap-1.5">
-                <ShieldAlert className="w-4 h-4" /> {provider.name} connector is in development
+                <ShieldAlert className="w-4 h-4" /> {t('billingCommerce.connectorInDevelopment', { name: provider.name })}
               </p>
               <p>
                 {provider.tierReason ||
-                  `${provider.name} requires a partner integration we haven't shipped yet.`}
+                  t('billingCommerce.requiresPartnerIntegration', { name: provider.name })}
               </p>
               <p className="text-amber-700">
-                Want this prioritized? Tell us at{' '}
+                {t('billingCommerce.wantThisPrioritized')}{' '}
                 <a href="mailto:sales@venueos.com" className="font-bold underline">sales@venueos.com</a>{' '}
-                and we&rsquo;ll fast-track it. In the meantime you can push your catalog through the{' '}
-                <strong>Custom Webhook</strong> provider above — it works today.
+                {t('billingCommerce.fastTrackIt')}{' '}
+                <strong>Custom Webhook</strong> {t('billingCommerce.webhookWorksToday')}
               </p>
             </div>
           ) : (
           <>
-          <Field label="Display name (optional)" placeholder={provider.name} value={displayName} onChange={setDisplayName} />
+          <Field label={t('billingCommerce.displayNameOptional')} placeholder={provider.name} value={displayName} onChange={setDisplayName} />
 
           {provider.auth === 'apiKey' && (
             <>
-              <Field label="API key" placeholder="..." value={credentials.apiKey || ''} onChange={(v) => setCredentials({ ...credentials, apiKey: v })} />
-              <Field label="Account ID (optional)" placeholder="..." value={credentials.accountId || ''} onChange={(v) => setCredentials({ ...credentials, accountId: v })} />
+              <Field label={t('billingCommerce.apiKey')} placeholder="..." value={credentials.apiKey || ''} onChange={(v) => setCredentials({ ...credentials, apiKey: v })} />
+              <Field label={t('billingCommerce.accountIdOptional')} placeholder="..." value={credentials.accountId || ''} onChange={(v) => setCredentials({ ...credentials, accountId: v })} />
             </>
           )}
           {provider.auth === 'partnerKey' && (
-            <Field label="Partner key" placeholder="..." value={credentials.partnerKey || ''} onChange={(v) => setCredentials({ ...credentials, partnerKey: v })} />
+            <Field label={t('billingCommerce.partnerKey')} placeholder="..." value={credentials.partnerKey || ''} onChange={(v) => setCredentials({ ...credentials, partnerKey: v })} />
           )}
           {provider.auth === 'webhook' && (
             <>
-              <Field label="Webhook secret" placeholder="Choose a long random string" value={credentials.webhookSecret || ''} onChange={(v) => setCredentials({ ...credentials, webhookSecret: v })} />
+              <Field label={t('billingCommerce.webhookSecret')} placeholder={t('billingCommerce.chooseRandomString')} value={credentials.webhookSecret || ''} onChange={(v) => setCredentials({ ...credentials, webhookSecret: v })} />
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600 space-y-2">
                 <p>
-                  After connecting, <code className="font-mono">POST</code> your catalog to{' '}
-                  <code className="font-mono break-all">/api/v1/pos/webhook/{provider.id}</code> with this
-                  secret in the <code className="font-mono">X-Webhook-Secret</code> header. Re-post anytime
-                  prices or availability change — items are matched by <code className="font-mono">id</code>{' '}
-                  and updated in place.
+                  {t('billingCommerce.webhookAfterConnecting')} <code className="font-mono">POST</code> {t('billingCommerce.webhookYourCatalogTo')}{' '}
+                  <code className="font-mono break-all">/api/v1/pos/webhook/{provider.id}</code> {t('billingCommerce.webhookWithThisSecret')} <code className="font-mono">X-Webhook-Secret</code> {t('billingCommerce.webhookHeaderRepost')} <code className="font-mono">id</code>{' '}
+                  {t('billingCommerce.webhookUpdatedInPlace')}
                 </p>
-                <p className="font-bold text-slate-700">Body (application/json):</p>
+                <p className="font-bold text-slate-700">{t('billingCommerce.bodyApplicationJson')}</p>
                 <pre className="bg-white border border-slate-200 rounded-md p-2 overflow-x-auto text-[10px] leading-relaxed text-slate-700">{`{
   "items": [
     {
@@ -457,12 +457,8 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
   ]
 }`}</pre>
                 <p className="text-slate-500">
-                  Required per item: <code className="font-mono">id</code> (or{' '}
-                  <code className="font-mono">externalId</code>) and <code className="font-mono">name</code>.
-                  Price may be integer cents (<code className="font-mono">priceCents</code>) or a dollar
-                  amount (<code className="font-mono">price</code>, e.g. <code className="font-mono">7.99</code>).
-                  Everything else is optional; omit <code className="font-mono">available</code> and the item
-                  shows. A correct push returns <code className="font-mono">{`{ ok: true, upserted, skipped }`}</code>.
+                  {t('billingCommerce.webhookRequiredPerItem')} <code className="font-mono">id</code> {t('billingCommerce.webhookOr')}{' '}
+                  <code className="font-mono">externalId</code>{t('billingCommerce.webhookAnd')} <code className="font-mono">name</code>{t('billingCommerce.webhookPriceCents')}<code className="font-mono">priceCents</code>{t('billingCommerce.webhookOrDollar')}<code className="font-mono">price</code>{t('billingCommerce.webhookEg')} <code className="font-mono">7.99</code>{t('billingCommerce.webhookEverythingOptional')} <code className="font-mono">available</code> {t('billingCommerce.webhookItemShows')} <code className="font-mono">{`{ ok: true, upserted, skipped }`}</code>.
                 </p>
               </div>
             </>
@@ -481,7 +477,7 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
         )}
 
         <div className="flex gap-2 justify-end pt-2">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-bold rounded-lg text-slate-600 hover:bg-slate-50">{provider.integrationTier === 'PARTNER' ? 'Close' : 'Cancel'}</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm font-bold rounded-lg text-slate-600 hover:bg-slate-50">{provider.integrationTier === 'PARTNER' ? t('billingCommerce.close') : t('billingCommerce.cancel')}</button>
           {/* No Connect for PARTNER (no handler — would save a dead row)
               or oauth2 (uses its own redirect button). */}
           {provider.auth !== 'oauth2' && provider.integrationTier !== 'PARTNER' && (
@@ -491,7 +487,7 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
               className="px-4 py-2 text-sm font-bold rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
             >
               {submitting && <Loader2 className="w-3 h-3 animate-spin" />}
-              Connect
+              {t('billingCommerce.connect')}
             </button>
           )}
         </div>
@@ -512,6 +508,7 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
  * per-shop), so for that provider we collect it here and pass `?shop=`.
  */
 function OAuthConnectPanel({ provider, onStart }: { provider: { id: string; name: string }; onStart: () => void }) {
+  const t = useTranslations();
   const needsShop = provider.id === 'shopify-pos';
   const [shop, setShop] = useState('');
   const [loading, setLoading] = useState(false);
@@ -530,11 +527,11 @@ function OAuthConnectPanel({ provider, onStart }: { provider: { id: string; name
   };
   return (
     <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800 space-y-2">
-      <p className="font-bold">Connect with {provider.name}</p>
-      <p>You&rsquo;ll be redirected to {provider.name} to authorize VenueOS to read your catalog. After approval you&rsquo;re sent back here automatically and the first sync runs in the background.</p>
+      <p className="font-bold">{t('billingCommerce.connectWithProvider', { name: provider.name })}</p>
+      <p>{t('billingCommerce.redirectedToAuthorize', { name: provider.name })}</p>
       {needsShop && (
         <label className="block">
-          <span className="font-bold">Your store domain</span>
+          <span className="font-bold">{t('billingCommerce.yourStoreDomain')}</span>
           <input
             type="text"
             value={shop}
@@ -550,7 +547,7 @@ function OAuthConnectPanel({ provider, onStart }: { provider: { id: string; name
         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-50"
       >
         {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ExternalLink className="w-3 h-3" />}
-        Sign in with {provider.name}
+        {t('billingCommerce.signInWith', { name: provider.name })}
       </button>
       {err && <p className="text-rose-700 text-[11px]">{err}</p>}
     </div>

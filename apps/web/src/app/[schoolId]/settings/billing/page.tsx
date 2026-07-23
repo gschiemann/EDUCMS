@@ -14,6 +14,7 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
+import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
@@ -68,7 +69,7 @@ const fmtCents = (c: number | null | undefined) =>
     ? '—'
     : `$${(c / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fmtWhole = (c: number | null) =>
-  c == null ? 'Custom' : c === 0 ? 'Free' : `$${Math.round(c / 100)}`;
+  c == null ? "Custom" : c === 0 ? "Free" : `$${Math.round(c / 100)}`;
 const fmtDate = (d: string | number | null | undefined) => {
   if (d == null) return '—';
   const date = typeof d === 'number' ? new Date(d * 1000) : new Date(d);
@@ -78,6 +79,7 @@ const fmtDate = (d: string | number | null | undefined) => {
 };
 
 export default function BillingPage() {
+  const t = useTranslations();
   const params = useParams();
   const schoolId = params?.schoolId as string;
   // Post-Checkout return flag — read client-side so the page needs no
@@ -119,20 +121,20 @@ export default function BillingPage() {
       }
       if (res?.enabled === false) {
         await appAlert({
-          title: 'Online payments not set up',
+          title: t('billingCommerce.onlinePaymentsNotSetUpTitle'),
           message:
             res.message ||
-            'Card billing is not configured on this deployment yet. Contact sales@venueos.app.',
+            t('billingCommerce.cardBillingNotConfigured'),
           tone: 'info',
-          confirmLabel: 'OK',
+          confirmLabel: t('billingCommerce.ok'),
         });
       }
     } catch (e) {
       await appAlert({
-        title: "Couldn't start checkout",
+        title: t('billingCommerce.couldntStartCheckout'),
         message: e instanceof Error ? e.message : String(e),
         tone: 'danger',
-        confirmLabel: 'OK',
+        confirmLabel: t('billingCommerce.ok'),
       });
     } finally {
       setBusy(null);
@@ -149,25 +151,25 @@ export default function BillingPage() {
       }
       if (res?.noSubscription) {
         await appAlert({
-          title: 'No subscription yet',
-          message: 'Choose a plan below to start a subscription, then come back to manage it.',
+          title: t('billingCommerce.noSubscriptionYet'),
+          message: t('billingCommerce.choosePlanToStart'),
           tone: 'info',
-          confirmLabel: 'OK',
+          confirmLabel: t('billingCommerce.ok'),
         });
       } else if (res?.enabled === false) {
         await appAlert({
-          title: 'Online payments not set up',
-          message: res.message || 'Contact sales@venueos.app to manage billing.',
+          title: t('billingCommerce.onlinePaymentsNotSetUpTitle'),
+          message: res.message || t('billingCommerce.contactSalesManageBilling'),
           tone: 'info',
-          confirmLabel: 'OK',
+          confirmLabel: t('billingCommerce.ok'),
         });
       }
     } catch (e) {
       await appAlert({
-        title: "Couldn't open billing",
+        title: t('billingCommerce.couldntOpenBilling'),
         message: e instanceof Error ? e.message : String(e),
         tone: 'danger',
-        confirmLabel: 'OK',
+        confirmLabel: t('billingCommerce.ok'),
       });
     } finally {
       setBusy(null);
@@ -191,13 +193,13 @@ export default function BillingPage() {
           href={`/${schoolId}/settings`}
           className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 mb-2"
         >
-          <ArrowLeft className="w-3.5 h-3.5" /> Settings
+          <ArrowLeft className="w-3.5 h-3.5" /> {t('billingCommerce.settings')}
         </Link>
         <h1 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2">
-          <CreditCard className="w-6 h-6 text-indigo-500" /> Billing &amp; usage
+          <CreditCard className="w-6 h-6 text-indigo-500" /> {t('billingCommerce.billingUsageTitle')}
         </h1>
         <p className="text-sm text-slate-500 mt-1 max-w-2xl">
-          Your plan, your screens, and every invoice — in one place.
+          {t('billingCommerce.billingUsageSubtitle')}
         </p>
       </header>
 
@@ -205,22 +207,21 @@ export default function BillingPage() {
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 flex items-start gap-2">
           <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
           <span>
-            <strong>Subscription started.</strong> Your plan updates here within a few seconds —
-            refresh if it hasn&apos;t yet.
+            <strong>{t('billingCommerce.subscriptionStarted')}</strong> {t('billingCommerce.subscriptionStartedDetail')}
           </span>
         </div>
       )}
       {checkoutResult === 'cancelled' && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 flex items-start gap-2">
           <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-          <span>Checkout was cancelled — no charge was made. Pick a plan below whenever you&apos;re ready.</span>
+          <span>{t('billingCommerce.checkoutCancelled')}</span>
         </div>
       )}
 
       {/* Current plan + usage */}
       <section>
         <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
-          Current plan &amp; usage
+          {t('billingCommerce.currentPlanUsage')}
         </h2>
         {license.isLoading ? (
           <CardSpinner />
@@ -238,7 +239,7 @@ export default function BillingPage() {
       {/* Invoices */}
       <section>
         <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
-          Invoices
+          {t('billingCommerce.invoices')}
         </h2>
         {invoices.isLoading ? (
           <CardSpinner />
@@ -250,7 +251,7 @@ export default function BillingPage() {
       {/* Plans */}
       <section>
         <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
-          {hasPaidPlan ? 'Change plan' : 'Plans'}
+          {hasPaidPlan ? t('billingCommerce.changePlan') : t('billingCommerce.plans')}
         </h2>
         {tiers.isLoading ? (
           <CardSpinner />
@@ -270,9 +271,7 @@ export default function BillingPage() {
       </section>
 
       <div className="text-[11px] text-slate-400 leading-relaxed pt-4 border-t border-slate-100">
-        Per-screen pricing — your monthly bill follows the number of screens you have. Checkout and
-        billing management are handled securely by Stripe; a card number never touches VenueOS.
-        Questions? <a href="mailto:sales@venueos.app" className="text-indigo-600 hover:underline">sales@venueos.app</a>.
+        {t('billingCommerce.pricingFooter')} <a href="mailto:sales@venueos.app" className="text-indigo-600 hover:underline">sales@venueos.app</a>.
       </div>
     </div>
   );
@@ -299,6 +298,7 @@ function CurrentPlanCard({
   managing: boolean;
   hasPaidPlan: boolean;
 }) {
+  const t = useTranslations();
   const status = license?.status || 'ACTIVE';
   const statusColor =
     status === 'ACTIVE'
@@ -319,7 +319,7 @@ function CurrentPlanCard({
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="text-lg font-bold text-slate-800">
-              {license?.tierName || license?.tier || 'Free pilot'}
+              {license?.tierName || license?.tier || t('billingCommerce.freePilot')}
             </span>
             <span
               className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${statusColor}`}
@@ -330,14 +330,14 @@ function CurrentPlanCard({
           <div className="text-sm text-slate-500">
             {monthlyCost != null ? (
               <>
-                <strong className="text-slate-700">{fmtCents(monthlyCost)}</strong> / month
+                <strong className="text-slate-700">{fmtCents(monthlyCost)}</strong> {t('billingCommerce.perMonth')}
                 <span className="text-slate-400">
                   {' '}
-                  · {screens} screen{screens === 1 ? '' : 's'} × {fmtCents(perScreen)}
+                  {t('billingCommerce.screensTimesPrice', { count: screens, price: fmtCents(perScreen) })}
                 </span>
               </>
             ) : (
-              <>No charge — you&apos;re on the free pilot.</>
+              <>{t('billingCommerce.noChargeFreePilot')}</>
             )}
           </div>
         </div>
@@ -348,7 +348,7 @@ function CurrentPlanCard({
             className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-bold rounded-lg bg-slate-800 text-white hover:bg-slate-900 disabled:opacity-50"
           >
             {managing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
-            Manage billing
+            {t('billingCommerce.manageBilling')}
           </button>
         )}
       </div>
@@ -357,7 +357,7 @@ function CurrentPlanCard({
       <div className="grid grid-cols-1 sm:grid-cols-3 border-t border-slate-100 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
         <Metric
           icon={<Monitor className="w-4 h-4 text-indigo-500" />}
-          label="Screens in use"
+          label={t('billingCommerce.screensInUse')}
           value={
             seatLimit ? (
               <>
@@ -376,21 +376,21 @@ function CurrentPlanCard({
                 <div className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full" style={{ width: `${seatPct}%` }} />
               </div>
             ) : (
-              <span className="text-[11px] text-slate-400">Paired displays</span>
+              <span className="text-[11px] text-slate-400">{t('billingCommerce.pairedDisplays')}</span>
             )
           }
         />
         <Metric
           icon={<CreditCard className="w-4 h-4 text-indigo-500" />}
-          label="This month"
-          value={monthlyCost != null ? fmtCents(monthlyCost) : 'Free'}
-          sub={<span className="text-[11px] text-slate-400">Billed per screen</span>}
+          label={t('billingCommerce.thisMonth')}
+          value={monthlyCost != null ? fmtCents(monthlyCost) : t('billingCommerce.free')}
+          sub={<span className="text-[11px] text-slate-400">{t('billingCommerce.billedPerScreen')}</span>}
         />
         <Metric
           icon={<Star className="w-4 h-4 text-amber-500" />}
-          label={status === 'ACTIVE' ? 'Renews' : 'Period ends'}
+          label={status === 'ACTIVE' ? t('billingCommerce.renews') : t('billingCommerce.periodEnds')}
           value={<span className="text-base">{fmtDate(renews)}</span>}
-          sub={<span className="text-[11px] text-slate-400">{hasPaidPlan ? 'Auto-renews' : 'No billing date'}</span>}
+          sub={<span className="text-[11px] text-slate-400">{hasPaidPlan ? t('billingCommerce.autoRenews') : t('billingCommerce.noBillingDate')}</span>}
         />
       </div>
     </div>
@@ -421,16 +421,17 @@ function Metric({
 }
 
 function InvoicesCard({ data }: { data?: { stripeEnabled: boolean; invoices: Invoice[] } }) {
+  const t = useTranslations();
   const list = data?.invoices || [];
   if (list.length === 0) {
     return (
       <div className="rounded-2xl bg-white border border-slate-200 p-6 text-center">
         <FileText className="w-6 h-6 text-slate-300 mx-auto mb-2" />
         <p className="text-sm text-slate-500">
-          No invoices yet.
+          {t('billingCommerce.noInvoicesYet')}
           <span className="text-slate-400">
             {' '}
-            Invoices appear here automatically once you&apos;re on a paid plan.
+            {t('billingCommerce.invoicesAppearAutomatically')}
           </span>
         </p>
       </div>
@@ -441,11 +442,11 @@ function InvoicesCard({ data }: { data?: { stripeEnabled: boolean; invoices: Inv
       <table className="w-full text-sm">
         <thead>
           <tr className="text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
-            <th className="text-left px-4 py-2.5">Date</th>
-            <th className="text-left px-4 py-2.5">Invoice</th>
-            <th className="text-right px-4 py-2.5">Amount</th>
-            <th className="text-left px-4 py-2.5">Status</th>
-            <th className="text-right px-4 py-2.5">Download</th>
+            <th className="text-left px-4 py-2.5">{t('billingCommerce.date')}</th>
+            <th className="text-left px-4 py-2.5">{t('billingCommerce.invoice')}</th>
+            <th className="text-right px-4 py-2.5">{t('billingCommerce.amount')}</th>
+            <th className="text-left px-4 py-2.5">{t('billingCommerce.status')}</th>
+            <th className="text-right px-4 py-2.5">{t('billingCommerce.download')}</th>
           </tr>
         </thead>
         <tbody>
@@ -478,7 +479,7 @@ function InvoicesCard({ data }: { data?: { stripeEnabled: boolean; invoices: Inv
                       rel="noopener noreferrer"
                       className="text-indigo-600 hover:underline font-semibold mr-3"
                     >
-                      View
+                      {t('billingCommerce.view')}
                     </a>
                   )}
                   {inv.invoicePdf && (
@@ -512,6 +513,7 @@ function TierTile({
   busy: string | null;
   onChoose: (period: 'monthly' | 'annual') => void;
 }) {
+  const t = useTranslations();
   const isCurrent = currentTier === tier.id;
   const isPaid = tier.id === 'MONTHLY' || tier.id === 'ANNUAL';
   const period: 'monthly' | 'annual' = tier.id === 'ANNUAL' ? 'annual' : 'monthly';
@@ -519,10 +521,10 @@ function TierTile({
     tier.id === 'ANNUAL' ? fmtWhole(tier.annualPriceCents) : fmtWhole(tier.monthlyPriceCents);
   const cadence =
     tier.id === 'FREE_TRIAL'
-      ? '14 days'
+      ? t('billingCommerce.fourteenDays')
       : tier.id === 'ANNUAL'
-        ? '/ screen / year'
-        : '/ screen / month';
+        ? t('billingCommerce.perScreenPerYear')
+        : t('billingCommerce.perScreenPerMonth');
 
   return (
     <div
@@ -536,12 +538,12 @@ function TierTile({
     >
       {tier.recommended && !isCurrent && (
         <div className="absolute -top-2.5 left-4 px-2 py-0.5 bg-indigo-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-full inline-flex items-center gap-1">
-          <Star className="w-2.5 h-2.5" /> Best value
+          <Star className="w-2.5 h-2.5" /> {t('billingCommerce.bestValue')}
         </div>
       )}
       {isCurrent && (
         <div className="absolute -top-2.5 left-4 px-2 py-0.5 bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-full inline-flex items-center gap-1">
-          <CheckCircle2 className="w-2.5 h-2.5" /> Your plan
+          <CheckCircle2 className="w-2.5 h-2.5" /> {t('billingCommerce.yourPlan')}
         </div>
       )}
       <div className="font-bold text-slate-800 text-lg">{tier.name}</div>
@@ -559,7 +561,7 @@ function TierTile({
       </ul>
       {isCurrent ? (
         <div className="w-full py-2 text-sm font-bold rounded-lg bg-emerald-100 text-emerald-700 text-center">
-          Current plan
+          {t('billingCommerce.currentPlan')}
         </div>
       ) : isPaid ? (
         <button
@@ -572,11 +574,11 @@ function TierTile({
           }`}
         >
           {busy === period && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-          Choose {tier.name}
+          {t('billingCommerce.chooseTier', { name: tier.name })}
         </button>
       ) : (
         <div className="w-full py-2 text-xs font-medium rounded-lg bg-slate-50 text-slate-400 text-center">
-          Default — no card needed
+          {t('billingCommerce.defaultNoCard')}
         </div>
       )}
     </div>
