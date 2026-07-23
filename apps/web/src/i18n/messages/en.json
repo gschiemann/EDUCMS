@@ -111,7 +111,8 @@
       "manage": "Manage",
       "configure": "Configure",
       "adminOnly": "Admin only",
-      "unavailable": "Unavailable"
+      "unavailable": "Unavailable",
+      "manageArrow": "Manage →"
     },
     "ai": {
       "title": "AI provider",
@@ -298,6 +299,11 @@
       "switchIndustry": "Switch industry",
       "switch": "Switch",
       "switchFailed": "Switch failed."
+    },
+    "emergencyCard": {
+      "title": "Emergency alerts",
+      "desc": "Set up the messages, media, and floor-plan content that broadcast during a lockdown, evacuation, or weather event.",
+      "configure": "Configure"
     }
   },
   "settingsIndex": {

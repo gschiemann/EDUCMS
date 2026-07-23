@@ -42,9 +42,12 @@ import {
 // VERTICAL_LABELS.emoji; switching them to the lucide icons so
 // every vertical badge across the app reads from one vocabulary.
 import { VERTICAL_ICONS } from '@/lib/vertical-icons';
+import { useLocaleSwitch } from '@/i18n/I18nProvider';
+import { localizedVerticalEntity } from '@/i18n/vertical-copy';
 
 export function VerticalSwitcherCard() {
   const t = useTranslations();
+  const { locale } = useLocaleSwitch();
   const user = useUIStore((s) => s.user);
   const role = user?.role || '';
   const isAdmin = role === 'SUPER_ADMIN' || role === 'DISTRICT_ADMIN';
@@ -142,7 +145,7 @@ export function VerticalSwitcherCard() {
     }
   };
 
-  const currentLabel = VERTICAL_LABELS[currentVertical];
+  const currentLabel = localizedVerticalEntity(locale, currentVertical);
 
   return (
     <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
@@ -208,7 +211,7 @@ export function VerticalSwitcherCard() {
                       {Icon ? (
                         <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-indigo-600' : 'text-slate-500'}`} aria-hidden />
                       ) : null}
-                      <span className="flex-1 font-semibold truncate">{labels.singular}</span>
+                      <span className="flex-1 font-semibold truncate">{localizedVerticalEntity(locale, v).singular}</span>
                       {isActive && <Check className="w-3.5 h-3.5 text-indigo-600" />}
                       {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />}
                     </button>

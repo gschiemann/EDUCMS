@@ -111,7 +111,8 @@
       "manage": "管理",
       "configure": "配置",
       "adminOnly": "仅管理员",
-      "unavailable": "不可用"
+      "unavailable": "不可用",
+      "manageArrow": "管理 →"
     },
     "ai": {
       "title": "AI 服务商",
@@ -298,6 +299,11 @@
       "switchIndustry": "切换行业",
       "switch": "切换",
       "switchFailed": "切换失败。"
+    },
+    "emergencyCard": {
+      "title": "紧急警报",
+      "desc": "设置在封锁、疏散或恶劣天气事件期间广播的消息、媒体和平面图内容。",
+      "configure": "配置"
     }
   },
   "settingsIndex": {

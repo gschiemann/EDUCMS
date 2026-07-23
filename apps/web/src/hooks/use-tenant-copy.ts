@@ -20,10 +20,11 @@ import {
   VERTICAL_LABELS,
   VERTICAL_DEFAULT_BRAND,
   VERTICAL_TEMPLATE_CATEGORIES,
-  VERTICAL_ROLE_LABELS,
   normalizeVertical,
   type Vertical,
 } from '@cms/api-types';
+import { useLocaleSwitch } from '@/i18n/I18nProvider';
+import { localizedHierarchy, localizedRoleLabel } from '@/i18n/vertical-copy';
 
 export interface TenantCopy {
   vertical: Vertical;
@@ -61,6 +62,11 @@ export function useTenantCopy(): TenantCopy {
   // industry never silently renders as "school".
   const v: Vertical = normalizeVertical(tenantVertical);
   const labels = VERTICAL_LABELS[v];
+  // 2026-07-22 — locale-aware: the hierarchy nouns + role labels are now
+  // localized (en byte-identical to the old hardcoded values → zero English
+  // regression; es/zh translated). See src/i18n/vertical-copy.ts.
+  const { locale } = useLocaleSwitch();
+  const h = localizedHierarchy(locale);
 
   return {
     vertical: v,
@@ -71,17 +77,17 @@ export function useTenantCopy(): TenantCopy {
     // fussy and inconsistent across industries. The per-vertical INDUSTRY
     // identity (tagline / emoji / template categories / role labels) stays
     // vertical-aware below — only the hierarchy nouns are unified.
-    orgSingular: 'Location',
-    orgPlural: 'Locations',
-    groupSingular: 'Primary',
-    groupPlural: 'Primary',
+    orgSingular: h.orgSingular,
+    orgPlural: h.orgPlural,
+    groupSingular: h.groupSingular,
+    groupPlural: h.groupPlural,
     tagline: labels.tagline,
     emoji: labels.emoji,
-    dashboardSublineNoun: 'Location',
-    settingsSectionTitle: 'Location settings',
+    dashboardSublineNoun: h.orgSingular,
+    settingsSectionTitle: h.settingsSectionTitle,
     defaultBrandName: VERTICAL_DEFAULT_BRAND[v],
     templateCategories: VERTICAL_TEMPLATE_CATEGORIES[v],
-    roleLabel: (role: string) => VERTICAL_ROLE_LABELS[v]?.[role] || role,
+    roleLabel: (role: string) => localizedRoleLabel(locale, role),
     showSchoolLevelFilter: v === 'K12',
   };
 }

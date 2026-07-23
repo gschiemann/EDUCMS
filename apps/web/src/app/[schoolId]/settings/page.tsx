@@ -157,7 +157,7 @@ export default function SettingsPage() {
             <div className="text-[11px] text-slate-500">{t('settingsIndex.securityDesc')}</div>
           </div>
         </div>
-        <span className="text-xs text-indigo-600 font-bold">Manage →</span>
+        <span className="text-xs text-indigo-600 font-bold">{t('settings.common.manageArrow')}</span>
       </Link>
 
       {/* 2026-05-03 — VenueOS vertical switcher (DISTRICT_ADMIN +
@@ -270,7 +270,7 @@ export default function SettingsPage() {
                 <div className="text-[11px] text-slate-500 hidden sm:block">{t('settingsIndex.streamingDesc')}</div>
               </div>
             </div>
-            <span className="text-xs text-violet-600 font-bold">Manage →</span>
+            <span className="text-xs text-violet-600 font-bold">{t('settings.common.manageArrow')}</span>
           </Link>
 
           {/* 2026-05-03 — operator removed the standalone "Plans &
@@ -682,6 +682,7 @@ export default function SettingsPage() {
  * survives localStorage clears. For now this is a UX-only gate.
  */
 function PanicContentGate() {
+  const t = useTranslations();
   const tenantCopy = useTenantCopy();
   const { data: tenant } = useTenant();
   const pathnameForGate = usePathname() ?? '';
@@ -746,7 +747,7 @@ function PanicContentGate() {
             <AlertOctagon className="w-4 h-4 text-slate-500" />
           </div>
           <div className="min-w-0">
-            <div className="text-sm font-bold text-slate-800">Emergency alerts</div>
+            <div className="text-sm font-bold text-slate-800">{t('settings.emergencyCard.title')}</div>
             <p className="text-[11px] text-slate-500 mt-0.5">Loading…</p>
           </div>
         </div>
@@ -754,7 +755,7 @@ function PanicContentGate() {
           href={`${pathnameForGate}/emergency`}
           className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 transition-colors"
         >
-          Configure
+          {t('settings.emergencyCard.configure')}
         </Link>
       </div>
     );
@@ -771,7 +772,7 @@ function PanicContentGate() {
           <AlertOctagon className={`w-4 h-4 ${showOn ? 'text-rose-600' : 'text-slate-500'}`} />
         </div>
         <div className="min-w-0 flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-bold text-slate-800 shrink-0">Emergency alerts</span>
+          <span className="text-sm font-bold text-slate-800 shrink-0">{t('settings.emergencyCard.title')}</span>
           <span
             className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
               showOn
@@ -783,7 +784,7 @@ function PanicContentGate() {
             {showOn ? 'On' : 'Off'}
           </span>
           <span className="text-[11px] text-slate-500 truncate">
-            Set up the messages, media, and floor-plan content that broadcast during a lockdown, evacuation, or weather event.
+            {t('settings.emergencyCard.desc')}
           </span>
         </div>
       </div>
@@ -791,7 +792,7 @@ function PanicContentGate() {
         href={`${pathnameForGate}/emergency`}
         className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 transition-colors"
       >
-        Configure
+        {t('settings.emergencyCard.configure')}
       </Link>
     </div>
   );

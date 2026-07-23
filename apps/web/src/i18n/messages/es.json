@@ -111,7 +111,8 @@
       "manage": "Gestionar",
       "configure": "Configurar",
       "adminOnly": "Solo administradores",
-      "unavailable": "No disponible"
+      "unavailable": "No disponible",
+      "manageArrow": "Gestionar →"
     },
     "ai": {
       "title": "Proveedor de IA",
@@ -298,6 +299,11 @@
       "switchIndustry": "Cambiar de sector",
       "switch": "Cambiar",
       "switchFailed": "No se pudo cambiar."
+    },
+    "emergencyCard": {
+      "title": "Alertas de emergencia",
+      "desc": "Configura los mensajes, el contenido y los planos que se difunden durante un confinamiento, una evacuación o una alerta meteorológica.",
+      "configure": "Configurar"
     }
   },
   "settingsIndex": {
