@@ -148,7 +148,7 @@ export class MenuAdminService {
    */
   async listLocations(tenantId: string): Promise<AdminLocation[]> {
     const children = await this.prisma.client.tenant.findMany({
-      where: { parentId: tenantId },
+      where: { parentId: tenantId, archivedAt: null },
       select: { id: true, name: true, slug: true },
       orderBy: { name: 'asc' },
     });
@@ -166,7 +166,7 @@ export class MenuAdminService {
    *  overrides for: its child tenants + itself (single-location case). */
   private async allowedLocationIds(tenantId: string): Promise<Set<string>> {
     const children = await this.prisma.client.tenant.findMany({
-      where: { parentId: tenantId },
+      where: { parentId: tenantId, archivedAt: null },
       select: { id: true },
     });
     const set = new Set<string>(children.map((c) => c.id));
