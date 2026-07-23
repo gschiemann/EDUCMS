@@ -7449,21 +7449,35 @@ function ExternalHtmlTextEditor({
           <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200 pb-1">
             Images
           </div>
-          {discoveredImages.map((img) => (
-            <div
-              key={`img:${img.key}`}
-              data-edit-img={img.key}
-              onFocusCapture={() => pingHighlight(img.key)}
-              onClickCapture={() => pingHighlight(img.key)}
-            >
-              <AssetPickerField
-                label={img.aspect ? `${img.label} (${img.aspect})` : img.label}
-                kind="image"
-                value={imageOverrides[img.key] || ''}
-                onChange={(v) => setImageOverride(img.key, v)}
-              />
-            </div>
-          ))}
+          {discoveredImages.map((img) => {
+            // A QR slot (key contains "qr", e.g. scan.qr / product.qr) gets the
+            // paste-a-URL → auto-generate control, plus the normal picker as a
+            // manual fallback (upload your own QR image).
+            const isQr = /(^|[.\-_])qr([.\-_]|$)|qrcode/i.test(img.key);
+            return (
+              <div
+                key={`img:${img.key}`}
+                data-edit-img={img.key}
+                onFocusCapture={() => pingHighlight(img.key)}
+                onClickCapture={() => pingHighlight(img.key)}
+                className="space-y-2"
+              >
+                {isQr && (
+                  <QrUrlField
+                    label={`${img.label} — from a link`}
+                    value={imageOverrides[img.key] || ''}
+                    onChange={(v) => setImageOverride(img.key, v)}
+                  />
+                )}
+                <AssetPickerField
+                  label={isQr ? 'Or pick a QR image' : img.aspect ? `${img.label} (${img.aspect})` : img.label}
+                  kind="image"
+                  value={imageOverrides[img.key] || ''}
+                  onChange={(v) => setImageOverride(img.key, v)}
+                />
+              </div>
+            );
+          })}
         </div>
       )}
       {sectionOrder.map((sec) => (
@@ -7591,6 +7605,61 @@ function ExternalHtmlTextEditor({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * QrUrlField — for a QR image slot on an EXTERNAL_HTML board. Operator pastes
+ * their website link; we generate a QR **client-side** with the `qrcode` pkg
+ * (dynamic-import, keeps it out of the initial bundle) and store the resulting
+ * PNG data-URL as the slot's image override. Baked as a data-URL, so the QR
+ * displays offline on the player — no server/network at scan-display time.
+ * (Greg 2026-07-24: "you should be able to dump in your website link and it
+ * updates the QR code.")
+ */
+function QrUrlField({ label, value, onChange }: { label: string; value: string; onChange: (dataUrl: string) => void }) {
+  const [url, setUrl] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gen = (raw: string) => {
+    setUrl(raw);
+    setErr('');
+    if (timer.current) clearTimeout(timer.current);
+    const clean = raw.trim();
+    if (!clean) { onChange(''); return; }
+    timer.current = setTimeout(() => {
+      setBusy(true);
+      import('qrcode')
+        .then((m) => ((m as any).default || m).toDataURL(clean, { width: 512, margin: 1, errorCorrectionLevel: 'M' }))
+        .then((dataUrl: string) => onChange(dataUrl))
+        .catch(() => setErr('Could not generate a QR for that link.'))
+        .finally(() => setBusy(false));
+    }, 400);
+  };
+  return (
+    <div>
+      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
+      <div className="flex items-center gap-2">
+        {value ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={value} alt="QR preview" className="w-14 h-14 rounded border border-slate-200 bg-white shrink-0 object-contain p-1" />
+        ) : (
+          <div className="w-14 h-14 rounded border border-dashed border-slate-300 shrink-0 grid place-items-center text-[9px] font-semibold text-slate-400">QR</div>
+        )}
+        <input
+          type="url"
+          inputMode="url"
+          value={url}
+          placeholder="https://yourstore.com/shop"
+          onChange={(e) => gen(e.target.value)}
+          className="flex-1 min-w-0 rounded border border-slate-200 px-2 py-1.5 text-sm focus:border-indigo-400 focus:outline-none"
+        />
+      </div>
+      <p className="text-[10px] text-slate-500 mt-1 leading-snug">
+        {busy ? 'Generating QR…' : err ? <span className="text-rose-500">{err}</span> : 'Paste your link — the QR code regenerates automatically. It bakes into the board, so it scans even offline.'}
+      </p>
     </div>
   );
 }
