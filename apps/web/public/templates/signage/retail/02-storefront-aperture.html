@@ -1,0 +1,423 @@
+<!doctype html>
+<!-- APPROVED 2026-07-23 — local HTML concept approved by user; not yet ported to React. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Retail Storefront V2 — The Aperture</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@500&amp;family=Instrument+Serif:ital@1&amp;family=Manrope:wght@500;700;800&amp;display=swap" rel="stylesheet" />
+  <style>
+    :root{
+      --brand-primary:#2148ea;
+      --brand-accent:#eea43b;
+      --brand-ink:#101114;
+      --brand-paper:#f0ece3;
+      --brand-night:#090a0c;
+      --font-display:'Instrument Serif',serif;
+      --font-body:'Manrope',sans-serif;
+      --font-mono:'DM Mono',monospace;
+      --scene-scale:1;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#090a0c}
+    body{font-family:var(--font-body)}
+    #scene-wrap{
+      position:absolute;left:50%;top:50%;width:1920px;height:1080px;
+      transform:translate(-50%,-50%) scale(var(--scene-scale));
+      transform-origin:center;
+    }
+    .scene{
+      position:relative;width:1920px;height:1080px;overflow:hidden;
+      background:var(--brand-night);color:var(--brand-ink);
+    }
+    .campaign{
+      position:absolute;left:0;top:0;width:1920px;height:820px;
+      background:url('assets/retail-storefront-cobalt-gallery-v1.png') 58% 50%/cover no-repeat;
+      animation:campaign-drift 18s ease-in-out infinite alternate;
+    }
+    .campaign:after{
+      content:"";position:absolute;top:0;right:0;bottom:0;left:0;
+      background:linear-gradient(0deg,rgba(9,10,12,.22),transparent 210px);
+    }
+    @keyframes campaign-drift{to{transform:scale(1.035) translateX(-10px)}}
+
+    .aperture{
+      position:absolute;left:0;top:0;width:740px;height:820px;z-index:4;
+      background:var(--brand-paper);
+      clip-path:polygon(0 0,100% 0,90% 100%,0 100%);
+    }
+    .aperture:after{
+      content:"";position:absolute;right:30px;top:0;width:28px;height:820px;
+      background:var(--brand-primary);transform:skewX(-5deg);
+    }
+    .brand-block{
+      position:absolute;left:72px;top:56px;width:560px;height:130px;z-index:8;
+    }
+    .brand-line{display:flex;align-items:center;gap:18px;height:56px}
+    .brand-mark{
+      width:48px;height:48px;flex:0 0 auto;background:var(--brand-primary);
+      clip-path:polygon(0 0,72% 0,100% 50%,72% 100%,0 100%,24% 50%);
+    }
+    .brand-name{
+      font-size:52px;line-height:1;font-weight:800;letter-spacing:1px;
+      white-space:nowrap;
+    }
+    .brand-location{
+      margin:18px 0 0 66px;font:500 52px/1 var(--font-mono);
+      white-space:nowrap;
+    }
+    .campaign-copy{
+      position:absolute;left:72px;top:234px;width:560px;height:500px;z-index:8;
+    }
+    .campaign-kicker{
+      font:500 52px/1 var(--font-mono);color:var(--brand-primary);
+      white-space:nowrap;
+    }
+    .campaign-headline{margin:28px 0 0;width:560px}
+    .campaign-line1{
+      display:block;font-size:144px;line-height:.82;font-weight:800;
+      letter-spacing:-7px;text-transform:uppercase;white-space:nowrap;
+    }
+    .campaign-line2{
+      display:block;margin-top:10px;font:italic 190px/.82 var(--font-display);
+      letter-spacing:-6px;white-space:nowrap;
+    }
+    .campaign-note{
+      margin-top:28px;font-size:52px;line-height:1.15;font-weight:500;
+      white-space:nowrap;
+    }
+    .campaign-index{display:none}
+
+    .live-flag{
+      position:absolute;right:54px;top:52px;width:420px;height:220px;z-index:8;
+      padding:28px 42px 24px 58px;background:var(--brand-night);color:#fff;
+      clip-path:polygon(12% 0,100% 0,100% 100%,0 100%,0 22%);
+    }
+    .store-status{
+      font-size:112px;line-height:.84;font-weight:800;letter-spacing:-5px;
+      text-transform:uppercase;white-space:nowrap;
+    }
+    .clock-time{
+      margin-top:24px;font:500 80px/1 var(--font-mono);
+      color:var(--brand-accent);white-space:nowrap;
+    }
+    .clock-date,.weather-summary{display:none}
+
+    .utility-ribbon{
+      position:absolute;left:0;top:820px;width:1920px;height:260px;z-index:10;
+      display:grid;grid-template-columns:600px 580px 740px;
+      background:var(--brand-night);color:#fff;
+      border-top:18px solid var(--brand-primary);
+    }
+    .route-block{
+      padding:34px 72px;border-right:1px solid rgba(255,255,255,.2);
+    }
+    .utility-label{
+      font:500 52px/1 var(--font-mono);letter-spacing:0;
+      text-transform:uppercase;white-space:nowrap;
+    }
+    .route-value{
+      margin-top:18px;font-size:112px;line-height:.9;font-weight:800;
+      letter-spacing:-4px;text-transform:uppercase;white-space:nowrap;
+    }
+    .route-note,.hours-title,.schedule-note,.service-note{display:none}
+
+    .schedule-block{
+      position:relative;padding:34px 54px;border-right:1px solid rgba(255,255,255,.2);
+    }
+    .schedule-stage{position:relative;margin-top:18px;width:472px;height:112px}
+    .schedule-frame{
+      position:absolute;left:0;top:0;width:472px;height:112px;
+      display:flex;align-items:baseline;gap:30px;opacity:0;
+      animation:schedule-cycle 12s linear infinite;
+    }
+    .schedule-frame:nth-child(2){animation-delay:4s}
+    .schedule-frame:nth-child(3){animation-delay:8s}
+    .schedule-day{
+      width:170px;font:500 52px/1 var(--font-mono);
+      text-transform:uppercase;white-space:nowrap;color:var(--brand-accent);
+    }
+    .schedule-time{
+      font-size:112px;line-height:.9;font-weight:800;letter-spacing:-5px;
+      white-space:nowrap;
+    }
+    @keyframes schedule-cycle{
+      0%{opacity:0;transform:translateY(14px)}
+      5%,28%{opacity:1;transform:translateY(0)}
+      33%,100%{opacity:0;transform:translateY(-12px)}
+    }
+
+    .service-block{padding:34px 54px}
+    .service-label{color:var(--brand-accent)}
+    .service-value{
+      margin-top:22px;font-size:80px;line-height:1;font-weight:800;
+      letter-spacing:-3px;text-transform:uppercase;white-space:nowrap;
+    }
+
+    .is-portrait #scene-wrap,.is-portrait .scene{width:1080px;height:1920px}
+    .is-portrait .campaign{
+      left:0;top:160px;width:1080px;height:800px;
+      background-position:54% center;
+    }
+    .is-portrait .campaign:after{background:none}
+    .is-portrait .aperture{
+      left:0;top:960px;width:1080px;height:520px;
+      clip-path:none;border-top:28px solid var(--brand-primary);
+    }
+    .is-portrait .aperture:after{display:none}
+    .is-portrait .brand-block{
+      left:0;top:0;width:1080px;height:160px;padding:48px 54px;
+      background:var(--brand-night);color:#fff;
+    }
+    .is-portrait .brand-line{height:64px}
+    .is-portrait .brand-location{display:none}
+    .is-portrait .live-flag{
+      left:auto;right:54px;top:0;width:420px;height:160px;padding:28px 0;
+      background:transparent;clip-path:none;text-align:right;
+    }
+    .is-portrait .store-status{font-size:112px}
+    .is-portrait .clock-time{display:none}
+    .is-portrait .campaign-copy{
+      left:54px;top:1018px;width:972px;height:430px;
+    }
+    .is-portrait .campaign-headline{margin-top:24px;width:940px}
+    .is-portrait .campaign-line1{font-size:144px}
+    .is-portrait .campaign-line2{font-size:190px}
+    .is-portrait .campaign-note{margin-top:22px}
+    .is-portrait .utility-ribbon{
+      left:0;top:1480px;width:1080px;height:440px;
+      grid-template-columns:600px 480px;grid-template-rows:180px 260px;
+    }
+    .is-portrait .route-block{
+      grid-column:1/3;grid-row:1;padding:30px 54px;
+      display:flex;align-items:center;gap:46px;border-right:0;
+      border-bottom:1px solid rgba(255,255,255,.2);
+    }
+    .is-portrait .route-block .utility-label{width:240px}
+    .is-portrait .route-value{margin-top:0}
+    .is-portrait .schedule-block{
+      grid-column:1;grid-row:2;padding:30px 54px;
+    }
+    .is-portrait .schedule-stage{width:492px}
+    .is-portrait .schedule-frame{width:492px}
+    .is-portrait .service-block{
+      grid-column:2;grid-row:2;padding:30px 40px;
+    }
+    .is-portrait .service-value{font-size:80px}
+
+    .is-frozen *{animation-play-state:paused!important}
+    .is-editing [data-field],.is-editing [data-imgslot]{cursor:pointer}
+    .is-editing [data-field]:hover,.is-editing [data-imgslot]:hover{
+      outline:3px dashed #22d3ee;outline-offset:5px;
+    }
+    @media(prefers-reduced-motion:reduce){
+      *{animation:none!important}
+      .schedule-frame{opacity:0}
+      .schedule-frame:first-child{opacity:1}
+    }
+  </style>
+</head>
+<body>
+  <div id="scene-wrap">
+    <main class="scene">
+      <div class="campaign" data-imgslot="campaign.image" aria-label="Replaceable campaign image"></div>
+      <div class="aperture"></div>
+
+      <header class="brand-block">
+        <div class="brand-line">
+          <div class="brand-mark" data-imgslot="brand.logo" aria-label="Replaceable brand mark"></div>
+          <div class="brand-name" data-field="brand.name">FIELD / FORM</div>
+        </div>
+        <div class="brand-location" data-field="brand.location">CIVIC CENTER · 01</div>
+      </header>
+
+      <section class="campaign-copy">
+        <div class="campaign-kicker" data-field="campaign.kicker">SPRING 01</div>
+        <h1 class="campaign-headline">
+          <span class="campaign-line1" data-field="campaign.line1">COME</span>
+          <span class="campaign-line2" data-field="campaign.line2">closer.</span>
+        </h1>
+        <div class="campaign-note" data-field="campaign.note">New tailoring.</div>
+        <div class="campaign-index" data-field="campaign.index">01</div>
+      </section>
+
+      <section class="live-flag">
+        <div class="store-status" data-field="store.status">OPEN</div>
+        <div class="clock-time" data-field="clock.time">9:42</div>
+        <span class="clock-date" data-field="clock.date">Tuesday · July 22</span>
+        <span class="weather-summary" data-field="weather.summary">68° clear</span>
+      </section>
+
+      <footer class="utility-ribbon">
+        <section class="route-block">
+          <div class="utility-label" data-field="route.label">FIND US</div>
+          <div class="route-value" data-field="route.value">LEVEL 1</div>
+          <div class="route-note" data-field="route.note">Straight ahead</div>
+        </section>
+
+        <section class="schedule-block">
+          <div class="utility-label" data-field="hours.label">STORE HOURS</div>
+          <div class="hours-title" data-field="hours.title">This week</div>
+          <div class="schedule-stage">
+            <div class="schedule-frame">
+              <div class="schedule-day" data-field="hours.todayLabel">TODAY</div>
+              <div class="schedule-time" data-field="hours.today">10—8</div>
+              <div class="schedule-note" data-field="hours.todayNote">Open now</div>
+            </div>
+            <div class="schedule-frame">
+              <div class="schedule-day" data-field="hours.saturdayLabel">SAT</div>
+              <div class="schedule-time" data-field="hours.saturday">10—9</div>
+              <div class="schedule-note" data-field="hours.saturdayNote">Late close</div>
+            </div>
+            <div class="schedule-frame">
+              <div class="schedule-day" data-field="hours.sundayLabel">SUN</div>
+              <div class="schedule-time" data-field="hours.sunday">11—6</div>
+              <div class="schedule-note" data-field="hours.sundayNote">Quiet hour · 11</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="service-block">
+          <div class="utility-label service-label" data-field="service.label">STYLING</div>
+          <div class="service-value" data-field="service.value">WALK-INS</div>
+          <div class="service-note" data-field="service.note">Ask any host</div>
+        </section>
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    (function(){
+      var wrap=document.getElementById('scene-wrap');
+      var scene=wrap.querySelector('.scene');
+      function fit(){
+        var portrait=innerHeight>innerWidth;
+        var width=portrait?1080:1920;
+        var height=portrait?1920:1080;
+        document.documentElement.classList.toggle('is-portrait',portrait);
+        wrap.style.width=width+'px';
+        wrap.style.height=height+'px';
+        scene.style.width=width+'px';
+        scene.style.height=height+'px';
+        wrap.style.setProperty('--scene-scale',Math.min(innerWidth/width,innerHeight/height));
+      }
+      addEventListener('resize',fit);
+      fit();
+
+      function queryJson(name){
+        try{
+          var value=new URLSearchParams(location.search).get(name);
+          return value?JSON.parse(value):{};
+        }catch(_){
+          return {};
+        }
+      }
+      function matchingNodes(key,attribute){
+        var all=document.querySelectorAll('['+attribute+']');
+        var result=[];
+        for(var i=0;i<all.length;i++){
+          if(all[i].getAttribute(attribute)===key)result.push(all[i]);
+        }
+        return result;
+      }
+      function replaceText(element,value){
+        if(!element.children.length){
+          element.textContent=value;
+          return;
+        }
+        var textNode=null;
+        for(var i=0;i<element.childNodes.length;i++){
+          if(element.childNodes[i].nodeType===3){
+            textNode=element.childNodes[i];
+            break;
+          }
+        }
+        if(textNode)textNode.textContent=value;
+        else element.insertBefore(document.createTextNode(value),element.firstChild);
+      }
+      function apply(payload){
+        payload=payload||{};
+        var root=document.documentElement.style;
+        var brand=payload.brand||{};
+        var text=payload.text||{};
+        var styles=payload.textStyles||{};
+        var images=payload.img||{};
+        if(brand.background)root.setProperty('--brand-paper',brand.background);
+        if(brand.text)root.setProperty('--brand-ink',brand.text);
+        if(brand.primary)root.setProperty('--brand-primary',brand.primary);
+        if(brand.accent)root.setProperty('--brand-accent',brand.accent);
+        if(brand.fontDisplay)root.setProperty('--font-display',brand.fontDisplay);
+        if(brand.fontBody)root.setProperty('--font-body',brand.fontBody);
+
+        var keys={};
+        Object.keys(text).forEach(function(key){keys[key]=1});
+        Object.keys(styles).forEach(function(key){keys[key]=1});
+        Object.keys(keys).forEach(function(key){
+          var elements=matchingNodes(key,'data-field');
+          for(var i=0;i<elements.length;i++){
+            if(typeof text[key]==='string')replaceText(elements[i],text[key]);
+            var style=styles[key]||{};
+            if(style.color)elements[i].style.color=style.color;
+            if(style.fontSize!=null){
+              elements[i].style.fontSize=typeof style.fontSize==='number'?style.fontSize+'px':style.fontSize;
+            }
+            if(style.fontWeight!=null)elements[i].style.fontWeight=String(style.fontWeight);
+            if(style.fontFamily)elements[i].style.fontFamily=style.fontFamily;
+            if(style.textAlign)elements[i].style.textAlign=style.textAlign;
+            if(style.lineHeight!=null)elements[i].style.lineHeight=String(style.lineHeight);
+            if(style.hidden)elements[i].style.display='none';
+          }
+        });
+        Object.keys(images).forEach(function(key){
+          var elements=matchingNodes(key,'data-imgslot');
+          for(var i=0;i<elements.length;i++){
+            if(typeof images[key]!=='string')continue;
+            var safe=images[key].replace(/["'()\s]/g,'');
+            elements[i].style.backgroundImage=safe?'url("'+safe+'")':'';
+            elements[i].style.backgroundSize='cover';
+            elements[i].style.backgroundPosition='center';
+          }
+        });
+      }
+      function armEditor(){
+        document.documentElement.classList.add('is-editing');
+        var fields=document.querySelectorAll('[data-field],[data-imgslot]');
+        for(var i=0;i<fields.length;i++){
+          if(fields[i].dataset.armed)continue;
+          fields[i].dataset.armed='1';
+          fields[i].addEventListener('click',function(event){
+            event.preventDefault();
+            event.stopPropagation();
+            parent.postMessage({
+              type:'educms-field-click',
+              key:this.getAttribute('data-field')||this.getAttribute('data-imgslot'),
+              kind:this.hasAttribute('data-field')?'text':'img'
+            },'*');
+          },true);
+        }
+      }
+
+      apply({
+        brand:queryJson('brand'),
+        text:queryJson('text'),
+        textStyles:queryJson('textStyles'),
+        img:queryJson('img')
+      });
+      if(new URLSearchParams(location.search).get('freeze')==='1'){
+        document.documentElement.classList.add('is-frozen');
+      }
+      addEventListener('message',function(event){
+        var data=event.data;
+        if(!data||typeof data!=='object')return;
+        if(data.type==='educms-overrides')apply(data);
+        if(data.type==='educms-edit-mode'&&data.on)armEditor();
+        if(data.type==='educms-freeze')document.documentElement.classList.add('is-frozen');
+        if(data.type==='educms-unfreeze')document.documentElement.classList.remove('is-frozen');
+      });
+      try{parent.postMessage({type:'educms-ready'},'*')}catch(_){}
+    }());
+  </script>
+</body>
+</html>

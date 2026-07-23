@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Retail End-Cap V1 — Kinetic Object</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --brand-primary:#2855ff;
+      --brand-accent:#f0aa4f;
+      --brand-ink:#f6f5f2;
+      --brand-canvas:#03060c;
+      --font-display:'Instrument Serif',serif;
+      --font-body:'Space Grotesk',sans-serif;
+      --scene-scale:1;
+    }
+    * { box-sizing:border-box; }
+    html,body { margin:0; width:100%; height:100%; overflow:hidden; background:#03060c; }
+    body { font-family:var(--font-body); }
+    #scene-wrap {
+      position:absolute; left:50%; top:50%; width:1920px; height:1080px;
+      transform:translate(-50%,-50%) scale(var(--scene-scale)); transform-origin:center;
+    }
+    .scene { position:relative; width:1920px; height:1080px; overflow:hidden; color:var(--brand-ink); background:var(--brand-canvas); }
+    .scene::before {
+      content:""; position:absolute; left:0; top:0; width:1920px; height:1080px;
+      background:radial-gradient(760px 580px at 1340px 490px,rgba(35,83,255,.18),transparent 68%),linear-gradient(90deg,#03060c 0,#03060c 610px,rgba(3,6,12,.88) 870px,rgba(3,6,12,.08) 1380px);
+      z-index:2; pointer-events:none;
+    }
+    .grid {
+      position:absolute; left:0; top:0; width:1920px; height:890px; z-index:3; opacity:.24;
+      background-image:linear-gradient(rgba(255,255,255,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.08) 1px,transparent 1px);
+      background-size:120px 120px; -webkit-mask-image:linear-gradient(90deg,#000,transparent 72%); mask-image:linear-gradient(90deg,#000,transparent 72%);
+    }
+    .product-image {
+      position:absolute; left:500px; top:0; width:1420px; height:890px; z-index:1;
+      background-image:url('assets/retail-endcap-cobalt-sneaker-v1.png'); background-size:cover; background-position:center;
+      animation:product-breathe 14s ease-in-out infinite alternate;
+    }
+    .product-image::after {
+      content:""; position:absolute; left:0; top:0; width:1420px; height:890px;
+      box-shadow:inset 260px 0 180px #03060c,inset 0 -120px 120px rgba(3,6,12,.82);
+    }
+    @keyframes product-breathe { from { transform:scale(1.01); } to { transform:scale(1.045) translateX(-12px); } }
+    .topline { position:absolute; left:72px; top:60px; width:1776px; height:86px; z-index:5; border-top:1px solid rgba(255,255,255,.28); display:flex; align-items:center; }
+    .mark { width:54px; height:54px; border:2px solid var(--brand-accent); transform:rotate(45deg); margin-right:24px; position:relative; }
+    .mark::after { content:""; position:absolute; left:12px; top:12px; width:26px; height:26px; background:var(--brand-primary); }
+    .brand { font-size:25px; letter-spacing:8px; font-weight:700; text-transform:uppercase; }
+    .brand-meta { margin-left:26px; font-size:11px; letter-spacing:4px; color:rgba(255,255,255,.55); text-transform:uppercase; }
+    .edition { margin-left:auto; font-size:12px; letter-spacing:4px; text-transform:uppercase; color:rgba(255,255,255,.62); }
+    .hero-copy { position:absolute; left:72px; top:210px; width:780px; height:590px; z-index:6; }
+    .eyebrow { display:flex; align-items:center; gap:16px; font-size:13px; letter-spacing:5px; text-transform:uppercase; color:rgba(255,255,255,.68); }
+    .eyebrow::before { content:""; width:36px; height:4px; background:var(--brand-accent); }
+    .model {
+      margin-top:42px; width:760px; font-size:142px; line-height:.78; letter-spacing:-8px; font-family:var(--font-display); font-weight:400;
+    }
+    .model-top { display:block; font-family:var(--font-body); font-weight:600; font-size:104px; line-height:.9; letter-spacing:-7px; text-transform:uppercase; }
+    .model-bottom { display:block; margin-left:3px; font-style:italic; color:var(--brand-accent); }
+    .model-index { position:absolute; left:615px; top:137px; font-size:24px; letter-spacing:3px; color:rgba(255,255,255,.55); }
+    .statement { margin-top:42px; width:650px; font-size:21px; line-height:1.45; color:rgba(255,255,255,.66); }
+    .price-orbit {
+      position:absolute; left:70px; top:685px; width:176px; height:176px; border:1px solid rgba(255,255,255,.42); border-radius:50%;
+      z-index:7; display:flex; flex-direction:column; justify-content:center; align-items:center; background:rgba(3,6,12,.58); backdrop-filter:blur(10px);
+    }
+    .price-orbit::before { content:""; position:absolute; left:-13px; top:80px; width:200px; height:14px; background:var(--brand-primary); transform:rotate(-12deg); z-index:-1; }
+    .price { font-size:54px; line-height:.9; font-weight:700; letter-spacing:-4px; }
+    .was { margin-top:10px; font-size:10px; letter-spacing:3px; text-transform:uppercase; color:rgba(255,255,255,.58); }
+    .discount-flag {
+      position:absolute; left:276px; top:727px; width:285px; height:92px; z-index:7; border-left:5px solid var(--brand-accent); padding:10px 0 0 24px;
+    }
+    .discount { font-size:30px; line-height:1; font-weight:600; }
+    .discount-note { margin-top:11px; font-size:11px; line-height:1.4; letter-spacing:2px; text-transform:uppercase; color:rgba(255,255,255,.55); }
+    .location {
+      position:absolute; right:72px; top:682px; width:330px; height:150px; z-index:7; border-left:1px solid var(--brand-accent); padding:18px 0 0 24px;
+    }
+    .location-label { font-size:10px; letter-spacing:4px; text-transform:uppercase; color:rgba(255,255,255,.5); }
+    .location-value { margin-top:14px; font-size:27px; line-height:1.1; font-weight:600; }
+    .location-note { margin-top:10px; font-size:13px; color:rgba(255,255,255,.56); }
+    .rail { position:absolute; left:0; top:890px; width:1920px; height:190px; z-index:8; background:#070b13; border-top:1px solid rgba(255,255,255,.25); display:flex; }
+    .rail-lead { width:420px; height:190px; background:var(--brand-primary); padding:34px 48px 0 72px; position:relative; }
+    .rail-lead::after { content:""; position:absolute; right:-58px; top:0; width:120px; height:190px; background:var(--brand-primary); transform:skewX(-18deg); }
+    .rail-kicker { font-size:10px; letter-spacing:4px; text-transform:uppercase; opacity:.75; }
+    .rail-title { margin-top:16px; font-size:28px; line-height:1.05; font-weight:600; }
+    .spec { width:300px; height:122px; margin-top:34px; padding:8px 32px 0 38px; border-right:1px solid rgba(255,255,255,.15); position:relative; z-index:2; }
+    .spec.first { margin-left:78px; }
+    .spec-num { font-family:var(--font-display); font-style:italic; font-size:20px; color:var(--brand-accent); }
+    .spec-title { margin-top:9px; font-size:15px; font-weight:600; }
+    .spec-body { margin-top:7px; font-size:11px; line-height:1.35; color:rgba(255,255,255,.48); }
+    .qr-zone { margin-left:auto; width:286px; height:190px; padding:27px 42px 0 26px; display:grid; grid-template-columns:112px 1fr; gap:18px; }
+    .qr {
+      width:112px; height:112px; background-color:#f7f5ef;
+      background-image:repeating-conic-gradient(#05070d 0 25%,transparent 0 50%); background-size:16px 16px;
+      border:10px solid #f7f5ef;
+    }
+    .qr-copy { padding-top:7px; }
+    .qr-label { font-size:10px; letter-spacing:3px; text-transform:uppercase; color:var(--brand-accent); }
+    .qr-action { margin-top:12px; font-size:17px; line-height:1.1; font-weight:600; }
+    .qr-note { margin-top:9px; font-size:9px; line-height:1.35; color:rgba(255,255,255,.45); }
+    .is-portrait #scene-wrap,.is-portrait .scene { width:1080px; height:1920px; }
+    .is-portrait .scene::before { width:1080px; height:1270px; background:linear-gradient(0deg,#03060c 0,#03060c 130px,rgba(3,6,12,.68) 520px,rgba(3,6,12,.08) 970px),radial-gradient(650px 620px at 540px 500px,rgba(35,83,255,.12),transparent 70%); }
+    .is-portrait .grid { width:1080px; height:1270px; -webkit-mask-image:linear-gradient(0deg,#000,transparent 76%); mask-image:linear-gradient(0deg,#000,transparent 76%); }
+    .is-portrait .product-image { left:0; top:0; width:1080px; height:1070px; background-position:60% center; }
+    .is-portrait .product-image::after { width:1080px; height:1070px; box-shadow:inset 0 -250px 190px #03060c,inset 100px 0 120px rgba(3,6,12,.45); }
+    .is-portrait .topline { left:54px; top:52px; width:972px; }
+    .is-portrait .brand-meta { display:none; }
+    .is-portrait .hero-copy { left:54px; top:188px; width:972px; height:700px; }
+    .is-portrait .model { width:900px; font-size:162px; }
+    .is-portrait .model-top { font-size:124px; }
+    .is-portrait .model-index { left:790px; }
+    .is-portrait .statement { width:660px; font-size:23px; }
+    .is-portrait .price-orbit { left:54px; top:1030px; width:190px; height:190px; }
+    .is-portrait .discount-flag { left:280px; top:1070px; }
+    .is-portrait .location { right:54px; top:1038px; width:375px; }
+    .is-portrait .rail { top:1270px; width:1080px; height:650px; display:grid; grid-template-columns:repeat(3,360px); grid-template-rows:190px 220px 240px; }
+    .is-portrait .rail-lead { grid-column:1/4; grid-row:1; width:1080px; height:190px; padding-left:54px; }
+    .is-portrait .rail-lead::after { display:none; }
+    .is-portrait .spec { grid-row:2; width:360px; height:220px; margin:0; padding:42px 44px; border-top:1px solid rgba(255,255,255,.15); }
+    .is-portrait .spec.first { margin-left:0; }
+    .is-portrait .qr-zone { grid-column:1/4; grid-row:3; width:1080px; height:240px; margin-left:0; padding:52px 54px; display:flex; justify-content:center; gap:36px; background:#0a101b; border-top:1px solid rgba(255,255,255,.15); }
+    .is-portrait .qr-copy { width:250px; }
+
+    /* VENUEOS LONG-VIEW TYPE STANDARD — 65-inch display at 10–20 feet. */
+    .brand { font-size:52px; line-height:1; letter-spacing:2px; white-space:nowrap; }
+    .brand-meta,
+    .edition,
+    .statement,
+    .was,
+    .discount-note,
+    .location-note,
+    .spec-body,
+    .qr-label,
+    .qr-note { display:none; }
+    .eyebrow { font-size:52px; line-height:1; letter-spacing:0; white-space:nowrap; }
+    .model-index { display:none; }
+    .price-orbit { left:72px; top:610px; width:240px; height:200px; }
+    .price { font-size:112px; line-height:1; letter-spacing:-5px; }
+    .discount-flag { left:350px; top:655px; width:410px; height:110px; padding-top:14px; }
+    .discount { font-size:80px; line-height:1; white-space:nowrap; }
+    .location { right:72px; top:610px; width:440px; height:200px; padding-top:24px; }
+    .location-label { font-size:52px; line-height:1; letter-spacing:0; white-space:nowrap; }
+    .location-value { margin-top:16px; font-size:112px; line-height:1; white-space:nowrap; }
+    .rail { top:820px; height:260px; }
+    .rail-lead { width:420px; height:260px; padding:40px 42px 0 72px; }
+    .rail-lead::after { display:none; }
+    .rail-kicker { font-size:52px; line-height:1; letter-spacing:0; white-space:nowrap; }
+    .rail-title { margin-top:16px; font-size:80px; line-height:1; white-space:nowrap; }
+    .spec { width:260px; height:260px; margin:0; padding:40px 24px; }
+    .spec.first { margin-left:0; }
+    .spec-num { font-size:52px; line-height:1; }
+    .spec-title { margin-top:12px; font-size:52px; line-height:1; white-space:nowrap; }
+    .qr-zone { margin-left:0; width:720px; height:260px; padding:50px 54px; display:flex; gap:32px; }
+    .qr { width:160px; height:160px; flex:0 0 auto; }
+    .qr-copy { width:420px; padding-top:22px; }
+    .qr-action { margin-top:0; font-size:80px; line-height:1; white-space:nowrap; }
+    .is-portrait .eyebrow { font-size:52px; }
+    .is-portrait .price-orbit { left:54px; top:1020px; width:240px; height:200px; }
+    .is-portrait .discount-flag { display:none; }
+    .is-portrait .location { right:54px; top:1020px; width:500px; height:200px; }
+    .is-portrait .rail {
+      top:1270px;width:1080px;height:650px;
+      grid-template-columns:repeat(3,360px);
+      grid-template-rows:180px 230px 240px;
+    }
+    .is-portrait .rail-lead { width:1080px;height:180px;padding:18px 54px; }
+    .is-portrait .spec { width:360px;height:230px;padding:36px 44px; }
+    .is-portrait .qr-zone { width:1080px;height:240px;padding:40px 54px; }
+    .is-portrait .qr-copy { width:420px;padding-top:22px; }
+    .is-frozen * { animation-play-state:paused !important; }
+    .is-editing [data-field],.is-editing [data-imgslot] { cursor:pointer; }
+    .is-editing [data-field]:hover,.is-editing [data-imgslot]:hover { outline:2px dashed #22d3ee; outline-offset:4px; }
+  </style>
+</head>
+<body>
+  <div id="scene-wrap">
+    <main class="scene">
+      <div class="product-image" data-imgslot="product.image" data-aspect="16:9" aria-label="Replaceable product hero image"></div>
+      <div class="grid"></div>
+      <header class="topline">
+        <div class="mark" aria-hidden="true"></div>
+        <div class="brand" data-field="brand.name">AXIOM</div>
+        <div class="brand-meta" data-field="brand.location">Movement lab · Field 01</div>
+        <div class="edition" data-field="context.edition">End-cap edition · 01 / 06</div>
+      </header>
+      <section class="hero-copy">
+        <div class="eyebrow" data-field="product.eyebrow">BUILT TO MOVE</div>
+        <div class="model">
+          <span class="model-top" data-field="product.line1">Kinetic</span>
+          <span class="model-bottom" data-field="product.line2">object.</span>
+        </div>
+        <div class="model-index" data-field="product.model">O1</div>
+        <div class="statement" data-field="product.statement">Low-profile cushioning. Tactile control. A limited color study built to move differently.</div>
+      </section>
+      <div class="price-orbit">
+        <div class="price" data-field="product.price">$184</div>
+        <div class="was"><span data-field="product.wasLabel">was</span> <span data-field="product.was">$240</span></div>
+      </div>
+      <div class="discount-flag">
+        <div class="discount" data-field="product.discount">SAVE 23%</div>
+        <div class="discount-note" data-field="product.discountNote">Member price · through Sunday</div>
+      </div>
+      <div class="location">
+        <div class="location-label" data-field="location.label">FOOTWEAR</div>
+        <div class="location-value" data-field="location.value">LEVEL 1</div>
+        <div class="location-note" data-field="location.note">Sizes 5–13 · Ask for Cobalt / Amber</div>
+      </div>
+      <footer class="rail">
+        <div class="rail-lead">
+          <div class="rail-kicker" data-field="rail.kicker">TECH</div>
+          <div class="rail-title" data-field="rail.title">BUILT</div>
+        </div>
+        <div class="spec first">
+          <div class="spec-num" data-field="feature.0.index">01</div>
+          <div class="spec-title" data-field="feature.0.title">MESH</div>
+          <div class="spec-body" data-field="feature.0.body">Breathes under pressure without losing structure.</div>
+        </div>
+        <div class="spec">
+          <div class="spec-num" data-field="feature.1.index">02</div>
+          <div class="spec-title" data-field="feature.1.title">RETURN</div>
+          <div class="spec-body" data-field="feature.1.body">Soft landing, responsive return, all-day balance.</div>
+        </div>
+        <div class="spec">
+          <div class="spec-num" data-field="feature.2.index">03</div>
+          <div class="spec-title" data-field="feature.2.title">TRACE</div>
+          <div class="spec-body" data-field="feature.2.body">Recycled knit and audited leather supply chain.</div>
+        </div>
+        <div class="qr-zone">
+          <div class="qr" data-imgslot="product.qr" data-aspect="1:1" aria-label="Replaceable product QR code"></div>
+          <div class="qr-copy">
+            <div class="qr-label" data-field="qr.label">Take it with you</div>
+            <div class="qr-action" data-field="qr.action">SCAN</div>
+            <div class="qr-note" data-field="qr.note">Reserve now · collect before close</div>
+          </div>
+        </div>
+      </footer>
+    </main>
+  </div>
+  <script>
+    (function(){
+      var wrap=document.getElementById('scene-wrap'),scene=wrap.querySelector('.scene'),runtime={};
+      function fit(){var portrait=innerHeight>innerWidth,w=portrait?1080:1920,h=portrait?1920:1080;document.documentElement.classList.toggle('is-portrait',portrait);wrap.style.width=w+'px';wrap.style.height=h+'px';scene.style.width=w+'px';scene.style.height=h+'px';wrap.style.setProperty('--scene-scale',Math.min(innerWidth/w,innerHeight/h));}
+      addEventListener('resize',fit);fit();
+      function json(name){try{var v=new URLSearchParams(location.search).get(name);return v?JSON.parse(v):{};}catch(_){return {};}}
+      function nodes(key,attr){var a=document.querySelectorAll('['+attr+']'),out=[];for(var i=0;i<a.length;i++)if(a[i].getAttribute(attr)===key)out.push(a[i]);return out;}
+      function text(el,value){if(el.children.length===0){el.textContent=value;return;}var n=null;for(var i=0;i<el.childNodes.length;i++)if(el.childNodes[i].nodeType===3){n=el.childNodes[i];break;}if(n)n.textContent=value;else el.insertBefore(document.createTextNode(value),el.firstChild);}
+      function apply(p){p=p||{};var root=document.documentElement.style,b=p.brand||{},t=p.text||{},s=p.textStyles||{},im=p.img||{};runtime=t;
+        if(b.background)root.setProperty('--brand-canvas',b.background);if(b.text)root.setProperty('--brand-ink',b.text);if(b.primary)root.setProperty('--brand-primary',b.primary);if(b.accent)root.setProperty('--brand-accent',b.accent);if(b.fontDisplay)root.setProperty('--font-display',b.fontDisplay);if(b.fontBody)root.setProperty('--font-body',b.fontBody);
+        var keys={};Object.keys(t).forEach(function(k){keys[k]=1;});Object.keys(s).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var list=nodes(k,'data-field');for(var i=0;i<list.length;i++){if(typeof t[k]==='string')text(list[i],t[k]);var x=s[k]||{};if(x.color)list[i].style.color=x.color;if(x.fontSize!=null)list[i].style.fontSize=typeof x.fontSize==='number'?x.fontSize+'px':x.fontSize;if(x.fontWeight!=null)list[i].style.fontWeight=String(x.fontWeight);if(x.fontStyle)list[i].style.fontStyle=x.fontStyle;if(x.fontFamily)list[i].style.fontFamily=x.fontFamily;if(x.textAlign)list[i].style.textAlign=x.textAlign;if(x.lineHeight!=null)list[i].style.lineHeight=String(x.lineHeight);if(x.hidden)list[i].style.display='none';}});
+        Object.keys(im).forEach(function(k){var list=nodes(k,'data-imgslot');for(var i=0;i<list.length;i++){if(typeof im[k]!=='string')continue;var safe=im[k].replace(/["'()\s]/g,'');list[i].style.backgroundImage=safe?'url("'+safe+'")':'';list[i].style.backgroundSize='cover';list[i].style.backgroundPosition='center';}});
+      }
+      function arm(){document.documentElement.classList.add('is-editing');var a=document.querySelectorAll('[data-field],[data-imgslot]');for(var i=0;i<a.length;i++){if(a[i].dataset.armed)continue;a[i].dataset.armed='1';a[i].addEventListener('click',function(e){e.preventDefault();e.stopPropagation();parent.postMessage({type:'educms-field-click',key:this.getAttribute('data-field')||this.getAttribute('data-imgslot'),kind:this.hasAttribute('data-field')?'text':'img'},'*');},true);}}
+      apply({brand:json('brand'),text:json('text'),textStyles:json('textStyles'),img:json('img')});
+      if(new URLSearchParams(location.search).get('freeze')==='1')document.documentElement.classList.add('is-frozen');
+      addEventListener('message',function(e){var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides')apply(d);if(d.type==='educms-edit-mode'&&d.on)arm();if(d.type==='educms-freeze')document.documentElement.classList.add('is-frozen');if(d.type==='educms-unfreeze')document.documentElement.classList.remove('is-frozen');});
+      try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+    }());
+  </script>
+</body>
+</html>

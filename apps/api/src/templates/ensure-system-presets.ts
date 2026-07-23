@@ -309,6 +309,24 @@ for (const id of FASHION_ALSO_RETAIL) {
   PRESET_VERTICALS.set(id, ['FASHION', 'RETAIL']);
 }
 
+// 2026-07-24 — codex Store redesign set (preset-sig-retail-01..08: storefront /
+// end-cap / wayfinding). Their id industry token ("retail") isn't in
+// SIG_INDUSTRY_VERTICAL, so tag them here. Dual RETAIL|FASHION so a boutique
+// (a store too) sees them under Boutique as well, matching the fashion boards.
+const STORE_RETAIL_REDESIGN = [
+  'preset-sig-retail-01', // Storefront — Gallery
+  'preset-sig-retail-02', // Storefront — Aperture
+  'preset-sig-retail-03', // End-Cap — Kinetic
+  'preset-sig-retail-04', // End-Cap — Object Study
+  'preset-sig-retail-05', // End-Cap — Drop Signal
+  'preset-sig-retail-06', // Wayfinding — Signal
+  'preset-sig-retail-07', // Wayfinding — Daylight
+  'preset-sig-retail-08', // Wayfinding — Monolith
+];
+for (const id of STORE_RETAIL_REDESIGN) {
+  PRESET_VERTICALS.set(id, ['RETAIL', 'FASHION']);
+}
+
 // Interactive touch kiosks (2026-06-03). Flagship interactive showcases tagged
 // 'ALL' so the "Touch Kiosks" section appears in EVERY vertical's gallery —
 // per operator request (2026-06-03), kept universal for testing ease. The

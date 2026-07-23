@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Retail End-Cap V3 — Drop Signal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@1,6..96,500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --brand-primary:#173fe7;
+      --brand-accent:#ff6937;
+      --brand-signal:#d8ff3f;
+      --brand-ink:#0b0d0d;
+      --brand-canvas:#d8ff3f;
+      --font-display:'Archivo Black',sans-serif;
+      --font-body:'Archivo',sans-serif;
+      --scene-scale:1;
+    }
+    * { box-sizing:border-box; }
+    html,body { margin:0; width:100%; height:100%; overflow:hidden; background:#d8ff3f; }
+    body { font-family:var(--font-body); }
+    #scene-wrap { position:absolute; left:50%; top:50%; width:1920px; height:1080px; transform:translate(-50%,-50%) scale(var(--scene-scale)); transform-origin:center; }
+    .scene { position:relative; width:1920px; height:1080px; overflow:hidden; color:var(--brand-ink); background:var(--brand-canvas); }
+    .signal-dots {
+      position:absolute; left:0; top:0; width:1920px; height:880px; opacity:.18; z-index:1;
+      background-image:radial-gradient(#0b0d0d 1.5px,transparent 1.5px); background-size:18px 18px;
+      -webkit-mask-image:linear-gradient(90deg,#000,transparent 52%); mask-image:linear-gradient(90deg,#000,transparent 52%);
+    }
+    .black-orbit { position:absolute; left:774px; top:86px; width:1090px; height:756px; border-radius:50%; background:#03060b; z-index:2; transform:rotate(-5deg); box-shadow:-24px 24px 0 var(--brand-primary); }
+    .product-image {
+      position:absolute; left:790px; top:70px; width:1100px; height:800px; z-index:3; border-radius:50%;
+      background-image:url('assets/retail-endcap-cobalt-sneaker-v1.png'); background-size:cover; background-position:center;
+      animation:pulse 11s ease-in-out infinite alternate; overflow:hidden;
+    }
+    .product-image::after { content:""; position:absolute; left:0; top:0; width:1100px; height:800px; box-shadow:inset 120px 0 130px rgba(3,6,11,.65),inset 0 -90px 100px rgba(3,6,11,.68); border-radius:50%; }
+    @keyframes pulse { from { transform:scale(1.01) rotate(-1deg); } to { transform:scale(1.055) rotate(1deg); } }
+    .orbit-line { position:absolute; left:730px; top:45px; width:1180px; height:850px; border:2px solid rgba(11,13,13,.6); border-radius:50%; z-index:4; transform:rotate(8deg); }
+    .orbit-line::before,.orbit-line::after { content:""; position:absolute; width:16px; height:16px; border-radius:50%; background:var(--brand-accent); }
+    .orbit-line::before { left:190px; top:40px; }
+    .orbit-line::after { right:126px; bottom:52px; }
+    .topbar { position:absolute; left:66px; top:48px; width:1788px; height:76px; border-top:3px solid #0b0d0d; z-index:8; display:flex; align-items:center; text-transform:uppercase; }
+    .brand { font-family:var(--font-display); font-size:19px; letter-spacing:3px; }
+    .brand::after { content:""; display:inline-block; margin-left:15px; width:52px; height:8px; background:var(--brand-primary); }
+    .brand-meta { margin-left:25px; font-size:10px; letter-spacing:4px; font-weight:600; }
+    .edition { margin-left:auto; font-size:10px; letter-spacing:4px; font-weight:600; }
+    .hero { position:absolute; left:66px; top:190px; width:800px; height:670px; z-index:7; }
+    .eyebrow { display:inline-block; background:#0b0d0d; color:var(--brand-signal); padding:12px 18px; font-size:11px; letter-spacing:4px; text-transform:uppercase; font-weight:700; transform:rotate(-2deg); }
+    .headline { margin-top:38px; width:720px; font-family:var(--font-display); font-size:126px; line-height:.78; letter-spacing:-9px; text-transform:uppercase; }
+    .headline span { display:block; }
+    .headline .drop { color:var(--brand-primary); -webkit-text-stroke:3px #0b0d0d; text-shadow:8px 8px 0 var(--brand-accent); }
+    .headline .serif { margin-top:13px; margin-left:8px; font-family:'Bodoni Moda',serif; font-size:105px; line-height:.9; letter-spacing:-4px; text-transform:none; font-style:italic; -webkit-text-stroke:0; text-shadow:none; color:#0b0d0d; }
+    .statement { margin-top:38px; width:560px; border-left:7px solid var(--brand-accent); padding-left:20px; font-size:18px; line-height:1.45; font-weight:500; }
+    .drop-index { position:absolute; left:584px; top:4px; font-family:var(--font-display); font-size:13px; letter-spacing:3px; color:#fff; background:var(--brand-primary); padding:11px 14px; transform:rotate(3deg); white-space:nowrap; }
+    .price-badge { position:absolute; left:729px; top:612px; width:228px; height:228px; z-index:10; background:var(--brand-accent); border:5px solid #0b0d0d; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; transform:rotate(8deg); box-shadow:13px 13px 0 var(--brand-signal); }
+    .price-label { font-size:9px; letter-spacing:3px; text-transform:uppercase; font-weight:700; }
+    .price { margin-top:6px; font-family:var(--font-display); font-size:56px; line-height:.9; letter-spacing:-4px; }
+    .was { margin-top:9px; font-size:10px; letter-spacing:2px; text-transform:uppercase; font-weight:600; }
+    .model-plate { position:absolute; right:66px; top:132px; width:175px; height:95px; background:var(--brand-primary); color:#fff; z-index:8; padding:18px 20px; transform:rotate(3deg); }
+    .model-label { font-size:9px; letter-spacing:3px; text-transform:uppercase; opacity:.7; }
+    .model { margin-top:8px; font-family:var(--font-display); font-size:27px; }
+    .location {
+      position:absolute; right:62px; top:696px; width:370px; height:132px; z-index:9; background:var(--brand-signal); border:3px solid #0b0d0d; padding:18px 26px; transform:rotate(-2deg);
+    }
+    .location-label { font-size:9px; letter-spacing:4px; text-transform:uppercase; font-weight:700; color:var(--brand-primary); }
+    .location-value { margin-top:11px; font-size:23px; line-height:1.05; font-weight:700; }
+    .location-note { margin-top:8px; font-size:11px; font-weight:500; }
+    .rail { position:absolute; left:0; top:870px; width:1920px; height:210px; background:#0b0d0d; color:#f5f4ef; z-index:12; display:flex; }
+    .rail-intro { width:390px; height:210px; padding:34px 30px 0 66px; background:var(--brand-primary); position:relative; }
+    .rail-intro::after { content:""; position:absolute; right:-55px; top:0; width:112px; height:210px; background:var(--brand-primary); transform:skewX(-15deg); }
+    .rail-kicker { font-size:9px; letter-spacing:4px; text-transform:uppercase; color:var(--brand-signal); }
+    .rail-title { margin-top:18px; width:270px; font-family:var(--font-display); font-size:26px; line-height:1.05; text-transform:uppercase; }
+    .feature { width:300px; height:138px; margin-top:35px; padding:4px 32px; border-right:1px solid rgba(255,255,255,.18); position:relative; z-index:2; }
+    .feature.first { margin-left:70px; }
+    .feature-index { font-family:'Bodoni Moda',serif; font-size:18px; font-style:italic; color:var(--brand-accent); }
+    .feature-title { margin-top:10px; font-size:15px; font-weight:700; text-transform:uppercase; letter-spacing:1px; }
+    .feature-body { margin-top:8px; font-size:10px; line-height:1.4; color:rgba(255,255,255,.5); }
+    .qr-zone { margin-left:auto; width:300px; height:210px; background:var(--brand-accent); color:#0b0d0d; padding:30px 24px; display:flex; gap:18px; }
+    .qr { width:122px; height:122px; flex:none; background-color:#f7f5ef; background-image:repeating-conic-gradient(#0b0d0d 0 25%,transparent 0 50%); background-size:14px 14px; border:11px solid #f7f5ef; }
+    .qr-copy { padding-top:8px; }
+    .qr-label { font-size:9px; letter-spacing:3px; text-transform:uppercase; font-weight:700; }
+    .qr-action { margin-top:13px; font-family:var(--font-display); font-size:17px; line-height:1.05; text-transform:uppercase; }
+    .qr-note { margin-top:10px; font-size:9px; line-height:1.35; font-weight:600; }
+    .is-portrait #scene-wrap,.is-portrait .scene { width:1080px; height:1920px; }
+    .is-portrait .signal-dots { width:1080px; height:1270px; -webkit-mask-image:linear-gradient(0deg,#000,transparent 78%); mask-image:linear-gradient(0deg,#000,transparent 78%); }
+    .is-portrait .black-orbit { left:18px; top:595px; width:1040px; height:690px; }
+    .is-portrait .product-image { left:34px; top:575px; width:1010px; height:720px; }
+    .is-portrait .product-image::after { width:1010px; height:720px; }
+    .is-portrait .orbit-line { left:8px; top:550px; width:1060px; height:780px; }
+    .is-portrait .topbar { left:54px; top:48px; width:972px; }
+    .is-portrait .brand-meta { display:none; }
+    .is-portrait .hero { left:54px; top:165px; width:972px; height:620px; }
+    .is-portrait .headline { width:900px; font-size:132px; }
+    .is-portrait .headline .serif { font-size:115px; }
+    .is-portrait .statement { width:650px; }
+    .is-portrait .drop-index { left:760px; }
+    .is-portrait .price-badge { left:66px; top:1035px; }
+    .is-portrait .model-plate { right:54px; top:650px; }
+    .is-portrait .location { right:54px; top:1100px; width:410px; }
+    .is-portrait .rail { top:1270px; width:1080px; height:650px; display:grid; grid-template-columns:repeat(3,360px); grid-template-rows:190px 220px 240px; }
+    .is-portrait .rail-intro { grid-column:1/4; grid-row:1; width:1080px; height:190px; padding-left:54px; }
+    .is-portrait .rail-intro::after { display:none; }
+    .is-portrait .feature { grid-row:2; width:360px; height:220px; margin:0; padding:42px 44px; border-top:1px solid rgba(255,255,255,.18); }
+    .is-portrait .feature.first { margin-left:0; }
+    .is-portrait .qr-zone { grid-column:1/4; grid-row:3; width:1080px; height:240px; margin-left:0; padding:52px 54px; justify-content:center; gap:36px; }
+    .is-portrait .qr-copy { width:240px; }
+    /* Long-view signage hierarchy: 52px labels, 80px secondary, 112px critical. */
+    .brand { font-size:52px; line-height:1; letter-spacing:1px; white-space:nowrap; }
+    .brand-meta,.edition,.statement,.drop-index,.price-label,.was,
+    .model-plate,.location-note,.feature-body,.qr-label,.qr-note { display:none; }
+    .eyebrow { padding:10px 16px; font-size:52px; line-height:1; letter-spacing:0; white-space:nowrap; }
+    .price-badge { left:720px; top:592px; width:240px; height:240px; }
+    .price { margin-top:0; font-size:112px; line-height:1; letter-spacing:-5px; }
+    .location { right:62px; top:600px; width:470px; height:225px; padding:26px 30px; }
+    .location-label { font-size:52px; line-height:1; letter-spacing:0; white-space:nowrap; }
+    .location-value { margin-top:14px; font-size:112px; line-height:1; white-space:nowrap; }
+    .rail { top:820px; height:260px; }
+    .rail-intro { width:420px; height:260px; padding:34px 26px 0 66px; }
+    .rail-intro::after { height:260px; }
+    .rail-kicker { font-size:52px; line-height:1; letter-spacing:0; white-space:nowrap; }
+    .rail-title { margin-top:15px; width:330px; font-size:80px; line-height:1; white-space:nowrap; }
+    .feature { width:260px; height:260px; margin:0; padding:42px 24px; }
+    .feature.first { margin-left:70px; }
+    .feature-index { font-size:52px; line-height:1; }
+    .feature-title { margin-top:12px; font-size:52px; line-height:1; letter-spacing:0; white-space:nowrap; }
+    .qr-zone { margin-left:0; width:650px; height:260px; padding:50px 54px; gap:32px; }
+    .qr { width:160px; height:160px; }
+    .qr-copy { width:350px; padding-top:22px; }
+    .qr-action { margin-top:0; font-size:80px; line-height:1; white-space:nowrap; }
+    .is-portrait .price-badge { left:54px; top:1030px; width:240px; height:240px; }
+    .is-portrait .location { right:54px; top:1030px; width:500px; height:225px; }
+    .is-portrait .rail {
+      top:1270px; width:1080px; height:650px;
+      grid-template-columns:repeat(3,360px); grid-template-rows:180px 230px 240px;
+    }
+    .is-portrait .rail-intro { width:1080px; height:180px; padding:18px 54px; }
+    .is-portrait .rail-title { width:760px; }
+    .is-portrait .feature { width:360px; height:230px; padding:36px 44px; }
+    .is-portrait .feature.first { margin-left:0; }
+    .is-portrait .qr-zone { width:1080px; height:240px; padding:40px 54px; }
+    .is-portrait .qr-copy { width:420px; padding-top:22px; }
+    .is-frozen * { animation-play-state:paused !important; }
+    .is-editing [data-field],.is-editing [data-imgslot] { cursor:pointer; }
+    .is-editing [data-field]:hover,.is-editing [data-imgslot]:hover { outline:2px dashed #22d3ee; outline-offset:4px; }
+  </style>
+</head>
+<body>
+  <div id="scene-wrap">
+    <main class="scene">
+      <div class="signal-dots"></div>
+      <div class="black-orbit"></div>
+      <div class="product-image" data-imgslot="product.image" data-aspect="16:9" aria-label="Replaceable product hero image"></div>
+      <div class="orbit-line"></div>
+      <header class="topbar">
+        <div class="brand" data-field="brand.name">FIELD TEST</div>
+        <div class="brand-meta" data-field="brand.location">Movement goods · Floor 01</div>
+        <div class="edition" data-field="context.edition">Drop signal · 001 / Cobalt</div>
+      </header>
+      <section class="hero">
+        <div class="eyebrow" data-field="product.eyebrow">Limited drop</div>
+        <div class="headline">
+          <span class="drop" data-field="product.line1">The drop</span>
+          <span class="serif" data-field="product.line2">moves fast.</span>
+        </div>
+        <div class="drop-index" data-field="product.dropIndex">DROP / 001</div>
+        <div class="statement" data-field="product.statement">Cobalt nubuck. Amber traction. One short run of the O1—built for the part of the city that never slows down.</div>
+      </section>
+      <div class="price-badge">
+        <div class="price-label" data-field="product.priceLabel">Member drop price</div>
+        <div class="price" data-field="product.price">$184</div>
+        <div class="was"><span data-field="product.wasLabel">regular</span> <span data-field="product.was">$240</span></div>
+      </div>
+      <div class="model-plate">
+        <div class="model-label" data-field="product.modelLabel">Object model</div>
+        <div class="model" data-field="product.model">O1 / CB</div>
+      </div>
+      <div class="location">
+          <div class="location-label" data-field="location.label">Try it</div>
+        <div class="location-value" data-field="location.value">Bay 04</div>
+        <div class="location-note" data-field="location.note">Full size run while stock lasts</div>
+      </div>
+      <footer class="rail">
+        <div class="rail-intro">
+          <div class="rail-kicker" data-field="rail.kicker">Drop</div>
+          <div class="rail-title" data-field="rail.title">Move</div>
+        </div>
+        <div class="feature first">
+          <div class="feature-index" data-field="feature.0.index">01</div>
+          <div class="feature-title" data-field="feature.0.title">Flex</div>
+          <div class="feature-body" data-field="feature.0.body">Structure and breathability placed exactly where needed.</div>
+        </div>
+        <div class="feature">
+          <div class="feature-index" data-field="feature.1.index">02</div>
+          <div class="feature-title" data-field="feature.1.title">Grip</div>
+          <div class="feature-body" data-field="feature.1.body">Translucent rubber compound tuned for wet pavement.</div>
+        </div>
+        <div class="feature">
+          <div class="feature-index" data-field="feature.2.index">03</div>
+          <div class="feature-title" data-field="feature.2.title">Limited</div>
+          <div class="feature-body" data-field="feature.2.body">One production run. Individually numbered pairs.</div>
+        </div>
+        <div class="qr-zone">
+          <div class="qr" data-imgslot="product.qr" data-aspect="1:1" aria-label="Replaceable product QR code"></div>
+          <div class="qr-copy">
+            <div class="qr-label" data-field="qr.label">Don't lose it</div>
+            <div class="qr-action" data-field="qr.action">Scan</div>
+            <div class="qr-note" data-field="qr.note">Reserved through close</div>
+          </div>
+        </div>
+      </footer>
+    </main>
+  </div>
+  <script>
+    (function(){
+      var wrap=document.getElementById('scene-wrap'),scene=wrap.querySelector('.scene');
+      function fit(){var portrait=innerHeight>innerWidth,w=portrait?1080:1920,h=portrait?1920:1080;document.documentElement.classList.toggle('is-portrait',portrait);wrap.style.width=w+'px';wrap.style.height=h+'px';scene.style.width=w+'px';scene.style.height=h+'px';wrap.style.setProperty('--scene-scale',Math.min(innerWidth/w,innerHeight/h));}
+      addEventListener('resize',fit);fit();
+      function json(name){try{var v=new URLSearchParams(location.search).get(name);return v?JSON.parse(v):{};}catch(_){return {};}}
+      function nodes(key,attr){var a=document.querySelectorAll('['+attr+']'),out=[];for(var i=0;i<a.length;i++)if(a[i].getAttribute(attr)===key)out.push(a[i]);return out;}
+      function setText(el,value){if(el.children.length===0){el.textContent=value;return;}var n=null;for(var i=0;i<el.childNodes.length;i++)if(el.childNodes[i].nodeType===3){n=el.childNodes[i];break;}if(n)n.textContent=value;else el.insertBefore(document.createTextNode(value),el.firstChild);}
+      function apply(p){p=p||{};var root=document.documentElement.style,b=p.brand||{},t=p.text||{},s=p.textStyles||{},im=p.img||{};
+        if(b.background)root.setProperty('--brand-canvas',b.background);if(b.text)root.setProperty('--brand-ink',b.text);if(b.primary)root.setProperty('--brand-primary',b.primary);if(b.accent)root.setProperty('--brand-accent',b.accent);if(b.fontDisplay)root.setProperty('--font-display',b.fontDisplay);if(b.fontBody)root.setProperty('--font-body',b.fontBody);
+        var keys={};Object.keys(t).forEach(function(k){keys[k]=1;});Object.keys(s).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var list=nodes(k,'data-field');for(var i=0;i<list.length;i++){if(typeof t[k]==='string')setText(list[i],t[k]);var x=s[k]||{};if(x.color)list[i].style.color=x.color;if(x.fontSize!=null)list[i].style.fontSize=typeof x.fontSize==='number'?x.fontSize+'px':x.fontSize;if(x.fontWeight!=null)list[i].style.fontWeight=String(x.fontWeight);if(x.fontStyle)list[i].style.fontStyle=x.fontStyle;if(x.fontFamily)list[i].style.fontFamily=x.fontFamily;if(x.textAlign)list[i].style.textAlign=x.textAlign;if(x.lineHeight!=null)list[i].style.lineHeight=String(x.lineHeight);if(x.hidden)list[i].style.display='none';}});
+        Object.keys(im).forEach(function(k){var list=nodes(k,'data-imgslot');for(var i=0;i<list.length;i++){if(typeof im[k]!=='string')continue;var safe=im[k].replace(/["'()\s]/g,'');list[i].style.backgroundImage=safe?'url("'+safe+'")':'';list[i].style.backgroundSize='cover';list[i].style.backgroundPosition='center';}});
+      }
+      function arm(){document.documentElement.classList.add('is-editing');var a=document.querySelectorAll('[data-field],[data-imgslot]');for(var i=0;i<a.length;i++){if(a[i].dataset.armed)continue;a[i].dataset.armed='1';a[i].addEventListener('click',function(e){e.preventDefault();e.stopPropagation();parent.postMessage({type:'educms-field-click',key:this.getAttribute('data-field')||this.getAttribute('data-imgslot'),kind:this.hasAttribute('data-field')?'text':'img'},'*');},true);}}
+      apply({brand:json('brand'),text:json('text'),textStyles:json('textStyles'),img:json('img')});
+      if(new URLSearchParams(location.search).get('freeze')==='1')document.documentElement.classList.add('is-frozen');
+      addEventListener('message',function(e){var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides')apply(d);if(d.type==='educms-edit-mode'&&d.on)arm();if(d.type==='educms-freeze')document.documentElement.classList.add('is-frozen');if(d.type==='educms-unfreeze')document.documentElement.classList.remove('is-frozen');});
+      try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+    }());
+  </script>
+</body>
+</html>
