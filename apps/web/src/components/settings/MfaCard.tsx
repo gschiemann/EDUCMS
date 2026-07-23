@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import QRCode from 'qrcode';
 import {
   ShieldCheck,
@@ -45,6 +46,7 @@ function friendlyError(err: any, fallback: string): string {
 }
 
 export function MfaCard() {
+  const t = useTranslations();
   const [view, setView] = useState<View>('idle');
   const [error, setError] = useState<string | null>(null);
 
@@ -102,7 +104,7 @@ export function MfaCard() {
         setView('enabled');
         return;
       }
-      setError(friendlyError(err, 'Could not start two-factor setup. Try again.'));
+      setError(friendlyError(err, t('mfaCard.couldNotStart')));
     }
   };
 
@@ -111,7 +113,7 @@ export function MfaCard() {
     setError(null);
     const code = verifyCode.trim();
     if (!code) {
-      setError('Enter the 6-digit code from your authenticator app.');
+      setError(t('mfaCard.enterCodeError'));
       return;
     }
     try {
@@ -122,7 +124,7 @@ export function MfaCard() {
       setVerifyCode('');
       setView('codes');
     } catch (err: any) {
-      setError(friendlyError(err, 'That code did not match. Try the current code from your app.'));
+      setError(friendlyError(err, t('mfaCard.codeMismatch')));
     }
   };
 
@@ -130,7 +132,7 @@ export function MfaCard() {
     e.preventDefault();
     setError(null);
     if (!password) {
-      setError('Enter your password to disable two-factor.');
+      setError(t('mfaCard.enterPasswordDisable'));
       return;
     }
     try {
@@ -140,7 +142,7 @@ export function MfaCard() {
       setBackupCodes(null);
       setView('idle');
     } catch (err: any) {
-      setError(friendlyError(err, 'Could not disable two-factor. Check your password.'));
+      setError(friendlyError(err, t('mfaCard.couldNotDisable')));
     }
   };
 
@@ -148,7 +150,7 @@ export function MfaCard() {
     e.preventDefault();
     setError(null);
     if (!password) {
-      setError('Enter your password to generate new backup codes.');
+      setError(t('mfaCard.enterPasswordRegen'));
       return;
     }
     try {
@@ -158,7 +160,7 @@ export function MfaCard() {
       setShowRegen(false);
       setView('codes');
     } catch (err: any) {
-      setError(friendlyError(err, 'Could not regenerate backup codes. Check your password.'));
+      setError(friendlyError(err, t('mfaCard.couldNotRegen')));
     }
   };
 
@@ -175,8 +177,8 @@ export function MfaCard() {
     if (!backupCodes) return;
     const blob = new Blob(
       [
-        'VenueOS two-factor backup codes\n',
-        'Each code works once. Store them somewhere safe.\n\n',
+        t('mfaCard.backupFileHeader') + '\n',
+        t('mfaCard.backupFileNote') + '\n\n',
         backupCodes.join('\n'),
         '\n',
       ],
@@ -208,15 +210,15 @@ export function MfaCard() {
           </div>
           <div className="min-w-0">
             <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-              Two-factor authentication
+              {t('mfaCard.twoFactorAuthTitle')}
               {(view === 'enabled' || view === 'codes') && (
                 <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  On
+                  {t('mfaCard.statusOn')}
                 </span>
               )}
             </h2>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              Require a code from your authenticator app each time you sign in.
+              {t('mfaCard.subtitle')}
             </p>
           </div>
         </div>
@@ -228,7 +230,7 @@ export function MfaCard() {
             className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-colors disabled:opacity-60"
           >
             {enrollMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-            Enable 2FA
+            {t('mfaCard.enable2fa')}
           </button>
         )}
       </div>
@@ -244,9 +246,7 @@ export function MfaCard() {
         {/* ── IDLE ─────────────────────────────────────────────── */}
         {view === 'idle' && (
           <p className="text-xs text-slate-500 leading-relaxed">
-            Two-factor authentication adds a second step to sign-in using a free
-            authenticator app (Google Authenticator, 1Password, Authy). After you
-            enable it, you&apos;ll enter a 6-digit code alongside your password.
+            {t('mfaCard.idleDescription')}
           </p>
         )}
 
@@ -254,16 +254,16 @@ export function MfaCard() {
         {view === 'enrolling' && enroll && (
           <div className="space-y-5">
             <ol className="text-xs text-slate-600 space-y-1.5 list-decimal list-inside">
-              <li>Open your authenticator app and add a new account.</li>
-              <li>Scan this QR code (or enter the key manually).</li>
-              <li>Type the 6-digit code it shows to confirm.</li>
+              <li>{t('mfaCard.step1')}</li>
+              <li>{t('mfaCard.step2')}</li>
+              <li>{t('mfaCard.step3')}</li>
             </ol>
 
             <div className="flex flex-col sm:flex-row items-center gap-5">
               <div className="shrink-0 rounded-xl border border-slate-200 p-3 bg-white">
                 {qrDataUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={qrDataUrl} alt="Two-factor QR code" width={180} height={180} className="block" />
+                  <img src={qrDataUrl} alt={t('mfaCard.qrAlt')} width={180} height={180} className="block" />
                 ) : (
                   <div className="w-[180px] h-[180px] flex items-center justify-center text-slate-300">
                     <Loader2 className="w-6 h-6 animate-spin" />
@@ -271,7 +271,7 @@ export function MfaCard() {
                 )}
               </div>
               <div className="flex-1 min-w-0 w-full">
-                <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Manual entry key</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">{t('mfaCard.manualEntryKey')}</p>
                 <div className="flex items-center gap-2">
                   <code className="text-xs text-slate-700 select-all break-all flex-1 bg-slate-50 rounded-lg px-2.5 py-2 font-mono">
                     {enroll.secret}
@@ -279,14 +279,14 @@ export function MfaCard() {
                   <button
                     type="button"
                     onClick={() => { navigator.clipboard?.writeText(enroll.secret); }}
-                    aria-label="Copy setup key"
+                    aria-label={t('mfaCard.copySetupKey')}
                     className="text-slate-400 hover:text-indigo-500 transition-colors shrink-0"
                   >
                     <Copy className="w-4 h-4" />
                   </button>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-2">
-                  Account: <span className="font-medium text-slate-500">{enroll.label}</span>
+                  {t('mfaCard.account')} <span className="font-medium text-slate-500">{enroll.label}</span>
                 </p>
               </div>
             </div>
@@ -294,7 +294,7 @@ export function MfaCard() {
             <form onSubmit={handleVerify} className="space-y-3">
               <div>
                 <label htmlFor="mfa-verify-code" className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Enter the 6-digit code
+                  {t('mfaCard.enterCodeLabel')}
                 </label>
                 <input
                   id="mfa-verify-code"
@@ -313,14 +313,14 @@ export function MfaCard() {
                   disabled={verifyMut.isPending}
                   className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg inline-flex items-center gap-2"
                 >
-                  {verifyMut.isPending ? <><Loader2 className="w-4 h-4 animate-spin" /> Verifying…</> : 'Verify & turn on'}
+                  {verifyMut.isPending ? <><Loader2 className="w-4 h-4 animate-spin" /> {t('mfaCard.verifying')}</> : t('mfaCard.verifyTurnOn')}
                 </button>
                 <button
                   type="button"
                   onClick={() => { setView('idle'); setEnroll(null); setError(null); }}
                   className="px-4 py-2 text-slate-500 hover:text-slate-700 text-xs font-semibold"
                 >
-                  Cancel
+                  {t('mfaCard.cancel')}
                 </button>
               </div>
             </form>
@@ -333,8 +333,7 @@ export function MfaCard() {
             <div className="flex items-start gap-2 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
               <p className="text-xs text-emerald-800 font-medium">
-                Two-factor is on. Save these backup codes now — they let you sign in if
-                you lose your phone. Each works once and they won&apos;t be shown again.
+                {t('mfaCard.codesSuccess')}
               </p>
             </div>
             <div className="grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -351,21 +350,21 @@ export function MfaCard() {
                 className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg inline-flex items-center gap-1.5"
               >
                 {copiedCodes ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
-                {copiedCodes ? 'Copied' : 'Copy codes'}
+                {copiedCodes ? t('mfaCard.copied') : t('mfaCard.copyCodes')}
               </button>
               <button
                 type="button"
                 onClick={downloadCodes}
                 className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg inline-flex items-center gap-1.5"
               >
-                <Download className="w-4 h-4" /> Download
+                <Download className="w-4 h-4" /> {t('mfaCard.download')}
               </button>
               <button
                 type="button"
                 onClick={() => { setBackupCodes(null); setView('enabled'); }}
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg ml-auto"
               >
-                I&apos;ve saved them
+                {t('mfaCard.savedThem')}
               </button>
             </div>
           </div>
@@ -375,8 +374,7 @@ export function MfaCard() {
         {view === 'enabled' && (
           <div className="space-y-4">
             <p className="text-xs text-slate-500 leading-relaxed">
-              Two-factor authentication is on for your account. You&apos;ll be asked for a
-              code from your authenticator app whenever you sign in.
+              {t('mfaCard.enabledDescription')}
             </p>
 
             {/* Regenerate backup codes */}
@@ -386,16 +384,16 @@ export function MfaCard() {
                 onClick={() => { setShowRegen(true); setShowDisable(false); setError(null); setPassword(''); }}
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold"
               >
-                <KeyRound className="w-4 h-4" /> Regenerate backup codes
+                <KeyRound className="w-4 h-4" /> {t('mfaCard.regenerateBackupCodes')}
               </button>
             ) : (
               <form onSubmit={handleRegen} className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
-                <p className="text-xs font-semibold text-slate-700">Confirm your password to generate new backup codes</p>
-                <p className="text-[11px] text-slate-500">This invalidates any unused codes you have now.</p>
+                <p className="text-xs font-semibold text-slate-700">{t('mfaCard.confirmPasswordRegen')}</p>
+                <p className="text-[11px] text-slate-500">{t('mfaCard.regenInvalidates')}</p>
                 <input
                   type="password"
                   autoComplete="current-password"
-                  placeholder="Your password"
+                  placeholder={t('mfaCard.yourPassword')}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg"
@@ -406,14 +404,14 @@ export function MfaCard() {
                     disabled={regenMut.isPending}
                     className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg inline-flex items-center gap-2"
                   >
-                    {regenMut.isPending ? <><Loader2 className="w-4 h-4 animate-spin" /> Working…</> : 'Generate new codes'}
+                    {regenMut.isPending ? <><Loader2 className="w-4 h-4 animate-spin" /> {t('mfaCard.working')}</> : t('mfaCard.generateNewCodes')}
                   </button>
                   <button
                     type="button"
                     onClick={() => { setShowRegen(false); setPassword(''); setError(null); }}
                     className="px-4 py-2 text-slate-500 hover:text-slate-700 text-xs font-semibold"
                   >
-                    Cancel
+                    {t('mfaCard.cancel')}
                   </button>
                 </div>
               </form>
@@ -426,15 +424,15 @@ export function MfaCard() {
                 onClick={() => { setShowDisable(true); setShowRegen(false); setError(null); setPassword(''); }}
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold"
               >
-                <ShieldOff className="w-4 h-4" /> Disable 2FA
+                <ShieldOff className="w-4 h-4" /> {t('mfaCard.disable2fa')}
               </button>
             ) : (
               <form onSubmit={handleDisable} className="rounded-lg border border-rose-200 bg-rose-50/60 p-4 space-y-3">
-                <p className="text-xs font-semibold text-rose-800">Confirm your password to turn off two-factor</p>
+                <p className="text-xs font-semibold text-rose-800">{t('mfaCard.confirmPasswordDisable')}</p>
                 <input
                   type="password"
                   autoComplete="current-password"
-                  placeholder="Your password"
+                  placeholder={t('mfaCard.yourPassword')}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full px-3 py-2 text-sm border border-rose-300 rounded-lg"
@@ -445,27 +443,27 @@ export function MfaCard() {
                     disabled={disableMut.isPending}
                     className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg inline-flex items-center gap-2"
                   >
-                    {disableMut.isPending ? <><Loader2 className="w-4 h-4 animate-spin" /> Disabling…</> : 'Disable 2FA'}
+                    {disableMut.isPending ? <><Loader2 className="w-4 h-4 animate-spin" /> {t('mfaCard.disabling')}</> : t('mfaCard.disable2fa')}
                   </button>
                   <button
                     type="button"
                     onClick={() => { setShowDisable(false); setPassword(''); setError(null); }}
                     className="px-4 py-2 text-slate-500 hover:text-slate-700 text-xs font-semibold"
                   >
-                    Cancel
+                    {t('mfaCard.cancel')}
                   </button>
                 </div>
               </form>
             )}
 
             <p className="text-[11px] text-slate-400">
-              Already set up on another device?{' '}
+              {t('mfaCard.alreadySetUp')}{' '}
               <button
                 type="button"
                 onClick={() => { setView('idle'); setError(null); }}
                 className="font-semibold text-indigo-600 hover:text-indigo-700"
               >
-                Start over
+                {t('mfaCard.startOver')}
               </button>
               .
             </p>

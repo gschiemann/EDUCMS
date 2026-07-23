@@ -37,6 +37,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { CheckCircle2, Loader2, Sparkles } from 'lucide-react';
@@ -50,6 +51,7 @@ import { ConciergeSuggestionRow, ConciergeDescribeIntake } from '@/components/ap
 import type { AppDefinition } from '@/components/apps/app-registry';
 
 export default function OnboardingAppsPage() {
+  const t = useTranslations();
   const router = useRouter();
   const user = useAppStore((s) => s.user);
   const activeTenant = useAppStore((s) => s.activeTenant);
@@ -159,14 +161,14 @@ export default function OnboardingAppsPage() {
       <header className="px-6 py-3 border-b border-slate-200 bg-white flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className="font-bold">VenueOS</span>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">Getting started</span>
+          <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{t('onboardingPages.gettingStarted')}</span>
         </div>
         <button
           type="button"
           onClick={goToDashboard}
           className="text-sm text-slate-500 hover:text-slate-900"
         >
-          Skip for now →
+          {t('onboardingPages.skipForNow')} →
         </button>
       </header>
 
@@ -175,11 +177,11 @@ export default function OnboardingAppsPage() {
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-violet-100 text-violet-600 mb-3">
             <Sparkles className="w-6 h-6" aria-hidden />
           </div>
-          <h1 className="text-2xl font-bold">Your apps, ready to go.</h1>
+          <h1 className="text-2xl font-bold">{t('onboardingPages.appsReadyHeading')}</h1>
           <p className="text-slate-600 mt-1 text-sm">
             {sourceUrl
-              ? "We looked at your website — here's what we can put on your screens."
-              : 'Tell us what you do and we’ll suggest apps for your screens.'}
+              ? t('onboardingPages.lookedAtWebsite')
+              : t('onboardingPages.tellUsSuggest')}
           </p>
         </div>
 
@@ -187,7 +189,7 @@ export default function OnboardingAppsPage() {
           {stillWorking && (
             <div className="flex items-center justify-center gap-2 text-sm text-slate-500 py-8">
               <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
-              Looking at {sourceUrl || 'your business'}…
+              {t('onboardingPages.lookingAt', { business: sourceUrl || t('onboardingPages.yourBusiness') })}
             </div>
           )}
 
@@ -196,13 +198,13 @@ export default function OnboardingAppsPage() {
               suggestions={visibleSuggestions}
               onSelect={(app) => handlePick(app)}
               onDismiss={goToDashboard}
-              chipLabel={(app) => `Add your ${app.name}`}
+              chipLabel={(app) => t('onboardingPages.addYourApp', { name: app.name })}
             />
           )}
 
           {!stillWorking && !hasAnyDiscoverSuggestions && !describeSuggestions && (
             <ConciergeDescribeIntake
-              placeholder="Tell us what you do (e.g. “coffee shop in Austin”)"
+              placeholder={t('onboardingPages.describePlaceholder')}
               isPending={describe.isPending}
               results={null}
               onSubmit={handleDescribeSubmit}
@@ -225,7 +227,7 @@ export default function OnboardingAppsPage() {
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 space-y-1.5">
               <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-700">
                 <CheckCircle2 className="w-3.5 h-3.5" aria-hidden />
-                Ready for your Apps panel
+                {t('onboardingPages.readyForAppsPanel')}
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {pickedApps.map(({ app }) => (
@@ -238,15 +240,14 @@ export default function OnboardingAppsPage() {
                 ))}
               </div>
               <p className="text-[11px] text-emerald-700/80 leading-snug">
-                We&rsquo;ll have these pre-filled the next time you open a template&rsquo;s Apps tab —
-                just drop them onto a screen.
+                {t('onboardingPages.prefilledHint')}
               </p>
             </div>
           )}
 
           {!stillWorking && !hasAnyDiscoverSuggestions && describeSuggestions && visibleDescribeSuggestions?.length === 0 && pickedApps.length === 0 && (
             <p className="text-center text-xs text-slate-400 pt-2">
-              No matches yet — that&rsquo;s okay, you can always add apps from any template later.
+              {t('onboardingPages.noMatchesYet')}
             </p>
           )}
         </div>
@@ -256,14 +257,14 @@ export default function OnboardingAppsPage() {
             href={activeTenant ? `/${activeTenant}/dashboard?branded=1` : '/'}
             className="text-sm text-slate-500 hover:text-slate-900"
           >
-            I&rsquo;ll do this later
+            {t('onboardingPages.illDoThisLater')}
           </Link>
           <button
             type="button"
             onClick={goToDashboard}
             className="px-5 py-2 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
           >
-            {pickedApps.length > 0 ? 'Go to dashboard' : 'Skip to dashboard'}
+            {pickedApps.length > 0 ? t('onboardingPages.goToDashboard') : t('onboardingPages.skipToDashboard')}
           </button>
         </div>
       </div>

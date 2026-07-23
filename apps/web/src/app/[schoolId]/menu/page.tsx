@@ -28,6 +28,7 @@
  */
 
 import { useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -47,6 +48,7 @@ import { BulkPriceBar } from '@/components/menu/BulkPriceBar';
 import { ConnectMenuPanel } from '@/components/menu/ConnectMenuPanel';
 
 export default function MenuConsolePage() {
+  const t = useTranslations();
   const params = useParams();
   const schoolId = params?.schoolId as string;
   const qc = useQueryClient();
@@ -102,9 +104,8 @@ export default function MenuConsolePage() {
 
   const handleApiUnavailable = async () => {
     await appAlert({
-      title: 'Saved locally — menu service syncing',
-      message:
-        'Your change is captured, but the menu service that stores per-location overrides isn’t live on this deployment yet. Once it ships, your overrides save instantly. The grid below still shows exactly how prices will resolve.',
+      title: t('menuPage.savedLocallyTitle'),
+      message: t('menuPage.savedLocallyMessage'),
       tone: 'info',
     });
   };
@@ -115,7 +116,7 @@ export default function MenuConsolePage() {
     onSuccess: refresh,
     onError: (err) => {
       if (err instanceof MenuApiUnavailable) return handleApiUnavailable();
-      appAlert({ title: 'Couldn’t save', message: String((err as Error).message), tone: 'danger' });
+      appAlert({ title: t('menuPage.couldntSave'), message: String((err as Error).message), tone: 'danger' });
     },
   });
 
@@ -125,7 +126,7 @@ export default function MenuConsolePage() {
     onSuccess: refresh,
     onError: (err) => {
       if (err instanceof MenuApiUnavailable) return handleApiUnavailable();
-      appAlert({ title: 'Couldn’t revert', message: String((err as Error).message), tone: 'danger' });
+      appAlert({ title: t('menuPage.couldntRevert'), message: String((err as Error).message), tone: 'danger' });
     },
   });
 
@@ -134,11 +135,11 @@ export default function MenuConsolePage() {
       bulkSetOverride(body),
     onSuccess: (res) => {
       refresh();
-      appAlert({ title: 'Bulk update applied', message: `Updated ${res.updated} location${res.updated === 1 ? '' : 's'}.`, tone: 'info' });
+      appAlert({ title: t('menuPage.bulkUpdateApplied'), message: t('menuPage.bulkUpdateAppliedMessage', { count: res.updated }), tone: 'info' });
     },
     onError: (err) => {
       if (err instanceof MenuApiUnavailable) return handleApiUnavailable();
-      appAlert({ title: 'Bulk update failed', message: String((err as Error).message), tone: 'danger' });
+      appAlert({ title: t('menuPage.bulkUpdateFailed'), message: String((err as Error).message), tone: 'danger' });
     },
   });
 
@@ -169,19 +170,17 @@ export default function MenuConsolePage() {
         <div className="relative flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-extrabold tracking-tight flex items-center gap-2">
-              <UtensilsCrossed className="w-6 h-6" /> Menu &amp; pricing
+              <UtensilsCrossed className="w-6 h-6" /> {t('menuPage.title')}
             </h1>
             <p className="text-amber-50 mt-1.5 text-sm max-w-2xl">
-              One menu, every location. Prices inherit your central price automatically — change a
-              cell to override just that location, or set a price across every store at once. 86 an
-              item with one tap.
+              {t('menuPage.heroSubtitle')}
             </p>
           </div>
           <Link
             href={`/${schoolId}/settings/pos`}
             className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 hover:bg-white/25 px-3 py-2 text-xs font-semibold backdrop-blur-sm transition-colors shrink-0"
           >
-            <SettingsIcon className="w-3.5 h-3.5" /> POS connections
+            <SettingsIcon className="w-3.5 h-3.5" /> {t('menuPage.posConnections')}
           </Link>
         </div>
       </div>
@@ -189,7 +188,7 @@ export default function MenuConsolePage() {
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3 text-slate-400">
           <Loader2 className="w-6 h-6 animate-spin" />
-          <p className="text-sm">Loading your menu…</p>
+          <p className="text-sm">{t('menuPage.loadingMenu')}</p>
         </div>
       ) : !hasCatalog ? (
         <EmptyState schoolId={schoolId} />
@@ -202,7 +201,7 @@ export default function MenuConsolePage() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search items…"
+                placeholder={t('menuPage.searchPlaceholder')}
                 className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
               />
             </div>
@@ -214,7 +213,7 @@ export default function MenuConsolePage() {
                   onChange={(e) => setCategoryFilter(e.target.value)}
                   className="pl-9 pr-8 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-orange-400 cursor-pointer"
                 >
-                  <option value="">All categories</option>
+                  <option value="">{t('menuPage.allCategories')}</option>
                   {categories.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
@@ -225,24 +224,24 @@ export default function MenuConsolePage() {
                 <select
                   value={bulkScope}
                   onChange={(e) => setBulkScope(e.target.value)}
-                  title="Which locations a 'set across all' action targets"
+                  title={t('menuPage.bulkScopeTooltip')}
                   className="pl-9 pr-8 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-orange-400 cursor-pointer"
                 >
-                  <option value="">Bulk → all locations</option>
-                  {locations.map((l) => <option key={l.id} value={l.id}>Bulk → {l.name}</option>)}
+                  <option value="">{t('menuPage.bulkAllLocations')}</option>
+                  {locations.map((l) => <option key={l.id} value={l.id}>{t('menuPage.bulkToLocation', { name: l.name })}</option>)}
                 </select>
               </div>
             )}
             <div className="flex items-center gap-3 text-[11px] text-slate-400 ml-auto">
-              <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-slate-100 border border-slate-200" /> inherited</span>
-              <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-orange-100 border border-orange-300" /> overridden</span>
-              <span className="inline-flex items-center gap-1.5"><EyeOff className="w-3 h-3 text-rose-400" /> 86&rsquo;d</span>
+              <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-slate-100 border border-slate-200" /> {t('menuPage.legendInherited')}</span>
+              <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-orange-100 border border-orange-300" /> {t('menuPage.legendOverridden')}</span>
+              <span className="inline-flex items-center gap-1.5"><EyeOff className="w-3 h-3 text-rose-400" /> {t('menuPage.legend86')}</span>
             </div>
           </div>
 
           {overridesQ.isError && (
             <InlineNotice>
-              Per-location overrides couldn&rsquo;t load — showing central prices for every location.
+              {t('menuPage.overridesLoadError')}
             </InlineNotice>
           )}
 
@@ -253,10 +252,10 @@ export default function MenuConsolePage() {
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200">
                     <th className="text-left font-bold text-slate-600 px-4 py-3 sticky left-0 bg-slate-50 z-10 min-w-[220px]">
-                      Item
+                      {t('menuPage.colItem')}
                     </th>
                     <th className="text-center font-semibold text-slate-500 px-3 py-3 min-w-[130px]">
-                      Central price
+                      {t('menuPage.colCentralPrice')}
                     </th>
                     {locations.map((loc) => (
                       <th key={loc.id} className="text-center font-semibold text-slate-600 px-3 py-3 min-w-[150px]">
@@ -285,13 +284,12 @@ export default function MenuConsolePage() {
               </table>
             </div>
             {items.length === 0 && (
-              <div className="py-12 text-center text-sm text-slate-400">No items match your search.</div>
+              <div className="py-12 text-center text-sm text-slate-400">{t('menuPage.noItemsMatch')}</div>
             )}
           </div>
 
           <p className="text-[11px] text-slate-400 px-1">
-            {items.length} item{items.length === 1 ? '' : 's'} · {locations.length} location{locations.length === 1 ? '' : 's'}.
-            Editing a cell overrides only that location; the &ldquo;set across all&rdquo; row action updates every location at once.
+            {t('menuPage.gridSummary', { itemCount: items.length, locationCount: locations.length })}
           </p>
         </>
       )}
@@ -361,15 +359,15 @@ function ItemRow({
 }
 
 function EmptyState({ schoolId }: { schoolId: string }) {
+  const t = useTranslations();
   return (
     <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-white p-10 text-center">
       <div className="mx-auto w-14 h-14 rounded-2xl bg-orange-50 flex items-center justify-center mb-4">
         <UtensilsCrossed className="w-7 h-7 text-orange-500" />
       </div>
-      <h2 className="text-lg font-bold text-slate-800">No menu yet</h2>
+      <h2 className="text-lg font-bold text-slate-800">{t('menuPage.emptyTitle')}</h2>
       <p className="text-sm text-slate-500 mt-1.5 max-w-md mx-auto">
-        Connect your POS or paste your menu and we&rsquo;ll import every item — then this grid lets
-        you price each one per location.
+        {t('menuPage.emptyBody')}
       </p>
       <div className="mt-5">
         <ConnectMenuPanel schoolId={schoolId} />

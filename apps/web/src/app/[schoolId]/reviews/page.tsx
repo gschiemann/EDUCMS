@@ -14,6 +14,7 @@
  */
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { use } from 'react';
 import { Check, X, Inbox, ArrowLeft, Loader2 } from 'lucide-react';
@@ -23,6 +24,7 @@ import { useUIStore } from '@/store/ui-store';
 import { transformedImageUrl } from '@/lib/asset-image';
 
 export default function ReviewsPage({ params }: { params: Promise<{ schoolId: string }> }) {
+  const t = useTranslations();
   const { schoolId } = use(params);
   const role = useUIStore((s) => s.user?.role);
   const isAdmin = role === 'SUPER_ADMIN' || role === 'DISTRICT_ADMIN' || role === 'SCHOOL_ADMIN';
@@ -35,8 +37,8 @@ export default function ReviewsPage({ params }: { params: Promise<{ schoolId: st
   if (!isAdmin) {
     return (
       <div className="p-12 text-center">
-        <p className="text-slate-500 text-sm">Reviewer access only. Contributors can see their own submissions on the dashboard.</p>
-        <Link href={`/${schoolId}/dashboard`} className="text-indigo-600 text-sm hover:underline mt-2 inline-block">← Back to dashboard</Link>
+        <p className="text-slate-500 text-sm">{t('reviewsPage.reviewerAccessOnly')}</p>
+        <Link href={`/${schoolId}/dashboard`} className="text-indigo-600 text-sm hover:underline mt-2 inline-block">{t('reviewsPage.backToDashboard')}</Link>
       </div>
     );
   }
@@ -68,9 +70,9 @@ export default function ReviewsPage({ params }: { params: Promise<{ schoolId: st
         <div className="p-4 border-b border-slate-200">
           <h1 className="text-lg font-bold text-slate-800 flex items-center gap-2">
             <Inbox className="w-5 h-5 text-indigo-500" />
-            Reviews
+            {t('reviewsPage.reviewsHeading')}
           </h1>
-          <p className="text-xs text-slate-500 mt-1">Review submissions from contributors before they go live.</p>
+          <p className="text-xs text-slate-500 mt-1">{t('reviewsPage.reviewsSubtitle')}</p>
           <div className="mt-3 inline-flex rounded-lg border border-slate-200 overflow-hidden">
             {(['PENDING', 'APPROVED', 'REJECTED'] as const).map((s) => (
               <button
@@ -81,7 +83,7 @@ export default function ReviewsPage({ params }: { params: Promise<{ schoolId: st
                   statusFilter === s ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
                 }`}
               >
-                {s.charAt(0) + s.slice(1).toLowerCase()}
+                {t('reviewsPage.tabLabel', { status: s })}
               </button>
             ))}
           </div>
@@ -90,7 +92,7 @@ export default function ReviewsPage({ params }: { params: Promise<{ schoolId: st
           {isLoading && <div className="p-6 text-center text-xs text-slate-400"><Loader2 className="w-4 h-4 animate-spin inline-block" /></div>}
           {!isLoading && (submissions || []).length === 0 && (
             <div className="p-6 text-center text-xs text-slate-400">
-              No {statusFilter.toLowerCase()} submissions.
+              {t('reviewsPage.emptyStateList', { status: statusFilter })}
             </div>
           )}
           {(submissions || []).map((s) => (
@@ -117,7 +119,7 @@ export default function ReviewsPage({ params }: { params: Promise<{ schoolId: st
           <ReviewDetail id={selectedId} onBack={() => setSelectedId(null)} statusFilter={statusFilter} />
         ) : (
           <div className="h-full w-full flex items-center justify-center text-slate-400 text-sm">
-            <p>Select a submission on the left to review it.</p>
+            <p>{t('reviewsPage.selectSubmission')}</p>
           </div>
         )}
       </div>
@@ -126,8 +128,9 @@ export default function ReviewsPage({ params }: { params: Promise<{ schoolId: st
 }
 
 function SubmissionRowCard({ submission, selected, onClick }: { submission: SubmissionRow; selected: boolean; onClick: () => void }) {
+  const t = useTranslations();
   const itemCount = submission.assetIds.length + submission.playlistIds.length + submission.scheduleIds.length;
-  const submitterEmail = submission.submittedBy?.email || 'unknown';
+  const submitterEmail = submission.submittedBy?.email || t('reviewsPage.unknown');
   const date = new Date(submission.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   return (
     <button
@@ -140,7 +143,7 @@ function SubmissionRowCard({ submission, selected, onClick }: { submission: Subm
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="text-xs font-bold text-slate-700 truncate">{submitterEmail}</div>
-          <div className="text-[10px] text-slate-400 mt-0.5">{date} · {itemCount} item{itemCount === 1 ? '' : 's'}</div>
+          <div className="text-[10px] text-slate-400 mt-0.5">{t('reviewsPage.rowMeta', { date, count: itemCount })}</div>
           {submission.note && (
             <div className="text-[11px] text-slate-500 mt-1 line-clamp-2">{submission.note}</div>
           )}
@@ -152,15 +155,17 @@ function SubmissionRowCard({ submission, selected, onClick }: { submission: Subm
 }
 
 function StatusPill({ status }: { status: SubmissionRow['status'] }) {
+  const t = useTranslations();
   const cls = status === 'PENDING'
     ? 'bg-amber-100 text-amber-700'
     : status === 'APPROVED'
       ? 'bg-emerald-100 text-emerald-700'
       : 'bg-rose-100 text-rose-700';
-  return <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded ${cls}`}>{status}</span>;
+  return <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded ${cls}`}>{t('reviewsPage.statusBadge', { status })}</span>;
 }
 
 function ReviewDetail({ id, onBack, statusFilter }: { id: string; onBack: () => void; statusFilter: string }) {
+  const t = useTranslations();
   const { data: submission, isLoading } = useSubmission(id);
   const decide = useDecideSubmission();
   const [note, setNote] = useState('');
@@ -172,7 +177,7 @@ function ReviewDetail({ id, onBack, statusFilter }: { id: string; onBack: () => 
   }
 
   const itemCount = submission.assetIds.length + submission.playlistIds.length + submission.scheduleIds.length;
-  const submitter = submission.submittedBy?.email || 'unknown';
+  const submitter = submission.submittedBy?.email || t('reviewsPage.unknown');
   const isPending = submission.status === 'PENDING';
 
   const handleDecide = async (decision: 'approve' | 'reject') => {
@@ -181,8 +186,8 @@ function ReviewDetail({ id, onBack, statusFilter }: { id: string; onBack: () => 
       onBack();
     } catch (err: any) {
       await appAlert({
-        title: `Couldn't ${decision} this submission`,
-        message: err.message || 'Something went wrong while saving the decision. Please try again.',
+        title: t('reviewsPage.decideErrorTitle', { decision }),
+        message: err.message || t('reviewsPage.decideErrorMessage'),
         tone: 'danger',
       });
     }
@@ -191,33 +196,33 @@ function ReviewDetail({ id, onBack, statusFilter }: { id: string; onBack: () => 
   return (
     <div className="p-6 max-w-3xl mx-auto">
       <button onClick={onBack} className="text-xs text-slate-500 hover:text-slate-700 mb-4 inline-flex items-center gap-1">
-        <ArrowLeft className="w-3.5 h-3.5" /> Back to list
+        <ArrowLeft className="w-3.5 h-3.5" /> {t('reviewsPage.backToList')}
       </button>
 
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-800">Submission from {submitter}</h2>
-          <p className="text-xs text-slate-500 mt-1">{itemCount} item{itemCount === 1 ? '' : 's'} · submitted {new Date(submission.createdAt).toLocaleString()}</p>
+          <h2 className="text-xl font-bold text-slate-800">{t('reviewsPage.submissionFrom', { submitter })}</h2>
+          <p className="text-xs text-slate-500 mt-1">{t('reviewsPage.detailMeta', { count: itemCount, date: new Date(submission.createdAt).toLocaleString() })}</p>
         </div>
         <StatusPill status={submission.status} />
       </div>
 
       {submission.note && (
         <div className="mb-4 p-3 bg-white rounded-lg border border-slate-200">
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Submitter note</div>
+          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{t('reviewsPage.submitterNote')}</div>
           <p className="text-sm text-slate-700">{submission.note}</p>
         </div>
       )}
 
       {submission.reviewerNote && !isPending && (
         <div className="mb-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
-          <div className="text-[10px] font-bold text-amber-700 uppercase tracking-wider mb-1">Reviewer note</div>
+          <div className="text-[10px] font-bold text-amber-700 uppercase tracking-wider mb-1">{t('reviewsPage.reviewerNote')}</div>
           <p className="text-sm text-amber-800">{submission.reviewerNote}</p>
         </div>
       )}
 
       {submission.assets.length > 0 && (
-        <Section title={`Assets (${submission.assets.length})`}>
+        <Section title={t('reviewsPage.assetsSection', { count: submission.assets.length })}>
           <div className="grid grid-cols-3 gap-3">
             {submission.assets.map((a: any) => (
               <div key={a.id} className="bg-white rounded-lg border border-slate-200 p-2">
@@ -227,7 +232,7 @@ function ReviewDetail({ id, onBack, statusFilter }: { id: string; onBack: () => 
                   <img src={transformedImageUrl(a.fileUrl, { width: 320, quality: 60 })} alt={a.originalName || ''} className="w-full h-24 object-cover rounded" />
                 ) : (
                   <div className="w-full h-24 bg-slate-100 rounded flex items-center justify-center text-[10px] text-slate-500 uppercase font-bold">
-                    {a.mimeType?.split('/')[0] || 'file'}
+                    {a.mimeType?.split('/')[0] || t('reviewsPage.fileFallback')}
                   </div>
                 )}
                 <div className="text-[10px] text-slate-600 truncate mt-1">{a.originalName || a.fileUrl}</div>
@@ -239,16 +244,16 @@ function ReviewDetail({ id, onBack, statusFilter }: { id: string; onBack: () => 
       )}
 
       {submission.playlists.length > 0 && (
-        <Section title={`Playlists (${submission.playlists.length})`}>
+        <Section title={t('reviewsPage.playlistsSection', { count: submission.playlists.length })}>
           {submission.playlists.map((p: any) => (
             <div key={p.id} className="bg-white rounded-lg border border-slate-200 p-3 mb-2">
               <div className="text-sm font-bold text-slate-700">{p.name}</div>
-              <div className="text-[10px] text-slate-400">{p.items?.length || 0} items</div>
+              <div className="text-[10px] text-slate-400">{t('reviewsPage.itemsCount', { count: p.items?.length || 0 })}</div>
               <ol className="mt-2 pl-4 text-xs text-slate-600 list-decimal space-y-0.5">
                 {(p.items || []).slice(0, 6).map((it: any) => (
-                  <li key={it.id} className="truncate">{it.asset?.originalName || it.asset?.fileUrl || '(asset)'}</li>
+                  <li key={it.id} className="truncate">{it.asset?.originalName || it.asset?.fileUrl || t('reviewsPage.assetFallback')}</li>
                 ))}
-                {(p.items || []).length > 6 && <li className="text-slate-400">…and {p.items.length - 6} more</li>}
+                {(p.items || []).length > 6 && <li className="text-slate-400">{t('reviewsPage.andMore', { count: p.items.length - 6 })}</li>}
               </ol>
             </div>
           ))}
@@ -256,12 +261,12 @@ function ReviewDetail({ id, onBack, statusFilter }: { id: string; onBack: () => 
       )}
 
       {submission.schedules.length > 0 && (
-        <Section title={`Schedules (${submission.schedules.length})`}>
+        <Section title={t('reviewsPage.schedulesSection', { count: submission.schedules.length })}>
           {submission.schedules.map((s: any) => (
             <div key={s.id} className="bg-white rounded-lg border border-slate-200 p-3 mb-2 text-xs">
-              <div className="font-bold text-slate-700">{s.playlist?.name || 'playlist'}</div>
+              <div className="font-bold text-slate-700">{s.playlist?.name || t('reviewsPage.playlistFallback')}</div>
               <div className="text-slate-500 mt-1">
-                Target: {s.screen?.name || s.screenGroup?.name || '(unset)'} · Active: {s.isActive ? 'yes' : 'no'}
+                {t('reviewsPage.scheduleTarget')}: {s.screen?.name || s.screenGroup?.name || t('reviewsPage.unset')} · {t('reviewsPage.scheduleActive')}: {s.isActive ? t('reviewsPage.yes') : t('reviewsPage.no')}
               </div>
               {s.daysOfWeek && <div className="text-slate-400 text-[10px] mt-0.5">{s.daysOfWeek} {s.timeStart && s.timeEnd ? `${s.timeStart}–${s.timeEnd}` : ''}</div>}
             </div>
@@ -272,14 +277,14 @@ function ReviewDetail({ id, onBack, statusFilter }: { id: string; onBack: () => 
       {/* Decide */}
       {isPending && (
         <div className="mt-6 p-4 bg-white rounded-xl border-2 border-indigo-100 sticky bottom-4 shadow-lg">
-          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Note to submitter (optional)</label>
+          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">{t('reviewsPage.noteToSubmitter')}</label>
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="Looks good!  /  Please retake the photo…  /  Move to staff folder first…"
+            placeholder={t('reviewsPage.notePlaceholder')}
             rows={3}
             disabled={isViewer}
-            title={isViewer ? 'Read-only — viewer role' : undefined}
+            title={isViewer ? t('reviewsPage.readOnlyViewer') : undefined}
             className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed"
           />
           <div className="flex gap-2 mt-3">
@@ -287,19 +292,19 @@ function ReviewDetail({ id, onBack, statusFilter }: { id: string; onBack: () => 
               type="button"
               onClick={() => handleDecide('approve')}
               disabled={decide.isPending || isViewer}
-              title={isViewer ? 'Read-only — viewer role' : undefined}
+              title={isViewer ? t('reviewsPage.readOnlyViewer') : undefined}
               className="flex-1 px-4 py-2.5 min-h-[44px] bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
             >
-              <Check className="w-4 h-4" /> Approve & publish
+              <Check className="w-4 h-4" /> {t('reviewsPage.approveAndPublish')}
             </button>
             <button
               type="button"
               onClick={() => handleDecide('reject')}
               disabled={decide.isPending || isViewer}
-              title={isViewer ? 'Read-only — viewer role' : undefined}
+              title={isViewer ? t('reviewsPage.readOnlyViewer') : undefined}
               className="flex-1 px-4 py-2.5 min-h-[44px] bg-rose-600 hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
             >
-              <X className="w-4 h-4" /> Reject
+              <X className="w-4 h-4" /> {t('reviewsPage.reject')}
             </button>
           </div>
         </div>

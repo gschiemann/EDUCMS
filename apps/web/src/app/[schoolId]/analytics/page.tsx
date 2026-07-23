@@ -10,6 +10,7 @@
  */
 
 import { useState, type ComponentType } from 'react';
+import { useTranslations } from 'next-intl';
 import { BarChart3, Loader2, ListVideo, MonitorPlay, ImageIcon, Database } from 'lucide-react';
 import { useProofOfPlay, type ProofOfPlayEntry } from '@/hooks/use-api';
 
@@ -82,6 +83,7 @@ function RankTable({
 }
 
 export default function AnalyticsPage() {
+  const t = useTranslations();
   const [days, setDays] = useState(7);
   const { data, isLoading, isError } = useProofOfPlay(days);
 
@@ -91,10 +93,10 @@ export default function AnalyticsPage() {
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
             <BarChart3 className="h-6 w-6 text-indigo-500" />
-            Proof of Play
+            {t('opsPages.proofOfPlayTitle')}
           </h1>
           <p className="mt-0.5 text-sm text-slate-500">
-            How long your content and sponsors were live on screen.
+            {t('opsPages.proofOfPlaySubtitle')}
           </p>
         </div>
         <div className="flex gap-1.5">
@@ -109,7 +111,7 @@ export default function AnalyticsPage() {
                   : 'border-slate-200 text-slate-600 hover:border-indigo-300'
               }`}
             >
-              {r.label}
+              {t('opsPages.daysCount', { days: r.days })}
             </button>
           ))}
         </div>
@@ -121,58 +123,53 @@ export default function AnalyticsPage() {
         </div>
       ) : isError ? (
         <div className="rounded-2xl border border-slate-200 bg-white py-16 text-center text-sm text-slate-500">
-          Couldn&apos;t load the proof-of-play report. Try again shortly.
+          {t('opsPages.proofOfPlayLoadError')}
         </div>
       ) : data && !data.ready ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
           <Database className="mx-auto h-8 w-8 text-slate-300" />
           <h3 className="mt-3 text-base font-bold text-slate-900">
-            Proof-of-play isn&apos;t switched on yet
+            {t('opsPages.proofOfPlayNotOn')}
           </h3>
           <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">
-            The analytics table hasn&apos;t been created on the database yet. Apply the
-            latest migration (<code className="rounded bg-slate-100 px-1">pnpm db:push</code>)
-            and tracking starts automatically — a sample is taken from every online screen
-            about every 10 minutes.
+            {t('opsPages.proofOfPlayMigrationBefore')}(<code className="rounded bg-slate-100 px-1">pnpm db:push</code>){t('opsPages.proofOfPlayMigrationAfter')}
           </p>
         </div>
       ) : data && data.totalSamples === 0 ? (
         <div className="rounded-2xl border border-slate-200 bg-white py-16 text-center">
           <MonitorPlay className="mx-auto h-8 w-8 text-slate-300" />
-          <h3 className="mt-3 text-base font-bold text-slate-900">No playback recorded yet</h3>
+          <h3 className="mt-3 text-base font-bold text-slate-900">{t('opsPages.noPlaybackTitle')}</h3>
           <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">
-            Samples are collected from online screens about every 10 minutes. Once your
-            screens have been playing scheduled content, their display time shows up here.
+            {t('opsPages.noPlaybackBody')}
           </p>
         </div>
       ) : data ? (
         <>
           <div className="grid gap-3 sm:grid-cols-3">
-            <StatCard label="Screen-hours of content" value={fmtHours(data.estimatedScreenHours)} />
-            <StatCard label="Playlists on air" value={String(data.playlists.length)} />
-            <StatCard label="Tracked window" value={`${data.sinceDays} days`} />
+            <StatCard label={t('opsPages.screenHoursOfContent')} value={fmtHours(data.estimatedScreenHours)} />
+            <StatCard label={t('opsPages.playlistsOnAir')} value={String(data.playlists.length)} />
+            <StatCard label={t('opsPages.trackedWindow')} value={t('opsPages.daysCount', { days: data.sinceDays })} />
           </div>
           <RankTable
-            title="Playlists"
+            title={t('opsPages.playlistsTitle')}
             icon={ListVideo}
             rows={data.playlists}
-            emptyLabel="No playlist playback in this window."
+            emptyLabel={t('opsPages.noPlaylistPlayback')}
           />
           <RankTable
-            title="Content & sponsor assets"
+            title={t('opsPages.contentSponsorAssets')}
             icon={ImageIcon}
             rows={data.assets}
-            emptyLabel="No asset playback in this window."
+            emptyLabel={t('opsPages.noAssetPlayback')}
           />
           <RankTable
-            title="Screens"
+            title={t('opsPages.screensTitle')}
             icon={MonitorPlay}
             rows={data.screens}
-            emptyLabel="No screen playback in this window."
+            emptyLabel={t('opsPages.noScreenPlayback')}
           />
           <p className="text-center text-xs text-slate-400">
-            Display time is estimated from {data.sampleMinutes}-minute samples of online
-            screens — an industry-standard proof-of-display measure.
+            {t('opsPages.displayTimeEstimate', { minutes: data.sampleMinutes })}
           </p>
         </>
       ) : null}

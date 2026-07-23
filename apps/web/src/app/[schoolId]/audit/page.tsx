@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { FileClock, Download, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
 import { useAuditLog, useUsers } from '@/hooks/use-api';
@@ -24,12 +25,13 @@ const ACTION_OPTIONS = [
 ];
 
 export default function AuditPage() {
+  const t = useTranslations();
   return (
     <RoleGate
       allowedRoles={['admin', 'SUPER_ADMIN', 'DISTRICT_ADMIN', 'SCHOOL_ADMIN']}
       fallback={
         <div className="text-center py-24 text-sm text-slate-500">
-          You don't have permission to view the audit log.
+          {t('opsPages.noAuditPermission')}
         </div>
       }
     >
@@ -39,6 +41,7 @@ export default function AuditPage() {
 }
 
 function AuditViewer() {
+  const t = useTranslations();
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [actorId, setActorId] = useState('');
@@ -78,8 +81,8 @@ function AuditViewer() {
     });
     if (!res.ok) {
       await appAlert({
-        title: "Couldn't export the audit log",
-        message: `The server responded with status ${res.status}. Try again in a moment, or narrow the date range if the export was very large.`,
+        title: t('opsPages.exportErrorTitle'),
+        message: t('opsPages.exportErrorMessage', { status: res.status }),
         tone: 'danger',
       });
       return;
@@ -105,24 +108,24 @@ function AuditViewer() {
             <FileClock className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-2xl font-extrabold text-slate-900">Audit Log</h1>
-            <p className="text-xs text-slate-500">Immutable activity history for this school.</p>
+            <h1 className="text-2xl font-extrabold text-slate-900">{t('opsPages.auditLogTitle')}</h1>
+            <p className="text-xs text-slate-500">{t('opsPages.auditLogSubtitle')}</p>
           </div>
         </div>
         <button
           onClick={downloadCsv}
           disabled={isViewer}
-          title={isViewer ? 'Read-only — viewer role' : undefined}
+          title={isViewer ? t('opsPages.readOnlyViewerRole') : undefined}
           className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-semibold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Download className="w-4 h-4" /> Export CSV
+          <Download className="w-4 h-4" /> {t('opsPages.exportCsv')}
         </button>
       </header>
 
       {/* Filters */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 grid grid-cols-1 md:grid-cols-4 gap-3">
         <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
-          From
+          {t('opsPages.from')}
           <input
             type="datetime-local"
             value={from}
@@ -131,7 +134,7 @@ function AuditViewer() {
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
-          To
+          {t('opsPages.to')}
           <input
             type="datetime-local"
             value={to}
@@ -140,27 +143,27 @@ function AuditViewer() {
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
-          Actor
+          {t('opsPages.actor')}
           <select
             value={actorId}
             onChange={(e) => { setActorId(e.target.value); resetPage(); }}
             className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
           >
-            <option value="">All users</option>
+            <option value="">{t('opsPages.allUsers')}</option>
             {Array.isArray(users) && users.map((u: any) => (
               <option key={u.id} value={u.id}>{u.email}</option>
             ))}
           </select>
         </label>
         <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
-          Action
+          {t('opsPages.action')}
           <select
             value={action}
             onChange={(e) => { setAction(e.target.value); resetPage(); }}
             className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
           >
             {ACTION_OPTIONS.map((a) => (
-              <option key={a} value={a}>{a || 'All actions'}</option>
+              <option key={a} value={a}>{a || t('opsPages.allActions')}</option>
             ))}
           </select>
         </label>
@@ -172,20 +175,20 @@ function AuditViewer() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500 font-bold">
               <tr>
-                <th className="text-left px-4 py-3">Timestamp</th>
-                <th className="text-left px-4 py-3">Actor</th>
-                <th className="text-left px-4 py-3">Action</th>
-                <th className="text-left px-4 py-3">Target</th>
-                <th className="text-left px-4 py-3">Details</th>
+                <th className="text-left px-4 py-3">{t('opsPages.timestamp')}</th>
+                <th className="text-left px-4 py-3">{t('opsPages.actor')}</th>
+                <th className="text-left px-4 py-3">{t('opsPages.action')}</th>
+                <th className="text-left px-4 py-3">{t('opsPages.target')}</th>
+                <th className="text-left px-4 py-3">{t('opsPages.details')}</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-400">
-                  <Loader2 className="w-5 h-5 animate-spin inline" /> Loading…
+                  <Loader2 className="w-5 h-5 animate-spin inline" /> {t('opsPages.loading')}
                 </td></tr>
               ) : items.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-400">No entries match your filters.</td></tr>
+                <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-400">{t('opsPages.noEntriesMatch')}</td></tr>
               ) : (
                 items.map((row: any) => (
                   <tr key={row.id} className="border-t border-slate-100 hover:bg-slate-50/60">
@@ -213,8 +216,8 @@ function AuditViewer() {
         {/* Pagination */}
         <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50/50 text-xs text-slate-600">
           <div>
-            {total === 0 ? 'No results' : `Showing ${page * PAGE_SIZE + 1}-${Math.min((page + 1) * PAGE_SIZE, total)} of ${total}`}
-            {isFetching && <span className="ml-2 text-slate-400">(refreshing…)</span>}
+            {total === 0 ? t('opsPages.noResults') : t('opsPages.showingRange', { start: page * PAGE_SIZE + 1, end: Math.min((page + 1) * PAGE_SIZE, total), total })}
+            {isFetching && <span className="ml-2 text-slate-400">{t('opsPages.refreshing')}</span>}
           </div>
           <div className="flex items-center gap-2">
             <button

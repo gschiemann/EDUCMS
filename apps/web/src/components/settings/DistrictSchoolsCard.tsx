@@ -11,6 +11,7 @@
  * One UI, every industry. Pulled from Tenant.vertical (K12 default).
  */
 import { useEffect, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { apiFetch } from '@/lib/api-client';
 import { useAppStore } from '@/lib/store';
 import { useTenantSwitch } from '@/hooks/use-tenant-switch';
@@ -191,12 +192,13 @@ function copyFor(_v?: string): Copy {
 }
 
 export function DistrictSchoolsCard() {
+  const t = useTranslations();
   const user = useAppStore((s) => s.user);
   // 2026-05-25 — parent tenant info for the "Default" row at top
   // of the list. Falls back to "Your organization" if the tenant
   // name isn't hydrated yet (rare; ui-store loads at boot).
   const uiUser = useUIStore((s) => s.user);
-  const fallbackName = (uiUser as any)?.tenantName || 'Your organization';
+  const fallbackName = (uiUser as any)?.tenantName || t('locationsCard.yourOrganization');
   // Live tenant info (name + address) — re-fetched after inline edit
   // saves so the row shows the latest values without a page reload.
   const [tenantInfo, setTenantInfo] = useState<{ name: string; address: string | null } | null>(null);
@@ -270,7 +272,7 @@ export function DistrictSchoolsCard() {
       setData(res);
       if (me) setTenantInfo({ name: me.name, address: me.address ?? null });
     } catch (e: any) {
-      setError(e?.message || 'Failed to load.');
+      setError(e?.message || t('locationsCard.failedToLoad'));
     } finally {
       setLoading(false);
     }
@@ -294,7 +296,7 @@ export function DistrictSchoolsCard() {
     setEditError(null);
     const trimmedName = editName.trim();
     if (!trimmedName) {
-      setEditError('Name is required.');
+      setEditError(t('locationsCard.nameRequired'));
       return;
     }
     setEditSaving(true);
@@ -317,7 +319,7 @@ export function DistrictSchoolsCard() {
       setEditingParent(false);
       await load();
     } catch (e: any) {
-      setEditError(e?.message || 'Could not save changes.');
+      setEditError(e?.message || t('locationsCard.couldNotSave'));
     } finally {
       setEditSaving(false);
     }
@@ -325,7 +327,7 @@ export function DistrictSchoolsCard() {
 
   const submit = async () => {
     setError(null);
-    if (!name.trim()) { setError(`${c.childNoun.charAt(0).toUpperCase() + c.childNoun.slice(1)} name is required.`); return; }
+    if (!name.trim()) { setError(t('locationsCard.itemNameRequired', { noun: c.childNoun.charAt(0).toUpperCase() + c.childNoun.slice(1) })); return; }
     setSubmitting(true);
     try {
       await apiFetch('/tenants/children', {
@@ -348,7 +350,7 @@ export function DistrictSchoolsCard() {
       setAdding(false);
       await load();
     } catch (e: any) {
-      setError(e?.message || `Could not create ${c.childNoun}.`);
+      setError(e?.message || t('locationsCard.couldNotCreate', { noun: c.childNoun }));
     } finally {
       setSubmitting(false);
     }
@@ -396,7 +398,7 @@ export function DistrictSchoolsCard() {
       <div className="p-6 space-y-4">
         {loading ? (
           <div className="flex items-center gap-2 text-sm text-slate-400">
-            <Loader2 className="w-4 h-4 animate-spin" /> Loading {c.childNounPlural}…
+            <Loader2 className="w-4 h-4 animate-spin" /> {t('locationsCard.loadingItems', { items: c.childNounPlural })}
           </div>
         ) : (
           <>
@@ -414,7 +416,7 @@ export function DistrictSchoolsCard() {
                     geocodes it for the fleet map view. */}
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
-                    {c.childNoun.charAt(0).toUpperCase() + c.childNoun.slice(1)} name
+                    {t('locationsCard.itemNameLabel', { noun: c.childNoun.charAt(0).toUpperCase() + c.childNoun.slice(1) })}
                   </label>
                   <input
                     type="text"
@@ -427,7 +429,7 @@ export function DistrictSchoolsCard() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
-                    Address <span className="text-slate-400 normal-case font-normal">(optional)</span>
+                    {t('locationsCard.address')} <span className="text-slate-400 normal-case font-normal">{t('locationsCard.optional')}</span>
                   </label>
                   <AddressAutocomplete
                     value={address}
@@ -446,10 +448,10 @@ export function DistrictSchoolsCard() {
                       setAddressLat(p.latitude);
                       setAddressLon(p.longitude);
                     }}
-                    placeholder="Start typing — 1000 Vin Scully Ave…"
+                    placeholder={t('locationsCard.addressPlaceholder')}
                   />
                   <p className="text-[11px] text-slate-500 mt-1">
-                    Start typing to pick from a list. We&rsquo;ll plot it on the fleet map. You can edit it later.
+                    {t('locationsCard.addressHelp')}
                   </p>
                 </div>
                 {error && (
@@ -465,7 +467,7 @@ export function DistrictSchoolsCard() {
                     disabled={submitting}
                     className="px-3 py-1.5 rounded-md text-sm font-medium text-slate-600 hover:text-slate-900"
                   >
-                    Cancel
+                    {t('locationsCard.cancel')}
                   </button>
                   <button
                     type="button"
@@ -474,7 +476,7 @@ export function DistrictSchoolsCard() {
                     className="px-4 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-bold flex items-center gap-1.5"
                   >
                     {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                    {submitting ? 'Creating…' : `Create ${c.childNoun}`}
+                    {submitting ? t('locationsCard.creating') : t('locationsCard.createItem', { noun: c.childNoun })}
                   </button>
                 </div>
               </div>
@@ -510,10 +512,10 @@ export function DistrictSchoolsCard() {
                 <div className="w-full rounded-lg border border-indigo-300 bg-indigo-50/40 p-3 space-y-2">
                   <div className="flex items-center gap-2">
                     <Home className="w-4 h-4 text-indigo-600 shrink-0" />
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Edit location</span>
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">{t('locationsCard.editLocation')}</span>
                   </div>
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Name</label>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">{t('locationsCard.name')}</label>
                     <input
                       type="text"
                       value={editName}
@@ -524,7 +526,7 @@ export function DistrictSchoolsCard() {
                   </div>
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                      Address <span className="text-slate-400 font-normal">(optional)</span>
+                      {t('locationsCard.address')} <span className="text-slate-400 font-normal">{t('locationsCard.optional')}</span>
                     </label>
                     <AddressAutocomplete
                       value={editAddress}
@@ -542,7 +544,7 @@ export function DistrictSchoolsCard() {
                         setEditAddressLat(p.latitude);
                         setEditAddressLon(p.longitude);
                       }}
-                      placeholder="Start typing — 1000 Vin Scully Ave…"
+                      placeholder={t('locationsCard.addressPlaceholder')}
                     />
                   </div>
                   {editError && (
@@ -558,7 +560,7 @@ export function DistrictSchoolsCard() {
                       disabled={editSaving}
                       className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-bold text-slate-600 hover:text-slate-900"
                     >
-                      <X className="w-3 h-3" /> Cancel
+                      <X className="w-3 h-3" /> {t('locationsCard.cancel')}
                     </button>
                     <button
                       type="button"
@@ -567,7 +569,7 @@ export function DistrictSchoolsCard() {
                       className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold"
                     >
                       {editSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-                      {editSaving ? 'Saving…' : 'Save'}
+                      {editSaving ? t('locationsCard.saving') : t('locationsCard.save')}
                     </button>
                   </div>
                 </div>
@@ -579,7 +581,7 @@ export function DistrictSchoolsCard() {
                       <div className="font-semibold text-slate-800 truncate flex items-center gap-2">
                         {parentTenantName}
                         <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-600 text-white">
-                          Default
+                          {t('locationsCard.default')}
                         </span>
                       </div>
                       {parentTenantAddress && (
@@ -588,13 +590,13 @@ export function DistrictSchoolsCard() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-xs text-slate-500">You&rsquo;re here</span>
+                    <span className="text-xs text-slate-500">{t('locationsCard.youreHere')}</span>
                     <button
                       type="button"
                       onClick={openEditParent}
                       className="p-1.5 rounded-md text-slate-500 hover:text-indigo-700 hover:bg-indigo-100/60 transition-colors"
-                      title="Edit name + address"
-                      aria-label="Edit name + address"
+                      title={t('locationsCard.editNameAddress')}
+                      aria-label={t('locationsCard.editNameAddress')}
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>

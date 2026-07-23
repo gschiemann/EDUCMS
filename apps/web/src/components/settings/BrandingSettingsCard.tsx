@@ -11,6 +11,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import DOMPurify from 'dompurify';
 import { usePathname } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
@@ -52,6 +53,7 @@ export function BrandingSettingsCard({
   slimOnly?: boolean;
   applyOnly?: boolean;
 }) {
+  const t = useTranslations();
   // 2026-05-25 — useTenant() dropped (was only used for the
   // tenant-name pill that's no longer rendered).
   // 2026-05-25 — manual-mode state (inline file picker + color
@@ -145,7 +147,7 @@ export function BrandingSettingsCard({
     if (loading) {
       return (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-          <div className="text-sm text-slate-400">Loading…</div>
+          <div className="text-sm text-slate-400">{t('brandingCard.loading')}</div>
         </div>
       );
     }
@@ -161,7 +163,7 @@ export function BrandingSettingsCard({
               className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-rose-600 transition-colors"
             >
               <RotateCcw className="h-4 w-4" />
-              Reset to default branding
+              {t('brandingCard.resetToDefault')}
             </button>
           ) : (
             <div className="rounded-lg border border-rose-200 bg-rose-50 p-4">
@@ -169,10 +171,10 @@ export function BrandingSettingsCard({
                 <AlertTriangle className="h-5 w-5 text-rose-600 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <div className="font-semibold text-rose-900 text-sm">
-                    Wipe custom branding and revert to VenueOS defaults?
+                    {t('brandingCard.wipeConfirmTitle')}
                   </div>
                   <div className="text-xs text-rose-700/90 mt-1">
-                    Logo, colors, fonts, display name, and tagline will all reset. This is reversible — you can re-scan any time.
+                    {t('brandingCard.wipeConfirmBody')}
                   </div>
                   {resetError && (
                     <div className="text-xs text-rose-800 mt-2 font-mono bg-rose-100 px-2 py-1 rounded">
@@ -187,7 +189,7 @@ export function BrandingSettingsCard({
                       className="px-3 py-1.5 rounded-md bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5"
                     >
                       <RotateCcw className="h-3.5 w-3.5" />
-                      {resetting ? 'Resetting…' : 'Yes, wipe and reset'}
+                      {resetting ? t('brandingCard.resetting') : t('brandingCard.yesWipeReset')}
                     </button>
                     <button
                       type="button"
@@ -195,7 +197,7 @@ export function BrandingSettingsCard({
                       disabled={resetting}
                       className="px-3 py-1.5 rounded-md bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-medium"
                     >
-                      Cancel
+                      {t('brandingCard.cancel')}
                     </button>
                   </div>
                 </div>
@@ -235,11 +237,11 @@ export function BrandingSettingsCard({
             Unicode apostrophe (’, U+2019) so it parses as
             "we'll" everywhere. */}
         <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
-          <span className="text-sm font-bold text-slate-800 shrink-0">Brand your CMS</span>
+          <span className="text-sm font-bold text-slate-800 shrink-0">{t('brandingCard.brandYourCms')}</span>
           <span className="text-[11px] text-slate-500 truncate">
             {branding
-              ? 'Update your colors, logo, and fonts.'
-              : 'Brand it as your own — paste your website and we’ll match your colors, logo, and fonts.'}
+              ? t('brandingCard.updateColorsLogoFonts')
+              : t('brandingCard.brandItAsYourOwn')}
           </span>
         </div>
         {/* 2026-05-25 operator: "remove the upload button from the
@@ -257,7 +259,7 @@ export function BrandingSettingsCard({
             // rose for emergency, indigo elsewhere).
             className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-colors"
           >
-            {branding ? 'Re-skin' : 'Configure'}
+            {branding ? t('brandingCard.reSkin') : t('brandingCard.configure')}
           </Link>
         </div>
       </div>
@@ -273,7 +275,7 @@ export function BrandingSettingsCard({
           worth keeping below the header. */}
       {!slimOnly && (loading || branding) && <div className="p-6">
         {loading ? (
-          <div className="text-sm text-slate-400">Loading…</div>
+          <div className="text-sm text-slate-400">{t('brandingCard.loading')}</div>
         ) : branding ? (
           <>
             <div className="flex items-center gap-4">
@@ -287,11 +289,11 @@ export function BrandingSettingsCard({
                 logoSvg={safeLogoSvg || null}
               />
               <div className="flex-1 min-w-0">
-                <div className="font-semibold">{branding.displayName || 'Unnamed'}</div>
+                <div className="font-semibold">{branding.displayName || t('brandingCard.unnamed')}</div>
                 {branding.tagline && <div className="text-xs text-slate-500 truncate max-w-md">{branding.tagline}</div>}
                 {branding.sourceUrl && (
                   <div className="text-xs text-slate-400 mt-0.5 truncate">
-                    Source: {branding.sourceUrl}
+                    {t('brandingCard.sourceLabel')} {branding.sourceUrl}
                   </div>
                 )}
               </div>
@@ -321,7 +323,7 @@ export function BrandingSettingsCard({
                   className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-rose-600 transition-colors"
                 >
                   <RotateCcw className="h-4 w-4" />
-                  Reset to default branding
+                  {t('brandingCard.resetToDefault')}
                 </button>
               ) : (
                 <div className="rounded-lg border border-rose-200 bg-rose-50 p-4">
@@ -329,10 +331,10 @@ export function BrandingSettingsCard({
                     <AlertTriangle className="h-5 w-5 text-rose-600 flex-shrink-0 mt-0.5" />
                     <div className="flex-1">
                       <div className="font-semibold text-rose-900 text-sm">
-                        Wipe custom branding and revert to VenueOS defaults?
+                        {t('brandingCard.wipeConfirmTitle')}
                       </div>
                       <div className="text-xs text-rose-700/90 mt-1">
-                        Logo, colors, fonts, display name, and tagline will all reset. This is reversible — you can re-scan any time.
+                        {t('brandingCard.wipeConfirmBody')}
                       </div>
                       {resetError && (
                         <div className="text-xs text-rose-800 mt-2 font-mono bg-rose-100 px-2 py-1 rounded">
@@ -347,7 +349,7 @@ export function BrandingSettingsCard({
                           className="px-3 py-1.5 rounded-md bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5"
                         >
                           <RotateCcw className="h-3.5 w-3.5" />
-                          {resetting ? 'Resetting…' : 'Yes, wipe and reset'}
+                          {resetting ? t('brandingCard.resetting') : t('brandingCard.yesWipeReset')}
                         </button>
                         <button
                           type="button"
@@ -355,7 +357,7 @@ export function BrandingSettingsCard({
                           disabled={resetting}
                           className="px-3 py-1.5 rounded-md bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-medium"
                         >
-                          Cancel
+                          {t('brandingCard.cancel')}
                         </button>
                       </div>
                     </div>
@@ -382,6 +384,7 @@ export function BrandingSettingsCard({
  *   - override: force-repaint everything. Use after a brand refresh.
  */
 function ApplyBrandToTemplatesRow() {
+  const t = useTranslations();
   const apply = useApplyBrandToTemplates();
   const [mode, setMode] = useState<'fill-blanks' | 'override'>('fill-blanks');
   const [doneSummary, setDoneSummary] = useState<string | null>(null);
@@ -392,9 +395,9 @@ function ApplyBrandToTemplatesRow() {
     setErrMsg(null);
     try {
       const res = await apply.mutateAsync({ mode });
-      setDoneSummary(`Applied to ${res.count} template${res.count === 1 ? '' : 's'} · ${res.zonesPatched} zone${res.zonesPatched === 1 ? '' : 's'} updated.`);
+      setDoneSummary(t('brandingCard.applySummary', { count: res.count, zones: res.zonesPatched }));
     } catch (e: any) {
-      setErrMsg(e?.message || 'Apply failed — try again.');
+      setErrMsg(e?.message || t('brandingCard.applyFailed'));
     }
   };
 
@@ -403,11 +406,11 @@ function ApplyBrandToTemplatesRow() {
       <div className="flex items-start gap-3 mb-3">
         <Wand2 className="h-5 w-5 text-indigo-500 shrink-0 mt-0.5" />
         <div className="flex-1">
-          <div className="text-sm font-bold text-slate-700">Apply brand to all templates</div>
+          <div className="text-sm font-bold text-slate-700">{t('brandingCard.applyBrandToAll')}</div>
           <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-            Repaint every template you own with your brand palette and fonts.
-            <span className="font-semibold"> Fill blanks</span> only touches zones still using stock colors;{' '}
-            <span className="font-semibold">override</span> force-repaints everything.
+            {t('brandingCard.applyBrandDescIntro')}
+            <span className="font-semibold"> {t('brandingCard.fillBlanks')}</span> {t('brandingCard.applyBrandDescFill')}{' '}
+            <span className="font-semibold">{t('brandingCard.override')}</span> {t('brandingCard.applyBrandDescOverride')}
           </p>
         </div>
       </div>
@@ -420,7 +423,7 @@ function ApplyBrandToTemplatesRow() {
               mode === 'fill-blanks' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
             }`}
           >
-            Fill blanks
+            {t('brandingCard.fillBlanks')}
           </button>
           <button
             type="button"
@@ -429,7 +432,7 @@ function ApplyBrandToTemplatesRow() {
               mode === 'override' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
             }`}
           >
-            Override
+            {t('brandingCard.override')}
           </button>
         </div>
         <button
@@ -439,9 +442,9 @@ function ApplyBrandToTemplatesRow() {
           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-bold rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
         >
           {apply.isPending ? (
-            <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Applying…</>
+            <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('brandingCard.applying')}</>
           ) : (
-            <><Wand2 className="h-3.5 w-3.5" /> Apply brand to templates</>
+            <><Wand2 className="h-3.5 w-3.5" /> {t('brandingCard.applyBrandToTemplates')}</>
           )}
         </button>
       </div>

@@ -9,6 +9,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { BrandingWizard } from '@/components/branding/BrandingWizard';
 import { useAppStore } from '@/lib/store';
@@ -17,6 +18,7 @@ import Link from 'next/link';
 import { Check } from 'lucide-react';
 
 export default function OnboardingBrandingPage() {
+  const t = useTranslations();
   const router = useRouter();
   const user = useAppStore((s) => s.user);
   const activeTenant = useAppStore((s) => s.activeTenant);
@@ -37,14 +39,14 @@ export default function OnboardingBrandingPage() {
       <header className="px-6 py-3 border-b border-slate-200 bg-white flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className="font-bold">VenueOS</span>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">Getting started</span>
+          <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{t('onboardingPages.gettingStarted')}</span>
         </div>
-        <Link href={activeTenant ? `/${activeTenant}/dashboard` : '/'} className="text-sm text-slate-500 hover:text-slate-900">Skip for now →</Link>
+        <Link href={activeTenant ? `/${activeTenant}/dashboard` : '/'} className="text-sm text-slate-500 hover:text-slate-900">{t('onboardingPages.skipForNow')} →</Link>
       </header>
 
       <div className="text-center py-6 px-4">
-        <h1 className="text-2xl font-bold">Make it feel like home.</h1>
-        <p className="text-slate-600 mt-1 text-sm">Paste your website — we&apos;ll do the rest.</p>
+        <h1 className="text-2xl font-bold">{t('onboardingPages.makeItHome')}</h1>
+        <p className="text-slate-600 mt-1 text-sm">{t('onboardingPages.pasteWebsite')}</p>
       </div>
 
       <BrandingWizard
