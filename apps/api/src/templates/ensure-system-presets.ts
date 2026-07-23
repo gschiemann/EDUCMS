@@ -266,6 +266,32 @@ for (const id of RETAIL_ALSO_FASHION) {
   PRESET_VERTICALS.set(id, ['RETAIL', 'FASHION']);
 }
 
+// 2026-07-23 — the mirror of RETAIL_ALSO_FASHION. Operator: the 10
+// `preset-sig-fashion-*` signage boards (Lookbook, Editorial, Sale, New
+// Arrivals, Event, Fitting, Window, Campaign, Hours, Members) were tagged
+// FASHION-only, so they surfaced under Boutique but NOT under Store — yet
+// every one is general-retail content (a sale board, store hours, a loyalty
+// members board, a shoppable window read for ANY store, not just apparel).
+// Dual-tag them "FASHION|RETAIL" so a RETAIL (Store) tenant sees them too,
+// without duplicating rows. The boot metadata-sync below migrates the
+// already-seeded prod rows from "FASHION" → "FASHION|RETAIL" automatically
+// (resolvePresetVerticalTag now returns the pipe-joined list for these ids).
+const FASHION_ALSO_RETAIL = [
+  'preset-sig-fashion-01', // Lookbook
+  'preset-sig-fashion-02', // Editorial
+  'preset-sig-fashion-03', // Sale
+  'preset-sig-fashion-04', // New Arrivals
+  'preset-sig-fashion-05', // Event
+  'preset-sig-fashion-06', // Fitting
+  'preset-sig-fashion-07', // Window
+  'preset-sig-fashion-08', // Campaign
+  'preset-sig-fashion-09', // Hours
+  'preset-sig-fashion-10', // Members
+];
+for (const id of FASHION_ALSO_RETAIL) {
+  PRESET_VERTICALS.set(id, ['FASHION', 'RETAIL']);
+}
+
 // Interactive touch kiosks (2026-06-03). Flagship interactive showcases tagged
 // 'ALL' so the "Touch Kiosks" section appears in EVERY vertical's gallery —
 // per operator request (2026-06-03), kept universal for testing ease. The
