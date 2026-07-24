@@ -600,7 +600,10 @@ export class TemplatesController {
             defaultConfig: true,
           },
         },
-        _count: { select: { zones: true } },
+        // playlists: how many playlists use this as their layout. The gallery
+        // reads it so the delete confirm can say "in use" up front (one popup)
+        // instead of a generic confirm followed by a second "delete anyway".
+        _count: { select: { zones: true, playlists: true } },
       },
       orderBy: [{ isSystem: 'desc' }, { updatedAt: 'desc' }],
     });

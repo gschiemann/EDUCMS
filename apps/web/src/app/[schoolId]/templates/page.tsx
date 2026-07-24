@@ -398,7 +398,7 @@ interface Template {
   bgImage?: string | null;
   bgGradient?: string | null;
   zones: Zone[];
-  _count?: { zones: number };
+  _count?: { zones: number; playlists?: number };
   createdAt: string;
   updatedAt: string;
 }
@@ -2435,29 +2435,34 @@ export default function TemplatesPage() {
                     onExport={() => handleExport(t)}
                     onAdaptForLED={() => setAdaptTemplate(t)}
                     onDelete={async () => {
+                      // 2026-07-24 — decide "in use" UP FRONT from the playlist
+                      // count in the list payload, so an in-use template shows
+                      // ONE popup ("Delete anyway?" with the reason) rather than
+                      // a generic confirm followed by a SECOND "delete anyway"
+                      // after the 409. Operator: "just popup that its in use the
+                      // first time, dont pop twice." (The delete is still
+                      // awaited + errors surfaced — the earlier silent-failure
+                      // fix — and a rare load-vs-delete race falls back below.)
+                      const n = t._count?.playlists ?? 0;
+                      const inUse = n > 0;
                       const ok = await appConfirm({
-                        title: 'Delete this template?',
-                        message: `This permanently removes "${t.name}". Any screens scheduled with this layout fall back to the next playlist.`,
+                        title: inUse ? 'Delete anyway?' : 'Delete this template?',
+                        message: inUse
+                          ? `“${t.name}” is assigned to ${n} playlist${n === 1 ? '' : 's'}. Deleting removes it from ${n === 1 ? 'that playlist' : 'them'} — ${n === 1 ? 'it falls' : 'they fall'} back to the next layout.`
+                          : `This permanently removes “${t.name}”. Any screens scheduled with this layout fall back to the next playlist.`,
                         tone: 'danger',
-                        confirmLabel: 'Delete template',
+                        confirmLabel: inUse ? 'Delete anyway' : 'Delete template',
                       });
                       if (!ok) return;
-                      // 2026-07-24 — the delete mutation was fire-and-forget
-                      // (unawaited, no catch), so a failed delete (e.g. 409:
-                      // the template is still in a playlist) rolled the
-                      // optimistic removal back + refetched — the card just
-                      // "came back" with ZERO feedback. Operator: "they go away
-                      // and then it refreshes and they all come back so i can't
-                      // delete them." Await + surface the real reason, and offer
-                      // "Delete anyway" (force-unlink) so junk in a draft
-                      // playlist can still be cleared.
                       try {
-                        await deleteTemplate.mutateAsync({ id: t.id });
+                        await deleteTemplate.mutateAsync({ id: t.id, force: inUse });
                       } catch (err: any) {
+                        // Rare: usage changed between load and this click. If the
+                        // server still blocks, offer force once rather than dead-end.
                         if (err?.code === 'TEMPLATE_IN_USE') {
                           const forceOk = await appConfirm({
                             title: 'Delete anyway?',
-                            message: `${err.message}`,
+                            message: err.message,
                             tone: 'danger',
                             confirmLabel: 'Delete anyway',
                           });
