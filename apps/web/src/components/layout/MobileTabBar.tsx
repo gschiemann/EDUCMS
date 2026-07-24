@@ -7,6 +7,7 @@ import {
   Home, FolderOpen, ListMusic, MonitorPlay,
   LayoutGrid, Trophy, LayoutTemplate, Settings, ClipboardCheck, FileClock, User, X,
   UtensilsCrossed,
+  Tag,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/lib/store';
@@ -98,7 +99,10 @@ export function MobileTabBar() {
     user?.role === 'DISTRICT_ADMIN' ||
     user?.role === 'SCHOOL_ADMIN';
   const isSportsVertical = vertical === 'SPORTS';
-  const isMenuVertical = vertical === 'RESTAURANT' || vertical === 'RETAIL';
+  // Menu/pricing console: food verticals (QSR / RESTAURANT / BAR) + retail
+  // (price book). Retail relabels it "Pricing" (see below). Mirrors Sidebar.
+  const isMenuVertical = ['QSR', 'RESTAURANT', 'BAR', 'RETAIL'].includes(vertical);
+  const isRetailPricing = vertical === 'RETAIL';
 
   type Tab = { key: string; label: string; icon: typeof Home; href: string; badge?: number; danger?: boolean };
   // The five primary tabs. Labels match the desktop Sidebar's exact
@@ -130,7 +134,12 @@ export function MobileTabBar() {
       ? [{ key: 'sports', label: t('nav.sports'), icon: Trophy, href: `${base}/sports` }]
       : []),
     ...(isMenuVertical
-      ? [{ key: 'menu', label: t('nav.menu'), icon: UtensilsCrossed, href: `${base}/menu` }]
+      ? [{
+          key: 'menu',
+          label: isRetailPricing ? t('nav.pricing') : t('nav.menu'),
+          icon: isRetailPricing ? Tag : UtensilsCrossed,
+          href: `${base}/menu`,
+        }]
       : []),
     { key: 'templates', label: t('nav.templates'), icon: LayoutTemplate, href: `${base}/templates` },
     ...(isAdmin

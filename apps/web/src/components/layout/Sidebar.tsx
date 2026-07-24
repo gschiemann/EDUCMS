@@ -7,7 +7,7 @@ import DOMPurify from 'dompurify';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { fullName as userFullName, initials as userInitials } from '@/lib/user-display';
-import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, Crown, ClipboardCheck, Map, Trophy, UtensilsCrossed } from 'lucide-react';
+import { ShieldAlert, LayoutDashboard, MonitorPlay, Folders, Settings, Upload, LayoutTemplate, LogOut, X, Crown, ClipboardCheck, Map, Trophy, UtensilsCrossed, Tag } from 'lucide-react';
 import { RoleGate } from '../RoleGate';
 import { EmergencyTriggerModal } from '../emergency/EmergencyTriggerModal';
 import { usePendingAssets, useSubmissions, useTenantBranding } from '@/hooks/use-api';
@@ -225,11 +225,15 @@ export function Sidebar() {
   // Operator (2026-05-19): "the sports menu should only show when you
   // pick the sports venue type, not the others."
   const isSportsVertical = mounted && tenantCopyForBrand.vertical === 'SPORTS';
-  // Menu & pricing console — only for verticals that run menu boards
-  // (RESTAURANT / RETAIL). Same vertical-gate pattern as Sports above.
-  // /menu is still reachable by typing the URL for other verticals.
+  // Menu & pricing console — the food verticals that run menu/drink boards
+  // (QSR / RESTAURANT / BAR) PLUS retail, which uses it as a multi-location
+  // price book. Same vertical-gate pattern as Sports above; /menu is still
+  // reachable by URL for other verticals. 2026-07-24: added QSR + BAR (they
+  // were wrongly excluded — they're the primary menu-board verticals), and
+  // retail relabels the entry "Pricing" (below) since "Menu" reads as food.
   const isMenuVertical =
-    mounted && (tenantCopyForBrand.vertical === 'RESTAURANT' || tenantCopyForBrand.vertical === 'RETAIL');
+    mounted && ['QSR', 'RESTAURANT', 'BAR', 'RETAIL'].includes(tenantCopyForBrand.vertical);
+  const isRetailPricing = mounted && tenantCopyForBrand.vertical === 'RETAIL';
   // Sports is admin + Editor only (operator 2026-06-09: "lock viewer out of
   // the sports, only admin and editor"). Hide the nav entry for a
   // RESTRICTED_VIEWER; the /sports routes also RoleGate them out by URL.
@@ -250,10 +254,14 @@ export function Sidebar() {
     ...(sportsAllowed
       ? [{ name: t('nav.sports'), href: hrefFor('/sports'), icon: Trophy }]
       : []),
-    // Menu & pricing (multi-location price book + 86) — RESTAURANT /
-    // RETAIL only.
+    // Menu & pricing (multi-location price book + 86). Retail sees it as
+    // "Pricing" with a price-tag icon; food verticals see "Menu" with cutlery.
     ...(isMenuVertical
-      ? [{ name: t('nav.menu'), href: hrefFor('/menu'), icon: UtensilsCrossed }]
+      ? [{
+          name: isRetailPricing ? t('nav.pricing') : t('nav.menu'),
+          href: hrefFor('/menu'),
+          icon: isRetailPricing ? Tag : UtensilsCrossed,
+        }]
       : []),
     { name: t('nav.settings'), href: hrefFor('/settings'), icon: Settings },
   ];
