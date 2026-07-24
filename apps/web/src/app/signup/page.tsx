@@ -78,7 +78,11 @@ const SIGNUP_VERTICALS: Record<Vertical, VerticalSignup> = {
     heroWord: 'whole office',
   },
   QSR: {
-    picker: 'Quick-service restaurant',
+    // 2026-07-24 — one consolidated food option (the full-service RESTAURANT
+    // entry is hidden from the picker below), matching the Settings switcher's
+    // "Restaurant/QSR". Operator: "make sure it's fixed in the new customer
+    // setup as well."
+    picker: 'Restaurant / QSR (quick-service)',
     nameLabel: 'Restaurant or brand name',
     namePlaceholder: 'Burger Junction',
     slugPlaceholder: 'burger-junction',
@@ -281,7 +285,10 @@ export default function SignupPage() {
                   className={`${INPUT_CLS} cursor-pointer`}
                 >
                   <option value="" disabled>Choose your industry…</option>
-                  {VERTICALS.map((vk) => (
+                  {/* Hide the full-service RESTAURANT — it's merged into the
+                      single "Restaurant / QSR" option (QSR vertical) so new
+                      customers don't see two restaurant choices. */}
+                  {VERTICALS.filter((vk) => vk !== 'RESTAURANT').map((vk) => (
                     <option key={vk} value={vk}>{SIGNUP_VERTICALS[vk].picker}</option>
                   ))}
                 </select>
