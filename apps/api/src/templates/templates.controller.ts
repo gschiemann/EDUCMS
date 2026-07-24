@@ -2652,15 +2652,22 @@ export class TemplatesController {
         const total = await this.prisma.client.playlist.count({
           where: { templateId: id, tenantId: req.user.tenantId },
         });
-        const names = inUse.map((p) => `“${p.name}”`).join(', ');
+        // Playlist names can be junk (a pasted description with newlines from an
+        // AI-describe flow) — collapse whitespace + truncate so the operator
+        // message stays clean instead of dumping a multi-line blob.
+        const cleanName = (n: string | null | undefined) => {
+          const s = (n || '').replace(/\s+/g, ' ').trim();
+          return `“${s.length > 36 ? s.slice(0, 36) + '…' : s || 'Untitled'}”`;
+        };
+        const names = inUse.map((p) => cleanName(p.name)).join(', ');
         throw new HttpException(
           {
             code: 'TEMPLATE_IN_USE',
             message:
-              `This template is used by ${total} playlist${total === 1 ? '' : 's'} ` +
+              `This layout is assigned to ${total} playlist${total === 1 ? '' : 's'} ` +
               `(${names}${total > inUse.length ? ', …' : ''}). ` +
-              `Delete anyway to remove it from ${total === 1 ? 'that playlist' : 'those playlists'}, ` +
-              `or switch them to another template first.`,
+              `Deleting removes it from ${total === 1 ? 'that playlist' : 'them'} — ` +
+              `${total === 1 ? 'it falls' : 'they fall'} back to the next layout.`,
             playlists: inUse,
             total,
           },
