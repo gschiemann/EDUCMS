@@ -188,7 +188,13 @@ export function VerticalSwitcherCard() {
             className="absolute right-0 top-full mt-1.5 z-30 w-64 rounded-lg border border-slate-200 bg-white shadow-lg overflow-hidden"
           >
             <ul className="py-1 max-h-72 overflow-y-auto">
-              {VERTICALS.map((v) => {
+              {/* QSR + RESTAURANT both label as "Restaurant" — a confusing
+                  duplicate in the picker. Operator (2026-07-24): "change to
+                  like Restaurant/QSR in the picker and keep it as one." Show a
+                  single "Restaurant/QSR" entry (the QSR vertical, the canonical
+                  food one) and hide the separate full-service RESTAURANT —
+                  unless the tenant is already on it, so they can still see it. */}
+              {VERTICALS.filter((v) => v !== 'RESTAURANT' || currentVertical === 'RESTAURANT').map((v) => {
                 const labels = VERTICAL_LABELS[v];
                 const Icon = VERTICAL_ICONS[v];
                 const isActive = v === currentVertical;
@@ -211,7 +217,7 @@ export function VerticalSwitcherCard() {
                       {Icon ? (
                         <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-indigo-600' : 'text-slate-500'}`} aria-hidden />
                       ) : null}
-                      <span className="flex-1 font-semibold truncate">{localizedVerticalEntity(locale, v).singular}</span>
+                      <span className="flex-1 font-semibold truncate">{v === 'QSR' ? `${localizedVerticalEntity(locale, v).singular}/QSR` : localizedVerticalEntity(locale, v).singular}</span>
                       {isActive && <Check className="w-3.5 h-3.5 text-indigo-600" />}
                       {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />}
                     </button>
