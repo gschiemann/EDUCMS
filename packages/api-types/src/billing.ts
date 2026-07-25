@@ -99,7 +99,17 @@ export const LICENSE_TIERS: ReadonlyArray<LicenseTier> = [
     id: 'ANNUAL',
     name: 'Annual',
     blurb: '$240 per screen / year — $20/mo effective. Save 20% vs monthly.',
-    monthlyPriceCents: null,
+    // 2026-07-25 — was `null`, which made an ANNUAL subscriber look UNPAID:
+    //  • the billing page computes `perScreen = monthlyPriceCents ?? null` and
+    //    renders the free-pilot / "This month: Free" copy when it is null, so a
+    //    paying annual customer was told they were on the free tier;
+    //  • the owner console computes MRR as `(monthlyPriceCents ?? 0) * seats`,
+    //    so every annual tenant contributed $0 to reported revenue.
+    // 24000/yr ÷ 12 = 2000, i.e. the "$20/mo effective" this tier's own blurb
+    // advertises. Display/reporting only — checkout still uses
+    // STRIPE_PRICE_ANNUAL via priceIdFor('annual'), and the pricing card still
+    // shows annualPriceCents for this tier.
+    monthlyPriceCents: 2000,
     annualPriceCents: 24000,
     seatLimit: null,
     bestFor: [],
