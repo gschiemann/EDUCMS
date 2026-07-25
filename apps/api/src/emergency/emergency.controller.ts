@@ -494,6 +494,14 @@ export class EmergencyController {
           where: { id: scopeId },
           data: {
             emergencyStatus: severity,
+            // 2026-07-25 — persist the INCIDENT TYPE too. emergencyStatus holds
+            // the SEVERITY, and Severity/OverrideIncidentType are disjoint enums,
+            // so without this the type was lost on a tenant-scope trigger and the
+            // manifest fell back to the severity — screens rendered "CRITICAL
+            // PROTOCOL ACTIVE" instead of LOCKDOWN or EVACUATE.
+            emergencyType: overridePayload.type
+              ? String(overridePayload.type).toUpperCase()
+              : null,
             emergencyPlaylistId: activePlaylistId || null,
             emergencyPortraitPlaylistId: activePortraitPlaylistId || null,
           } as any,
@@ -679,6 +687,9 @@ export class EmergencyController {
           where: { id: scopeId },
           data: {
             emergencyStatus: 'INACTIVE',
+            // Clear the incident type with the status — a stale type would make
+            // a cleared tenant look like it still has an active incident.
+            emergencyType: null,
             emergencyPlaylistId: null,
             emergencyPortraitPlaylistId: null,
           } as any,

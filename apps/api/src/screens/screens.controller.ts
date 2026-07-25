@@ -2581,6 +2581,10 @@ export class ScreensController {
           // db:generate on next boot).
           select: {
             emergencyStatus: true,
+            // 2026-07-25 — the INCIDENT TYPE (LOCKDOWN / EVACUATE / ...). Must be
+            // selected explicitly or `tenant.emergencyType` is undefined and the
+            // manifest silently falls back to the severity again.
+            emergencyType: true,
             emergencyPlaylistId: true,
             emergencyPortraitPlaylistId: true,
             // Sprint 8b — location-based mode toggle. When false, the
@@ -2792,8 +2796,13 @@ export class ScreensController {
 
         // Effective emergency type for THIS screen — per-screen
         // override wins; falls back to the tenant-wide emergencyStatus.
+        // Per-screen override wins; then the tenant's INCIDENT TYPE; only then
+        // the legacy emergencyStatus (which holds the SEVERITY, so it renders
+        // "CRITICAL PROTOCOL ACTIVE" — kept last purely for rows written before
+        // Tenant.emergencyType existed).
         const effectiveType =
           activeScreenOverride?.type ||
+          (tenant as any)?.emergencyType ||
           tenant?.emergencyStatus ||
           'EMERGENCY';
         const effectiveSeverity =
