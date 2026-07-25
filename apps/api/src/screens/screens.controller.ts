@@ -3380,7 +3380,19 @@ export class ScreensController {
   //     hash?: string,      // short signature of the content on screen (proof-of-display)
   //     contentKind?: string } // 'template' | 'video' | 'image' | 'emergency' | 'url' (diagnostics)
   @Post(':id/render-proof')
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  // 2026-07-25 — was `limit: 10`, which SILENTLY KILLED proof-of-display at every
+  // multi-screen site. The throttler's default tracker keys on the client's
+  // public IP, and a venue's whole fleet shares one NAT address; each screen
+  // POSTs ~2/min, so any site with >=6 screens blew a 10/min cap and got 429s.
+  // The bigger the fleet, the more certainly its render health went blind —
+  // exactly backwards. Sized for a ~300-screen site (600/min ≈ 10 rps from one
+  // IP) so it still bounds an accidental flood.
+  //
+  // The RIGHT fix is a per-device tracker (this route is device-authenticated
+  // and carries the screen id in the path). That is systemic — EVERY per-route
+  // @Throttle in the app is IP-keyed, so every limit is per-SITE not per-device.
+  // Tracked in docs/research/2026-07-25-launch-readiness-audit/00-AUDIT.md.
+  @Throttle({ default: { limit: 600, ttl: 60_000 } })
   async reportRenderProof(
     @Param('id') id: string,
     @Req() req: ExpressReq,
