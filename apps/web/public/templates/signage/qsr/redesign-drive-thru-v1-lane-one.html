@@ -219,7 +219,12 @@ body {
 
     .is-portrait .masthead {
       left:40px; right:40px; height:216px;
-      grid-template-columns:1fr 360px; grid-template-rows:116px 76px;
+      /* 2026-07-24 — was `1fr 360px`, which left the service-mode legend only
+         ~640px. "Drive-Thru · Cal / $" needs ~700px at the 52px signage floor,
+         so it wrapped and orphaned the "$" on a second line. The status chip
+         ("Open") needs far less than 360px, so give the legend the slack
+         instead of shrinking type below 52px. */
+      grid-template-columns:1fr 300px; grid-template-rows:116px 76px;
     }
     .is-portrait .brand {
       grid-column:1 / 3; width:100%; height:105px; font-size:70px;
@@ -227,6 +232,9 @@ body {
     }
     .is-portrait .mode {
       justify-content:flex-start; height:76px; font-size:52px;
+      /* Tighter tracking + nowrap so operator-entered copy stays on one line
+         rather than orphaning a trailing token. */
+      letter-spacing:.04em; white-space:nowrap;
     }
     .is-portrait .state { height:76px; font-size:54px; }
     .is-portrait .menu-area {

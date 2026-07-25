@@ -51,8 +51,13 @@ function isBoard(f) {
   const rel = f.slice(PREFIX.length);
   return !rel.split('/').some((seg) => seg.startsWith('_'));
 }
-function posterFor(board) {
-  return PREFIX + '_thumbs/' + board.slice(PREFIX.length).replace(/\.html$/, '.png');
+// A board can ship BOTH native compositions from one HTML file, in which case
+// it has two posters: `<name>.png` (landscape) and `<name>-portrait.png`. A
+// portrait-only change legitimately leaves the landscape poster byte-identical,
+// so accept EITHER poster being regenerated.
+function postersFor(board) {
+  const base = PREFIX + '_thumbs/' + board.slice(PREFIX.length).replace(/\.html$/, '');
+  return [base + '.png', base + '-portrait.png'];
 }
 
 const changed = changedFiles();
@@ -62,11 +67,11 @@ if (changed === null) {
 }
 const changedSet = new Set(changed);
 const boards = changed.filter(isBoard);
-const violations = boards.filter((b) => !changedSet.has(posterFor(b)));
+const violations = boards.filter((b) => !postersFor(b).some((png) => changedSet.has(png)));
 
 if (violations.length) {
   console.error('\n[X] Stale gallery posters — ' + violations.length + ' board(s) changed but their poster PNG did NOT:\n');
-  for (const b of violations) console.error('  ' + b + '\n     needs: ' + posterFor(b));
+  for (const b of violations) console.error('  ' + b + '\n     needs: ' + postersFor(b).join('  or  '));
   console.error('\nRegenerate the poster(s), then BUMP POSTER_VERSION in');
   console.error('apps/web/src/components/templates/ScaledTemplateThumbnail.tsx:');
   console.error('  node apps/web/scripts/gen-template-posters.cjs http://localhost:3000');
