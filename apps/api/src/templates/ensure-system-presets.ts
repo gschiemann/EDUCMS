@@ -92,6 +92,22 @@ export const SUPERSEDED_PRESET_IDS: ReadonlySet<string> = new Set<string>([
   'retail-window-display-portrait', // -> Store · Storefront
   'retail-endcap-featured', // -> Store · End-Cap (Kinetic/Object/Drop)
   'retail-aisle-wayfinding', // -> Store · Wayfinding (Signal/Daylight/Monolith)
+  // Replaced by the church/QSR redesign set (2026-07-24), shipped + verified
+  // live (72 presets seeded, verticals correct) so there is no gap:
+  'worship-welcome-board', // -> Worship · Welcome (3 directions)
+  'worship-service-times', // -> Worship · Service Times
+  'worship-sermon-series', // -> Worship · Sermon Series
+  'worship-song-board', // -> Worship · Song Board
+  'worship-weekly-events', // -> Worship · Weekly Events
+  'worship-giving-board', // -> Worship · Giving
+  'worship-verse-of-the-day', // -> Worship · Verse of the Day
+  'worship-lobby-hub', // -> Worship · Lobby Hub
+  'qsr-drive-thru-menu', // -> QSR · Drive-Thru (Lane One / Market Board / Order Logic)
+  'qsr-counter-order', // -> QSR · Counter Order (Pass / Mosaic / Folio)
+  'qsr-coffee-shop-menu', // -> QSR · Coffee Shop (Ledger / Window / Ceramic)
+  'qsr-pizza-shop-menu', // -> QSR · Pizza Shop (Slice / Oven No. 7 / House Press)
+  // qsr-artisan-pizza + qsr-specialty-coffee are KEPT — different boards, not
+  // part of the 4 replaced menu studies.
   // retail-holiday-seasonal is KEPT — no codex replacement (Seasonal category).
 ]);
 
@@ -345,6 +361,43 @@ const STORE_RETAIL_REDESIGN = [
 ];
 for (const id of STORE_RETAIL_REDESIGN) {
   PRESET_VERTICALS.set(id, ['RETAIL', 'FASHION']);
+}
+
+// 2026-07-24 — the QSR redesign menu boards (preset-sig-qsr-12..23 + their
+// portrait siblings). The OLD boards they replace (qsr-coffee-shop-menu,
+// qsr-pizza-shop-menu) were dual-tagged QSR|RESTAURANT, so tag the
+// replacements the same way — otherwise retiring the old ones would strip a
+// full-service RESTAURANT tenant of those menu boards. (RESTAURANT is now
+// merged into the single "Restaurant/QSR" picker entry, but legacy tenants on
+// the RESTAURANT vertical must keep working.)
+const QSR_REDESIGN_ALSO_RESTAURANT = [
+  'preset-sig-qsr-12',
+  'preset-sig-qsr-12-portrait',
+  'preset-sig-qsr-13',
+  'preset-sig-qsr-13-portrait',
+  'preset-sig-qsr-14',
+  'preset-sig-qsr-14-portrait',
+  'preset-sig-qsr-15',
+  'preset-sig-qsr-15-portrait',
+  'preset-sig-qsr-16',
+  'preset-sig-qsr-16-portrait',
+  'preset-sig-qsr-17',
+  'preset-sig-qsr-17-portrait',
+  'preset-sig-qsr-18',
+  'preset-sig-qsr-18-portrait',
+  'preset-sig-qsr-19',
+  'preset-sig-qsr-19-portrait',
+  'preset-sig-qsr-20',
+  'preset-sig-qsr-20-portrait',
+  'preset-sig-qsr-21',
+  'preset-sig-qsr-21-portrait',
+  'preset-sig-qsr-22',
+  'preset-sig-qsr-22-portrait',
+  'preset-sig-qsr-23',
+  'preset-sig-qsr-23-portrait',
+];
+for (const id of QSR_REDESIGN_ALSO_RESTAURANT) {
+  PRESET_VERTICALS.set(id, ['QSR', 'RESTAURANT']);
 }
 
 // Interactive touch kiosks (2026-06-03). Flagship interactive showcases tagged
