@@ -214,7 +214,13 @@ const SIG_INDUSTRY_VERTICAL: Record<string, string> = {
   clinic: 'HEALTHCARE',
 };
 SYSTEM_TEMPLATE_PRESETS.forEach((p) => {
-  const m = p.id.match(/^preset-sig-(.+)-\d+$/);
+  // The optional `-portrait` suffix is REQUIRED here. A portrait sibling id
+  // (`preset-sig-worship-01-portrait`) doesn't end in digits, so without it the
+  // match fails and the preset silently keeps the K12 default set above —
+  // which both hides it from its real vertical AND leaks it into the K-12
+  // gallery (a school would have seen church + QSR menu boards). Caught live
+  // 2026-07-24 when all 36 new portrait boards seeded as K12.
+  const m = p.id.match(/^preset-sig-(.+)-\d+(?:-portrait)?$/);
   const industry = m?.[1];
   if (industry && SIG_INDUSTRY_VERTICAL[industry]) {
     PRESET_VERTICAL.set(p.id, SIG_INDUSTRY_VERTICAL[industry]);
