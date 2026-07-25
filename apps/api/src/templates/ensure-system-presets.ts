@@ -679,6 +679,7 @@ export async function ensureSystemPresets(prisma: PrismaService) {
     try {
       let zoneSyncCount = 0;
       let configSyncCount = 0;
+      let zonePruneCount = 0;
       for (const src of ALL_PRESETS) {
         // Only touch single-zone presets — multi-zone compositions are
         // out of scope for this auto-sync (those would need per-zone
@@ -686,6 +687,49 @@ export async function ensureSystemPresets(prisma: PrismaService) {
         if (!Array.isArray(src.zones) || src.zones.length !== 1) continue;
         const sourceWidgetType = (src.zones as any)[0]?.widgetType;
         if (!sourceWidgetType) continue;
+
+        // 2026-07-24 — ZONE-COUNT reconciliation for single-zone BOARD presets.
+        // Bug this fixes: replacing a multi-zone React preset IN PLACE with a
+        // single-zone EXTERNAL_HTML board (qsr-sushi-ramen-menu -> "After Dark")
+        // left the DB row with its 5 original zones. The widgetType updateMany
+        // below then flipped ALL of them to EXTERNAL_HTML — despite the comment
+        // above claiming "first zone only" — while only ONE got the new `url`.
+        // Result: the board rendered under 4 empty url-less iframes. Source is
+        // the truth for a system preset, so when the source says "one
+        // full-canvas board", prune anything beyond the first zone.
+        //
+        // Deliberately scoped to EXTERNAL_HTML: for a board, the single zone IS
+        // the whole template, so extra zones are provably drift. Multi-zone
+        // React compositions never reach here (their source has >1 zone).
+        // Measured before shipping: exactly ONE row in prod was affected.
+        if (sourceWidgetType === 'EXTERNAL_HTML') {
+          const zones = await prisma.client.templateZone.findMany({
+            where: { templateId: src.id },
+            select: { id: true },
+            orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+          });
+          if (zones.length > 1) {
+            const stale = zones.slice(1).map((z) => z.id);
+            const pruned = await prisma.client.templateZone.deleteMany({ where: { id: { in: stale } } });
+            zonePruneCount += pruned.count;
+            logger.warn(`  ↳ ${src.id}: pruned ${pruned.count} stale zone(s) — source declares a single board zone`);
+          }
+          // The canvas is part of a board's identity (1920x1080 vs an older
+          // 3840x2160 React composition). The metadata sync above deliberately
+          // leaves screenWidth/Height alone for hand-shaped presets, but for a
+          // board the source dimensions ARE the scene, so reconcile them.
+          const row = await prisma.client.template.findUnique({
+            where: { id: src.id },
+            select: { screenWidth: true, screenHeight: true },
+          });
+          if (row && (row.screenWidth !== src.screenWidth || row.screenHeight !== src.screenHeight)) {
+            await prisma.client.template.update({
+              where: { id: src.id },
+              data: { screenWidth: src.screenWidth, screenHeight: src.screenHeight },
+            });
+            logger.log(`  ↳ ${src.id}: canvas → ${src.screenWidth}×${src.screenHeight}`);
+          }
+        }
         const updated = await prisma.client.templateZone.updateMany({
           where: {
             templateId: src.id,
@@ -721,6 +765,9 @@ export async function ensureSystemPresets(prisma: PrismaService) {
           configSyncCount += 1;
           logger.log(`  ↳ ${src.id}: zone defaultConfig synced`);
         }
+      }
+      if (zonePruneCount > 0) {
+        logger.log(`Pruned ${zonePruneCount} stale zone(s) from single-zone board presets.`);
       }
       if (zoneSyncCount > 0) {
         logger.log(`Synced widgetType on ${zoneSyncCount} system-preset zone(s).`);
