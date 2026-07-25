@@ -718,11 +718,18 @@ export async function ensureSystemPresets(prisma: PrismaService) {
           // 3840x2160 React composition). The metadata sync above deliberately
           // leaves screenWidth/Height alone for hand-shaped presets, but for a
           // board the source dimensions ARE the scene, so reconcile them.
+          // Boot-time SYSTEM-preset reconciliation, not a request path. System presets
+          // are tenantId=NULL by definition, so a tenantId filter is meaningless here;
+          // `src.id` comes from our own source array, never from user input.
+          // ten-ok: boot-time system-preset reconciliation; system presets are tenantId=NULL
           const row = await prisma.client.template.findUnique({
             where: { id: src.id },
             select: { screenWidth: true, screenHeight: true },
           });
           if (row && (row.screenWidth !== src.screenWidth || row.screenHeight !== src.screenHeight)) {
+            // Same boot-time SYSTEM-preset reconciliation — `src.id` is from our own
+            // source array and system presets carry tenantId=NULL, so they cannot be scoped.
+            // ten-ok: boot-time system-preset reconciliation; system presets are tenantId=NULL
             await prisma.client.template.update({
               where: { id: src.id },
               data: { screenWidth: src.screenWidth, screenHeight: src.screenHeight },

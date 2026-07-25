@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpException, HttpStatus, Param, Post, Query, Request, UseGuards } from '@nestjs/common';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { requireTenantIdStrict } from '../auth/require-tenant';
 import { NotificationsService } from './notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -15,7 +16,10 @@ export class NotificationsController {
   @Get()
   async list(@Request() req: any, @Query('limit') limit?: string) {
     const userId = req.user.id;
-    const tenantId = req.user.tenantId;
+    // 2026-07-25 — a tenant-less token (device JWT) used to reach Prisma as
+    // `tenantId: undefined`, which DROPS the filter and returns EVERY tenant's
+    // notifications. Reject it before any DB call.
+    const tenantId = requireTenantIdStrict(req);
     const parsedLimit = limit ? parseInt(limit, 10) : 20;
     const [items, unreadCount] = await Promise.all([
       this.service.listForUser({ tenantId, userId, limit: parsedLimit }),
@@ -26,12 +30,12 @@ export class NotificationsController {
 
   @Post(':id/read')
   async markRead(@Request() req: any, @Param('id') id: string) {
-    return this.service.markRead(id, req.user.tenantId, req.user.id);
+    return this.service.markRead(id, requireTenantIdStrict(req), req.user.id);
   }
 
   @Post('read-all')
   async markAll(@Request() req: any) {
-    return this.service.markAllRead(req.user.tenantId, req.user.id);
+    return this.service.markAllRead(requireTenantIdStrict(req), req.user.id);
   }
 
 }

@@ -774,12 +774,21 @@ export class TemplatesController {
         scopeTenantId = '__no_tenant__';
       }
     }
+    // A SYSTEM preset has tenantId=NULL, so it can never match an equality filter;
+    // scoping happens in the OR below (tenant's own rows OR isSystem), and a caller
+    // with no tenant scope is restricted to system presets only.
+    // ten-ok: scoped via the OR clause below rather than a top-level tenantId filter
     const template = await this.prisma.client.template.findFirst({
       where: {
         id,
+        // 2026-07-25 — the tenant-less branch used to be
+        // `[{ isSystem: true }, { tenantId: { not: null } }]`, which matches
+        // ANY tenant's template — a cross-tenant read for anyone holding a
+        // token without a tenantId (e.g. a device JWT). A caller with no tenant
+        // scope may only see SYSTEM presets.
         OR: scopeTenantId
           ? [{ tenantId: scopeTenantId }, { isSystem: true }]
-          : [{ isSystem: true }, { tenantId: { not: null } as any }],
+          : [{ isSystem: true }],
       },
       include: {
         zones: { orderBy: { sortOrder: 'asc' } },
