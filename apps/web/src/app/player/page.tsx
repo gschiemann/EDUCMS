@@ -4288,8 +4288,18 @@ function PlayerPage() {
             // would drop every emergency event on a wrong-clock kiosk.
             // The offset is "what to ADD to local Date.now() to match
             // the server's clock".
-            if (msg.type === 'AUTH_OK' && typeof msg?.data?.serverTime === 'number') {
-              const srv = msg.data.serverTime as number;
+            // 2026-07-25 — FIELD-NAME MISMATCH. The gateway frames every message
+            // as { type, payload, idempotencyKey, timestamp } and puts serverTime
+            // in `payload` — this read `msg.data`, which never exists. The
+            // optional chaining made it fail silently, so the offset stayed 0 and
+            // the ±30s freshness gate below dropped EVERY signed emergency push on
+            // a clock-skewed kiosk (Android signage boxes routinely boot without
+            // NTP). Those screens fell back to slow HTTP polling during a
+            // lockdown. Read `payload`, keeping `data` as a defensive fallback.
+            const authServerTime =
+              (msg?.payload as any)?.serverTime ?? (msg as any)?.data?.serverTime;
+            if (msg.type === 'AUTH_OK' && typeof authServerTime === 'number') {
+              const srv = authServerTime as number;
               serverClockOffsetRef.current = srv - Date.now();
               if (Math.abs(serverClockOffsetRef.current) > 5000) {
                 console.warn('[Player WS] Large clock skew detected — offset=', serverClockOffsetRef.current, 'ms');
