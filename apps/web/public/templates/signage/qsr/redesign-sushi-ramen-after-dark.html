@@ -1,0 +1,2011 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QSR Sushi &amp; Ramen 02 — After Dark</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Azeret+Mono:wght@500;600;700&amp;family=Barlow+Condensed:wght@600;700&amp;family=DM+Sans:opsz,wght@9..40,500;9..40,600;9..40,700&amp;family=Instrument+Serif:ital@0;1&amp;display=swap" rel="stylesheet" />
+  <style>
+* { box-sizing: border-box; }
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #090a09;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+
+#scene-wrap {
+  --scene-scale: 1;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  overflow: hidden;
+  transform: translate(-50%, -50%) scale(var(--scene-scale));
+  transform-origin: center center;
+}
+
+.scene {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+}
+
+.scene::after {
+  content: "";
+  position: absolute;
+  top:0;right:0;bottom:0;left:0;
+  z-index: 90;
+  pointer-events: none;
+  opacity: .045;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.36'/%3E%3C/svg%3E");
+}
+
+[data-field],
+[data-imgslot] {
+  max-width: 100%;
+}
+
+[data-fit] {
+  overflow: visible;
+}
+
+.is-editing [data-field],
+.is-editing [data-imgslot] {
+  cursor: pointer;
+}
+
+.is-editing [data-field]:hover,
+.is-editing [data-imgslot]:hover {
+  outline: 4px solid rgba(255, 255, 255, .94);
+  outline-offset: -4px;
+}
+
+.is-frozen *,
+.is-frozen *::before,
+.is-frozen *::after {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+
+.is-portrait .scene {
+  width: 1080px;
+  height: 1920px;
+}
+
+</style>
+  <style>
+    :root {
+      --charcoal:#111310;
+      --charcoal-soft:#171a16;
+      --ivory:#f3ead9;
+      --ivory-muted:#bdb5a7;
+      --ember:#df6c35;
+      --seaweed:#31493a;
+      --rule:rgba(243,234,217,.22);
+      --font-display:'Instrument Serif',Georgia,serif;
+      --font-body:'DM Sans',Arial,sans-serif;
+      --font-mono:'Azeret Mono','Courier New',monospace;
+      --font-menu:'Barlow Condensed','Arial Narrow','Avenir Next Condensed',Arial,sans-serif;
+    }
+
+    body {
+      font-family:var(--font-body);
+      background:#080907;
+    }
+
+    .scene {
+      color:var(--ivory);
+      background:
+        radial-gradient(circle at 76% 8%,rgba(223,108,53,.08),transparent 28%),
+        linear-gradient(135deg,#121411,#0e100e 70%);
+    }
+
+    .photo-zone {
+      position:absolute;
+      left:0;
+      top:0;
+      width:560px;
+      height:650px;
+      overflow:hidden;
+      border-right:2px solid var(--ember);
+      border-bottom:2px solid var(--ember);
+      background:#080a08;
+    }
+
+    .feature-image {
+      width:100%;
+      height:100%;
+      display:block;
+      object-fit:cover;
+      object-position:43% 52%;
+    }
+
+    .brand-header {
+      position:absolute;
+      left:560px;
+      top:0;
+      width:1360px;
+      height:160px;
+      display:grid;
+      grid-template-columns:92px minmax(0,1fr) 330px;
+      align-items:center;
+      gap:28px;
+      padding:17px 50px 17px 48px;
+      border-bottom:2px solid var(--rule);
+      background:rgba(17,19,16,.96);
+    }
+
+    .brand-mark {
+      width:88px;
+      height:88px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border:2px solid var(--ember);
+      color:var(--ember);
+      font:700 40px/1 var(--font-mono);
+      letter-spacing:-2px;
+    }
+
+    .brand-copy {
+      min-width:0;
+      height:126px;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+    }
+
+    .brand-name {
+      width:100%;
+      height:80px;
+      flex:0 0 80px;
+      display:flex;
+      align-items:center;
+      color:var(--ivory);
+      font:400 80px/.94 var(--font-display);
+      letter-spacing:-2px;
+    }
+
+    .brand-promise {
+      width:100%;
+      height:46px;
+      flex:0 0 46px;
+      display:flex;
+      align-items:center;
+      color:var(--ivory-muted);
+      font:600 36px/1.12 var(--font-body);
+      letter-spacing:.02em;
+      text-transform:uppercase;
+    }
+
+    .service-status {
+      width:100%;
+      height:60px;
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      border-left:2px solid var(--rule);
+      color:var(--ember);
+      font:700 34px/1.08 var(--font-mono);
+      letter-spacing:.02em;
+      text-align:right;
+      text-transform:uppercase;
+      white-space:nowrap;
+    }
+
+    .feature-panel {
+      position:absolute;
+      left:0;
+      top:650px;
+      width:560px;
+      height:430px;
+      display:grid;
+      grid-template-rows:46px 98px 58px minmax(0,1fr);
+      row-gap:7px;
+      padding:30px 40px 26px;
+      border-right:2px solid var(--ember);
+      background:
+        linear-gradient(rgba(243,234,217,.035) 1px,transparent 1px),
+        var(--seaweed);
+      background-size:100% 52px,auto;
+    }
+
+    .feature-topline {
+      height:46px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:18px;
+      color:var(--ember);
+    }
+
+    .feature-kicker,
+    .feature-availability {
+      height:44px;
+      display:flex;
+      align-items:center;
+      font:700 34px/1 var(--font-mono);
+      letter-spacing:.02em;
+      text-transform:uppercase;
+      white-space:nowrap;
+    }
+
+    .feature-availability {
+      justify-content:flex-end;
+      color:var(--ivory-muted);
+      font-size:32px;
+      text-align:right;
+    }
+
+    .feature-name-row {
+      height:98px;
+      display:grid;
+      grid-template-columns:minmax(0,1fr) 205px;
+      align-items:center;
+      gap:18px;
+    }
+
+    .feature-name {
+      width:100%;
+      height:98px;
+      display:flex;
+      align-items:center;
+      color:var(--ivory);
+      font:400 76px/.96 var(--font-display);
+      letter-spacing:-2px;
+    }
+
+    .feature-price {
+      width:205px;
+      height:98px;
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      color:var(--ember);
+      font:700 56px/.9 var(--font-mono);
+      letter-spacing:-2px;
+      text-align:right;
+      white-space:normal;
+    }
+
+    .feature-detail {
+      width:100%;
+      height:58px;
+      display:flex;
+      align-items:center;
+      color:var(--ivory);
+      font:600 34px/1.12 var(--font-body);
+      letter-spacing:-1px;
+    }
+
+    .feature-notes {
+      min-width:0;
+      min-height:0;
+      display:grid;
+      grid-template-rows:minmax(64px,1fr) 44px;
+      align-content:center;
+      gap:12px;
+      padding-top:14px;
+      border-top:2px solid rgba(243,234,217,.38);
+    }
+
+    .modifier-note,
+    .dietary-legend {
+      width:100%;
+      min-height:44px;
+      display:flex;
+      align-items:center;
+      color:var(--ivory);
+      font:600 32px/1.14 var(--font-body);
+      letter-spacing:-1px;
+    }
+
+    .dietary-legend {
+      color:var(--ivory-muted);
+      font:600 30px/1.14 var(--font-mono);
+      letter-spacing:0;
+      text-transform:uppercase;
+    }
+
+    .menu-stack {
+      position:absolute;
+      left:560px;
+      top:160px;
+      width:1360px;
+      height:920px;
+      display:grid;
+      grid-template-rows:repeat(3,minmax(0,1fr));
+      gap:0;
+      padding:0 48px;
+      background:var(--charcoal);
+    }
+
+    .menu-section {
+      min-height:0;
+      display:grid;
+      grid-template-columns:170px minmax(0,1fr);
+      gap:18px;
+      padding:0;
+      border-bottom:2px solid var(--rule);
+    }
+
+    .menu-section:last-child {
+      border-bottom:0;
+    }
+
+    .section-heading {
+      min-width:0;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      gap:14px;
+      padding-right:22px;
+      border-right:2px solid var(--rule);
+    }
+
+    .section-title {
+      width:100%;
+      height:120px;
+      min-height:120px;
+      flex:0 0 120px;
+      display:flex;
+      align-items:center;
+      color:var(--ivory);
+      font:400 64px/.92 var(--font-display);
+      letter-spacing:-1px;
+    }
+
+    .section-subtitle {
+      width:100%;
+      height:116px;
+      min-height:116px;
+      flex:0 0 116px;
+      display:flex;
+      align-items:flex-start;
+      color:var(--ember);
+      font:600 36px/1.1 var(--font-body);
+      letter-spacing:-1px;
+    }
+
+    .items-grid {
+      min-width:0;
+      min-height:0;
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      grid-template-rows:repeat(3,minmax(0,1fr));
+      column-gap:20px;
+    }
+
+    .menu-item {
+      min-width:0;
+      min-height:0;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      padding:0;
+      border-bottom:1px solid rgba(243,234,217,.13);
+    }
+
+    .menu-item:nth-child(odd) {
+      padding-right:0;
+      border-right:1px solid rgba(243,234,217,.13);
+    }
+
+    .menu-item:nth-child(even) {
+      padding-left:0;
+    }
+
+    .menu-item:nth-child(5),
+    .menu-item:nth-child(6) {
+      border-bottom-color:transparent;
+    }
+
+    .item-top {
+      min-width:0;
+      height:64px;
+      flex:0 0 64px;
+      display:grid;
+      grid-template-columns:minmax(0,1fr) 144px;
+      align-items:center;
+      gap:12px;
+    }
+
+    .item-name {
+      min-width:0;
+      width:100%;
+      height:64px;
+      display:flex;
+      align-items:center;
+      color:var(--ivory);
+      font:700 52px/.92 var(--font-body);
+      letter-spacing:-1.2px;
+      white-space:nowrap;
+    }
+
+    .item-price {
+      width:144px;
+      height:64px;
+      display:block;
+      color:var(--ember);
+      font:700 52px/64px var(--font-mono);
+      letter-spacing:-3.5px;
+      text-align:right;
+      white-space:nowrap;
+    }
+
+    .item-meta {
+      min-width:0;
+      height:38px;
+      flex:0 0 38px;
+      display:grid;
+      grid-template-columns:minmax(0,1fr) auto;
+      align-items:center;
+      gap:12px;
+    }
+
+    .item-detail {
+      min-width:0;
+      width:100%;
+      height:40px;
+      display:flex;
+      align-items:center;
+      color:var(--ivory-muted);
+      font:500 32px/.92 var(--font-body);
+      letter-spacing:-1px;
+      white-space:nowrap;
+    }
+
+    .item-dietary {
+      min-width:0;
+      height:38px;
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      color:#a9c2ae;
+      font:700 32px/1 var(--font-mono);
+      white-space:nowrap;
+    }
+
+    .item-dietary:empty {
+      display:none;
+    }
+
+    .is-portrait .brand-header {
+      left:0;
+      top:0;
+      width:1080px;
+      height:190px;
+      grid-template-columns:92px minmax(0,1fr) 250px;
+      gap:24px;
+      padding:28px 40px 26px;
+      border-bottom:2px solid var(--rule);
+    }
+
+    .is-portrait .brand-mark {
+      width:88px;
+      height:88px;
+    }
+
+    .is-portrait .brand-copy {
+      height:126px;
+    }
+
+    .is-portrait .brand-name {
+      height:80px;
+      flex-basis:80px;
+      font-size:72px;
+    }
+
+    .is-portrait .brand-promise {
+      height:46px;
+      flex-basis:46px;
+      font-size:36px;
+    }
+
+    .is-portrait .service-status {
+      height:60px;
+      font-size:32px;
+    }
+
+    .is-portrait .photo-zone {
+      left:0;
+      top:190px;
+      width:1080px;
+      height:470px;
+      border-right:0;
+      border-bottom:2px solid var(--ember);
+    }
+
+    .is-portrait .feature-image {
+      object-position:50% 55%;
+    }
+
+    .is-portrait .feature-panel {
+      left:0;
+      top:660px;
+      width:1080px;
+      height:250px;
+      display:grid;
+      grid-template-columns:minmax(0,1fr) 230px;
+      grid-template-rows:44px 92px 56px;
+      column-gap:24px;
+      row-gap:7px;
+      padding:22px 42px 15px;
+      border-right:0;
+      border-bottom:2px solid var(--ember);
+      background:var(--seaweed);
+    }
+
+    .is-portrait .feature-topline {
+      grid-column:1 / 3;
+      grid-row:1;
+      height:44px;
+    }
+
+    .is-portrait .feature-kicker {
+      font-size:34px;
+    }
+
+    .is-portrait .feature-availability {
+      font-size:32px;
+    }
+
+    .is-portrait .feature-name-row {
+      display:contents;
+    }
+
+    .is-portrait .feature-name {
+      grid-column:1;
+      grid-row:2;
+      height:92px;
+      font-size:72px;
+    }
+
+    .is-portrait .feature-price {
+      grid-column:2;
+      grid-row:2;
+      width:230px;
+      height:92px;
+      font-size:58px;
+    }
+
+    .is-portrait .feature-detail {
+      grid-column:1 / 3;
+      grid-row:3;
+      height:56px;
+      font-size:38px;
+      line-height:1.08;
+    }
+
+    .is-portrait .feature-notes {
+      display:none;
+    }
+
+    .is-portrait .menu-stack {
+      left:0;
+      top:910px;
+      width:1080px;
+      height:1010px;
+      grid-template-rows:repeat(3,minmax(0,1fr));
+      gap:0;
+      padding:0 16px;
+    }
+
+    .is-portrait .menu-section {
+      display:grid;
+      grid-template-columns:1fr;
+      grid-template-rows:76px minmax(0,1fr);
+      gap:0;
+      padding:0;
+    }
+
+    .is-portrait .section-heading {
+      display:grid;
+      grid-template-columns:330px minmax(0,1fr);
+      align-items:center;
+      gap:20px;
+      padding:0;
+      border-right:0;
+      border-bottom:1px solid var(--rule);
+    }
+
+    .is-portrait .section-title {
+      height:68px;
+      min-height:68px;
+      font-size:58px;
+      white-space:nowrap;
+    }
+
+    .is-portrait .section-subtitle {
+      height:50px;
+      min-height:50px;
+      align-items:center;
+      justify-content:flex-end;
+      color:var(--ember);
+      font-size:34px;
+      text-align:right;
+      white-space:nowrap;
+    }
+
+    .is-portrait .items-grid {
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      grid-template-rows:repeat(3,minmax(0,1fr));
+      column-gap:6px;
+    }
+
+    .is-portrait .menu-item {
+      padding:0;
+    }
+
+    .is-portrait .menu-item:nth-child(odd) {
+      padding-right:0;
+    }
+
+    .is-portrait .item-top {
+      height:72px;
+      flex-basis:72px;
+      grid-template-columns:minmax(0,1fr) 144px;
+      gap:12px;
+    }
+
+    .is-portrait .item-name {
+      height:70px;
+      font-size:52px;
+      letter-spacing:-1.2px;
+      white-space:nowrap;
+    }
+
+    .is-portrait .item-price {
+      width:144px;
+      height:70px;
+      font-size:52px;
+      line-height:70px;
+    }
+
+    .is-portrait .item-meta {
+      display:none;
+    }
+
+    /* Production copy-budget layout: fixed rails, wrap-safe names, no secondary-row pressure. */
+    .brand-header {
+      grid-template-columns:88px minmax(0,1fr) 430px;
+      gap:24px;
+      padding:5px 44px 5px 48px;
+    }
+
+    .brand-copy {
+      height:150px;
+      gap:6px;
+    }
+
+    .brand-name {
+      height:94px;
+      flex:0 0 94px;
+      font-size:64px;
+      line-height:.88;
+      white-space:normal;
+    }
+
+    .brand-promise {
+      height:50px;
+      flex:0 0 50px;
+      font-size:36px;
+      line-height:1.08;
+      white-space:normal;
+    }
+
+    .service-status {
+      width:430px;
+      height:100px;
+      padding-left:24px;
+      font-size:34px;
+      line-height:1.08;
+      white-space:normal;
+    }
+
+    .feature-panel {
+      display:grid;
+      grid-template-columns:1fr;
+      grid-template-rows:44px 40px 150px 64px 80px;
+      row-gap:6px;
+      padding:16px 40px 12px;
+    }
+
+    .feature-topline,
+    .feature-name-row {
+      display:contents;
+    }
+
+    .feature-kicker {
+      grid-column:1;
+      grid-row:1;
+      width:100%;
+      height:44px;
+      font-size:34px;
+      white-space:normal;
+    }
+
+    .feature-availability {
+      grid-column:1;
+      grid-row:2;
+      width:100%;
+      height:40px;
+      justify-content:flex-start;
+      font-size:32px;
+      text-align:left;
+      white-space:normal;
+    }
+
+    .feature-name {
+      grid-column:1;
+      grid-row:3;
+      width:100%;
+      height:150px;
+      font-size:76px;
+      line-height:.88;
+      white-space:normal;
+    }
+
+    .feature-price {
+      grid-column:1;
+      grid-row:4;
+      width:100%;
+      height:64px;
+      display:block;
+      font-size:56px;
+      line-height:64px;
+      text-align:left;
+      white-space:nowrap;
+    }
+
+    .feature-detail {
+      grid-column:1;
+      grid-row:5;
+      width:100%;
+      height:80px;
+      font-size:34px;
+      line-height:1.08;
+      white-space:normal;
+    }
+
+    .feature-notes,
+    .item-meta {
+      display:none;
+    }
+
+    .menu-stack {
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      grid-template-rows:1fr;
+      gap:24px;
+      padding:20px 32px;
+    }
+
+    .menu-section {
+      display:grid;
+      grid-template-columns:1fr;
+      grid-template-rows:152px minmax(0,1fr);
+      gap:0;
+      padding:0;
+      border-bottom:0;
+    }
+
+    .section-heading {
+      display:grid;
+      grid-template-columns:1fr;
+      grid-template-rows:78px 66px;
+      align-items:start;
+      gap:8px;
+      padding:0;
+      border-right:0;
+      border-bottom:1px solid var(--rule);
+    }
+
+    .section-title {
+      width:100%;
+      height:78px;
+      min-height:78px;
+      flex:initial;
+      font-size:50px;
+      line-height:.9;
+      white-space:normal;
+    }
+
+    .section-subtitle {
+      width:100%;
+      height:66px;
+      min-height:66px;
+      flex:initial;
+      align-items:center;
+      justify-content:flex-start;
+      font-size:32px;
+      line-height:1;
+      text-align:left;
+      white-space:normal;
+    }
+
+    .items-grid {
+      grid-template-columns:1fr;
+      grid-template-rows:repeat(6,minmax(0,1fr));
+      column-gap:0;
+    }
+
+    .menu-item {
+      display:flex;
+      min-width:0;
+      min-height:0;
+      padding:0;
+    }
+
+    .menu-item:nth-child(odd),
+    .menu-item:nth-child(even) {
+      padding-left:0;
+      padding-right:0;
+      border-right:0;
+    }
+
+    .item-top {
+      width:100%;
+      height:121px;
+      flex:0 0 121px;
+      grid-template-columns:minmax(0,1fr) 140px;
+      gap:32px;
+    }
+
+    .item-name {
+      height:121px;
+      font-size:46px;
+      line-height:.82;
+      letter-spacing:-1.2px;
+      white-space:normal;
+    }
+
+    .item-price {
+      width:140px;
+      height:121px;
+      font-size:52px;
+      line-height:121px;
+      letter-spacing:-2.5px;
+    }
+
+    .is-portrait .brand-header {
+      grid-template-columns:88px minmax(0,1fr) 330px;
+      gap:20px;
+      padding:12px 32px;
+    }
+
+    .is-portrait .brand-copy {
+      height:160px;
+      gap:6px;
+    }
+
+    .is-portrait .brand-name {
+      height:104px;
+      flex-basis:104px;
+      font-size:72px;
+      line-height:.88;
+    }
+
+    .is-portrait .brand-promise {
+      height:50px;
+      flex-basis:50px;
+      font-size:34px;
+    }
+
+    .is-portrait .service-status {
+      width:330px;
+      height:110px;
+      padding-left:20px;
+      font-size:32px;
+      line-height:1.08;
+    }
+
+    .is-portrait .feature-panel {
+      display:grid;
+      grid-template-columns:minmax(0,1fr) 300px;
+      grid-template-rows:44px 100px 48px;
+      column-gap:24px;
+      row-gap:7px;
+      padding:22px 42px 15px;
+    }
+
+    .is-portrait .feature-topline {
+      grid-column:1 / 3;
+      grid-row:1;
+      height:44px;
+      display:flex;
+    }
+
+    .is-portrait .feature-kicker {
+      width:auto;
+      height:44px;
+      font-size:34px;
+      white-space:nowrap;
+    }
+
+    .is-portrait .feature-availability {
+      width:auto;
+      height:44px;
+      justify-content:flex-end;
+      font-size:32px;
+      text-align:right;
+      white-space:nowrap;
+    }
+
+    .is-portrait .feature-name-row {
+      display:contents;
+    }
+
+    .is-portrait .feature-name {
+      grid-column:1;
+      grid-row:2;
+      width:100%;
+      height:100px;
+      font-size:72px;
+      line-height:.9;
+      white-space:normal;
+    }
+
+    .is-portrait .feature-price {
+      grid-column:2;
+      grid-row:2;
+      width:300px;
+      height:100px;
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      font-size:56px;
+      line-height:.9;
+      text-align:right;
+      white-space:normal;
+    }
+
+    .is-portrait .feature-detail {
+      grid-column:1 / 3;
+      grid-row:3;
+      width:100%;
+      height:48px;
+      font-size:38px;
+      line-height:1.05;
+    }
+
+    .is-portrait .menu-stack {
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      grid-template-rows:1fr;
+      gap:18px;
+      padding:20px 24px;
+    }
+
+    .is-portrait .menu-section {
+      grid-template-columns:1fr;
+      grid-template-rows:180px minmax(0,1fr);
+      gap:0;
+      padding:0;
+    }
+
+    .is-portrait .section-heading {
+      grid-template-columns:1fr;
+      grid-template-rows:105px 65px;
+      gap:8px;
+      padding:0;
+    }
+
+    .is-portrait .section-title {
+      width:100%;
+      height:105px;
+      min-height:105px;
+      font-size:56px;
+      line-height:.9;
+      white-space:normal;
+    }
+
+    .is-portrait .section-subtitle {
+      width:100%;
+      height:65px;
+      min-height:65px;
+      font-size:34px;
+      line-height:1;
+      white-space:normal;
+    }
+
+    .is-portrait .items-grid {
+      grid-template-columns:1fr;
+      grid-template-rows:repeat(6,minmax(0,1fr));
+      column-gap:0;
+    }
+
+    .is-portrait .item-top {
+      width:100%;
+      height:131px;
+      flex-basis:131px;
+      grid-template-columns:minmax(0,1fr) 140px;
+      gap:40px;
+    }
+
+    .is-portrait .item-name {
+      height:131px;
+      font-size:52px;
+      line-height:.88;
+      letter-spacing:-1.2px;
+      white-space:normal;
+    }
+
+    .is-portrait .item-price {
+      width:140px;
+      height:131px;
+      font-size:52px;
+      line-height:131px;
+      letter-spacing:-2.5px;
+    }
+
+    /*
+     * Signage-safe live type contract.
+     * Essential copy remains at 52px or larger in every accepted state.
+     * Secondary editable fields stay in the document as editor/AI reserves.
+     */
+    .brand-header {
+      grid-template-columns:96px minmax(0,1fr) 420px;
+      gap:28px;
+      padding:5px 44px 5px 48px;
+    }
+
+    .brand-mark {
+      width:96px;
+      height:96px;
+      font-size:52px;
+    }
+
+    .brand-copy {
+      height:150px;
+      justify-content:center;
+      gap:0;
+    }
+
+    .brand-name {
+      height:150px;
+      flex:0 0 150px;
+      font-size:72px;
+      line-height:.82;
+    }
+
+    .brand-promise,
+    .feature-availability,
+    .feature-detail,
+    .feature-notes,
+    .section-subtitle,
+    .item-meta {
+      display:none;
+    }
+
+    .service-status {
+      width:420px;
+      height:150px;
+      padding-left:26px;
+      font-family:var(--font-menu);
+      font-size:52px;
+      line-height:.84;
+      letter-spacing:.01em;
+      white-space:normal;
+    }
+
+    .feature-panel {
+      display:grid;
+      grid-template-columns:1fr;
+      grid-template-rows:84px 180px 94px;
+      row-gap:12px;
+      padding:24px 40px 12px;
+    }
+
+    .feature-topline,
+    .feature-name-row {
+      display:contents;
+    }
+
+    .feature-kicker {
+      grid-column:1;
+      grid-row:1;
+      width:100%;
+      height:84px;
+      font-family:var(--font-menu);
+      font-size:52px;
+      line-height:.9;
+      white-space:normal;
+    }
+
+    .feature-name {
+      grid-column:1;
+      grid-row:2;
+      width:100%;
+      height:180px;
+      font-size:88px;
+      line-height:.82;
+      white-space:normal;
+    }
+
+    .feature-price {
+      grid-column:1;
+      grid-row:3;
+      width:100%;
+      height:94px;
+      font-family:var(--font-menu);
+      font-size:64px;
+      line-height:94px;
+      letter-spacing:.01em;
+      white-space:nowrap;
+    }
+
+    .menu-stack {
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      grid-template-rows:1fr;
+      gap:18px;
+      padding:10px 24px;
+    }
+
+    .menu-section {
+      grid-template-columns:1fr;
+      grid-template-rows:80px minmax(0,1fr);
+      padding:0;
+    }
+
+    .section-heading {
+      display:block;
+      height:80px;
+      padding:0;
+      border-right:0;
+      border-bottom:1px solid var(--rule);
+    }
+
+    .section-title {
+      width:100%;
+      height:80px;
+      min-height:80px;
+      font-family:var(--font-menu);
+      font-size:56px;
+      line-height:.9;
+      letter-spacing:.01em;
+      white-space:normal;
+    }
+
+    .items-grid {
+      grid-template-columns:1fr;
+      grid-template-rows:repeat(6,minmax(0,1fr));
+      column-gap:0;
+    }
+
+    .item-top {
+      width:100%;
+      height:136px;
+      flex:0 0 136px;
+      grid-template-columns:minmax(0,1fr) 155px;
+      gap:28px;
+    }
+
+    .item-name {
+      height:136px;
+      font-family:var(--font-menu);
+      font-size:52px;
+      font-weight:700;
+      line-height:1.05;
+      letter-spacing:.01em;
+      white-space:normal;
+    }
+
+    .item-price {
+      width:155px;
+      height:136px;
+      font-family:var(--font-menu);
+      font-size:52px;
+      font-weight:700;
+      line-height:136px;
+      letter-spacing:.01em;
+    }
+
+    .is-portrait .brand-header {
+      left:0;
+      top:0;
+      width:1080px;
+      height:160px;
+      grid-template-columns:96px minmax(0,1fr);
+      gap:28px;
+      padding:5px 40px;
+    }
+
+    .is-portrait .brand-mark {
+      width:96px;
+      height:96px;
+      font-size:52px;
+    }
+
+    .is-portrait .brand-copy {
+      height:150px;
+      gap:0;
+    }
+
+    .is-portrait .brand-name {
+      height:150px;
+      flex-basis:150px;
+      font-size:72px;
+      line-height:.82;
+    }
+
+    .is-portrait .service-status {
+      display:none;
+    }
+
+    .is-portrait .photo-zone {
+      left:0;
+      top:160px;
+      width:1080px;
+      height:300px;
+    }
+
+    .is-portrait .feature-panel {
+      left:0;
+      top:460px;
+      width:1080px;
+      height:180px;
+      grid-template-columns:minmax(0,1fr) 240px;
+      grid-template-rows:140px;
+      column-gap:24px;
+      row-gap:0;
+      padding:20px 32px;
+    }
+
+    .is-portrait .feature-kicker {
+      display:none;
+    }
+
+    .is-portrait .feature-name {
+      grid-column:1;
+      grid-row:1;
+      width:100%;
+      height:140px;
+      font-size:76px;
+      line-height:.82;
+    }
+
+    .is-portrait .feature-price {
+      grid-column:2;
+      grid-row:1;
+      width:240px;
+      height:140px;
+      font-size:56px;
+      line-height:140px;
+      text-align:right;
+    }
+
+    .is-portrait .menu-stack {
+      left:0;
+      top:640px;
+      width:1080px;
+      height:1280px;
+      grid-template-columns:1fr;
+      grid-template-rows:repeat(3,minmax(0,1fr));
+      gap:0;
+      padding:0 24px;
+    }
+
+    .is-portrait .menu-section {
+      grid-template-columns:1fr;
+      grid-template-rows:70px minmax(0,1fr);
+      padding:0;
+    }
+
+    .is-portrait .section-heading {
+      display:block;
+      height:70px;
+      padding:0;
+    }
+
+    .is-portrait .section-title {
+      width:100%;
+      height:70px;
+      min-height:70px;
+      font-size:56px;
+      line-height:.9;
+      white-space:normal;
+    }
+
+    .is-portrait .items-grid {
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      grid-template-rows:repeat(3,minmax(0,1fr));
+      column-gap:24px;
+    }
+
+    .is-portrait .item-top {
+      width:100%;
+      height:118px;
+      flex-basis:118px;
+      grid-template-columns:minmax(0,1fr) 150px;
+      gap:28px;
+    }
+
+    .is-portrait .item-name {
+      height:118px;
+      font-size:52px;
+      line-height:1.05;
+      letter-spacing:.01em;
+      white-space:normal;
+    }
+
+    .is-portrait .item-price {
+      width:150px;
+      height:118px;
+      font-size:52px;
+      line-height:118px;
+      letter-spacing:.01em;
+    }
+  </style>
+</head>
+<body>
+  <div id="scene-wrap">
+    <main class="scene" aria-label="After Dark sushi and ramen menu">
+      <section class="photo-zone" aria-label="Featured ramen and sushi image">
+        <img
+          class="feature-image"
+          src="assets/qsr-sushi-ramen-editorial-v1.png"
+          alt="Ramen bowl and nigiri selection"
+          data-imgslot="feature.image"
+        />
+      </section>
+
+      <header class="brand-header">
+        <div class="brand-mark" data-field="brand.mark" data-fit data-fit-min="52" data-fit-max="52">AD</div>
+        <div class="brand-copy">
+          <div class="brand-name" data-field="brand.name" data-fit data-fit-min="52" data-fit-max="72">AFTER DARK</div>
+          <div class="brand-promise" data-field="brand.promise" data-fit data-fit-min="28" data-fit-max="36">Ramen · sushi · small plates</div>
+        </div>
+        <div class="service-status" data-field="service.status" data-fit data-fit-min="52" data-fit-max="52">Open · 5–11</div>
+      </header>
+
+      <aside class="feature-panel" aria-label="Chef's feature and menu notes">
+        <div class="feature-topline">
+          <div class="feature-kicker" data-field="feature.kicker" data-fit data-fit-min="52" data-fit-max="52">Chef's counter</div>
+          <div class="feature-availability" data-field="feature.availability" data-fit data-fit-min="26" data-fit-max="32">Thu–Sun</div>
+        </div>
+        <div class="feature-name-row">
+          <div class="feature-name" data-field="feature.name" data-fit data-fit-min="52" data-fit-max="88">Omakase</div>
+          <div class="feature-price" data-field="feature.price" data-fit data-fit-min="52" data-fit-max="64">$65 PP</div>
+        </div>
+        <div class="feature-detail" data-field="feature.detail" data-fit data-fit-min="30" data-fit-max="34">Eight courses · reserve Thu–Sun</div>
+        <div class="feature-notes">
+          <div class="modifier-note" data-field="modifier.note" data-fit data-fit-min="32" data-fit-max="32">Ajitama +2 · chashu +4 · noodles +3</div>
+          <div class="dietary-legend" data-field="dietary.legend" data-fit data-fit-min="32" data-fit-max="32">V · VG · GF · SPICY</div>
+        </div>
+      </aside>
+
+      <div class="menu-stack">
+        <section class="menu-section" aria-label="Sushi rolls">
+          <header class="section-heading">
+            <div class="section-title" data-field="sushi.title" data-fit data-fit-min="52" data-fit-max="56">Sushi</div>
+            <div class="section-subtitle" data-field="sushi.subtitle" data-fit data-fit-min="28" data-fit-max="36">Cut to order</div>
+          </header>
+          <div class="items-grid">
+            <article class="menu-item">
+              <div class="item-top"><div class="item-name" data-field="sushi.0.name" data-fit data-fit-min="52" data-fit-max="52">Spicy Tuna</div><div class="item-price" data-field="sushi.0.price" data-fit data-fit-min="52" data-fit-max="52">$12</div></div>
+              <div class="item-meta"><div class="item-detail" data-field="sushi.0.detail" data-fit data-fit-min="32" data-fit-max="32">ahi · sriracha · scallion</div><div class="item-dietary" data-field="sushi.0.dietary" data-fit data-fit-min="32" data-fit-max="32">SPICY</div></div>
+            </article>
+            <article class="menu-item">
+              <div class="item-top"><div class="item-name" data-field="sushi.1.name" data-fit data-fit-min="52" data-fit-max="52">Salmon Avocado</div><div class="item-price" data-field="sushi.1.price" data-fit data-fit-min="52" data-fit-max="52">$11</div></div>
+              <div class="item-meta"><div class="item-detail" data-field="sushi.1.detail" data-fit data-fit-min="32" data-fit-max="32">salmon · avocado · sesame</div><div class="item-dietary" data-field="sushi.1.dietary" data-fit data-fit-min="32" data-fit-max="32"></div></div>
+            </article>
+            <article class="menu-item">
+              <div class="item-top"><div class="item-name" data-field="sushi.2.name" data-fit data-fit-min="52" data-fit-max="52">Dragon</div><div class="item-price" data-field="sushi.2.price" data-fit data-fit-min="52" data-fit-max="52">$15</div></div>
+              <div class="item-meta"><div class="item-detail" data-field="sushi.2.detail" data-fit data-fit-min="32" data-fit-max="32">eel · cucumber · kabayaki</div><div class="item-dietary" data-field="sushi.2.dietary" data-fit data-fit-min="32" data-fit-max="32"></div></div>
+            </article>
+            <article class="menu-item">
+              <div class="item-top"><div class="item-name" data-field="sushi.3.name" data-fit data-fit-min="52" data-fit-max="52">Rainbow</div><div class="item-price" data-field="sushi.3.price" data-fit data-fit-min="52" data-fit-max="52">$16</div></div>
+              <div class="item-meta"><div class="item-detail" data-field="sushi.3.detail" data-fit data-fit-min="32" data-fit-max="32">crab · salmon · tuna · hamachi</div><div class="item-dietary" data-field="sushi.3.dietary" data-fit data-fit-min="32" data-fit-max="32"></div></div>
+            </article>
+            <article class="menu-item">
+              <div class="item-top"><div class="item-name" data-field="sushi.4.name" data-fit data-fit-min="52" data-fit-max="52">Veggie Garden</div><div class="item-price" data-field="sushi.4.price" data-fit data-fit-min="52" data-fit-max="52">$9</div></div>
+              <div class="item-meta"><div class="item-detail" data-field="sushi.4.detail" data-fit data-fit-min="32" data-fit-max="32">cucumber · avocado</div><div class="item-dietary" data-field="sushi.4.dietary" data-fit data-fit-min="32" data-fit-max="32">V · GF</div></div>
+            </article>
+            <article class="menu-item">
+              <div class="item-top"><div class="item-name" data-field="sushi.5.name" data-fit data-fit-min="52" data-fit-max="52">Tempura Shrimp</div><div class="item-price" data-field="sushi.5.price" data-fit data-fit-min="52" data-fit-max="52">$13</div></div>
+              <div class="item-meta"><div class="item-detail" data-field="sushi.5.detail" data-fit data-fit-min="32" data-fit-max="32">shrimp tempura · eel sauce</div><div class="item-dietary" data-field="sushi.5.dietary" data-fit data-fit-min="32" data-fit-max="32"></div></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="menu-section" aria-label="Ramen bowls">
+          <header class="section-heading">
+            <div class="section-title" data-field="ramen.title" data-fit data-fit-min="52" data-fit-max="56">Ramen</div>
+            <div class="section-subtitle" data-field="ramen.subtitle" data-fit data-fit-min="28" data-fit-max="36">18-hour broth</div>
+          </header>
+          <div class="items-grid">
+            <article class="menu-item">
+              <div class="item-top"><div class="item-name" data-field="ramen.0.name" data-fit data-fit-min="52" data-fit-max="52">Tonkotsu</div><div class="item-price" data-field="ramen.0.price" data-fit data-fit-min="52" data-fit-max="52">$16</div></div>
+              <div class="item-meta"><div class="item-detail" data-field="ramen.0.detail" data-fit data-fit-min="32" data-fit-max="32">pork broth · chashu · scallion</div><div class="item-dietary" data-field="ramen.0.dietary" data-fit data-fit-min="32" data-fit-max="32"></div></div>
+            </article>
+            <article class="menu-item">
+              <div class="item-top"><div class="item-name" data-field="ramen.1.name" data-fit data-fit-min="52" data-fit-max="52">Miso</div><div class="item-price" data-field="ramen.1.price" data-fit data-fit-min="52" data-fit-max="52">$15</div></div>
+              <div class="item-meta"><div class="item-detail" data-field="ramen.1.detail" data-fit data-fit-min="32" data-fit-max="32">red miso · corn · butter · nori</div><div class="item-dietary" data-field="ramen.1.dietary" data-fit data-fit-min="32" data-fit-max="32"></div></div>
+            </article>
+            <article class="menu-item">
+              <div class="item-top"><div class="item-name" data-field="ramen.2.name" data-fit data-fit-min="52" data-fit-max="52">Shoyu</div><div class="item-price" data-field="ramen.2.price" data-fit data-fit-min="52" data-fit-max="52">$15</div></div>
+              <div class="item-meta"><div class="item-detail" data-field="ramen.2.detail" data-fit data-fit-min="32" data-fit-max="32">chicken broth · bamboo · egg</div><div class="item-dietary" data-field="ramen.2.dietary" data-fit data-fit-min="32" data-fit-max="32"></div></div>
+            </article>
+            <article class="menu-item">
+              <div class="item-top"><div class="item-name" data-field="ramen.3.name" data-fit data-fit-min="52" data-fit-max="52">Spicy Tantan</div><div class="item-price" data-field="ramen.3.price" data-fit data-fit-min="52" data-fit-max="52">$17</div></div>
+              <div class="item-meta"><div class="item-detail" data-field="ramen.3.detail" data-fit data-fit-min="32" data-fit-max="32">chile · pork · sesame</div><div class="item-dietary" data-field="ramen.3.dietary" data-fit data-fit-min="32" data-fit-max="32">SPICY</div></div>
+            </article>
+            <article class="menu-item">
+              <div class="item-top"><div class="item-name" data-field="ramen.4.name" data-fit data-fit-min="52" data-fit-max="52">Veggie Shio</div><div class="item-price" data-field="ramen.4.price" data-fit data-fit-min="52" data-fit-max="52">$14</div></div>
+              <div class="item-meta"><div class="item-detail" data-field="ramen.4.detail" data-fit data-fit-min="32" data-fit-max="32">kombu · mushroom · tofu</div><div class="item-dietary" data-field="ramen.4.dietary" data-fit data-fit-min="32" data-fit-max="32">V</div></div>
+            </article>
+            <article class="menu-item">
+              <div class="item-top"><div class="item-name" data-field="ramen.5.name" data-fit data-fit-min="52" data-fit-max="52">Cold Tsukemen</div><div class="item-price" data-field="ramen.5.price" data-fit data-fit-min="52" data-fit-max="52">$17</div></div>
+              <div class="item-meta"><div class="item-detail" data-field="ramen.5.detail" data-fit data-fit-min="32" data-fit-max="32">chilled noodles · broth dip</div><div class="item-dietary" data-field="ramen.5.dietary" data-fit data-fit-min="32" data-fit-max="32"></div></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="menu-section" aria-label="Small plates">
+          <header class="section-heading">
+            <div class="section-title" data-field="plates.title" data-fit data-fit-min="52" data-fit-max="56">Small plates</div>
+            <div class="section-subtitle" data-field="plates.subtitle" data-fit data-fit-min="28" data-fit-max="36">Served when ready</div>
+          </header>
+          <div class="items-grid">
+            <article class="menu-item">
+              <div class="item-top"><div class="item-name" data-field="plates.0.name" data-fit data-fit-min="52" data-fit-max="52">Edamame</div><div class="item-price" data-field="plates.0.price" data-fit data-fit-min="52" data-fit-max="52">$5</div></div>
+              <div class="item-meta"><div class="item-detail" data-field="plates.0.detail" data-fit data-fit-min="32" data-fit-max="32">sea salt · lemon zest</div><div class="item-dietary" data-field="plates.0.dietary" data-fit data-fit-min="32" data-fit-max="32">V · GF</div></div>
+            </article>
+            <article class="menu-item">
+              <div class="item-top"><div class="item-name" data-field="plates.1.name" data-fit data-fit-min="52" data-fit-max="52">Gyoza (5)</div><div class="item-price" data-field="plates.1.price" data-fit data-fit-min="52" data-fit-max="52">$8</div></div>
+              <div class="item-meta"><div class="item-detail" data-field="plates.1.detail" data-fit data-fit-min="32" data-fit-max="32">pork · cabbage · ponzu</div><div class="item-dietary" data-field="plates.1.dietary" data-fit data-fit-min="32" data-fit-max="32"></div></div>
+            </article>
+            <article class="menu-item">
+              <div class="item-top"><div class="item-name" data-field="plates.2.name" data-fit data-fit-min="52" data-fit-max="52">Veggie Gyoza</div><div class="item-price" data-field="plates.2.price" data-fit data-fit-min="52" data-fit-max="52">$8</div></div>
+              <div class="item-meta"><div class="item-detail" data-field="plates.2.detail" data-fit data-fit-min="32" data-fit-max="32">mushroom · cabbage · chile oil</div><div class="item-dietary" data-field="plates.2.dietary" data-fit data-fit-min="32" data-fit-max="32">V</div></div>
+            </article>
+            <article class="menu-item">
+              <div class="item-top"><div class="item-name" data-field="plates.3.name" data-fit data-fit-min="52" data-fit-max="52">Karaage</div><div class="item-price" data-field="plates.3.price" data-fit data-fit-min="52" data-fit-max="52">$9</div></div>
+              <div class="item-meta"><div class="item-detail" data-field="plates.3.detail" data-fit data-fit-min="32" data-fit-max="32">crispy chicken · kewpie</div><div class="item-dietary" data-field="plates.3.dietary" data-fit data-fit-min="32" data-fit-max="32"></div></div>
+            </article>
+            <article class="menu-item">
+              <div class="item-top"><div class="item-name" data-field="plates.4.name" data-fit data-fit-min="52" data-fit-max="52">Tuna Tataki</div><div class="item-price" data-field="plates.4.price" data-fit data-fit-min="52" data-fit-max="52">$14</div></div>
+              <div class="item-meta"><div class="item-detail" data-field="plates.4.detail" data-fit data-fit-min="32" data-fit-max="32">seared ahi · ponzu · sesame</div><div class="item-dietary" data-field="plates.4.dietary" data-fit data-fit-min="32" data-fit-max="32"></div></div>
+            </article>
+            <article class="menu-item">
+              <div class="item-top"><div class="item-name" data-field="plates.5.name" data-fit data-fit-min="52" data-fit-max="52">Mochi Ice (3)</div><div class="item-price" data-field="plates.5.price" data-fit data-fit-min="52" data-fit-max="52">$7</div></div>
+              <div class="item-meta"><div class="item-detail" data-field="plates.5.detail" data-fit data-fit-min="32" data-fit-max="32">matcha · sesame · strawberry</div><div class="item-dietary" data-field="plates.5.dietary" data-fit data-fit-min="32" data-fit-max="32">VG</div></div>
+            </article>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+  <script>
+(function () {
+  'use strict';
+
+  var LANDSCAPE = { name: 'landscape', width: 1920, height: 1080 };
+  var PORTRAIT = { name: 'portrait', width: 1080, height: 1920 };
+  var root = document.documentElement;
+  var wrap = document.getElementById('scene-wrap');
+  var activeScene = null;
+  var currentOrientation = '';
+  var fitFrame = 0;
+  var editMode = false;
+  var lastOverflowSignature = '';
+
+  if (!wrap) return;
+
+  function query() {
+    return new URLSearchParams(window.location.search);
+  }
+
+  function orientationForViewport() {
+    var forced = query().get('orientation');
+    if (forced === 'portrait') return PORTRAIT;
+    if (forced === 'landscape') return LANDSCAPE;
+    return window.innerHeight > window.innerWidth ? PORTRAIT : LANDSCAPE;
+  }
+
+  function sceneOrientation(scene) {
+    var declared = scene.getAttribute('data-orientation') ||
+      scene.getAttribute('data-scene-orientation') || '';
+    if (!declared && scene.classList.contains('scene-portrait')) declared = 'portrait';
+    if (!declared && scene.classList.contains('scene-landscape')) declared = 'landscape';
+    return declared.toLowerCase();
+  }
+
+  function selectScene(orientation) {
+    var scenes = wrap.querySelectorAll('.scene');
+    var selected = scenes.length ? scenes[0] : null;
+    var hasDedicatedScenes = false;
+    var i;
+
+    for (i = 0; i < scenes.length; i++) {
+      if (sceneOrientation(scenes[i])) hasDedicatedScenes = true;
+      if (sceneOrientation(scenes[i]) === orientation.name) selected = scenes[i];
+    }
+
+    if (hasDedicatedScenes) {
+      for (i = 0; i < scenes.length; i++) {
+        var isSelected = scenes[i] === selected;
+        scenes[i].style.display = isSelected ? '' : 'none';
+        scenes[i].setAttribute('aria-hidden', isSelected ? 'false' : 'true');
+      }
+    }
+
+    return selected;
+  }
+
+  function post(message) {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(message, '*');
+      }
+    } catch (_) {}
+  }
+
+  function scheduleFit() {
+    if (fitFrame) window.cancelAnimationFrame(fitFrame);
+    fitFrame = window.requestAnimationFrame(function () {
+      fitFrame = 0;
+      fitAll();
+    });
+  }
+
+  function orient() {
+    var orientation = orientationForViewport();
+    activeScene = selectScene(orientation);
+    if (!activeScene) return;
+
+    currentOrientation = orientation.name;
+    root.classList.toggle('is-portrait', orientation.name === 'portrait');
+    root.classList.toggle('is-landscape', orientation.name === 'landscape');
+    root.setAttribute('data-orientation', orientation.name);
+
+    if (document.body) document.body.setAttribute('data-orientation', orientation.name);
+    wrap.setAttribute('data-orientation', orientation.name);
+    activeScene.setAttribute('data-active-orientation', orientation.name);
+
+    wrap.style.width = orientation.width + 'px';
+    wrap.style.height = orientation.height + 'px';
+    activeScene.style.width = orientation.width + 'px';
+    activeScene.style.height = orientation.height + 'px';
+
+    wrap.style.setProperty('--scene-width', orientation.width + 'px');
+    wrap.style.setProperty('--scene-height', orientation.height + 'px');
+    wrap.style.setProperty(
+      '--scene-scale',
+      String(Math.min(
+        window.innerWidth / orientation.width,
+        window.innerHeight / orientation.height
+      ))
+    );
+
+    scheduleFit();
+    post({
+      type: 'educms-orientation',
+      orientation: orientation.name,
+      width: orientation.width,
+      height: orientation.height
+    });
+  }
+
+  function decodeBase64Json(value) {
+    var base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4) base64 += '=';
+    var binary = window.atob(base64);
+    var bytes = '';
+    var i;
+    for (i = 0; i < binary.length; i++) {
+      bytes += '%' + ('00' + binary.charCodeAt(i).toString(16)).slice(-2);
+    }
+    return JSON.parse(decodeURIComponent(bytes));
+  }
+
+  function queryJson(name) {
+    var value = query().get(name);
+    if (!value) return {};
+
+    try { return JSON.parse(value); } catch (_) {}
+    try { return JSON.parse(decodeURIComponent(value)); } catch (_) {}
+    try { return decodeBase64Json(value); } catch (_) {}
+    return {};
+  }
+
+  function nodes(key, attribute) {
+    var all = document.querySelectorAll('[' + attribute + ']');
+    var found = [];
+    var i;
+    for (i = 0; i < all.length; i++) {
+      if (all[i].getAttribute(attribute) === key) found.push(all[i]);
+    }
+    return found;
+  }
+
+  function hasNodes(key, attribute) {
+    return nodes(key, attribute).length > 0;
+  }
+
+  function setText(element, value) {
+    var text = value == null ? '' : String(value);
+
+    if (text.indexOf('&') !== -1) {
+      var decoder = document.createElement('textarea');
+      decoder.innerHTML = text;
+      text = decoder.value;
+    }
+
+    if (element.getAttribute('data-preserve-children') === 'true') {
+      var textNode = null;
+      var i;
+      for (i = 0; i < element.childNodes.length; i++) {
+        if (element.childNodes[i].nodeType === 3) {
+          textNode = element.childNodes[i];
+          break;
+        }
+      }
+      if (textNode) textNode.textContent = text;
+      else element.insertBefore(document.createTextNode(text), element.firstChild);
+      return;
+    }
+
+    element.textContent = text;
+  }
+
+  function numberAttribute(element, name, fallback) {
+    var value = Number(element.getAttribute(name));
+    return isFinite(value) && value > 0 ? value : fallback;
+  }
+
+  function overflows(element) {
+    return element.scrollWidth > element.clientWidth + 1 ||
+      element.scrollHeight > element.clientHeight + 1;
+  }
+
+  function fitElement(element) {
+    if (!element.clientWidth || !element.clientHeight) return false;
+
+    if (typeof element.__educmsOriginalFontSize === 'undefined') {
+      element.__educmsOriginalFontSize = element.style.fontSize || '';
+    }
+
+    var customMaximum = Number(element.getAttribute('data-fit-ceiling') ||
+      element.__educmsFitCeiling || 0);
+    var minimum = numberAttribute(element, 'data-fit-min', 52);
+    var configuredMaximum = numberAttribute(element, 'data-fit-max', 0);
+
+    if (customMaximum) {
+      element.style.fontSize = customMaximum + 'px';
+    } else {
+      element.style.fontSize = element.__educmsOriginalFontSize;
+    }
+
+    var cssMaximum = parseFloat(window.getComputedStyle(element).fontSize) || minimum;
+    var maximum = customMaximum || cssMaximum;
+    if (configuredMaximum) maximum = Math.min(maximum, configuredMaximum);
+    maximum = Math.max(minimum, maximum);
+
+    element.style.fontSize = maximum + 'px';
+    if (!overflows(element)) {
+      element.removeAttribute('data-fit-overflow');
+      element.setAttribute('data-fit-size', String(Math.round(maximum)));
+      return false;
+    }
+
+    var low = Math.ceil(minimum);
+    var high = Math.floor(maximum);
+    var best = low;
+
+    while (low <= high) {
+      var middle = Math.floor((low + high) / 2);
+      element.style.fontSize = middle + 'px';
+      if (overflows(element)) {
+        high = middle - 1;
+      } else {
+        best = middle;
+        low = middle + 1;
+      }
+    }
+
+    element.style.fontSize = best + 'px';
+    element.setAttribute('data-fit-size', String(best));
+
+    if (overflows(element)) {
+      element.setAttribute('data-fit-overflow', 'true');
+      return true;
+    }
+
+    element.removeAttribute('data-fit-overflow');
+    return false;
+  }
+
+  function fitAll() {
+    var all = document.querySelectorAll('[data-fit]');
+    var overflowKeys = [];
+    var i;
+
+    for (i = 0; i < all.length; i++) {
+      if (fitElement(all[i])) {
+        overflowKeys.push(
+          all[i].getAttribute('data-field') ||
+          all[i].getAttribute('data-fit-name') ||
+          'unlabelled-fit-' + (i + 1)
+        );
+      }
+    }
+
+    var signature = currentOrientation + ':' + overflowKeys.join('|');
+    if (overflowKeys.length && signature !== lastOverflowSignature) {
+      post({
+        type: 'educms-fit-overflow',
+        orientation: currentOrientation,
+        keys: overflowKeys
+      });
+    }
+    lastOverflowSignature = signature;
+  }
+
+  function applyBrand(brand) {
+    if (!brand || typeof brand !== 'object') return;
+    var styles = root.style;
+    var variableMap = {
+      background: ['--paper', '--background'],
+      surface: ['--surface', '--paper'],
+      text: ['--ink', '--text'],
+      muted: ['--muted'],
+      primary: ['--primary', '--blue'],
+      accent: ['--accent', '--orange'],
+      fontDisplay: ['--font-display'],
+      fontBody: ['--font-body'],
+      fontCondensed: ['--font-condensed', '--font-mono'],
+      fontSerif: ['--font-serif'],
+      fontMono: ['--font-mono']
+    };
+    var key;
+    var i;
+
+    for (key in variableMap) {
+      if (!Object.prototype.hasOwnProperty.call(variableMap, key)) continue;
+      if (brand[key] == null || brand[key] === '') continue;
+      for (i = 0; i < variableMap[key].length; i++) {
+        styles.setProperty(variableMap[key][i], String(brand[key]));
+      }
+    }
+
+    var custom = brand.cssVariables || brand.variables || {};
+    for (key in custom) {
+      if (!Object.prototype.hasOwnProperty.call(custom, key)) continue;
+      var property = key.indexOf('--') === 0 ? key : '--' + key;
+      styles.setProperty(property, String(custom[key]));
+    }
+  }
+
+  function applyTextStyle(element, style) {
+    if (!style || typeof style !== 'object') return;
+
+    if (style.color != null) element.style.color = String(style.color);
+    if (style.fontWeight != null) element.style.fontWeight = String(style.fontWeight);
+    if (style.fontStyle != null) element.style.fontStyle = String(style.fontStyle);
+    if (style.fontFamily != null) element.style.fontFamily = String(style.fontFamily);
+    if (style.textDecoration != null) element.style.textDecoration = String(style.textDecoration);
+    if (style.textAlign != null) element.style.textAlign = String(style.textAlign);
+    if (style.lineHeight != null) element.style.lineHeight = String(style.lineHeight);
+    if (style.letterSpacing != null) element.style.letterSpacing = String(style.letterSpacing);
+    if (style.textTransform != null) element.style.textTransform = String(style.textTransform);
+    if (style.backgroundColor != null) {
+      element.style.backgroundColor = String(style.backgroundColor);
+    }
+    if (style.opacity != null) element.style.opacity = String(style.opacity);
+
+    if (style.fontSize != null && style.fontSize !== '') {
+      var size = parseFloat(String(style.fontSize));
+      if (isFinite(size) && size > 0) {
+        element.style.fontSize = size + 'px';
+        if (element.hasAttribute('data-fit')) element.__educmsFitCeiling = size;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(style, 'hidden')) {
+      element.style.display = style.hidden ? 'none' : '';
+      element.setAttribute('aria-hidden', style.hidden ? 'true' : 'false');
+    }
+  }
+
+  function cssUrl(value) {
+    return 'url("' + value
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
+      .replace(/[\n\r\f]/g, '') + '")';
+  }
+
+  function applyImage(element, value) {
+    var source = value;
+    var position = '';
+    var size = '';
+
+    if (value && typeof value === 'object') {
+      source = value.src || value.url || '';
+      position = value.position || '';
+      size = value.size || value.fit || '';
+    }
+    if (source == null) return;
+    source = String(source);
+
+    element.setAttribute('data-img', source);
+    if (element.tagName && element.tagName.toLowerCase() === 'img') {
+      if (source) element.setAttribute('src', source);
+      else element.removeAttribute('src');
+    } else {
+      element.style.backgroundImage = source ? cssUrl(source) : 'none';
+      if (position) element.style.backgroundPosition = String(position);
+      if (size) element.style.backgroundSize = String(size);
+    }
+
+    element.classList.toggle('has-img', Boolean(source));
+    if (source) element.setAttribute('data-has-image', 'true');
+    else element.removeAttribute('data-has-image');
+  }
+
+  function apply(payload) {
+    payload = payload || {};
+    var text = payload.text || {};
+    var styles = payload.textStyles || {};
+    var images = payload.img || payload.images || {};
+    var keys = {};
+    var key;
+    var list;
+    var i;
+
+    applyBrand(payload.brand || {});
+
+    for (key in text) {
+      if (Object.prototype.hasOwnProperty.call(text, key)) keys[key] = true;
+    }
+    for (key in styles) {
+      if (Object.prototype.hasOwnProperty.call(styles, key)) keys[key] = true;
+    }
+
+    for (key in keys) {
+      if (!Object.prototype.hasOwnProperty.call(keys, key)) continue;
+      list = nodes(key, 'data-field');
+      for (i = 0; i < list.length; i++) {
+        if (Object.prototype.hasOwnProperty.call(text, key)) setText(list[i], text[key]);
+        applyTextStyle(list[i], styles[key]);
+      }
+    }
+
+    for (key in images) {
+      if (!Object.prototype.hasOwnProperty.call(images, key)) continue;
+      list = nodes(key, 'data-imgslot');
+      for (i = 0; i < list.length; i++) applyImage(list[i], images[key]);
+    }
+
+    scheduleFit();
+  }
+
+  function queryPayload() {
+    var params = query();
+    var brand = queryJson('brand');
+    var text = queryJson('text');
+    var textStyles = queryJson('textStyles');
+    var images = queryJson('img');
+    var payload = {
+      brand: brand && typeof brand === 'object' && !Array.isArray(brand) ? brand : {},
+      text: text && typeof text === 'object' && !Array.isArray(text) ? text : {},
+      textStyles: textStyles && typeof textStyles === 'object' &&
+        !Array.isArray(textStyles) ? textStyles : {},
+      img: images && typeof images === 'object' && !Array.isArray(images) ? images : {}
+    };
+
+    params.forEach(function (value, key) {
+      var fieldKey = '';
+      if (key.indexOf('field.') === 0) fieldKey = key.slice(6);
+      else if (key.indexOf('text.') === 0) fieldKey = key.slice(5);
+      else if (hasNodes(key, 'data-field')) fieldKey = key;
+
+      if (fieldKey) {
+        payload.text[fieldKey] = value;
+        return;
+      }
+
+      var imageKey = '';
+      if (key.indexOf('image.') === 0) imageKey = key.slice(6);
+      else if (key.indexOf('img.') === 0) imageKey = key.slice(4);
+      else if (hasNodes(key, 'data-imgslot')) imageKey = key;
+      if (imageKey) payload.img[imageKey] = value;
+    });
+
+    return payload;
+  }
+
+  function fieldsForReadyMessage(attribute) {
+    var elements = document.querySelectorAll('[' + attribute + ']');
+    var seen = {};
+    var values = [];
+    var i;
+    var key;
+    for (i = 0; i < elements.length; i++) {
+      key = elements[i].getAttribute(attribute);
+      if (key && !seen[key]) {
+        seen[key] = true;
+        values.push(key);
+      }
+    }
+    return values;
+  }
+
+  function setEditMode(on) {
+    editMode = Boolean(on);
+    root.classList.toggle('is-editing', editMode);
+    if (editMode) root.classList.remove('is-frozen');
+  }
+
+  function editableClick(event) {
+    if (!editMode) return;
+    var element = event.target;
+    while (
+      element &&
+      element !== document &&
+      !element.hasAttribute('data-field') &&
+      !element.hasAttribute('data-imgslot')
+    ) {
+      element = element.parentNode;
+    }
+    if (!element || element === document) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    post({
+      type: 'educms-field-click',
+      key: element.getAttribute('data-field') || element.getAttribute('data-imgslot'),
+      kind: element.hasAttribute('data-field') ? 'text' : 'img'
+    });
+  }
+
+  document.addEventListener('click', editableClick, true);
+  window.addEventListener('resize', orient);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', orient);
+
+  apply(queryPayload());
+  orient();
+
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(scheduleFit, scheduleFit);
+    if (document.fonts.addEventListener) {
+      document.fonts.addEventListener('loadingdone', scheduleFit);
+    }
+  }
+  window.addEventListener('load', scheduleFit);
+
+  var initialQuery = query();
+  if (initialQuery.get('freeze') === '1') root.classList.add('is-frozen');
+  if (initialQuery.get('edit') === '1') setEditMode(true);
+
+  window.addEventListener('message', function (event) {
+    var data = event.data;
+    if (!data || typeof data !== 'object') return;
+    if (event.source && event.source !== window.parent && event.source !== window) return;
+
+    if (data.type === 'educms-overrides') apply(data);
+    if (data.type === 'educms-edit-mode') setEditMode(Boolean(data.on));
+    if (data.type === 'educms-freeze') root.classList.add('is-frozen');
+    if (data.type === 'educms-unfreeze') root.classList.remove('is-frozen');
+    if (data.type === 'educms-refit') scheduleFit();
+  });
+
+  post({
+    type: 'educms-ready',
+    orientation: currentOrientation,
+    fields: fieldsForReadyMessage('data-field'),
+    images: fieldsForReadyMessage('data-imgslot')
+  });
+}());
+
+</script>
+</body>
+</html>

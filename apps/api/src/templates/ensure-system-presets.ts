@@ -273,6 +273,10 @@ const PRESET_VERTICALS: Map<string, string[]> = new Map();
 const QSR_FULL_SERVICE_ALSO_RESTAURANT = [
   // Full menu boards
   'qsr-sushi-ramen-menu',
+  // 2026-07-24 — its portrait sibling must carry the same dual tag, or a
+  // full-service RESTAURANT tenant would see the landscape board but not the
+  // portrait one.
+  'qsr-sushi-ramen-menu-portrait',
   'qsr-fine-dining-wine',
   'qsr-brunch-spot',
   'qsr-pizza-shop-menu',

@@ -612,119 +612,60 @@ export const RESTAURANT_TEMPLATE_PRESETS: SystemPreset[] = [
   // counter-service sushi/ramen spot.
   // ════════════════════════════════════════════════════════════════
   {
+    // 2026-07-24 — REPLACED the original React-zone board with the approved
+    // "After Dark" design (scratch/design/qsr-sushi-ramen-v2-after-dark.html),
+    // ported faithfully as a self-contained EXTERNAL_HTML scene. The preset ID
+    // is unchanged so existing playlists keep resolving and the
+    // QSR|RESTAURANT dual-tag still applies. Native 1920×1080; the portrait
+    // sibling below carries the native 1080×1920 composition.
     id: 'qsr-sushi-ramen-menu',
     name: 'Sushi & Ramen Menu',
     description:
-      'Section dividers in serif type, modifier callouts, dark canvas with deep teal + gold foil accents. Designed for an upmarket counter-service sushi/ramen spot. Three menu sections (sushi rolls, ramen bowls, small plates) plus a chef\'s recommendation callout.',
+      "Editorial sushi + ramen menu — 'After Dark'. Three menu sections (18 items), fixed price rails, chef's feature, and a replaceable editorial image. Self-contained 1920×1080 board; every name, price and note is editor-addressable.",
     category: 'MENU',
     orientation: 'LANDSCAPE',
-    screenWidth: 3840,
-    screenHeight: 2160,
-    bgColor: '#0e1f1f',
-    bgGradient:
-      'radial-gradient(1100px 700px at 20% 10%, rgba(232,185,74,0.08), transparent 60%),' +
-      'radial-gradient(900px 600px at 80% 90%, rgba(14,90,90,0.20), transparent 60%),' +
-      'linear-gradient(140deg, #0e1f1f 0%, #163030 50%, #0e1f1f 100%)',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor: '#0b0b0d',
     zones: [
-      // ── Brand mark ──
       {
-        name: 'Brand Mark',
-        widgetType: 'RICH_TEXT',
-        x: 0, y: 3, width: 100, height: 11,
-        zIndex: 2,
-        sortOrder: 1,
-        defaultConfig: {
-          html: '<div style="text-align:center;color:#fbf6ee;"><div style="font-family:Playfair Display,serif;font-style:italic;font-size:48px;letter-spacing:0.4em;text-transform:uppercase;color:#e8b94a;opacity:0.85;">蕎麦・刺身・温</div><h1 style="font-family:Playfair Display,serif;font-weight:900;font-size:130px;letter-spacing:0.04em;margin:8px 0 0;color:#fbf6ee;">KAIDŌ</h1><p style="font-family:Playfair Display,serif;font-style:italic;font-size:44px;color:rgba(251,246,238,0.6);margin:2px 0 0;">noodles · sushi · small plates</p></div>',
-        },
-      },
-      // ── Sushi rolls (left) ──
-      {
-        name: 'Sushi Rolls',
-        widgetType: 'RESTAURANT_MENU_BOARD',
-        x: 3, y: 16, width: 30, height: 65,
-        zIndex: 2,
-        sortOrder: 2,
-        defaultConfig: {
-          title: 'SUSHI ROLLS',
-          subtitle: 'cut to order',
-          columns: 1,
-          theme: 'charcoal',
-          accentColor: '#e8b94a',
-          items: [
-            { name: 'Spicy Tuna',      desc: 'ahi, sriracha aioli, scallion',         price: '$12', dietary: ['🌶'], emoji: '🍣' },
-            { name: 'Salmon Avocado',  desc: 'fresh salmon, avocado, sesame',         price: '$11', emoji: '🥑' },
-            { name: 'Dragon',          desc: 'eel, cucumber, avocado, kabayaki',      price: '$15', emoji: '🐉' },
-            { name: 'Rainbow',         desc: 'crab, avocado, salmon, tuna, hamachi',  price: '$16', emoji: '🌈' },
-            { name: 'Veggie Garden',   desc: 'cuke, avocado, carrot, sprout',         price: '$9',  dietary: ['V', 'GF'], emoji: '🥒' },
-            { name: 'Tempura Shrimp',  desc: 'shrimp tempura, eel sauce, sesame',     price: '$13', emoji: '🍤' },
-          ],
-        },
-      },
-      // ── Ramen (middle) ──
-      {
-        name: 'Ramen',
-        widgetType: 'RESTAURANT_MENU_BOARD',
-        x: 35, y: 16, width: 30, height: 65,
-        zIndex: 2,
-        sortOrder: 3,
-        defaultConfig: {
-          title: 'RAMEN',
-          subtitle: 'broth · 18 hr · slow simmer',
-          columns: 1,
-          theme: 'charcoal',
-          accentColor: '#e8b94a',
-          items: [
-            { name: 'Tonkotsu',        desc: 'pork bone broth, chashu, scallion',     price: '$16', emoji: '🍜' },
-            { name: 'Miso',            desc: 'red miso, corn, butter, nori',          price: '$15', dietary: ['VG'], emoji: '🍜' },
-            { name: 'Shoyu',           desc: 'soy chicken broth, bamboo, egg',        price: '$15', emoji: '🍜' },
-            { name: 'Spicy Tantan',    desc: 'sichuan chili, ground pork, sesame',    price: '$17', dietary: ['🌶'], emoji: '🌶️' },
-            { name: 'Veggie Shio',     desc: 'kombu broth, mushroom, tofu',           price: '$14', dietary: ['V'], emoji: '🌿' },
-            { name: 'Cold Tsukemen',   desc: 'thick broth dip, chilled noodles',      price: '$17', emoji: '🥶' },
-          ],
-        },
-      },
-      // ── Small plates (right) ──
-      {
-        name: 'Small Plates',
-        widgetType: 'RESTAURANT_MENU_BOARD',
-        x: 67, y: 16, width: 30, height: 65,
-        zIndex: 2,
-        sortOrder: 4,
-        defaultConfig: {
-          title: 'SMALL PLATES',
-          subtitle: 'shared · served as ready',
-          columns: 1,
-          theme: 'charcoal',
-          accentColor: '#e8b94a',
-          items: [
-            { name: 'Edamame',         desc: 'sea salt, lemon zest',                   price: '$5',  dietary: ['V', 'GF'], emoji: '🌱' },
-            { name: 'Gyoza (5)',       desc: 'pork-cabbage, ponzu',                    price: '$8',  emoji: '🥟' },
-            { name: 'Veggie Gyoza',    desc: 'mushroom-cabbage, chili oil',            price: '$8',  dietary: ['V'], emoji: '🥟' },
-            { name: 'Karaage',         desc: 'crispy chicken, kewpie aioli',           price: '$9',  emoji: '🍗' },
-            { name: 'Tuna Tataki',     desc: 'seared ahi, ponzu, sesame',              price: '$14', emoji: '🍣' },
-            { name: 'Mochi Ice (3)',   desc: 'matcha · sesame · strawberry',           price: '$7',  dietary: ['VG'], emoji: '🍡' },
-          ],
-        },
-      },
-      // ── Chef's recommendation strip ──
-      {
-        name: 'Chef\'s Recommendation',
-        widgetType: 'RESTAURANT_SPECIALS_CALLOUT',
-        x: 3, y: 83, width: 94, height: 14,
-        zIndex: 2,
-        sortOrder: 5,
-        defaultConfig: {
-          headline: 'OMAKASE',
-          subhead: 'chef\'s tasting · 8 courses · ¥/$ market',
-          itemName: 'Reserved Seating',
-          itemDesc: 'reservations recommended · Thur–Sun',
-          price: '$65 pp',
-          emoji: '🍱',
-          theme: 'charcoal',
-        },
+        name: 'Scene',
+        widgetType: 'EXTERNAL_HTML',
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+        zIndex: 1,
+        sortOrder: 0,
+        defaultConfig: { url: '/templates/signage/qsr/redesign-sushi-ramen-after-dark.html' },
       },
     ],
   },
+  {
+    id: 'qsr-sushi-ramen-menu-portrait',
+    name: 'Sushi & Ramen Menu — Portrait',
+    description:
+      "Editorial sushi + ramen menu — 'After Dark'. Three menu sections (18 items), fixed price rails, chef's feature, and a replaceable editorial image. Self-contained 1920×1080 board; every name, price and note is editor-addressable. Portrait composition.",
+    category: 'MENU',
+    orientation: 'PORTRAIT',
+    screenWidth: 1080,
+    screenHeight: 1920,
+    bgColor: '#0b0b0d',
+    zones: [
+      {
+        name: 'Scene',
+        widgetType: 'EXTERNAL_HTML',
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+        zIndex: 1,
+        sortOrder: 0,
+        defaultConfig: { url: '/templates/signage/qsr/redesign-sushi-ramen-after-dark.html?orientation=portrait' },
+      },
+    ],
+  },
+
 
   // ════════════════════════════════════════════════════════════════
   // Preset 6 — Daily Specials Promo
