@@ -1,0 +1,790 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Church Verse of the Day — The Word Stands</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,500;7..72,600&family=Unbounded:wght@600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+* { box-sizing:border-box; }
+
+html,
+body {
+  width:100%;
+  height:100%;
+  margin:0;
+  overflow:hidden;
+  background:#090909;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:geometricPrecision;
+}
+
+#scene-wrap {
+  --scene-scale:1;
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:1920px;
+  height:1080px;
+  overflow:hidden;
+  transform:translate(-50%,-50%) scale(var(--scene-scale));
+  transform-origin:center center;
+}
+
+.scene {
+  position:relative;
+  width:1920px;
+  height:1080px;
+  overflow:hidden;
+}
+
+.scene-portrait {
+  display:none;
+  width:1080px;
+  height:1920px;
+}
+
+.is-portrait #scene-wrap {
+  width:1080px;
+  height:1920px;
+}
+
+.is-portrait .scene-landscape { display:none; }
+.is-portrait .scene-portrait { display:block; }
+
+[data-field],
+[data-imgslot] {
+  max-width:100%;
+}
+
+[data-fit] {
+  overflow:hidden;
+}
+
+.is-editing [data-field],
+.is-editing [data-imgslot] {
+  cursor:pointer;
+}
+
+.is-editing [data-field]:hover,
+.is-editing [data-imgslot]:hover {
+  outline:4px solid rgba(255,255,255,.94);
+  outline-offset:-4px;
+}
+
+.is-frozen *,
+.is-frozen *::before,
+.is-frozen *::after {
+  animation-play-state:paused !important;
+  transition:none !important;
+}
+
+
+</style>
+  <style>
+    :root {
+      --ink:#32172f;
+      --paper:#f4ede3;
+      --primary:#d96142;
+      --accent:#d9a6a0;
+      --muted:#78676f;
+      --font-display:'Unbounded',Arial,sans-serif;
+      --font-body:'Literata',Georgia,serif;
+    }
+
+    .scene {
+      color:var(--ink);
+      background:var(--paper);
+      font-family:var(--font-display);
+    }
+
+    .scene::after {
+      content:"";
+      position:absolute;
+      top:0;right:0;bottom:0;left:0;
+      z-index:90;
+      pointer-events:none;
+      opacity:.055;
+      background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.48'/%3E%3C/svg%3E");
+      mix-blend-mode:multiply;
+    }
+
+    .brand,
+    .date,
+    .eyebrow,
+    .keyword,
+    .verse,
+    .reference,
+    .response,
+    .translation,
+    .copyright {
+      position:absolute;
+      z-index:10;
+      overflow:hidden;
+    }
+
+    .brand,
+    .date {
+      height:70px;
+      font:700 52px/1 var(--font-display);
+      letter-spacing:-2px;
+      white-space:nowrap;
+    }
+
+    .brand {
+      line-height:1.08;
+      white-space:normal;
+    }
+
+    .date { text-align:right; }
+
+    .eyebrow {
+      height:68px;
+      color:var(--primary);
+      font:700 52px/1 var(--font-display);
+      letter-spacing:1px;
+      text-transform:uppercase;
+      white-space:nowrap;
+    }
+
+    .keyword {
+      margin:0;
+      color:var(--paper);
+      font:900 192px/.84 var(--font-display);
+      letter-spacing:-12px;
+      text-transform:uppercase;
+      white-space:pre-line;
+      text-shadow:14px 14px 0 var(--primary);
+    }
+
+    .verse {
+      margin:0;
+      color:var(--ink);
+      font:500 82px/1.13 var(--font-body);
+      letter-spacing:-3px;
+      text-wrap:balance;
+    }
+
+    .reference {
+      height:84px;
+      color:var(--primary);
+      font:800 64px/1.08 var(--font-display);
+      letter-spacing:-2px;
+      white-space:nowrap;
+    }
+
+    .response {
+      color:var(--accent);
+      font:600 60px/1.18 var(--font-body);
+      letter-spacing:-1px;
+    }
+
+    .translation,
+    .copyright {
+      height:62px;
+      font:700 52px/1 var(--font-display);
+      letter-spacing:1px;
+      text-transform:uppercase;
+      white-space:nowrap;
+    }
+
+    .translation { color:var(--primary); }
+    .copyright { color:var(--muted); }
+
+    .word-plane {
+      position:absolute;
+      z-index:1;
+      overflow:hidden;
+      background:var(--ink);
+    }
+
+    .word-plane::before,
+    .word-plane::after {
+      content:"";
+      position:absolute;
+      background:var(--accent);
+      opacity:.62;
+    }
+
+    .word-plane::before { width:4px; }
+    .word-plane::after { height:4px; }
+
+    .axis {
+      position:absolute;
+      z-index:2;
+      border:4px solid rgba(244,237,227,.22);
+      pointer-events:none;
+    }
+
+    .axis::before,
+    .axis::after {
+      content:"";
+      position:absolute;
+      width:24px;
+      height:24px;
+      border-radius:50%;
+      background:var(--accent);
+    }
+
+    .rule {
+      position:absolute;
+      z-index:3;
+      height:4px;
+      background:var(--ink);
+    }
+
+    .rule::after {
+      content:"";
+      position:absolute;
+      right:0;
+      top:-8px;
+      width:20px;
+      height:20px;
+      background:var(--primary);
+      transform:rotate(45deg);
+    }
+
+    /* Landscape · fixed 1920×1080 composition. */
+    .scene-landscape .word-plane {
+      left:0; top:0; width:920px; height:1080px;
+    }
+    .scene-landscape .word-plane::before {
+      left:80px; top:190px; height:708px;
+    }
+    .scene-landscape .word-plane::after {
+      left:80px; bottom:120px; width:760px;
+    }
+    .scene-landscape .axis {
+      left:650px; top:232px; width:190px; height:190px;
+    }
+    .scene-landscape .axis::before { left:-14px; top:-14px; }
+    .scene-landscape .axis::after { right:-14px; bottom:-14px; }
+    .scene-landscape .rule { left:1000px; top:174px; width:840px; }
+
+    .scene-landscape .brand {
+      left:80px; top:48px; width:760px; height:116px; color:var(--paper);
+    }
+    .scene-landscape .date {
+      left:1040px; top:68px; width:800px;
+    }
+    .scene-landscape .eyebrow {
+      left:80px; top:188px; width:840px; color:var(--accent);
+    }
+    .scene-landscape .keyword {
+      left:80px; top:300px; width:760px; height:360px;
+    }
+    .scene-landscape .response {
+      left:110px; top:750px; width:700px; height:150px;
+      color:var(--accent);
+    }
+    .scene-landscape .verse {
+      left:1000px; top:244px; width:840px; height:536px;
+    }
+    .scene-landscape .reference {
+      left:1000px; top:808px; width:840px;
+    }
+    .scene-landscape .translation {
+      left:1000px; top:958px; width:150px;
+    }
+    .scene-landscape .copyright {
+      left:1208px; top:958px; width:600px;
+    }
+
+    /* Portrait · fixed 1080×1920 composition. */
+    .scene-portrait .word-plane {
+      left:0; top:0; width:1080px; height:716px;
+    }
+    .scene-portrait .word-plane::before {
+      left:60px; top:254px; height:376px;
+    }
+    .scene-portrait .word-plane::after {
+      left:60px; bottom:64px; width:960px;
+    }
+    .scene-portrait .axis {
+      left:780px; top:324px; width:182px; height:182px;
+    }
+    .scene-portrait .axis::before { left:-14px; top:-14px; }
+    .scene-portrait .axis::after { right:-14px; bottom:-14px; }
+    .scene-portrait .rule { left:60px; top:806px; width:960px; }
+
+    .scene-portrait .brand {
+      left:60px; top:40px; width:960px; height:116px; color:var(--paper);
+    }
+    .scene-portrait .date {
+      left:60px; top:164px; width:960px; color:var(--paper);
+    }
+    .scene-portrait .eyebrow {
+      left:60px; top:254px; width:960px; color:var(--accent);
+    }
+    .scene-portrait .keyword {
+      left:60px; top:350px; width:900px; height:280px;
+      font-size:162px;
+    }
+    .scene-portrait .verse {
+      left:60px; top:872px; width:960px; height:528px;
+      font-size:86px;
+    }
+    .scene-portrait .reference {
+      left:60px; top:1444px; width:900px;
+    }
+    .scene-portrait .response {
+      left:60px; top:1550px; width:930px; height:146px;
+      color:var(--muted);
+    }
+    .scene-portrait .translation {
+      left:60px; top:1792px; width:150px;
+    }
+    .scene-portrait .copyright {
+      left:268px; top:1792px; width:560px;
+    }
+  </style>
+</head>
+<body>
+  <div id="scene-wrap">
+    <main class="scene scene-landscape" data-orientation="landscape" aria-label="The Word Stands Verse of the Day, landscape">
+      <div class="word-plane" aria-hidden="true"></div>
+      <div class="axis" aria-hidden="true"></div>
+      <div class="rule" aria-hidden="true"></div>
+
+      <div class="brand" data-field="brand.name">HAVEN CHURCH</div>
+      <div class="date" data-field="verse.date">SUNDAY · JUL 26</div>
+      <div class="eyebrow" data-field="board.eyebrow">THE WORD STANDS</div>
+      <div class="keyword" data-field="verse.keyword" data-fit data-fit-min="86" data-fit-max="192">BE
+STILL</div>
+      <div class="response" data-field="verse.response">Hold fast to what remains true.</div>
+      <blockquote class="verse" data-field="verse.text" data-fit data-fit-min="64" data-fit-max="82">"Be still, and know that I am God: I will be exalted among the heathen, I will be exalted in the earth."</blockquote>
+      <div class="reference" data-field="verse.reference">Psalm 46:10</div>
+      <div class="translation" data-field="verse.translation">KJV</div>
+      <div class="copyright" data-field="verse.copyright">PUBLIC DOMAIN</div>
+    </main>
+
+    <main class="scene scene-portrait" data-orientation="portrait" aria-label="The Word Stands Verse of the Day, portrait">
+      <div class="word-plane" aria-hidden="true"></div>
+      <div class="axis" aria-hidden="true"></div>
+      <div class="rule" aria-hidden="true"></div>
+
+      <div class="brand" data-field="brand.name">HAVEN CHURCH</div>
+      <div class="date" data-field="verse.date">SUN · JUL 26</div>
+      <div class="eyebrow" data-field="board.eyebrow">THE WORD STANDS</div>
+      <div class="keyword" data-field="verse.keyword" data-fit data-fit-min="86" data-fit-max="162">BE
+STILL</div>
+      <blockquote class="verse" data-field="verse.text" data-fit data-fit-min="64" data-fit-max="86">"Be still, and know that I am God: I will be exalted among the heathen, I will be exalted in the earth."</blockquote>
+      <div class="reference" data-field="verse.reference">Psalm 46:10</div>
+      <div class="response" data-field="verse.response">Hold fast to what remains true.</div>
+      <div class="translation" data-field="verse.translation">KJV</div>
+      <div class="copyright" data-field="verse.copyright">PUBLIC DOMAIN</div>
+    </main>
+  </div>
+
+  <script>
+(function () {
+  'use strict';
+
+  var LANDSCAPE={name:'landscape',width:1920,height:1080};
+  var PORTRAIT={name:'portrait',width:1080,height:1920};
+  var root=document.documentElement;
+  var wrap=document.getElementById('scene-wrap');
+  var activeScene=null;
+  var currentOrientation='';
+  var frame=0;
+  var editMode=false;
+
+  if (!wrap) return;
+
+  function params() {
+    return new URLSearchParams(window.location.search);
+  }
+
+  function post(message) {
+    try {
+      if (window.parent && window.parent!==window) {
+        window.parent.postMessage(message,'*');
+      }
+    } catch (_) {}
+  }
+
+  function orientation() {
+    var forced=params().get('orientation');
+    if (forced==='portrait') return PORTRAIT;
+    if (forced==='landscape') return LANDSCAPE;
+    return window.innerHeight>window.innerWidth?PORTRAIT:LANDSCAPE;
+  }
+
+  function selectScene(next) {
+    var scenes=wrap.querySelectorAll('.scene');
+    var selected=null;
+    var i;
+    for (i=0;i<scenes.length;i++) {
+      var declared=scenes[i].getAttribute('data-orientation')||'';
+      if (declared===next.name) selected=scenes[i];
+      scenes[i].style.display=declared===next.name?'block':'none';
+      scenes[i].setAttribute('aria-hidden',declared===next.name?'false':'true');
+    }
+    return selected;
+  }
+
+  function scheduleFit() {
+    if (frame) window.cancelAnimationFrame(frame);
+    frame=window.requestAnimationFrame(function () {
+      frame=0;
+      fitAll();
+    });
+  }
+
+  function orient() {
+    var next=orientation();
+    activeScene=selectScene(next);
+    if (!activeScene) return;
+
+    currentOrientation=next.name;
+    root.classList.toggle('is-landscape',next.name==='landscape');
+    root.classList.toggle('is-portrait',next.name==='portrait');
+    root.setAttribute('data-orientation',next.name);
+    document.body.setAttribute('data-orientation',next.name);
+    wrap.setAttribute('data-orientation',next.name);
+    wrap.style.width=next.width+'px';
+    wrap.style.height=next.height+'px';
+    wrap.style.setProperty(
+      '--scene-scale',
+      String(Math.min(window.innerWidth/next.width,window.innerHeight/next.height))
+    );
+
+    scheduleFit();
+    post({
+      type:'educms-orientation',
+      orientation:next.name,
+      width:next.width,
+      height:next.height
+    });
+  }
+
+  function overflows(element) {
+    return element.scrollWidth>element.clientWidth+1 ||
+      element.scrollHeight>element.clientHeight+1;
+  }
+
+  function positiveNumber(element,name,fallback) {
+    var value=Number(element.getAttribute(name));
+    return isFinite(value)&&value>0?value:fallback;
+  }
+
+  function fit(element) {
+    if (!element.clientWidth||!element.clientHeight) return false;
+
+    var minimum=positiveNumber(element,'data-fit-min',64);
+    var maximum=positiveNumber(
+      element,
+      'data-fit-max',
+      parseFloat(window.getComputedStyle(element).fontSize)||minimum
+    );
+    if (element.__educmsFitCeiling) {
+      maximum=Math.min(maximum,element.__educmsFitCeiling);
+    }
+    maximum=Math.max(minimum,maximum);
+    element.style.fontSize=maximum+'px';
+
+    if (!overflows(element)) {
+      element.setAttribute('data-fit-size',String(Math.round(maximum)));
+      element.removeAttribute('data-fit-overflow');
+      return false;
+    }
+
+    var low=Math.ceil(minimum);
+    var high=Math.floor(maximum);
+    var best=low;
+    while (low<=high) {
+      var middle=Math.floor((low+high)/2);
+      element.style.fontSize=middle+'px';
+      if (overflows(element)) high=middle-1;
+      else {
+        best=middle;
+        low=middle+1;
+      }
+    }
+
+    element.style.fontSize=best+'px';
+    element.setAttribute('data-fit-size',String(best));
+    if (overflows(element)) {
+      element.setAttribute('data-fit-overflow','true');
+      return true;
+    }
+    element.removeAttribute('data-fit-overflow');
+    return false;
+  }
+
+  function fitAll() {
+    var elements=document.querySelectorAll('[data-fit]');
+    var overflow=[];
+    var i;
+    for (i=0;i<elements.length;i++) {
+      if (fit(elements[i])) {
+        overflow.push(elements[i].getAttribute('data-field')||'unlabelled');
+      }
+    }
+    if (overflow.length) {
+      post({
+        type:'educms-fit-overflow',
+        orientation:currentOrientation,
+        keys:overflow
+      });
+    }
+  }
+
+  function decodeJson(value) {
+    if (!value) return {};
+    try { return JSON.parse(value); } catch (_) {}
+    try { return JSON.parse(decodeURIComponent(value)); } catch (_) {}
+    try {
+      var normalized=value.replace(/-/g,'+').replace(/_/g,'/');
+      while (normalized.length%4) normalized+='=';
+      return JSON.parse(decodeURIComponent(escape(window.atob(normalized))));
+    } catch (_) {}
+    return {};
+  }
+
+  function exactNodes(attribute,key) {
+    var all=document.querySelectorAll('['+attribute+']');
+    var found=[];
+    var i;
+    for (i=0;i<all.length;i++) {
+      if (all[i].getAttribute(attribute)===key) found.push(all[i]);
+    }
+    return found;
+  }
+
+  function hasField(key) {
+    return exactNodes('data-field',key).length>0;
+  }
+
+  function hasImage(key) {
+    return exactNodes('data-imgslot',key).length>0;
+  }
+
+  function setText(element,value) {
+    element.textContent=value==null?'':String(value);
+  }
+
+  function textStyle(element,style) {
+    if (!style||typeof style!=='object') return;
+    if (style.color!=null) element.style.color=String(style.color);
+    if (style.fontWeight!=null) element.style.fontWeight=String(style.fontWeight);
+    if (style.fontStyle!=null) element.style.fontStyle=String(style.fontStyle);
+    if (style.fontFamily!=null) element.style.fontFamily=String(style.fontFamily);
+    if (style.textAlign!=null) element.style.textAlign=String(style.textAlign);
+    if (style.lineHeight!=null) element.style.lineHeight=String(style.lineHeight);
+    if (style.letterSpacing!=null) element.style.letterSpacing=String(style.letterSpacing);
+    if (style.textTransform!=null) element.style.textTransform=String(style.textTransform);
+    if (style.opacity!=null) element.style.opacity=String(style.opacity);
+    if (style.backgroundColor!=null) {
+      element.style.backgroundColor=String(style.backgroundColor);
+    }
+    if (style.fontSize!=null&&style.fontSize!=='') {
+      var size=parseFloat(String(style.fontSize));
+      if (isFinite(size)&&size>0) {
+        element.style.fontSize=size+'px';
+        if (element.hasAttribute('data-fit')) element.__educmsFitCeiling=size;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(style,'hidden')) {
+      element.style.display=style.hidden?'none':'';
+      element.setAttribute('aria-hidden',style.hidden?'true':'false');
+    }
+  }
+
+  function applyImage(element,value) {
+    var source=value;
+    var position='center';
+    var size='cover';
+    if (value&&typeof value==='object') {
+      source=value.src||value.url||'';
+      position=value.position||position;
+      size=value.size||value.fit||size;
+    }
+    source=source==null?'':String(source);
+    element.style.backgroundImage=source?
+      'url("'+source.replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/[\n\r\f]/g,'')+'")':
+      'none';
+    element.style.backgroundPosition=position;
+    element.style.backgroundSize=size;
+    element.classList.toggle('has-img',Boolean(source));
+    if (source) element.setAttribute('data-has-image','true');
+    else element.removeAttribute('data-has-image');
+  }
+
+  function brand(payload) {
+    if (!payload||typeof payload!=='object') return;
+    var map={
+      background:'--background',
+      surface:'--surface',
+      text:'--ink',
+      muted:'--muted',
+      primary:'--primary',
+      accent:'--accent',
+      fontDisplay:'--font-display',
+      fontBody:'--font-body',
+      fontSerif:'--font-serif',
+      fontMono:'--font-mono'
+    };
+    var key;
+    for (key in map) {
+      if (
+        Object.prototype.hasOwnProperty.call(map,key)&&
+        payload[key]!=null&&payload[key]!==''
+      ) {
+        root.style.setProperty(map[key],String(payload[key]));
+      }
+    }
+    var custom=payload.cssVariables||payload.variables||{};
+    for (key in custom) {
+      if (!Object.prototype.hasOwnProperty.call(custom,key)) continue;
+      root.style.setProperty(
+        key.indexOf('--')===0?key:'--'+key,
+        String(custom[key])
+      );
+    }
+  }
+
+  function apply(payload) {
+    payload=payload||{};
+    var text=payload.text||{};
+    var styles=payload.textStyles||{};
+    var images=payload.img||payload.images||{};
+    var keys={};
+    var key;
+    var list;
+    var i;
+
+    brand(payload.brand||{});
+    for (key in text) {
+      if (Object.prototype.hasOwnProperty.call(text,key)) keys[key]=true;
+    }
+    for (key in styles) {
+      if (Object.prototype.hasOwnProperty.call(styles,key)) keys[key]=true;
+    }
+    for (key in keys) {
+      if (!Object.prototype.hasOwnProperty.call(keys,key)) continue;
+      list=exactNodes('data-field',key);
+      for (i=0;i<list.length;i++) {
+        if (Object.prototype.hasOwnProperty.call(text,key)) setText(list[i],text[key]);
+        textStyle(list[i],styles[key]);
+      }
+    }
+    for (key in images) {
+      if (!Object.prototype.hasOwnProperty.call(images,key)) continue;
+      list=exactNodes('data-imgslot',key);
+      for (i=0;i<list.length;i++) applyImage(list[i],images[key]);
+    }
+    scheduleFit();
+  }
+
+  function queryPayload() {
+    var search=params();
+    var payload={
+      brand:decodeJson(search.get('brand')),
+      text:decodeJson(search.get('text')),
+      textStyles:decodeJson(search.get('textStyles')),
+      img:decodeJson(search.get('img'))
+    };
+    search.forEach(function (value,key) {
+      var field='';
+      if (key.indexOf('field.')===0) field=key.slice(6);
+      else if (key.indexOf('text.')===0) field=key.slice(5);
+      else if (hasField(key)) field=key;
+      if (field) {
+        payload.text[field]=value;
+        return;
+      }
+      var image='';
+      if (key.indexOf('image.')===0) image=key.slice(6);
+      else if (key.indexOf('img.')===0) image=key.slice(4);
+      else if (hasImage(key)) image=key;
+      if (image) payload.img[image]=value;
+    });
+    return payload;
+  }
+
+  function fields(attribute) {
+    var all=document.querySelectorAll('['+attribute+']');
+    var seen={};
+    var result=[];
+    var i;
+    var key;
+    for (i=0;i<all.length;i++) {
+      key=all[i].getAttribute(attribute);
+      if (key&&!seen[key]) {
+        seen[key]=true;
+        result.push(key);
+      }
+    }
+    return result;
+  }
+
+  function setEditMode(on) {
+    editMode=Boolean(on);
+    root.classList.toggle('is-editing',editMode);
+    if (editMode) root.classList.remove('is-frozen');
+  }
+
+  document.addEventListener('click',function (event) {
+    if (!editMode) return;
+    var element=event.target;
+    while (
+      element&&element!==document&&
+      !element.hasAttribute('data-field')&&
+      !element.hasAttribute('data-imgslot')
+    ) {
+      element=element.parentNode;
+    }
+    if (!element||element===document) return;
+    event.preventDefault();
+    event.stopPropagation();
+    post({
+      type:'educms-field-click',
+      key:element.getAttribute('data-field')||element.getAttribute('data-imgslot'),
+      kind:element.hasAttribute('data-field')?'text':'img'
+    });
+  },true);
+
+  window.addEventListener('message',function (event) {
+    var data=event.data;
+    if (!data||typeof data!=='object') return;
+    if (event.source&&event.source!==window.parent&&event.source!==window) return;
+    if (data.type==='educms-overrides') apply(data);
+    if (data.type==='educms-edit-mode') setEditMode(Boolean(data.on));
+    if (data.type==='educms-freeze') root.classList.add('is-frozen');
+    if (data.type==='educms-unfreeze') root.classList.remove('is-frozen');
+    if (data.type==='educms-refit') scheduleFit();
+  });
+
+  window.addEventListener('resize',orient);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize',orient);
+  }
+
+  var initial=params();
+  if (initial.get('freeze')==='1') root.classList.add('is-frozen');
+  if (initial.get('edit')==='1') setEditMode(true);
+
+  apply(queryPayload());
+  orient();
+  if (document.fonts&&document.fonts.ready) {
+    document.fonts.ready.then(scheduleFit,scheduleFit);
+    if (document.fonts.addEventListener) {
+      document.fonts.addEventListener('loadingdone',scheduleFit);
+    }
+  }
+  window.addEventListener('load',scheduleFit);
+
+  post({
+    type:'educms-ready',
+    orientation:currentOrientation,
+    fields:fields('data-field'),
+    images:fields('data-imgslot')
+  });
+}());
+
+</script>
+</body>
+</html>

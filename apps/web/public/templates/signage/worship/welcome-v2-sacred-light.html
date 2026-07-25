@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Church Arrival 02 — Sacred Light</title>
+  <style>
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Archivo+Black&display=swap');
+
+* { box-sizing: border-box; }
+html, body {
+  width: 100%; height: 100%; margin: 0; overflow: hidden;
+  background: #090a09; -webkit-font-smoothing: antialiased;
+}
+body { font-family: 'Instrument Sans', sans-serif; }
+#scene-wrap {
+  --scene-scale: 1;
+  position: absolute; left: 50%; top: 50%; overflow: hidden;
+  transform: translate(-50%, -50%) scale(var(--scene-scale));
+  transform-origin: center center;
+}
+.scene { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+.scene::after {
+  content: ""; position: absolute; top:0;right:0;bottom:0;left:0; z-index: 50; pointer-events: none;
+  opacity: .08; mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.28'/%3E%3C/svg%3E");
+}
+[data-field], [data-imgslot] { max-width: 100%; }
+/*
+ * Text is never its own clipping mask. The previous shared rule hid glyphs
+ * whenever a fixed line box was a few pixels too short. Structural panels
+ * still contain their contents; editable text remains visible and is sized
+ * against deliberately generous boxes in each concept.
+ */
+.clip, [data-fit] { overflow: visible; }
+.route, .service-card { overflow: hidden; }
+.mono { font-family: 'DM Mono', monospace; }
+.serif { font-family: 'Newsreader', serif; }
+.is-editing [data-field], .is-editing [data-imgslot] { cursor: pointer; }
+.is-editing [data-field]:hover, .is-editing [data-imgslot]:hover {
+  outline: 4px solid rgba(255,255,255,.88); outline-offset: -4px;
+}
+.is-frozen *, .is-frozen *::before, .is-frozen *::after {
+  animation-play-state: paused !important; transition: none !important;
+}
+.is-portrait .scene { width: 1080px; height: 1920px; }
+
+</style>
+  <style>
+    :root {
+      --paper:#17100e; --ink:#f5eddf; --blue:#8d5365; --orange:#d4a35c;
+      --plum:#5c425d; --muted:#b9ad9d; --white:#fffaf0;
+      --font-display:'Newsreader',serif; --font-body:'Instrument Sans',sans-serif; --font-mono:'DM Mono',monospace;
+    }
+    .scene {
+      color:var(--ink); background:#160f0e;
+      background-image:
+        linear-gradient(90deg,rgba(15,9,9,.05) 0 43%,rgba(15,9,9,.52) 62%,rgba(15,9,9,.9) 100%),
+        url('assets/church-arrival-sacred-light-v1.png');
+      background-size:cover; background-position:center;
+    }
+    .top {
+      position:absolute; left:68px; top:44px; width:1784px; height:92px; z-index:8;
+      display:flex; align-items:center; border-top:2px solid rgba(255,250,240,.72);
+    }
+    .brand { min-height:64px; font:600 52px/1.12 var(--font-display); letter-spacing:-1px; }
+    .location { margin-left:34px; min-height:64px; font:500 52px/1.12 var(--font-mono); color:rgba(255,250,240,.5); }
+    .meta { margin-left:auto; display:flex; gap:34px; }
+    .meta span { min-height:64px; font:500 52px/1.12 var(--font-mono); white-space:nowrap; }
+    .copy { position:absolute; right:72px; top:196px; width:760px; height:560px; z-index:7; }
+    .kicker { min-height:66px; font:500 52px/1.12 var(--font-mono); color:var(--orange); text-transform:uppercase; }
+    h1 { margin:38px 0 0; width:750px; height:300px; font:500 154px/.88 var(--font-display); letter-spacing:-7px; }
+    h1 span { display:block; height:136px; white-space:nowrap; }
+    h1 span:last-child { font-style:italic; color:#f4d9ad; }
+    .body { margin-top:28px; width:700px; min-height:132px; font:500 52px/1.2 var(--font-body); color:rgba(255,250,240,.68); }
+    .service-float {
+      position:absolute; left:70px; bottom:315px; width:820px; height:230px; z-index:9;
+      padding:26px 34px; border-left:10px solid var(--orange); background:rgba(19,12,12,.84);
+      backdrop-filter:blur(16px);
+    }
+    .service-label {
+      width:390px; min-height:64px;
+      font:600 52px/1.12 var(--font-body); letter-spacing:-4.5px;
+      text-transform:uppercase; color:#e4c995; white-space:nowrap;
+    }
+    .service-row { display:block; margin-top:8px; }
+    .service-time { width:100%; min-height:112px; font:600 104px/1.05 var(--font-display); white-space:nowrap; }
+    .service-detail {
+      position:absolute; right:34px; top:28px; width:360px; min-height:64px;
+      text-align:right; font:500 52px/1.12 var(--font-body); letter-spacing:-4.5px;
+      color:rgba(255,255,255,.58); white-space:nowrap;
+    }
+    .rail {
+      position:absolute; left:0; bottom:0; width:1920px; height:270px; z-index:12;
+      display:grid; grid-template-columns:480px 480px 480px 480px;
+      background:#110d0d; border-top:1px solid rgba(255,255,255,.22);
+    }
+    .route { position:relative; padding:42px 36px 30px; border-right:1px solid rgba(255,255,255,.17); }
+    .route-label { min-height:72px; font:600 54px/1.08 var(--font-display); letter-spacing:-1px; white-space:nowrap; }
+    .route-detail {
+      height:116px; margin-top:12px; overflow:hidden;
+      font:500 52px/1.06 var(--font-body); letter-spacing:-1px;
+      color:rgba(255,250,240,.54); white-space:normal; text-overflow:clip;
+    }
+    .footer-note { display:none; }
+
+    .is-portrait .scene {
+      background-image:
+        linear-gradient(0deg,rgba(15,9,9,.98) 0 40%,rgba(15,9,9,.34) 68%,rgba(15,9,9,.05) 100%),
+        url('assets/church-arrival-sacred-light-v1.png');
+      background-size:auto 1180px; background-repeat:no-repeat; background-position:33% top;
+    }
+    .is-portrait .top { left:54px; top:42px; width:972px; }
+    .is-portrait .location { display:none; }
+    .is-portrait .meta span:first-child { display:none; }
+    .is-portrait .copy { left:54px; right:auto; top:650px; width:972px; height:560px; }
+    .is-portrait h1 { width:960px; height:300px; font-size:154px; }
+    .is-portrait h1 span { height:136px; }
+    .is-portrait .body { width:900px; }
+    .is-portrait .service-float {
+      left:54px; bottom:auto; top:1200px; width:972px; height:240px;
+    }
+    .is-portrait .rail {
+      bottom:0; width:1080px; height:480px;
+      grid-template-columns:540px 540px; grid-template-rows:240px 240px;
+    }
+    .is-portrait .route { padding:42px 34px 28px; }
+    .is-portrait .route-label { min-height:68px; font-size:54px; }
+    .is-portrait .route-detail { height:112px; margin-top:10px; }
+  </style>
+</head>
+<body>
+  <div id="scene-wrap">
+    <main class="scene" data-imgslot="hero.image" aria-label="Replaceable sacred-light architectural image">
+      <header class="top">
+        <div class="brand clip" data-field="brand.name">STILLWATER</div>
+        <div class="location clip" data-field="brand.location">CENTRAL CAMPUS</div>
+        <div class="meta"><span data-field="meta.day">SUNDAY · JUL 26</span><span data-field="meta.time">9:42 AM</span></div>
+      </header>
+      <section class="copy">
+        <div class="kicker clip" data-field="hero.kicker">A place to begin again</div>
+        <h1><span data-field="hero.line1" data-fit data-fit-min="112" data-fit-max="154">Grace meets</span><span data-field="hero.line2" data-fit data-fit-min="112" data-fit-max="154">us here.</span></h1>
+        <div class="body clip" data-field="hero.body">Bring the whole week. You belong in this room.</div>
+      </section>
+      <section class="service-float">
+        <div class="service-label clip" data-field="service.label">Next gathering</div>
+        <div class="service-row">
+          <div class="service-time clip" data-field="service.time" data-fit data-fit-min="96" data-fit-max="104">10:30 AM</div>
+          <div class="service-detail clip" data-field="service.detail">Doors open</div>
+        </div>
+      </section>
+      <footer class="rail">
+        <section class="route">
+          <div class="route-label" data-field="way.worship.label">Worship</div>
+          <div class="route-detail" data-field="way.worship.detail">Hall · Ahead</div>
+        </section>
+        <section class="route">
+          <div class="route-label" data-field="way.kids.label">Kids check-in</div>
+          <div class="route-detail" data-field="way.kids.detail">Kids · Left</div>
+        </section>
+        <section class="route">
+          <div class="route-label" data-field="way.guest.label">New here?</div>
+          <div class="route-detail" data-field="way.guest.detail">Desk · Right</div>
+        </section>
+        <section class="route">
+          <div class="route-label" data-field="way.access.label">Accessible</div>
+          <div class="route-detail" data-field="way.access.detail">North · Level</div>
+        </section>
+      </footer>
+      <div class="footer-note" data-field="footer.note">Coffee is ready in the Commons.</div>
+    </main>
+  </div>
+  <script>
+(function () {
+  'use strict';
+  var wrap = document.getElementById('scene-wrap');
+  var scene = wrap && wrap.querySelector('.scene');
+
+  function orient() {
+    var forcedOrientation = new URLSearchParams(location.search).get('orientation');
+    var portrait = forcedOrientation === 'portrait' ||
+      (forcedOrientation !== 'landscape' && innerHeight > innerWidth);
+    var width = portrait ? 1080 : 1920;
+    var height = portrait ? 1920 : 1080;
+    document.documentElement.classList.toggle('is-portrait', portrait);
+    wrap.style.width = width + 'px';
+    wrap.style.height = height + 'px';
+    scene.style.width = width + 'px';
+    scene.style.height = height + 'px';
+    wrap.style.setProperty('--scene-scale', Math.min(innerWidth / width, innerHeight / height));
+    setTimeout(fitAll, 0);
+  }
+
+  function queryJson(name) {
+    var value = new URLSearchParams(location.search).get(name);
+    if (!value) return {};
+    try {
+      var base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+      while (base64.length % 4) base64 += '=';
+      var binary = atob(base64);
+      var encoded = '';
+      for (var i = 0; i < binary.length; i++) {
+        encoded += '%' + ('00' + binary.charCodeAt(i).toString(16)).slice(-2);
+      }
+      return JSON.parse(decodeURIComponent(encoded));
+    } catch (_) {}
+    try { return JSON.parse(value); } catch (_) {}
+    try { return JSON.parse(decodeURIComponent(value)); } catch (_) {}
+    return {};
+  }
+
+  function nodes(key, attribute) {
+    var all = document.querySelectorAll('[' + attribute + ']');
+    var found = [];
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].getAttribute(attribute) === key) found.push(all[i]);
+    }
+    return found;
+  }
+
+  function setText(element, value) {
+    if (value.indexOf('&') !== -1) {
+      var decoder = document.createElement('textarea');
+      decoder.innerHTML = value;
+      value = decoder.value;
+    }
+    if (!element.children.length) {
+      element.textContent = value;
+      return;
+    }
+    var textNode = null;
+    for (var i = 0; i < element.childNodes.length; i++) {
+      if (element.childNodes[i].nodeType === 3) {
+        textNode = element.childNodes[i];
+        break;
+      }
+    }
+    if (textNode) textNode.textContent = value;
+    else element.insertBefore(document.createTextNode(value), element.firstChild);
+  }
+
+  function fitAll() {
+    var all = document.querySelectorAll('[data-fit]');
+    for (var i = 0; i < all.length; i++) {
+      var element = all[i];
+      var customMaximum = Number(element.dataset.fitCeiling || 0);
+      var minimum = Math.max(52, Number(element.getAttribute('data-fit-min') || 52));
+      var configuredMaximum = Number(element.getAttribute('data-fit-max') || 190);
+      if (!customMaximum) element.style.removeProperty('font-size');
+      var cssMaximum = parseFloat(getComputedStyle(element).fontSize) || configuredMaximum;
+      var maximum = Math.max(minimum, customMaximum || Math.min(configuredMaximum, cssMaximum));
+      var size = maximum;
+      element.style.fontSize = size + 'px';
+      while (
+        size > minimum &&
+        (
+          element.scrollWidth > element.clientWidth + 1 ||
+          element.scrollHeight > element.clientHeight + Math.max(6, size * .22)
+        )
+      ) {
+        size = Math.max(minimum, size - 4);
+        element.style.fontSize = size + 'px';
+      }
+    }
+  }
+
+  function apply(payload) {
+    payload = payload || {};
+    var root = document.documentElement.style;
+    var brand = payload.brand || {};
+    var text = payload.text || {};
+    var styles = payload.textStyles || {};
+    var images = payload.img || {};
+    if (brand.background) root.setProperty('--paper', brand.background);
+    if (brand.surface) root.setProperty('--paper', brand.surface);
+    if (brand.text) root.setProperty('--ink', brand.text);
+    if (brand.muted) root.setProperty('--muted', brand.muted);
+    if (brand.primary) root.setProperty('--blue', brand.primary);
+    if (brand.accent) root.setProperty('--orange', brand.accent);
+    if (brand.fontDisplay) root.setProperty('--font-display', brand.fontDisplay);
+    if (brand.fontBody) root.setProperty('--font-body', brand.fontBody);
+    if (brand.fontCondensed) root.setProperty('--font-mono', brand.fontCondensed);
+    var keys = {};
+    Object.keys(text).forEach(function (key) { keys[key] = true; });
+    Object.keys(styles).forEach(function (key) { keys[key] = true; });
+    Object.keys(keys).forEach(function (key) {
+      var list = nodes(key, 'data-field');
+      for (var i = 0; i < list.length; i++) {
+        if (typeof text[key] === 'string') setText(list[i], text[key]);
+        var style = styles[key] || {};
+        if (style.color) list[i].style.color = style.color;
+        if (style.fontSize != null) {
+          list[i].style.fontSize = typeof style.fontSize === 'number' ? style.fontSize + 'px' : style.fontSize;
+          if (list[i].hasAttribute('data-fit')) {
+            list[i].dataset.fitCeiling = String(parseFloat(String(style.fontSize)) || 0);
+          }
+        }
+        if (style.fontWeight != null) list[i].style.fontWeight = String(style.fontWeight);
+        if (style.fontStyle) list[i].style.fontStyle = style.fontStyle;
+        if (style.fontFamily) list[i].style.fontFamily = style.fontFamily;
+        if (style.textDecoration) list[i].style.textDecoration = style.textDecoration;
+        if (style.textAlign) list[i].style.textAlign = style.textAlign;
+        if (style.lineHeight != null) list[i].style.lineHeight = String(style.lineHeight);
+        if (style.backgroundColor) list[i].style.backgroundColor = style.backgroundColor;
+        if (Object.prototype.hasOwnProperty.call(style, 'hidden')) {
+          list[i].style.display = style.hidden ? 'none' : '';
+        }
+      }
+    });
+    Object.keys(images).forEach(function (key) {
+      var list = nodes(key, 'data-imgslot');
+      for (var i = 0; i < list.length; i++) {
+        if (typeof images[key] !== 'string') continue;
+        var safe = images[key].replace(/["'()\s]/g, '');
+        list[i].setAttribute('data-img', safe);
+        if (safe) {
+          list[i].style.backgroundImage = 'url("' + safe + '")';
+          list[i].style.backgroundSize = 'cover';
+          list[i].style.backgroundPosition = 'center';
+          list[i].classList.add('has-img');
+          list[i].setAttribute('data-has-image', 'true');
+        } else {
+          list[i].style.backgroundImage = '';
+          list[i].classList.remove('has-img');
+          list[i].removeAttribute('data-has-image');
+        }
+      }
+    });
+    setTimeout(fitAll, 0);
+  }
+
+  function armEdit() {
+    document.documentElement.classList.add('is-editing');
+    document.documentElement.classList.remove('is-frozen');
+    var all = document.querySelectorAll('[data-field],[data-imgslot]');
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].dataset.armed) continue;
+      all[i].dataset.armed = '1';
+      all[i].addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        parent.postMessage({
+          type: 'educms-field-click',
+          key: this.getAttribute('data-field') || this.getAttribute('data-imgslot'),
+          kind: this.hasAttribute('data-field') ? 'text' : 'img'
+        }, '*');
+      }, true);
+    }
+  }
+
+  addEventListener('resize', orient);
+  apply({
+    brand: queryJson('brand'),
+    text: queryJson('text'),
+    textStyles: queryJson('textStyles'),
+    img: queryJson('img')
+  });
+  orient();
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(function () {
+      fitAll();
+    });
+  }
+  if (new URLSearchParams(location.search).get('freeze') === '1') {
+    document.documentElement.classList.add('is-frozen');
+  }
+  addEventListener('message', function (event) {
+    var data = event.data;
+    if (!data || typeof data !== 'object') return;
+    if (data.type === 'educms-overrides') apply(data);
+    if (data.type === 'educms-edit-mode' && data.on) armEdit();
+    if (data.type === 'educms-freeze') document.documentElement.classList.add('is-frozen');
+    if (data.type === 'educms-unfreeze') document.documentElement.classList.remove('is-frozen');
+  });
+  try { parent.postMessage({ type: 'educms-ready' }, '*'); } catch (_) {}
+}());
+
+</script>
+</body>
+</html>

@@ -1,0 +1,845 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QSR Counter Order 03 — Menu Folio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,600;6..96,700;6..96,800&family=Instrument+Sans:wght@500;600;700&family=Source+Code+Pro:wght@500;600;700&display=swap" rel="stylesheet" />
+  <style>
+* { box-sizing: border-box; }
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #090a09;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+
+#scene-wrap {
+  --scene-scale: 1;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  overflow: hidden;
+  transform: translate(-50%, -50%) scale(var(--scene-scale));
+  transform-origin: center center;
+}
+
+.scene {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+}
+
+.scene::after {
+  content: "";
+  position: absolute;
+  top:0;right:0;bottom:0;left:0;
+  z-index: 90;
+  pointer-events: none;
+  opacity: .045;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.36'/%3E%3C/svg%3E");
+}
+
+[data-field],
+[data-imgslot] {
+  max-width: 100%;
+}
+
+[data-fit] {
+  overflow: visible;
+}
+
+.is-editing [data-field],
+.is-editing [data-imgslot] {
+  cursor: pointer;
+}
+
+.is-editing [data-field]:hover,
+.is-editing [data-imgslot]:hover {
+  outline: 4px solid rgba(255, 255, 255, .94);
+  outline-offset: -4px;
+}
+
+.is-frozen *,
+.is-frozen *::before,
+.is-frozen *::after {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+
+.is-portrait .scene {
+  width: 1080px;
+  height: 1920px;
+}
+
+</style>
+  <style>
+    :root {
+      --ink:#211a16;
+      --paper:#eee5d3;
+      --surface:#d9cbb3;
+      --primary:#842f31;
+      --accent:#b08b49;
+      --muted:#75695e;
+      --wood:#2a1914;
+      --font-display:'Bodoni Moda',Georgia,serif;
+      --font-body:'Instrument Sans',Arial,sans-serif;
+      --font-mono:'Source Code Pro',monospace;
+    }
+    body { font-family:var(--font-body); }
+    .scene {
+      color:var(--paper); background:
+        radial-gradient(900px 500px at 50% -10%,rgba(196,141,86,.18),transparent 65%),
+        repeating-linear-gradient(92deg,rgba(255,255,255,.025) 0 3px,rgba(0,0,0,.035) 3px 8px),
+        linear-gradient(120deg,#21110e,#38231c 48%,#1f100d);
+    }
+    .folio {
+      position:absolute; left:58px; top:42px; width:1804px; height:920px;
+      color:var(--ink); background:
+        linear-gradient(90deg,#eee5d3 0%,#f4eddf 48.7%,#cabca4 49.8%,#a99b85 50%,#d6c9b2 50.2%,#f3ecde 51.3%,#eee5d3 100%);
+      clip-path:polygon(0 .8%,2% 0,4% .6%,6% 0,8% .5%,10% 0,12% .4%,14% 0,16% .6%,18% 0,20% .5%,22% 0,24% .6%,26% 0,28% .4%,30% 0,32% .7%,34% 0,36% .5%,38% 0,40% .6%,42% 0,44% .5%,46% 0,48% .6%,50% 0,52% .5%,54% 0,56% .6%,58% 0,60% .4%,62% 0,64% .6%,66% 0,68% .5%,70% 0,72% .6%,74% 0,76% .4%,78% 0,80% .6%,82% 0,84% .5%,86% 0,88% .6%,90% 0,92% .5%,94% 0,96% .6%,98% 0,100% .8%,100% 99.2%,98% 100%,96% 99.5%,94% 100%,92% 99.4%,90% 100%,88% 99.5%,86% 100%,84% 99.4%,82% 100%,80% 99.5%,78% 100%,76% 99.4%,74% 100%,72% 99.5%,70% 100%,68% 99.4%,66% 100%,64% 99.5%,62% 100%,60% 99.4%,58% 100%,56% 99.5%,54% 100%,52% 99.4%,50% 100%,48% 99.5%,46% 100%,44% 99.4%,42% 100%,40% 99.5%,38% 100%,36% 99.4%,34% 100%,32% 99.5%,30% 100%,28% 99.4%,26% 100%,24% 99.5%,22% 100%,20% 99.4%,18% 100%,16% 99.5%,14% 100%,12% 99.4%,10% 100%,8% 99.5%,6% 100%,4% 99.4%,2% 100%,0 99.2%);
+      box-shadow:0 20px 40px rgba(0,0,0,.38);
+    }
+    .folio::before {
+      content:""; position:absolute; top:0;right:0;bottom:0;left:0; opacity:.17; pointer-events:none;
+      background:
+        radial-gradient(circle at 20% 18%,rgba(75,48,35,.18) 0 1px,transparent 2px),
+        radial-gradient(circle at 76% 68%,rgba(75,48,35,.14) 0 1px,transparent 2px);
+      background-size:17px 19px,23px 29px;
+    }
+    .folio-head {
+      position:absolute; left:54px; right:54px; top:34px; height:154px;
+      display:grid; grid-template-columns:760px 1fr; align-items:center;
+      border-bottom:3px double rgba(33,26,22,.55);
+    }
+    .identity { min-width:0; }
+    .brand {
+      width:730px; height:88px; display:flex; align-items:center;
+      color:var(--primary); font:800 76px/.9 var(--font-display);
+      letter-spacing:-4px;
+    }
+    .brand-note {
+      width:700px; height:66px; display:flex; align-items:center;
+      color:var(--muted); font:600 52px/1 var(--font-body);
+    }
+    .daily {
+      height:132px; display:grid; grid-template-columns:1fr 230px;
+      grid-template-rows:64px 68px; align-items:center;
+      border-top:2px solid var(--primary); border-bottom:2px solid var(--primary);
+    }
+    .daily-kicker {
+      grid-column:1; grid-row:1; height:64px; display:flex; align-items:center;
+      color:var(--primary); font:700 52px/1 var(--font-mono);
+      text-transform:uppercase;
+    }
+    .daily-name {
+      grid-column:1; grid-row:2; width:100%; height:68px;
+      display:flex; align-items:center;
+      font:700 58px/1 var(--font-display); letter-spacing:-2px;
+    }
+    .daily-price {
+      grid-column:2; grid-row:1 / 3; height:110px;
+      display:flex; align-items:center; justify-content:flex-end;
+      color:var(--primary); font:700 76px/1 var(--font-mono); letter-spacing:-5px;
+    }
+    .pages {
+      position:absolute; left:54px; right:54px; top:208px; height:674px;
+      display:grid; grid-template-columns:1fr 1fr; gap:90px;
+    }
+    .page { min-width:0; }
+    .menu-section {
+      height:337px; padding:14px 8px 10px;
+      border-bottom:2px solid rgba(33,26,22,.26);
+    }
+    .menu-section:nth-child(2) { border-bottom:0; }
+    .section-title {
+      width:100%; height:78px; display:flex; align-items:center;
+      color:var(--primary); font:700 66px/.9 var(--font-display);
+      letter-spacing:-2px;
+    }
+    .section-items { height:234px; }
+    .menu-row {
+      height:78px; display:grid;
+      grid-template-columns:minmax(0,1fr) 170px 200px; align-items:center;
+      gap:18px; border-top:1px solid rgba(33,26,22,.20);
+    }
+    .item-name {
+      width:100%; height:72px; display:flex; align-items:center;
+      font:700 60px/.94 var(--font-body); letter-spacing:-2px;
+    }
+    .item-cal {
+      height:66px; display:flex; align-items:center; justify-content:flex-end;
+      color:var(--muted); font:500 52px/1 var(--font-mono);
+    }
+    .item-price {
+      height:66px; display:flex; align-items:center; justify-content:flex-end;
+      font:700 60px/1 var(--font-mono); letter-spacing:-3px;
+    }
+    .spine-pin {
+      position:absolute; left:50%; width:18px; height:18px; margin-left:-9px;
+      border-radius:50%; background:var(--accent);
+      box-shadow:inset 0 2px 3px rgba(255,255,255,.35),0 2px 4px rgba(0,0,0,.35);
+    }
+    .spine-pin.top { top:196px; }
+    .spine-pin.bottom { bottom:18px; }
+    .counter-footer {
+      position:absolute; left:58px; right:58px; bottom:0; height:102px;
+      display:grid; grid-template-columns:700px 1fr; align-items:center;
+      border-top:2px solid rgba(238,229,211,.35);
+    }
+    .order-path {
+      height:80px; display:flex; align-items:center;
+      color:var(--accent); font:600 52px/1 var(--font-mono);
+      text-transform:uppercase;
+    }
+    .dietary {
+      height:80px; display:flex; align-items:center; justify-content:flex-end;
+      color:var(--paper); font:600 52px/1 var(--font-body);
+    }
+
+    .is-portrait .folio {
+      left:38px; top:34px; width:1004px; height:1740px;
+      background:var(--paper);
+    }
+    .is-portrait .folio-head {
+      left:38px; right:38px; top:28px; height:288px;
+      display:block;
+    }
+    .is-portrait .brand { width:928px; height:92px; font-size:72px; }
+    .is-portrait .brand-note { width:928px; height:66px; font-size:52px; }
+    .is-portrait .daily {
+      width:928px; height:130px; grid-template-columns:1fr 220px;
+      grid-template-rows:64px 66px;
+    }
+    .is-portrait .daily-kicker { height:64px; font-size:52px; }
+    .is-portrait .daily-name { height:66px; font-size:54px; }
+    .is-portrait .daily-price { height:100px; font-size:70px; }
+    .is-portrait .pages {
+      left:38px; right:38px; top:332px; height:1368px;
+      display:block;
+    }
+    .is-portrait .page { display:contents; }
+    .is-portrait .menu-section {
+      height:342px; padding:12px 4px 8px;
+      border-bottom:2px solid rgba(33,26,22,.26);
+    }
+    .is-portrait .menu-section:nth-child(2) { border-bottom:2px solid rgba(33,26,22,.26); }
+    .is-portrait .menu-section:last-child { border-bottom:0; }
+    .is-portrait .section-title { height:82px; font-size:64px; }
+    .is-portrait .section-items { height:240px; }
+    .is-portrait .menu-row {
+      height:80px; grid-template-columns:minmax(0,1fr) 170px 200px; gap:14px;
+    }
+    .is-portrait .item-name { height:76px; font-size:58px; }
+    .is-portrait .item-cal { height:68px; font-size:52px; }
+    .is-portrait .item-price { height:68px; font-size:60px; }
+    .is-portrait .spine-pin { display:none; }
+    .is-portrait .counter-footer {
+      left:38px; right:38px; bottom:14px; height:118px; grid-template-columns:1fr;
+      align-content:center;
+    }
+    .is-portrait .order-path { height:58px; font-size:52px; }
+    .is-portrait .dietary {
+      height:58px; justify-content:flex-start; font-size:52px;
+    }
+  </style>
+</head>
+<body>
+  <div id="scene-wrap">
+    <main class="scene">
+      <section class="folio">
+        <header class="folio-head">
+          <div class="identity">
+            <div class="brand" data-field="brand.name" data-fit data-fit-min="52" data-fit-max="76">ORCHARD &amp; IRON</div>
+            <div class="brand-note" data-field="brand.note" data-fit data-fit-min="52" data-fit-max="52">Cooked to order</div>
+          </div>
+          <div class="daily">
+            <div class="daily-kicker" data-field="special.kicker" data-fit data-fit-min="52" data-fit-max="52">Midday Table</div>
+            <div class="daily-name" data-field="special.name" data-fit data-fit-min="52" data-fit-max="58">Smash, fries + tea</div>
+            <div class="daily-price" data-field="special.price" data-fit data-fit-min="52" data-fit-max="76">$9.50</div>
+          </div>
+        </header>
+
+        <div class="pages">
+          <div class="page">
+            <article class="menu-section">
+              <div class="section-title" data-field="menu.burgers.title">Burgers</div>
+              <div class="section-items">
+                <div class="menu-row"><div class="item-name" data-field="menu.burgers.0.name" data-fit data-fit-min="52" data-fit-max="60">House Smash</div><div class="item-cal" data-field="menu.burgers.0.calories">690</div><div class="item-price" data-field="menu.burgers.0.price" data-fit data-fit-min="52" data-fit-max="60">$9.20</div></div>
+                <div class="menu-row"><div class="item-name" data-field="menu.burgers.1.name" data-fit data-fit-min="52" data-fit-max="60">Bacon Double</div><div class="item-cal" data-field="menu.burgers.1.calories">880</div><div class="item-price" data-field="menu.burgers.1.price" data-fit data-fit-min="52" data-fit-max="60">$10.80</div></div>
+                <div class="menu-row"><div class="item-name" data-field="menu.burgers.2.name" data-fit data-fit-min="52" data-fit-max="60">Garden Patty</div><div class="item-cal" data-field="menu.burgers.2.calories">520</div><div class="item-price" data-field="menu.burgers.2.price" data-fit data-fit-min="52" data-fit-max="60">$8.80</div></div>
+              </div>
+            </article>
+            <article class="menu-section">
+              <div class="section-title" data-field="menu.chicken.title">Chicken</div>
+              <div class="section-items">
+                <div class="menu-row"><div class="item-name" data-field="menu.chicken.0.name" data-fit data-fit-min="52" data-fit-max="60">Crisp Original</div><div class="item-cal" data-field="menu.chicken.0.calories">640</div><div class="item-price" data-field="menu.chicken.0.price" data-fit data-fit-min="52" data-fit-max="60">$9.40</div></div>
+                <div class="menu-row"><div class="item-name" data-field="menu.chicken.1.name" data-fit data-fit-min="52" data-fit-max="60">Chile Honey</div><div class="item-cal" data-field="menu.chicken.1.calories">690</div><div class="item-price" data-field="menu.chicken.1.price" data-fit data-fit-min="52" data-fit-max="60">$9.90</div></div>
+                <div class="menu-row"><div class="item-name" data-field="menu.chicken.2.name" data-fit data-fit-min="52" data-fit-max="60">Four Tenders</div><div class="item-cal" data-field="menu.chicken.2.calories">610</div><div class="item-price" data-field="menu.chicken.2.price" data-fit data-fit-min="52" data-fit-max="60">$8.90</div></div>
+              </div>
+            </article>
+          </div>
+
+          <div class="page">
+            <article class="menu-section">
+              <div class="section-title" data-field="menu.sides.title">Sides</div>
+              <div class="section-items">
+                <div class="menu-row"><div class="item-name" data-field="menu.sides.0.name" data-fit data-fit-min="52" data-fit-max="60">Sea-Salt Fries</div><div class="item-cal" data-field="menu.sides.0.calories">390</div><div class="item-price" data-field="menu.sides.0.price" data-fit data-fit-min="52" data-fit-max="60">$3.40</div></div>
+                <div class="menu-row"><div class="item-name" data-field="menu.sides.1.name" data-fit data-fit-min="52" data-fit-max="60">Onion Rings</div><div class="item-cal" data-field="menu.sides.1.calories">450</div><div class="item-price" data-field="menu.sides.1.price" data-fit data-fit-min="52" data-fit-max="60">$4.40</div></div>
+                <div class="menu-row"><div class="item-name" data-field="menu.sides.2.name" data-fit data-fit-min="52" data-fit-max="60">House Greens</div><div class="item-cal" data-field="menu.sides.2.calories">160</div><div class="item-price" data-field="menu.sides.2.price" data-fit data-fit-min="52" data-fit-max="60">$4.80</div></div>
+              </div>
+            </article>
+            <article class="menu-section">
+              <div class="section-title" data-field="menu.drinks.title">Drinks</div>
+              <div class="section-items">
+                <div class="menu-row"><div class="item-name" data-field="menu.drinks.0.name" data-fit data-fit-min="52" data-fit-max="60">Fountain</div><div class="item-cal" data-field="menu.drinks.0.calories">0–320</div><div class="item-price" data-field="menu.drinks.0.price" data-fit data-fit-min="52" data-fit-max="60">$2.70</div></div>
+                <div class="menu-row"><div class="item-name" data-field="menu.drinks.1.name" data-fit data-fit-min="52" data-fit-max="60">Citrus Tea</div><div class="item-cal" data-field="menu.drinks.1.calories">180</div><div class="item-price" data-field="menu.drinks.1.price" data-fit data-fit-min="52" data-fit-max="60">$3.20</div></div>
+                <div class="menu-row"><div class="item-name" data-field="menu.drinks.2.name" data-fit data-fit-min="52" data-fit-max="60">Vanilla Shake</div><div class="item-cal" data-field="menu.drinks.2.calories">620</div><div class="item-price" data-field="menu.drinks.2.price" data-fit data-fit-min="52" data-fit-max="60">$4.90</div></div>
+              </div>
+            </article>
+          </div>
+        </div>
+        <span class="spine-pin top" aria-hidden="true"></span>
+        <span class="spine-pin bottom" aria-hidden="true"></span>
+      </section>
+
+      <footer class="counter-footer">
+        <div class="order-path" data-field="service.path">Order → Pickup Window</div>
+        <div class="dietary" data-field="dietary.legend">V · GF · CHILE = SPICY</div>
+      </footer>
+    </main>
+  </div>
+  <script>
+(function () {
+  'use strict';
+
+  var LANDSCAPE = { name: 'landscape', width: 1920, height: 1080 };
+  var PORTRAIT = { name: 'portrait', width: 1080, height: 1920 };
+  var root = document.documentElement;
+  var wrap = document.getElementById('scene-wrap');
+  var activeScene = null;
+  var currentOrientation = '';
+  var fitFrame = 0;
+  var editMode = false;
+  var lastOverflowSignature = '';
+
+  if (!wrap) return;
+
+  function query() {
+    return new URLSearchParams(window.location.search);
+  }
+
+  function orientationForViewport() {
+    var forced = query().get('orientation');
+    if (forced === 'portrait') return PORTRAIT;
+    if (forced === 'landscape') return LANDSCAPE;
+    return window.innerHeight > window.innerWidth ? PORTRAIT : LANDSCAPE;
+  }
+
+  function sceneOrientation(scene) {
+    var declared = scene.getAttribute('data-orientation') ||
+      scene.getAttribute('data-scene-orientation') || '';
+    if (!declared && scene.classList.contains('scene-portrait')) declared = 'portrait';
+    if (!declared && scene.classList.contains('scene-landscape')) declared = 'landscape';
+    return declared.toLowerCase();
+  }
+
+  function selectScene(orientation) {
+    var scenes = wrap.querySelectorAll('.scene');
+    var selected = scenes.length ? scenes[0] : null;
+    var hasDedicatedScenes = false;
+    var i;
+
+    for (i = 0; i < scenes.length; i++) {
+      if (sceneOrientation(scenes[i])) hasDedicatedScenes = true;
+      if (sceneOrientation(scenes[i]) === orientation.name) selected = scenes[i];
+    }
+
+    if (hasDedicatedScenes) {
+      for (i = 0; i < scenes.length; i++) {
+        var isSelected = scenes[i] === selected;
+        scenes[i].style.display = isSelected ? '' : 'none';
+        scenes[i].setAttribute('aria-hidden', isSelected ? 'false' : 'true');
+      }
+    }
+
+    return selected;
+  }
+
+  function post(message) {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(message, '*');
+      }
+    } catch (_) {}
+  }
+
+  function scheduleFit() {
+    if (fitFrame) window.cancelAnimationFrame(fitFrame);
+    fitFrame = window.requestAnimationFrame(function () {
+      fitFrame = 0;
+      fitAll();
+    });
+  }
+
+  function orient() {
+    var orientation = orientationForViewport();
+    activeScene = selectScene(orientation);
+    if (!activeScene) return;
+
+    currentOrientation = orientation.name;
+    root.classList.toggle('is-portrait', orientation.name === 'portrait');
+    root.classList.toggle('is-landscape', orientation.name === 'landscape');
+    root.setAttribute('data-orientation', orientation.name);
+
+    if (document.body) document.body.setAttribute('data-orientation', orientation.name);
+    wrap.setAttribute('data-orientation', orientation.name);
+    activeScene.setAttribute('data-active-orientation', orientation.name);
+
+    wrap.style.width = orientation.width + 'px';
+    wrap.style.height = orientation.height + 'px';
+    activeScene.style.width = orientation.width + 'px';
+    activeScene.style.height = orientation.height + 'px';
+
+    wrap.style.setProperty('--scene-width', orientation.width + 'px');
+    wrap.style.setProperty('--scene-height', orientation.height + 'px');
+    wrap.style.setProperty(
+      '--scene-scale',
+      String(Math.min(
+        window.innerWidth / orientation.width,
+        window.innerHeight / orientation.height
+      ))
+    );
+
+    scheduleFit();
+    post({
+      type: 'educms-orientation',
+      orientation: orientation.name,
+      width: orientation.width,
+      height: orientation.height
+    });
+  }
+
+  function decodeBase64Json(value) {
+    var base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4) base64 += '=';
+    var binary = window.atob(base64);
+    var bytes = '';
+    var i;
+    for (i = 0; i < binary.length; i++) {
+      bytes += '%' + ('00' + binary.charCodeAt(i).toString(16)).slice(-2);
+    }
+    return JSON.parse(decodeURIComponent(bytes));
+  }
+
+  function queryJson(name) {
+    var value = query().get(name);
+    if (!value) return {};
+
+    try { return JSON.parse(value); } catch (_) {}
+    try { return JSON.parse(decodeURIComponent(value)); } catch (_) {}
+    try { return decodeBase64Json(value); } catch (_) {}
+    return {};
+  }
+
+  function nodes(key, attribute) {
+    var all = document.querySelectorAll('[' + attribute + ']');
+    var found = [];
+    var i;
+    for (i = 0; i < all.length; i++) {
+      if (all[i].getAttribute(attribute) === key) found.push(all[i]);
+    }
+    return found;
+  }
+
+  function hasNodes(key, attribute) {
+    return nodes(key, attribute).length > 0;
+  }
+
+  function setText(element, value) {
+    var text = value == null ? '' : String(value);
+
+    if (text.indexOf('&') !== -1) {
+      var decoder = document.createElement('textarea');
+      decoder.innerHTML = text;
+      text = decoder.value;
+    }
+
+    if (element.getAttribute('data-preserve-children') === 'true') {
+      var textNode = null;
+      var i;
+      for (i = 0; i < element.childNodes.length; i++) {
+        if (element.childNodes[i].nodeType === 3) {
+          textNode = element.childNodes[i];
+          break;
+        }
+      }
+      if (textNode) textNode.textContent = text;
+      else element.insertBefore(document.createTextNode(text), element.firstChild);
+      return;
+    }
+
+    element.textContent = text;
+  }
+
+  function numberAttribute(element, name, fallback) {
+    var value = Number(element.getAttribute(name));
+    return isFinite(value) && value > 0 ? value : fallback;
+  }
+
+  function overflows(element) {
+    return element.scrollWidth > element.clientWidth + 1 ||
+      element.scrollHeight > element.clientHeight + 1;
+  }
+
+  function fitElement(element) {
+    if (!element.clientWidth || !element.clientHeight) return false;
+
+    if (typeof element.__educmsOriginalFontSize === 'undefined') {
+      element.__educmsOriginalFontSize = element.style.fontSize || '';
+    }
+
+    var customMaximum = Number(element.getAttribute('data-fit-ceiling') ||
+      element.__educmsFitCeiling || 0);
+    var minimum = numberAttribute(element, 'data-fit-min', 52);
+    var configuredMaximum = numberAttribute(element, 'data-fit-max', 0);
+
+    if (customMaximum) {
+      element.style.fontSize = customMaximum + 'px';
+    } else {
+      element.style.fontSize = element.__educmsOriginalFontSize;
+    }
+
+    var cssMaximum = parseFloat(window.getComputedStyle(element).fontSize) || minimum;
+    var maximum = customMaximum || cssMaximum;
+    if (configuredMaximum) maximum = Math.min(maximum, configuredMaximum);
+    maximum = Math.max(minimum, maximum);
+
+    element.style.fontSize = maximum + 'px';
+    if (!overflows(element)) {
+      element.removeAttribute('data-fit-overflow');
+      element.setAttribute('data-fit-size', String(Math.round(maximum)));
+      return false;
+    }
+
+    var low = Math.ceil(minimum);
+    var high = Math.floor(maximum);
+    var best = low;
+
+    while (low <= high) {
+      var middle = Math.floor((low + high) / 2);
+      element.style.fontSize = middle + 'px';
+      if (overflows(element)) {
+        high = middle - 1;
+      } else {
+        best = middle;
+        low = middle + 1;
+      }
+    }
+
+    element.style.fontSize = best + 'px';
+    element.setAttribute('data-fit-size', String(best));
+
+    if (overflows(element)) {
+      element.setAttribute('data-fit-overflow', 'true');
+      return true;
+    }
+
+    element.removeAttribute('data-fit-overflow');
+    return false;
+  }
+
+  function fitAll() {
+    var all = document.querySelectorAll('[data-fit]');
+    var overflowKeys = [];
+    var i;
+
+    for (i = 0; i < all.length; i++) {
+      if (fitElement(all[i])) {
+        overflowKeys.push(
+          all[i].getAttribute('data-field') ||
+          all[i].getAttribute('data-fit-name') ||
+          'unlabelled-fit-' + (i + 1)
+        );
+      }
+    }
+
+    var signature = currentOrientation + ':' + overflowKeys.join('|');
+    if (overflowKeys.length && signature !== lastOverflowSignature) {
+      post({
+        type: 'educms-fit-overflow',
+        orientation: currentOrientation,
+        keys: overflowKeys
+      });
+    }
+    lastOverflowSignature = signature;
+  }
+
+  function applyBrand(brand) {
+    if (!brand || typeof brand !== 'object') return;
+    var styles = root.style;
+    var variableMap = {
+      background: ['--paper', '--background'],
+      surface: ['--surface', '--paper'],
+      text: ['--ink', '--text'],
+      muted: ['--muted'],
+      primary: ['--primary', '--blue'],
+      accent: ['--accent', '--orange'],
+      fontDisplay: ['--font-display'],
+      fontBody: ['--font-body'],
+      fontCondensed: ['--font-condensed', '--font-mono'],
+      fontSerif: ['--font-serif'],
+      fontMono: ['--font-mono']
+    };
+    var key;
+    var i;
+
+    for (key in variableMap) {
+      if (!Object.prototype.hasOwnProperty.call(variableMap, key)) continue;
+      if (brand[key] == null || brand[key] === '') continue;
+      for (i = 0; i < variableMap[key].length; i++) {
+        styles.setProperty(variableMap[key][i], String(brand[key]));
+      }
+    }
+
+    var custom = brand.cssVariables || brand.variables || {};
+    for (key in custom) {
+      if (!Object.prototype.hasOwnProperty.call(custom, key)) continue;
+      var property = key.indexOf('--') === 0 ? key : '--' + key;
+      styles.setProperty(property, String(custom[key]));
+    }
+  }
+
+  function applyTextStyle(element, style) {
+    if (!style || typeof style !== 'object') return;
+
+    if (style.color != null) element.style.color = String(style.color);
+    if (style.fontWeight != null) element.style.fontWeight = String(style.fontWeight);
+    if (style.fontStyle != null) element.style.fontStyle = String(style.fontStyle);
+    if (style.fontFamily != null) element.style.fontFamily = String(style.fontFamily);
+    if (style.textDecoration != null) element.style.textDecoration = String(style.textDecoration);
+    if (style.textAlign != null) element.style.textAlign = String(style.textAlign);
+    if (style.lineHeight != null) element.style.lineHeight = String(style.lineHeight);
+    if (style.letterSpacing != null) element.style.letterSpacing = String(style.letterSpacing);
+    if (style.textTransform != null) element.style.textTransform = String(style.textTransform);
+    if (style.backgroundColor != null) {
+      element.style.backgroundColor = String(style.backgroundColor);
+    }
+    if (style.opacity != null) element.style.opacity = String(style.opacity);
+
+    if (style.fontSize != null && style.fontSize !== '') {
+      var size = parseFloat(String(style.fontSize));
+      if (isFinite(size) && size > 0) {
+        element.style.fontSize = size + 'px';
+        if (element.hasAttribute('data-fit')) element.__educmsFitCeiling = size;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(style, 'hidden')) {
+      element.style.display = style.hidden ? 'none' : '';
+      element.setAttribute('aria-hidden', style.hidden ? 'true' : 'false');
+    }
+  }
+
+  function cssUrl(value) {
+    return 'url("' + value
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
+      .replace(/[\n\r\f]/g, '') + '")';
+  }
+
+  function applyImage(element, value) {
+    var source = value;
+    var position = '';
+    var size = '';
+
+    if (value && typeof value === 'object') {
+      source = value.src || value.url || '';
+      position = value.position || '';
+      size = value.size || value.fit || '';
+    }
+    if (source == null) return;
+    source = String(source);
+
+    element.setAttribute('data-img', source);
+    if (element.tagName && element.tagName.toLowerCase() === 'img') {
+      if (source) element.setAttribute('src', source);
+      else element.removeAttribute('src');
+    } else {
+      element.style.backgroundImage = source ? cssUrl(source) : 'none';
+      if (position) element.style.backgroundPosition = String(position);
+      if (size) element.style.backgroundSize = String(size);
+    }
+
+    element.classList.toggle('has-img', Boolean(source));
+    if (source) element.setAttribute('data-has-image', 'true');
+    else element.removeAttribute('data-has-image');
+  }
+
+  function apply(payload) {
+    payload = payload || {};
+    var text = payload.text || {};
+    var styles = payload.textStyles || {};
+    var images = payload.img || payload.images || {};
+    var keys = {};
+    var key;
+    var list;
+    var i;
+
+    applyBrand(payload.brand || {});
+
+    for (key in text) {
+      if (Object.prototype.hasOwnProperty.call(text, key)) keys[key] = true;
+    }
+    for (key in styles) {
+      if (Object.prototype.hasOwnProperty.call(styles, key)) keys[key] = true;
+    }
+
+    for (key in keys) {
+      if (!Object.prototype.hasOwnProperty.call(keys, key)) continue;
+      list = nodes(key, 'data-field');
+      for (i = 0; i < list.length; i++) {
+        if (Object.prototype.hasOwnProperty.call(text, key)) setText(list[i], text[key]);
+        applyTextStyle(list[i], styles[key]);
+      }
+    }
+
+    for (key in images) {
+      if (!Object.prototype.hasOwnProperty.call(images, key)) continue;
+      list = nodes(key, 'data-imgslot');
+      for (i = 0; i < list.length; i++) applyImage(list[i], images[key]);
+    }
+
+    scheduleFit();
+  }
+
+  function queryPayload() {
+    var params = query();
+    var brand = queryJson('brand');
+    var text = queryJson('text');
+    var textStyles = queryJson('textStyles');
+    var images = queryJson('img');
+    var payload = {
+      brand: brand && typeof brand === 'object' && !Array.isArray(brand) ? brand : {},
+      text: text && typeof text === 'object' && !Array.isArray(text) ? text : {},
+      textStyles: textStyles && typeof textStyles === 'object' &&
+        !Array.isArray(textStyles) ? textStyles : {},
+      img: images && typeof images === 'object' && !Array.isArray(images) ? images : {}
+    };
+
+    params.forEach(function (value, key) {
+      var fieldKey = '';
+      if (key.indexOf('field.') === 0) fieldKey = key.slice(6);
+      else if (key.indexOf('text.') === 0) fieldKey = key.slice(5);
+      else if (hasNodes(key, 'data-field')) fieldKey = key;
+
+      if (fieldKey) {
+        payload.text[fieldKey] = value;
+        return;
+      }
+
+      var imageKey = '';
+      if (key.indexOf('image.') === 0) imageKey = key.slice(6);
+      else if (key.indexOf('img.') === 0) imageKey = key.slice(4);
+      else if (hasNodes(key, 'data-imgslot')) imageKey = key;
+      if (imageKey) payload.img[imageKey] = value;
+    });
+
+    return payload;
+  }
+
+  function fieldsForReadyMessage(attribute) {
+    var elements = document.querySelectorAll('[' + attribute + ']');
+    var seen = {};
+    var values = [];
+    var i;
+    var key;
+    for (i = 0; i < elements.length; i++) {
+      key = elements[i].getAttribute(attribute);
+      if (key && !seen[key]) {
+        seen[key] = true;
+        values.push(key);
+      }
+    }
+    return values;
+  }
+
+  function setEditMode(on) {
+    editMode = Boolean(on);
+    root.classList.toggle('is-editing', editMode);
+    if (editMode) root.classList.remove('is-frozen');
+  }
+
+  function editableClick(event) {
+    if (!editMode) return;
+    var element = event.target;
+    while (
+      element &&
+      element !== document &&
+      !element.hasAttribute('data-field') &&
+      !element.hasAttribute('data-imgslot')
+    ) {
+      element = element.parentNode;
+    }
+    if (!element || element === document) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    post({
+      type: 'educms-field-click',
+      key: element.getAttribute('data-field') || element.getAttribute('data-imgslot'),
+      kind: element.hasAttribute('data-field') ? 'text' : 'img'
+    });
+  }
+
+  document.addEventListener('click', editableClick, true);
+  window.addEventListener('resize', orient);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', orient);
+
+  apply(queryPayload());
+  orient();
+
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(scheduleFit, scheduleFit);
+    if (document.fonts.addEventListener) {
+      document.fonts.addEventListener('loadingdone', scheduleFit);
+    }
+  }
+  window.addEventListener('load', scheduleFit);
+
+  var initialQuery = query();
+  if (initialQuery.get('freeze') === '1') root.classList.add('is-frozen');
+  if (initialQuery.get('edit') === '1') setEditMode(true);
+
+  window.addEventListener('message', function (event) {
+    var data = event.data;
+    if (!data || typeof data !== 'object') return;
+    if (event.source && event.source !== window.parent && event.source !== window) return;
+
+    if (data.type === 'educms-overrides') apply(data);
+    if (data.type === 'educms-edit-mode') setEditMode(Boolean(data.on));
+    if (data.type === 'educms-freeze') root.classList.add('is-frozen');
+    if (data.type === 'educms-unfreeze') root.classList.remove('is-frozen');
+    if (data.type === 'educms-refit') scheduleFit();
+  });
+
+  post({
+    type: 'educms-ready',
+    orientation: currentOrientation,
+    fields: fieldsForReadyMessage('data-field'),
+    images: fieldsForReadyMessage('data-imgslot')
+  });
+}());
+
+</script>
+</body>
+</html>

@@ -106,16 +106,24 @@ function posterFor(zones: Zone[]): string | null {
   if (typeof url !== 'string' || !url.startsWith('/templates/')) return null;
   const clean = url.split('?')[0].split('#')[0];
   if (!clean.endsWith('.html')) return null;
+  // A board that ships BOTH native compositions is one HTML file; the portrait
+  // preset points at `...html?orientation=portrait`. Its poster is captured at
+  // 9:16 beside the landscape one as `<name>-portrait.png` — without this the
+  // stripped query would resolve a portrait card to the LANDSCAPE poster.
+  const isPortrait = /[?&]orientation=portrait\b/.test(url);
   // Cache-bust: poster PNGs live at a stable URL, so a browser (and Vercel's
   // edge) hard-cache the OLD image after we regenerate a board's poster. Append
   // a version query so an updated poster is actually fetched. BUMP POSTER_VERSION
   // every time posters are regenerated (gen-template-posters.cjs / regen-*).
-  return clean.replace('/templates/', '/templates/_thumbs/').replace(/\.html$/, '.png') + `?v=${POSTER_VERSION}`;
+  return (
+    clean.replace('/templates/', '/templates/_thumbs/').replace(/\.html$/, isPortrait ? '-portrait.png' : '.png') +
+    `?v=${POSTER_VERSION}`
+  );
 }
 
 /** Bump on every poster regeneration so browsers/CDN refetch the new PNGs.
  *  Date-based; append a letter for multiple regens in one day (…24b). */
-const POSTER_VERSION = '20260724c';
+const POSTER_VERSION = '20260724d';
 
 export function ScaledTemplateThumbnail({
   zones, screenWidth, screenHeight, bgImage, bgGradient, bgColor, maxHeight = 150, freeze = false,

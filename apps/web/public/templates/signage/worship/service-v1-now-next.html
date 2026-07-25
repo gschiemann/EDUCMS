@@ -1,0 +1,821 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Church Service Times 01 — Now / Next / Later</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@500;600;700&family=IBM+Plex+Sans:wght@500;600;700&display=swap" rel="stylesheet" />
+  <style>
+* { box-sizing: border-box; }
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #090a09;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+
+#scene-wrap {
+  --scene-scale: 1;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  overflow: hidden;
+  transform: translate(-50%, -50%) scale(var(--scene-scale));
+  transform-origin: center center;
+}
+
+.scene {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+}
+
+.scene::after {
+  content: "";
+  position: absolute;
+  top:0;right:0;bottom:0;left:0;
+  z-index: 90;
+  pointer-events: none;
+  opacity: .045;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.36'/%3E%3C/svg%3E");
+}
+
+[data-field],
+[data-imgslot] {
+  max-width: 100%;
+}
+
+[data-fit] {
+  overflow: visible;
+}
+
+.is-editing [data-field],
+.is-editing [data-imgslot] {
+  cursor: pointer;
+}
+
+.is-editing [data-field]:hover,
+.is-editing [data-imgslot]:hover {
+  outline: 4px solid rgba(255, 255, 255, .94);
+  outline-offset: -4px;
+}
+
+.is-frozen *,
+.is-frozen *::before,
+.is-frozen *::after {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+
+.is-portrait .scene {
+  width: 1080px;
+  height: 1920px;
+}
+
+</style>
+  <style>
+    :root {
+      --ink:#111310;
+      --paper:#f0efe7;
+      --signal:#e45f3a;
+      --sage:#bfcbb5;
+      --line:#2e312d;
+      --font-display:'Archivo Black','Arial Black',sans-serif;
+      --font-body:'IBM Plex Sans',Arial,sans-serif;
+      --font-mono:'IBM Plex Mono',monospace;
+    }
+    body { font-family:var(--font-body); }
+    .scene { background:var(--ink); color:var(--paper); }
+    .masthead {
+      position:absolute; left:58px; right:58px; top:24px; height:112px;
+      display:grid; grid-template-columns:520px 1fr 280px; align-items:center;
+      border-bottom:2px solid var(--line);
+    }
+    .identity { display:flex; align-items:center; }
+    .logo {
+      position:relative; width:66px; height:66px; flex:0 0 66px; border:3px solid var(--paper);
+      display:grid; place-items:center; background-position:center; background-repeat:no-repeat;
+    }
+    .logo.has-img { background-size:contain !important; border:0; }
+    .logo.has-img .logo-letter { display:none; }
+    .logo-letter { font:700 52px/.9 var(--font-mono); }
+    .brand {
+      width:420px; height:104px; margin-left:20px;
+      display:flex; align-items:center; font:700 52px/.92 var(--font-body);
+    }
+    .board-title {
+      height:66px; display:flex; align-items:center; justify-content:center;
+      font:700 52px/1 var(--font-mono); letter-spacing:.08em; text-transform:uppercase;
+      color:var(--sage);
+    }
+    .clock {
+      height:66px; display:flex; align-items:center; justify-content:flex-end;
+      font:700 54px/1 var(--font-mono); font-variant-numeric:tabular-nums;
+    }
+    .now {
+      position:absolute; left:58px; top:154px; width:1080px; height:734px;
+      padding:42px 48px 36px; background:var(--paper); color:var(--ink);
+    }
+    .now-top { display:flex; justify-content:space-between; align-items:center; }
+    .status {
+      width:380px; min-height:60px; font:700 54px/1 var(--font-mono);
+      color:var(--signal); letter-spacing:.02em; text-transform:uppercase;
+    }
+    .status-time {
+      width:560px; min-height:60px; text-align:right;
+      font:600 52px/1 var(--font-mono); color:#4d5049;
+    }
+    .now-name {
+      width:980px; height:170px; margin-top:42px;
+      font:400 142px/.91 var(--font-display); letter-spacing:-6px;
+    }
+    .now-window {
+      width:980px; height:112px; margin-top:20px;
+      font:700 90px/1.04 var(--font-mono); letter-spacing:-4px;
+    }
+    .now-place {
+      width:980px; height:66px; margin-top:18px;
+      font:600 58px/1.08 var(--font-body); color:#4d5049;
+    }
+    .progress {
+      position:absolute; left:48px; right:48px; bottom:132px; height:16px;
+      background:#d0d0c6;
+    }
+    .progress-fill { width:58%; height:100%; background:var(--signal); }
+    .progress-copy {
+      position:absolute; left:48px; bottom:10px; width:980px; height:110px;
+      display:flex; justify-content:space-between; align-items:flex-start;
+      font:600 52px/1 var(--font-mono); color:#4d5049;
+    }
+    .progress-copy span {
+      display:block; width:460px; height:104px;
+    }
+    .progress-copy span:last-child { text-align:right; }
+    .upcoming {
+      position:absolute; left:1168px; top:154px; width:694px; height:734px;
+      border-top:2px solid var(--line);
+    }
+    .stop {
+      height:244px; padding:0 30px;
+      display:grid; grid-template-columns:190px 1fr; grid-template-rows:58px 112px 54px;
+      column-gap:24px; align-content:center;
+      border-bottom:2px solid var(--line);
+    }
+    .stop:last-child { border-bottom:0; }
+    .stop-kind {
+      min-height:58px; font:700 52px/1 var(--font-mono);
+      color:var(--signal); letter-spacing:.02em; text-transform:uppercase;
+    }
+    .stop-time {
+      min-height:58px; text-align:right; font:700 54px/1 var(--font-mono);
+    }
+    .stop-name {
+      grid-column:1 / -1; width:634px; height:112px; margin-top:0;
+      display:flex; align-items:center;
+      font:700 60px/.92 var(--font-body);
+    }
+    .stop-place {
+      grid-column:1 / -1; width:634px; height:52px; margin-top:0;
+      font:500 52px/1.06 var(--font-body); color:var(--sage);
+    }
+    .guest {
+      position:absolute; left:0; right:0; bottom:0; height:156px;
+      display:grid; grid-template-columns:minmax(0,1fr) 760px; align-items:center;
+      padding:0 58px; background:var(--signal); color:var(--ink);
+    }
+    .guest-copy {
+      width:100%; height:70px; display:flex; align-items:center;
+      font:700 52px/1 var(--font-body); letter-spacing:-1px;
+    }
+    .guest-destination {
+      height:116px; display:flex; align-items:center; justify-content:flex-end;
+      font:700 52px/1.05 var(--font-mono); letter-spacing:.035em; text-transform:uppercase;
+    }
+
+    .is-portrait .masthead {
+      left:46px; right:46px; top:24px; height:112px;
+      grid-template-columns:560px 1fr;
+    }
+    .is-portrait .board-title { display:none; }
+    .is-portrait .clock { font-size:52px; }
+    .is-portrait .now {
+      left:46px; top:162px; width:988px; height:650px; padding:38px 42px 32px;
+    }
+    .is-portrait .status { font-size:52px; }
+    .is-portrait .status-time { width:530px; font-size:52px; }
+    .is-portrait .now-name {
+      width:904px; height:180px; margin-top:24px; font-size:126px;
+    }
+    .is-portrait .now-window { width:904px; height:90px; margin-top:8px; font-size:80px; }
+    .is-portrait .now-place { width:904px; height:60px; margin-top:6px; font-size:54px; }
+    .is-portrait .progress { left:42px; right:42px; bottom:132px; }
+    .is-portrait .progress-copy {
+      left:42px; bottom:10px; width:904px; height:110px; font-size:52px;
+    }
+    .is-portrait .progress-copy span { width:430px; }
+    .is-portrait .upcoming {
+      left:46px; top:844px; width:988px; height:824px; border-top:0;
+    }
+    .is-portrait .stop {
+      height:274px; padding:0 36px;
+      grid-template-columns:220px 1fr; grid-template-rows:64px 96px 58px;
+      column-gap:28px; align-content:center;
+      border-top:2px solid var(--line); border-bottom:0;
+    }
+    .is-portrait .stop-kind { font-size:52px; }
+    .is-portrait .stop-time { font-size:58px; }
+    .is-portrait .stop-name { width:916px; height:82px; margin-top:10px; font-size:62px; }
+    .is-portrait .stop-place { width:916px; height:58px; font-size:52px; }
+    .is-portrait .guest {
+      height:206px; grid-template-columns:1fr; align-content:center; gap:12px;
+      padding:22px 46px;
+    }
+    .is-portrait .guest-copy { width:100%; height:70px; font-size:52px; }
+    .is-portrait .guest-destination { height:62px; justify-content:flex-start; font-size:52px; }
+  </style>
+</head>
+<body>
+  <div id="scene-wrap">
+    <main class="scene">
+      <header class="masthead">
+        <div class="identity">
+          <div class="logo" data-imgslot="brand.logo" aria-label="Replaceable church logo"><span class="logo-letter" data-field="brand.mark">H</span></div>
+          <div class="brand" data-field="brand.name">HAVEN CHURCH</div>
+        </div>
+        <div class="board-title" data-field="board.title">Sunday Sequence</div>
+        <div class="clock" data-field="clock.time">9:42 AM</div>
+      </header>
+
+      <section class="now">
+        <div class="now-top">
+          <div class="status" data-field="current.status">NOW</div>
+          <div class="status-time" data-field="current.remaining">33 MIN REMAIN</div>
+        </div>
+        <div class="now-name" data-field="current.name" data-fit data-fit-min="84" data-fit-max="142">First Service</div>
+        <div class="now-window" data-field="current.window" data-fit data-fit-min="62" data-fit-max="90">9:00—10:15</div>
+        <div class="now-place" data-field="current.location">MAIN AUDITORIUM</div>
+        <div class="progress" aria-hidden="true"><div class="progress-fill"></div></div>
+        <div class="progress-copy"><span data-field="current.started">STARTED 9:00</span><span data-field="current.ends">ENDS 10:15</span></div>
+      </section>
+
+      <section class="upcoming" aria-label="Upcoming services">
+        <article class="stop">
+          <div class="stop-kind" data-field="next.status">NEXT</div>
+          <div class="stop-time" data-field="next.time">10:15 AM</div>
+          <div class="stop-name" data-field="next.name" data-fit data-fit-min="52" data-fit-max="60">Bible Class · All Ages</div>
+          <div class="stop-place" data-field="next.location">FAMILY COMMONS</div>
+        </article>
+        <article class="stop">
+          <div class="stop-kind" data-field="later.status">LATER</div>
+          <div class="stop-time" data-field="later.time">11:00 AM</div>
+          <div class="stop-name" data-field="later.name" data-fit data-fit-min="52" data-fit-max="60">Second Service</div>
+          <div class="stop-place" data-field="later.location">MAIN AUDITORIUM</div>
+        </article>
+        <article class="stop">
+          <div class="stop-kind" data-field="midweek.status">WED</div>
+          <div class="stop-time" data-field="midweek.time">7:00 PM</div>
+          <div class="stop-name" data-field="midweek.name" data-fit data-fit-min="52" data-fit-max="60">Midweek Gathering</div>
+          <div class="stop-place" data-field="midweek.location">CHAPEL</div>
+        </article>
+      </section>
+
+      <footer class="guest">
+        <div class="guest-copy" data-field="guest.message">FIRST VISIT? START AT WELCOME.</div>
+        <div class="guest-destination" data-field="guest.destination">WELCOME DESK · EAST LOBBY</div>
+      </footer>
+    </main>
+  </div>
+  <script>
+(function () {
+  'use strict';
+
+  var LANDSCAPE = { name: 'landscape', width: 1920, height: 1080 };
+  var PORTRAIT = { name: 'portrait', width: 1080, height: 1920 };
+  var root = document.documentElement;
+  var wrap = document.getElementById('scene-wrap');
+  var activeScene = null;
+  var currentOrientation = '';
+  var fitFrame = 0;
+  var editMode = false;
+  var lastOverflowSignature = '';
+
+  if (!wrap) return;
+
+  function query() {
+    return new URLSearchParams(window.location.search);
+  }
+
+  function orientationForViewport() {
+    var forced = query().get('orientation');
+    if (forced === 'portrait') return PORTRAIT;
+    if (forced === 'landscape') return LANDSCAPE;
+    return window.innerHeight > window.innerWidth ? PORTRAIT : LANDSCAPE;
+  }
+
+  function sceneOrientation(scene) {
+    var declared = scene.getAttribute('data-orientation') ||
+      scene.getAttribute('data-scene-orientation') || '';
+    if (!declared && scene.classList.contains('scene-portrait')) declared = 'portrait';
+    if (!declared && scene.classList.contains('scene-landscape')) declared = 'landscape';
+    return declared.toLowerCase();
+  }
+
+  function selectScene(orientation) {
+    var scenes = wrap.querySelectorAll('.scene');
+    var selected = scenes.length ? scenes[0] : null;
+    var hasDedicatedScenes = false;
+    var i;
+
+    for (i = 0; i < scenes.length; i++) {
+      if (sceneOrientation(scenes[i])) hasDedicatedScenes = true;
+      if (sceneOrientation(scenes[i]) === orientation.name) selected = scenes[i];
+    }
+
+    if (hasDedicatedScenes) {
+      for (i = 0; i < scenes.length; i++) {
+        var isSelected = scenes[i] === selected;
+        scenes[i].style.display = isSelected ? '' : 'none';
+        scenes[i].setAttribute('aria-hidden', isSelected ? 'false' : 'true');
+      }
+    }
+
+    return selected;
+  }
+
+  function post(message) {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(message, '*');
+      }
+    } catch (_) {}
+  }
+
+  function scheduleFit() {
+    if (fitFrame) window.cancelAnimationFrame(fitFrame);
+    fitFrame = window.requestAnimationFrame(function () {
+      fitFrame = 0;
+      fitAll();
+    });
+  }
+
+  function orient() {
+    var orientation = orientationForViewport();
+    activeScene = selectScene(orientation);
+    if (!activeScene) return;
+
+    currentOrientation = orientation.name;
+    root.classList.toggle('is-portrait', orientation.name === 'portrait');
+    root.classList.toggle('is-landscape', orientation.name === 'landscape');
+    root.setAttribute('data-orientation', orientation.name);
+
+    if (document.body) document.body.setAttribute('data-orientation', orientation.name);
+    wrap.setAttribute('data-orientation', orientation.name);
+    activeScene.setAttribute('data-active-orientation', orientation.name);
+
+    wrap.style.width = orientation.width + 'px';
+    wrap.style.height = orientation.height + 'px';
+    activeScene.style.width = orientation.width + 'px';
+    activeScene.style.height = orientation.height + 'px';
+
+    wrap.style.setProperty('--scene-width', orientation.width + 'px');
+    wrap.style.setProperty('--scene-height', orientation.height + 'px');
+    wrap.style.setProperty(
+      '--scene-scale',
+      String(Math.min(
+        window.innerWidth / orientation.width,
+        window.innerHeight / orientation.height
+      ))
+    );
+
+    scheduleFit();
+    post({
+      type: 'educms-orientation',
+      orientation: orientation.name,
+      width: orientation.width,
+      height: orientation.height
+    });
+  }
+
+  function decodeBase64Json(value) {
+    var base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4) base64 += '=';
+    var binary = window.atob(base64);
+    var bytes = '';
+    var i;
+    for (i = 0; i < binary.length; i++) {
+      bytes += '%' + ('00' + binary.charCodeAt(i).toString(16)).slice(-2);
+    }
+    return JSON.parse(decodeURIComponent(bytes));
+  }
+
+  function queryJson(name) {
+    var value = query().get(name);
+    if (!value) return {};
+
+    try { return JSON.parse(value); } catch (_) {}
+    try { return JSON.parse(decodeURIComponent(value)); } catch (_) {}
+    try { return decodeBase64Json(value); } catch (_) {}
+    return {};
+  }
+
+  function nodes(key, attribute) {
+    var all = document.querySelectorAll('[' + attribute + ']');
+    var found = [];
+    var i;
+    for (i = 0; i < all.length; i++) {
+      if (all[i].getAttribute(attribute) === key) found.push(all[i]);
+    }
+    return found;
+  }
+
+  function hasNodes(key, attribute) {
+    return nodes(key, attribute).length > 0;
+  }
+
+  function setText(element, value) {
+    var text = value == null ? '' : String(value);
+
+    if (text.indexOf('&') !== -1) {
+      var decoder = document.createElement('textarea');
+      decoder.innerHTML = text;
+      text = decoder.value;
+    }
+
+    if (element.getAttribute('data-preserve-children') === 'true') {
+      var textNode = null;
+      var i;
+      for (i = 0; i < element.childNodes.length; i++) {
+        if (element.childNodes[i].nodeType === 3) {
+          textNode = element.childNodes[i];
+          break;
+        }
+      }
+      if (textNode) textNode.textContent = text;
+      else element.insertBefore(document.createTextNode(text), element.firstChild);
+      return;
+    }
+
+    element.textContent = text;
+  }
+
+  function numberAttribute(element, name, fallback) {
+    var value = Number(element.getAttribute(name));
+    return isFinite(value) && value > 0 ? value : fallback;
+  }
+
+  function overflows(element) {
+    return element.scrollWidth > element.clientWidth + 1 ||
+      element.scrollHeight > element.clientHeight + 1;
+  }
+
+  function fitElement(element) {
+    if (!element.clientWidth || !element.clientHeight) return false;
+
+    if (typeof element.__educmsOriginalFontSize === 'undefined') {
+      element.__educmsOriginalFontSize = element.style.fontSize || '';
+    }
+
+    var customMaximum = Number(element.getAttribute('data-fit-ceiling') ||
+      element.__educmsFitCeiling || 0);
+    var minimum = numberAttribute(element, 'data-fit-min', 52);
+    var configuredMaximum = numberAttribute(element, 'data-fit-max', 0);
+
+    if (customMaximum) {
+      element.style.fontSize = customMaximum + 'px';
+    } else {
+      element.style.fontSize = element.__educmsOriginalFontSize;
+    }
+
+    var cssMaximum = parseFloat(window.getComputedStyle(element).fontSize) || minimum;
+    var maximum = customMaximum || cssMaximum;
+    if (configuredMaximum) maximum = Math.min(maximum, configuredMaximum);
+    maximum = Math.max(minimum, maximum);
+
+    element.style.fontSize = maximum + 'px';
+    if (!overflows(element)) {
+      element.removeAttribute('data-fit-overflow');
+      element.setAttribute('data-fit-size', String(Math.round(maximum)));
+      return false;
+    }
+
+    var low = Math.ceil(minimum);
+    var high = Math.floor(maximum);
+    var best = low;
+
+    while (low <= high) {
+      var middle = Math.floor((low + high) / 2);
+      element.style.fontSize = middle + 'px';
+      if (overflows(element)) {
+        high = middle - 1;
+      } else {
+        best = middle;
+        low = middle + 1;
+      }
+    }
+
+    element.style.fontSize = best + 'px';
+    element.setAttribute('data-fit-size', String(best));
+
+    if (overflows(element)) {
+      element.setAttribute('data-fit-overflow', 'true');
+      return true;
+    }
+
+    element.removeAttribute('data-fit-overflow');
+    return false;
+  }
+
+  function fitAll() {
+    var all = document.querySelectorAll('[data-fit]');
+    var overflowKeys = [];
+    var i;
+
+    for (i = 0; i < all.length; i++) {
+      if (fitElement(all[i])) {
+        overflowKeys.push(
+          all[i].getAttribute('data-field') ||
+          all[i].getAttribute('data-fit-name') ||
+          'unlabelled-fit-' + (i + 1)
+        );
+      }
+    }
+
+    var signature = currentOrientation + ':' + overflowKeys.join('|');
+    if (overflowKeys.length && signature !== lastOverflowSignature) {
+      post({
+        type: 'educms-fit-overflow',
+        orientation: currentOrientation,
+        keys: overflowKeys
+      });
+    }
+    lastOverflowSignature = signature;
+  }
+
+  function applyBrand(brand) {
+    if (!brand || typeof brand !== 'object') return;
+    var styles = root.style;
+    var variableMap = {
+      background: ['--paper', '--background'],
+      surface: ['--surface', '--paper'],
+      text: ['--ink', '--text'],
+      muted: ['--muted'],
+      primary: ['--primary', '--blue'],
+      accent: ['--accent', '--orange'],
+      fontDisplay: ['--font-display'],
+      fontBody: ['--font-body'],
+      fontCondensed: ['--font-condensed', '--font-mono'],
+      fontSerif: ['--font-serif'],
+      fontMono: ['--font-mono']
+    };
+    var key;
+    var i;
+
+    for (key in variableMap) {
+      if (!Object.prototype.hasOwnProperty.call(variableMap, key)) continue;
+      if (brand[key] == null || brand[key] === '') continue;
+      for (i = 0; i < variableMap[key].length; i++) {
+        styles.setProperty(variableMap[key][i], String(brand[key]));
+      }
+    }
+
+    var custom = brand.cssVariables || brand.variables || {};
+    for (key in custom) {
+      if (!Object.prototype.hasOwnProperty.call(custom, key)) continue;
+      var property = key.indexOf('--') === 0 ? key : '--' + key;
+      styles.setProperty(property, String(custom[key]));
+    }
+  }
+
+  function applyTextStyle(element, style) {
+    if (!style || typeof style !== 'object') return;
+
+    if (style.color != null) element.style.color = String(style.color);
+    if (style.fontWeight != null) element.style.fontWeight = String(style.fontWeight);
+    if (style.fontStyle != null) element.style.fontStyle = String(style.fontStyle);
+    if (style.fontFamily != null) element.style.fontFamily = String(style.fontFamily);
+    if (style.textDecoration != null) element.style.textDecoration = String(style.textDecoration);
+    if (style.textAlign != null) element.style.textAlign = String(style.textAlign);
+    if (style.lineHeight != null) element.style.lineHeight = String(style.lineHeight);
+    if (style.letterSpacing != null) element.style.letterSpacing = String(style.letterSpacing);
+    if (style.textTransform != null) element.style.textTransform = String(style.textTransform);
+    if (style.backgroundColor != null) {
+      element.style.backgroundColor = String(style.backgroundColor);
+    }
+    if (style.opacity != null) element.style.opacity = String(style.opacity);
+
+    if (style.fontSize != null && style.fontSize !== '') {
+      var size = parseFloat(String(style.fontSize));
+      if (isFinite(size) && size > 0) {
+        element.style.fontSize = size + 'px';
+        if (element.hasAttribute('data-fit')) element.__educmsFitCeiling = size;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(style, 'hidden')) {
+      element.style.display = style.hidden ? 'none' : '';
+      element.setAttribute('aria-hidden', style.hidden ? 'true' : 'false');
+    }
+  }
+
+  function cssUrl(value) {
+    return 'url("' + value
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
+      .replace(/[\n\r\f]/g, '') + '")';
+  }
+
+  function applyImage(element, value) {
+    var source = value;
+    var position = '';
+    var size = '';
+
+    if (value && typeof value === 'object') {
+      source = value.src || value.url || '';
+      position = value.position || '';
+      size = value.size || value.fit || '';
+    }
+    if (source == null) return;
+    source = String(source);
+
+    element.setAttribute('data-img', source);
+    if (element.tagName && element.tagName.toLowerCase() === 'img') {
+      if (source) element.setAttribute('src', source);
+      else element.removeAttribute('src');
+    } else {
+      element.style.backgroundImage = source ? cssUrl(source) : 'none';
+      if (position) element.style.backgroundPosition = String(position);
+      if (size) element.style.backgroundSize = String(size);
+    }
+
+    element.classList.toggle('has-img', Boolean(source));
+    if (source) element.setAttribute('data-has-image', 'true');
+    else element.removeAttribute('data-has-image');
+  }
+
+  function apply(payload) {
+    payload = payload || {};
+    var text = payload.text || {};
+    var styles = payload.textStyles || {};
+    var images = payload.img || payload.images || {};
+    var keys = {};
+    var key;
+    var list;
+    var i;
+
+    applyBrand(payload.brand || {});
+
+    for (key in text) {
+      if (Object.prototype.hasOwnProperty.call(text, key)) keys[key] = true;
+    }
+    for (key in styles) {
+      if (Object.prototype.hasOwnProperty.call(styles, key)) keys[key] = true;
+    }
+
+    for (key in keys) {
+      if (!Object.prototype.hasOwnProperty.call(keys, key)) continue;
+      list = nodes(key, 'data-field');
+      for (i = 0; i < list.length; i++) {
+        if (Object.prototype.hasOwnProperty.call(text, key)) setText(list[i], text[key]);
+        applyTextStyle(list[i], styles[key]);
+      }
+    }
+
+    for (key in images) {
+      if (!Object.prototype.hasOwnProperty.call(images, key)) continue;
+      list = nodes(key, 'data-imgslot');
+      for (i = 0; i < list.length; i++) applyImage(list[i], images[key]);
+    }
+
+    scheduleFit();
+  }
+
+  function queryPayload() {
+    var params = query();
+    var brand = queryJson('brand');
+    var text = queryJson('text');
+    var textStyles = queryJson('textStyles');
+    var images = queryJson('img');
+    var payload = {
+      brand: brand && typeof brand === 'object' && !Array.isArray(brand) ? brand : {},
+      text: text && typeof text === 'object' && !Array.isArray(text) ? text : {},
+      textStyles: textStyles && typeof textStyles === 'object' &&
+        !Array.isArray(textStyles) ? textStyles : {},
+      img: images && typeof images === 'object' && !Array.isArray(images) ? images : {}
+    };
+
+    params.forEach(function (value, key) {
+      var fieldKey = '';
+      if (key.indexOf('field.') === 0) fieldKey = key.slice(6);
+      else if (key.indexOf('text.') === 0) fieldKey = key.slice(5);
+      else if (hasNodes(key, 'data-field')) fieldKey = key;
+
+      if (fieldKey) {
+        payload.text[fieldKey] = value;
+        return;
+      }
+
+      var imageKey = '';
+      if (key.indexOf('image.') === 0) imageKey = key.slice(6);
+      else if (key.indexOf('img.') === 0) imageKey = key.slice(4);
+      else if (hasNodes(key, 'data-imgslot')) imageKey = key;
+      if (imageKey) payload.img[imageKey] = value;
+    });
+
+    return payload;
+  }
+
+  function fieldsForReadyMessage(attribute) {
+    var elements = document.querySelectorAll('[' + attribute + ']');
+    var seen = {};
+    var values = [];
+    var i;
+    var key;
+    for (i = 0; i < elements.length; i++) {
+      key = elements[i].getAttribute(attribute);
+      if (key && !seen[key]) {
+        seen[key] = true;
+        values.push(key);
+      }
+    }
+    return values;
+  }
+
+  function setEditMode(on) {
+    editMode = Boolean(on);
+    root.classList.toggle('is-editing', editMode);
+    if (editMode) root.classList.remove('is-frozen');
+  }
+
+  function editableClick(event) {
+    if (!editMode) return;
+    var element = event.target;
+    while (
+      element &&
+      element !== document &&
+      !element.hasAttribute('data-field') &&
+      !element.hasAttribute('data-imgslot')
+    ) {
+      element = element.parentNode;
+    }
+    if (!element || element === document) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    post({
+      type: 'educms-field-click',
+      key: element.getAttribute('data-field') || element.getAttribute('data-imgslot'),
+      kind: element.hasAttribute('data-field') ? 'text' : 'img'
+    });
+  }
+
+  document.addEventListener('click', editableClick, true);
+  window.addEventListener('resize', orient);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', orient);
+
+  apply(queryPayload());
+  orient();
+
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(scheduleFit, scheduleFit);
+    if (document.fonts.addEventListener) {
+      document.fonts.addEventListener('loadingdone', scheduleFit);
+    }
+  }
+  window.addEventListener('load', scheduleFit);
+
+  var initialQuery = query();
+  if (initialQuery.get('freeze') === '1') root.classList.add('is-frozen');
+  if (initialQuery.get('edit') === '1') setEditMode(true);
+
+  window.addEventListener('message', function (event) {
+    var data = event.data;
+    if (!data || typeof data !== 'object') return;
+    if (event.source && event.source !== window.parent && event.source !== window) return;
+
+    if (data.type === 'educms-overrides') apply(data);
+    if (data.type === 'educms-edit-mode') setEditMode(Boolean(data.on));
+    if (data.type === 'educms-freeze') root.classList.add('is-frozen');
+    if (data.type === 'educms-unfreeze') root.classList.remove('is-frozen');
+    if (data.type === 'educms-refit') scheduleFit();
+  });
+
+  post({
+    type: 'educms-ready',
+    orientation: currentOrientation,
+    fields: fieldsForReadyMessage('data-field'),
+    images: fieldsForReadyMessage('data-imgslot')
+  });
+}());
+
+</script>
+</body>
+</html>

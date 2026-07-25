@@ -1,0 +1,783 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Church Verse of the Day — Daybreak</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@600;700;800&family=Young+Serif&display=swap" rel="stylesheet" />
+  <style>
+* { box-sizing:border-box; }
+
+html,
+body {
+  width:100%;
+  height:100%;
+  margin:0;
+  overflow:hidden;
+  background:#090909;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:geometricPrecision;
+}
+
+#scene-wrap {
+  --scene-scale:1;
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:1920px;
+  height:1080px;
+  overflow:hidden;
+  transform:translate(-50%,-50%) scale(var(--scene-scale));
+  transform-origin:center center;
+}
+
+.scene {
+  position:relative;
+  width:1920px;
+  height:1080px;
+  overflow:hidden;
+}
+
+.scene-portrait {
+  display:none;
+  width:1080px;
+  height:1920px;
+}
+
+.is-portrait #scene-wrap {
+  width:1080px;
+  height:1920px;
+}
+
+.is-portrait .scene-landscape { display:none; }
+.is-portrait .scene-portrait { display:block; }
+
+[data-field],
+[data-imgslot] {
+  max-width:100%;
+}
+
+[data-fit] {
+  overflow:hidden;
+}
+
+.is-editing [data-field],
+.is-editing [data-imgslot] {
+  cursor:pointer;
+}
+
+.is-editing [data-field]:hover,
+.is-editing [data-imgslot]:hover {
+  outline:4px solid rgba(255,255,255,.94);
+  outline-offset:-4px;
+}
+
+.is-frozen *,
+.is-frozen *::before,
+.is-frozen *::after {
+  animation-play-state:paused !important;
+  transition:none !important;
+}
+
+
+</style>
+  <style>
+    :root {
+      --ink:#24130f;
+      --paper:#fff3dd;
+      --primary:#f5b83d;
+      --accent:#ed6847;
+      --lilac:#d8c8e4;
+      --muted:#8f6457;
+      --font-display:'Young Serif',Georgia,serif;
+      --font-body:'Work Sans',Arial,sans-serif;
+    }
+
+    .scene {
+      color:var(--paper);
+      background:var(--ink);
+      font-family:var(--font-body);
+    }
+
+    .scene::after {
+      content:"";
+      position:absolute;
+      top:0;right:0;bottom:0;left:0;
+      z-index:80;
+      pointer-events:none;
+      opacity:.12;
+      mix-blend-mode:soft-light;
+      background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.68' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.32'/%3E%3C/svg%3E");
+    }
+
+    .brand,
+    .date,
+    .eyebrow,
+    .reference,
+    .response,
+    .translation,
+    .copyright {
+      position:absolute;
+      z-index:10;
+      overflow:hidden;
+    }
+
+    .brand,
+    .date {
+      height:70px;
+      font:700 52px/1 var(--font-body);
+      letter-spacing:-1.5px;
+      white-space:nowrap;
+    }
+
+    .eyebrow {
+      height:68px;
+      color:var(--accent);
+      font:800 52px/1 var(--font-body);
+      letter-spacing:5px;
+      text-transform:uppercase;
+      white-space:nowrap;
+    }
+
+    .verse {
+      position:absolute;
+      z-index:10;
+      margin:0;
+      color:var(--paper);
+      font:400 110px/1.08 var(--font-display);
+      letter-spacing:-3px;
+      text-wrap:balance;
+    }
+
+    .reference {
+      height:82px;
+      color:var(--primary);
+      font:700 64px/1.08 var(--font-body);
+      letter-spacing:-2px;
+      white-space:nowrap;
+    }
+
+    .response {
+      height:74px;
+      color:var(--lilac);
+      font:600 60px/1.08 var(--font-body);
+      letter-spacing:-1.5px;
+      white-space:nowrap;
+    }
+
+    .translation,
+    .copyright {
+      height:62px;
+      color:var(--paper);
+      font:700 52px/1 var(--font-body);
+      letter-spacing:2px;
+      text-transform:uppercase;
+      white-space:nowrap;
+    }
+
+    .copyright {
+      padding-left:36px;
+      border-left:3px solid rgba(255,243,221,.42);
+      color:#d9b8a6;
+    }
+
+    .sun-field {
+      position:absolute;
+      z-index:2;
+      overflow:hidden;
+      pointer-events:none;
+    }
+
+    .sun-field::before {
+      content:"";
+      position:absolute;
+      width:900px;
+      height:900px;
+      border-radius:50%;
+      background:radial-gradient(circle,rgba(245,184,61,.30) 0,rgba(237,104,71,.08) 52%,transparent 72%);
+      filter:blur(10px);
+    }
+
+    .sun {
+      position:absolute;
+      width:620px;
+      height:620px;
+      border-radius:50%;
+      background:
+        radial-gradient(circle at 34% 30%,#ffe9a7 0 8%,transparent 28%),
+        linear-gradient(148deg,#ffd969 0 38%,#f5a443 52%,#ed6847 100%);
+      box-shadow:
+        0 0 0 18px rgba(255,243,221,.05),
+        0 56px 150px rgba(237,104,71,.38);
+    }
+
+    .sun::after {
+      content:"";
+      position:absolute;
+      left:0;
+      top:310px;
+      width:620px;
+      height:310px;
+      border-radius:0 0 310px 310px;
+      opacity:.42;
+      background:repeating-linear-gradient(
+        0deg,
+        rgba(36,19,15,.72) 0 9px,
+        transparent 9px 24px
+      );
+    }
+
+    .orbit {
+      position:absolute;
+      border:3px solid rgba(255,243,221,.46);
+      border-radius:50%;
+      animation:orbit-breathe 8s ease-in-out infinite alternate;
+    }
+
+    .orbit.two {
+      border-color:rgba(216,200,228,.48);
+      animation-delay:-4s;
+    }
+
+    .horizon {
+      position:absolute;
+      height:3px;
+      background:rgba(255,243,221,.7);
+    }
+
+    .horizon::after {
+      content:"";
+      position:absolute;
+      right:0;
+      top:-8px;
+      width:19px;
+      height:19px;
+      border-radius:50%;
+      background:var(--paper);
+    }
+
+    .ray {
+      position:absolute;
+      width:3px;
+      background:linear-gradient(180deg,transparent,rgba(245,184,61,.62),transparent);
+      transform-origin:center;
+    }
+
+    @keyframes orbit-breathe {
+      from { transform:scale(.985); opacity:.58; }
+      to { transform:scale(1.015); opacity:1; }
+    }
+
+    /* Landscape · fixed 1920×1080 composition. */
+    .scene-landscape {
+      background:
+        linear-gradient(90deg,var(--ink) 0 1120px,#321913 1120px 1920px);
+    }
+
+    .scene-landscape .brand { left:88px; top:70px; width:900px; }
+    .scene-landscape .date { left:1120px; top:70px; width:712px; text-align:right; }
+    .scene-landscape .eyebrow { left:88px; top:184px; width:880px; }
+    .scene-landscape .verse {
+      left:88px; top:276px; width:1050px; height:438px;
+    }
+    .scene-landscape .reference { left:88px; top:748px; width:940px; }
+    .scene-landscape .response { left:88px; top:844px; width:980px; }
+    .scene-landscape .translation { left:88px; top:962px; width:116px; }
+    .scene-landscape .copyright { left:238px; top:962px; width:520px; }
+    .scene-landscape .sun-field { left:1080px; top:128px; width:840px; height:952px; }
+    .scene-landscape .sun-field::before { left:-12px; top:40px; }
+    .scene-landscape .sun { left:204px; top:160px; }
+    .scene-landscape .orbit.one { left:88px; top:44px; width:860px; height:860px; }
+    .scene-landscape .orbit.two { left:176px; top:132px; width:684px; height:684px; }
+    .scene-landscape .horizon { left:0; top:470px; width:840px; }
+    .scene-landscape .ray.a { left:174px; top:2px; height:780px; transform:rotate(28deg); }
+    .scene-landscape .ray.b { left:690px; top:110px; height:760px; transform:rotate(-31deg); }
+
+    /* Portrait · fixed 1080×1920 composition. */
+    .scene-portrait {
+      color:var(--ink);
+      background:
+        linear-gradient(180deg,var(--ink) 0 760px,var(--paper) 760px 1920px);
+    }
+
+    .scene-portrait::after { opacity:.09; }
+    .scene-portrait .brand { left:64px; top:40px; width:952px; color:var(--paper); }
+    .scene-portrait .date { left:64px; top:116px; width:952px; color:var(--paper); text-align:right; }
+    .scene-portrait .eyebrow { left:64px; top:810px; width:880px; color:var(--accent); }
+    .scene-portrait .verse {
+      left:64px; top:902px; width:952px; height:526px;
+      color:var(--ink); font-size:90px; line-height:1.1;
+    }
+    .scene-portrait .reference {
+      left:64px; top:1462px; width:860px; color:#a9442e;
+    }
+    .scene-portrait .response {
+      left:64px; top:1562px; width:900px; color:#6b526b;
+    }
+    .scene-portrait .translation {
+      left:64px; top:1768px; width:116px; color:var(--ink);
+    }
+    .scene-portrait .copyright {
+      left:214px; top:1768px; width:520px;
+      color:#76584c; border-left-color:rgba(36,19,15,.36);
+    }
+    .scene-portrait .sun-field { left:0; top:188px; width:1080px; height:572px; }
+    .scene-portrait .sun-field::before { left:90px; top:-196px; }
+    .scene-portrait .sun { left:230px; top:-56px; }
+    .scene-portrait .orbit.one { left:106px; top:-180px; width:868px; height:868px; }
+    .scene-portrait .orbit.two { left:196px; top:-90px; width:688px; height:688px; }
+    .scene-portrait .horizon { left:0; top:348px; width:1080px; }
+    .scene-portrait .ray.a { left:190px; top:-156px; height:740px; transform:rotate(28deg); }
+    .scene-portrait .ray.b { left:850px; top:-134px; height:730px; transform:rotate(-29deg); }
+  </style>
+</head>
+<body>
+  <div id="scene-wrap">
+    <main class="scene scene-landscape" data-orientation="landscape" aria-label="Daybreak Verse of the Day, landscape">
+      <div class="brand" data-field="brand.name">HAVEN CHURCH</div>
+      <div class="date" data-field="verse.date">SUNDAY · JUL 26</div>
+      <div class="eyebrow" data-field="board.eyebrow">VERSE OF THE DAY</div>
+      <blockquote class="verse" data-field="verse.text" data-fit data-fit-min="64" data-fit-max="110">"Be still, and know that I am God: I will be exalted among the heathen, I will be exalted in the earth."</blockquote>
+      <div class="reference" data-field="verse.reference">Psalm 46:10</div>
+      <div class="response" data-field="verse.response">Carry this into the day.</div>
+      <div class="translation" data-field="verse.translation">KJV</div>
+      <div class="copyright" data-field="verse.copyright">PUBLIC DOMAIN</div>
+
+      <div class="sun-field" aria-hidden="true">
+        <div class="ray a"></div><div class="ray b"></div>
+        <div class="orbit one"></div><div class="orbit two"></div>
+        <div class="sun"></div><div class="horizon"></div>
+      </div>
+    </main>
+
+    <main class="scene scene-portrait" data-orientation="portrait" aria-label="Daybreak Verse of the Day, portrait">
+      <div class="brand" data-field="brand.name">HAVEN CHURCH</div>
+      <div class="date" data-field="verse.date">SUNDAY · JUL 26</div>
+
+      <div class="sun-field" aria-hidden="true">
+        <div class="ray a"></div><div class="ray b"></div>
+        <div class="orbit one"></div><div class="orbit two"></div>
+        <div class="sun"></div><div class="horizon"></div>
+      </div>
+
+      <div class="eyebrow" data-field="board.eyebrow">VERSE OF THE DAY</div>
+      <blockquote class="verse" data-field="verse.text" data-fit data-fit-min="64" data-fit-max="90">"Be still, and know that I am God: I will be exalted among the heathen, I will be exalted in the earth."</blockquote>
+      <div class="reference" data-field="verse.reference">Psalm 46:10</div>
+      <div class="response" data-field="verse.response">Carry this into the day.</div>
+      <div class="translation" data-field="verse.translation">KJV</div>
+      <div class="copyright" data-field="verse.copyright">PUBLIC DOMAIN</div>
+    </main>
+  </div>
+
+  <script>
+(function () {
+  'use strict';
+
+  var LANDSCAPE={name:'landscape',width:1920,height:1080};
+  var PORTRAIT={name:'portrait',width:1080,height:1920};
+  var root=document.documentElement;
+  var wrap=document.getElementById('scene-wrap');
+  var activeScene=null;
+  var currentOrientation='';
+  var frame=0;
+  var editMode=false;
+
+  if (!wrap) return;
+
+  function params() {
+    return new URLSearchParams(window.location.search);
+  }
+
+  function post(message) {
+    try {
+      if (window.parent && window.parent!==window) {
+        window.parent.postMessage(message,'*');
+      }
+    } catch (_) {}
+  }
+
+  function orientation() {
+    var forced=params().get('orientation');
+    if (forced==='portrait') return PORTRAIT;
+    if (forced==='landscape') return LANDSCAPE;
+    return window.innerHeight>window.innerWidth?PORTRAIT:LANDSCAPE;
+  }
+
+  function selectScene(next) {
+    var scenes=wrap.querySelectorAll('.scene');
+    var selected=null;
+    var i;
+    for (i=0;i<scenes.length;i++) {
+      var declared=scenes[i].getAttribute('data-orientation')||'';
+      if (declared===next.name) selected=scenes[i];
+      scenes[i].style.display=declared===next.name?'block':'none';
+      scenes[i].setAttribute('aria-hidden',declared===next.name?'false':'true');
+    }
+    return selected;
+  }
+
+  function scheduleFit() {
+    if (frame) window.cancelAnimationFrame(frame);
+    frame=window.requestAnimationFrame(function () {
+      frame=0;
+      fitAll();
+    });
+  }
+
+  function orient() {
+    var next=orientation();
+    activeScene=selectScene(next);
+    if (!activeScene) return;
+
+    currentOrientation=next.name;
+    root.classList.toggle('is-landscape',next.name==='landscape');
+    root.classList.toggle('is-portrait',next.name==='portrait');
+    root.setAttribute('data-orientation',next.name);
+    document.body.setAttribute('data-orientation',next.name);
+    wrap.setAttribute('data-orientation',next.name);
+    wrap.style.width=next.width+'px';
+    wrap.style.height=next.height+'px';
+    wrap.style.setProperty(
+      '--scene-scale',
+      String(Math.min(window.innerWidth/next.width,window.innerHeight/next.height))
+    );
+
+    scheduleFit();
+    post({
+      type:'educms-orientation',
+      orientation:next.name,
+      width:next.width,
+      height:next.height
+    });
+  }
+
+  function overflows(element) {
+    return element.scrollWidth>element.clientWidth+1 ||
+      element.scrollHeight>element.clientHeight+1;
+  }
+
+  function positiveNumber(element,name,fallback) {
+    var value=Number(element.getAttribute(name));
+    return isFinite(value)&&value>0?value:fallback;
+  }
+
+  function fit(element) {
+    if (!element.clientWidth||!element.clientHeight) return false;
+
+    var minimum=positiveNumber(element,'data-fit-min',64);
+    var maximum=positiveNumber(
+      element,
+      'data-fit-max',
+      parseFloat(window.getComputedStyle(element).fontSize)||minimum
+    );
+    if (element.__educmsFitCeiling) {
+      maximum=Math.min(maximum,element.__educmsFitCeiling);
+    }
+    maximum=Math.max(minimum,maximum);
+    element.style.fontSize=maximum+'px';
+
+    if (!overflows(element)) {
+      element.setAttribute('data-fit-size',String(Math.round(maximum)));
+      element.removeAttribute('data-fit-overflow');
+      return false;
+    }
+
+    var low=Math.ceil(minimum);
+    var high=Math.floor(maximum);
+    var best=low;
+    while (low<=high) {
+      var middle=Math.floor((low+high)/2);
+      element.style.fontSize=middle+'px';
+      if (overflows(element)) high=middle-1;
+      else {
+        best=middle;
+        low=middle+1;
+      }
+    }
+
+    element.style.fontSize=best+'px';
+    element.setAttribute('data-fit-size',String(best));
+    if (overflows(element)) {
+      element.setAttribute('data-fit-overflow','true');
+      return true;
+    }
+    element.removeAttribute('data-fit-overflow');
+    return false;
+  }
+
+  function fitAll() {
+    var elements=document.querySelectorAll('[data-fit]');
+    var overflow=[];
+    var i;
+    for (i=0;i<elements.length;i++) {
+      if (fit(elements[i])) {
+        overflow.push(elements[i].getAttribute('data-field')||'unlabelled');
+      }
+    }
+    if (overflow.length) {
+      post({
+        type:'educms-fit-overflow',
+        orientation:currentOrientation,
+        keys:overflow
+      });
+    }
+  }
+
+  function decodeJson(value) {
+    if (!value) return {};
+    try { return JSON.parse(value); } catch (_) {}
+    try { return JSON.parse(decodeURIComponent(value)); } catch (_) {}
+    try {
+      var normalized=value.replace(/-/g,'+').replace(/_/g,'/');
+      while (normalized.length%4) normalized+='=';
+      return JSON.parse(decodeURIComponent(escape(window.atob(normalized))));
+    } catch (_) {}
+    return {};
+  }
+
+  function exactNodes(attribute,key) {
+    var all=document.querySelectorAll('['+attribute+']');
+    var found=[];
+    var i;
+    for (i=0;i<all.length;i++) {
+      if (all[i].getAttribute(attribute)===key) found.push(all[i]);
+    }
+    return found;
+  }
+
+  function hasField(key) {
+    return exactNodes('data-field',key).length>0;
+  }
+
+  function hasImage(key) {
+    return exactNodes('data-imgslot',key).length>0;
+  }
+
+  function setText(element,value) {
+    element.textContent=value==null?'':String(value);
+  }
+
+  function textStyle(element,style) {
+    if (!style||typeof style!=='object') return;
+    if (style.color!=null) element.style.color=String(style.color);
+    if (style.fontWeight!=null) element.style.fontWeight=String(style.fontWeight);
+    if (style.fontStyle!=null) element.style.fontStyle=String(style.fontStyle);
+    if (style.fontFamily!=null) element.style.fontFamily=String(style.fontFamily);
+    if (style.textAlign!=null) element.style.textAlign=String(style.textAlign);
+    if (style.lineHeight!=null) element.style.lineHeight=String(style.lineHeight);
+    if (style.letterSpacing!=null) element.style.letterSpacing=String(style.letterSpacing);
+    if (style.textTransform!=null) element.style.textTransform=String(style.textTransform);
+    if (style.opacity!=null) element.style.opacity=String(style.opacity);
+    if (style.backgroundColor!=null) {
+      element.style.backgroundColor=String(style.backgroundColor);
+    }
+    if (style.fontSize!=null&&style.fontSize!=='') {
+      var size=parseFloat(String(style.fontSize));
+      if (isFinite(size)&&size>0) {
+        element.style.fontSize=size+'px';
+        if (element.hasAttribute('data-fit')) element.__educmsFitCeiling=size;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(style,'hidden')) {
+      element.style.display=style.hidden?'none':'';
+      element.setAttribute('aria-hidden',style.hidden?'true':'false');
+    }
+  }
+
+  function applyImage(element,value) {
+    var source=value;
+    var position='center';
+    var size='cover';
+    if (value&&typeof value==='object') {
+      source=value.src||value.url||'';
+      position=value.position||position;
+      size=value.size||value.fit||size;
+    }
+    source=source==null?'':String(source);
+    element.style.backgroundImage=source?
+      'url("'+source.replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/[\n\r\f]/g,'')+'")':
+      'none';
+    element.style.backgroundPosition=position;
+    element.style.backgroundSize=size;
+    element.classList.toggle('has-img',Boolean(source));
+    if (source) element.setAttribute('data-has-image','true');
+    else element.removeAttribute('data-has-image');
+  }
+
+  function brand(payload) {
+    if (!payload||typeof payload!=='object') return;
+    var map={
+      background:'--background',
+      surface:'--surface',
+      text:'--ink',
+      muted:'--muted',
+      primary:'--primary',
+      accent:'--accent',
+      fontDisplay:'--font-display',
+      fontBody:'--font-body',
+      fontSerif:'--font-serif',
+      fontMono:'--font-mono'
+    };
+    var key;
+    for (key in map) {
+      if (
+        Object.prototype.hasOwnProperty.call(map,key)&&
+        payload[key]!=null&&payload[key]!==''
+      ) {
+        root.style.setProperty(map[key],String(payload[key]));
+      }
+    }
+    var custom=payload.cssVariables||payload.variables||{};
+    for (key in custom) {
+      if (!Object.prototype.hasOwnProperty.call(custom,key)) continue;
+      root.style.setProperty(
+        key.indexOf('--')===0?key:'--'+key,
+        String(custom[key])
+      );
+    }
+  }
+
+  function apply(payload) {
+    payload=payload||{};
+    var text=payload.text||{};
+    var styles=payload.textStyles||{};
+    var images=payload.img||payload.images||{};
+    var keys={};
+    var key;
+    var list;
+    var i;
+
+    brand(payload.brand||{});
+    for (key in text) {
+      if (Object.prototype.hasOwnProperty.call(text,key)) keys[key]=true;
+    }
+    for (key in styles) {
+      if (Object.prototype.hasOwnProperty.call(styles,key)) keys[key]=true;
+    }
+    for (key in keys) {
+      if (!Object.prototype.hasOwnProperty.call(keys,key)) continue;
+      list=exactNodes('data-field',key);
+      for (i=0;i<list.length;i++) {
+        if (Object.prototype.hasOwnProperty.call(text,key)) setText(list[i],text[key]);
+        textStyle(list[i],styles[key]);
+      }
+    }
+    for (key in images) {
+      if (!Object.prototype.hasOwnProperty.call(images,key)) continue;
+      list=exactNodes('data-imgslot',key);
+      for (i=0;i<list.length;i++) applyImage(list[i],images[key]);
+    }
+    scheduleFit();
+  }
+
+  function queryPayload() {
+    var search=params();
+    var payload={
+      brand:decodeJson(search.get('brand')),
+      text:decodeJson(search.get('text')),
+      textStyles:decodeJson(search.get('textStyles')),
+      img:decodeJson(search.get('img'))
+    };
+    search.forEach(function (value,key) {
+      var field='';
+      if (key.indexOf('field.')===0) field=key.slice(6);
+      else if (key.indexOf('text.')===0) field=key.slice(5);
+      else if (hasField(key)) field=key;
+      if (field) {
+        payload.text[field]=value;
+        return;
+      }
+      var image='';
+      if (key.indexOf('image.')===0) image=key.slice(6);
+      else if (key.indexOf('img.')===0) image=key.slice(4);
+      else if (hasImage(key)) image=key;
+      if (image) payload.img[image]=value;
+    });
+    return payload;
+  }
+
+  function fields(attribute) {
+    var all=document.querySelectorAll('['+attribute+']');
+    var seen={};
+    var result=[];
+    var i;
+    var key;
+    for (i=0;i<all.length;i++) {
+      key=all[i].getAttribute(attribute);
+      if (key&&!seen[key]) {
+        seen[key]=true;
+        result.push(key);
+      }
+    }
+    return result;
+  }
+
+  function setEditMode(on) {
+    editMode=Boolean(on);
+    root.classList.toggle('is-editing',editMode);
+    if (editMode) root.classList.remove('is-frozen');
+  }
+
+  document.addEventListener('click',function (event) {
+    if (!editMode) return;
+    var element=event.target;
+    while (
+      element&&element!==document&&
+      !element.hasAttribute('data-field')&&
+      !element.hasAttribute('data-imgslot')
+    ) {
+      element=element.parentNode;
+    }
+    if (!element||element===document) return;
+    event.preventDefault();
+    event.stopPropagation();
+    post({
+      type:'educms-field-click',
+      key:element.getAttribute('data-field')||element.getAttribute('data-imgslot'),
+      kind:element.hasAttribute('data-field')?'text':'img'
+    });
+  },true);
+
+  window.addEventListener('message',function (event) {
+    var data=event.data;
+    if (!data||typeof data!=='object') return;
+    if (event.source&&event.source!==window.parent&&event.source!==window) return;
+    if (data.type==='educms-overrides') apply(data);
+    if (data.type==='educms-edit-mode') setEditMode(Boolean(data.on));
+    if (data.type==='educms-freeze') root.classList.add('is-frozen');
+    if (data.type==='educms-unfreeze') root.classList.remove('is-frozen');
+    if (data.type==='educms-refit') scheduleFit();
+  });
+
+  window.addEventListener('resize',orient);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize',orient);
+  }
+
+  var initial=params();
+  if (initial.get('freeze')==='1') root.classList.add('is-frozen');
+  if (initial.get('edit')==='1') setEditMode(true);
+
+  apply(queryPayload());
+  orient();
+  if (document.fonts&&document.fonts.ready) {
+    document.fonts.ready.then(scheduleFit,scheduleFit);
+    if (document.fonts.addEventListener) {
+      document.fonts.addEventListener('loadingdone',scheduleFit);
+    }
+  }
+  window.addEventListener('load',scheduleFit);
+
+  post({
+    type:'educms-ready',
+    orientation:currentOrientation,
+    fields:fields('data-field'),
+    images:fields('data-imgslot')
+  });
+}());
+
+</script>
+</body>
+</html>

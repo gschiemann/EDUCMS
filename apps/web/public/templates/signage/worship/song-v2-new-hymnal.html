@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Church Song Board 02 — The New Hymnal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Alegreya+Sans+SC:wght@500;700&family=Cormorant+Garamond:ital,wght@0,600;1,500;1,600&family=Source+Sans+3:wght@500;600;700&display=swap" rel="stylesheet" />
+  <style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=Manrope:wght@500;600;700;800&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap');
+
+* { box-sizing: border-box; }
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #080908;
+  -webkit-font-smoothing: antialiased;
+}
+body { font-family: 'Manrope', sans-serif; }
+#scene-wrap {
+  --scene-scale: 1;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  overflow: hidden;
+  transform: translate(-50%, -50%) scale(var(--scene-scale));
+  transform-origin: center center;
+}
+.scene {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+}
+.scene::after {
+  content: "";
+  position: absolute;
+  top:0;right:0;bottom:0;left:0;
+  z-index: 90;
+  pointer-events: none;
+  opacity: .055;
+  mix-blend-mode: soft-light;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.78' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.4'/%3E%3C/svg%3E");
+}
+[data-field], [data-imgslot] { max-width: 100%; }
+[data-fit], .clip { overflow: visible; }
+.bounded { overflow: hidden; }
+.mono { font-family: 'DM Mono', monospace; }
+.serif { font-family: 'Instrument Serif', serif; }
+.is-editing [data-field], .is-editing [data-imgslot] { cursor: pointer; }
+.is-editing [data-field]:hover,
+.is-editing [data-imgslot]:hover {
+  outline: 4px solid rgba(255,255,255,.9);
+  outline-offset: -4px;
+}
+.is-frozen *,
+.is-frozen *::before,
+.is-frozen *::after {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+.is-portrait .scene {
+  width: 1080px;
+  height: 1920px;
+}
+
+</style>
+  <style>
+    :root {
+      --paper:#efe6d5;
+      --ink:#15110d;
+      --primary:#4a1716;
+      --accent:#b89556;
+      --muted:#9b8b78;
+      --font-display:'Cormorant Garamond','Palatino Linotype',Palatino,serif;
+      --font-body:'Source Sans 3','Segoe UI',sans-serif;
+      --font-mono:'Alegreya Sans SC','Gill Sans','Trebuchet MS',sans-serif;
+    }
+    .scene { background:var(--ink); color:var(--paper); }
+    .art {
+      position:absolute; top:0;right:0;bottom:0;left:0; z-index:1;
+      background:url('assets/church-song-new-hymnal-v1.png') center/cover no-repeat;
+    }
+    .art::after {
+      content:""; position:absolute; top:0;right:0;bottom:0;left:0;
+      background:linear-gradient(90deg,rgba(12,10,8,.2) 0%,transparent 54%,rgba(12,10,8,.1) 100%);
+    }
+    .top {
+      position:absolute; left:58px; right:58px; top:42px; height:82px; z-index:12;
+      display:flex; justify-content:space-between; align-items:center;
+    }
+    .identity { display:flex; align-items:center; }
+    .logo {
+      position:relative; width:72px; height:72px; flex:0 0 72px;
+      background:var(--paper); background-position:center; background-repeat:no-repeat;
+      box-shadow:inset 0 0 0 2px rgba(21,17,13,.25);
+    }
+    .logo::after {
+      content:"H"; position:absolute; top:0;right:0;bottom:0;left:0; display:grid; place-items:center;
+      color:var(--ink); font:600 54px/1 var(--font-display);
+    }
+    .logo.has-img { background-color:transparent; background-size:contain !important; box-shadow:none; }
+    .logo.has-img::after { display:none; }
+    .brand {
+      margin-left:20px; min-height:62px;
+      font:700 52px/1.12 var(--font-body); color:var(--paper);
+      letter-spacing:-2px;
+    }
+    .service {
+      position:absolute; left:0; top:96px; width:780px; min-height:62px; text-align:left;
+      font:500 52px/1.12 var(--font-mono); color:var(--paper);
+    }
+    .hero {
+      position:absolute; left:66px; top:280px; width:760px; height:600px; z-index:8;
+    }
+    .eyebrow {
+      min-height:62px; font:500 52px/1.1 var(--font-mono);
+      color:var(--accent); text-transform:uppercase;
+    }
+    .title {
+      width:740px; height:310px; margin-top:12px;
+      font:600 178px/.82 var(--font-display); letter-spacing:-7px;
+      text-transform:uppercase;
+    }
+    .thesis {
+      width:680px; min-height:140px; margin-top:18px;
+      font:500 58px/1.15 var(--font-body); color:#d5c7b2;
+    }
+    .board {
+      position:absolute; left:938px; top:118px; width:900px; height:846px; z-index:8;
+      display:flex; flex-direction:column; gap:4px;
+    }
+    .hymn {
+      position:relative; height:166px; flex:0 0 166px;
+      display:grid; grid-template-columns:270px 1fr; align-items:center;
+      padding:16px 30px 24px;
+      background:
+        linear-gradient(90deg,rgba(255,255,255,.28),transparent 28%),
+        var(--paper);
+      color:var(--ink);
+      box-shadow:0 16px 28px rgba(0,0,0,.24);
+      transform-origin:center;
+      overflow:hidden;
+    }
+    .hymn:nth-child(2) { transform:rotate(-.35deg); }
+    .hymn:nth-child(3) { transform:rotate(.2deg); }
+    .hymn:nth-child(4) { transform:rotate(-.22deg); }
+    .hymn::after {
+      content:""; position:absolute; left:0; right:0; bottom:0; height:14px;
+      background:linear-gradient(#c6a76b,#8e6c35 45%,#5d411e 50%,#a37c3e 62%,#d0b375);
+      box-shadow:0 -2px 0 rgba(59,39,18,.52);
+    }
+    .hymn-meta {
+      width:270px; min-height:64px; padding-right:24px;
+      font:700 56px/1.1 var(--font-mono); color:var(--primary);
+      text-transform:uppercase; letter-spacing:-2.5px;
+    }
+    .hymn-title {
+      width:550px; height:124px;
+      display:flex; align-items:center;
+      font:600 60px/.94 var(--font-body); letter-spacing:-1px;
+    }
+    .footer-note {
+      position:absolute; left:66px; bottom:54px; z-index:9;
+      width:820px; min-height:62px;
+      font:600 52px/1.06 var(--font-body); color:var(--accent);
+    }
+
+    .is-portrait .art {
+      left:0; top:0; width:1080px; height:720px;
+      background-position:62% center;
+    }
+    .is-portrait .art::after {
+      background:linear-gradient(0deg,var(--ink) 0%,transparent 12%,transparent 100%);
+    }
+    .is-portrait .top { left:42px; right:42px; top:32px; height:78px; }
+    .is-portrait .service {
+      left:0; right:auto; top:600px; width:976px;
+      font-size:52px; text-align:left;
+    }
+    .is-portrait .hero {
+      left:52px; top:810px; width:976px; height:178px;
+    }
+    .is-portrait .eyebrow { min-height:60px; font-size:52px; }
+    .is-portrait .title {
+      width:960px; height:110px; margin-top:4px;
+      font-size:108px; line-height:.92; letter-spacing:-4px;
+      white-space:nowrap;
+    }
+    .is-portrait .thesis { display:none; }
+    .is-portrait .board {
+      left:52px; top:1000px; width:976px; height:788px; gap:2px;
+    }
+    .is-portrait .hymn {
+      width:976px; height:156px; flex-basis:156px;
+      grid-template-columns:270px 1fr; padding:14px 28px 22px;
+    }
+    .is-portrait .hymn-title {
+      width:638px; height:116px; font-size:60px; line-height:.9;
+    }
+    .is-portrait .footer-note {
+      left:52px; bottom:16px; width:976px; height:110px;
+      font-size:52px;
+    }
+  </style>
+</head>
+<body>
+  <div id="scene-wrap">
+    <main class="scene">
+      <div class="art" data-imgslot="board.art" aria-label="Replaceable tactile hymn-board artwork"></div>
+      <header class="top">
+        <div class="identity">
+          <div class="logo" data-imgslot="brand.logo" aria-label="Replaceable church logo"></div>
+          <div class="brand" data-field="brand.name">HAVEN CHURCH</div>
+        </div>
+        <div class="service" data-field="service.line">SUNDAY · 10:30 AM · MAIN AUDITORIUM</div>
+      </header>
+      <section class="hero">
+        <div class="eyebrow" data-field="board.eyebrow">THE NEW HYMNAL</div>
+        <div class="title" data-field="board.title" data-fit data-fit-min="96" data-fit-max="178">TODAY IN WORSHIP</div>
+        <div class="thesis" data-field="board.thesis">Five songs. One gathered voice. The words will be on screen.</div>
+      </section>
+      <section class="board">
+        <div class="hymn">
+          <div class="hymn-meta" data-field="song.1.meta" data-fit data-fit-min="52" data-fit-max="56">HYMN 2</div>
+          <div class="hymn-title" data-field="song.1.title" data-fit data-fit-min="52" data-fit-max="66">Come Thou Fount</div>
+        </div>
+        <div class="hymn">
+          <div class="hymn-meta" data-field="song.2.meta" data-fit data-fit-min="52" data-fit-max="56">OPENING</div>
+          <div class="hymn-title" data-field="song.2.title" data-fit data-fit-min="52" data-fit-max="66">Great Are You Lord</div>
+        </div>
+        <div class="hymn">
+          <div class="hymn-meta" data-field="song.3.meta" data-fit data-fit-min="52" data-fit-max="56">HYMN 10</div>
+          <div class="hymn-title" data-field="song.3.title" data-fit data-fit-min="52" data-fit-max="66">How Great Thou Art</div>
+        </div>
+        <div class="hymn">
+          <div class="hymn-meta" data-field="song.4.meta" data-fit data-fit-min="52" data-fit-max="56">RESPONSE</div>
+          <div class="hymn-title" data-field="song.4.title" data-fit data-fit-min="52" data-fit-max="66">Goodness of God</div>
+        </div>
+        <div class="hymn">
+          <div class="hymn-meta" data-field="song.5.meta" data-fit data-fit-min="52" data-fit-max="56">HYMN 815</div>
+          <div class="hymn-title" data-field="song.5.title" data-fit data-fit-min="52" data-fit-max="66">Doxology</div>
+        </div>
+      </section>
+      <div class="footer-note" data-field="board.footer">ALL ARE WELCOME TO SING</div>
+    </main>
+  </div>
+  <script>
+(function () {
+  'use strict';
+  var wrap = document.getElementById('scene-wrap');
+  var scene = wrap && wrap.querySelector('.scene');
+
+  function orient() {
+    var forced = new URLSearchParams(location.search).get('orientation');
+    var portrait = forced === 'portrait' || (forced !== 'landscape' && innerHeight > innerWidth);
+    var width = portrait ? 1080 : 1920;
+    var height = portrait ? 1920 : 1080;
+    document.documentElement.classList.toggle('is-portrait', portrait);
+    wrap.style.width = width + 'px';
+    wrap.style.height = height + 'px';
+    scene.style.width = width + 'px';
+    scene.style.height = height + 'px';
+    wrap.style.setProperty('--scene-scale', Math.min(innerWidth / width, innerHeight / height));
+    setTimeout(fitAll, 0);
+  }
+
+  function queryJson(name) {
+    var value = new URLSearchParams(location.search).get(name);
+    if (!value) return {};
+    try {
+      var base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+      while (base64.length % 4) base64 += '=';
+      var binary = atob(base64);
+      var encoded = '';
+      for (var i = 0; i < binary.length; i++) {
+        encoded += '%' + ('00' + binary.charCodeAt(i).toString(16)).slice(-2);
+      }
+      return JSON.parse(decodeURIComponent(encoded));
+    } catch (_) {}
+    try { return JSON.parse(value); } catch (_) {}
+    try { return JSON.parse(decodeURIComponent(value)); } catch (_) {}
+    return {};
+  }
+
+  function nodes(key, attribute) {
+    var all = document.querySelectorAll('[' + attribute + ']');
+    var found = [];
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].getAttribute(attribute) === key) found.push(all[i]);
+    }
+    return found;
+  }
+
+  function setText(element, value) {
+    if (value.indexOf('&') !== -1) {
+      var decoder = document.createElement('textarea');
+      decoder.innerHTML = value;
+      value = decoder.value;
+    }
+    if (!element.children.length) {
+      element.textContent = value;
+      return;
+    }
+    var textNode = null;
+    for (var i = 0; i < element.childNodes.length; i++) {
+      if (element.childNodes[i].nodeType === 3) {
+        textNode = element.childNodes[i];
+        break;
+      }
+    }
+    if (textNode) textNode.textContent = value;
+    else element.insertBefore(document.createTextNode(value), element.firstChild);
+  }
+
+  function fitAll() {
+    var all = document.querySelectorAll('[data-fit]');
+    for (var i = 0; i < all.length; i++) {
+      var element = all[i];
+      var minimum = Math.max(52, Number(element.getAttribute('data-fit-min') || 52));
+      var configuredMaximum = Number(element.getAttribute('data-fit-max') || 190);
+      var customMaximum = Number(element.dataset.fitCeiling || 0);
+      var heightTolerance = Math.max(
+        0,
+        Number(element.getAttribute('data-fit-height-tolerance') || 10)
+      );
+      if (typeof element.__educmsOriginalFontSize === 'undefined') {
+        element.__educmsOriginalFontSize = element.style.fontSize || '';
+      }
+      if (!customMaximum) element.style.fontSize = element.__educmsOriginalFontSize;
+      var cssMaximum = parseFloat(getComputedStyle(element).fontSize) || configuredMaximum;
+      var maximum = Math.max(minimum, customMaximum || Math.min(configuredMaximum, cssMaximum));
+      var low = Math.ceil(minimum);
+      var high = Math.floor(maximum);
+      var best = low;
+
+      element.style.fontSize = maximum + 'px';
+      if (
+        element.scrollWidth <= element.clientWidth + 1 &&
+        element.scrollHeight <= element.clientHeight + heightTolerance
+      ) {
+        best = maximum;
+      } else {
+        while (low <= high) {
+          var middle = Math.floor((low + high) / 2);
+          element.style.fontSize = middle + 'px';
+          if (
+            element.scrollWidth > element.clientWidth + 1 ||
+            element.scrollHeight > element.clientHeight + heightTolerance
+          ) {
+            high = middle - 1;
+          } else {
+            best = middle;
+            low = middle + 1;
+          }
+        }
+        element.style.fontSize = best + 'px';
+      }
+
+      element.setAttribute('data-fit-size', String(Math.round(best)));
+      if (
+        element.scrollWidth > element.clientWidth + 1 ||
+        element.scrollHeight > element.clientHeight + heightTolerance
+      ) {
+        element.setAttribute('data-fit-overflow', 'true');
+      } else {
+        element.removeAttribute('data-fit-overflow');
+      }
+    }
+  }
+
+  function apply(payload) {
+    payload = payload || {};
+    var root = document.documentElement.style;
+    var brand = payload.brand || {};
+    var text = payload.text || {};
+    var styles = payload.textStyles || {};
+    var images = payload.img || {};
+    if (brand.background) root.setProperty('--paper', brand.background);
+    if (brand.surface) root.setProperty('--paper', brand.surface);
+    if (brand.text) root.setProperty('--ink', brand.text);
+    if (brand.muted) root.setProperty('--muted', brand.muted);
+    if (brand.primary) root.setProperty('--primary', brand.primary);
+    if (brand.accent) root.setProperty('--accent', brand.accent);
+    if (brand.fontDisplay) root.setProperty('--font-display', brand.fontDisplay);
+    if (brand.fontBody) root.setProperty('--font-body', brand.fontBody);
+    if (brand.fontCondensed) root.setProperty('--font-mono', brand.fontCondensed);
+
+    var keys = {};
+    Object.keys(text).forEach(function (key) { keys[key] = true; });
+    Object.keys(styles).forEach(function (key) { keys[key] = true; });
+    Object.keys(keys).forEach(function (key) {
+      var list = nodes(key, 'data-field');
+      for (var i = 0; i < list.length; i++) {
+        if (typeof text[key] === 'string') setText(list[i], text[key]);
+        var style = styles[key] || {};
+        if (style.color) list[i].style.color = style.color;
+        if (style.fontSize != null) {
+          list[i].style.fontSize = typeof style.fontSize === 'number' ? style.fontSize + 'px' : style.fontSize;
+          if (list[i].hasAttribute('data-fit')) {
+            list[i].dataset.fitCeiling = String(parseFloat(String(style.fontSize)) || 0);
+          }
+        }
+        if (style.fontWeight != null) list[i].style.fontWeight = String(style.fontWeight);
+        if (style.fontStyle) list[i].style.fontStyle = style.fontStyle;
+        if (style.fontFamily) list[i].style.fontFamily = style.fontFamily;
+        if (style.textDecoration) list[i].style.textDecoration = style.textDecoration;
+        if (style.textAlign) list[i].style.textAlign = style.textAlign;
+        if (style.lineHeight != null) list[i].style.lineHeight = String(style.lineHeight);
+        if (style.backgroundColor) list[i].style.backgroundColor = style.backgroundColor;
+        if (Object.prototype.hasOwnProperty.call(style, 'hidden')) {
+          list[i].style.display = style.hidden ? 'none' : '';
+        }
+      }
+    });
+
+    Object.keys(images).forEach(function (key) {
+      var list = nodes(key, 'data-imgslot');
+      for (var i = 0; i < list.length; i++) {
+        if (typeof images[key] !== 'string') continue;
+        var safe = images[key].replace(/["'()\s]/g, '');
+        list[i].setAttribute('data-img', safe);
+        if (safe) {
+          list[i].style.backgroundImage = 'url("' + safe + '")';
+          list[i].style.backgroundSize = 'cover';
+          list[i].style.backgroundPosition = 'center';
+          list[i].classList.add('has-img');
+          list[i].setAttribute('data-has-image', 'true');
+        } else {
+          list[i].style.backgroundImage = '';
+          list[i].classList.remove('has-img');
+          list[i].removeAttribute('data-has-image');
+        }
+      }
+    });
+    setTimeout(fitAll, 0);
+  }
+
+  function armEdit() {
+    document.documentElement.classList.add('is-editing');
+    document.documentElement.classList.remove('is-frozen');
+    var all = document.querySelectorAll('[data-field],[data-imgslot]');
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].dataset.armed) continue;
+      all[i].dataset.armed = '1';
+      all[i].addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        parent.postMessage({
+          type: 'educms-field-click',
+          key: this.getAttribute('data-field') || this.getAttribute('data-imgslot'),
+          kind: this.hasAttribute('data-field') ? 'text' : 'img'
+        }, '*');
+      }, true);
+    }
+  }
+
+  addEventListener('resize', orient);
+  apply({
+    brand: queryJson('brand'),
+    text: queryJson('text'),
+    textStyles: queryJson('textStyles'),
+    img: queryJson('img')
+  });
+  orient();
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(function () { fitAll(); });
+  }
+  if (new URLSearchParams(location.search).get('freeze') === '1') {
+    document.documentElement.classList.add('is-frozen');
+  }
+  addEventListener('message', function (event) {
+    var data = event.data;
+    if (!data || typeof data !== 'object') return;
+    if (data.type === 'educms-overrides') apply(data);
+    if (data.type === 'educms-edit-mode' && data.on) armEdit();
+    if (data.type === 'educms-freeze') document.documentElement.classList.add('is-frozen');
+    if (data.type === 'educms-unfreeze') document.documentElement.classList.remove('is-frozen');
+  });
+  try { parent.postMessage({ type: 'educms-ready' }, '*'); } catch (_) {}
+}());
+
+</script>
+</body>
+</html>

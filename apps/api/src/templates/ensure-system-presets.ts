@@ -200,6 +200,12 @@ const SIG_INDUSTRY_VERTICAL: Record<string, string> = {
   // ALL_PRESETS above + tagged WORSHIP at line ~69). No `preset-sig-church-*`
   // id remains for this map to match, so the entry is dead — removed to keep
   // the WORSHIP gallery a single, fully-editable pack (no duplicate boards).
+  // 2026-07-24 — the NEW worship redesign boards (preset-sig-worship-*) are
+  // self-contained AND fully editable (baked educms protocol + data-fields),
+  // unlike the old preset-sig-church-* costumes that were dropped in 2026-06-27.
+  // Without this entry the id regex falls through to the K12 default and a
+  // church tenant would never see them.
+  worship: 'WORSHIP',
   veterinary: 'HEALTHCARE',
   gym: 'GYM',
   'real-estate': 'CORPORATE',

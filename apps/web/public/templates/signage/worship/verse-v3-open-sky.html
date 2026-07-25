@@ -1,0 +1,850 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Church Verse of the Day — Open Sky</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Domine:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>
+* { box-sizing:border-box; }
+
+html,
+body {
+  width:100%;
+  height:100%;
+  margin:0;
+  overflow:hidden;
+  background:#090909;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:geometricPrecision;
+}
+
+#scene-wrap {
+  --scene-scale:1;
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:1920px;
+  height:1080px;
+  overflow:hidden;
+  transform:translate(-50%,-50%) scale(var(--scene-scale));
+  transform-origin:center center;
+}
+
+.scene {
+  position:relative;
+  width:1920px;
+  height:1080px;
+  overflow:hidden;
+}
+
+.scene-portrait {
+  display:none;
+  width:1080px;
+  height:1920px;
+}
+
+.is-portrait #scene-wrap {
+  width:1080px;
+  height:1920px;
+}
+
+.is-portrait .scene-landscape { display:none; }
+.is-portrait .scene-portrait { display:block; }
+
+[data-field],
+[data-imgslot] {
+  max-width:100%;
+}
+
+[data-fit] {
+  overflow:hidden;
+}
+
+.is-editing [data-field],
+.is-editing [data-imgslot] {
+  cursor:pointer;
+}
+
+.is-editing [data-field]:hover,
+.is-editing [data-imgslot]:hover {
+  outline:4px solid rgba(255,255,255,.94);
+  outline-offset:-4px;
+}
+
+.is-frozen *,
+.is-frozen *::before,
+.is-frozen *::after {
+  animation-play-state:paused !important;
+  transition:none !important;
+}
+
+
+</style>
+  <style>
+    :root {
+      --ink:#191a20;
+      --paper:#f4f0e8;
+      --primary:#e9a98e;
+      --accent:#8b849e;
+      --muted:#bcb6c6;
+      --font-display:'Domine',Georgia,serif;
+      --font-body:'Plus Jakarta Sans',Arial,sans-serif;
+    }
+
+    .scene {
+      color:var(--paper);
+      background:var(--ink);
+      font-family:var(--font-body);
+    }
+
+    .scene::after {
+      content:"";
+      position:absolute;
+      top:0;right:0;bottom:0;left:0;
+      z-index:90;
+      pointer-events:none;
+      opacity:.055;
+      mix-blend-mode:soft-light;
+      background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.56' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.4'/%3E%3C/svg%3E");
+    }
+
+    .brand,
+    .date,
+    .eyebrow,
+    .verse,
+    .reference,
+    .response,
+    .translation,
+    .copyright {
+      position:absolute;
+      z-index:10;
+      overflow:hidden;
+    }
+
+    .brand,
+    .date {
+      height:70px;
+      font:700 52px/1 var(--font-body);
+      letter-spacing:-1.5px;
+      white-space:nowrap;
+    }
+
+    .date {
+      color:var(--muted);
+      text-align:right;
+    }
+
+    .eyebrow {
+      height:68px;
+      color:var(--primary);
+      font:800 52px/1 var(--font-body);
+      letter-spacing:4px;
+      text-transform:uppercase;
+      white-space:nowrap;
+    }
+
+    .verse {
+      margin:0;
+      color:var(--paper);
+      font:500 88px/1.13 var(--font-display);
+      letter-spacing:-2.7px;
+      text-wrap:balance;
+    }
+
+    .reference {
+      height:84px;
+      color:var(--primary);
+      font:700 64px/1.08 var(--font-body);
+      letter-spacing:-2px;
+      white-space:nowrap;
+    }
+
+    .response {
+      height:76px;
+      color:var(--muted);
+      font:500 60px/1.1 var(--font-display);
+      letter-spacing:-1px;
+      white-space:nowrap;
+    }
+
+    .translation,
+    .copyright {
+      height:62px;
+      color:var(--paper);
+      font:700 52px/1 var(--font-body);
+      letter-spacing:1px;
+      text-transform:uppercase;
+      white-space:nowrap;
+    }
+
+    .translation { color:var(--primary); }
+    .copyright { color:var(--muted); }
+
+    .sky-field {
+      position:absolute;
+      z-index:2;
+      overflow:hidden;
+      background-color:#aba8bf;
+      background-repeat:no-repeat;
+    }
+
+    .sky-field svg {
+      display:block;
+      width:100%;
+      height:100%;
+    }
+
+    .sky-field.has-img svg { display:none; }
+
+    .sky-field .cloud-near {
+      animation:cloud-drift 11s ease-in-out infinite alternate;
+      transform-origin:center;
+    }
+
+    .sky-field .cloud-far {
+      animation:cloud-drift 15s ease-in-out infinite alternate-reverse;
+      transform-origin:center;
+    }
+
+    .divider {
+      position:absolute;
+      z-index:6;
+      background:var(--primary);
+    }
+
+    .divider::before,
+    .divider::after {
+      content:"";
+      position:absolute;
+      border-radius:50%;
+      background:var(--paper);
+      box-shadow:0 0 0 12px rgba(233,169,142,.22);
+    }
+
+    @keyframes cloud-drift {
+      from { transform:translateX(-7px) translateY(3px) scale(1.006); }
+      to { transform:translateX(9px) translateY(-5px) scale(.994); }
+    }
+
+    /* Landscape · fixed 1920×1080 composition. */
+    .scene-landscape {
+      background:
+        linear-gradient(90deg,var(--ink) 0 1060px,#aba8bf 1060px 1920px);
+    }
+
+    .scene-landscape .sky-field {
+      left:1060px; top:0; width:860px; height:1080px;
+    }
+    .scene-landscape .divider {
+      left:1058px; top:0; width:4px; height:1080px;
+    }
+    .scene-landscape .divider::before {
+      left:-12px; top:214px; width:28px; height:28px;
+    }
+    .scene-landscape .divider::after {
+      left:-12px; bottom:126px; width:28px; height:28px;
+    }
+    .scene-landscape .brand {
+      left:80px; top:54px; width:900px;
+    }
+    .scene-landscape .date {
+      left:80px; top:132px; width:900px; text-align:left;
+    }
+    .scene-landscape .eyebrow {
+      left:80px; top:238px; width:900px;
+    }
+    .scene-landscape .verse {
+      left:80px; top:326px; width:900px; height:510px;
+    }
+    .scene-landscape .reference {
+      left:80px; top:848px; width:850px;
+    }
+    .scene-landscape .response {
+      left:80px; top:934px; width:880px; height:66px;
+    }
+    .scene-landscape .translation {
+      left:80px; top:1004px; width:150px;
+    }
+    .scene-landscape .copyright {
+      left:286px; top:1004px; width:600px;
+    }
+
+    /* Portrait · fixed 1080×1920 composition. */
+    .scene-portrait {
+      color:var(--ink);
+      background:
+        linear-gradient(180deg,#aba8bf 0 720px,var(--paper) 720px 1920px);
+    }
+
+    .scene-portrait .sky-field {
+      left:0; top:0; width:1080px; height:720px;
+    }
+    .scene-portrait .divider {
+      left:0; top:718px; width:1080px; height:4px;
+    }
+    .scene-portrait .divider::before {
+      left:88px; top:-12px; width:28px; height:28px;
+    }
+    .scene-portrait .divider::after {
+      right:88px; top:-12px; width:28px; height:28px;
+    }
+    .scene-portrait .brand {
+      left:60px; top:762px; width:960px; color:var(--ink);
+    }
+    .scene-portrait .date {
+      left:60px; top:840px; width:960px; color:#6f687b; text-align:left;
+    }
+    .scene-portrait .eyebrow {
+      left:60px; top:946px; width:960px; color:#b75f46;
+    }
+    .scene-portrait .verse {
+      left:60px; top:1038px; width:960px; height:480px;
+      color:var(--ink); font-size:86px;
+    }
+    .scene-portrait .reference {
+      left:60px; top:1548px; width:900px; color:#b75f46;
+    }
+    .scene-portrait .response {
+      left:60px; top:1648px; width:940px; color:#6f687b;
+    }
+    .scene-portrait .translation {
+      left:60px; top:1804px; width:150px; color:#b75f46;
+    }
+    .scene-portrait .copyright {
+      left:268px; top:1804px; width:600px; color:#6f687b;
+    }
+  </style>
+</head>
+<body>
+  <div id="scene-wrap">
+    <main class="scene scene-landscape" data-orientation="landscape" aria-label="Open Sky Verse of the Day, landscape">
+      <div class="sky-field" data-imgslot="art.sky" aria-label="Editable atmospheric artwork">
+        <svg viewBox="0 0 860 1080" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <defs>
+            <linearGradient id="skyL" x1="0" y1="0" x2="0.92" y2="1">
+              <stop offset="0" stop-color="#5d596d" />
+              <stop offset=".43" stop-color="#9e9ab1" />
+              <stop offset="1" stop-color="#ead6ca" />
+            </linearGradient>
+            <radialGradient id="sunL" cx=".72" cy=".18" r=".5">
+              <stop offset="0" stop-color="#fff8e9" stop-opacity=".98" />
+              <stop offset=".16" stop-color="#f6d2bc" stop-opacity=".86" />
+              <stop offset=".48" stop-color="#d6bdd0" stop-opacity=".28" />
+              <stop offset="1" stop-color="#a7a4b8" stop-opacity="0" />
+            </radialGradient>
+            <linearGradient id="cloudL" x1=".12" y1=".12" x2=".88" y2=".88">
+              <stop offset="0" stop-color="#fffaf0" stop-opacity=".98" />
+              <stop offset=".55" stop-color="#e5dee5" stop-opacity=".9" />
+              <stop offset="1" stop-color="#9a94aa" stop-opacity=".84" />
+            </linearGradient>
+            <linearGradient id="cloudShadowL" x1=".2" y1="0" x2=".8" y2="1">
+              <stop offset="0" stop-color="#716d80" stop-opacity=".08" />
+              <stop offset="1" stop-color="#3e3b49" stop-opacity=".58" />
+            </linearGradient>
+            <filter id="softL" x="-30%" y="-30%" width="160%" height="160%">
+              <feGaussianBlur stdDeviation="24" />
+            </filter>
+            <filter id="mistL" x="-30%" y="-30%" width="160%" height="160%">
+              <feGaussianBlur stdDeviation="46" />
+            </filter>
+          </defs>
+          <rect width="860" height="1080" fill="url(#skyL)" />
+          <rect width="860" height="1080" fill="url(#sunL)" />
+          <circle cx="674" cy="180" r="112" fill="#fff2df" opacity=".68" filter="url(#softL)" />
+          <circle cx="674" cy="180" r="60" fill="#fff9ed" opacity=".9" />
+          <g class="cloud-far" opacity=".54" filter="url(#mistL)">
+            <ellipse cx="188" cy="210" rx="286" ry="132" fill="#ece9ee" />
+            <ellipse cx="406" cy="286" rx="330" ry="138" fill="#ddd8e2" />
+            <ellipse cx="742" cy="352" rx="292" ry="128" fill="#d9d1dc" />
+          </g>
+          <g class="cloud-near">
+            <path d="M-86 705 C34 556 198 546 296 638 C388 472 628 472 708 648 C856 582 974 680 976 828 L976 1120 L-86 1120 Z" fill="url(#cloudL)" />
+            <path d="M-54 872 C94 720 272 742 350 836 C468 706 716 718 926 906 L926 1120 L-54 1120 Z" fill="url(#cloudShadowL)" opacity=".6" />
+            <ellipse cx="160" cy="822" rx="300" ry="164" fill="#fff9ee" opacity=".44" filter="url(#softL)" />
+          </g>
+          <path d="M40 506 C202 430 374 438 530 492 C658 536 748 532 838 488" fill="none" stroke="#f4f0e8" stroke-opacity=".36" stroke-width="4" />
+          <path d="M42 528 C218 468 382 474 520 524 C650 570 746 566 838 520" fill="none" stroke="#e9a98e" stroke-opacity=".45" stroke-width="3" />
+        </svg>
+      </div>
+      <div class="divider" aria-hidden="true"></div>
+
+      <div class="brand" data-field="brand.name">HAVEN CHURCH</div>
+      <div class="date" data-field="verse.date">SUNDAY · JUL 26</div>
+      <div class="eyebrow" data-field="board.eyebrow">OPEN SKY · OPEN WORD</div>
+      <blockquote class="verse" data-field="verse.text" data-fit data-fit-min="64" data-fit-max="88">"Be still, and know that I am God: I will be exalted among the heathen, I will be exalted in the earth."</blockquote>
+      <div class="reference" data-field="verse.reference">Psalm 46:10</div>
+      <div class="response" data-field="verse.response">Make room to listen.</div>
+      <div class="translation" data-field="verse.translation">KJV</div>
+      <div class="copyright" data-field="verse.copyright">PUBLIC DOMAIN</div>
+    </main>
+
+    <main class="scene scene-portrait" data-orientation="portrait" aria-label="Open Sky Verse of the Day, portrait">
+      <div class="sky-field" data-imgslot="art.sky" aria-label="Editable atmospheric artwork">
+        <svg viewBox="0 0 1080 720" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <defs>
+            <linearGradient id="skyP" x1=".06" y1=".02" x2=".9" y2="1">
+              <stop offset="0" stop-color="#5d596d" />
+              <stop offset=".5" stop-color="#a6a2b9" />
+              <stop offset="1" stop-color="#ecd9cc" />
+            </linearGradient>
+            <radialGradient id="sunP" cx=".76" cy=".25" r=".46">
+              <stop offset="0" stop-color="#fff9ec" stop-opacity=".98" />
+              <stop offset=".17" stop-color="#f3d0bb" stop-opacity=".82" />
+              <stop offset=".5" stop-color="#d0b9ce" stop-opacity=".22" />
+              <stop offset="1" stop-color="#a5a2b7" stop-opacity="0" />
+            </radialGradient>
+            <linearGradient id="cloudP" x1=".1" y1=".1" x2=".9" y2=".9">
+              <stop offset="0" stop-color="#fffaf0" stop-opacity=".98" />
+              <stop offset=".58" stop-color="#e7e0e7" stop-opacity=".92" />
+              <stop offset="1" stop-color="#8f899f" stop-opacity=".86" />
+            </linearGradient>
+            <filter id="softP" x="-30%" y="-30%" width="160%" height="160%">
+              <feGaussianBlur stdDeviation="22" />
+            </filter>
+            <filter id="mistP" x="-30%" y="-30%" width="160%" height="160%">
+              <feGaussianBlur stdDeviation="40" />
+            </filter>
+          </defs>
+          <rect width="1080" height="720" fill="url(#skyP)" />
+          <rect width="1080" height="720" fill="url(#sunP)" />
+          <circle cx="824" cy="172" r="96" fill="#fff6e5" opacity=".68" filter="url(#softP)" />
+          <circle cx="824" cy="172" r="52" fill="#fffaf0" opacity=".92" />
+          <g class="cloud-far" opacity=".54" filter="url(#mistP)">
+            <ellipse cx="156" cy="206" rx="310" ry="124" fill="#ece9ee" />
+            <ellipse cx="496" cy="274" rx="370" ry="138" fill="#ddd8e2" />
+            <ellipse cx="980" cy="320" rx="330" ry="128" fill="#d9d1dc" />
+          </g>
+          <g class="cloud-near">
+            <path d="M-88 506 C72 382 260 382 354 466 C470 330 708 350 780 480 C944 418 1128 510 1164 650 L1164 764 L-88 764 Z" fill="url(#cloudP)" />
+            <ellipse cx="246" cy="594" rx="360" ry="142" fill="#fff9ef" opacity=".4" filter="url(#softP)" />
+          </g>
+          <path d="M52 354 C236 292 416 300 602 356 C758 404 900 388 1028 332" fill="none" stroke="#f4f0e8" stroke-opacity=".34" stroke-width="4" />
+          <path d="M52 376 C236 326 418 332 594 384 C758 432 896 418 1028 362" fill="none" stroke="#e9a98e" stroke-opacity=".44" stroke-width="3" />
+        </svg>
+      </div>
+      <div class="divider" aria-hidden="true"></div>
+
+      <div class="brand" data-field="brand.name">HAVEN CHURCH</div>
+      <div class="date" data-field="verse.date">SUNDAY · JUL 26</div>
+      <div class="eyebrow" data-field="board.eyebrow">OPEN SKY · OPEN WORD</div>
+      <blockquote class="verse" data-field="verse.text" data-fit data-fit-min="64" data-fit-max="86">"Be still, and know that I am God: I will be exalted among the heathen, I will be exalted in the earth."</blockquote>
+      <div class="reference" data-field="verse.reference">Psalm 46:10</div>
+      <div class="response" data-field="verse.response">Make room to listen.</div>
+      <div class="translation" data-field="verse.translation">KJV</div>
+      <div class="copyright" data-field="verse.copyright">PUBLIC DOMAIN</div>
+    </main>
+  </div>
+
+  <script>
+(function () {
+  'use strict';
+
+  var LANDSCAPE={name:'landscape',width:1920,height:1080};
+  var PORTRAIT={name:'portrait',width:1080,height:1920};
+  var root=document.documentElement;
+  var wrap=document.getElementById('scene-wrap');
+  var activeScene=null;
+  var currentOrientation='';
+  var frame=0;
+  var editMode=false;
+
+  if (!wrap) return;
+
+  function params() {
+    return new URLSearchParams(window.location.search);
+  }
+
+  function post(message) {
+    try {
+      if (window.parent && window.parent!==window) {
+        window.parent.postMessage(message,'*');
+      }
+    } catch (_) {}
+  }
+
+  function orientation() {
+    var forced=params().get('orientation');
+    if (forced==='portrait') return PORTRAIT;
+    if (forced==='landscape') return LANDSCAPE;
+    return window.innerHeight>window.innerWidth?PORTRAIT:LANDSCAPE;
+  }
+
+  function selectScene(next) {
+    var scenes=wrap.querySelectorAll('.scene');
+    var selected=null;
+    var i;
+    for (i=0;i<scenes.length;i++) {
+      var declared=scenes[i].getAttribute('data-orientation')||'';
+      if (declared===next.name) selected=scenes[i];
+      scenes[i].style.display=declared===next.name?'block':'none';
+      scenes[i].setAttribute('aria-hidden',declared===next.name?'false':'true');
+    }
+    return selected;
+  }
+
+  function scheduleFit() {
+    if (frame) window.cancelAnimationFrame(frame);
+    frame=window.requestAnimationFrame(function () {
+      frame=0;
+      fitAll();
+    });
+  }
+
+  function orient() {
+    var next=orientation();
+    activeScene=selectScene(next);
+    if (!activeScene) return;
+
+    currentOrientation=next.name;
+    root.classList.toggle('is-landscape',next.name==='landscape');
+    root.classList.toggle('is-portrait',next.name==='portrait');
+    root.setAttribute('data-orientation',next.name);
+    document.body.setAttribute('data-orientation',next.name);
+    wrap.setAttribute('data-orientation',next.name);
+    wrap.style.width=next.width+'px';
+    wrap.style.height=next.height+'px';
+    wrap.style.setProperty(
+      '--scene-scale',
+      String(Math.min(window.innerWidth/next.width,window.innerHeight/next.height))
+    );
+
+    scheduleFit();
+    post({
+      type:'educms-orientation',
+      orientation:next.name,
+      width:next.width,
+      height:next.height
+    });
+  }
+
+  function overflows(element) {
+    return element.scrollWidth>element.clientWidth+1 ||
+      element.scrollHeight>element.clientHeight+1;
+  }
+
+  function positiveNumber(element,name,fallback) {
+    var value=Number(element.getAttribute(name));
+    return isFinite(value)&&value>0?value:fallback;
+  }
+
+  function fit(element) {
+    if (!element.clientWidth||!element.clientHeight) return false;
+
+    var minimum=positiveNumber(element,'data-fit-min',64);
+    var maximum=positiveNumber(
+      element,
+      'data-fit-max',
+      parseFloat(window.getComputedStyle(element).fontSize)||minimum
+    );
+    if (element.__educmsFitCeiling) {
+      maximum=Math.min(maximum,element.__educmsFitCeiling);
+    }
+    maximum=Math.max(minimum,maximum);
+    element.style.fontSize=maximum+'px';
+
+    if (!overflows(element)) {
+      element.setAttribute('data-fit-size',String(Math.round(maximum)));
+      element.removeAttribute('data-fit-overflow');
+      return false;
+    }
+
+    var low=Math.ceil(minimum);
+    var high=Math.floor(maximum);
+    var best=low;
+    while (low<=high) {
+      var middle=Math.floor((low+high)/2);
+      element.style.fontSize=middle+'px';
+      if (overflows(element)) high=middle-1;
+      else {
+        best=middle;
+        low=middle+1;
+      }
+    }
+
+    element.style.fontSize=best+'px';
+    element.setAttribute('data-fit-size',String(best));
+    if (overflows(element)) {
+      element.setAttribute('data-fit-overflow','true');
+      return true;
+    }
+    element.removeAttribute('data-fit-overflow');
+    return false;
+  }
+
+  function fitAll() {
+    var elements=document.querySelectorAll('[data-fit]');
+    var overflow=[];
+    var i;
+    for (i=0;i<elements.length;i++) {
+      if (fit(elements[i])) {
+        overflow.push(elements[i].getAttribute('data-field')||'unlabelled');
+      }
+    }
+    if (overflow.length) {
+      post({
+        type:'educms-fit-overflow',
+        orientation:currentOrientation,
+        keys:overflow
+      });
+    }
+  }
+
+  function decodeJson(value) {
+    if (!value) return {};
+    try { return JSON.parse(value); } catch (_) {}
+    try { return JSON.parse(decodeURIComponent(value)); } catch (_) {}
+    try {
+      var normalized=value.replace(/-/g,'+').replace(/_/g,'/');
+      while (normalized.length%4) normalized+='=';
+      return JSON.parse(decodeURIComponent(escape(window.atob(normalized))));
+    } catch (_) {}
+    return {};
+  }
+
+  function exactNodes(attribute,key) {
+    var all=document.querySelectorAll('['+attribute+']');
+    var found=[];
+    var i;
+    for (i=0;i<all.length;i++) {
+      if (all[i].getAttribute(attribute)===key) found.push(all[i]);
+    }
+    return found;
+  }
+
+  function hasField(key) {
+    return exactNodes('data-field',key).length>0;
+  }
+
+  function hasImage(key) {
+    return exactNodes('data-imgslot',key).length>0;
+  }
+
+  function setText(element,value) {
+    element.textContent=value==null?'':String(value);
+  }
+
+  function textStyle(element,style) {
+    if (!style||typeof style!=='object') return;
+    if (style.color!=null) element.style.color=String(style.color);
+    if (style.fontWeight!=null) element.style.fontWeight=String(style.fontWeight);
+    if (style.fontStyle!=null) element.style.fontStyle=String(style.fontStyle);
+    if (style.fontFamily!=null) element.style.fontFamily=String(style.fontFamily);
+    if (style.textAlign!=null) element.style.textAlign=String(style.textAlign);
+    if (style.lineHeight!=null) element.style.lineHeight=String(style.lineHeight);
+    if (style.letterSpacing!=null) element.style.letterSpacing=String(style.letterSpacing);
+    if (style.textTransform!=null) element.style.textTransform=String(style.textTransform);
+    if (style.opacity!=null) element.style.opacity=String(style.opacity);
+    if (style.backgroundColor!=null) {
+      element.style.backgroundColor=String(style.backgroundColor);
+    }
+    if (style.fontSize!=null&&style.fontSize!=='') {
+      var size=parseFloat(String(style.fontSize));
+      if (isFinite(size)&&size>0) {
+        element.style.fontSize=size+'px';
+        if (element.hasAttribute('data-fit')) element.__educmsFitCeiling=size;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(style,'hidden')) {
+      element.style.display=style.hidden?'none':'';
+      element.setAttribute('aria-hidden',style.hidden?'true':'false');
+    }
+  }
+
+  function applyImage(element,value) {
+    var source=value;
+    var position='center';
+    var size='cover';
+    if (value&&typeof value==='object') {
+      source=value.src||value.url||'';
+      position=value.position||position;
+      size=value.size||value.fit||size;
+    }
+    source=source==null?'':String(source);
+    element.style.backgroundImage=source?
+      'url("'+source.replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/[\n\r\f]/g,'')+'")':
+      'none';
+    element.style.backgroundPosition=position;
+    element.style.backgroundSize=size;
+    element.classList.toggle('has-img',Boolean(source));
+    if (source) element.setAttribute('data-has-image','true');
+    else element.removeAttribute('data-has-image');
+  }
+
+  function brand(payload) {
+    if (!payload||typeof payload!=='object') return;
+    var map={
+      background:'--background',
+      surface:'--surface',
+      text:'--ink',
+      muted:'--muted',
+      primary:'--primary',
+      accent:'--accent',
+      fontDisplay:'--font-display',
+      fontBody:'--font-body',
+      fontSerif:'--font-serif',
+      fontMono:'--font-mono'
+    };
+    var key;
+    for (key in map) {
+      if (
+        Object.prototype.hasOwnProperty.call(map,key)&&
+        payload[key]!=null&&payload[key]!==''
+      ) {
+        root.style.setProperty(map[key],String(payload[key]));
+      }
+    }
+    var custom=payload.cssVariables||payload.variables||{};
+    for (key in custom) {
+      if (!Object.prototype.hasOwnProperty.call(custom,key)) continue;
+      root.style.setProperty(
+        key.indexOf('--')===0?key:'--'+key,
+        String(custom[key])
+      );
+    }
+  }
+
+  function apply(payload) {
+    payload=payload||{};
+    var text=payload.text||{};
+    var styles=payload.textStyles||{};
+    var images=payload.img||payload.images||{};
+    var keys={};
+    var key;
+    var list;
+    var i;
+
+    brand(payload.brand||{});
+    for (key in text) {
+      if (Object.prototype.hasOwnProperty.call(text,key)) keys[key]=true;
+    }
+    for (key in styles) {
+      if (Object.prototype.hasOwnProperty.call(styles,key)) keys[key]=true;
+    }
+    for (key in keys) {
+      if (!Object.prototype.hasOwnProperty.call(keys,key)) continue;
+      list=exactNodes('data-field',key);
+      for (i=0;i<list.length;i++) {
+        if (Object.prototype.hasOwnProperty.call(text,key)) setText(list[i],text[key]);
+        textStyle(list[i],styles[key]);
+      }
+    }
+    for (key in images) {
+      if (!Object.prototype.hasOwnProperty.call(images,key)) continue;
+      list=exactNodes('data-imgslot',key);
+      for (i=0;i<list.length;i++) applyImage(list[i],images[key]);
+    }
+    scheduleFit();
+  }
+
+  function queryPayload() {
+    var search=params();
+    var payload={
+      brand:decodeJson(search.get('brand')),
+      text:decodeJson(search.get('text')),
+      textStyles:decodeJson(search.get('textStyles')),
+      img:decodeJson(search.get('img'))
+    };
+    search.forEach(function (value,key) {
+      var field='';
+      if (key.indexOf('field.')===0) field=key.slice(6);
+      else if (key.indexOf('text.')===0) field=key.slice(5);
+      else if (hasField(key)) field=key;
+      if (field) {
+        payload.text[field]=value;
+        return;
+      }
+      var image='';
+      if (key.indexOf('image.')===0) image=key.slice(6);
+      else if (key.indexOf('img.')===0) image=key.slice(4);
+      else if (hasImage(key)) image=key;
+      if (image) payload.img[image]=value;
+    });
+    return payload;
+  }
+
+  function fields(attribute) {
+    var all=document.querySelectorAll('['+attribute+']');
+    var seen={};
+    var result=[];
+    var i;
+    var key;
+    for (i=0;i<all.length;i++) {
+      key=all[i].getAttribute(attribute);
+      if (key&&!seen[key]) {
+        seen[key]=true;
+        result.push(key);
+      }
+    }
+    return result;
+  }
+
+  function setEditMode(on) {
+    editMode=Boolean(on);
+    root.classList.toggle('is-editing',editMode);
+    if (editMode) root.classList.remove('is-frozen');
+  }
+
+  document.addEventListener('click',function (event) {
+    if (!editMode) return;
+    var element=event.target;
+    while (
+      element&&element!==document&&
+      !element.hasAttribute('data-field')&&
+      !element.hasAttribute('data-imgslot')
+    ) {
+      element=element.parentNode;
+    }
+    if (!element||element===document) return;
+    event.preventDefault();
+    event.stopPropagation();
+    post({
+      type:'educms-field-click',
+      key:element.getAttribute('data-field')||element.getAttribute('data-imgslot'),
+      kind:element.hasAttribute('data-field')?'text':'img'
+    });
+  },true);
+
+  window.addEventListener('message',function (event) {
+    var data=event.data;
+    if (!data||typeof data!=='object') return;
+    if (event.source&&event.source!==window.parent&&event.source!==window) return;
+    if (data.type==='educms-overrides') apply(data);
+    if (data.type==='educms-edit-mode') setEditMode(Boolean(data.on));
+    if (data.type==='educms-freeze') root.classList.add('is-frozen');
+    if (data.type==='educms-unfreeze') root.classList.remove('is-frozen');
+    if (data.type==='educms-refit') scheduleFit();
+  });
+
+  window.addEventListener('resize',orient);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize',orient);
+  }
+
+  var initial=params();
+  if (initial.get('freeze')==='1') root.classList.add('is-frozen');
+  if (initial.get('edit')==='1') setEditMode(true);
+
+  apply(queryPayload());
+  orient();
+  if (document.fonts&&document.fonts.ready) {
+    document.fonts.ready.then(scheduleFit,scheduleFit);
+    if (document.fonts.addEventListener) {
+      document.fonts.addEventListener('loadingdone',scheduleFit);
+    }
+  }
+  window.addEventListener('load',scheduleFit);
+
+  post({
+    type:'educms-ready',
+    orientation:currentOrientation,
+    fields:fields('data-field'),
+    images:fields('data-imgslot')
+  });
+}());
+
+</script>
+</body>
+</html>

@@ -1,0 +1,773 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Church Capital Campaign 02 — Light the Window</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Bodoni+Moda:opsz,wght@6..96,500;6..96,600&display=swap" rel="stylesheet" />
+  <style>
+* { box-sizing: border-box; }
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #090a09;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+
+#scene-wrap {
+  --scene-scale: 1;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  overflow: hidden;
+  transform: translate(-50%, -50%) scale(var(--scene-scale));
+  transform-origin: center center;
+}
+
+.scene {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+}
+
+.scene::after {
+  content: "";
+  position: absolute;
+  top:0;right:0;bottom:0;left:0;
+  z-index: 90;
+  pointer-events: none;
+  opacity: .045;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.36'/%3E%3C/svg%3E");
+}
+
+[data-field],
+[data-imgslot] {
+  max-width: 100%;
+}
+
+[data-fit] {
+  overflow: visible;
+}
+
+.is-editing [data-field],
+.is-editing [data-imgslot] {
+  cursor: pointer;
+}
+
+.is-editing [data-field]:hover,
+.is-editing [data-imgslot]:hover {
+  outline: 4px solid rgba(255, 255, 255, .94);
+  outline-offset: -4px;
+}
+
+.is-frozen *,
+.is-frozen *::before,
+.is-frozen *::after {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+
+.is-portrait .scene {
+  width: 1080px;
+  height: 1920px;
+}
+
+</style>
+  <style>
+    :root {
+      --aubergine:#301728;
+      --garnet:#843248;
+      --saffron:#e4a63a;
+      --olive:#69704f;
+      --parchment:#f4ead7;
+      --font-display:'Bodoni Moda',Georgia,serif;
+      --font-condensed:'Barlow Condensed','Arial Narrow',sans-serif;
+    }
+    body { font-family:var(--font-condensed); }
+    .scene {
+      color:var(--parchment);
+      background:
+        radial-gradient(circle at 22% 24%,rgba(228,166,58,.12),transparent 33%),
+        linear-gradient(135deg,#3a1d31,var(--aubergine) 58%,#21101c);
+    }
+    .window-stage {
+      position:absolute; left:28px; top:28px; width:1024px; height:1024px;
+      display:grid; place-items:center;
+    }
+    .window-disc {
+      position:relative; width:930px; height:930px; border-radius:50%;
+      border:8px solid var(--parchment);
+      background:
+        repeating-conic-gradient(from -90deg,transparent 0 11.2deg,var(--aubergine) 11.2deg 13.333deg),
+        conic-gradient(from -90deg,var(--saffron) 0 74%,var(--garnet) 74% 100%);
+      box-shadow:
+        0 0 0 20px rgba(244,234,215,.12),
+        0 28px 90px rgba(0,0,0,.34),
+        inset 0 0 80px rgba(48,23,40,.38);
+    }
+    .window-disc::before {
+      content:""; position:absolute; top:108px;right:108px;bottom:108px;left:108px; border-radius:50%;
+      border:8px solid var(--parchment);
+      box-shadow:
+        0 0 0 70px rgba(48,23,40,.18),
+        inset 0 0 0 70px rgba(48,23,40,.18);
+    }
+    .window-disc::after {
+      content:""; position:absolute; left:50%; top:50%; width:230px; height:230px;
+      transform:translate(-50%,-50%); border-radius:50%;
+      border:8px solid var(--parchment); background:var(--aubergine);
+      box-shadow:0 0 0 20px rgba(244,234,215,.15);
+    }
+    .tracery {
+      position:absolute; top:82px;right:82px;bottom:82px;left:82px; width:860px; height:860px;
+      color:var(--parchment); opacity:.72; pointer-events:none;
+    }
+    .window-metric {
+      position:absolute; left:240px; top:320px; width:600px; height:320px; z-index:4;
+      display:flex; align-items:center; justify-content:center;
+      color:var(--parchment); font:700 276px/.9 var(--font-condensed);
+      letter-spacing:-8px; text-shadow:0 6px 24px rgba(0,0,0,.38);
+    }
+    .window-caption {
+      position:absolute; left:272px; top:660px; width:536px; height:126px; z-index:4;
+      color:var(--parchment); text-align:center;
+      font:700 58px/1.02 var(--font-condensed); letter-spacing:.08em; text-transform:uppercase;
+    }
+    .story {
+      position:absolute; left:1080px; top:0; width:840px; height:1080px;
+      padding:42px 54px 34px; border-left:2px solid rgba(244,234,215,.3);
+    }
+    .brand {
+      position:absolute; left:54px; top:42px; width:732px; height:60px;
+      font:700 52px/1 var(--font-condensed);
+    }
+    .type {
+      position:absolute; left:54px; top:126px; width:732px; height:108px;
+      color:var(--saffron); font:700 52px/1.02 var(--font-condensed);
+      letter-spacing:.07em; text-transform:uppercase;
+    }
+    .title {
+      position:absolute; left:54px; top:266px; width:732px; height:170px;
+      font:600 86px/.94 var(--font-display); letter-spacing:-3px;
+    }
+    .outcome {
+      position:absolute; left:54px; top:448px; width:732px; height:166px;
+      color:var(--parchment); font:600 64px/1.05 var(--font-condensed);
+    }
+    .figures {
+      position:absolute; left:54px; top:626px; width:732px; height:72px;
+      display:flex; justify-content:space-between; align-items:center;
+      border-top:2px solid rgba(244,234,215,.55); border-bottom:2px solid rgba(244,234,215,.55);
+      color:var(--parchment); font:700 52px/1 var(--font-condensed);
+    }
+    .figures span:last-child { color:var(--saffron); }
+    .action {
+      position:absolute; left:54px; right:54px; bottom:34px; height:336px;
+      display:grid; grid-template-columns:330px 1fr; gap:30px; align-items:center;
+    }
+    .qr-shell { width:330px; height:330px; padding:15px; background:#fff; }
+    .qr { display:block; width:300px; height:300px; object-fit:contain; }
+    .cta {
+      width:372px; height:180px; color:var(--saffron);
+      font:700 62px/1 var(--font-condensed); letter-spacing:.02em; text-transform:uppercase;
+    }
+    .date {
+      width:372px; height:auto; min-height:58px; max-height:176px; margin-top:18px;
+      overflow:hidden; color:var(--parchment); font:600 52px/1.06 var(--font-condensed);
+    }
+
+    .is-portrait .window-stage {
+      left:0; top:0; width:1080px; height:900px;
+    }
+    .is-portrait .window-disc { width:900px; height:900px; }
+    .is-portrait .tracery { top:53px;right:53px;bottom:53px;left:53px; width:860px; height:860px; }
+    .is-portrait .window-metric {
+      left:210px; top:320px; width:660px; height:310px; font-size:276px;
+    }
+    .is-portrait .window-caption { left:250px; top:646px; width:580px; }
+    .is-portrait .story {
+      left:0; top:900px; width:1080px; height:1020px;
+      padding:32px 54px; border-left:0; border-top:2px solid rgba(244,234,215,.3);
+    }
+    .is-portrait .brand { left:54px; top:32px; width:972px; }
+    .is-portrait .type { left:54px; top:108px; width:972px; height:112px; }
+    .is-portrait .title {
+      left:54px; top:236px; width:972px; height:104px; font-size:82px;
+    }
+    .is-portrait .outcome {
+      left:54px; top:356px; width:972px; height:156px; font-size:64px;
+    }
+    .is-portrait .figures { left:54px; top:530px; width:972px; height:72px; }
+    .is-portrait .action {
+      left:54px; right:auto; bottom:28px; width:972px; height:342px;
+      grid-template-columns:330px 1fr; gap:46px;
+    }
+    .is-portrait .cta,
+    .is-portrait .date { width:596px; }
+  </style>
+</head>
+<body>
+  <div id="scene-wrap">
+    <main class="scene">
+      <section class="window-stage" aria-label="Seventy-four percent illuminated campaign rose window">
+        <div class="window-disc" aria-hidden="true"></div>
+        <svg class="tracery" viewBox="0 0 860 860" fill="none" stroke="currentColor" stroke-width="5" aria-hidden="true">
+          <circle cx="430" cy="430" r="342"/>
+          <circle cx="430" cy="430" r="214"/>
+          <path d="M430 88V772M88 430H772M188 188L672 672M672 188L188 672"/>
+          <path d="M304 112L556 748M112 304L748 556M556 112L304 748M748 304L112 556"/>
+        </svg>
+        <div class="window-metric" data-field="campaign.percent" data-fit data-fit-min="260" data-fit-max="276">74%</div>
+        <div class="window-caption" data-field="campaign.panes">20 OF 27 PANES ILLUMINATED</div>
+      </section>
+
+      <section class="story">
+        <div class="brand" data-field="brand.name">HAVEN CHURCH</div>
+        <div class="type" data-field="campaign.type">ROOM TO GROW · CAPITAL CAMPAIGN</div>
+        <div class="title" data-field="campaign.name" data-fit data-fit-min="72" data-fit-max="86">LIGHT THE WINDOW</div>
+        <div class="outcome" data-field="campaign.outcome" data-fit data-fit-min="52" data-fit-max="64">A place for students to belong, learn, and lead.</div>
+        <div class="figures"><span data-field="campaign.committed">$184.5K COMMITTED</span><span data-field="campaign.goal">$250K GOAL</span></div>
+        <div class="action">
+          <div class="qr-shell"><img class="qr" src="assets/church-weekly-qr-v1.png" data-imgslot="campaign.qr" alt="Replaceable campaign QR code" /></div>
+          <div>
+            <div class="cta" data-field="campaign.cta" data-fit data-fit-min="52" data-fit-max="62">SCAN TO JOIN THE CAMPAIGN</div>
+            <div class="date" data-field="campaign.date">UPDATED · JUL 20<br />COMMIT · OCT 18</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script>
+(function () {
+  'use strict';
+
+  var LANDSCAPE = { name: 'landscape', width: 1920, height: 1080 };
+  var PORTRAIT = { name: 'portrait', width: 1080, height: 1920 };
+  var root = document.documentElement;
+  var wrap = document.getElementById('scene-wrap');
+  var activeScene = null;
+  var currentOrientation = '';
+  var fitFrame = 0;
+  var editMode = false;
+  var lastOverflowSignature = '';
+
+  if (!wrap) return;
+
+  function query() {
+    return new URLSearchParams(window.location.search);
+  }
+
+  function orientationForViewport() {
+    var forced = query().get('orientation');
+    if (forced === 'portrait') return PORTRAIT;
+    if (forced === 'landscape') return LANDSCAPE;
+    return window.innerHeight > window.innerWidth ? PORTRAIT : LANDSCAPE;
+  }
+
+  function sceneOrientation(scene) {
+    var declared = scene.getAttribute('data-orientation') ||
+      scene.getAttribute('data-scene-orientation') || '';
+    if (!declared && scene.classList.contains('scene-portrait')) declared = 'portrait';
+    if (!declared && scene.classList.contains('scene-landscape')) declared = 'landscape';
+    return declared.toLowerCase();
+  }
+
+  function selectScene(orientation) {
+    var scenes = wrap.querySelectorAll('.scene');
+    var selected = scenes.length ? scenes[0] : null;
+    var hasDedicatedScenes = false;
+    var i;
+
+    for (i = 0; i < scenes.length; i++) {
+      if (sceneOrientation(scenes[i])) hasDedicatedScenes = true;
+      if (sceneOrientation(scenes[i]) === orientation.name) selected = scenes[i];
+    }
+
+    if (hasDedicatedScenes) {
+      for (i = 0; i < scenes.length; i++) {
+        var isSelected = scenes[i] === selected;
+        scenes[i].style.display = isSelected ? '' : 'none';
+        scenes[i].setAttribute('aria-hidden', isSelected ? 'false' : 'true');
+      }
+    }
+
+    return selected;
+  }
+
+  function post(message) {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(message, '*');
+      }
+    } catch (_) {}
+  }
+
+  function scheduleFit() {
+    if (fitFrame) window.cancelAnimationFrame(fitFrame);
+    fitFrame = window.requestAnimationFrame(function () {
+      fitFrame = 0;
+      fitAll();
+    });
+  }
+
+  function orient() {
+    var orientation = orientationForViewport();
+    activeScene = selectScene(orientation);
+    if (!activeScene) return;
+
+    currentOrientation = orientation.name;
+    root.classList.toggle('is-portrait', orientation.name === 'portrait');
+    root.classList.toggle('is-landscape', orientation.name === 'landscape');
+    root.setAttribute('data-orientation', orientation.name);
+
+    if (document.body) document.body.setAttribute('data-orientation', orientation.name);
+    wrap.setAttribute('data-orientation', orientation.name);
+    activeScene.setAttribute('data-active-orientation', orientation.name);
+
+    wrap.style.width = orientation.width + 'px';
+    wrap.style.height = orientation.height + 'px';
+    activeScene.style.width = orientation.width + 'px';
+    activeScene.style.height = orientation.height + 'px';
+
+    wrap.style.setProperty('--scene-width', orientation.width + 'px');
+    wrap.style.setProperty('--scene-height', orientation.height + 'px');
+    wrap.style.setProperty(
+      '--scene-scale',
+      String(Math.min(
+        window.innerWidth / orientation.width,
+        window.innerHeight / orientation.height
+      ))
+    );
+
+    scheduleFit();
+    post({
+      type: 'educms-orientation',
+      orientation: orientation.name,
+      width: orientation.width,
+      height: orientation.height
+    });
+  }
+
+  function decodeBase64Json(value) {
+    var base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4) base64 += '=';
+    var binary = window.atob(base64);
+    var bytes = '';
+    var i;
+    for (i = 0; i < binary.length; i++) {
+      bytes += '%' + ('00' + binary.charCodeAt(i).toString(16)).slice(-2);
+    }
+    return JSON.parse(decodeURIComponent(bytes));
+  }
+
+  function queryJson(name) {
+    var value = query().get(name);
+    if (!value) return {};
+
+    try { return JSON.parse(value); } catch (_) {}
+    try { return JSON.parse(decodeURIComponent(value)); } catch (_) {}
+    try { return decodeBase64Json(value); } catch (_) {}
+    return {};
+  }
+
+  function nodes(key, attribute) {
+    var all = document.querySelectorAll('[' + attribute + ']');
+    var found = [];
+    var i;
+    for (i = 0; i < all.length; i++) {
+      if (all[i].getAttribute(attribute) === key) found.push(all[i]);
+    }
+    return found;
+  }
+
+  function hasNodes(key, attribute) {
+    return nodes(key, attribute).length > 0;
+  }
+
+  function setText(element, value) {
+    var text = value == null ? '' : String(value);
+
+    if (text.indexOf('&') !== -1) {
+      var decoder = document.createElement('textarea');
+      decoder.innerHTML = text;
+      text = decoder.value;
+    }
+
+    if (element.getAttribute('data-preserve-children') === 'true') {
+      var textNode = null;
+      var i;
+      for (i = 0; i < element.childNodes.length; i++) {
+        if (element.childNodes[i].nodeType === 3) {
+          textNode = element.childNodes[i];
+          break;
+        }
+      }
+      if (textNode) textNode.textContent = text;
+      else element.insertBefore(document.createTextNode(text), element.firstChild);
+      return;
+    }
+
+    element.textContent = text;
+  }
+
+  function numberAttribute(element, name, fallback) {
+    var value = Number(element.getAttribute(name));
+    return isFinite(value) && value > 0 ? value : fallback;
+  }
+
+  function overflows(element) {
+    return element.scrollWidth > element.clientWidth + 1 ||
+      element.scrollHeight > element.clientHeight + 1;
+  }
+
+  function fitElement(element) {
+    if (!element.clientWidth || !element.clientHeight) return false;
+
+    if (typeof element.__educmsOriginalFontSize === 'undefined') {
+      element.__educmsOriginalFontSize = element.style.fontSize || '';
+    }
+
+    var customMaximum = Number(element.getAttribute('data-fit-ceiling') ||
+      element.__educmsFitCeiling || 0);
+    var minimum = numberAttribute(element, 'data-fit-min', 52);
+    var configuredMaximum = numberAttribute(element, 'data-fit-max', 0);
+
+    if (customMaximum) {
+      element.style.fontSize = customMaximum + 'px';
+    } else {
+      element.style.fontSize = element.__educmsOriginalFontSize;
+    }
+
+    var cssMaximum = parseFloat(window.getComputedStyle(element).fontSize) || minimum;
+    var maximum = customMaximum || cssMaximum;
+    if (configuredMaximum) maximum = Math.min(maximum, configuredMaximum);
+    maximum = Math.max(minimum, maximum);
+
+    element.style.fontSize = maximum + 'px';
+    if (!overflows(element)) {
+      element.removeAttribute('data-fit-overflow');
+      element.setAttribute('data-fit-size', String(Math.round(maximum)));
+      return false;
+    }
+
+    var low = Math.ceil(minimum);
+    var high = Math.floor(maximum);
+    var best = low;
+
+    while (low <= high) {
+      var middle = Math.floor((low + high) / 2);
+      element.style.fontSize = middle + 'px';
+      if (overflows(element)) {
+        high = middle - 1;
+      } else {
+        best = middle;
+        low = middle + 1;
+      }
+    }
+
+    element.style.fontSize = best + 'px';
+    element.setAttribute('data-fit-size', String(best));
+
+    if (overflows(element)) {
+      element.setAttribute('data-fit-overflow', 'true');
+      return true;
+    }
+
+    element.removeAttribute('data-fit-overflow');
+    return false;
+  }
+
+  function fitAll() {
+    var all = document.querySelectorAll('[data-fit]');
+    var overflowKeys = [];
+    var i;
+
+    for (i = 0; i < all.length; i++) {
+      if (fitElement(all[i])) {
+        overflowKeys.push(
+          all[i].getAttribute('data-field') ||
+          all[i].getAttribute('data-fit-name') ||
+          'unlabelled-fit-' + (i + 1)
+        );
+      }
+    }
+
+    var signature = currentOrientation + ':' + overflowKeys.join('|');
+    if (overflowKeys.length && signature !== lastOverflowSignature) {
+      post({
+        type: 'educms-fit-overflow',
+        orientation: currentOrientation,
+        keys: overflowKeys
+      });
+    }
+    lastOverflowSignature = signature;
+  }
+
+  function applyBrand(brand) {
+    if (!brand || typeof brand !== 'object') return;
+    var styles = root.style;
+    var variableMap = {
+      background: ['--paper', '--background'],
+      surface: ['--surface', '--paper'],
+      text: ['--ink', '--text'],
+      muted: ['--muted'],
+      primary: ['--primary', '--blue'],
+      accent: ['--accent', '--orange'],
+      fontDisplay: ['--font-display'],
+      fontBody: ['--font-body'],
+      fontCondensed: ['--font-condensed', '--font-mono'],
+      fontSerif: ['--font-serif'],
+      fontMono: ['--font-mono']
+    };
+    var key;
+    var i;
+
+    for (key in variableMap) {
+      if (!Object.prototype.hasOwnProperty.call(variableMap, key)) continue;
+      if (brand[key] == null || brand[key] === '') continue;
+      for (i = 0; i < variableMap[key].length; i++) {
+        styles.setProperty(variableMap[key][i], String(brand[key]));
+      }
+    }
+
+    var custom = brand.cssVariables || brand.variables || {};
+    for (key in custom) {
+      if (!Object.prototype.hasOwnProperty.call(custom, key)) continue;
+      var property = key.indexOf('--') === 0 ? key : '--' + key;
+      styles.setProperty(property, String(custom[key]));
+    }
+  }
+
+  function applyTextStyle(element, style) {
+    if (!style || typeof style !== 'object') return;
+
+    if (style.color != null) element.style.color = String(style.color);
+    if (style.fontWeight != null) element.style.fontWeight = String(style.fontWeight);
+    if (style.fontStyle != null) element.style.fontStyle = String(style.fontStyle);
+    if (style.fontFamily != null) element.style.fontFamily = String(style.fontFamily);
+    if (style.textDecoration != null) element.style.textDecoration = String(style.textDecoration);
+    if (style.textAlign != null) element.style.textAlign = String(style.textAlign);
+    if (style.lineHeight != null) element.style.lineHeight = String(style.lineHeight);
+    if (style.letterSpacing != null) element.style.letterSpacing = String(style.letterSpacing);
+    if (style.textTransform != null) element.style.textTransform = String(style.textTransform);
+    if (style.backgroundColor != null) {
+      element.style.backgroundColor = String(style.backgroundColor);
+    }
+    if (style.opacity != null) element.style.opacity = String(style.opacity);
+
+    if (style.fontSize != null && style.fontSize !== '') {
+      var size = parseFloat(String(style.fontSize));
+      if (isFinite(size) && size > 0) {
+        element.style.fontSize = size + 'px';
+        if (element.hasAttribute('data-fit')) element.__educmsFitCeiling = size;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(style, 'hidden')) {
+      element.style.display = style.hidden ? 'none' : '';
+      element.setAttribute('aria-hidden', style.hidden ? 'true' : 'false');
+    }
+  }
+
+  function cssUrl(value) {
+    return 'url("' + value
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
+      .replace(/[\n\r\f]/g, '') + '")';
+  }
+
+  function applyImage(element, value) {
+    var source = value;
+    var position = '';
+    var size = '';
+
+    if (value && typeof value === 'object') {
+      source = value.src || value.url || '';
+      position = value.position || '';
+      size = value.size || value.fit || '';
+    }
+    if (source == null) return;
+    source = String(source);
+
+    element.setAttribute('data-img', source);
+    if (element.tagName && element.tagName.toLowerCase() === 'img') {
+      if (source) element.setAttribute('src', source);
+      else element.removeAttribute('src');
+    } else {
+      element.style.backgroundImage = source ? cssUrl(source) : 'none';
+      if (position) element.style.backgroundPosition = String(position);
+      if (size) element.style.backgroundSize = String(size);
+    }
+
+    element.classList.toggle('has-img', Boolean(source));
+    if (source) element.setAttribute('data-has-image', 'true');
+    else element.removeAttribute('data-has-image');
+  }
+
+  function apply(payload) {
+    payload = payload || {};
+    var text = payload.text || {};
+    var styles = payload.textStyles || {};
+    var images = payload.img || payload.images || {};
+    var keys = {};
+    var key;
+    var list;
+    var i;
+
+    applyBrand(payload.brand || {});
+
+    for (key in text) {
+      if (Object.prototype.hasOwnProperty.call(text, key)) keys[key] = true;
+    }
+    for (key in styles) {
+      if (Object.prototype.hasOwnProperty.call(styles, key)) keys[key] = true;
+    }
+
+    for (key in keys) {
+      if (!Object.prototype.hasOwnProperty.call(keys, key)) continue;
+      list = nodes(key, 'data-field');
+      for (i = 0; i < list.length; i++) {
+        if (Object.prototype.hasOwnProperty.call(text, key)) setText(list[i], text[key]);
+        applyTextStyle(list[i], styles[key]);
+      }
+    }
+
+    for (key in images) {
+      if (!Object.prototype.hasOwnProperty.call(images, key)) continue;
+      list = nodes(key, 'data-imgslot');
+      for (i = 0; i < list.length; i++) applyImage(list[i], images[key]);
+    }
+
+    scheduleFit();
+  }
+
+  function queryPayload() {
+    var params = query();
+    var brand = queryJson('brand');
+    var text = queryJson('text');
+    var textStyles = queryJson('textStyles');
+    var images = queryJson('img');
+    var payload = {
+      brand: brand && typeof brand === 'object' && !Array.isArray(brand) ? brand : {},
+      text: text && typeof text === 'object' && !Array.isArray(text) ? text : {},
+      textStyles: textStyles && typeof textStyles === 'object' &&
+        !Array.isArray(textStyles) ? textStyles : {},
+      img: images && typeof images === 'object' && !Array.isArray(images) ? images : {}
+    };
+
+    params.forEach(function (value, key) {
+      var fieldKey = '';
+      if (key.indexOf('field.') === 0) fieldKey = key.slice(6);
+      else if (key.indexOf('text.') === 0) fieldKey = key.slice(5);
+      else if (hasNodes(key, 'data-field')) fieldKey = key;
+
+      if (fieldKey) {
+        payload.text[fieldKey] = value;
+        return;
+      }
+
+      var imageKey = '';
+      if (key.indexOf('image.') === 0) imageKey = key.slice(6);
+      else if (key.indexOf('img.') === 0) imageKey = key.slice(4);
+      else if (hasNodes(key, 'data-imgslot')) imageKey = key;
+      if (imageKey) payload.img[imageKey] = value;
+    });
+
+    return payload;
+  }
+
+  function fieldsForReadyMessage(attribute) {
+    var elements = document.querySelectorAll('[' + attribute + ']');
+    var seen = {};
+    var values = [];
+    var i;
+    var key;
+    for (i = 0; i < elements.length; i++) {
+      key = elements[i].getAttribute(attribute);
+      if (key && !seen[key]) {
+        seen[key] = true;
+        values.push(key);
+      }
+    }
+    return values;
+  }
+
+  function setEditMode(on) {
+    editMode = Boolean(on);
+    root.classList.toggle('is-editing', editMode);
+    if (editMode) root.classList.remove('is-frozen');
+  }
+
+  function editableClick(event) {
+    if (!editMode) return;
+    var element = event.target;
+    while (
+      element &&
+      element !== document &&
+      !element.hasAttribute('data-field') &&
+      !element.hasAttribute('data-imgslot')
+    ) {
+      element = element.parentNode;
+    }
+    if (!element || element === document) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    post({
+      type: 'educms-field-click',
+      key: element.getAttribute('data-field') || element.getAttribute('data-imgslot'),
+      kind: element.hasAttribute('data-field') ? 'text' : 'img'
+    });
+  }
+
+  document.addEventListener('click', editableClick, true);
+  window.addEventListener('resize', orient);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', orient);
+
+  apply(queryPayload());
+  orient();
+
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(scheduleFit, scheduleFit);
+    if (document.fonts.addEventListener) {
+      document.fonts.addEventListener('loadingdone', scheduleFit);
+    }
+  }
+  window.addEventListener('load', scheduleFit);
+
+  var initialQuery = query();
+  if (initialQuery.get('freeze') === '1') root.classList.add('is-frozen');
+  if (initialQuery.get('edit') === '1') setEditMode(true);
+
+  window.addEventListener('message', function (event) {
+    var data = event.data;
+    if (!data || typeof data !== 'object') return;
+    if (event.source && event.source !== window.parent && event.source !== window) return;
+
+    if (data.type === 'educms-overrides') apply(data);
+    if (data.type === 'educms-edit-mode') setEditMode(Boolean(data.on));
+    if (data.type === 'educms-freeze') root.classList.add('is-frozen');
+    if (data.type === 'educms-unfreeze') root.classList.remove('is-frozen');
+    if (data.type === 'educms-refit') scheduleFit();
+  });
+
+  post({
+    type: 'educms-ready',
+    orientation: currentOrientation,
+    fields: fieldsForReadyMessage('data-field'),
+    images: fieldsForReadyMessage('data-imgslot')
+  });
+}());
+
+</script>
+</body>
+</html>

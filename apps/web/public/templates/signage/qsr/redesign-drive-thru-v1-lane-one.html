@@ -1,0 +1,919 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QSR Drive-Thru 01 — Lane One</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@500;600;700&family=IBM+Plex+Sans:wght@500;600;700&display=swap" rel="stylesheet" />
+  <style>
+* { box-sizing: border-box; }
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #090a09;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+
+#scene-wrap {
+  --scene-scale: 1;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  overflow: hidden;
+  transform: translate(-50%, -50%) scale(var(--scene-scale));
+  transform-origin: center center;
+}
+
+.scene {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+}
+
+.scene::after {
+  content: "";
+  position: absolute;
+  top:0;right:0;bottom:0;left:0;
+  z-index: 90;
+  pointer-events: none;
+  opacity: .045;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.36'/%3E%3C/svg%3E");
+}
+
+[data-field],
+[data-imgslot] {
+  max-width: 100%;
+}
+
+[data-fit] {
+  overflow: visible;
+}
+
+.is-editing [data-field],
+.is-editing [data-imgslot] {
+  cursor: pointer;
+}
+
+.is-editing [data-field]:hover,
+.is-editing [data-imgslot]:hover {
+  outline: 4px solid rgba(255, 255, 255, .94);
+  outline-offset: -4px;
+}
+
+.is-frozen *,
+.is-frozen *::before,
+.is-frozen *::after {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+
+.is-portrait .scene {
+  width: 1080px;
+  height: 1920px;
+}
+
+</style>
+  <style>
+    :root {
+      --ink:#10120f;
+      --paper:#f3f1e8;
+      --primary:#d94b31;
+      --accent:#d5f05b;
+      --muted:#9d9e91;
+      --line:#3b3d37;
+      --font-display:'Archivo Black','Arial Black',sans-serif;
+      --font-body:'IBM Plex Sans',Arial,sans-serif;
+      --font-mono:'IBM Plex Mono',monospace;
+    }
+    body { font-family:var(--font-body); }
+    .scene { color:var(--paper); background:var(--ink); }
+    .scene::before {
+      content:""; position:absolute; top:0;right:0;bottom:0;left:0; opacity:.06; pointer-events:none;
+      background:
+        repeating-linear-gradient(90deg,transparent 0 119px,rgba(255,255,255,.18) 120px 121px),
+        repeating-linear-gradient(0deg,transparent 0 119px,rgba(255,255,255,.12) 120px 121px);
+    }
+    .masthead {
+      position:absolute; left:44px; right:44px; top:0; height:144px;
+      display:grid; grid-template-columns:750px 1fr 360px;
+      align-items:center; border-bottom:3px solid var(--paper);
+    }
+    .brand {
+      width:730px; height:104px; display:flex; align-items:center;
+      font:400 66px/.95 var(--font-display); letter-spacing:-3px;
+      text-transform:uppercase;
+    }
+    .mode {
+      height:70px; display:flex; align-items:center; justify-content:center;
+      color:var(--muted); font:700 52px/1 var(--font-mono);
+      letter-spacing:.08em; text-transform:uppercase;
+    }
+    .state {
+      height:70px; display:flex; align-items:center; justify-content:flex-end;
+      color:var(--accent); font:700 58px/1 var(--font-mono);
+      letter-spacing:.06em; text-transform:uppercase;
+    }
+    .state::before {
+      content:""; width:24px; height:24px; margin-right:18px;
+      background:var(--accent); border-radius:50%;
+      box-shadow:0 0 0 8px rgba(213,240,91,.12);
+    }
+    .menu-area {
+      position:absolute; left:44px; right:44px; top:172px; height:682px;
+      display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:24px;
+    }
+    .category {
+      position:relative; min-width:0; overflow:hidden;
+      padding:24px 24px 18px; border:2px solid var(--line);
+      background:rgba(16,18,15,.92);
+    }
+    .category-head {
+      height:110px; display:flex; align-items:flex-start;
+      justify-content:space-between; border-bottom:2px solid var(--line);
+    }
+    .category-title {
+      width:100%; height:94px; display:flex; align-items:center;
+      font:400 76px/.88 var(--font-display); letter-spacing:-4px;
+      text-transform:uppercase;
+    }
+    .category-mark {
+      display:none; flex:none; color:var(--primary);
+      font:700 54px/1 var(--font-mono);
+    }
+    .items { height:500px; }
+    .item {
+      height:166px; display:grid;
+      grid-template-columns:minmax(0,1fr) 240px;
+      grid-template-rows:104px 62px; column-gap:16px; align-items:center;
+      border-bottom:2px solid var(--line);
+    }
+    .item:last-child { border-bottom:0; }
+    .item-name {
+      grid-column:1; grid-row:1; width:100%; height:104px; display:flex; align-items:center;
+      font:700 62px/.88 var(--font-body); letter-spacing:-2.4px;
+    }
+    .item-cal {
+      grid-column:1; grid-row:2; height:62px; display:flex; align-items:center;
+      justify-content:flex-start; color:var(--muted);
+      font:600 52px/1 var(--font-mono);
+    }
+    .item-price {
+      grid-column:2; grid-row:1; height:102px; display:flex; align-items:center;
+      justify-content:flex-end; color:var(--accent);
+      font:700 66px/1 var(--font-mono); letter-spacing:-3px;
+    }
+    .item-detail {
+      display:none; grid-column:1 / 4; grid-row:2; width:100%; height:54px;
+      align-items:flex-start; color:var(--muted);
+      font:500 52px/.98 var(--font-body); letter-spacing:-1.5px;
+    }
+    .item.unavailable .item-name {
+      color:#777970; text-decoration:line-through;
+      text-decoration-thickness:5px;
+    }
+    .item.unavailable .item-cal { color:#777970; }
+    .item.unavailable .item-price {
+      grid-row:1 / 3; height:152px; align-items:center;
+      color:var(--primary); font-size:52px; line-height:.86;
+      letter-spacing:-2px; text-align:right;
+    }
+    .feature {
+      position:absolute; left:0; right:0; bottom:0; height:190px;
+      display:grid; grid-template-columns:300px minmax(0,1fr) 410px 260px;
+      align-items:center; color:var(--ink); background:var(--accent);
+    }
+    .feature-label {
+      height:190px; padding-left:44px; display:flex; align-items:center;
+      background:var(--primary); color:var(--paper);
+      font:700 52px/1 var(--font-mono); letter-spacing:.06em;
+      text-transform:uppercase;
+    }
+    .feature-main { min-width:0; padding:0 34px; }
+    .feature-name {
+      width:100%; height:100px; display:block; padding-top:12px;
+      font:400 76px/1 var(--font-display); letter-spacing:-4px;
+      text-transform:uppercase;
+    }
+    .feature-includes {
+      width:100%; height:64px; display:block; padding-top:0;
+      font:600 52px/1 var(--font-body); letter-spacing:-1px;
+    }
+    .feature-modifier {
+      height:120px; padding-left:30px; border-left:2px solid rgba(16,18,15,.25);
+      display:flex; align-items:center;
+      font:700 54px/.98 var(--font-mono); text-transform:uppercase;
+    }
+    .feature-price {
+      height:120px; display:flex; align-items:center; justify-content:flex-end;
+      padding-right:44px; font:700 96px/1 var(--font-mono); letter-spacing:-7px;
+    }
+
+    .is-portrait .masthead {
+      left:40px; right:40px; height:216px;
+      grid-template-columns:1fr 360px; grid-template-rows:116px 76px;
+    }
+    .is-portrait .brand {
+      grid-column:1 / 3; width:100%; height:105px; font-size:70px;
+      border-bottom:2px solid var(--line);
+    }
+    .is-portrait .mode {
+      justify-content:flex-start; height:76px; font-size:52px;
+    }
+    .is-portrait .state { height:76px; font-size:54px; }
+    .is-portrait .menu-area {
+      left:40px; right:40px; top:244px; height:1192px;
+      display:block;
+    }
+    .is-portrait .category {
+      width:100%; height:382px; margin-bottom:22px; padding:18px 22px 14px;
+    }
+    .is-portrait .category:last-child { margin-bottom:0; }
+    .is-portrait .category-head { height:86px; }
+    .is-portrait .category-title {
+      width:760px; height:84px; font-size:64px; letter-spacing:-3px;
+    }
+    .is-portrait .category-mark { font-size:52px; }
+    .is-portrait .items { height:258px; }
+    .is-portrait .item {
+      height:86px; grid-template-columns:minmax(0,1fr) 108px 250px;
+      grid-template-rows:86px; column-gap:14px;
+    }
+    .is-portrait .item-name {
+      grid-row:1; height:78px; font-size:58px; letter-spacing:-2px;
+    }
+    .is-portrait .item-cal {
+      grid-column:2; grid-row:1; height:70px;
+      justify-content:flex-end; font-size:52px;
+    }
+    .is-portrait .item-price {
+      grid-column:3; grid-row:1; height:70px; font-size:62px; letter-spacing:-2px;
+    }
+    .is-portrait .item.unavailable .item-price {
+      grid-row:1; height:70px; font-size:52px; line-height:1;
+    }
+    .is-portrait .item-detail { display:none; }
+    .is-portrait .feature {
+      height:458px; display:block; padding:28px 40px 26px;
+    }
+    .is-portrait .feature-label {
+      width:100%; height:70px; padding-left:18px;
+      background:transparent; color:var(--primary);
+      border-left:14px solid var(--primary); font-size:52px;
+    }
+    .is-portrait .feature-main { padding:0; }
+    .is-portrait .feature-name {
+      height:130px; display:flex; padding-top:0; align-items:center;
+      font-size:90px; letter-spacing:-5px;
+    }
+    .is-portrait .feature-includes {
+      height:80px; display:flex; padding-top:0; align-items:center;
+      font-size:54px; line-height:.98;
+    }
+    .is-portrait .feature-modifier {
+      position:absolute; left:40px; bottom:38px; width:610px; height:100px;
+      padding-left:0; border-left:0; border-top:2px solid rgba(16,18,15,.28);
+      font-size:54px;
+    }
+    .is-portrait .feature-price {
+      position:absolute; right:40px; bottom:38px; width:330px; height:100px;
+      padding-right:0; font-size:94px; letter-spacing:-6px;
+    }
+  </style>
+</head>
+<body>
+  <div id="scene-wrap">
+    <main class="scene">
+      <header class="masthead">
+        <div class="brand" data-field="brand.name" data-fit data-fit-min="52" data-fit-max="70">FORGE &amp; FIELD</div>
+        <div class="mode" data-field="service.mode">Drive-Thru · Cal / $</div>
+        <div class="state" data-field="service.status">Open</div>
+      </header>
+
+      <section class="menu-area" aria-label="Drive-thru menu">
+        <article class="category">
+          <header class="category-head">
+            <div class="category-title" data-field="menu.burgers.title" data-fit data-fit-min="58" data-fit-max="76">Burgers</div>
+            <div class="category-mark" data-field="menu.burgers.marker">B</div>
+          </header>
+          <div class="items">
+            <div class="item">
+              <div class="item-name" data-field="menu.burgers.0.name" data-fit data-fit-min="52" data-fit-max="62">Classic</div>
+              <div class="item-cal" data-field="menu.burgers.0.calories">720</div>
+              <div class="item-price" data-field="menu.burgers.0.price" data-fit data-fit-min="52" data-fit-max="66">$8.99</div>
+              <div class="item-detail" data-field="menu.burgers.0.detail" data-fit data-fit-min="52" data-fit-max="52">Angus · cheddar · pickle</div>
+            </div>
+            <div class="item">
+              <div class="item-name" data-field="menu.burgers.1.name" data-fit data-fit-min="52" data-fit-max="62">Bacon</div>
+              <div class="item-cal" data-field="menu.burgers.1.calories">880</div>
+              <div class="item-price" data-field="menu.burgers.1.price" data-fit data-fit-min="52" data-fit-max="66">$10.49</div>
+              <div class="item-detail" data-field="menu.burgers.1.detail" data-fit data-fit-min="52" data-fit-max="52">Double · bacon · sauce</div>
+            </div>
+            <div class="item">
+              <div class="item-name" data-field="menu.burgers.2.name" data-fit data-fit-min="52" data-fit-max="62">Mushroom</div>
+              <div class="item-cal" data-field="menu.burgers.2.calories">810</div>
+              <div class="item-price" data-field="menu.burgers.2.price" data-fit data-fit-min="52" data-fit-max="66">$10.99</div>
+              <div class="item-detail" data-field="menu.burgers.2.detail" data-fit data-fit-min="52" data-fit-max="52">Cremini · swiss · herb</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="category">
+          <header class="category-head">
+            <div class="category-title" data-field="menu.chicken.title" data-fit data-fit-min="58" data-fit-max="76">Chicken</div>
+            <div class="category-mark" data-field="menu.chicken.marker">C</div>
+          </header>
+          <div class="items">
+            <div class="item">
+              <div class="item-name" data-field="menu.chicken.0.name" data-fit data-fit-min="52" data-fit-max="62">Original</div>
+              <div class="item-cal" data-field="menu.chicken.0.calories">640</div>
+              <div class="item-price" data-field="menu.chicken.0.price" data-fit data-fit-min="52" data-fit-max="66">$9.49</div>
+              <div class="item-detail" data-field="menu.chicken.0.detail" data-fit data-fit-min="52" data-fit-max="52">Buttermilk · slaw · brioche</div>
+            </div>
+            <div class="item">
+              <div class="item-name" data-field="menu.chicken.1.name" data-fit data-fit-min="52" data-fit-max="62">Hot Honey</div>
+              <div class="item-cal" data-field="menu.chicken.1.calories">690</div>
+              <div class="item-price" data-field="menu.chicken.1.price" data-fit data-fit-min="52" data-fit-max="66">$9.99</div>
+              <div class="item-detail" data-field="menu.chicken.1.detail" data-fit data-fit-min="52" data-fit-max="52">Chile honey · pickle</div>
+            </div>
+            <div class="item unavailable">
+              <div class="item-name" data-field="menu.chicken.2.name" data-fit data-fit-min="52" data-fit-max="62">Herb Grilled</div>
+              <div class="item-cal" data-field="menu.chicken.2.calories">510</div>
+              <div class="item-price" data-field="menu.chicken.2.status" data-fit data-fit-min="52" data-fit-max="52">SOLD OUT</div>
+              <div class="item-detail" data-field="menu.chicken.2.detail" data-fit data-fit-min="52" data-fit-max="52">POS availability shown live</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="category">
+          <header class="category-head">
+            <div class="category-title" data-field="menu.extras.title" data-fit data-fit-min="58" data-fit-max="76">Sides + Sips</div>
+            <div class="category-mark" data-field="menu.extras.marker">+</div>
+          </header>
+          <div class="items">
+            <div class="item">
+              <div class="item-name" data-field="menu.extras.0.name" data-fit data-fit-min="52" data-fit-max="62">Fries</div>
+              <div class="item-cal" data-field="menu.extras.0.calories">390</div>
+              <div class="item-price" data-field="menu.extras.0.price" data-fit data-fit-min="52" data-fit-max="66">$3.49</div>
+              <div class="item-detail" data-field="menu.extras.0.detail" data-fit data-fit-min="52" data-fit-max="52">Skin-on · twice fried</div>
+            </div>
+            <div class="item">
+              <div class="item-name" data-field="menu.extras.1.name" data-fit data-fit-min="52" data-fit-max="62">Lemonade</div>
+              <div class="item-cal" data-field="menu.extras.1.calories">240</div>
+              <div class="item-price" data-field="menu.extras.1.price" data-fit data-fit-min="52" data-fit-max="66">$3.49</div>
+              <div class="item-detail" data-field="menu.extras.1.detail" data-fit data-fit-min="52" data-fit-max="52">Real lemon · muddled berry</div>
+            </div>
+            <div class="item">
+              <div class="item-name" data-field="menu.extras.2.name" data-fit data-fit-min="52" data-fit-max="62">Shake</div>
+              <div class="item-cal" data-field="menu.extras.2.calories">620</div>
+              <div class="item-price" data-field="menu.extras.2.price" data-fit data-fit-min="52" data-fit-max="66">$4.99</div>
+              <div class="item-detail" data-field="menu.extras.2.detail" data-fit data-fit-min="52" data-fit-max="52">Chocolate · vanilla</div>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <footer class="feature">
+        <div class="feature-label" data-field="feature.kicker">Best Value</div>
+        <div class="feature-main">
+          <div class="feature-name" data-field="feature.name" data-fit data-fit-min="64" data-fit-max="90">Smash Meal</div>
+          <div class="feature-includes" data-field="feature.includes" data-fit data-fit-min="52" data-fit-max="54">Burger + fries + fountain drink</div>
+        </div>
+        <div class="feature-modifier" data-field="feature.modifier">Make it a meal</div>
+        <div class="feature-price" data-field="feature.price" data-fit data-fit-min="52" data-fit-max="96">$12.49</div>
+      </footer>
+    </main>
+  </div>
+  <script>
+(function () {
+  'use strict';
+
+  var LANDSCAPE = { name: 'landscape', width: 1920, height: 1080 };
+  var PORTRAIT = { name: 'portrait', width: 1080, height: 1920 };
+  var root = document.documentElement;
+  var wrap = document.getElementById('scene-wrap');
+  var activeScene = null;
+  var currentOrientation = '';
+  var fitFrame = 0;
+  var editMode = false;
+  var lastOverflowSignature = '';
+
+  if (!wrap) return;
+
+  function query() {
+    return new URLSearchParams(window.location.search);
+  }
+
+  function orientationForViewport() {
+    var forced = query().get('orientation');
+    if (forced === 'portrait') return PORTRAIT;
+    if (forced === 'landscape') return LANDSCAPE;
+    return window.innerHeight > window.innerWidth ? PORTRAIT : LANDSCAPE;
+  }
+
+  function sceneOrientation(scene) {
+    var declared = scene.getAttribute('data-orientation') ||
+      scene.getAttribute('data-scene-orientation') || '';
+    if (!declared && scene.classList.contains('scene-portrait')) declared = 'portrait';
+    if (!declared && scene.classList.contains('scene-landscape')) declared = 'landscape';
+    return declared.toLowerCase();
+  }
+
+  function selectScene(orientation) {
+    var scenes = wrap.querySelectorAll('.scene');
+    var selected = scenes.length ? scenes[0] : null;
+    var hasDedicatedScenes = false;
+    var i;
+
+    for (i = 0; i < scenes.length; i++) {
+      if (sceneOrientation(scenes[i])) hasDedicatedScenes = true;
+      if (sceneOrientation(scenes[i]) === orientation.name) selected = scenes[i];
+    }
+
+    if (hasDedicatedScenes) {
+      for (i = 0; i < scenes.length; i++) {
+        var isSelected = scenes[i] === selected;
+        scenes[i].style.display = isSelected ? '' : 'none';
+        scenes[i].setAttribute('aria-hidden', isSelected ? 'false' : 'true');
+      }
+    }
+
+    return selected;
+  }
+
+  function post(message) {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(message, '*');
+      }
+    } catch (_) {}
+  }
+
+  function scheduleFit() {
+    if (fitFrame) window.cancelAnimationFrame(fitFrame);
+    fitFrame = window.requestAnimationFrame(function () {
+      fitFrame = 0;
+      fitAll();
+    });
+  }
+
+  function orient() {
+    var orientation = orientationForViewport();
+    activeScene = selectScene(orientation);
+    if (!activeScene) return;
+
+    currentOrientation = orientation.name;
+    root.classList.toggle('is-portrait', orientation.name === 'portrait');
+    root.classList.toggle('is-landscape', orientation.name === 'landscape');
+    root.setAttribute('data-orientation', orientation.name);
+
+    if (document.body) document.body.setAttribute('data-orientation', orientation.name);
+    wrap.setAttribute('data-orientation', orientation.name);
+    activeScene.setAttribute('data-active-orientation', orientation.name);
+
+    wrap.style.width = orientation.width + 'px';
+    wrap.style.height = orientation.height + 'px';
+    activeScene.style.width = orientation.width + 'px';
+    activeScene.style.height = orientation.height + 'px';
+
+    wrap.style.setProperty('--scene-width', orientation.width + 'px');
+    wrap.style.setProperty('--scene-height', orientation.height + 'px');
+    wrap.style.setProperty(
+      '--scene-scale',
+      String(Math.min(
+        window.innerWidth / orientation.width,
+        window.innerHeight / orientation.height
+      ))
+    );
+
+    scheduleFit();
+    post({
+      type: 'educms-orientation',
+      orientation: orientation.name,
+      width: orientation.width,
+      height: orientation.height
+    });
+  }
+
+  function decodeBase64Json(value) {
+    var base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4) base64 += '=';
+    var binary = window.atob(base64);
+    var bytes = '';
+    var i;
+    for (i = 0; i < binary.length; i++) {
+      bytes += '%' + ('00' + binary.charCodeAt(i).toString(16)).slice(-2);
+    }
+    return JSON.parse(decodeURIComponent(bytes));
+  }
+
+  function queryJson(name) {
+    var value = query().get(name);
+    if (!value) return {};
+
+    try { return JSON.parse(value); } catch (_) {}
+    try { return JSON.parse(decodeURIComponent(value)); } catch (_) {}
+    try { return decodeBase64Json(value); } catch (_) {}
+    return {};
+  }
+
+  function nodes(key, attribute) {
+    var all = document.querySelectorAll('[' + attribute + ']');
+    var found = [];
+    var i;
+    for (i = 0; i < all.length; i++) {
+      if (all[i].getAttribute(attribute) === key) found.push(all[i]);
+    }
+    return found;
+  }
+
+  function hasNodes(key, attribute) {
+    return nodes(key, attribute).length > 0;
+  }
+
+  function setText(element, value) {
+    var text = value == null ? '' : String(value);
+
+    if (text.indexOf('&') !== -1) {
+      var decoder = document.createElement('textarea');
+      decoder.innerHTML = text;
+      text = decoder.value;
+    }
+
+    if (element.getAttribute('data-preserve-children') === 'true') {
+      var textNode = null;
+      var i;
+      for (i = 0; i < element.childNodes.length; i++) {
+        if (element.childNodes[i].nodeType === 3) {
+          textNode = element.childNodes[i];
+          break;
+        }
+      }
+      if (textNode) textNode.textContent = text;
+      else element.insertBefore(document.createTextNode(text), element.firstChild);
+      return;
+    }
+
+    element.textContent = text;
+  }
+
+  function numberAttribute(element, name, fallback) {
+    var value = Number(element.getAttribute(name));
+    return isFinite(value) && value > 0 ? value : fallback;
+  }
+
+  function overflows(element) {
+    return element.scrollWidth > element.clientWidth + 1 ||
+      element.scrollHeight > element.clientHeight + 1;
+  }
+
+  function fitElement(element) {
+    if (!element.clientWidth || !element.clientHeight) return false;
+
+    if (typeof element.__educmsOriginalFontSize === 'undefined') {
+      element.__educmsOriginalFontSize = element.style.fontSize || '';
+    }
+
+    var customMaximum = Number(element.getAttribute('data-fit-ceiling') ||
+      element.__educmsFitCeiling || 0);
+    var minimum = numberAttribute(element, 'data-fit-min', 52);
+    var configuredMaximum = numberAttribute(element, 'data-fit-max', 0);
+
+    if (customMaximum) {
+      element.style.fontSize = customMaximum + 'px';
+    } else {
+      element.style.fontSize = element.__educmsOriginalFontSize;
+    }
+
+    var cssMaximum = parseFloat(window.getComputedStyle(element).fontSize) || minimum;
+    var maximum = customMaximum || cssMaximum;
+    if (configuredMaximum) maximum = Math.min(maximum, configuredMaximum);
+    maximum = Math.max(minimum, maximum);
+
+    element.style.fontSize = maximum + 'px';
+    if (!overflows(element)) {
+      element.removeAttribute('data-fit-overflow');
+      element.setAttribute('data-fit-size', String(Math.round(maximum)));
+      return false;
+    }
+
+    var low = Math.ceil(minimum);
+    var high = Math.floor(maximum);
+    var best = low;
+
+    while (low <= high) {
+      var middle = Math.floor((low + high) / 2);
+      element.style.fontSize = middle + 'px';
+      if (overflows(element)) {
+        high = middle - 1;
+      } else {
+        best = middle;
+        low = middle + 1;
+      }
+    }
+
+    element.style.fontSize = best + 'px';
+    element.setAttribute('data-fit-size', String(best));
+
+    if (overflows(element)) {
+      element.setAttribute('data-fit-overflow', 'true');
+      return true;
+    }
+
+    element.removeAttribute('data-fit-overflow');
+    return false;
+  }
+
+  function fitAll() {
+    var all = document.querySelectorAll('[data-fit]');
+    var overflowKeys = [];
+    var i;
+
+    for (i = 0; i < all.length; i++) {
+      if (fitElement(all[i])) {
+        overflowKeys.push(
+          all[i].getAttribute('data-field') ||
+          all[i].getAttribute('data-fit-name') ||
+          'unlabelled-fit-' + (i + 1)
+        );
+      }
+    }
+
+    var signature = currentOrientation + ':' + overflowKeys.join('|');
+    if (overflowKeys.length && signature !== lastOverflowSignature) {
+      post({
+        type: 'educms-fit-overflow',
+        orientation: currentOrientation,
+        keys: overflowKeys
+      });
+    }
+    lastOverflowSignature = signature;
+  }
+
+  function applyBrand(brand) {
+    if (!brand || typeof brand !== 'object') return;
+    var styles = root.style;
+    var variableMap = {
+      background: ['--paper', '--background'],
+      surface: ['--surface', '--paper'],
+      text: ['--ink', '--text'],
+      muted: ['--muted'],
+      primary: ['--primary', '--blue'],
+      accent: ['--accent', '--orange'],
+      fontDisplay: ['--font-display'],
+      fontBody: ['--font-body'],
+      fontCondensed: ['--font-condensed', '--font-mono'],
+      fontSerif: ['--font-serif'],
+      fontMono: ['--font-mono']
+    };
+    var key;
+    var i;
+
+    for (key in variableMap) {
+      if (!Object.prototype.hasOwnProperty.call(variableMap, key)) continue;
+      if (brand[key] == null || brand[key] === '') continue;
+      for (i = 0; i < variableMap[key].length; i++) {
+        styles.setProperty(variableMap[key][i], String(brand[key]));
+      }
+    }
+
+    var custom = brand.cssVariables || brand.variables || {};
+    for (key in custom) {
+      if (!Object.prototype.hasOwnProperty.call(custom, key)) continue;
+      var property = key.indexOf('--') === 0 ? key : '--' + key;
+      styles.setProperty(property, String(custom[key]));
+    }
+  }
+
+  function applyTextStyle(element, style) {
+    if (!style || typeof style !== 'object') return;
+
+    if (style.color != null) element.style.color = String(style.color);
+    if (style.fontWeight != null) element.style.fontWeight = String(style.fontWeight);
+    if (style.fontStyle != null) element.style.fontStyle = String(style.fontStyle);
+    if (style.fontFamily != null) element.style.fontFamily = String(style.fontFamily);
+    if (style.textDecoration != null) element.style.textDecoration = String(style.textDecoration);
+    if (style.textAlign != null) element.style.textAlign = String(style.textAlign);
+    if (style.lineHeight != null) element.style.lineHeight = String(style.lineHeight);
+    if (style.letterSpacing != null) element.style.letterSpacing = String(style.letterSpacing);
+    if (style.textTransform != null) element.style.textTransform = String(style.textTransform);
+    if (style.backgroundColor != null) {
+      element.style.backgroundColor = String(style.backgroundColor);
+    }
+    if (style.opacity != null) element.style.opacity = String(style.opacity);
+
+    if (style.fontSize != null && style.fontSize !== '') {
+      var size = parseFloat(String(style.fontSize));
+      if (isFinite(size) && size > 0) {
+        element.style.fontSize = size + 'px';
+        if (element.hasAttribute('data-fit')) element.__educmsFitCeiling = size;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(style, 'hidden')) {
+      element.style.display = style.hidden ? 'none' : '';
+      element.setAttribute('aria-hidden', style.hidden ? 'true' : 'false');
+    }
+  }
+
+  function cssUrl(value) {
+    return 'url("' + value
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
+      .replace(/[\n\r\f]/g, '') + '")';
+  }
+
+  function applyImage(element, value) {
+    var source = value;
+    var position = '';
+    var size = '';
+
+    if (value && typeof value === 'object') {
+      source = value.src || value.url || '';
+      position = value.position || '';
+      size = value.size || value.fit || '';
+    }
+    if (source == null) return;
+    source = String(source);
+
+    element.setAttribute('data-img', source);
+    if (element.tagName && element.tagName.toLowerCase() === 'img') {
+      if (source) element.setAttribute('src', source);
+      else element.removeAttribute('src');
+    } else {
+      element.style.backgroundImage = source ? cssUrl(source) : 'none';
+      if (position) element.style.backgroundPosition = String(position);
+      if (size) element.style.backgroundSize = String(size);
+    }
+
+    element.classList.toggle('has-img', Boolean(source));
+    if (source) element.setAttribute('data-has-image', 'true');
+    else element.removeAttribute('data-has-image');
+  }
+
+  function apply(payload) {
+    payload = payload || {};
+    var text = payload.text || {};
+    var styles = payload.textStyles || {};
+    var images = payload.img || payload.images || {};
+    var keys = {};
+    var key;
+    var list;
+    var i;
+
+    applyBrand(payload.brand || {});
+
+    for (key in text) {
+      if (Object.prototype.hasOwnProperty.call(text, key)) keys[key] = true;
+    }
+    for (key in styles) {
+      if (Object.prototype.hasOwnProperty.call(styles, key)) keys[key] = true;
+    }
+
+    for (key in keys) {
+      if (!Object.prototype.hasOwnProperty.call(keys, key)) continue;
+      list = nodes(key, 'data-field');
+      for (i = 0; i < list.length; i++) {
+        if (Object.prototype.hasOwnProperty.call(text, key)) setText(list[i], text[key]);
+        applyTextStyle(list[i], styles[key]);
+      }
+    }
+
+    for (key in images) {
+      if (!Object.prototype.hasOwnProperty.call(images, key)) continue;
+      list = nodes(key, 'data-imgslot');
+      for (i = 0; i < list.length; i++) applyImage(list[i], images[key]);
+    }
+
+    scheduleFit();
+  }
+
+  function queryPayload() {
+    var params = query();
+    var brand = queryJson('brand');
+    var text = queryJson('text');
+    var textStyles = queryJson('textStyles');
+    var images = queryJson('img');
+    var payload = {
+      brand: brand && typeof brand === 'object' && !Array.isArray(brand) ? brand : {},
+      text: text && typeof text === 'object' && !Array.isArray(text) ? text : {},
+      textStyles: textStyles && typeof textStyles === 'object' &&
+        !Array.isArray(textStyles) ? textStyles : {},
+      img: images && typeof images === 'object' && !Array.isArray(images) ? images : {}
+    };
+
+    params.forEach(function (value, key) {
+      var fieldKey = '';
+      if (key.indexOf('field.') === 0) fieldKey = key.slice(6);
+      else if (key.indexOf('text.') === 0) fieldKey = key.slice(5);
+      else if (hasNodes(key, 'data-field')) fieldKey = key;
+
+      if (fieldKey) {
+        payload.text[fieldKey] = value;
+        return;
+      }
+
+      var imageKey = '';
+      if (key.indexOf('image.') === 0) imageKey = key.slice(6);
+      else if (key.indexOf('img.') === 0) imageKey = key.slice(4);
+      else if (hasNodes(key, 'data-imgslot')) imageKey = key;
+      if (imageKey) payload.img[imageKey] = value;
+    });
+
+    return payload;
+  }
+
+  function fieldsForReadyMessage(attribute) {
+    var elements = document.querySelectorAll('[' + attribute + ']');
+    var seen = {};
+    var values = [];
+    var i;
+    var key;
+    for (i = 0; i < elements.length; i++) {
+      key = elements[i].getAttribute(attribute);
+      if (key && !seen[key]) {
+        seen[key] = true;
+        values.push(key);
+      }
+    }
+    return values;
+  }
+
+  function setEditMode(on) {
+    editMode = Boolean(on);
+    root.classList.toggle('is-editing', editMode);
+    if (editMode) root.classList.remove('is-frozen');
+  }
+
+  function editableClick(event) {
+    if (!editMode) return;
+    var element = event.target;
+    while (
+      element &&
+      element !== document &&
+      !element.hasAttribute('data-field') &&
+      !element.hasAttribute('data-imgslot')
+    ) {
+      element = element.parentNode;
+    }
+    if (!element || element === document) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    post({
+      type: 'educms-field-click',
+      key: element.getAttribute('data-field') || element.getAttribute('data-imgslot'),
+      kind: element.hasAttribute('data-field') ? 'text' : 'img'
+    });
+  }
+
+  document.addEventListener('click', editableClick, true);
+  window.addEventListener('resize', orient);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', orient);
+
+  apply(queryPayload());
+  orient();
+
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(scheduleFit, scheduleFit);
+    if (document.fonts.addEventListener) {
+      document.fonts.addEventListener('loadingdone', scheduleFit);
+    }
+  }
+  window.addEventListener('load', scheduleFit);
+
+  var initialQuery = query();
+  if (initialQuery.get('freeze') === '1') root.classList.add('is-frozen');
+  if (initialQuery.get('edit') === '1') setEditMode(true);
+
+  window.addEventListener('message', function (event) {
+    var data = event.data;
+    if (!data || typeof data !== 'object') return;
+    if (event.source && event.source !== window.parent && event.source !== window) return;
+
+    if (data.type === 'educms-overrides') apply(data);
+    if (data.type === 'educms-edit-mode') setEditMode(Boolean(data.on));
+    if (data.type === 'educms-freeze') root.classList.add('is-frozen');
+    if (data.type === 'educms-unfreeze') root.classList.remove('is-frozen');
+    if (data.type === 'educms-refit') scheduleFit();
+  });
+
+  post({
+    type: 'educms-ready',
+    orientation: currentOrientation,
+    fields: fieldsForReadyMessage('data-field'),
+    images: fieldsForReadyMessage('data-imgslot')
+  });
+}());
+
+</script>
+</body>
+</html>

@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Church Sermon Series 02 — Field Notes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
+  <style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=Manrope:wght@500;600;700;800&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap');
+
+* { box-sizing: border-box; }
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #080908;
+  -webkit-font-smoothing: antialiased;
+}
+body { font-family: 'Manrope', sans-serif; }
+#scene-wrap {
+  --scene-scale: 1;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  overflow: hidden;
+  transform: translate(-50%, -50%) scale(var(--scene-scale));
+  transform-origin: center center;
+}
+.scene {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+}
+.scene::after {
+  content: "";
+  position: absolute;
+  top:0;right:0;bottom:0;left:0;
+  z-index: 90;
+  pointer-events: none;
+  opacity: .055;
+  mix-blend-mode: soft-light;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.78' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.4'/%3E%3C/svg%3E");
+}
+[data-field], [data-imgslot] { max-width: 100%; }
+[data-fit], .clip { overflow: visible; }
+.bounded { overflow: hidden; }
+.mono { font-family: 'DM Mono', monospace; }
+.serif { font-family: 'Instrument Serif', serif; }
+.is-editing [data-field], .is-editing [data-imgslot] { cursor: pointer; }
+.is-editing [data-field]:hover,
+.is-editing [data-imgslot]:hover {
+  outline: 4px solid rgba(255,255,255,.9);
+  outline-offset: -4px;
+}
+.is-frozen *,
+.is-frozen *::before,
+.is-frozen *::after {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+.is-portrait .scene {
+  width: 1080px;
+  height: 1920px;
+}
+
+</style>
+  <style>
+    :root {
+      --paper:#eee7d8;
+      --ink:#161713;
+      --primary:#536044;
+      --accent:#a55735;
+      --muted:#746e61;
+      --font-display:'Instrument Serif',serif;
+      --font-body:'Manrope',sans-serif;
+      --font-mono:'DM Mono',monospace;
+    }
+    .scene { background:var(--paper); color:var(--ink); }
+    .paper-field {
+      position:absolute; left:0; top:0; width:720px; height:1080px; z-index:2;
+      background:
+        linear-gradient(90deg,rgba(238,231,216,.98) 0%,rgba(238,231,216,.96) 82%,rgba(238,231,216,0) 100%);
+    }
+    .art {
+      position:absolute; left:560px; top:0; width:1360px; height:1080px; z-index:1;
+      background:url('assets/church-sermon-field-notes-v1.png') 56% center/cover no-repeat;
+    }
+    .art::after {
+      content:""; position:absolute; top:0;right:0;bottom:0;left:0; pointer-events:none;
+      background:linear-gradient(90deg,var(--paper) 0%,transparent 15%,transparent 100%);
+    }
+    .top {
+      position:absolute; left:64px; top:42px; width:720px; height:86px; z-index:12;
+      display:flex; align-items:center;
+    }
+    .identity { display:flex; align-items:center; }
+    .logo {
+      position:relative; width:76px; height:76px; flex:0 0 76px;
+      background:var(--ink); background-position:center; background-repeat:no-repeat;
+    }
+    .logo::after {
+      content:"H"; position:absolute; top:0;right:0;bottom:0;left:0; display:grid; place-items:center;
+      color:var(--paper); font:600 58px/1 'Instrument Serif',serif;
+    }
+    .logo.has-img { background-color:transparent; background-size:contain !important; }
+    .logo.has-img::after { display:none; }
+    .brand {
+      margin-left:22px; min-height:62px;
+      font:700 52px/1.12 var(--font-body); letter-spacing:-2px;
+    }
+    .progress {
+      position:absolute; left:760px; right:auto; top:0; width:500px; min-height:62px;
+      font:500 52px/1.12 var(--font-mono); color:var(--ink);
+      text-align:right; white-space:nowrap;
+    }
+    .hero {
+      position:absolute; left:70px; top:150px; width:690px; height:400px; z-index:8;
+    }
+    .eyebrow {
+      min-height:64px; font:500 52px/1.14 var(--font-mono);
+      color:var(--accent); text-transform:uppercase;
+    }
+    .series-title {
+      width:660px; height:140px; margin-top:10px;
+      font:400 202px/.93 var(--font-display); letter-spacing:-10px; text-transform:uppercase;
+    }
+    .series-subtitle {
+      width:620px; height:180px; margin-top:8px;
+      font:700 66px/1.1 var(--font-body); letter-spacing:-2px;
+    }
+    .series-thesis {
+      width:620px; min-height:76px; margin-top:12px;
+      display:none; font:400 italic 64px/1.12 var(--font-display); color:var(--primary);
+    }
+    .folio {
+      position:absolute; left:48px; top:560px; width:672px; height:520px; z-index:15;
+      display:grid; grid-template-columns:260px 412px; grid-template-rows:240px 280px;
+      background:transparent; color:var(--ink);
+      border-top:3px solid var(--accent);
+    }
+    .folio-section {
+      position:relative; min-width:0; overflow:hidden;
+    }
+    .folio-section:first-child {
+      grid-column:1/3; padding:14px 0 10px;
+      border-bottom:1px solid rgba(22,23,19,.28);
+    }
+    .folio-section:first-child .folio-label { width:360px; }
+    .folio-section:nth-child(2) {
+      padding:8px 16px 6px 0; border-right:1px solid rgba(22,23,19,.28);
+    }
+    .folio-section:nth-child(3) {
+      padding:8px 0 6px 20px;
+    }
+    .folio-label {
+      min-height:58px; font:600 52px/1.05 'Barlow Condensed',sans-serif;
+      letter-spacing:.02em;
+      color:var(--accent); text-transform:uppercase;
+    }
+    .message-title {
+      width:380px; height:158px; margin-top:4px;
+      font:600 74px/1.05 var(--font-display); letter-spacing:-2px; color:var(--ink);
+    }
+    .speaker {
+      position:absolute; right:0; top:78px; width:250px; min-height:120px;
+      font:600 52px/1.06 var(--font-display); color:var(--muted); text-align:right;
+    }
+    .folio-value {
+      width:100%; min-height:120px; margin-top:2px;
+      font:600 58px/1.12 var(--font-body);
+    }
+    .service-line { min-height:60px; margin-top:2px; line-height:1.08; }
+    .folio-section:nth-child(3) .service-line:last-child { min-height:116px; }
+    .folio-section:nth-child(3) .service-line {
+      white-space:normal; letter-spacing:-2.5px;
+      font-family:'Barlow Condensed',sans-serif;
+    }
+    .copper-rule {
+      position:absolute; left:34px; top:154px; width:8px; height:886px; z-index:7;
+      background:linear-gradient(#b66740,#8f452d); box-shadow:0 0 0 1px rgba(255,255,255,.28);
+    }
+
+    .is-portrait .paper-field {
+      left:0; top:778px; width:1080px; height:1142px;
+      background:var(--paper);
+      clip-path:polygon(
+        0 16px, 10% 8px, 22% 14px, 34% 4px, 48% 12px,
+        62% 2px, 76% 13px, 89% 6px, 100% 15px,
+        100% 100%, 0 100%
+      );
+    }
+    .is-portrait .art {
+      left:0; top:0; width:1080px; height:790px;
+      background-position:70% center;
+    }
+    .is-portrait .art::after {
+      background:linear-gradient(0deg,rgba(238,231,216,.2) 0%,transparent 3%,transparent 100%);
+    }
+    .is-portrait .top { left:52px; top:38px; width:976px; height:84px; }
+    .is-portrait .brand {
+      color:var(--ink);
+    }
+    .is-portrait .progress {
+      left:auto; right:54px; top:782px; width:360px;
+      color:var(--ink);
+    }
+    .is-portrait .copper-rule { left:54px; top:812px; width:8px; height:470px; }
+    .is-portrait .hero {
+      left:82px; top:820px; width:944px; height:460px;
+    }
+    .is-portrait .series-title {
+      width:900px; height:160px; margin-top:12px; font-size:168px;
+    }
+    .is-portrait .series-subtitle {
+      width:900px; height:140px; margin-top:6px; font-size:70px;
+    }
+    .is-portrait .series-thesis {
+      display:block; width:900px; min-height:72px; margin-top:8px; font-size:62px;
+    }
+    .is-portrait .folio {
+      left:0; top:1280px; width:1080px; height:640px;
+      grid-template-columns:540px 540px;
+      grid-template-rows:340px 300px;
+      background:#ddd1ba; color:var(--ink);
+      border-top:3px solid var(--accent);
+    }
+    .is-portrait .folio-section { padding:28px 32px 18px; }
+    .is-portrait .folio-section:first-child {
+      grid-column:1/3; padding:26px 32px 18px;
+      border-right:0; border-bottom:1px solid rgba(22,23,19,.24);
+    }
+    .is-portrait .message-title { width:1016px; height:140px; font-size:74px; }
+    .is-portrait .speaker {
+      position:static; width:auto; min-height:62px; margin-top:6px; text-align:left;
+    }
+    .is-portrait .folio-value { min-height:154px; margin-top:8px; font-size:58px; }
+    .is-portrait .service-line { min-height:58px; margin-top:8px; font-size:58px; }
+    .is-portrait .folio-section:nth-child(3) .service-line {
+      white-space:normal; letter-spacing:normal;
+    }
+  </style>
+</head>
+<body>
+  <div id="scene-wrap">
+    <main class="scene">
+      <div class="art" data-imgslot="series.art" aria-label="Replaceable commissioned sermon artwork"></div>
+      <div class="paper-field"></div>
+      <div class="copper-rule"></div>
+      <header class="top">
+        <div class="identity">
+          <div class="logo" data-imgslot="brand.logo" aria-label="Replaceable church logo"></div>
+          <div class="brand" data-field="brand.name">HAVEN CHURCH</div>
+        </div>
+        <div class="progress" data-field="series.progress" data-fit data-fit-min="52" data-fit-max="52">03 / 06</div>
+      </header>
+      <section class="hero">
+        <div class="eyebrow" data-field="series.eyebrow">A FIELD GUIDE TO</div>
+        <div class="series-title" data-field="series.title" data-fit data-fit-min="100" data-fit-max="202">ROOTED</div>
+        <div class="series-subtitle" data-field="series.subtitle" data-fit data-fit-min="52" data-fit-max="70">Formation in the Psalms</div>
+        <div class="series-thesis" data-field="series.thesis">A life that holds.</div>
+      </section>
+      <footer class="folio">
+        <section class="folio-section">
+          <div class="folio-label" data-field="message.eyebrow">THIS SUNDAY</div>
+          <div class="message-title" data-field="message.title" data-fit data-fit-min="52" data-fit-max="74">Planted by streams.</div>
+          <div class="speaker" data-field="speaker.name" data-fit data-fit-min="52" data-fit-max="52">Mara Lin</div>
+        </section>
+        <section class="folio-section">
+          <div class="folio-label" data-field="scripture.label">READING</div>
+          <div class="folio-value" data-field="scripture.reference" data-fit data-fit-min="52" data-fit-max="58">Psalm 1:1–6</div>
+        </section>
+        <section class="folio-section">
+          <div class="folio-label" data-field="service.label">GATHERING</div>
+          <div class="folio-value service-line" data-field="service.time" data-fit data-fit-min="52" data-fit-max="58">10:30 AM</div>
+          <div class="folio-value service-line" data-field="service.location" data-fit data-fit-min="52" data-fit-max="58">Main Auditorium</div>
+        </section>
+      </footer>
+    </main>
+  </div>
+  <script>
+(function () {
+  'use strict';
+  var wrap = document.getElementById('scene-wrap');
+  var scene = wrap && wrap.querySelector('.scene');
+
+  function orient() {
+    var forced = new URLSearchParams(location.search).get('orientation');
+    var portrait = forced === 'portrait' || (forced !== 'landscape' && innerHeight > innerWidth);
+    var width = portrait ? 1080 : 1920;
+    var height = portrait ? 1920 : 1080;
+    document.documentElement.classList.toggle('is-portrait', portrait);
+    wrap.style.width = width + 'px';
+    wrap.style.height = height + 'px';
+    scene.style.width = width + 'px';
+    scene.style.height = height + 'px';
+    wrap.style.setProperty('--scene-scale', Math.min(innerWidth / width, innerHeight / height));
+    setTimeout(fitAll, 0);
+  }
+
+  function queryJson(name) {
+    var value = new URLSearchParams(location.search).get(name);
+    if (!value) return {};
+    try {
+      var base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+      while (base64.length % 4) base64 += '=';
+      var binary = atob(base64);
+      var encoded = '';
+      for (var i = 0; i < binary.length; i++) {
+        encoded += '%' + ('00' + binary.charCodeAt(i).toString(16)).slice(-2);
+      }
+      return JSON.parse(decodeURIComponent(encoded));
+    } catch (_) {}
+    try { return JSON.parse(value); } catch (_) {}
+    try { return JSON.parse(decodeURIComponent(value)); } catch (_) {}
+    return {};
+  }
+
+  function nodes(key, attribute) {
+    var all = document.querySelectorAll('[' + attribute + ']');
+    var found = [];
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].getAttribute(attribute) === key) found.push(all[i]);
+    }
+    return found;
+  }
+
+  function setText(element, value) {
+    if (value.indexOf('&') !== -1) {
+      var decoder = document.createElement('textarea');
+      decoder.innerHTML = value;
+      value = decoder.value;
+    }
+    if (!element.children.length) {
+      element.textContent = value;
+      return;
+    }
+    var textNode = null;
+    for (var i = 0; i < element.childNodes.length; i++) {
+      if (element.childNodes[i].nodeType === 3) {
+        textNode = element.childNodes[i];
+        break;
+      }
+    }
+    if (textNode) textNode.textContent = value;
+    else element.insertBefore(document.createTextNode(value), element.firstChild);
+  }
+
+  function fitAll() {
+    var all = document.querySelectorAll('[data-fit]');
+    for (var i = 0; i < all.length; i++) {
+      var element = all[i];
+      var minimum = Math.max(52, Number(element.getAttribute('data-fit-min') || 52));
+      var configuredMaximum = Number(element.getAttribute('data-fit-max') || 190);
+      var customMaximum = Number(element.dataset.fitCeiling || 0);
+      var heightTolerance = Math.max(
+        0,
+        Number(element.getAttribute('data-fit-height-tolerance') || 10)
+      );
+      if (typeof element.__educmsOriginalFontSize === 'undefined') {
+        element.__educmsOriginalFontSize = element.style.fontSize || '';
+      }
+      if (!customMaximum) element.style.fontSize = element.__educmsOriginalFontSize;
+      var cssMaximum = parseFloat(getComputedStyle(element).fontSize) || configuredMaximum;
+      var maximum = Math.max(minimum, customMaximum || Math.min(configuredMaximum, cssMaximum));
+      var low = Math.ceil(minimum);
+      var high = Math.floor(maximum);
+      var best = low;
+
+      element.style.fontSize = maximum + 'px';
+      if (
+        element.scrollWidth <= element.clientWidth + 1 &&
+        element.scrollHeight <= element.clientHeight + heightTolerance
+      ) {
+        best = maximum;
+      } else {
+        while (low <= high) {
+          var middle = Math.floor((low + high) / 2);
+          element.style.fontSize = middle + 'px';
+          if (
+            element.scrollWidth > element.clientWidth + 1 ||
+            element.scrollHeight > element.clientHeight + heightTolerance
+          ) {
+            high = middle - 1;
+          } else {
+            best = middle;
+            low = middle + 1;
+          }
+        }
+        element.style.fontSize = best + 'px';
+      }
+
+      element.setAttribute('data-fit-size', String(Math.round(best)));
+      if (
+        element.scrollWidth > element.clientWidth + 1 ||
+        element.scrollHeight > element.clientHeight + heightTolerance
+      ) {
+        element.setAttribute('data-fit-overflow', 'true');
+      } else {
+        element.removeAttribute('data-fit-overflow');
+      }
+    }
+  }
+
+  function apply(payload) {
+    payload = payload || {};
+    var root = document.documentElement.style;
+    var brand = payload.brand || {};
+    var text = payload.text || {};
+    var styles = payload.textStyles || {};
+    var images = payload.img || {};
+    if (brand.background) root.setProperty('--paper', brand.background);
+    if (brand.surface) root.setProperty('--paper', brand.surface);
+    if (brand.text) root.setProperty('--ink', brand.text);
+    if (brand.muted) root.setProperty('--muted', brand.muted);
+    if (brand.primary) root.setProperty('--primary', brand.primary);
+    if (brand.accent) root.setProperty('--accent', brand.accent);
+    if (brand.fontDisplay) root.setProperty('--font-display', brand.fontDisplay);
+    if (brand.fontBody) root.setProperty('--font-body', brand.fontBody);
+    if (brand.fontCondensed) root.setProperty('--font-mono', brand.fontCondensed);
+
+    var keys = {};
+    Object.keys(text).forEach(function (key) { keys[key] = true; });
+    Object.keys(styles).forEach(function (key) { keys[key] = true; });
+    Object.keys(keys).forEach(function (key) {
+      var list = nodes(key, 'data-field');
+      for (var i = 0; i < list.length; i++) {
+        if (typeof text[key] === 'string') setText(list[i], text[key]);
+        var style = styles[key] || {};
+        if (style.color) list[i].style.color = style.color;
+        if (style.fontSize != null) {
+          list[i].style.fontSize = typeof style.fontSize === 'number' ? style.fontSize + 'px' : style.fontSize;
+          if (list[i].hasAttribute('data-fit')) {
+            list[i].dataset.fitCeiling = String(parseFloat(String(style.fontSize)) || 0);
+          }
+        }
+        if (style.fontWeight != null) list[i].style.fontWeight = String(style.fontWeight);
+        if (style.fontStyle) list[i].style.fontStyle = style.fontStyle;
+        if (style.fontFamily) list[i].style.fontFamily = style.fontFamily;
+        if (style.textDecoration) list[i].style.textDecoration = style.textDecoration;
+        if (style.textAlign) list[i].style.textAlign = style.textAlign;
+        if (style.lineHeight != null) list[i].style.lineHeight = String(style.lineHeight);
+        if (style.backgroundColor) list[i].style.backgroundColor = style.backgroundColor;
+        if (Object.prototype.hasOwnProperty.call(style, 'hidden')) {
+          list[i].style.display = style.hidden ? 'none' : '';
+        }
+      }
+    });
+
+    Object.keys(images).forEach(function (key) {
+      var list = nodes(key, 'data-imgslot');
+      for (var i = 0; i < list.length; i++) {
+        if (typeof images[key] !== 'string') continue;
+        var safe = images[key].replace(/["'()\s]/g, '');
+        list[i].setAttribute('data-img', safe);
+        if (safe) {
+          list[i].style.backgroundImage = 'url("' + safe + '")';
+          list[i].style.backgroundSize = 'cover';
+          list[i].style.backgroundPosition = 'center';
+          list[i].classList.add('has-img');
+          list[i].setAttribute('data-has-image', 'true');
+        } else {
+          list[i].style.backgroundImage = '';
+          list[i].classList.remove('has-img');
+          list[i].removeAttribute('data-has-image');
+        }
+      }
+    });
+    setTimeout(fitAll, 0);
+  }
+
+  function armEdit() {
+    document.documentElement.classList.add('is-editing');
+    document.documentElement.classList.remove('is-frozen');
+    var all = document.querySelectorAll('[data-field],[data-imgslot]');
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].dataset.armed) continue;
+      all[i].dataset.armed = '1';
+      all[i].addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        parent.postMessage({
+          type: 'educms-field-click',
+          key: this.getAttribute('data-field') || this.getAttribute('data-imgslot'),
+          kind: this.hasAttribute('data-field') ? 'text' : 'img'
+        }, '*');
+      }, true);
+    }
+  }
+
+  addEventListener('resize', orient);
+  apply({
+    brand: queryJson('brand'),
+    text: queryJson('text'),
+    textStyles: queryJson('textStyles'),
+    img: queryJson('img')
+  });
+  orient();
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(function () { fitAll(); });
+  }
+  if (new URLSearchParams(location.search).get('freeze') === '1') {
+    document.documentElement.classList.add('is-frozen');
+  }
+  addEventListener('message', function (event) {
+    var data = event.data;
+    if (!data || typeof data !== 'object') return;
+    if (data.type === 'educms-overrides') apply(data);
+    if (data.type === 'educms-edit-mode' && data.on) armEdit();
+    if (data.type === 'educms-freeze') document.documentElement.classList.add('is-frozen');
+    if (data.type === 'educms-unfreeze') document.documentElement.classList.remove('is-frozen');
+  });
+  try { parent.postMessage({ type: 'educms-ready' }, '*'); } catch (_) {}
+}());
+
+</script>
+</body>
+</html>
