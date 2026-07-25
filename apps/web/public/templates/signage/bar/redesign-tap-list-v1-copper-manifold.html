@@ -1,0 +1,1320 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bar Tap List 01 — Copper Manifold</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&amp;family=DM+Mono:wght@500&amp;display=swap" rel="stylesheet" />
+  <style>
+* { box-sizing: border-box; }
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #090a09;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+
+#scene-wrap {
+  --scene-scale: 1;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  overflow: hidden;
+  transform: translate(-50%, -50%) scale(var(--scene-scale));
+  transform-origin: center center;
+}
+
+.scene {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+}
+
+.scene::after {
+  content: "";
+  position: absolute;
+  top:0;right:0;bottom:0;left:0;
+  z-index: 90;
+  pointer-events: none;
+  opacity: .045;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.36'/%3E%3C/svg%3E");
+}
+
+[data-field],
+[data-imgslot] {
+  max-width: 100%;
+}
+
+[data-fit] {
+  overflow: visible;
+}
+
+.is-editing [data-field],
+.is-editing [data-imgslot] {
+  cursor: pointer;
+}
+
+.is-editing [data-field]:hover,
+.is-editing [data-imgslot]:hover {
+  outline: 4px solid rgba(255, 255, 255, .94);
+  outline-offset: -4px;
+}
+
+.is-frozen *,
+.is-frozen *::before,
+.is-frozen *::after {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+
+.is-portrait .scene {
+  width: 1080px;
+  height: 1920px;
+}
+
+</style>
+  <style>
+    :root {
+      --ink:#f2e7d3;
+      --ink-soft:#c9baa2;
+      --night:#171116;
+      --night-2:#20151b;
+      --copper:#c3744d;
+      --copper-dark:#7d402f;
+      --verdigris:#6f927f;
+      --rule:rgba(242,231,211,.24);
+      --display:'Bricolage Grotesque',Arial,sans-serif;
+      --mono:'DM Mono','Courier New',monospace;
+    }
+
+    body {
+      background:#080607;
+      font-family:var(--display);
+    }
+
+    .scene {
+      color:var(--ink);
+      background:
+        radial-gradient(circle at 50% -25%,rgba(195,116,77,.21),transparent 44%),
+        linear-gradient(135deg,var(--night-2),var(--night) 55%,#100c10);
+    }
+
+    .scene::before {
+      content:"";
+      position:absolute;
+      top:0;right:0;bottom:0;left:0;
+      z-index:0;
+      pointer-events:none;
+      opacity:.3;
+      background:
+        repeating-linear-gradient(90deg,transparent 0 119px,rgba(255,255,255,.018) 120px),
+        linear-gradient(90deg,rgba(195,116,77,.06),transparent 12%,transparent 88%,rgba(195,116,77,.06));
+    }
+
+    .masthead {
+      position:absolute;
+      left:0;
+      top:0;
+      width:1920px;
+      height:140px;
+      z-index:2;
+      display:grid;
+      grid-template-columns:620px minmax(0,1fr) 270px;
+      align-items:center;
+      padding:12px 32px;
+      border-bottom:3px solid var(--copper);
+      background:rgba(18,13,17,.94);
+    }
+
+    .brand {
+      min-width:0;
+      display:grid;
+      grid-template-columns:94px minmax(0,1fr);
+      align-items:center;
+      gap:18px;
+    }
+
+    .brand-mark {
+      position:relative;
+      width:88px;
+      height:88px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:var(--night);
+      background:var(--copper);
+      border:5px double var(--night);
+      border-radius:50%;
+      font:800 52px/1 var(--display);
+      letter-spacing:-.05em;
+    }
+
+    .brand-mark::after {
+      content:"";
+      position:absolute;
+      left:39px;
+      top:83px;
+      width:10px;
+      height:43px;
+      background:linear-gradient(90deg,var(--copper-dark),var(--copper),var(--copper-dark));
+    }
+
+    .brand-copy {
+      min-width:0;
+      height:112px;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      gap:2px;
+    }
+
+    .brand-name {
+      height:62px;
+      color:var(--ink);
+      font:800 64px/.96 var(--display);
+      letter-spacing:-.045em;
+      white-space:nowrap;
+    }
+
+    .brand-tagline {
+      height:50px;
+      color:var(--ink-soft);
+      font:500 52px/.96 var(--display);
+      letter-spacing:.02em;
+      white-space:nowrap;
+    }
+
+    .board-heading {
+      min-width:0;
+      height:112px;
+      display:flex;
+      flex-direction:row;
+      align-items:center;
+      gap:28px;
+      padding-left:24px;
+      border-left:1px solid var(--rule);
+    }
+
+    .board-eyebrow {
+      flex:0 0 auto;
+      height:52px;
+      color:var(--verdigris);
+      font:700 52px/.92 var(--mono);
+      letter-spacing:.04em;
+      white-space:nowrap;
+    }
+
+    .board-title {
+      min-width:0;
+      height:68px;
+      display:flex;
+      align-items:center;
+      color:var(--ink);
+      font:800 68px/.94 var(--display);
+      letter-spacing:-.04em;
+      white-space:nowrap;
+    }
+
+    .clock-block {
+      height:112px;
+      display:flex;
+      flex-direction:column;
+      align-items:flex-end;
+      justify-content:center;
+      gap:4px;
+      border-left:1px solid var(--rule);
+    }
+
+    .service-status,
+    .clock {
+      width:250px;
+      height:60px;
+      color:var(--copper);
+      font:500 52px/1 var(--mono);
+      text-align:right;
+      white-space:nowrap;
+    }
+
+    .clock { color:var(--ink); }
+
+    .is-landscape .brand-tagline,
+    .is-landscape .board-eyebrow,
+    .is-landscape .service-status {
+      display:none;
+    }
+
+    .is-landscape .board-heading {
+      justify-content:center;
+    }
+
+    .is-landscape .board-title {
+      width:100%;
+      justify-content:center;
+      text-align:center;
+    }
+
+    .banks {
+      position:absolute;
+      left:24px;
+      top:140px;
+      width:1872px;
+      height:820px;
+      z-index:2;
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:18px;
+    }
+
+    .bank {
+      position:relative;
+      min-width:0;
+      height:820px;
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      grid-template-rows:repeat(4,205px);
+      grid-auto-flow:column;
+      gap:0 14px;
+      overflow:hidden;
+      border-left:0;
+    }
+
+    .bank::before {
+      display:none;
+    }
+
+    .bank-heading {
+      display:none;
+      height:0;
+      align-items:center;
+      padding:0 18px 0 32px;
+      border-bottom:1px solid var(--rule);
+      color:var(--copper);
+      font:700 52px/1 var(--mono);
+      letter-spacing:.01em;
+      white-space:nowrap;
+    }
+
+    .tap {
+      position:relative;
+      min-width:0;
+      height:205px;
+      display:grid;
+      grid-template-columns:60px minmax(0,1fr);
+      overflow:hidden;
+      border-left:8px solid var(--copper-dark);
+      border-bottom:1px solid var(--rule);
+    }
+
+    .tap:last-child { border-bottom-color:transparent; }
+
+    .tap::before {
+      content:"";
+      position:absolute;
+      left:0;
+      top:62px;
+      width:52px;
+      height:9px;
+      background:linear-gradient(#6f3829,var(--copper),#5f3025);
+    }
+
+    .tap-number {
+      position:absolute;
+      left:16px;
+      top:32px;
+      width:60px;
+      height:60px;
+      z-index:2;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:var(--night);
+      background:var(--copper);
+      border:5px double var(--night);
+      border-radius:50%;
+      font:800 52px/1 var(--display);
+      font-variant-numeric:tabular-nums;
+    }
+
+    .tap-body {
+      min-width:0;
+      grid-column:2;
+      height:205px;
+      display:grid;
+      grid-template-rows:130px 75px;
+      padding-left:16px;
+      position:relative;
+    }
+
+    .tap-main {
+      min-width:0;
+      height:130px;
+      display:block;
+      border-bottom:1px solid rgba(242,231,211,.13);
+    }
+
+    .tap-name {
+      min-width:0;
+      width:100%;
+      height:130px;
+      display:flex;
+      align-items:center;
+      color:var(--ink);
+      font:700 60px/1.05 var(--display);
+      letter-spacing:-.04em;
+      white-space:nowrap;
+      white-space:normal;
+    }
+
+    .tap-price {
+      position:absolute;
+      right:0;
+      top:130px;
+      z-index:3;
+      width:160px;
+      height:75px;
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      color:var(--copper);
+      font:700 60px/1 var(--display);
+      letter-spacing:-.05em;
+      white-space:nowrap;
+    }
+
+    .tap-facts {
+      min-width:0;
+      height:75px;
+      display:grid;
+      grid-template-columns:92px 115px;
+      justify-content:start;
+      align-items:center;
+      gap:0;
+      padding-right:160px;
+    }
+
+    .tap-tag,
+    .tap-status,
+    .tap-abv,
+    .tap-pour {
+      min-width:0;
+      height:68px;
+      display:flex;
+      align-items:center;
+      color:var(--ink-soft);
+      font:600 52px/1 var(--display);
+      letter-spacing:-.035em;
+      white-space:nowrap;
+    }
+
+    .tap-tag { display:none; }
+    .tap-abv,
+    .tap-pour { justify-content:center; }
+    .tap-pour {
+      padding-left:8px;
+      border-left:1px solid rgba(242,231,211,.18);
+    }
+
+    .tap-status {
+      color:var(--night);
+      background:var(--copper);
+      justify-content:center;
+      grid-column:1 / 3;
+      padding:0 6px;
+    }
+
+    .tap-status:empty { display:none; }
+    .tap-facts:has(.tap-status:not(:empty)) .tap-abv,
+    .tap-facts:has(.tap-status:not(:empty)) .tap-pour {
+      display:none;
+    }
+
+    .reserve {
+      display:none !important;
+    }
+
+    .footer {
+      position:absolute;
+      left:0;
+      top:960px;
+      width:1920px;
+      height:120px;
+      z-index:3;
+      display:grid;
+      grid-template-columns:repeat(4,1fr);
+      border-top:3px solid var(--copper);
+      background:var(--ink);
+      color:var(--night);
+    }
+
+    .footer-item {
+      min-width:0;
+      height:120px;
+      display:grid;
+      grid-template-rows:60px 60px;
+      align-items:center;
+      padding:0 24px;
+      border-right:1px solid rgba(23,17,22,.22);
+    }
+
+    .footer-item:last-child { border-right:0; }
+
+    .footer-label,
+    .footer-value {
+      min-width:0;
+      height:60px;
+      display:flex;
+      align-items:center;
+      font:700 52px/1.05 var(--display);
+      white-space:nowrap;
+    }
+
+    .footer-label { color:var(--copper-dark); }
+    .footer-value {
+      justify-content:flex-start;
+      font-family:var(--mono);
+      font-weight:500;
+      letter-spacing:-.05em;
+    }
+
+    .is-portrait .masthead {
+      width:1080px;
+      height:220px;
+      grid-template-columns:minmax(0,1fr) 250px;
+      grid-template-rows:116px 84px;
+      padding:10px 28px;
+    }
+
+    .is-portrait .brand {
+      grid-column:1;
+      grid-row:1;
+      grid-template-columns:92px minmax(0,1fr);
+      gap:20px;
+    }
+
+    .is-portrait .brand-mark {
+      width:88px;
+      height:88px;
+      font-size:52px;
+    }
+
+    .is-portrait .brand-mark::after { display:none; }
+
+    .is-portrait .brand-copy {
+      height:118px;
+      gap:0;
+    }
+
+    .is-portrait .brand-name {
+      height:58px;
+      font-size:62px;
+    }
+
+    .is-portrait .brand-tagline {
+      height:60px;
+      font-size:52px;
+    }
+
+    .is-portrait .clock-block {
+      grid-column:2;
+      grid-row:1;
+      width:250px;
+      height:112px;
+    }
+
+    .is-portrait .service-status { display:none; }
+
+    .is-portrait .board-heading {
+      grid-column:1 / -1;
+      grid-row:2;
+      width:1024px;
+      height:84px;
+      flex-direction:row;
+      align-items:center;
+      justify-content:space-between;
+      padding:0;
+      border-left:0;
+      border-top:1px solid var(--rule);
+    }
+
+    .is-portrait .board-eyebrow,
+    .is-portrait .board-title {
+      width:auto;
+      height:64px;
+      font-size:58px;
+    }
+
+    .is-portrait .board-title { font-size:68px; }
+
+    .is-portrait .board-eyebrow { display:none; }
+
+    .is-portrait .board-heading {
+      justify-content:center;
+    }
+
+    .is-portrait .board-title {
+      width:100%;
+      justify-content:center;
+      text-align:center;
+    }
+
+    .is-portrait .banks {
+      left:24px;
+      top:220px;
+      width:1032px;
+      height:1540px;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      grid-template-rows:1540px;
+      gap:18px;
+    }
+
+    .is-portrait .bank {
+      height:1540px;
+      grid-template-columns:minmax(0,1fr);
+      grid-template-rows:repeat(8,192.5px);
+      grid-auto-flow:row;
+      gap:0;
+    }
+
+    .is-portrait .bank-heading {
+      display:none;
+      height:0;
+    }
+
+    .is-portrait .tap {
+      height:192.5px;
+      grid-template-columns:70px minmax(0,1fr);
+    }
+
+    .is-portrait .tap::before { top:46px; }
+
+    .is-portrait .tap-number {
+      left:22px;
+      top:18px;
+      width:70px;
+      height:70px;
+    }
+
+    .is-portrait .tap-body {
+      height:192.5px;
+      grid-template-rows:124px 68.5px;
+      padding-left:24px;
+      position:relative;
+    }
+
+    .is-portrait .tap-name {
+      height:124px;
+      font-size:56px;
+      line-height:1.05;
+      white-space:normal;
+    }
+
+    .is-portrait .tap-price {
+      position:absolute;
+      right:0;
+      top:124px;
+      z-index:3;
+      width:160px;
+      height:68.5px;
+      font-size:56px;
+    }
+
+    .is-portrait .tap-main {
+      display:block;
+    }
+
+    .is-portrait .tap-facts {
+      height:68.5px;
+      grid-template-columns:100px 120px;
+      justify-content:start;
+      gap:0;
+      padding-right:160px;
+    }
+
+    .is-portrait .tap-tag,
+    .is-portrait .tap-status,
+    .is-portrait .tap-abv,
+    .is-portrait .tap-pour {
+      height:66px;
+      font-size:52px;
+      font-family:var(--display);
+      font-weight:600;
+      letter-spacing:-.035em;
+      line-height:1;
+    }
+
+    .is-portrait .tap-tag { display:none; }
+    .is-portrait .tap-abv,
+    .is-portrait .tap-pour { justify-content:center; }
+
+    .is-portrait .footer {
+      top:1760px;
+      width:1080px;
+      height:160px;
+      grid-template-columns:1fr;
+      grid-template-rows:repeat(2,80px);
+    }
+
+    .is-portrait .footer-item {
+      height:80px;
+      grid-template-columns:280px minmax(0,1fr);
+      grid-template-rows:80px;
+      padding:0 26px;
+      border-bottom:1px solid rgba(23,17,22,.22);
+    }
+
+    .is-portrait .footer-item:nth-child(even) { display:none; }
+
+    .is-portrait .footer-label,
+    .is-portrait .footer-value {
+      width:auto;
+      height:64px;
+      align-items:center;
+      font-size:52px;
+      line-height:1.05;
+    }
+
+    .is-portrait .footer-value {
+      justify-content:flex-end;
+    }
+  </style>
+</head>
+<body>
+  <div id="scene-wrap">
+    <main class="scene" aria-label="Copper Manifold tap list">
+      <header class="masthead">
+        <div class="brand">
+          <div class="brand-mark" data-field="brand.mark" data-fit data-fit-min="52" data-fit-max="52">LT</div>
+          <div class="brand-copy">
+            <div class="brand-name" data-field="brand.name" data-fit data-fit-min="52" data-fit-max="70">THE LANTERN TAP</div>
+            <div class="brand-tagline" data-field="brand.tagline" data-fit data-fit-min="52" data-fit-max="52">CHARLESTON · LOCAL</div>
+          </div>
+        </div>
+        <div class="board-heading">
+          <div class="board-eyebrow" data-field="board.eyebrow" data-fit data-fit-min="52" data-fit-max="52">LIVE TAP INDEX</div>
+          <div class="board-title" data-field="board.title" data-fit data-fit-min="52" data-fit-max="72">THE POURING MAP</div>
+        </div>
+        <div class="clock-block">
+          <div class="service-status" data-field="service.status" data-fit data-fit-min="52" data-fit-max="52">14 / 16 LIVE</div>
+          <div class="clock" data-field="clock.hhmm" data-fit data-fit-min="52" data-fit-max="52">10:42 PM</div>
+        </div>
+      </header>
+
+      <section class="banks" id="banks" aria-label="Sixteen available tap lines"></section>
+
+      <footer class="footer">
+        <div class="footer-item"><span class="footer-label" data-static="true">FLIGHT</span><span class="footer-value" data-field="foot.flight" data-fit data-fit-min="52" data-fit-max="52">4 × 5 OZ · $14</span></div>
+        <div class="footer-item"><span class="footer-label" data-static="true">GROWLER</span><span class="footer-value" data-field="foot.growler" data-fit data-fit-min="52" data-fit-max="52">64 OZ · $24</span></div>
+        <div class="footer-item"><span class="footer-label" data-static="true">HAPPY HOUR</span><span class="footer-value" data-field="foot.happyhour" data-fit data-fit-min="52" data-fit-max="52">4–6 · $2 OFF</span></div>
+        <div class="footer-item"><span class="footer-label" data-static="true">LINES</span><span class="footer-value" data-field="foot.kicked" data-fit data-fit-min="52" data-fit-max="52">14 / 16 POURING</span></div>
+      </footer>
+    </main>
+  </div>
+  <script>
+    (function () {
+      var groups=[
+        {
+          key:'col.0.h',
+          title:'DRAFTS · 01–08',
+          taps:[
+            [0,'Lantern Pilsner','PILS','5.0%','16 OZ','$7','Lantern brew · crisp · 5.0%','5.0% · 24 IBU · 16oz','HOUSE'],
+            [1,'Magnolia IPA','IPA','6.8%','16 OZ','$8','Citra · Mosaic · piney','6.8% · 65 IBU · 16oz',''],
+            [2,'Cypress Stout','STOUT','7.2%','12 OZ','$8','Coffee · vanilla · roasty','7.2% · 38 IBU · 12oz','KICKED'],
+            [3,'Harbor Hazy','HAZY','7.0%','16 OZ','$9','Galaxy · juicy · soft','7.0% · 42 IBU · 16oz','NEW'],
+            [4,'Banks Sour','SOUR','4.4%','12 OZ','$8','Peach · sea salt','4.4% · 8 IBU · 12oz',''],
+            [5,'Cellar Lager','DARK','5.2%','16 OZ','$7','German Schwarz · clean','5.2% · 24 IBU · 16oz',''],
+            [6,'Lowcountry Saison','FARM','6.2%','12 OZ','$9','Brett · spice · dry','6.2% · 28 IBU · 12oz',''],
+            [7,'Daydream Pale Ale','APA','5.5%','16 OZ','$7','Centennial · pine','5.5% · 38 IBU · 16oz','']
+          ]
+        },
+        {
+          key:'col.1.h',
+          title:'DRAFTS · 09–16',
+          taps:[
+            [8,'Tradesman Wit','WIT','4.8%','16 OZ','$7','Coriander · orange · light','4.8% · 14 IBU · 16oz',''],
+            [9,'Smokehouse Porter','DARK','6.0%','16 OZ','$8','Beech-smoke · cocoa','6.0% · 32 IBU · 16oz',''],
+            [10,'Pier 47 Pale','APA','5.4%','16 OZ','$7','Cascade · grapefruit','5.4% · 42 IBU · 16oz',''],
+            [11,'Sweetgrass Mead','MEAD','10%','4 OZ','$11','Tupelo honey · sourwood','10% · 4oz','KICKED'],
+            [12,'Ice Cold Lager','LAGER','4.6%','16 OZ','$5','Easy · clean · cold','4.6% · 18 IBU · 16oz',''],
+            [13,'Reserve Tripel','BEL','9.0%','8 OZ','$12','Belgian · pear · spice','9.0% · 28 IBU · 8oz',''],
+            [14,'Local Cider','CIDER','6.5%','12 OZ','$8','Heirloom apple · dry','6.5% · GF · 12oz','GF'],
+            [15,'N/A Hop Water','N/A','0.0%','16 OZ','$5','Citra · dry-hopped · 0.0%','0.0% · 16oz','N/A']
+          ]
+        }
+      ];
+
+      var banks=document.getElementById('banks');
+      groups.forEach(function (group) {
+        var bank=document.createElement('section');
+        bank.className='bank';
+        bank.setAttribute('aria-label',group.title);
+
+        var heading=document.createElement('div');
+        heading.className='bank-heading';
+        heading.setAttribute('data-field',group.key);
+        heading.setAttribute('data-fit','');
+        heading.setAttribute('data-fit-min','52');
+        heading.setAttribute('data-fit-max','52');
+        heading.textContent=group.title;
+        bank.appendChild(heading);
+
+        group.taps.forEach(function (tap) {
+          var index=tap[0];
+          var article=document.createElement('article');
+          article.className='tap'+(tap[8]?' has-status':'');
+          article.setAttribute('data-qa-rail','bank-'+groups.indexOf(group));
+          article.innerHTML=
+            '<div class="tap-number" data-static="true">'+String(index+1).padStart(2,'0')+'</div>'+
+            '<div class="tap-body">'+
+              '<div class="tap-main">'+
+                '<div class="tap-name" data-field="t.'+index+'.n" data-fit data-fit-min="52" data-fit-max="60">'+tap[1]+'</div>'+
+                '<div class="tap-price" data-field="t.'+index+'.p" data-fit data-fit-min="52" data-fit-max="60">'+tap[5]+'</div>'+
+              '</div>'+
+              '<div class="tap-facts">'+
+                '<div class="tap-tag" data-field="t.'+index+'.tag" data-fit data-fit-min="52" data-fit-max="52">'+tap[2]+'</div>'+
+                '<div class="tap-status" data-field="t.'+index+'.status" data-fit data-fit-min="52" data-fit-max="52">'+tap[8]+'</div>'+
+                '<div class="tap-abv" data-field="t.'+index+'.abv" data-fit data-fit-min="52" data-fit-max="52">'+tap[3]+'</div>'+
+                '<div class="tap-pour" data-field="t.'+index+'.pour" data-fit data-fit-min="52" data-fit-max="52">'+tap[4]+'</div>'+
+              '</div>'+
+              '<div class="reserve" data-field="t.'+index+'.r">'+tap[6]+'</div>'+
+              '<div class="reserve" data-field="t.'+index+'.m">'+tap[7]+'</div>'+
+            '</div>';
+          bank.appendChild(article);
+        });
+        banks.appendChild(bank);
+      });
+    }());
+  </script>
+  <script>
+(function () {
+  'use strict';
+
+  var LANDSCAPE = { name: 'landscape', width: 1920, height: 1080 };
+  var PORTRAIT = { name: 'portrait', width: 1080, height: 1920 };
+  var root = document.documentElement;
+  var wrap = document.getElementById('scene-wrap');
+  var activeScene = null;
+  var currentOrientation = '';
+  var fitFrame = 0;
+  var editMode = false;
+  var lastOverflowSignature = '';
+
+  if (!wrap) return;
+
+  function query() {
+    return new URLSearchParams(window.location.search);
+  }
+
+  function orientationForViewport() {
+    var forced = query().get('orientation');
+    if (forced === 'portrait') return PORTRAIT;
+    if (forced === 'landscape') return LANDSCAPE;
+    return window.innerHeight > window.innerWidth ? PORTRAIT : LANDSCAPE;
+  }
+
+  function sceneOrientation(scene) {
+    var declared = scene.getAttribute('data-orientation') ||
+      scene.getAttribute('data-scene-orientation') || '';
+    if (!declared && scene.classList.contains('scene-portrait')) declared = 'portrait';
+    if (!declared && scene.classList.contains('scene-landscape')) declared = 'landscape';
+    return declared.toLowerCase();
+  }
+
+  function selectScene(orientation) {
+    var scenes = wrap.querySelectorAll('.scene');
+    var selected = scenes.length ? scenes[0] : null;
+    var hasDedicatedScenes = false;
+    var i;
+
+    for (i = 0; i < scenes.length; i++) {
+      if (sceneOrientation(scenes[i])) hasDedicatedScenes = true;
+      if (sceneOrientation(scenes[i]) === orientation.name) selected = scenes[i];
+    }
+
+    if (hasDedicatedScenes) {
+      for (i = 0; i < scenes.length; i++) {
+        var isSelected = scenes[i] === selected;
+        scenes[i].style.display = isSelected ? '' : 'none';
+        scenes[i].setAttribute('aria-hidden', isSelected ? 'false' : 'true');
+      }
+    }
+
+    return selected;
+  }
+
+  function post(message) {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(message, '*');
+      }
+    } catch (_) {}
+  }
+
+  function scheduleFit() {
+    if (fitFrame) window.cancelAnimationFrame(fitFrame);
+    fitFrame = window.requestAnimationFrame(function () {
+      fitFrame = 0;
+      fitAll();
+    });
+  }
+
+  function orient() {
+    var orientation = orientationForViewport();
+    activeScene = selectScene(orientation);
+    if (!activeScene) return;
+
+    currentOrientation = orientation.name;
+    root.classList.toggle('is-portrait', orientation.name === 'portrait');
+    root.classList.toggle('is-landscape', orientation.name === 'landscape');
+    root.setAttribute('data-orientation', orientation.name);
+
+    if (document.body) document.body.setAttribute('data-orientation', orientation.name);
+    wrap.setAttribute('data-orientation', orientation.name);
+    activeScene.setAttribute('data-active-orientation', orientation.name);
+
+    wrap.style.width = orientation.width + 'px';
+    wrap.style.height = orientation.height + 'px';
+    activeScene.style.width = orientation.width + 'px';
+    activeScene.style.height = orientation.height + 'px';
+
+    wrap.style.setProperty('--scene-width', orientation.width + 'px');
+    wrap.style.setProperty('--scene-height', orientation.height + 'px');
+    wrap.style.setProperty(
+      '--scene-scale',
+      String(Math.min(
+        window.innerWidth / orientation.width,
+        window.innerHeight / orientation.height
+      ))
+    );
+
+    scheduleFit();
+    post({
+      type: 'educms-orientation',
+      orientation: orientation.name,
+      width: orientation.width,
+      height: orientation.height
+    });
+  }
+
+  function decodeBase64Json(value) {
+    var base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4) base64 += '=';
+    var binary = window.atob(base64);
+    var bytes = '';
+    var i;
+    for (i = 0; i < binary.length; i++) {
+      bytes += '%' + ('00' + binary.charCodeAt(i).toString(16)).slice(-2);
+    }
+    return JSON.parse(decodeURIComponent(bytes));
+  }
+
+  function queryJson(name) {
+    var value = query().get(name);
+    if (!value) return {};
+
+    try { return JSON.parse(value); } catch (_) {}
+    try { return JSON.parse(decodeURIComponent(value)); } catch (_) {}
+    try { return decodeBase64Json(value); } catch (_) {}
+    return {};
+  }
+
+  function nodes(key, attribute) {
+    var all = document.querySelectorAll('[' + attribute + ']');
+    var found = [];
+    var i;
+    for (i = 0; i < all.length; i++) {
+      if (all[i].getAttribute(attribute) === key) found.push(all[i]);
+    }
+    return found;
+  }
+
+  function hasNodes(key, attribute) {
+    return nodes(key, attribute).length > 0;
+  }
+
+  function setText(element, value) {
+    var text = value == null ? '' : String(value);
+
+    if (text.indexOf('&') !== -1) {
+      var decoder = document.createElement('textarea');
+      decoder.innerHTML = text;
+      text = decoder.value;
+    }
+
+    if (element.getAttribute('data-preserve-children') === 'true') {
+      var textNode = null;
+      var i;
+      for (i = 0; i < element.childNodes.length; i++) {
+        if (element.childNodes[i].nodeType === 3) {
+          textNode = element.childNodes[i];
+          break;
+        }
+      }
+      if (textNode) textNode.textContent = text;
+      else element.insertBefore(document.createTextNode(text), element.firstChild);
+      return;
+    }
+
+    element.textContent = text;
+  }
+
+  function numberAttribute(element, name, fallback) {
+    var value = Number(element.getAttribute(name));
+    return isFinite(value) && value > 0 ? value : fallback;
+  }
+
+  function overflows(element) {
+    return element.scrollWidth > element.clientWidth + 1 ||
+      element.scrollHeight > element.clientHeight + 1;
+  }
+
+  function fitElement(element) {
+    if (!element.clientWidth || !element.clientHeight) return false;
+
+    if (typeof element.__educmsOriginalFontSize === 'undefined') {
+      element.__educmsOriginalFontSize = element.style.fontSize || '';
+    }
+
+    var customMaximum = Number(element.getAttribute('data-fit-ceiling') ||
+      element.__educmsFitCeiling || 0);
+    var minimum = numberAttribute(element, 'data-fit-min', 52);
+    var configuredMaximum = numberAttribute(element, 'data-fit-max', 0);
+
+    if (customMaximum) {
+      element.style.fontSize = customMaximum + 'px';
+    } else {
+      element.style.fontSize = element.__educmsOriginalFontSize;
+    }
+
+    var cssMaximum = parseFloat(window.getComputedStyle(element).fontSize) || minimum;
+    var maximum = customMaximum || cssMaximum;
+    if (configuredMaximum) maximum = Math.min(maximum, configuredMaximum);
+    maximum = Math.max(minimum, maximum);
+
+    element.style.fontSize = maximum + 'px';
+    if (!overflows(element)) {
+      element.removeAttribute('data-fit-overflow');
+      element.setAttribute('data-fit-size', String(Math.round(maximum)));
+      return false;
+    }
+
+    var low = Math.ceil(minimum);
+    var high = Math.floor(maximum);
+    var best = low;
+
+    while (low <= high) {
+      var middle = Math.floor((low + high) / 2);
+      element.style.fontSize = middle + 'px';
+      if (overflows(element)) {
+        high = middle - 1;
+      } else {
+        best = middle;
+        low = middle + 1;
+      }
+    }
+
+    element.style.fontSize = best + 'px';
+    element.setAttribute('data-fit-size', String(best));
+
+    if (overflows(element)) {
+      element.setAttribute('data-fit-overflow', 'true');
+      return true;
+    }
+
+    element.removeAttribute('data-fit-overflow');
+    return false;
+  }
+
+  function fitAll() {
+    var all = document.querySelectorAll('[data-fit]');
+    var overflowKeys = [];
+    var i;
+
+    for (i = 0; i < all.length; i++) {
+      if (fitElement(all[i])) {
+        overflowKeys.push(
+          all[i].getAttribute('data-field') ||
+          all[i].getAttribute('data-fit-name') ||
+          'unlabelled-fit-' + (i + 1)
+        );
+      }
+    }
+
+    var signature = currentOrientation + ':' + overflowKeys.join('|');
+    if (overflowKeys.length && signature !== lastOverflowSignature) {
+      post({
+        type: 'educms-fit-overflow',
+        orientation: currentOrientation,
+        keys: overflowKeys
+      });
+    }
+    lastOverflowSignature = signature;
+  }
+
+  function applyBrand(brand) {
+    if (!brand || typeof brand !== 'object') return;
+    var styles = root.style;
+    var variableMap = {
+      background: ['--paper', '--background'],
+      surface: ['--surface', '--paper'],
+      text: ['--ink', '--text'],
+      muted: ['--muted'],
+      primary: ['--primary', '--blue'],
+      accent: ['--accent', '--orange'],
+      fontDisplay: ['--font-display'],
+      fontBody: ['--font-body'],
+      fontCondensed: ['--font-condensed', '--font-mono'],
+      fontSerif: ['--font-serif'],
+      fontMono: ['--font-mono']
+    };
+    var key;
+    var i;
+
+    for (key in variableMap) {
+      if (!Object.prototype.hasOwnProperty.call(variableMap, key)) continue;
+      if (brand[key] == null || brand[key] === '') continue;
+      for (i = 0; i < variableMap[key].length; i++) {
+        styles.setProperty(variableMap[key][i], String(brand[key]));
+      }
+    }
+
+    var custom = brand.cssVariables || brand.variables || {};
+    for (key in custom) {
+      if (!Object.prototype.hasOwnProperty.call(custom, key)) continue;
+      var property = key.indexOf('--') === 0 ? key : '--' + key;
+      styles.setProperty(property, String(custom[key]));
+    }
+  }
+
+  function applyTextStyle(element, style) {
+    if (!style || typeof style !== 'object') return;
+
+    if (style.color != null) element.style.color = String(style.color);
+    if (style.fontWeight != null) element.style.fontWeight = String(style.fontWeight);
+    if (style.fontStyle != null) element.style.fontStyle = String(style.fontStyle);
+    if (style.fontFamily != null) element.style.fontFamily = String(style.fontFamily);
+    if (style.textDecoration != null) element.style.textDecoration = String(style.textDecoration);
+    if (style.textAlign != null) element.style.textAlign = String(style.textAlign);
+    if (style.lineHeight != null) element.style.lineHeight = String(style.lineHeight);
+    if (style.letterSpacing != null) element.style.letterSpacing = String(style.letterSpacing);
+    if (style.textTransform != null) element.style.textTransform = String(style.textTransform);
+    if (style.backgroundColor != null) {
+      element.style.backgroundColor = String(style.backgroundColor);
+    }
+    if (style.opacity != null) element.style.opacity = String(style.opacity);
+
+    if (style.fontSize != null && style.fontSize !== '') {
+      var size = parseFloat(String(style.fontSize));
+      if (isFinite(size) && size > 0) {
+        element.style.fontSize = size + 'px';
+        if (element.hasAttribute('data-fit')) element.__educmsFitCeiling = size;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(style, 'hidden')) {
+      element.style.display = style.hidden ? 'none' : '';
+      element.setAttribute('aria-hidden', style.hidden ? 'true' : 'false');
+    }
+  }
+
+  function cssUrl(value) {
+    return 'url("' + value
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
+      .replace(/[\n\r\f]/g, '') + '")';
+  }
+
+  function applyImage(element, value) {
+    var source = value;
+    var position = '';
+    var size = '';
+
+    if (value && typeof value === 'object') {
+      source = value.src || value.url || '';
+      position = value.position || '';
+      size = value.size || value.fit || '';
+    }
+    if (source == null) return;
+    source = String(source);
+
+    element.setAttribute('data-img', source);
+    if (element.tagName && element.tagName.toLowerCase() === 'img') {
+      if (source) element.setAttribute('src', source);
+      else element.removeAttribute('src');
+    } else {
+      element.style.backgroundImage = source ? cssUrl(source) : 'none';
+      if (position) element.style.backgroundPosition = String(position);
+      if (size) element.style.backgroundSize = String(size);
+    }
+
+    element.classList.toggle('has-img', Boolean(source));
+    if (source) element.setAttribute('data-has-image', 'true');
+    else element.removeAttribute('data-has-image');
+  }
+
+  function apply(payload) {
+    payload = payload || {};
+    var text = payload.text || {};
+    var styles = payload.textStyles || {};
+    var images = payload.img || payload.images || {};
+    var keys = {};
+    var key;
+    var list;
+    var i;
+
+    applyBrand(payload.brand || {});
+
+    for (key in text) {
+      if (Object.prototype.hasOwnProperty.call(text, key)) keys[key] = true;
+    }
+    for (key in styles) {
+      if (Object.prototype.hasOwnProperty.call(styles, key)) keys[key] = true;
+    }
+
+    for (key in keys) {
+      if (!Object.prototype.hasOwnProperty.call(keys, key)) continue;
+      list = nodes(key, 'data-field');
+      for (i = 0; i < list.length; i++) {
+        if (Object.prototype.hasOwnProperty.call(text, key)) setText(list[i], text[key]);
+        applyTextStyle(list[i], styles[key]);
+      }
+    }
+
+    for (key in images) {
+      if (!Object.prototype.hasOwnProperty.call(images, key)) continue;
+      list = nodes(key, 'data-imgslot');
+      for (i = 0; i < list.length; i++) applyImage(list[i], images[key]);
+    }
+
+    scheduleFit();
+  }
+
+  function queryPayload() {
+    var params = query();
+    var brand = queryJson('brand');
+    var text = queryJson('text');
+    var textStyles = queryJson('textStyles');
+    var images = queryJson('img');
+    var payload = {
+      brand: brand && typeof brand === 'object' && !Array.isArray(brand) ? brand : {},
+      text: text && typeof text === 'object' && !Array.isArray(text) ? text : {},
+      textStyles: textStyles && typeof textStyles === 'object' &&
+        !Array.isArray(textStyles) ? textStyles : {},
+      img: images && typeof images === 'object' && !Array.isArray(images) ? images : {}
+    };
+
+    params.forEach(function (value, key) {
+      var fieldKey = '';
+      if (key.indexOf('field.') === 0) fieldKey = key.slice(6);
+      else if (key.indexOf('text.') === 0) fieldKey = key.slice(5);
+      else if (hasNodes(key, 'data-field')) fieldKey = key;
+
+      if (fieldKey) {
+        payload.text[fieldKey] = value;
+        return;
+      }
+
+      var imageKey = '';
+      if (key.indexOf('image.') === 0) imageKey = key.slice(6);
+      else if (key.indexOf('img.') === 0) imageKey = key.slice(4);
+      else if (hasNodes(key, 'data-imgslot')) imageKey = key;
+      if (imageKey) payload.img[imageKey] = value;
+    });
+
+    return payload;
+  }
+
+  function fieldsForReadyMessage(attribute) {
+    var elements = document.querySelectorAll('[' + attribute + ']');
+    var seen = {};
+    var values = [];
+    var i;
+    var key;
+    for (i = 0; i < elements.length; i++) {
+      key = elements[i].getAttribute(attribute);
+      if (key && !seen[key]) {
+        seen[key] = true;
+        values.push(key);
+      }
+    }
+    return values;
+  }
+
+  function setEditMode(on) {
+    editMode = Boolean(on);
+    root.classList.toggle('is-editing', editMode);
+    if (editMode) root.classList.remove('is-frozen');
+  }
+
+  function editableClick(event) {
+    if (!editMode) return;
+    var element = event.target;
+    while (
+      element &&
+      element !== document &&
+      !element.hasAttribute('data-field') &&
+      !element.hasAttribute('data-imgslot')
+    ) {
+      element = element.parentNode;
+    }
+    if (!element || element === document) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    post({
+      type: 'educms-field-click',
+      key: element.getAttribute('data-field') || element.getAttribute('data-imgslot'),
+      kind: element.hasAttribute('data-field') ? 'text' : 'img'
+    });
+  }
+
+  document.addEventListener('click', editableClick, true);
+  window.addEventListener('resize', orient);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', orient);
+
+  apply(queryPayload());
+  orient();
+
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(scheduleFit, scheduleFit);
+    if (document.fonts.addEventListener) {
+      document.fonts.addEventListener('loadingdone', scheduleFit);
+    }
+  }
+  window.addEventListener('load', scheduleFit);
+
+  var initialQuery = query();
+  if (initialQuery.get('freeze') === '1') root.classList.add('is-frozen');
+  if (initialQuery.get('edit') === '1') setEditMode(true);
+
+  window.addEventListener('message', function (event) {
+    var data = event.data;
+    if (!data || typeof data !== 'object') return;
+    if (event.source && event.source !== window.parent && event.source !== window) return;
+
+    if (data.type === 'educms-overrides') apply(data);
+    if (data.type === 'educms-edit-mode') setEditMode(Boolean(data.on));
+    if (data.type === 'educms-freeze') root.classList.add('is-frozen');
+    if (data.type === 'educms-unfreeze') root.classList.remove('is-frozen');
+    if (data.type === 'educms-refit') scheduleFit();
+  });
+
+  post({
+    type: 'educms-ready',
+    orientation: currentOrientation,
+    fields: fieldsForReadyMessage('data-field'),
+    images: fieldsForReadyMessage('data-imgslot')
+  });
+}());
+
+</script>
+</body>
+</html>

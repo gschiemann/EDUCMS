@@ -1,0 +1,1300 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bar Tap List 02 — Cellar Index</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&amp;family=DM+Mono:wght@500&amp;family=Instrument+Serif:ital@0;1&amp;display=swap" rel="stylesheet" />
+  <style>
+* { box-sizing: border-box; }
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #090a09;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+
+#scene-wrap {
+  --scene-scale: 1;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  overflow: hidden;
+  transform: translate(-50%, -50%) scale(var(--scene-scale));
+  transform-origin: center center;
+}
+
+.scene {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+}
+
+.scene::after {
+  content: "";
+  position: absolute;
+  top:0;right:0;bottom:0;left:0;
+  z-index: 90;
+  pointer-events: none;
+  opacity: .045;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.36'/%3E%3C/svg%3E");
+}
+
+[data-field],
+[data-imgslot] {
+  max-width: 100%;
+}
+
+[data-fit] {
+  overflow: visible;
+}
+
+.is-editing [data-field],
+.is-editing [data-imgslot] {
+  cursor: pointer;
+}
+
+.is-editing [data-field]:hover,
+.is-editing [data-imgslot]:hover {
+  outline: 4px solid rgba(255, 255, 255, .94);
+  outline-offset: -4px;
+}
+
+.is-frozen *,
+.is-frozen *::before,
+.is-frozen *::after {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+
+.is-portrait .scene {
+  width: 1080px;
+  height: 1920px;
+}
+
+</style>
+  <style>
+    :root {
+      --bone:#e7deca;
+      --bone-deep:#d7ccb4;
+      --ink:#1d211b;
+      --oxblood:#64251f;
+      --green:#173b31;
+      --brass:#a17c3b;
+      --brass-dark:#705529;
+      --rule:rgba(29,33,27,.34);
+      --font-display:'Instrument Serif',Georgia,serif;
+      --font-body:'Archivo','Helvetica Neue',Arial,sans-serif;
+      --font-mono:'DM Mono','Courier New',monospace;
+    }
+
+    body {
+      background:#12150f;
+      font-family:var(--font-body);
+    }
+
+    .scene {
+      color:var(--ink);
+      background:
+        linear-gradient(90deg,rgba(161,124,59,.08) 1px,transparent 1px),
+        linear-gradient(rgba(161,124,59,.055) 1px,transparent 1px),
+        var(--bone);
+      background-size:42px 42px,42px 42px,auto;
+    }
+
+    .scene::before {
+      content:"";
+      position:absolute;
+      left:22px;
+      top:22px;
+      z-index:1;
+      width:1876px;
+      height:1036px;
+      border:2px solid var(--brass);
+      box-shadow:
+        inset 0 0 0 7px var(--bone),
+        inset 0 0 0 9px rgba(112,85,41,.6);
+      pointer-events:none;
+    }
+
+    .portrait.scene::before {
+      width:1036px;
+      height:1876px;
+    }
+
+    .landscape .masthead {
+      position:absolute;
+      left:56px;
+      top:48px;
+      z-index:2;
+      width:1808px;
+      height:126px;
+      display:grid;
+      grid-template-columns:600px 1fr 270px;
+      align-items:center;
+      border-bottom:3px solid var(--oxblood);
+    }
+
+    .brand-lockup {
+      min-width:0;
+      display:flex;
+      align-items:baseline;
+      gap:24px;
+    }
+
+    .brand-name {
+      min-width:0;
+      height:84px;
+      display:flex;
+      align-items:center;
+      color:var(--green);
+      font:400 78px/.96 var(--font-display);
+      letter-spacing:-2px;
+      white-space:nowrap;
+    }
+
+    .brand-tagline {
+      min-width:0;
+      height:60px;
+      display:flex;
+      align-items:center;
+      color:var(--oxblood);
+      font:700 52px/1.05 var(--font-body);
+      letter-spacing:-1.8px;
+      white-space:nowrap;
+    }
+
+    .board-title {
+      min-width:0;
+      height:82px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:var(--oxblood);
+      font:italic 400 76px/.96 var(--font-display);
+      letter-spacing:-1px;
+      text-align:center;
+      white-space:nowrap;
+    }
+
+    .clock-seal {
+      position:relative;
+      width:262px;
+      height:104px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border:3px double var(--brass-dark);
+      color:var(--green);
+      background:rgba(231,222,202,.84);
+      box-shadow:
+        inset 0 0 0 6px rgba(161,124,59,.12),
+        5px 5px 0 rgba(100,37,31,.12);
+    }
+
+    .clock-seal::before,
+    .clock-seal::after {
+      content:"";
+      position:absolute;
+      top:9px;
+      width:18px;
+      height:84px;
+      border-top:2px solid var(--brass);
+      border-bottom:2px solid var(--brass);
+    }
+
+    .clock-seal::before { left:10px; }
+    .clock-seal::after { right:10px; }
+
+    .clock {
+      width:228px;
+      height:72px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font:500 58px/1 var(--font-mono);
+      letter-spacing:-3px;
+      white-space:nowrap;
+    }
+
+    .landscape .tap-register {
+      position:absolute;
+      left:56px;
+      top:190px;
+      z-index:2;
+      width:1808px;
+      height:732px;
+      display:grid;
+      grid-template-columns:884px 884px;
+      gap:40px;
+    }
+
+    .tap-column {
+      position:relative;
+      min-width:0;
+      height:732px;
+      overflow:hidden;
+      border-top:2px solid var(--brass-dark);
+      border-bottom:2px solid var(--brass-dark);
+    }
+
+    .tap-column + .tap-column::before {
+      content:"";
+      position:absolute;
+      left:-22px;
+      top:0;
+      width:2px;
+      height:732px;
+      background:var(--brass);
+    }
+
+    .column-heading {
+      height:64px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:0 16px 0 10px;
+      border-bottom:3px solid var(--green);
+      color:var(--green);
+    }
+
+    .column-title {
+      height:62px;
+      display:flex;
+      align-items:center;
+      font:800 52px/1 var(--font-body);
+      letter-spacing:-2px;
+      text-transform:uppercase;
+      white-space:nowrap;
+    }
+
+    .column-key {
+      display:none;
+    }
+
+    .tap-list {
+      height:664px;
+      display:grid;
+      grid-template-rows:repeat(8,83px);
+    }
+
+    .tap-row {
+      position:relative;
+      min-width:0;
+      height:83px;
+      display:grid;
+      grid-template-columns:76px minmax(0,1fr) 112px 112px;
+      align-items:center;
+      gap:20px;
+      border-bottom:1px solid var(--rule);
+    }
+
+    .tap-row:last-child {
+      border-bottom:0;
+    }
+
+    .tap-row::before {
+      content:"";
+      position:absolute;
+      right:120px;
+      top:10px;
+      width:2px;
+      height:62px;
+      background:rgba(161,124,59,.52);
+    }
+
+    .tap-number {
+      height:81px;
+      display:flex;
+      align-items:center;
+      justify-content:flex-start;
+      color:var(--oxblood);
+      font:400 80px/.88 var(--font-display);
+      font-variant-numeric:lining-nums tabular-nums;
+      letter-spacing:-4px;
+      opacity:.92;
+    }
+
+    .tap-name {
+      min-width:0;
+      height:76px;
+      display:flex;
+      align-items:center;
+      color:var(--ink);
+      font:700 60px/1.05 var(--font-body);
+      letter-spacing:-2.4px;
+      white-space:nowrap;
+    }
+
+    .status-seal {
+      width:112px;
+      height:64px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border-top:2px solid var(--brass-dark);
+      border-bottom:2px solid var(--brass-dark);
+      color:var(--green);
+      font:700 52px/1 var(--font-body);
+      letter-spacing:-3px;
+      text-transform:uppercase;
+      white-space:nowrap;
+      box-shadow:inset 0 5px 0 rgba(161,124,59,.08),inset 0 -5px 0 rgba(161,124,59,.08);
+    }
+
+    .status-seal[data-state="OUT"] {
+      color:var(--oxblood);
+      text-decoration:line-through;
+    }
+
+    .tap-price {
+      width:112px;
+      height:76px;
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      color:var(--oxblood);
+      font:700 68px/1 var(--font-mono);
+      letter-spacing:-4px;
+      text-align:right;
+      white-space:nowrap;
+    }
+
+    .contract-bank {
+      display:none;
+    }
+
+    .landscape .footer-ledger {
+      position:absolute;
+      left:56px;
+      top:928px;
+      z-index:2;
+      width:1808px;
+      height:120px;
+      display:grid;
+      grid-template-columns:repeat(4,452px);
+      border-top:3px solid var(--oxblood);
+      color:var(--bone);
+      background:var(--green);
+    }
+
+    .ledger-cell {
+      position:relative;
+      min-width:0;
+      height:120px;
+      display:grid;
+      grid-template-columns:minmax(0,1fr);
+      grid-template-rows:52px 64px;
+      padding:2px 18px;
+      border-right:1px solid rgba(231,222,202,.32);
+    }
+
+    .ledger-cell:last-child {
+      border-right:0;
+    }
+
+    .ledger-label {
+      position:static;
+      width:100%;
+      height:52px;
+      display:flex;
+      align-items:flex-end;
+      color:#c3a86c;
+      font:700 52px/.9 var(--font-body);
+      letter-spacing:-1px;
+      text-transform:uppercase;
+    }
+
+    .ledger-value {
+      position:static;
+      width:100%;
+      min-width:0;
+      height:64px;
+      display:flex;
+      align-items:flex-start;
+      justify-content:flex-start;
+      color:var(--bone);
+      font:600 52px/1.05 var(--font-body);
+      letter-spacing:-2.4px;
+      text-align:left;
+      white-space:nowrap;
+    }
+
+    .portrait .masthead {
+      position:absolute;
+      left:44px;
+      top:46px;
+      z-index:2;
+      width:992px;
+      height:218px;
+      display:grid;
+      grid-template-columns:minmax(0,1fr) 244px;
+      grid-template-rows:92px 112px;
+      column-gap:24px;
+      align-items:center;
+      border-bottom:3px solid var(--oxblood);
+    }
+
+    .portrait .brand-lockup {
+      height:92px;
+      display:flex;
+      align-items:center;
+      gap:20px;
+    }
+
+    .portrait .brand-name {
+      height:86px;
+      font-size:72px;
+    }
+
+    .portrait .brand-tagline {
+      height:64px;
+      font-size:52px;
+    }
+
+    .portrait .board-title {
+      grid-column:1 / -1;
+      grid-row:2;
+      width:992px;
+      height:106px;
+      justify-content:flex-start;
+      font-size:82px;
+      text-align:left;
+    }
+
+    .portrait .clock-seal {
+      grid-column:2;
+      grid-row:1;
+      width:244px;
+      height:84px;
+    }
+
+    .portrait .clock {
+      width:232px;
+      height:68px;
+      font-size:52px;
+      letter-spacing:-4px;
+    }
+
+    .portrait .clock-seal::before,
+    .portrait .clock-seal::after {
+      top:8px;
+      width:14px;
+      height:64px;
+    }
+
+    .portrait .tap-register {
+      position:absolute;
+      left:44px;
+      top:292px;
+      z-index:2;
+      width:992px;
+      height:1368px;
+      display:block;
+    }
+
+    .portrait .tap-column {
+      width:992px;
+      height:684px;
+    }
+
+    .portrait .tap-column + .tap-column {
+      margin-top:0;
+    }
+
+    .portrait .tap-column + .tap-column::before {
+      display:none;
+    }
+
+    .portrait .column-heading {
+      height:64px;
+      padding:0 12px;
+    }
+
+    .portrait .column-title {
+      height:62px;
+      font-size:52px;
+      letter-spacing:-2.8px;
+    }
+
+    .portrait .column-key {
+      display:none;
+    }
+
+    .portrait .tap-list {
+      height:620px;
+      grid-template-rows:repeat(8,77.5px);
+    }
+
+    .portrait .tap-row {
+      height:77.5px;
+      grid-template-columns:72px minmax(0,1fr) 112px 112px;
+      align-items:center;
+      gap:18px;
+    }
+
+    .portrait .tap-row::before {
+      right:120px;
+      top:8px;
+      height:61px;
+    }
+
+    .portrait .tap-number {
+      height:75px;
+      align-items:center;
+      padding-top:0;
+      font-size:66px;
+      letter-spacing:-4px;
+    }
+
+    .portrait .tap-name {
+      min-width:0;
+      height:72px;
+      align-items:center;
+      font-size:60px;
+      line-height:1.05;
+      letter-spacing:-2.4px;
+      white-space:nowrap;
+    }
+
+    .portrait .status-seal {
+      width:112px;
+      height:62px;
+      font-size:52px;
+      letter-spacing:-3px;
+    }
+
+    .portrait .tap-price {
+      width:112px;
+      height:72px;
+      font-size:60px;
+      letter-spacing:-4px;
+    }
+
+    .portrait .footer-ledger {
+      position:absolute;
+      left:44px;
+      top:1684px;
+      z-index:2;
+      width:992px;
+      height:192px;
+      display:grid;
+      grid-template-columns:496px 496px;
+      grid-template-rows:96px 96px;
+      border-top:3px solid var(--oxblood);
+      color:var(--bone);
+      background:var(--green);
+    }
+
+    .portrait .ledger-cell {
+      height:96px;
+      grid-template-rows:40px 56px;
+      padding:0 16px;
+      border-right:1px solid rgba(231,222,202,.32);
+      border-bottom:1px solid rgba(231,222,202,.32);
+    }
+
+    .portrait .ledger-cell:nth-child(2n) {
+      border-right:0;
+    }
+
+    .portrait .ledger-cell:nth-child(n+3) {
+      border-bottom:0;
+    }
+
+    .portrait .ledger-label {
+      height:40px;
+      align-items:flex-end;
+      font-size:52px;
+      line-height:.75;
+      letter-spacing:-1px;
+    }
+
+    .portrait .ledger-value {
+      height:56px;
+      align-items:flex-start;
+      font-size:52px;
+      letter-spacing:-2.8px;
+    }
+  </style>
+</head>
+<body>
+  <div id="scene-wrap">
+    <main class="scene landscape" data-orientation="landscape" aria-label="Cellar Index tap list in landscape">
+      <header class="masthead">
+        <div class="brand-lockup">
+          <div class="brand-name" data-field="brand.name" data-fit data-fit-min="52" data-fit-max="78">The Lantern</div>
+          <div class="brand-tagline" data-field="brand.tagline" data-fit data-fit-min="52" data-fit-max="52">Cellar No. 14</div>
+        </div>
+        <div class="board-title" data-field="board.title" data-fit data-fit-min="52" data-fit-max="76">The draft register.</div>
+        <div class="clock-seal" aria-label="Local time">
+          <div class="clock" data-field="clock.hhmm" data-fit data-fit-min="52" data-fit-max="58">10:42 PM</div>
+        </div>
+      </header>
+      <section class="tap-register" aria-label="Sixteen current taps">
+        <section class="tap-column">
+          <header class="column-heading">
+            <div class="column-title" data-field="col.0.h" data-fit data-fit-min="52" data-fit-max="52">Drafts · 1–8</div>
+            <div class="column-key">folio / west</div>
+          </header>
+          <div class="tap-list" data-tap-list="0"></div>
+        </section>
+        <section class="tap-column">
+          <header class="column-heading">
+            <div class="column-title" data-field="col.1.h" data-fit data-fit-min="52" data-fit-max="52">Drafts · 9–16</div>
+            <div class="column-key">folio / east</div>
+          </header>
+          <div class="tap-list" data-tap-list="1"></div>
+        </section>
+      </section>
+      <footer class="footer-ledger">
+        <div class="ledger-cell"><div class="ledger-label">Flight</div><div class="ledger-value" data-field="foot.flight" data-fit data-fit-min="52" data-fit-max="52">4 × 6oz · $14</div></div>
+        <div class="ledger-cell"><div class="ledger-label">Growler</div><div class="ledger-value" data-field="foot.growler" data-fit data-fit-min="52" data-fit-max="52">64oz fill · $24</div></div>
+        <div class="ledger-cell"><div class="ledger-label">Happy hour</div><div class="ledger-value" data-field="foot.happyhour" data-fit data-fit-min="52" data-fit-max="52">4–6 PM · $2 off</div></div>
+        <div class="ledger-cell"><div class="ledger-label">Kicked</div><div class="ledger-value" data-field="foot.kicked" data-fit data-fit-min="52" data-fit-max="52">3 lines · MON</div></div>
+      </footer>
+    </main>
+
+    <main class="scene portrait" data-orientation="portrait" aria-label="Cellar Index tap list in portrait">
+      <header class="masthead">
+        <div class="brand-lockup">
+          <div class="brand-name" data-field="brand.name" data-fit data-fit-min="52" data-fit-max="72">The Lantern</div>
+          <div class="brand-tagline" data-field="brand.tagline" data-fit data-fit-min="52" data-fit-max="52">Cellar No. 14</div>
+        </div>
+        <div class="board-title" data-field="board.title" data-fit data-fit-min="52" data-fit-max="82">The draft register.</div>
+        <div class="clock-seal" aria-label="Local time">
+          <div class="clock" data-field="clock.hhmm" data-fit data-fit-min="52" data-fit-max="52">10:42 PM</div>
+        </div>
+      </header>
+      <section class="tap-register" aria-label="Sixteen current taps">
+        <section class="tap-column">
+          <header class="column-heading">
+            <div class="column-title" data-field="col.0.h" data-fit data-fit-min="52" data-fit-max="52">Drafts · 1–8</div>
+            <div class="column-key">folio / west</div>
+          </header>
+          <div class="tap-list" data-tap-list="0"></div>
+        </section>
+        <section class="tap-column">
+          <header class="column-heading">
+            <div class="column-title" data-field="col.1.h" data-fit data-fit-min="52" data-fit-max="52">Drafts · 9–16</div>
+            <div class="column-key">folio / east</div>
+          </header>
+          <div class="tap-list" data-tap-list="1"></div>
+        </section>
+      </section>
+      <footer class="footer-ledger">
+        <div class="ledger-cell"><div class="ledger-label">Flight</div><div class="ledger-value" data-field="foot.flight" data-fit data-fit-min="52" data-fit-max="52">4 × 6oz · $14</div></div>
+        <div class="ledger-cell"><div class="ledger-label">Growler</div><div class="ledger-value" data-field="foot.growler" data-fit data-fit-min="52" data-fit-max="52">64oz fill · $24</div></div>
+        <div class="ledger-cell"><div class="ledger-label">Happy hour</div><div class="ledger-value" data-field="foot.happyhour" data-fit data-fit-min="52" data-fit-max="52">4–6 PM · $2 off</div></div>
+        <div class="ledger-cell"><div class="ledger-label">Kicked</div><div class="ledger-value" data-field="foot.kicked" data-fit data-fit-min="52" data-fit-max="52">3 lines · MON</div></div>
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      var taps = [
+        { name:'Lantern Pilsner', detail:'Lantern brew · crisp · 5.0%', price:'$7', meta:'5.0% · 24 IBU · 16oz', tag:'PILS', abv:'5.0%', pour:'16oz', status:'ON' },
+        { name:'Magnolia IPA', detail:'Citra · Mosaic · piney', price:'$8', meta:'6.8% · 65 IBU · 16oz', tag:'IPA', abv:'6.8%', pour:'16oz', status:'ON' },
+        { name:'Cypress Stout', detail:'Coffee · vanilla · roasty', price:'$8', meta:'7.2% · 38 IBU · 12oz', tag:'STOUT', abv:'7.2%', pour:'12oz', status:'OUT' },
+        { name:'Harbor Hazy', detail:'Galaxy · juicy · soft', price:'$9', meta:'7.0% · 42 IBU · 16oz', tag:'HAZY', abv:'7.0%', pour:'16oz', status:'ON' },
+        { name:'Banks Sour', detail:'Peach · sea salt', price:'$8', meta:'4.4% · 8 IBU · 12oz', tag:'SOUR', abv:'4.4%', pour:'12oz', status:'ON' },
+        { name:'Cellar Lager', detail:'German Schwarz · clean', price:'$7', meta:'5.2% · 24 IBU · 16oz', tag:'DARK', abv:'5.2%', pour:'16oz', status:'ON' },
+        { name:'Lowcountry Saison', detail:'Brett · spice · dry', price:'$9', meta:'6.2% · 28 IBU · 12oz', tag:'FARM', abv:'6.2%', pour:'12oz', status:'LOW' },
+        { name:'Daydream Pale Ale', detail:'Centennial · pine', price:'$7', meta:'5.5% · 38 IBU · 16oz', tag:'APA', abv:'5.5%', pour:'16oz', status:'ON' },
+        { name:'Tradesman Wit', detail:'Coriander · orange · light', price:'$7', meta:'4.8% · 14 IBU', tag:'WIT', abv:'4.8%', pour:'16oz', status:'ON' },
+        { name:'Smokehouse Porter', detail:'Beech-smoke · cocoa', price:'$8', meta:'6.0% · 32 IBU', tag:'DARK', abv:'6.0%', pour:'12oz', status:'LOW' },
+        { name:'Pier 47 Pale', detail:'Cascade · grapefruit', price:'$7', meta:'5.4% · 42 IBU', tag:'APA', abv:'5.4%', pour:'16oz', status:'ON' },
+        { name:'Sweetgrass Mead', detail:'Tupelo honey · sourwood', price:'$11', meta:'10% · 4oz', tag:'MEAD', abv:'10%', pour:'4oz', status:'OUT' },
+        { name:'Ice Cold Lager', detail:'Easy · clean · cold', price:'$5', meta:'4.6% · 18 IBU', tag:'LAGER', abv:'4.6%', pour:'16oz', status:'ON' },
+        { name:'Reserve Tripel', detail:'Belgian · pear · spice', price:'$12', meta:'9.0% · 28 IBU · 8oz', tag:'BEL', abv:'9.0%', pour:'8oz', status:'LOW' },
+        { name:'Local Cider', detail:'Heirloom apple · dry', price:'$8', meta:'6.5% · GF', tag:'CIDER', abv:'6.5%', pour:'12oz', status:'ON' },
+        { name:'N/A Hop Water', detail:'Citra · dry-hopped · 0.0%', price:'$5', meta:'0.0% · 16oz', tag:'N/A', abv:'0.0%', pour:'16oz', status:'ON' }
+      ];
+
+      function field(tagName, className, key, value, fit) {
+        var node = document.createElement(tagName);
+        node.className = className;
+        node.setAttribute('data-field', key);
+        if (fit) {
+          node.setAttribute('data-fit', '');
+          node.setAttribute('data-fit-min', fit.min);
+          node.setAttribute('data-fit-max', fit.max);
+        }
+        node.textContent = value;
+        return node;
+      }
+
+      function renderList(list, start) {
+        var i;
+        for (i = start; i < start + 8; i++) {
+          var tap = taps[i];
+          var row = document.createElement('article');
+          var reserve = document.createElement('div');
+          var status = field('div', 'status-seal', 't.' + i + '.status', tap.status, { min:'52', max:'52' });
+          row.className = 'tap-row';
+          row.setAttribute('data-tap-index', String(i));
+          status.setAttribute('data-state', tap.status);
+
+          row.appendChild(field('div', 'tap-number', '', String(i + 1).padStart(2, '0')));
+          row.lastChild.removeAttribute('data-field');
+          row.appendChild(field('div', 'tap-name', 't.' + i + '.n', tap.name, { min:'52', max:'64' }));
+          row.appendChild(status);
+          row.appendChild(field('div', 'tap-price', 't.' + i + '.p', tap.price, { min:'52', max:'68' }));
+
+          reserve.className = 'contract-bank';
+          reserve.setAttribute('aria-hidden', 'true');
+          reserve.appendChild(field('span', '', 't.' + i + '.r', tap.detail));
+          reserve.appendChild(field('span', '', 't.' + i + '.m', tap.meta));
+          reserve.appendChild(field('span', '', 't.' + i + '.tag', tap.tag));
+          reserve.appendChild(field('span', '', 't.' + i + '.abv', tap.abv));
+          reserve.appendChild(field('span', '', 't.' + i + '.pour', tap.pour));
+          row.appendChild(reserve);
+          list.appendChild(row);
+        }
+      }
+
+      var scenes = document.querySelectorAll('.scene');
+      var i;
+      for (i = 0; i < scenes.length; i++) {
+        renderList(scenes[i].querySelector('[data-tap-list="0"]'), 0);
+        renderList(scenes[i].querySelector('[data-tap-list="1"]'), 8);
+      }
+    }());
+  </script>
+  <script>
+(function () {
+  'use strict';
+
+  var LANDSCAPE = { name: 'landscape', width: 1920, height: 1080 };
+  var PORTRAIT = { name: 'portrait', width: 1080, height: 1920 };
+  var root = document.documentElement;
+  var wrap = document.getElementById('scene-wrap');
+  var activeScene = null;
+  var currentOrientation = '';
+  var fitFrame = 0;
+  var editMode = false;
+  var lastOverflowSignature = '';
+
+  if (!wrap) return;
+
+  function query() {
+    return new URLSearchParams(window.location.search);
+  }
+
+  function orientationForViewport() {
+    var forced = query().get('orientation');
+    if (forced === 'portrait') return PORTRAIT;
+    if (forced === 'landscape') return LANDSCAPE;
+    return window.innerHeight > window.innerWidth ? PORTRAIT : LANDSCAPE;
+  }
+
+  function sceneOrientation(scene) {
+    var declared = scene.getAttribute('data-orientation') ||
+      scene.getAttribute('data-scene-orientation') || '';
+    if (!declared && scene.classList.contains('scene-portrait')) declared = 'portrait';
+    if (!declared && scene.classList.contains('scene-landscape')) declared = 'landscape';
+    return declared.toLowerCase();
+  }
+
+  function selectScene(orientation) {
+    var scenes = wrap.querySelectorAll('.scene');
+    var selected = scenes.length ? scenes[0] : null;
+    var hasDedicatedScenes = false;
+    var i;
+
+    for (i = 0; i < scenes.length; i++) {
+      if (sceneOrientation(scenes[i])) hasDedicatedScenes = true;
+      if (sceneOrientation(scenes[i]) === orientation.name) selected = scenes[i];
+    }
+
+    if (hasDedicatedScenes) {
+      for (i = 0; i < scenes.length; i++) {
+        var isSelected = scenes[i] === selected;
+        scenes[i].style.display = isSelected ? '' : 'none';
+        scenes[i].setAttribute('aria-hidden', isSelected ? 'false' : 'true');
+      }
+    }
+
+    return selected;
+  }
+
+  function post(message) {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(message, '*');
+      }
+    } catch (_) {}
+  }
+
+  function scheduleFit() {
+    if (fitFrame) window.cancelAnimationFrame(fitFrame);
+    fitFrame = window.requestAnimationFrame(function () {
+      fitFrame = 0;
+      fitAll();
+    });
+  }
+
+  function orient() {
+    var orientation = orientationForViewport();
+    activeScene = selectScene(orientation);
+    if (!activeScene) return;
+
+    currentOrientation = orientation.name;
+    root.classList.toggle('is-portrait', orientation.name === 'portrait');
+    root.classList.toggle('is-landscape', orientation.name === 'landscape');
+    root.setAttribute('data-orientation', orientation.name);
+
+    if (document.body) document.body.setAttribute('data-orientation', orientation.name);
+    wrap.setAttribute('data-orientation', orientation.name);
+    activeScene.setAttribute('data-active-orientation', orientation.name);
+
+    wrap.style.width = orientation.width + 'px';
+    wrap.style.height = orientation.height + 'px';
+    activeScene.style.width = orientation.width + 'px';
+    activeScene.style.height = orientation.height + 'px';
+
+    wrap.style.setProperty('--scene-width', orientation.width + 'px');
+    wrap.style.setProperty('--scene-height', orientation.height + 'px');
+    wrap.style.setProperty(
+      '--scene-scale',
+      String(Math.min(
+        window.innerWidth / orientation.width,
+        window.innerHeight / orientation.height
+      ))
+    );
+
+    scheduleFit();
+    post({
+      type: 'educms-orientation',
+      orientation: orientation.name,
+      width: orientation.width,
+      height: orientation.height
+    });
+  }
+
+  function decodeBase64Json(value) {
+    var base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4) base64 += '=';
+    var binary = window.atob(base64);
+    var bytes = '';
+    var i;
+    for (i = 0; i < binary.length; i++) {
+      bytes += '%' + ('00' + binary.charCodeAt(i).toString(16)).slice(-2);
+    }
+    return JSON.parse(decodeURIComponent(bytes));
+  }
+
+  function queryJson(name) {
+    var value = query().get(name);
+    if (!value) return {};
+
+    try { return JSON.parse(value); } catch (_) {}
+    try { return JSON.parse(decodeURIComponent(value)); } catch (_) {}
+    try { return decodeBase64Json(value); } catch (_) {}
+    return {};
+  }
+
+  function nodes(key, attribute) {
+    var all = document.querySelectorAll('[' + attribute + ']');
+    var found = [];
+    var i;
+    for (i = 0; i < all.length; i++) {
+      if (all[i].getAttribute(attribute) === key) found.push(all[i]);
+    }
+    return found;
+  }
+
+  function hasNodes(key, attribute) {
+    return nodes(key, attribute).length > 0;
+  }
+
+  function setText(element, value) {
+    var text = value == null ? '' : String(value);
+
+    if (text.indexOf('&') !== -1) {
+      var decoder = document.createElement('textarea');
+      decoder.innerHTML = text;
+      text = decoder.value;
+    }
+
+    if (element.getAttribute('data-preserve-children') === 'true') {
+      var textNode = null;
+      var i;
+      for (i = 0; i < element.childNodes.length; i++) {
+        if (element.childNodes[i].nodeType === 3) {
+          textNode = element.childNodes[i];
+          break;
+        }
+      }
+      if (textNode) textNode.textContent = text;
+      else element.insertBefore(document.createTextNode(text), element.firstChild);
+      return;
+    }
+
+    element.textContent = text;
+  }
+
+  function numberAttribute(element, name, fallback) {
+    var value = Number(element.getAttribute(name));
+    return isFinite(value) && value > 0 ? value : fallback;
+  }
+
+  function overflows(element) {
+    return element.scrollWidth > element.clientWidth + 1 ||
+      element.scrollHeight > element.clientHeight + 1;
+  }
+
+  function fitElement(element) {
+    if (!element.clientWidth || !element.clientHeight) return false;
+
+    if (typeof element.__educmsOriginalFontSize === 'undefined') {
+      element.__educmsOriginalFontSize = element.style.fontSize || '';
+    }
+
+    var customMaximum = Number(element.getAttribute('data-fit-ceiling') ||
+      element.__educmsFitCeiling || 0);
+    var minimum = numberAttribute(element, 'data-fit-min', 52);
+    var configuredMaximum = numberAttribute(element, 'data-fit-max', 0);
+
+    if (customMaximum) {
+      element.style.fontSize = customMaximum + 'px';
+    } else {
+      element.style.fontSize = element.__educmsOriginalFontSize;
+    }
+
+    var cssMaximum = parseFloat(window.getComputedStyle(element).fontSize) || minimum;
+    var maximum = customMaximum || cssMaximum;
+    if (configuredMaximum) maximum = Math.min(maximum, configuredMaximum);
+    maximum = Math.max(minimum, maximum);
+
+    element.style.fontSize = maximum + 'px';
+    if (!overflows(element)) {
+      element.removeAttribute('data-fit-overflow');
+      element.setAttribute('data-fit-size', String(Math.round(maximum)));
+      return false;
+    }
+
+    var low = Math.ceil(minimum);
+    var high = Math.floor(maximum);
+    var best = low;
+
+    while (low <= high) {
+      var middle = Math.floor((low + high) / 2);
+      element.style.fontSize = middle + 'px';
+      if (overflows(element)) {
+        high = middle - 1;
+      } else {
+        best = middle;
+        low = middle + 1;
+      }
+    }
+
+    element.style.fontSize = best + 'px';
+    element.setAttribute('data-fit-size', String(best));
+
+    if (overflows(element)) {
+      element.setAttribute('data-fit-overflow', 'true');
+      return true;
+    }
+
+    element.removeAttribute('data-fit-overflow');
+    return false;
+  }
+
+  function fitAll() {
+    var all = document.querySelectorAll('[data-fit]');
+    var overflowKeys = [];
+    var i;
+
+    for (i = 0; i < all.length; i++) {
+      if (fitElement(all[i])) {
+        overflowKeys.push(
+          all[i].getAttribute('data-field') ||
+          all[i].getAttribute('data-fit-name') ||
+          'unlabelled-fit-' + (i + 1)
+        );
+      }
+    }
+
+    var signature = currentOrientation + ':' + overflowKeys.join('|');
+    if (overflowKeys.length && signature !== lastOverflowSignature) {
+      post({
+        type: 'educms-fit-overflow',
+        orientation: currentOrientation,
+        keys: overflowKeys
+      });
+    }
+    lastOverflowSignature = signature;
+  }
+
+  function applyBrand(brand) {
+    if (!brand || typeof brand !== 'object') return;
+    var styles = root.style;
+    var variableMap = {
+      background: ['--paper', '--background'],
+      surface: ['--surface', '--paper'],
+      text: ['--ink', '--text'],
+      muted: ['--muted'],
+      primary: ['--primary', '--blue'],
+      accent: ['--accent', '--orange'],
+      fontDisplay: ['--font-display'],
+      fontBody: ['--font-body'],
+      fontCondensed: ['--font-condensed', '--font-mono'],
+      fontSerif: ['--font-serif'],
+      fontMono: ['--font-mono']
+    };
+    var key;
+    var i;
+
+    for (key in variableMap) {
+      if (!Object.prototype.hasOwnProperty.call(variableMap, key)) continue;
+      if (brand[key] == null || brand[key] === '') continue;
+      for (i = 0; i < variableMap[key].length; i++) {
+        styles.setProperty(variableMap[key][i], String(brand[key]));
+      }
+    }
+
+    var custom = brand.cssVariables || brand.variables || {};
+    for (key in custom) {
+      if (!Object.prototype.hasOwnProperty.call(custom, key)) continue;
+      var property = key.indexOf('--') === 0 ? key : '--' + key;
+      styles.setProperty(property, String(custom[key]));
+    }
+  }
+
+  function applyTextStyle(element, style) {
+    if (!style || typeof style !== 'object') return;
+
+    if (style.color != null) element.style.color = String(style.color);
+    if (style.fontWeight != null) element.style.fontWeight = String(style.fontWeight);
+    if (style.fontStyle != null) element.style.fontStyle = String(style.fontStyle);
+    if (style.fontFamily != null) element.style.fontFamily = String(style.fontFamily);
+    if (style.textDecoration != null) element.style.textDecoration = String(style.textDecoration);
+    if (style.textAlign != null) element.style.textAlign = String(style.textAlign);
+    if (style.lineHeight != null) element.style.lineHeight = String(style.lineHeight);
+    if (style.letterSpacing != null) element.style.letterSpacing = String(style.letterSpacing);
+    if (style.textTransform != null) element.style.textTransform = String(style.textTransform);
+    if (style.backgroundColor != null) {
+      element.style.backgroundColor = String(style.backgroundColor);
+    }
+    if (style.opacity != null) element.style.opacity = String(style.opacity);
+
+    if (style.fontSize != null && style.fontSize !== '') {
+      var size = parseFloat(String(style.fontSize));
+      if (isFinite(size) && size > 0) {
+        element.style.fontSize = size + 'px';
+        if (element.hasAttribute('data-fit')) element.__educmsFitCeiling = size;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(style, 'hidden')) {
+      element.style.display = style.hidden ? 'none' : '';
+      element.setAttribute('aria-hidden', style.hidden ? 'true' : 'false');
+    }
+  }
+
+  function cssUrl(value) {
+    return 'url("' + value
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
+      .replace(/[\n\r\f]/g, '') + '")';
+  }
+
+  function applyImage(element, value) {
+    var source = value;
+    var position = '';
+    var size = '';
+
+    if (value && typeof value === 'object') {
+      source = value.src || value.url || '';
+      position = value.position || '';
+      size = value.size || value.fit || '';
+    }
+    if (source == null) return;
+    source = String(source);
+
+    element.setAttribute('data-img', source);
+    if (element.tagName && element.tagName.toLowerCase() === 'img') {
+      if (source) element.setAttribute('src', source);
+      else element.removeAttribute('src');
+    } else {
+      element.style.backgroundImage = source ? cssUrl(source) : 'none';
+      if (position) element.style.backgroundPosition = String(position);
+      if (size) element.style.backgroundSize = String(size);
+    }
+
+    element.classList.toggle('has-img', Boolean(source));
+    if (source) element.setAttribute('data-has-image', 'true');
+    else element.removeAttribute('data-has-image');
+  }
+
+  function apply(payload) {
+    payload = payload || {};
+    var text = payload.text || {};
+    var styles = payload.textStyles || {};
+    var images = payload.img || payload.images || {};
+    var keys = {};
+    var key;
+    var list;
+    var i;
+
+    applyBrand(payload.brand || {});
+
+    for (key in text) {
+      if (Object.prototype.hasOwnProperty.call(text, key)) keys[key] = true;
+    }
+    for (key in styles) {
+      if (Object.prototype.hasOwnProperty.call(styles, key)) keys[key] = true;
+    }
+
+    for (key in keys) {
+      if (!Object.prototype.hasOwnProperty.call(keys, key)) continue;
+      list = nodes(key, 'data-field');
+      for (i = 0; i < list.length; i++) {
+        if (Object.prototype.hasOwnProperty.call(text, key)) setText(list[i], text[key]);
+        applyTextStyle(list[i], styles[key]);
+      }
+    }
+
+    for (key in images) {
+      if (!Object.prototype.hasOwnProperty.call(images, key)) continue;
+      list = nodes(key, 'data-imgslot');
+      for (i = 0; i < list.length; i++) applyImage(list[i], images[key]);
+    }
+
+    scheduleFit();
+  }
+
+  function queryPayload() {
+    var params = query();
+    var brand = queryJson('brand');
+    var text = queryJson('text');
+    var textStyles = queryJson('textStyles');
+    var images = queryJson('img');
+    var payload = {
+      brand: brand && typeof brand === 'object' && !Array.isArray(brand) ? brand : {},
+      text: text && typeof text === 'object' && !Array.isArray(text) ? text : {},
+      textStyles: textStyles && typeof textStyles === 'object' &&
+        !Array.isArray(textStyles) ? textStyles : {},
+      img: images && typeof images === 'object' && !Array.isArray(images) ? images : {}
+    };
+
+    params.forEach(function (value, key) {
+      var fieldKey = '';
+      if (key.indexOf('field.') === 0) fieldKey = key.slice(6);
+      else if (key.indexOf('text.') === 0) fieldKey = key.slice(5);
+      else if (hasNodes(key, 'data-field')) fieldKey = key;
+
+      if (fieldKey) {
+        payload.text[fieldKey] = value;
+        return;
+      }
+
+      var imageKey = '';
+      if (key.indexOf('image.') === 0) imageKey = key.slice(6);
+      else if (key.indexOf('img.') === 0) imageKey = key.slice(4);
+      else if (hasNodes(key, 'data-imgslot')) imageKey = key;
+      if (imageKey) payload.img[imageKey] = value;
+    });
+
+    return payload;
+  }
+
+  function fieldsForReadyMessage(attribute) {
+    var elements = document.querySelectorAll('[' + attribute + ']');
+    var seen = {};
+    var values = [];
+    var i;
+    var key;
+    for (i = 0; i < elements.length; i++) {
+      key = elements[i].getAttribute(attribute);
+      if (key && !seen[key]) {
+        seen[key] = true;
+        values.push(key);
+      }
+    }
+    return values;
+  }
+
+  function setEditMode(on) {
+    editMode = Boolean(on);
+    root.classList.toggle('is-editing', editMode);
+    if (editMode) root.classList.remove('is-frozen');
+  }
+
+  function editableClick(event) {
+    if (!editMode) return;
+    var element = event.target;
+    while (
+      element &&
+      element !== document &&
+      !element.hasAttribute('data-field') &&
+      !element.hasAttribute('data-imgslot')
+    ) {
+      element = element.parentNode;
+    }
+    if (!element || element === document) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    post({
+      type: 'educms-field-click',
+      key: element.getAttribute('data-field') || element.getAttribute('data-imgslot'),
+      kind: element.hasAttribute('data-field') ? 'text' : 'img'
+    });
+  }
+
+  document.addEventListener('click', editableClick, true);
+  window.addEventListener('resize', orient);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', orient);
+
+  apply(queryPayload());
+  orient();
+
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(scheduleFit, scheduleFit);
+    if (document.fonts.addEventListener) {
+      document.fonts.addEventListener('loadingdone', scheduleFit);
+    }
+  }
+  window.addEventListener('load', scheduleFit);
+
+  var initialQuery = query();
+  if (initialQuery.get('freeze') === '1') root.classList.add('is-frozen');
+  if (initialQuery.get('edit') === '1') setEditMode(true);
+
+  window.addEventListener('message', function (event) {
+    var data = event.data;
+    if (!data || typeof data !== 'object') return;
+    if (event.source && event.source !== window.parent && event.source !== window) return;
+
+    if (data.type === 'educms-overrides') apply(data);
+    if (data.type === 'educms-edit-mode') setEditMode(Boolean(data.on));
+    if (data.type === 'educms-freeze') root.classList.add('is-frozen');
+    if (data.type === 'educms-unfreeze') root.classList.remove('is-frozen');
+    if (data.type === 'educms-refit') scheduleFit();
+  });
+
+  post({
+    type: 'educms-ready',
+    orientation: currentOrientation,
+    fields: fieldsForReadyMessage('data-field'),
+    images: fieldsForReadyMessage('data-imgslot')
+  });
+}());
+
+</script>
+</body>
+</html>

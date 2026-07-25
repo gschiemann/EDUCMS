@@ -2444,6 +2444,59 @@ const RAW_SYSTEM_PRESETS: SystemPreset[] = [
     screenWidth: 1080, screenHeight: 1920, bgColor: '#090a09',
     zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/qsr/redesign-pizza-v3-house-press.html?orientation=portrait' } }],
   },
+  // ── Bar tap-list redesign set (codex, 2026-07-25) — 3 directions.
+  //    Self-contained 1920x1080 boards (shared core inlined), editor-ready.
+  //    category TAPS is a REAL BAR gallery tab (the older preset-sig-bar-*
+  //    boards use category 'BAR', which is a tab in no vertical, so they only
+  //    ever surface under 'All' — see the 2026-07-25 audit dead-chip finding).
+  {
+    id: 'preset-sig-bar-11',
+    name: 'Bar · Tap List — Copper Manifold',
+    description: 'Tap list — Copper Manifold. 1920×1080 bar signage board.',
+    category: 'TAPS', orientation: 'LANDSCAPE',
+    screenWidth: 1920, screenHeight: 1080, bgColor: '#090a09',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/bar/redesign-tap-list-v1-copper-manifold.html' } }],
+  },
+  {
+    id: 'preset-sig-bar-11-portrait',
+    name: 'Bar · Tap List — Copper Manifold — Portrait',
+    description: 'Tap list — Copper Manifold. 1080×1920 portrait composition.',
+    category: 'TAPS', orientation: 'PORTRAIT',
+    screenWidth: 1080, screenHeight: 1920, bgColor: '#090a09',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/bar/redesign-tap-list-v1-copper-manifold.html?orientation=portrait' } }],
+  },
+  {
+    id: 'preset-sig-bar-12',
+    name: 'Bar · Tap List — Cellar Index',
+    description: 'Tap list — Cellar Index. 1920×1080 bar signage board.',
+    category: 'TAPS', orientation: 'LANDSCAPE',
+    screenWidth: 1920, screenHeight: 1080, bgColor: '#090a09',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/bar/redesign-tap-list-v2-cellar-index.html' } }],
+  },
+  {
+    id: 'preset-sig-bar-12-portrait',
+    name: 'Bar · Tap List — Cellar Index — Portrait',
+    description: 'Tap list — Cellar Index. 1080×1920 portrait composition.',
+    category: 'TAPS', orientation: 'PORTRAIT',
+    screenWidth: 1080, screenHeight: 1920, bgColor: '#090a09',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/bar/redesign-tap-list-v2-cellar-index.html?orientation=portrait' } }],
+  },
+  {
+    id: 'preset-sig-bar-13',
+    name: 'Bar · Tap List — Draft Lab',
+    description: 'Tap list — Draft Lab. 1920×1080 bar signage board.',
+    category: 'TAPS', orientation: 'LANDSCAPE',
+    screenWidth: 1920, screenHeight: 1080, bgColor: '#090a09',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/bar/redesign-tap-list-v3-draft-lab.html' } }],
+  },
+  {
+    id: 'preset-sig-bar-13-portrait',
+    name: 'Bar · Tap List — Draft Lab — Portrait',
+    description: 'Tap list — Draft Lab. 1080×1920 portrait composition.',
+    category: 'TAPS', orientation: 'PORTRAIT',
+    screenWidth: 1080, screenHeight: 1920, bgColor: '#090a09',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/signage/bar/redesign-tap-list-v3-draft-lab.html?orientation=portrait' } }],
+  },
   {
     id: 'preset-sig-healthcare-01',
     name: "Healthcare · Waiting Room",

@@ -1,0 +1,1203 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bar Tap List 03 — Draft Lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&amp;family=IBM+Plex+Mono:wght@500;600;700&amp;family=IBM+Plex+Sans:wght@500;600;700&amp;display=swap" rel="stylesheet" />
+  <style>
+* { box-sizing: border-box; }
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #090a09;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+
+#scene-wrap {
+  --scene-scale: 1;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  overflow: hidden;
+  transform: translate(-50%, -50%) scale(var(--scene-scale));
+  transform-origin: center center;
+}
+
+.scene {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+}
+
+.scene::after {
+  content: "";
+  position: absolute;
+  top:0;right:0;bottom:0;left:0;
+  z-index: 90;
+  pointer-events: none;
+  opacity: .045;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.36'/%3E%3C/svg%3E");
+}
+
+[data-field],
+[data-imgslot] {
+  max-width: 100%;
+}
+
+[data-fit] {
+  overflow: visible;
+}
+
+.is-editing [data-field],
+.is-editing [data-imgslot] {
+  cursor: pointer;
+}
+
+.is-editing [data-field]:hover,
+.is-editing [data-imgslot]:hover {
+  outline: 4px solid rgba(255, 255, 255, .94);
+  outline-offset: -4px;
+}
+
+.is-frozen *,
+.is-frozen *::before,
+.is-frozen *::after {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+
+.is-portrait .scene {
+  width: 1080px;
+  height: 1920px;
+}
+
+</style>
+  <style>
+    :root {
+      --mineral:#ecece7;
+      --mineral-deep:#d8d9d3;
+      --aluminum:#c3c6c2;
+      --charcoal:#161a19;
+      --charcoal-soft:#282d2b;
+      --citron:#d7ff36;
+      --ink:#161a19;
+      --muted:#5f6562;
+      --rule:#6b716e;
+      --font-display:'Archivo Black',Arial,sans-serif;
+      --font-body:'IBM Plex Sans',Arial,sans-serif;
+      --font-mono:'IBM Plex Mono','Courier New',monospace;
+    }
+
+    body {
+      font-family:var(--font-body);
+      background:#0e1110;
+    }
+
+    .scene {
+      color:var(--ink);
+      background:
+        repeating-linear-gradient(
+          90deg,
+          rgba(255,255,255,.2) 0,
+          rgba(255,255,255,.2) 1px,
+          rgba(22,26,25,.025) 1px,
+          rgba(22,26,25,.025) 4px,
+          transparent 4px,
+          transparent 11px
+        ),
+        linear-gradient(180deg,#f1f1ed 0,#dfe0db 52%,#ecece7 100%);
+    }
+
+    .scene::before {
+      content:"";
+      position:absolute;
+      top:0;right:0;bottom:0;left:0;
+      z-index:0;
+      pointer-events:none;
+      opacity:.2;
+      background:
+        linear-gradient(90deg,transparent 0,rgba(255,255,255,.8) 480px,transparent 960px),
+        repeating-linear-gradient(0deg,transparent 0,transparent 13px,rgba(22,26,25,.08) 14px);
+      mix-blend-mode:overlay;
+    }
+
+    .lab-header,
+    .tap-grid,
+    .lab-footer {
+      position:absolute;
+      left:0;
+      width:1920px;
+      z-index:2;
+    }
+
+    .lab-header {
+      top:0;
+      height:136px;
+      color:var(--mineral);
+      background:var(--charcoal);
+      border-bottom:8px solid var(--citron);
+    }
+
+    .measure-ruler {
+      position:absolute;
+      left:0;
+      top:0;
+      width:1920px;
+      height:24px;
+      border-bottom:2px solid rgba(236,236,231,.32);
+      background:
+        repeating-linear-gradient(
+          90deg,
+          transparent 0,
+          transparent 46px,
+          rgba(215,255,54,.65) 46px,
+          rgba(215,255,54,.65) 48px
+        ),
+        repeating-linear-gradient(
+          90deg,
+          transparent 0,
+          transparent 10px,
+          rgba(236,236,231,.28) 10px,
+          rgba(236,236,231,.28) 11px
+        );
+    }
+
+    .header-content {
+      position:absolute;
+      left:40px;
+      top:30px;
+      width:1840px;
+      height:94px;
+      display:grid;
+      grid-template-columns:600px 1fr 270px;
+      align-items:center;
+      column-gap:30px;
+    }
+
+    .brand-name {
+      min-width:0;
+      height:80px;
+      display:flex;
+      align-items:center;
+      color:var(--mineral);
+      font:400 68px/.95 var(--font-display);
+      letter-spacing:-3px;
+      text-transform:uppercase;
+      white-space:nowrap;
+    }
+
+    .board-title {
+      min-width:0;
+      height:70px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border-left:2px solid rgba(236,236,231,.3);
+      border-right:2px solid rgba(236,236,231,.3);
+      color:var(--citron);
+      font:700 60px/1 var(--font-body);
+      letter-spacing:-2px;
+      text-align:center;
+      text-transform:uppercase;
+      white-space:nowrap;
+    }
+
+    .clock {
+      height:72px;
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      color:var(--mineral);
+      font:700 64px/1 var(--font-mono);
+      letter-spacing:-3px;
+      text-align:right;
+      white-space:nowrap;
+    }
+
+    .tap-grid {
+      top:136px;
+      height:864px;
+      display:grid;
+      grid-template-columns:repeat(4,480px);
+      grid-template-rows:repeat(4,216px);
+      overflow:hidden;
+      border-bottom:2px solid var(--charcoal);
+      background:rgba(236,236,231,.7);
+    }
+
+    .tap-lane {
+      --marker-y:50px;
+      position:relative;
+      width:480px;
+      height:216px;
+      overflow:hidden;
+      border-right:2px solid var(--charcoal);
+      border-bottom:2px solid var(--charcoal);
+      background:
+        linear-gradient(90deg,rgba(22,26,25,.035),transparent 72px),
+        rgba(236,236,231,.88);
+    }
+
+    .tap-lane:nth-child(4n) {
+      border-right:0;
+    }
+
+    .tap-lane:nth-child(n+13) {
+      border-bottom:0;
+    }
+
+    .line-number {
+      position:absolute;
+      left:0;
+      top:0;
+      width:48px;
+      height:152px;
+      display:flex;
+      align-items:flex-start;
+      justify-content:center;
+      padding-top:18px;
+      border-right:2px solid var(--charcoal);
+      color:var(--charcoal);
+      font:700 28px/1 var(--font-mono);
+      letter-spacing:-1px;
+      background:
+        repeating-linear-gradient(
+          0deg,
+          transparent 0,
+          transparent 11px,
+          rgba(22,26,25,.35) 11px,
+          rgba(22,26,25,.35) 13px
+        ),
+        var(--aluminum);
+    }
+
+    .line-number::after {
+      content:"";
+      position:absolute;
+      left:8px;
+      top:calc(var(--marker-y) + 32px);
+      width:30px;
+      height:8px;
+      background:var(--citron);
+      border:2px solid var(--charcoal);
+    }
+
+    .tap-name {
+      position:absolute;
+      left:64px;
+      top:0;
+      width:440px;
+      height:158px;
+      display:grid;
+      align-content:center;
+      overflow:hidden;
+      color:var(--charcoal);
+      font:700 72px/1.05 var(--font-body);
+      letter-spacing:-3px;
+      text-wrap:wrap;
+      transform:scale(.905,.962);
+      transform-origin:left top;
+    }
+
+    .metric-rail {
+      position:absolute;
+      left:48px;
+      bottom:0;
+      width:432px;
+      height:64px;
+      display:grid;
+      grid-template-columns:65px 125px 125px 117px;
+      color:var(--mineral);
+      background:var(--charcoal);
+      border-top:2px solid var(--charcoal);
+    }
+
+    .metric {
+      position:relative;
+      min-width:0;
+      height:64px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      overflow:hidden;
+      border-right:1px solid rgba(236,236,231,.25);
+      color:var(--mineral);
+      font:700 52px/1 var(--font-mono);
+      letter-spacing:-3px;
+      text-align:center;
+      white-space:nowrap;
+    }
+
+    .metric:last-child {
+      border-right:0;
+    }
+
+    .metric-tag,
+    .metric-status {
+      color:var(--citron);
+    }
+
+    .metric-price {
+      color:var(--charcoal);
+      background:var(--citron);
+      display:block;
+      font:400 68px/.72 var(--font-display);
+      letter-spacing:-7px;
+    }
+
+    .lab-footer {
+      top:1000px;
+      height:80px;
+      display:grid;
+      grid-template-columns:repeat(4,480px);
+      color:var(--mineral);
+      background:var(--charcoal-soft);
+    }
+
+    .footer-cell {
+      position:relative;
+      min-width:0;
+      height:80px;
+      display:grid;
+      grid-template-columns:100px minmax(0,1fr);
+      align-items:center;
+      column-gap:12px;
+      padding:0 22px;
+      border-right:2px solid rgba(236,236,231,.28);
+    }
+
+    .footer-cell:last-child {
+      border-right:0;
+    }
+
+    .footer-label {
+      color:var(--citron);
+      font:700 24px/1 var(--font-mono);
+      letter-spacing:-1px;
+      text-transform:uppercase;
+    }
+
+    .footer-value {
+      min-width:0;
+      height:64px;
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      color:var(--mineral);
+      font:600 52px/1 var(--font-body);
+      letter-spacing:-2px;
+      text-align:right;
+      white-space:nowrap;
+    }
+
+    .editor-reserve {
+      position:absolute !important;
+      left:0 !important;
+      top:0 !important;
+      width:1px !important;
+      height:1px !important;
+      padding:0 !important;
+      overflow:hidden !important;
+      clip-path:inset(50%) !important;
+      white-space:nowrap !important;
+      opacity:0 !important;
+      pointer-events:none !important;
+    }
+
+    .scene-portrait .lab-header,
+    .scene-portrait .tap-grid,
+    .scene-portrait .lab-footer {
+      width:1080px;
+    }
+
+    .scene-portrait .lab-header {
+      height:128px;
+    }
+
+    .scene-portrait .measure-ruler {
+      width:1080px;
+      height:16px;
+    }
+
+    .scene-portrait .header-content {
+      left:24px;
+      top:16px;
+      width:1032px;
+      height:112px;
+      grid-template-columns:1fr 188px;
+      grid-template-rows:56px 56px;
+      column-gap:18px;
+    }
+
+    .scene-portrait .brand-name {
+      grid-column:1;
+      grid-row:1;
+      height:56px;
+      font-size:60px;
+    }
+
+    .scene-portrait .board-title {
+      grid-column:1 / 3;
+      grid-row:2;
+      height:66px;
+      justify-content:flex-start;
+      border:0;
+      border-top:2px solid rgba(236,236,231,.3);
+      font-size:52px;
+      text-align:left;
+      transform:scaleY(.848);
+      transform-origin:left top;
+    }
+
+    .scene-portrait .clock {
+      grid-column:2;
+      grid-row:1;
+      height:64px;
+      font-size:54px;
+      transform:scaleY(.875);
+      transform-origin:right top;
+    }
+
+    .scene-portrait .tap-grid {
+      top:128px;
+      height:1728px;
+      grid-template-columns:repeat(2,540px);
+      grid-template-rows:repeat(8,216px);
+    }
+
+    .scene-portrait .tap-lane {
+      width:540px;
+    }
+
+    .scene-portrait .tap-lane:nth-child(4n) {
+      border-right:2px solid var(--charcoal);
+    }
+
+    .scene-portrait .tap-lane:nth-child(2n) {
+      border-right:0;
+    }
+
+    .scene-portrait .tap-lane:nth-child(n+13) {
+      border-bottom:2px solid var(--charcoal);
+    }
+
+    .scene-portrait .tap-lane:nth-child(n+15) {
+      border-bottom:0;
+    }
+
+    .scene-portrait .tap-name {
+      width:500px;
+      transform:scale(.916,.962);
+    }
+
+    .scene-portrait .metric-rail {
+      width:492px;
+      grid-template-columns:80px 140px 140px 132px;
+    }
+
+    .scene-portrait .lab-footer {
+      top:1856px;
+      height:64px;
+      grid-template-columns:repeat(2,540px);
+    }
+
+    .scene-portrait .footer-cell {
+      height:64px;
+      grid-template-columns:1fr;
+      padding:0 28px;
+    }
+
+    .scene-portrait .footer-label {
+      display:none;
+    }
+
+    .scene-portrait .footer-value {
+      height:64px;
+      justify-content:center;
+      font-size:52px;
+      text-align:center;
+    }
+  </style>
+</head>
+<body>
+  <div id="scene-wrap">
+    <main class="scene scene-landscape" data-orientation="landscape" aria-label="Draft Lab tap list, landscape">
+      <header class="lab-header">
+        <div class="measure-ruler" aria-hidden="true"></div>
+        <div class="header-content">
+          <div class="brand-name" data-field="brand.name" data-fit data-fit-min="52" data-fit-max="68">DRAFT LAB</div>
+          <div class="board-title" data-field="board.title" data-fit data-fit-min="52" data-fit-max="60">TAP INDEX / LIVE</div>
+          <div class="clock" data-field="clock.hhmm" data-fit data-fit-min="52" data-fit-max="64">20:42</div>
+        </div>
+      </header>
+      <section class="tap-grid" id="draft-lab-landscape" data-widget="tap-list" data-source="untappd" data-feed="/taps" data-refresh="5m"></section>
+      <footer class="lab-footer" id="draft-lab-footer-landscape"></footer>
+      <div class="editor-reserve" aria-hidden="true">
+        <span data-field="brand.tagline">FERMENTATION FLOOR · CELLAR 03</span>
+        <span data-field="col.0.h">LINES 01–08</span>
+        <span data-field="col.1.h">LINES 09–16</span>
+      </div>
+    </main>
+
+    <main class="scene scene-portrait" data-orientation="portrait" aria-label="Draft Lab tap list, portrait">
+      <header class="lab-header">
+        <div class="measure-ruler" aria-hidden="true"></div>
+        <div class="header-content">
+          <div class="brand-name" data-field="brand.name" data-fit data-fit-min="52" data-fit-max="60">DRAFT LAB</div>
+          <div class="board-title" data-field="board.title" data-fit data-fit-min="52" data-fit-max="54">TAP INDEX / LIVE</div>
+          <div class="clock" data-field="clock.hhmm" data-fit data-fit-min="52" data-fit-max="54">20:42</div>
+        </div>
+      </header>
+      <section class="tap-grid" id="draft-lab-portrait" data-widget="tap-list" data-source="untappd" data-feed="/taps" data-refresh="5m"></section>
+      <footer class="lab-footer" id="draft-lab-footer-portrait"></footer>
+      <div class="editor-reserve" aria-hidden="true">
+        <span data-field="brand.tagline">FERMENTATION FLOOR · CELLAR 03</span>
+        <span data-field="col.0.h">LINES 01–08</span>
+        <span data-field="col.1.h">LINES 09–16</span>
+        <span data-field="foot.growler">64OZ / $24</span>
+        <span data-field="foot.kicked">02 / CLEAN</span>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      var taps = [
+        { n:'Lantern Pilsner', r:'Lantern brew · crisp · 5.0%', p:'$7',  m:'5.0% · 24 IBU · 16oz', tag:'PL', abv:'5.0%',  pour:'16OZ', status:'ON', marker:26 },
+        { n:'Magnolia IPA', r:'Citra · Mosaic · piney', p:'$8', m:'6.8% · 65 IBU · 16oz', tag:'IP', abv:'6.8%', pour:'16OZ', status:'ON', marker:42 },
+        { n:'Cypress Stout', r:'Coffee · vanilla · roasty', p:'$8', m:'7.2% · 38 IBU · 12oz', tag:'ST', abv:'7.2%', pour:'12OZ', status:'86', marker:88 },
+        { n:'Harbor Hazy', r:'Galaxy · juicy · soft', p:'$9', m:'7.0% · 42 IBU · 16oz', tag:'HZ', abv:'7.0%', pour:'16OZ', status:'ON', marker:58 },
+        { n:'Banks Sour', r:'Peach · sea salt', p:'$8', m:'4.4% · 8 IBU · 12oz', tag:'SR', abv:'4.4%', pour:'12OZ', status:'ON', marker:73 },
+        { n:'Cellar Lager', r:'German Schwarz · clean', p:'$7', m:'5.2% · 24 IBU · 16oz', tag:'DK', abv:'5.2%', pour:'16OZ', status:'ON', marker:38 },
+        { n:'Lowcountry Saison', r:'Brett · spice · dry', p:'$9', m:'6.2% · 28 IBU · 12oz', tag:'FM', abv:'6.2%', pour:'12OZ', status:'ON', marker:64 },
+        { n:'Daydream Pale Ale', r:'Centennial · pine', p:'$7', m:'5.5% · 38 IBU · 16oz', tag:'PA', abv:'5.5%', pour:'16OZ', status:'ON', marker:49 },
+        { n:'Tradesman Wit', r:'Coriander · orange · light', p:'$7', m:'4.8% · 14 IBU', tag:'WT', abv:'4.8%', pour:'16OZ', status:'ON', marker:31 },
+        { n:'Smokehouse Porter', r:'Beech-smoke · cocoa', p:'$8', m:'6.0% · 32 IBU', tag:'PT', abv:'6.0%', pour:'12OZ', status:'ON', marker:81 },
+        { n:'Pier 47 Pale', r:'Cascade · grapefruit', p:'$7', m:'5.4% · 42 IBU', tag:'PA', abv:'5.4%', pour:'16OZ', status:'ON', marker:52 },
+        { n:'Sweetgrass Mead', r:'Tupelo honey · sourwood', p:'$11', m:'10% · 4oz', tag:'MD', abv:'10%', pour:'04OZ', status:'86', marker:96 },
+        { n:'Ice Cold Lager', r:'Easy · clean · cold', p:'$5', m:'4.6% · 18 IBU', tag:'LG', abv:'4.6%', pour:'16OZ', status:'ON', marker:22 },
+        { n:'Reserve Tripel', r:'Belgian · pear · spice', p:'$12', m:'9.0% · 28 IBU · 8oz', tag:'TR', abv:'9.0%', pour:'08OZ', status:'ON', marker:91 },
+        { n:'Local Cider', r:'Heirloom apple · dry', p:'$8', m:'6.5% · GF', tag:'CI', abv:'6.5%', pour:'12OZ', status:'ON', marker:46 },
+        { n:'N/A Hop Water', r:'Citra · dry-hopped · 0.0%', p:'$5', m:'0.0% · 16oz', tag:'NA', abv:'0.0%', pour:'16OZ', status:'ON', marker:18 }
+      ];
+
+      var footer = [
+        { label:'FLIGHT', key:'foot.flight', value:'4×6OZ / $14' },
+        { label:'GROWLER', key:'foot.growler', value:'64OZ / $24' },
+        { label:'HAPPY', key:'foot.happyhour', value:'4–6PM / −$2' },
+        { label:'LINE', key:'foot.kicked', value:'02 / CLEAN' }
+      ];
+
+      function field(className, key, value, fitMinimum, fitMaximum) {
+        var node = document.createElement('div');
+        node.className = className;
+        node.setAttribute('data-field', key);
+        node.textContent = value;
+        if (fitMinimum) {
+          node.setAttribute('data-fit', '');
+          node.setAttribute('data-fit-min', String(fitMinimum));
+          node.setAttribute('data-fit-max', String(fitMaximum || fitMinimum));
+        }
+        return node;
+      }
+
+      function renderTaps(targetId) {
+        var target = document.getElementById(targetId);
+        var i;
+        for (i = 0; i < taps.length; i++) {
+          var tap = taps[i];
+          var lane = document.createElement('article');
+          lane.className = 'tap-lane';
+          lane.setAttribute('data-tap-index', String(i));
+          lane.setAttribute('data-stock', tap.status === '86' ? '0' : '1');
+          lane.style.setProperty('--marker-y', tap.marker + 'px');
+
+          var number = document.createElement('div');
+          number.className = 'line-number';
+          number.setAttribute('aria-hidden', 'true');
+          number.textContent = String(i + 1).padStart(2, '0');
+          lane.appendChild(number);
+
+          lane.appendChild(field('tap-name', 't.' + i + '.n', tap.n, 68, 72));
+
+          var rail = document.createElement('div');
+          rail.className = 'metric-rail';
+          rail.appendChild(field('metric metric-tag', 't.' + i + '.tag', tap.tag, 52, 52));
+          rail.appendChild(field('metric metric-abv', 't.' + i + '.abv', tap.abv, 52, 52));
+          rail.appendChild(field('metric metric-pour', 't.' + i + '.pour', tap.pour, 52, 52));
+          rail.appendChild(field('metric metric-price', 't.' + i + '.p', tap.p, 68, 68));
+          lane.appendChild(rail);
+
+          var reserve = document.createElement('div');
+          reserve.className = 'editor-reserve';
+          reserve.setAttribute('aria-hidden', 'true');
+          reserve.appendChild(field('', 't.' + i + '.r', tap.r));
+          reserve.appendChild(field('', 't.' + i + '.m', tap.m));
+          reserve.appendChild(field('', 't.' + i + '.status', tap.status));
+          lane.appendChild(reserve);
+          target.appendChild(lane);
+        }
+      }
+
+      function renderFooter(targetId, portrait) {
+        var target = document.getElementById(targetId);
+        var items = portrait ? [footer[0], footer[2]] : footer;
+        var i;
+        for (i = 0; i < items.length; i++) {
+          var item = items[i];
+          var cell = document.createElement('div');
+          cell.className = 'footer-cell';
+
+          var label = document.createElement('div');
+          label.className = 'footer-label';
+          label.setAttribute('aria-hidden', 'true');
+          label.textContent = item.label;
+          cell.appendChild(label);
+          cell.appendChild(field('footer-value', item.key, item.value, 52, 52));
+          target.appendChild(cell);
+        }
+      }
+
+      renderTaps('draft-lab-landscape');
+      renderTaps('draft-lab-portrait');
+      renderFooter('draft-lab-footer-landscape', false);
+      renderFooter('draft-lab-footer-portrait', true);
+    }());
+  </script>
+  <script>
+(function () {
+  'use strict';
+
+  var LANDSCAPE = { name: 'landscape', width: 1920, height: 1080 };
+  var PORTRAIT = { name: 'portrait', width: 1080, height: 1920 };
+  var root = document.documentElement;
+  var wrap = document.getElementById('scene-wrap');
+  var activeScene = null;
+  var currentOrientation = '';
+  var fitFrame = 0;
+  var editMode = false;
+  var lastOverflowSignature = '';
+
+  if (!wrap) return;
+
+  function query() {
+    return new URLSearchParams(window.location.search);
+  }
+
+  function orientationForViewport() {
+    var forced = query().get('orientation');
+    if (forced === 'portrait') return PORTRAIT;
+    if (forced === 'landscape') return LANDSCAPE;
+    return window.innerHeight > window.innerWidth ? PORTRAIT : LANDSCAPE;
+  }
+
+  function sceneOrientation(scene) {
+    var declared = scene.getAttribute('data-orientation') ||
+      scene.getAttribute('data-scene-orientation') || '';
+    if (!declared && scene.classList.contains('scene-portrait')) declared = 'portrait';
+    if (!declared && scene.classList.contains('scene-landscape')) declared = 'landscape';
+    return declared.toLowerCase();
+  }
+
+  function selectScene(orientation) {
+    var scenes = wrap.querySelectorAll('.scene');
+    var selected = scenes.length ? scenes[0] : null;
+    var hasDedicatedScenes = false;
+    var i;
+
+    for (i = 0; i < scenes.length; i++) {
+      if (sceneOrientation(scenes[i])) hasDedicatedScenes = true;
+      if (sceneOrientation(scenes[i]) === orientation.name) selected = scenes[i];
+    }
+
+    if (hasDedicatedScenes) {
+      for (i = 0; i < scenes.length; i++) {
+        var isSelected = scenes[i] === selected;
+        scenes[i].style.display = isSelected ? '' : 'none';
+        scenes[i].setAttribute('aria-hidden', isSelected ? 'false' : 'true');
+      }
+    }
+
+    return selected;
+  }
+
+  function post(message) {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(message, '*');
+      }
+    } catch (_) {}
+  }
+
+  function scheduleFit() {
+    if (fitFrame) window.cancelAnimationFrame(fitFrame);
+    fitFrame = window.requestAnimationFrame(function () {
+      fitFrame = 0;
+      fitAll();
+    });
+  }
+
+  function orient() {
+    var orientation = orientationForViewport();
+    activeScene = selectScene(orientation);
+    if (!activeScene) return;
+
+    currentOrientation = orientation.name;
+    root.classList.toggle('is-portrait', orientation.name === 'portrait');
+    root.classList.toggle('is-landscape', orientation.name === 'landscape');
+    root.setAttribute('data-orientation', orientation.name);
+
+    if (document.body) document.body.setAttribute('data-orientation', orientation.name);
+    wrap.setAttribute('data-orientation', orientation.name);
+    activeScene.setAttribute('data-active-orientation', orientation.name);
+
+    wrap.style.width = orientation.width + 'px';
+    wrap.style.height = orientation.height + 'px';
+    activeScene.style.width = orientation.width + 'px';
+    activeScene.style.height = orientation.height + 'px';
+
+    wrap.style.setProperty('--scene-width', orientation.width + 'px');
+    wrap.style.setProperty('--scene-height', orientation.height + 'px');
+    wrap.style.setProperty(
+      '--scene-scale',
+      String(Math.min(
+        window.innerWidth / orientation.width,
+        window.innerHeight / orientation.height
+      ))
+    );
+
+    scheduleFit();
+    post({
+      type: 'educms-orientation',
+      orientation: orientation.name,
+      width: orientation.width,
+      height: orientation.height
+    });
+  }
+
+  function decodeBase64Json(value) {
+    var base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4) base64 += '=';
+    var binary = window.atob(base64);
+    var bytes = '';
+    var i;
+    for (i = 0; i < binary.length; i++) {
+      bytes += '%' + ('00' + binary.charCodeAt(i).toString(16)).slice(-2);
+    }
+    return JSON.parse(decodeURIComponent(bytes));
+  }
+
+  function queryJson(name) {
+    var value = query().get(name);
+    if (!value) return {};
+
+    try { return JSON.parse(value); } catch (_) {}
+    try { return JSON.parse(decodeURIComponent(value)); } catch (_) {}
+    try { return decodeBase64Json(value); } catch (_) {}
+    return {};
+  }
+
+  function nodes(key, attribute) {
+    var all = document.querySelectorAll('[' + attribute + ']');
+    var found = [];
+    var i;
+    for (i = 0; i < all.length; i++) {
+      if (all[i].getAttribute(attribute) === key) found.push(all[i]);
+    }
+    return found;
+  }
+
+  function hasNodes(key, attribute) {
+    return nodes(key, attribute).length > 0;
+  }
+
+  function setText(element, value) {
+    var text = value == null ? '' : String(value);
+
+    if (text.indexOf('&') !== -1) {
+      var decoder = document.createElement('textarea');
+      decoder.innerHTML = text;
+      text = decoder.value;
+    }
+
+    if (element.getAttribute('data-preserve-children') === 'true') {
+      var textNode = null;
+      var i;
+      for (i = 0; i < element.childNodes.length; i++) {
+        if (element.childNodes[i].nodeType === 3) {
+          textNode = element.childNodes[i];
+          break;
+        }
+      }
+      if (textNode) textNode.textContent = text;
+      else element.insertBefore(document.createTextNode(text), element.firstChild);
+      return;
+    }
+
+    element.textContent = text;
+  }
+
+  function numberAttribute(element, name, fallback) {
+    var value = Number(element.getAttribute(name));
+    return isFinite(value) && value > 0 ? value : fallback;
+  }
+
+  function overflows(element) {
+    return element.scrollWidth > element.clientWidth + 1 ||
+      element.scrollHeight > element.clientHeight + 1;
+  }
+
+  function fitElement(element) {
+    if (!element.clientWidth || !element.clientHeight) return false;
+
+    if (typeof element.__educmsOriginalFontSize === 'undefined') {
+      element.__educmsOriginalFontSize = element.style.fontSize || '';
+    }
+
+    var customMaximum = Number(element.getAttribute('data-fit-ceiling') ||
+      element.__educmsFitCeiling || 0);
+    var minimum = numberAttribute(element, 'data-fit-min', 52);
+    var configuredMaximum = numberAttribute(element, 'data-fit-max', 0);
+
+    if (customMaximum) {
+      element.style.fontSize = customMaximum + 'px';
+    } else {
+      element.style.fontSize = element.__educmsOriginalFontSize;
+    }
+
+    var cssMaximum = parseFloat(window.getComputedStyle(element).fontSize) || minimum;
+    var maximum = customMaximum || cssMaximum;
+    if (configuredMaximum) maximum = Math.min(maximum, configuredMaximum);
+    maximum = Math.max(minimum, maximum);
+
+    element.style.fontSize = maximum + 'px';
+    if (!overflows(element)) {
+      element.removeAttribute('data-fit-overflow');
+      element.setAttribute('data-fit-size', String(Math.round(maximum)));
+      return false;
+    }
+
+    var low = Math.ceil(minimum);
+    var high = Math.floor(maximum);
+    var best = low;
+
+    while (low <= high) {
+      var middle = Math.floor((low + high) / 2);
+      element.style.fontSize = middle + 'px';
+      if (overflows(element)) {
+        high = middle - 1;
+      } else {
+        best = middle;
+        low = middle + 1;
+      }
+    }
+
+    element.style.fontSize = best + 'px';
+    element.setAttribute('data-fit-size', String(best));
+
+    if (overflows(element)) {
+      element.setAttribute('data-fit-overflow', 'true');
+      return true;
+    }
+
+    element.removeAttribute('data-fit-overflow');
+    return false;
+  }
+
+  function fitAll() {
+    var all = document.querySelectorAll('[data-fit]');
+    var overflowKeys = [];
+    var i;
+
+    for (i = 0; i < all.length; i++) {
+      if (fitElement(all[i])) {
+        overflowKeys.push(
+          all[i].getAttribute('data-field') ||
+          all[i].getAttribute('data-fit-name') ||
+          'unlabelled-fit-' + (i + 1)
+        );
+      }
+    }
+
+    var signature = currentOrientation + ':' + overflowKeys.join('|');
+    if (overflowKeys.length && signature !== lastOverflowSignature) {
+      post({
+        type: 'educms-fit-overflow',
+        orientation: currentOrientation,
+        keys: overflowKeys
+      });
+    }
+    lastOverflowSignature = signature;
+  }
+
+  function applyBrand(brand) {
+    if (!brand || typeof brand !== 'object') return;
+    var styles = root.style;
+    var variableMap = {
+      background: ['--paper', '--background'],
+      surface: ['--surface', '--paper'],
+      text: ['--ink', '--text'],
+      muted: ['--muted'],
+      primary: ['--primary', '--blue'],
+      accent: ['--accent', '--orange'],
+      fontDisplay: ['--font-display'],
+      fontBody: ['--font-body'],
+      fontCondensed: ['--font-condensed', '--font-mono'],
+      fontSerif: ['--font-serif'],
+      fontMono: ['--font-mono']
+    };
+    var key;
+    var i;
+
+    for (key in variableMap) {
+      if (!Object.prototype.hasOwnProperty.call(variableMap, key)) continue;
+      if (brand[key] == null || brand[key] === '') continue;
+      for (i = 0; i < variableMap[key].length; i++) {
+        styles.setProperty(variableMap[key][i], String(brand[key]));
+      }
+    }
+
+    var custom = brand.cssVariables || brand.variables || {};
+    for (key in custom) {
+      if (!Object.prototype.hasOwnProperty.call(custom, key)) continue;
+      var property = key.indexOf('--') === 0 ? key : '--' + key;
+      styles.setProperty(property, String(custom[key]));
+    }
+  }
+
+  function applyTextStyle(element, style) {
+    if (!style || typeof style !== 'object') return;
+
+    if (style.color != null) element.style.color = String(style.color);
+    if (style.fontWeight != null) element.style.fontWeight = String(style.fontWeight);
+    if (style.fontStyle != null) element.style.fontStyle = String(style.fontStyle);
+    if (style.fontFamily != null) element.style.fontFamily = String(style.fontFamily);
+    if (style.textDecoration != null) element.style.textDecoration = String(style.textDecoration);
+    if (style.textAlign != null) element.style.textAlign = String(style.textAlign);
+    if (style.lineHeight != null) element.style.lineHeight = String(style.lineHeight);
+    if (style.letterSpacing != null) element.style.letterSpacing = String(style.letterSpacing);
+    if (style.textTransform != null) element.style.textTransform = String(style.textTransform);
+    if (style.backgroundColor != null) {
+      element.style.backgroundColor = String(style.backgroundColor);
+    }
+    if (style.opacity != null) element.style.opacity = String(style.opacity);
+
+    if (style.fontSize != null && style.fontSize !== '') {
+      var size = parseFloat(String(style.fontSize));
+      if (isFinite(size) && size > 0) {
+        element.style.fontSize = size + 'px';
+        if (element.hasAttribute('data-fit')) element.__educmsFitCeiling = size;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(style, 'hidden')) {
+      element.style.display = style.hidden ? 'none' : '';
+      element.setAttribute('aria-hidden', style.hidden ? 'true' : 'false');
+    }
+  }
+
+  function cssUrl(value) {
+    return 'url("' + value
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
+      .replace(/[\n\r\f]/g, '') + '")';
+  }
+
+  function applyImage(element, value) {
+    var source = value;
+    var position = '';
+    var size = '';
+
+    if (value && typeof value === 'object') {
+      source = value.src || value.url || '';
+      position = value.position || '';
+      size = value.size || value.fit || '';
+    }
+    if (source == null) return;
+    source = String(source);
+
+    element.setAttribute('data-img', source);
+    if (element.tagName && element.tagName.toLowerCase() === 'img') {
+      if (source) element.setAttribute('src', source);
+      else element.removeAttribute('src');
+    } else {
+      element.style.backgroundImage = source ? cssUrl(source) : 'none';
+      if (position) element.style.backgroundPosition = String(position);
+      if (size) element.style.backgroundSize = String(size);
+    }
+
+    element.classList.toggle('has-img', Boolean(source));
+    if (source) element.setAttribute('data-has-image', 'true');
+    else element.removeAttribute('data-has-image');
+  }
+
+  function apply(payload) {
+    payload = payload || {};
+    var text = payload.text || {};
+    var styles = payload.textStyles || {};
+    var images = payload.img || payload.images || {};
+    var keys = {};
+    var key;
+    var list;
+    var i;
+
+    applyBrand(payload.brand || {});
+
+    for (key in text) {
+      if (Object.prototype.hasOwnProperty.call(text, key)) keys[key] = true;
+    }
+    for (key in styles) {
+      if (Object.prototype.hasOwnProperty.call(styles, key)) keys[key] = true;
+    }
+
+    for (key in keys) {
+      if (!Object.prototype.hasOwnProperty.call(keys, key)) continue;
+      list = nodes(key, 'data-field');
+      for (i = 0; i < list.length; i++) {
+        if (Object.prototype.hasOwnProperty.call(text, key)) setText(list[i], text[key]);
+        applyTextStyle(list[i], styles[key]);
+      }
+    }
+
+    for (key in images) {
+      if (!Object.prototype.hasOwnProperty.call(images, key)) continue;
+      list = nodes(key, 'data-imgslot');
+      for (i = 0; i < list.length; i++) applyImage(list[i], images[key]);
+    }
+
+    scheduleFit();
+  }
+
+  function queryPayload() {
+    var params = query();
+    var brand = queryJson('brand');
+    var text = queryJson('text');
+    var textStyles = queryJson('textStyles');
+    var images = queryJson('img');
+    var payload = {
+      brand: brand && typeof brand === 'object' && !Array.isArray(brand) ? brand : {},
+      text: text && typeof text === 'object' && !Array.isArray(text) ? text : {},
+      textStyles: textStyles && typeof textStyles === 'object' &&
+        !Array.isArray(textStyles) ? textStyles : {},
+      img: images && typeof images === 'object' && !Array.isArray(images) ? images : {}
+    };
+
+    params.forEach(function (value, key) {
+      var fieldKey = '';
+      if (key.indexOf('field.') === 0) fieldKey = key.slice(6);
+      else if (key.indexOf('text.') === 0) fieldKey = key.slice(5);
+      else if (hasNodes(key, 'data-field')) fieldKey = key;
+
+      if (fieldKey) {
+        payload.text[fieldKey] = value;
+        return;
+      }
+
+      var imageKey = '';
+      if (key.indexOf('image.') === 0) imageKey = key.slice(6);
+      else if (key.indexOf('img.') === 0) imageKey = key.slice(4);
+      else if (hasNodes(key, 'data-imgslot')) imageKey = key;
+      if (imageKey) payload.img[imageKey] = value;
+    });
+
+    return payload;
+  }
+
+  function fieldsForReadyMessage(attribute) {
+    var elements = document.querySelectorAll('[' + attribute + ']');
+    var seen = {};
+    var values = [];
+    var i;
+    var key;
+    for (i = 0; i < elements.length; i++) {
+      key = elements[i].getAttribute(attribute);
+      if (key && !seen[key]) {
+        seen[key] = true;
+        values.push(key);
+      }
+    }
+    return values;
+  }
+
+  function setEditMode(on) {
+    editMode = Boolean(on);
+    root.classList.toggle('is-editing', editMode);
+    if (editMode) root.classList.remove('is-frozen');
+  }
+
+  function editableClick(event) {
+    if (!editMode) return;
+    var element = event.target;
+    while (
+      element &&
+      element !== document &&
+      !element.hasAttribute('data-field') &&
+      !element.hasAttribute('data-imgslot')
+    ) {
+      element = element.parentNode;
+    }
+    if (!element || element === document) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    post({
+      type: 'educms-field-click',
+      key: element.getAttribute('data-field') || element.getAttribute('data-imgslot'),
+      kind: element.hasAttribute('data-field') ? 'text' : 'img'
+    });
+  }
+
+  document.addEventListener('click', editableClick, true);
+  window.addEventListener('resize', orient);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', orient);
+
+  apply(queryPayload());
+  orient();
+
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(scheduleFit, scheduleFit);
+    if (document.fonts.addEventListener) {
+      document.fonts.addEventListener('loadingdone', scheduleFit);
+    }
+  }
+  window.addEventListener('load', scheduleFit);
+
+  var initialQuery = query();
+  if (initialQuery.get('freeze') === '1') root.classList.add('is-frozen');
+  if (initialQuery.get('edit') === '1') setEditMode(true);
+
+  window.addEventListener('message', function (event) {
+    var data = event.data;
+    if (!data || typeof data !== 'object') return;
+    if (event.source && event.source !== window.parent && event.source !== window) return;
+
+    if (data.type === 'educms-overrides') apply(data);
+    if (data.type === 'educms-edit-mode') setEditMode(Boolean(data.on));
+    if (data.type === 'educms-freeze') root.classList.add('is-frozen');
+    if (data.type === 'educms-unfreeze') root.classList.remove('is-frozen');
+    if (data.type === 'educms-refit') scheduleFit();
+  });
+
+  post({
+    type: 'educms-ready',
+    orientation: currentOrientation,
+    fields: fieldsForReadyMessage('data-field'),
+    images: fieldsForReadyMessage('data-imgslot')
+  });
+}());
+
+</script>
+</body>
+</html>
