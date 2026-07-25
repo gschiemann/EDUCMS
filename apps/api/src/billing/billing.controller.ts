@@ -26,6 +26,7 @@ import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { StripeService } from './stripe.service';
 import { LicenseService } from '../license/license.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 const BILLING_ROLES = [
   AppRole.SUPER_ADMIN,
@@ -41,12 +42,27 @@ export class BillingController {
     // LicenseService is exported by the @Global LicenseModule, so it
     // resolves here without listing it in BillingModule's providers.
     private readonly license: LicenseService,
+    // Needed so billingUrl() can resolve a tenant slug when the caller's token
+    // predates tenantSlug propagation — a Stripe return URL must never be wrong.
+    private readonly prisma: PrismaService,
   ) {}
 
   /** The dashboard's billing return path for this tenant. */
-  private billingUrl(req: any): string {
+  private async billingUrl(req: any): Promise<string> {
     const origin = req.headers.origin || `${req.protocol}://${req.headers.host}`;
-    return `${origin}/${req.user.tenantSlug || 'dashboard'}/settings/billing`;
+    // Prefer the token's slug; fall back to a DB lookup so a token minted before
+    // tenantSlug was propagated still returns a REAL url. Never emit the old
+    // 'dashboard' literal — /dashboard/settings/billing is not a route, so a
+    // customer returning from Stripe hit a 404.
+    let slug: string | null = req.user?.tenantSlug || null;
+    if (!slug && req.user?.tenantId) {
+      const t = await this.prisma.client.tenant.findUnique({
+        where: { id: req.user.tenantId },
+        select: { slug: true },
+      });
+      slug = t?.slug || null;
+    }
+    return `${origin}/${slug || req.user?.tenantId || ''}/settings/billing`.replace(/\/{2,}/g, '/').replace(':/', '://');
   }
 
   /**
@@ -67,7 +83,7 @@ export class BillingController {
       };
     }
     const period = body?.billingPeriod === 'annual' ? 'annual' : 'monthly';
-    const base = this.billingUrl(req);
+    const base = await this.billingUrl(req);
     try {
       const { url } = await this.stripe.checkoutForTenant({
         tenantId: req.user.tenantId,
@@ -96,7 +112,7 @@ export class BillingController {
       };
     }
     try {
-      return await this.stripe.portalForTenant(req.user.tenantId, this.billingUrl(req));
+      return await this.stripe.portalForTenant(req.user.tenantId, await this.billingUrl(req));
     } catch (e) {
       throw new HttpException({ code: 'BILLING_PORTAL_FAILED', message: (e as Error).message }, HttpStatus.BAD_GATEWAY);
     }

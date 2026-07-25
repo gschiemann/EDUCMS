@@ -753,10 +753,20 @@ export class StripeService {
     // Ordering-immune status: read LIVE Stripe truth, not the (possibly stale /
     // out-of-order) event. Fall back to the event-implied status only when the
     // subscription can't be re-fetched — a real failure must never go unrecorded.
+    // 2026-07-25 — VERSION-AGNOSTIC subscription id. `invoice.subscription` was
+    // removed in the 2025-xx Stripe API versions (the SDK pins its own default;
+    // we pin none), where it moved to
+    // `invoice.parent.subscription_details.subscription`. Reading only the legacy
+    // field silently yields undefined, which skips the LIVE status re-fetch below
+    // and falls back to the event-implied status — exactly the ordering bug that
+    // re-fetch exists to prevent. Read every known shape.
+    const anyInv = inv as any;
+    const pick = (v: unknown): string | undefined =>
+      typeof v === 'string' ? v : (v as { id?: string } | null | undefined)?.id;
     const subId =
-      typeof inv.subscription === 'string'
-        ? inv.subscription
-        : (inv.subscription as { id?: string } | null | undefined)?.id;
+      pick(anyInv.subscription) ??
+      pick(anyInv.parent?.subscription_details?.subscription) ??
+      pick(anyInv.lines?.data?.find((l: any) => l?.subscription)?.subscription);
     let status: string | null = null;
     let liveStatusUsed = false;
     if (subId) {

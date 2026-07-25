@@ -149,6 +149,13 @@ export class JwtAuthGuard implements CanActivate {
           email: payload.email,
           role: payload.role,
           tenantId: payload.tenantId,
+          // 2026-07-25 — auth.service signs `tenantSlug` into the token but this
+          // object never copied it, so every `req.user.tenantSlug` read was
+          // undefined. BillingController.billingUrl fell back to the literal
+          // 'dashboard', sending Stripe Checkout / Customer Portal returns to
+          // /dashboard/settings/billing — a route that does not exist, i.e. a 404
+          // for a customer who just paid.
+          tenantSlug: payload.tenantSlug,
           districtId: payload.districtId,
           schoolId: payload.schoolId || payload.tenantId,
           canTriggerPanic: payload.canTriggerPanic,
