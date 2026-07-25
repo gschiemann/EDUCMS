@@ -182,7 +182,10 @@ body {
       display:block;
     }
     .is-portrait .eyebrow {
+      /* 2026-07-24: wrapped to 2 lines — 1016px of text in a 988px box. Tighten
+         tracking rather than drop below the 52px signage floor. */
       width:988px; height:60px; line-height:1.04;
+      letter-spacing:.03em; white-space:nowrap;
     }
     .is-portrait .headline {
       width:988px; height:150px; margin-top:12px; font-size:84px;
