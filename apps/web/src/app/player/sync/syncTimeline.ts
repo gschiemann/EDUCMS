@@ -44,6 +44,9 @@ export interface TimelinePosition {
   boundaryAtMs: number;
   /** Full loop length, ms. */
   loopDurationMs: number;
+  /** The syncedNow this position was resolved at (boundaryAtMs - atMs =
+   *  time to the next flip; consumers like video preroll need it). */
+  atMs: number;
 }
 
 /** Same fallback the legacy heartbeat applies (page.tsx:4854). */
@@ -86,6 +89,7 @@ export function resolveTimeline(
         itemDurationMs: durations[i],
         boundaryAtMs: syncedNowMs - (p - cum) + durations[i],
         loopDurationMs,
+        atMs: syncedNowMs,
       };
     }
     cum = end;
@@ -97,6 +101,7 @@ export function resolveTimeline(
     itemDurationMs: durations[durations.length - 1],
     boundaryAtMs: syncedNowMs + 1,
     loopDurationMs,
+    atMs: syncedNowMs,
   };
 }
 

@@ -328,11 +328,14 @@ test.describe('frame-locked multi-screen sync', () => {
       }
 
       // Steady-state boundary crossings = flips whose decision landed
-      // promptly after their boundary. Excludes the engage snap; these
-      // are the flips a viewer perceives as "the screens changed
-      // together" and the only fair basis for the lockstep comparison.
+      // NEAR their boundary. Excludes the engage snap; these are the
+      // flips a viewer perceives as "the screens changed together" and
+      // the only fair basis for the lockstep comparison. The lower bound
+      // is negative because the tier-1 render-lead deliberately decides
+      // flips up to ~150ms BEFORE the boundary so the painted frame
+      // lands on it.
       const boundaryFlips = (flips: FlipEntry[]) =>
-        flips.filter((f) => f.serverT - f.itemStartT >= 0 && f.serverT - f.itemStartT < 250);
+        flips.filter((f) => f.serverT - f.itemStartT >= -200 && f.serverT - f.itemStartT < 250);
       const bfA = boundaryFlips(flipsA);
       const bfB = boundaryFlips(flipsB);
       expect(bfA.length, 'screen A recorded no steady-state boundary flips').toBeGreaterThanOrEqual(2);

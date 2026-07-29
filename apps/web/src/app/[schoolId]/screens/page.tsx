@@ -1,8 +1,8 @@
 "use client";
 
-import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check, AlertCircle, Radio } from 'lucide-react';
+import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check, AlertCircle, Radio, Camera } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useUpdateScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout, useSetScreenOrientation, useSetScreenCanvas, useHardwareCatalog, useSetScreenHardwareModel, useSetScreenConsoleProfile, useSetScreenSyncOffset } from '@/hooks/use-api';
+import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useUpdateScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout, useSetScreenOrientation, useSetScreenCanvas, useHardwareCatalog, useSetScreenHardwareModel, useSetScreenConsoleProfile, useSetScreenSyncOffset, useSyncTrimSuggestions } from '@/hooks/use-api';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
@@ -374,6 +374,19 @@ function ScreenDiagnostics({ screen, groupSyncLocked }: { screen: any; groupSync
   // 2026-07-28 — frame-locked sync latency trim (rendered only when the
   // parent group has syncMode='locked'; see groupSyncLocked prop).
   const setSyncOffset = useSetScreenSyncOffset();
+  // Tier-2: fleet-learned starting trim for this screen's hardware model.
+  const trimSuggestions = useSyncTrimSuggestions(!!groupSyncLocked);
+  const modelSuggestion = (() => {
+    if (!groupSyncLocked || !screen?.hardwareModel) return null;
+    const s = trimSuggestions.data?.suggestions?.find(
+      (x) => x.hardwareModel === screen.hardwareModel,
+    );
+    // Only worth surfacing when the fleet actually learned something
+    // (≥3 samples, ≥10ms magnitude) and this screen is still untrimmed.
+    if (!s || s.sampleCount < 3 || Math.abs(s.medianTrimMs) < 10) return null;
+    if ((screen?.syncOffsetMs ?? 0) !== 0) return null;
+    return s;
+  })();
   const currentOrientation: string = screen?.orientation || 'LANDSCAPE';
   // 2026-05-26 — LED canvas (N-panel daisy-chain). Operator clicks a
   // panel count; we resolve to canvasW = 320 × N, canvasH = 1080.
@@ -566,6 +579,21 @@ function ScreenDiagnostics({ screen, groupSyncLocked }: { screen: any; groupSync
                 {setSyncOffset.isError && ' · error'}
               </span>
             </div>
+            {/* Tier-2 — fleet-learned preset: other venues already trimmed
+                this display model; offer their median as a one-tap start. */}
+            {modelSuggestion && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSyncOffset.mutate({ id: screen.id, syncOffsetMs: modelSuggestion.medianTrimMs });
+                }}
+                className="mt-1 px-2 py-0.5 rounded text-[10px] font-bold border bg-indigo-50 text-indigo-600 border-indigo-200 hover:bg-indigo-100 transition-colors"
+                title={`Learned across the fleet: ${modelSuggestion.sampleCount} screens of this model (${screen.hardwareModel}) run a median trim of ${modelSuggestion.medianTrimMs > 0 ? '+' : ''}${modelSuggestion.medianTrimMs}ms. Apply it as a starting point, then fine-tune by eye or camera.`}
+              >
+                Model preset: {modelSuggestion.medianTrimMs > 0 ? '+' : ''}{modelSuggestion.medianTrimMs}ms · Apply
+              </button>
+            )}
           </div>
         )}
         {/* 2026-06-26 — Removed the "Image fit" (Fit/Fill/Stretch) control.
@@ -1938,6 +1966,17 @@ export default function ScreensPage() {
                     >
                       <Radio className="w-4 h-4" /> {group.syncMode === 'locked' ? 'Synced' : 'Sync'}
                     </button>
+                    {/* Tier-3 — camera auto-calibration entry point. Only
+                        meaningful once the group is frame-locked. */}
+                    {group.syncMode === 'locked' && (
+                      <a
+                        href={`/${schoolId}/screens/sync-calibrate?groupId=${group.id}`}
+                        className="px-3 py-2 transition-colors text-xs font-bold rounded-xl flex items-center gap-1.5 bg-white border border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600"
+                        title="Point your phone camera at these screens and the wizard measures each display's true glass latency and sets the trims for you — like an AV receiver's mic calibration, for video walls."
+                      >
+                        <Camera className="w-4 h-4" /> Calibrate
+                      </a>
+                    )}
                     {/* 2026-05-26 — operator: "just add a pair screen
                         to group button in the top right of each group
                         so it makes more sense, maybe a little + sign
@@ -2087,10 +2126,21 @@ export default function ScreensPage() {
                             }
                             if (r.locked) {
                               const ms = Math.max(1, Math.round(Math.max(Number(r.errMs) || 0, Number(r.clockUncertaintyMs) || 0)));
+                              // Tier-1/2 — network-quality coaching: chronic
+                              // jitter is an installer problem (WiFi), not a
+                              // software one. Say so instead of looking flaky.
+                              const jittery = (Number(r.rttMs) || 0) > 150 || (Number(r.clockUncertaintyMs) || 0) > 25;
+                              const detail = `flip ${r.errMs ?? '—'}ms · clock ±${r.clockUncertaintyMs ?? '—'}ms · rtt ${r.rttMs ?? '—'}ms · pipeline lead ${r.renderLeadMs ?? '—'}ms · crystal ${r.skewPpm ?? '—'}ppm`;
                               return (
-                                <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-600"
-                                  title={`Frame-locked. Clock agreement ±${ms}ms — flips land within a frame of the group. (flip ${r.errMs ?? '—'}ms · clock ±${r.clockUncertaintyMs ?? '—'}ms · rtt ${r.rttMs ?? '—'}ms)`}>
-                                  sync ±{ms}ms
+                                <span
+                                  className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg ${jittery ? 'bg-amber-50 text-amber-700' : 'bg-indigo-50 text-indigo-600'}`}
+                                  title={
+                                    jittery
+                                      ? `Frame-locked, but this screen's network is jittery (${detail}). Sync is fighting it with faster sampling — for the tightest lock, run wired Ethernet to this screen.`
+                                      : `Frame-locked. Clock agreement ±${ms}ms — flips land within a frame of the group. (${detail})`
+                                  }
+                                >
+                                  sync ±{ms}ms{jittery ? ' ⚠' : ''}
                                 </span>
                               );
                             }

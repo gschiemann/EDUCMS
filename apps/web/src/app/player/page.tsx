@@ -741,6 +741,94 @@ function hashContentSig(sig: string): string {
   return (h >>> 0).toString(16);
 }
 
+// ─── Frame-locked sync: self-measured latency leads (tier-1, 2026-07-28) ──
+// The browser CAN measure its own pipeline: how long a flip decision takes
+// to reach a painted frame (React commit + raster, 1-2 frames on good SoCs,
+// far more on wheezing kiosk hardware) and how long video.play() takes to
+// present a first frame. Each device measures itself (EWMA) and leads its
+// flips/prerolls by its own number — silently cancelling per-device
+// pipeline differences that the manual trim would otherwise absorb.
+// Persisted per device (localStorage — the URL-param/localStorage precedence
+// pattern used for edu_canvasW) so a reboot starts calibrated.
+const LS_SYNC_RENDER_LEAD = 'edu_sync_render_lead_v1';
+const LS_SYNC_VIDEO_LEAD = 'edu_sync_video_lead_v1';
+
+function readStoredLeadMs(key: string, fallback: number, maxMs: number): number {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    const v = parseFloat(raw);
+    return Number.isFinite(v) && v >= 0 && v <= maxMs ? v : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function storeLeadMs(key: string, v: number): void {
+  try {
+    localStorage.setItem(key, String(Math.round(v * 10) / 10));
+  } catch { /* private mode / quota — in-memory EWMA still applies */ }
+}
+
+// ─── Tier-3 camera-calibration flash overlay (2026-07-28) ────────────────
+// Full-screen black with a 120ms white flash on every synced second —
+// timed off the SAME trimmed clock the content flips on, so what the
+// phone camera measures is exactly the screen's effective display phase
+// (including its current trim; the wizard then computes residual deltas).
+// Falls back to the coarse AUTH_OK offset if the fine clock isn't locked
+// yet. Taurus-safe: longhand positioning, rAF + background writes only.
+function CalibrationFlashOverlay({
+  clockRef,
+  cfgRef,
+  coarseOffsetRef,
+}: {
+  clockRef: { current: SyncClock | null };
+  cfgRef: { current: { enabled: boolean; trimMs: number; groupId: string | null } };
+  coarseOffsetRef: { current: number };
+}) {
+  const flashRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    let raf = 0;
+    let stopped = false;
+    const tick = () => {
+      if (stopped) return;
+      raf = requestAnimationFrame(tick);
+      const mono = performance.now();
+      const fine = clockRef.current ? clockRef.current.now(mono) : null;
+      const base = fine !== null ? fine : Date.now() + coarseOffsetRef.current;
+      const t = base + cfgRef.current.trimMs;
+      const on = ((t % 1000) + 1000) % 1000 < 120;
+      const el = flashRef.current;
+      if (el) {
+        const want = on ? '#ffffff' : '#000000';
+        if (el.style.background !== want) el.style.background = want;
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      stopped = true;
+      cancelAnimationFrame(raf);
+    };
+    // Refs are stable identities.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <div
+      ref={flashRef}
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 8990, // below the emergency overlay — life safety always wins
+        background: '#000000',
+        pointerEvents: 'none',
+      }}
+    />
+  );
+}
+
 // ─── Frame-locked sync diagnostics HUD (?synchud=1) ──────────────────────
 // Physical verification tool: point a phone camera (or the webcam rig) at
 // two screens showing this HUD — the sweep bar + second-flash make skew
@@ -805,8 +893,15 @@ function SyncHud({
       const rtt = s && s.rttMs !== null ? `${Math.round(s.rttMs)}ms` : '—';
       const flip = st.flipErrEwmaMs !== null ? `${st.flipErrEwmaMs.toFixed(1)}ms` : '—';
       const idx = pos ? `${pos.index}@${Math.round(pos.offsetInItemMs)}ms` : '—';
+      const lead = (() => {
+        try {
+          const dbg = (window as any).__eduSyncState;
+          return dbg && typeof dbg.renderLeadMs === 'number' ? `${dbg.renderLeadMs.toFixed(0)}ms` : '—';
+        } catch { return '—'; }
+      })();
+      const skew = s?.skewPpm != null ? `${s.skewPpm.toFixed(1)}ppm` : '—';
       setText(
-        `sync ${state} · clock ${off} ${unc} · rtt ${rtt} · slide ${idx} · flip ${flip} · trim ${cfgRef.current.trimMs}ms · n=${s?.sampleCount ?? 0}`,
+        `sync ${state} · clock ${off} ${unc} · rtt ${rtt} · skew ${skew} · slide ${idx} · flip ${flip} · lead ${lead} · trim ${cfgRef.current.trimMs}ms · n=${s?.sampleCount ?? 0}`,
       );
     }, 250);
     return () => {
@@ -900,6 +995,7 @@ function PlayerVideoSlide({
   syncItemIndex,
   syncActiveRef,
   syncPosRef,
+  syncItemCount,
 }: {
   src: string;
   isActive: boolean;
@@ -918,6 +1014,9 @@ function PlayerVideoSlide({
   syncItemIndex?: number;
   syncActiveRef?: { current: boolean };
   syncPosRef?: { current: TimelinePosition | null };
+  /** Playlist length — the preroll effect needs to know whether THIS
+   *  slide is the timeline's next-up item. */
+  syncItemCount?: number;
   /** 2026-07-01 — fires on the first real decoded frame. Lets the parent
    *  clear its "every item has failed" tracker on genuine playback, not
    *  just on mount (a video can mount fine and still fail to decode). */
@@ -1026,6 +1125,61 @@ function PlayerVideoSlide({
       document.removeEventListener('touchstart', tryUnmute);
     };
   }, [isMuted]);
+
+  // ─── Frame-locked sync: preroll + measured start lead (tier-1) ─────
+  // This slide is mounted-hidden as the timeline's NEXT item (parent
+  // already mounts next videos with preload=auto). Shortly before the
+  // shared boundary we start PLAYING it hidden+muted so decoded frames
+  // are already flowing when the flip lands — no first-frame stall, and
+  // both screens' videos begin on the boundary rather than
+  // play-latency-ms after it. The preroll window adapts to THIS device:
+  // play()→first-presented-frame is measured via rVFC and EWMA'd into
+  // localStorage. Cleanup never pauses — either the slide activates
+  // (activation effect owns it) or the parent unmounts it entirely.
+  useEffect(() => {
+    if (isActive || syncItemIndex === undefined || !syncActiveRef || !syncPosRef) return;
+    if (!syncItemCount || syncItemCount < 2) return;
+    const v = videoRef.current;
+    if (!v) return;
+    let prerolled = false;
+    let rvfcId: number | null = null;
+    const hasRvfc = typeof (v as any).requestVideoFrameCallback === 'function';
+    const t = setInterval(() => {
+      if (prerolled) return;
+      const pos = syncPosRef.current;
+      if (!syncActiveRef.current || !pos) return;
+      const prevIndex = (syncItemIndex - 1 + syncItemCount) % syncItemCount;
+      if (pos.index !== prevIndex) return;
+      const videoLead = readStoredLeadMs(LS_SYNC_VIDEO_LEAD, 150, 1000);
+      const prerollMs = Math.max(250, Math.min(1200, 250 + videoLead));
+      if (pos.boundaryAtMs - pos.atMs > prerollMs) return;
+      prerolled = true;
+      try {
+        v.muted = true; // never leak audio while hidden; activation restores
+        try { v.currentTime = 0; } catch { /* not seekable yet */ }
+        const playCalledAtMono = performance.now();
+        const p = v.play();
+        if (p && typeof p.catch === 'function') p.catch(() => { /* activation retries */ });
+        if (hasRvfc) {
+          rvfcId = (v as any).requestVideoFrameCallback(() => {
+            const measured = performance.now() - playCalledAtMono;
+            if (Number.isFinite(measured) && measured >= 0 && measured <= 2000) {
+              const prev = readStoredLeadMs(LS_SYNC_VIDEO_LEAD, 150, 1000);
+              storeLeadMs(LS_SYNC_VIDEO_LEAD, Math.max(0, Math.min(1000, prev * 0.7 + measured * 0.3)));
+            }
+          });
+        }
+      } catch { /* best-effort — activation still plays */ }
+    }, 120);
+    return () => {
+      clearInterval(t);
+      if (hasRvfc && rvfcId !== null) {
+        try { (v as any).cancelVideoFrameCallback(rvfcId); } catch { /* noop */ }
+      }
+    };
+    // Refs are stable; index/count constant per mounted slide.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, syncItemIndex, syncItemCount]);
 
   // ─── Frame-locked sync servo (2026-07-28) ──────────────────────────
   // Locks the media clock to the shared timeline slot. Measured browser
@@ -2533,7 +2687,32 @@ function PlayerPage() {
   const syncPingStateRef = useRef<{ burstRemaining: number; lastPingAtMono: number }>({
     burstRemaining: 0, lastPingAtMono: 0,
   });
+  // Tier-1 self-calibration: this device's measured decision→paint
+  // latency (EWMA, persisted). The conductor leads every flip by it so
+  // the PAINT — not the decision — lands on the shared boundary. Seeded
+  // at one 60Hz frame; measured per flip via double-rAF.
+  const syncRenderLeadRef = useRef<number>(
+    typeof window !== 'undefined' ? readStoredLeadMs(LS_SYNC_RENDER_LEAD, 16, 150) : 16,
+  );
+  const syncRenderLeadSavedAtRef = useRef<number>(0);
   const [syncEnabled, setSyncEnabled] = useState(false);
+  // Tier-3 camera calibration (2026-07-28): the dashboard wizard remotely
+  // flips group screens into a full-screen synced flash pattern
+  // (CALIBRATE_FLASH signed device message) so a phone camera can measure
+  // true glass-to-glass offsets. Auto-expires (player-side too — a screen
+  // can never stick in flash mode), suppressed entirely during
+  // emergencies.
+  const [calFlashUntil, setCalFlashUntil] = useState<number | null>(null);
+  useEffect(() => {
+    if (calFlashUntil === null) return;
+    const remaining = calFlashUntil - Date.now();
+    if (remaining <= 0) {
+      setCalFlashUntil(null);
+      return;
+    }
+    const t = setTimeout(() => setCalFlashUntil(null), remaining);
+    return () => clearTimeout(t);
+  }, [calFlashUntil]);
   // Diagnostics HUD (?synchud=1) — big beat-bar + clock/uncertainty
   // readouts, filmable across two screens for physical verification.
   const [syncHudOn] = useState<boolean>(() => {
@@ -3211,6 +3390,10 @@ function PlayerPage() {
               : null,
             rttMs: cstats?.rttMs != null ? Math.round(cstats.rttMs) : null,
             contentSig: hashContentSig(currentPlaylistSigRef.current || ''),
+            // Tier-1 self-calibration readouts (dashboard diagnostics):
+            // this device's measured render-pipeline lead + crystal skew.
+            renderLeadMs: Math.round(syncRenderLeadRef.current * 10) / 10,
+            skewPpm: cstats?.skewPpm != null ? Math.round(cstats.skewPpm * 10) / 10 : null,
           };
         }
         await fetch(`${getApiRoot()}/api/v1/screens/${screenId}/render-proof`, {
@@ -4593,6 +4776,17 @@ function PlayerPage() {
       handle('TEXT_BROADCAST', onEmergencyMessage('TEXT_BROADCAST'));
       handle('MEDIA_ALERT', onEmergencyMessage('MEDIA_ALERT'));
       handle('ALL_CLEAR_MESSAGE', () => setPushedEmergencyMessage(null));
+      // Tier-3 camera calibration — mirror of the WS branch (a new WS
+      // type MUST be handled on both transports or it silently no-ops
+      // for SSE-tier screens; recon doc 01 gotcha #12).
+      handle('CALIBRATE_FLASH', (pl: any) => {
+        if (pl?.on === true) {
+          const dur = Math.max(5, Math.min(120, Number(pl?.durationSec) || 60));
+          setCalFlashUntil(Date.now() + dur * 1000);
+        } else {
+          setCalFlashUntil(null);
+        }
+      });
 
       es.onerror = () => {
         sseFailCountRef.current += 1;
@@ -4678,7 +4872,13 @@ function PlayerPage() {
             if (ws.readyState !== WebSocket.OPEN) return;
             const st = syncPingStateRef.current;
             const mono = performance.now();
-            const spacing = st.burstRemaining > 0 ? 180 : 20_000;
+            // Adaptive cadence (tier-1): a pristine wired clock pings
+            // every 30s; a jittery WiFi clock fights back at 5s. The
+            // clock itself recommends the interval from its live
+            // uncertainty.
+            const spacing = st.burstRemaining > 0
+              ? 180
+              : (syncClockRef.current?.recommendedPingIntervalMs(mono) ?? 20_000);
             if (mono - st.lastPingAtMono < spacing) return;
             if (st.burstRemaining > 0) st.burstRemaining--;
             st.lastPingAtMono = mono;
@@ -4932,6 +5132,22 @@ function PlayerPage() {
             // fan out to every kiosk — we apply a random delay
             // (0..jitterMs, default 8s) so a 1000-device fleet doesn't
             // all hit Vercel + the API simultaneously after the reload.
+            // Tier-3 camera calibration — remote flash mode. Device-scoped
+            // (published to our device:<id> channel), benign (visual only,
+            // auto-expiring), so not in SENSITIVE_TYPES.
+            if (msg.type === 'CALIBRATE_FLASH') {
+              const pl = (msg.payload || (msg as any).data || {}) as any;
+              if (pl?.on === true) {
+                const dur = Math.max(5, Math.min(120, Number(pl?.durationSec) || 60));
+                console.log('[Player] CALIBRATE_FLASH on for', dur, 's');
+                setCalFlashUntil(Date.now() + dur * 1000);
+              } else {
+                console.log('[Player] CALIBRATE_FLASH off');
+                setCalFlashUntil(null);
+              }
+              return;
+            }
+
             if (msg.type === 'REFRESH_WEB') {
               const pl = msg.payload || msg;
               const scope = pl?.scope;
@@ -5387,8 +5603,15 @@ function PlayerPage() {
         dbg.idx = posNow.index;
         dbg.serverNow = t;
         dbg.offsetInItemMs = posNow.offsetInItemMs;
+        dbg.renderLeadMs = syncRenderLeadRef.current;
       } catch { /* SSR-safe no-op */ }
-      const posFlip = resolveTimeline(sorted, t + SYNC_FLIP_LEAD_MS)!;
+      // Tier-1 self-calibration: lead the flip DECISION by this device's
+      // measured decision→paint latency so the painted frame — the thing
+      // the viewer and the camera see — lands on the shared boundary. A
+      // slow SoC leads more, a fast one less; glass-side alignment
+      // improves automatically with zero operator involvement.
+      const flipLeadMs = SYNC_FLIP_LEAD_MS + Math.max(0, Math.min(150, syncRenderLeadRef.current));
+      const posFlip = resolveTimeline(sorted, t + flipLeadMs)!;
       const cur = currentIndexRef.current;
       const next = advanceCounterTo(cur, posFlip.index, sorted.length);
       if (next === cur) return;
@@ -5412,10 +5635,29 @@ function PlayerPage() {
       // minus the deliberate lead ≈ how late this flip is vs the shared
       // boundary. Only meaningful for single-step advances.
       if (next - cur === 1) {
-        const err = Math.max(0, posFlip.offsetInItemMs - SYNC_FLIP_LEAD_MS);
+        const err = Math.max(0, posFlip.offsetInItemMs - flipLeadMs);
         const s = syncStatsRef.current;
         s.lastFlipErrMs = err;
         s.flipErrEwmaMs = s.flipErrEwmaMs === null ? err : s.flipErrEwmaMs * 0.7 + err * 0.3;
+        // Measure THIS flip's decision→paint latency: double-rAF fires
+        // after the browser paints the frame containing the new slide.
+        // EWMA (α=0.2) smooths raster jitter; clamp guards a stalled tab
+        // from poisoning the lead; persisted at most every 10s.
+        const decisionMono = mono;
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const measured = performance.now() - decisionMono;
+            if (!Number.isFinite(measured) || measured < 0 || measured > 400) return;
+            const prev = syncRenderLeadRef.current;
+            const nextLead = Math.max(0, Math.min(150, prev * 0.8 + measured * 0.2));
+            syncRenderLeadRef.current = nextLead;
+            const nowMono = performance.now();
+            if (nowMono - syncRenderLeadSavedAtRef.current > 10_000) {
+              syncRenderLeadSavedAtRef.current = nowMono;
+              storeLeadMs(LS_SYNC_RENDER_LEAD, nextLead);
+            }
+          });
+        });
       }
       // Flip log for the two-screen Playwright harness + field debugging:
       // server-time-stamped flips let two screens' logs be compared
@@ -7214,6 +7456,7 @@ function PlayerPage() {
                   syncItemIndex={index}
                   syncActiveRef={syncActiveRef}
                   syncPosRef={syncPosRef}
+                  syncItemCount={sorted.length}
                 />
               );
             }
@@ -8376,6 +8619,16 @@ function PlayerPage() {
           activeRef={syncActiveRef}
           cfgRef={syncConfigRef}
           statsRef={syncStatsRef}
+        />
+      )}
+
+      {/* Tier-3 camera calibration — remotely-armed synced flash pattern.
+          Auto-expires; never shown during an emergency. */}
+      {calFlashUntil !== null && !activeEmergency && (
+        <CalibrationFlashOverlay
+          clockRef={syncClockRef}
+          cfgRef={syncConfigRef}
+          coarseOffsetRef={serverClockOffsetRef}
         />
       )}
 

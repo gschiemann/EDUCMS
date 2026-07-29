@@ -1065,6 +1065,45 @@ export class ScreensController {
     });
   }
 
+  // ─── Fleet-learned sync-trim presets (tier-2, 2026-07-28) ─────────────
+  // docs/research/2026-07-28-multiscreen-sync/00-DESIGN.md §8 follow-up.
+  // Different display models carry different FIXED glass latencies; when
+  // operators trim them (PUT :id/sync-offset) the platform LEARNS: median
+  // trim per hardware model across the whole fleet. A new screen of a
+  // known-slow model gets a one-tap suggested starting trim instead of a
+  // blind hunt. Returns aggregate numbers only.
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @Get('sync-trim-suggestions')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async syncTrimSuggestions() {
+    // ten-ok: intentional CROSS-TENANT numeric aggregate — returns only
+    // (hardware model, median trim ms, sample count); no tenant ids, no
+    // screen ids, no names, nothing attributable. The whole point is that
+    // venue B benefits from venue A having measured the same panel model
+    // (the Waze model: anonymized fleet telemetry). HAVING >= 3 keeps any
+    // single venue's setup from being inferable.
+    const rows = await this.prisma.client.$queryRaw<
+      Array<{ hardware_model: string; median_trim_ms: number; sample_count: number }>
+    >`
+      SELECT
+        hardware_model,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY sync_offset_ms)::float8 AS median_trim_ms,
+        count(*)::int AS sample_count
+      FROM screens
+      WHERE sync_offset_ms IS NOT NULL
+        AND hardware_model IS NOT NULL
+      GROUP BY hardware_model
+      HAVING count(*) >= 3
+    `;
+    return {
+      suggestions: rows.map((r) => ({
+        hardwareModel: r.hardware_model,
+        medianTrimMs: Math.round(r.median_trim_ms),
+        sampleCount: r.sample_count,
+      })),
+    };
+  }
+
   // ─── ADMIN: Fleet roll-up — HQ sees every store's screens (read-only) ───
   //
   // Manager-console pattern (Google MCC / AWS Orgs / NinjaOne): the parent
@@ -3492,6 +3531,8 @@ export class ScreensController {
         clockUncertaintyMs?: number | null;
         rttMs?: number | null;
         contentSig?: string | null;
+        renderLeadMs?: number | null;
+        skewPpm?: number | null;
       };
     },
   ) {
@@ -3529,6 +3570,9 @@ export class ScreensController {
         clockUncertaintyMs: num(s.clockUncertaintyMs, 0, 600_000),
         rttMs: num(s.rttMs, 0, 60_000),
         contentSig: s.contentSig ? String(s.contentSig).slice(0, 32) : null,
+        // Tier-1 self-calibration readouts (2026-07-28).
+        renderLeadMs: num(s.renderLeadMs, 0, 1_000),
+        skewPpm: num(s.skewPpm, -500, 500),
       };
     }
 

@@ -38,3 +38,30 @@ Shipped behind the flag: `TimeSyncService` (Redis-aligned replica clock) +
 video servo + `?synchud=1` HUD; `sync` block on the manifest; group toggle,
 per-screen trim, and telemetry badge in the dashboard; Jest + Playwright
 coverage. See the session commit(s) dated 2026-07-28.
+
+## Self-calibration wave (same day — "test the hardware, auto-adjust")
+
+Three tiers on top of the base feature:
+
+1. **Self-measuring pipeline** — SyncClock gained a crystal skew-rate model
+   (GStreamer-netclientclock-style regression; coasting tracks the crystal
+   instead of freezing) and adaptive ping cadence (30s wired / 5s jittery
+   WiFi). The conductor measures each device's decision→paint latency
+   (double-rAF EWMA, persisted) and auto-leads flips by it; videos preroll
+   hidden before their boundary with an rVFC-measured start-lead. Telemetry
+   gains `renderLeadMs` + `skewPpm`; badge tooltip coaches "wire this
+   screen" on chronic jitter.
+2. **Fleet-learned trims** — `GET /screens/sync-trim-suggestions` aggregates
+   the median operator trim per hardware model across the whole platform
+   (anonymized numbers only, ten-ok annotated); untrimmed screens of a known
+   model get a one-tap "Model preset: +40ms · Apply" chip.
+3. **Camera auto-calibration** — the only honest way to measure the glass:
+   `POST /screen-groups/:id/calibrate-flash` arms a signed, auto-expiring
+   full-screen synced flash on every group screen (suppressed during
+   emergencies); the phone wizard at `/[schoolId]/screens/sync-calibrate`
+   films the wall, tags screens by tap, detects flash onsets with sub-frame
+   interpolation, reduces them to circular phases (`lib/sync-calibration.ts`,
+   15 unit tests incl. a synthetic 3-screen end-to-end recovering glass
+   deltas within ±12ms from 30fps captures), and one-tap-writes the trims.
+   AVR-mic-calibration for video walls — no signage vendor, cloud or
+   hardware, ships this.

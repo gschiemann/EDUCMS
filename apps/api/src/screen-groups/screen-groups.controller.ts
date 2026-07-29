@@ -4,6 +4,8 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
+import { RedisService } from '../realtime/redis.service';
+import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import {
   ScreenGroupCreateSchema, type ScreenGroupCreateInput,
@@ -23,7 +25,13 @@ const STALE_MS = 35 * 1000;
 @Controller('api/v1/screen-groups')
 @UseGuards(JwtAuthGuard, RbacGuard)
 export class ScreenGroupsController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // 2026-07-28 tier-3 — camera calibration needs the signed device
+    // fan-out (RedisService is @Global; signer is app-module-provided).
+    private readonly redisService: RedisService,
+    private readonly signer: WebsocketSignerService,
+  ) {}
 
   @Get()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN, AppRole.CONTRIBUTOR)
@@ -180,6 +188,59 @@ export class ScreenGroupsController {
       }
       return updated;
     });
+  }
+
+  /**
+   * 2026-07-28 tier-3 — camera auto-calibration: arm/disarm the synced
+   * flash pattern on every screen in this group. The dashboard wizard
+   * calls {on:true} before measuring with the phone camera and {on:false}
+   * when done; players ALSO auto-expire after durationSec (and again
+   * player-side) so a screen can never stick in flash mode. Signed
+   * per-device fan-out — same transport as CANVAS_CHANGE. Visual-only +
+   * self-expiring, so deliberately not a SENSITIVE_TYPES message.
+   */
+  @Post(':id/calibrate-flash')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async calibrateFlash(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { on?: boolean; durationSec?: number },
+  ) {
+    const group = await this.prisma.client.screenGroup.findFirst({
+      where: { id, tenantId: req.user.tenantId },
+      include: { screens: { select: { id: true } } },
+    });
+    if (!group) throw new HttpException({ code: 'SCREEN_GROUP_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+
+    const on = body?.on !== false;
+    const durationSec = Math.max(5, Math.min(120, Math.round(Number(body?.durationSec)) || 60));
+
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId: req.user.tenantId,
+          userId: req.user?.id ?? null,
+          action: 'SCREEN_GROUP_CALIBRATE_FLASH',
+          targetType: 'ScreenGroup',
+          targetId: id,
+          details: JSON.stringify({ on, durationSec, screenCount: group.screens.length }),
+        },
+      });
+    } catch { /* visual-diagnostic toggle — never block on audit-log hiccup */ }
+
+    let sent = 0;
+    for (const s of group.screens) {
+      try {
+        const signed = this.signer.signMessage('CALIBRATE_FLASH', {
+          screenId: s.id,
+          on,
+          durationSec,
+        });
+        await this.redisService.publish(`device:${s.id}`, signed);
+        sent++;
+      } catch { /* screen offline / redis blip — wizard shows which screens flash */ }
+    }
+    return { ok: true, on, durationSec, screens: group.screens.length, sent };
   }
 
   @Put(':id/screens')

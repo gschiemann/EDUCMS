@@ -351,6 +351,36 @@ export function useSetScreenSyncOffset() {
 }
 
 /**
+ * 2026-07-28 (tier-3) — camera auto-calibration: arm/disarm the synced
+ * flash pattern on every screen of a group (signed per-device fan-out;
+ * players auto-expire after durationSec regardless).
+ */
+export function useCalibrateFlash() {
+  return useMutation({
+    mutationFn: ({ groupId, on, durationSec }: { groupId: string; on: boolean; durationSec?: number }) =>
+      apiFetch(`/screen-groups/${groupId}/calibrate-flash`, {
+        method: 'POST',
+        body: JSON.stringify({ on, durationSec }),
+      }),
+  });
+}
+
+/**
+ * 2026-07-28 (tier-2) — fleet-learned sync-trim presets. Aggregate
+ * (hardware model → median operator trim) across the whole platform; the
+ * trim row offers it as a one-tap starting point for untrimmed screens
+ * of a known model. Cached hard — it moves at fleet speed, not UI speed.
+ */
+export function useSyncTrimSuggestions(enabled: boolean) {
+  return useQuery<{ suggestions: Array<{ hardwareModel: string; medianTrimMs: number; sampleCount: number }> }>({
+    queryKey: ['sync-trim-suggestions'],
+    queryFn: () => apiFetch('/screens/sync-trim-suggestions'),
+    enabled,
+    staleTime: 10 * 60_000,
+  });
+}
+
+/**
  * 2026-05-27 — read-only player-hardware catalog. Drives the per-screen
  * Hardware panel's model dropdown + capability chips. The catalog is a
  * build-time constant on the API side; cache aggressively here so

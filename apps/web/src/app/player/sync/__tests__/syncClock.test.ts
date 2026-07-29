@@ -103,6 +103,52 @@ describe('SyncClock — uncertainty and lock gating', () => {
     expect(coasted - fresh).toBeLessThan(25);
   });
 
+  it('skew model: coasting tracks a drifting crystal instead of freezing', () => {
+    // Device crystal runs 20ppm slow → true offset grows 20µs per second.
+    const drift = (monoAt: number) => 5_000 + (20 / 1e6) * monoAt;
+    const c = new SyncClock();
+    // 12 clean samples over 5 minutes (25s apart) — enough span for the
+    // skew fit to engage.
+    for (let i = 0; i < 12; i++) {
+      const monoAt = i * 25_000;
+      feed(c, monoAt, drift(monoAt), 10);
+    }
+    const skew = c.estimateSkewPpm();
+    expect(skew).not.toBeNull();
+    expect(skew!).toBeGreaterThan(15);
+    expect(skew!).toBeLessThan(25);
+    // Coast 10 minutes past the last sample. Without the model the clock
+    // would lag by 20ppm × 600s = 12ms; with it, low single digits.
+    const coastTo = 11 * 25_000 + 600_000;
+    const err = c.now(coastTo)! - (coastTo + drift(coastTo));
+    expect(Math.abs(err)).toBeLessThan(3);
+  });
+
+  it('skew model stays disengaged on short/sparse windows', () => {
+    const c = new SyncClock();
+    for (let i = 0; i < 6; i++) feed(c, i * 5_000, 5_000, 10); // 25s span, 6 samples
+    expect(c.estimateSkewPpm()).toBeNull();
+  });
+
+  it('adaptive cadence: pristine clock pings slower, jittery clock faster', () => {
+    const pristine = new SyncClock();
+    for (let i = 0; i < 12; i++) feed(pristine, 1_000 + i * 100, 5_000, 6);
+    expect(pristine.recommendedPingIntervalMs(3_000)).toBe(30_000);
+
+    const jittery = new SyncClock();
+    // High-RTT, scattered offsets → big uncertainty.
+    for (let i = 0; i < 12; i++) {
+      const monoAt = 1_000 + i * 100;
+      const rtt = 120 + (i % 4) * 40;
+      const t0 = monoAt - rtt;
+      jittery.addSample(t0 + rtt / 2 + 5_000 + (i % 3) * 30, t0, monoAt);
+    }
+    expect(jittery.recommendedPingIntervalMs(3_000)).toBe(5_000);
+
+    const acquiring = new SyncClock();
+    expect(acquiring.recommendedPingIntervalMs(0)).toBe(5_000);
+  });
+
   it('reset() drops everything (device-sleep recovery path)', () => {
     const c = new SyncClock();
     for (let i = 0; i < 8; i++) feed(c, 1_000 + i * 50, 5_000, 10);

@@ -47,6 +47,8 @@ export interface SyncClockStats {
   rttMs: number | null;
   sampleCount: number;
   lastSampleAgeMs: number | null;
+  /** Estimated crystal skew (ppm) once enough well-spread samples exist. */
+  skewPpm: number | null;
 }
 
 const MAX_SAMPLES = 24;
@@ -60,11 +62,24 @@ const STEP_THRESHOLD_MS = 250;
 /**
  * Crystal-drift allowance while coasting between samples. Commodity
  * device crystals run ±10–50 ppm; 30 ppm ≈ 1.8 ms/min is a conservative
- * middle. Only feeds the uncertainty estimate — the offset itself is
- * held (screens coasting together stay together far better than any
- * re-guess would place them).
+ * middle. Feeds the uncertainty estimate; the SKEW MODEL below actively
+ * cancels the measurable part of it.
  */
 const DRIFT_PPM = 30;
+/**
+ * Crystal skew-rate model (GStreamer netclientclock-style calibration,
+ * 2026-07-28 tier-1): this device's crystal runs fast/slow at some
+ * near-constant rate (ppm). We estimate it by least-squares over the
+ * lower-RTT half of the sample window and EXTRAPOLATE the offset while
+ * coasting — so a screen that loses its network drifts at the residual
+ * (thermal wobble, ~1 ppm/°C) instead of the full crystal rate. Gated
+ * conservatively: needs SKEW_MIN_SAMPLES spanning SKEW_MIN_SPAN_MS,
+ * slope clamped to ±SKEW_MAX_PPM, correction capped at ±SKEW_MAX_CORR_MS.
+ */
+const SKEW_MIN_SAMPLES = 8;
+const SKEW_MIN_SPAN_MS = 60_000;
+const SKEW_MAX_PPM = 150;
+const SKEW_MAX_CORR_MS = 80;
 
 export class SyncClock {
   private samples: ClockSample[] = [];
@@ -90,14 +105,49 @@ export class SyncClock {
     if (this.samples.length > MAX_SAMPLES) this.samples.shift();
   }
 
-  /** Best current estimate of the mono→server offset (unslewed). */
-  private estimateOffsetMs(): number | null {
+  /**
+   * Crystal skew rate in ppm (positive = this device's mono clock runs
+   * SLOW vs the server, so offset grows over time). Least-squares slope
+   * of offset-vs-monoTime over the lower-RTT half of the window. Null
+   * until enough well-spread samples exist.
+   */
+  estimateSkewPpm(): number | null {
+    if (this.samples.length < SKEW_MIN_SAMPLES) return null;
+    const byRtt = [...this.samples].sort((a, b) => a.rttMs - b.rttMs);
+    const keep = byRtt.slice(0, Math.max(SKEW_MIN_SAMPLES, Math.ceil(byRtt.length / 2)));
+    const n = keep.length;
+    const span = Math.max(...keep.map((s) => s.atMono)) - Math.min(...keep.map((s) => s.atMono));
+    if (span < SKEW_MIN_SPAN_MS) return null;
+    const meanT = keep.reduce((a, s) => a + s.atMono, 0) / n;
+    const meanO = keep.reduce((a, s) => a + s.offsetMs, 0) / n;
+    let num = 0;
+    let den = 0;
+    for (const s of keep) {
+      num += (s.atMono - meanT) * (s.offsetMs - meanO);
+      den += (s.atMono - meanT) * (s.atMono - meanT);
+    }
+    if (den === 0) return null;
+    const ppm = (num / den) * 1e6; // ms-per-ms → parts per million
+    return Math.max(-SKEW_MAX_PPM, Math.min(SKEW_MAX_PPM, ppm));
+  }
+
+  /** Best current estimate of the mono→server offset at monoNow (unslewed). */
+  private estimateOffsetMs(monoNow: number): number | null {
     if (this.samples.length === 0) return null;
     const byRtt = [...this.samples].sort((a, b) => a.rttMs - b.rttMs);
     const keep = Math.max(1, Math.min(byRtt.length, Math.ceil(byRtt.length * BEST_FRACTION)));
-    const best = byRtt.slice(0, keep).map((s) => s.offsetMs).sort((a, b) => a - b);
+    const bestSamples = byRtt.slice(0, keep);
+    const best = bestSamples.map((s) => s.offsetMs).sort((a, b) => a - b);
     const mid = Math.floor(best.length / 2);
-    return best.length % 2 === 1 ? best[mid] : (best[mid - 1] + best[mid]) / 2;
+    const median = best.length % 2 === 1 ? best[mid] : (best[mid - 1] + best[mid]) / 2;
+    // Skew extrapolation: project the median forward from the best
+    // samples' center of mass so coasting tracks the crystal's known
+    // rate instead of freezing at the last fix.
+    const skew = this.estimateSkewPpm();
+    if (skew === null) return median;
+    const refMono = bestSamples.reduce((a, s) => a + s.atMono, 0) / bestSamples.length;
+    const corr = (skew / 1e6) * (monoNow - refMono);
+    return median + Math.max(-SKEW_MAX_CORR_MS, Math.min(SKEW_MAX_CORR_MS, corr));
   }
 
   /**
@@ -105,7 +155,7 @@ export class SyncClock {
    * applied. Returns null until the first sample exists.
    */
   now(monoNow: number): number | null {
-    const target = this.estimateOffsetMs();
+    const target = this.estimateOffsetMs(monoNow);
     if (target === null) return null;
 
     if (this.appliedOffsetMs === null || Math.abs(target - this.appliedOffsetMs) > STEP_THRESHOLD_MS) {
@@ -153,12 +203,29 @@ export class SyncClock {
     const unc = this.uncertaintyMs(monoNow);
     return {
       locked: Number.isFinite(unc),
-      offsetMs: this.appliedOffsetMs ?? this.estimateOffsetMs(),
+      offsetMs: this.appliedOffsetMs ?? this.estimateOffsetMs(monoNow),
       uncertaintyMs: unc,
       rttMs: byRtt.length ? byRtt[0].rttMs : null,
       sampleCount: this.samples.length,
       lastSampleAgeMs: newestAt !== null ? Math.max(0, monoNow - newestAt) : null,
+      skewPpm: this.estimateSkewPpm(),
     };
+  }
+
+  /**
+   * Adaptive sampling cadence (tier-1, 2026-07-28): a rock-solid clock
+   * doesn't need frequent pings; a jittery WiFi clock does. Feeds the
+   * player's TIME_PING scheduler.
+   *   uncertainty < 15ms → 30s  (excellent — mostly wired)
+   *   uncertainty < 40ms → 20s  (normal)
+   *   otherwise          → 5s   (fight the jitter with sample volume)
+   */
+  recommendedPingIntervalMs(monoNow: number): number {
+    const unc = this.uncertaintyMs(monoNow);
+    if (!Number.isFinite(unc)) return 5_000; // acquiring — sample eagerly
+    if (unc < 15) return 30_000;
+    if (unc < 40) return 20_000;
+    return 5_000;
   }
 
   /** Drop all samples (e.g. device slept — mono clock may have paused). */
