@@ -90,19 +90,36 @@ export function useDeleteScreenGroup() {
 export function useUpdateScreenGroup() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, name, description }: { id: string; name?: string; description?: string }) =>
+    // syncMode (2026-07-28): 'locked' = frame-locked multi-screen sync for
+    // every screen in the group; 'off'/null = normal free-run playback.
+    mutationFn: ({ id, name, description, syncMode }: { id: string; name?: string; description?: string; syncMode?: 'off' | 'locked' | null }) =>
       apiFetch(`/screen-groups/${id}`, {
         method: 'PUT',
-        body: JSON.stringify({ name, description }),
+        body: JSON.stringify({
+          name,
+          description,
+          ...(syncMode !== undefined ? { syncMode } : {}),
+        }),
       }),
     // Optimistic rename so the new name shows instantly (the operator is
-    // typing it — don't make them wait on the round-trip).
-    onMutate: async ({ id, name }) => {
+    // typing it — don't make them wait on the round-trip). Same for the
+    // sync toggle — the switch must flip under the finger.
+    onMutate: async ({ id, name, syncMode }) => {
       await qc.cancelQueries({ queryKey: ['screen-groups'] });
       const prev = qc.getQueryData<any>(['screen-groups']);
-      if (name !== undefined) {
+      if (name !== undefined || syncMode !== undefined) {
         qc.setQueryData<any>(['screen-groups'], (old: any) =>
-          Array.isArray(old) ? old.map((g: any) => (g?.id === id ? { ...g, name } : g)) : old,
+          Array.isArray(old)
+            ? old.map((g: any) =>
+                g?.id === id
+                  ? {
+                      ...g,
+                      ...(name !== undefined ? { name } : {}),
+                      ...(syncMode !== undefined ? { syncMode } : {}),
+                    }
+                  : g,
+              )
+            : old,
         );
       }
       return { prev };
@@ -261,6 +278,53 @@ export function useSetScreenCanvas() {
       const prevGroups = qc.getQueryData<any>(['screen-groups']);
       const apply = (s: any) =>
         s?.id === id ? { ...s, canvasW, canvasH, ...(repeats !== undefined ? { repeats } : {}) } : s;
+      qc.setQueryData<any>(['screens'], (old: any) => {
+        if (Array.isArray(old)) return old.map(apply);
+        if (Array.isArray(old?.screens)) return { ...old, screens: old.screens.map(apply) };
+        return old;
+      });
+      qc.setQueryData<any>(['screen-groups'], (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((g: any) => ({
+          ...g,
+          screens: Array.isArray(g?.screens) ? g.screens.map(apply) : g?.screens,
+        }));
+      });
+      return { prevScreens, prevGroups };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prevScreens !== undefined) qc.setQueryData(['screens'], ctx.prevScreens);
+      if (ctx?.prevGroups !== undefined) qc.setQueryData(['screen-groups'], ctx.prevGroups);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['screens'] });
+      qc.invalidateQueries({ queryKey: ['screen-groups'] });
+    },
+  });
+}
+
+/**
+ * 2026-07-28 — frame-locked sync: per-screen latency trim (±ms).
+ * The AVR-lip-sync-style knob for mixed display models: nudge until two
+ * side-by-side screens align. Null clears back to 0. Patches BOTH caches
+ * (screens + screen-groups) — same fix class as canvas/orientation.
+ */
+export function useSetScreenSyncOffset() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, syncOffsetMs }: { id: string; syncOffsetMs: number | null }) =>
+      apiFetch(`/screens/${id}/sync-offset`, {
+        method: 'PUT',
+        body: JSON.stringify({ syncOffsetMs }),
+      }),
+    onMutate: async ({ id, syncOffsetMs }) => {
+      await Promise.all([
+        qc.cancelQueries({ queryKey: ['screens'] }),
+        qc.cancelQueries({ queryKey: ['screen-groups'] }),
+      ]);
+      const prevScreens = qc.getQueryData<any>(['screens']);
+      const prevGroups = qc.getQueryData<any>(['screen-groups']);
+      const apply = (s: any) => (s?.id === id ? { ...s, syncOffsetMs } : s);
       qc.setQueryData<any>(['screens'], (old: any) => {
         if (Array.isArray(old)) return old.map(apply);
         if (Array.isArray(old?.screens)) return { ...old, screens: old.screens.map(apply) };

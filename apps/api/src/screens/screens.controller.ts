@@ -938,7 +938,9 @@ export class ScreensController {
     }
     const rows = await this.prisma.client.screen.findMany({
       where: { tenantId: req.user.tenantId },
-      include: { screenGroup: { select: { id: true, name: true } } },
+      // syncMode (2026-07-28): the list view badges frame-locked groups —
+      // one extra scalar on an already-joined row, no new query.
+      include: { screenGroup: { select: { id: true, name: true, syncMode: true } as any } },
       orderBy: { name: 'asc' },
     });
     // Pull the tenant's saved address/coords once so every screen WITHOUT
@@ -1660,6 +1662,68 @@ export class ScreensController {
     }
 
     return updated;
+  }
+
+  /**
+   * 2026-07-28 — frame-locked multi-screen sync: per-screen latency trim.
+   * docs/research/2026-07-28-multiscreen-sync/00-DESIGN.md §7-8.
+   *
+   * Different display models add different FIXED pipeline latencies (LED
+   * controller scaling, TV motion smoothing adds 30-80ms) that no browser
+   * can see — two perfectly clock-synced players can still be a frame+
+   * apart on glass. This is the AVR-lip-sync-style knob: the operator
+   * points a phone camera at both screens and nudges until aligned.
+   * Applied player-side as an offset on the shared clock (manifest
+   * `sync.trimMs`); manifest ETag covers it, so screens converge within a
+   * poll. Null clears back to 0. Clamped ±2000ms (a display pipeline
+   * beyond 2s is broken hardware, not a trim).
+   */
+  @Put(':id/sync-offset')
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async setSyncOffset(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { syncOffsetMs?: number | null },
+  ) {
+    let offset: number | null = null;
+    if (body.syncOffsetMs !== null && body.syncOffsetMs !== undefined) {
+      const parsed = Math.round(Number(body.syncOffsetMs));
+      if (!Number.isFinite(parsed) || Math.abs(parsed) > 2000) {
+        throw new HttpException(
+          { code: 'SCREEN_SYNC_OFFSET_INVALID', message: 'syncOffsetMs must be null OR an integer between -2000 and 2000' },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      offset = parsed;
+    }
+
+    const screen = await this.prisma.client.screen.findFirst({
+      where: { id, tenantId: req.user.tenantId },
+      select: { id: true, name: true, tenantId: true, syncOffsetMs: true } as any,
+    });
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+
+    return this.prisma.client.$transaction(async (tx) => {
+      const updated = await tx.screen.update({
+        where: { id },
+        data: { syncOffsetMs: offset } as any,
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId: req.user.tenantId,
+          userId: req.user?.id ?? null,
+          action: 'SCREEN_SYNC_OFFSET_CHANGED',
+          targetType: 'Screen',
+          targetId: id,
+          details: JSON.stringify({
+            from: (screen as any).syncOffsetMs ?? null,
+            to: offset,
+          }),
+        },
+      });
+      return updated;
+    });
   }
 
   /**
@@ -3261,6 +3325,25 @@ export class ScreensController {
       // Older APKs ignore unknown manifest keys, so this is safe to
       // ship without a player-side migration.
       hardwareModel: (screen as any).hardwareModel ?? null,
+      // 2026-07-28 — frame-locked multi-screen sync config
+      // (docs/research/2026-07-28-multiscreen-sync/00-DESIGN.md §7).
+      // enabled ⟵ ScreenGroup.syncMode === 'locked' (the group toggle);
+      // trimMs ⟵ Screen.syncOffsetMs (per-screen display-latency trim).
+      // Older players ignore unknown manifest keys (same contract as
+      // hardwareModel/gpio above). Deliberately part of the hashed
+      // payload: flipping the toggle or nudging the trim busts the ETag
+      // so screens pick it up on their next poll. No volatile clock
+      // field here — players sample the clock via WS TIME_PING or
+      // GET /realtime/time, never the manifest (would break 304s).
+      sync: (() => {
+        const g: any = (screen as any).screenGroup;
+        if (!g || g.syncMode !== 'locked') return { enabled: false };
+        return {
+          enabled: true,
+          groupId: g.id,
+          trimMs: (screen as any).syncOffsetMs ?? 0,
+        };
+      })(),
       playlists: dynamicPlaylists
     };
 
@@ -3396,7 +3479,21 @@ export class ScreensController {
   async reportRenderProof(
     @Param('id') id: string,
     @Req() req: ExpressReq,
-    @Body() body: { frames?: number; hash?: string; contentKind?: string },
+    @Body() body: {
+      frames?: number;
+      hash?: string;
+      contentKind?: string;
+      // 2026-07-28 — frame-locked sync telemetry (optional; only sent
+      // while the screen's group has syncMode='locked'). Stored on
+      // Screen.lastSyncReport for the dashboard's "IN SYNC ±Xms" badge.
+      sync?: {
+        locked?: boolean;
+        errMs?: number | null;
+        clockUncertaintyMs?: number | null;
+        rttMs?: number | null;
+        contentSig?: string | null;
+      };
+    },
   ) {
     const authResult = verifyDeviceForScreen(req, id);
     if (!authResult.ok) {
@@ -3418,6 +3515,23 @@ export class ScreensController {
         : null;
     const hash = body?.hash ? String(body.hash).slice(0, 128) : null;
 
+    // Frame-locked sync telemetry — sanitize with the same hostile-device
+    // posture as frames/hash: every number clamped, every string sliced,
+    // whole object rebuilt (never store the raw client payload).
+    let syncReport: Record<string, unknown> | null = null;
+    if (body?.sync && typeof body.sync === 'object') {
+      const s: any = body.sync;
+      const num = (v: unknown, lo: number, hi: number): number | null =>
+        typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : null;
+      syncReport = {
+        locked: s.locked === true,
+        errMs: num(s.errMs, 0, 60_000),
+        clockUncertaintyMs: num(s.clockUncertaintyMs, 0, 600_000),
+        rttMs: num(s.rttMs, 0, 60_000),
+        contentSig: s.contentSig ? String(s.contentSig).slice(0, 32) : null,
+      };
+    }
+
     await withDbRetry(() =>
       this.prisma.client.screen.update({
       where: { id },
@@ -3425,6 +3539,7 @@ export class ScreensController {
         lastRenderedAt: new Date(),
         ...(frames != null ? { lastRenderedFrames: frames } : {}),
         ...(hash != null ? { lastRenderedHash: hash } : {}),
+        ...(syncReport ? { lastSyncReport: syncReport, lastSyncReportAt: new Date() } : {}),
       } as any,
       }),
     );

@@ -14,6 +14,10 @@ import { TouchOverlay, TouchNavOverlay } from '@/components/player/TouchOverlay'
 // the `message` prop.
 import { EmergencyOverlay, type EmergencyMessageView } from '@/components/player/EmergencyOverlay';
 import { reconcileStrandedEmergency } from './emergencyReconcile';
+// 2026-07-28 — frame-locked multi-screen sync (docs/research/2026-07-28-multiscreen-sync/).
+// Pure modules (no React/DOM) so the math is unit-tested without mounting this page.
+import { SyncClock } from './sync/syncClock';
+import { resolveTimeline, advanceCounterTo, videoTargetMs, type TimelinePosition } from './sync/syncTimeline';
 // Sprint 13 — Colorado Time Systems (CTS) System 6/Gen 6 scoreboard
 // bridge. Mounts on the player page when the URL carries `?cts=1` (so
 // regular signage screens never see the bridge UI). The bridge reads
@@ -726,6 +730,163 @@ function ScaledWebFrame({
   );
 }
 
+// Frame-locked sync — compact stable hash of the playlist signature so the
+// dashboard can compare "are these group screens even showing the same
+// content?" without shipping the (long) per-item signature. djb2/hex.
+function hashContentSig(sig: string): string {
+  let h = 5381;
+  for (let i = 0; i < sig.length; i++) {
+    h = ((h << 5) + h + sig.charCodeAt(i)) | 0;
+  }
+  return (h >>> 0).toString(16);
+}
+
+// ─── Frame-locked sync diagnostics HUD (?synchud=1) ──────────────────────
+// Physical verification tool: point a phone camera (or the webcam rig) at
+// two screens showing this HUD — the sweep bar + second-flash make skew
+// directly filmable, and the readouts show clock quality live. Greg-style
+// proof, per Standard Audit Surface §21.
+//
+// Taurus-safe by construction: longhand absolute positioning (never the
+// `inset` shorthand — CLAUDE.md #10), solid rgba background (no
+// backdrop-filter on Chromium 83), margins instead of flex `gap`.
+// The sweep/flash are driven via refs from a rAF loop (no React re-render
+// per frame); numeric readouts refresh on a 250ms interval.
+function SyncHud({
+  clockRef,
+  posRef,
+  activeRef,
+  cfgRef,
+  statsRef,
+}: {
+  clockRef: { current: SyncClock | null };
+  posRef: { current: TimelinePosition | null };
+  activeRef: { current: boolean };
+  cfgRef: { current: { enabled: boolean; trimMs: number; groupId: string | null } };
+  statsRef: { current: { lastFlipErrMs: number | null; flipErrEwmaMs: number | null } };
+}) {
+  const sweepRef = useRef<HTMLDivElement>(null);
+  const flashRef = useRef<HTMLDivElement>(null);
+  const [text, setText] = useState('sync: acquiring…');
+
+  useEffect(() => {
+    let raf = 0;
+    let stopped = false;
+    const tick = () => {
+      if (stopped) return;
+      raf = requestAnimationFrame(tick);
+      const clock = clockRef.current;
+      const mono = performance.now();
+      const now = clock ? clock.now(mono) : null;
+      const t = now !== null ? now + cfgRef.current.trimMs : null;
+      if (sweepRef.current && t !== null) {
+        const frac = ((t % 1000) + 1000) % 1000 / 1000;
+        sweepRef.current.style.left = `${(frac * 100).toFixed(2)}%`;
+      }
+      if (flashRef.current && t !== null) {
+        const inFlash = ((t % 1000) + 1000) % 1000 < 120;
+        flashRef.current.style.opacity = inFlash ? '1' : '0';
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    const readout = setInterval(() => {
+      const clock = clockRef.current;
+      const mono = performance.now();
+      const s = clock?.stats(mono);
+      const pos = posRef.current;
+      const st = statsRef.current;
+      const state = !cfgRef.current.enabled
+        ? 'OFF'
+        : activeRef.current
+          ? 'LOCKED'
+          : 'ACQUIRING';
+      const unc = s && Number.isFinite(s.uncertaintyMs) ? `±${s.uncertaintyMs.toFixed(1)}ms` : '±∞';
+      const off = s && s.offsetMs !== null ? `${s.offsetMs >= 0 ? '+' : ''}${s.offsetMs.toFixed(1)}ms` : '—';
+      const rtt = s && s.rttMs !== null ? `${Math.round(s.rttMs)}ms` : '—';
+      const flip = st.flipErrEwmaMs !== null ? `${st.flipErrEwmaMs.toFixed(1)}ms` : '—';
+      const idx = pos ? `${pos.index}@${Math.round(pos.offsetInItemMs)}ms` : '—';
+      setText(
+        `sync ${state} · clock ${off} ${unc} · rtt ${rtt} · slide ${idx} · flip ${flip} · trim ${cfgRef.current.trimMs}ms · n=${s?.sampleCount ?? 0}`,
+      );
+    }, 250);
+    return () => {
+      stopped = true;
+      cancelAnimationFrame(raf);
+      clearInterval(readout);
+    };
+    // Refs are stable identities.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 9500,
+        pointerEvents: 'none',
+      }}
+    >
+      {/* Second-flash block — big enough to read on a phone video frame */}
+      <div
+        ref={flashRef}
+        style={{
+          position: 'absolute',
+          top: 24,
+          right: 24,
+          width: 96,
+          height: 96,
+          background: '#ffffff',
+          border: '4px solid #000000',
+          borderRadius: 12,
+          opacity: 0,
+        }}
+      />
+      {/* Sweep track: marker crosses the full width once per synced second */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 14,
+          background: 'rgba(0,0,0,0.75)',
+        }}
+      >
+        <div
+          ref={sweepRef}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: '0%',
+            width: 4,
+            height: 14,
+            background: '#22d3ee',
+          }}
+        />
+      </div>
+      <div
+        style={{
+          position: 'absolute',
+          top: 14,
+          left: 0,
+          padding: '6px 10px',
+          background: 'rgba(0,0,0,0.75)',
+          color: '#e2e8f0',
+          fontFamily: 'ui-monospace, Menlo, monospace',
+          fontSize: 13,
+          lineHeight: '18px',
+          borderBottomRightRadius: 8,
+        }}
+      >
+        {text}
+      </div>
+    </div>
+  );
+}
+
 function PlayerVideoSlide({
   src,
   isActive,
@@ -736,6 +897,9 @@ function PlayerVideoSlide({
   onPlaying,
   videoKey,
   muted,
+  syncItemIndex,
+  syncActiveRef,
+  syncPosRef,
 }: {
   src: string;
   isActive: boolean;
@@ -743,6 +907,17 @@ function PlayerVideoSlide({
   isSoloPlaylist: boolean;
   onEnded: () => void;
   onError: () => void;
+  /**
+   * Frame-locked sync (2026-07-28) — when these are provided AND the
+   * conductor is locked AND this slide is the timeline's current item,
+   * a servo locks the media clock to the shared timeline slot
+   * (docs/research/2026-07-28-multiscreen-sync/00-DESIGN.md §6).
+   * Passed as refs (stable identities) so servo updates never re-render
+   * the slide. All optional — absent = exact legacy behavior.
+   */
+  syncItemIndex?: number;
+  syncActiveRef?: { current: boolean };
+  syncPosRef?: { current: TimelinePosition | null };
   /** 2026-07-01 — fires on the first real decoded frame. Lets the parent
    *  clear its "every item has failed" tracker on genuine playback, not
    *  just on mount (a video can mount fine and still fail to decode). */
@@ -773,7 +948,17 @@ function PlayerVideoSlide({
       // Reset to start when becoming active so a previous play that
       // ended at duration doesn't replay from the end. For initial
       // mount, currentTime is already 0 — this is a no-op.
-      try { v.currentTime = 0; } catch { /* some browsers reject if not ready */ }
+      // Frame-locked sync: a late joiner activates MID-slot — seek to the
+      // shared timeline offset instead of 0 so it lands in phase at once.
+      try {
+        let startMs = 0;
+        const pos = syncPosRef?.current;
+        if (syncActiveRef?.current && pos && pos.index === syncItemIndex) {
+          const fileDurMs = Number.isFinite(v.duration) && v.duration > 0 ? v.duration * 1000 : null;
+          startMs = videoTargetMs(pos.offsetInItemMs, fileDurMs);
+        }
+        v.currentTime = startMs / 1000;
+      } catch { /* some browsers reject if not ready */ }
 
       // 2026-05-05 — explicitly set `muted` as a property (in addition
       // to the JSX prop) so the autoplay-fallback below can flip it
@@ -841,6 +1026,83 @@ function PlayerVideoSlide({
       document.removeEventListener('touchstart', tryUnmute);
     };
   }, [isMuted]);
+
+  // ─── Frame-locked sync servo (2026-07-28) ──────────────────────────
+  // Locks the media clock to the shared timeline slot. Measured browser
+  // prior art (W3C timing / MediaSync) holds ±7ms with exactly this
+  // seek + playbackRate-servo pattern — see research doc 02 §C2/§D.
+  //
+  //   |err| > 400ms → precise seek (+80ms lead for seek latency)
+  //   |err| > 12ms  → playbackRate chase, capped ±4% (invisible; muted
+  //                   signage video makes pitch moot anyway)
+  //   else          → rate 1.0 (deadband)
+  //
+  // Measurement uses requestVideoFrameCallback where available (glass-
+  // level mediaTime; shipped in Chromium 83 = the Taurus floor, but
+  // feature-detected because WebView builds vary) with a currentTime
+  // fallback. 250ms cadence — research: hold corrections ≥250ms to
+  // avoid servo hunting. If the file is shorter than the slot the
+  // target loops (offset mod file length) and error takes the shortest
+  // path around the loop, so both screens loop in phase.
+  useEffect(() => {
+    if (!isActive || syncItemIndex === undefined || !syncActiveRef || !syncPosRef) return;
+    const v = videoRef.current;
+    if (!v) return;
+    let stopped = false;
+    let lastMediaTimeMs: number | null = null;
+    let rvfcId: number | null = null;
+    const hasRvfc = typeof (v as any).requestVideoFrameCallback === 'function';
+    if (hasRvfc) {
+      const onFrame = (_now: number, meta: any) => {
+        if (stopped) return;
+        if (meta && typeof meta.mediaTime === 'number') lastMediaTimeMs = meta.mediaTime * 1000;
+        rvfcId = (v as any).requestVideoFrameCallback(onFrame);
+      };
+      rvfcId = (v as any).requestVideoFrameCallback(onFrame);
+    }
+    const servo = setInterval(() => {
+      if (stopped) return;
+      const pos = syncPosRef.current;
+      if (!syncActiveRef.current || !pos || pos.index !== syncItemIndex) {
+        if (v.playbackRate !== 1) v.playbackRate = 1;
+        return;
+      }
+      const fileDurMs = Number.isFinite(v.duration) && v.duration > 0 ? v.duration * 1000 : null;
+      const target = videoTargetMs(pos.offsetInItemMs, fileDurMs);
+      const actual = lastMediaTimeMs !== null ? lastMediaTimeMs : v.currentTime * 1000;
+      lastMediaTimeMs = null; // consumed — next presented frame refreshes it
+      let err = target - actual;
+      if (fileDurMs && Math.abs(err) > fileDurMs / 2) {
+        // Looping slot: near the wrap the raw difference looks like ±file
+        // length — take the shortest path around the loop instead.
+        err = err > 0 ? err - fileDurMs : err + fileDurMs;
+      }
+      if (!Number.isFinite(err)) return;
+      if (Math.abs(err) > 400) {
+        try {
+          let seekMs = target + 80; // static seek-latency lead
+          if (fileDurMs && seekMs >= fileDurMs) seekMs -= fileDurMs;
+          v.currentTime = Math.max(0, seekMs) / 1000;
+        } catch { /* not seekable yet — next tick retries */ }
+        if (v.playbackRate !== 1) v.playbackRate = 1;
+      } else if (Math.abs(err) > 12) {
+        v.playbackRate = 1 + Math.max(-0.04, Math.min(0.04, err / 2000));
+      } else if (v.playbackRate !== 1) {
+        v.playbackRate = 1;
+      }
+    }, 250);
+    return () => {
+      stopped = true;
+      clearInterval(servo);
+      if (hasRvfc && rvfcId !== null) {
+        try { (v as any).cancelVideoFrameCallback(rvfcId); } catch { /* noop */ }
+      }
+      try { v.playbackRate = 1; } catch { /* noop */ }
+    };
+    // syncActiveRef/syncPosRef are stable ref objects; syncItemIndex is
+    // constant per mounted slide.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, syncItemIndex]);
 
   // 2026-05-13 — MIME-coercion for iPhone .mov files.
   //
@@ -2244,6 +2506,43 @@ function PlayerPage() {
   // by ADDING to local Date.now() before comparing.
   const serverClockOffsetRef = useRef<number>(0);
 
+  // ─── Frame-locked multi-screen sync (2026-07-28) ─────────────────────
+  // docs/research/2026-07-28-multiscreen-sync/00-DESIGN.md. All of this is
+  // inert until the manifest's `sync.enabled` flips true (ScreenGroup.
+  // syncMode === 'locked') — zero behavior change for the existing fleet.
+  //
+  // syncClockRef      — Cristian/NTP-style shared-clock estimator fed by
+  //                     WS TIME_PONG samples (+ HTTP /realtime/time when
+  //                     WS is down). performance.now() timebase.
+  // syncConfigRef     — parsed from the manifest sync block every poll.
+  // syncActiveRef     — true only while (enabled && clock locked); the
+  //                     rAF conductor owns advancement then and the
+  //                     legacy heartbeat/onEnded advance paths stand down.
+  // syncPosRef        — the conductor's latest resolved timeline position
+  //                     (video servo + HUD + telemetry read it).
+  // syncStatsRef      — flip-error EWMA etc. for telemetry/HUD.
+  const syncClockRef = useRef<SyncClock | null>(null);
+  const syncConfigRef = useRef<{ enabled: boolean; trimMs: number; groupId: string | null }>({
+    enabled: false, trimMs: 0, groupId: null,
+  });
+  const syncActiveRef = useRef<boolean>(false);
+  const syncPosRef = useRef<TimelinePosition | null>(null);
+  const syncStatsRef = useRef<{ lastFlipErrMs: number | null; flipErrEwmaMs: number | null }>({
+    lastFlipErrMs: null, flipErrEwmaMs: null,
+  });
+  const syncPingStateRef = useRef<{ burstRemaining: number; lastPingAtMono: number }>({
+    burstRemaining: 0, lastPingAtMono: 0,
+  });
+  const [syncEnabled, setSyncEnabled] = useState(false);
+  // Diagnostics HUD (?synchud=1) — big beat-bar + clock/uncertainty
+  // readouts, filmable across two screens for physical verification.
+  const [syncHudOn] = useState<boolean>(() => {
+    try {
+      return typeof window !== 'undefined' &&
+        new URLSearchParams(window.location.search).get('synchud') === '1';
+    } catch { return false; }
+  });
+
   // Connecting-phase download progress. Fed by the fetch pipeline
   // (manifest/ws stages) and by the service worker (per-asset cache
   // events). KioskSplash renders a phase-specific message + progress
@@ -2510,6 +2809,9 @@ function PlayerPage() {
     return () => clearInterval(t);
   }, [otaProgress]);
   const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
+  // Frame-locked sync — 200ms bookkeeping tick for TIME_PING sampling
+  // (no-ops unless the manifest enabled sync). Cleared with heartbeatRef.
+  const syncPingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const wsReconnectRef = useRef<NodeJS.Timeout | null>(null);
   const httpFallbackRef = useRef<NodeJS.Timeout | null>(null);
   // Sprint 11 Phase B — SSE middle-tier realtime. When WS fails to
@@ -2891,6 +3193,26 @@ function PlayerPage() {
         const tok = getDeviceToken();
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
         if (tok) headers['Authorization'] = `Bearer ${tok}`;
+        // Frame-locked sync telemetry piggybacks the existing 30s proof-of-
+        // display POST (device-authed, best-effort, coalesced server-side).
+        // Absent entirely when sync is off — the wire payload is unchanged
+        // for the whole non-sync fleet.
+        let syncReport: Record<string, unknown> | undefined;
+        if (syncConfigRef.current.enabled) {
+          const mono = performance.now();
+          const cstats = syncClockRef.current?.stats(mono);
+          syncReport = {
+            locked: syncActiveRef.current,
+            errMs: syncStatsRef.current.flipErrEwmaMs != null
+              ? Math.round(syncStatsRef.current.flipErrEwmaMs * 10) / 10
+              : null,
+            clockUncertaintyMs: cstats && Number.isFinite(cstats.uncertaintyMs)
+              ? Math.round(cstats.uncertaintyMs * 10) / 10
+              : null,
+            rttMs: cstats?.rttMs != null ? Math.round(cstats.rttMs) : null,
+            contentSig: hashContentSig(currentPlaylistSigRef.current || ''),
+          };
+        }
         await fetch(`${getApiRoot()}/api/v1/screens/${screenId}/render-proof`, {
           method: 'POST',
           headers,
@@ -2898,6 +3220,7 @@ function PlayerPage() {
             frames,
             hash: state.sig,
             contentKind: state.kind,
+            ...(syncReport ? { sync: syncReport } : {}),
           }),
         });
       } catch { /* best-effort — admin visibility, not safety-critical */ }
@@ -2906,6 +3229,50 @@ function PlayerPage() {
     const t = setInterval(post, 30_000);
     return () => clearInterval(t);
   }, [screenId]);
+
+  // ─── Frame-locked sync: HTTP clock fallback + sleep-resume recovery ──
+  // Primary sampling is TIME_PING over the WS (lower jitter). This effect
+  // covers (a) WS-blocked networks (Squid/ZScaler fleets run SSE/HTTP-only
+  // and would otherwise never lock a clock) and (b) device sleep, where
+  // performance.now() can PAUSE (crbug.com/1206450) and silently poison
+  // every pre-sleep sample — on resume we reset and re-lock from scratch.
+  // Runs only while the manifest has sync enabled; checks every 5s and
+  // only actually fetches when no WS sample landed in the last 25s.
+  useEffect(() => {
+    if (!syncEnabled) return;
+    let cancelled = false;
+    const sampleHttp = async () => {
+      try {
+        if (!syncClockRef.current) syncClockRef.current = new SyncClock();
+        const clock = syncClockRef.current;
+        const mono0 = performance.now();
+        const res = await fetch(`${getApiRoot()}/api/v1/realtime/time`, { cache: 'no-store' });
+        const mono1 = performance.now();
+        if (!res.ok || cancelled) return;
+        const j = await res.json().catch(() => null);
+        if (j && typeof j.serverNow === 'number') clock.addSample(j.serverNow, mono0, mono1);
+      } catch { /* offline — clock coasts on its drift model; telemetry flags staleness */ }
+    };
+    const t = setInterval(() => {
+      const stats = syncClockRef.current?.stats(performance.now());
+      const wsFeeding = !!stats && stats.lastSampleAgeMs !== null && stats.lastSampleAgeMs < 25_000;
+      if (!wsFeeding) sampleHttp();
+    }, 5_000);
+    const onVis = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        syncClockRef.current?.reset();
+        syncPingStateRef.current.burstRemaining = 10;
+        sampleHttp();
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    sampleHttp(); // immediate first fix — don't wait 5s to start locking
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [syncEnabled]);
 
   // Refresh emergency-asset pre-cache whenever we know the screenId. This
   // runs alongside (not instead of) the periodic manifest sync — the
@@ -3339,6 +3706,29 @@ function PlayerPage() {
           ? (cpRaw as 'cts-gen6' | 'cts-gen7' | 'cts-wttc' | 'daktronics-allsport')
           : undefined;
         if (cp !== manifestConsoleProfile) setManifestConsoleProfile(cp);
+      }
+      // 2026-07-28 — frame-locked multi-screen sync config. Allow-list
+      // validated like wiring/consoleProfile above. Parsed only when the
+      // manifest carries the block (older cached SW payloads / emergency
+      // branch omit it → keep current config, defensive default = off).
+      // trimMs is the per-screen display-latency trim, clamped ±2000ms.
+      if (manifest.sync && typeof manifest.sync === 'object') {
+        const sb: any = manifest.sync;
+        const enabled = sb.enabled === true;
+        const trimMs = enabled && typeof sb.trimMs === 'number' && Number.isFinite(sb.trimMs)
+          ? Math.max(-2000, Math.min(2000, Math.round(sb.trimMs)))
+          : 0;
+        const groupId = enabled && typeof sb.groupId === 'string' ? sb.groupId : null;
+        const wasEnabled = syncConfigRef.current.enabled;
+        syncConfigRef.current = { enabled, trimMs, groupId };
+        if (enabled && !wasEnabled) {
+          // Just turned on (operator flipped the group toggle) — start
+          // locking immediately rather than waiting for a reconnect.
+          if (!syncClockRef.current) syncClockRef.current = new SyncClock();
+          syncPingStateRef.current.burstRemaining = 10;
+          console.log('[Player Sync] enabled by manifest — locking clock (group', groupId, ', trim', trimMs, 'ms)');
+        }
+        setSyncEnabled(enabled);
       }
       if (cw && ch && typeof document !== 'undefined') {
         try {
@@ -4086,6 +4476,7 @@ function PlayerPage() {
 
     const clearTimers = () => {
       if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = null; }
+      if (syncPingTimerRef.current) { clearInterval(syncPingTimerRef.current); syncPingTimerRef.current = null; }
       if (wsReconnectRef.current) { clearTimeout(wsReconnectRef.current); wsReconnectRef.current = null; }
     };
 
@@ -4274,6 +4665,27 @@ function PlayerPage() {
               }
             }
           }, 15_000);
+          // Frame-locked sync — TIME_PING sampler. A cheap 200ms
+          // bookkeeping tick: sends a clock-sync ping only while the
+          // manifest has sync enabled — burst of 10 at ~200ms spacing
+          // after AUTH_OK (locks the clock in ~2s), then 1 ping / 20s
+          // steady-state (crystal drift is ~0.4ms per 20s — see
+          // docs/research/2026-07-28-multiscreen-sync/00-DESIGN.md §4).
+          // Disabled screens pay one ref-read per tick and send nothing.
+          if (syncPingTimerRef.current) clearInterval(syncPingTimerRef.current);
+          syncPingTimerRef.current = setInterval(() => {
+            if (!syncConfigRef.current.enabled) return;
+            if (ws.readyState !== WebSocket.OPEN) return;
+            const st = syncPingStateRef.current;
+            const mono = performance.now();
+            const spacing = st.burstRemaining > 0 ? 180 : 20_000;
+            if (mono - st.lastPingAtMono < spacing) return;
+            if (st.burstRemaining > 0) st.burstRemaining--;
+            st.lastPingAtMono = mono;
+            try {
+              ws.send(JSON.stringify({ event: 'TIME_PING', data: { t0: mono } }));
+            } catch { /* socket raced closed — reconnect path handles it */ }
+          }, 200);
         };
 
         ws.onmessage = (event) => {
@@ -4304,6 +4716,22 @@ function PlayerPage() {
               if (Math.abs(serverClockOffsetRef.current) > 5000) {
                 console.warn('[Player WS] Large clock skew detected — offset=', serverClockOffsetRef.current, 'ms');
               }
+              // Frame-locked sync: fresh socket → fresh clock burst
+              // (the 200ms sampler in onopen drains this counter).
+              syncPingStateRef.current.burstRemaining = 10;
+            }
+
+            // Frame-locked sync — TIME_PONG carries our echoed t0
+            // (performance.now() at send) + the server's Redis-aligned
+            // serverNow. Feed the Cristian estimator and stop: it's a
+            // control reply like AUTH_OK, nothing else consumes it.
+            if (msg.type === 'TIME_PONG') {
+              const p: any = (msg as any)?.payload ?? (msg as any)?.data ?? {};
+              if (typeof p.serverNow === 'number' && typeof p.t0 === 'number') {
+                if (!syncClockRef.current) syncClockRef.current = new SyncClock();
+                syncClockRef.current.addSample(p.serverNow, p.t0, performance.now());
+              }
+              return;
             }
 
             // ─── Audit fix #2: client-side replay + freshness gate ───
@@ -4804,6 +5232,13 @@ function PlayerPage() {
     // tick is recovered by the next one. Reads sortedItemsRef +
     // currentIndexRef so it never goes stale.
     const heartbeat = setInterval(() => {
+      // Frame-locked sync: while the rAF conductor is locked and driving,
+      // the legacy free-run advance stands down entirely (the conductor
+      // also carries the loop-seam bundle-reload check). If the clock
+      // ever unlocks (uncertainty blows out), syncActiveRef drops false
+      // and this heartbeat resumes seamlessly — screens degrade to
+      // today's free-run behavior rather than freezing.
+      if (syncActiveRef.current) return;
       const sorted = sortedItemsRef.current;
       if (!sorted.length) return;
       const idx = currentIndexRef.current % sorted.length;
@@ -4882,6 +5317,126 @@ function PlayerPage() {
     return () => clearInterval(heartbeat);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, playlistItemsSig]);
+
+  // ═══ Frame-locked sync conductor (2026-07-28) ══════════════════════════
+  // docs/research/2026-07-28-multiscreen-sync/00-DESIGN.md §3+§5.
+  //
+  // THE INVARIANT: what is on screen is a pure function of (playlist,
+  // syncedNow). Every screen in the group evaluates resolveTimeline()
+  // against the same shared clock and lands on the same slide within a
+  // frame — no GO commands, no leader, reboots rejoin in phase.
+  //
+  // A rAF loop (not setInterval) so the flip decision runs on the frame
+  // containing the boundary: flip precision ≤1 frame. Every tick:
+  //   1. clock unlocked (uncertainty > gate)? → stand down; the legacy
+  //      heartbeat keeps free-running exactly as today. Self-healing in
+  //      both directions.
+  //   2. resolve the timeline at syncedNow (+ per-screen trim). A small
+  //      FLIP_LEAD makes the React commit land ON the boundary frame
+  //      rather than one after it.
+  //   3. index changed? → advance the monotonic counter congruently
+  //      (advanceCounterTo — consumers all read % N, and the +1 preload
+  //      contract keeps working). Loop-seam bundle reload is preserved
+  //      from the legacy path.
+  //
+  // A stalled/frozen tab self-corrects on the next frame that runs — the
+  // conductor can jump multiple items forward (or effectively "rewind" by
+  // forward-wrap), which the legacy elapsed-timer could never do.
+  useEffect(() => {
+    if (phase !== 'playing' || !syncEnabled) {
+      syncActiveRef.current = false;
+      return;
+    }
+    const SYNC_MAX_UNCERTAINTY_MS = 80;
+    const SYNC_FLIP_LEAD_MS = 8; // ~half a 60Hz frame
+    let raf = 0;
+    let stopped = false;
+    const tick = () => {
+      if (stopped) return;
+      raf = requestAnimationFrame(tick);
+      const clock = syncClockRef.current;
+      const sorted = sortedItemsRef.current;
+      if (!clock || !sorted.length) {
+        syncActiveRef.current = false;
+        return;
+      }
+      const mono = performance.now();
+      if (!clock.isLocked(mono, SYNC_MAX_UNCERTAINTY_MS)) {
+        syncActiveRef.current = false;
+        return;
+      }
+      const serverNow = clock.now(mono);
+      if (serverNow === null) {
+        syncActiveRef.current = false;
+        return;
+      }
+      const t = serverNow + syncConfigRef.current.trimMs;
+      const posNow = resolveTimeline(sorted, t);
+      if (!posNow) {
+        syncActiveRef.current = false;
+        return;
+      }
+      syncActiveRef.current = true;
+      syncPosRef.current = posNow; // video servo + HUD + telemetry read this
+      // Support/test observability: current sync state on window (mutated
+      // in place — no allocation churn). The Playwright two-screen harness
+      // and field debugging read this; it is NOT a public API.
+      try {
+        const dbg = ((window as any).__eduSyncState ||= {});
+        dbg.locked = true;
+        dbg.idx = posNow.index;
+        dbg.serverNow = t;
+        dbg.offsetInItemMs = posNow.offsetInItemMs;
+      } catch { /* SSR-safe no-op */ }
+      const posFlip = resolveTimeline(sorted, t + SYNC_FLIP_LEAD_MS)!;
+      const cur = currentIndexRef.current;
+      const next = advanceCounterTo(cur, posFlip.index, sorted.length);
+      if (next === cur) return;
+      // Loop-seam opportunistic bundle reload — parity with the legacy
+      // heartbeat's check: only at the wrap back to item 0, only with a
+      // pending bundle, never during an emergency, floor-limited.
+      const wrapped = (cur % sorted.length) + (next - cur) >= sorted.length;
+      if (
+        wrapped &&
+        bundleDriftSinceRef.current &&
+        !readCachedEmergency() &&
+        (!lastBundleReloadAtRef.current ||
+          Date.now() - lastBundleReloadAtRef.current >= MIN_BUNDLE_RELOAD_GAP_MS)
+      ) {
+        console.log('[Player Sync] loop seam with new bundle pending — reloading (rejoins in phase)');
+        lastBundleReloadAtRef.current = Date.now();
+        hardCacheBustingReload();
+        return;
+      }
+      // Flip-error telemetry: offset into the new item at decision time,
+      // minus the deliberate lead ≈ how late this flip is vs the shared
+      // boundary. Only meaningful for single-step advances.
+      if (next - cur === 1) {
+        const err = Math.max(0, posFlip.offsetInItemMs - SYNC_FLIP_LEAD_MS);
+        const s = syncStatsRef.current;
+        s.lastFlipErrMs = err;
+        s.flipErrEwmaMs = s.flipErrEwmaMs === null ? err : s.flipErrEwmaMs * 0.7 + err * 0.3;
+      }
+      // Flip log for the two-screen Playwright harness + field debugging:
+      // server-time-stamped flips let two screens' logs be compared
+      // directly (both clocks converge on the same server clock, so
+      // |tA - tB| for the same boundary IS the sync skew, independent of
+      // when an observer happens to sample either page). Bounded to 40.
+      try {
+        const flips: any[] = ((window as any).__eduSyncFlips ||= []);
+        flips.push({ toIdx: posFlip.index, serverT: t, itemStartT: t + SYNC_FLIP_LEAD_MS - posFlip.offsetInItemMs });
+        if (flips.length > 40) flips.splice(0, flips.length - 40);
+      } catch { /* no-op */ }
+      setCurrentIndex(next);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      stopped = true;
+      cancelAnimationFrame(raf);
+      syncActiveRef.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, playlistItemsSig, syncEnabled]);
 
   // ═══════════════════════════════════════════════════════════════
   // ALL HOOKS MUST BE CALLED BEFORE ANY EARLY RETURN (Rules of Hooks).
@@ -6641,13 +7196,24 @@ function PlayerPage() {
                   // WebView already has mediaPlaybackRequiresUserGesture
                   // =false so unmuted autoplay is allowed on the kiosk.
                   muted={(item as any).muted}
-                  onEnded={() => setCurrentIndex(prev => prev + 1)}
+                  // Frame-locked sync: the conductor owns advancement.
+                  // onEnded must not shift phase on one screen (a video
+                  // ending early holds its slot — deterministic), and an
+                  // error must not skip ahead either (the slot is held so
+                  // the whole group re-converges at the next boundary;
+                  // the failure still feeds the all-failed tracker).
+                  onEnded={() => {
+                    if (!syncActiveRef.current) setCurrentIndex(prev => prev + 1);
+                  }}
                   onError={() => {
                     console.warn('[Player] video error, skipping:', resUrl);
                     markItemFailed(item.id);
-                    setCurrentIndex(prev => prev + 1);
+                    if (!syncActiveRef.current) setCurrentIndex(prev => prev + 1);
                   }}
                   onPlaying={markItemSucceeded}
+                  syncItemIndex={index}
+                  syncActiveRef={syncActiveRef}
+                  syncPosRef={syncPosRef}
                 />
               );
             }
@@ -7798,6 +8364,19 @@ function PlayerPage() {
           <Monitor className="w-3.5 h-3.5" />
           Preview Mode
         </div>
+      )}
+
+      {/* Frame-locked sync diagnostics HUD — opt-in via ?synchud=1. Film
+          two screens side-by-side: the sweep bar + second flash make skew
+          directly visible. */}
+      {syncHudOn && (
+        <SyncHud
+          clockRef={syncClockRef}
+          posRef={syncPosRef}
+          activeRef={syncActiveRef}
+          cfgRef={syncConfigRef}
+          statsRef={syncStatsRef}
+        />
       )}
 
       {/* Overlay */}

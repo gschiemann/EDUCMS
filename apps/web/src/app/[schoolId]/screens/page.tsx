@@ -1,8 +1,8 @@
 "use client";
 
-import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check, AlertCircle } from 'lucide-react';
+import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check, AlertCircle, Radio } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useUpdateScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout, useSetScreenOrientation, useSetScreenCanvas, useHardwareCatalog, useSetScreenHardwareModel, useSetScreenConsoleProfile } from '@/hooks/use-api';
+import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useUpdateScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout, useSetScreenOrientation, useSetScreenCanvas, useHardwareCatalog, useSetScreenHardwareModel, useSetScreenConsoleProfile, useSetScreenSyncOffset } from '@/hooks/use-api';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
@@ -363,7 +363,7 @@ function CanaryRolloutTile({ canary }: { canary: { percent: number; setAt: strin
 // /api/v1/screens/status/<fp> to see this. Now it's one click in the
 // gear popover next to the screen row. No new endpoint — purely a
 // presentation enhancement.
-function ScreenDiagnostics({ screen }: { screen: any }) {
+function ScreenDiagnostics({ screen, groupSyncLocked }: { screen: any; groupSyncLocked?: boolean }) {
   const t = useTranslations();
   // 2026-05-24 — per-screen orientation lock control. Lives inside the
   // diagnostics drawer (right next to Resolution) so operators with a
@@ -371,6 +371,9 @@ function ScreenDiagnostics({ screen }: { screen: any }) {
   // one click without climbing a ladder.
   const setOrientation = useSetScreenOrientation();
   const setCanvas = useSetScreenCanvas();
+  // 2026-07-28 — frame-locked sync latency trim (rendered only when the
+  // parent group has syncMode='locked'; see groupSyncLocked prop).
+  const setSyncOffset = useSetScreenSyncOffset();
   const currentOrientation: string = screen?.orientation || 'LANDSCAPE';
   // 2026-05-26 — LED canvas (N-panel daisy-chain). Operator clicks a
   // panel count; we resolve to canvasW = 320 × N, canvasH = 1080.
@@ -518,6 +521,53 @@ function ScreenDiagnostics({ screen }: { screen: any }) {
             </span>
           </div>
         </div>
+        {/* 2026-07-28 — frame-locked sync: per-screen latency trim. Only
+            rendered when this screen's group has sync ON. Mixed display
+            models add different FIXED pipeline delays (TV motion smoothing
+            alone is 30-80ms) that no clock can see — this is the AVR
+            lip-sync knob: point a phone camera at both screens, nudge
+            until the flips align. Positive = this screen flips EARLIER
+            (compensates a slow display). Same stopPropagation +
+            no-disabled-on-pending patterns as the canvas buttons above. */}
+        {groupSyncLocked && (
+          <div className="col-span-2">
+            <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">Sync trim</div>
+            <div className="flex items-center flex-wrap gap-1">
+              {[-25, -5, +5, +25].map((step) => (
+                <button
+                  key={step}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const cur = typeof screen?.syncOffsetMs === 'number' ? screen.syncOffsetMs : 0;
+                    const next = Math.max(-2000, Math.min(2000, cur + step));
+                    if (next !== cur) setSyncOffset.mutate({ id: screen.id, syncOffsetMs: next });
+                  }}
+                  className="px-2 py-0.5 rounded text-[10px] font-bold border bg-white text-slate-600 border-slate-200 hover:bg-indigo-50 hover:border-indigo-200 transition-colors"
+                  title={`${step > 0 ? 'Flip this screen ' + step + 'ms earlier (display is slow)' : 'Flip this screen ' + -step + 'ms later (display is fast)'}`}
+                >
+                  {step > 0 ? `+${step}` : step}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if ((screen?.syncOffsetMs ?? 0) !== 0) setSyncOffset.mutate({ id: screen.id, syncOffsetMs: null });
+                }}
+                className="px-2 py-0.5 rounded text-[10px] font-bold border bg-white text-slate-500 border-slate-200 hover:bg-slate-50 transition-colors"
+                title="Clear the trim back to 0ms"
+              >
+                Reset
+              </button>
+              <span className="text-[10px] text-slate-400 ml-1 font-mono">
+                {(screen?.syncOffsetMs ?? 0)}ms
+                {setSyncOffset.isPending && ' · saving…'}
+                {setSyncOffset.isError && ' · error'}
+              </span>
+            </div>
+          </div>
+        )}
         {/* 2026-06-26 — Removed the "Image fit" (Fit/Fill/Stretch) control.
             Operator: don't add another setting to the screen menu — the
             player auto-fits (object-fit:fill / stretch) every image; a
@@ -852,6 +902,7 @@ function ScreenSettingsMenu({
   onRefreshWeb,
   refreshWebPending,
   previewHref,
+  groupSyncLocked,
 }: {
   screen: any;
   pushState: { at: number; priorVersion: string | null } | undefined;
@@ -860,6 +911,8 @@ function ScreenSettingsMenu({
   onRefreshWeb: () => void;
   refreshWebPending: boolean;
   previewHref: string;
+  /** 2026-07-28 — parent group has frame-locked sync ON (shows the trim UI). */
+  groupSyncLocked?: boolean;
 }) {
   const t = useTranslations();
   const [open, setOpen] = useState(false);
@@ -1261,7 +1314,7 @@ function ScreenSettingsMenu({
               the existing settings popover so admins don't have to chase
               info across the row chrome and dev tools. No new endpoint —
               all fields are already on the screen payload. */}
-          <ScreenDiagnostics screen={screen} />
+          <ScreenDiagnostics screen={screen} groupSyncLocked={groupSyncLocked} />
 
       {/* Footer placeholder — leaves room for restart / cache /
           orientation / brightness settings as we build them. */}
@@ -1866,6 +1919,25 @@ export default function ScreensPage() {
                     </div>
                   </div>
                   <div className="flex gap-2.5">
+                    {/* 2026-07-28 — frame-locked multi-screen sync toggle.
+                        One button, no sub-settings: every screen in the
+                        group plays the shared schedule on a shared clock,
+                        flips landing within a frame of each other. Screens
+                        pick the change up on their next manifest poll
+                        (~10s), then lock in ~2s. */}
+                    <button
+                      onClick={() => updateGroup.mutate({ id: group.id, syncMode: group.syncMode === 'locked' ? 'off' : 'locked' })}
+                      className={`px-4 py-2 transition-colors text-xs font-bold rounded-xl flex items-center gap-1.5 ${
+                        group.syncMode === 'locked'
+                          ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-[0_4px_12px_rgb(99,102,241,0.35)]'
+                          : 'bg-white border border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600'
+                      }`}
+                      title={group.syncMode === 'locked'
+                        ? 'Frame-lock is ON — screens in this group play in perfect sync. Click to turn off.'
+                        : 'Frame-lock this group: all its screens play the same content at the same instant (flips land within a frame). Publish the same playlist to the group, then watch the SYNC badges go green.'}
+                    >
+                      <Radio className="w-4 h-4" /> {group.syncMode === 'locked' ? 'Synced' : 'Sync'}
+                    </button>
                     {/* 2026-05-26 — operator: "just add a pair screen
                         to group button in the top right of each group
                         so it makes more sense, maybe a little + sign
@@ -1984,6 +2056,52 @@ export default function ScreensPage() {
                         }`}>
                           {screen.status === 'ONLINE' ? t('screens.statusOnline') : screen.status === 'PENDING' ? t('screens.statusPending') : t('screens.statusOffline')}
                         </span>
+                        {/* 2026-07-28 — frame-locked sync health chip. Only on
+                            locked groups + online screens. Green = locked, with
+                            the honest ± (worse of flip error / clock
+                            uncertainty). Grey ≠ = this screen resolved
+                            DIFFERENT content than its group siblings (e.g. a
+                            per-screen schedule overrides the group's) — sync
+                            can't hold across different playlists. Amber =
+                            enabled but not locked yet (or telemetry stale). */}
+                        {group.syncMode === 'locked' && screen.status === 'ONLINE' && (() => {
+                          const r: any = (screen as any).lastSyncReport;
+                          const atRaw = (screen as any).lastSyncReportAt;
+                          const at = atRaw ? new Date(atRaw).getTime() : 0;
+                          const fresh = !!at && Date.now() - at < 120_000;
+                          if (fresh && r) {
+                            const sigs = (screens as any[])
+                              .map((s: any) => s?.lastSyncReport?.contentSig)
+                              .filter(Boolean) as string[];
+                            const counts = new Map<string, number>();
+                            for (const sg of sigs) counts.set(sg, (counts.get(sg) ?? 0) + 1);
+                            let modalSig: string | null = null; let best = 0;
+                            for (const [sg, c] of counts) if (c > best) { best = c; modalSig = sg; }
+                            if (r.contentSig && modalSig && sigs.length > 1 && r.contentSig !== modalSig) {
+                              return (
+                                <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-slate-100 text-slate-500"
+                                  title="This screen is playing different content than the rest of its group (a per-screen schedule likely overrides the group's). Screens can only frame-lock while showing the same playlist.">
+                                  ≠ content
+                                </span>
+                              );
+                            }
+                            if (r.locked) {
+                              const ms = Math.max(1, Math.round(Math.max(Number(r.errMs) || 0, Number(r.clockUncertaintyMs) || 0)));
+                              return (
+                                <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-600"
+                                  title={`Frame-locked. Clock agreement ±${ms}ms — flips land within a frame of the group. (flip ${r.errMs ?? '—'}ms · clock ±${r.clockUncertaintyMs ?? '—'}ms · rtt ${r.rttMs ?? '—'}ms)`}>
+                                  sync ±{ms}ms
+                                </span>
+                              );
+                            }
+                          }
+                          return (
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-amber-50 text-amber-600"
+                              title="Sync is enabled for this group; this screen is still locking its clock (takes a few seconds after boot / toggle) or hasn't reported yet. If this persists, check the screen's network.">
+                              sync…
+                            </span>
+                          );
+                        })()}
                         {/* Emergency offline-cache readiness chip — green = assets on disk,
                             amber = no report yet, red = reported empty (would fetch from network) */}
                         {(() => {
@@ -2056,6 +2174,7 @@ export default function ScreensPage() {
                           onRefreshWeb={() => handleRefreshWeb(screen.id, screen.name)}
                           refreshWebPending={refreshWeb.isPending}
                           previewHref={buildPreviewUrl(screen)}
+                          groupSyncLocked={group.syncMode === 'locked'}
                         />
                         </div>
                       </div>

@@ -3,6 +3,8 @@ import { RealtimeGateway } from './realtime.gateway';
 import { RedisService } from './redis.service';
 import { SseService } from './sse.service';
 import { SseController } from './sse.controller';
+import { TimeSyncService } from './time-sync.service';
+import { TimeController } from './time.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 
 // @Global so RedisService is available everywhere JwtAuthGuard is used
@@ -13,9 +15,9 @@ import { PrismaModule } from '../prisma/prisma.module';
 @Global()
 @Module({
   imports: [PrismaModule],
-  providers: [RealtimeGateway, RedisService, SseService],
-  controllers: [SseController],
-  exports: [RealtimeGateway, RedisService, SseService],
+  providers: [RealtimeGateway, RedisService, SseService, TimeSyncService],
+  controllers: [SseController, TimeController],
+  exports: [RealtimeGateway, RedisService, SseService, TimeSyncService],
 })
 export class RealtimeModule implements OnModuleInit {
   constructor(

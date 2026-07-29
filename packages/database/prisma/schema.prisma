@@ -660,6 +660,14 @@ model ScreenGroup {
   tenantId    String     @map("tenant_id")
   name        String
   description String?
+  // 2026-07-28 — frame-locked multi-screen sync. null/'off' = screens in
+  // this group free-run exactly as before; 'locked' = every screen in the
+  // group plays its (shared) schedule on the deterministic epoch-anchored
+  // timeline + shared server clock, so content flips land within a frame
+  // of each other. Nullable + additive: the entire fleet behaves byte-for-
+  // byte identically until an operator flips a group to 'locked'.
+  // Design: docs/research/2026-07-28-multiscreen-sync/00-DESIGN.md
+  syncMode    String?    @map("sync_mode")
   createdAt   DateTime   @default(now()) @map("created_at")
   schedules   Schedule[]
   tenant      Tenant     @relation(fields: [tenantId], references: [id])
@@ -769,6 +777,19 @@ model Screen {
   lastRenderedAt                      DateTime?    @map("last_rendered_at")
   lastRenderedFrames                  Int?         @map("last_rendered_frames")
   lastRenderedHash                    String?      @map("last_rendered_hash")
+  // ── Frame-locked sync (2026-07-28) ───────────────────────────────────
+  // syncOffsetMs — per-screen latency trim (±ms). Different display models
+  // add different FIXED pipeline latencies (LED controller scaling, TV
+  // frame interpolation); the operator nudges this like an AVR's audio-
+  // sync setting until side-by-side screens align. Null = 0.
+  // lastSyncReport — telemetry from the player while sync mode is active:
+  //   { errMs, clockUncertaintyMs, rttMs, locked, contentSig, at }
+  // (same nullable-Json pattern as lastCacheReport). Feeds the dashboard
+  // "IN SYNC ±Xms" badge. All nullable/additive — no behavior change for
+  // screens that never sync. docs/research/2026-07-28-multiscreen-sync/
+  syncOffsetMs                        Int?         @map("sync_offset_ms")
+  lastSyncReport                      Json?        @map("last_sync_report")
+  lastSyncReportAt                    DateTime?    @map("last_sync_report_at")
   // Android APK self-reported version. The player OTA worker already
   // POSTs versionName + versionCode to /player/update-check every 6h
   // and on boot; we just persist the two strings so admins can see at

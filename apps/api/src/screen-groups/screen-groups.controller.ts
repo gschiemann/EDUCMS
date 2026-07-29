@@ -82,6 +82,12 @@ export class ScreenGroupsController {
             // Adding all 3 here so they're propagated to the list.
             orientation: true,
             canvasW: true, canvasH: true, repeats: true,
+            // 2026-07-28 — frame-locked sync. Dashboard renders the
+            // per-screen "SYNC ±Xms" badge + trim input from
+            // group.screens[N] (NOT useScreens()) — same bug class as
+            // the 2026-04-27 fix above: omit these and the badge reads
+            // undefined forever while Postgres has the data.
+            syncOffsetMs: true, lastSyncReport: true, lastSyncReportAt: true,
             // lastCrashStack deliberately omitted from the list
             // endpoint — 8KB per row × N screens is too much for a
             // dashboard that re-fetches every 10s. Stack lives on the
@@ -138,9 +144,41 @@ export class ScreenGroupsController {
     });
     if (!group) throw new HttpException({ code: 'SCREEN_GROUP_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
-    return this.prisma.client.screenGroup.update({
-      where: { id },
-      data: { name: body.name, description: body.description },
+    // 2026-07-28 — frame-locked sync toggle rides the normal group update.
+    // Behavior-changing for every screen in the group, so it gets an
+    // AuditLog row (§16: audit every privileged mutation); name/description
+    // edits stay un-audited as before. Screens pick the change up on their
+    // next manifest poll (the sync block is part of the ETag-hashed payload).
+    const syncModeChanged =
+      body.syncMode !== undefined && (body.syncMode ?? null) !== ((group as any).syncMode ?? null);
+
+    return this.prisma.client.$transaction(async (tx) => {
+      const updated = await tx.screenGroup.update({
+        where: { id },
+        data: {
+          name: body.name,
+          description: body.description,
+          ...(body.syncMode !== undefined ? { syncMode: body.syncMode } : {}),
+        } as any,
+      });
+      if (syncModeChanged) {
+        // Same tx as the mutation (canvas-route pattern): the toggle and
+        // its audit row land or fail together — never a silent flip.
+        await tx.auditLog.create({
+          data: {
+            tenantId: req.user.tenantId,
+            userId: req.user?.id ?? null,
+            action: 'SCREEN_GROUP_SYNC_MODE_CHANGED',
+            targetType: 'ScreenGroup',
+            targetId: id,
+            details: JSON.stringify({
+              from: (group as any).syncMode ?? null,
+              to: body.syncMode ?? null,
+            }),
+          },
+        });
+      }
+      return updated;
     });
   }
 

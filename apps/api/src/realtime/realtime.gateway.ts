@@ -7,6 +7,7 @@ import {
 import { Logger } from '@nestjs/common';
 import { Server, WebSocket } from 'ws';
 import { RedisService } from './redis.service';
+import { TimeSyncService } from './time-sync.service';
 import { PrismaService } from '../prisma/prisma.service';
 import * as jwt from 'jsonwebtoken';
 import * as crypto from 'crypto';
@@ -35,6 +36,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   constructor(
     private readonly redisService: RedisService,
     private readonly prisma: PrismaService,
+    private readonly timeSync: TimeSyncService,
   ) {
     this.redisService.setGateway(this);
   }
@@ -77,6 +79,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
             break;
           case 'ACK':
             this.processAck(client, data);
+            break;
+          case 'TIME_PING':
+            this.processTimePing(client, data);
             break;
           default:
             this.logger.debug(`[WS] Unknown event: ${event}`);
@@ -200,7 +205,10 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         // staleness gate would drop every emergency event on a
         // wrong-clock kiosk. Player applies the offset before
         // comparing.
-        serverTime: Date.now(),
+        // 2026-07-28 — served from TimeSyncService (Redis-aligned) so
+        // every replica hands out the SAME clock. Falls back to local
+        // Date.now() when Redis is absent — identical to the old value.
+        serverTime: this.timeSync.now(),
       });
 
       // Register in redis for metrics
@@ -255,6 +263,30 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         Sentry.captureException(err);
       });
       this.logger.warn(`realtime publish failed: ${err?.message ?? err}`);
+    });
+  }
+
+  // ─── TIME_PING: clock-sync sample (frame-locked multi-screen sync) ───
+  // 2026-07-28 — docs/research/2026-07-28-multiscreen-sync/00-DESIGN.md §4.
+  // The player sends { event: 'TIME_PING', data: { t0 } } and we reply
+  // IMMEDIATELY on the same socket with the echoed t0 + our Redis-aligned
+  // serverNow. The client computes rtt = t1 - t0 and Cristian-filters the
+  // samples (min-RTT selection) into a millisecond-grade shared clock.
+  //
+  // Direct socket reply — never touches Redis fan-out, so the HMAC
+  // broadcast gate is not applicable; it's an unsigned control message
+  // exactly like AUTH_OK (whose serverTime the player already trusts for
+  // the emergency freshness gate — same blast radius, no new surface).
+  // Auth-gated: pre-AUTH sockets get no reply (keeps the unauthenticated
+  // surface at zero and makes an unauth flood cost nothing but a parse).
+  private processTimePing(client: WebSocket, payload: any) {
+    const ctx = this.clients.get(client);
+    if (!ctx || !ctx.isAuthenticated) return;
+
+    const t0 = typeof payload?.t0 === 'number' && Number.isFinite(payload.t0) ? payload.t0 : null;
+    this.send(client, 'TIME_PONG', {
+      ...(t0 !== null ? { t0 } : {}),
+      serverNow: this.timeSync.now(),
     });
   }
 

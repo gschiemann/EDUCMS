@@ -187,6 +187,37 @@ This system triggers immediate lockdown/weather/evacuation alerts across screens
 ### WARNING: Emergency System Changes
 Any modification to emergency endpoints, payload validation, auth bypass logic, or audit logging requires explicit code review and sign-off. Never weaken the @AllowPanicBypass decorator or skip AuditLog creation. Test trigger/clear flows end-to-end before merging.
 
+## Frame-Locked Multi-Screen Sync (2026-07-28)
+
+Screens in a `ScreenGroup` with `syncMode='locked'` play their shared schedule
+in lockstep (flips land within a frame across screens). Full design + research:
+`docs/research/2026-07-28-multiscreen-sync/` (00-DESIGN, 01-CODEBASE-RECON,
+02-INDUSTRY-RESEARCH). Rules when touching the player or realtime layer:
+
+1. **THE INVARIANT: while sync is active, what is on screen is a pure function
+   of (manifest, syncedNow).** Never add a free-running advance path (a
+   `setCurrentIndex(prev+1)` from onEnded/onError/timers) without gating it on
+   `syncActiveRef.current` — one screen advancing out-of-band breaks the whole
+   group's phase. The rAF conductor in `player/page.tsx` owns advancement.
+2. Pure math lives in `apps/web/src/app/player/sync/` (`syncClock.ts`,
+   `syncTimeline.ts`) — unit-tested without mounting the 8.6k-line page. Keep
+   it pure (no React/DOM/network).
+3. Clock transport: WS `TIME_PING`→`TIME_PONG` (direct socket reply, like
+   AUTH_OK) + HTTP `GET /api/v1/realtime/time` fallback. Server time comes from
+   `TimeSyncService` (Redis-TIME-aligned so multi-replica agrees) — never raw
+   `Date.now()` in gateway time responses. Player timebase is
+   `performance.now()`, never `Date.now()` (Android NTP steps).
+4. The manifest `sync` block is part of the ETag-hashed payload (toggle/trim
+   changes bust the 304). **Never add a volatile per-request clock field to the
+   manifest** — it would kill 304s fleet-wide; clock samples ride the dedicated
+   endpoints above.
+5. Tests that must stay green: `apps/web/src/app/player/sync/__tests__/` (Jest),
+   `apps/web/tests/e2e/multiscreen-sync.spec.ts` (two-screen lockstep harness,
+   chromium+webkit), `realtime.gateway.spec.ts` (TIME_PONG echo).
+6. Diagnostics: `/player?synchud=1` renders the filmable sweep-bar/flash HUD;
+   `window.__eduSyncState` / `__eduSyncFlips` expose live sync state; per-screen
+   telemetry lands in `Screen.lastSyncReport` via the render-proof POST.
+
 ## Template System
 
 Templates define screen layouts using **17 system presets** (in `apps/api/src/templates/system-presets.ts`, ~960 lines) plus custom teacher-created templates.

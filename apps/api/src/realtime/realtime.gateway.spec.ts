@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { RealtimeGateway } from './realtime.gateway';
 import { RedisService } from './redis.service';
+import { TimeSyncService } from './time-sync.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { WebSocket } from 'ws';
 import * as jwt from 'jsonwebtoken';
@@ -54,6 +55,16 @@ describe('RealtimeGateway', () => {
         {
           provide: PrismaService,
           useValue: prismaService,
+        },
+        {
+          // 2026-07-28 — frame-locked sync. Gateway serves AUTH_OK.serverTime
+          // + TIME_PONG from the Redis-aligned clock; local clock is a fine
+          // stand-in for unit tests.
+          provide: TimeSyncService,
+          useValue: {
+            now: () => Date.now(),
+            status: () => ({ offsetMs: 0, sampledAt: 0, rttMs: null, source: 'local' as const }),
+          },
         },
       ],
     }).compile();
@@ -137,6 +148,45 @@ describe('RealtimeGateway', () => {
 
       // Asserts redis operations
       expect(redisService.publisher!.sadd).toHaveBeenCalledWith('tenant:tenant_1:devices', 'dev_123');
+    });
+
+    /**
+     * 2026-07-28 — frame-locked multi-screen sync clock transport.
+     * TIME_PING must echo the client's t0 (its performance.now() at send —
+     * the client computes rtt = t1 - t0 from the echo) alongside serverNow,
+     * as a DIRECT socket reply. Pre-auth sockets get silence: the
+     * unauthenticated surface stays zero.
+     */
+    it('answers TIME_PING with an echoed-t0 TIME_PONG, only after auth', async () => {
+      const mockWs = { send: jest.fn(), close: jest.fn(), on: jest.fn(), readyState: WebSocket.OPEN } as unknown as WebSocket;
+      const secret = 'test_device_jwt_secret_at_least_32_chars_long_xx';
+      process.env.DEVICE_JWT_SECRET = secret;
+      const token = jwt.sign({ deviceId: 'dev_123', tenantId: 'tenant_1' }, secret, { expiresIn: '1h' });
+
+      gateway.handleConnection(mockWs);
+
+      // Pre-auth: no reply at all.
+      (gateway as any).processTimePing(mockWs, { t0: 123.456 });
+      expect(mockWs.send).not.toHaveBeenCalled();
+
+      await (gateway as any).processHello(mockWs, { token });
+      (mockWs.send as jest.Mock).mockClear();
+
+      (gateway as any).processTimePing(mockWs, { t0: 4242.25 });
+      expect(mockWs.send).toHaveBeenCalledTimes(1);
+      const pong = JSON.parse((mockWs.send as jest.Mock).mock.calls[0][0]);
+      expect(pong.type).toBe('TIME_PONG');
+      expect(pong.payload.t0).toBe(4242.25);
+      expect(typeof pong.payload.serverNow).toBe('number');
+      expect(Math.abs(Date.now() - pong.payload.serverNow)).toBeLessThan(2_000);
+
+      // Garbage t0 → still answers with serverNow, just no echo field.
+      (mockWs.send as jest.Mock).mockClear();
+      (gateway as any).processTimePing(mockWs, { t0: 'not-a-number' });
+      const pong2 = JSON.parse((mockWs.send as jest.Mock).mock.calls[0][0]);
+      expect(pong2.type).toBe('TIME_PONG');
+      expect(pong2.payload.t0).toBeUndefined();
+      expect(typeof pong2.payload.serverNow).toBe('number');
     });
 
     /**

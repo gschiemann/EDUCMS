@@ -491,6 +491,10 @@ export const ScreenGroupUpdateSchema = z
   .object({
     name: BoundedText(200).optional(),
     description: BoundedText(2000).optional(),
+    // 2026-07-28 — frame-locked multi-screen sync. 'locked' = every screen
+    // in the group plays its shared schedule on the deterministic shared-
+    // clock timeline; 'off'/null = today's free-run behavior.
+    syncMode: z.enum(['off', 'locked']).nullable().optional(),
   })
   .passthrough();
 export type ScreenGroupUpdateInput = z.infer<typeof ScreenGroupUpdateSchema>;
