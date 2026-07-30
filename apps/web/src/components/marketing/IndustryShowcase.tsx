@@ -111,10 +111,14 @@ const INDUSTRIES: Industry[] = [
       'Prix-fixe, wine, and cocktail layouts ready to go',
       'Schedule brunch, dinner, and late-night menus by time',
     ],
+    // 2026-07-30 — the full-service menu read like a sparse PDF as the
+    // homepage sample ("full service dining sucks" — Greg). Swapped to
+    // the tasting-course tracker: kitchen-synced "Course IV — now
+    // firing" drama that no competitor's signage can tell.
     template: {
-      src: '/templates/signage/menus-pos/01-fullservice-menu.html',
-      staticImage: '/demo/templates/restaurant-menu.jpg',
-      label: 'Full-Service Menu',
+      src: '/templates/signage/menus-pos/08-tasting-progress.html',
+      staticImage: '/demo/templates/dining-tasting.jpg',
+      label: 'Tasting Menu — Kitchen Sync',
     },
   },
   {
@@ -184,10 +188,14 @@ const INDUSTRIES: Industry[] = [
       'Patient-education loops by department',
       'Evacuate and lockdown alerts across the practice',
     ],
+    // 2026-07-30 — the waiting-room queue board read sterile as the
+    // homepage sample ("healthcare sucks" — Greg). Swapped to the clinic
+    // check-in KIOSK: modern patient check-in + live waiting-room rail,
+    // and it shows off the interactive-kiosk capability.
     template: {
-      src: '/templates/signage/healthcare/01-waiting-room-flagship.html',
-      staticImage: '/demo/templates/healthcare-waiting.jpg',
-      label: 'Waiting-Room Board',
+      src: '/templates/kiosk/clinic.html',
+      staticImage: '/demo/templates/healthcare-kiosk.jpg',
+      label: 'Clinic Check-In Kiosk',
     },
   },
   {
@@ -201,10 +209,14 @@ const INDUSTRIES: Industry[] = [
       'Concierge and amenity boards, updated on the fly',
       'One dashboard across every property in the group',
     ],
+    // 2026-07-30 — the events list read flat as the homepage sample
+    // ("hotels is bad" — Greg). Swapped to the Marlowe wayfinder: the
+    // most composed board in the clean hospitality set, and it maps to
+    // the "wayfinding" benefit bullet directly.
     template: {
-      src: '/templates/signage/hospitality/03-events-board.html',
-      staticImage: '/demo/templates/hospitality-events.jpg',
-      label: 'Events & Catering Board',
+      src: '/templates/signage/hospitality/06-wayfinder.html',
+      staticImage: '/demo/templates/hospitality-wayfinder.jpg',
+      label: 'Lobby Wayfinder — You Are Here',
     },
   },
   {
