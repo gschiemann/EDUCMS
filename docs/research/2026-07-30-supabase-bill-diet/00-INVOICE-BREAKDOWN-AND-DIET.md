@@ -136,11 +136,30 @@ thumbnails auto-upgrade back to transforms).
   `PLATFORM_ALERT_EMAILS` is the standing tripwire).
 - **Image transforms unavailable** → 3b fallback.
 
-## 6. Post-deploy verification (done same day — see session)
+## 6. Post-deploy verification — MEASURED LIVE 2026-07-30
 
-1. Railway deploy log shows `Manifest content-rev hook armed`.
-2. `pg_stat_statements` call-rate on the fan-out cluster collapses (~16/min
-   → ~2/min rebuild-only); DB egress trend on the Supabase usage page drops
-   ~95% over the following days.
-3. Live edit-freshness check: publish/edit a playlist → screen updates on
-   the next poll (unchanged behavior).
+Deployed as `45cc0b34` (Railway SUCCESS 15:23 UTC; health reports the
+commit; all 12 CI workflows green ×2 commits; Prod Smoke green on rerun —
+its first failure was a mid-Vercel-deploy chunk-reload transient on
+`/screens`, zero React crashes).
+
+1. **Fan-out rate: 20.7/min → 1.4/min (−93%), measured via
+   `pg_stat_statements`** on the playlist_items SELECT cluster:
+   pre-deploy window 15:14→15:33 = 387 calls/18.7 min; post-deploy window
+   15:33→15:43 = **15 calls/10.6 min** — and the residual includes
+   dashboard/fleet-scanner callers, not just manifest rebuilds.
+2. The 1.4/min rate itself proves the mutation hook ARMED (an unarmed 20 s
+   TTL would rebuild ~6-9/min at the fleet's poll cadence).
+3. Live logs post-deploy: per-poll live reads (Screen/override/tenant)
+   flowing normally, WS auth/OTA/wedge-detector/proof-of-play all healthy.
+4. Projected Supabase egress: ~25.5 GB/mo → **~1.5-2.5 GB/mo** (small
+   per-poll reads + 30-min rebuilds) — under the Free-tier 5 GB cap with
+   ~2× headroom. Confirm the trend on the Supabase usage page in a few
+   days; the in-app egress anomaly monitor remains the tripwire.
+5. DB Backup workflow: first live run FAILED on pg_dump 16-vs-17 version
+   mismatch (runner PATH); fixed via `postgres:17-alpine` (`3a4faaac`) and
+   the re-run SUCCEEDED — encrypted artifact landed with 30-day retention.
+6. Remaining real-world check (needs an operator session): edit a playlist
+   → screen updates on the next poll. Covered by the unit spec + armed
+   hook; if a screen ever lags an edit by minutes, that's the signal a
+   content write bypassed the Prisma hook — report it.
