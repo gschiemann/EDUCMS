@@ -95,3 +95,33 @@ export function transformedImageUrl(
     return fileUrl;
   }
 }
+
+/**
+ * Global fallback for transform-URL failures (2026-07-30).
+ *
+ * Supabase image transforms are a PRO-plan feature: on the Free plan every
+ * /render/image/ URL above returns an error status and the thumbnail
+ * breaks. Rather than wiring onError into every <img> call site (a dozen
+ * files and counting), install ONE capture-phase error listener — <img>
+ * `error` events don't bubble, but they DO capture — that swaps a failed
+ * transform URL back to the raw object URL (full-res, browser-scaled).
+ * On Pro nothing ever fails and this never fires; on Free every thumbnail
+ * still renders, just without the egress optimisation. No settings, no
+ * plan detection — the failure itself is the signal.
+ *
+ * Mounted once from providers.tsx. Returns the cleanup fn.
+ */
+export function installThumbTransformFallback(): () => void {
+  if (typeof window === 'undefined') return () => {};
+  const handler = (ev: Event) => {
+    const el = ev.target as HTMLImageElement | null;
+    if (!el || el.tagName !== 'IMG') return;
+    const src = el.src || '';
+    if (!src.includes('/storage/v1/render/image/')) return;
+    if (el.dataset.thumbFallback === '1') return; // loop guard: object URL also failing must not retry
+    el.dataset.thumbFallback = '1';
+    el.src = src.split('?')[0].replace('/storage/v1/render/image/', '/storage/v1/object/');
+  };
+  window.addEventListener('error', handler, true);
+  return () => window.removeEventListener('error', handler, true);
+}

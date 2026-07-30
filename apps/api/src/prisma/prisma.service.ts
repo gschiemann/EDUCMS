@@ -1,5 +1,10 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { prisma } from '@cms/database';
+import {
+  bumpManifestContentRev,
+  markManifestRevHookArmed,
+  shouldBumpManifestRev,
+} from '../screens/manifest-hot-cache';
 
 /**
  * PrismaService — wraps the Prisma client with NestJS lifecycle hooks.
@@ -23,6 +28,43 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   public client = prisma;
 
   async onModuleInit() {
+    // Manifest content-rev hook (Supabase egress diet — 2026-07-30). Any
+    // mutation on a model the player manifest reads invalidates every
+    // cached manifest (screens/manifest-hot-cache.ts), so an operator edit
+    // is visible on the very next poll — identical freshness to the
+    // uncached path. Screen updates touching ONLY telemetry columns
+    // (heartbeat lastPingAt, cache/render-proof reports) are excluded via
+    // shouldBumpManifestRev, otherwise the fleet's own 25-30s telemetry
+    // would thrash the cache. $use is deprecated-but-supported on Prisma
+    // 5.22; if it ever disappears, arming fails gracefully and the cache
+    // degrades to a 20s TTL — correctness NEVER depends on this hook.
+    try {
+      const useFn = (this.client as any).$use;
+      if (typeof useFn === 'function') {
+        useFn.call(this.client, async (params: any, next: (p: any) => Promise<any>) => {
+          try {
+            const data = params?.args?.data;
+            const keys =
+              data && typeof data === 'object' && !Array.isArray(data)
+                ? Object.keys(data)
+                : null;
+            if (shouldBumpManifestRev(params?.model, params?.action, keys)) {
+              bumpManifestContentRev();
+            }
+          } catch {
+            // Cache accounting must never break a query.
+          }
+          return next(params);
+        });
+        markManifestRevHookArmed();
+        this.logger.log('Manifest content-rev hook armed — mutation-busted manifest cache active');
+      } else {
+        this.logger.warn('Prisma $use unavailable — manifest cache degraded to short TTL');
+      }
+    } catch (err: any) {
+      this.logger.warn(`Manifest content-rev hook failed to arm (${err?.message}) — manifest cache on short TTL`);
+    }
+
     // Fire-and-forget warmup with a hard timeout. Don't await — the API
     // must come up regardless of DB reachability so /health can report
     // status and Vercel/Railway healthchecks stay green.

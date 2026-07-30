@@ -1,11 +1,17 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BrandingProvider } from '@/lib/branding-context';
 import { I18nProvider } from '@/i18n/I18nProvider';
+import { installThumbTransformFallback } from '@/lib/asset-image';
 
 export default function Providers({ children }: { children: React.ReactNode }) {
+  // Supabase image-transform fallback (2026-07-30): on the Free plan the
+  // /render/image/ thumbnail URLs 400; this one capture-phase listener
+  // swaps any failed transform back to the raw object URL app-wide. On
+  // Pro it never fires. See asset-image.ts.
+  useEffect(() => installThumbTransformFallback(), []);
   const [queryClient] = useState(
     () =>
       new QueryClient({

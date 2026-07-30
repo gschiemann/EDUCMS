@@ -38,6 +38,9 @@ import {
   markCacheReportWritten,
   shouldSkipRenderProofWrite,
   markRenderProofWritten,
+  currentManifestContentRev,
+  getManifestCache,
+  setManifestCache,
 } from './manifest-hot-cache';
 // 2026-05-27 — Goodview EP6N GPIO state. Surfaced on every manifest
 // branch (emergency / sports / normal) so the player applies the
@@ -2578,6 +2581,11 @@ export class ScreensController {
   @Get(':id/manifest')
   async getManifest(@Param('id') id: string, @Req() req: ExpressReq, @Res() res: Response) {
     const activeDeviceHash = req.headers['if-none-match'];
+    // Content-rev snapshot BEFORE any row is read (manifest content cache,
+    // 2026-07-30): if a mutation lands while this build is in flight, the
+    // entry we store carries an already-stale rev and the next poll
+    // rebuilds — torn data can never be served twice.
+    const manifestRevAtStart = currentManifestContentRev();
 
     // Phase B — same retry treatment as deviceStatus. Manifest fetch
     // is the call whose failure cascades all the way to nativeReload
@@ -3103,6 +3111,35 @@ export class ScreensController {
       }
     }
 
+    // ─── Manifest content cache (Supabase egress diet — 2026-07-30) ───
+    // Every early-return above (revoked, auth mismatch, EMERGENCY branch,
+    // sports scoreboard) has already run, so a cache hit can only ever
+    // serve the normal scheduled-content manifest. The screen row, the
+    // per-screen override row and the tenant emergency state were still
+    // read LIVE on this very poll; what a hit skips is the schedule→
+    // playlist→items→asset→template→zones fan-out (~7 queries, ~100 KB DB
+    // egress per poll — ~25 GB/mo at five always-on screens, the entire
+    // July-2026 Supabase overage). Invalidation contract (see
+    // manifest-hot-cache.ts): any content mutation via Prisma busts on the
+    // next poll; scheduled go-lives/stops land on time via boundaryAt;
+    // TTL bounds everything else. ETag semantics identical to a rebuild —
+    // same hashable payload object, same sha256.
+    const cachedManifest = getManifestCache(screen.id);
+    if (cachedManifest) {
+      if (cachedManifest.kind === 'empty') {
+        return res.status(200).json(cachedManifest.body);
+      }
+      res.setHeader('ETag', cachedManifest.etag);
+      if (activeDeviceHash === cachedManifest.etag) {
+        return res.status(304).send();
+      }
+      return res.status(200).json({
+        ...cachedManifest.hashablePayload,
+        generatedAt: new Date().toISOString(),
+        hash: cachedManifest.etag,
+      });
+    }
+
     const now = new Date();
     // SECURITY (multi-tenant isolation): a schedule targets exactly
     // ONE thing — a specific screen (screenId) or a group
@@ -3161,6 +3198,46 @@ export class ScreensController {
       }
     });
 
+    // Next schedule boundary for THIS screen's targets: the earliest
+    // future startTime (a scheduled go-live) or future endTime (an active
+    // window expiring). The cached manifest must not outlive it — a
+    // campaign scheduled for 3:00 must appear on the first poll after
+    // 3:00 exactly like the uncached path did. Two 1-row indexed lookups,
+    // and they only run on a REBUILD (cache miss), never on a hit.
+    // (Fine-grained daysOfWeek/timeStart windows are evaluated player-side
+    // from fields already in the payload — no server rebuild needed.)
+    let nextScheduleBoundaryAt: number | null = null;
+    try {
+      const boundaryWhereBase: any = {
+        AND: [
+          ...(screen.tenantId ? [{ tenantId: screen.tenantId }] : []),
+          { OR: scheduleTargetOr },
+          { isActive: true },
+        ],
+      };
+      const [nextStart, nextEnd] = await Promise.all([
+        this.prisma.client.schedule.findFirst({
+          where: { ...boundaryWhereBase, startTime: { gt: now } },
+          orderBy: { startTime: 'asc' },
+          select: { startTime: true },
+        }),
+        this.prisma.client.schedule.findFirst({
+          where: { ...boundaryWhereBase, endTime: { gt: now } },
+          orderBy: { endTime: 'asc' },
+          select: { endTime: true },
+        }),
+      ]);
+      const boundaryCandidates = [nextStart?.startTime, nextEnd?.endTime]
+        .filter((d): d is Date => !!d)
+        .map((d) => new Date(d).getTime())
+        .filter((t) => Number.isFinite(t));
+      if (boundaryCandidates.length) nextScheduleBoundaryAt = Math.min(...boundaryCandidates);
+    } catch {
+      // Boundary probe failed (transient DB blip) — cache only briefly so
+      // a pending go-live can't be missed for long.
+      nextScheduleBoundaryAt = Date.now() + 60_000;
+    }
+
     if (!schedules.length) {
       // 200 with empty playlists — NOT 404. A paired screen with no
       // scheduled content is a valid "waiting for assignment" state,
@@ -3168,7 +3245,7 @@ export class ScreensController {
       // displayed 'Unable to Connect' which looked identical to a
       // real network/auth error — admin had no way to tell the
       // difference.
-      return res.status(200).json({
+      const emptyBody = {
         screenId: screen.id,
         tenantId: screen.tenantId,
         tenantName: (screen as any).tenant?.name || null,
@@ -3181,7 +3258,16 @@ export class ScreensController {
         emptyReason: 'NO_SCHEDULE',
         message: 'This screen is paired but no playlist is scheduled. Assign a playlist from the dashboard.',
         hash: 'empty',
-      });
+      };
+      // Fully static body — cache and replay verbatim until content
+      // changes or the next schedule boundary (an upcoming go-live is
+      // exactly the transition that turns this empty manifest non-empty).
+      setManifestCache(
+        screen.id,
+        { kind: 'empty', body: emptyBody, boundaryAt: nextScheduleBoundaryAt },
+        manifestRevAtStart,
+      );
+      return res.status(200).json(emptyBody);
     }
 
     // Sum item file sizes per playlist so the player can show operators
@@ -3399,6 +3485,14 @@ export class ScreensController {
     const { generatedAt: _volatileTs, ...hashablePayload } = manifestPayload;
     const signatureString = JSON.stringify(hashablePayload) + id;
     const versionHash = crypto.createHash('sha256').update(signatureString).digest('hex');
+    // Store the freshly-built manifest for subsequent polls (see the cache
+    // block above the fan-out). hashablePayload is exactly what the ETag
+    // covers, so cached serves are hash-stable with rebuilds.
+    setManifestCache(
+      screen.id,
+      { kind: 'full', hashablePayload, etag: versionHash, boundaryAt: nextScheduleBoundaryAt },
+      manifestRevAtStart,
+    );
     res.setHeader('ETag', versionHash);
 
     if (activeDeviceHash === versionHash) {

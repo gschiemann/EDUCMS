@@ -140,6 +140,220 @@ export function markRenderProofWritten(screenId: string): void {
     }
 }
 
+// ── Manifest content cache (Supabase egress diet — 2026-07-30) ──────────────
+// WHY: every manifest poll re-ran the schedule→playlist→items→asset→template→
+// zones fan-out (~7 queries, ~100 KB of DB wire bytes) even when the player
+// ended up with a 304 — the ETag only saved Railway→player egress, never
+// Supabase→Railway. At 4-5 always-on screens that fan-out alone was ~25 GB/mo
+// of Supabase egress: the entire July-2026 invoice overage. The fan-out result
+// only changes when content changes, so we cache the BUILT hashable payload
+// per screen and serve it until one of three things invalidates it:
+//
+//   1. CONTENT REV — a process-wide counter bumped by a Prisma $use hook
+//      (prisma.service.ts) on every mutation of a manifest-fed model. An
+//      operator edit is therefore visible on the very next poll — identical
+//      freshness to the uncached path. Screen writes that touch ONLY
+//      telemetry columns (heartbeat lastPingAt, cache/render-proof reports)
+//      are excluded via SCREEN_TELEMETRY_ONLY_FIELDS, otherwise the fleet's
+//      own 25-30s telemetry would thrash the cache into uselessness.
+//   2. NEXT SCHEDULE BOUNDARY — a cached entry never outlives the earliest
+//      future startTime/endTime of a schedule targeting the screen, so a
+//      3:00pm go-live appears on the first poll after 3:00 exactly like
+//      before. (Fine-grained daysOfWeek/timeStart windows are evaluated
+//      PLAYER-side from fields inside the payload — no server rebuild
+//      needed for those transitions.)
+//   3. TTL BACKSTOP — 30 min when the mutation hook armed, 20s when it
+//      didn't (defensive: hook arming must never be a correctness
+//      dependency). Covers out-of-band writes: Supabase Studio edits, seed
+//      scripts, a future second replica.
+//
+// WHAT IS NEVER CACHED: the emergency branch and the sports-scoreboard
+// branch both return BEFORE the cache is consulted, and the screen row +
+// per-screen override row + tenant emergency state are still read live on
+// every poll. Life-safety and live-score freshness are byte-for-byte
+// unchanged. ETag semantics are also unchanged: the stored hashable payload
+// is the exact object the hash was computed from, so hashes are stable
+// across cached/uncached serves and the sync-block invariant (no volatile
+// fields in the hashed payload) is preserved.
+//
+// MULTI-REPLICA: the rev is per-process, same single-replica assumption as
+// every debounce above (numReplicas=1 today). If the API ever scales out,
+// move the bump to a Redis pub/sub bust — or the TTL bounds cross-replica
+// staleness at 30 min worst case.
+
+/** Prisma models whose rows feed the player manifest payload. */
+export const MANIFEST_FED_MODELS = new Set([
+    'Screen',
+    'ScreenGroup',
+    'Tenant',
+    'Schedule',
+    'Playlist',
+    'PlaylistItem',
+    'Asset',
+    'Template',
+    'TemplateZone',
+    'TemplateScene',
+    'ScreenEmergencyOverride',
+]);
+
+/** Every Prisma action that can change rows. */
+export const MANIFEST_MUTATING_ACTIONS = new Set([
+    'create',
+    'createMany',
+    'createManyAndReturn',
+    'update',
+    'updateMany',
+    'upsert',
+    'delete',
+    'deleteMany',
+]);
+
+/**
+ * Screen columns written by high-frequency device telemetry (manifest
+ * lastPingAt touch, /heartbeat, /cache-status, /render-proof). An UPDATE
+ * whose data keys are ALL in this set does not change what the manifest
+ * renders, so it must not bust the cache. Polarity is deliberate: any
+ * unknown/new column BUSTS (correctness-safe default); only proven
+ * telemetry is skipped. `status` is here because heartbeats write
+ * ONLINE/PENDING constantly — the REVOKED check reads the live screen row
+ * every poll, never the cache, so skipping it is safe.
+ */
+export const SCREEN_TELEMETRY_ONLY_FIELDS = new Set([
+    'lastPingAt',
+    'status',
+    'playerVersion',
+    'playerVersionAt',
+    'playerVersionCode',
+    'forceApkUpdatePendingAt',
+    'lastOtaState',
+    'lastOtaProgress',
+    'lastOtaMessage',
+    'lastOtaAt',
+    'managerVersion',
+    'managerVersionAt',
+    'lastCacheReport',
+    'lastCacheReportAt',
+    'lastRenderedAt',
+    'lastRenderedFrames',
+    'lastRenderedHash',
+    'lastSyncReport',
+    'lastSyncReportAt',
+]);
+
+export type ManifestCacheEntry =
+    | {
+          kind: 'full';
+          /** The exact object the sha256 ETag was computed from (no generatedAt/hash). */
+          hashablePayload: Record<string, any>;
+          etag: string;
+          boundaryAt: number | null;
+          at: number;
+          rev: number;
+      }
+    | {
+          kind: 'empty';
+          /** The full static "no schedule" 200 body — replayed verbatim. */
+          body: Record<string, any>;
+          boundaryAt: number | null;
+          at: number;
+          rev: number;
+      };
+
+const MANIFEST_CACHE_TTL_ARMED_MS = 30 * 60_000;
+const MANIFEST_CACHE_TTL_UNARMED_MS = 20_000;
+const MANIFEST_CACHE_MAX_ENTRIES = 1_000;
+
+let manifestContentRev = 0;
+let manifestRevHookArmed = false;
+const manifestCache = new Map<string, ManifestCacheEntry>();
+
+/** Any content mutation → every cached manifest is invalid. */
+export function bumpManifestContentRev(): void {
+    manifestContentRev += 1;
+    manifestCache.clear();
+}
+
+export function currentManifestContentRev(): number {
+    return manifestContentRev;
+}
+
+/** Called once by PrismaService when the $use mutation hook is installed. */
+export function markManifestRevHookArmed(): void {
+    manifestRevHookArmed = true;
+}
+
+/**
+ * Pure decision fn for the Prisma middleware: should this operation bust
+ * the manifest cache? Exported for unit tests.
+ * @param updateDataKeys Object.keys(args.data) for update/updateMany, else null.
+ */
+export function shouldBumpManifestRev(
+    model: string | undefined,
+    action: string | undefined,
+    updateDataKeys: string[] | null,
+): boolean {
+    if (!model || !action) return false;
+    if (!MANIFEST_FED_MODELS.has(model)) return false;
+    if (!MANIFEST_MUTATING_ACTIONS.has(action)) return false;
+    if (
+        model === 'Screen' &&
+        (action === 'update' || action === 'updateMany') &&
+        updateDataKeys !== null &&
+        updateDataKeys.length > 0 &&
+        updateDataKeys.every((k) => SCREEN_TELEMETRY_ONLY_FIELDS.has(k))
+    ) {
+        return false;
+    }
+    return true;
+}
+
+export function getManifestCache(screenId: string): ManifestCacheEntry | undefined {
+    const hit = manifestCache.get(screenId);
+    if (!hit) return undefined;
+    const ttl = manifestRevHookArmed ? MANIFEST_CACHE_TTL_ARMED_MS : MANIFEST_CACHE_TTL_UNARMED_MS;
+    const stale =
+        hit.rev !== manifestContentRev ||
+        Date.now() - hit.at > ttl ||
+        (hit.boundaryAt !== null && Date.now() >= hit.boundaryAt);
+    if (stale) {
+        manifestCache.delete(screenId);
+        return undefined;
+    }
+    return hit;
+}
+
+/**
+ * Store a freshly-built manifest. `revAtBuildStart` MUST be the rev
+ * captured BEFORE the first row of the build was read: if a mutation
+ * landed mid-build the stored rev is already stale and the next poll
+ * rebuilds — a torn read can never be served twice.
+ */
+export function setManifestCache(
+    screenId: string,
+    entry:
+        | { kind: 'full'; hashablePayload: Record<string, any>; etag: string; boundaryAt: number | null }
+        | { kind: 'empty'; body: Record<string, any>; boundaryAt: number | null },
+    revAtBuildStart: number,
+): void {
+    manifestCache.set(screenId, { ...entry, at: Date.now(), rev: revAtBuildStart } as ManifestCacheEntry);
+    if (manifestCache.size > MANIFEST_CACHE_MAX_ENTRIES) {
+        const oldest = manifestCache.keys().next().value;
+        if (oldest) manifestCache.delete(oldest);
+    }
+}
+
+export function invalidateManifestCache(screenId?: string): void {
+    if (screenId) manifestCache.delete(screenId);
+    else manifestCache.clear();
+}
+
+/** Test hook — full reset of module state between spec cases. */
+export function resetManifestCacheForTests(): void {
+    manifestCache.clear();
+    manifestContentRev = 0;
+    manifestRevHookArmed = false;
+}
+
 // Same idea as lastPingWrites but for the emergency-asset audit log.
 // Player pre-caches emergency assets on its own 5-minute cadence; we
 // were writing a fresh AuditLog row on every fetch, which (at 50

@@ -217,6 +217,20 @@ in lockstep (flips land within a frame across screens). Full design + research:
 6. Diagnostics: `/player?synchud=1` renders the filmable sweep-bar/flash HUD;
    `window.__eduSyncState` / `__eduSyncFlips` expose live sync state; per-screen
    telemetry lands in `Screen.lastSyncReport` via the render-proof POST.
+7. **Manifest content cache (2026-07-30 — Supabase egress diet).** The
+   normal-content manifest is served from an in-process per-screen cache
+   (`manifest-hot-cache.ts`), invalidated by (a) a Prisma `$use` mutation
+   hook in `prisma.service.ts` on any write to a manifest-fed model, (b) the
+   screen's next schedule startTime/endTime boundary, (c) a TTL backstop
+   (30 min armed / 20 s unarmed). Emergency + sports-scoreboard branches
+   return BEFORE the cache and are never cached; REVOKED/auth reads stay
+   live per poll. Rules: content writes MUST go through `prisma.client`
+   (raw-SQL/Studio edits show up on players only after TTL); a NEW
+   high-frequency Screen telemetry column MUST be added to
+   `SCREEN_TELEMETRY_ONLY_FIELDS` or fleet telemetry will thrash the cache
+   (silently re-creating the 25 GB/mo egress this killed — see
+   `docs/research/2026-07-30-supabase-bill-diet/`); and per sync-rule #4 the
+   cached payload stays free of volatile per-request fields.
 
 ## Template System
 

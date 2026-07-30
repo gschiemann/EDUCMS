@@ -1,0 +1,82 @@
+# Nightly encrypted database backup (2026-07-30).
+#
+# WHY: the Supabase org is moving Pro → Free ($25/mo → $0; see
+# docs/research/2026-07-30-supabase-bill-diet/). The Free plan has NO daily
+# backups, and a life-safety CMS does not run without a restore path. This
+# workflow replaces Supabase's dailies: pg_dump every night, AES-256
+# encrypted, kept 30 days as an Actions artifact.
+#
+# PUBLIC-REPO SECURITY MODEL (do not weaken):
+#   - This repo is PUBLIC → artifacts are effectively public downloads.
+#     ONLY the encrypted blob is ever uploaded. The plaintext dump is
+#     created and deleted inside the runner.
+#   - Encryption: AES-256-CBC, PBKDF2 200k iterations, key = the 64-hex
+#     BACKUP_ENC_KEY repo secret. Without the key the artifact is noise.
+#   - SUPABASE_DB_URL is the DIRECT (5432) connection string secret.
+#     Neither secret ever appears in logs (openssl reads via env).
+#
+# RESTORE (from a downloaded artifact, key from the password manager):
+#   openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
+#     -in venueos-db.dump.enc -out venueos-db.dump -pass env:BACKUP_ENC_KEY
+#   pg_restore --clean --if-exists --no-owner --no-privileges \
+#     -d "$TARGET_DATABASE_URL" venueos-db.dump
+#
+# Server is PostgreSQL 17 (checked 2026-07-30) → PGDG client 17 below.
+
+name: DB Backup
+
+on:
+  schedule:
+    - cron: '17 9 * * *'   # daily 09:17 UTC ≈ 2:17am PT
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Guard — secrets must exist
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          ENC_KEY: ${{ secrets.BACKUP_ENC_KEY }}
+        run: |
+          if [ -z "$DB_URL" ] || [ -z "$ENC_KEY" ]; then
+            echo "::error::SUPABASE_DB_URL and/or BACKUP_ENC_KEY repo secrets are not set — backup cannot run."
+            exit 1
+          fi
+
+      - name: Install PostgreSQL 17 client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common >/dev/null
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y >/dev/null
+          sudo apt-get install -y -qq postgresql-client-17 >/dev/null
+          pg_dump --version
+
+      - name: Dump and encrypt
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_ENC_KEY: ${{ secrets.BACKUP_ENC_KEY }}
+        run: |
+          set -euo pipefail
+          pg_dump "$DB_URL" -Fc --no-owner --no-privileges -f venueos-db.dump
+          ls -l venueos-db.dump
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt \
+            -in venueos-db.dump -out venueos-db.dump.enc -pass env:BACKUP_ENC_KEY
+          rm -f venueos-db.dump
+          ls -l venueos-db.dump.enc
+
+      - name: Upload encrypted artifact (30-day retention)
+        uses: actions/upload-artifact@v4
+        with:
+          name: venueos-db-backup-${{ github.run_id }}
+          path: venueos-db.dump.enc
+          retention-days: 30
+          if-no-files-found: error
