@@ -68,10 +68,13 @@ const INDUSTRIES: Industry[] = [
       'Sell sponsor banners with proof-of-play reporting built in',
       'One scorebug drives the in-venue board and your livestream overlay',
     ],
+    // 2026-07-30 — ath-broadcast read as a plain stats table in the hero
+    // slot ("sports venue blows" — Greg). ath-biggame is the loud one:
+    // split matchup, playoffs banner, countdown, sold-out chips, ticker.
     template: {
-      src: '/templates/hs/ath-broadcast.html',
-      staticImage: '/demo/templates/sports-broadcast.jpg',
-      label: 'Scoreboard & Standings',
+      src: '/templates/hs/ath-biggame.html',
+      staticImage: '/demo/templates/sports-biggame.jpg',
+      label: 'Big Game — Pack the Gym',
     },
     badge: STAR,
   },
@@ -215,10 +218,13 @@ const INDUSTRIES: Industry[] = [
       'Conference-room signage synced to your calendar',
       'Push company news to every floor at once',
     ],
+    // 2026-07-30 — the old lobby-welcome read flat as the homepage sample
+    // ("corporate looks like shit" — Greg). Swapped to Signal Ribbon, the
+    // cinematic dark hero from the corporate redesign port.
     template: {
-      src: '/templates/signage/corporate/01-lobby-welcome-flagship.html',
-      staticImage: '/demo/templates/corporate-lobby.jpg',
-      label: 'Lobby & Comms Board',
+      src: '/templates/signage/corporate/12-signal-ribbon.html',
+      staticImage: '/demo/templates/corporate-signal.jpg',
+      label: 'Lobby Hero — Signal Ribbon',
     },
   },
   {
@@ -232,14 +238,14 @@ const INDUSTRIES: Industry[] = [
       'Happy-hour and event boards on a schedule',
       'Game-day mode turns every screen into the big game',
     ],
-    // 2026-07-30 — swapped the old tap list for the redesigned Game Day
-    // board ("Broadcast Truck", harvested from the 2026-07-27 world-class
-    // redesign wave): live scorebug, specials rail, sponsor slot. Matches
-    // the "game-day mode" pitch bullet directly.
+    // 2026-07-30 — Greg picked the Gold Room over Game Day for the
+    // marketing hero: nightclub-luxe bottle vault + tiered VIP packages
+    // (from the 2026-07-27 world-class redesign wave) reads "expensive"
+    // instantly; Game Day stays in the product as the game-day scene.
     template: {
-      src: '/templates/signage/bar/08-game-day.html',
-      staticImage: '/demo/templates/bar-gameday.jpg',
-      label: 'Game-Day Takeover',
+      src: '/templates/signage/bar/07-bottle-service.html',
+      staticImage: '/demo/templates/bar-bottleservice.jpg',
+      label: 'Bottle Service — The Gold Room',
     },
   },
   // 2026-05-26 — WORSHIP vertical was in packages/api-types/src/verticals.ts
