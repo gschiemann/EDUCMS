@@ -30,7 +30,6 @@ import { useUIStore } from '@/store/ui-store';
 import { apiFetch } from '@/lib/api-client';
 import {
   VERTICALS,
-  VERTICAL_LABELS,
   isVertical,
   type Vertical,
 } from '@cms/api-types';
@@ -43,7 +42,7 @@ import {
 // every vertical badge across the app reads from one vocabulary.
 import { VERTICAL_ICONS } from '@/lib/vertical-icons';
 import { useLocaleSwitch } from '@/i18n/I18nProvider';
-import { localizedVerticalEntity } from '@/i18n/vertical-copy';
+import { localizedVerticalIndustry } from '@/i18n/vertical-copy';
 
 export function VerticalSwitcherCard() {
   const t = useTranslations();
@@ -145,7 +144,12 @@ export function VerticalSwitcherCard() {
     }
   };
 
-  const currentLabel = localizedVerticalEntity(locale, currentVertical);
+  // 2026-07-30 — industry NAME, not the entity noun. The pill used to
+  // render localizedVerticalEntity().singular, so a hotel tenant's
+  // "Industry" read "Property" (and healthcare read "Practice") — Greg:
+  // "it says property and not hospitality... lets be consistent
+  // everywhere." Names now match the marketing page's IndustryShowcase.
+  const currentLabel = localizedVerticalIndustry(locale, currentVertical);
 
   return (
     <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center gap-3">
@@ -162,7 +166,7 @@ export function VerticalSwitcherCard() {
             const Icon = VERTICAL_ICONS[currentVertical];
             return Icon ? <Icon className="w-3 h-3" aria-hidden /> : null;
           })()}
-          <span>{currentLabel.singular}</span>
+          <span>{currentLabel}</span>
         </span>
         <span className="text-[11px] text-slate-500 truncate">{t('settings.vertical.switchIndustry')}</span>
       </div>
@@ -195,7 +199,6 @@ export function VerticalSwitcherCard() {
                   food one) and hide the separate full-service RESTAURANT —
                   unless the tenant is already on it, so they can still see it. */}
               {VERTICALS.filter((v) => v !== 'RESTAURANT' || currentVertical === 'RESTAURANT').map((v) => {
-                const labels = VERTICAL_LABELS[v];
                 const Icon = VERTICAL_ICONS[v];
                 const isActive = v === currentVertical;
                 const isPending = pending === v;
@@ -217,7 +220,10 @@ export function VerticalSwitcherCard() {
                       {Icon ? (
                         <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-indigo-600' : 'text-slate-500'}`} aria-hidden />
                       ) : null}
-                      <span className="flex-1 font-semibold truncate">{v === 'QSR' ? `${localizedVerticalEntity(locale, v).singular}/QSR` : localizedVerticalEntity(locale, v).singular}</span>
+                      {/* Industry names (2026-07-30) — "Restaurants & QSR"
+                          already carries the QSR suffix the 2026-07-24 fix
+                          added by hand, so the special-case is retired. */}
+                      <span className="flex-1 font-semibold truncate">{localizedVerticalIndustry(locale, v)}</span>
                       {isActive && <Check className="w-3.5 h-3.5 text-indigo-600" />}
                       {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />}
                     </button>

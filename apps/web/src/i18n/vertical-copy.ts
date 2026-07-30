@@ -67,6 +67,60 @@ const VERTICAL_ENTITY: Record<AppLocale, Record<Vertical, Noun>> = {
   },
 };
 
+/**
+ * Industry display names (2026-07-30). The vertical SWITCHER (settings)
+ * was rendering the entity noun ("Property", "Practice", "Office") as if
+ * it were the industry — Greg: "it says property and not hospitality...
+ * lets be consistent everywhere". These names match the public marketing
+ * page's IndustryShowcase byte-for-byte in English so the industry is
+ * called the same thing from first touch (homepage) to settings. Entity
+ * nouns above remain the correct source for "Add a Property"-style copy.
+ */
+const VERTICAL_INDUSTRY: Record<AppLocale, Record<Vertical, string>> = {
+  en: {
+    K12: 'K-12 Schools',
+    GYM: 'Gyms & Fitness',
+    RETAIL: 'Retail',
+    CORPORATE: 'Corporate',
+    QSR: 'Restaurants & QSR',
+    FASHION: 'Fashion & Boutique',
+    BAR: 'Bars & Nightlife',
+    HEALTHCARE: 'Healthcare',
+    HOSPITALITY: 'Hotels & Hospitality',
+    RESTAURANT: 'Full-Service Dining',
+    SPORTS: 'Sports Venues',
+    WORSHIP: 'Churches & Ministries',
+  },
+  es: {
+    K12: 'Escuelas K-12',
+    GYM: 'Gimnasios y fitness',
+    RETAIL: 'Comercio minorista',
+    CORPORATE: 'Corporativo',
+    QSR: 'Restaurantes y comida rápida',
+    FASHION: 'Moda y boutiques',
+    BAR: 'Bares y vida nocturna',
+    HEALTHCARE: 'Salud',
+    HOSPITALITY: 'Hoteles y hospitalidad',
+    RESTAURANT: 'Restaurantes de servicio completo',
+    SPORTS: 'Recintos deportivos',
+    WORSHIP: 'Iglesias y ministerios',
+  },
+  zh: {
+    K12: 'K-12 学校',
+    GYM: '健身房',
+    RETAIL: '零售',
+    CORPORATE: '企业',
+    QSR: '快餐与餐饮',
+    FASHION: '时尚精品',
+    BAR: '酒吧与夜生活',
+    HEALTHCARE: '医疗健康',
+    HOSPITALITY: '酒店与接待',
+    RESTAURANT: '正餐餐厅',
+    SPORTS: '体育场馆',
+    WORSHIP: '教会与事工',
+  },
+};
+
 /** Hierarchy nouns — same for every vertical (per the 2026-06-01 unification). */
 const HIERARCHY: Record<AppLocale, {
   orgSingular: string; orgPlural: string; groupSingular: string;
@@ -87,6 +141,13 @@ const ROLE_LABELS: Record<AppLocale, Record<string, string>> = {
 export function localizedVerticalEntity(locale: AppLocale, vertical: string): Noun {
   const table = VERTICAL_ENTITY[locale] ?? VERTICAL_ENTITY.en;
   return table[vertical as Vertical] ?? VERTICAL_ENTITY.en[vertical as Vertical] ?? { singular: vertical, plural: vertical };
+}
+
+/** Industry display name for pickers/switchers ("Hotels & Hospitality" —
+ *  never the entity noun "Property"). Falls back en → raw key. */
+export function localizedVerticalIndustry(locale: AppLocale, vertical: string): string {
+  const table = VERTICAL_INDUSTRY[locale] ?? VERTICAL_INDUSTRY.en;
+  return table[vertical as Vertical] ?? VERTICAL_INDUSTRY.en[vertical as Vertical] ?? vertical;
 }
 
 export function localizedHierarchy(locale: AppLocale) {

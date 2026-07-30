@@ -111,14 +111,15 @@ const INDUSTRIES: Industry[] = [
       'Prix-fixe, wine, and cocktail layouts ready to go',
       'Schedule brunch, dinner, and late-night menus by time',
     ],
-    // 2026-07-30 — the full-service menu read like a sparse PDF as the
-    // homepage sample ("full service dining sucks" — Greg). Swapped to
-    // the tasting-course tracker: kitchen-synced "Course IV — now
-    // firing" drama that no competitor's signage can tell.
+    // 2026-07-30 — third pick for this slot (fullservice menu "sucks",
+    // tasting tracker "horse shit" — Greg). Wine list is the most
+    // expensive-reading board left in the menus-pos pack. NOTE: the
+    // dining inventory is now exhausted — this vertical needs a
+    // photo-forward redesign like hospitality's (pending Greg's word).
     template: {
-      src: '/templates/signage/menus-pos/08-tasting-progress.html',
-      staticImage: '/demo/templates/dining-tasting.jpg',
-      label: 'Tasting Menu — Kitchen Sync',
+      src: '/templates/signage/menus-pos/02-wine-list.html',
+      staticImage: '/demo/templates/dining-winelist.jpg',
+      label: 'Wine List — Atlas Cellar',
     },
   },
   {
