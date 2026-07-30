@@ -52,6 +52,10 @@ const REACTIVATE = [
   { id: 'preset-sig-fashion-02', name: 'Fashion · Editorial' },
   { id: 'preset-sig-fashion-04', name: 'Fashion · New Arrivals' }, // photos baked 2026-07-23
   { id: 'preset-sig-fashion-05', name: 'Fashion · Event' },
+  // "Golden Hour" redesign 2026-07-30 (Greg-authorized): photos baked, key-gate
+  // 40→73/0 removed, 0 errors chromium+webkit both orientations, clickedit e2e
+  // green. docs: agent report in session; before/after shots in scratchpad.
+  { id: 'preset-sig-hospitality-01', name: 'Hospitality · Lobby Welcome' },
 ];
 const SYSTEM_TENANT = '00000000-0000-0000-0000-000000000000';
 const APPLY = process.argv.includes('--apply');

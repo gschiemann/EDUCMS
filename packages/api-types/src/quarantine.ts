@@ -37,7 +37,6 @@ export const QUARANTINED_BOARD_URL_LIST: readonly string[] = [
   // STAY quarantined: never redesigned; still show raw dimension text.
   '/templates/signage/fashion/07-shoppable-window.html',
   '/templates/signage/fashion/08-campaign.html',
-  '/templates/signage/hospitality/01-lobby-welcome-flagship.html',
   '/templates/signage/hospitality/02-concierge-board.html',
   '/templates/signage/hospitality/04-pool-spa-day.html',
   '/templates/signage/hospitality/07-group-welcome.html',

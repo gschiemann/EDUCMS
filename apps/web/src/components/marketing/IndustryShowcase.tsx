@@ -210,14 +210,15 @@ const INDUSTRIES: Industry[] = [
       'Concierge and amenity boards, updated on the fly',
       'One dashboard across every property in the group',
     ],
-    // 2026-07-30 — the events list read flat as the homepage sample
-    // ("hotels is bad" — Greg). Swapped to the Marlowe wayfinder: the
-    // most composed board in the clean hospitality set, and it maps to
-    // the "wayfinding" benefit bullet directly.
+    // 2026-07-30 — "The Marlowe · Golden Hour": the Greg-authorized
+    // flagship redesign (full-bleed golden-hour photo, brass editorial
+    // serif, framed arrival plate, engraved live amenity directory).
+    // De-quarantined the same day: key-gate 40→73/0 removed, 0 errors
+    // chromium+webkit both orientations, clickedit e2e green.
     template: {
-      src: '/templates/signage/hospitality/06-wayfinder.html',
-      staticImage: '/demo/templates/hospitality-wayfinder.jpg',
-      label: 'Lobby Wayfinder — You Are Here',
+      src: '/templates/signage/hospitality/01-lobby-welcome-flagship.html',
+      staticImage: '/demo/templates/hospitality-goldenhour.jpg',
+      label: 'Lobby Welcome — Golden Hour',
     },
   },
   {
