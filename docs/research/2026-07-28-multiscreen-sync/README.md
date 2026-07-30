@@ -8,6 +8,7 @@ exact same time down to the millisecond… could be multiple screens, not just t
 | [`00-DESIGN.md`](00-DESIGN.md) | The architecture + design decisions (lead-authored). Read this first. |
 | [`01-CODEBASE-RECON.md`](01-CODEBASE-RECON.md) | Exhaustive map of the player / realtime / manifest architecture with file:line citations — rotation engine, WS layer, clock-skew seed, telemetry channels, schedule resolution, patterns to follow, 15 gotchas. |
 | [`02-INDUSTRY-RESEARCH.md`](02-INDUSTRY-RESEARCH.md) | Source-cited competitor landscape (BrightSign/info-beamer/Xibo/Navori/signageOS + absence-confirmed cloud rivals), browser clock-sync + video-servo literature with measured numbers, design cheat-sheet of tuning constants. |
+| [`03-NOVASTAR-NATIVE-SYNC-COMPARISON.md`](03-NOVASTAR-NATIVE-SYNC-COMPARISON.md) | Page-by-page review of NovaStar's own Taurus "Synchronous Playback" guide (V2.0.2) vs what we built — same architectural family, different league; the honest gaps (GPS/RF/off-grid clocks) and the complementary-NTP takeaway. |
 
 ## The one-paragraph summary
 
