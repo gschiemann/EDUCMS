@@ -146,10 +146,13 @@ const GALLERY = [
     blurb: 'Live scoreboard and game-day show control.',
     chip: 'Sports',
   },
+  // 2026-07-30 — the old drive-thru board here was QUARANTINED (placeholder
+  // render) and shipped on the public homepage anyway. Swapped to the
+  // Roaster's Ledger counter menu — a current flagship with live pricing.
   {
-    src: '/templates/signage/qsr/01-drive-thru-flagship.html',
-    staticImage: '/demo/templates/qsr-drive-thru.jpg',
-    name: 'Drive-Thru Menu',
+    src: '/templates/signage/qsr/redesign-coffee-v1-roasters-ledger.html',
+    staticImage: '/demo/templates/qsr-coffee.jpg',
+    name: 'Café Counter Menu',
     blurb: 'A counter menu board with live pricing.',
     chip: 'Restaurant',
   },

@@ -1,36 +1,13 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Bottle Service</title><style>
-:root{--bg:#0c0807;--ink:#f1e3c8;--mute:#8a7a64;--paper:#181210;--rule:rgba(241,227,200,.14);--primary:#c2733a;--accent:#d8b35c;--ready:#3e8c5a;--font-display:"Didot",Georgia,serif;--font-grotesk:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;--font-condensed:"Arial Narrow","Helvetica Neue",Impact,sans-serif}
-*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden;font-family:var(--font-grotesk)}
-.stage{position:absolute;left:50%;top:50%;width:3840px;height:2160px;background:var(--bg);color:var(--ink);transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center center;overflow:hidden}
-.frame{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-rows:160px 1fr 180px;row-gap:36px;padding:80px}
-.top{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--rule);padding-bottom:20px}
-.logo{font:600 80px/1 var(--font-display);font-style:italic}
-.tag{margin-left:32px;font:500 36px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
-.title{font:400 76px/.95 var(--font-display);font-style:italic;color:var(--accent)}
-.clock{font:500 76px/1 var(--font-display);font-variant-numeric:tabular-nums}
-.foot{display:grid;grid-template-columns:repeat(4,1fr);gap:32px;border-top:2px solid var(--rule);padding-top:24px}
-.ft{padding:0 16px}.ft+.ft{border-left:1px solid var(--rule)}
-.ft .k{font:600 24px/1 var(--font-grotesk);letter-spacing:.32em;text-transform:uppercase;color:var(--mute)}
-.ft .v{margin-top:14px;font:500 44px/1 var(--font-display)}
-.ft .v.acc{color:var(--accent)}.ft .v.r{color:var(--ready)}
-
-.cols{display:grid;grid-template-columns:1.3fr 1fr;gap:48px;min-height:0}
-.col h2{margin:0 0 24px;font:700 52px/1 var(--font-grotesk);letter-spacing:.22em;text-transform:uppercase;color:var(--accent);border-bottom:3px solid var(--accent);padding-bottom:14px}
-.b{display:grid;grid-template-columns:1fr auto;gap:24px;align-items:baseline;padding:24px 0;border-bottom:1px dashed var(--rule)}
-.b:last-child{border:none}
-.b .nm{font:600 48px/1.05 var(--font-display)}
-.b .nm small{display:block;margin-top:6px;font:400 28px/1.2 var(--font-display);font-style:italic;color:var(--mute)}
-.b .pr{font:600 48px/1 var(--font-display);font-variant-numeric:tabular-nums}
-.table-list{display:flex;flex-direction:column;gap:18px}
-.t-row{padding:28px 36px;background:var(--paper);border-left:6px solid var(--ready);display:grid;grid-template-columns:1fr auto;gap:24px;align-items:center}
-.t-row.open{border-left-color:var(--accent)}
-.t-row.next{border-left-color:var(--primary)}
-.t-row .who{font:600 44px/1.1 var(--font-display)}
-.t-row .who small{display:block;margin-top:6px;font:500 24px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
-.t-row .at{font:700 32px/1 var(--font-grotesk);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
-.t-row.open .at{color:var(--accent)}
-.t-row.next .at{color:var(--primary)}
-</style><script>/*EDUCMS-SHIM-V5*/(function(){try{
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Bar — Bottle Service · The Gold Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,500;0,6..96,700;0,6..96,900;1,6..96,500;1,6..96,700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@500;700&amp;family=Oswald:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<script>/*EDUCMS-SHIM-V5*/(function(){try{
 function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
 function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
 var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas'],surface:['--paper','--brand-paper','--surface'],
@@ -61,20 +38,836 @@ function ready(){try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}}
 if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',ready);}else{ready();}
 addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();}}}catch(_){}});
 }catch(e){}})();</script>
-</head><body><div class="stage" id="stage"><div class="frame"><header class="top"><div><span class="logo" data-field="brand.name">The Lantern Bar</span><span class="tag" data-field="brand.tagline">Tables &amp; bottle service</span></div><div class="title" data-field="board.title">Bottle list &amp; tables.</div><div class="clock" data-source="local-time"><span data-field="clock.hhmm">10:42 PM</span></div></header><main class="cols">
-<section class="col" data-widget="bottles" data-source="toast" data-feed="/menu/bottles"><h2 data-field="col.0.h">Bottles</h2>
-<div class="b"><div class="nm" data-field="b.0.n">Veuve Clicquot <small data-field="b.0.d">NV · Brut Yellow Label</small></div><div class="pr" data-field="b.0.p">$220</div></div>
-<div class="b"><div class="nm" data-field="b.1.n">Don Julio 1942 <small data-field="b.1.d">Tequila · añejo · 750ml</small></div><div class="pr" data-field="b.1.p">$640</div></div>
-<div class="b"><div class="nm" data-field="b.2.n">Belvedere Vodka <small data-field="b.2.d">Single Estate · 1L</small></div><div class="pr" data-field="b.2.p">$420</div></div>
-<div class="b"><div class="nm" data-field="b.3.n">Hennessy Paradis <small data-field="b.3.d">Cognac · 750ml</small></div><div class="pr" data-field="b.3.p">$1,800</div></div>
-<div class="b"><div class="nm" data-field="b.4.n">Patrón Silver <small data-field="b.4.d">Tequila · blanco · 1L</small></div><div class="pr" data-field="b.4.p">$360</div></div>
-<div class="b"><div class="nm" data-field="b.5.n">Macallan 18 <small data-field="b.5.d">Sherry Oak · 750ml</small></div><div class="pr" data-field="b.5.p">$980</div></div>
-</section>
-<section class="col" data-widget="tables" data-source="opentable" data-feed="/reservations/tonight"><h2 data-field="col.1.h">Tables tonight</h2>
-<div class="table-list">
-<div class="t-row"><div class="who" data-field="t.0.who">Vance party<small data-field="t.0.size">6 · 9:00 PM</small></div><div class="at" data-field="t.0.at">Booth 4 · arrived</div></div>
-<div class="t-row next"><div class="who" data-field="t.1.who">Hartwell + Reyes<small data-field="t.1.size">8 · 9:30 PM</small></div><div class="at" data-field="t.1.at">Lounge · arriving</div></div>
-<div class="t-row open"><div class="who" data-field="t.2.who">Open table<small data-field="t.2.size">Walk-ins · 4 seats</small></div><div class="at" data-field="t.2.at">Bar · available</div></div>
-<div class="t-row"><div class="who" data-field="t.3.who">Davies birthday<small data-field="t.3.size">10 · 10:00 PM</small></div><div class="at" data-field="t.3.at">VIP · seated</div></div>
-<div class="t-row open"><div class="who" data-field="t.4.who">Open booth<small data-field="t.4.size">2 · 10:30 PM hold</small></div><div class="at" data-field="t.4.at">Booth 6</div></div>
-</div></section></main><footer class="foot"><div class="ft"><div class="k">Reservations</div><div class="v acc" data-field="foot.reservations">OpenTable · ext. 4</div></div><div class="ft"><div class="k">Cover</div><div class="v " data-field="foot.cover">None</div></div><div class="ft"><div class="k">Min spend</div><div class="v " data-field="foot.minspend">$120 / table</div></div><div class="ft"><div class="k">Server</div><div class="v " data-field="foot.server">Lior · tonight</div></div></footer></div></div><script>(function(){var s=document.getElementById('stage');function fit(){s.style.setProperty('--scale',Math.min(innerWidth/3840,innerHeight/2160));}addEventListener('resize',fit);fit();})();</script></body></html>
+<style>
+/* ============================================================
+   BAR · BOTTLE SERVICE — "THE GOLD ROOM"
+   Nightclub luxe: black lacquer, foil-stamped rails, magnum
+   silhouettes with sparkler bursts, tiered VIP packages.
+   3840x2160 landscape / 2160x3840 portrait from one file.
+   Sizing: fixed px only, type via calc(px * var(--scale)).
+   ============================================================ */
+:root{
+  --stage-w:3840px;--stage-h:2160px;--stage-scale:1;
+
+  /* ---- LEGACY vocabulary (what the V5 menu shim brands) ---- */
+  --bg:#06040c;
+  --paper:#130d1a;
+  --ink:#f7eeda;
+  --mute:#a4917a;
+  --primary:#d4a54a;
+  --accent:#f6e6b0;
+  --font-display:'Bodoni Moda';
+  --font-headline:'Oswald';
+  --font-grotesk:'Inter';
+  --font-condensed:'JetBrains Mono';
+
+  /* ---- CANONICAL vocabulary (dual-written by applyTheme) ---- */
+  --brand:#d4a54a;
+  --brand2:#6b4a12;
+  --accent2:#8244c0;
+  --pos:#3ac47d;
+  --neg:#ff4f6d;
+  --f-display:'Bodoni Moda';
+  --f-head:'Oswald';
+  --f-body:'Inter';
+  --f-mono:'JetBrains Mono';
+  --scale:1;
+
+  /* ---- derived foil ---- */
+  --foil:linear-gradient(104deg,
+      color-mix(in srgb,var(--primary) 46%,#000) 0%,
+      var(--primary) 17%,
+      var(--accent) 31%,
+      color-mix(in srgb,var(--primary) 74%,#000) 45%,
+      var(--primary) 60%,
+      var(--accent) 76%,
+      color-mix(in srgb,var(--primary) 52%,#000) 100%);
+  --foil-v:linear-gradient(184deg,
+      var(--accent) 0%,
+      var(--primary) 26%,
+      color-mix(in srgb,var(--primary) 55%,#000) 58%,
+      var(--primary) 82%,
+      var(--accent) 100%);
+  --rule:color-mix(in srgb,var(--primary) 34%,transparent);
+  --hair:color-mix(in srgb,var(--ink) 16%,transparent);
+  --onfoil:#140c04;
+
+  /* ---- type roles (all >= 50px on the 3840 stage) ---- */
+  --t-brand:calc(96px*var(--scale));
+  --t-tagline:calc(56px*var(--scale));
+  --t-mark:calc(76px*var(--scale));
+  --t-eyebrow:calc(56px*var(--scale));
+  --t-title:calc(150px*var(--scale));
+  --t-status:calc(54px*var(--scale));
+  --t-clock:calc(116px*var(--scale));
+  --t-sechead:calc(74px*var(--scale));
+  --t-seckick:calc(52px*var(--scale));
+  --t-btlname:calc(84px*var(--scale));
+  --t-btldesc:calc(56px*var(--scale));
+  --t-btlsvc:calc(52px*var(--scale));
+  --t-btlprice:calc(88px*var(--scale));
+  --t-tiernum:calc(84px*var(--scale));
+  --t-tiername:calc(76px*var(--scale));
+  --t-tierdesc:calc(56px*var(--scale));
+  --t-tierinc:calc(52px*var(--scale));
+  --t-tierprice:calc(98px*var(--scale));
+  --t-tabcount:calc(52px*var(--scale));
+  --t-who:calc(64px*var(--scale));
+  --t-size:calc(52px*var(--scale));
+  --t-at:calc(54px*var(--scale));
+  --t-flabel:calc(50px*var(--scale));
+  --t-fval:calc(62px*var(--scale));
+  --t-fnote:calc(56px*var(--scale));
+
+  /* ---- structural rhythm (landscape) ---- */
+  --pad:60px;
+  --gap:30px;
+  --mast-h:296px;
+  --tables-h:280px;
+  --foot-h:176px;
+  --sec-head-h:110px;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;color:var(--ink);
+  font-family:var(--font-grotesk),'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
+
+.viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;overflow:hidden;background:#000}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale));overflow:hidden}
+.stage{position:relative;width:var(--stage-w);height:var(--stage-h);overflow:hidden;
+  transform:scale(var(--stage-scale));transform-origin:0 0;
+  background:
+    radial-gradient(128% 84% at 50% -14%, color-mix(in srgb,var(--primary) 22%,transparent), transparent 58%),
+    radial-gradient(72% 58% at 96% 112%, color-mix(in srgb,var(--accent2) 34%,transparent), transparent 64%),
+    radial-gradient(58% 46% at 2% 96%, color-mix(in srgb,var(--primary) 14%,transparent), transparent 66%),
+    linear-gradient(163deg,#0c0714 0%, var(--bg) 46%, #05030a 100%);}
+
+/* ---------- full-bleed backdrop slot (CSS art until a photo lands) ---------- */
+.bgslot{position:absolute;top:0;right:0;bottom:0;left:0;z-index:0;background-size:cover;background-position:center;background-repeat:no-repeat}
+.bgslot .placeholder{position:absolute;top:0;right:0;bottom:0;left:0;
+  background:
+    repeating-linear-gradient(101deg, color-mix(in srgb,var(--accent) 9%,transparent) 0 3px, transparent 3px 210px),
+    repeating-linear-gradient(79deg, color-mix(in srgb,var(--accent2) 12%,transparent) 0 3px, transparent 3px 268px),
+    radial-gradient(38% 62% at 18% 6%, color-mix(in srgb,var(--primary) 16%,transparent), transparent 70%),
+    radial-gradient(30% 48% at 82% 2%, color-mix(in srgb,var(--accent) 12%,transparent), transparent 70%);}
+.bgslot.has-img .placeholder{display:none}
+.bgslot.has-img::before{display:none}
+.scrim{position:absolute;top:0;right:0;bottom:0;left:0;z-index:1;pointer-events:none;
+  background:linear-gradient(180deg, rgba(4,2,9,.72) 0%, rgba(4,2,9,.55) 42%, rgba(4,2,9,.86) 100%)}
+.grain{position:absolute;top:0;right:0;bottom:0;left:0;z-index:2;pointer-events:none;opacity:.055;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.74' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.4'/%3E%3C/svg%3E")}
+
+/* ---------- master layout ---------- */
+.wrap{position:absolute;top:var(--pad);left:var(--pad);z-index:3;
+  width:calc(var(--stage-w) - 2*var(--pad));
+  height:calc(var(--stage-h) - 2*var(--pad));
+  display:grid;grid-template-rows:var(--mast-h) 1fr var(--tables-h) var(--foot-h);row-gap:var(--gap)}
+
+/* ================= MASTHEAD ================= */
+.mast{position:relative;min-width:0;min-height:0;display:grid;
+  grid-template-columns:1120px 1fr 720px;column-gap:40px;align-items:center;padding-bottom:18px}
+.mast::after{content:"";position:absolute;left:0;bottom:0;width:100%;height:10px;background:var(--foil);
+  box-shadow:0 8px 0 color-mix(in srgb,var(--brand2) 70%,transparent)}
+
+.mast-brand{min-width:0;display:grid;grid-template-columns:200px 1fr;column-gap:28px;align-items:center}
+.logo{position:relative;width:200px;height:200px;border-radius:50%;overflow:hidden;
+  background:var(--paper);background-size:cover;background-position:center;
+  border:8px double var(--onfoil);
+  box-shadow:0 0 0 8px color-mix(in srgb,var(--primary) 82%,#000), 0 16px 0 color-mix(in srgb,var(--brand2) 88%,#000), 0 0 90px color-mix(in srgb,var(--primary) 40%,transparent)}
+.logo .placeholder{position:absolute;top:0;right:0;bottom:0;left:0;display:flex;align-items:center;justify-content:center;
+  background:var(--foil)}
+.logo .placeholder::before{content:"";position:absolute;left:14px;top:14px;width:152px;height:152px;border-radius:50%;
+  border:3px solid color-mix(in srgb,var(--onfoil) 55%,transparent)}
+.logo-mark{position:relative;color:var(--onfoil);font-family:var(--font-display),'Bodoni Moda',Georgia,serif;font-weight:900;
+  font-size:var(--t-mark);line-height:1;letter-spacing:.02em;height:88px;display:flex;align-items:center;justify-content:center;width:150px;overflow:hidden}
+.logo.has-img .placeholder{display:none}
+.logo.has-img::before{display:none}
+
+.brand-copy{min-width:0;display:grid;grid-template-rows:106px 62px;align-content:center;row-gap:6px}
+.brand-name{min-width:0;height:106px;display:flex;align-items:center;overflow:hidden;color:var(--ink);
+  font-family:var(--font-display),'Bodoni Moda',Georgia,serif;font-weight:700;font-style:italic;
+  font-size:var(--t-brand);line-height:1;letter-spacing:-.01em;white-space:nowrap;
+  text-shadow:0 6px 0 rgba(0,0,0,.55)}
+.brand-tagline{min-width:0;height:62px;display:flex;align-items:center;overflow:hidden;color:var(--mute);
+  font-family:var(--font-headline),'Oswald',sans-serif;font-weight:500;font-size:var(--t-tagline);line-height:1;
+  letter-spacing:.24em;text-transform:uppercase;white-space:nowrap}
+
+.mast-title{min-width:0;height:246px;padding-left:44px;border-left:3px solid var(--rule);
+  display:grid;grid-template-rows:58px 6px 166px;align-content:center;row-gap:8px}
+.mast-rule{width:100%;height:6px;background:var(--foil);
+  box-shadow:0 4px 0 color-mix(in srgb,var(--brand2) 60%,transparent)}
+.board-eyebrow{min-width:0;height:58px;display:flex;align-items:center;overflow:hidden;
+  color:var(--primary);font-family:var(--font-condensed),'JetBrains Mono',monospace;font-weight:700;
+  font-size:var(--t-eyebrow);line-height:1;letter-spacing:.3em;text-transform:uppercase;white-space:nowrap}
+.board-title{position:relative;min-width:0;height:166px;display:flex;align-items:center;overflow:hidden;
+  color:var(--accent);font-family:var(--font-display),'Bodoni Moda',Georgia,serif;font-weight:900;
+  font-size:var(--t-title);line-height:1;letter-spacing:-.02em;white-space:nowrap;
+  text-shadow:0 10px 0 color-mix(in srgb,var(--brand2) 92%,#000), 0 0 70px color-mix(in srgb,var(--primary) 42%,transparent)}
+
+.mast-clock{min-width:0;height:246px;padding-left:40px;border-left:3px solid var(--rule);
+  display:grid;grid-template-rows:58px 6px 166px;align-content:center;row-gap:8px;justify-items:end}
+.mast-clock .mast-rule{background:color-mix(in srgb,var(--primary) 40%,transparent);box-shadow:none}
+.service-status{min-width:0;width:100%;height:58px;display:flex;align-items:center;justify-content:flex-end;overflow:hidden;
+  color:var(--pos);font-family:var(--font-headline),'Oswald',sans-serif;font-weight:600;font-size:var(--t-status);
+  line-height:1;letter-spacing:.14em;text-transform:uppercase;white-space:nowrap}
+.clock{min-width:0;width:100%;height:166px;display:flex;align-items:center;justify-content:flex-end;overflow:hidden;
+  color:var(--ink);font-family:var(--font-display),'Bodoni Moda',Georgia,serif;font-weight:700;
+  font-size:var(--t-clock);line-height:1;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* ================= MAIN GRID ================= */
+.main{min-width:0;min-height:0;display:grid;grid-template-columns:2140px 1fr;column-gap:32px}
+
+/* ---- shared section header ---- */
+.sec-head{position:relative;min-width:0;height:var(--sec-head-h);display:grid;
+  grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);align-items:end;column-gap:28px;padding-bottom:16px}
+.sec-head::after{content:"";position:absolute;left:0;bottom:0;width:100%;height:7px;background:var(--foil)}
+.sec-h{min-width:0;height:80px;display:flex;align-items:flex-end;overflow:hidden;color:var(--primary);
+  font-family:var(--font-display),'Bodoni Moda',Georgia,serif;font-weight:900;font-size:var(--t-sechead);
+  line-height:1;letter-spacing:.01em;text-transform:uppercase;white-space:nowrap}
+.sec-k{min-width:0;height:62px;display:flex;align-items:flex-end;justify-content:flex-end;overflow:hidden;color:var(--mute);
+  font-family:var(--font-headline),'Oswald',sans-serif;font-weight:500;font-size:var(--t-seckick);
+  line-height:1;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
+
+/* ---- THE VAULT (bottle list) ---- */
+.vault{position:relative;min-width:0;min-height:0;display:grid;
+  grid-template-rows:var(--sec-head-h) repeat(6,1fr);row-gap:0;
+  padding:0 30px 0 30px;
+  background:linear-gradient(180deg, color-mix(in srgb,var(--paper) 92%,transparent) 0%, color-mix(in srgb,var(--paper) 62%,transparent) 100%);
+  border-top:4px solid color-mix(in srgb,var(--primary) 62%,transparent);
+  box-shadow:22px 22px 0 rgba(0,0,0,.55), 0 0 120px color-mix(in srgb,var(--primary) 12%,transparent)}
+.vault::before{content:"";position:absolute;left:0;top:0;bottom:0;width:12px;background:var(--foil-v)}
+.vault::after{content:"";position:absolute;right:0;top:0;bottom:0;width:4px;background:color-mix(in srgb,var(--primary) 26%,transparent)}
+
+.btl{position:relative;min-width:0;min-height:0;display:grid;
+  grid-template-columns:130px 1fr 330px 300px;column-gap:24px;align-items:center;
+  border-bottom:2px dashed var(--hair)}
+.btl:last-child{border-bottom:0}
+.btl::before{content:"";position:absolute;left:-30px;top:0;width:8px;height:100%;background:transparent}
+.btl.feat::before{background:var(--foil-v)}
+
+.btl-fig{position:relative;width:130px;height:100%;display:flex;align-items:center;justify-content:center}
+.bshape{position:relative;width:94px;height:166px;display:block}
+.b-cap{position:absolute;left:34px;top:0;width:26px;height:21px;border-radius:3px 3px 0 0;background:var(--foil-v);
+  box-shadow:0 2px 0 rgba(0,0,0,.5)}
+.b-neck{position:absolute;left:37px;top:19px;width:20px;height:52px;background:var(--foil-v)}
+.b-body{position:absolute;left:0;top:64px;width:94px;height:102px;border-radius:34px 34px 10px 10px;background:var(--foil);
+  box-shadow:inset 0 -12px 0 rgba(0,0,0,.34), inset 0 6px 0 color-mix(in srgb,var(--accent) 60%,transparent)}
+.b-label{position:absolute;left:10px;top:103px;width:74px;height:46px;background:#140d18;
+  border-top:3px solid color-mix(in srgb,var(--accent) 72%,transparent);
+  border-bottom:3px solid color-mix(in srgb,var(--accent) 72%,transparent)}
+.b-label::after{content:"";position:absolute;left:13px;top:16px;width:48px;height:5px;background:color-mix(in srgb,var(--accent) 55%,transparent)}
+
+.spark{position:absolute;left:50%;top:-34px;width:132px;height:132px;margin-left:-66px;pointer-events:none;
+  background:
+    radial-gradient(circle at 50% 50%, var(--accent) 0 5px, transparent 6px),
+    repeating-conic-gradient(from 0deg at 50% 50%, var(--accent) 0deg 0.9deg, transparent 0.9deg 13deg);
+  -webkit-mask-image:radial-gradient(circle at 50% 50%, #000 0 5%, rgba(0,0,0,.8) 24%, transparent 62%);
+  mask-image:radial-gradient(circle at 50% 50%, #000 0 5%, rgba(0,0,0,.8) 24%, transparent 62%);
+  opacity:.92;animation:twinkle 5.5s linear infinite}
+@keyframes twinkle{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+
+.btl-copy{min-width:0;display:grid;grid-template-rows:92px 60px;align-content:center;row-gap:2px}
+.btl-name{min-width:0;height:92px;display:flex;align-items:center;overflow:hidden;color:var(--ink);
+  font-family:var(--font-display),'Bodoni Moda',Georgia,serif;font-weight:700;font-size:var(--t-btlname);
+  line-height:1.02;letter-spacing:-.012em;white-space:nowrap}
+.btl-desc{min-width:0;height:60px;display:flex;align-items:center;overflow:hidden;color:var(--mute);
+  font-family:var(--font-grotesk),'Inter',sans-serif;font-weight:500;font-size:var(--t-btldesc);line-height:1;
+  letter-spacing:.02em;white-space:nowrap}
+
+.btl-svc{min-width:0;height:100%;display:flex;align-items:center;justify-content:flex-start}
+.svc-chip{min-width:0;max-width:330px;height:78px;padding:0 18px;display:flex;align-items:center;overflow:hidden;
+  color:var(--accent);background:color-mix(in srgb,var(--primary) 15%,transparent);
+  border:2px solid color-mix(in srgb,var(--primary) 55%,transparent);
+  font-family:var(--font-headline),'Oswald',sans-serif;font-weight:600;font-size:var(--t-btlsvc);line-height:1;
+  letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
+
+.btl-price{position:relative;min-width:0;width:300px;height:104px;display:flex;align-items:center;justify-content:center;
+  overflow:hidden;color:var(--onfoil);background:var(--foil);
+  font-family:var(--font-display),'Bodoni Moda',Georgia,serif;font-weight:900;font-size:var(--t-btlprice);
+  line-height:1;font-variant-numeric:tabular-nums;white-space:nowrap;
+  box-shadow:0 10px 0 color-mix(in srgb,var(--brand2) 92%,#000)}
+
+/* ---- TIERED PACKAGES ---- */
+.tiers{position:relative;min-width:0;min-height:0;display:grid;
+  grid-template-rows:var(--sec-head-h) repeat(3,1fr);row-gap:26px}
+
+.tier{position:relative;min-width:0;min-height:0;display:grid;
+  grid-template-columns:236px 1fr 316px;column-gap:20px;align-items:center;padding:20px 20px 20px 24px;
+  background:linear-gradient(122deg, color-mix(in srgb,var(--paper) 96%,transparent) 0%, color-mix(in srgb,var(--accent2) 26%,transparent) 118%);
+  border-top:4px solid color-mix(in srgb,var(--primary) 70%,transparent);
+  border-left:12px solid transparent;
+  box-shadow:18px 18px 0 rgba(0,0,0,.5)}
+.tier::before{content:"";position:absolute;left:-12px;top:-4px;bottom:0;width:12px;background:var(--foil-v)}
+.tier::after{content:"";position:absolute;right:0;top:0;width:100%;height:100%;pointer-events:none;
+  background:repeating-linear-gradient(112deg, color-mix(in srgb,var(--accent) 7%,transparent) 0 2px, transparent 2px 26px)}
+.tier.t1{background:linear-gradient(122deg, color-mix(in srgb,var(--paper) 96%,transparent) 0%, rgba(120,124,150,.20) 124%)}
+.tier.top{background:linear-gradient(122deg, color-mix(in srgb,var(--paper) 96%,transparent) 0%, color-mix(in srgb,var(--primary) 34%,transparent) 122%);
+  border-top-width:8px;box-shadow:18px 18px 0 rgba(0,0,0,.5), 0 0 130px color-mix(in srgb,var(--primary) 26%,transparent)}
+
+.tier-shot{position:relative;width:236px;height:100%;overflow:hidden;background-size:cover;background-position:center;
+  background-color:#0b0712;border:3px solid color-mix(in srgb,var(--primary) 45%,transparent)}
+.tier-shot .placeholder{position:absolute;top:0;right:0;bottom:0;left:0;
+  background:radial-gradient(72% 62% at 50% 24%, color-mix(in srgb,var(--primary) 26%,transparent), transparent 72%),
+             linear-gradient(180deg,#150e1e,#0a0611)}
+.tier-shot.has-img .placeholder{display:none}
+.tier-shot.has-img::before{display:none}
+.mag{position:absolute;left:24px;bottom:14px;width:112px;height:180px}
+.m-cap{position:absolute;left:40px;top:0;width:32px;height:22px;border-radius:4px 4px 0 0;background:var(--foil-v)}
+.m-neck{position:absolute;left:44px;top:20px;width:24px;height:56px;background:var(--foil-v)}
+.m-body{position:absolute;left:0;top:70px;width:112px;height:110px;border-radius:42px 42px 12px 12px;background:var(--foil);
+  box-shadow:inset 0 -14px 0 rgba(0,0,0,.36), inset 0 8px 0 color-mix(in srgb,var(--accent) 55%,transparent)}
+.m-label{position:absolute;left:14px;top:108px;width:84px;height:50px;background:#140d18;
+  border-top:3px solid color-mix(in srgb,var(--accent) 72%,transparent);
+  border-bottom:3px solid color-mix(in srgb,var(--accent) 72%,transparent)}
+.tier-num{position:absolute;right:0;top:0;z-index:3;width:92px;height:92px;display:flex;align-items:center;justify-content:center;
+  overflow:hidden;color:var(--onfoil);background:var(--foil);
+  font-family:var(--font-display),'Bodoni Moda',Georgia,serif;font-weight:900;font-size:var(--t-tiernum);line-height:1;
+  white-space:nowrap;box-shadow:-8px 8px 0 rgba(0,0,0,.55)}
+
+.tier-copy{position:relative;z-index:2;min-width:0;display:grid;grid-template-rows:88px 64px 60px;align-content:center;row-gap:4px}
+.tier-name{min-width:0;height:88px;display:flex;align-items:center;overflow:hidden;color:var(--ink);
+  font-family:var(--font-display),'Bodoni Moda',Georgia,serif;font-weight:700;font-size:var(--t-tiername);
+  line-height:1;letter-spacing:-.01em;white-space:nowrap}
+.tier-desc{min-width:0;height:64px;display:flex;align-items:center;overflow:hidden;color:var(--accent);
+  font-family:var(--font-grotesk),'Inter',sans-serif;font-weight:500;font-size:var(--t-tierdesc);line-height:1;white-space:nowrap}
+.tier-inc{min-width:0;height:60px;display:flex;align-items:center;overflow:hidden;color:var(--mute);
+  font-family:var(--font-headline),'Oswald',sans-serif;font-weight:500;font-size:var(--t-tierinc);line-height:1;
+  letter-spacing:.07em;text-transform:uppercase;white-space:nowrap}
+
+.tier-pay{position:relative;z-index:2;min-width:0;width:316px;height:100%;display:flex;align-items:center;justify-content:flex-end}
+.tier-price{min-width:0;width:316px;height:124px;display:flex;align-items:center;justify-content:center;overflow:hidden;
+  color:var(--accent);background:rgba(9,5,16,.92);
+  border:4px solid color-mix(in srgb,var(--primary) 78%,transparent);
+  font-family:var(--font-display),'Bodoni Moda',Georgia,serif;font-weight:900;font-size:var(--t-tierprice);line-height:1;
+  font-variant-numeric:tabular-nums;white-space:nowrap;
+  box-shadow:0 10px 0 color-mix(in srgb,var(--brand2) 90%,#000)}
+
+/* ================= TABLES TONIGHT ================= */
+.tables{position:relative;min-width:0;min-height:0;display:grid;
+  grid-template-columns:540px repeat(5,1fr);column-gap:20px;padding:20px 24px;
+  background:color-mix(in srgb,var(--paper) 88%,#000);
+  border-top:4px solid color-mix(in srgb,var(--primary) 60%,transparent);
+  box-shadow:0 18px 0 rgba(0,0,0,.5)}
+.tab{position:relative;min-width:0;height:100%;padding:14px 26px;display:grid;
+  grid-template-rows:1fr 60px;align-content:center;row-gap:6px;background:var(--foil)}
+.tab-h{min-width:0;height:100%;display:block;overflow:hidden;color:var(--onfoil);
+  font-family:var(--font-display),'Bodoni Moda',Georgia,serif;font-weight:900;font-size:var(--t-sechead);line-height:1.04;
+  text-transform:uppercase;white-space:normal}
+.tab-c{min-width:0;height:60px;display:flex;align-items:center;overflow:hidden;color:var(--onfoil);
+  font-family:var(--font-headline),'Oswald',sans-serif;font-weight:600;font-size:var(--t-tabcount);line-height:1;
+  letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;opacity:.8}
+
+.chip{position:relative;min-width:0;height:100%;padding:16px 22px;display:grid;grid-template-rows:72px 56px 62px;
+  align-content:center;row-gap:6px;background:rgba(8,4,14,.86);
+  border-left:10px solid var(--mute);box-shadow:8px 8px 0 rgba(0,0,0,.45)}
+.chip[data-state="in"]{border-left-color:var(--pos)}
+.chip[data-state="next"]{border-left-color:var(--primary)}
+.chip[data-state="open"]{border-left-color:var(--accent);background:rgba(20,12,4,.9)}
+.chip-who{min-width:0;height:72px;display:flex;align-items:center;overflow:hidden;color:var(--ink);
+  font-family:var(--font-display),'Bodoni Moda',Georgia,serif;font-weight:700;font-size:var(--t-who);line-height:1;white-space:nowrap}
+.chip-size{min-width:0;height:56px;display:flex;align-items:center;overflow:hidden;color:var(--mute);
+  font-family:var(--font-headline),'Oswald',sans-serif;font-weight:500;font-size:var(--t-size);line-height:1;
+  font-variant-numeric:tabular-nums;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap}
+.chip-at{min-width:0;height:62px;display:flex;align-items:center;overflow:hidden;color:var(--accent);
+  font-family:var(--font-headline),'Oswald',sans-serif;font-weight:600;font-size:var(--t-at);line-height:1;
+  letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+.chip[data-state="in"] .chip-at{color:var(--pos)}
+.chip[data-state="next"] .chip-at{color:var(--primary)}
+
+/* ================= FOOTER (solid opaque foil bar) ================= */
+.foot{position:relative;min-width:0;min-height:0;display:grid;
+  grid-template-columns:repeat(4,1fr) 1180px;background:var(--foil);color:var(--onfoil);
+  box-shadow:0 -8px 0 rgba(0,0,0,.5)}
+.fcell{position:relative;min-width:0;height:100%;padding:18px 26px;display:grid;grid-template-rows:52px 1fr;align-content:center;row-gap:4px;
+  border-right:3px solid color-mix(in srgb,var(--onfoil) 28%,transparent)}
+.fcell:last-child{border-right:0}
+.fcell.note{grid-template-rows:1fr}
+.flabel{min-width:0;height:52px;display:flex;align-items:center;overflow:hidden;
+  font-family:var(--font-headline),'Oswald',sans-serif;font-weight:700;font-size:var(--t-flabel);line-height:1;
+  letter-spacing:.2em;text-transform:uppercase;white-space:nowrap;opacity:.72}
+.fval{min-width:0;height:100%;display:flex;align-items:center;overflow:hidden;
+  font-family:var(--font-display),'Bodoni Moda',Georgia,serif;font-weight:700;font-size:var(--t-fval);line-height:1;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+/* multi-line fit boxes stay display:block — a flex-centred overflow is
+   invisible to scrollHeight, which would silently clip operator copy. */
+.fnote{min-width:0;height:100%;display:block;overflow:hidden;
+  font-family:var(--font-grotesk),'Inter',sans-serif;font-weight:600;font-size:var(--t-fnote);line-height:1.16;
+  letter-spacing:.01em;white-space:normal}
+
+/* hidden theme block never renders */
+[data-widget="theme"]{display:none !important}
+
+/* ================= PORTRAIT ================= */
+.stage[data-orient="port"]{
+  --pad:56px;--gap:28px;--mast-h:460px;--tables-h:660px;--foot-h:430px;--sec-head-h:104px;
+  --t-brand:calc(88px*var(--scale));
+  --t-title:calc(124px*var(--scale));
+  --t-clock:calc(100px*var(--scale));
+}
+.stage[data-orient="port"] .logo .placeholder::before{left:10px;top:10px;width:136px;height:136px}
+.stage[data-orient="port"] .mast{grid-template-columns:1fr 700px;grid-template-rows:206px 1fr;column-gap:32px;row-gap:12px}
+.stage[data-orient="port"] .mast-brand{grid-column:1;grid-row:1}
+.stage[data-orient="port"] .mast-clock{grid-column:2;grid-row:1;height:194px;padding-left:34px;grid-template-rows:60px 6px 116px;row-gap:6px}
+.stage[data-orient="port"] .mast-title{grid-column:1 / span 2;grid-row:2;height:214px;padding-left:0;padding-top:12px;
+  border-left:0;border-top:3px solid var(--rule);grid-template-rows:56px 6px 136px;row-gap:8px}
+.stage[data-orient="port"] .logo{width:180px;height:180px}
+.stage[data-orient="port"] .mast-brand{grid-template-columns:180px 1fr}
+.stage[data-orient="port"] .brand-copy{grid-template-rows:98px 58px}
+.stage[data-orient="port"] .brand-name{height:98px}
+.stage[data-orient="port"] .brand-tagline{height:58px}
+.stage[data-orient="port"] .board-eyebrow{height:56px}
+.stage[data-orient="port"] .board-title{height:136px}
+.stage[data-orient="port"] .service-status{height:60px}
+.stage[data-orient="port"] .clock{height:116px}
+
+.stage[data-orient="port"] .main{grid-template-columns:1fr;grid-template-rows:1230px 1fr;row-gap:var(--gap);column-gap:0}
+.stage[data-orient="port"] .vault{grid-template-rows:var(--sec-head-h) repeat(6,1fr)}
+.stage[data-orient="port"] .btl{grid-template-columns:130px 1fr 330px 320px}
+.stage[data-orient="port"] .tiers{grid-template-rows:var(--sec-head-h) repeat(3,1fr);row-gap:14px}
+.stage[data-orient="port"] .tier{grid-template-columns:236px 1fr 340px;padding:16px 20px 16px 22px}
+.stage[data-orient="port"] .tier-shot{width:236px}
+.stage[data-orient="port"] .tier-copy{grid-template-rows:76px 56px 52px;row-gap:3px}
+.stage[data-orient="port"] .tier-name{height:76px}
+.stage[data-orient="port"] .tier-desc{height:56px}
+.stage[data-orient="port"] .tier-inc{height:52px}
+.stage[data-orient="port"] .tier-pay{width:340px}
+.stage[data-orient="port"] .tier-price{width:340px;height:110px}
+.stage[data-orient="port"] .mag{left:22px;width:96px;height:160px}
+.stage[data-orient="port"] .m-cap{left:34px;width:28px;height:20px}
+.stage[data-orient="port"] .m-neck{left:37px;top:18px;width:22px;height:48px}
+.stage[data-orient="port"] .m-body{top:60px;width:96px;height:100px;border-radius:36px 36px 12px 12px}
+.stage[data-orient="port"] .m-label{left:12px;top:96px;width:72px;height:44px}
+
+.stage[data-orient="port"] .tables{grid-template-columns:1fr;grid-template-rows:var(--sec-head-h) repeat(5,1fr);
+  row-gap:8px;column-gap:0;padding:18px 22px}
+.stage[data-orient="port"] .tab{grid-template-columns:1fr 480px;grid-template-rows:1fr;column-gap:20px;row-gap:0;
+  align-items:center;padding:0 24px}
+.stage[data-orient="port"] .tab-c{height:62px;justify-content:flex-end}
+.stage[data-orient="port"] .chip{grid-template-columns:1fr 520px 560px;grid-template-rows:1fr;column-gap:20px;row-gap:0;
+  align-items:center;padding:10px 22px}
+.stage[data-orient="port"] .chip-who{height:74px}
+.stage[data-orient="port"] .chip-size{height:62px;justify-content:flex-start}
+.stage[data-orient="port"] .chip-at{height:64px;justify-content:flex-end}
+
+.stage[data-orient="port"] .foot{grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(2,158px) 1fr}
+.stage[data-orient="port"] .fcell{border-right:3px solid color-mix(in srgb,var(--onfoil) 28%,transparent);
+  border-bottom:3px solid color-mix(in srgb,var(--onfoil) 22%,transparent);grid-template-rows:52px 1fr;padding:16px 26px}
+.stage[data-orient="port"] .fcell:nth-child(2n){border-right:0}
+.stage[data-orient="port"] .fcell.note{grid-column:1 / span 2;grid-template-rows:1fr;border-right:0;border-bottom:0;padding:12px 26px}
+.stage[data-orient="port"] .flabel{height:52px}
+</style>
+</head>
+<body>
+
+<div data-widget="theme" hidden>
+  <span data-field="theme.bg">#06040c</span><span data-field="theme.paper">#130d1a</span><span data-field="theme.ink">#f7eeda</span><span data-field="theme.mute">#a4917a</span>
+  <span data-field="theme.brand">#d4a54a</span><span data-field="theme.brand2">#6b4a12</span>
+  <span data-field="theme.accent">#f6e6b0</span><span data-field="theme.accent2">#8244c0</span>
+  <span data-field="theme.pos">#3ac47d</span><span data-field="theme.neg">#ff4f6d</span>
+  <span data-field="theme.fDisplay">Bodoni Moda</span><span data-field="theme.fHead">Oswald</span><span data-field="theme.fBody">Inter</span><span data-field="theme.fMono">JetBrains Mono</span><span data-field="theme.scale">1</span>
+</div>
+
+<div class="viewport">
+  <div class="stage-outer">
+    <div class="stage" id="stage" data-orient="land">
+
+      <div class="bgslot" data-imgslot="board.bg"><span class="placeholder"></span></div>
+      <div class="scrim"></div>
+      <div class="grain"></div>
+
+      <div class="wrap">
+
+        <!-- ============ MASTHEAD ============ -->
+        <header class="mast">
+          <div class="mast-brand">
+            <div class="logo" data-imgslot="brand.logo">
+              <span class="placeholder"><span class="logo-mark" data-field="brand.mark" data-fit="single" data-fit-min="50">LB</span></span>
+            </div>
+            <div class="brand-copy">
+              <div class="brand-name" data-field="brand.name" data-fit="single" data-fit-min="50">The Lantern Bar</div>
+              <div class="brand-tagline" data-field="brand.tagline" data-fit="single" data-fit-min="50">Tables &amp; bottle service</div>
+            </div>
+          </div>
+          <div class="mast-title">
+            <div class="board-eyebrow" data-field="board.eyebrow" data-fit="single" data-fit-min="50">VIP · Bottle service</div>
+            <span class="mast-rule"></span>
+            <div class="board-title" data-field="board.title" data-fit="single" data-fit-min="50">Bottle List &amp; Tables</div>
+          </div>
+          <div class="mast-clock">
+            <div class="service-status" data-field="service.status" data-fit="single" data-fit-min="50">Open till 2 AM</div>
+            <span class="mast-rule"></span>
+            <div class="clock" data-field="clock.hhmm" data-live="clock" data-fit="single" data-fit-min="50">10:42 PM</div>
+          </div>
+        </header>
+
+        <!-- ============ MAIN ============ -->
+        <div class="main">
+
+          <!-- ---- THE VAULT ---- -->
+          <section class="vault">
+            <div class="sec-head">
+              <div class="sec-h" data-field="col.0.h" data-fit="single" data-fit-min="50">Bottle Vault</div>
+              <div class="sec-k" data-field="col.0.k" data-fit="single" data-fit-min="50">Sparkler service on request</div>
+            </div>
+
+            <article class="btl card">
+              <div class="btl-fig"><span class="bshape"><i class="b-cap"></i><i class="b-neck"></i><i class="b-body"></i><i class="b-label"></i></span></div>
+              <div class="btl-copy">
+                <div class="btl-name" data-field="b.0.n" data-fit="single" data-fit-min="50">Veuve Clicquot</div>
+                <div class="btl-desc" data-field="b.0.d" data-fit="single" data-fit-min="50">NV · Brut Yellow Label</div>
+              </div>
+              <div class="btl-svc"><span class="svc-chip" data-field="b.0.svc" data-fit="single" data-fit-min="50">Serves 4</span></div>
+              <div class="btl-price" data-field="b.0.p" data-fit="single" data-fit-min="50">$220</div>
+            </article>
+
+            <article class="btl card">
+              <div class="btl-fig"><span class="bshape"><i class="b-cap"></i><i class="b-neck"></i><i class="b-body"></i><i class="b-label"></i></span></div>
+              <div class="btl-copy">
+                <div class="btl-name" data-field="b.1.n" data-fit="single" data-fit-min="50">Don Julio 1942</div>
+                <div class="btl-desc" data-field="b.1.d" data-fit="single" data-fit-min="50">Tequila · añejo · 750ml</div>
+              </div>
+              <div class="btl-svc"><span class="svc-chip" data-field="b.1.svc" data-fit="single" data-fit-min="50">Serves 6</span></div>
+              <div class="btl-price" data-field="b.1.p" data-fit="single" data-fit-min="50">$640</div>
+            </article>
+
+            <article class="btl card">
+              <div class="btl-fig"><span class="bshape"><i class="b-cap"></i><i class="b-neck"></i><i class="b-body"></i><i class="b-label"></i></span></div>
+              <div class="btl-copy">
+                <div class="btl-name" data-field="b.2.n" data-fit="single" data-fit-min="50">Belvedere Vodka</div>
+                <div class="btl-desc" data-field="b.2.d" data-fit="single" data-fit-min="50">Single Estate · 1L</div>
+              </div>
+              <div class="btl-svc"><span class="svc-chip" data-field="b.2.svc" data-fit="single" data-fit-min="50">Serves 6</span></div>
+              <div class="btl-price" data-field="b.2.p" data-fit="single" data-fit-min="50">$420</div>
+            </article>
+
+            <article class="btl card feat">
+              <div class="btl-fig"><span class="bshape"><i class="b-cap"></i><i class="b-neck"></i><i class="b-body"></i><i class="b-label"></i><span class="spark"></span></span></div>
+              <div class="btl-copy">
+                <div class="btl-name" data-field="b.3.n" data-fit="single" data-fit-min="50">Hennessy Paradis</div>
+                <div class="btl-desc" data-field="b.3.d" data-fit="single" data-fit-min="50">Cognac · 750ml</div>
+              </div>
+              <div class="btl-svc"><span class="svc-chip" data-field="b.3.svc" data-fit="single" data-fit-min="50">Serves 8</span></div>
+              <div class="btl-price" data-field="b.3.p" data-fit="single" data-fit-min="50">$1,800</div>
+            </article>
+
+            <article class="btl card">
+              <div class="btl-fig"><span class="bshape"><i class="b-cap"></i><i class="b-neck"></i><i class="b-body"></i><i class="b-label"></i></span></div>
+              <div class="btl-copy">
+                <div class="btl-name" data-field="b.4.n" data-fit="single" data-fit-min="50">Patrón Silver</div>
+                <div class="btl-desc" data-field="b.4.d" data-fit="single" data-fit-min="50">Tequila · blanco · 1L</div>
+              </div>
+              <div class="btl-svc"><span class="svc-chip" data-field="b.4.svc" data-fit="single" data-fit-min="50">Serves 6</span></div>
+              <div class="btl-price" data-field="b.4.p" data-fit="single" data-fit-min="50">$360</div>
+            </article>
+
+            <article class="btl card">
+              <div class="btl-fig"><span class="bshape"><i class="b-cap"></i><i class="b-neck"></i><i class="b-body"></i><i class="b-label"></i></span></div>
+              <div class="btl-copy">
+                <div class="btl-name" data-field="b.5.n" data-fit="single" data-fit-min="50">Macallan 18</div>
+                <div class="btl-desc" data-field="b.5.d" data-fit="single" data-fit-min="50">Sherry Oak · 750ml</div>
+              </div>
+              <div class="btl-svc"><span class="svc-chip" data-field="b.5.svc" data-fit="single" data-fit-min="50">Serves 4</span></div>
+              <div class="btl-price" data-field="b.5.p" data-fit="single" data-fit-min="50">$980</div>
+            </article>
+          </section>
+
+          <!-- ---- TIERED PACKAGES ---- -->
+          <section class="tiers">
+            <div class="sec-head">
+              <div class="sec-h" data-field="col.2.h" data-fit="single" data-fit-min="50">Tiered Packages</div>
+              <div class="sec-k" data-field="col.2.k" data-fit="single" data-fit-min="50">At the host stand</div>
+            </div>
+
+            <article class="tier card t1">
+              <div class="tier-shot" data-imgslot="pkg.0.img">
+                <span class="placeholder"><span class="mag"><i class="m-cap"></i><i class="m-neck"></i><i class="m-body"></i><i class="m-label"></i></span></span>
+                <span class="tier-num" data-field="pkg.0.tier" data-fit="single" data-fit-min="50">I</span>
+              </div>
+              <div class="tier-copy">
+                <div class="tier-name" data-field="pkg.0.n" data-fit="single" data-fit-min="50">Silver Booth</div>
+                <div class="tier-desc" data-field="pkg.0.d" data-fit="single" data-fit-min="50">Two bottles · booth for six</div>
+                <div class="tier-inc" data-field="pkg.0.inc" data-fit="single" data-fit-min="50">Mixers · sparklers · host</div>
+              </div>
+              <div class="tier-pay"><div class="tier-price" data-field="pkg.0.p" data-fit="single" data-fit-min="50">$750</div></div>
+            </article>
+
+            <article class="tier card">
+              <div class="tier-shot" data-imgslot="pkg.1.img">
+                <span class="placeholder"><span class="mag"><i class="m-cap"></i><i class="m-neck"></i><i class="m-body"></i><i class="m-label"></i></span></span>
+                <span class="tier-num" data-field="pkg.1.tier" data-fit="single" data-fit-min="50">II</span>
+              </div>
+              <div class="tier-copy">
+                <div class="tier-name" data-field="pkg.1.n" data-fit="single" data-fit-min="50">Gold Lounge</div>
+                <div class="tier-desc" data-field="pkg.1.d" data-fit="single" data-fit-min="50">Three bottles · lounge for ten</div>
+                <div class="tier-inc" data-field="pkg.1.inc" data-fit="single" data-fit-min="50">Magnum parade · reserved host</div>
+              </div>
+              <div class="tier-pay"><div class="tier-price" data-field="pkg.1.p" data-fit="single" data-fit-min="50">$1,500</div></div>
+            </article>
+
+            <article class="tier card top">
+              <div class="tier-shot" data-imgslot="pkg.2.img">
+                <span class="placeholder"><span class="mag"><i class="m-cap"></i><i class="m-neck"></i><i class="m-body"></i><i class="m-label"></i></span><span class="spark"></span></span>
+                <span class="tier-num" data-field="pkg.2.tier" data-fit="single" data-fit-min="50">III</span>
+              </div>
+              <div class="tier-copy">
+                <div class="tier-name" data-field="pkg.2.n" data-fit="single" data-fit-min="50">Platinum Magnum</div>
+                <div class="tier-desc" data-field="pkg.2.d" data-fit="single" data-fit-min="50">Five bottles · VIP room for sixteen</div>
+                <div class="tier-inc" data-field="pkg.2.inc" data-fit="single" data-fit-min="50">Champagne train · private entry</div>
+              </div>
+              <div class="tier-pay"><div class="tier-price" data-field="pkg.2.p" data-fit="single" data-fit-min="50">$3,200</div></div>
+            </article>
+          </section>
+        </div>
+
+        <!-- ============ TABLES TONIGHT ============ -->
+        <section class="tables">
+          <div class="tab">
+            <div class="tab-h" data-field="col.1.h" data-fit data-fit-min="50">Tables Tonight</div>
+            <div class="tab-c" data-field="tables.count" data-fit="single" data-fit-min="50">3 held · 2 open</div>
+          </div>
+
+          <article class="chip" data-state="in">
+            <div class="chip-who" data-field="t.0.who" data-fit="single" data-fit-min="50">Vance party</div>
+            <div class="chip-size" data-field="t.0.size" data-fit="single" data-fit-min="50">6 · 9:00 PM</div>
+            <div class="chip-at" data-field="t.0.at" data-fit="single" data-fit-min="50">Booth 4 · arrived</div>
+          </article>
+
+          <article class="chip" data-state="next">
+            <div class="chip-who" data-field="t.1.who" data-fit="single" data-fit-min="50">Hartwell + Reyes</div>
+            <div class="chip-size" data-field="t.1.size" data-fit="single" data-fit-min="50">8 · 9:30 PM</div>
+            <div class="chip-at" data-field="t.1.at" data-fit="single" data-fit-min="50">Lounge · arriving</div>
+          </article>
+
+          <article class="chip" data-state="open">
+            <div class="chip-who" data-field="t.2.who" data-fit="single" data-fit-min="50">Open table</div>
+            <div class="chip-size" data-field="t.2.size" data-fit="single" data-fit-min="50">Walk-ins · 4 seats</div>
+            <div class="chip-at" data-field="t.2.at" data-fit="single" data-fit-min="50">Bar · available</div>
+          </article>
+
+          <article class="chip" data-state="in">
+            <div class="chip-who" data-field="t.3.who" data-fit="single" data-fit-min="50">Davies birthday</div>
+            <div class="chip-size" data-field="t.3.size" data-fit="single" data-fit-min="50">10 · 10:00 PM</div>
+            <div class="chip-at" data-field="t.3.at" data-fit="single" data-fit-min="50">VIP · seated</div>
+          </article>
+
+          <article class="chip" data-state="open">
+            <div class="chip-who" data-field="t.4.who" data-fit="single" data-fit-min="50">Open booth</div>
+            <div class="chip-size" data-field="t.4.size" data-fit="single" data-fit-min="50">2 · 10:30 PM hold</div>
+            <div class="chip-at" data-field="t.4.at" data-fit="single" data-fit-min="50">Booth 6</div>
+          </article>
+        </section>
+
+        <!-- ============ FOOTER ============ -->
+        <footer class="foot">
+          <div class="fcell">
+            <span class="flabel" data-field="foot.k0" data-fit="single" data-fit-min="50">Reservations</span>
+            <span class="fval" data-field="foot.reservations" data-fit="single" data-fit-min="50">OpenTable · ext. 4</span>
+          </div>
+          <div class="fcell">
+            <span class="flabel" data-field="foot.k1" data-fit="single" data-fit-min="50">Cover</span>
+            <span class="fval" data-field="foot.cover" data-fit="single" data-fit-min="50">None</span>
+          </div>
+          <div class="fcell">
+            <span class="flabel" data-field="foot.k2" data-fit="single" data-fit-min="50">Min spend</span>
+            <span class="fval" data-field="foot.minspend" data-fit="single" data-fit-min="50">$120 / table</span>
+          </div>
+          <div class="fcell">
+            <span class="flabel" data-field="foot.k3" data-fit="single" data-fit-min="50">Server</span>
+            <span class="fval" data-field="foot.server" data-fit="single" data-fit-min="50">Lior · tonight</span>
+          </div>
+          <div class="fcell note">
+            <span class="fnote" data-field="foot.note" data-fit data-fit-min="50">Sparkler service with every magnum · 21+ with ID · 20% gratuity</span>
+          </div>
+        </footer>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   RUNTIME — orientation + stage scale, dual-vocabulary theme
+   apply, image slots, auto-fit (50px floor), live clock.
+   Plain ES5-safe syntax; parses in WebKit and Chromium.
+   ============================================================ */
+(function(){
+  var root=document.documentElement;
+  var stage=document.getElementById('stage');
+  if(!stage)return;
+
+  /* ---------- orientation + letterbox scale ---------- */
+  function forced(){
+    try{
+      var q=new URLSearchParams(location.search);
+      return q.get('o')||q.get('orientation')||'';
+    }catch(e){return '';}
+  }
+  function orient(){
+    var f=forced();
+    var port=f?(f==='portrait'):(window.innerHeight>window.innerWidth);
+    stage.setAttribute('data-orient',port?'port':'land');
+    root.style.setProperty('--stage-w',port?'2160px':'3840px');
+    root.style.setProperty('--stage-h',port?'3840px':'2160px');
+    fit();
+    autofit();
+  }
+  function fit(){
+    var c=getComputedStyle(root);
+    var w=parseFloat(c.getPropertyValue('--stage-w'))||3840;
+    var h=parseFloat(c.getPropertyValue('--stage-h'))||2160;
+    var k=Math.min(window.innerWidth/w,window.innerHeight/h);
+    root.style.setProperty('--stage-scale',String(k));
+  }
+
+  /* ---------- theme tokens: DUAL-WRITE canonical + legacy ---------- */
+  var THEME={
+    bg:['--bg'],
+    paper:['--paper'],
+    ink:['--ink'],
+    mute:['--mute'],
+    brand:['--brand','--primary'],
+    brand2:['--brand2'],
+    accent:['--accent'],
+    accent2:['--accent2'],
+    pos:['--pos'],
+    neg:['--neg'],
+    fDisplay:['--f-display','--font-display'],
+    fHead:['--f-head','--font-headline'],
+    fBody:['--f-body','--font-grotesk'],
+    fMono:['--f-mono','--font-condensed'],
+    scale:['--scale']
+  };
+  var FONTKEYS={fDisplay:1,fHead:1,fBody:1,fMono:1};
+  function applyTheme(){
+    var k,el,v,i;
+    for(k in THEME){
+      if(!Object.prototype.hasOwnProperty.call(THEME,k))continue;
+      el=document.querySelector('[data-field="theme.'+k+'"]');
+      if(!el)continue;
+      v=(el.textContent||'').replace(/^\s+|\s+$/g,'');
+      if(!v)continue;
+      if(FONTKEYS[k])v="'"+v.replace(/'/g,'')+"'";
+      for(i=0;i<THEME[k].length;i++)root.style.setProperty(THEME[k][i],v);
+    }
+  }
+
+  /* ---------- image slots ---------- */
+  function paintSlot(el){
+    var v=el.getAttribute('data-img')||'';
+    if(v){
+      el.style.backgroundImage='url("'+v.replace(/"/g,'')+'")';
+      el.style.backgroundSize='cover';
+      el.style.backgroundPosition='center';
+      el.style.backgroundRepeat='no-repeat';
+      el.classList.add('has-img');
+    }else{
+      el.style.backgroundImage='';
+      el.classList.remove('has-img');
+    }
+  }
+  function paintSlots(){
+    var n=document.querySelectorAll('[data-imgslot]'),i;
+    for(i=0;i<n.length;i++)paintSlot(n[i]);
+  }
+
+  /* ---------- auto-fit (hard 50px floor) ---------- */
+  function overflows(el,single){
+    if(el.scrollWidth>el.clientWidth+1)return true;
+    /* single-line roles measure WIDTH only: tall-metric display faces
+       (Bodoni, Oswald) report a line box taller than line-height:1, which
+       would otherwise crush every headline to the 50px floor. */
+    if(single)return false;
+    return el.scrollHeight>el.clientHeight+1;
+  }
+  function fitOne(el){
+    if(!el.clientWidth||!el.clientHeight)return;
+    var single=el.getAttribute('data-fit')==='single';
+    var min=parseFloat(el.getAttribute('data-fit-min'));
+    if(!(min>0))min=50;
+    var inline=el.style.fontSize;
+    if(inline&&inline!==el.__veApplied){
+      var forcedSize=parseFloat(inline);
+      el.__veCeil=(forcedSize>0)?forcedSize:0;
+    }
+    el.style.fontSize='';
+    var css=parseFloat(getComputedStyle(el).fontSize);
+    if(!(css>0))css=min;
+    var max=el.__veCeil?el.__veCeil:css;
+    var attrMax=parseFloat(el.getAttribute('data-fit-max'));
+    if(attrMax>0)max=Math.min(max,attrMax);
+    if(max<min)max=min;
+    el.style.fontSize=max+'px';
+    if(!overflows(el,single)){el.__veApplied=el.style.fontSize;return;}
+    var lo=Math.ceil(min),hi=Math.floor(max),best=lo,mid;
+    while(lo<=hi){
+      mid=Math.floor((lo+hi)/2);
+      el.style.fontSize=mid+'px';
+      if(overflows(el,single)){hi=mid-1;}else{best=mid;lo=mid+1;}
+    }
+    el.style.fontSize=best+'px';
+    el.__veApplied=el.style.fontSize;
+  }
+  function autofit(){
+    var n=document.querySelectorAll('[data-fit]'),i;
+    for(i=0;i<n.length;i++)fitOne(n[i]);
+  }
+  var refitPending=false;
+  function scheduleFit(){
+    if(refitPending)return;
+    refitPending=true;
+    setTimeout(function(){refitPending=false;autofit();},40);
+  }
+
+  /* ---------- live clock ---------- */
+  function two(v){return (v<10?'0':'')+v;}
+  function f12(d){
+    var h=d.getHours(),m=d.getMinutes(),ap=h<12?'AM':'PM';
+    h=h%12;if(h===0)h=12;
+    return h+':'+two(m)+' '+ap;
+  }
+  function tick(){
+    var now=new Date();
+    var n=document.querySelectorAll('[data-live="clock"]'),i;
+    for(i=0;i<n.length;i++){
+      if(n[i].hasAttribute('data-pin'))continue;
+      n[i].textContent=f12(now);
+    }
+  }
+
+  /* ---------- boot ---------- */
+  applyTheme();
+  paintSlots();
+  tick();
+  orient();
+
+  window.addEventListener('resize',orient);
+  window.addEventListener('load',function(){orient();autofit();});
+  setTimeout(function(){autofit();},120);
+  setTimeout(function(){orient();},320);
+  setTimeout(function(){autofit();},700);
+  setInterval(tick,15000);
+
+  if(document.fonts&&document.fonts.ready){
+    document.fonts.ready.then(function(){autofit();setTimeout(autofit,80);},function(){});
+  }
+
+  var themeBox=document.querySelector('[data-widget="theme"]');
+  if(themeBox&&window.MutationObserver){
+    new MutationObserver(function(){applyTheme();scheduleFit();})
+      .observe(themeBox,{subtree:true,childList:true,characterData:true});
+  }
+  if(window.MutationObserver){
+    new MutationObserver(function(){scheduleFit();})
+      .observe(stage,{subtree:true,childList:true,characterData:true});
+    new MutationObserver(function(records){
+      var i;
+      for(i=0;i<records.length;i++){
+        if(records[i].attributeName==='data-img')paintSlot(records[i].target);
+      }
+    }).observe(stage,{subtree:true,attributes:true,attributeFilter:['data-img']});
+  }
+}());
+</script>
+</body>
+</html>

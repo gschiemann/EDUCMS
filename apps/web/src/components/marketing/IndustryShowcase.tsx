@@ -86,16 +86,15 @@ const INDUSTRIES: Industry[] = [
       'Push an LTO or combo to every store at once',
       'Runs on the screens you already own',
     ],
-    // 2026-07-16 (audit S3) — the QSR menu boards (drive-thru / counter /
-    // combos / beverages) are all QUARANTINED (placeholder / clipping), so the
-    // public homepage hero must NOT point at one. Order-Ready is a real,
-    // non-quarantined QSR board that renders clean. staticImage dropped: the
-    // only pre-rendered JPG was a snapshot of the quarantined drive-thru board
-    // (it shows the placeholder too), so mobile falls back to the clean
-    // gradient+label card instead.
+    // 2026-07-30 — upgraded from the Order-Ready stopgap (the 2026-07-16
+    // audit had parked QSR here because the old menu flagships were
+    // quarantined) to the Morning Window coffee-counter flagship, one of
+    // the two registered QSR redesigns. Fresh staticImage shot from the
+    // live board.
     template: {
-      src: '/templates/signage/qsr/03-order-ready.html',
-      label: 'Order-Ready Board',
+      src: '/templates/signage/qsr/redesign-coffee-v2-morning-window.html',
+      staticImage: '/demo/templates/qsr-morning-window.jpg',
+      label: 'Coffee Shop — Morning Window',
     },
   },
   {
@@ -126,10 +125,12 @@ const INDUSTRIES: Industry[] = [
       'Lookbooks and pricing boards that stay on-brand',
       'Schedule campaigns to start and end on their own',
     ],
+    // 2026-07-30 — retail used to borrow a fashion sale board; it now has
+    // its own redesigned pack. Storefront Gallery is the retail flagship.
     template: {
-      src: '/templates/signage/fashion/03-sale.html',
-      staticImage: '/demo/templates/retail-sale.jpg',
-      label: 'Seasonal Sale Board',
+      src: '/templates/signage/retail/01-storefront-gallery-threshold.html',
+      staticImage: '/demo/templates/retail-storefront.jpg',
+      label: 'Storefront Gallery',
     },
   },
   {
@@ -143,15 +144,13 @@ const INDUSTRIES: Industry[] = [
       'Runway and lookbook layouts, recolored to your brand',
       'Fitting-room and window displays from one dashboard',
     ],
-    // 2026-07-16 (audit S3) — the lookbook / editorial / campaign fashion
-    // flagships are QUARANTINED (placeholder "Drop look photo" boxes), so the
-    // public homepage hero repoints to Fitting-Room, a real non-quarantined
-    // fashion board that renders clean. staticImage dropped: its only
-    // pre-rendered JPG was a snapshot of the quarantined lookbook (placeholder
-    // and all), so mobile falls back to the clean gradient+label card.
+    // 2026-07-30 — the lookbook flagship was redesigned + de-quarantined on
+    // 2026-07-23 (baked photos, shop-the-look rail, QR). Repointed here from
+    // the Fitting-Room stopgap; fresh staticImage shot from the live board.
     template: {
-      src: '/templates/signage/fashion/06-fitting-room.html',
-      label: 'Fitting-Room Board',
+      src: '/templates/signage/fashion/01-lookbook-flagship.html',
+      staticImage: '/demo/templates/fashion-lookbook.jpg',
+      label: 'Lookbook — Shop the Look',
     },
   },
   {
@@ -233,16 +232,21 @@ const INDUSTRIES: Industry[] = [
       'Happy-hour and event boards on a schedule',
       'Game-day mode turns every screen into the big game',
     ],
+    // 2026-07-30 — swapped the old tap list for the redesigned Game Day
+    // board ("Broadcast Truck", harvested from the 2026-07-27 world-class
+    // redesign wave): live scorebug, specials rail, sponsor slot. Matches
+    // the "game-day mode" pitch bullet directly.
     template: {
-      src: '/templates/signage/bar/01-tap-list-flagship.html',
-      staticImage: '/demo/templates/bar-taplist.jpg',
-      label: 'Tap List',
+      src: '/templates/signage/bar/08-game-day.html',
+      staticImage: '/demo/templates/bar-gameday.jpg',
+      label: 'Game-Day Takeover',
     },
   },
   // 2026-05-26 — WORSHIP vertical was in packages/api-types/src/verticals.ts
   // but missing from the marketing showcase (only 11 of 12 verticals shown).
-  // Audit gap from the multi-vertical agent. Church template falls back to
-  // a corporate-style lobby board until the dedicated worship pack ships.
+  // 2026-07-30 — the dedicated worship pack HAS shipped (service/lobby/
+  // sermon/giving/song boards); dropped the corporate-lobby fallback for
+  // the Live Commons lobby hub flagship. Fresh staticImage from the board.
   {
     vertical: 'WORSHIP',
     emoji: '⛪',
@@ -255,9 +259,9 @@ const INDUSTRIES: Industry[] = [
       'Giving QR codes that update with each series',
     ],
     template: {
-      src: '/templates/signage/corporate/01-lobby-welcome-flagship.html',
-      staticImage: '/demo/templates/corporate-lobby.jpg',
-      label: 'Welcome Board',
+      src: '/templates/signage/worship/lobby-v3-live-commons.html',
+      staticImage: '/demo/templates/worship-lobby.jpg',
+      label: 'Lobby Hub — Live Commons',
     },
   },
 ];
