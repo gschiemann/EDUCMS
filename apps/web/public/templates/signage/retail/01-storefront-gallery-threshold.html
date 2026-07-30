@@ -24,6 +24,18 @@
     .is-portrait .campaign{top:140px;height:510px}.is-portrait .topline{height:140px}.is-portrait .mark{left:54px;top:49px}.is-portrait .brand{left:115px;top:44px}.is-portrait .open{right:54px;top:30px}.is-portrait .hero{top:690px;height:395px}.is-portrait .headline{margin-top:18px}.is-portrait .line1{font-size:144px}.is-portrait .line2{font-size:172px}.is-portrait .note{margin-top:12px;width:950px;font-size:52px}.is-portrait .route{top:1085px;width:900px;height:135px}.is-portrait .route-label{font-size:52px}.is-portrait .route-value{font-size:112px}.is-portrait .hours{top:1220px;height:700px;grid-template-rows:180px 260px 260px}.is-portrait .hours-lead{padding:18px 54px}.is-portrait .hours-title{font-size:80px}.is-portrait .hour{padding:44px 28px}.is-portrait .detail{padding:42px 54px}.is-portrait .detail-value{font-size:80px}
     .is-frozen *{animation-play-state:paused!important}.is-editing [data-field],.is-editing [data-imgslot]{cursor:pointer}.is-editing [data-field]:hover,.is-editing [data-imgslot]:hover{outline:2px dashed #22d3ee;outline-offset:4px}@media(prefers-reduced-motion:reduce){*{animation:none!important}}
   </style>
+<script>/*EDUCMS-FREEZE-V1*/(function(){try{
+var FROZEN=(function(){try{return new URLSearchParams(location.search).get('freeze')==='1';}catch(e){return false;}})();
+var _frzStyle=null;
+function _unfreeze(){if(_frzStyle){try{if(_frzStyle.parentNode)_frzStyle.parentNode.removeChild(_frzStyle);}catch(e){}_frzStyle=null;}}
+(function(){if(!FROZEN)return;var ivs=[],tos=[],rafs=[];var _si=window.setInterval,_st=window.setTimeout,_raf=window.requestAnimationFrame;
+window.setInterval=function(){var id=_si.apply(window,arguments);try{ivs.push(id);}catch(e){}return id;};
+window.setTimeout=function(){var id=_st.apply(window,arguments);try{tos.push(id);}catch(e){}return id;};
+if(_raf)window.requestAnimationFrame=function(cb){var id=_raf.call(window,cb);try{rafs.push(id);}catch(e){}return id;};
+function freezeNow(){window.setInterval=_si;window.setTimeout=_st;if(_raf)window.requestAnimationFrame=_raf;try{for(var i=0;i<ivs.length;i++)clearInterval(ivs[i]);}catch(e){}try{for(var j=0;j<tos.length;j++)clearTimeout(tos[j]);}catch(e){}try{if(_raf)for(var k=0;k<rafs.length;k++)cancelAnimationFrame(rafs[k]);}catch(e){}try{var hi=_st(function(){},0);if(typeof hi==='number'&&hi>0){var lo=hi>100000?hi-100000:0;for(var z=hi;z>lo;z--){clearTimeout(z);clearInterval(z);}}}catch(e){}if(!_frzStyle){try{_frzStyle=document.createElement('style');_frzStyle.setAttribute('data-educms-freeze','1');_frzStyle.appendChild(document.createTextNode('*{animation:none!important;transition:none!important;}'));(document.head||document.documentElement).appendChild(_frzStyle);}catch(e){}}}
+_st(freezeNow,1400);window.__educmsFreezeNow=freezeNow;}());
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-edit-mode'&&d.on){_unfreeze();}}catch(_){}});
+}catch(e){}})();</script>
 </head>
 <body><div id="scene-wrap"><main class="scene"><div class="campaign" data-imgslot="campaign.image" aria-label="Replaceable campaign hero"></div><div class="grain"></div>
   <header class="topline"><div class="mark" data-imgslot="brand.logo" aria-label="Replaceable brand mark"></div><div class="brand" data-field="brand.name">NORTH / FORM</div><div class="site" data-field="brand.location">MARKET ST. · 01</div><div class="open"><span class="open-dot"></span><span data-field="store.status">OPEN · 8</span></div></header>
