@@ -52,21 +52,19 @@ jobs:
             exit 1
           fi
 
-      - name: Install PostgreSQL 17 client
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq postgresql-common >/dev/null
-          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y >/dev/null
-          sudo apt-get install -y -qq postgresql-client-17 >/dev/null
-          pg_dump --version
-
       - name: Dump and encrypt
         env:
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           BACKUP_ENC_KEY: ${{ secrets.BACKUP_ENC_KEY }}
         run: |
           set -euo pipefail
-          pg_dump "$DB_URL" -Fc --no-owner --no-privileges -f venueos-db.dump
+          # pg_dump from the official postgres:17 image — the runner's apt
+          # PATH kept resolving to client 16 (server is 17.6 → version
+          # mismatch abort on the first live run, 2026-07-30). The pinned
+          # image is deterministic. -Fc to stdout, captured on the host.
+          docker run --rm -e DB_URL postgres:17-alpine \
+            pg_dump "$DB_URL" -Fc --no-owner --no-privileges > venueos-db.dump
+          test -s venueos-db.dump   # refuse to encrypt an empty dump
           ls -l venueos-db.dump
           openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt \
             -in venueos-db.dump -out venueos-db.dump.enc -pass env:BACKUP_ENC_KEY
