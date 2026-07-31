@@ -161,7 +161,24 @@ function isNetworkLevelFetchFailure(e: any): boolean {
 export function makeStorageFetch(log: (msg: string) => void): (input: any, init?: any) => Promise<Response> {
   return async (input: any, init?: any): Promise<Response> => {
     try {
-      const res = await fetch(input, init);
+      // ROOT CAUSE (captured in prod logs 2026-07-31 20:17 UTC by this very
+      // transport): `TypeError: fetch failed ← InvalidArgumentError: invalid
+      // content-length header [UND_ERR_INVALID_ARG]`. The upload callsites
+      // have always sent a manual 'Content-Length' alongside a Blob body;
+      // the newer undici in the 2026-07-30 node:20-alpine rebuild rejects
+      // that combination (undici computes the length from the body itself).
+      // Strip it for the primary attempt — undici sets the correct value —
+      // so the primary path heals instead of permanently riding the
+      // fallback. The node:https fallback sets its own authoritative value.
+      let primaryInit = init;
+      if (init?.headers) {
+        const h = new Headers(init.headers);
+        if (h.has('content-length')) {
+          h.delete('content-length');
+          primaryInit = { ...init, headers: h };
+        }
+      }
+      const res = await fetch(input, primaryInit);
       storageTransportState.lastPrimaryOkAt = new Date().toISOString();
       return res;
     } catch (e: any) {
