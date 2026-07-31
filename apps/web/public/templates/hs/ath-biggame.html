@@ -1,99 +1,50 @@
 <!doctype html>
-<!-- HS · ATHLETICS BIG GAME — FLAGSHIP. One job: hype TONIGHT'S featured matchup.
-     Full-bleed split, giant crests (logo slots), VS + tip-off countdown, key facts,
-     student-section CTA. Tokenized, auto-fit, live clock, safe ticker, portrait. -->
-<html lang="en"><head><meta charset="utf-8"/><title>Athletics · Big Game</title>
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Archivo:wght@700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<style>
-:root{
-  --stage-w:3840px;--stage-h:2160px;--stage-scale:1;
-  --c-bg:#0a1326;--c-ink:#ffffff;--c-ink2:#aebbd4;
-  --c-home:#1a3aa0;--c-homed:#0c1f63;--c-away:#c2261a;--c-awayd:#6e0f08;--c-gold:#ffc42b;--c-green:#27c46b;
-  --f-display:'Bebas Neue';--f-head:'Archivo';--f-mono:'JetBrains Mono';
-  --scale:1;
-  --t-sup:calc(40px*var(--scale));--t-title:calc(140px*var(--scale));--t-clocklbl:calc(30px*var(--scale));--t-clock:calc(64px*var(--scale));--t-tiplbl:calc(30px*var(--scale));--t-tip:calc(88px*var(--scale));
-  --t-hype:calc(96px*var(--scale));
-  --t-badge:calc(38px*var(--scale));--t-seed:calc(80px*var(--scale));--t-crest:calc(240px*var(--scale));--t-teamname:calc(240px*var(--scale));--t-city:calc(40px*var(--scale));--t-rec:calc(100px*var(--scale));--t-tag:calc(40px*var(--scale));
-  --t-vs:calc(300px*var(--scale));--t-when:calc(44px*var(--scale));--t-whenbig:calc(140px*var(--scale));
-  --t-factk:calc(34px*var(--scale));--t-factv:calc(130px*var(--scale));--t-factcap:calc(32px*var(--scale));
-  --t-ctak:calc(40px*var(--scale));--t-ctav:calc(96px*var(--scale));--t-pill:calc(52px*var(--scale));--t-ticker:calc(54px*var(--scale));
-}
-*{box-sizing:border-box}
-html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;color:var(--c-ink);font-family:var(--f-head),sans-serif}
-.viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;overflow:hidden}
-.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
-.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;position:relative;overflow:hidden;background:var(--c-bg);box-shadow:0 80px 200px rgba(0,0,0,.7);display:flex;flex-direction:column}
-.stage>*{position:relative;z-index:1}
-@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:.3}}
-@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
-@keyframes pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--c-gold) 50%,transparent)}50%{box-shadow:0 0 0 22px color-mix(in srgb,var(--c-gold) 0%,transparent)}}
+<!--
+  HS · ATHLETICS BIG GAME — FLAGSHIP (redesign 2026-07-30)
+  "UNDER THE LIGHTS" — a broadcast-network game-day package.
 
-.mast{flex:none;height:184px;display:grid;grid-template-columns:auto 1fr auto;gap:40px;align-items:center;padding:0 70px;border-bottom:4px solid var(--c-gold)}
-.mast .sup-h{min-width:0}
-.mast .sup{font-family:var(--f-mono);font-weight:700;font-size:var(--t-sup);letter-spacing:.24em;color:var(--c-gold);text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mast h1{margin:8px 0 0;font-family:var(--f-display);font-size:var(--t-title);letter-spacing:.02em;text-transform:uppercase;line-height:.82;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:5px 5px 0 var(--c-away)}
-.mast .chips{display:flex;gap:24px;flex:none}
-.mast .chip{background:rgba(255,255,255,.06);border:3px solid var(--c-gold);padding:16px 30px;text-align:center;border-radius:8px}
-.mast .chip.lit{background:var(--c-away);border-color:var(--c-gold);animation:pulse 1.8s ease-in-out infinite}
-.mast .chip .k{font-family:var(--f-mono);font-weight:700;font-size:var(--t-clocklbl);letter-spacing:.18em;color:var(--c-gold);text-transform:uppercase;line-height:1;white-space:nowrap}
-.mast .chip .v{font-family:var(--f-display);font-size:var(--t-clock);line-height:1;margin-top:6px;font-variant-numeric:tabular-nums;white-space:nowrap}
-.mast .chip.lit .v{font-size:var(--t-tip)}
+  3840x2160 landscape / 2160x3840 portrait from ONE file (?o=portrait|landscape,
+  ?orientation= alias). Composition: a baked Friday-night stadium photograph under
+  a cinematic grade + light-shaft beams, a broadcast bug rail, a foil-metal show
+  title, a machined kickoff box, TWO hand-drawn vector school crests (inline SVG
+  shields — chief, mascot device, monogram, founding-year banner, machined metal
+  trims) that are the classy DEFAULT inside real logo slots, skewed team bays with
+  seed/record/streak chips, a broadcast countdown, a lower-third fact strip, a
+  brass call-to-action bar, a "presented by" sponsor band (a real VenueOS sports
+  revenue surface) and a solid opaque ticker.
 
-.hype{flex:none;height:120px;background:var(--c-away);display:flex;align-items:center;justify-content:center;gap:30px}
-.hype .dot{width:24px;height:24px;border-radius:50%;background:var(--c-gold);animation:blink 1.4s steps(2) infinite}
-.hype .label{font-family:var(--f-display);font-size:var(--t-hype);letter-spacing:.04em;line-height:1;text-transform:uppercase;white-space:nowrap}
+  Sizing: fixed px only, every type role via calc(px * var(--scale)) — 50px floor
+  on the 3840 stage (65" @ ~20 ft). NO `inset` shorthand, NO flex `gap`, NO
+  backdrop-filter, NO color-mix / :has() / container queries (NovaStar Taurus /
+  Chromium 83 safe). The crests are gradient + stroke only — no SVG filters — so
+  they stay crisp at 4K and at gallery-thumbnail scale.
 
-.match{flex:1;min-height:0;display:grid;grid-template-columns:1fr auto 1fr}
-.team{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;overflow:hidden}
-.team.home{background:linear-gradient(140deg,var(--c-home),var(--c-homed))}
-.team.away{background:linear-gradient(220deg,var(--c-away),var(--c-awayd))}
-.team::before{content:'';position:absolute;top:0;right:0;bottom:0;left:0;background:repeating-linear-gradient(45deg,transparent 0 100px,rgba(255,255,255,.04) 100px 102px);pointer-events:none}
-.team .badge{position:absolute;top:30px;left:30px;font-family:var(--f-mono);font-weight:700;font-size:var(--t-badge);letter-spacing:.16em;color:#fff;text-transform:uppercase;background:rgba(0,0,0,.3);padding:10px 20px;border-radius:6px}
-.team .seed{position:absolute;top:30px;right:30px;font-family:var(--f-display);font-size:var(--t-seed);color:var(--c-gold);line-height:1}
-.team .crest{width:400px;height:400px;background-size:cover;background-position:center;display:grid;place-items:center;font-family:var(--f-display);font-size:var(--t-crest);color:#fff;border:10px solid #fff;border-radius:36px;box-shadow:0 18px 0 rgba(0,0,0,.4),0 30px 60px rgba(0,0,0,.5)}
-.team .crest.has-img{font-size:0}
-.team .namewrap{width:100%;height:200px;display:flex;align-items:center;justify-content:center;margin-top:24px;overflow:hidden}
-.team .name{width:100%;text-align:center;font-family:var(--f-display);font-size:var(--t-teamname);line-height:.82;color:#fff;letter-spacing:.02em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-shadow:6px 6px 0 rgba(0,0,0,.35)}
-.team .city{font-family:var(--f-mono);font-weight:700;font-size:var(--t-city);letter-spacing:.18em;color:rgba(255,255,255,.72);text-transform:uppercase;margin-top:8px}
-.team .rec{margin-top:26px;padding:14px 48px;font-family:var(--f-display);font-size:var(--t-rec);line-height:1;border-radius:8px;white-space:nowrap}
-.team.home .rec{background:var(--c-gold);color:var(--c-homed)}.team.away .rec{background:#fff;color:var(--c-awayd)}
-.team .tagline{margin-top:18px;font-family:var(--f-mono);font-weight:700;font-size:var(--t-tag);letter-spacing:.12em;color:var(--c-gold);text-transform:uppercase}
+  AUTO-FIT CONTRACT (read before adding a data-fit):
+    * data-fit="single"  -> ONE line. Measured on WIDTH only. A display face with
+      line-height < 1 always reports scrollHeight > clientHeight, so a height test
+      here would crush every field to the floor (the 2026-07-30 bug).
+    * data-fit (any other value) -> may WRAP. Measured on width AND on height
+      against its PARENT, which therefore MUST be a fixed-height clipping box
+      (.title / .tmname / .fitline / .fact .v / .fact .cap / .slot .nmb / .note).
+      Never put a wrapping data-fit directly inside an auto-height parent.
 
-.vs{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:0 30px;background:var(--c-bg)}
-.vs .word{font-family:var(--f-display);font-size:var(--t-vs);line-height:.78;color:var(--c-gold);text-shadow:10px 10px 0 var(--c-away),20px 20px 0 rgba(0,0,0,.4)}
-.vs .when{font-family:var(--f-mono);font-weight:700;font-size:var(--t-when);letter-spacing:.16em;color:#fff;text-transform:uppercase;text-align:center;line-height:1.2}
-.vs .when .big{display:block;font-family:var(--f-display);font-size:var(--t-whenbig);color:var(--c-gold);margin:8px 0;letter-spacing:.02em}
+  BAKED PHOTO (swappable — it is the data-img default on an image slot):
+    board.bg  /templates/hs/assets/hs-biggame-under-the-lights-v1.jpg
+              Pexels 15779126 (free licence) — night stadium, Sakarya.
 
-.facts{flex:none;height:280px;display:grid;grid-template-columns:repeat(4,1fr)}
-.fact{padding:30px 40px;display:flex;flex-direction:column;justify-content:center;gap:8px;border-right:2px solid rgba(255,255,255,.1);min-width:0}
-.fact:last-child{border-right:0}
-.fact .k{font-family:var(--f-mono);font-weight:700;font-size:var(--t-factk);letter-spacing:.18em;color:var(--c-gold);text-transform:uppercase}
-.fact .v{font-family:var(--f-display);font-size:var(--t-factv);line-height:.84;letter-spacing:.01em;white-space:nowrap;text-shadow:4px 4px 0 rgba(0,0,0,.3)}
-.fact .v.red{color:#ff7a6a}.fact .v.green{color:var(--c-green)}
-.fact .cap{font-family:var(--f-head);font-weight:600;font-size:var(--t-factcap);color:var(--c-ink2);line-height:1.2}
-
-.cta{flex:none;height:200px;background:var(--c-gold);color:var(--c-homed);display:flex;align-items:center;justify-content:space-between;padding:0 64px;gap:30px}
-.cta .left{min-width:0}
-.cta .l1{font-family:var(--f-mono);font-weight:700;font-size:var(--t-ctak);letter-spacing:.18em;color:var(--c-away);text-transform:uppercase}
-.cta .l2{font-family:var(--f-display);font-size:var(--t-ctav);line-height:.92;text-transform:uppercase;margin-top:6px;white-space:nowrap}
-.cta .right{display:flex;gap:18px;flex:none}
-.cta .pill{background:var(--c-homed);color:var(--c-gold);padding:18px 32px;font-family:var(--f-display);font-size:var(--t-pill);line-height:1;text-transform:uppercase;border-radius:8px;white-space:nowrap}
-.cta .pill.r{background:var(--c-away);color:#fff}
-
-.ticker{position:relative;flex:none;height:104px;background:var(--c-homed);color:#fff;display:flex;align-items:center;overflow:hidden;border-top:4px solid var(--c-gold)}
-.ticker .tag{position:relative;z-index:2;flex:none;background:var(--c-away);font-family:var(--f-display);font-size:54px;padding:0 44px;height:100%;display:flex;align-items:center;letter-spacing:.05em;gap:18px}
-.ticker .tag::before{content:'';width:18px;height:18px;background:var(--c-gold);border-radius:50%;animation:blink 1.4s steps(2) infinite;flex:none}
-.ticker .msg{font-family:var(--f-head);font-weight:700;font-size:var(--t-ticker);padding-left:44px;white-space:nowrap;letter-spacing:.04em;text-transform:uppercase;animation:sc 90s linear infinite}
-.ticker .msg .star{color:var(--c-gold);margin:0 24px}
-
-@media (orientation:portrait){
-  .stage[data-orient="port"] .match{grid-template-columns:1fr;grid-template-rows:1fr auto 1fr}
-  .stage[data-orient="port"] .facts{grid-template-columns:repeat(2,1fr);height:auto}
-  .stage[data-orient="port"] .fact{border-bottom:2px solid rgba(255,255,255,.1)}
-  .stage[data-orient="port"] .cta{flex-direction:column;height:auto;padding:24px 60px;gap:16px;align-items:flex-start}
-  .stage[data-orient="port"]{--t-title:calc(90px*var(--scale));--t-teamname:calc(150px*var(--scale));--t-vs:calc(150px*var(--scale))}
-}
-</style><script>/*EDUCMS-SHIM-V7*/(function(){try{
+  IMAGE SLOTS: board.bg · home.logo · away.logo · sponsor.0..3.logo
+  LIVE: wall-clock time + date; kickoff countdown parsed from vs.bigtime, so
+        editing the kickoff time re-drives every countdown on the board.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Athletics · Big Game — Under the Lights</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Anton&amp;family=Archivo:wght@500;600;700;800;900&amp;family=JetBrains+Mono:wght@500;700;800&amp;display=swap" rel="stylesheet"/>
+<script>/*EDUCMS-SHIM-V7*/(function(){try{
 var editMode=false;
 // ── Gallery FREEZE mode ──────────────────────────────────────────────
 // Installed FIRST (this script is at end of <head>, before the board's own
@@ -129,88 +80,957 @@ if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded'
 try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
 addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();}}}catch(_){}});
 }catch(e){}})();</script>
-</head><body>
+<style>
+/* ============================================================
+   REBRAND ZONE — one brand object skins the whole board.
+   Legacy vocabulary (what the baked shim's BRAND_MAP writes) is
+   aliased into the canonical vocabulary the CSS actually reads,
+   so BOTH the shim's brand payload and the theme.* fields work.
+   ============================================================ */
+:root{
+  --stage-w:3840px;--stage-h:2160px;--stage-scale:1;
+
+  /* ---- names the shim's BRAND_MAP writes into ---- */
+  --brand-canvas:#070b14;
+  --brand-paper:#0d1424;
+  --brand-ink:#f4f7ff;
+  --brand-mute:#9aa9c9;
+  --brand-primary:#1e3fb0;      /* home / school primary */
+  --brand-accent:#f2c14e;       /* stadium brass */
+  --c-bg:#070b14;--c-ink:#f4f7ff;--c-gold:#f2c14e;--c-home:#1e3fb0;--c-away:#c2261a;--c-green:#3ddc84;
+
+  /* ---- canonical vocabulary the stylesheet reads ---- */
+  --bg:var(--brand-canvas);
+  --panel:var(--brand-paper);
+  --ink:var(--brand-ink);
+  --mute:var(--brand-mute);
+  --brand:var(--brand-primary);
+  --brand2:#0d1f63;
+  --accent:var(--brand-accent);
+  --accent2:#c2261a;
+  --pos:#3ddc84;
+  --neg:#ff6a5a;
+
+  /* per-team colours inherit the brand by default (BRAND-TOKEN-SCHEMA §migration) */
+  --home:var(--brand-primary);
+  --home2:var(--brand2);
+  --away:var(--accent2);
+  --away2:#6a0d06;
+
+  /* fixed neutrals — never brand-driven */
+  --night:#05080f;
+  --steel1:#182238;
+  --steel2:#0b1120;
+  --hair:rgba(244,247,255,.16);
+  --hairlit:rgba(242,193,78,.42);
+  --on-brass:#161006;
+
+  --f-display:'Anton';
+  --f-head:'Archivo';
+  --f-body:'Archivo';
+  --f-mono:'JetBrains Mono';
+  --scale:1;
+
+  /* ---- type roles — every one >= 50px on the 3840 stage ---- */
+  --t-eyebrow:calc(58px*var(--scale));
+  --t-date:calc(50px*var(--scale));
+  --t-chipk:calc(50px*var(--scale));
+  --t-chipv:calc(80px*var(--scale));
+  --t-slug:calc(78px*var(--scale));
+  --t-kicker:calc(52px*var(--scale));
+  --t-hero:calc(220px*var(--scale));
+  --t-kickk:calc(52px*var(--scale));
+  --t-kickv:calc(120px*var(--scale));
+  --t-kicks:calc(52px*var(--scale));
+  --t-tmchip:calc(54px*var(--scale));
+  --t-team:calc(172px*var(--scale));
+  --t-city:calc(56px*var(--scale));
+  --t-rec:calc(134px*var(--scale));
+  --t-reck:calc(50px*var(--scale));
+  --t-tag:calc(54px*var(--scale));
+  --t-vs:calc(236px*var(--scale));
+  --t-cdlbl:calc(54px*var(--scale));
+  --t-cdnum:calc(152px*var(--scale));
+  --t-cdunit:calc(50px*var(--scale));
+  --t-factk:calc(52px*var(--scale));
+  --t-factv:calc(122px*var(--scale));
+  --t-factcap:calc(56px*var(--scale));
+  --t-ctak:calc(54px*var(--scale));
+  --t-ctav:calc(104px*var(--scale));
+  --t-pill:calc(60px*var(--scale));
+  --t-sponk:calc(52px*var(--scale));
+  --t-sponname:calc(60px*var(--scale));
+  --t-sponnote:calc(50px*var(--scale));
+  --t-tickertag:calc(66px*var(--scale));
+  --t-ticker:calc(60px*var(--scale));
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#02040a;color:var(--ink);
+  font-family:var(--f-body),'Archivo',Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;overflow:hidden}
+.stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+.stage{width:var(--stage-w);height:var(--stage-h);transform:scale(var(--stage-scale));transform-origin:0 0;
+  position:relative;overflow:hidden;background:var(--night);box-shadow:0 80px 200px rgba(0,0,0,.7)}
+
+/* ---------- atmosphere (own clipping box so the oversized
+             photo/beam layers never enter the stage scroll box) ---------- */
+.atmos{position:absolute;top:0;right:0;bottom:0;left:0;z-index:0;overflow:hidden}
+.bgslot{position:absolute;top:-1.6%;right:-1.6%;bottom:-1.6%;left:-1.6%;
+  background-color:#060a12;background-repeat:no-repeat;background-size:cover;background-position:36% 48%;
+  animation:breathe 30s cubic-bezier(.45,0,.55,1) infinite alternate}
+.bgslot .ph{display:block;width:100%;height:100%;
+  background:radial-gradient(70% 52% at 30% 42%,rgba(150,190,255,.32),rgba(6,10,18,0) 68%)}
+.bgslot.has-img .ph{display:none}
+@keyframes breathe{from{transform:scale(1.006)}to{transform:scale(1.042)}}
+
+.grade{position:absolute;top:0;right:0;bottom:0;left:0;pointer-events:none;
+  background:
+    linear-gradient(180deg,rgba(5,8,15,.74) 0%,rgba(5,8,15,.34) 14%,rgba(5,8,15,.20) 34%,rgba(5,8,15,.58) 58%,rgba(5,8,15,.94) 74%,#05080f 100%),
+    linear-gradient(90deg,rgba(5,8,15,.72) 0%,rgba(5,8,15,.26) 22%,rgba(5,8,15,.10) 50%,rgba(5,8,15,.40) 80%,rgba(5,8,15,.80) 100%),
+    radial-gradient(120% 86% at 30% 40%,rgba(84,132,214,.26) 0%,rgba(5,8,15,0) 62%)}
+.beams{position:absolute;top:-10%;right:0;bottom:-10%;left:0;pointer-events:none;opacity:.85;
+  background:
+    linear-gradient(104deg,rgba(255,255,255,0) 11%,rgba(198,224,255,.075) 14.4%,rgba(255,255,255,0) 18%),
+    linear-gradient(98deg,rgba(255,255,255,0) 27%,rgba(198,224,255,.055) 30.2%,rgba(255,255,255,0) 34%),
+    linear-gradient(109deg,rgba(255,255,255,0) 55%,rgba(255,244,214,.062) 58.6%,rgba(255,255,255,0) 62%),
+    linear-gradient(95deg,rgba(255,255,255,0) 74%,rgba(198,224,255,.046) 77%,rgba(255,255,255,0) 81%)}
+.vig{position:absolute;top:0;right:0;bottom:0;left:0;pointer-events:none;
+  background:radial-gradient(118% 82% at 50% 40%,rgba(0,0,0,0) 44%,rgba(0,0,0,.48) 86%,rgba(0,0,0,.80) 100%)}
+.grain{position:absolute;top:0;right:0;bottom:0;left:0;z-index:14;pointer-events:none;opacity:.15;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.30'/%3E%3C/svg%3E")}
+
+.wrap{position:absolute;top:0;right:0;bottom:0;left:0;z-index:6;display:flex;flex-direction:column}
+
+/* ---------- shared chrome ---------- */
+.rule{position:absolute;right:0;bottom:0;left:0;height:4px;
+  background:linear-gradient(90deg,rgba(242,193,78,0) 0%,var(--accent) 14%,rgba(255,246,214,.95) 34%,var(--accent) 56%,rgba(242,193,78,.25) 84%,rgba(242,193,78,0) 100%)}
+.foil{background-color:var(--accent);
+  background-image:linear-gradient(177deg,rgba(255,255,255,.94) 0%,rgba(255,255,255,.10) 19%,rgba(0,0,0,.46) 44%,rgba(255,255,255,.06) 56%,rgba(255,255,255,.96) 70%,rgba(255,255,255,.08) 84%,rgba(0,0,0,.52) 100%);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
+.sk{transform:skewX(-10deg)}
+.sk>span{display:block;transform:skewX(10deg)}
+/* fixed-height single-line measuring box (see AUTO-FIT CONTRACT) */
+.fitline{display:flex;align-items:center;overflow:hidden}
+.tmcity .t,.tmtag .t,.fact .cap .t,.slot .nmb .t,.spon .note .t{overflow-wrap:break-word}
+
+/* ---------- 1. broadcast bug rail ---------- */
+.rail{position:relative;flex:none;height:176px;padding:0 90px;display:flex;align-items:center;
+  background:linear-gradient(180deg,rgba(5,8,15,.94),rgba(5,8,15,.55))}
+.rail .idbar{flex:none;width:12px;height:104px;margin-right:30px;background-color:var(--accent);
+  background-image:linear-gradient(180deg,rgba(255,255,255,.32),rgba(0,0,0,.48))}
+.rail .id{flex:1 1 auto;min-width:0;margin-right:40px}
+.rail .eyebrow{height:64px}
+.rail .eyebrow .t{font-family:var(--f-mono),monospace;font-weight:800;font-size:var(--t-eyebrow);letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);line-height:1;white-space:nowrap}
+.rail .date{margin-top:6px;height:56px}
+.rail .date .t{font-family:var(--f-mono),monospace;font-weight:500;font-size:var(--t-date);
+  letter-spacing:.2em;text-transform:uppercase;color:var(--mute);line-height:1;white-space:nowrap}
+.chips{flex:none;display:flex;align-items:center}
+.chip{position:relative;height:150px;padding:0 36px;margin-left:26px;display:flex;flex-direction:column;justify-content:center;
+  background:linear-gradient(180deg,var(--steel1),var(--steel2));border:3px solid var(--hairlit);
+  box-shadow:inset 0 3px 0 rgba(255,255,255,.11),0 14px 34px rgba(0,0,0,.6)}
+.chip .k{font-family:var(--f-mono),monospace;font-weight:700;font-size:var(--t-chipk);letter-spacing:.2em;
+  text-transform:uppercase;color:var(--accent);line-height:1;white-space:nowrap}
+.chip .v{margin-top:8px;font-family:var(--f-display),'Archivo',sans-serif;font-size:var(--t-chipv);line-height:1;
+  color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap;letter-spacing:.02em}
+.chip.hot{background:linear-gradient(180deg,#2a1008,#160704);border-color:var(--accent)}
+.chip.hot .v{color:var(--accent)}
+.chip.hot::after{content:'';position:absolute;top:14px;right:14px;width:16px;height:16px;border-radius:50%;
+  background:var(--accent);animation:blink 1.6s steps(2) infinite}
+@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:.2}}
+
+/* ---------- 2. hero ---------- */
+.hero{position:relative;flex:1;min-height:0;padding:30px 90px 16px;display:flex;flex-direction:column}
+.slugrow{flex:none;height:128px;display:flex;align-items:center}
+.slug{flex:none;max-width:1500px;height:96px;padding:0 46px;display:flex;align-items:center;overflow:hidden;
+  background-color:var(--accent);
+  background-image:linear-gradient(180deg,rgba(255,255,255,.72),rgba(255,255,255,.04) 46%,rgba(0,0,0,.26));
+  box-shadow:0 12px 0 rgba(0,0,0,.42),0 22px 44px rgba(0,0,0,.5)}
+.slug .t{font-family:var(--f-display),'Archivo',sans-serif;font-size:var(--t-slug);line-height:1;color:var(--on-brass);
+  letter-spacing:.05em;white-space:nowrap;text-transform:uppercase}
+.slugrow .ln{flex:0 0 120px;height:4px;margin-left:34px;
+  background:linear-gradient(90deg,var(--accent),rgba(242,193,78,.12) 62%,rgba(242,193,78,0))}
+.slugrow .rt{flex:1 1 auto;min-width:0;height:116px;margin-left:34px;display:flex;align-items:center;overflow:hidden}
+.slugrow .rt .t{width:100%;font-family:var(--f-mono),monospace;font-weight:700;font-size:var(--t-kicker);
+  letter-spacing:.18em;text-transform:uppercase;color:var(--mute);text-align:right;line-height:1.12;
+  overflow-wrap:break-word}
+
+.titlerow{flex:none;height:258px;margin-top:14px;display:flex;align-items:flex-end}
+.title{flex:1;min-width:0;height:236px;display:flex;align-items:flex-end;overflow:hidden}
+.title .t{width:100%;font-family:var(--f-display),'Archivo',sans-serif;font-size:var(--t-hero);line-height:.88;
+  letter-spacing:.005em;text-transform:uppercase;white-space:nowrap;overflow:hidden;
+  filter:drop-shadow(0 12px 0 rgba(0,0,0,.55))}
+.kick{flex:none;width:840px;height:258px;margin-left:60px;position:relative;padding:16px 40px;
+  display:flex;flex-direction:column;justify-content:center;
+  background:linear-gradient(160deg,rgba(15,22,38,.95),rgba(6,10,20,.97));border:4px solid var(--hairlit);
+  box-shadow:inset 0 0 0 5px rgba(5,8,15,.9),inset 0 5px 0 rgba(255,255,255,.09),0 20px 46px rgba(0,0,0,.6)}
+.kick .k{height:52px}
+.kick .k .t{font-family:var(--f-mono),monospace;font-weight:800;font-size:var(--t-kickk);letter-spacing:.22em;
+  text-transform:uppercase;color:var(--accent);line-height:1;white-space:nowrap}
+.kick .v{height:114px;margin-top:4px;display:flex;align-items:center;overflow:hidden}
+.kick .v .t{width:100%;font-family:var(--f-display),'Archivo',sans-serif;font-size:var(--t-kickv);line-height:.92;
+  letter-spacing:.01em;white-space:nowrap;overflow:hidden;font-variant-numeric:tabular-nums}
+.kick .s{height:52px;margin-top:4px}
+.kick .s .t{font-family:var(--f-mono),monospace;font-weight:500;font-size:var(--t-kicks);letter-spacing:.12em;
+  text-transform:uppercase;color:var(--mute);line-height:1;white-space:nowrap}
+
+.match{flex:1;min-height:0;margin-top:18px;display:flex;align-items:stretch}
+
+/* --- team bay --- */
+.tm{position:relative;flex:1 1 0;min-width:0;display:flex;align-items:center;padding:0 10px;overflow:hidden}
+/* the bay is a SKEWED WING, not a panel: it bleeds off the outer edge and ends
+   on a visible diagonal lit by a brass edge bar toward the centre of the board */
+.tm .scrim,.tm .slab{position:absolute;top:14px;right:104px;bottom:14px;left:-300px;transform:skewX(-9deg);z-index:0}
+.tm .scrim{background:linear-gradient(92deg,rgba(4,7,14,.95) 0%,rgba(4,7,14,.88) 58%,rgba(4,7,14,.74) 100%)}
+.tm.home .slab{background-color:var(--home);opacity:.52;
+  background-image:linear-gradient(92deg,rgba(5,8,15,0) 0%,rgba(5,8,15,.34) 56%,rgba(5,8,15,.70) 100%)}
+.tm.away .scrim,.tm.away .slab{right:-300px;left:104px}
+.tm.away .scrim{background:linear-gradient(268deg,rgba(4,7,14,.95) 0%,rgba(4,7,14,.88) 58%,rgba(4,7,14,.74) 100%)}
+.tm.away .slab{background-color:var(--away);opacity:.52;
+  background-image:linear-gradient(268deg,rgba(5,8,15,0) 0%,rgba(5,8,15,.34) 56%,rgba(5,8,15,.70) 100%)}
+.tm .edge{position:absolute;top:14px;bottom:14px;right:86px;width:14px;transform:skewX(-9deg);z-index:1;
+  background:linear-gradient(180deg,rgba(242,193,78,0),var(--accent) 18%,#fff6d6 50%,var(--accent) 82%,rgba(242,193,78,0))}
+.tm.away .edge{right:auto;left:86px}
+.tm .hairtop,.tm .hairbot{position:absolute;right:104px;left:-300px;height:3px;transform:skewX(-9deg);z-index:1}
+.tm .hairtop{top:14px}
+.tm .hairbot{bottom:14px}
+.tm.home .hairtop,.tm.home .hairbot{background:linear-gradient(270deg,rgba(242,193,78,.85),rgba(242,193,78,.14) 62%,rgba(242,193,78,0))}
+.tm.away .hairtop,.tm.away .hairbot{right:-300px;left:104px;
+  background:linear-gradient(90deg,rgba(242,193,78,.85),rgba(242,193,78,.14) 62%,rgba(242,193,78,0))}
+.tm.away{flex-direction:row-reverse;text-align:right}
+
+.crest{position:relative;z-index:2;flex:none;width:432px;height:508px;margin-right:44px;
+  background-repeat:no-repeat;background-position:center;background-size:contain}
+.tm.away .crest{margin-right:0;margin-left:44px}
+.crest::before{content:'';position:absolute;top:-7%;right:-7%;bottom:-7%;left:-7%;z-index:0;
+  background:radial-gradient(56% 50% at 50% 50%,rgba(3,6,12,.88),rgba(3,6,12,.55) 58%,rgba(3,6,12,0) 76%)}
+.crest .art{position:relative;z-index:1;display:block;width:100%;height:100%;
+  filter:drop-shadow(0 26px 30px rgba(0,0,0,.66))}
+.crest.has-img{background-size:contain!important;background-position:center!important;
+  box-shadow:0 0 0 6px rgba(242,193,78,.30),0 30px 70px rgba(0,0,0,.6)}
+.crest.has-img .art{display:none}
+
+.tmtext{position:relative;z-index:2;flex:1;min-width:0}
+.tmchips{display:flex;align-items:center;height:72px}
+.tm.away .tmchips{justify-content:flex-end}
+.tmchip{max-width:640px;height:72px;padding:0 30px;margin-right:22px;display:flex;align-items:center;overflow:hidden;
+  background:rgba(6,10,20,.88);border:3px solid var(--hair)}
+.tmchip .t{font-family:var(--f-head),sans-serif;font-weight:900;font-size:var(--t-tmchip);letter-spacing:.14em;
+  text-transform:uppercase;line-height:1;white-space:nowrap;color:var(--ink)}
+.tm.away .tmchip{margin-right:0;margin-left:22px}
+.tmchip.seed{background-color:var(--accent);border-color:rgba(255,255,255,.35);
+  background-image:linear-gradient(180deg,rgba(255,255,255,.70),rgba(255,255,255,.04) 50%,rgba(0,0,0,.24))}
+.tmchip.seed .t{color:var(--on-brass)}
+.tmname{height:180px;margin-top:10px;display:flex;align-items:center;overflow:hidden}
+.tm.away .tmname{justify-content:flex-end}
+.tmname .t{width:100%;font-family:var(--f-display),'Archivo',sans-serif;font-size:var(--t-team);line-height:.9;
+  letter-spacing:.005em;text-transform:uppercase;color:#fff;
+  text-shadow:0 8px 0 rgba(0,0,0,.5),0 22px 48px rgba(0,0,0,.6)}
+.tmcity{height:114px;margin-top:2px;display:flex;align-items:center;overflow:hidden}
+.tm.away .tmcity{justify-content:flex-end}
+.tmcity .t{width:100%;font-family:var(--f-mono),monospace;font-weight:500;font-size:var(--t-city);letter-spacing:.12em;
+  text-transform:uppercase;color:var(--mute);line-height:1.12}
+.tmrec{margin-top:10px;display:flex;align-items:flex-end;height:120px}
+.tm.away .tmrec{justify-content:flex-end}
+.tmrec .barline{flex:none;width:12px;height:104px;margin-right:26px;background:var(--home)}
+.tm.away .tmrec .barline{margin-right:0;margin-left:26px;order:2;background:var(--away)}
+.tmrec .n{font-family:var(--f-display),'Archivo',sans-serif;font-size:var(--t-rec);line-height:.92;color:#fff;
+  font-variant-numeric:tabular-nums;letter-spacing:.01em;white-space:nowrap}
+.tmrec .kk{margin:0 0 16px 22px;font-family:var(--f-mono),monospace;font-weight:700;font-size:var(--t-reck);
+  letter-spacing:.2em;text-transform:uppercase;color:var(--mute);white-space:nowrap;line-height:1}
+.tm.away .tmrec .kk{margin:0 22px 16px 0;order:-1}
+.tmtag{height:114px;margin-top:8px;display:flex;align-items:center;overflow:hidden}
+.tm.away .tmtag{justify-content:flex-end}
+.tmtag .t{width:100%;font-family:var(--f-mono),monospace;font-weight:800;font-size:var(--t-tag);letter-spacing:.1em;
+  text-transform:uppercase;color:var(--accent);line-height:1.14}
+
+/* --- centre column --- */
+.mid{position:relative;flex:none;width:660px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.mid .slash{display:none}
+.mid .vs{position:relative;z-index:2;font-family:var(--f-display),'Archivo',sans-serif;font-size:var(--t-vs);line-height:.82;
+  letter-spacing:.02em;filter:drop-shadow(0 14px 0 rgba(0,0,0,.6))}
+.cdlbl{position:relative;z-index:2;height:60px;margin-top:16px;display:flex;align-items:center;overflow:hidden}
+.cdlbl .t{font-family:var(--f-mono),monospace;font-weight:800;font-size:var(--t-cdlbl);letter-spacing:.24em;
+  text-transform:uppercase;color:var(--mute);white-space:nowrap;line-height:1}
+.cdboxes{position:relative;z-index:2;margin-top:12px;display:flex;align-items:stretch}
+.cdbox{width:196px;height:204px;margin:0 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:linear-gradient(180deg,var(--steel1),#070c17);border:4px solid rgba(242,193,78,.5);
+  box-shadow:inset 0 4px 0 rgba(255,255,255,.14),inset 0 -22px 40px rgba(0,0,0,.6),0 18px 40px rgba(0,0,0,.6)}
+.cdbox .n{font-family:var(--f-display),'Archivo',sans-serif;font-size:var(--t-cdnum);line-height:.9;color:#fff;
+  font-variant-numeric:tabular-nums;letter-spacing:.03em}
+.cdbox .u{margin-top:8px;font-family:var(--f-mono),monospace;font-weight:700;font-size:var(--t-cdunit);
+  letter-spacing:.2em;text-transform:uppercase;color:var(--accent);line-height:1}
+
+/* ---------- 3. lower-third fact strip ---------- */
+.lower{position:relative;flex:none;height:352px;display:flex;background:linear-gradient(180deg,#0b1120,#070c17);
+  border-top:4px solid var(--hairlit)}
+.lower .lead{flex:none;width:18px;background-color:var(--accent);
+  background-image:linear-gradient(180deg,rgba(255,255,255,.30),rgba(0,0,0,.48))}
+.fact{flex:1 1 0;min-width:0;padding:24px 44px;display:flex;flex-direction:column;justify-content:center;
+  border-left:3px solid rgba(244,247,255,.10)}
+.fact:first-of-type{border-left:0}
+.fact .k{height:54px;display:flex;align-items:center;overflow:hidden}
+.fact .k .t{font-family:var(--f-mono),monospace;font-weight:800;font-size:var(--t-factk);letter-spacing:.2em;
+  text-transform:uppercase;color:var(--accent);line-height:1;white-space:nowrap}
+.fact .v{height:118px;margin-top:8px;display:flex;align-items:center;overflow:hidden}
+.fact .v .t{width:100%;font-family:var(--f-display),'Archivo',sans-serif;font-size:var(--t-factv);line-height:.92;
+  letter-spacing:.01em;text-transform:uppercase;white-space:nowrap;overflow:hidden;color:#fff;
+  text-shadow:0 6px 0 rgba(0,0,0,.4)}
+.fact .v.neg .t{color:var(--neg)}
+.fact .v.pos .t{color:var(--pos)}
+.fact .v.gold .t{color:var(--accent)}
+.fact .cap{height:112px;margin-top:8px;display:flex;align-items:flex-start;overflow:hidden}
+.fact .cap .t{width:100%;font-family:var(--f-head),sans-serif;font-weight:600;font-size:var(--t-factcap);
+  color:var(--mute);line-height:1.14}
+
+/* ---------- 4. call-to-action bar ---------- */
+.cta{position:relative;flex:none;height:176px;padding:0 90px;display:flex;align-items:center;
+  background-color:var(--accent);color:var(--on-brass);
+  background-image:linear-gradient(180deg,rgba(255,255,255,.76),rgba(255,255,255,.02) 40%,rgba(0,0,0,.20) 100%)}
+.cta::before{content:'';position:absolute;top:0;right:0;left:0;height:5px;background:rgba(255,255,255,.55)}
+.cta .lft{flex:1;min-width:0;margin-right:40px}
+.cta .l1{height:56px;display:flex;align-items:center;overflow:hidden}
+.cta .l1 .t{font-family:var(--f-mono),monospace;font-weight:800;font-size:var(--t-ctak);letter-spacing:.2em;
+  text-transform:uppercase;color:#7a2314;line-height:1;white-space:nowrap}
+.cta .l2{height:104px;margin-top:4px;display:flex;align-items:center;overflow:hidden}
+.cta .l2 .t{width:100%;font-family:var(--f-display),'Archivo',sans-serif;font-size:var(--t-ctav);line-height:.96;
+  text-transform:uppercase;white-space:nowrap;overflow:hidden;letter-spacing:.01em}
+.cta .rgt{flex:none;display:flex;align-items:center}
+.pill{max-width:820px;height:104px;margin-left:24px;padding:0 40px;display:flex;align-items:center;overflow:hidden;
+  background:#0d1424;box-shadow:0 10px 0 rgba(0,0,0,.35)}
+.pill .t{font-family:var(--f-display),'Archivo',sans-serif;font-size:var(--t-pill);line-height:1;letter-spacing:.03em;
+  text-transform:uppercase;white-space:nowrap;color:var(--accent)}
+.pill.r{background:var(--away)}
+.pill.r .t{color:#fff}
+
+/* ---------- 5. sponsor band ---------- */
+.spon{position:relative;flex:none;height:216px;padding:0 90px;display:flex;align-items:center;background:#080d18}
+.spon::before{content:'';position:absolute;top:0;right:0;left:0;height:3px;background:rgba(244,247,255,.14)}
+.spon .lbl{flex:none;width:1000px;margin-right:34px}
+.spon .lbl .kb{height:54px;display:flex;align-items:center;overflow:hidden}
+.spon .lbl .kb .t{font-family:var(--f-mono),monospace;font-weight:800;font-size:var(--t-sponk);letter-spacing:.24em;
+  text-transform:uppercase;color:var(--accent);line-height:1;white-space:nowrap}
+.spon .lbl .u{margin-top:10px;width:190px;height:4px;background:linear-gradient(90deg,var(--accent),rgba(242,193,78,0))}
+.spon .note{height:118px;margin-top:6px;display:flex;align-items:center;overflow:hidden}
+.spon .note .t{width:100%;font-family:var(--f-mono),monospace;font-weight:500;font-size:var(--t-sponnote);
+  letter-spacing:.1em;text-transform:uppercase;color:var(--mute);text-align:left;line-height:1.16}
+.slots{flex:1;min-width:0;display:flex;align-items:center}
+.slot{position:relative;flex:1 1 0;min-width:0;height:180px;margin-right:20px;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(180deg,#111a2c,#0a1120);border:3px solid rgba(244,247,255,.14);
+  background-repeat:no-repeat;background-position:center;background-size:contain}
+.slot:last-child{margin-right:0}
+.slot .nmb{width:100%;height:156px;padding:0 18px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.slot .nmb .t{width:100%;text-align:center;font-family:var(--f-head),sans-serif;font-weight:800;
+  font-size:var(--t-sponname);letter-spacing:.05em;text-transform:uppercase;color:#cdd8ef;line-height:1.02}
+.slot.has-img{background-size:contain!important;background-position:center!important;border-color:rgba(242,193,78,.34)}
+.slot.has-img .nmb{display:none}
+
+/* ---------- 6. ticker (SOLID — never translucent) ---------- */
+.ticker{position:relative;flex:none;height:120px;background:var(--home2);overflow:hidden;display:flex;align-items:center}
+.ticker .top{position:absolute;top:0;right:0;left:0;height:5px;background:var(--accent);z-index:3}
+.ticker .tag{position:relative;z-index:2;flex:none;height:100%;padding:0 70px 0 44px;display:flex;align-items:center;
+  background:var(--accent);color:var(--on-brass);font-family:var(--f-display),'Archivo',sans-serif;
+  font-size:var(--t-tickertag);letter-spacing:.05em;text-transform:uppercase;white-space:nowrap}
+.ticker .tag::before{content:'';flex:none;width:20px;height:20px;margin-right:20px;border-radius:50%;
+  background:var(--away);animation:blink 1.5s steps(2) infinite}
+.ticker .tag::after{content:'';position:absolute;top:0;right:-26px;bottom:0;width:52px;background:var(--accent);
+  transform:skewX(-13deg)}
+.ticker .msg{position:relative;z-index:1;padding-left:80px;white-space:nowrap;
+  font-family:var(--f-head),sans-serif;font-weight:800;font-size:var(--t-ticker);letter-spacing:.05em;
+  text-transform:uppercase;color:#eaf0ff;animation:sc 96s linear infinite}
+.ticker .msg .star{color:var(--accent);margin:0 30px}
+@keyframes sc{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+/* ============================================================
+   PORTRAIT — 2160 x 3840 (no media query: the runtime sets
+   data-orient from the window ratio OR ?o=portrait, so a forced
+   orientation works in any viewport).
+   ============================================================ */
+.stage[data-orient="port"] .bgslot{background-position:44% 52%}
+.stage[data-orient="port"] .rail{height:282px;padding:0 70px;flex-wrap:wrap;align-content:center}
+.stage[data-orient="port"] .rail .idbar{height:118px}
+.stage[data-orient="port"] .rail .id{flex:1 1 0;min-width:0;margin-right:0}
+.stage[data-orient="port"] .rail .eyebrow .t{letter-spacing:.08em}
+.stage[data-orient="port"] .tmcity .t,.stage[data-orient="port"] .tmtag .t{letter-spacing:.06em}
+.stage[data-orient="port"] .chips{flex:1 0 100%;margin-top:14px;justify-content:flex-start}
+.stage[data-orient="port"] .chip{height:120px;padding:0 30px;margin:0 22px 0 0}
+.stage[data-orient="port"] .hero{padding:30px 70px 18px}
+.stage[data-orient="port"] .slug{max-width:1100px}
+.stage[data-orient="port"] .slugrow .ln{flex:0 0 60px}
+.stage[data-orient="port"] .slugrow .rt .t{letter-spacing:.08em}
+.stage[data-orient="port"] .titlerow{flex-direction:column;align-items:stretch;height:auto}
+.stage[data-orient="port"] .title{height:220px}
+.stage[data-orient="port"] .kick{width:100%;height:190px;margin:24px 0 0;padding:14px 40px;
+  flex-direction:row;align-items:center}
+.stage[data-orient="port"] .kick .k{flex:none;width:330px}
+.stage[data-orient="port"] .kick .v{flex:none;width:520px;height:126px;margin:0 40px 0 0}
+.stage[data-orient="port"] .kick .s{flex:1;min-width:0;margin:0}
+.stage[data-orient="port"] .kick .s .t{width:100%;text-align:right}
+.stage[data-orient="port"] .match{flex-direction:column;margin-top:24px}
+.stage[data-orient="port"] .tm{flex:1 1 0;padding:0}
+.stage[data-orient="port"] .tm .scrim,.stage[data-orient="port"] .tm .slab,
+.stage[data-orient="port"] .tm .hairtop,.stage[data-orient="port"] .tm .hairbot{right:150px;left:-300px}
+.stage[data-orient="port"] .tm .edge{right:132px}
+.stage[data-orient="port"] .tm.away .scrim,.stage[data-orient="port"] .tm.away .slab,
+.stage[data-orient="port"] .tm.away .hairtop,.stage[data-orient="port"] .tm.away .hairbot{right:-300px;left:150px}
+.stage[data-orient="port"] .tm.away .edge{right:auto;left:132px}
+.stage[data-orient="port"] .crest{width:396px;height:464px;margin-right:36px}
+.stage[data-orient="port"] .tm.away .crest{margin-right:0;margin-left:36px}
+.stage[data-orient="port"] .tmchips{height:66px}
+.stage[data-orient="port"] .tmchip{height:66px;padding:0 24px;margin-right:18px}
+.stage[data-orient="port"] .tm.away .tmchip{margin-right:0;margin-left:18px}
+.stage[data-orient="port"] .tmname{height:160px;margin-top:10px}
+.stage[data-orient="port"] .tmcity{height:64px;margin-top:2px}
+.stage[data-orient="port"] .tmrec{height:112px;margin-top:10px}
+.stage[data-orient="port"] .tmtag{height:64px;margin-top:8px}
+.stage[data-orient="port"] .mid{flex:none;width:100%;height:290px;flex-direction:row;justify-content:center;align-items:center}
+.stage[data-orient="port"] .mid .slash{display:block;position:absolute;top:50%;bottom:auto;left:0;width:100%;height:8px;
+  margin:-4px 0 0;z-index:0;transform:skewY(-2deg);
+  background:linear-gradient(90deg,rgba(242,193,78,0),rgba(242,193,78,.5) 24%,rgba(242,193,78,.5) 76%,rgba(242,193,78,0))}
+.stage[data-orient="port"] .mid .vs{margin-right:44px}
+.stage[data-orient="port"] .cdlbl{position:absolute;top:16px;left:0;right:0;margin:0;height:56px;justify-content:center}
+.stage[data-orient="port"] .cdboxes{margin-top:44px}
+.stage[data-orient="port"] .cdbox{width:180px;height:180px;margin:0 8px}
+.stage[data-orient="port"] .lower{height:auto;flex-wrap:wrap}
+.stage[data-orient="port"] .lower .lead{width:100%;height:14px}
+.stage[data-orient="port"] .fact{flex:0 0 50%;max-width:50%;height:352px;border-top:3px solid rgba(244,247,255,.10)}
+.stage[data-orient="port"] .fact:first-of-type,.stage[data-orient="port"] .fact:nth-of-type(2){border-top:0}
+.stage[data-orient="port"] .fact:nth-of-type(odd){border-left:0}
+.stage[data-orient="port"] .cta{height:284px;padding:0 70px;flex-direction:column;align-items:flex-start;justify-content:center}
+.stage[data-orient="port"] .cta .lft{flex:none;width:100%;margin-right:0}
+.stage[data-orient="port"] .cta .rgt{margin-top:18px}
+.stage[data-orient="port"] .pill{margin:0 24px 0 0}
+.stage[data-orient="port"] .spon{height:440px;padding:26px 70px;flex-wrap:wrap;align-content:center}
+.stage[data-orient="port"] .spon .lbl{flex:0 0 100%;width:auto;margin:0 0 16px}
+.stage[data-orient="port"] .spon .note{height:120px}
+.stage[data-orient="port"] .slots{flex:0 0 100%}
+.stage[data-orient="port"] .slot{height:180px;margin-right:14px}
+.stage[data-orient="port"] .slot .nmb{height:156px;padding:0 10px}
+.stage[data-orient="port"] .slot .nmb .t{letter-spacing:.02em}
+.stage[data-orient="port"] .ticker{height:140px}
+.stage[data-orient="port"]{
+  --t-hero:calc(190px*var(--scale));
+  --t-team:calc(150px*var(--scale));
+  --t-vs:calc(200px*var(--scale));
+  --t-kickv:calc(146px*var(--scale));
+  --t-cdnum:calc(132px*var(--scale));
+  --t-factv:calc(116px*var(--scale));
+  --t-ctav:calc(96px*var(--scale));
+  --t-sponname:calc(54px*var(--scale));
+}
+</style>
+</head>
+<body>
+
+<!-- Hidden brand-token block: canonical set + the legacy keys this board shipped
+     with. applyTheme() writes canonical first, legacy second, and only applies a
+     field that has actually been CHANGED from its default — so the two
+     vocabularies can coexist without fighting. -->
 <div data-widget="theme" hidden>
-  <span data-field="theme.cBg">#0a1326</span><span data-field="theme.cHome">#1a3aa0</span><span data-field="theme.cAway">#c2261a</span>
-  <span data-field="theme.cGold">#ffc42b</span><span data-field="theme.cGreen">#27c46b</span><span data-field="theme.cInk">#ffffff</span>
-  <span data-field="theme.fDisplay">Bebas Neue</span><span data-field="theme.fHead">Archivo</span><span data-field="theme.fMono">JetBrains Mono</span><span data-field="theme.scale">1</span>
+  <span data-field="theme.bg">#070b14</span><span data-field="theme.ink">#f4f7ff</span><span data-field="theme.mute">#9aa9c9</span>
+  <span data-field="theme.brand">#1e3fb0</span><span data-field="theme.brand2">#0d1f63</span>
+  <span data-field="theme.accent">#f2c14e</span><span data-field="theme.accent2">#c2261a</span>
+  <span data-field="theme.pos">#3ddc84</span><span data-field="theme.neg">#ff6a5a</span>
+  <span data-field="theme.fDisplay">Anton</span><span data-field="theme.fHead">Archivo</span><span data-field="theme.fBody">Archivo</span><span data-field="theme.fMono">JetBrains Mono</span><span data-field="theme.scale">1</span>
+  <span data-field="theme.cBg">#070b14</span><span data-field="theme.cInk">#f4f7ff</span><span data-field="theme.cHome">#1e3fb0</span><span data-field="theme.cAway">#c2261a</span><span data-field="theme.cGold">#f2c14e</span><span data-field="theme.cGreen">#3ddc84</span>
 </div>
+
 <div class="viewport"><div class="stage-outer"><div class="stage" id="stage" data-orient="land">
 
-  <header class="mast">
-    <div class="sup-h" data-widget="dept"><div class="sup" data-field="dept.label">Westridge Athletics · Game Day</div><h1 data-fit="single" data-fit-min="80" data-fit-max="140" data-field="dept.title">Pack the gym.</h1></div>
-    <div class="chips">
-      <div class="chip" data-widget="clock"><div class="k" data-field="clock.label">Now</div><div class="v" data-field="clock.time" data-live="clock">3:18 pm</div></div>
-      <div class="chip lit" data-widget="tipoff"><div class="k" data-field="tipoff.label">Tip-off in</div><div class="v" data-field="tipoff.value" data-live="tip">3h 42m</div></div>
-    </div>
-  </header>
-
-  <div class="hype" data-widget="hype"><div class="dot"></div><div class="label" data-fit="single" data-fit-min="44" data-fit-max="80" data-field="hype.label">★ Playoffs Round 1 · Tonight ★</div><div class="dot"></div></div>
-
-  <div class="match">
-    <div class="team home" data-widget="home">
-      <div class="badge" data-field="home.badge">Home · #1 Seed</div>
-      <div class="seed" data-field="home.seed">14–2</div>
-      <div class="crest" data-imgslot="home.logo" data-field="home.abbr">WHS</div>
-      <div class="namewrap"><div class="name" data-fit="single" data-fit-min="80" data-fit-max="180" data-field="home.name">Wildcats</div></div>
-      <div class="city" data-field="home.city">Westridge · East Div.</div>
-      <div class="rec" data-field="home.rec">14–2</div>
-      <div class="tagline" data-field="home.tag">★ League Leaders</div>
-    </div>
-    <div class="vs" data-widget="vs">
-      <div class="word" data-field="vs.word">VS</div>
-      <div class="when"><span data-field="vs.when1">Tonight</span><span class="big" data-field="vs.bigtime">7:00P</span><span data-field="vs.when2">Gym A · Doors 5:30</span></div>
-    </div>
-    <div class="team away" data-widget="away">
-      <div class="badge" data-field="away.badge">Away · #4 Seed</div>
-      <div class="seed" data-field="away.seed">11–5</div>
-      <div class="crest" data-imgslot="away.logo" data-field="away.abbr">RIV</div>
-      <div class="namewrap"><div class="name" data-fit="single" data-fit-min="80" data-fit-max="180" data-field="away.name">Riverside</div></div>
-      <div class="city" data-field="away.city">Riverside Prep · West Div.</div>
-      <div class="rec" data-field="away.rec">11–5</div>
-      <div class="tagline" data-field="away.tag">★ Dark Horse</div>
-    </div>
+  <!-- full-bleed Friday-night stadium photograph (swappable) -->
+  <div class="atmos">
+    <div class="bgslot" data-imgslot="board.bg" data-slot="board-bg"
+         data-img="/templates/hs/assets/hs-biggame-under-the-lights-v1.jpg"
+         role="img" aria-label="Stadium under the lights"><span class="ph"></span></div>
+    <div class="grade"></div>
+    <div class="beams"></div>
+    <div class="vig"></div>
   </div>
+  <div class="grain"></div>
 
-  <div class="facts" data-widget="facts">
-    <div class="fact" data-widget="facts.0"><div class="k" data-field="facts.0.k">Streak</div><div class="v green" data-field="facts.0.v">W8</div><div class="cap" data-field="facts.0.cap">8 straight · longest in the division</div></div>
-    <div class="fact" data-widget="facts.1"><div class="k" data-field="facts.1.k">Last meeting</div><div class="v" data-field="facts.1.v">61–58</div><div class="cap" data-field="facts.1.cap">Wildcats edged it in OT</div></div>
-    <div class="fact" data-widget="facts.2"><div class="k" data-field="facts.2.k">Tickets</div><div class="v red" data-field="facts.2.v">Sold out</div><div class="cap" data-field="facts.2.cap">Standing room · stream on the app</div></div>
-    <div class="fact" data-widget="facts.3"><div class="k" data-field="facts.3.k">Dress code</div><div class="v" style="color:var(--c-gold)" data-field="facts.3.v">Red out</div><div class="cap" data-field="facts.3.cap">Wear red · spirit signs welcome</div></div>
+  <div class="wrap">
+
+    <!-- 1 · broadcast bug rail -->
+    <header class="rail" data-widget="dept">
+      <div class="idbar"></div>
+      <div class="id">
+        <div class="eyebrow fitline"><div class="t" data-fit="single" data-fit-min="50" data-fit-max="58" data-field="dept.label">Westridge Athletics · Game Day</div></div>
+        <div class="date fitline"><div class="t" data-fit="single" data-fit-min="50" data-fit-max="50" data-field="dept.date" data-live="todayfull">Friday · Nov 14</div></div>
+      </div>
+      <div class="chips">
+        <div class="chip" data-widget="clock">
+          <div class="k" data-field="clock.label">Now</div>
+          <div class="v" data-field="clock.time" data-live="clock">3:18 PM</div>
+        </div>
+        <div class="chip hot" data-widget="tipoff">
+          <div class="k" data-field="tipoff.label">Tip-off in</div>
+          <div class="v" data-field="tipoff.value" data-live="tip">3h 42m</div>
+        </div>
+      </div>
+      <div class="rule"></div>
+    </header>
+
+    <!-- 2 · hero -->
+    <section class="hero">
+
+      <div class="slugrow">
+        <div class="slug sk" data-widget="hype"><span class="t" data-fit="single" data-fit-min="52" data-fit-max="78" data-field="hype.label">Playoffs · Round 1</span></div>
+        <div class="ln"></div>
+        <div class="rt"><div class="t" data-fit="wrap" data-fit-min="50" data-fit-max="52" data-field="hero.kicker">Conference Championship Series</div></div>
+      </div>
+
+      <div class="titlerow">
+        <div class="title"><div class="t foil" data-fit="single" data-fit-min="56" data-fit-max="220" data-field="dept.title">Pack the gym.</div></div>
+        <div class="kick" data-widget="vs">
+          <div class="k fitline"><div class="t" data-fit="single" data-fit-min="50" data-fit-max="52" data-field="vs.when1">Tonight</div></div>
+          <div class="v"><div class="t foil" data-fit="single" data-fit-min="60" data-fit-max="120" data-field="vs.bigtime">7:00 PM</div></div>
+          <div class="s fitline"><div class="t" data-fit="single" data-fit-min="50" data-fit-max="52" data-field="vs.when2">Gym A · Doors 5:30</div></div>
+        </div>
+      </div>
+
+      <div class="match">
+
+        <!-- HOME -->
+        <div class="tm home" data-widget="home">
+          <div class="scrim"></div><div class="slab"></div><div class="edge"></div>
+          <div class="hairtop"></div><div class="hairbot"></div>
+          <div class="crest" data-imgslot="home.logo" data-slot="home-logo">
+            <svg class="art" viewBox="0 0 360 440" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Home crest" focusable="false">
+              <defs>
+                <linearGradient id="hmMetal" x1="0" y1="0" x2="0.18" y2="1">
+                  <stop offset="0"    stop-color="#fff7dd" style="stop-color:#fff7dd"/>
+                  <stop offset="0.26" stop-color="#f2c14e" style="stop-color:var(--accent)"/>
+                  <stop offset="0.5"  stop-color="#8d6a18" style="stop-color:#8d6a18"/>
+                  <stop offset="0.72" stop-color="#f2c14e" style="stop-color:var(--accent)"/>
+                  <stop offset="1"    stop-color="#fffaef" style="stop-color:#fffaef"/>
+                </linearGradient>
+                <linearGradient id="hmField" x1="0" y1="0" x2="0.25" y2="1">
+                  <stop offset="0" stop-color="#2a55d8" style="stop-color:var(--home)"/>
+                  <stop offset="1" stop-color="#0b1a52" style="stop-color:var(--home2)"/>
+                </linearGradient>
+                <linearGradient id="hmSheen" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0"    stop-color="#ffffff" stop-opacity="0.30"/>
+                  <stop offset="0.46" stop-color="#ffffff" stop-opacity="0.05"/>
+                  <stop offset="1"    stop-color="#000000" stop-opacity="0.30"/>
+                </linearGradient>
+                <clipPath id="hmClip"><path d="M34 36 H326 V236 C326 312 268 368 180 400 C92 368 34 312 34 236 Z"/></clipPath>
+              </defs>
+              <!-- machined rim -->
+              <path d="M18 20 H342 V236 C342 322 279 384 180 420 C81 384 18 322 18 236 Z" fill="url(#hmMetal)"/>
+              <path d="M18 20 H342 V236 C342 322 279 384 180 420 C81 384 18 322 18 236 Z" fill="none" stroke="#3a2a06" stroke-width="4" stroke-opacity="0.55"/>
+              <!-- field -->
+              <path d="M34 36 H326 V236 C326 312 268 368 180 400 C92 368 34 312 34 236 Z" fill="url(#hmField)"/>
+              <g clip-path="url(#hmClip)">
+                <!-- diagonal bend -->
+                <path d="M34 214 L326 120 V182 L34 276 Z" fill="url(#hmMetal)" opacity="0.20"/>
+                <!-- chief -->
+                <rect x="34" y="36" width="292" height="76" fill="url(#hmMetal)"/>
+                <rect x="34" y="112" width="292" height="7" fill="#0b1a52" fill-opacity="0.85"/>
+                <!-- mascot device: three claw slashes on the chief -->
+                <path d="M120 52 l19 0 l-27 44 l-19 0 Z" fill="#0b1a52"/>
+                <path d="M170 52 l19 0 l-27 44 l-19 0 Z" fill="#0b1a52"/>
+                <path d="M220 52 l19 0 l-27 44 l-19 0 Z" fill="#0b1a52"/>
+                <path d="M34 36 H326 V236 C326 312 268 368 180 400 C92 368 34 312 34 236 Z" fill="url(#hmSheen)"/>
+              </g>
+              <!-- monogram -->
+              <text class="mgm" x="180" y="272" data-svgfit="230" text-anchor="middle"
+                    font-family="Anton, Archivo, sans-serif" font-size="150" letter-spacing="2"
+                    stroke="#0b1a52" stroke-width="11" paint-order="stroke" fill="url(#hmMetal)"
+                    data-field="home.abbr">WHS</text>
+              <!-- founding banner -->
+              <path d="M8 302 L42 318 V382 L8 400 Z" fill="#8d6a18"/>
+              <path d="M352 302 L318 318 V382 L352 400 Z" fill="#8d6a18"/>
+              <rect x="42" y="314" width="276" height="72" fill="url(#hmMetal)"/>
+              <rect x="42" y="314" width="276" height="72" fill="none" stroke="#3a2a06" stroke-width="3" stroke-opacity="0.5"/>
+              <text class="est" x="180" y="367" data-svgfit="252" text-anchor="middle"
+                    font-family="Archivo, sans-serif" font-weight="800" font-size="50" letter-spacing="1"
+                    fill="#241a04" data-field="home.est">EST. 1924</text>
+              <!-- rivets -->
+              <circle cx="46" cy="48" r="7" fill="#3a2a06" fill-opacity="0.6"/>
+              <circle cx="314" cy="48" r="7" fill="#3a2a06" fill-opacity="0.6"/>
+              <circle cx="42" cy="196" r="7" fill="#3a2a06" fill-opacity="0.6"/>
+              <circle cx="318" cy="196" r="7" fill="#3a2a06" fill-opacity="0.6"/>
+            </svg>
+          </div>
+          <div class="tmtext">
+            <div class="tmchips">
+              <div class="tmchip"><div class="t" data-fit="single" data-fit-min="50" data-fit-max="54" data-field="home.badge">Home</div></div>
+              <div class="tmchip seed"><div class="t" data-fit="single" data-fit-min="50" data-fit-max="54" data-field="home.seed">#1 Seed</div></div>
+            </div>
+            <div class="tmname"><div class="t" data-fit="wrap" data-fit-min="54" data-fit-max="172" data-field="home.name">Wildcats</div></div>
+            <div class="tmcity"><div class="t" data-fit="wrap" data-fit-min="50" data-fit-max="56" data-field="home.city">Westridge · East Division</div></div>
+            <div class="tmrec">
+              <div class="barline"></div>
+              <div class="n" data-field="home.rec">14–2</div>
+              <div class="kk" data-field="home.reck">Record</div>
+            </div>
+            <div class="tmtag"><div class="t" data-fit="wrap" data-fit-min="50" data-fit-max="54" data-field="home.tag">★ League leaders · won 8 straight</div></div>
+          </div>
+        </div>
+
+        <!-- CENTRE -->
+        <div class="mid">
+          <div class="slash"></div>
+          <div class="vs foil" data-field="vs.word">VS</div>
+          <div class="cdlbl"><div class="t" data-fit="single" data-fit-min="50" data-fit-max="54" data-field="cd.label">Until tip-off</div></div>
+          <div class="cdboxes" data-widget="countdown">
+            <div class="cdbox"><div class="n" data-field="cd.h" data-live="cd-h">03</div><div class="u" data-field="cd.hu">Hrs</div></div>
+            <div class="cdbox"><div class="n" data-field="cd.m" data-live="cd-m">42</div><div class="u" data-field="cd.mu">Min</div></div>
+            <div class="cdbox"><div class="n" data-field="cd.s" data-live="cd-s">15</div><div class="u" data-field="cd.su">Sec</div></div>
+          </div>
+        </div>
+
+        <!-- AWAY -->
+        <div class="tm away" data-widget="away">
+          <div class="scrim"></div><div class="slab"></div><div class="edge"></div>
+          <div class="hairtop"></div><div class="hairbot"></div>
+          <div class="crest" data-imgslot="away.logo" data-slot="away-logo">
+            <svg class="art" viewBox="0 0 360 440" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Away crest" focusable="false">
+              <defs>
+                <linearGradient id="awMetal" x1="0" y1="0" x2="0.18" y2="1">
+                  <stop offset="0"    stop-color="#f4f7ff" style="stop-color:#f4f7ff"/>
+                  <stop offset="0.26" stop-color="#c9d4ea" style="stop-color:#c9d4ea"/>
+                  <stop offset="0.5"  stop-color="#6b7793" style="stop-color:#6b7793"/>
+                  <stop offset="0.72" stop-color="#c9d4ea" style="stop-color:#c9d4ea"/>
+                  <stop offset="1"    stop-color="#ffffff" style="stop-color:#ffffff"/>
+                </linearGradient>
+                <linearGradient id="awField" x1="0" y1="0" x2="0.25" y2="1">
+                  <stop offset="0" stop-color="#d1341f" style="stop-color:var(--away)"/>
+                  <stop offset="1" stop-color="#5c0b05" style="stop-color:var(--away2)"/>
+                </linearGradient>
+                <linearGradient id="awSheen" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0"    stop-color="#ffffff" stop-opacity="0.30"/>
+                  <stop offset="0.46" stop-color="#ffffff" stop-opacity="0.05"/>
+                  <stop offset="1"    stop-color="#000000" stop-opacity="0.30"/>
+                </linearGradient>
+                <clipPath id="awClip"><path d="M180 34 C239 34 296 44 330 59 C330 160 324 268 281 336 C248 387 212 405 180 414 C148 405 112 387 79 336 C36 268 30 160 30 59 C64 44 121 34 180 34 Z"/></clipPath>
+              </defs>
+              <path d="M180 16 C244 16 306 27 344 44 C344 156 338 274 291 348 C255 404 215 424 180 434 C145 424 105 404 69 348 C22 274 16 156 16 44 C54 27 116 16 180 16 Z" fill="url(#awMetal)"/>
+              <path d="M180 16 C244 16 306 27 344 44 C344 156 338 274 291 348 C255 404 215 424 180 434 C145 424 105 404 69 348 C22 274 16 156 16 44 C54 27 116 16 180 16 Z" fill="none" stroke="#3c4353" stroke-width="4" stroke-opacity="0.55"/>
+              <path d="M180 34 C239 34 296 44 330 59 C330 160 324 268 281 336 C248 387 212 405 180 414 C148 405 112 387 79 336 C36 268 30 160 30 59 C64 44 121 34 180 34 Z" fill="url(#awField)"/>
+              <g clip-path="url(#awClip)">
+                <!-- chevron -->
+                <path d="M50 268 L180 194 L310 268 L310 306 L180 232 L50 306 Z" fill="url(#awMetal)" opacity="0.22"/>
+                <!-- chief -->
+                <path d="M180 34 C239 34 296 44 330 59 L330 134 L30 134 L30 59 C64 44 121 34 180 34 Z" fill="url(#awMetal)"/>
+                <rect x="30" y="134" width="300" height="7" fill="#5c0b05" fill-opacity="0.85"/>
+                <!-- mascot device: river waves -->
+                <path d="M62 76 q29 -22 58 0 t58 0 t58 0 t58 0" fill="none" stroke="#5c0b05" stroke-width="11" stroke-linecap="round"/>
+                <path d="M62 110 q29 -22 58 0 t58 0 t58 0 t58 0" fill="none" stroke="#5c0b05" stroke-width="11" stroke-linecap="round"/>
+                <path d="M180 34 C239 34 296 44 330 59 C330 160 324 268 281 336 C248 387 212 405 180 414 C148 405 112 387 79 336 C36 268 30 160 30 59 C64 44 121 34 180 34 Z" fill="url(#awSheen)"/>
+              </g>
+              <text class="mgm" x="180" y="288" data-svgfit="230" text-anchor="middle"
+                    font-family="Anton, Archivo, sans-serif" font-size="150" letter-spacing="2"
+                    stroke="#5c0b05" stroke-width="11" paint-order="stroke" fill="url(#awMetal)"
+                    data-field="away.abbr">RIV</text>
+              <path d="M8 312 L42 328 V392 L8 410 Z" fill="#6b7793"/>
+              <path d="M352 312 L318 328 V392 L352 410 Z" fill="#6b7793"/>
+              <rect x="42" y="324" width="276" height="72" fill="url(#awMetal)"/>
+              <rect x="42" y="324" width="276" height="72" fill="none" stroke="#3c4353" stroke-width="3" stroke-opacity="0.5"/>
+              <text class="est" x="180" y="377" data-svgfit="252" text-anchor="middle"
+                    font-family="Archivo, sans-serif" font-weight="800" font-size="50" letter-spacing="1"
+                    fill="#20242e" data-field="away.est">EST. 1931</text>
+              <circle cx="52" cy="70" r="7" fill="#3c4353" fill-opacity="0.55"/>
+              <circle cx="308" cy="70" r="7" fill="#3c4353" fill-opacity="0.55"/>
+              <circle cx="40" cy="206" r="7" fill="#3c4353" fill-opacity="0.55"/>
+              <circle cx="320" cy="206" r="7" fill="#3c4353" fill-opacity="0.55"/>
+            </svg>
+          </div>
+          <div class="tmtext">
+            <div class="tmchips">
+              <div class="tmchip"><div class="t" data-fit="single" data-fit-min="50" data-fit-max="54" data-field="away.badge">Away</div></div>
+              <div class="tmchip seed"><div class="t" data-fit="single" data-fit-min="50" data-fit-max="54" data-field="away.seed">#4 Seed</div></div>
+            </div>
+            <div class="tmname"><div class="t" data-fit="wrap" data-fit-min="54" data-fit-max="172" data-field="away.name">Riverside</div></div>
+            <div class="tmcity"><div class="t" data-fit="wrap" data-fit-min="50" data-fit-max="56" data-field="away.city">Riverside Prep · West Division</div></div>
+            <div class="tmrec">
+              <div class="barline"></div>
+              <div class="n" data-field="away.rec">11–5</div>
+              <div class="kk" data-field="away.reck">Record</div>
+            </div>
+            <div class="tmtag"><div class="t" data-fit="wrap" data-fit-min="50" data-fit-max="54" data-field="away.tag">★ Dark horse · won 4 of 5</div></div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- 3 · lower-third fact strip -->
+    <section class="lower" data-widget="facts">
+      <div class="lead"></div>
+      <div class="fact" data-widget="facts.0">
+        <div class="k"><div class="t" data-fit="single" data-fit-min="50" data-fit-max="52" data-field="facts.0.k">Streak</div></div>
+        <div class="v pos"><div class="t" data-fit="single" data-fit-min="54" data-fit-max="122" data-field="facts.0.v">W8</div></div>
+        <div class="cap"><div class="t" data-fit="wrap" data-fit-min="50" data-fit-max="56" data-field="facts.0.cap">Eight straight — longest run in the division</div></div>
+      </div>
+      <div class="fact" data-widget="facts.1">
+        <div class="k"><div class="t" data-fit="single" data-fit-min="50" data-fit-max="52" data-field="facts.1.k">Last meeting</div></div>
+        <div class="v"><div class="t" data-fit="single" data-fit-min="54" data-fit-max="122" data-field="facts.1.v">61–58</div></div>
+        <div class="cap"><div class="t" data-fit="wrap" data-fit-min="50" data-fit-max="56" data-field="facts.1.cap">Wildcats edged it in overtime, Jan 12</div></div>
+      </div>
+      <div class="fact" data-widget="facts.2">
+        <div class="k"><div class="t" data-fit="single" data-fit-min="50" data-fit-max="52" data-field="facts.2.k">Tickets</div></div>
+        <div class="v neg"><div class="t" data-fit="single" data-fit-min="54" data-fit-max="122" data-field="facts.2.v">Sold out</div></div>
+        <div class="cap"><div class="t" data-fit="wrap" data-fit-min="50" data-fit-max="56" data-field="facts.2.cap">Standing room only — stream free on the app</div></div>
+      </div>
+      <div class="fact" data-widget="facts.3">
+        <div class="k"><div class="t" data-fit="single" data-fit-min="50" data-fit-max="52" data-field="facts.3.k">Dress code</div></div>
+        <div class="v gold"><div class="t" data-fit="single" data-fit-min="54" data-fit-max="122" data-field="facts.3.v">Red out</div></div>
+        <div class="cap"><div class="t" data-fit="wrap" data-fit-min="50" data-fit-max="56" data-field="facts.3.cap">Wear red — spirit signs welcome in section 8</div></div>
+      </div>
+    </section>
+
+    <!-- 4 · call to action -->
+    <section class="cta" data-widget="cta">
+      <div class="lft">
+        <div class="l1"><div class="t" data-fit="single" data-fit-min="50" data-fit-max="54" data-field="cta.l1">★ Student section opens 5:30</div></div>
+        <div class="l2"><div class="t" data-fit="single" data-fit-min="56" data-fit-max="104" data-field="cta.l2">Doors 5:30 · Tip-off 7:00</div></div>
+      </div>
+      <div class="rgt">
+        <div class="pill"><div class="t" data-fit="single" data-fit-min="50" data-fit-max="60" data-field="cta.p1">Pep rally 7th pd</div></div>
+        <div class="pill r"><div class="t" data-fit="single" data-fit-min="50" data-fit-max="60" data-field="cta.p2">Band in attendance</div></div>
+      </div>
+    </section>
+
+    <!-- 5 · presented by (sponsor inventory) -->
+    <section class="spon" data-widget="sponsor">
+      <div class="lbl">
+        <div class="kb"><div class="t" data-fit="single" data-fit-min="50" data-fit-max="52" data-field="sponsor.label">Presented by</div></div>
+        <div class="u"></div>
+        <div class="note"><div class="t" data-fit="wrap" data-fit-min="50" data-fit-max="52" data-field="sponsor.note">Season sponsorships · athletics@westridge.k12</div></div>
+      </div>
+      <div class="slots">
+        <div class="slot" data-imgslot="sponsor.0.logo" data-slot="sponsor-0"><div class="nmb"><div class="t" data-fit="wrap" data-fit-min="50" data-fit-max="60" data-field="sponsor.0.name">Ridgeline Bank</div></div></div>
+        <div class="slot" data-imgslot="sponsor.1.logo" data-slot="sponsor-1"><div class="nmb"><div class="t" data-fit="wrap" data-fit-min="50" data-fit-max="60" data-field="sponsor.1.name">Vale Orthodontics</div></div></div>
+        <div class="slot" data-imgslot="sponsor.2.logo" data-slot="sponsor-2"><div class="nmb"><div class="t" data-fit="wrap" data-fit-min="50" data-fit-max="60" data-field="sponsor.2.name">Northline Toyota</div></div></div>
+        <div class="slot" data-imgslot="sponsor.3.logo" data-slot="sponsor-3"><div class="nmb"><div class="t" data-fit="wrap" data-fit-min="50" data-fit-max="60" data-field="sponsor.3.name">Harbor Physical Therapy</div></div></div>
+      </div>
+      
+    </section>
+
+    <!-- 6 · ticker — SOLID bar, tag above the scroll -->
+    <section class="ticker" data-widget="ticker">
+      <div class="top"></div>
+      <div class="tag" data-field="ticker.tag">Game Day</div>
+      <div class="msg"><span data-field="ticker.message">Playoffs Round 1 tonight, 7:00 in Gym A — wear red · student section sold out, standing room available · stream live on the Wildcats app, free for students · pep rally during 7th period · the band will be there — bring the noise</span><span class="star">★</span><span data-field="ticker.message2">Playoffs Round 1 tonight, 7:00 in Gym A — wear red · student section sold out, standing room available · stream live on the Wildcats app, free for students · pep rally during 7th period · the band will be there — bring the noise</span></div>
+    </section>
+
   </div>
-
-  <div class="cta" data-widget="cta">
-    <div class="left"><div class="l1" data-field="cta.l1">★ Student section opens 5:30</div><div class="l2" data-fit="single" data-fit-min="48" data-fit-max="86" data-field="cta.l2">Doors 5:30P · Tip-off 7:00P</div></div>
-    <div class="right"><div class="pill" data-field="cta.p1">Pep rally 7th pd</div><div class="pill r" data-field="cta.p2">Band in attendance</div></div>
-  </div>
-
-  <div class="ticker" data-widget="ticker">
-    <div class="tag" data-field="ticker.tag">Game Day</div>
-    <div class="msg"><span data-field="ticker.message">Playoffs Round 1 tonight, 7:00 in Gym A — wear red · student section sold out, standing room available · stream live on the Wildcats app, free for students · pep rally during 7th period · the band will be there — bring the noise</span><span class="star">★</span><span data-field="ticker.message2">Playoffs Round 1 tonight, 7:00 in Gym A — wear red · student section sold out, standing room available · stream live on the Wildcats app, free for students · pep rally during 7th period · the band will be there — bring the noise</span></div>
-  </div>
-
 </div></div></div>
+
 <script>
 (function(){
   var root=document.documentElement,stage=document.getElementById('stage');
-  function orient(){var o=new URLSearchParams(location.search).get('o');var p=o?o==='portrait':window.innerHeight>window.innerWidth;stage.setAttribute('data-orient',p?'port':'land');root.style.setProperty('--stage-w',p?'2160px':'3840px');root.style.setProperty('--stage-h',p?'3840px':'2160px');fit();autofit();}
-  function fit(){var c=getComputedStyle(root),w=parseFloat(c.getPropertyValue('--stage-w')),h=parseFloat(c.getPropertyValue('--stage-h')),k=Math.min(window.innerWidth/w,window.innerHeight/h);root.style.setProperty('--stage-scale',k);}
-  window.addEventListener('resize',orient);window.addEventListener('load',orient);orient();setTimeout(orient,300);
-  var THEME={cBg:'--c-bg',cHome:'--c-home',cAway:'--c-away',cGold:'--c-gold',cGreen:'--c-green',cInk:'--c-ink',fDisplay:'--f-display',fHead:'--f-head',fMono:'--f-mono',scale:'--scale'};
-  function applyTheme(){Object.keys(THEME).forEach(function(k){var el=document.querySelector('[data-field="theme.'+k+'"]');if(el&&el.textContent.trim()){var v=el.textContent.trim();root.style.setProperty(THEME[k],k.indexOf('f')===0?("'"+v+"'"):v);}});}
-  applyTheme();new MutationObserver(function(){applyTheme();}).observe(document.querySelector('[data-widget="theme"]'),{subtree:true,childList:true,characterData:true});
-  document.querySelectorAll('[data-imgslot]').forEach(function(el){var v=el.getAttribute('data-img')||'';if(v){el.style.backgroundImage='url("'+v+'")';el.classList.add('has-img');}});
-  function fitOne(el){var single=el.getAttribute('data-fit')==='single';var min=+(el.getAttribute('data-fit-min')||20),max=+(el.getAttribute('data-fit-max')||300);if(single)el.style.whiteSpace='nowrap';var lo=min,hi=max,best=min;for(var i=0;i<16;i++){var mid=(lo+hi)/2;el.style.fontSize=mid+'px';var okW=el.scrollWidth<=el.clientWidth+1,okH=single?true:el.scrollHeight<=el.clientHeight+1;if(okW&&okH){best=mid;lo=mid;}else{hi=mid;}}el.style.fontSize=best+'px';}
-  function autofit(){document.querySelectorAll('[data-fit]').forEach(fitOne);}
-  setTimeout(autofit,120);setTimeout(autofit,500);if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){autofit();setTimeout(autofit,60);});}
-  new MutationObserver(function(){autofit();}).observe(document.querySelector('.stage'),{subtree:true,childList:true,characterData:true});
-  /* live clock + tip-off countdown */
-  var TIP={h:19,m:0};
-  function f12(d){var h=d.getHours()%12||12,m=d.getMinutes();return h+':'+(m<10?'0':'')+m+' '+(d.getHours()<12?'am':'pm');}
-  function tick(){var now=new Date();document.querySelectorAll('[data-live="clock"]').forEach(function(el){el.textContent=f12(now);});
-    var t=new Date(now);t.setHours(TIP.h,TIP.m,0,0);var diff=Math.max(0,Math.floor((t-now)/60000));var hh=Math.floor(diff/60),mm=diff%60;
-    document.querySelectorAll('[data-live="tip"]').forEach(function(el){el.textContent=diff<=0?'Now!':(hh>0?hh+'h '+mm+'m':mm+'m');});}
-  tick();setInterval(tick,15000);
-})();
+
+  /* ---------- stage scale + orientation ---------- */
+  function forced(){try{var q=new URLSearchParams(location.search);return q.get('o')||q.get('orientation')||'';}catch(e){return '';}}
+  function fit(){
+    var c=getComputedStyle(root);
+    var w=parseFloat(c.getPropertyValue('--stage-w'))||3840;
+    var h=parseFloat(c.getPropertyValue('--stage-h'))||2160;
+    root.style.setProperty('--stage-scale',String(Math.min(window.innerWidth/w,window.innerHeight/h)));
+  }
+  function orient(){
+    var f=forced();
+    var port=f?(f==='portrait'):(window.innerHeight>window.innerWidth);
+    stage.setAttribute('data-orient',port?'port':'land');
+    root.style.setProperty('--stage-w',port?'2160px':'3840px');
+    root.style.setProperty('--stage-h',port?'3840px':'2160px');
+    fit();autofit();fitSvg();
+  }
+
+  /* ---------- theme tokens ----------
+     Canonical keys are applied FIRST, the board's legacy keys SECOND, and a key
+     is only applied when its value differs from the value baked into the HTML.
+     That lets both vocabularies live in one block without overwriting each
+     other: whichever one the operator actually edits is the one that wins. */
+  var THEME={
+    bg:['--bg','--brand-canvas','--c-bg'],
+    ink:['--ink','--brand-ink','--c-ink'],
+    mute:['--mute','--brand-mute'],
+    brand:['--brand','--brand-primary','--home'],
+    brand2:['--brand2','--home2'],
+    accent:['--accent','--brand-accent','--brand-gold','--c-gold'],
+    accent2:['--accent2','--away'],
+    pos:['--pos','--c-green'],
+    neg:['--neg'],
+    fDisplay:['--f-display','--font-display'],
+    fHead:['--f-head','--font-headline'],
+    fBody:['--f-body','--font-grotesk'],
+    fMono:['--f-mono','--font-condensed'],
+    scale:['--scale'],
+    cBg:['--bg','--brand-canvas','--c-bg'],
+    cInk:['--ink','--brand-ink','--c-ink'],
+    cHome:['--home','--c-home'],
+    cAway:['--away','--c-away'],
+    cGold:['--accent','--brand-accent','--brand-gold','--c-gold'],
+    cGreen:['--pos','--c-green']
+  };
+  var FONTKEYS={fDisplay:1,fHead:1,fBody:1,fMono:1};
+  function themeEl(k){return document.querySelector('[data-field="theme.'+k+'"]');}
+  function trim(s){return (s||'').replace(/^\s+|\s+$/g,'');}
+  var BASE={},tk;
+  for(tk in THEME){if(Object.prototype.hasOwnProperty.call(THEME,tk)){var be=themeEl(tk);BASE[tk]=be?trim(be.textContent):'';}}
+  function applyTheme(){
+    var k,el,v,i;
+    for(k in THEME){
+      if(!Object.prototype.hasOwnProperty.call(THEME,k))continue;
+      el=themeEl(k);if(!el)continue;
+      v=trim(el.textContent);
+      if(!v||v===BASE[k])continue;
+      if(FONTKEYS[k])v="'"+v.replace(/'/g,'')+"'";
+      for(i=0;i<THEME[k].length;i++)root.style.setProperty(THEME[k][i],v);
+    }
+  }
+
+  /* ---------- image slots ---------- */
+  function paintSlot(el){
+    var v=el.getAttribute('data-img')||'';
+    if(v){
+      el.style.backgroundImage='url("'+v.replace(/"/g,'')+'")';
+      el.style.backgroundRepeat='no-repeat';
+      el.classList.add('has-img');
+      el.setAttribute('data-has-image','true');
+    }else{
+      el.style.backgroundImage='';
+      el.classList.remove('has-img');
+      el.removeAttribute('data-has-image');
+    }
+  }
+  function paintSlots(){var n=document.querySelectorAll('[data-imgslot]'),i;for(i=0;i<n.length;i++)paintSlot(n[i]);}
+
+  /* ---------- auto-fit (hard 50px floor) ----------------------------------
+     THE 2026-07-30 BUG, and why this reads the PARENT box:
+     a display face set at line-height:.88 lays out a line BOX taller than the
+     element's own content box, so el.scrollHeight (200) > el.clientHeight (148)
+     at EVERY candidate size — the ratio is constant, the height test can never
+     be satisfied, and the binary search lands on data-fit-min for every
+     multi-line field (team names rendered at 54px instead of 172px).
+     Fix, in two halves:
+       1. data-fit="single" measures WIDTH only — a one-line role can never
+          "overflow" vertically in a way we want to shrink for.
+       2. a wrapping data-fit measures its own content height against its
+          PARENT's clientHeight — the fixed-height box that actually clips it.
+          Every wrapping data-fit in this board therefore sits inside a
+          fixed-height parent (see AUTO-FIT CONTRACT at the top of the file).
+     ---------------------------------------------------------------------- */
+  function fits(el,single){
+    if(el.scrollWidth>el.clientWidth+1)return false;
+    if(single)return true;
+    var box=el.parentNode;
+    var bh=(box&&box.nodeType===1)?box.clientHeight:0;
+    if(!(bh>0))return true;
+    return el.scrollHeight<=bh+1;
+  }
+  function fitOne(el){
+    if(!el.clientWidth)return;
+    var single=el.getAttribute('data-fit')==='single';
+    var min=parseFloat(el.getAttribute('data-fit-min'));if(!(min>0))min=50;
+    var inline=el.style.fontSize;
+    if(inline&&inline!==el.__veApplied){var f=parseFloat(inline);el.__veCeil=(f>0)?f:0;}
+    el.style.fontSize='';
+    var css=parseFloat(getComputedStyle(el).fontSize);if(!(css>0))css=min;
+    var max=el.__veCeil?el.__veCeil:css;
+    var attrMax=parseFloat(el.getAttribute('data-fit-max'));
+    if(attrMax>0)max=Math.min(max,attrMax);
+    if(max<min)max=min;
+    el.style.fontSize=max+'px';
+    if(fits(el,single)){el.__veApplied=el.style.fontSize;return;}
+    var lo=Math.ceil(min),hi=Math.floor(max),best=lo,mid;
+    while(lo<=hi){
+      mid=Math.floor((lo+hi)/2);
+      el.style.fontSize=mid+'px';
+      if(fits(el,single)){best=mid;lo=mid+1;}else{hi=mid-1;}
+    }
+    el.style.fontSize=best+'px';
+    el.__veApplied=el.style.fontSize;
+  }
+  function autofit(){var n=document.querySelectorAll('[data-fit]'),i;for(i=0;i<n.length;i++)fitOne(n[i]);}
+
+  /* ---------- SVG crest text fit (SVG has no scrollWidth) ---------- */
+  function fitSvg(){
+    var n=document.querySelectorAll('[data-svgfit]'),i,el,max,len;
+    for(i=0;i<n.length;i++){
+      el=n[i];max=parseFloat(el.getAttribute('data-svgfit'))||220;
+      el.removeAttribute('textLength');el.removeAttribute('lengthAdjust');
+      len=0;try{len=el.getComputedTextLength();}catch(e){len=0;}
+      if(len>max){el.setAttribute('textLength',String(max));el.setAttribute('lengthAdjust','spacingAndGlyphs');}
+    }
+  }
+
+  var pending=false;
+  function schedule(){
+    if(pending)return;pending=true;
+    setTimeout(function(){pending=false;autofit();fitSvg();},40);
+  }
+
+  /* ---------- live clock, date + kickoff countdown ---------- */
+  var DMON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var DDAY=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  function two(v){return (v<10?'0':'')+v;}
+  function put(el,txt){if(el&&el.textContent!==txt)el.textContent=txt;}
+  function setAll(sel,txt){
+    var n=document.querySelectorAll(sel),i;
+    for(i=0;i<n.length;i++){if(n[i].hasAttribute('data-pin'))continue;put(n[i],txt);}
+  }
+  /* Kickoff time comes from the vs.bigtime field, so editing the tip-off time
+     re-drives every countdown on the board. Falls back to 7:00 PM. */
+  function targetMin(){
+    var el=document.querySelector('[data-field="vs.bigtime"]');
+    var s=el?(el.textContent||''):'';
+    var m=s.match(/(\d{1,2})\s*:\s*(\d{2})\s*([APap])?/);
+    if(!m)m=s.match(/(\d{1,2})()\s*([APap])/);
+    if(!m)return 19*60;
+    var h=parseInt(m[1],10),mm=m[2]?parseInt(m[2],10):0,ap=m[3]?m[3].toLowerCase():'';
+    if(!(h>=0))return 19*60;if(!(mm>=0))mm=0;
+    if(ap==='p'){if(h<12)h+=12;}
+    else if(ap==='a'){if(h===12)h=0;}
+    else if(h<7){h+=12;}
+    return (h%24)*60+(mm%60);
+  }
+  function f12(d){var h=d.getHours()%12;if(h===0)h=12;return h+':'+two(d.getMinutes())+' '+(d.getHours()<12?'AM':'PM');}
+  function tick(){
+    var d=new Date();
+    setAll('[data-live="clock"]',f12(d));
+    setAll('[data-live="todayfull"]',DDAY[d.getDay()]+' · '+DMON[d.getMonth()]+' '+d.getDate());
+    setAll('[data-live="today"]',DMON[d.getMonth()]+' '+d.getDate());
+    var tm=targetMin();
+    var t=new Date(d.getFullYear(),d.getMonth(),d.getDate(),Math.floor(tm/60),tm%60,0,0);
+    var secs=Math.floor((t-d)/1000);
+    if(secs<0)secs=0;
+    var hh=Math.floor(secs/3600),mm=Math.floor((secs%3600)/60),ss=secs%60;
+    setAll('[data-live="cd-h"]',two(hh));
+    setAll('[data-live="cd-m"]',two(mm));
+    setAll('[data-live="cd-s"]',two(ss));
+    setAll('[data-live="tip"]',secs<=0?'Now':(hh>0?hh+'h '+mm+'m':mm+'m '+two(ss)+'s'));
+  }
+
+  /* ---------- boot ---------- */
+  applyTheme();
+  paintSlots();
+  tick();
+  orient();
+
+  window.addEventListener('resize',orient);
+  window.addEventListener('load',function(){orient();autofit();fitSvg();});
+  setTimeout(function(){autofit();fitSvg();},120);
+  setTimeout(function(){orient();},320);
+  setTimeout(function(){autofit();fitSvg();},700);
+  setInterval(tick,1000);
+
+  if(document.fonts&&document.fonts.ready){
+    document.fonts.ready.then(function(){autofit();fitSvg();setTimeout(function(){autofit();fitSvg();},80);},function(){});
+  }
+
+  if(window.MutationObserver){
+    var tb=document.querySelector('[data-widget="theme"]');
+    if(tb)new MutationObserver(function(){applyTheme();schedule();}).observe(tb,{subtree:true,childList:true,characterData:true});
+    new MutationObserver(function(){schedule();}).observe(stage,{subtree:true,childList:true,characterData:true});
+    new MutationObserver(function(recs){
+      var i;for(i=0;i<recs.length;i++){if(recs[i].attributeName==='data-img')paintSlot(recs[i].target);}
+    }).observe(stage,{subtree:true,attributes:true,attributeFilter:['data-img']});
+  }
+}());
 </script>
-</body></html>
+</body>
+</html>
