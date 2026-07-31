@@ -211,6 +211,11 @@
     },
     "license": {
       "title": "套餐与屏幕",
+      "tierPilot": "试点",
+      "tierStandard": "标准版",
+      "tierEnterprise": "企业版",
+      "tierEducation": "教育版",
+      "tierChain": "连锁版",
       "ofLimit": "/ {limit}",
       "screensWord": "块屏幕",
       "limitReached": "— 已达上限",

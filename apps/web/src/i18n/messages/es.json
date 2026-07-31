@@ -211,6 +211,11 @@
     },
     "license": {
       "title": "Plan y pantallas",
+      "tierPilot": "Piloto",
+      "tierStandard": "Estándar",
+      "tierEnterprise": "Empresarial",
+      "tierEducation": "Educación",
+      "tierChain": "Cadena",
       "ofLimit": "de {limit}",
       "screensWord": "pantallas",
       "limitReached": "— límite alcanzado",

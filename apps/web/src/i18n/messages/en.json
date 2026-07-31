@@ -211,6 +211,11 @@
     },
     "license": {
       "title": "Plan & screens",
+      "tierPilot": "Pilot",
+      "tierStandard": "Standard",
+      "tierEnterprise": "Enterprise",
+      "tierEducation": "Education",
+      "tierChain": "Chain",
       "ofLimit": "of {limit}",
       "screensWord": "screens",
       "limitReached": "— limit reached",
