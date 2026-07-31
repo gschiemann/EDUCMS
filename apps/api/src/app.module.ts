@@ -107,6 +107,7 @@ import { CsrfController } from './security/csrf.controller';
 import { WebsocketSignerService } from './security/websocket-signer.service';
 import { AssetSanitizerService } from './security/asset-sanitizer.service';
 import { SupabaseStorageService } from './storage/supabase-storage.service';
+import { StorageWatchdogService } from './storage/storage-watchdog.service';
 import { MediaOptimizationService } from './storage/media-optimization.service';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RbacGuard } from './auth/rbac.guard';
@@ -233,6 +234,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     ScreenWedgeDetectorCron,
     AssetSanitizerService,
     SupabaseStorageService,
+    StorageWatchdogService,
     MediaOptimizationService,
     // Server-side URL renderer (Puppeteer + Alpine Chromium). Used by
     // ProxyController to handle JS-heavy / AJAX-loaded sites that the

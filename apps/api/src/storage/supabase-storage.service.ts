@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { makeStorageFetch, storageTransportState } from './storage-transport';
 
 const BUCKET = 'assets';
 
@@ -50,9 +51,18 @@ export class SupabaseStorageService implements OnModuleInit {
   private client: SupabaseClient;
   private readonly logger = new Logger(SupabaseStorageService.name);
 
+  // fetch-compatible transport with a node:https fallback + cause-chain
+  // logging (2026-07-31 "fetch failed" incident — see storage-transport.ts).
+  // Used for every raw Storage REST call AND injected into supabase-js, so
+  // uploads, signed URLs, deletes, and boot-time bucket-ensure all ride it.
+  private readonly storageFetch = makeStorageFetch((m) => this.logger.warn(m));
+
   private supabaseConfig(): { url: string; key: string } {
-    const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    // trim() + trailing-slash strip: env values pasted into dashboards pick
+    // up invisible whitespace; a poisoned URL/key fails in ways that look
+    // like network errors. Cheap insurance, applied at the single read site.
+    const url = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
+    const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 
     if (!url || !key) {
       throw new Error('Supabase Storage not configured - set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
@@ -66,6 +76,7 @@ export class SupabaseStorageService implements OnModuleInit {
       const { url, key } = this.supabaseConfig();
       this.client = createClient(url, key, {
         auth: { persistSession: false },
+        global: { fetch: this.storageFetch },
       });
     }
     return this.client;
@@ -85,6 +96,7 @@ export class SupabaseStorageService implements OnModuleInit {
 
     this.client = createClient(url, key, {
       auth: { persistSession: false },
+      global: { fetch: this.storageFetch },
     });
 
     // Bucket file-size limit. Multer cap (500MB) + Railway request body
@@ -333,18 +345,21 @@ export class SupabaseStorageService implements OnModuleInit {
     buffer: any,
     contentType: string,
   ): Promise<string> {
-    const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!url || !key) {
-      throw new Error('Supabase Storage not configured — set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
-    }
+    // Through supabaseConfig() so the trim/normalize hardening covers THIS
+    // read site too (review finding: the direct process.env reads here
+    // bypassed it on the most important callsite).
+    const { url, key } = this.supabaseConfig();
 
     // Convert whatever multer gave us into a real Buffer
     const buf = this.toSafeBuffer(buffer);
     const size = buf.length;
 
-    this.logger.log(`Upload: bucket=${bucket}, path=${filePath}, size=${size}, contentType=${contentType}, inputType=${typeof buffer}, isBuffer=${Buffer.isBuffer(buffer)}, constructor=${buffer?.constructor?.name}`);
+    // The health probe re-uploads its fixed object every ~30s — logging each
+    // one would bury the real "Upload: bucket=…" signal this line exists for
+    // (it's what the 2026-07-31 incident was diagnosed from).
+    if (!filePath.startsWith('health/storage-probe')) {
+      this.logger.log(`Upload: bucket=${bucket}, path=${filePath}, size=${size}, contentType=${contentType}, inputType=${typeof buffer}, isBuffer=${Buffer.isBuffer(buffer)}, constructor=${buffer?.constructor?.name}`);
+    }
 
     // POST directly to the Storage REST API — bypasses the JS client entirely.
     const endpoint = `${url}/storage/v1/object/${bucket}/${filePath}`;
@@ -353,7 +368,7 @@ export class SupabaseStorageService implements OnModuleInit {
     const ab = new ArrayBuffer(size);
     new Uint8Array(ab).set(buf);
 
-    const res = await fetch(endpoint, {
+    const res = await this.storageFetch(endpoint, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${key}`,
@@ -521,13 +536,13 @@ export class SupabaseStorageService implements OnModuleInit {
   async resetCacheControl(filePath: string): Promise<{ ok: boolean; error?: string }> {
     try {
       const { url, key } = this.supabaseConfig();
-      const getRes = await fetch(`${url}/storage/v1/object/${BUCKET}/${filePath}`, {
+      const getRes = await this.storageFetch(`${url}/storage/v1/object/${BUCKET}/${filePath}`, {
         headers: { Authorization: `Bearer ${key}`, apikey: key },
       });
       if (!getRes.ok) return { ok: false, error: `download ${getRes.status}` };
       const contentType = getRes.headers.get('content-type') || 'application/octet-stream';
       const ab = await getRes.arrayBuffer();
-      const putRes = await fetch(`${url}/storage/v1/object/${BUCKET}/${filePath}`, {
+      const putRes = await this.storageFetch(`${url}/storage/v1/object/${BUCKET}/${filePath}`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${key}`,
@@ -559,7 +574,7 @@ export class SupabaseStorageService implements OnModuleInit {
   async servedCacheControl(filePath: string): Promise<{ cacheControl: string | null; cfCacheStatus: string | null; status: number }> {
     try {
       const { url } = this.supabaseConfig();
-      const res = await fetch(`${url}/storage/v1/object/public/${BUCKET}/${filePath}`, {
+      const res = await this.storageFetch(`${url}/storage/v1/object/public/${BUCKET}/${filePath}`, {
         method: 'GET',
         headers: { Range: 'bytes=0-0' },
       });
@@ -608,7 +623,7 @@ export class SupabaseStorageService implements OnModuleInit {
   async assertObjectExists(filePath: string): Promise<void> {
     const { url, key } = this.supabaseConfig();
     const endpoint = `${url}/storage/v1/object/${BUCKET}/${filePath}`;
-    const res = await fetch(endpoint, {
+    const res = await this.storageFetch(endpoint, {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${key}`,
@@ -638,7 +653,7 @@ export class SupabaseStorageService implements OnModuleInit {
     try {
       const { url, key } = this.supabaseConfig();
       const endpoint = `${url}/storage/v1/object/info/public/${BUCKET}/${filePath}`;
-      const res = await fetch(endpoint, {
+      const res = await this.storageFetch(endpoint, {
         headers: { Authorization: `Bearer ${key}`, apikey: key },
       });
       if (!res.ok) return null;
@@ -711,7 +726,7 @@ export class SupabaseStorageService implements OnModuleInit {
     const { url, key } = this.supabaseConfig();
     const endpoint = `${url}/storage/v1/object/${BUCKET}/${filePath}`;
     try {
-      const res = await fetch(endpoint, {
+      const res = await this.storageFetch(endpoint, {
         method: 'GET',
         headers: { Authorization: `Bearer ${key}`, apikey: key },
       });
@@ -745,5 +760,49 @@ export class SupabaseStorageService implements OnModuleInit {
    */
   bucketName(): string {
     return BUCKET;
+  }
+
+  /**
+   * Tiny end-to-end storage round-trip for GET /api/v1/health/storage
+   * (2026-07-31 incident regression probe). Writes a ~60-byte probe object
+   * to a FIXED path (x-upsert overwrites the same object every run — no
+   * accumulation) then reads one byte back. Any failure carries the full
+   * transport error text so a broken upload path is diagnosable from the
+   * health endpoint alone instead of surfacing weeks later as "no logos /
+   * no assets / no bug screenshots".
+   */
+  async storageHealthProbe(): Promise<{ ok: boolean; transport: string; upload: string; read: string; ms: number }> {
+    const started = Date.now();
+    // Snapshot fallback counters so we can tell whether THIS probe rode the
+    // primary fetch or the node:https fallback — "working but on fallback"
+    // is a degraded state the watchdog must alert on, not hide.
+    const fallbacksBefore = storageTransportState.totalFallbackSuccesses + storageTransportState.totalFallbackFailures;
+    // A real 1×1 transparent PNG: the assets bucket's allowedMimeTypes policy
+    // rejects text/plain, so the probe must be a type production actually
+    // uploads (image/png).
+    const path = 'health/storage-probe.png';
+    let upload = 'ok';
+    let read = 'skipped';
+    try {
+      const body = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+        'base64',
+      );
+      await this.uploadToBucket(BUCKET, path, body, 'image/png');
+    } catch (e: any) {
+      upload = `fail: ${String(e?.message ?? e).slice(0, 300)}`;
+    }
+    if (upload === 'ok') {
+      try {
+        await this.assertObjectExists(path);
+        read = 'ok';
+      } catch (e: any) {
+        read = `fail: ${String(e?.message ?? e).slice(0, 300)}`;
+      }
+    }
+    const fallbacksAfter = storageTransportState.totalFallbackSuccesses + storageTransportState.totalFallbackFailures;
+    const ok = upload === 'ok' && read === 'ok';
+    const transport = !ok ? 'none' : fallbacksAfter > fallbacksBefore ? 'fallback' : 'primary';
+    return { ok, transport, upload, read, ms: Date.now() - started };
   }
 }

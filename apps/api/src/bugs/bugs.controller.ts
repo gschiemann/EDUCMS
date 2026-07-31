@@ -73,6 +73,7 @@ import { notifyBugFixProposed } from './bug-notify';
 // proposed / fix-shipped. Best-effort: every email call is wrapped
 // in a try/catch so an email outage NEVER blocks the bug pipeline.
 import { EmailService } from '../email/email.service';
+import { makeStorageFetch } from '../storage/storage-transport';
 
 // ─── Bucket setup ────────────────────────────────────────────────
 
@@ -308,6 +309,12 @@ export class BugsController {
    * fast in-memory boolean.
    */
   private screenshotBucketReady: Promise<void> | null = null;
+
+  // Same node:https-fallback transport as SupabaseStorageService
+  // (2026-07-31 "fetch failed" incident — storage-transport.ts). Screenshot
+  // uploads are the evidence trail for every bug report; they must not
+  // silently die with the platform's undici→Supabase path.
+  private readonly storageFetch = makeStorageFetch((m) => this.logger.warn(m));
 
   constructor(
     private readonly prisma: PrismaService,
@@ -1003,8 +1010,8 @@ export class BugsController {
   private async ensureScreenshotBucket(): Promise<void> {
     if (!this.screenshotBucketReady) {
       this.screenshotBucketReady = (async () => {
-        const url = process.env.SUPABASE_URL;
-        const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        const url = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
+        const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
         if (!url || !key) {
           // No Supabase configured — caller catches + we just skip the
           // upload. Mark the promise as resolved so we don't re-try
@@ -1013,7 +1020,10 @@ export class BugsController {
         }
         try {
           const { createClient } = await import('@supabase/supabase-js');
-          const client = createClient(url, key, { auth: { persistSession: false } });
+          const client = createClient(url, key, {
+            auth: { persistSession: false },
+            global: { fetch: this.storageFetch },
+          });
           const { error } = await client.storage.createBucket(SCREENSHOT_BUCKET, {
             public: true,
             fileSizeLimit: BUG_SCREENSHOT_MAX_BYTES,
@@ -1041,8 +1051,8 @@ export class BugsController {
     contentType: string,
   ): Promise<string> {
     await this.ensureScreenshotBucket();
-    const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const url = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
+    const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
     if (!url || !key) {
       throw new Error(
         'Supabase storage not configured — set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY',
@@ -1061,7 +1071,7 @@ export class BugsController {
     // some fetch implementations choke on a raw Buffer body).
     const ab = new ArrayBuffer(buffer.length);
     new Uint8Array(ab).set(buffer);
-    const res = await fetch(endpoint, {
+    const res = await this.storageFetch(endpoint, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${key}`,

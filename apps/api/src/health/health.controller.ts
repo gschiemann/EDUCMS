@@ -3,6 +3,7 @@ import { SkipThrottle } from '@nestjs/throttler';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
+import { SupabaseStorageService } from '../storage/supabase-storage.service';
 
 type CheckState = 'ok' | 'fail' | 'fallback' | 'degraded' | 'off';
 
@@ -50,6 +51,7 @@ export class HealthController {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly wsSigner: WebsocketSignerService,
+    private readonly storage: SupabaseStorageService,
   ) {}
 
   private baseReport(): HealthReport {
@@ -186,6 +188,61 @@ export class HealthController {
     }
 
     if (report.checks.db === 'fail' || report.checks.ws_signer === 'fail') {
+      throw new HttpException(report, HttpStatus.SERVICE_UNAVAILABLE);
+    }
+    return report;
+  }
+
+  /**
+   * Storage round-trip probe (2026-07-31 "fetch failed" incident). Every
+   * server-side upload (assets, branding logos, bug screenshots, emergency
+   * content) rides SupabaseStorageService — when its transport silently
+   * breaks, the damage surfaces days later as missing files. This endpoint
+   * does a tiny real upload + read so monitoring catches the break within
+   * minutes.
+   *
+   * Unauthenticated like its siblings, but SINGLE-FLIGHT + 30s-cached: the
+   * in-flight PROMISE is stored synchronously, so N concurrent requests
+   * share one probe (review finding: caching only the completed result let
+   * concurrent first-hitters each fire their own service-role upload on an
+   * unauthenticated, @SkipThrottle route). Hammering the endpoint cannot
+   * generate storage writes faster than one per 30s.
+   *
+   * Response semantics: transport 'primary' → status ok (200);
+   * 'fallback' → uploads WORK but the primary path is broken → status
+   * degraded (still 200 — customers unaffected; the storage watchdog emails
+   * PLATFORM_ALERT_EMAILS); probe failed → 503.
+   */
+  private storageProbe: {
+    at: number;
+    promise: Promise<{ ok: boolean; transport: string; upload: string; read: string; ms: number }>;
+  } | null = null;
+
+  @Get('storage')
+  async storageHealth() {
+    const now = Date.now();
+    if (!this.storageProbe || now - this.storageProbe.at > 30_000) {
+      // Assigned synchronously (before any await) — concurrent callers all
+      // await this same promise. The .catch makes the stored promise
+      // never-rejecting so one failure doesn't poison later awaits.
+      this.storageProbe = {
+        at: now,
+        promise: withTimeout(this.storage.storageHealthProbe(), 20_000).catch((e: any) => ({
+          ok: false,
+          transport: 'none',
+          upload: `fail: ${String(e?.message ?? e).slice(0, 300)}`,
+          read: 'skipped',
+          ms: Date.now() - now,
+        })),
+      };
+    }
+    const result = await this.storageProbe.promise;
+    const report = {
+      ...this.baseReport(),
+      storage: result,
+    };
+    report.status = result.ok ? (result.transport === 'primary' ? 'ok' : 'degraded') : 'degraded';
+    if (!result.ok) {
       throw new HttpException(report, HttpStatus.SERVICE_UNAVAILABLE);
     }
     return report;
