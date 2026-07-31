@@ -2892,6 +2892,14 @@ function PlayerPage() {
   // even if the operator can't precisely click them.
   useEffect(() => {
     const onShowStop = () => {
+      // SECURITY: remote input is inert while an emergency is displayed —
+      // Back must not be able to cover a lockdown with the Stop splash
+      // (or reach its Exit/Unpair buttons). See the emergency-lockout
+      // effect above. Server-side all-clear is the only way out.
+      if (activeEmergencyRef.current || pushedEmergencyMessageRef.current) {
+        console.warn('[Player] remote input ignored — emergency active (controls locked)');
+        return;
+      }
       // TOGGLE: if already in any overlay state, dismissing it is
       // more useful than re-asserting it. Operator hits Back twice
       // in a row → overlay gone, content resumes.
@@ -2917,6 +2925,15 @@ function PlayerPage() {
     // remote that emits Escape via its return key.
     const onKey = (e: KeyboardEvent) => {
       const key = e.key;
+      // SECURITY: same emergency lockout as onShowStop — raw-keyboard
+      // remotes (Goodview/OEM Escape emitters) must not bypass it.
+      if (activeEmergencyRef.current || pushedEmergencyMessageRef.current) {
+        if (key === 'Escape' || key === 'Backspace' || key === 'GoBack' || key === 'Back' || key === 'Home' || key === 'i' || key === 'I') {
+          e.preventDefault();
+          console.warn('[Player] remote key ignored — emergency active (controls locked)');
+        }
+        return;
+      }
       // Universal "go back / dismiss" keys.
       if (key === 'Escape' || key === 'Backspace' || key === 'GoBack' || key === 'Back') {
         e.preventDefault();
@@ -3018,6 +3035,48 @@ function PlayerPage() {
   // tenant-wide LOCKDOWN-style overrides) so the two systems can
   // coexist — a SOS can fire on a screen that's already in lockdown.
   const [pushedEmergencyMessage, setPushedEmergencyMessage] = useState<EmergencyMessageView | null>(null);
+  // Ref mirror for the remote-input lockout below (same pattern as
+  // activeEmergencyRef — the key/back handlers live in a closure with
+  // [playbackStopped, showOverlay] deps and must read live emergency state).
+  const pushedEmergencyMessageRef = useRef<EmergencyMessageView | null>(null);
+  useEffect(() => {
+    pushedEmergencyMessageRef.current = pushedEmergencyMessage;
+  }, [pushedEmergencyMessage]);
+
+  // SECURITY (2026-07-31, operator): "the remote shouldn't allow anyone to
+  // even exit out of the warning — what if the bad guy has some universal
+  // remote." During ANY displayed emergency (tenant-wide override OR pushed
+  // SOS/broadcast), the local remote must be inert:
+  //  1. Force-close the Stop/Exit splash + info overlay the moment an
+  //     emergency activates — the alert takes the glass even if someone
+  //     parked the kiosk on the splash first (the stopped splash renders
+  //     ABOVE playback, so leaving it up would hide a lockdown).
+  //  2. The back/key handlers below refuse to open overlays while an
+  //     emergency is displayed.
+  //  3. A history sentinel re-asserts the player route so a remote Back
+  //     with WebView back-history (pair→player navigation) can't navigate
+  //     away from the alert either.
+  // Clearing remains SERVER-ONLY (authenticated all-clear → manifest).
+  useEffect(() => {
+    const emergencyDisplayed = !!activeEmergency || !!pushedEmergencyMessage;
+    if (!emergencyDisplayed) return;
+    setPlaybackStopped(false);
+    setExitUnavailable(false);
+    setShowOverlay(false);
+    try {
+      window.history.pushState({ eduEmergencyLock: true }, '', window.location.href);
+    } catch { /* history may be unavailable in odd webviews — non-fatal */ }
+    const onPop = () => {
+      if (activeEmergencyRef.current || pushedEmergencyMessageRef.current) {
+        try {
+          window.history.pushState({ eduEmergencyLock: true }, '', window.location.href);
+        } catch { /* best-effort */ }
+      }
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!activeEmergency, !!pushedEmergencyMessage]);
 
   // ── LIFE-SAFETY BACKSTOP (2026-07-04) — HTTP reconcile for a stranded
   // pushed emergency. `pushedEmergencyMessage` is set by WS/SSE and was
@@ -3155,6 +3214,15 @@ function PlayerPage() {
   // never touches the visible playback. Streak resets to 0 the moment
   // we get a non-empty manifest.
   const emptyManifestStreakRef = useRef<number>(0);
+  // 2026-07-31 stuck-lockdown root cause (verified live on a real kiosk via
+  // render-proof + Railway HTTP logs): true when the currently-applied
+  // playlist came from an isEmergency manifest. The empty-manifest blip
+  // defense below must NEVER retain emergency content — after an all-clear
+  // on a tenant with no regular content, the "last known-good content" IS
+  // the emergency playlist, and the streak gate was pinning it on screen
+  // indefinitely (compounded by 304s freezing the streak — see the 304
+  // handler).
+  const contentIsEmergencyRef = useRef<boolean>(false);
   // Manifest-reported playlist summary for the Stopped splash. Holds
   // the name, schedule window, item count, and approximate byte size
   // for each scheduled playlist. Only used for the operator info
@@ -4206,6 +4274,9 @@ function PlayerPage() {
             })
             .join('||');
           if (newSig === currentPlaylistSigRef.current) {
+            // Same content, but the emergency FLAG may have flipped (e.g. a
+            // tenant whose everyday playlist doubles as its panic playlist).
+            contentIsEmergencyRef.current = manifest.isEmergency === true;
             return true; // identical content — keep index + playlist as-is
           }
           // Fix #2 — clamp instead of reset when the playlist size
@@ -4215,6 +4286,7 @@ function PlayerPage() {
           // wrap to 0.
           const oldHasItems = currentPlaylistSigRef.current !== '';
           currentPlaylistSigRef.current = newSig;
+          contentIsEmergencyRef.current = manifest.isEmergency === true;
           setPlaylist({
             name: manifest.playlists.length > 1 ? 'Scheduled Content (Combined)' : manifest.playlists[0].name || 'Scheduled Content',
             items: combinedItems,
@@ -4233,6 +4305,22 @@ function PlayerPage() {
       // already in the empty state. Prevents the same-signature loop
       // above from missing this case.
       if (currentPlaylistSigRef.current !== '') {
+        // LIFE-SAFETY (2026-07-31): emergency content is NEVER retainable by
+        // the blip defense. If the content on glass came from an emergency
+        // manifest and the server now says non-emergency + empty, that IS
+        // the all-clear on a tenant with no regular content — clear NOW.
+        // (Verified live: the streak gate was keeping the lockdown playlist
+        // on a real kiosk indefinitely after all-clear.)
+        if (contentIsEmergencyRef.current && manifest.isEmergency !== true) {
+          console.log('[Player] all-clear with no scheduled content — dropping emergency playlist immediately');
+          emptyManifestStreakRef.current = 0;
+          currentPlaylistSigRef.current = '';
+          contentIsEmergencyRef.current = false;
+          setPlaylist(null);
+          setCurrentIndex(0);
+          setManifestPlaylists([]);
+          return true;
+        }
         // 2026-05-13 — REQUIRE_EMPTY_STREAK gate. See
         // emptyManifestStreakRef declaration up top for full rationale.
         // Don't blank a playing screen on a single empty response;
@@ -4252,6 +4340,7 @@ function PlayerPage() {
         );
         emptyManifestStreakRef.current = 0;
         currentPlaylistSigRef.current = '';
+        contentIsEmergencyRef.current = false;
         setPlaylist(null);
         setCurrentIndex(0);
       }
@@ -4300,6 +4389,33 @@ function PlayerPage() {
           tickToastRef.current = null;
         }
         setLastSync(new Date().toLocaleTimeString());
+        // 2026-07-31 stuck-content root cause (verified via Railway HTTP
+        // logs on a real kiosk): a 304 re-CONFIRMS the last applied
+        // manifest. When that manifest was EMPTY and the blip defense is
+        // holding old content (streak > 0), this early return used to
+        // freeze the streak below its threshold FOREVER — an ETag-stable
+        // empty manifest 304s on every poll, so a disabled template (or
+        // worse, the post-all-clear emergency playlist) stayed on glass
+        // until a manual resync. A 304 is the strongest possible "the
+        // empty manifest is still the truth" signal — count it.
+        if (emptyManifestStreakRef.current > 0 && currentPlaylistSigRef.current !== '') {
+          emptyManifestStreakRef.current += 1;
+          if (emptyManifestStreakRef.current >= 3) {
+            console.log(
+              `[Player] ${emptyManifestStreakRef.current} consecutive empty confirmations (incl. 304s) — clearing playlist`,
+            );
+            emptyManifestStreakRef.current = 0;
+            currentPlaylistSigRef.current = '';
+            contentIsEmergencyRef.current = false;
+            setPlaylist(null);
+            setCurrentIndex(0);
+            setManifestPlaylists([]);
+          } else {
+            console.log(
+              `[Player] empty manifest re-confirmed by 304 (streak ${emptyManifestStreakRef.current}/3)`,
+            );
+          }
+        }
         return;
       }
 
