@@ -437,6 +437,12 @@ function ScreenDiagnostics({ screen, groupSyncLocked }: { screen: any; groupSync
       <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
         {row('OS', screen?.osInfo)}
         {row('Resolution', screen?.resolution)}
+        {/* 2026-07-31 — push-channel health (see the poll-only chip). */}
+        {row('Push channel', (screen as any)?.pushChannel === 'live'
+          ? 'Live (instant commands)'
+          : (screen as any)?.pushChannel === 'stale'
+            ? 'Down — polling only'
+            : 'Unknown')}
         {/* 2026-05-24 — interactive orientation control. Asks the API
             to flip LANDSCAPE / PORTRAIT / AUTO; signed WS broadcast +
             manifest poll converge the kiosk within ~10s. */}
@@ -2095,6 +2101,22 @@ export default function ScreensPage() {
                         }`}>
                           {screen.status === 'ONLINE' ? t('screens.statusOnline') : screen.status === 'PENDING' ? t('screens.statusPending') : t('screens.statusOffline')}
                         </span>
+                        {/* 2026-07-31 — push-channel health chip. An ONLINE
+                            screen with a stale WS/SSE stamp lives on the
+                            HTTP polling backstop: it still plays and gets
+                            emergencies (5-10s), but instant commands
+                            (refresh, immediate delivery) can't reach it.
+                            Surfaced after a kiosk ran poll-only for a full
+                            day with zero signal. 'unknown' (never stamped —
+                            older build) stays quiet to avoid false alarms. */}
+                        {screen.status === 'ONLINE' && (screen as any).pushChannel === 'stale' && (
+                          <span
+                            className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-amber-50 text-amber-600"
+                            title="No live realtime connection — the screen updates via polling (5–10s), but instant commands can't reach it. Usual cause: the venue network blocks WebSocket/streaming connections."
+                          >
+                            poll-only
+                          </span>
+                        )}
                         {/* 2026-07-28 — frame-locked sync health chip. Only on
                             locked groups + online screens. Green = locked, with
                             the honest ± (worse of flip error / clock

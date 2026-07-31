@@ -1,6 +1,8 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import type { Response } from 'express';
 import { RedisService } from './redis.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { stampPushConnected } from './push-health';
 
 /**
  * SseService — Sprint 11 Phase B realtime fallback.
@@ -64,7 +66,12 @@ export class SseService {
   // How often to re-check open streams for a now-revoked device token (S15).
   private static readonly REVOCATION_SWEEP_MS = 30_000;
 
-  constructor(@Optional() private readonly redis?: RedisService) {
+  constructor(
+    @Optional() private readonly redis?: RedisService,
+    // Optional so the spec's bare `new SseService()` constructions keep
+    // working; PrismaService is @Global() so Nest injects it in prod.
+    @Optional() private readonly prismaService?: PrismaService,
+  ) {
     // Process-internal keepalive ticker. ":<comment>" SSE lines are
     // ignored by EventSource but keep upstream proxies' connection
     // tracker alive. 25s is below most defaults (30s for AWS ELB,
@@ -116,6 +123,10 @@ export class SseService {
       connectedAt: Date.now(),
     };
     this.clients.set(id, client);
+
+    // Push-health stamp (2026-07-31): an authenticated SSE stream is a live
+    // push channel — same telemetry the WS gateway stamps on AUTH_OK.
+    if (opts.deviceId) stampPushConnected(this.prismaService?.client, opts.deviceId, { force: true });
 
     // Tear down on res close — connection lost, browser tab closed,
     // server-side flush errored. Cleanup is idempotent.
@@ -188,6 +199,11 @@ export class SseService {
     for (const client of this.clients.values()) {
       try {
         client.res.write(`: keepalive ${Date.now()}\n\n`);
+        // Keep the push-health stamp fresh while the stream lives — an
+        // EventSource holds ONE connection for hours, so a connect-time
+        // stamp alone would go stale on a healthy stream. Debounced to one
+        // write per screen per minute inside the helper.
+        if (client.deviceId) stampPushConnected(this.prismaService?.client, client.deviceId);
       } catch {
         // Dead connection — let the next broadcast or the `close`
         // handler do final cleanup.

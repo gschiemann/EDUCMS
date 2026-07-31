@@ -1053,6 +1053,17 @@ export class ScreensController {
         renderHealth: renderProof.renderHealth,
         renderStale: renderProof.renderStale,
         renderStaleSeconds: renderProof.renderStaleSeconds,
+        // Push-channel health (2026-07-31 poll-only-dongle incident).
+        //   'live'    — WS/SSE stamped within 10 min: instant commands reach it
+        //   'stale'   — had a push channel once, silent now → poll-only
+        //   'unknown' — never stamped (pre-feature build / never connected)
+        // A poll-only screen still plays + gets emergencies via the 5-10s
+        // HTTP backstop — this flags that PUSH (refresh, instant delivery)
+        // won't arrive. Keep the 10-min rule in sync with the fleet mapper
+        // below + ScreenWedgeDetectorCron.PUSH_STALE_MS.
+        pushChannel: (s as any).lastPushConnectedAt
+          ? (now - new Date((s as any).lastPushConnectedAt).getTime() < 10 * 60_000 ? 'live' : 'stale')
+          : 'unknown',
         // Real browser-engine version + a flag the dashboard uses to warn
         // "this screen can't render container-query templates" etc.
         chromiumMajor,
@@ -1177,6 +1188,10 @@ export class ScreensController {
         screenGroup: (s as any).screenGroup ?? null,
         lastPingAt: s.lastPingAt,
         lastCacheReport: (s as any).lastCacheReport ?? null,
+        // Keep the 10-min rule in sync with list()'s pushChannel above.
+        pushChannel: (s as any).lastPushConnectedAt
+          ? (now - new Date((s as any).lastPushConnectedAt).getTime() < 10 * 60_000 ? 'live' : 'stale')
+          : 'unknown',
         effectiveLatitude,
         effectiveLongitude,
         effectiveAddress,

@@ -238,6 +238,12 @@ export const SCREEN_TELEMETRY_ONLY_FIELDS = new Set([
     'lastRenderedHash',
     'lastSyncReport',
     'lastSyncReportAt',
+    // Push-health stamp (2026-07-31) — written by the WS gateway on
+    // AUTH_OK/heartbeat and the SSE service on connect/keepalive. High
+    // frequency across the fleet; MUST stay telemetry-only or every WS
+    // heartbeat would thrash the manifest cache (the exact 25 GB/mo
+    // egress failure the cache exists to prevent).
+    'lastPushConnectedAt',
 ]);
 
 export type ManifestCacheEntry =

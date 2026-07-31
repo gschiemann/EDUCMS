@@ -112,6 +112,23 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
    *  every-12-min spam loop v1 produced. */
   private static readonly GIVE_UP_BACKOFF_MS = 60 * 60_000;
 
+  /** Push-channel liveness (2026-07-31 poll-only-dongle incident).
+   *  lastPushConnectedAt is refreshed at least every ~60s while a WS/SSE
+   *  channel lives; older than this = no live push channel, so a
+   *  REFRESH_WEB can never arrive and firing it is pure noise (the
+   *  fire→fire→fire→give-up→1h→repeat loop this screen produced all
+   *  afternoon). */
+  private static readonly PUSH_STALE_MS = 10 * 60_000;
+
+  /** A screen with lastPushConnectedAt=null might just predate the column
+   *  (fleet reconnects stamp it within minutes of the feature deploying).
+   *  Only treat null as push-dead once the screen has been paired long
+   *  enough that "never connected" is the only remaining explanation. */
+  private static readonly PUSH_UNKNOWN_GRACE_MS = 24 * 60 * 60_000;
+
+  /** Re-flag a push-dead screen at most this often. */
+  private static readonly PUSH_DEAD_REFLAG_MS = 24 * 60 * 60_000;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly signer: WebsocketSignerService,
@@ -194,6 +211,7 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
         lastPingAt: true,
         lastCacheReportAt: true,
         pairedAt: true,
+        lastPushConnectedAt: true,
       },
     });
 
@@ -209,12 +227,14 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
       now - Math.max(
         ScreenWedgeDetectorCron.GIVE_UP_BACKOFF_MS,
         ScreenWedgeDetectorCron.ESCALATION_WINDOW_MS,
+        // Push-dead re-flag dedupe needs to see day-old flag rows too.
+        ScreenWedgeDetectorCron.PUSH_DEAD_REFLAG_MS,
       ),
     );
     const recentActions = await this.prisma.client.auditLog.findMany({
       where: {
         targetId: { in: candidateIds },
-        action: { in: ['AUTO_REFRESH_WEB', 'AUTO_RECOVERY_GAVE_UP'] },
+        action: { in: ['AUTO_REFRESH_WEB', 'AUTO_RECOVERY_GAVE_UP', 'AUTO_RECOVERY_PUSH_DEAD'] },
         createdAt: { gte: backoffWindowStart },
       },
       select: { targetId: true, action: true, createdAt: true },
@@ -237,9 +257,19 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
     let backoffSkipped = 0;
     let escalated = 0;
 
+    let pushDeadFlagged = 0;
     for (const screen of candidates) {
       const history = historyByScreen.get(screen.id) ?? [];
-      const decision = this.decide(now, history);
+      // Push-channel liveness: a REFRESH_WEB rides WS/SSE — if the screen
+      // has no live push channel it CANNOT arrive, so retrying is noise.
+      // The 2026-07-31 dongle burned fire→fire→fire→give-up cycles all
+      // afternoon this way. null = unknown (column may predate the
+      // screen's next reconnect) → only counts as dead after the grace
+      // window; a fresh stamp always means live.
+      const pushDead = screen.lastPushConnectedAt
+        ? now - screen.lastPushConnectedAt.getTime() > ScreenWedgeDetectorCron.PUSH_STALE_MS
+        : !!screen.pairedAt && now - screen.pairedAt.getTime() > ScreenWedgeDetectorCron.PUSH_UNKNOWN_GRACE_MS;
+      const decision = this.decide(now, history, pushDead);
 
       if (decision.action === 'cooldown') {
         cooldownSkipped++;
@@ -250,6 +280,68 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
 
       if (decision.action === 'backoff') {
         backoffSkipped++;
+        continue;
+      }
+
+      if (decision.action === 'push-dead-flagged') {
+        // Already flagged within PUSH_DEAD_REFLAG_MS — stay quiet.
+        continue;
+      }
+
+      if (decision.action === 'push-dead') {
+        // No live push channel → REFRESH_WEB can't arrive. Flag once per
+        // day (audit row for forensics + operator notification with a
+        // dedupe key) instead of burning fire/give-up cycles.
+        const lastPush = screen.lastPushConnectedAt?.toISOString() ?? null;
+        this.logger.warn(
+          `[wedge-detector] screen=${screen.name} (id=${screen.id.slice(0, 8)}) is wedged but has NO live ` +
+            `push channel (lastPushConnectedAt=${lastPush ?? 'never'}) — flagging as push-dead instead of ` +
+            `firing REFRESH_WEB it cannot receive. Screen still plays via HTTP polling.`,
+        );
+        try {
+          await this.prisma.client.auditLog.create({
+            data: {
+              action: 'AUTO_RECOVERY_PUSH_DEAD',
+              targetType: 'screen',
+              targetId: screen.id,
+              tenantId: screen.tenantId!,
+              userId: null,
+              details: JSON.stringify({
+                scope: 'screen',
+                screenName: screen.name,
+                lastPushConnectedAt: lastPush,
+                reason:
+                  'Screen is wedged (stale cache reports) but has no live WS/SSE channel, so a ' +
+                  'REFRESH_WEB push cannot reach it. Content still updates via HTTP polling. ' +
+                  'Likely a network blocking wss:// and event-streams, or a WebView/APK issue — ' +
+                  'needs on-site or network attention.',
+              }),
+            },
+          });
+        } catch (e) {
+          this.logger.warn(`[wedge-detector] push-dead audit log failed: ${(e as Error).message}`);
+        }
+        try {
+          // Direct create with the (tenantId, dedupeKey) unique — a repeat
+          // within the same day-bucket violates the constraint and is
+          // swallowed, mirroring NotificationsService dedupe semantics.
+          const dayBucket = Math.floor(now / ScreenWedgeDetectorCron.PUSH_DEAD_REFLAG_MS);
+          await this.prisma.client.notification.create({
+            data: {
+              tenantId: screen.tenantId!,
+              kind: 'SCREEN_PUSH_DEAD',
+              title: `${screen.name}: realtime channel down — running on polling`,
+              body:
+                'This screen cannot receive instant commands (refresh, immediate emergency delivery). ' +
+                'It still plays and updates via its regular polling (5–10s), including emergencies. ' +
+                'Usual cause: the venue network blocks WebSocket/streaming connections.',
+              dedupeKey: `screen-push-dead:${screen.id}:${dayBucket}`,
+            },
+          });
+        } catch {
+          /* duplicate within the day-bucket or transient DB issue — fine */
+        }
+        pushDeadFlagged++;
         continue;
       }
 
@@ -358,11 +450,12 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
       recovered++;
     }
 
-    if (recovered > 0 || escalated > 0 || cooldownSkipped > 0 || backoffSkipped > 0) {
+    if (recovered > 0 || escalated > 0 || cooldownSkipped > 0 || backoffSkipped > 0 || pushDeadFlagged > 0) {
       this.logger.log(
         `[wedge-detector] swept ${candidates.length} candidate(s): ` +
           `${recovered} recovered, ${escalated} escalated (gave up), ` +
-          `${cooldownSkipped} in cooldown, ${backoffSkipped} in give-up backoff`,
+          `${cooldownSkipped} in cooldown, ${backoffSkipped} in give-up backoff, ` +
+          `${pushDeadFlagged} flagged push-dead`,
       );
     }
 
@@ -388,17 +481,20 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
   decide(
     nowMs: number,
     history: ReadonlyArray<{ action: string; createdAt: Date }>,
+    pushDead = false,
   ): {
-    action: 'fire' | 'cooldown' | 'backoff' | 'escalate';
+    action: 'fire' | 'cooldown' | 'backoff' | 'escalate' | 'push-dead' | 'push-dead-flagged';
     fireCountInWindow: number;
   } {
     const cooldownStart = nowMs - ScreenWedgeDetectorCron.RECOVERY_COOLDOWN_MS;
     const escalationWindowStart = nowMs - ScreenWedgeDetectorCron.ESCALATION_WINDOW_MS;
     const giveUpBackoffStart = nowMs - ScreenWedgeDetectorCron.GIVE_UP_BACKOFF_MS;
+    const pushDeadReflagStart = nowMs - ScreenWedgeDetectorCron.PUSH_DEAD_REFLAG_MS;
 
     let fireCountInWindow = 0;
     let mostRecentFire: Date | null = null;
     let mostRecentGiveUp: Date | null = null;
+    let mostRecentPushDeadFlag: Date | null = null;
 
     for (const row of history) {
       const tsMs = row.createdAt.getTime();
@@ -413,6 +509,22 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
           mostRecentGiveUp = row.createdAt;
         }
       }
+      if (row.action === 'AUTO_RECOVERY_PUSH_DEAD' && tsMs >= pushDeadReflagStart) {
+        if (!mostRecentPushDeadFlag || tsMs > mostRecentPushDeadFlag.getTime()) {
+          mostRecentPushDeadFlag = row.createdAt;
+        }
+      }
+    }
+
+    // Push-dead trumps everything (2026-07-31): a REFRESH_WEB rides the
+    // push channel — with no live channel it cannot arrive, so firing,
+    // cooling down, and escalating are all noise. Flag once per
+    // PUSH_DEAD_REFLAG_MS, then stay quiet.
+    if (pushDead) {
+      return {
+        action: mostRecentPushDeadFlag ? 'push-dead-flagged' : 'push-dead',
+        fireCountInWindow,
+      };
     }
 
     // Most recent give-up still inside the backoff window → skip.

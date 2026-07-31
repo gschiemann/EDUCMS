@@ -96,6 +96,11 @@ export class ScreenGroupsController {
             // the 2026-04-27 fix above: omit these and the badge reads
             // undefined forever while Postgres has the data.
             syncOffsetMs: true, lastSyncReport: true, lastSyncReportAt: true,
+            // 2026-07-31 — push-channel health. Dashboard renders the
+            // per-screen "poll-only" chip + diagnostics row from
+            // group.screens[N] (same bug class as the 2026-04-27 fix
+            // above: omit it here and the chip reads undefined forever).
+            lastPushConnectedAt: true,
             // lastCrashStack deliberately omitted from the list
             // endpoint — 8KB per row × N screens is too much for a
             // dashboard that re-fetches every 10s. Stack lives on the
@@ -127,7 +132,11 @@ export class ScreenGroupsController {
           if (isAlive && s.tenantId) liveStatus = 'ONLINE';
           else if (s.status === 'ONLINE' || s.tenantId) liveStatus = 'OFFLINE';
         }
-        return { ...s, status: liveStatus };
+        // Keep the 10-min rule in sync with screens.controller list()/fleet().
+        const pushChannel = (s as any).lastPushConnectedAt
+          ? (now - new Date((s as any).lastPushConnectedAt).getTime() < 10 * 60_000 ? 'live' : 'stale')
+          : 'unknown';
+        return { ...s, status: liveStatus, pushChannel };
       }),
     }));
   }

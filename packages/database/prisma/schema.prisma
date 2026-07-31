@@ -790,6 +790,14 @@ model Screen {
   syncOffsetMs                        Int?         @map("sync_offset_ms")
   lastSyncReport                      Json?        @map("last_sync_report")
   lastSyncReportAt                    DateTime?    @map("last_sync_report_at")
+  // Push-channel health (2026-07-31 poll-only-dongle incident): stamped by
+  // the WS gateway (AUTH_OK + heartbeat, debounced) and the SSE service
+  // (connect + keepalive tick). Fresh (<10 min) = realtime push is LIVE for
+  // this screen; stale/null = the screen lives on the HTTP polling backstop
+  // and push commands (refresh-web, instant all-clear) will not reach it.
+  // Telemetry-only: listed in SCREEN_TELEMETRY_ONLY_FIELDS so writes never
+  // thrash the manifest hot cache.
+  lastPushConnectedAt                 DateTime?    @map("last_push_connected_at")
   // Android APK self-reported version. The player OTA worker already
   // POSTs versionName + versionCode to /player/update-check every 6h
   // and on boot; we just persist the two strings so admins can see at

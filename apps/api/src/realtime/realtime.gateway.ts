@@ -13,6 +13,7 @@ import * as jwt from 'jsonwebtoken';
 import * as crypto from 'crypto';
 import * as Sentry from '@sentry/nestjs';
 import { requireSecret } from '../security/required-secret';
+import { stampPushConnected } from './push-health';
 
 interface ClientContext {
   connectionId: string;
@@ -195,6 +196,11 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
       this.logger.log(`[WS] Authenticated: ${ctx.connectionId} → device=${ctx.deviceId}, tenant=${ctx.tenantId}`);
 
+      // Push-health stamp (2026-07-31): a successful device auth means a
+      // live push channel exists for this screen RIGHT NOW. Fire-and-forget
+      // telemetry — never blocks or fails the handshake.
+      stampPushConnected(this.prisma.client, ctx.deviceId, { force: true });
+
       this.send(client, 'AUTH_OK', {
         deviceId: ctx.deviceId,
         expiresAt: decoded.exp,
@@ -231,6 +237,10 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   private processHeartbeat(client: WebSocket, payload: any) {
     const ctx = this.clients.get(client);
     if (!ctx || !ctx.isAuthenticated) return;
+
+    // Keep the push-health stamp fresh while the socket lives (debounced
+    // to one write per screen per minute inside the helper).
+    stampPushConnected(this.prisma.client, ctx.deviceId);
 
     if (ctx.deviceId && this.redisService.publisher) {
       this.redisService.publisher.hset(`device:${ctx.deviceId}:status`,
