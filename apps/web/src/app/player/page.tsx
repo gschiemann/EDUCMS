@@ -7844,7 +7844,16 @@ function PlayerPage() {
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              justifyContent: 'center',
+              // 2026-07-31 — operator photo (HDMI dongle → Dell monitor):
+              // 'center' pushed the content block DOWN whenever the WebView
+              // viewport is taller than the physically visible panel
+              // (overscan / 16:10-EDID dongles) — bottom rows + buttons
+              // clipped off-glass while the top showed dead whitespace. No
+              // CSS can detect that crop, but top-anchoring means any
+              // excess height clips EMPTY SPACE below the content instead
+              // of the footer buttons. Same "fit all content, never clip"
+              // rule as the 2026-05-04 Goodview portrait fix above.
+              justifyContent: 'flex-start',
               textAlign: 'center',
               zIndex: 10,
               overflow: 'hidden',
