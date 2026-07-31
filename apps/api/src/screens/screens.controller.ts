@@ -2580,6 +2580,18 @@ export class ScreensController {
   @UseGuards(JwtAuthGuard)
   @Get(':id/manifest')
   async getManifest(@Param('id') id: string, @Req() req: ExpressReq, @Res() res: Response) {
+    // LIFE-SAFETY (2026-07-31, Greg's stuck-lockdown dongle): the manifest
+    // previously shipped an ETag but NO Cache-Control on ANY branch —
+    // heuristically cacheable. An Android WebView HTTP cache or a school
+    // web proxy (Squid/ZScaler) could re-serve a cached EMERGENCY manifest
+    // after all-clear (screen stuck on lockdown) or a stale normal manifest
+    // after content removal (deleted template keeps playing). Every branch
+    // of this handler — emergency, cached, empty, full, even the 304s —
+    // must be explicitly non-storable by intermediaries; freshness comes
+    // from our own ETag + the server-side hot cache, never from HTTP caches
+    // we don't control. Set once here so no future branch can miss it.
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
     const activeDeviceHash = req.headers['if-none-match'];
     // Content-rev snapshot BEFORE any row is read (manifest content cache,
     // 2026-07-30): if a mutation lands while this build is in flight, the

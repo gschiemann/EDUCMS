@@ -3003,6 +3003,14 @@ function PlayerPage() {
   const emergencyPollRef = useRef<NodeJS.Timeout | null>(null);
   const cachedAuthTokenRef = useRef<string | null>(null);
   const [activeEmergency, setActiveEmergency] = useState<any | null>(null);
+  // Ref mirror of activeEmergency for fetchContent's closure (2026-07-31
+  // stuck-lockdown fix): while an emergency is DISPLAYED, manifest polls
+  // must bypass every HTTP cache layer (see the fetch below) — the fetch
+  // callback can't read fresh state, so it reads this ref.
+  const activeEmergencyRef = useRef<any | null>(null);
+  useEffect(() => {
+    activeEmergencyRef.current = activeEmergency;
+  }, [activeEmergency]);
   // 2026-05-26 P0-3 — Sprint 5 emergency-message overlay state.
   // SOS / TEXT_BROADCAST / MEDIA_ALERT pushed via WS land here; the
   // mounted <EmergencyOverlay> also self-polls /emergency/status every
@@ -4256,16 +4264,30 @@ function PlayerPage() {
     try {
       const access_token = await resolveAuthToken();
 
+      // LIFE-SAFETY (2026-07-31 stuck-lockdown incident): while an emergency
+      // is DISPLAYED, every poll must come back as a FULL 200 from the
+      // origin — no 304s, no intermediary caches. A stale Android WebView
+      // HTTP cache or school proxy re-serving the emergency manifest after
+      // all-clear left a real kiosk stuck on lockdown until manual resync
+      // (server had cleared 13s after trigger; the device never saw it).
+      // The `_eb` buster gives every emergency-mode poll a unique URL (no
+      // URL-keyed cache can answer it) and If-None-Match is dropped so the
+      // clear can never hide behind a 304. Normal (non-emergency) polls keep
+      // the ETag/304 efficiency path untouched.
+      const emergencyDisplayed = !!activeEmergencyRef.current;
       // 1. Try to fetch the specific device manifest (what it is officially scheduled to play)
-      const manifestRes = await fetch(`${getApiRoot()}/api/v1/screens/${screenId}/manifest`, {
-        headers: {
-          'Authorization': `Bearer ${access_token}`,
-          // Conditional poll (efficiency #2): server 304s when the payload
-          // hash (everything except generatedAt) is unchanged.
-          ...(manifestEtagRef.current ? { 'If-None-Match': manifestEtagRef.current } : {}),
+      const manifestRes = await fetch(
+        `${getApiRoot()}/api/v1/screens/${screenId}/manifest${emergencyDisplayed ? `?_eb=${Date.now()}` : ''}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${access_token}`,
+            // Conditional poll (efficiency #2): server 304s when the payload
+            // hash (everything except generatedAt) is unchanged.
+            ...(!emergencyDisplayed && manifestEtagRef.current ? { 'If-None-Match': manifestEtagRef.current } : {}),
+          },
+          cache: 'no-store',
         },
-        cache: 'no-store',
-      });
+      );
 
       // 304 — nothing changed since the ETag'd manifest we already applied.
       // Same success bookkeeping as a 200, minus the re-apply.
