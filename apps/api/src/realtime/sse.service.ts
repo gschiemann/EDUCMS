@@ -126,7 +126,7 @@ export class SseService {
 
     // Push-health stamp (2026-07-31): an authenticated SSE stream is a live
     // push channel — same telemetry the WS gateway stamps on AUTH_OK.
-    if (opts.deviceId) stampPushConnected(this.prismaService?.client, opts.deviceId, { force: true });
+    if (opts.deviceId) stampPushConnected(this.prismaService?.client, opts.deviceId, opts.tenantId, { force: true });
 
     // Tear down on res close — connection lost, browser tab closed,
     // server-side flush errored. Cleanup is idempotent.
@@ -203,7 +203,7 @@ export class SseService {
         // EventSource holds ONE connection for hours, so a connect-time
         // stamp alone would go stale on a healthy stream. Debounced to one
         // write per screen per minute inside the helper.
-        if (client.deviceId) stampPushConnected(this.prismaService?.client, client.deviceId);
+        if (client.deviceId) stampPushConnected(this.prismaService?.client, client.deviceId, client.tenantId);
       } catch {
         // Dead connection — let the next broadcast or the `close`
         // handler do final cleanup.

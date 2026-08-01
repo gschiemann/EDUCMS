@@ -26,9 +26,13 @@ const MAX_TRACKED = 5_000;
 export function stampPushConnected(
   prismaClient: any,
   screenId: string | undefined | null,
+  // Authenticated tenant scope from the same verified context that produced
+  // the screenId (gateway ctx / SSE client). Structurally tenant-scopes the
+  // write (TEN-001 gate) — an unpaired/no-tenant channel has nothing to stamp.
+  tenantId: string | undefined | null,
   opts?: { force?: boolean },
 ): void {
-  if (!screenId) return;
+  if (!screenId || !tenantId) return;
   try {
     const now = Date.now();
     const prev = lastStampAt.get(screenId) ?? 0;
@@ -38,8 +42,10 @@ export function stampPushConnected(
       const oldest = lastStampAt.keys().next().value;
       if (oldest !== undefined) lastStampAt.delete(oldest);
     }
-    const p = prismaClient?.screen?.update?.({
-      where: { id: screenId },
+    // updateMany + tenantId: tenant-scoped by construction, and a 0-row
+    // match (screen deleted / rebound mid-flight) is a silent no-op.
+    const p = prismaClient?.screen?.updateMany?.({
+      where: { id: screenId, tenantId },
       data: { lastPushConnectedAt: new Date() },
     });
     if (p && typeof p.catch === 'function') p.catch(() => {});

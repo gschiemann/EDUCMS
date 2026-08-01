@@ -199,7 +199,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       // Push-health stamp (2026-07-31): a successful device auth means a
       // live push channel exists for this screen RIGHT NOW. Fire-and-forget
       // telemetry — never blocks or fails the handshake.
-      stampPushConnected(this.prisma.client, ctx.deviceId, { force: true });
+      stampPushConnected(this.prisma.client, ctx.deviceId, ctx.tenantId, { force: true });
 
       this.send(client, 'AUTH_OK', {
         deviceId: ctx.deviceId,
@@ -240,7 +240,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
     // Keep the push-health stamp fresh while the socket lives (debounced
     // to one write per screen per minute inside the helper).
-    stampPushConnected(this.prisma.client, ctx.deviceId);
+    stampPushConnected(this.prisma.client, ctx.deviceId, ctx.tenantId);
 
     if (ctx.deviceId && this.redisService.publisher) {
       this.redisService.publisher.hset(`device:${ctx.deviceId}:status`,
