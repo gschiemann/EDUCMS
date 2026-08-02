@@ -60,12 +60,24 @@ export class WebsocketSignerService {
     devFallback: 'dev_only_device_secret_CHANGE_ME',
   });
 
-  public signMessage(type: string, payload: any): WsMessagePayload {
+  /**
+   * @param channel OPTIONAL Redis delivery channel (`tenant:<id>` |
+   *   `group:<id>` | `device:<id>`). When supplied the signature is bound to
+   *   that channel, so the envelope cannot be replayed onto another tenant's
+   *   channel by anything holding Redis PUBLISH (R-02).
+   *
+   *   Callers that publish via `RedisService.publish()` do NOT need to pass
+   *   it: publish() rebinds every valid envelope to its actual channel at the
+   *   send boundary (`bindWsSignatureToChannel`), which is idempotent with
+   *   signing it here. Pass it when you sign for a channel you already know
+   *   and want the bound bytes at mint time.
+   */
+  public signMessage(type: string, payload: any, channel?: string): WsMessagePayload {
     const eventId = crypto.randomUUID();
     const timestamp = Date.now();
 
     const signature = wsHmacHex(
-      wsCanonicalString({ eventId, timestamp, type, payload }),
+      wsCanonicalString({ eventId, timestamp, type, payload, channel }),
       this.deviceSecret,
     );
 

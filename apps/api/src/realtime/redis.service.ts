@@ -2,7 +2,7 @@ import { Injectable, OnModuleDestroy, OnModuleInit, Logger, Optional } from '@ne
 import { Redis } from 'ioredis';
 import { createHash } from 'crypto';
 import { requireSecret } from '../security/required-secret';
-import { verifyWsHmac } from '../security/ws-signature';
+import { bindWsSignatureToChannel, verifyWsHmac } from '../security/ws-signature';
 import { PrismaService } from '../prisma/prisma.service';
 
 // ───────────────────────────────────────────────────────────────────
@@ -34,6 +34,13 @@ export function hashRevokedToken(token: string): string {
 
 /** 30 days — the rememberMe ceiling; matches the Redis TTLs. */
 const REVOKED_MIRROR_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * The ONLY channel families the fan-out subscriber listens on (see the
+ * psubscribe in onModuleInit) and therefore the only ones that may reach
+ * `gateway.broadcastToScope` / `sse.broadcastToScope`.
+ */
+const WS_SCOPE_CHANNEL_TYPES = new Set(['tenant', 'group', 'device']);
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
@@ -176,8 +183,29 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     try {
       const parsed = JSON.parse(message);
       const channelParts = channel.split(':');
-      if (channelParts.length < 2) return;
+      // HARDENING (R-02 follow-on): scope channels are EXACTLY two segments.
+      // `split(':')` + destructure used to accept `tenant:<A>:anything` and
+      // route it as scope `tenant:<A>` — so a channel that merely PREFIXES a
+      // real tenant (e.g. the gateway's own `tenant:<id>:devices` set key)
+      // would have fanned out to that whole tenant. Every publisher in the
+      // codebase emits exactly `tenant:<id>` | `group:<id>` | `device:<id>`
+      // (verified by sweeping every `.publish(` call site), so this rejects
+      // only malformed/injected channels.
+      if (channelParts.length !== 2) {
+        this.logger.warn(`[WS] DROPPED message on malformed channel ${channel}`);
+        return;
+      }
       const [type, id] = channelParts;
+      if (!WS_SCOPE_CHANNEL_TYPES.has(type)) {
+        // Not a deliverable scope channel — e.g. the unsigned `metrics:ack`
+        // telemetry channel, which the Redis-DOWN fallback in publish() loops
+        // back through here. It was always dropped by the HMAC gate below,
+        // but at WARN — one line per ACK from every kiosk, i.e. a
+        // device-controlled log flood while Redis is down (R-07). Drop it
+        // here, at debug, before the gate.
+        this.logger.debug(`[WS] Ignoring non-scope channel ${channel}`);
+        return;
+      }
 
       // SERVER-SIDE EMERGENCY GATE (life-safety): verify the HMAC signature
       // + freshness BEFORE fanning out to any player. Every legitimate
@@ -188,7 +216,14 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       // Stateless verify → safe across replicas. Real emergencies are still
       // guaranteed by the player's authenticated HTTPS poll backstop even if
       // a message is ever dropped here.
-      const verdict = verifyWsHmac(parsed, this.deviceSecret);
+      //
+      // R-02: verify against the channel the message ACTUALLY arrived on.
+      // The routing scope below (`type`/`id`) is read straight off this
+      // untrusted channel name, so without binding it into the signed bytes
+      // a captured tenant-A envelope replayed onto `tenant:<B>` verified
+      // byte-for-byte — defeating the very "compromised Redis" threat this
+      // gate exists for.
+      const verdict = verifyWsHmac(parsed, this.deviceSecret, undefined, channel);
       if (!verdict.ok) {
         this.logger.warn(
           `[WS] DROPPED unverified message on ${channel} ` +
@@ -207,13 +242,20 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   async publish(channel: string, payload: any) {
+    // R-02 ENFORCEMENT POINT. This is the one place that knows both the
+    // signed envelope AND the channel it is authorized for, so bind them
+    // together here — every publisher in the app gets channel-scoped
+    // signatures with no change at its call site. Envelopes that don't
+    // already carry a valid signature (unsigned telemetry, test doubles) pass
+    // through untouched; this never mints a signature for unsigned data.
+    const framed = bindWsSignatureToChannel(payload, channel, this.deviceSecret);
     if (this.connected && this.publisher) {
-      await this.publisher.publish(channel, JSON.stringify(payload));
+      await this.publisher.publish(channel, JSON.stringify(framed));
     } else {
       // Fallback: If Redis is unavailable (local dev), pipe directly to the resident websocket gateway
       if (this.gateway) {
         this.logger.debug(`[Mock Redis] Publishing to channel ${channel}`);
-        this.handleRedisMessage(channel, JSON.stringify(payload));
+        this.handleRedisMessage(channel, JSON.stringify(framed));
       }
     }
   }
