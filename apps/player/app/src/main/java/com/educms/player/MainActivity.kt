@@ -34,6 +34,8 @@ import androidx.webkit.WebViewFeature
 import com.educms.player.bootstrap.ManagerBootstrap
 import com.educms.player.databinding.ActivityMainBinding
 import com.educms.player.logging.PlayerLogger
+import com.educms.player.security.HostAllowlist
+import com.educms.player.security.OperatorPinGate
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -60,6 +62,26 @@ class MainActivity : ComponentActivity() {
      * manifest).
      */
     private var lastImeVisible: Boolean = false
+
+    /**
+     * AND-004 — timestamp (SystemClock.elapsedRealtime) of the most
+     * recent LOCAL physical input: a key from the remote / a USB
+     * keyboard, or a touch. Stamped by [dispatchKeyEvent] and
+     * [onUserInteraction], both of which see every event dispatched to
+     * this Activity BEFORE the WebView consumes it.
+     *
+     * Why: the destructive bridge methods (`unpair`, `exitToDeviceHome`)
+     * are driven from two very different places —
+     *   1. the SERVER, via the signed TENANT_CHANGED WebSocket message
+     *      (no human present; must keep working unattended), and
+     *   2. the player's on-screen info overlay, which Enter/Space opens
+     *      and which a student with a $10 USB keyboard can walk to in
+     *      four keystrokes — taking the screen off the lockdown-alert
+     *      channel.
+     * This timestamp is what lets us tell the two apart natively, so we
+     * can require the operator PIN for (2) without stranding (1).
+     */
+    @Volatile private var lastLocalInputAtMs: Long = 0L
 
     /**
      * Belt-and-suspenders kiosk-stuck watchdog (2026-05-05).
@@ -123,6 +145,74 @@ class MainActivity : ComponentActivity() {
         const val ORIENTATION_LANDSCAPE = "LANDSCAPE"
         const val ORIENTATION_PORTRAIT = "PORTRAIT"
         const val ORIENTATION_AUTO = "AUTO"
+
+        /**
+         * AND-004 — how recently local physical input must have happened
+         * for a destructive bridge call to count as "somebody is standing
+         * at this screen" and therefore need the operator PIN. Generous
+         * enough to cover a human clicking through the overlay; far short
+         * of a server-driven TENANT_CHANGED arriving on its own.
+         */
+        private const val LOCAL_INPUT_WINDOW_MS = 20L * 1000L
+
+        /**
+         * AND-008 — accepted shape for the device fingerprint handed to
+         * `setBootstrap`. It is concatenated into the log-upload and
+         * ota-state URLs, so keep it to path-safe characters. Covers every
+         * fingerprint the web player mints (`android-<androidId>`,
+         * `device-<ts>-<rand>`) plus operator `?deviceId=` values.
+         */
+        private val FINGERPRINT_RE = Regex("^[A-Za-z0-9._-]{8,128}\$")
+    }
+
+    // ─── AND-004: local-input detection ─────────────────────────────
+
+    private fun markLocalInput() {
+        lastLocalInputAtMs = android.os.SystemClock.elapsedRealtime()
+    }
+
+    private fun localInputRecent(): Boolean {
+        val t = lastLocalInputAtMs
+        if (t == 0L) return false
+        return android.os.SystemClock.elapsedRealtime() - t <= LOCAL_INPUT_WINDOW_MS
+    }
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        markLocalInput()
+    }
+
+    /**
+     * Stamp local input for the AND-004 gate. This override MUST stay a
+     * pure pass-through — key routing on OEM signage remotes is fragile
+     * (see the long note on onKeyDown) and nothing here may swallow or
+     * re-target an event.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        markLocalInput()
+        return super.dispatchKeyEvent(event)
+    }
+
+    /**
+     * AND-004 — run [action] directly when the request did NOT originate
+     * from somebody at the device (server-driven paths keep working
+     * unattended), otherwise require the operator PIN first.
+     *
+     * Fail-closed: when local input IS recent and no PIN is configured,
+     * [OperatorPinGate] denies and tells the operator to use the
+     * dashboard. See OperatorPinGate's header for the provisioning gap.
+     */
+    private fun guardLocalDestructiveAction(label: String, action: () -> Unit) {
+        if (!localInputRecent()) {
+            PlayerLogger.i("MainActivity", "\"$label\" — no recent local input, treating as remote/server-driven")
+            action()
+            return
+        }
+        PlayerLogger.w(
+            "MainActivity",
+            "\"$label\" requested within ${LOCAL_INPUT_WINDOW_MS / 1000}s of local input — operator PIN required",
+        )
+        OperatorPinGate.require(this, label) { action() }
     }
 
     /**
@@ -581,14 +671,28 @@ class MainActivity : ComponentActivity() {
 
     private fun handleInstallPromptTrampoline(launchIntent: Intent?) {
         if (launchIntent?.action != com.educms.player.ota.OtaInstallReceiver.ACTION_LAUNCH_INSTALL_PROMPT) return
-        @Suppress("DEPRECATION")
-        val prompt: Intent? = launchIntent.getParcelableExtra(
-            com.educms.player.ota.OtaInstallReceiver.EXTRA_INSTALL_PROMPT,
-        )
+        // ⚠️ AND-006 (2026-08-01) — INTENT REDIRECTION. MainActivity is
+        // exported (it is the launcher), so ANY app on the device could
+        // send this action with its own Intent in the extras and we would
+        // have called startActivity() on it — a classic confused-deputy
+        // that lends our identity (and any URI grants riding on the
+        // forwarded Intent) to the caller.
+        //
+        // We no longer read ANY caller-supplied Intent. OtaInstallReceiver
+        // runs in THIS process (same package, no android:process) and
+        // stages the system-minted confirm Intent in an in-process holder;
+        // an external app cannot populate that. The extra it used to send
+        // is deliberately ignored even if present.
+        val prompt: Intent? = com.educms.player.ota.OtaInstallReceiver.takePendingInstallPrompt()
         if (prompt == null) {
-            PlayerLogger.w("MainActivity", "trampoline fired but no install_prompt_intent extra")
+            PlayerLogger.w(
+                "MainActivity",
+                "install-prompt trampoline fired with nothing staged in-process — ignoring (external caller?)",
+            )
             return
         }
+        // Assignment (not addFlags) — this REPLACES every flag the system
+        // intent carried, including any FLAG_GRANT_*_URI_PERMISSION.
         prompt.flags = Intent.FLAG_ACTIVITY_NEW_TASK
         try {
             startActivity(prompt)
@@ -905,7 +1009,12 @@ class MainActivity : ComponentActivity() {
 
         wv.addJavascriptInterface(
             WebAppBridge(
-                onUnpair = { unpairAndRestart() },
+                // AND-004 — a locally-initiated unpair takes this screen
+                // off the emergency-alert channel, so it needs the
+                // operator PIN. Server-driven unpairs (the signed
+                // TENANT_CHANGED message) arrive with no human at the
+                // keyboard and pass straight through.
+                onUnpair = { guardLocalDestructiveAction("Unpair this screen") { unpairAndRestart() } },
                 onReload = { runOnUiThread { wv.reload() } },
                 getDeviceInfo = { deviceInfoJson() },
                 onCheckForUpdates = { PlayerApp.fireOtaCheckNow(applicationContext) },
@@ -921,6 +1030,14 @@ class MainActivity : ComponentActivity() {
                     if (apiRoot.isNullOrBlank()) {
                         PlayerLogger.w("MainActivity", "uploadDiagnostics: api_root not set — cannot upload")
                         "error: api_root not configured"
+                    } else if (!HostAllowlist.requireAllowed("uploadDiagnostics", apiRoot)) {
+                        // AND-008 — the diagnostics bridge is callable from
+                        // any frame and ships the device log (device ids,
+                        // api roots, screen ids, truncated token hints) to
+                        // whatever host `api_root` names. Re-check the
+                        // destination at the point of USE so a value
+                        // persisted by an older build can't exfiltrate.
+                        "error: upload destination is not an allowed VenueOS host"
                     } else {
                         // Security: log only truncated token hint, never the full JWT.
                         PlayerLogger.i("MainActivity", "uploadDiagnostics triggered via JS bridge (jwt=${PlayerLogger.truncateSecret(jwt)})")
@@ -950,7 +1067,12 @@ class MainActivity : ComponentActivity() {
                     // onCreate re-enables the alias on next launch — so once the
                     // operator manually relaunches our app from the OEM home, we
                     // resume kiosk-home duties without a config trip.
+                    //
+                    // AND-004 — dropping out of the kiosk is a local
+                    // "escape hatch"; when it is triggered by somebody
+                    // standing at the screen it needs the operator PIN.
                     PlayerLogger.i("MainActivity", "Exit to device home requested via JS bridge")
+                    guardLocalDestructiveAction("Exit to device home") {
                     runOnUiThread {
                         val pm = packageManager
                         // ── Step 1: turn OFF the KioskHomeAlias ─────────────
@@ -1065,6 +1187,7 @@ class MainActivity : ComponentActivity() {
                         }
                         finishAffinity()
                     }
+                    } // end guardLocalDestructiveAction("Exit to device home")
                 },
                 onSetBootstrap = { apiRoot, fingerprint ->
                     // v1.0.11 — write the prefs that HeartbeatService and
@@ -1077,6 +1200,24 @@ class MainActivity : ComponentActivity() {
                     // accidentally includes it — both services append
                     // /api/v1/... themselves, so a doubled prefix would
                     // produce a 404 with no log to read.
+                    //
+                    // ⚠️ AND-001 (2026-08-01) — THIS IS THE OTA TRUST
+                    // ANCHOR. `apiRoot` arrives from JavaScript, and this
+                    // bridge is reachable from every frame the player
+                    // WebView loads (including operator-authored and
+                    // third-party iframe content). Whatever lands in the
+                    // `api_root` pref is where OtaUpdateWorker asks for an
+                    // APK — and the APK signing key is committed to a
+                    // PUBLIC repo, so an attacker-chosen OTA server is a
+                    // silent, reboot- and OTA-surviving install of an
+                    // attacker-signed build on a hallway display.
+                    //
+                    // The host is therefore pinned in NATIVE code, which
+                    // JavaScript cannot reach. Rejected values are NOT
+                    // persisted; OtaUpdateWorker re-checks at the point of
+                    // use, and PlayerApp purges a stale hostile value at
+                    // process start, so an older build's pref can't be
+                    // honoured either.
                     val cleanApiRoot = apiRoot.trim()
                         .removeSuffix("/")
                         .removeSuffix("/api/v1")
@@ -1085,6 +1226,18 @@ class MainActivity : ComponentActivity() {
                         PlayerLogger.w(
                             "MainActivity",
                             "setBootstrap rejected — empty values (apiRoot=${cleanApiRoot.length} fp=${cleanFp.length})"
+                        )
+                    } else if (!HostAllowlist.requireAllowed("setBootstrap", cleanApiRoot)) {
+                        // Refused: not a first-party host (or not https).
+                        // requireAllowed() already logged scheme+host.
+                    } else if (!FINGERPRINT_RE.matches(cleanFp)) {
+                        // AND-008 — the fingerprint is concatenated into
+                        // the log-upload / ota-state URL paths. Keep it to
+                        // path-safe characters so JS can't reshape those
+                        // URLs from inside the allowlisted host.
+                        PlayerLogger.w(
+                            "MainActivity",
+                            "setBootstrap rejected — fingerprint has an unexpected shape (len=${cleanFp.length})",
                         )
                     } else {
                         val prefs = applicationContext.getSharedPreferences(
@@ -1334,6 +1487,17 @@ class MainActivity : ComponentActivity() {
         val cleanUrl = url.trim()
         if (cleanUrl.isBlank()) {
             hideUrlOverlay()
+            return
+        }
+        // AND-005 defence-in-depth — WebAppBridge already validated, but
+        // this is the only place that actually calls loadUrl() on the
+        // overlay WebView, so re-assert https + a real host here. Any
+        // future caller inherits the check for free.
+        if (!HostAllowlist.isSafeWebUrl(cleanUrl)) {
+            PlayerLogger.w(
+                "MainActivity",
+                "showUrlOverlay REFUSED — not a plain https URL: ${HostAllowlist.describe(cleanUrl)}",
+            )
             return
         }
         if (urlOverlayCurrentUrl == cleanUrl && urlOverlayView.visibility == View.VISIBLE) {

@@ -2,11 +2,25 @@ package com.educms.player
 
 import android.webkit.JavascriptInterface
 import com.educms.player.logging.PlayerLogger
+import com.educms.player.security.HostAllowlist
 
 /**
  * Minimal JS ↔ native bridge surface exposed to the web player as
  * `window.EduCmsNative`. Keep this surface tiny — every method becomes
  * an attack surface if the player loads untrusted content.
+ *
+ * ⚠️ TRUST BOUNDARY — READ BEFORE ADDING A METHOD (AND-002, 2026-08-01).
+ * This object is attached with `WebView.addJavascriptInterface`, which
+ * exposes it to **every frame the WebView loads**, not just the top-level
+ * EduCMS player document. `removeJavascriptInterface` is never called and
+ * no method here can see its caller's origin — so operator-authored and
+ * third-party HTML mounted in the player's iframes reaches every method
+ * below. Treat EVERY argument as attacker-controlled and validate it
+ * natively; comments elsewhere in this repo that claim the bridge is
+ * "only exposed to our trusted player web origin" are WRONG. The
+ * structural fix (WebViewCompat.addWebMessageListener with explicit
+ * allowed-origin rules, or a main-frame-only nonce handshake) is tracked
+ * separately.
  *
  * Diagnostics methods added 2026-04-23:
  *   getRecentLogs()     — returns the tail of the on-device log file so
@@ -162,6 +176,16 @@ class WebAppBridge(
      * to actually fire.
      *
      * Idempotent — safe to call on every page load.
+     *
+     * ⚠️ AND-001 (2026-08-01) — `apiRoot` is the host the OTA updater
+     * later downloads an APK from, and this method is callable from any
+     * frame (see the trust-boundary note at the top of this file), so an
+     * unvalidated value was an attacker-chosen OTA server → silent
+     * install of an attacker-signed APK (the signing key is public).
+     * The host is now pinned natively: `MainActivity`'s `onSetBootstrap`
+     * lambda runs `HostAllowlist.isAllowed()` before persisting, and
+     * `OtaUpdateWorker` re-checks at the point of USE so a value
+     * persisted by an older build can never be honoured.
      */
     @JavascriptInterface
     fun setBootstrap(apiRoot: String, fingerprint: String) {
@@ -173,17 +197,45 @@ class WebAppBridge(
     }
 
     /**
-     * Show an external URL in the native overlay WebView. This is only
-     * exposed to the trusted EduCMS player page; the overlay WebView does
-     * not receive this bridge.
+     * Show an external URL in the native overlay WebView. The overlay
+     * WebView does NOT receive this bridge.
+     *
+     * ⚠️ AND-005 (2026-08-01). This method is reachable from every frame
+     * (see the trust-boundary note at the top of this file), so any JS on
+     * the screen can put full-screen web content on a school hallway
+     * display. The validation below is deliberately SCHEME/SYNTAX-only,
+     * NOT a first-party host allowlist:
+     *
+     *   This surface's legitimate job is to render arbitrary OPERATOR-
+     *   CHOSEN customer websites — it is the native renderer for
+     *   `text/html` playlist items (apps/web .../player/page.tsx, the
+     *   "Native Android URL overlay" effect), e.g. the customer site an
+     *   operator scheduled on a lobby screen. Pinning the host to
+     *   venue-os.app would silently kill that shipped feature on every
+     *   APK kiosk in the field.
+     *
+     * So we harden what can be hardened without breaking the product:
+     *   - must parse as a hierarchical URI (no smuggled control bytes)
+     *   - https only — `http://` is already dead anyway, res/xml/
+     *     network_security_config.xml sets cleartextTrafficPermitted=false
+     *   - no embedded credentials (`https://evil.com@real.site/`)
+     *   - non-web schemes (javascript:, data:, file:, content:, intent:)
+     *     are refused by construction
+     *
+     * The real fix for "any frame can drive this" is origin-gating the
+     * bridge (AND-002), not a host allowlist here. If the product decides
+     * URL playlist items must be first-party only, swap `isSafeWebUrl`
+     * for `HostAllowlist.requireAllowed("showUrlOverlay", …)` — that is a
+     * one-line change and a deliberate feature removal.
      */
     @JavascriptInterface
     fun showUrlOverlay(url: String) {
         val cleanUrl = url.trim()
-        if (!cleanUrl.startsWith("https://", ignoreCase = true) &&
-            !cleanUrl.startsWith("http://", ignoreCase = true)
-        ) {
-            PlayerLogger.w("WebAppBridge", "showUrlOverlay rejected non-http URL")
+        if (!HostAllowlist.isSafeWebUrl(cleanUrl)) {
+            PlayerLogger.w(
+                "WebAppBridge",
+                "showUrlOverlay REJECTED — not a plain https URL: ${HostAllowlist.describe(cleanUrl)}",
+            )
             return
         }
         try {

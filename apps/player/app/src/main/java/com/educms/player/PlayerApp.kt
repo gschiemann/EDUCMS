@@ -19,6 +19,7 @@ import com.educms.player.heartbeat.HeartbeatService
 import com.educms.player.heartbeat.ManagerHeartbeatPublisher
 import com.educms.player.logging.PlayerLogger
 import com.educms.player.ota.OtaUpdateWorker
+import com.educms.player.security.HostAllowlist
 import com.educms.player.usb.UsbCacheIndex
 import com.educms.player.watchdog.Watchdog
 import java.util.concurrent.TimeUnit
@@ -47,6 +48,21 @@ class PlayerApp : Application() {
         // Callers that invoke PlayerLogger.uploadRecent(...) pass the screen
         // fingerprint explicitly — no need for a static Context holder.
         PlayerLogger.init(applicationContext)
+
+        // ⚠️ AND-001 (2026-08-01) — self-heal before ANY background job
+        // reads `api_root`. That pref is written by the `setBootstrap` JS
+        // bridge, which is reachable from every frame the player WebView
+        // loads; an APK built before the native host allowlist existed may
+        // have persisted an attacker-chosen host. Heartbeat, crash upload,
+        // ota-state reporting, Manager bootstrap and the OTA worker all
+        // read it directly, so purging it once per process start closes
+        // every one of them at the same time. The web player re-calls
+        // setBootstrap() on its next page load, which repopulates the pref
+        // only when the value passes the allowlist.
+        // runCatching: nothing in this path may ever be able to crash a
+        // hallway kiosk at boot.
+        runCatching { HostAllowlist.sanitizePersistedApiRoot(applicationContext) }
+            .onFailure { Log.w("PlayerApp", "api_root sanitize skipped: ${it.message}") }
 
         PlayerLogger.i(
             "PlayerApp",

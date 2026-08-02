@@ -3,6 +3,7 @@ package com.educms.player.usb
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.hardware.usb.UsbManager
 import android.util.Log
 
 /**
@@ -16,6 +17,16 @@ import android.util.Log
  */
 class UsbAttachReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        // ⚠️ AND-007 (2026-08-01) — this receiver is EXPORTED (the system
+        // has to be able to deliver USB_DEVICE_ATTACHED to it), so any app
+        // on the device could broadcast to it with any action and make the
+        // kiosk pop a full-screen SAF file browser over whatever is
+        // playing — including an active lockdown alert. Act only on the
+        // real system broadcast; ignore everything else.
+        if (intent.action != UsbManager.ACTION_USB_DEVICE_ATTACHED) {
+            Log.w("UsbAttachReceiver", "ignoring unexpected broadcast action: ${intent.action}")
+            return
+        }
         Log.i("UsbAttachReceiver", "USB device attached: ${intent.action}")
         // Forward to the foreground player so it can show the operator
         // confirmation prompt without us trying to launch a full activity
