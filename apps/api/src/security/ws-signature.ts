@@ -12,9 +12,15 @@ import * as crypto from 'crypto';
  * The HMAC layer (this file) is the SERVER-SIDE gate: the API verifies it at
  * the Redis fan-out chokepoint before any message reaches a player, which
  * closes the "publish a forged message onto the Redis channel" attack. The
- * shared secret never leaves the server. End-to-end player verification uses
- * a separate asymmetric (Ed25519) signature — see ws-ed25519.ts — so no
- * secret is ever shipped to a kiosk.
+ * shared secret never leaves the server.
+ *
+ * Player-side Ed25519 device verification (ControlEnvelopeV2, EVT-001) is the
+ * multi-week hardening and is NOT yet built — there is no `ws-ed25519.ts`.
+ * The server-side HMAC gate in this file is the PRIMARY safeguard; the player
+ * only smoke-tests for the presence of a `signature` field. Do not describe
+ * an end-to-end asymmetric chain here until one actually ships (see
+ * `packages/api-types/src/capability-registry.ts` →
+ * `emergency-signed-fanout-gate`).
  */
 
 export interface WsCanonicalFields {
