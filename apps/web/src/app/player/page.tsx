@@ -14,6 +14,14 @@ import { TouchOverlay, TouchNavOverlay } from '@/components/player/TouchOverlay'
 // the `message` prop.
 import { EmergencyOverlay, type EmergencyMessageView } from '@/components/player/EmergencyOverlay';
 import { reconcileStrandedEmergency } from './emergencyReconcile';
+// 2026-08-01 security wave — pure guard modules (no React/DOM) so each is
+// unit-tested without mounting this page.
+//   trustGuards — R-01: the `?api=` / localStorage API-root override is the
+//     player's entire trust anchor (WS, SSE, manifest, reconcile). Validate it.
+//   pushGate    — R-04/R-05: ONE signature+freshness+replay gate shared by the
+//     WS and SSE consumers, and the TENANT_CHANGED addressing check.
+import { resolveApiRoot, resolveDeviceToken, type ApiRootPolicy } from './trustGuards';
+import { checkSensitivePush, isTenantChangeForThisScreen } from './pushGate';
 // 2026-07-28 — frame-locked multi-screen sync (docs/research/2026-07-28-multiscreen-sync/).
 // Pure modules (no React/DOM) so the math is unit-tested without mounting this page.
 import { SyncClock } from './sync/syncClock';
@@ -472,15 +480,27 @@ export function dispatchTouchAction(
   }
 }
 
-/** Get the device pairing token from URL → localStorage → null. */
+/**
+ * Get the device pairing token from URL → localStorage → null.
+ *
+ * R-01 (adjacent): `?token=` had the same "persist whatever the URL says"
+ * shape as `?api=`. A valid token can only be minted by the server, so this
+ * is not a repointable trust anchor — but an unvalidated blob still landed in
+ * localStorage and then in every Bearer header + the SSE query string. Shape
+ * hygiene now runs on BOTH write and read (see `trustGuards.ts`), so junk is
+ * never persisted and a previously-poisoned value self-heals.
+ */
 function getDeviceToken(): string | null {
   if (typeof window === 'undefined') return null;
-  const fromUrl = qp('token');
-  if (fromUrl) {
-    try { localStorage.setItem(LS_TOKEN, fromUrl); } catch {}
-    return fromUrl;
-  }
-  try { return localStorage.getItem(LS_TOKEN); } catch { return null; }
+  let storage: Storage | null = null;
+  try { storage = window.localStorage; } catch { storage = null; }
+  return resolveDeviceToken({
+    search: window.location.search,
+    storage,
+    onReject: (reason) => {
+      try { console.warn('[Player] rejected device token —', reason); } catch {}
+    },
+  });
 }
 
 /** Compute exponential backoff with full jitter. Capped at maxMs. */
@@ -595,20 +615,46 @@ function readCachedEmergency(): any | null {
   } catch { return null; }
 }
 
+/**
+ * R-01 (2026-08-01) — the API root is the player's ENTIRE trust anchor: the
+ * WebSocket (`getApiRoot().replace(/^http/,'ws')`), the SSE stream, the
+ * device-authenticated manifest (the SOLE arbiter of the lockdown overlay) and
+ * the stranded-alert reconcile all derive from it. It used to accept any
+ * `?api=` value verbatim and persist it to localStorage forever, so a single
+ * drive-by load of `/player?api=https://evil.example` permanently handed the
+ * screen to an attacker: they become the manifest (fake a lockdown, or
+ * suppress a real one) and harvest the device JWT on the first HELLO.
+ *
+ * The override is now scheme-checked + host-allowlisted on BOTH write and
+ * read, so an already-poisoned kiosk self-heals on its next load. Policy and
+ * matching rules live in `trustGuards.ts` (unit-tested). The env default below
+ * is the trust ROOT and is deliberately not validated against itself.
+ */
+function apiRootPolicy(): ApiRootPolicy {
+  return {
+    envApiUrl: process.env.NEXT_PUBLIC_API_URL || null,
+    // Escape hatch for staging / on-prem installs. Comma-separated hosts.
+    extraHosts: process.env.NEXT_PUBLIC_API_ROOT_ALLOWLIST || null,
+    pageOrigin: typeof window !== 'undefined' ? window.location.origin : null,
+    isProduction: process.env.NODE_ENV === 'production',
+  };
+}
+
 function getApiRoot(): string {
-  if (typeof window !== 'undefined') {
-    const params = new URLSearchParams(window.location.search);
-    const apiParam = params.get('api');
-    if (apiParam) {
-      // Save to localStorage so it persists across refreshes
-      localStorage.setItem('edu_api_root', apiParam.replace(/\/api\/v1\/?$/, ''));
-      return apiParam.replace(/\/api\/v1\/?$/, '');
-    }
-    const saved = localStorage.getItem('edu_api_root');
-    if (saved) return saved;
-  }
   const env = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
-  return env.replace('/api/v1', '');
+  const fallback = env.replace('/api/v1', '');
+  if (typeof window === 'undefined') return fallback;
+  let storage: Storage | null = null;
+  try { storage = window.localStorage; } catch { storage = null; }
+  return resolveApiRoot({
+    search: window.location.search,
+    policy: apiRootPolicy(),
+    storage,
+    fallback,
+    onReject: (reason, value) => {
+      try { console.warn('[Player] refused untrusted API root —', reason, value); } catch {}
+    },
+  });
 }
 
 // 2026-05-04 — PlayerVideoSlide component.
@@ -4836,14 +4882,60 @@ function PlayerPage() {
         }
       };
 
+      // R-04 (2026-08-01) — the SSE tier now runs the SAME client-side gate
+      // the WS path does. It previously ran NONE of it, and an on-path
+      // attacker can deterministically force screens onto SSE by killing the
+      // WS upgrade three times (`wsFailCountRef >= 3 → tryOpenSse()`), then
+      // replay one captured ALL_CLEAR_MESSAGE to keep a real SOS / broadcast
+      // suppressed. The SSE frame carries the identical verified envelope
+      // (sse.service.ts `broadcastToScope` writes the whole `parsed` message
+      // that passed `verifyWsHmac`), so signature/timestamp/eventId are all
+      // already on the wire. `recentEventIdsRef` is shared with the WS path,
+      // so a frame seen on one transport can't be replayed on the other.
+      //
+      // Freshness needs a server-clock offset, and on an SSE-only kiosk (WS
+      // blocked by a school proxy) AUTH_OK never arrives over WS — so the
+      // SSE AUTH_OK below feeds the same ref. Without that, a clock-skewed
+      // Android box would drop every SSE emergency: a life-safety regression.
+      const gateSse = (name: string, data: any): boolean => {
+        const verdict = checkSensitivePush(
+          data,
+          {
+            seenEventIds: recentEventIdsRef.current,
+            serverClockOffsetMs: serverClockOffsetRef.current,
+          },
+          name,
+        );
+        if (!verdict.accepted) {
+          console.warn(
+            `[Player SSE] dropped ${verdict.reason} sensitive event:`,
+            name, data?.eventId, 'ts=', data?.timestamp,
+            'offset=', serverClockOffsetRef.current,
+          );
+          return false;
+        }
+        return true;
+      };
+      // The server's very first SSE frame is `AUTH_OK { ts }` — the only
+      // server-time sample an SSE-only kiosk ever gets. Same semantics as the
+      // WS AUTH_OK offset capture ("what to ADD to local Date.now()").
+      es.addEventListener('AUTH_OK', (ev) => {
+        try {
+          const data = JSON.parse((ev as MessageEvent).data);
+          const srv = typeof data?.ts === 'number' ? data.ts : null;
+          if (srv == null) return;
+          serverClockOffsetRef.current = srv - Date.now();
+          if (Math.abs(serverClockOffsetRef.current) > 5000) {
+            console.warn('[Player SSE] Large clock skew detected — offset=', serverClockOffsetRef.current, 'ms');
+          }
+        } catch { /* swallow */ }
+      });
       // Each Redis event type comes through as a named SSE event.
-      // SSE doesn't have the signed-replay protection the WS path
-      // uses — we trust the server-side signer for these. Auth was
-      // already enforced when EventSource opened.
       const handle = (name: string, fn: (data: any) => void) => {
         es.addEventListener(name, (ev) => {
           try {
             const data = JSON.parse((ev as MessageEvent).data);
+            if (!gateSse(name, data)) return;
             console.log(`[Player SSE] ${name}`);
             fn(data?.payload || data);
           } catch (e) {
@@ -5103,40 +5195,24 @@ function PlayerPage() {
             // life-safety pub/sub channel as OVERRIDE — they MUST go
             // through the same signature + freshness gate, not just
             // be trusted on type.
-            const SENSITIVE_TYPES = new Set([
-              'OVERRIDE',
-              'TENANT_CHANGED',
-              'SOS',
-              'TEXT_BROADCAST',
-              'MEDIA_ALERT',
-              'ALL_CLEAR_MESSAGE',
-            ]);
-            if (SENSITIVE_TYPES.has(msg.type)) {
-              if (!msg.signature || typeof msg.signature !== 'string') {
-                console.warn('[Player WS] dropped unsigned sensitive event:', msg.type);
-                return;
-              }
-              // Apply server-clock offset so kiosks with wrong local
-              // clocks still accept events that are actually fresh.
-              const adjustedNow = Date.now() + serverClockOffsetRef.current;
-              if (typeof msg.timestamp !== 'number' || Math.abs(adjustedNow - msg.timestamp) > 30_000) {
-                console.warn('[Player WS] dropped stale/future event:', msg.type, msg.timestamp, 'offset=', serverClockOffsetRef.current);
-                return;
-              }
-              if (msg.eventId && typeof msg.eventId === 'string') {
-                const seen = recentEventIdsRef.current;
-                if (seen.has(msg.eventId)) {
-                  console.warn('[Player WS] dropped replayed event:', msg.eventId);
-                  return;
-                }
-                seen.set(msg.eventId, Date.now());
-                // Bound memory: drop entries older than 5 min, hard cap at 500.
-                if (seen.size > 500) {
-                  const cutoff = Date.now() - 5 * 60_000;
-                  for (const [k, t] of seen) if (t < cutoff) seen.delete(k);
-                  while (seen.size > 500) seen.delete(seen.keys().next().value as string);
-                }
-              }
+            //
+            // R-04 (2026-08-01): this block used to live inline HERE ONLY, so
+            // the SSE fallback consumer enforced none of it. It is now the
+            // shared `checkSensitivePush` (pushGate.ts), called identically
+            // from the SSE `handle()` wrapper below, sharing this same
+            // `recentEventIdsRef` LRU so a frame replayed on the OTHER
+            // transport is caught too.
+            const wsVerdict = checkSensitivePush(msg, {
+              seenEventIds: recentEventIdsRef.current,
+              serverClockOffsetMs: serverClockOffsetRef.current,
+            });
+            if (!wsVerdict.accepted) {
+              console.warn(
+                `[Player WS] dropped ${wsVerdict.reason} sensitive event:`,
+                msg.type, msg.eventId, 'ts=', msg.timestamp,
+                'offset=', serverClockOffsetRef.current,
+              );
+              return;
             }
             // SECURITY (life-safety): ALL_CLEAR no longer optimistically drops
             // the active emergency. Previously a single ALL_CLEAR message
@@ -5158,7 +5234,21 @@ function PlayerPage() {
             // Wipe every piece of tenant-scoped local state and reset to the
             // pairing screen so the new tenant's content can't be served from
             // disk before re-pair completes.
+            //
+            // R-05 (2026-08-01, consumer half): this teardown used to run
+            // WITHOUT reading `payload.screenId`, even though the server signs
+            // one — so ONE frame de-provisioned every screen that received it,
+            // and recovery needed a human at each kiosk. Require an exact match
+            // against this screen's own id and fail CLOSED (missing/unknown
+            // screenId ⇒ ignore the message entirely).
             if (msg.type === 'TENANT_CHANGED') {
+              if (!isTenantChangeForThisScreen(msg, screenId)) {
+                console.warn(
+                  '[Player WS] ignored TENANT_CHANGED not addressed to this screen —',
+                  'target=', (msg.payload as any)?.screenId, 'self=', screenId,
+                );
+                return;
+              }
               try { localStorage.removeItem('edu_device_token'); } catch {}
               try { localStorage.removeItem('edu_device_fp'); } catch {}
               try { localStorage.removeItem('edu_manifest_cache_v1'); } catch {}
