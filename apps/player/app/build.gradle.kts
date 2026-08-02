@@ -95,33 +95,105 @@ android {
         }
     }
 
-    // Stable debug keystore — committed at apps/player/app/debug.keystore.
+    // ─── RELEASE signing — real, but DORMANT until the owner cuts over ───
     //
-    // Why this exists: Android's PackageInstaller refuses to install an
-    // upgrade APK that's signed with a different key than the installed
-    // version (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`). CI's default
-    // `assembleDebug` flow generates a fresh per-runner debug keystore
-    // every build, so each release was signed with a different key and
-    // OTA install was IMPOSSIBLE — operators had to uninstall + USB
-    // reinstall on every version, which also wiped pairing tokens
-    // because Settings.Secure.ANDROID_ID is scoped per (signing-key +
-    // package + user) on Android 8+.
+    // ⚠️ READ apps/player/RELEASE_SIGNING.md BEFORE TURNING THIS ON. ⚠️
     //
-    // This block points the debug signingConfig at the committed
-    // keystore so every CI build signs with the same key. New APK
-    // installs cleanly over the old one; pairing survives.
+    // Today CI still publishes the DEBUG build (see
+    // .github/workflows/android-player-apk.yml). This block exists so the
+    // secure path is ONE deliberate step away — it does NOT change what
+    // signs today's builds. Flipping to a real release key ROTATES the
+    // signing identity, and Android refuses an update signed with a
+    // different key (INSTALL_FAILED_UPDATE_INCOMPATIBLE) — every screen
+    // already in the field must then be MANUALLY REINSTALLED. That is a
+    // fleet-wide operational event; schedule it deliberately.
     //
-    // Earlier attempts: commit 54bb67d tried to do this with
-    // signingConfigs.create("debugStable") which created a config
-    // with no storeFile at config time and AGP rejected. Reverted in
-    // 6eb4812. This iteration uses getByName("debug") which already
-    // exists, just overrides its storeFile — no new config to break.
+    // Config is read from Gradle properties with an env fallback — the
+    // exact same pattern as `playerBaseUrl` in defaultConfig above:
+    //
+    //   -PreleaseStoreFile=…      / RELEASE_STORE_FILE
+    //   -PreleaseStorePassword=…  / RELEASE_STORE_PASSWORD
+    //   -PreleaseKeyAlias=…       / RELEASE_KEY_ALIAS
+    //   -PreleaseKeyPassword=…    / RELEASE_KEY_PASSWORD
+    //
+    // A relative RELEASE_STORE_FILE resolves against the Gradle ROOT
+    // project (apps/player/) so :app and :manager resolve the SAME file
+    // from one value. Absolute paths are used as-is.
+    //
+    // GRACEFUL DEGRADATION IS THE POINT: if any value is missing, or the
+    // keystore file isn't on disk, the "release" signingConfig is simply
+    // NEVER CREATED. `assembleDebug` keeps working byte-for-byte as it
+    // does today, and `assembleRelease` produces an unsigned APK instead
+    // of failing the build. Nothing breaks for anyone building locally
+    // or in CI right now.
+    //
+    // (Historical note: commit 54bb67d tried `signingConfigs.create(...)`
+    // with no storeFile at config time and AGP rejected it. We only call
+    // create() once every value is present AND the file exists, so the
+    // config is always fully populated.)
+    val releaseStoreFile: String? = (project.findProperty("releaseStoreFile") as? String)
+        ?: System.getenv("RELEASE_STORE_FILE")
+    val releaseStorePassword: String? = (project.findProperty("releaseStorePassword") as? String)
+        ?: System.getenv("RELEASE_STORE_PASSWORD")
+    val releaseKeyAlias: String? = (project.findProperty("releaseKeyAlias") as? String)
+        ?: System.getenv("RELEASE_KEY_ALIAS")
+    val releaseKeyPassword: String? = (project.findProperty("releaseKeyPassword") as? String)
+        ?: System.getenv("RELEASE_KEY_PASSWORD")
+
+    val releaseStore: java.io.File? = releaseStoreFile
+        ?.takeIf { it.isNotBlank() }
+        ?.let { p ->
+            val f = java.io.File(p)
+            if (f.isAbsolute) f else project.rootProject.file(p)
+        }
+
+    val hasReleaseSigning: Boolean =
+        releaseStore != null && releaseStore.isFile &&
+            !releaseStorePassword.isNullOrBlank() &&
+            !releaseKeyAlias.isNullOrBlank() &&
+            !releaseKeyPassword.isNullOrBlank()
+
     signingConfigs {
+        // Stable debug keystore — committed at apps/player/app/debug.keystore.
+        //
+        // Why this exists: Android's PackageInstaller refuses to install an
+        // upgrade APK that's signed with a different key than the installed
+        // version (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`). CI's default
+        // `assembleDebug` flow generates a fresh per-runner debug keystore
+        // every build, so each release was signed with a different key and
+        // OTA install was IMPOSSIBLE — operators had to uninstall + USB
+        // reinstall on every version, which also wiped pairing tokens
+        // because Settings.Secure.ANDROID_ID is scoped per (signing-key +
+        // package + user) on Android 8+.
+        //
+        // This block points the debug signingConfig at the committed
+        // keystore so every CI build signs with the same key. New APK
+        // installs cleanly over the old one; pairing survives.
+        //
+        // Earlier attempts: commit 54bb67d tried to do this with
+        // signingConfigs.create("debugStable") which created a config
+        // with no storeFile at config time and AGP rejected. Reverted in
+        // 6eb4812. This iteration uses getByName("debug") which already
+        // exists, just overrides its storeFile — no new config to break.
+        //
+        // ⚠️ THIS KEY IS PUBLISHED. The repo is public and the password is
+        // three lines below it, so it must be treated as compromised. It
+        // is retired by the cutover in apps/player/RELEASE_SIGNING.md.
         getByName("debug") {
             storeFile = file("debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"
             keyPassword = "android"
+        }
+
+        // Created ONLY when fully configured — see the block comment above.
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = releaseStore
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
         }
     }
 
@@ -141,6 +213,15 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // NEVER let a published artifact inherit a debuggable default.
+            // This is already AGP's default for `release`, but stating it
+            // explicitly means a future edit can't quietly flip it, and the
+            // CI guard (scripts/check-apk-debuggable.cjs) has something
+            // unambiguous to verify in the merged manifest.
+            isDebuggable = false
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
@@ -172,6 +253,15 @@ android {
 // implicitly builds Manager first. The output universal Manager APK
 // goes into src/main/assets/bundled/edu-cms-manager.apk where AGP
 // picks it up via the standard mergeAssets task.
+//
+// ⚠️ CUTOVER TRAP (release-signing migration, see
+// apps/player/RELEASE_SIGNING.md): this is HARDCODED to the DEBUG
+// Manager variant. It is correct today (CI ships assembleDebug) and is
+// deliberately left alone so this change cannot alter today's build.
+// But a `release` Player built right now would bundle a DEBUG-signed
+// Manager — mixed signing identities inside one artifact. Making this
+// variant-aware is a REQUIRED step of the cutover checklist, not an
+// optional cleanup. Do it with a real Android SDK in front of you.
 val bundleManagerApk by tasks.registering(Copy::class) {
     dependsOn(":manager:assembleDebug")
     val managerOutDir = project(":manager").layout.buildDirectory.dir("outputs/apk/debug")

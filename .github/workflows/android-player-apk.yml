@@ -53,6 +53,13 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      # For the artifact guards below. They are dependency-free plain
+      # Node (no pnpm install), so this is the only setup they need.
+      - name: Set up Node (for the release guards)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
@@ -236,6 +243,46 @@ jobs:
           path: ${{ steps.locate-manager.outputs.apk }}
           retention-days: 30
           if-no-files-found: error
+
+      # ─── RELEASE GUARD ────────────────────────────────────────────
+      # Inspects the APKs we are ACTUALLY about to publish (reads the
+      # binary AndroidManifest.xml straight out of the zip) and fails if
+      # `android:debuggable="true"`. Must run BEFORE the two "Attach …
+      # to GitHub Release" steps below — that is the publish boundary.
+      #
+      # Report-only on ordinary pushes: every build prints the debuggable
+      # status of its artifacts, so the state is never a surprise.
+      - name: Report — is the built APK debuggable? (non-blocking)
+        run: |
+          node scripts/check-apk-debuggable.cjs --warn-only \
+            "${{ steps.locate.outputs.apk }}" \
+            "${{ steps.locate-manager.outputs.apk }}"
+
+      # Blocking on the PUBLISH path only (a release tag).
+      #
+      # ⚠️⚠️  TODO(release-signing cutover) — DELETE THE `env:` BLOCK  ⚠️⚠️
+      #
+      # `ALLOW_DEBUGGABLE_RELEASE: '1'` below downgrades a debuggable
+      # finding to a warning. It is set TODAY, and only today, because
+      # this workflow still publishes the `assembleDebug` output — so
+      # without it the very next `player-v*` tag would fail to release.
+      #
+      # The guard is nonetheless LIVE: it runs, it reads the real
+      # published bytes, it prints the violation loudly in the log, and
+      # it still HARD-FAILS if an artifact is missing or unverifiable.
+      #
+      # >>> DELETING THESE TWO `env:` LINES IS THE FINAL STEP THAT   <<<
+      # >>> COMPLETES THE FIX. Do it as part of the cutover in       <<<
+      # >>> apps/player/RELEASE_SIGNING.md, at the same time as      <<<
+      # >>> switching `assembleDebug` → `assembleRelease` above.     <<<
+      - name: Guard — published APK must not be debuggable
+        if: startsWith(github.ref, 'refs/tags/player-v') || startsWith(github.ref, 'refs/tags/manager-v')
+        env:
+          ALLOW_DEBUGGABLE_RELEASE: '1' # TODO(cutover): delete — see apps/player/RELEASE_SIGNING.md
+        run: |
+          node scripts/check-apk-debuggable.cjs \
+            "${{ steps.locate.outputs.apk }}" \
+            "${{ steps.locate-manager.outputs.apk }}"
 
       # On tag push (player-v*) attach the APK to a GitHub Release so
       # /api/v1/player/apk/latest can resolve it without any Railway env
