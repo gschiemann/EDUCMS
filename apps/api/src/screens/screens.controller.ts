@@ -1294,12 +1294,18 @@ export class ScreensController {
     );
 
     // Audit fix #6: if this re-pair changed the tenant, blast a
-    // TENANT_CHANGED message on the OLD tenant's channel so the
-    // physical device wipes its DataStore (token, tenantId,
-    // usbIngestKey) and its filesDir/usb-cache before re-pairing
-    // against the new tenant. Without this, a kiosk physically moved
-    // between districts would keep serving its old tenant's emergency
+    // TENANT_CHANGED message so the physical device wipes its DataStore
+    // (token, tenantId, usbIngestKey) and its filesDir/usb-cache before
+    // re-pairing against the new tenant. Without this, a kiosk physically
+    // moved between districts would keep serving its old tenant's emergency
     // assets from disk.
+    //
+    // R-05 (2026-08-01): this used to publish on `tenant:<previousTenantId>`.
+    // The payload names ONE screenId, but a tenant-scoped channel reaches
+    // EVERY screen in the old district — and the player's TENANT_CHANGED
+    // handler wipes its device token, manifest cache, emergency cache and SW
+    // tiers. That is a district-wide kill switch. The message is per-device,
+    // so it goes on the per-device channel.
     const previousTenantId = screen.tenantId;
     if (previousTenantId && previousTenantId !== req.user.tenantId) {
       try {
@@ -1308,7 +1314,7 @@ export class ScreensController {
           previousTenantId,
           newTenantId: req.user.tenantId,
         });
-        await this.redisService.publish(`tenant:${previousTenantId}`, signed);
+        await this.redisService.publish(`device:${screen.id}`, signed);
       } catch (e) {
         console.warn('[pair] failed to notify previous tenant of TENANT_CHANGED', e);
       }
