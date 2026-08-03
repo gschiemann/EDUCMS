@@ -90,6 +90,25 @@ const ChallengeSchema = z
   });
 type Challenge = z.infer<typeof ChallengeSchema>;
 
+/**
+ * ACC-03 — bodies for the REQUIRED-MFA enrollment pair. Both carry the
+ * short-lived partial `mfaToken` that /auth/login hands back when a user has
+ * `mfaRequired` set but has not enrolled yet; that token IS the authorization
+ * (it is only minted after a successful password check).
+ */
+const RequiredEnrollSchema = z
+  .object({ mfaToken: z.string().min(10).max(2048) })
+  .strict();
+type RequiredEnroll = z.infer<typeof RequiredEnrollSchema>;
+
+const RequiredVerifySchema = z
+  .object({
+    mfaToken: z.string().min(10).max(2048),
+    code: z.string().min(6).max(10),
+  })
+  .strict();
+type RequiredVerify = z.infer<typeof RequiredVerifySchema>;
+
 const ISSUER_NAME = process.env.MFA_ISSUER || 'VenueOS';
 
 /**
@@ -597,7 +616,206 @@ export class MfaController {
     );
   }
 
+  // ---- ACC-03: REQUIRED-MFA ENROLLMENT (unauthenticated, token-gated) ----
+  //
+  // WHY THESE EXIST. `User.mfaRequired` is now enforced at login
+  // (AuthService.login): a user carrying the policy who has not enrolled gets
+  // NO session, only a partial `mfaToken`. But /enroll and /verify above are
+  // `@UseGuards(JwtAuthGuard)` — they need the very session the policy is
+  // withholding. Without these two routes the policy would be a lockout, not
+  // a control, so "enforce mfaRequired" would have meant "brick the account".
+  //
+  // The authorization here is the partial mfaToken itself: it is signed with
+  // JWT_SECRET, carries `purpose: MFA_CHALLENGE_PURPOSE`, expires in minutes,
+  // and is only ever minted AFTER a correct password. That is the same trust
+  // the existing /challenge endpoint runs on. These routes deliberately do
+  // NOTHING beyond enrollment: they cannot be used by an already-enrolled
+  // user (they reject when `mfaTotpVerifiedAt` is set, so a stolen partial
+  // token cannot re-enroll a device over someone's existing factor), and they
+  // cannot be used by a user without the policy.
+
+  /**
+   * Issue a provisional TOTP secret for a user who MUST enroll before they
+   * can finish signing in. Mirrors /enroll, but authorized by the partial
+   * mfaToken instead of a session.
+   */
+  @Post('required/enroll')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  async requiredEnroll(
+    @Body(new ZodValidationPipe(RequiredEnrollSchema)) body: RequiredEnroll,
+  ) {
+    const dbUser = await this.userFromChallengeToken(body.mfaToken);
+    this.assertEnrollmentRequired(dbUser);
+
+    const { secretBase32 } = generateTotpSecret();
+    const otpauthUrl = buildOtpauthUrl(secretBase32, ISSUER_NAME, dbUser.email);
+
+    // ten-ok: identity SELF-update — dbUser was loaded by the verified mfaToken principal's own id
+    await this.prisma.client.user.update({
+      where: { id: dbUser.id },
+      data: { mfaTotpSecret: sealMfaSecret(secretBase32), mfaTotpVerifiedAt: null },
+    });
+
+    await this.audit(dbUser.tenantId, dbUser.id, 'mfa.enroll_started', {
+      provisional: true,
+      policy: 'mfaRequired',
+    });
+
+    return { secret: secretBase32, otpauthUrl, qrSvg: null as string | null, issuer: ISSUER_NAME, label: dbUser.email };
+  }
+
+  /**
+   * Confirm the provisional secret and COMPLETE the held-back login. On
+   * success the account is enrolled (backup codes issued once) and the caller
+   * receives the real session envelope — the same shape /auth/login would
+   * have returned had the policy not been in force.
+   */
+  @Post('required/verify')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  async requiredVerify(
+    @Body(new ZodValidationPipe(RequiredVerifySchema)) body: RequiredVerify,
+  ) {
+    const { dbUser, rememberMe } = await this.userFromChallengeTokenWithOpts(body.mfaToken);
+    this.assertEnrollmentRequired(dbUser);
+    if (!dbUser.mfaTotpSecret) {
+      throw new BadRequestException({
+        message: 'No pending MFA enrollment. Call /auth/mfa/required/enroll first.',
+        code: 'MFA_NOT_ENROLLED',
+      });
+    }
+
+    // Per-user throttle BEFORE the cipher/TOTP work, same as /challenge.
+    this.rateLimiter.check(dbUser.id);
+
+    let secretBase32: string;
+    try {
+      secretBase32 = openMfaSecret(dbUser.mfaTotpSecret);
+    } catch {
+      await this.audit(dbUser.tenantId, dbUser.id, 'mfa.verify_failed', {
+        reason: 'cipher_open_failed',
+        policy: 'mfaRequired',
+      });
+      throw new BadRequestException({
+        message: 'MFA enrollment is corrupted. Please re-enroll.',
+        code: 'MFA_CIPHER_INVALID',
+      });
+    }
+
+    const ok = verifyTotpCode(secretBase32, body.code);
+    this.rateLimiter.record(dbUser.id, ok);
+    if (!ok) {
+      await this.audit(dbUser.tenantId, dbUser.id, 'mfa.verify_failed', {
+        reason: 'invalid_code',
+        policy: 'mfaRequired',
+      });
+      throw new UnauthorizedException({
+        message: 'Code does not match. Try again from your Authenticator app.',
+        code: 'MFA_INVALID_CODE',
+      });
+    }
+
+    const plainCodes = generateBackupCodes(10);
+    const stored: StoredBackupCode[] = [];
+    for (const c of plainCodes) {
+      stored.push({ hash: await argon2.hash(c, ARGON_HASH_OPTS), createdAt: new Date().toISOString() });
+    }
+
+    // ten-ok: identity SELF-update — dbUser was loaded by the verified mfaToken principal's own id
+    await this.prisma.client.user.update({
+      where: { id: dbUser.id },
+      data: { mfaTotpVerifiedAt: new Date(), mfaBackupCodes: stored as any },
+    });
+
+    await this.audit(dbUser.tenantId, dbUser.id, 'mfa.enabled', {
+      backupCodesIssued: stored.length,
+      policy: 'mfaRequired',
+    });
+
+    // Finalize the login. The object passed here deliberately carries NO
+    // mfa* fields (same as /challenge) so `login` issues a real session
+    // rather than looping back into another challenge.
+    const session = await this.auth.login(
+      {
+        id: dbUser.id,
+        email: dbUser.email,
+        tenantId: dbUser.tenantId,
+        role: dbUser.role,
+        canTriggerPanic: dbUser.canTriggerPanic,
+        firstName: dbUser.firstName,
+        lastName: dbUser.lastName,
+      },
+      rememberMe,
+    );
+
+    return { ...session, backupCodes: plainCodes };
+  }
+
   // ---- Internal helpers --------------------------------------------
+
+  /** Verify a partial mfaToken and load its user. Throws 401 on any doubt. */
+  private async userFromChallengeTokenWithOpts(mfaToken: string) {
+    let payload: { sub?: string; purpose?: string; rememberMe?: boolean };
+    try {
+      payload = await this.jwt.verifyAsync(mfaToken, {
+        secret: requireSecret('JWT_SECRET', { devFallback: 'dev_only_jwt_secret_CHANGE_ME' }),
+      });
+    } catch {
+      throw new UnauthorizedException({
+        message: 'MFA token is invalid or expired. Sign in again.',
+        code: 'MFA_TOKEN_INVALID',
+      });
+    }
+    if (payload?.purpose !== MFA_CHALLENGE_PURPOSE || !payload?.sub) {
+      throw new UnauthorizedException({ message: 'MFA token is invalid.', code: 'MFA_TOKEN_INVALID' });
+    }
+    // ten-ok: identity SELF-lookup — sub is the principal of the VERIFIED partial mfaToken minted at password-check
+    const dbUser = await this.prisma.client.user.findUnique({
+      where: { id: payload.sub },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        tenantId: true,
+        canTriggerPanic: true,
+        firstName: true,
+        lastName: true,
+        mfaRequired: true,
+        mfaTotpSecret: true,
+        mfaTotpVerifiedAt: true,
+      },
+    });
+    if (!dbUser) {
+      throw new UnauthorizedException({ message: 'User not found.', code: 'MFA_USER_NOT_FOUND' });
+    }
+    return { dbUser, rememberMe: payload.rememberMe };
+  }
+
+  private async userFromChallengeToken(mfaToken: string) {
+    return (await this.userFromChallengeTokenWithOpts(mfaToken)).dbUser;
+  }
+
+  /**
+   * These routes exist ONLY to unblock a user held back by the `mfaRequired`
+   * policy. Anyone else — no policy, or already enrolled — must use the
+   * session-gated /enroll + /verify. This is what stops a stolen partial token
+   * from re-enrolling a device over an existing second factor.
+   */
+  private assertEnrollmentRequired(dbUser: { mfaRequired?: boolean | null; mfaTotpVerifiedAt?: Date | null }): void {
+    if (dbUser.mfaTotpVerifiedAt) {
+      throw new BadRequestException({
+        message: 'MFA is already enabled on this account. Complete sign-in with your Authenticator code.',
+        code: 'MFA_ALREADY_ENABLED',
+      });
+    }
+    if (!dbUser.mfaRequired) {
+      throw new BadRequestException({
+        message: 'MFA enrollment is not required for this account. Sign in and enroll from Settings.',
+        code: 'MFA_NOT_REQUIRED',
+      });
+    }
+  }
 
   private async checkPassword(hash: string, candidate: string): Promise<boolean> {
     try {

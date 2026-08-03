@@ -19,6 +19,8 @@ import { RedisService } from '../realtime/redis.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
+import { ZodValidationPipe } from '../security/zod-validation.pipe';
+import { SsoConfigSchema } from './sso.types';
 import type { SsoConfigDto } from './sso.types';
 
 /**
@@ -219,7 +221,15 @@ export class SsoController {
   @RequireRoles('SUPER_ADMIN', 'DISTRICT_ADMIN')
   async upsertConfig(
     @Param('tenantSlug') tenantSlug: string,
-    @Body() dto: SsoConfigDto,
+    // ACC-01 (2026-08-01): this was a BARE `@Body() dto: SsoConfigDto` — a
+    // compile-time-only shape with NO runtime validation, so the endpoint
+    // accepted arbitrary JSON and `defaultRole` reached the DB verbatim
+    // ({"defaultRole":"SUPER_ADMIN"} was stored, then handed to user.create).
+    // The schema's role enum excludes SUPER_ADMIN entirely, so the escalation
+    // payload is now rejected at the edge; SsoService re-checks it against the
+    // caller's own rank (defence in depth — the pipe is not the only gate).
+    // Same pattern every onboarding route already used.
+    @Body(new ZodValidationPipe(SsoConfigSchema)) dto: SsoConfigDto,
     @Req() req: Request,
   ) {
     await this.assertTenantAccess(tenantSlug, req);

@@ -1,40 +1,130 @@
 /**
  * Resolve the REAL client IP from a request behind Railway's multi-hop proxy.
  *
- * THE BUG (2026-07-07): under `app.set('trust proxy', 1)` (main.ts) behind
- * Railway's multi-hop internal mesh, Express's `req.ip` lands on a *rotating
- * internal proxy hop*, NOT the real client. This silently defeated the per-IP
- * rate limiter (fixed in `ClientIpThrottlerGuard`) and — the reason this helper
- * exists — makes AuditLog / RequestLog / Screen `ipAddress` record a
- * meaningless internal address instead of the operator's (or device's) real IP.
- * For a life-safety product that is a real forensic-accuracy gap: "who
- * triggered an emergency, from what IP" must be trustworthy.
+ * ── HISTORY: TWO BUGS, ONE HELPER ─────────────────────────────────────────
  *
- * Proven live: a request arrived with
+ * BUG 1 (2026-07-07) — `req.ip` is a ROTATING internal hop. Under
+ * `app.set('trust proxy', 1)` (main.ts) behind Railway's internal mesh,
+ * Express resolves `req.ip` to the RIGHTMOST `X-Forwarded-For` entry, which is
+ * an internal address that CHANGES per request. That silently defeated every
+ * per-IP rate limit (the throttle key moved on every request, so a shared
+ * counter never accumulated to the cap and brute-force 429s never fired) and
+ * made AuditLog / RequestLog / Screen `ipAddress` record a meaningless
+ * internal address. Proven live:
  *   x-forwarded-for: "216.241.83.102, 152.233.76.9"
- *   req.ip = 152.233.76.9   (the internal hop — rotates per request)
- * while the true client was the leftmost `216.241.83.102`. See
- * `docs/research/2026-07-07-ratelimit-tracker-fix/00-FINDINGS.md`.
+ *   req.ip         =  152.233.76.9        (internal hop — rotates)
+ *   true client    =  216.241.83.102
+ * See docs/research/2026-07-07-ratelimit-tracker-fix/00-FINDINGS.md.
  *
- * THE FIX: prefer the leftmost `X-Forwarded-For` entry (the original client),
- * which stays stable no matter how many internal hops Railway appends. Fall
- * back to `req.ip`, then the raw socket address. Fully defensive — never throws.
+ * BUG 2 (2026-08-01, finding ACC-08) — the fix for bug 1 took the LEFTMOST
+ * XFF entry. That is stable, but it is the one position in the header an
+ * ATTACKER fully controls: proxies APPEND, so anything a client sends arrives
+ * as a PREFIX of the final header. `X-Forwarded-For: <random>` on each request
+ * therefore rotated the throttle key at will (defeating every brute-force cap
+ * exactly as bug 1 did) and wrote an attacker-chosen address into the
+ * AuditLog row for an emergency trigger — forging the forensic record of who
+ * fired a district-wide lockdown.
  *
- * We deliberately do NOT raise `trust proxy` globally: Railway's hop count
- * appears to vary, so a fixed hop number would still resolve `req.ip` to a
- * rotating entry, whereas the leftmost-XFF approach is robust to a variable
- * chain.
+ * ── THE FIX: COUNT FROM THE RIGHT BY TRUSTED-HOP COUNT ────────────────────
+ * Each trusted proxy in front of us APPENDS exactly one entry, and it appends
+ * the address IT observed — which it saw at the TCP layer and the client
+ * cannot forge. So with N trusted appending proxies, the true client sits at
+ * index `len - N`, counted from the right, and every entry to the LEFT of it
+ * is client-supplied garbage that we ignore.
  *
- * SPOOFING NOTE: the leftmost XFF is client-settable, so this value is
- * attacker-influenceable and must be treated as an *identifier for
- * forensics/telemetry*, not as an authenticated fact. That is already true of
- * any client IP behind a proxy; this helper does not make it worse, and it
- * strictly improves the honest-client case (which previously logged the
- * internal hop).
+ *   honest:  [client, edge]                    len 2, N 2 → index 0 = client ✓
+ *   spoofed: [FAKE, client, edge]              len 3, N 2 → index 1 = client ✓
+ *   spoofed: [FAKE, FAKE, FAKE, client, edge]  len 5, N 2 → index 3 = client ✓
  *
- * @returns the resolved client IP, or `null` if nothing is resolvable (callers
- *   that need a non-null string, e.g. a throttle key, should coalesce).
+ * Both required properties now hold:
+ *   STABLE      — the chosen entry does not move between requests from the
+ *                 same client, no matter how the internal hop rotates (that
+ *                 rotating value lives to the RIGHT of the client entry and is
+ *                 never selected). This is the property bug 1 needed and it is
+ *                 preserved — do NOT regress it.
+ *   UNSPOOFABLE — injected entries only ever lengthen the prefix, and the
+ *                 prefix is never read. A client cannot move its own position.
+ *
+ * `TRUSTED_PROXY_HOPS` (env, integer >= 1, default 2) is that count. The
+ * default matches the measured production chain above — Railway edge + one
+ * internal hop, i.e. TWO appenders. A deployment whose chain differs (an extra
+ * CDN/WAF in front, or none at all) MUST set it; getting it wrong does not
+ * crash anything, it just selects the wrong entry, so verify against a real
+ * request's `X-Forwarded-For` after any infrastructure change. If the observed
+ * header is SHORTER than the configured hop count we are not behind the full
+ * chain (local dev, a direct hit, an in-cluster probe), so we clamp to index
+ * 0; that case is spoofable, which is why it must not be the production shape.
+ *
+ * Fully defensive — never throws.
+ *
+ * @returns the normalized client IP, or `null` if nothing is resolvable
+ *   (callers needing a non-null string, e.g. a throttle key, must coalesce).
  */
+
+/** Default matches the measured Railway chain: edge + one internal hop. */
+const DEFAULT_TRUSTED_PROXY_HOPS = 2;
+
+/**
+ * Parsed once per process. Read lazily (not at module load) so tests and
+ * boot-order changes can set the env var before first use; cached after.
+ */
+let cachedHops: number | null = null;
+let cachedHopsRaw: string | undefined;
+
+export function trustedProxyHopCount(): number {
+  const raw = process.env.TRUSTED_PROXY_HOPS;
+  if (cachedHops !== null && raw === cachedHopsRaw) return cachedHops;
+  cachedHopsRaw = raw;
+  const parsed = Number.parseInt(String(raw ?? ''), 10);
+  // A hop count below 1 would mean "trust the rightmost entry", i.e. trust a
+  // value no proxy vouched for — reject it and fall back to the default.
+  cachedHops = Number.isFinite(parsed) && parsed >= 1 ? parsed : DEFAULT_TRUSTED_PROXY_HOPS;
+  return cachedHops;
+}
+
+/** Test-only: drop the memoized hop count so a test can change the env var. */
+export function __resetTrustedProxyHopCache(): void {
+  cachedHops = null;
+  cachedHopsRaw = undefined;
+}
+
+/**
+ * Normalize an address so the SAME client always produces the SAME string —
+ * a throttle key that differs by `::ffff:` prefix or an ephemeral source port
+ * would fragment the counter exactly like the bugs above.
+ */
+function normalizeIp(value: string): string | null {
+  let v = value.trim();
+  if (!v) return null;
+  // "[2001:db8::1]:443" → "2001:db8::1"
+  const bracketed = v.match(/^\[(.+)\](?::\d+)?$/);
+  if (bracketed) {
+    v = bracketed[1];
+  } else if (/^\d{1,3}(?:\.\d{1,3}){3}:\d+$/.test(v)) {
+    // "203.0.113.9:51514" → "203.0.113.9" (IPv4 + port). Bare IPv6 keeps its
+    // colons and is deliberately not touched here.
+    v = v.slice(0, v.lastIndexOf(':'));
+  }
+  v = v.toLowerCase();
+  // IPv4-mapped IPv6 ("::ffff:203.0.113.9") → the IPv4 form.
+  const mapped = v.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);
+  if (mapped) v = mapped[1];
+  return v || null;
+}
+
+/** Every X-Forwarded-For entry, left-to-right, across repeated headers. */
+function forwardedForChain(xff: unknown): string[] {
+  // Node collapses duplicate headers into an array. Concatenating in order is
+  // the correct chain — reading only the first element would let an attacker
+  // send a SECOND X-Forwarded-For header to shift our index.
+  const raw = Array.isArray(xff) ? xff.join(',') : xff;
+  if (typeof raw !== 'string' || !raw.length) return [];
+  return raw
+    .split(',')
+    .map((part) => normalizeIp(part))
+    .filter((part): part is string => !!part);
+}
+
 export function clientIpFromRequest(req: unknown): string | null {
   const r = req as
     | {
@@ -44,18 +134,23 @@ export function clientIpFromRequest(req: unknown): string | null {
       }
     | undefined;
   try {
-    const xff = r?.headers?.['x-forwarded-for'];
-    const raw = Array.isArray(xff) ? xff[0] : xff;
-    if (typeof raw === 'string' && raw.length) {
-      const first = raw.split(',')[0]?.trim();
-      if (first) return first;
+    const chain = forwardedForChain(r?.headers?.['x-forwarded-for']);
+    if (chain.length) {
+      // Count from the RIGHT by the trusted-hop count. Clamp at 0 so a
+      // shorter-than-expected chain still yields the leftmost (see note above).
+      const index = Math.max(0, chain.length - trustedProxyHopCount());
+      const chosen = chain[index];
+      if (chosen) return chosen;
     }
   } catch {
     /* fall through to req.ip / socket below */
   }
+  // No usable XFF: not behind the proxy chain at all (direct hit, tests,
+  // in-cluster probes). `req.ip` then IS the peer address rather than a
+  // rotating hop, so it is the right fallback.
   const ip = r?.ip;
-  if (typeof ip === 'string' && ip.length) return ip;
+  if (typeof ip === 'string' && ip.length) return normalizeIp(ip);
   const sock = r?.socket?.remoteAddress;
-  if (typeof sock === 'string' && sock.length) return sock;
+  if (typeof sock === 'string' && sock.length) return normalizeIp(sock);
   return null;
 }

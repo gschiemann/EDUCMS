@@ -2,7 +2,14 @@ import { Injectable, Logger, NotFoundException, BadRequestException, Unauthorize
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppRole } from '@cms/database';
-import { SsoConfigDto, SsoCallbackProfile, SsoProvider } from './sso.types';
+import {
+  SsoConfigDto,
+  SsoCallbackProfile,
+  SsoProvider,
+  SSO_ASSIGNABLE_DEFAULT_ROLES,
+  SSO_FALLBACK_DEFAULT_ROLE,
+} from './sso.types';
+import { assertTenantScopedRoleAssignable } from '../auth/role-assignment';
 import { encryptSecret, decryptSecret } from './sso.crypto';
 
 /**
@@ -82,6 +89,29 @@ export class SsoService {
     if (dto.provider !== 'SAML' && dto.provider !== 'OIDC') {
       throw new BadRequestException('provider must be SAML or OIDC');
     }
+
+    // ── ACC-01 (2026-08-01) — PRIVILEGE-ESCALATION GATE ─────────────────
+    // `defaultRole` is a STANDING ROLE GRANT: every user this config
+    // auto-provisions is created with it (resolveOrProvisionUser →
+    // user.create({ role: config.defaultRole })). Setting it is therefore a
+    // role ASSIGNMENT and must obey the same policy as /users and the invite
+    // flow. Until this fix the SSO module never called the role-assignment
+    // policy at ALL, so the chain was:
+    //   POST /signup            → self-serve DISTRICT_ADMIN, ACTIVE, no review
+    //   POST /tenants/:me/sso   → {defaultRole:'SUPER_ADMIN', autoProvision:true,
+    //                              oidcIssuer:'https://idp.attacker.example'}
+    //   log in via own IdP      → SUPER_ADMIN JWT → RbacGuard passes everything,
+    //                             requireTenantId() returns null (no tenant
+    //                             filter), /emergency/trigger against ANY scope.
+    // Checked BEFORE any write so a rejected config leaves no partial state.
+    const requestedDefaultRole = dto.defaultRole ?? SSO_FALLBACK_DEFAULT_ROLE;
+    await this.assertMayGrantSsoDefaultRole(
+      tenantId,
+      requestedDefaultRole,
+      actorUserId,
+      actorRole,
+    );
+
     const data: any = {
       provider: dto.provider,
       enabled: !!dto.enabled,
@@ -95,48 +125,18 @@ export class SsoService {
       autoProvision: !!dto.autoProvision,
     };
 
-    // SECURITY (Audit 04-comms-auth F-1, CVE-2025-54419 interim control):
-    // arming SAML (enabled:true on provider:'SAML') exposes the
-    // UNAUTHENTICATED validateSamlCallback → passport-saml@3
-    // `validatePostResponse` path, which carries the unpatched
-    // signature-wrapping CVE (no patched 3.x; the fix is the
-    // API-incompatible @node-saml/passport-saml v5 migration — task #199).
-    // Until that migration lands, only SUPER_ADMIN may flip a SAML config
-    // ON. A DISTRICT_ADMIN may still CREATE/STORE SAML settings (cert,
-    // metadataUrl, entityId, etc.) but cannot enable (arm) them. OIDC is
-    // unaffected — its callback uses openid-client, not passport-saml.
-    // Both the allowed and the denied enable attempt are audit-logged.
+    // ── ARM-A-LOGIN-PATH GATE (SAML: F-1 / CVE-2025-54419. OIDC: ACC-01) ──
+    // Flipping `enabled:true` makes an EXTERNAL identity provider
+    // authoritative for who may sign in to this tenant. That is the single
+    // most powerful login-hijack action in the product and BOTH providers now
+    // pass an explicit, audit-logged authorization step before it takes.
+    // Before ACC-01 only SAML had one — the asymmetry WAS the bug: the OIDC
+    // branch had no arm check at all, so the route decorator was the only
+    // gate. See assertMayArmLoginPath for the per-provider rules.
     const isSamlEnableAttempt = data.provider === 'SAML' && data.enabled === true;
-    if (isSamlEnableAttempt && actorRole !== 'SUPER_ADMIN') {
-      // Forensic record of the denied arm attempt (best-effort; never let a
-      // logging failure mask the deny — the throw below is the security gate).
-      try {
-        await this.prisma.client.auditLog.create({
-          data: {
-            tenantId,
-            userId: actorUserId ?? null,
-            action: 'SSO_SAML_ENABLE_DENIED',
-            targetType: 'TenantSSOConfig',
-            targetId: tenantId,
-            details: JSON.stringify({
-              reason: 'SAML enable requires SUPER_ADMIN (CVE-2025-54419 interim control)',
-              actorRole: actorRole ?? null,
-              entityId: data.entityId,
-              acsUrl: data.acsUrl,
-              metadataUrl: data.metadataUrl,
-            }),
-          },
-        });
-      } catch (err) {
-        this.logger.warn(
-          `Failed to write SSO_SAML_ENABLE_DENIED audit log: ${(err as Error).message}`,
-        );
-      }
-      throw new ForbiddenException(
-        'Enabling SAML SSO requires a SUPER_ADMIN. A pending security upgrade ' +
-          '(CVE-2025-54419) gates this; you may save the SAML configuration with ' +
-          'it disabled, then ask a platform admin to enable it.',
-      );
+    const isOidcEnableAttempt = data.provider === 'OIDC' && data.enabled === true;
+    if (isSamlEnableAttempt || isOidcEnableAttempt) {
+      await this.assertMayArmLoginPath(tenantId, data, dto, actorUserId, actorRole);
     }
     // Only re-encrypt secrets when the caller explicitly sends a new value.
     const x509CertChanged = dto.x509Cert !== undefined;
@@ -203,8 +203,182 @@ export class SsoService {
           },
         });
       }
+      // ACC-01: same distinct forensic row for an ALLOWED OIDC arm. An
+      // armed OIDC path can auto-provision accounts, so "when did this
+      // tenant point its login at issuer X, and who did it" must be a
+      // first-class, immutable question — not an inference from a generic
+      // SSO_CONFIG_UPSERT row.
+      if (isOidcEnableAttempt) {
+        await tx.auditLog.create({
+          data: {
+            tenantId,
+            userId: actorUserId ?? null,
+            action: 'SSO_OIDC_ENABLE_ALLOWED',
+            targetType: 'TenantSSOConfig',
+            targetId: tenantId,
+            details: JSON.stringify({
+              actorRole: actorRole ?? null,
+              oidcIssuer: data.oidcIssuer,
+              oidcClientId: data.oidcClientId,
+              autoProvision: data.autoProvision,
+              defaultRole: data.defaultRole,
+              allowedEmailDomain: data.allowedEmailDomain,
+            }),
+          },
+        });
+      }
       return result;
     });
+  }
+
+  /**
+   * ACC-01 layer 1+3 — may `actorRole` make `targetRole` the SSO
+   * auto-provisioning default for this tenant?
+   *
+   * Delegates to the shared tenant-scoped policy so SSO can never drift from
+   * /users + invites again:
+   *   - SUPER_ADMIN is NEVER assignable from this (tenant-scoped) surface;
+   *   - the caller must outrank the target (a DISTRICT_ADMIN cannot mint
+   *     another DISTRICT_ADMIN, let alone a SUPER_ADMIN);
+   *   - an unidentified caller fails CLOSED.
+   * The denial is audit-logged before it throws (best-effort — a logging
+   * failure must never mask the deny; the throw is the security gate).
+   */
+  private async assertMayGrantSsoDefaultRole(
+    tenantId: string,
+    targetRole: string,
+    actorUserId?: string | null,
+    actorRole?: string | null,
+  ): Promise<void> {
+    try {
+      assertTenantScopedRoleAssignable(actorRole, targetRole, 'SSO defaultRole');
+    } catch (err) {
+      await this.bestEffortAudit(tenantId, actorUserId, 'SSO_DEFAULT_ROLE_DENIED', {
+        reason: (err as Error).message,
+        actorRole: actorRole ?? null,
+        requestedDefaultRole: targetRole,
+      });
+      throw err;
+    }
+  }
+
+  /**
+   * The "may this actor ARM a login path" gate, for BOTH providers.
+   *
+   * SAML — unchanged SUPER_ADMIN-only control (Audit 04-comms-auth F-1):
+   *   arming SAML exposes the UNAUTHENTICATED validateSamlCallback →
+   *   passport-saml@3 `validatePostResponse` path, which carries the
+   *   unpatched signature-wrapping CVE-2025-54419 (no patched 3.x; the fix is
+   *   the API-incompatible @node-saml/passport-saml v5 migration, task #199).
+   *   A DISTRICT_ADMIN may still CREATE/STORE SAML settings but not arm them.
+   *
+   * OIDC — new in ACC-01. Not SUPER_ADMIN-only: a district admin configuring
+   *   their own Okta/Entra tenant is a legitimate, supported flow and
+   *   downgrading it to "file a ticket with the vendor" would be a real
+   *   feature regression. What it DOES require is that the arm be a
+   *   deliberate, complete, audited act:
+   *     - the actor holds a role that may own a tenant's login path
+   *       (SUPER_ADMIN / DISTRICT_ADMIN) — belt to the route decorator;
+   *     - the config is COMPLETE (issuer + clientId + a client secret, either
+   *       supplied now or already stored). Arming a half-configured path used
+   *       to silently fall through `buildOidcLoginUrl`'s catch to a STUB
+   *       authorize URL — a login that looks armed and is not;
+   *     - the `defaultRole` gate above has already passed, so an armed path
+   *       can never provision above the arming actor.
+   *   Denials are audit-logged with the precise reasons.
+   */
+  private async assertMayArmLoginPath(
+    tenantId: string,
+    data: { provider: string; oidcIssuer: string | null; oidcClientId: string | null; entityId: string | null; acsUrl: string | null; metadataUrl: string | null },
+    dto: SsoConfigDto,
+    actorUserId?: string | null,
+    actorRole?: string | null,
+  ): Promise<void> {
+    if (data.provider === 'SAML') {
+      if (actorRole !== AppRole.SUPER_ADMIN) {
+        await this.bestEffortAudit(tenantId, actorUserId, 'SSO_SAML_ENABLE_DENIED', {
+          reason: 'SAML enable requires SUPER_ADMIN (CVE-2025-54419 interim control)',
+          actorRole: actorRole ?? null,
+          entityId: data.entityId,
+          acsUrl: data.acsUrl,
+          metadataUrl: data.metadataUrl,
+        });
+        throw new ForbiddenException(
+          'Enabling SAML SSO requires a SUPER_ADMIN. A pending security upgrade ' +
+            '(CVE-2025-54419) gates this; you may save the SAML configuration with ' +
+            'it disabled, then ask a platform admin to enable it.',
+        );
+      }
+      return;
+    }
+
+    // OIDC
+    if (actorRole !== AppRole.SUPER_ADMIN && actorRole !== AppRole.DISTRICT_ADMIN) {
+      await this.bestEffortAudit(tenantId, actorUserId, 'SSO_OIDC_ENABLE_DENIED', {
+        reason: 'role_may_not_arm_a_login_path',
+        actorRole: actorRole ?? null,
+        oidcIssuer: data.oidcIssuer,
+      });
+      throw new ForbiddenException(
+        'Enabling OIDC SSO requires a district administrator or a platform admin.',
+      );
+    }
+
+    // "Will this config have a usable client secret after the write?" — the
+    // caller may be arming a config whose secret was stored on an earlier
+    // save (the DTO omits `oidcClientSecret` to mean "leave it alone").
+    let willHaveClientSecret = !!dto.oidcClientSecret;
+    if (dto.oidcClientSecret === undefined) {
+      const existing = await this.prisma.client.tenantSSOConfig.findUnique({
+        where: { tenantId },
+        select: { oidcClientSecret: true },
+      });
+      willHaveClientSecret = !!existing?.oidcClientSecret;
+    }
+
+    const missing: string[] = [];
+    if (!data.oidcIssuer) missing.push('oidcIssuer');
+    if (!data.oidcClientId) missing.push('oidcClientId');
+    if (!willHaveClientSecret) missing.push('oidcClientSecret');
+    if (missing.length) {
+      await this.bestEffortAudit(tenantId, actorUserId, 'SSO_OIDC_ENABLE_DENIED', {
+        reason: 'incomplete_oidc_config',
+        missing,
+        actorRole: actorRole ?? null,
+        oidcIssuer: data.oidcIssuer,
+      });
+      throw new BadRequestException(
+        `OIDC SSO cannot be enabled until it is fully configured. Missing: ${missing.join(', ')}. ` +
+          'Save the configuration with these fields set, then enable it.',
+      );
+    }
+  }
+
+  /**
+   * Forensic write that must never mask the security decision it records.
+   * A failed audit is logged at warn (visible, per the 2026-05-21
+   * safeguard-theater lesson) and swallowed — the caller's throw is the gate.
+   */
+  private async bestEffortAudit(
+    tenantId: string,
+    actorUserId: string | null | undefined,
+    action: string,
+    details: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorUserId ?? null,
+          action,
+          targetType: 'TenantSSOConfig',
+          targetId: tenantId,
+          details: JSON.stringify(details),
+        },
+      });
+    } catch (err) {
+      this.logger.warn(`Failed to write ${action} audit log: ${(err as Error).message}`);
+    }
   }
 
   async deleteConfig(tenantId: string, actorUserId?: string | null) {
@@ -389,8 +563,16 @@ export class SsoService {
     expected?: { state?: string; nonce?: string },
   ): Promise<SsoCallbackProfile> {
     const { config } = await this.getConfigByTenantSlug(tenantSlug);
-    if (!config || config.provider !== 'OIDC') {
-      throw new BadRequestException('OIDC SSO is not configured');
+    // ACC-04 (2026-08-01): the `enabled` flag MUST gate the callback, not just
+    // the login-initiation. Before this fix `buildOidcLoginUrl` required
+    // `enabled` but THIS method — the unauthenticated endpoint that actually
+    // turns an IdP assertion into a session — only checked the provider. So
+    // turning OIDC SSO off in the dashboard did not turn OIDC LOGIN off: an
+    // attacker (or a stale bookmark) could still drive the IdP round-trip
+    // directly against the callback URL and be issued a token. Now every OIDC
+    // path agrees on one switch. Mirrors the SAML callback's enabled-gate.
+    if (!config || config.provider !== 'OIDC' || !config.enabled) {
+      throw new BadRequestException('OIDC SSO is not enabled for this tenant');
     }
     // CSRF / code-injection hardening (audit 2026-05-31, §10 F-2): the callback
     // MUST carry the state+nonce we stored at login-initiation (persisted in the
@@ -463,13 +645,37 @@ export class SsoService {
           );
         }
       }
+      // ── ACC-01 DEFENCE IN DEPTH — clamp the STORED defaultRole ─────────
+      // The write-side gate (upsertConfig) is the primary control, but this
+      // is the site that actually mints privilege, and it must be safe on its
+      // own: a row poisoned BEFORE this fix shipped, restored from an old
+      // backup, or written by a direct SQL/Studio edit must still not be able
+      // to provision a platform-owner. Anything outside the tenant-assignable
+      // ceiling is refused and downgraded to the read-only fallback, loudly.
+      const storedDefaultRole = String(config.defaultRole || '');
+      let provisionRole: string = SSO_FALLBACK_DEFAULT_ROLE;
+      if (SSO_ASSIGNABLE_DEFAULT_ROLES.includes(storedDefaultRole as never)) {
+        provisionRole = storedDefaultRole;
+      } else if (storedDefaultRole) {
+        this.logger.error(
+          `SSO auto-provision REFUSED stored defaultRole "${storedDefaultRole}" for tenant ` +
+            `${tenantId} (outside the tenant-assignable ceiling). Provisioning ${email} as ` +
+            `${SSO_FALLBACK_DEFAULT_ROLE} instead. Inspect this tenant's SSO config NOW.`,
+        );
+        await this.bestEffortAudit(tenantId, null, 'SSO_DEFAULT_ROLE_CLAMPED', {
+          storedDefaultRole,
+          provisionedAs: SSO_FALLBACK_DEFAULT_ROLE,
+          email,
+        });
+      }
+
       user = await this.prisma.client.user.create({
         data: {
           tenantId,
           email,
           // Random unusable password hash — SSO users cannot password-login.
           passwordHash: `sso:${Math.random().toString(36).slice(2)}:${Date.now()}`,
-          role: config.defaultRole || 'RESTRICTED_VIEWER',
+          role: provisionRole,
         },
       });
     } else if (user.tenantId !== tenantId) {
@@ -522,6 +728,28 @@ export class SsoService {
   /**
    * Full callback happy-path: validate provider response, resolve/provision
    * user, mint JWT, audit-log the event.
+   *
+   * ── ACC-03, MFA ON THE SSO PATH: A DELIBERATE DELEGATION ───────────────
+   * This path does NOT run the local TOTP second factor, and that is an
+   * INTENTIONAL, recorded decision — not the accidental bypass the audit
+   * flagged. In SSO the identity provider is the authenticator: the tenant's
+   * Okta / Entra / Google Workspace enforces its own MFA policy (and usually a
+   * stronger one than ours — device trust, conditional access, phishing-
+   * resistant factors). Re-challenging for a VenueOS TOTP after the IdP has
+   * already asserted the user would (a) double-prompt every SSO customer,
+   * and (b) be strictly weaker than what the IdP already did, while pushing
+   * districts to keep a second factor secret in two places.
+   *
+   * The obligations this delegation creates, and where they are met:
+   *   - the SSO path must be ARMED deliberately  → assertMayArmLoginPath;
+   *   - it must be revocable in one switch       → the `enabled` gate below
+   *                                                (ACC-04);
+   *   - it must not out-provision its operator   → the defaultRole gates;
+   *   - it must be attributable                  → the SSO_LOGIN row records
+   *                                                `mfa: 'delegated-to-idp'`.
+   * `User.mfaRequired` is therefore enforced on the PASSWORD path only (see
+   * AuthService.login). If a tenant ever needs a VenueOS-side factor ON TOP of
+   * their IdP, that is a new feature (step-up on SSO), not a bug fix.
    */
   async completeSsoLogin(
     tenantSlug: string,
@@ -529,8 +757,19 @@ export class SsoService {
     profile: SsoCallbackProfile,
   ) {
     const { tenant, config } = await this.getConfigByTenantSlug(tenantSlug);
-    if (!config || config.provider !== provider) {
-      throw new BadRequestException(`${provider} is not configured for this tenant`);
+    // ACC-04: `enabled` is the kill switch for the whole provider, checked
+    // here too so it holds no matter which callback route got us here.
+    if (!config || config.provider !== provider || !config.enabled) {
+      throw new BadRequestException(`${provider} SSO is not enabled for this tenant`);
+    }
+    // ACC-05: an ARCHIVED tenant is a retired one. Its users must not be able
+    // to obtain a fresh session by any route — password (AuthService) or SSO
+    // (here). Without this, archiving a location left every one of its
+    // accounts able to log in and, for an admin, to fire an emergency.
+    if ((tenant as any).archivedAt) {
+      throw new UnauthorizedException(
+        'This workspace has been archived. Contact your administrator to restore it.',
+      );
     }
     const user = await this.resolveOrProvisionUser(tenant.id, profile);
     const minted = await this.mintJwtForUser(user);
@@ -544,7 +783,13 @@ export class SsoService {
           action: 'SSO_LOGIN',
           targetType: 'User',
           targetId: user.id,
-          details: JSON.stringify({ provider, email: profile.email }),
+          details: JSON.stringify({
+            provider,
+            email: profile.email,
+            // ACC-03: make the delegation explicit in the forensic trail, so
+            // "was a second factor involved?" is answerable per login.
+            mfa: 'delegated-to-idp',
+          }),
         },
       });
     } catch (err) {

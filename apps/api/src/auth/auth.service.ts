@@ -51,11 +51,27 @@ export class AuthService {
    * then auto-upgrades the hash.
    */
   async validateUser(email: string, pass: string): Promise<any> {
-    const found = await this.prisma.client.user.findUnique({ where: { email } });
+    const found = await this.prisma.client.user.findUnique({
+      where: { email },
+      // ACC-05 (2026-08-01): pull the owning tenant's archive state in the
+      // SAME query the login already makes — zero extra round-trips on the
+      // hot auth path. `archivedAt` is the soft-delete marker for a retired
+      // location; a user of an archived tenant must not be able to obtain a
+      // session (see the deletedAt precedent immediately below).
+      include: { tenant: { select: { archivedAt: true } } },
+    });
     // 2026-06-16 — a soft-deleted user must never authenticate. The delete
     // path also anonymizes the email, but defend in depth: treat a deletedAt
     // row as no-user so the timing-equalized dummy-verify branch still runs.
-    const user = found && !(found as any).deletedAt ? found : null;
+    //
+    // ACC-05 — likewise for a user whose TENANT is archived. Archiving a
+    // tenant used to be a display-layer change only: every one of its users
+    // could still log in, and an admin among them could still fire
+    // /emergency/trigger at real screens. Folded into the same null-out so it
+    // inherits the timing-equalized branch below and cannot be used to
+    // distinguish "archived tenant" from "wrong password".
+    const tenantArchived = !!(found as any)?.tenant?.archivedAt;
+    const user = found && !(found as any).deletedAt && !tenantArchived ? found : null;
     if (!user) {
       // auth-BUG-006: even though we have nothing to verify, run a
       // dummy argon2.verify so the response time matches the
@@ -91,7 +107,9 @@ export class AuthService {
     try {
       const isValid = await argon2.verify(user.passwordHash, pass, cryptoPlatformConfig);
       if (isValid) {
-        const { passwordHash, ...result } = user;
+        // Drop the hash AND the joined tenant row — callers want the user
+        // shape they had before ACC-05 added the archive join.
+        const { passwordHash, tenant, ...result } = user as any;
         return result;
       }
     } catch {
@@ -130,6 +148,39 @@ export class AuthService {
     }
   }
 
+  /**
+   * Mint a session JWT whose `iat` is PINNED to `iatSeconds` (ACC-02).
+   *
+   * Needed by the credential-change flows. Those revoke every live token for
+   * the user by stamping a per-user "invalid-before" epoch (RedisService.
+   * markUserTokensInvalid), which JwtAuthGuard enforces as `iat < epoch →
+   * reject`. A replacement token signed with the ambient clock would land on
+   * `iat === floor(now)` while the epoch is `floor(now) + 1`, so the guard
+   * would reject the token we JUST issued and bounce the user to the login
+   * screen the instant they changed their password. Pinning `iat` to the
+   * revocation epoch makes the new session the first valid one after the cut
+   * — every OTHER live token is strictly older and stays revoked.
+   *
+   * (jsonwebtoken honors an `iat` supplied in the payload; verified against
+   * the installed version rather than assumed.)
+   */
+  signSessionToken(
+    user: { id: string; email: string; tenantId: string; role: string; canTriggerPanic?: boolean },
+    opts: { iatSeconds: number; rememberMe?: boolean },
+  ): string {
+    return this.jwtService.sign(
+      {
+        sub: user.id,
+        email: user.email,
+        tenantId: user.tenantId,
+        role: user.role,
+        canTriggerPanic: !!user.canTriggerPanic,
+        iat: opts.iatSeconds,
+      },
+      opts.rememberMe ? { expiresIn: '30d' } : undefined,
+    );
+  }
+
   async login(user: any, rememberMe?: boolean) {
     // P0-4 (audit 2026-05-27) — if MFA is enabled on this user we
     // STOP the normal session creation here and return a short-lived
@@ -145,6 +196,29 @@ export class AuthService {
     if (user?.mfaTotpVerifiedAt) {
       return {
         mfaRequired: true,
+        mfaToken: issueMfaChallengeToken(this.jwtService, user.id, rememberMe),
+      };
+    }
+
+    // ── ACC-03 (2026-08-01) — `User.mfaRequired` IS NOW ENFORCED ──────────
+    // `mfaRequired` shipped as a schema column with an "admin can force 2FA
+    // on this user" comment and NO reader anywhere in the API or the web app
+    // — a policy switch that did literally nothing. An admin who turned it on
+    // believed the account was protected; it was not. Now: if the policy is
+    // set and the user has NOT completed TOTP enrollment, password alone does
+    // NOT produce a session. They get the same short-lived challenge token as
+    // the normal MFA path, flagged `mfaEnrollmentRequired`, and must finish
+    // enrollment through POST /auth/mfa/required/{enroll,verify} — which
+    // returns the real session on success. Enrollment is reachable WITHOUT a
+    // session precisely so a required-MFA user is never locked out (they
+    // cannot call the session-gated /enroll to get in).
+    //
+    // SSO is deliberately exempt — the IdP is the authenticator there. That
+    // decision and its obligations are recorded on SsoService.completeSsoLogin.
+    if (user?.mfaRequired) {
+      return {
+        mfaRequired: true,
+        mfaEnrollmentRequired: true,
         mfaToken: issueMfaChallengeToken(this.jwtService, user.id, rememberMe),
       };
     }

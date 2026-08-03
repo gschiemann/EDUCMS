@@ -42,6 +42,44 @@ export class ApiKeysService {
   ];
 
   /**
+   * Default key lifetime when the operator doesn't pick one (ACC-06,
+   * 2026-08-01).
+   *
+   * `expiresAt` was nullable and the UI's "no expiry" was the path of least
+   * resistance, so the common case was a bearer credential that NEVER expired
+   * — pasted into a CI config or a vendor portal and valid forever, long after
+   * the integration or the employee who created it was gone. Keys now expire
+   * by default; an operator who wants a shorter life can still pass one, and
+   * rotation is a two-click mint + revoke.
+   */
+  static readonly DEFAULT_EXPIRY_DAYS = 90;
+
+  /**
+   * Hard ceiling on a requested lifetime. Stops "expiry" from being defeated
+   * by asking for the year 9999 — a credential this powerful should be
+   * rotated at least annually.
+   */
+  static readonly MAX_EXPIRY_DAYS = 365;
+
+  private static readonly DAY_MS = 24 * 60 * 60 * 1000;
+
+  /**
+   * Resolve the effective expiry: default when unset, clamped to the ceiling,
+   * and rejected outright when already in the past (a key born expired is an
+   * operator mistake worth surfacing, not silently honoring).
+   */
+  static resolveExpiry(requested?: Date | null, now: number = Date.now()): Date {
+    const ceiling = new Date(now + ApiKeysService.MAX_EXPIRY_DAYS * ApiKeysService.DAY_MS);
+    if (!requested) {
+      return new Date(now + ApiKeysService.DEFAULT_EXPIRY_DAYS * ApiKeysService.DAY_MS);
+    }
+    if (requested.getTime() <= now) {
+      throw new BadRequestException('Expiry must be in the future.');
+    }
+    return requested.getTime() > ceiling.getTime() ? ceiling : requested;
+  }
+
+  /**
    * Mint a new API key for a tenant. Returns the plaintext token
    * ONCE; the caller must surface it to the operator immediately
    * (clipboard-copy pattern) because the DB only stores the hash.
@@ -63,6 +101,9 @@ export class ApiKeysService {
       );
     }
 
+    // ACC-06 — every key gets a real expiry (default 90d, hard cap 365d).
+    const expiresAt = ApiKeysService.resolveExpiry(opts.expiresAt);
+
     // 16 random bytes = 32 hex chars = ~128 bits of entropy. Plenty.
     const hex = randomBytes(16).toString('hex');
     const fullToken = `vos_${hex}`;
@@ -77,7 +118,7 @@ export class ApiKeysService {
           prefix,
           hashedSecret,
           role,
-          expiresAt: opts.expiresAt ?? null,
+          expiresAt,
           createdByUserId: opts.actorUserId,
         },
       });

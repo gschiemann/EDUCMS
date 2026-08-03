@@ -1,7 +1,9 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
+  Logger,
   UnauthorizedException,
   Optional,
 } from '@nestjs/common';
@@ -9,11 +11,50 @@ import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 
 import { RedisService } from '../realtime/redis.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { requireSecret } from '../security/required-secret';
+import { clientIpFromRequest } from '../security/client-ip';
 import { ApiKeysService } from '../api-keys/api-keys.service';
+
+/**
+ * Routes an API key may NEVER reach, no matter what role the key carries
+ * (ACC-06, 2026-08-01).
+ *
+ * A tenant API key is a long-lived bearer string that lives in a script, a CI
+ * secret, or a vendor's integration config. Minted with DISTRICT_ADMIN (the
+ * default the UI offers) it satisfied `@RequireRoles` on POST
+ * /api/v1/emergency/trigger — so a leaked key could put every screen in a
+ * district into LOCKDOWN, and `/emergency/sos` was reachable at CONTRIBUTOR
+ * too. That is a life-safety action; it requires a human identity with a
+ * session, hold-to-trigger UX, and a named actor in the audit trail — none of
+ * which a machine credential has.
+ *
+ * Default-deny by prefix rather than an opt-in scope because `TenantApiKey`
+ * has no scopes column today: a new emergency route is therefore covered the
+ * moment it is added, instead of being exposed until someone remembers to
+ * annotate it. A per-key scope grant is the follow-up (it needs a schema
+ * migration); until then this is the safe default, not a placeholder.
+ */
+export const API_KEY_DENIED_PATH_PREFIXES: readonly string[] = ['/api/v1/emergency'];
+
+/** Paths whose actor's tenant must not be archived (ACC-05). */
+const ARCHIVED_TENANT_DENIED_PATH_PREFIXES: readonly string[] = ['/api/v1/emergency'];
+
+/** How long a tenant's archive state is cached in-process (ms). */
+const ARCHIVE_CHECK_TTL_MS = 30_000;
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
+  private readonly guardLogger = new Logger(JwtAuthGuard.name);
+
+  /**
+   * Short-lived cache of `tenantId → isArchived`. The archive check only runs
+   * on the emergency prefix (a rare, high-stakes route), and archiving is a
+   * deliberate admin action, so a 30s window is a sound trade against adding
+   * a DB round-trip to a life-safety path.
+   */
+  private archiveCache = new Map<string, { archived: boolean; at: number }>();
+
   constructor(
     private jwtService: JwtService,
     private redisService: RedisService,
@@ -21,6 +62,9 @@ export class JwtAuthGuard implements CanActivate {
     // ApiKeysModule isn't imported. In production app.module imports
     // ApiKeysModule globally so this is always present.
     @Optional() private apiKeys?: ApiKeysService,
+    // Optional for the same reason. PrismaModule is @Global in the running
+    // app, so this is always injected there.
+    @Optional() private prisma?: PrismaService,
   ) { }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -43,6 +87,21 @@ export class JwtAuthGuard implements CanActivate {
       if (!verified) {
         throw new UnauthorizedException('Invalid or revoked API key');
       }
+      // ACC-06 — life-safety routes are off-limits to machine credentials.
+      // Checked BEFORE req.user is populated so nothing downstream ever sees
+      // an api-key identity on an emergency request.
+      const path = this.requestPath(request);
+      if (API_KEY_DENIED_PATH_PREFIXES.some((p) => path.startsWith(p))) {
+        this.guardLogger.warn(
+          `API key ${verified.id} (tenant ${verified.tenantId}) was refused on ${path} — ` +
+            `emergency actions require a human session.`,
+        );
+        this.recordApiKeyUse(request, verified, path, 'DENIED');
+        throw new ForbiddenException(
+          'API keys cannot trigger or clear emergency actions. These require a signed-in ' +
+            'user with emergency permissions.',
+        );
+      }
       request['user'] = {
         // No real user — machine identity. id/userId left null so
         // AuditLog rows the API key triggers carry userId:null. The
@@ -54,6 +113,17 @@ export class JwtAuthGuard implements CanActivate {
         tenantId: verified.tenantId,
         apiKeyId: verified.id,
       };
+      // ACC-06 — API-key actions were forensically ANONYMOUS: every AuditLog
+      // row they produced carried `userId: null` and no key reference, and
+      // `AuditLog` has no apiKeyId column to carry one. Rather than leave
+      // "which key did this?" unanswerable, the guard writes its OWN
+      // attributable row for each state-changing API-key request. Correlating
+      // by (tenantId, timestamp) then resolves any anonymous action row to a
+      // specific key, IP and route. Reads are skipped — this is about
+      // attributing CHANGES, and logging every GET would be noise.
+      if (this.isMutating(request)) {
+        this.recordApiKeyUse(request, verified, path, 'ALLOWED');
+      }
       return true;
     }
 
@@ -159,6 +229,11 @@ export class JwtAuthGuard implements CanActivate {
           districtId: payload.districtId,
           schoolId: payload.schoolId || payload.tenantId,
           canTriggerPanic: payload.canTriggerPanic,
+          // ACC-07 — surface the CURRENT session's clock so any route that
+          // re-mints a token (tenant switch) can cap the new token at the
+          // remaining lifetime instead of silently extending it.
+          tokenIat: typeof payload.iat === 'number' ? payload.iat : undefined,
+          tokenExp: typeof payload.exp === 'number' ? payload.exp : undefined,
         };
       }
     } catch (error) {
@@ -168,7 +243,113 @@ export class JwtAuthGuard implements CanActivate {
       }
       throw new UnauthorizedException('Invalid or expired authentication token');
     }
+
+    // ACC-05 — an ARCHIVED tenant must not be able to fire a life-safety
+    // action. Login is already blocked for archived tenants and archiving
+    // revokes the tenant's live sessions, so reaching here means an edge case
+    // (a tenant archived by a direct DB/script write that bypassed the
+    // controller). This is the runtime backstop for exactly that.
+    await this.assertActorTenantNotArchived(request);
+
     return true;
+  }
+
+  /** Lower-cased request path, without query string. Never throws. */
+  private requestPath(request: Request): string {
+    const raw =
+      (request as any)?.originalUrl ?? (request as any)?.url ?? (request as any)?.path ?? '';
+    return String(raw).split('?')[0].toLowerCase();
+  }
+
+  private isMutating(request: Request): boolean {
+    const method = String((request as any)?.method || 'GET').toUpperCase();
+    return method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS';
+  }
+
+  /**
+   * Attributable forensic row for an API-key request (ACC-06). Fire-and-forget
+   * — the auth path must never block or fail on an audit write.
+   */
+  private recordApiKeyUse(
+    request: Request,
+    verified: { id: string; tenantId: string; role: string },
+    path: string,
+    outcome: 'ALLOWED' | 'DENIED',
+  ): void {
+    if (!this.prisma) return;
+    const details = JSON.stringify({
+      apiKeyId: verified.id,
+      role: verified.role,
+      method: String((request as any)?.method || '').toUpperCase(),
+      path,
+      outcome,
+      ip: clientIpFromRequest(request),
+      ua: ((request.headers?.['user-agent'] as string | undefined) || '').slice(0, 256),
+    });
+    this.prisma.client.auditLog
+      .create({
+        data: {
+          tenantId: verified.tenantId,
+          // No user — this IS the point of the row: the key is the actor, and
+          // `details.apiKeyId` names it.
+          userId: null,
+          action: outcome === 'DENIED' ? 'API_KEY_REQUEST_DENIED' : 'API_KEY_REQUEST',
+          targetType: 'TenantApiKey',
+          targetId: verified.id,
+          details,
+        },
+      })
+      .catch((e: any) =>
+        this.guardLogger.warn(`API-key audit row failed: ${e?.message ?? e}`),
+      );
+  }
+
+  /**
+   * ACC-05 — refuse emergency actions from a user whose tenant is archived.
+   *
+   * AVAILABILITY NOTE (deliberate): if the lookup itself FAILS we ALLOW and
+   * log at ERROR. This is a housekeeping control (a retired location), not a
+   * threat gate, and a life-safety product must never let a DB hiccup be the
+   * reason a lockdown does not fire. A truly-down database fails the trigger
+   * downstream anyway (it writes Tenant + AuditLog), so allowing here
+   * forfeits nothing. Contrast the token-revocation checks above, which fail
+   * CLOSED because there the check IS the security boundary.
+   */
+  private async assertActorTenantNotArchived(request: Request): Promise<void> {
+    const path = this.requestPath(request);
+    if (!ARCHIVED_TENANT_DENIED_PATH_PREFIXES.some((p) => path.startsWith(p))) return;
+    const user = (request as any).user;
+    const tenantId: string | undefined = user?.tenantId;
+    if (!tenantId || !this.prisma) return;
+
+    try {
+      const cached = this.archiveCache.get(tenantId);
+      let archived: boolean;
+      if (cached && Date.now() - cached.at < ARCHIVE_CHECK_TTL_MS) {
+        archived = cached.archived;
+      } else {
+        const row = await this.prisma.client.tenant.findUnique({
+          where: { id: tenantId },
+          select: { archivedAt: true },
+        });
+        archived = !!row?.archivedAt;
+        this.archiveCache.set(tenantId, { archived, at: Date.now() });
+      }
+      if (archived) {
+        this.guardLogger.warn(
+          `Refused ${path} for archived tenant ${tenantId} (user ${user?.id ?? 'unknown'}).`,
+        );
+        throw new ForbiddenException(
+          'This workspace is archived. Restore it before triggering emergency actions.',
+        );
+      }
+    } catch (e) {
+      if (e instanceof ForbiddenException) throw e;
+      this.guardLogger.error(
+        `Archived-tenant check failed for ${tenantId} on ${path} (ALLOWING — life-safety ` +
+          `availability): ${e instanceof Error ? e.message : e}`,
+      );
+    }
   }
 
   private extractTokenFromHeader(request: Request): string | undefined {

@@ -3,6 +3,7 @@ import * as argon2 from 'argon2';
 import { randomBytes, createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
+import { RedisService } from '../realtime/redis.service';
 import { assertCallerCanAssignRole } from '../auth/role-assignment';
 import { EmailService } from '../email/email.service';
 import { SampleDataService } from '../sample-data/sample-data.service';
@@ -58,7 +59,46 @@ export class OnboardingService {
     private readonly authService: AuthService,
     private readonly emailService: EmailService,
     private readonly sampleData: SampleDataService,
+    // ACC-02 — password reset must END every live session for that account.
+    // RealtimeModule is @Global, so this resolves without an extra import.
+    private readonly redis: RedisService,
   ) {}
+
+  /**
+   * ACC-02 (2026-08-01) — burn every live session for a user after their
+   * credentials change.
+   *
+   * THE HOLE: `completePasswordReset` rotated `passwordHash` and nothing else.
+   * An attacker holding a stolen JWT (up to 30 days on a rememberMe token)
+   * kept full access AFTER the victim did the one thing every security page
+   * tells them to do. "Reset your password" was not a containment action.
+   *
+   * Stamps the per-user invalid-before epoch that JwtAuthGuard already
+   * enforces (`iat < epoch → 401`) — the exact mechanism the role-downgrade
+   * path uses, reused rather than reinvented.
+   *
+   * Best-effort on the Redis write itself: the password is already rotated and
+   * committed, so throwing here would fail a request whose primary effect
+   * succeeded. A failure is logged at ERROR (not swallowed silently) because a
+   * reset that did not revoke is a security-relevant event an operator must
+   * see. `markUserTokensInvalid` mirrors to Postgres BEFORE touching Redis, so
+   * the revocation survives a Redis outage even on this path.
+   */
+  private async revokeSessionsAfterCredentialChange(
+    userId: string,
+    reason: string,
+  ): Promise<boolean> {
+    try {
+      await this.redis.markUserTokensInvalid(userId);
+      return true;
+    } catch (e: any) {
+      this.logger.error(
+        `Session revocation FAILED after ${reason} for user ${userId}: ${e?.message ?? e}. ` +
+          `The password is changed but pre-existing tokens may remain valid until they expire.`,
+      );
+      return false;
+    }
+  }
 
   /**
    * District self-signup: creates a Tenant + first DISTRICT_ADMIN User, then auto-logs them in.
@@ -284,7 +324,15 @@ export class OnboardingService {
       });
     });
 
-    return { ok: true };
+    // ACC-02 — the reset is only containment if it also ends the attacker's
+    // session. Runs AFTER the transaction commits so we never revoke sessions
+    // for a password change that then rolled back.
+    const sessionsRevoked = await this.revokeSessionsAfterCredentialChange(
+      record.userId,
+      'password reset',
+    );
+
+    return { ok: true, sessionsRevoked };
   }
 
   /**
