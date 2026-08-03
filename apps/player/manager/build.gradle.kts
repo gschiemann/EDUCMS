@@ -15,6 +15,8 @@
  * Same SDK + signing setup as the Player APK so OTA installs of
  * either component upgrade cleanly without signature mismatches.
  */
+import java.io.File
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -112,10 +114,10 @@ android {
     val releaseKeyPassword: String? = (project.findProperty("releaseKeyPassword") as? String)
         ?: System.getenv("RELEASE_KEY_PASSWORD")
 
-    val releaseStore: java.io.File? = releaseStoreFile
+    val releaseStore: File? = releaseStoreFile
         ?.takeIf { it.isNotBlank() }
         ?.let { p ->
-            val f = java.io.File(p)
+            val f = File(p)
             if (f.isAbsolute) f else project.rootProject.file(p)
         }
 

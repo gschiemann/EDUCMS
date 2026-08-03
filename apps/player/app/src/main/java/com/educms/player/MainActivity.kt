@@ -36,6 +36,7 @@ import com.educms.player.databinding.ActivityMainBinding
 import com.educms.player.logging.PlayerLogger
 import com.educms.player.security.HostAllowlist
 import com.educms.player.security.LockTaskController
+import com.educms.player.security.NativeBridgeChannel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 

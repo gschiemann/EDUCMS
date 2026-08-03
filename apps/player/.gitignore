@@ -40,3 +40,8 @@ app/src/main/assets/bundled/
 # being committed. Do NOT add more negations here.
 !app/debug.keystore
 release/
+# Locally-bootstrapped Gradle wrapper (CI bootstraps its own — see
+# android-player-apk.yml "Generate Gradle wrapper if missing").
+gradlew
+gradlew.bat
+gradle/wrapper/
