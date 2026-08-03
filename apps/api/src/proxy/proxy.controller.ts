@@ -3,6 +3,28 @@ import type { Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { safeFetch, SsrfError, FetchTooLargeError } from '../branding/safe-fetch';
 import { RendererService } from './renderer.service';
+import {
+  buildSpatialNavShim,
+  resolveParentOrigins,
+  OPAQUE_STORAGE_POLYFILL,
+} from './spatial-nav-shim';
+
+/**
+ * The proxied frame is now rendered with `sandbox="allow-scripts
+ * allow-popups-to-escape-sandbox"` (NO allow-same-origin) on every client
+ * surface, so the parent can no longer reach into it with
+ * `contentWindow.eval` — which is exactly the hole that closed. The
+ * remote-control spatial-navigation runtime therefore ships INSIDE the
+ * document, injected here. Built once per process: the allowlist comes from
+ * ALLOWED_ORIGINS (server env), never from the request.
+ */
+let cachedSpatialNavShim: string | null = null;
+function spatialNavShim(): string {
+  if (cachedSpatialNavShim === null) {
+    cachedSpatialNavShim = buildSpatialNavShim(resolveParentOrigins());
+  }
+  return cachedSpatialNavShim;
+}
 
 /**
  * Proxy controller for loading external websites in iframes.
@@ -581,7 +603,25 @@ window.addEventListener('load',function(){
 }catch(e){console.warn('proxy shim init failed',e);}})();</script>`;
       }
 
-      const headInjection = `<base href="${baseUrl}"><meta name="color-scheme" content="light only"><style>${proxyForceVisibleCss}</style>${interactiveShim}`;
+      // ─── SPATIAL-NAV SHIM (server-side since 2026-08-02) ──────────────
+      // Injected in BOTH modes. It is appended AFTER the script-strip pass
+      // above (which only runs on the raw upstream HTML), so a static-mode
+      // response keeps it too — matching the old behaviour where the parent
+      // eval'd the shim into either mode.
+      //
+      // It installs INERT: no focus ring, no auto-focus, no MutationObserver
+      // and no key handling until an allowlisted parent sends `arm`. The
+      // dashboard's WEBPAGE preview iframes never arm it, which preserves the
+      // 2026-06-08 "every menu click needs two clicks" fix now that the shim
+      // can no longer be gated by the injector's pathname check.
+      //
+      // The opaque-origin storage shim only matters when the page's own
+      // scripts run (interactive mode) — a null-origin document throws
+      // SecurityError on localStorage, which would otherwise kill a site's
+      // whole bundle at import time and paint a blank signage screen.
+      const navInjection = spatialNavShim() + (interactive ? OPAQUE_STORAGE_POLYFILL : '');
+
+      const headInjection = `<base href="${baseUrl}"><meta name="color-scheme" content="light only"><style>${proxyForceVisibleCss}</style>${navInjection}${interactiveShim}`;
       if (html.includes('<head>')) {
         html = html.replace('<head>', `<head>\n${headInjection}`);
       } else if (html.includes('<HEAD>')) {

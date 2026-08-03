@@ -30,6 +30,24 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useBuilderStore } from '@/components/template-builder/useBuilderStore';
 
+/**
+ * targetOrigin for every parent -> board postMessage.
+ *
+ * INJ-005 (2026-08-02): the board iframe is now `sandbox="allow-scripts"`
+ * with NO `allow-same-origin`, so its effective origin is opaque. A concrete
+ * targetOrigin can never match an opaque origin — the browser silently drops
+ * the message (verified in a real browser: only the '*' post arrived). '*' is
+ * the only value that works.
+ *
+ * Why that is acceptable here: we post to ONE specific `contentWindow` that we
+ * created and whose `src` is a fixed literal under our own /public, the
+ * sandbox denies it top-level navigation (so it cannot navigate itself
+ * somewhere hostile and keep receiving), and the payload is template display
+ * text — not credentials, not tenant data. The inbound direction is bound by
+ * `e.source === iframeRef.current.contentWindow`, which is the real guard.
+ */
+const HOLIDAY_FRAME_TARGET_ORIGIN = '*';
+
 export type HolidayVariant =
   | 'christmas'
   | 'easter'
@@ -169,11 +187,26 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       if (!e.data || typeof e.data !== 'object') return;
-      // Origin check: same origin only (iframe is served from /public).
-      if (e.origin && e.origin !== window.location.origin) return;
-      // Make sure the message came from OUR iframe, not some random
-      // other one mounted on the page.
-      if (iframeRef.current && e.source !== iframeRef.current.contentWindow) return;
+      // ── SOURCE FIRST, then origin (hardened 2026-08-02, INJ-005) ──────
+      // The source check is the load-bearing one: it is the only thing that
+      // distinguishes OUR board from any other frame on the page (a
+      // template-preview iframe, an ad frame, an AI-designer srcdoc frame —
+      // all of which can post an object shaped like `holiday:fieldClicked`).
+      //
+      // It used to be written `if (iframeRef.current && e.source !== …)`,
+      // which SKIPPED the check entirely whenever the ref was null (first
+      // paint, or after unmount but before the listener is torn down). Now it
+      // is unconditional: no iframe, no accepted message.
+      const expectedSource = iframeRef.current?.contentWindow ?? null;
+      if (!expectedSource || e.source !== expectedSource) return;
+      // Origin: the board frame is now a NULL-ORIGIN sandbox (see the iframe
+      // below), so every message it sends arrives with `e.origin === "null"`.
+      // An equality check against our own origin would reject all of them —
+      // which is precisely why the source check above had to become the
+      // load-bearing one. We still refuse any other concrete origin, so a
+      // same-origin frame (if the sandbox is ever changed back) keeps working
+      // and a genuinely foreign origin is still rejected.
+      if (e.origin && e.origin !== 'null' && e.origin !== window.location.origin) return;
       const d: any = e.data;
       if (d.type === 'holiday:ready' && Array.isArray(d.fields)) {
         // Cache the board's live fields keyed by variant+gradeLevel so
@@ -200,7 +233,7 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
           try {
             iframeRef.current?.contentWindow?.postMessage(
               { type: 'holiday:setField', key: k, value: v },
-              window.location.origin,
+              HOLIDAY_FRAME_TARGET_ORIGIN,
             );
           } catch { /* swallow */ }
         });
@@ -209,7 +242,7 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
         try {
           iframeRef.current?.contentWindow?.postMessage(
             { type: 'template-apply-styles', styles: config.__styles || {} },
-            window.location.origin,
+            HOLIDAY_FRAME_TARGET_ORIGIN,
           );
         } catch { /* swallow */ }
         // Re-flush hotspot state — iframe (re)load resets the bridge to
@@ -221,7 +254,7 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
           const enabled = !!(zoneId && selected.includes(zoneId));
           iframeRef.current?.contentWindow?.postMessage(
             { type: 'template-set-hotspots', enabled },
-            window.location.origin,
+            HOLIDAY_FRAME_TARGET_ORIGIN,
           );
         } catch { /* swallow */ }
       } else if (d.type === 'holiday:fieldClicked' && typeof d.key === 'string') {
@@ -266,7 +299,7 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
       try {
         win.postMessage(
           { type: 'holiday:setField', key: k, value: String(v ?? '') },
-          window.location.origin,
+          HOLIDAY_FRAME_TARGET_ORIGIN,
         );
       } catch { /* swallow */ }
     });
@@ -283,7 +316,7 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
     try {
       win.postMessage(
         { type: 'template-apply-styles', styles: styleOverrides || {} },
-        window.location.origin,
+        HOLIDAY_FRAME_TARGET_ORIGIN,
       );
     } catch { /* swallow */ }
   }, [styleOverrides]);
@@ -315,7 +348,7 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
     try {
       win.postMessage(
         { type: 'template-set-hotspots', enabled },
-        window.location.origin,
+        HOLIDAY_FRAME_TARGET_ORIGIN,
       );
     } catch { /* swallow */ }
   }, [selectedIds, src]);
@@ -328,10 +361,39 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
         src={src}
         title={`${variant} ${gradeLevel} holiday template`}
         className="w-full h-full border-0 block"
-        // The HTML is hand-authored by us, served from our own origin.
-        // Sandbox keeps it from running cross-origin scripts but allows
-        // its own scripts (the bridge) + same-origin styles.
-        sandbox="allow-same-origin allow-scripts"
+        // ── INJ-005 (2026-08-02): `allow-same-origin` DROPPED ────────────
+        // The old comment here ("sandbox keeps it from running cross-origin
+        // scripts but allows its own scripts + same-origin styles") was
+        // simply wrong. `allow-same-origin` + `allow-scripts` on a document
+        // served from OUR OWN origin restores full same-origin power: the
+        // frame could read parent.document, our localStorage (device token on
+        // player surfaces) and our cookies. The sandbox was decorative.
+        //
+        // It is now a real null-origin sandbox. The bridge still works —
+        // verified in a real browser against a sandboxed `src=` frame:
+        //   • frame -> parent: the baked bridge posts with
+        //     `window.location.origin`, and for a `src=`-loaded document that
+        //     is still the REAL origin string (only a `srcdoc` frame reports
+        //     "null" there), so the post succeeds and is delivered. No board
+        //     file had to change.
+        //   • parent -> frame: the frame's EFFECTIVE origin is opaque, so a
+        //     concrete targetOrigin never matches and the message is silently
+        //     dropped. Hence HOLIDAY_FRAME_TARGET_ORIGIN ('*') on every
+        //     outbound post above.
+        //   • the parent receives `e.origin === "null"`, so the listener's
+        //     source check (not the origin check) is what binds the channel.
+        //
+        // Nothing else in the boards depends on same-origin: two independent
+        // scans over all 50 files found zero uses of localStorage,
+        // sessionStorage, document.cookie, parent.document, top.location,
+        // indexedDB, <form>, alert/confirm/prompt, window.open or
+        // requestFullscreen — i.e. nothing the sandbox's other default
+        // denials would block either.
+        //
+        // REVIEWER: re-run tests/e2e/holiday-hotzone.spec.ts and the WebKit
+        // cross-browser holiday-bridge suite before merge — those drive the
+        // real boards, which this worktree could not execute.
+        sandbox="allow-scripts"
         loading="lazy"
         // No allow=fullscreen / camera / etc — these are decorative scenes.
       />
