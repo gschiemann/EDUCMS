@@ -5449,20 +5449,20 @@ function PlayerPage() {
                 });
                 setTimeout(() => {
                   try {
-                    const bridge = (window as any).EduCmsNative;
-                    if (bridge && typeof bridge.reload === 'function') {
-                      bridge.reload();
-                    } else {
-                      // CRITICAL (2026-06-28): a plain window.location.reload()
-                      // on the NovaStar/Taurus WebView re-serves the CACHED
-                      // bundle — so an operator hitting "refresh" (or the
-                      // dashboard refresh-web) NEVER pulled new code, and every
-                      // emergency/template fix appeared not to ship. Use the
-                      // cache-busting reload (location.replace + fresh ?_v=) so
-                      // refresh-web actually fetches the current bundle. This is
-                      // the same helper the stale-bundle auto-reload uses.
-                      hardCacheBustingReload();
-                    }
+                    // AND-002 — nativeFire returns false when NO transport
+                    // took the call (browser player / older APK without the
+                    // method), which is exactly when we need the web
+                    // fallback below. It never throws.
+                    //
+                    // CRITICAL (2026-06-28): a plain window.location.reload()
+                    // on the NovaStar/Taurus WebView re-serves the CACHED
+                    // bundle — so an operator hitting "refresh" (or the
+                    // dashboard refresh-web) NEVER pulled new code, and every
+                    // emergency/template fix appeared not to ship. Use the
+                    // cache-busting reload (location.replace + fresh ?_v=) so
+                    // refresh-web actually fetches the current bundle. This is
+                    // the same helper the stale-bundle auto-reload uses.
+                    if (!nativeFire('reload')) hardCacheBustingReload();
                   } catch (e) {
                     console.warn(`[REFRESH_WEB ${corrId}] reload threw:`, (e as Error)?.message);
                   }
@@ -5499,18 +5499,23 @@ function PlayerPage() {
                 // dashboard every step of the way." Surface the
                 // overlay BEFORE the bridge call so the user at the
                 // kiosk sees something happening instantly.
-                let bridgeAvailable = false;
-                try {
-                  const bridge = (window as any).EduCmsNative;
-                  if (bridge && typeof bridge.checkForUpdates === 'function') {
-                    bridgeAvailable = true;
-                    const v = bridge.checkForUpdates();
-                    console.log('[Player] CHECK_FOR_UPDATES relayed to native, currentVersion=', v);
-                  } else {
-                    console.log('[Player] CHECK_FOR_UPDATES ignored — no native bridge (legacy APK or browser player)');
-                  }
-                } catch (e) {
-                  console.warn('[Player] CHECK_FOR_UPDATES bridge call failed', e);
+                // AND-002 — the capability probe stays SYNCHRONOUS so
+                // `bridgeAvailable` is correct for the setOtaProgress call
+                // immediately below (the overlay copy depends on it). The
+                // call itself returns the APK versionName, so it goes
+                // through nativeCall and its log lands a tick later; the
+                // native side has already started the OTA check by then.
+                const bridgeAvailable = nativeHas('checkForUpdates');
+                if (bridgeAvailable) {
+                  nativeCall<string>('checkForUpdates')
+                    .then((v) => {
+                      console.log('[Player] CHECK_FOR_UPDATES relayed to native, currentVersion=', v);
+                    })
+                    .catch((e) => {
+                      console.warn('[Player] CHECK_FOR_UPDATES bridge call failed', e);
+                    });
+                } else {
+                  console.log('[Player] CHECK_FOR_UPDATES ignored — no native bridge (legacy APK or browser player)');
                 }
                 // Show the overlay either way — operator sees that
                 // the message reached the device. If bridge isn't
@@ -6397,19 +6402,14 @@ function PlayerPage() {
   // preview and older APKs keep using the iframe/proxy fallback below.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const bridge = (window as any).EduCmsNative;
-    const showUrlOverlay = typeof bridge?.showUrlOverlay === 'function'
-      ? bridge.showUrlOverlay.bind(bridge)
-      : null;
-    const hideUrlOverlay = typeof bridge?.hideUrlOverlay === 'function'
-      ? bridge.hideUrlOverlay.bind(bridge)
-      : null;
-    if (!showUrlOverlay || !hideUrlOverlay) return;
+    // AND-002 — capability probe is SYNCHRONOUS (nativeHas) so this effect
+    // can bail before doing any work on a browser player / older APK,
+    // exactly as the old `typeof bridge.showUrlOverlay === 'function'`
+    // check did. Both methods are fire-and-forget (nativeFire).
+    if (!nativeHas('showUrlOverlay') || !nativeHas('hideUrlOverlay')) return;
 
     const hide = () => {
-      try { hideUrlOverlay(); } catch (err) {
-        console.warn('[Player] hideUrlOverlay bridge call failed', err);
-      }
+      nativeFire('hideUrlOverlay');
     };
 
     if (phase !== 'playing' || playbackStopped || activeEmergency || sorted.length === 0) {
@@ -6430,11 +6430,7 @@ function PlayerPage() {
       return;
     }
 
-    try {
-      showUrlOverlay(url);
-    } catch (err) {
-      console.warn('[Player] showUrlOverlay bridge call failed', err);
-    }
+    nativeFire('showUrlOverlay', url);
   }, [activeEmergency, currentIndex, isItemValid, phase, playbackStopped, sorted]);
 
   // Shared splash resolution string — used by all three pre-content phases.
@@ -6507,10 +6503,9 @@ function PlayerPage() {
       // doesn't currently expose a Sync button.)
       setTimeout(() => {
         try {
-          const bridge = (window as any).EduCmsNative;
-          if (bridge && typeof bridge.reload === 'function') {
-            bridge.reload();
-          } else if (typeof window !== 'undefined') {
+          // AND-002 — false means no transport took it (browser player /
+          // older APK), which is the web-fallback case.
+          if (!nativeFire('reload') && typeof window !== 'undefined') {
             window.location.reload();
           }
         } catch { /* swallow */ }
@@ -6529,13 +6524,16 @@ function PlayerPage() {
   //      flips exitUnavailable=true so the copy asks the operator
   //      to hit their remote's Home button.
   const handleExitApp = () => {
-    try {
-      const bridge = (window as any).EduCmsNative;
-      if (bridge && typeof bridge.exitToDeviceHome === 'function') {
-        bridge.exitToDeviceHome();
-        return;
-      }
-    } catch { /* fall through */ }
+    // AND-002 — nativeFire is synchronous and total: true means a
+    // transport (secure channel, else legacy object) accepted the call,
+    // false means there is no APK here and we fall through to the web
+    // cascade below. Same shape the try/typeof probe had.
+    //
+    // ⚠️ On a lock-task-pinned kiosk this is THE operator escape hatch —
+    // MainActivity's onExitToDeviceHome lambda calls
+    // LockTaskController.disengage() before it does anything else. Do not
+    // "simplify" this button away.
+    if (nativeFire('exitToDeviceHome')) return;
     try { window.close(); } catch { /* ignore */ }
     setPlaybackStopped(true);
     setExitUnavailable(true);
@@ -6591,14 +6589,9 @@ function PlayerPage() {
 
     // 3. Native bridge → APK wipes DataStore + reloads with empty
     //    token. On non-APK clients (browser tab) fall through to a
-    //    React-only reset.
-    try {
-      const bridge = (window as any).EduCmsNative;
-      if (bridge && typeof bridge.unpair === 'function') {
-        bridge.unpair();
-        return;
-      }
-    } catch { /* fall through to React-only path */ }
+    //    React-only reset. AND-002 — nativeFire returns false exactly
+    //    in that no-APK case and never throws.
+    if (nativeFire('unpair')) return;
     setActiveEmergency(null);
     setPlaybackStopped(false);
     setExitUnavailable(false);
@@ -6632,13 +6625,15 @@ function PlayerPage() {
   //  1. Set otaProgress so the banner switches to "in progress"
   //  2. Call native bridge so OtaUpdateWorker fires
   const handleInstallUpdate = () => {
-    const bridge = (window as any).EduCmsNative;
-    const bridgeAvailable = !!(bridge && typeof bridge.checkForUpdates === 'function');
+    // AND-002 — sync capability probe keeps setOtaProgress's
+    // `bridgeAvailable` (which drives the banner copy) correct on the
+    // same tick, exactly as the old `typeof bridge.checkForUpdates`
+    // check did. The call itself is fire-and-forget here — we don't use
+    // the returned versionName on this path.
+    const bridgeAvailable = nativeHas('checkForUpdates');
     setOtaProgress({ startedAt: Date.now(), bridgeAvailable });
     if (bridgeAvailable) {
-      try { bridge.checkForUpdates(); } catch (err) {
-        console.warn('[Player] self-update bridge call failed', err);
-      }
+      nativeFire('checkForUpdates');
     }
   };
 
@@ -6828,12 +6823,9 @@ function PlayerPage() {
             //    kiosk visibly rotates the moment the operator taps a
             //    button, BEFORE the server has been notified. No round-
             //    trip lag during setup.
-            try {
-              const bridge = (window as any).EduCmsNative;
-              if (bridge && typeof bridge.setOrientation === 'function') {
-                bridge.setOrientation(value);
-              }
-            } catch { /* bridge unavailable — CSS fallback effect handles it */ }
+            // AND-002 — fire-and-forget, never throws. A false return
+            // means no APK here and the CSS fallback effect handles it.
+            nativeFire('setOrientation', value);
             // Drive the active-button highlight + the CSS-fallback
             // effect (which only kicks in for PORTRAIT on Android-API-
             // ignoring ROMs).
@@ -7333,12 +7325,9 @@ function PlayerPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        try {
-                          const bridge = (window as any).EduCmsNative;
-                          if (bridge && typeof bridge.checkForUpdates === 'function') {
-                            bridge.checkForUpdates();
-                          }
-                        } catch { /* swallow */ }
+                        // AND-002 — fire-and-forget; nativeFire never
+                        // throws, so the prompt always advances.
+                        nativeFire('checkForUpdates');
                         setOtaStarting(true);
                       }}
                       className="px-7 py-4 rounded-xl text-lg font-bold text-white bg-indigo-600 hover:bg-indigo-500"
@@ -7755,9 +7744,11 @@ function PlayerPage() {
               // inline natively; X-Frame-Options doesn't apply to
               // file/PDF responses the same way.
               const isPdf = mime === 'application/pdf';
-              const nativeUrlOverlayAvailable = !isPdf &&
-                typeof window !== 'undefined' &&
-                typeof (window as any).EduCmsNative?.showUrlOverlay === 'function';
+              // AND-002 — this is a RENDER gate, so the capability check
+              // must stay synchronous (nativeHas). Awaiting a round trip
+              // here would flash the iframe fallback for a frame before
+              // swapping to the native-overlay placeholder.
+              const nativeUrlOverlayAvailable = !isPdf && nativeHas('showUrlOverlay');
               if (nativeUrlOverlayAvailable) {
                 return (
                   <div
@@ -8627,10 +8618,19 @@ function PlayerPage() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            const bridge = (window as any).EduCmsNative;
-                            if (bridge && typeof bridge.openSettingsForManager === 'function') {
-                              try { bridge.openSettingsForManager(); return; } catch { /* fall through */ }
-                            }
+                            // AND-002 — fire-and-forget; true means a
+                            // transport took it, false means no APK and
+                            // we fall through to the intent: URL below.
+                            //
+                            // NOTE: this button is a NON-device-owner
+                            // affordance (it grants Manager "install
+                            // unknown apps", which a device owner never
+                            // needs). We only ever enter lock task mode
+                            // WHEN Manager is device owner, so the OS
+                            // refusing to launch Settings from a locked
+                            // task cannot strand this path in practice.
+                            // See LockTaskController's header.
+                            if (nativeFire('openSettingsForManager')) return;
                             // Fallback: Android intent URI for
                             // Settings → Apps → Manager → Install
                             // unknown apps. Tries production first,
@@ -8685,13 +8685,12 @@ function PlayerPage() {
                       // Mirror the dashboard's Push flow on-device:
                       // 1) Show progress overlay so operator sees stages.
                       // 2) Call native bridge to trigger OTA worker.
-                      const bridge = (window as any).EduCmsNative;
-                      const bridgeAvailable = !!(bridge && typeof bridge.checkForUpdates === 'function');
+                      // AND-002 — sync probe so the overlay copy is right
+                      // on this tick; the call itself is fire-and-forget.
+                      const bridgeAvailable = nativeHas('checkForUpdates');
                       setOtaProgress({ startedAt: Date.now(), bridgeAvailable });
                       if (bridgeAvailable) {
-                        try { bridge.checkForUpdates(); } catch (err) {
-                          console.warn('[Player] self-update bridge call failed', err);
-                        }
+                        nativeFire('checkForUpdates');
                       }
                     }}
                     className="shrink-0 px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold rounded-xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative"
@@ -8791,12 +8790,9 @@ function PlayerPage() {
                       // a one-shot OTA recheck on Resume so the
                       // banner clears the moment the user comes back
                       // from Settings.
-                      try {
-                        const bridge = (window as any).EduCmsNative;
-                        if (bridge && typeof bridge.checkForUpdates === 'function') {
-                          bridge.checkForUpdates();
-                        }
-                      } catch { /* no-op */ }
+                      // AND-002 — fire-and-forget; never throws, so
+                      // Resume always resumes.
+                      nativeFire('checkForUpdates');
                       setPlaybackStopped(false);
                       setExitUnavailable(false);
                     }}

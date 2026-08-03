@@ -67,6 +67,11 @@ import {
   type SerialSettings,
 } from '@cms/scoreboard-cts';
 import { parseCtsClockToMs } from '@/lib/cts-merge';
+// AND-002 — the ONLY sanctioned way to reach the Android APK. Prefers the
+// origin-scoped `EduCmsNativeChannel`, falls back to the legacy
+// `window.EduCmsNative` object. See nativeBridge.ts for why, and for the
+// criteria that must ALL hold before the legacy surface can be deleted.
+import { nativeCall, nativeCallOr, nativeFire, nativeHas } from '@/app/player/nativeBridge';
 
 // Web Serial API types. We declare minimal shapes locally to avoid
 // pulling @types/w3c-web-serial as a dependency. The runtime shape is
@@ -100,47 +105,39 @@ interface SerialNavigatorLite {
 /**
  * Sprint 13 Phase 2 — native serial bridge surface exposed by the
  * Player APK on Goodview ECBox3576 (and any Android box with a real
- * /dev/ttyS* hardware UART). The APK's WebAppBridge.kt mounts this
- * as `window.EduCmsNative.ctsSerial*` methods; we feature-detect
- * `ctsSerialEnabled()` and swap from Web Serial to native mode if
- * present. Bytes flow back via window.__ctsSerialBytes(base64) which
- * we register on connect.
+ * /dev/ttyS* hardware UART). The APK's WebAppBridge.kt implements the
+ * `ctsSerial*` methods; we feature-detect `ctsSerialEnabled()` and swap
+ * from Web Serial to native mode if present. Bytes flow back via
+ * window.__ctsSerialBytes(base64) which we register on connect.
  *
  * Same CtsParser, same POST, same WS, same orchestrator — bytes path
  * is the only thing that differs.
+ *
+ * ⚠️ AND-002 (2026-08-03) — the local `EduCmsNativeBridge` interface and
+ * the `Window.EduCmsNative` global that used to live here are GONE on
+ * purpose. Every call now goes through `@/app/player/nativeBridge`,
+ * which prefers the origin-scoped `EduCmsNativeChannel` (the APK only
+ * materialises it in a main frame whose origin is the compile-time
+ * player origin) and falls back to the legacy object. Re-declaring the
+ * global here would quietly re-legitimise `window.EduCmsNative.*` calls
+ * in this file — don't.
+ *
+ * SYNC → ASYNC, and why it is safe here: the four `ctsSerial*` methods
+ * RETURN VALUES, so over the message-passing channel they are Promises.
+ * Every call site below was already inside a `useEffect` whose result
+ * lands in React state, so awaiting changes nothing an operator can
+ * see. On the legacy transport `nativeCall` resolves synchronously-ish
+ * (`Promise.resolve` of the sync return), so an old APK behaves as it
+ * always did.
+ *
+ * The `ctsSerial*2` (second RS232 port) methods have NEVER existed in
+ * any shipped APK — `WebAppBridge.kt` does not implement them and they
+ * are not in `NativeBridgeChannel.METHODS`. `nativeHas` therefore
+ * returns false for them on BOTH transports, which is exactly the
+ * "older single-port APK" branch this file already handled.
  */
-interface EduCmsNativeBridge {
-  ctsSerialEnabled?: () => boolean;
-  ctsSerialConnect?: (
-    devicePath: string,
-    baudRate: number,
-    dataBits: number,
-    stopBits: number,
-    parity: string,
-  ) => string;
-  ctsSerialDisconnect?: () => string;
-  ctsSerialStatus?: () => string;
-  // 2026-05-27 — EP6N second-port native bridge. Same shape as the
-  // primary ctsSerial* methods but addressed to port 2 (Phoenix
-  // terminal RS232 #2 on the EP6N). The APK exposes these alongside
-  // the primary ones whenever the device has more than one hardware
-  // UART. Older APKs without dual-port support simply don't expose
-  // them and the second-port code path stays dormant.
-  ctsSerialEnabled2?: () => boolean;
-  ctsSerialConnect2?: (
-    devicePath: string,
-    baudRate: number,
-    dataBits: number,
-    stopBits: number,
-    parity: string,
-  ) => string;
-  ctsSerialDisconnect2?: () => string;
-  ctsSerialStatus2?: () => string;
-}
-
 declare global {
   interface Window {
-    EduCmsNative?: EduCmsNativeBridge;
     __ctsSerialBytes?: (base64: string) => void;
     /** Native APK bytes callback for the SECOND RS232 port. Wired up
      *  on mount when wiring.rs232_2 !== 'off'. */
@@ -166,16 +163,19 @@ export type CtsBridgeWiring = {
 type Status = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
 
 /** Are we running inside the Player APK with the native CTS serial
- *  bridge available? Detected once on mount; survives until reload. */
-function detectNativeBridge(): boolean {
+ *  bridge available? Detected once on mount; survives until reload.
+ *
+ *  AND-002 — async because `ctsSerialEnabled()` returns a value and is
+ *  therefore a round trip over the secure channel. The `nativeHas`
+ *  pre-check keeps the browser/no-APK case entirely synchronous (it
+ *  short-circuits before any message is posted), and `nativeCallOr`
+ *  swallows every failure mode — no bridge, missing method, native
+ *  threw, reply timed out — into the same `false` the old try/catch
+ *  produced. */
+async function detectNativeBridge(): Promise<boolean> {
   if (typeof window === 'undefined') return false;
-  const n = window.EduCmsNative;
-  if (!n || typeof n.ctsSerialEnabled !== 'function') return false;
-  try {
-    return !!n.ctsSerialEnabled();
-  } catch {
-    return false;
-  }
+  if (!nativeHas('ctsSerialEnabled')) return false;
+  return !!(await nativeCallOr<boolean>(false, 'ctsSerialEnabled'));
 }
 
 /** base64 → Uint8Array. Tiny — no buffer-polyfill needed for the
@@ -581,14 +581,24 @@ export function CtsBridge({
   const [nativeStatusJson, setNativeStatusJson] = useState<string>('');
 
   // Detect Web Serial OR native bridge availability once.
+  //
+  // AND-002 — now async (see detectNativeBridge). `cancelled` guards the
+  // setState calls because a StrictMode double-mount, or a fast unmount,
+  // can land the resolution after this effect has been torn down.
   useEffect(() => {
-    if (detectNativeBridge()) {
-      setNativeMode(true);
-      setSupported(true);
-      return;
-    }
-    const nav = navigator as unknown as SerialNavigatorLite;
-    setSupported(!!nav.serial);
+    let cancelled = false;
+    (async () => {
+      const isNative = await detectNativeBridge();
+      if (cancelled) return;
+      if (isNative) {
+        setNativeMode(true);
+        setSupported(true);
+        return;
+      }
+      const nav = navigator as unknown as SerialNavigatorLite;
+      setSupported(!!nav.serial);
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   // Initialize the parser for the selected console profile.
@@ -791,8 +801,7 @@ export function CtsBridge({
   useEffect(() => {
     if (!nativeMode) return;
     if (rs232_1Role === 'off') return;
-    const n = window.EduCmsNative;
-    if (!n?.ctsSerialConnect) return;
+    if (!nativeHas('ctsSerialConnect')) return;
     const opts = readSerialOptsFromQuery(serialBaseRef.current);
     // tty path comes from URL query (?ctsTty=/dev/ttyUSB0) or defaults
     // to the selected profile's tty — /dev/ttyS1 for native-UART consoles
@@ -804,21 +813,35 @@ export function CtsBridge({
       : defaultTtyRef.current;
     setStatus('connecting');
     setError(null);
-    try {
-      const resp = n.ctsSerialConnect(tty, opts.baudRate, opts.dataBits, opts.stopBits, opts.parity);
-      const parsed = JSON.parse(resp || '{}');
-      if (parsed.ok) {
-        setStatus('connected');
-      } else {
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await nativeCall<string>(
+          'ctsSerialConnect', tty, opts.baudRate, opts.dataBits, opts.stopBits, opts.parity,
+        );
+        if (cancelled) return;
+        const parsed = JSON.parse(resp || '{}');
+        if (parsed.ok) {
+          setStatus('connected');
+        } else {
+          setStatus('error');
+          setError(`${parsed.code || 'error'}: ${parsed.message || 'connect failed'}`);
+        }
+      } catch (e) {
+        if (cancelled) return;
         setStatus('error');
-        setError(`${parsed.code || 'error'}: ${parsed.message || 'connect failed'}`);
+        setError(`Native connect failed: ${(e as Error).message}`);
       }
-    } catch (e) {
-      setStatus('error');
-      setError(`Native connect failed: ${(e as Error).message}`);
-    }
+    })();
     return () => {
-      try { window.EduCmsNative?.ctsSerialDisconnect?.(); } catch { /* ignore */ }
+      cancelled = true;
+      // AND-002 — deliberately `nativeFire`, not `nativeCall`, even
+      // though ctsSerialDisconnect returns a status JSON: we are in a
+      // cleanup, nothing reads the result, and firing without a request
+      // id means the APK runs the handler and skips the reply (see
+      // NativeBridgeChannel.replyOk) — so no 15 s pending-reply timer is
+      // left behind on an unmounting component.
+      nativeFire('ctsSerialDisconnect');
     };
   }, [nativeMode, rs232_1Role]);
 
@@ -830,10 +853,11 @@ export function CtsBridge({
   useEffect(() => {
     if (!nativeMode) return;
     if (rs232_2Role === 'off') return;
-    const n = window.EduCmsNative;
-    if (!n?.ctsSerialConnect2) {
-      // Older single-port APK — log the wiring mismatch so the
-      // operator knows to update the APK to v2.x.
+    if (!nativeHas('ctsSerialConnect2')) {
+      // No shipped APK implements the dual-port methods yet (they are
+      // absent from WebAppBridge.kt AND from NativeBridgeChannel.METHODS,
+      // so this branch is taken on BOTH transports). Log the wiring
+      // mismatch so the operator knows the second port is dormant.
       // eslint-disable-next-line no-console
       console.warn('[CtsBridge] wiring.rs232_2 set but APK has no ctsSerialConnect2 — update Player APK to enable second port.');
       return;
@@ -843,21 +867,30 @@ export function CtsBridge({
       ? (new URLSearchParams(window.location.search).get('ctsTty2') || '/dev/ttyS2')
       : '/dev/ttyS2';
     setStatus2('connecting');
-    try {
-      const resp = n.ctsSerialConnect2(tty, opts.baudRate, opts.dataBits, opts.stopBits, opts.parity);
-      const parsed = JSON.parse(resp || '{}');
-      if (parsed.ok) {
-        setStatus2('connected');
-      } else {
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await nativeCall<string>(
+          'ctsSerialConnect2', tty, opts.baudRate, opts.dataBits, opts.stopBits, opts.parity,
+        );
+        if (cancelled) return;
+        const parsed = JSON.parse(resp || '{}');
+        if (parsed.ok) {
+          setStatus2('connected');
+        } else {
+          setStatus2('error');
+          setError(`port2 ${parsed.code || 'error'}: ${parsed.message || 'connect failed'}`);
+        }
+      } catch (e) {
+        if (cancelled) return;
         setStatus2('error');
-        setError(`port2 ${parsed.code || 'error'}: ${parsed.message || 'connect failed'}`);
+        setError(`Native port2 connect failed: ${(e as Error).message}`);
       }
-    } catch (e) {
-      setStatus2('error');
-      setError(`Native port2 connect failed: ${(e as Error).message}`);
-    }
+    })();
     return () => {
-      try { window.EduCmsNative?.ctsSerialDisconnect2?.(); } catch { /* ignore */ }
+      cancelled = true;
+      // See the port-1 cleanup for why this is nativeFire, not nativeCall.
+      nativeFire('ctsSerialDisconnect2');
     };
   }, [nativeMode, rs232_2Role]);
 
@@ -868,10 +901,16 @@ export function CtsBridge({
   // attempt a reconnect after a 2s backoff.
   useEffect(() => {
     if (!nativeMode) return;
-    const tick = () => {
+    // AND-002 — `ctsSerialStatus` returns a value, so it is a Promise over
+    // the secure channel. `cancelled` stops every setState (and the queued
+    // reconnect) the moment the effect is torn down, which matters because
+    // this effect re-runs on every `status` change.
+    let cancelled = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    const tick = async () => {
       try {
-        const s = window.EduCmsNative?.ctsSerialStatus?.();
-        if (!s) return;
+        const s = await nativeCallOr<string>('', 'ctsSerialStatus');
+        if (cancelled || !s) return;
         setNativeStatusJson(s);
         const parsed = JSON.parse(s) as { open?: boolean; lastError?: string };
         if (parsed.open === false && status === 'connected') {
@@ -880,26 +919,33 @@ export function CtsBridge({
           // Auto-reconnect after a short delay — kernel can take a
           // beat to recover from cable yanks. Phase 3 will add
           // exponential backoff + max-attempt caps.
-          setTimeout(() => {
-            const n = window.EduCmsNative;
-            if (!n?.ctsSerialConnect) return;
+          reconnectTimer = setTimeout(() => {
+            if (cancelled || !nativeHas('ctsSerialConnect')) return;
             const opts = readSerialOptsFromQuery(serialBaseRef.current);
             const tty = new URLSearchParams(window.location.search).get('ctsTty') || defaultTtyRef.current;
-            try {
-              const resp = n.ctsSerialConnect(tty, opts.baudRate, opts.dataBits, opts.stopBits, opts.parity);
-              const reparsed = JSON.parse(resp || '{}');
-              if (reparsed.ok) {
-                setStatus('connected');
-                setError(null);
-              }
-            } catch { /* will retry on next tick */ }
+            nativeCall<string>(
+              'ctsSerialConnect', tty, opts.baudRate, opts.dataBits, opts.stopBits, opts.parity,
+            )
+              .then((resp) => {
+                if (cancelled) return;
+                const reparsed = JSON.parse(resp || '{}');
+                if (reparsed.ok) {
+                  setStatus('connected');
+                  setError(null);
+                }
+              })
+              .catch(() => { /* will retry on next tick */ });
           }, 2000);
         }
       } catch { /* ignore */ }
     };
-    tick();
-    const id = setInterval(tick, 5000);
-    return () => clearInterval(id);
+    void tick();
+    const id = setInterval(() => { void tick(); }, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      if (reconnectTimer !== undefined) clearTimeout(reconnectTimer);
+    };
   }, [nativeMode, status]);
 
   // POST the latest snapshot to the API. Latest-wins throttled at
