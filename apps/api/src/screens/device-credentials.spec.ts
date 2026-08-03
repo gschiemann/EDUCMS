@@ -134,6 +134,205 @@ describe('revokeScreenCredentials', () => {
   });
 });
 
+/**
+ * The Redis tier of that revocation (2026-08-03).
+ *
+ * `RedisService` shipped `sismember` but no `sadd`, so the line above —
+ * `await deps.redis.sadd?.('jwt_revoked_list', token)` — resolved to
+ * `undefined` on every real revocation. Optional chaining made the missing
+ * method a silent no-op: the durable Postgres mirror was written and the
+ * epoch was bumped (so revocation still HELD), but the hot set that
+ * `JwtAuthGuard` / the SSE controller / the WS gateway / `verifyDeviceForScreen`
+ * all check FIRST was never populated, and nothing said so.
+ *
+ * These tests exercise the REAL `RedisService`, not a stub, so a future
+ * refactor that drops the method again fails here instead of silently.
+ */
+describe('revokeScreenCredentials — Redis hot tier (real RedisService)', () => {
+  const jwtLib = require('jsonwebtoken');
+  const DEVICE_JWT_SECRET = 'dev_only_device_jwt_secret_CHANGE_ME';
+
+  function prismaMock(updated: any = { id: 's1', credentialEpoch: 4 }) {
+    return {
+      client: {
+        screen: { update: jest.fn().mockResolvedValue(updated) },
+        auditLog: { create: jest.fn().mockResolvedValue({}) },
+      },
+    } as any;
+  }
+
+  /** A RedisService in the "Redis is up" state with a capturing publisher. */
+  function liveRedis(overrides: Record<string, any> = {}) {
+    const { RedisService } = require('../realtime/redis.service');
+    const svc = new RedisService();
+    const publisher = {
+      sadd: jest.fn().mockResolvedValue(1),
+      ttl: jest.fn().mockResolvedValue(60 * 60 * 24 * 30), // the existing 30d key TTL
+      expire: jest.fn().mockResolvedValue(1),
+      ...overrides,
+    };
+    (svc as any).publisher = publisher;
+    (svc as any).connected = true;
+    jest.spyOn(svc, 'mirrorRevokedTokenDurable').mockResolvedValue(undefined);
+    return { svc, publisher };
+  }
+
+  it('lands the token in BOTH tiers — Redis hot set and durable Postgres mirror', async () => {
+    const prisma = prismaMock();
+    const { svc, publisher } = liveRedis();
+    const token = jwtLib.sign({ kind: 'device', sub: 's1' }, DEVICE_JWT_SECRET, { expiresIn: '180d' });
+
+    const out = await revokeScreenCredentials(
+      { prisma, redis: svc },
+      { screenId: 's1', reason: 'admin_revoke', markRevokedStatus: true, presentedToken: token },
+    );
+
+    expect(out.credentialEpoch).toBe(4);
+    expect(publisher.sadd).toHaveBeenCalledWith('jwt_revoked_list', token);
+    expect(svc.mirrorRevokedTokenDurable).toHaveBeenCalledWith(token);
+
+    const details = JSON.parse(prisma.client.auditLog.create.mock.calls[0][0].data.details);
+    expect(details.redisDenylisted).toBe(true);
+    expect(details.durableMirrored).toBe(true);
+  });
+
+  it('extends the shared key TTL to outlive a 180-day device token', async () => {
+    // `jwt_revoked_list` wears a 30-day TTL (the rememberMe ceiling for a
+    // USER session). A device credential lives 6× longer; without the
+    // extension the hot tier would forget the revocation months early.
+    const { svc, publisher } = liveRedis();
+    const token = jwtLib.sign({ kind: 'device', sub: 's1' }, DEVICE_JWT_SECRET, { expiresIn: '180d' });
+
+    await revokeScreenCredentials(
+      { prisma: prismaMock(), redis: svc },
+      { screenId: 's1', reason: 'admin_revoke', presentedToken: token },
+    );
+
+    expect(publisher.expire).toHaveBeenCalledTimes(1);
+    expect(publisher.expire.mock.calls[0][1]).toBeGreaterThan(60 * 60 * 24 * 170);
+  });
+
+  it('never SHORTENS a key that already outlives the token being burned', async () => {
+    const { svc, publisher } = liveRedis({ ttl: jest.fn().mockResolvedValue(60 * 60 * 24 * 365) });
+    const token = jwtLib.sign({ kind: 'device', sub: 's1' }, DEVICE_JWT_SECRET, { expiresIn: '30d' });
+
+    await revokeScreenCredentials(
+      { prisma: prismaMock(), redis: svc },
+      { screenId: 's1', reason: 'admin_revoke', presentedToken: token },
+    );
+
+    expect(publisher.expire).not.toHaveBeenCalled();
+  });
+
+  it('leaves a persistent (TTL -1) key alone', async () => {
+    const { svc, publisher } = liveRedis({ ttl: jest.fn().mockResolvedValue(-1) });
+    await revokeScreenCredentials(
+      { prisma: prismaMock(), redis: svc },
+      { screenId: 's1', reason: 'admin_revoke', presentedToken: 'not-a-jwt' },
+    );
+    expect(publisher.expire).not.toHaveBeenCalled();
+  });
+
+  // ── Fail-safe: Redis must never be able to fail a revocation ──────────
+
+  it('still revokes via Postgres when the Redis SADD throws', async () => {
+    const prisma = prismaMock();
+    const { svc } = liveRedis({ sadd: jest.fn().mockRejectedValue(new Error('redis down')) });
+
+    const out = await revokeScreenCredentials(
+      { prisma, redis: svc },
+      { screenId: 's1', reason: 'admin_revoke', markRevokedStatus: true, presentedToken: 'tok' },
+    );
+
+    expect(out.credentialEpoch).toBe(4);
+    expect(prisma.client.screen.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ credentialEpoch: { increment: 1 }, status: 'REVOKED' }),
+      }),
+    );
+    expect(svc.mirrorRevokedTokenDurable).toHaveBeenCalledWith('tok');
+
+    // The audit row is honest about which tier did NOT take the write.
+    const details = JSON.parse(prisma.client.auditLog.create.mock.calls[0][0].data.details);
+    expect(details.redisDenylisted).toBe(false);
+    expect(details.durableMirrored).toBe(true);
+  });
+
+  it('still revokes when Redis is not connected at all', async () => {
+    const { RedisService } = require('../realtime/redis.service');
+    const svc = new RedisService(); // no publisher, connected = false
+    jest.spyOn(svc, 'mirrorRevokedTokenDurable').mockResolvedValue(undefined);
+    const prisma = prismaMock();
+
+    await expect(
+      revokeScreenCredentials(
+        { prisma, redis: svc },
+        { screenId: 's1', reason: 'device_unpair', presentedToken: 'tok' },
+      ),
+    ).resolves.toEqual({ credentialEpoch: 4 });
+
+    expect(svc.mirrorRevokedTokenDurable).toHaveBeenCalled();
+    const details = JSON.parse(prisma.client.auditLog.create.mock.calls[0][0].data.details);
+    expect(details.redisDenylisted).toBe(false);
+  });
+
+  it('sadd never throws, even when the TTL read fails', async () => {
+    const { svc, publisher } = liveRedis({ ttl: jest.fn().mockRejectedValue(new Error('boom')) });
+    await expect(svc.sadd('jwt_revoked_list', 'tok', { ttlSeconds: 999 })).resolves.toBe(true);
+    expect(publisher.sadd).toHaveBeenCalled();
+  });
+
+  it('sadd reports false (never throws) when Redis is down', async () => {
+    const { RedisService } = require('../realtime/redis.service');
+    const svc = new RedisService();
+    await expect(svc.sadd('jwt_revoked_list', 'tok')).resolves.toBe(false);
+  });
+});
+
+/**
+ * The read side of the same tier: a revocation that made it into Redis ONLY
+ * (durable mirror not yet consulted, because Redis is up) must be honoured
+ * by the hot path.
+ */
+describe('the hot path honours a Redis-only revocation hit', () => {
+  const jwtLib = require('jsonwebtoken');
+  const DEVICE_JWT_SECRET = 'dev_only_device_jwt_secret_CHANGE_ME';
+  const healthyScreen = {
+    id: 's1',
+    tenantId: 't1',
+    screenGroupId: null,
+    status: 'ONLINE',
+    credentialEpoch: 0,
+    credentialEpochRotatedAt: null,
+  };
+  const prismaFor = (row: any) =>
+    ({ client: { screen: { findUnique: jest.fn().mockResolvedValue(row) } } }) as any;
+  const req = (token: string) => ({ headers: { authorization: `Bearer ${token}` } }) as any;
+  const token = () => jwtLib.sign({ kind: 'device', sub: 's1' }, DEVICE_JWT_SECRET);
+
+  it('REJECTS a token in jwt_revoked_list even though the screen row is healthy', async () => {
+    const tok = token();
+    const redis = { sismember: jest.fn().mockResolvedValue(true) };
+
+    const res = await verifyDeviceForScreen({ prisma: prismaFor(healthyScreen), redis }, req(tok), 's1');
+
+    expect(redis.sismember).toHaveBeenCalledWith('jwt_revoked_list', tok);
+    expect(res).toEqual({ ok: false, reason: 'token_revoked' });
+  });
+
+  it('accepts the same token once it is no longer in the set', async () => {
+    const redis = { sismember: jest.fn().mockResolvedValue(false) };
+    const res = await verifyDeviceForScreen({ prisma: prismaFor(healthyScreen), redis }, req(token()), 's1');
+    expect(res.ok).toBe(true);
+  });
+
+  it('fails CLOSED when the revocation lookup itself errors', async () => {
+    const redis = { sismember: jest.fn().mockRejectedValue(new Error('redis down')) };
+    const res = await verifyDeviceForScreen({ prisma: prismaFor(healthyScreen), redis }, req(token()), 's1');
+    expect(res).toEqual({ ok: false, reason: 'revocation_check_unavailable' });
+  });
+});
+
 describe('rotateScreenCredentialEpoch (DT-02)', () => {
   it('advances the epoch without the REVOKED semantics or an audit row', async () => {
     const deps = makeDeps({ credentialEpoch: 9 });

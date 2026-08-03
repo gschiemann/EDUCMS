@@ -42,9 +42,37 @@ export interface RevokeDeps {
   prisma: { client: any };
   /** RedisService. Optional so unit tests and Redis-less dev still work. */
   redis?: {
-    sadd?: (key: string, member: string) => Promise<unknown>;
+    sadd?: (
+      key: string,
+      member: string,
+      opts?: { ttlSeconds?: number },
+    ) => Promise<unknown>;
     mirrorRevokedTokenDurable?: (token: string) => Promise<void>;
   } | null;
+}
+
+/** Device-token ceiling (DEVICE_TOKEN_TTL_PAIRED) as seconds, for TTL floors. */
+const DEVICE_TOKEN_TTL_SECONDS = 180 * 24 * 60 * 60;
+
+/**
+ * Seconds this token still has to live, from its own `exp` claim. Used to
+ * keep the shared `jwt_revoked_list` key alive at least as long as the
+ * credential it is burning — the pre-existing 30-day key TTL is the
+ * rememberMe ceiling for a USER session and is 6× too short for a 180-day
+ * device credential. Decode only, never verify: we are revoking this string,
+ * not trusting it, and an undecodable token just takes the ceiling.
+ */
+function remainingLifetimeSeconds(token: string): number {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+    if (typeof payload?.exp === 'number' && Number.isFinite(payload.exp)) {
+      const secs = Math.ceil(payload.exp - Date.now() / 1000);
+      if (secs > 0) return Math.min(secs, DEVICE_TOKEN_TTL_SECONDS);
+    }
+  } catch {
+    /* not a decodable JWT — fall through to the ceiling */
+  }
+  return DEVICE_TOKEN_TTL_SECONDS;
 }
 
 export interface RevokeOptions {
@@ -103,14 +131,27 @@ export async function revokeScreenCredentials(
   // Belt-and-braces: burn the exact token string too, when we have it, so
   // the JwtAuthGuard / SSE / WS revocation checks catch it even on a path
   // that somehow skips the epoch comparison.
+  //
+  // TWO tiers, deliberately, and neither may fail the revocation:
+  //   • Redis `jwt_revoked_list` — the hot set every request checks first.
+  //     Until 2026-08-03 `RedisService` had no `sadd`, so this optional call
+  //     resolved to `undefined` and the hot tier was never written.
+  //   • Postgres `revoked_credentials` — the durable mirror `sismember`
+  //     falls back to whenever Redis is down. It is what makes a Redis
+  //     outage incapable of un-revoking anything.
+  let redisDenylisted = false;
+  let durableMirrored = false;
   if (opts.presentedToken && deps.redis) {
     try {
-      await deps.redis.sadd?.('jwt_revoked_list', opts.presentedToken);
+      redisDenylisted = (await deps.redis.sadd?.('jwt_revoked_list', opts.presentedToken, {
+        ttlSeconds: remainingLifetimeSeconds(opts.presentedToken),
+      })) === true;
     } catch {
       /* Redis blip — the epoch bump above is already authoritative. */
     }
     try {
       await deps.redis.mirrorRevokedTokenDurable?.(opts.presentedToken);
+      durableMirrored = true;
     } catch {
       /* durable mirror is best-effort by contract */
     }
@@ -129,6 +170,12 @@ export async function revokeScreenCredentials(
           credentialEpoch: updated.credentialEpoch,
           statusRevoked: !!opts.markRevokedStatus,
           tokenDenylisted: !!opts.presentedToken,
+          // Which tiers actually took the write. `tokenDenylisted` alone used
+          // to be the only signal and it only said "we had a token to burn" —
+          // it read TRUE even while the Redis write was a silent no-op. A
+          // forensic reader needs to know which store held the revocation.
+          redisDenylisted,
+          durableMirrored,
           ...(opts.details ?? {}),
         }),
       },

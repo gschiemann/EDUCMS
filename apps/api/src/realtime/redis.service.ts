@@ -261,6 +261,78 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Add a member to a Redis set — the WRITE half of the revocation check
+   * `sismember` performs (2026-08-03).
+   *
+   * THE BUG THIS CLOSES. `RedisService` exposed `sismember` but no `sadd`,
+   * so `revokeScreenCredentials()` (screens/device-credentials.ts) called
+   * `redis.sadd?.(…)` against a method that did not exist. Optional chaining
+   * made that a silent no-op: the durable Postgres mirror was written, the
+   * `credentialEpoch` was bumped, but the HOT set every request checks first
+   * was never populated. The revocation still held — the epoch is the real
+   * control and the mirror is consulted whenever Redis is down — but the
+   * cheap tier that keeps revocation affordable at fleet scale was dead.
+   *
+   * FAIL-SAFE CONTRACT (do not weaken):
+   *   • NEVER throws. A Redis outage must not be able to fail a revocation,
+   *     and this is called from `revokeScreenCredentials`, which is on the
+   *     unpair/re-pair path a live kiosk walks at boot.
+   *   • Returns whether the member actually landed in Redis, so a caller can
+   *     record the degraded state — but no caller may treat `false` as "the
+   *     revocation failed". Postgres (`revoked_credentials`, written by
+   *     `mirrorRevokedTokenDurable`) plus `Screen.credentialEpoch` remain
+   *     authoritative, and `sismember` already falls back to the mirror.
+   *
+   * TTL. `jwt_revoked_list` is one shared set, so its TTL is per-KEY, not
+   * per-member. A device token outlives a user session by 6×, so the TTL is
+   * only ever EXTENDED here, never shortened — otherwise revoking a device
+   * would quietly shorten the window protecting every user token in the set
+   * (and vice versa). ⚠️ `auth.controller.ts` logout still calls
+   * `publisher.expire('jwt_revoked_list', 30d)` directly, which CAN shorten
+   * a window this method extended; that call is outside this change's
+   * ownership boundary — see the fix report.
+   */
+  async sadd(
+    key: string,
+    member: string,
+    opts?: { ttlSeconds?: number },
+  ): Promise<boolean> {
+    if (!this.connected || !this.publisher) {
+      this.logger.warn(
+        `Redis unavailable — '${key}' set write skipped; the durable Postgres mirror ` +
+          'and the credential epoch remain authoritative',
+      );
+      return false;
+    }
+    try {
+      await this.publisher.sadd(key, member);
+    } catch (e) {
+      this.logger.warn(
+        `Redis set write failed for '${key}' (${e instanceof Error ? e.message : e}) — ` +
+          'durable mirror remains authoritative',
+      );
+      return false;
+    }
+    // Extend-only TTL. Best-effort and separately guarded: the member is
+    // already in the set at this point, and failing to lengthen an expiry is
+    // not a reason to report the write as lost.
+    const ttl = opts?.ttlSeconds;
+    if (ttl && Number.isFinite(ttl) && ttl > 0) {
+      try {
+        const current = await this.publisher.ttl(key);
+        // -1 = no expiry (already stronger than anything we'd set)
+        // -2 = key missing (raced with an eviction — nothing to extend)
+        if (current >= 0 && current < ttl) {
+          await this.publisher.expire(key, Math.ceil(ttl));
+        }
+      } catch {
+        /* TTL extension is best-effort; the member is already stored */
+      }
+    }
+    return true;
+  }
+
+  /**
    * Check if a value is a member of a Redis set.
    * Used by JwtAuthGuard / SSE / WS gateway for token revocation checks.
    *
