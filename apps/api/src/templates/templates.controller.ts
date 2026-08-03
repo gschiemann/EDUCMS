@@ -30,6 +30,14 @@ import { ZodValidationPipe } from '../security/zod-validation.pipe';
 // INJ-003 — write-time scheme/SSRF gate for URL-bearing zone config
 // (WEBPAGE / EXTERNAL_HTML / STREAMING). See zone-url-guard.ts.
 import { assertZoneUrlsSafe } from './zone-url-guard';
+// INJ-003 — the live-bound content gate (an Editor may not rewrite content
+// that is already on a screen). Shared with playlists.controller.
+import {
+  actorNeedsApprovalToEditLiveContent,
+  findLiveTemplateBinding,
+  requiresApprovalException,
+  auditBlockedLiveEdit,
+} from '../submissions/live-content-gate';
 import {
   TemplateNameOnlySchema, type TemplateNameOnlyInput,
   TemplateSceneUpdateSchema, type TemplateSceneUpdateInput,
@@ -235,7 +243,7 @@ export class TemplatesController {
   }
 
   /**
-   * INJ-003 (2026-08-01) — the CONTRIBUTOR (Editor) publish gate, extended
+   * INJ-003 (2026-08-02) — the CONTRIBUTOR (Editor) publish gate, extended
    * from "new schedules" to "edits of already-live content".
    *
    * `schedules.controller.create()` states the intent plainly: *"CONTRIBUTOR
@@ -250,46 +258,18 @@ export class TemplatesController {
    * "push content live directly" the draft gate exists to prevent, just
    * through the back door.
    *
-   * A template reaches a screen through exactly one path in the schema:
-   *   Schedule.isActive ─▶ Schedule.playlistId ─▶ Playlist.templateId
-   * so "live-bound" == an active Schedule in this tenant whose playlist
-   * points at this template.
-   *
-   * Admins (SCHOOL_ADMIN and up) are unaffected — they ARE the approvers.
-   * A template that is NOT live-bound stays freely editable by a
-   * CONTRIBUTOR, so the ordinary authoring flow (build a draft, submit for
-   * review, admin approves) is untouched.
-   *
-   * We reject rather than auto-file a Submission: the review queue
-   * (submissions.controller.ts) bundles asset / playlist / schedule IDS and
-   * publishes them by flipping `Asset.status` and `Schedule.isActive`. It
-   * has no template column and, more fundamentally, no staging area to
-   * PARK a proposed zone payload in until a reviewer says yes — a template
-   * edit is destructive-in-place (delete-all-zones-and-recreate). Routing
-   * this through the queue would mean a schema change plus a new pending-
-   * content store, i.e. a feature, not a fix. The 403 tells the operator
-   * exactly what to do instead.
+   * The live-bound definition, the fail-closed role test, the full
+   * why-not-the-submission-queue analysis and the accepted residual risk
+   * all live in ONE place — `submissions/live-content-gate.ts` — shared with
+   * the identical gate on `PUT /playlists/:id/items`. Read that file before
+   * changing anything here.
    */
   private async assertContributorMayEditLiveTemplate(req: any, templateId: string): Promise<void> {
-    if (req?.user?.role !== AppRole.CONTRIBUTOR) return;
-    const liveSchedule = await this.prisma.client.schedule.findFirst({
-      where: {
-        tenantId: req.user.tenantId,
-        isActive: true,
-        playlist: { templateId },
-      },
-      select: { id: true },
-    });
-    if (!liveSchedule) return;
-    throw new HttpException(
-      {
-        code: 'REQUIRES_APPROVAL',
-        message:
-          'This template is currently live on screens, so an Editor cannot change it directly. ' +
-          'Duplicate it, edit the copy, and submit it for review — or ask an admin to make the change.',
-      },
-      HttpStatus.FORBIDDEN,
-    );
+    if (!actorNeedsApprovalToEditLiveContent(req?.user)) return;
+    const binding = await findLiveTemplateBinding(this.prisma, req.user.tenantId, templateId);
+    if (!binding) return;
+    await auditBlockedLiveEdit(this.prisma, req, 'template', templateId, binding);
+    throw requiresApprovalException('template', binding);
   }
 
   /**

@@ -7,6 +7,7 @@ import { AiService } from '../ai/ai.service';
 import { BrandingScraperService } from '../branding/branding-scraper.service';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
 import { RedisService } from '../realtime/redis.service';
+import { AppRole } from '@cms/database';
 
 // The controller declares @UseGuards(JwtAuthGuard, RbacGuard) at the class
 // level. Nest's testing module resolves every controller-level dependency
@@ -38,7 +39,12 @@ describe('C2 — Save staleness guard', () => {
 
   const NOW = new Date('2026-07-02T12:00:00.000Z');
   const OLDER = new Date('2026-07-02T11:00:00.000Z'); // what a stale client loaded
-  const req = { user: { id: 'u1', tenantId: 't1' } };
+  // INJ-003 (2026-08-02): the actor now needs an explicit role. The live-bound
+  // content gate is fail-CLOSED — anything that is not an approver role is
+  // treated as an Editor and blocked from editing already-live content — so a
+  // role-less `req.user` no longer models a real caller. This suite is about
+  // an ADMIN's save colliding with another tab, so it says so.
+  const req = { user: { id: 'u1', tenantId: 't1', role: AppRole.SCHOOL_ADMIN } };
 
   function baseTemplate(overrides: Record<string, unknown> = {}) {
     return {

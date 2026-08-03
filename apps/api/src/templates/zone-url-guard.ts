@@ -56,7 +56,8 @@
  */
 
 import { HttpException, HttpStatus } from '@nestjs/common';
-import { validatePublicUrl } from '../branding/safe-fetch';
+import { isIP } from 'node:net';
+import { validatePublicUrl, isPrivateIp } from '../branding/safe-fetch';
 
 /**
  * Widget types whose zone config carries a player-dereferenced URL, and
@@ -72,14 +73,69 @@ export const URL_BEARING_ZONE_FIELDS: Readonly<Record<string, readonly string[]>
   STREAMING: ['playbackUrl', 'embedUrl'],
 };
 
+/**
+ * Config keys holding an ARRAY of objects that each carry a URL, keyed by
+ * widget type. STREAMING's `playbackUrlVariants` is the per-codec variant
+ * list (StreamingWidget.tsx:72-79); `pickBestVideo()` picks one and feeds it
+ * straight to `<video src>`, so it is every bit as dereferenced as
+ * `playbackUrl` — and it is the field the first pass of this guard missed.
+ */
+export const URL_BEARING_ZONE_ARRAY_FIELDS: Readonly<
+  Record<string, ReadonlyArray<{ field: string; key: string }>>
+> = {
+  STREAMING: [{ field: 'playbackUrlVariants', key: 'url' }],
+};
+
 /** `scheme:` prefix per RFC 3986 — the only thing that can make a URL non-relative. */
 const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+/**
+ * `host:port` masquerading as `scheme:` — `example.com:8443/live.m3u8`
+ * satisfies HAS_SCHEME with a "scheme" of `example.com`. Digits after the
+ * colon up to the first `/ ? #` are the structural tell that this is an
+ * authority, not a scheme, so it must take the bare-domain branch (and get
+ * an honest port error) rather than a nonsense
+ * `Disallowed URL scheme "example.com:"`.
+ */
+const LOOKS_LIKE_HOST_PORT = /^[a-z0-9.-]+:\d+(?:[/?#]|$)/i;
 /** C0 controls + DEL. Browsers silently strip these mid-URL; we refuse instead. */
 const CONTROL_CHARS = /[\u0000-\u001F\u007F]/;
 
 function isLoopbackHost(hostname: string): boolean {
   const h = hostname.toLowerCase().replace(/^\[/, '').replace(/\]$/, '');
   return h === 'localhost' || h === '::1' || /^127\./.test(h);
+}
+
+/**
+ * Two holes `validatePublicUrl` does NOT cover, closed here because this
+ * URL is dereferenced by the PLAYER (a kiosk on the customer's LAN), not by
+ * our server:
+ *
+ *  1. **Bracketed IPv6 literals.** `new URL('https://[::1]/x').hostname`
+ *     is `"[::1]"` WITH the brackets, and `node:net.isIP('[::1]')` is 0 —
+ *     so safe-fetch's `isIP(hostname) && isPrivateIp(hostname)` test never
+ *     fires and `https://[::1]/admin` sails through. (`safeFetch` itself
+ *     survives by accident: the non-IP branch then tries a DNS lookup of
+ *     `[::1]`, which errors closed. The SYNCHRONOUS `validatePublicUrl`
+ *     callers — this guard, `ai.service.parseCtaHref`,
+ *     `streaming.validateStreamUrl` — have no such backstop.) Fixing
+ *     `safe-fetch.ts` is the right long-term move; it is outside this
+ *     change's blast radius, so the bracket-stripped check lives here.
+ *
+ *  2. **`localhost` by NAME.** Not an IP literal, so `isPrivateIp` cannot
+ *     see it — but on a kiosk it IS the device's own loopback.
+ *     RFC 6761 reserves `localhost` and `*.localhost` as always-loopback,
+ *     so both are refused. Other LAN names (`intranet`, `*.local`) are
+ *     deliberately still allowed: embedding an on-prem dashboard is a
+ *     legitimate, shipped use of the WEBPAGE widget.
+ */
+function assertHostNotLoopbackLiteral(zoneName: string, field: string, url: URL): void {
+  const bare = url.hostname.toLowerCase().replace(/^\[/, '').replace(/\]$/, '');
+  if (isIP(bare) && isPrivateIp(bare)) {
+    rejectUrl(zoneName, field, `Private/loopback IP ${url.hostname} is not allowed.`);
+  }
+  if (bare === 'localhost' || bare.endsWith('.localhost')) {
+    rejectUrl(zoneName, field, 'localhost is not allowed — it resolves to the screen itself.');
+  }
 }
 
 function rejectUrl(zoneName: string, field: string, reason: string): never {
@@ -107,12 +163,24 @@ export function assertZoneUrlValueSafe(zoneName: string, field: string, raw: unk
     rejectUrl(zoneName, field, 'URL contains control characters.');
   }
 
+  // Shape detection must read the string the way a BROWSER does, and the
+  // WHATWG URL parser treats a backslash as a slash for the special
+  // schemes (http/https) our pages run on. Without this, `/\evil.com` and
+  // `\\evil.com` look root-relative here but resolve to `https://evil.com`
+  // in the iframe — sliding past the checks below (including the
+  // private-IP one: `/\127.0.0.1/x` would have reached the kiosk's own
+  // loopback). Normalize the leading run of separators for the SHAPE test
+  // only; the value we validate and persist stays byte-identical.
+  const leading = value.slice(0, 2).replace(/\\/g, '/');
+  const isSeparatorLed = leading.startsWith('/');
+  const isAuthorityLed = leading.startsWith('//');
+
   // Root-relative, same-origin reference (`/templates/hs/x.html`,
   // `/board/<id>`). Never `//host` — that is scheme-relative, handled below.
-  if (value.startsWith('/') && !value.startsWith('//')) return;
+  if (isSeparatorLed && !isAuthorityLed) return;
 
   let candidate = value;
-  if (HAS_SCHEME.test(value)) {
+  if (HAS_SCHEME.test(value) && !LOOKS_LIKE_HOST_PORT.test(value)) {
     const scheme = value.slice(0, value.indexOf(':')).toLowerCase();
     if (scheme === 'http') {
       // Dev-only loopback escape hatch. Parse first so we judge the real
@@ -131,20 +199,26 @@ export function assertZoneUrlValueSafe(zoneName: string, field: string, raw: unk
     if (scheme !== 'https') {
       rejectUrl(zoneName, field, `Disallowed URL scheme "${scheme}:" — only https:// is allowed.`);
     }
-  } else if (value.startsWith('//')) {
+  } else if (isAuthorityLed) {
     // Scheme-relative — a browser resolves it against our https origin.
-    candidate = `https:${value}`;
+    // Backslash forms (`\\host`, `/\host`) resolve identically, so validate
+    // the slash-normalized authority rather than letting `new URL` see a
+    // shape it would treat as a path.
+    candidate = `https://${value.slice(2).replace(/^[\\/]+/, '')}`;
   } else {
     // Bare domain — WebpageWidget auto-prefixes https://; validate what
     // the player will actually load.
     candidate = `https://${value}`;
   }
 
+  let parsed: URL;
   try {
-    validatePublicUrl(candidate);
+    parsed = validatePublicUrl(candidate);
   } catch (e: any) {
     rejectUrl(zoneName, field, e?.message || 'URL failed validation.');
   }
+  // The two loopback shapes validatePublicUrl misses — see the helper.
+  assertHostNotLoopbackLiteral(zoneName, field, parsed);
 }
 
 /**
@@ -159,8 +233,10 @@ export function assertZoneUrlsSafe(
 ): void {
   if (!Array.isArray(zones)) return;
   for (const zone of zones) {
-    const fields = URL_BEARING_ZONE_FIELDS[String(zone?.widgetType ?? '').toUpperCase()];
-    if (!fields) continue;
+    const widgetType = String(zone?.widgetType ?? '').toUpperCase();
+    const fields = URL_BEARING_ZONE_FIELDS[widgetType];
+    const arrayFields = URL_BEARING_ZONE_ARRAY_FIELDS[widgetType];
+    if (!fields && !arrayFields) continue;
 
     let config: any = zone?.defaultConfig;
     if (typeof config === 'string') {
@@ -173,6 +249,14 @@ export function assertZoneUrlsSafe(
     if (!config || typeof config !== 'object') continue;
 
     const zoneName = typeof zone?.name === 'string' && zone.name ? zone.name : 'untitled';
-    for (const field of fields) assertZoneUrlValueSafe(zoneName, field, config[field]);
+    for (const field of fields ?? []) assertZoneUrlValueSafe(zoneName, field, config[field]);
+    for (const { field, key } of arrayFields ?? []) {
+      const list = config[field];
+      if (!Array.isArray(list)) continue;
+      for (const entry of list) {
+        if (!entry || typeof entry !== 'object') continue;
+        assertZoneUrlValueSafe(zoneName, `${field}[].${key}`, (entry as any)[key]);
+      }
+    }
   }
 }
