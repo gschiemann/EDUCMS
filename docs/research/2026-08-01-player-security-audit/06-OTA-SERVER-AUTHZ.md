@@ -1,6 +1,5 @@
-> **Provenance:** single Opus agent under the audit ground rules (read-only, evidence-with-file:line,
-> two-methods-for-absence, self-refutation before reporting).
-> **Lead review status: NOT independently re-verified.**
+> **Provenance:** single Opus agent, audit ground rules (read-only, evidence-with-file:line,
+> two-methods-for-absence, self-refutation). **Lead review status: NOT independently re-verified.**
 
 # OTA Server-Side Authorization Audit — 2026-08-02
 
