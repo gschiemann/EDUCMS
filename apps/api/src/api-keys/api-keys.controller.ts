@@ -13,12 +13,43 @@ import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { ApiKeysService } from './api-keys.service';
+import {
+  API_KEY_SCOPE_FAMILIES,
+  API_KEY_SCOPES,
+} from './api-key-scopes';
 
 @Controller('api/v1/api-keys')
 @UseGuards(JwtAuthGuard, RbacGuard)
 @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN)
 export class ApiKeysController {
   constructor(private readonly svc: ApiKeysService) {}
+
+  /**
+   * The scope vocabulary this build enforces, for the mint UI.
+   *
+   * Served rather than duplicated in the web bundle so the picker can never
+   * offer a scope the guard does not understand (which would mint a key the
+   * operator believes is scoped and which is silently unrestricted, or vice
+   * versa). Static + non-sensitive; declared before `:id` routes so nothing
+   * shadows it.
+   */
+  @Get('scopes')
+  scopeCatalog() {
+    return {
+      scopes: API_KEY_SCOPES,
+      families: API_KEY_SCOPE_FAMILIES.map((f) => ({
+        id: f.id,
+        label: f.label,
+        blurb: f.blurb,
+        // `analytics` is read-only by design — see api-key-scopes.ts.
+        access: API_KEY_SCOPES.includes(`${f.id}:write`)
+          ? (['read', 'write'] as const)
+          : (['read'] as const),
+      })),
+      defaultExpiryDays: ApiKeysService.DEFAULT_EXPIRY_DAYS,
+      maxExpiryDays: ApiKeysService.MAX_EXPIRY_DAYS,
+    };
+  }
 
   /** List the tenant's API keys (never returns the secret). */
   @Get()
@@ -30,7 +61,13 @@ export class ApiKeysController {
   @Post()
   async mint(
     @Req() req: any,
-    @Body() body: { name?: string; role?: string; expiresAt?: string | null },
+    @Body()
+    body: {
+      name?: string;
+      role?: string;
+      expiresAt?: string | null;
+      scopes?: string[] | null;
+    },
   ) {
     let expiresAt: Date | null = null;
     if (body.expiresAt) {
@@ -43,6 +80,9 @@ export class ApiKeysController {
       name: String(body.name || ''),
       role: String(body.role || ''),
       expiresAt,
+      // Absent → unrestricted (unchanged behaviour for existing callers).
+      // The service validates every entry and 400s on an unknown one.
+      scopes: body.scopes ?? null,
       actorUserId,
     });
   }
