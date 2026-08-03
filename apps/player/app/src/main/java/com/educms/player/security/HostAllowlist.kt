@@ -176,6 +176,29 @@ object HostAllowlist {
     fun allowedHostsForLog(): String = allowedHosts.joinToString(", ")
 
     /**
+     * The compile-time player ORIGIN — `scheme://host` (plus `:port` when
+     * `BuildConfig.PLAYER_BASE_URL` carries a non-default one). Null when
+     * the constant is unparseable.
+     *
+     * This is the trust anchor for the AND-002 bridge channel: it is the
+     * exact origin `MainActivity.loadPlayer()` navigates to, so it is the
+     * only origin allowed to speak to native code. Deliberately NOT the
+     * host allowlist above — that list intentionally also covers the API
+     * and OTA hosts, which must never be able to drive the bridge.
+     *
+     * See `com.educms.player.security.NativeBridgeChannel`.
+     */
+    fun playerOrigin(): String? {
+        val uri = parse(BuildConfig.PLAYER_BASE_URL) ?: return null
+        val scheme = uri.scheme?.lowercase() ?: return null
+        val rawHost = uri.host ?: return null
+        val host = rawHost.lowercase()
+        if (host.isEmpty()) return null
+        val port = uri.port
+        return if (port >= 0) "$scheme://$host:$port" else "$scheme://$host"
+    }
+
+    /**
      * Boot-time self-heal. An APK built before this allowlist existed may
      * have persisted an attacker-supplied `api_root`; every background
      * consumer (heartbeat, crash upload, OTA-state reports, Manager

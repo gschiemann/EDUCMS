@@ -13,6 +13,40 @@ import java.security.MessageDigest
  * Operator-PIN gate for locally-initiated destructive actions (AND-004).
  *
  * ============================================================
+ * ⚠️ UNWIRED — RETAINED ON PURPOSE (2026-08-03)
+ * ============================================================
+ *
+ * NOTHING CALLS THIS. It is deliberately kept on disk, un-referenced,
+ * for the future server-/web-layer gate described at the bottom of this
+ * comment. Do not re-attach it to the native bridge without reading why
+ * it was detached:
+ *
+ *  1. WRONG LAYER — ZERO SECURITY VALUE WHERE IT SAT. The player's
+ *     "unpair" is three layers deep and runs SERVER-FIRST:
+ *     `apps/web/src/app/player/page.tsx` (~:6497-6550) calls
+ *     `POST /api/v1/screens/unpair/:fp` FIRST (~:6527) and only then the
+ *     native `EduCmsNative.unpair()` (~:6550). The gate sat on that last
+ *     native step — by the time it ran, the server had already dropped
+ *     the screen from the emergency channel. Gating it stopped nothing.
+ *
+ *  2. IT BRICKED THE ESCAPE HATCH. The gate fails CLOSED, and the
+ *     provisioning path that would write a PIN DOES NOT EXIST (see the
+ *     note below, and `usb/UsbIngestActivity.kt` — "V1 scaffold: no PIN
+ *     prompt yet"). So on every deployed screen it permanently disabled
+ *     the operator's on-device "Exit to device home", which is the only
+ *     way back to the OEM launcher on a signage box.
+ *
+ * The real fix for the threat below — somebody physically at the screen
+ * with a USB keyboard — is Android **lock task mode**, which stops them
+ * escaping the WebView into the OS at all. See
+ * `com.educms.player.security.LockTaskController`.
+ *
+ * If a PIN gate is ever genuinely wanted, it belongs on the SERVER side
+ * of the unpair (an API that refuses a device-initiated unpair without a
+ * tenant-set PIN), or in the web overlay BEFORE the server call — not
+ * here, behind the action that already happened.
+ *
+ * ============================================================
  * THE THREAT
  * ============================================================
  *

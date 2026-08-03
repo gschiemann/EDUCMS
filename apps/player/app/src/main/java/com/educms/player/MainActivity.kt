@@ -35,7 +35,7 @@ import com.educms.player.bootstrap.ManagerBootstrap
 import com.educms.player.databinding.ActivityMainBinding
 import com.educms.player.logging.PlayerLogger
 import com.educms.player.security.HostAllowlist
-import com.educms.player.security.OperatorPinGate
+import com.educms.player.security.LockTaskController
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -64,24 +64,14 @@ class MainActivity : ComponentActivity() {
     private var lastImeVisible: Boolean = false
 
     /**
-     * AND-004 — timestamp (SystemClock.elapsedRealtime) of the most
-     * recent LOCAL physical input: a key from the remote / a USB
-     * keyboard, or a touch. Stamped by [dispatchKeyEvent] and
-     * [onUserInteraction], both of which see every event dispatched to
-     * this Activity BEFORE the WebView consumes it.
-     *
-     * Why: the destructive bridge methods (`unpair`, `exitToDeviceHome`)
-     * are driven from two very different places —
-     *   1. the SERVER, via the signed TENANT_CHANGED WebSocket message
-     *      (no human present; must keep working unattended), and
-     *   2. the player's on-screen info overlay, which Enter/Space opens
-     *      and which a student with a $10 USB keyboard can walk to in
-     *      four keystrokes — taking the screen off the lockdown-alert
-     *      channel.
-     * This timestamp is what lets us tell the two apart natively, so we
-     * can require the operator PIN for (2) without stranding (1).
+     * AND-002 — true once the origin-scoped [NativeBridgeChannel] is live
+     * on this WebView. False means this device fell back to the legacy
+     * `addJavascriptInterface` bridge alone (pre-M77 WebView), which is
+     * reachable from every frame. Surfaced in `deviceInfoJson()` so the
+     * fleet can be checked from the dashboard rather than device by
+     * device — that check is removal criterion #4 for the legacy surface.
      */
-    @Volatile private var lastLocalInputAtMs: Long = 0L
+    private var nativeChannelActive: Boolean = false
 
     /**
      * Belt-and-suspenders kiosk-stuck watchdog (2026-05-05).
@@ -147,15 +137,6 @@ class MainActivity : ComponentActivity() {
         const val ORIENTATION_AUTO = "AUTO"
 
         /**
-         * AND-004 — how recently local physical input must have happened
-         * for a destructive bridge call to count as "somebody is standing
-         * at this screen" and therefore need the operator PIN. Generous
-         * enough to cover a human clicking through the overlay; far short
-         * of a server-driven TENANT_CHANGED arriving on its own.
-         */
-        private const val LOCAL_INPUT_WINDOW_MS = 20L * 1000L
-
-        /**
          * AND-008 — accepted shape for the device fingerprint handed to
          * `setBootstrap`. It is concatenated into the log-upload and
          * ota-state URLs, so keep it to path-safe characters. Covers every
@@ -163,56 +144,6 @@ class MainActivity : ComponentActivity() {
          * `device-<ts>-<rand>`) plus operator `?deviceId=` values.
          */
         private val FINGERPRINT_RE = Regex("^[A-Za-z0-9._-]{8,128}\$")
-    }
-
-    // ─── AND-004: local-input detection ─────────────────────────────
-
-    private fun markLocalInput() {
-        lastLocalInputAtMs = android.os.SystemClock.elapsedRealtime()
-    }
-
-    private fun localInputRecent(): Boolean {
-        val t = lastLocalInputAtMs
-        if (t == 0L) return false
-        return android.os.SystemClock.elapsedRealtime() - t <= LOCAL_INPUT_WINDOW_MS
-    }
-
-    override fun onUserInteraction() {
-        super.onUserInteraction()
-        markLocalInput()
-    }
-
-    /**
-     * Stamp local input for the AND-004 gate. This override MUST stay a
-     * pure pass-through — key routing on OEM signage remotes is fragile
-     * (see the long note on onKeyDown) and nothing here may swallow or
-     * re-target an event.
-     */
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        markLocalInput()
-        return super.dispatchKeyEvent(event)
-    }
-
-    /**
-     * AND-004 — run [action] directly when the request did NOT originate
-     * from somebody at the device (server-driven paths keep working
-     * unattended), otherwise require the operator PIN first.
-     *
-     * Fail-closed: when local input IS recent and no PIN is configured,
-     * [OperatorPinGate] denies and tells the operator to use the
-     * dashboard. See OperatorPinGate's header for the provisioning gap.
-     */
-    private fun guardLocalDestructiveAction(label: String, action: () -> Unit) {
-        if (!localInputRecent()) {
-            PlayerLogger.i("MainActivity", "\"$label\" — no recent local input, treating as remote/server-driven")
-            action()
-            return
-        }
-        PlayerLogger.w(
-            "MainActivity",
-            "\"$label\" requested within ${LOCAL_INPUT_WINDOW_MS / 1000}s of local input — operator PIN required",
-        )
-        OperatorPinGate.require(this, label) { action() }
     }
 
     /**
@@ -1007,14 +938,33 @@ class MainActivity : ComponentActivity() {
             WebSettingsCompat.setForceDark(wv.settings, WebSettingsCompat.FORCE_DARK_AUTO)
         }
 
-        wv.addJavascriptInterface(
-            WebAppBridge(
-                // AND-004 — a locally-initiated unpair takes this screen
-                // off the emergency-alert channel, so it needs the
-                // operator PIN. Server-driven unpairs (the signed
-                // TENANT_CHANGED message) arrive with no human at the
-                // keyboard and pass straight through.
-                onUnpair = { guardLocalDestructiveAction("Unpair this screen") { unpairAndRestart() } },
+        // ── AND-002 — ONE handler set, TWO transports ───────────────
+        // Built once and handed to both the legacy
+        // `addJavascriptInterface` surface and the new origin-scoped
+        // `NativeBridgeChannel`, so the two can never drift apart.
+        // See NativeBridgeChannel's header for why both ship this
+        // release and what must be true before the legacy one is
+        // deleted.
+        val webAppBridge = WebAppBridge(
+                // AND-004 REVERTED (2026-08-03) — this call site briefly
+                // ran through an on-device operator-PIN gate. It was the
+                // WRONG LAYER and is now removed:
+                //
+                //  * The web player's unpair is THREE layers deep and runs
+                //    SERVER-FIRST (apps/web/src/app/player/page.tsx ~:6497
+                //    — `POST /api/v1/screens/unpair/:fp` at :6527, and only
+                //    THEN the native `EduCmsNative.unpair()` at :6550). By
+                //    the time this lambda runs the screen is already off
+                //    the emergency channel server-side, so gating the
+                //    native step bought zero security.
+                //  * The gate failed CLOSED with no provisioning path in
+                //    existence (see OperatorPinGate's header), which
+                //    permanently disabled the operator's on-device escape
+                //    hatch on every deployed screen.
+                //
+                // The real fix for "a student with a USB keyboard walks up
+                // to the screen" is lock-task mode — see LockTaskController.
+                onUnpair = { unpairAndRestart() },
                 onReload = { runOnUiThread { wv.reload() } },
                 getDeviceInfo = { deviceInfoJson() },
                 onCheckForUpdates = { PlayerApp.fireOtaCheckNow(applicationContext) },
@@ -1068,11 +1018,13 @@ class MainActivity : ComponentActivity() {
                     // operator manually relaunches our app from the OEM home, we
                     // resume kiosk-home duties without a config trip.
                     //
-                    // AND-004 — dropping out of the kiosk is a local
-                    // "escape hatch"; when it is triggered by somebody
-                    // standing at the screen it needs the operator PIN.
+                    // AND-004 REVERTED (2026-08-03) — this was briefly
+                    // wrapped in an on-device operator-PIN gate that failed
+                    // CLOSED with no provisioning path, which permanently
+                    // disabled this escape hatch on every deployed screen.
+                    // See the note on `onUnpair` above and LockTaskController
+                    // for the correct fix.
                     PlayerLogger.i("MainActivity", "Exit to device home requested via JS bridge")
-                    guardLocalDestructiveAction("Exit to device home") {
                     runOnUiThread {
                         val pm = packageManager
                         // ── Step 1: turn OFF the KioskHomeAlias ─────────────
@@ -1187,7 +1139,6 @@ class MainActivity : ComponentActivity() {
                         }
                         finishAffinity()
                     }
-                    } // end guardLocalDestructiveAction("Exit to device home")
                 },
                 onSetBootstrap = { apiRoot, fingerprint ->
                     // v1.0.11 — write the prefs that HeartbeatService and
@@ -1371,9 +1322,27 @@ class MainActivity : ComponentActivity() {
                 ctsSerial = com.educms.player.serial.SerialPortBridge(
                     getWebView = { wv },
                 ),
-            ),
-            "EduCmsNative"
         )
+
+        // ── Transport 1 (LEGACY, still required) ────────────────────
+        // Injects `window.EduCmsNative` into EVERY frame this WebView
+        // loads — including operator-authored and third-party iframes.
+        // That is exactly the AND-002 finding, and it is knowingly kept
+        // for ONE release only: the APK and the web bundle deploy
+        // independently, so removing it here would break every kiosk
+        // that hasn't yet taken the matching web deploy (and every
+        // service-worker-cached bundle still in the field).
+        //
+        // ⚠️ Do not delete this line until ALL FOUR removal criteria in
+        //    NativeBridgeChannel's header are met.
+        wv.addJavascriptInterface(webAppBridge, "EduCmsNative")
+
+        // ── Transport 2 (SECURE, preferred) ─────────────────────────
+        // Materialises `window.EduCmsNativeChannel` ONLY in a main frame
+        // whose origin is exactly BuildConfig.PLAYER_BASE_URL's. Returns
+        // false (and logs DEGRADED) on a pre-M77 WebView, where we stay
+        // on transport 1 alone.
+        nativeChannelActive = NativeBridgeChannel.attach(wv, webAppBridge)
 
         wv.webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(cm: ConsoleMessage): Boolean {
@@ -1676,7 +1645,12 @@ class MainActivity : ComponentActivity() {
     private fun deviceInfoJson(): String {
         val w = resources.displayMetrics.widthPixels
         val h = resources.displayMetrics.heightPixels
-        return """{"manufacturer":"${Build.MANUFACTURER}","model":"${Build.MODEL}","sdk":${Build.VERSION.SDK_INT},"width":$w,"height":$h,"appVersion":"${BuildConfig.VERSION_NAME}"}"""
+        // `secureBridge` / `lockTask` (2026-08-03) are fleet-visibility
+        // fields, not features: they answer "can we delete the legacy
+        // addJavascriptInterface surface yet?" and "is this screen
+        // actually pinned?" from the dashboard instead of by grepping
+        // per-device logs. See NativeBridgeChannel + LockTaskController.
+        return """{"manufacturer":"${Build.MANUFACTURER}","model":"${Build.MODEL}","sdk":${Build.VERSION.SDK_INT},"width":$w,"height":$h,"appVersion":"${BuildConfig.VERSION_NAME}","secureBridge":$nativeChannelActive,"lockTask":${LockTaskController.isActive(this)}}"""
     }
 
     override fun onResume() {

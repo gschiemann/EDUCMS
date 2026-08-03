@@ -59,6 +59,17 @@ import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 // player renderer crash is reported with full stack + component trail so we
 // can ship a fix without an operator hand-walking logcat.
 import * as Sentry from '@sentry/nextjs';
+// AND-002 — the ONLY sanctioned way to reach the Android APK. Prefers the
+// origin-scoped `EduCmsNativeChannel` and falls back to the legacy
+// `window.EduCmsNative` object. Never touch `window.EduCmsNative`
+// directly from this file again; see nativeBridge.ts for why.
+import {
+  hasNativeBridge,
+  nativeCall,
+  nativeCallOr,
+  nativeFire,
+  nativeHas,
+} from './nativeBridge';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Bullet-proof helpers (Phase 1 hardening)
@@ -91,13 +102,13 @@ function isPreviewMode(): boolean {
 function isAndroidWebView(): boolean {
   if (typeof window === 'undefined') return false;
   if (qp('client') === 'android') return true;
-  // Native app exposes window.EduCmsNative as a JS bridge.
-  return !!(window as any).EduCmsNative;
+  // Native app exposes a JS bridge — either transport counts.
+  return hasNativeBridge();
 }
 
 /** Ask the Android shell to do a hard reload (last-resort recovery). No-op in browser. */
 function nativeReload() {
-  try { (window as any).EduCmsNative?.reload?.(); } catch { /* noop */ }
+  nativeFire('reload');
 }
 
 /**
@@ -126,13 +137,7 @@ function nativeReload() {
  */
 function hardCacheBustingReload() {
   if (typeof window === 'undefined') return;
-  try {
-    const bridge = (window as any).EduCmsNative;
-    if (bridge && typeof bridge.reload === 'function') {
-      bridge.reload();
-      return;
-    }
-  } catch { /* fall through to location.replace */ }
+  if (nativeFire('reload')) return;
   try {
     const url = new URL(window.location.href);
     url.searchParams.set('_v', String(Date.now()));
@@ -1457,17 +1462,50 @@ function getDeviceFingerprint(): string {
  * been upgraded yet.
  */
 /**
+ * One-shot async read of the APK's `deviceInfo()`, cached into the same
+ * localStorage key `resolvePlayerVersion` already reads. Exists because
+ * the AND-002 bridge channel is message-passing (async) while
+ * `resolvePlayerVersion` has synchronous callers. Safe to call on every
+ * resolve — it self-guards after the first invocation.
+ */
+let deviceInfoPrimed = false;
+function primeNativeDeviceInfo(): void {
+  if (deviceInfoPrimed || typeof window === 'undefined') return;
+  deviceInfoPrimed = true;
+  if (!nativeHas('deviceInfo')) return;
+  nativeCall<string>('deviceInfo')
+    .then((raw) => {
+      if (!raw) return;
+      const info = JSON.parse(raw);
+      if (info?.appVersion) {
+        localStorage.setItem('edu_player_apk_version', String(info.appVersion));
+      }
+    })
+    .catch(() => { /* browser player or old APK — sources 1 and 3 cover it */ });
+}
+
+/**
  * Resolve the player APK version from any of three sources, in order
  * of precedence. Defensive against URL-param loss on navigation /
  * page reload (operator caught us on 2026-04-27: kiosk on v1.0.11
  * but dashboard chip stuck blank).
  *
  *   1. URL ?v= / ?vc= — set by the APK via MainActivity.loadPlayer
- *   2. EduCmsNative.deviceInfo() bridge — always available on APK
- *      (returns appVersion in JSON), survives any in-page navigation
+ *   2. deviceInfo() bridge — always available on APK (returns
+ *      appVersion in JSON), survives any in-page navigation
  *   3. localStorage — sticky cache so even a hard reload of the
  *      WebView keeps the version in heartbeats while we wait for
  *      the bridge to come back online
+ *
+ * AND-002 note: source 2 used to be a SYNCHRONOUS bridge call, and this
+ * function has sync callers (buildHeartbeatUrl) that would be very
+ * invasive to make async. So the bridge read is now primed once, off to
+ * the side, and lands in source 3 — see primeNativeDeviceInfo. In
+ * practice source 1 already covers the APK's first load (loadPlayer
+ * always appends ?v=), so the only window where this differs is the
+ * very first heartbeat after an in-page navigation that dropped the
+ * query params on a device with an empty localStorage — and the prime
+ * fills that in a microtask.
  */
 function resolvePlayerVersion(): { v: string | null; vc: string | null } {
   if (typeof window === 'undefined') return { v: null, vc: null };
@@ -1477,17 +1515,8 @@ function resolvePlayerVersion(): { v: string | null; vc: string | null } {
   let v = params.get('v') || null;
   let vc = params.get('vc') || null;
 
-  // 2. Native bridge — most reliable on APK
-  if (!v) {
-    try {
-      const bridge = (window as any).EduCmsNative;
-      const raw = bridge?.deviceInfo?.();
-      if (raw) {
-        const info = JSON.parse(raw);
-        if (info?.appVersion) v = String(info.appVersion);
-      }
-    } catch { /* bridge unavailable, fall through */ }
-  }
+  // 2. Native bridge — async now; result lands in localStorage below.
+  primeNativeDeviceInfo();
 
   // 3. localStorage cache (set on any successful detection above)
   if (!v) {
@@ -1626,14 +1655,16 @@ function SoftwareInfoRow() {
   const [lastCheckMsg, setLastCheckMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      const bridge = (window as any).EduCmsNative;
-      if (bridge && typeof bridge.deviceInfo === 'function') {
-        const raw = bridge.deviceInfo();
+    let cancelled = false;
+    if (!nativeHas('deviceInfo')) return;
+    nativeCall<string>('deviceInfo')
+      .then((raw) => {
+        if (cancelled || !raw) return;
         const info = JSON.parse(raw);
         if (info?.appVersion) setApkVersion(info.appVersion);
-      }
-    } catch { /* browser player — leave as null */ }
+      })
+      .catch(() => { /* browser player — leave as null */ });
+    return () => { cancelled = true; };
   }, []);
 
   const handleCheck = async (e: React.MouseEvent) => {
@@ -1644,9 +1675,8 @@ function SoftwareInfoRow() {
       // Preferred path: 1.0.6+ native bridge enqueues the OTA worker
       // right now. The worker handles the full download+install dance,
       // so we just tell the operator we've asked.
-      const bridge = (window as any).EduCmsNative;
-      if (bridge && typeof bridge.checkForUpdates === 'function') {
-        const ver = bridge.checkForUpdates();
+      if (nativeHas('checkForUpdates')) {
+        const ver = await nativeCallOr<string>('', 'checkForUpdates');
         setLastCheckMsg(`Checking… (currently on ${ver || apkVersion || '?'})`);
         // After ~8s the worker has usually either begun downloading
         // (install prompt pops separately) OR reported uptoDate.
@@ -1734,29 +1764,31 @@ function DiagnosticsRow() {
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const bridge = typeof window !== 'undefined' ? (window as any).EduCmsNative : null;
-  if (!bridge || typeof bridge.getRecentLogs !== 'function') return null;
+  if (!nativeHas('getRecentLogs')) return null;
 
-  const loadLogs = (e: React.MouseEvent) => {
+  const loadLogs = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    setExpanded(true);
+    setLogs('(reading device log…)');
     try {
-      const raw = bridge.getRecentLogs();
+      const raw = await nativeCall<string>('getRecentLogs');
       setLogs(typeof raw === 'string' ? raw : JSON.stringify(raw));
     } catch (err: any) {
       setLogs('(error reading logs: ' + (err?.message || String(err)) + ')');
     }
-    setExpanded(true);
   };
 
-  const handleUpload = (e: React.MouseEvent) => {
+  const handleUpload = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setUploading(true);
     setUploadMsg(null);
     try {
-      const result = typeof bridge.uploadDiagnostics === 'function'
-        ? bridge.uploadDiagnostics()
-        : 'uploadDiagnostics not available';
-      setUploadMsg(result || 'upload triggered');
+      if (!nativeHas('uploadDiagnostics')) {
+        setUploadMsg('uploadDiagnostics not available');
+      } else {
+        const result = await nativeCall<string>('uploadDiagnostics');
+        setUploadMsg(result || 'upload triggered');
+      }
     } catch (err: any) {
       setUploadMsg('error: ' + (err?.message || String(err)));
     } finally {
@@ -2225,12 +2257,8 @@ function PlayerPage() {
   // undefined.
   useEffect(() => {
     const tick = () => {
-      try {
-        const bridge = (window as any).EduCmsNative;
-        if (bridge && typeof bridge.heartbeat === 'function') {
-          bridge.heartbeat();
-        }
-      } catch { /* swallow — bridge unavailable, browser-only */ }
+      // No-op in the browser player — nativeFire returns false.
+      nativeFire('heartbeat');
     };
     tick(); // immediate so the first heartbeat lands quickly after boot
     const id = setInterval(tick, 60_000);
@@ -2492,13 +2520,12 @@ function PlayerPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (isPreviewMode()) return; // preview tabs don't pair, never run native services
-    const bridge = (window as any).EduCmsNative;
-    if (!bridge?.setBootstrap) return; // older APK without the method
+    if (!nativeHas('setBootstrap')) return; // older APK without the method
     try {
       const fp = getDeviceFingerprint();
       const apiRoot = getApiRoot();
       if (fp && apiRoot && fp.length >= 8) {
-        bridge.setBootstrap(apiRoot, fp);
+        nativeFire('setBootstrap', apiRoot, fp);
       }
     } catch (e) {
       // Bridge call failure is non-fatal — heartbeat + OTA stay in the
@@ -2942,11 +2969,10 @@ function PlayerPage() {
     otaPollFireRef.current = now;
     console.log(`[OTA poll] ${source} detected forceUpdatePending=true, firing bridge.checkForUpdates`);
     try {
-      const bridge = (window as any).EduCmsNative;
-      const bridgeAvailable = !!(bridge && typeof bridge.checkForUpdates === 'function');
+      const bridgeAvailable = nativeHas('checkForUpdates');
       setOtaProgress({ startedAt: now, bridgeAvailable });
       if (bridgeAvailable) {
-        bridge.checkForUpdates();
+        nativeFire('checkForUpdates');
       }
     } catch (e) {
       console.warn('[OTA poll] bridge fire failed', e);
@@ -3966,12 +3992,8 @@ function PlayerPage() {
       // body transform:rotate(90deg) if Android silently ignored us.
       const orient = manifest.orientation;
       if (orient === 'LANDSCAPE' || orient === 'PORTRAIT' || orient === 'AUTO') {
-        try {
-          const bridge = (window as any).EduCmsNative;
-          if (bridge && typeof bridge.setOrientation === 'function') {
-            bridge.setOrientation(orient);
-          }
-        } catch { /* bridge unavailable — CSS fallback effect handles it */ }
+        // No-op off-APK — the CSS fallback effect handles it.
+        nativeFire('setOrientation', orient);
         setManifestOrientation(orient);
       }
 
@@ -4986,22 +5008,15 @@ function PlayerPage() {
         // bridge.checkForUpdates() call there). If the native bridge
         // isn't present (browser preview / unpaired) there's nothing
         // to update — skip the prompt.
-        try {
-          const bridge = (window as any).EduCmsNative;
-          if (bridge && typeof bridge.checkForUpdates === 'function') {
-            setShowUpdatePrompt(true);
-          }
-        } catch { /* swallow */ }
+        if (nativeHas('checkForUpdates')) {
+          setShowUpdatePrompt(true);
+        }
       });
       handle('REFRESH_WEB', () => {
-        try {
-          const bridge = (window as any).EduCmsNative;
-          if (bridge && typeof bridge.reload === 'function') bridge.reload();
-          // Cache-busting reload (not plain reload) so the NovaStar/Taurus
-          // WebView fetches the CURRENT bundle instead of re-serving the cached
-          // one — see the WS REFRESH_WEB handler for the full rationale.
-          else hardCacheBustingReload();
-        } catch { /* swallow */ }
+        // Cache-busting reload (not plain reload) so the NovaStar/Taurus
+        // WebView fetches the CURRENT bundle instead of re-serving the cached
+        // one — see the WS REFRESH_WEB handler for the full rationale.
+        if (!nativeFire('reload')) hardCacheBustingReload();
       });
       // P0-2 (life-safety) — Sprint 5 emergency messages on the SSE
       // tier. SSE exists precisely for the WS-blocked-proxy case
@@ -5292,7 +5307,7 @@ function PlayerPage() {
                 navigator.serviceWorker?.controller?.postMessage({ type: 'CLEAR_CACHE', tier: 'all' });
               } catch {}
               // Ask the native shell (if present) to wipe USB cache + reload.
-              try { (window as any).EduCmsNative?.unpair?.(); } catch {}
+              nativeFire('unpair');
               setActiveEmergency(null);
               setPhase('registering');
               return;
