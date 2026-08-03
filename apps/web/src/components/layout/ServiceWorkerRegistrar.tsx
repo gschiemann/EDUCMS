@@ -1,6 +1,7 @@
-import { getServiceWorkerContainer } from '../../lib/safe-service-worker';
 "use client";
 
+
+import { getServiceWorkerContainer } from '../../lib/safe-service-worker';
 import { useEffect } from 'react';
 
 /**

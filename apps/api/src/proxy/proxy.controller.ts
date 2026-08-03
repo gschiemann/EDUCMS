@@ -638,7 +638,30 @@ window.addEventListener('load',function(){
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.removeHeader('X-Frame-Options');
       res.removeHeader('Content-Security-Policy');
-      res.setHeader('Content-Security-Policy', "frame-ancestors *");
+      // RS-01 (2026-08-04) — `sandbox` here is load-bearing, not decoration.
+      //
+      // vercel.json rewrites /api/v1/:path* to the API, so
+      // https://<web-origin>/api/v1/proxy/web?url=<evil>&interactive=true is
+      // SAME-ORIGIN with the dashboard and can be opened as a TOP-LEVEL
+      // navigation. The iframe `sandbox` ATTRIBUTE added for INJ-001 does not
+      // apply to a top-level document — only to frames. Interactive mode
+      // leaves upstream scripts intact, so without this header one operator
+      // click on a crafted link ran attacker JS on our own origin: read the
+      // operator JWT, then POST /emergency/trigger a district-wide lockdown.
+      //
+      // The CSP `sandbox` DIRECTIVE does apply to top-level documents. It
+      // forces an opaque origin, so the response can no longer reach our
+      // storage, cookies or same-origin APIs. `allow-scripts` is retained
+      // because interactive mode exists to run the upstream page's own JS.
+      //
+      // NOT a change to the iframe path: that frame is already
+      // `sandbox="allow-scripts"` with no allow-same-origin, hence already
+      // opaque-origin. The two sandboxes intersect to identical permissions.
+      //
+      // Durable fix (larger, tracked): serve the proxy from a DEDICATED origin
+      // and drop /api/v1/proxy/* from the Vercel rewrite, so this response can
+      // never be same-origin with the dashboard at all.
+      res.setHeader('Content-Security-Policy', 'sandbox allow-scripts; frame-ancestors *');
       res.setHeader('Access-Control-Allow-Origin', '*');
 
       res.send(html);
@@ -650,7 +673,30 @@ window.addEventListener('load',function(){
       res.setHeader('Content-Type', 'text/html');
       res.removeHeader('X-Frame-Options');
       res.removeHeader('Content-Security-Policy');
-      res.setHeader('Content-Security-Policy', "frame-ancestors *");
+      // RS-01 (2026-08-04) — `sandbox` here is load-bearing, not decoration.
+      //
+      // vercel.json rewrites /api/v1/:path* to the API, so
+      // https://<web-origin>/api/v1/proxy/web?url=<evil>&interactive=true is
+      // SAME-ORIGIN with the dashboard and can be opened as a TOP-LEVEL
+      // navigation. The iframe `sandbox` ATTRIBUTE added for INJ-001 does not
+      // apply to a top-level document — only to frames. Interactive mode
+      // leaves upstream scripts intact, so without this header one operator
+      // click on a crafted link ran attacker JS on our own origin: read the
+      // operator JWT, then POST /emergency/trigger a district-wide lockdown.
+      //
+      // The CSP `sandbox` DIRECTIVE does apply to top-level documents. It
+      // forces an opaque origin, so the response can no longer reach our
+      // storage, cookies or same-origin APIs. `allow-scripts` is retained
+      // because interactive mode exists to run the upstream page's own JS.
+      //
+      // NOT a change to the iframe path: that frame is already
+      // `sandbox="allow-scripts"` with no allow-same-origin, hence already
+      // opaque-origin. The two sandboxes intersect to identical permissions.
+      //
+      // Durable fix (larger, tracked): serve the proxy from a DEDICATED origin
+      // and drop /api/v1/proxy/* from the Vercel rewrite, so this response can
+      // never be same-origin with the dashboard at all.
+      res.setHeader('Content-Security-Policy', 'sandbox allow-scripts; frame-ancestors *');
       res.setHeader('Access-Control-Allow-Origin', '*');
 
       let message = 'An unknown proxy error occurred';

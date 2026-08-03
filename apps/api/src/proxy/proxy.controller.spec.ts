@@ -91,7 +91,18 @@ describe('ProxyController — spatial-nav shim injection', () => {
   it('keeps the embedding + SSRF-facing response headers unchanged', async () => {
     const res = fakeRes();
     await controller.proxyWeb('https://example.com/', 'true', res as never);
-    expect(res.headers['content-security-policy']).toBe('frame-ancestors *');
+    // RS-01: the `sandbox` DIRECTIVE is the load-bearing part and must never
+    // be dropped. vercel.json rewrites /api/v1/* to the API, so this response
+    // is same-origin with the dashboard and can be opened as a TOP-LEVEL
+    // navigation — where the iframe `sandbox` ATTRIBUTE does not apply. The
+    // CSP directive does, forcing an opaque origin so attacker HTML cannot
+    // reach the operator's session. Asserted as two properties rather than one
+    // literal so header re-ordering cannot silently drop the sandbox.
+    const csp = res.headers['content-security-policy'] as string;
+    expect(csp).toMatch(/(^|;)\s*sandbox\s+allow-scripts\s*(;|$)/);
+    expect(csp).toContain('frame-ancestors *');
+    // allow-same-origin would defeat the whole point — it restores our origin.
+    expect(csp).not.toContain('allow-same-origin');
     expect(res.headers['x-frame-options']).toBeUndefined();
     expect(res.headers['cache-control']).toContain('no-store');
   });
