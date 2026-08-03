@@ -333,30 +333,48 @@ test.describe('Widget render — WebKit + Chromium smoke (P1-12)', () => {
   // manifest budget → 3× red in BOTH engines. Now: up to 3 warm-up attempts
   // × 90s each; if all fail we throw HERE with an honest infra message
   // instead of letting the timed test fail with a misleading render one.
+  // 2026-08-03 — the retries were not actually retrying. A SINGLE page was
+  // created outside the loop and reused for all three attempts. When the first
+  // attempt died in a way that takes the page with it — `Target page, context
+  // or browser has been closed`, an aborted navigation, a renderer OOM under a
+  // loaded runner — attempts 2 and 3 replayed against a DEAD handle and threw
+  // instantly. So the advertised 3 × 90 s budget silently collapsed to one
+  // shot, and the job failed in ~30 s rather than using its 270 s.
+  //
+  // That is why this looked like a code regression on 2026-08-03: it went
+  // red on the security merge, green on the next commit, red on the one after,
+  // green again — alternating across commits that never touched widget
+  // rendering. Same signature as the 2026-06-02 and 2026-07-09 flakes noted
+  // above; those were also "green on a no-change re-run".
+  //
+  // Fix: a FRESH page per attempt, and treat page creation itself as part of
+  // the attempt. Now a crashed renderer costs one attempt instead of all three.
   test.beforeAll(async ({ browser }) => {
-    const warm = await browser.newPage();
-    try {
-      let warmed = false;
-      let lastErr: unknown = null;
-      for (let attempt = 1; attempt <= 3 && !warmed; attempt++) {
-        try {
-          await warm.goto('http://localhost:3000/player?fp=warmup', {
-            waitUntil: 'domcontentloaded',
-            timeout: 90_000,
-          });
-          await warm.waitForTimeout(1500);
-          warmed = true;
-        } catch (err) {
-          lastErr = err;
-        }
+    let warmed = false;
+    let lastErr: unknown = null;
+    for (let attempt = 1; attempt <= 3 && !warmed; attempt++) {
+      let warm: import('@playwright/test').Page | null = null;
+      try {
+        warm = await browser.newPage();
+        await warm.goto('http://localhost:3000/player?fp=warmup', {
+          waitUntil: 'domcontentloaded',
+          timeout: 90_000,
+        });
+        await warm.waitForTimeout(1500);
+        warmed = true;
+      } catch (err) {
+        lastErr = err;
+        // eslint-disable-next-line no-console
+        console.warn(`[widget-render] warm-up attempt ${attempt}/3 failed: ${String(err).slice(0, 160)}`);
+      } finally {
+        // Never let a failed close mask the real warm-up error.
+        if (warm) await warm.close().catch(() => {});
       }
-      if (!warmed) {
-        throw new Error(
-          `Player route warm-up failed after 3 attempts — dev server never served /player (infra/compile, not a render bug): ${String(lastErr).slice(0, 300)}`,
-        );
-      }
-    } finally {
-      await warm.close();
+    }
+    if (!warmed) {
+      throw new Error(
+        `Player route warm-up failed after 3 attempts — dev server never served /player (infra/compile, not a render bug): ${String(lastErr).slice(0, 300)}`,
+      );
     }
   });
 
