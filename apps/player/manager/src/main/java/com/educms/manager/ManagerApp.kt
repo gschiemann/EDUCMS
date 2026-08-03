@@ -88,6 +88,12 @@ class ManagerApp : Application() {
         // safe on every boot. No-op unless Manager is device owner.
         pinPlayerAsHome(this)
 
+        // 2026-08-03 — grant Player permission to enter lock task mode.
+        // GRANTS ONLY; pins nothing. Player's LockTaskController decides
+        // whether to actually use it. No-op unless Manager is device
+        // owner. See allowPlayerLockTask.
+        allowPlayerLockTask(this)
+
         if (!isPlayerInstalled()) {
             // Single-sideload UX (matches Yodeck's pattern): the
             // bootstrap-fire above already kicks the Player install,
@@ -179,6 +185,72 @@ class ManagerApp : Application() {
             Log.i(TAG, "pinPlayerAsHome — $aliasComponent pinned as persistent preferred HOME")
         } catch (e: Exception) {
             Log.w(TAG, "pinPlayerAsHome failed: ${e.message}", e)
+        }
+    }
+
+    /**
+     * 2026-08-03 — put Player on the device owner's **lock task
+     * allowlist**, so Player's `LockTaskController` may pin the kiosk.
+     *
+     * This is the DEVICE-OWNER half of a deliberate two-key system:
+     *
+     *   - This call only GRANTS PERMISSION. It pins nothing, changes
+     *     nothing visible, and is a no-op on a screen whose Player never
+     *     calls `startLockTask()`.
+     *   - Player's `LockTaskController.engageIfPermitted()` is the other
+     *     key, and it re-checks device-owner status itself.
+     *
+     * Why it must live HERE: only a device owner / profile owner can call
+     * `setLockTaskPackages`, and it is what upgrades Player's
+     * `startLockTask()` from the degraded **screen pinning** variant
+     * (`LOCK_TASK_MODE_PINNED` — the "App is pinned" dialog whose only
+     * exit is hold-Back+Overview, a gesture that does not exist on a
+     * signage remote) to the real, DO-managed `LOCK_TASK_MODE_LOCKED`.
+     * Player refuses to pin at all until `isLockTaskPermitted` is true,
+     * precisely so it can never land in the trapping variant. Read
+     * `LockTaskController`'s header before changing either half.
+     *
+     * The allowlist is deliberately MINIMAL — Player and Manager only.
+     * Notably NOT Settings: while locked, the OS refuses to launch any
+     * package that isn't on this list, and "a student at the screen can
+     * reach Settings" is the exact thing lock task exists to stop.
+     *
+     * No-op when Manager isn't device owner: on an OEM-CMS signage box we
+     * are a guest and must never touch device policy (see the long
+     * comment in Player's AndroidManifest.xml). Idempotent — the list is
+     * replaced wholesale on every boot, which also self-heals a stale
+     * entry after a Player release <-> debug package swap.
+     */
+    private fun allowPlayerLockTask(ctx: Context) {
+        try {
+            if (!AdminReceiver.isDeviceOwner(ctx)) {
+                Log.i(TAG, "allowPlayerLockTask skipped — Manager is not device owner")
+                return
+            }
+            val dpm = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE)
+                as? android.app.admin.DevicePolicyManager ?: return
+            val admin = AdminReceiver.componentName(ctx)
+
+            val pm = ctx.packageManager
+            val playerPkg = listOf(
+                BuildConfig.PLAYER_PACKAGE,
+                "${BuildConfig.PLAYER_PACKAGE}.debug",
+            ).firstOrNull { pkg ->
+                try { pm.getPackageInfo(pkg, 0); true } catch (_: Exception) { false }
+            }
+            if (playerPkg == null) {
+                Log.i(TAG, "allowPlayerLockTask — Player not installed yet, will retry next boot")
+                return
+            }
+
+            // Manager rides along so a future Manager-owned prompt (e.g.
+            // InstallPromptActivity on a ROM that still wants a tap) can
+            // surface over a locked Player instead of being swallowed.
+            val packages = arrayOf(playerPkg, ctx.packageName)
+            dpm.setLockTaskPackages(admin, packages)
+            Log.i(TAG, "allowPlayerLockTask — lock-task allowlist set to ${packages.joinToString(", ")}")
+        } catch (e: Exception) {
+            Log.w(TAG, "allowPlayerLockTask failed: ${e.message}", e)
         }
     }
 

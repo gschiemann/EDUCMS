@@ -95,6 +95,17 @@ class MainActivity : ComponentActivity() {
      * silently stuck.
      */
     private var lastSuccessfulLoadAtMs: Long = 0L
+
+    /**
+     * 2026-08-03 — consecutive watchdog ticks that found a stale page.
+     * Reset to 0 on every successful load / web heartbeat. Once it
+     * reaches [WATCHDOG_UNPIN_AFTER_FAILURES] we release lock task mode,
+     * because a kiosk whose WebView is durably dead cannot render the
+     * on-screen "Exit to device home" button — pinning it would be a soft
+     * brick with no operator way out. See LockTaskController's header.
+     */
+    private var watchdogConsecutiveFailures: Int = 0
+
     private val watchdogHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val watchdogTicker = object : Runnable {
         override fun run() {
@@ -105,15 +116,29 @@ class MainActivity : ComponentActivity() {
             // recovery controller will pick up the resulting load
             // event (success or error) and resume normal flow.
             if (ageMs > WATCHDOG_TIMEOUT_MS) {
+                watchdogConsecutiveFailures += 1
                 PlayerLogger.w(
                     "MainActivity",
-                    "Watchdog: no successful page load in ${ageMs / 1000}s — forcing reload",
+                    "Watchdog: no successful page load in ${ageMs / 1000}s — forcing reload " +
+                        "(consecutive failures=$watchdogConsecutiveFailures)",
                 )
+                // Safety valve — a page this broken can't show the
+                // operator's escape hatch, so give them the OS back.
+                // Re-armed automatically by the next onPageFinishedOk.
+                if (watchdogConsecutiveFailures >= WATCHDOG_UNPIN_AFTER_FAILURES) {
+                    LockTaskController.disengage(
+                        this@MainActivity,
+                        "watchdog: $watchdogConsecutiveFailures consecutive failed ticks — " +
+                            "handing the device back so an operator can reach the OS",
+                    )
+                }
                 runCatching { webView.stopLoading() }
                 lifecycleScope.launch {
                     val token = deviceStore.deviceToken.first().orEmpty()
                     loadPlayer(token)
                 }
+            } else {
+                watchdogConsecutiveFailures = 0
             }
             // Re-arm. Always re-arm — even after a forced reload —
             // so a chronic stuck-state is reloaded on every interval.
@@ -126,6 +151,18 @@ class MainActivity : ComponentActivity() {
         private const val WATCHDOG_TICK_MS = 2L * 60L * 1000L
         /** How long the page can be stale before we force a reload. 10 minutes. */
         private const val WATCHDOG_TIMEOUT_MS = 10L * 60L * 1000L
+
+        /**
+         * 2026-08-03 — after this many consecutive stale watchdog ticks
+         * (~30 min of a page that will not load) we RELEASE lock task
+         * mode. Rationale in LockTaskController's header: the operator's
+         * on-screen escape hatch lives inside the WebView, so a durably
+         * dead WebView + a pinned task = no way out without ADB. Three
+         * ticks is long enough that a transient outage never unpins a
+         * healthy fleet, short enough that a genuinely bricked screen is
+         * serviceable within one site visit.
+         */
+        private const val WATCHDOG_UNPIN_AFTER_FAILURES = 3
 
         // 2026-05-24 — operator-controlled orientation lock.
         // SharedPreferences key for the most-recently-applied value,
@@ -144,6 +181,42 @@ class MainActivity : ComponentActivity() {
          * `device-<ts>-<rand>`) plus operator `?deviceId=` values.
          */
         private val FINGERPRINT_RE = Regex("^[A-Za-z0-9._-]{8,128}\$")
+    }
+
+    // ─── 2026-08-03: kiosk lock task mode ───────────────────────────
+
+    /**
+     * Tracks resumed-ness for [maybeEngageLockTask]. `onPageFinishedOk`
+     * can fire while the activity is paused (a background reload), and
+     * `startLockTask()` from a non-resumed activity throws.
+     */
+    private var isResumedForLockTask: Boolean = false
+
+    /**
+     * Ask [LockTaskController] to pin the kiosk. It applies every gate
+     * itself (device owner + DO lock-task allowlist + opt-out pref), so
+     * this is a no-op on an OEM-CMS guest box and on any unprovisioned
+     * sideload — read that file's header before changing either call
+     * site.
+     *
+     * TWO deliberate constraints on WHEN we call it:
+     *
+     *  1. **Only from a RESUMED activity.** `startLockTask()` throws
+     *     `IllegalStateException` otherwise (caught, but it would just
+     *     log noise and never pin).
+     *  2. **Only after the player page has actually rendered once**
+     *     (`lastSuccessfulLoadAtMs != 0L`). This is the anti-brick rule:
+     *     the operator's on-screen way out ("Exit to device home") lives
+     *     inside the WebView, so a build that crash-loops before it can
+     *     paint must never pin itself. Combined with the watchdog's
+     *     unpin valve, a screen that cannot show its escape hatch is
+     *     never locked.
+     */
+    private fun maybeEngageLockTask(why: String) {
+        if (!isResumedForLockTask) return
+        if (lastSuccessfulLoadAtMs == 0L) return
+        runCatching { LockTaskController.engageIfPermitted(this) }
+            .onFailure { PlayerLogger.w("MainActivity", "maybeEngageLockTask($why) threw: ${it.message}") }
     }
 
     /**
@@ -1026,6 +1099,15 @@ class MainActivity : ComponentActivity() {
                     // for the correct fix.
                     PlayerLogger.i("MainActivity", "Exit to device home requested via JS bridge")
                     runOnUiThread {
+                        // ── Step 0: LEAVE LOCK TASK MODE FIRST ──────────────
+                        // 2026-08-03. Inside a locked task, `finishAffinity()`
+                        // and a HOME intent are both no-ops — every step below
+                        // would run, log success, and leave the operator
+                        // exactly where they started. This IS the on-screen
+                        // escape hatch from lock task; see LockTaskController.
+                        // No-op on a screen that was never pinned.
+                        LockTaskController.disengage(this, "operator chose \"Exit to device home\"")
+
                         val pm = packageManager
                         // ── Step 1: turn OFF the KioskHomeAlias ─────────────
                         // Without this, Android's HOME resolver still finds us
@@ -1375,6 +1457,10 @@ class MainActivity : ComponentActivity() {
             onPageFinishedOk = {
                 lastSuccessfulLoadAtMs = android.os.SystemClock.elapsedRealtime()
                 if (::recovery.isInitialized) recovery.onPageLoaded()
+                // 2026-08-03 — a healthy page is the ONLY thing that arms
+                // the kiosk lock. See maybeEngageLockTask.
+                watchdogConsecutiveFailures = 0
+                maybeEngageLockTask("page loaded")
             },
         )
     }
@@ -1684,26 +1770,30 @@ class MainActivity : ComponentActivity() {
                 binding.managerGateRetry.visibility = View.VISIBLE
             }
         }
-        // Kiosk pinning is now OPT-IN via a manifest flag (default: off).
-        // Unconditionally calling startLockTask() was trapping operators
-        // who sideloaded the APK for testing — without Device Owner
-        // provisioning Android shows a "App is pinned" dialog that
-        // swallows the back button, kills the TV remote, and has no
-        // on-screen way out.
+        // ── Kiosk lock task mode (2026-08-03) ───────────────────────
         //
-        // To enable real kiosk lock-in, provision the device as Device
-        // Owner via ADB:
-        //   adb shell dpm set-device-owner com.educms.player/.KioskAdminReceiver
-        // then set `android:requiredLockTaskFeatures` or call
-        // startLockTask() from a boot config. For normal installs we
-        // just leave the activity running full-screen / immersive,
-        // which is enough for a paired signage player.
-        if (BuildConfig.DEBUG) {
-            Log.i("MainActivity", "Kiosk pin disabled (not auto-enabled). Use Device Owner provisioning for true lock-in.")
-        }
+        // HISTORY, so nobody re-introduces the old bug: this used to be
+        // an unconditional `startLockTask()`, which trapped every
+        // operator who sideloaded the APK for testing. Without device-
+        // owner provisioning that call silently degrades to Android's
+        // *screen pinning* variant — an "App is pinned" dialog whose only
+        // exit is hold-Back+Overview, a gesture that does not exist on a
+        // signage remote. It was removed and replaced by this comment.
+        //
+        // LockTaskController is the correct version of that idea. It
+        // refuses to call startLockTask() at all unless the Manager
+        // companion is genuinely DEVICE OWNER *and* has put us on the
+        // DO's lock-task allowlist — the pair of conditions that
+        // guarantees we get the real LOCK_TASK_MODE_LOCKED and never the
+        // trapping variant. On an OEM-CMS box, or any plain sideload,
+        // every gate fails and behaviour is byte-for-byte what it is
+        // today. Read that file's header before changing this.
+        isResumedForLockTask = true
+        maybeEngageLockTask("onResume")
     }
 
     override fun onPause() {
+        isResumedForLockTask = false
         // We deliberately DON'T stopLockTask here — the activity should keep
         // its pinned state while the OS swaps focus (e.g. notification panel
         // attempts). Only release on destroy / explicit unpair.
