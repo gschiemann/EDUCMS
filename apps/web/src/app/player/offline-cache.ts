@@ -1,3 +1,4 @@
+import { getServiceWorkerContainer, isServiceWorkerAvailable } from '../../lib/safe-service-worker';
 /**
  * Offline-cache client — talks to /sw-player.js. Used by the player to:
  *   - Register the SW on first run
@@ -23,13 +24,15 @@ const SW_SCOPE = '/player';
 let registrationPromise: Promise<ServiceWorkerRegistration | null> | null = null;
 
 export function isSwSupported(): boolean {
-  return typeof navigator !== 'undefined' && 'serviceWorker' in navigator && typeof window !== 'undefined' && 'caches' in window;
+  // isServiceWorkerAvailable() actually READS the property (inside a try) —
+// `'serviceWorker' in navigator` only proves it exists and still throws on read.
+  return isServiceWorkerAvailable() && typeof window !== 'undefined' && 'caches' in window;
 }
 
 export function registerOfflineCache(): Promise<ServiceWorkerRegistration | null> {
   if (!isSwSupported()) return Promise.resolve(null);
   if (!registrationPromise) {
-    registrationPromise = navigator.serviceWorker
+    registrationPromise = (getServiceWorkerContainer() as ServiceWorkerContainer)
       .register(SW_PATH, { scope: SW_SCOPE })
       .catch((e) => {
         console.warn('[Player] SW registration failed:', e);
@@ -127,7 +130,7 @@ export async function getCacheStatus(): Promise<CacheStatus | null> {
     const onMsg = (e: MessageEvent) => {
       if (e.data?.type === 'STATUS_REPLY') {
         settled = true;
-        navigator.serviceWorker.removeEventListener('message', onMsg);
+        getServiceWorkerContainer()?.removeEventListener('message', onMsg);
         resolve({
           supported: true,
           playlist: e.data.playlist,
@@ -138,11 +141,11 @@ export async function getCacheStatus(): Promise<CacheStatus | null> {
         });
       }
     };
-    navigator.serviceWorker.addEventListener('message', onMsg);
+    getServiceWorkerContainer()?.addEventListener('message', onMsg);
     sw.postMessage({ type: 'STATUS_REQUEST' });
     setTimeout(() => {
       if (!settled) {
-        navigator.serviceWorker.removeEventListener('message', onMsg);
+        getServiceWorkerContainer()?.removeEventListener('message', onMsg);
         resolve({ supported: true, playlist: { count: 0, bytes: 0 }, emergency: { count: 0, bytes: 0, floorBytes: 0 }, shell: EMPTY_SHELL });
       }
     }, 2_000);

@@ -1,3 +1,4 @@
+import { getServiceWorkerContainer } from '../../lib/safe-service-worker';
 "use client";
 
 /**
@@ -48,8 +49,9 @@ interface BuildInfo {
  */
 async function freshReload() {
   try {
-    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-      const reg = await navigator.serviceWorker.getRegistration();
+    const swc = getServiceWorkerContainer();
+    if (swc) {
+      const reg = await swc.getRegistration();
       if (reg) {
         try { await reg.update(); } catch { /* non-fatal */ }
         try { reg.waiting?.postMessage({ type: 'SKIP_WAITING' }); } catch { /* non-fatal */ }

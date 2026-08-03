@@ -313,6 +313,13 @@ jobs:
   e2e:
     name: E2E Tests (Playwright / Chromium)
     runs-on: ubuntu-latest
+    # 2026-08-04 — this job had NO timeout. `pnpm test:e2e` runs `playwright
+    # test` with no --project, so despite the job's name it executed BOTH
+    # chromium AND webkit (92 tests). It ran ~49 minutes and was then killed
+    # by the runner with NO failing step recorded — an opaque red that costs
+    # more to diagnose than the tests are worth. An explicit cap makes a hang
+    # fail legibly instead of mysteriously.
+    timeout-minutes: 30
     permissions:
       contents: read
     # 2026-07-13 (audit W0-06): this job used to be PR-only — and this repo
@@ -383,8 +390,15 @@ jobs:
       - name: Apply Prisma schema to ephemeral Postgres
         run: pnpm db:push
 
+      # Pinned to chromium, matching this job's NAME. webkit coverage is not
+      # lost — it is owned by dedicated workflows that run the same specs with
+      # browser-specific setup: cross-browser.yml (widget-render + holiday
+      # bridge, chromium AND webkit) and emergency-path.yml (chromium AND
+      # webkit). Running every spec on webkit here as well was a third
+      # redundant pass and roughly doubled the runtime of the job that then
+      # timed out.
       - name: Run E2E Tests
-        run: pnpm test:e2e
+        run: pnpm --filter web exec playwright test --config playwright.config.ts --project=chromium
         env:
           CI: true
           PLAYWRIGHT_ADMIN_TOKEN: ${{ secrets.PLAYWRIGHT_ADMIN_TOKEN }}

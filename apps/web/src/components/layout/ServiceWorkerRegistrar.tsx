@@ -1,3 +1,4 @@
+import { getServiceWorkerContainer } from '../../lib/safe-service-worker';
 "use client";
 
 import { useEffect } from 'react';
@@ -72,7 +73,9 @@ export function ServiceWorkerRegistrar() {
     // the dashboard SW (scriptURL .../sw.js) is touched — never the kiosk
     // player's sw-player.js. (public/sw.js is itself a self-destruct stub now,
     // covering clients that don't reach this code.)
-    navigator.serviceWorker
+    const swc = getServiceWorkerContainer();
+    if (!swc) return; // sandboxed / SW-disabled context — nothing to unregister
+    swc
       .getRegistrations()
       .then((regs) => {
         for (const r of regs) {

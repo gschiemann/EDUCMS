@@ -22,6 +22,7 @@ import { reconcileStrandedEmergency } from './emergencyReconcile';
 //     WS and SSE consumers, and the TENANT_CHANGED addressing check.
 import { resolveApiRoot, resolveDeviceToken, type ApiRootPolicy } from './trustGuards';
 import { checkSensitivePush, isTenantChangeForThisScreen } from './pushGate';
+import { getServiceWorkerContainer, isServiceWorkerAvailable } from '../../lib/safe-service-worker';
 // 2026-07-28 — frame-locked multi-screen sync (docs/research/2026-07-28-multiscreen-sync/).
 // Pure modules (no React/DOM) so the math is unit-tested without mounting this page.
 import { SyncClock } from './sync/syncClock';
@@ -3393,7 +3394,17 @@ function PlayerPage() {
   // for every asset as it's pulled into the cache; we pipe that into
   // loadProgress so KioskSplash's bar moves in real time.
   useEffect(() => {
-    if (typeof navigator === 'undefined' || !navigator.serviceWorker) return;
+    // `'serviceWorker' in navigator`, NOT `!navigator.serviceWorker`. Reading
+    // the property INVOKES a getter that THROWS when service workers are
+    // disabled for the context — "Failed to read the 'serviceWorker' property
+    // from 'Navigator': Service worker is disabled". So the guard meant to
+    // prevent the crash was itself the crash. The `in` operator only tests for
+    // the property's presence and never invokes the getter.
+    //
+    // Disabled-SW contexts are real, not just tests: Chrome with site data
+    // blocked, some enterprise/MDM policies, private-window variants, and
+    // hardened WebView configurations.
+    if (!isServiceWorkerAvailable()) return;
     const onMessage = (ev: MessageEvent) => {
       const msg: any = ev.data;
       if (!msg || typeof msg !== 'object') return;
@@ -3412,8 +3423,8 @@ function PlayerPage() {
         setLoadProgress({ phase: 'ready' });
       }
     };
-    navigator.serviceWorker.addEventListener('message', onMessage);
-    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+    getServiceWorkerContainer()?.addEventListener('message', onMessage);
+    return () => getServiceWorkerContainer()?.removeEventListener('message', onMessage);
   }, []);
 
   // Report cache status to the server every 30s so admins can see in the
@@ -5318,7 +5329,7 @@ function PlayerPage() {
               // Ask the SW to clear both cache tiers so disk is clean for the
               // new tenant.
               try {
-                navigator.serviceWorker?.controller?.postMessage({ type: 'CLEAR_CACHE', tier: 'all' });
+                getServiceWorkerContainer()?.controller?.postMessage({ type: 'CLEAR_CACHE', tier: 'all' });
               } catch {}
               // Ask the native shell (if present) to wipe USB cache + reload.
               nativeFire('unpair');
@@ -6598,7 +6609,7 @@ function PlayerPage() {
     try { localStorage.removeItem('edu_manifest_cache_v1'); } catch { /* ignore */ }
     try { localStorage.removeItem('edu_emergency_cache_v1'); } catch { /* ignore */ }
     try {
-      navigator.serviceWorker?.controller?.postMessage({ type: 'CLEAR_CACHE', tier: 'all' });
+      getServiceWorkerContainer()?.controller?.postMessage({ type: 'CLEAR_CACHE', tier: 'all' });
     } catch { /* ignore */ }
 
     // 3. Native bridge → APK wipes DataStore + reloads with empty
