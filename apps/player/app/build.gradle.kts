@@ -278,10 +278,25 @@ val bundleManagerApk by tasks.registering(Copy::class) {
     rename { "edu-cms-manager.apk" }
 }
 
-// Wire the bundle task to run before any merge*Assets task so the
-// asset is included in the final APK. matching{} + configureEach{}
-// covers all variants (debug/release, per-ABI splits, universal).
-tasks.matching { it.name.matches(Regex("merge.*Assets")) }.configureEach {
+// Wire the bundle task to run before anything that READS the assets dir, so
+// the bundled Manager APK is present and Gradle's task graph is explicit.
+//
+// merge*Assets is the obvious consumer. lint*Analyze* is the non-obvious one:
+// `lintVitalAnalyzeRelease` runs ONLY on release builds, reads the same
+// `src/main/assets/bundled` directory, and without this dependency Gradle
+// fails the whole build with "uses this output of task ':app:bundleManagerApk'
+// without declaring an explicit or implicit dependency".
+//
+// That is why this was invisible until the first real `assembleRelease`
+// (2026-08-03, the signing cutover) — debug builds never run lintVital, so
+// every previous CI run was green while the release path was broken.
+// AGP spells these several ways across variants — lintVitalAnalyzeRelease,
+// generateReleaseLintVitalReportModel, lintReportRelease … so match ANY task
+// whose name mentions Lint rather than trying to enumerate them. Over-matching
+// is harmless here: the dependency only guarantees ordering.
+tasks.matching {
+    it.name.matches(Regex("merge.*Assets")) || it.name.contains("Lint") || it.name.startsWith("lint")
+}.configureEach {
     dependsOn(bundleManagerApk)
 }
 
