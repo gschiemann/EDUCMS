@@ -19,11 +19,16 @@ describe('S2 — signage picker excludes quarantined boards', () => {
     expect(leaked).toEqual([]);
   });
 
-  it('actually removed the quarantined boards that were in the catalog (20 of 21 appear here)', () => {
-    // The Domino's board (21st) is not in the frontend catalog, so 20 of the 21
-    // quarantined URLs are present in the FULL list and must all be filtered out.
+  it('actually removed the quarantined boards that were in the catalog (15 of 16 appear here)', () => {
+    // Pinned counts are a drift detector: re-pin ONLY when the shared denylist
+    // changes through the sanctioned reactivate script. History: 20-of-21 at
+    // the W0-08 fix; the 2026-07 redesign waves reactivated 5 rebuilt boards,
+    // leaving 16 quarantined. The Domino's board is not in the frontend
+    // catalog, so 15 of the 16 are present in the FULL list and must all be
+    // filtered out.
+    expect(QUARANTINED_BOARD_URLS.size).toBe(16);
     const inCatalog = SIGNAGE_TEMPLATES.filter((t) => QUARANTINED_BOARD_URLS.has(t.url));
-    expect(inCatalog.length).toBe(20);
+    expect(inCatalog.length).toBe(15);
     expect(SELECTABLE_SIGNAGE_TEMPLATES.length).toBe(SIGNAGE_TEMPLATES.length - inCatalog.length);
   });
 

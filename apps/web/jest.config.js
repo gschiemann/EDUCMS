@@ -11,6 +11,11 @@ module.exports = {
     // IconWidget (Wave B / editor-crush B5, 2026-07-02) + PropertiesPanel
     // import it and variants-register pulls both into most builder suites.
     '^lucide-react/dynamic$': '<rootDir>/test-mocks/lucide-react-dynamic.tsx',
+    // next-intl is ESM-only; without this every suite that transitively
+    // imports it fails to load ("Unexpected token 'export'") — which silently
+    // buried 22 suites between the 2026-07-22 i18n wave and 2026-08-03. The
+    // mock resolves the real en.json so text assertions keep working.
+    '^next-intl$': '<rootDir>/test-mocks/next-intl.tsx',
   },
   transform: {
     '^.+\\.(ts|tsx)$': ['ts-jest', {
