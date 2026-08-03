@@ -2,11 +2,6 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { randomBytes, createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppRole } from '@cms/database';
-import {
-  API_KEY_SCOPES,
-  normalizeRequestedScopes,
-  parseApiKeyScopes,
-} from './api-key-scopes';
 
 /**
  * Tenant-scoped REST API keys (Developer area, 2026-05-25).
@@ -94,17 +89,8 @@ export class ApiKeysService {
     name: string;
     role: string;
     expiresAt?: Date | null;
-    /**
-     * Least-privilege grant (2026-08-03). `undefined`/`null` mints an
-     * UNRESTRICTED key — the pre-scopes behaviour, kept so existing callers
-     * and integrations are unaffected. An array narrows the key to those
-     * route families; `[]` grants nothing. Emergency routes are unreachable
-     * either way (there is no emergency scope, and JwtAuthGuard denies the
-     * prefix for every api-key identity).
-     */
-    scopes?: string[] | null;
     actorUserId: string | null;
-  }): Promise<{ id: string; token: string; prefix: string; scopes: string[] | null }> {
+  }): Promise<{ id: string; token: string; prefix: string }> {
     const name = (opts.name || '').trim();
     if (!name) throw new BadRequestException('Name is required.');
     if (name.length > 80) throw new BadRequestException('Name must be 80 characters or fewer.');
@@ -112,16 +98,6 @@ export class ApiKeysService {
     if (!ApiKeysService.ALLOWED_ROLES.includes(role)) {
       throw new BadRequestException(
         `Role must be one of: ${ApiKeysService.ALLOWED_ROLES.join(', ')}`,
-      );
-    }
-
-    // Reject an unrecognized scope loudly. Silently dropping it would hand the
-    // operator a key with LESS access than the UI told them they granted, and
-    // they would debug the resulting 403s against the wrong layer.
-    const { json: scopesJson, unknown: unknownScopes } = normalizeRequestedScopes(opts.scopes);
-    if (unknownScopes.length) {
-      throw new BadRequestException(
-        `Unknown scope(s): ${unknownScopes.join(', ')}. Valid scopes: ${API_KEY_SCOPES.join(', ')}`,
       );
     }
 
@@ -142,7 +118,6 @@ export class ApiKeysService {
           prefix,
           hashedSecret,
           role,
-          scopes: scopesJson,
           expiresAt,
           createdByUserId: opts.actorUserId,
         },
@@ -154,26 +129,18 @@ export class ApiKeysService {
           action: 'API_KEY_CREATED',
           targetType: 'TenantApiKey',
           targetId: row.id,
-          // The key MINTED is the subject here, not the actor — a human
-          // admin created it, so `userId` (not `apiKeyId`) names who acted.
           details: JSON.stringify({
             name: row.name,
             prefix: row.prefix,
             role: row.role,
             expiresAt: row.expiresAt,
-            scopes: parseApiKeyScopes(row.scopes),
           }),
         },
       });
       return row;
     });
 
-    return {
-      id: created.id,
-      token: fullToken,
-      prefix,
-      scopes: parseApiKeyScopes(created.scopes),
-    };
+    return { id: created.id, token: fullToken, prefix };
   }
 
   /** List API keys for a tenant. Never returns hashedSecret. */
@@ -186,7 +153,6 @@ export class ApiKeysService {
         name: true,
         prefix: true,
         role: true,
-        scopes: true,
         expiresAt: true,
         lastUsedAt: true,
         revokedAt: true,
@@ -194,9 +160,7 @@ export class ApiKeysService {
         createdByUserId: true,
       },
     });
-    // Hand the UI the parsed array (or null for an unrestricted key) rather
-    // than the raw JSON string, so the client never re-implements the parse.
-    return rows.map((r: any) => ({ ...r, scopes: parseApiKeyScopes(r.scopes) }));
+    return rows;
   }
 
   /** Revoke an API key (soft delete — sets revokedAt). Idempotent. */
@@ -231,12 +195,9 @@ export class ApiKeysService {
    * Verify a Bearer API key at request time. Used by JwtAuthGuard's
    * fall-through path when the Bearer token doesn't parse as a JWT.
    *
-   * Returns the loaded row (with role, tenantId and the parsed scope
-   * grant) on success; null on any verification failure (unknown prefix,
-   * hash mismatch, expired, revoked). Caller treats null as 401.
-   *
-   * `scopes` is `null` for an unrestricted key (every key minted before
-   * 2026-08-03) and an array otherwise — the guard enforces it.
+   * Returns the loaded row (with role + tenantId) on success; null on
+   * any verification failure (unknown prefix, hash mismatch, expired,
+   * revoked). Caller treats null as 401.
    *
    * Side effect on success: bumps `lastUsedAt` without blocking the
    * response — fire-and-forget so the auth path stays fast.
@@ -245,7 +206,6 @@ export class ApiKeysService {
     id: string;
     tenantId: string;
     role: string;
-    scopes: string[] | null;
   } | null> {
     const prefix = ApiKeysService.prefixOf(fullToken);
     if (!prefix) return null;
@@ -268,11 +228,6 @@ export class ApiKeysService {
       .updateMany({ where: { id: row.id, tenantId: row.tenantId }, data: { lastUsedAt: new Date() } })
       .catch(() => { /* non-fatal — next request retries */ });
 
-    return {
-      id: row.id,
-      tenantId: row.tenantId,
-      role: row.role,
-      scopes: parseApiKeyScopes((row as any).scopes),
-    };
+    return { id: row.id, tenantId: row.tenantId, role: row.role };
   }
 }

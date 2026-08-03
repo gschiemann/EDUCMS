@@ -235,29 +235,6 @@ model TenantApiKey {
   prefix          String    @unique
   hashedSecret    String    @map("hashed_secret")
   role            String
-  /// ACC-06 follow-up (2026-08-03) — PER-KEY LEAST PRIVILEGE.
-  ///
-  /// ACC-06 could only express "an API key may not reach the emergency
-  /// routes" as a hard-coded URL-prefix deny in JwtAuthGuard, because this
-  /// model had nowhere to record what a key IS allowed to do. Result: every
-  /// key carried its whole ROLE's authority across every route family — a
-  /// menu-board integration's token could also rewrite schedules and delete
-  /// screens.
-  ///
-  /// Shape: JSON-encoded string array of scope ids, e.g.
-  /// `["content:write","screens:read"]`. Same encoding as
-  /// `TenantWebhook.events` — cheap, and the set per key is tiny.
-  /// Vocabulary + path mapping: apps/api/src/api-keys/api-key-scopes.ts.
-  ///
-  /// NULL is meaningful and is NOT the same as `[]`:
-  ///   NULL → key minted before scopes existed (or explicitly minted
-  ///          unrestricted). No scope narrowing; role + the guard's denied-
-  ///          path list still apply. This is what keeps every EXISTING key
-  ///          working — the column is additive with no backfill.
-  ///   []   → an explicit grant of NOTHING. Every route is refused.
-  /// Either way the emergency prefix stays denied: no scope grants it, and
-  /// the guard's prefix deny runs first regardless.
-  scopes          String?   @map("scopes")
   expiresAt       DateTime? @map("expires_at")
   lastUsedAt      DateTime? @map("last_used_at")
   revokedAt       DateTime? @map("revoked_at")
@@ -1215,24 +1192,6 @@ model AuditLog {
   id         String   @id @default(uuid())
   tenantId   String   @map("tenant_id")
   userId     String?  @map("user_id")
-  /// ACC-06 follow-up (2026-08-03) — WHICH MACHINE CREDENTIAL DID THIS.
-  ///
-  /// An action driven by a tenant API key has no `userId` (there is no human
-  /// principal), so before this column every such row was forensically
-  /// ANONYMOUS: the only way to answer "which key deleted that playlist?"
-  /// was to correlate the anonymous row against a separate
-  /// `API_KEY_REQUEST` row by (tenantId, timestamp) — an inference, not a
-  /// fact, and one that breaks under concurrency. Now the audit writer
-  /// stamps the key id directly on the action row.
-  ///
-  /// Deliberately a PLAIN column with NO foreign key to TenantApiKey.
-  /// `TenantApiKey` cascade-deletes with its Tenant; a FK here would make
-  /// that cascade attempt a DELETE/SET NULL against `audit_logs`, which the
-  /// §16 append-only trigger blocks — turning an unrelated cleanup into a
-  /// hard failure. Same reason `TenantApiKey.createdByUserId` is a bare
-  /// String. Key rows are soft-revoked, never deleted, so the id stays
-  /// resolvable.
-  apiKeyId   String?  @map("api_key_id")
   action     String
   targetType String   @map("target_type")
   targetId   String?  @map("target_id")
@@ -1247,10 +1206,6 @@ model AuditLog {
   // seconds post-pilot.
   @@index([tenantId, createdAt])
   @@index([tenantId, action])
-  // "Everything key X ever did", newest first — the incident-response query
-  // after a key leaks. Without it that is a full scan of the tenant's
-  // history; audit_logs is one of the largest tables in the product.
-  @@index([tenantId, apiKeyId, createdAt])
   @@map("audit_logs")
 }
 

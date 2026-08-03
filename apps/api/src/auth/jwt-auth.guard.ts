@@ -15,11 +15,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { requireSecret } from '../security/required-secret';
 import { clientIpFromRequest } from '../security/client-ip';
 import { ApiKeysService } from '../api-keys/api-keys.service';
-import { evaluateApiKeyScopes } from '../api-keys/api-key-scopes';
 
 /**
- * Routes an API key may NEVER reach, no matter what role the key carries and
- * no matter what scopes it holds (ACC-06, 2026-08-01).
+ * Routes an API key may NEVER reach, no matter what role the key carries
+ * (ACC-06, 2026-08-01).
  *
  * A tenant API key is a long-lived bearer string that lives in a script, a CI
  * secret, or a vendor's integration config. Minted with DISTRICT_ADMIN (the
@@ -30,18 +29,11 @@ import { evaluateApiKeyScopes } from '../api-keys/api-key-scopes';
  * session, hold-to-trigger UX, and a named actor in the audit trail — none of
  * which a machine credential has.
  *
- * KEPT AS THE FIRST CHECK even now that per-key scopes exist (2026-08-03), and
- * it is not redundant with them:
- *   - it is UNCONDITIONAL. There is deliberately no `emergency:*` scope
- *     (api-key-scopes.ts explains why), so this cannot be granted around. An
- *     unrestricted legacy key — every key minted before scopes existed, all of
- *     which carry `scopes = NULL` and therefore skip scope narrowing entirely
- *     — is still refused here;
- *   - it is PREFIX-based, so a NEW emergency route is covered the moment it
- *     merges rather than the moment someone remembers to map it;
- *   - it runs before `req.user` is populated, so nothing downstream ever sees
- *     an api-key identity on an emergency request.
- * Scopes narrow what a key can do; this list is the floor under all of it.
+ * Default-deny by prefix rather than an opt-in scope because `TenantApiKey`
+ * has no scopes column today: a new emergency route is therefore covered the
+ * moment it is added, instead of being exposed until someone remembers to
+ * annotate it. A per-key scope grant is the follow-up (it needs a schema
+ * migration); until then this is the safe default, not a placeholder.
  */
 export const API_KEY_DENIED_PATH_PREFIXES: readonly string[] = ['/api/v1/emergency'];
 
@@ -104,38 +96,12 @@ export class JwtAuthGuard implements CanActivate {
           `API key ${verified.id} (tenant ${verified.tenantId}) was refused on ${path} — ` +
             `emergency actions require a human session.`,
         );
-        this.recordApiKeyUse(request, verified, path, 'DENIED', 'emergency-path');
+        this.recordApiKeyUse(request, verified, path, 'DENIED');
         throw new ForbiddenException(
           'API keys cannot trigger or clear emergency actions. These require a signed-in ' +
             'user with emergency permissions.',
         );
       }
-
-      // Per-key least privilege (2026-08-03). `verified.scopes === null` is an
-      // unrestricted key (everything minted before the scopes column) and
-      // passes straight through — this is what keeps every live integration
-      // working. A scoped key must hold the family+access the route maps to.
-      const scopeDecision = evaluateApiKeyScopes(
-        verified.scopes,
-        String((request as any)?.method || 'GET'),
-        path,
-      );
-      if (!scopeDecision.allowed) {
-        this.guardLogger.warn(
-          `API key ${verified.id} (tenant ${verified.tenantId}) was refused on ${path} — ` +
-            `${scopeDecision.reason}` +
-            (scopeDecision.requiredScope ? ` (needs '${scopeDecision.requiredScope}')` : ''),
-        );
-        this.recordApiKeyUse(request, verified, path, 'DENIED', scopeDecision.reason, {
-          requiredScope: scopeDecision.requiredScope,
-        });
-        throw new ForbiddenException(
-          scopeDecision.requiredScope
-            ? `This API key does not have the '${scopeDecision.requiredScope}' scope.`
-            : 'This API key is not scoped for this endpoint.',
-        );
-      }
-
       request['user'] = {
         // No real user — machine identity. id/userId left null so
         // AuditLog rows the API key triggers carry userId:null. The
@@ -148,16 +114,13 @@ export class JwtAuthGuard implements CanActivate {
         apiKeyId: verified.id,
       };
       // ACC-06 — API-key actions were forensically ANONYMOUS: every AuditLog
-      // row they produced carried `userId: null` and no key reference. The
-      // guard writes its OWN row per state-changing API-key request, giving
-      // the key, IP, method and route.
-      //
-      // 2026-08-03: `AuditLog.apiKeyId` now exists, so the ACTION rows the
-      // request goes on to write are stamped with the key directly
-      // (AuditWriter / prisma.service). This request row is no longer the only
-      // way to answer "which key did this" — but it is kept, because it is
-      // also the only record of DENIED attempts and of requests that were
-      // refused before any action row could be written.
+      // row they produced carried `userId: null` and no key reference, and
+      // `AuditLog` has no apiKeyId column to carry one. Rather than leave
+      // "which key did this?" unanswerable, the guard writes its OWN
+      // attributable row for each state-changing API-key request. Correlating
+      // by (tenantId, timestamp) then resolves any anonymous action row to a
+      // specific key, IP and route. Reads are skipped — this is about
+      // attributing CHANGES, and logging every GET would be noise.
       if (this.isMutating(request)) {
         this.recordApiKeyUse(request, verified, path, 'ALLOWED');
       }
@@ -306,32 +269,20 @@ export class JwtAuthGuard implements CanActivate {
   /**
    * Attributable forensic row for an API-key request (ACC-06). Fire-and-forget
    * — the auth path must never block or fail on an audit write.
-   *
-   * 2026-08-03: also stamps the first-class `apiKeyId` column, so this row is
-   * returned by the same "everything key X did" query as the action rows
-   * rather than only being findable by parsing `details` JSON.
    */
   private recordApiKeyUse(
     request: Request,
-    verified: { id: string; tenantId: string; role: string; scopes?: string[] | null },
+    verified: { id: string; tenantId: string; role: string },
     path: string,
     outcome: 'ALLOWED' | 'DENIED',
-    reason?: string,
-    extra?: Record<string, unknown>,
   ): void {
     if (!this.prisma) return;
     const details = JSON.stringify({
       apiKeyId: verified.id,
       role: verified.role,
-      // `null` here means an unrestricted (pre-scopes) key — worth recording
-      // verbatim so an investigator can tell "was granted everything" apart
-      // from "was granted nothing".
-      scopes: verified.scopes ?? null,
       method: String((request as any)?.method || '').toUpperCase(),
       path,
       outcome,
-      ...(reason ? { reason } : {}),
-      ...(extra ?? {}),
       ip: clientIpFromRequest(request),
       ua: ((request.headers?.['user-agent'] as string | undefined) || '').slice(0, 256),
     });
@@ -340,14 +291,13 @@ export class JwtAuthGuard implements CanActivate {
         data: {
           tenantId: verified.tenantId,
           // No user — this IS the point of the row: the key is the actor, and
-          // `apiKeyId` names it.
+          // `details.apiKeyId` names it.
           userId: null,
-          apiKeyId: verified.id,
           action: outcome === 'DENIED' ? 'API_KEY_REQUEST_DENIED' : 'API_KEY_REQUEST',
           targetType: 'TenantApiKey',
           targetId: verified.id,
           details,
-        } as any,
+        },
       })
       .catch((e: any) =>
         this.guardLogger.warn(`API-key audit row failed: ${e?.message ?? e}`),
