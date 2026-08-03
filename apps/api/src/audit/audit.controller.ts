@@ -79,12 +79,15 @@ export class AuditController {
     @Query('action') action?: string,
     @Query('limit') limitStr?: string,
     @Query('offset') offsetStr?: string,
+    // ACC-06 follow-up (2026-08-03) — "everything this key ever did". Declared
+    // last so the existing positional call sites keep working.
+    @Query('apiKeyId') apiKeyId?: string,
   ) {
     const tenantId = req.user.tenantId;
     const limit = clampInt(limitStr, 50, 1, 200);
     const offset = clampInt(offsetStr, 0, 0, 100000);
 
-    const where = this.buildWhere(tenantId, { from, to, actorId, action });
+    const where = this.buildWhere(tenantId, { from, to, actorId, action, apiKeyId });
 
     const [items, total] = await Promise.all([
       this.prisma.client.auditLog.findMany({
@@ -109,9 +112,10 @@ export class AuditController {
     @Query('to') to?: string,
     @Query('actorId') actorId?: string,
     @Query('action') action?: string,
+    @Query('apiKeyId') apiKeyId?: string,
   ) {
     const tenantId = req.user.tenantId;
-    const where = this.buildWhere(tenantId, { from, to, actorId, action });
+    const where = this.buildWhere(tenantId, { from, to, actorId, action, apiKeyId });
 
     // Hard cap to protect memory in case the caller omits filters.
     const items = await this.prisma.client.auditLog.findMany({
@@ -121,7 +125,9 @@ export class AuditController {
       include: { user: { select: { email: true, role: true } } },
     });
 
-    const header = ['timestamp', 'actorEmail', 'actorRole', 'action', 'targetType', 'targetId', 'details'];
+    // `apiKeyId` is appended rather than slotted next to the actor columns so
+    // an existing consumer parsing this CSV by position keeps working.
+    const header = ['timestamp', 'actorEmail', 'actorRole', 'action', 'targetType', 'targetId', 'details', 'apiKeyId'];
     const lines = [header.join(',')];
     for (const row of items) {
       lines.push(
@@ -133,6 +139,7 @@ export class AuditController {
           row.targetType,
           row.targetId ?? '',
           row.details ?? '',
+          row.apiKeyId ?? '',
         ]
           .map(csvEscape)
           .join(','),
@@ -150,7 +157,7 @@ export class AuditController {
 
   private buildWhere(
     tenantId: string,
-    filters: { from?: string; to?: string; actorId?: string; action?: string },
+    filters: { from?: string; to?: string; actorId?: string; action?: string; apiKeyId?: string },
   ) {
     const where: any = { tenantId };
     const fromDate = parseDate(filters.from);
@@ -162,6 +169,9 @@ export class AuditController {
     }
     if (filters.actorId) where.userId = filters.actorId;
     if (filters.action) where.action = filters.action;
+    // Still scoped by tenantId above — a key id from another tenant simply
+    // matches nothing rather than leaking that tenant's history.
+    if (filters.apiKeyId) where.apiKeyId = filters.apiKeyId;
     return where;
   }
 }

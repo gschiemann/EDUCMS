@@ -15,10 +15,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { requireSecret } from '../security/required-secret';
 import { clientIpFromRequest } from '../security/client-ip';
 import { ApiKeysService } from '../api-keys/api-keys.service';
+import { evaluateApiKeyScopes, parseApiKeyScopes } from '../api-keys/api-key-scopes';
 
 /**
- * Routes an API key may NEVER reach, no matter what role the key carries
- * (ACC-06, 2026-08-01).
+ * Routes an API key may NEVER reach, no matter what role the key carries and
+ * no matter what scopes it holds (ACC-06, 2026-08-01).
  *
  * A tenant API key is a long-lived bearer string that lives in a script, a CI
  * secret, or a vendor's integration config. Minted with DISTRICT_ADMIN (the
@@ -29,13 +30,39 @@ import { ApiKeysService } from '../api-keys/api-keys.service';
  * session, hold-to-trigger UX, and a named actor in the audit trail — none of
  * which a machine credential has.
  *
- * Default-deny by prefix rather than an opt-in scope because `TenantApiKey`
- * has no scopes column today: a new emergency route is therefore covered the
- * moment it is added, instead of being exposed until someone remembers to
- * annotate it. A per-key scope grant is the follow-up (it needs a schema
- * migration); until then this is the safe default, not a placeholder.
+ * KEPT AS THE FIRST CHECK even now that per-key scopes exist (2026-08-03),
+ * and it is NOT redundant with them:
+ *   - it is UNCONDITIONAL. There is deliberately no `emergency:*` scope
+ *     (api-key-scopes.ts explains why), so this cannot be granted around. An
+ *     unrestricted legacy key — every key minted before scopes existed, all
+ *     of which carry `scopes = NULL` and therefore skip scope narrowing
+ *     entirely — is still refused here;
+ *   - it is PREFIX-based, so a NEW emergency route is covered the moment it
+ *     merges rather than the moment someone remembers to map it;
+ *   - it runs before `req.user` is populated, so nothing downstream ever sees
+ *     an api-key identity on an emergency request.
+ * Scopes narrow what a key can do; this list is the floor under all of it.
  */
 export const API_KEY_DENIED_PATH_PREFIXES: readonly string[] = ['/api/v1/emergency'];
+
+/**
+ * How long an identical scope-denial is suppressed from the audit log, per
+ * replica (ms).
+ *
+ * A misconfigured integration retries in a loop; without this, one bad cron
+ * writes an unbounded stream of rows into `audit_logs` — the largest table in
+ * the product and one we already had to put on an egress diet. One row per
+ * key/reason/route-family per minute keeps the forensic signal (you can still
+ * see WHICH key probed WHAT, and when it started) while bounding the volume.
+ *
+ * This is NOISE SUPPRESSION, never a security control: the request is denied
+ * either way, and the emergency deny is exempt from it entirely (a machine
+ * credential reaching for a lockdown is rare and always worth a row).
+ */
+const API_KEY_DENIAL_LOG_WINDOW_MS = 60_000;
+
+/** Hard cap on the suppression map so a key-id spray can't grow it forever. */
+const API_KEY_DENIAL_LOG_MAX_ENTRIES = 500;
 
 /** Paths whose actor's tenant must not be archived (ACC-05). */
 const ARCHIVED_TENANT_DENIED_PATH_PREFIXES: readonly string[] = ['/api/v1/emergency'];
@@ -54,6 +81,9 @@ export class JwtAuthGuard implements CanActivate {
    * a DB round-trip to a life-safety path.
    */
   private archiveCache = new Map<string, { archived: boolean; at: number }>();
+
+  /** `${keyId}:${reason}:${family}` → last time we wrote a DENIED row for it. */
+  private denialLogSeen = new Map<string, number>();
 
   constructor(
     private jwtService: JwtService,
@@ -87,21 +117,64 @@ export class JwtAuthGuard implements CanActivate {
       if (!verified) {
         throw new UnauthorizedException('Invalid or revoked API key');
       }
+      // The key's least-privilege grant. `null` = unrestricted (every key
+      // minted before the `scopes` column existed) and is what keeps live
+      // integrations working. Normalized through `parseApiKeyScopes` so a
+      // partially-selected row or a caller that omits the field means
+      // "unrestricted" — the same thing the DB's NULL means — rather than a
+      // TypeError inside the auth path.
+      const keyScopes = parseApiKeyScopes(verified.scopes);
+
       // ACC-06 — life-safety routes are off-limits to machine credentials.
       // Checked BEFORE req.user is populated so nothing downstream ever sees
-      // an api-key identity on an emergency request.
+      // an api-key identity on an emergency request, and BEFORE scopes so no
+      // grant can reach it.
       const path = this.requestPath(request);
       if (API_KEY_DENIED_PATH_PREFIXES.some((p) => path.startsWith(p))) {
         this.guardLogger.warn(
           `API key ${verified.id} (tenant ${verified.tenantId}) was refused on ${path} — ` +
             `emergency actions require a human session.`,
         );
-        this.recordApiKeyUse(request, verified, path, 'DENIED');
+        this.recordApiKeyUse(request, verified, path, 'DENIED', {
+          scopes: keyScopes,
+          reason: 'emergency-path',
+        });
         throw new ForbiddenException(
           'API keys cannot trigger or clear emergency actions. These require a signed-in ' +
             'user with emergency permissions.',
         );
       }
+
+      // Per-key least privilege (2026-08-03). An unrestricted key passes
+      // straight through; a scoped key must hold the family + access the
+      // route maps to, and an unmapped route is refused (see
+      // api-key-scopes.ts for why default-deny is the safe direction here).
+      const scopeDecision = evaluateApiKeyScopes(
+        keyScopes,
+        String((request as any)?.method || 'GET'),
+        path,
+      );
+      if (!scopeDecision.allowed) {
+        this.guardLogger.warn(
+          `API key ${verified.id} (tenant ${verified.tenantId}) was refused on ${path} — ` +
+            `${scopeDecision.reason}` +
+            (scopeDecision.requiredScope ? ` (needs '${scopeDecision.requiredScope}')` : ''),
+        );
+        this.recordApiKeyUse(request, verified, path, 'DENIED', {
+          scopes: keyScopes,
+          reason: scopeDecision.reason,
+          requiredScope: scopeDecision.requiredScope,
+          // Repeat-denial suppression: a looping integration must not be able
+          // to flood audit_logs. Never applied to the emergency deny above.
+          suppressionKey: `${verified.id}:${scopeDecision.reason}:${scopeDecision.requiredScope ?? path}`,
+        });
+        throw new ForbiddenException(
+          scopeDecision.requiredScope
+            ? `This API key does not have the '${scopeDecision.requiredScope}' scope.`
+            : 'This API key is not scoped for this endpoint.',
+        );
+      }
+
       request['user'] = {
         // No real user — machine identity. id/userId left null so
         // AuditLog rows the API key triggers carry userId:null. The
@@ -114,15 +187,19 @@ export class JwtAuthGuard implements CanActivate {
         apiKeyId: verified.id,
       };
       // ACC-06 — API-key actions were forensically ANONYMOUS: every AuditLog
-      // row they produced carried `userId: null` and no key reference, and
-      // `AuditLog` has no apiKeyId column to carry one. Rather than leave
-      // "which key did this?" unanswerable, the guard writes its OWN
-      // attributable row for each state-changing API-key request. Correlating
-      // by (tenantId, timestamp) then resolves any anonymous action row to a
-      // specific key, IP and route. Reads are skipped — this is about
+      // row they produced carried `userId: null` and no key reference. The
+      // guard writes its OWN row per state-changing API-key request, giving
+      // the key, IP, method and route. Reads are skipped — this is about
       // attributing CHANGES, and logging every GET would be noise.
+      //
+      // 2026-08-03: `AuditLog.apiKeyId` now exists, so these rows are stamped
+      // with the key as a first-class column instead of only inside `details`
+      // JSON, and `auditActorFields()` (audit/audit-actor.ts) lets any other
+      // writer stamp the ACTION row the same way. This request row stays
+      // regardless — it is also the only record of DENIED attempts and of
+      // requests refused before any action row could be written.
       if (this.isMutating(request)) {
-        this.recordApiKeyUse(request, verified, path, 'ALLOWED');
+        this.recordApiKeyUse(request, verified, path, 'ALLOWED', { scopes: keyScopes });
       }
       return true;
     }
@@ -269,20 +346,44 @@ export class JwtAuthGuard implements CanActivate {
   /**
    * Attributable forensic row for an API-key request (ACC-06). Fire-and-forget
    * — the auth path must never block or fail on an audit write.
+   *
+   * 2026-08-03: also stamps the first-class `apiKeyId` column, so this row is
+   * returned by the same "everything key X did" query as the action rows
+   * rather than only being findable by parsing `details` JSON.
    */
   private recordApiKeyUse(
     request: Request,
     verified: { id: string; tenantId: string; role: string },
     path: string,
     outcome: 'ALLOWED' | 'DENIED',
+    extra?: {
+      /** null = an unrestricted (pre-scopes) key. */
+      scopes?: string[] | null;
+      reason?: string;
+      requiredScope?: string | null;
+      /**
+       * When present, an identical denial is written at most once per
+       * `API_KEY_DENIAL_LOG_WINDOW_MS`. Omitted for the emergency deny, which
+       * is always recorded.
+       */
+      suppressionKey?: string;
+    },
   ): void {
     if (!this.prisma) return;
+    if (extra?.suppressionKey && this.denialRecentlyLogged(extra.suppressionKey)) return;
+
     const details = JSON.stringify({
       apiKeyId: verified.id,
       role: verified.role,
+      // `null` here means an unrestricted (pre-scopes) key — worth recording
+      // verbatim so an investigator can tell "was granted everything" apart
+      // from "was granted nothing".
+      scopes: extra?.scopes ?? null,
       method: String((request as any)?.method || '').toUpperCase(),
       path,
       outcome,
+      ...(extra?.reason ? { reason: extra.reason } : {}),
+      ...(extra?.requiredScope ? { requiredScope: extra.requiredScope } : {}),
       ip: clientIpFromRequest(request),
       ua: ((request.headers?.['user-agent'] as string | undefined) || '').slice(0, 256),
     });
@@ -291,8 +392,9 @@ export class JwtAuthGuard implements CanActivate {
         data: {
           tenantId: verified.tenantId,
           // No user — this IS the point of the row: the key is the actor, and
-          // `details.apiKeyId` names it.
+          // `apiKeyId` names it.
           userId: null,
+          apiKeyId: verified.id,
           action: outcome === 'DENIED' ? 'API_KEY_REQUEST_DENIED' : 'API_KEY_REQUEST',
           targetType: 'TenantApiKey',
           targetId: verified.id,
@@ -302,6 +404,29 @@ export class JwtAuthGuard implements CanActivate {
       .catch((e: any) =>
         this.guardLogger.warn(`API-key audit row failed: ${e?.message ?? e}`),
       );
+  }
+
+  /**
+   * True when an identical denial was already recorded inside the window.
+   * Per-replica and best-effort by design — this only bounds log VOLUME; the
+   * request is refused either way.
+   */
+  private denialRecentlyLogged(key: string): boolean {
+    const now = Date.now();
+    const last = this.denialLogSeen.get(key);
+    if (last != null && now - last < API_KEY_DENIAL_LOG_WINDOW_MS) return true;
+    if (this.denialLogSeen.size >= API_KEY_DENIAL_LOG_MAX_ENTRIES) {
+      for (const [k, at] of this.denialLogSeen) {
+        if (now - at >= API_KEY_DENIAL_LOG_WINDOW_MS) this.denialLogSeen.delete(k);
+      }
+      // Still full of live entries — drop the map rather than grow unbounded.
+      // Worst case we write one extra row per key; that is the safe failure.
+      if (this.denialLogSeen.size >= API_KEY_DENIAL_LOG_MAX_ENTRIES) {
+        this.denialLogSeen.clear();
+      }
+    }
+    this.denialLogSeen.set(key, now);
+    return false;
   }
 
   /**
