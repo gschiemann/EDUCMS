@@ -30,14 +30,18 @@
  *                     revoking a screen's credential also invalidates any
  *                     ticket already minted for it.
  *
- * ⚠️ INTEGRATION STATUS — READ THIS.
- * The minting endpoint and `verifyStreamTicket()` below are complete and
- * tested. The CONSUMING side is one `if` in
- * `apps/api/src/realtime/sse.controller.ts` (try the ticket before falling
- * back to the `?token=` device JWT), and that file is outside this change's
- * ownership boundary. Until that hook lands, the SSE endpoint still accepts
- * `?token=`, so DT-08's SSE leg is NOT yet closed in production. See the
- * handoff note in the fix report.
+ * INTEGRATION STATUS (updated 2026-08-03).
+ * WIRED. `apps/api/src/realtime/sse.controller.ts` accepts `?ticket=`,
+ * re-reads the live `Screen` row, refuses a REVOKED screen and requires the
+ * ticket's epoch to EQUAL the row's current `credentialEpoch` (strict — no
+ * rotation grace window; a 60-second ticket is cheap to re-mint, and the
+ * grace window would otherwise outlive a revocation).
+ *
+ * The controller still ALSO accepts the legacy `?token=<deviceJwt>` leg,
+ * because `apps/web`'s player has no code that mints a ticket yet and
+ * removing the leg would take its SSE tier offline. See the header of
+ * `sse.controller.ts` for exactly what `apps/web` must change before that
+ * leg can be deleted.
  */
 
 import * as crypto from 'crypto';

@@ -685,8 +685,9 @@ export class ScreensController {
    * this one screen" — for 60 seconds, and dies with the screen's
    * credential epoch.
    *
-   * ⚠️ The consuming half is one `if` in the realtime SSE controller and is
-   * NOT yet wired; see the handoff note in `stream-ticket.ts`.
+   * The consuming half is wired: `GET /api/v1/realtime/sse?ticket=…` verifies
+   * the ticket, refuses a REVOKED screen, and requires the ticket's epoch to
+   * still equal the screen's live `credentialEpoch`.
    */
   @Post(':id/stream-ticket')
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
