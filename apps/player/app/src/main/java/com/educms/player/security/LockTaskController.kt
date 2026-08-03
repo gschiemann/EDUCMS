@@ -258,9 +258,12 @@ object LockTaskController {
      *
      * ⚠️ Every locally-initiated way OUT of the player must call this
      * FIRST — inside a locked task `finishAffinity()` and a HOME intent
-     * are both no-ops, so skipping it strands the operator. Current
-     * callers: `onExitToDeviceHome`, `unpairAndRestart`, and the
-     * watchdog's durably-broken-page valve.
+     * are both no-ops, so skipping it strands the operator.
+     *
+     * Call on the UI thread (it is an Activity API). Both current callers
+     * already are: `onExitToDeviceHome` wraps its body in `runOnUiThread`,
+     * and the watchdog ticker runs on a main-looper Handler. `unpair` is
+     * deliberately NOT a caller — see the header.
      *
      * @param reason logged verbatim so the log tail says WHY a screen
      *        came unpinned.

@@ -426,4 +426,41 @@ describe('method tables stay in sync with the APK', () => {
     expect(voids).toContain('unpair');
     expect(voids).toContain('reload');
   });
+
+  /**
+   * DRIFT GUARD. The APK's `NativeBridgeChannel.METHODS` is the allowlist
+   * the native side enforces; this module's two arrays are what the web
+   * side will ever ask for and what `nativeHas` answers from when a
+   * WebView has no DOCUMENT_START_SCRIPT. If a method is added to one and
+   * not the other it fails ASYMMETRICALLY — still works on the legacy
+   * transport, silently dropped on the secure channel — which is the
+   * hardest possible version of this bug to find in the field.
+   *
+   * Skipped (not failed) when the Kotlin source isn't on disk, so a
+   * web-only checkout still runs green.
+   */
+  it('matches NativeBridgeChannel.METHODS in the APK', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const fs = jest.requireActual('fs') as typeof import('fs');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const path = jest.requireActual('path') as typeof import('path');
+    const kt = path.resolve(
+      __dirname,
+      '../../../../../player/app/src/main/java/com/educms/player/security/NativeBridgeChannel.kt',
+    );
+    if (!fs.existsSync(kt)) {
+      // eslint-disable-next-line no-console
+      console.warn(`[nativeBridge.test] skipping APK drift check — ${kt} not found`);
+      return;
+    }
+    const src = fs.readFileSync(kt, 'utf8');
+    const block = /private val METHODS = arrayOf\(([\s\S]*?)\n\s*\)/.exec(src);
+    expect(block).not.toBeNull();
+    const nativeMethods = Array.from((block as RegExpExecArray)[1].matchAll(/"([A-Za-z0-9_]+)"/g))
+      .map((m) => m[1]);
+
+    const b = loadBridge();
+    const webMethods = [...b.NATIVE_VOID_METHODS, ...b.NATIVE_VALUE_METHODS] as string[];
+    expect([...nativeMethods].sort()).toEqual([...webMethods].sort());
+  });
 });
