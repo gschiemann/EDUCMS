@@ -14,6 +14,14 @@ import { TouchOverlay, TouchNavOverlay } from '@/components/player/TouchOverlay'
 // the `message` prop.
 import { EmergencyOverlay, type EmergencyMessageView } from '@/components/player/EmergencyOverlay';
 import { reconcileStrandedEmergency } from './emergencyReconcile';
+// 2026-08-01 security wave — pure guard modules (no React/DOM) so each is
+// unit-tested without mounting this page.
+//   trustGuards — R-01: the `?api=` / localStorage API-root override is the
+//     player's entire trust anchor (WS, SSE, manifest, reconcile). Validate it.
+//   pushGate    — R-04/R-05: ONE signature+freshness+replay gate shared by the
+//     WS and SSE consumers, and the TENANT_CHANGED addressing check.
+import { resolveApiRoot, resolveDeviceToken, type ApiRootPolicy } from './trustGuards';
+import { checkSensitivePush, isTenantChangeForThisScreen } from './pushGate';
 // 2026-07-28 — frame-locked multi-screen sync (docs/research/2026-07-28-multiscreen-sync/).
 // Pure modules (no React/DOM) so the math is unit-tested without mounting this page.
 import { SyncClock } from './sync/syncClock';
@@ -51,6 +59,17 @@ import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 // player renderer crash is reported with full stack + component trail so we
 // can ship a fix without an operator hand-walking logcat.
 import * as Sentry from '@sentry/nextjs';
+// AND-002 — the ONLY sanctioned way to reach the Android APK. Prefers the
+// origin-scoped `EduCmsNativeChannel` and falls back to the legacy
+// `window.EduCmsNative` object. Never touch `window.EduCmsNative`
+// directly from this file again; see nativeBridge.ts for why.
+import {
+  hasNativeBridge,
+  nativeCall,
+  nativeCallOr,
+  nativeFire,
+  nativeHas,
+} from './nativeBridge';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Bullet-proof helpers (Phase 1 hardening)
@@ -83,13 +102,13 @@ function isPreviewMode(): boolean {
 function isAndroidWebView(): boolean {
   if (typeof window === 'undefined') return false;
   if (qp('client') === 'android') return true;
-  // Native app exposes window.EduCmsNative as a JS bridge.
-  return !!(window as any).EduCmsNative;
+  // Native app exposes a JS bridge — either transport counts.
+  return hasNativeBridge();
 }
 
 /** Ask the Android shell to do a hard reload (last-resort recovery). No-op in browser. */
 function nativeReload() {
-  try { (window as any).EduCmsNative?.reload?.(); } catch { /* noop */ }
+  nativeFire('reload');
 }
 
 /**
@@ -118,13 +137,7 @@ function nativeReload() {
  */
 function hardCacheBustingReload() {
   if (typeof window === 'undefined') return;
-  try {
-    const bridge = (window as any).EduCmsNative;
-    if (bridge && typeof bridge.reload === 'function') {
-      bridge.reload();
-      return;
-    }
-  } catch { /* fall through to location.replace */ }
+  if (nativeFire('reload')) return;
   try {
     const url = new URL(window.location.href);
     url.searchParams.set('_v', String(Date.now()));
@@ -472,15 +485,27 @@ export function dispatchTouchAction(
   }
 }
 
-/** Get the device pairing token from URL → localStorage → null. */
+/**
+ * Get the device pairing token from URL → localStorage → null.
+ *
+ * R-01 (adjacent): `?token=` had the same "persist whatever the URL says"
+ * shape as `?api=`. A valid token can only be minted by the server, so this
+ * is not a repointable trust anchor — but an unvalidated blob still landed in
+ * localStorage and then in every Bearer header + the SSE query string. Shape
+ * hygiene now runs on BOTH write and read (see `trustGuards.ts`), so junk is
+ * never persisted and a previously-poisoned value self-heals.
+ */
 function getDeviceToken(): string | null {
   if (typeof window === 'undefined') return null;
-  const fromUrl = qp('token');
-  if (fromUrl) {
-    try { localStorage.setItem(LS_TOKEN, fromUrl); } catch {}
-    return fromUrl;
-  }
-  try { return localStorage.getItem(LS_TOKEN); } catch { return null; }
+  let storage: Storage | null = null;
+  try { storage = window.localStorage; } catch { storage = null; }
+  return resolveDeviceToken({
+    search: window.location.search,
+    storage,
+    onReject: (reason) => {
+      try { console.warn('[Player] rejected device token —', reason); } catch {}
+    },
+  });
 }
 
 /** Compute exponential backoff with full jitter. Capped at maxMs. */
@@ -595,20 +620,46 @@ function readCachedEmergency(): any | null {
   } catch { return null; }
 }
 
+/**
+ * R-01 (2026-08-01) — the API root is the player's ENTIRE trust anchor: the
+ * WebSocket (`getApiRoot().replace(/^http/,'ws')`), the SSE stream, the
+ * device-authenticated manifest (the SOLE arbiter of the lockdown overlay) and
+ * the stranded-alert reconcile all derive from it. It used to accept any
+ * `?api=` value verbatim and persist it to localStorage forever, so a single
+ * drive-by load of `/player?api=https://evil.example` permanently handed the
+ * screen to an attacker: they become the manifest (fake a lockdown, or
+ * suppress a real one) and harvest the device JWT on the first HELLO.
+ *
+ * The override is now scheme-checked + host-allowlisted on BOTH write and
+ * read, so an already-poisoned kiosk self-heals on its next load. Policy and
+ * matching rules live in `trustGuards.ts` (unit-tested). The env default below
+ * is the trust ROOT and is deliberately not validated against itself.
+ */
+function apiRootPolicy(): ApiRootPolicy {
+  return {
+    envApiUrl: process.env.NEXT_PUBLIC_API_URL || null,
+    // Escape hatch for staging / on-prem installs. Comma-separated hosts.
+    extraHosts: process.env.NEXT_PUBLIC_API_ROOT_ALLOWLIST || null,
+    pageOrigin: typeof window !== 'undefined' ? window.location.origin : null,
+    isProduction: process.env.NODE_ENV === 'production',
+  };
+}
+
 function getApiRoot(): string {
-  if (typeof window !== 'undefined') {
-    const params = new URLSearchParams(window.location.search);
-    const apiParam = params.get('api');
-    if (apiParam) {
-      // Save to localStorage so it persists across refreshes
-      localStorage.setItem('edu_api_root', apiParam.replace(/\/api\/v1\/?$/, ''));
-      return apiParam.replace(/\/api\/v1\/?$/, '');
-    }
-    const saved = localStorage.getItem('edu_api_root');
-    if (saved) return saved;
-  }
   const env = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
-  return env.replace('/api/v1', '');
+  const fallback = env.replace('/api/v1', '');
+  if (typeof window === 'undefined') return fallback;
+  let storage: Storage | null = null;
+  try { storage = window.localStorage; } catch { storage = null; }
+  return resolveApiRoot({
+    search: window.location.search,
+    policy: apiRootPolicy(),
+    storage,
+    fallback,
+    onReject: (reason, value) => {
+      try { console.warn('[Player] refused untrusted API root —', reason, value); } catch {}
+    },
+  });
 }
 
 // 2026-05-04 — PlayerVideoSlide component.
@@ -652,6 +703,20 @@ function getApiRoot(): string {
 // (two physical sides — can never serialize to the `inset` shorthand);
 // transform:scale is fine on Chromium 83.
 const SCALED_WEB_VIRTUAL_W = 1280;
+/**
+ * Sandbox tokens for every frame that can carry third-party content.
+ * `allow-same-origin` is DELIBERATELY ABSENT. These frames are served from
+ * OUR origin (/api/v1/proxy/web), so the token would make the sandbox
+ * decorative and hand the proxied third-party page parent.document, our
+ * localStorage (device token) and top-navigation. (StreamingWidget and
+ * FitnessLiveTVWidget DO carry it — but their src is always a foreign host,
+ * where the token only restores the frame's own foreign origin. Different
+ * situation, opposite answer.)
+ *
+ * `allow-popups-to-escape-sandbox` is inert without `allow-popups`, which we
+ * do not grant; it is listed to pin intent if popups are ever enabled.
+ */
+const SCALED_WEB_SANDBOX = 'allow-scripts allow-popups-to-escape-sandbox';
 
 function ScaledWebFrame({
   src,
@@ -699,8 +764,26 @@ function ScaledWebFrame({
     }
   }, []);
 
+  // SANDBOX (2026-08-02, security wave INJ-001a): this frame carries
+  // arbitrary third-party HTML relayed by /api/v1/proxy/web. Without
+  // `allow-same-origin` it becomes a null origin — no parent DOM, no access
+  // to the player's own-origin localStorage (device token), and no top-level
+  // navigation, so a hostile page cannot frame-bust the kiosk to a fake
+  // "all clear" screen. Remote-control spatial navigation still works: its
+  // shim is baked into the proxied document server-side and armed over
+  // postMessage (attachSpatialNavBridge in the onLoad below).
+  // NEVER add allow-same-origin here.
   if (!canvas) {
-    return <iframe src={src} className={classes} title={title} onLoad={onLoad} onError={onError} />;
+    return (
+      <iframe
+        src={src}
+        className={classes}
+        title={title}
+        sandbox={SCALED_WEB_SANDBOX}
+        onLoad={onLoad}
+        onError={onError}
+      />
+    );
   }
 
   const scale = canvas.w / SCALED_WEB_VIRTUAL_W;
@@ -713,6 +796,7 @@ function ScaledWebFrame({
       <iframe
         src={src}
         title={title}
+        sandbox={SCALED_WEB_SANDBOX}
         onLoad={onLoad}
         onError={onError}
         style={{
@@ -1378,17 +1462,50 @@ function getDeviceFingerprint(): string {
  * been upgraded yet.
  */
 /**
+ * One-shot async read of the APK's `deviceInfo()`, cached into the same
+ * localStorage key `resolvePlayerVersion` already reads. Exists because
+ * the AND-002 bridge channel is message-passing (async) while
+ * `resolvePlayerVersion` has synchronous callers. Safe to call on every
+ * resolve — it self-guards after the first invocation.
+ */
+let deviceInfoPrimed = false;
+function primeNativeDeviceInfo(): void {
+  if (deviceInfoPrimed || typeof window === 'undefined') return;
+  deviceInfoPrimed = true;
+  if (!nativeHas('deviceInfo')) return;
+  nativeCall<string>('deviceInfo')
+    .then((raw) => {
+      if (!raw) return;
+      const info = JSON.parse(raw);
+      if (info?.appVersion) {
+        localStorage.setItem('edu_player_apk_version', String(info.appVersion));
+      }
+    })
+    .catch(() => { /* browser player or old APK — sources 1 and 3 cover it */ });
+}
+
+/**
  * Resolve the player APK version from any of three sources, in order
  * of precedence. Defensive against URL-param loss on navigation /
  * page reload (operator caught us on 2026-04-27: kiosk on v1.0.11
  * but dashboard chip stuck blank).
  *
  *   1. URL ?v= / ?vc= — set by the APK via MainActivity.loadPlayer
- *   2. EduCmsNative.deviceInfo() bridge — always available on APK
- *      (returns appVersion in JSON), survives any in-page navigation
+ *   2. deviceInfo() bridge — always available on APK (returns
+ *      appVersion in JSON), survives any in-page navigation
  *   3. localStorage — sticky cache so even a hard reload of the
  *      WebView keeps the version in heartbeats while we wait for
  *      the bridge to come back online
+ *
+ * AND-002 note: source 2 used to be a SYNCHRONOUS bridge call, and this
+ * function has sync callers (buildHeartbeatUrl) that would be very
+ * invasive to make async. So the bridge read is now primed once, off to
+ * the side, and lands in source 3 — see primeNativeDeviceInfo. In
+ * practice source 1 already covers the APK's first load (loadPlayer
+ * always appends ?v=), so the only window where this differs is the
+ * very first heartbeat after an in-page navigation that dropped the
+ * query params on a device with an empty localStorage — and the prime
+ * fills that in a microtask.
  */
 function resolvePlayerVersion(): { v: string | null; vc: string | null } {
   if (typeof window === 'undefined') return { v: null, vc: null };
@@ -1398,17 +1515,8 @@ function resolvePlayerVersion(): { v: string | null; vc: string | null } {
   let v = params.get('v') || null;
   let vc = params.get('vc') || null;
 
-  // 2. Native bridge — most reliable on APK
-  if (!v) {
-    try {
-      const bridge = (window as any).EduCmsNative;
-      const raw = bridge?.deviceInfo?.();
-      if (raw) {
-        const info = JSON.parse(raw);
-        if (info?.appVersion) v = String(info.appVersion);
-      }
-    } catch { /* bridge unavailable, fall through */ }
-  }
+  // 2. Native bridge — async now; result lands in localStorage below.
+  primeNativeDeviceInfo();
 
   // 3. localStorage cache (set on any successful detection above)
   if (!v) {
@@ -1547,14 +1655,16 @@ function SoftwareInfoRow() {
   const [lastCheckMsg, setLastCheckMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      const bridge = (window as any).EduCmsNative;
-      if (bridge && typeof bridge.deviceInfo === 'function') {
-        const raw = bridge.deviceInfo();
+    let cancelled = false;
+    if (!nativeHas('deviceInfo')) return;
+    nativeCall<string>('deviceInfo')
+      .then((raw) => {
+        if (cancelled || !raw) return;
         const info = JSON.parse(raw);
         if (info?.appVersion) setApkVersion(info.appVersion);
-      }
-    } catch { /* browser player — leave as null */ }
+      })
+      .catch(() => { /* browser player — leave as null */ });
+    return () => { cancelled = true; };
   }, []);
 
   const handleCheck = async (e: React.MouseEvent) => {
@@ -1565,9 +1675,8 @@ function SoftwareInfoRow() {
       // Preferred path: 1.0.6+ native bridge enqueues the OTA worker
       // right now. The worker handles the full download+install dance,
       // so we just tell the operator we've asked.
-      const bridge = (window as any).EduCmsNative;
-      if (bridge && typeof bridge.checkForUpdates === 'function') {
-        const ver = bridge.checkForUpdates();
+      if (nativeHas('checkForUpdates')) {
+        const ver = await nativeCallOr<string>('', 'checkForUpdates');
         setLastCheckMsg(`Checking… (currently on ${ver || apkVersion || '?'})`);
         // After ~8s the worker has usually either begun downloading
         // (install prompt pops separately) OR reported uptoDate.
@@ -1655,29 +1764,31 @@ function DiagnosticsRow() {
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const bridge = typeof window !== 'undefined' ? (window as any).EduCmsNative : null;
-  if (!bridge || typeof bridge.getRecentLogs !== 'function') return null;
+  if (!nativeHas('getRecentLogs')) return null;
 
-  const loadLogs = (e: React.MouseEvent) => {
+  const loadLogs = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    setExpanded(true);
+    setLogs('(reading device log…)');
     try {
-      const raw = bridge.getRecentLogs();
+      const raw = await nativeCall<string>('getRecentLogs');
       setLogs(typeof raw === 'string' ? raw : JSON.stringify(raw));
     } catch (err: any) {
       setLogs('(error reading logs: ' + (err?.message || String(err)) + ')');
     }
-    setExpanded(true);
   };
 
-  const handleUpload = (e: React.MouseEvent) => {
+  const handleUpload = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setUploading(true);
     setUploadMsg(null);
     try {
-      const result = typeof bridge.uploadDiagnostics === 'function'
-        ? bridge.uploadDiagnostics()
-        : 'uploadDiagnostics not available';
-      setUploadMsg(result || 'upload triggered');
+      if (!nativeHas('uploadDiagnostics')) {
+        setUploadMsg('uploadDiagnostics not available');
+      } else {
+        const result = await nativeCall<string>('uploadDiagnostics');
+        setUploadMsg(result || 'upload triggered');
+      }
     } catch (err: any) {
       setUploadMsg('error: ' + (err?.message || String(err)));
     } finally {
@@ -2146,12 +2257,8 @@ function PlayerPage() {
   // undefined.
   useEffect(() => {
     const tick = () => {
-      try {
-        const bridge = (window as any).EduCmsNative;
-        if (bridge && typeof bridge.heartbeat === 'function') {
-          bridge.heartbeat();
-        }
-      } catch { /* swallow — bridge unavailable, browser-only */ }
+      // No-op in the browser player — nativeFire returns false.
+      nativeFire('heartbeat');
     };
     tick(); // immediate so the first heartbeat lands quickly after boot
     const id = setInterval(tick, 60_000);
@@ -2413,13 +2520,12 @@ function PlayerPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (isPreviewMode()) return; // preview tabs don't pair, never run native services
-    const bridge = (window as any).EduCmsNative;
-    if (!bridge?.setBootstrap) return; // older APK without the method
+    if (!nativeHas('setBootstrap')) return; // older APK without the method
     try {
       const fp = getDeviceFingerprint();
       const apiRoot = getApiRoot();
       if (fp && apiRoot && fp.length >= 8) {
-        bridge.setBootstrap(apiRoot, fp);
+        nativeFire('setBootstrap', apiRoot, fp);
       }
     } catch (e) {
       // Bridge call failure is non-fatal — heartbeat + OTA stay in the
@@ -2863,11 +2969,10 @@ function PlayerPage() {
     otaPollFireRef.current = now;
     console.log(`[OTA poll] ${source} detected forceUpdatePending=true, firing bridge.checkForUpdates`);
     try {
-      const bridge = (window as any).EduCmsNative;
-      const bridgeAvailable = !!(bridge && typeof bridge.checkForUpdates === 'function');
+      const bridgeAvailable = nativeHas('checkForUpdates');
       setOtaProgress({ startedAt: now, bridgeAvailable });
       if (bridgeAvailable) {
-        bridge.checkForUpdates();
+        nativeFire('checkForUpdates');
       }
     } catch (e) {
       console.warn('[OTA poll] bridge fire failed', e);
@@ -3887,12 +3992,8 @@ function PlayerPage() {
       // body transform:rotate(90deg) if Android silently ignored us.
       const orient = manifest.orientation;
       if (orient === 'LANDSCAPE' || orient === 'PORTRAIT' || orient === 'AUTO') {
-        try {
-          const bridge = (window as any).EduCmsNative;
-          if (bridge && typeof bridge.setOrientation === 'function') {
-            bridge.setOrientation(orient);
-          }
-        } catch { /* bridge unavailable — CSS fallback effect handles it */ }
+        // No-op off-APK — the CSS fallback effect handles it.
+        nativeFire('setOrientation', orient);
         setManifestOrientation(orient);
       }
 
@@ -4836,14 +4937,60 @@ function PlayerPage() {
         }
       };
 
+      // R-04 (2026-08-01) — the SSE tier now runs the SAME client-side gate
+      // the WS path does. It previously ran NONE of it, and an on-path
+      // attacker can deterministically force screens onto SSE by killing the
+      // WS upgrade three times (`wsFailCountRef >= 3 → tryOpenSse()`), then
+      // replay one captured ALL_CLEAR_MESSAGE to keep a real SOS / broadcast
+      // suppressed. The SSE frame carries the identical verified envelope
+      // (sse.service.ts `broadcastToScope` writes the whole `parsed` message
+      // that passed `verifyWsHmac`), so signature/timestamp/eventId are all
+      // already on the wire. `recentEventIdsRef` is shared with the WS path,
+      // so a frame seen on one transport can't be replayed on the other.
+      //
+      // Freshness needs a server-clock offset, and on an SSE-only kiosk (WS
+      // blocked by a school proxy) AUTH_OK never arrives over WS — so the
+      // SSE AUTH_OK below feeds the same ref. Without that, a clock-skewed
+      // Android box would drop every SSE emergency: a life-safety regression.
+      const gateSse = (name: string, data: any): boolean => {
+        const verdict = checkSensitivePush(
+          data,
+          {
+            seenEventIds: recentEventIdsRef.current,
+            serverClockOffsetMs: serverClockOffsetRef.current,
+          },
+          name,
+        );
+        if (!verdict.accepted) {
+          console.warn(
+            `[Player SSE] dropped ${verdict.reason} sensitive event:`,
+            name, data?.eventId, 'ts=', data?.timestamp,
+            'offset=', serverClockOffsetRef.current,
+          );
+          return false;
+        }
+        return true;
+      };
+      // The server's very first SSE frame is `AUTH_OK { ts }` — the only
+      // server-time sample an SSE-only kiosk ever gets. Same semantics as the
+      // WS AUTH_OK offset capture ("what to ADD to local Date.now()").
+      es.addEventListener('AUTH_OK', (ev) => {
+        try {
+          const data = JSON.parse((ev as MessageEvent).data);
+          const srv = typeof data?.ts === 'number' ? data.ts : null;
+          if (srv == null) return;
+          serverClockOffsetRef.current = srv - Date.now();
+          if (Math.abs(serverClockOffsetRef.current) > 5000) {
+            console.warn('[Player SSE] Large clock skew detected — offset=', serverClockOffsetRef.current, 'ms');
+          }
+        } catch { /* swallow */ }
+      });
       // Each Redis event type comes through as a named SSE event.
-      // SSE doesn't have the signed-replay protection the WS path
-      // uses — we trust the server-side signer for these. Auth was
-      // already enforced when EventSource opened.
       const handle = (name: string, fn: (data: any) => void) => {
         es.addEventListener(name, (ev) => {
           try {
             const data = JSON.parse((ev as MessageEvent).data);
+            if (!gateSse(name, data)) return;
             console.log(`[Player SSE] ${name}`);
             fn(data?.payload || data);
           } catch (e) {
@@ -4861,22 +5008,15 @@ function PlayerPage() {
         // bridge.checkForUpdates() call there). If the native bridge
         // isn't present (browser preview / unpaired) there's nothing
         // to update — skip the prompt.
-        try {
-          const bridge = (window as any).EduCmsNative;
-          if (bridge && typeof bridge.checkForUpdates === 'function') {
-            setShowUpdatePrompt(true);
-          }
-        } catch { /* swallow */ }
+        if (nativeHas('checkForUpdates')) {
+          setShowUpdatePrompt(true);
+        }
       });
       handle('REFRESH_WEB', () => {
-        try {
-          const bridge = (window as any).EduCmsNative;
-          if (bridge && typeof bridge.reload === 'function') bridge.reload();
-          // Cache-busting reload (not plain reload) so the NovaStar/Taurus
-          // WebView fetches the CURRENT bundle instead of re-serving the cached
-          // one — see the WS REFRESH_WEB handler for the full rationale.
-          else hardCacheBustingReload();
-        } catch { /* swallow */ }
+        // Cache-busting reload (not plain reload) so the NovaStar/Taurus
+        // WebView fetches the CURRENT bundle instead of re-serving the cached
+        // one — see the WS REFRESH_WEB handler for the full rationale.
+        if (!nativeFire('reload')) hardCacheBustingReload();
       });
       // P0-2 (life-safety) — Sprint 5 emergency messages on the SSE
       // tier. SSE exists precisely for the WS-blocked-proxy case
@@ -5103,40 +5243,24 @@ function PlayerPage() {
             // life-safety pub/sub channel as OVERRIDE — they MUST go
             // through the same signature + freshness gate, not just
             // be trusted on type.
-            const SENSITIVE_TYPES = new Set([
-              'OVERRIDE',
-              'TENANT_CHANGED',
-              'SOS',
-              'TEXT_BROADCAST',
-              'MEDIA_ALERT',
-              'ALL_CLEAR_MESSAGE',
-            ]);
-            if (SENSITIVE_TYPES.has(msg.type)) {
-              if (!msg.signature || typeof msg.signature !== 'string') {
-                console.warn('[Player WS] dropped unsigned sensitive event:', msg.type);
-                return;
-              }
-              // Apply server-clock offset so kiosks with wrong local
-              // clocks still accept events that are actually fresh.
-              const adjustedNow = Date.now() + serverClockOffsetRef.current;
-              if (typeof msg.timestamp !== 'number' || Math.abs(adjustedNow - msg.timestamp) > 30_000) {
-                console.warn('[Player WS] dropped stale/future event:', msg.type, msg.timestamp, 'offset=', serverClockOffsetRef.current);
-                return;
-              }
-              if (msg.eventId && typeof msg.eventId === 'string') {
-                const seen = recentEventIdsRef.current;
-                if (seen.has(msg.eventId)) {
-                  console.warn('[Player WS] dropped replayed event:', msg.eventId);
-                  return;
-                }
-                seen.set(msg.eventId, Date.now());
-                // Bound memory: drop entries older than 5 min, hard cap at 500.
-                if (seen.size > 500) {
-                  const cutoff = Date.now() - 5 * 60_000;
-                  for (const [k, t] of seen) if (t < cutoff) seen.delete(k);
-                  while (seen.size > 500) seen.delete(seen.keys().next().value as string);
-                }
-              }
+            //
+            // R-04 (2026-08-01): this block used to live inline HERE ONLY, so
+            // the SSE fallback consumer enforced none of it. It is now the
+            // shared `checkSensitivePush` (pushGate.ts), called identically
+            // from the SSE `handle()` wrapper below, sharing this same
+            // `recentEventIdsRef` LRU so a frame replayed on the OTHER
+            // transport is caught too.
+            const wsVerdict = checkSensitivePush(msg, {
+              seenEventIds: recentEventIdsRef.current,
+              serverClockOffsetMs: serverClockOffsetRef.current,
+            });
+            if (!wsVerdict.accepted) {
+              console.warn(
+                `[Player WS] dropped ${wsVerdict.reason} sensitive event:`,
+                msg.type, msg.eventId, 'ts=', msg.timestamp,
+                'offset=', serverClockOffsetRef.current,
+              );
+              return;
             }
             // SECURITY (life-safety): ALL_CLEAR no longer optimistically drops
             // the active emergency. Previously a single ALL_CLEAR message
@@ -5158,7 +5282,21 @@ function PlayerPage() {
             // Wipe every piece of tenant-scoped local state and reset to the
             // pairing screen so the new tenant's content can't be served from
             // disk before re-pair completes.
+            //
+            // R-05 (2026-08-01, consumer half): this teardown used to run
+            // WITHOUT reading `payload.screenId`, even though the server signs
+            // one — so ONE frame de-provisioned every screen that received it,
+            // and recovery needed a human at each kiosk. Require an exact match
+            // against this screen's own id and fail CLOSED (missing/unknown
+            // screenId ⇒ ignore the message entirely).
             if (msg.type === 'TENANT_CHANGED') {
+              if (!isTenantChangeForThisScreen(msg, screenId)) {
+                console.warn(
+                  '[Player WS] ignored TENANT_CHANGED not addressed to this screen —',
+                  'target=', (msg.payload as any)?.screenId, 'self=', screenId,
+                );
+                return;
+              }
               try { localStorage.removeItem('edu_device_token'); } catch {}
               try { localStorage.removeItem('edu_device_fp'); } catch {}
               try { localStorage.removeItem('edu_manifest_cache_v1'); } catch {}
@@ -5169,7 +5307,7 @@ function PlayerPage() {
                 navigator.serviceWorker?.controller?.postMessage({ type: 'CLEAR_CACHE', tier: 'all' });
               } catch {}
               // Ask the native shell (if present) to wipe USB cache + reload.
-              try { (window as any).EduCmsNative?.unpair?.(); } catch {}
+              nativeFire('unpair');
               setActiveEmergency(null);
               setPhase('registering');
               return;
@@ -5311,20 +5449,20 @@ function PlayerPage() {
                 });
                 setTimeout(() => {
                   try {
-                    const bridge = (window as any).EduCmsNative;
-                    if (bridge && typeof bridge.reload === 'function') {
-                      bridge.reload();
-                    } else {
-                      // CRITICAL (2026-06-28): a plain window.location.reload()
-                      // on the NovaStar/Taurus WebView re-serves the CACHED
-                      // bundle — so an operator hitting "refresh" (or the
-                      // dashboard refresh-web) NEVER pulled new code, and every
-                      // emergency/template fix appeared not to ship. Use the
-                      // cache-busting reload (location.replace + fresh ?_v=) so
-                      // refresh-web actually fetches the current bundle. This is
-                      // the same helper the stale-bundle auto-reload uses.
-                      hardCacheBustingReload();
-                    }
+                    // AND-002 — nativeFire returns false when NO transport
+                    // took the call (browser player / older APK without the
+                    // method), which is exactly when we need the web
+                    // fallback below. It never throws.
+                    //
+                    // CRITICAL (2026-06-28): a plain window.location.reload()
+                    // on the NovaStar/Taurus WebView re-serves the CACHED
+                    // bundle — so an operator hitting "refresh" (or the
+                    // dashboard refresh-web) NEVER pulled new code, and every
+                    // emergency/template fix appeared not to ship. Use the
+                    // cache-busting reload (location.replace + fresh ?_v=) so
+                    // refresh-web actually fetches the current bundle. This is
+                    // the same helper the stale-bundle auto-reload uses.
+                    if (!nativeFire('reload')) hardCacheBustingReload();
                   } catch (e) {
                     console.warn(`[REFRESH_WEB ${corrId}] reload threw:`, (e as Error)?.message);
                   }
@@ -5361,18 +5499,23 @@ function PlayerPage() {
                 // dashboard every step of the way." Surface the
                 // overlay BEFORE the bridge call so the user at the
                 // kiosk sees something happening instantly.
-                let bridgeAvailable = false;
-                try {
-                  const bridge = (window as any).EduCmsNative;
-                  if (bridge && typeof bridge.checkForUpdates === 'function') {
-                    bridgeAvailable = true;
-                    const v = bridge.checkForUpdates();
-                    console.log('[Player] CHECK_FOR_UPDATES relayed to native, currentVersion=', v);
-                  } else {
-                    console.log('[Player] CHECK_FOR_UPDATES ignored — no native bridge (legacy APK or browser player)');
-                  }
-                } catch (e) {
-                  console.warn('[Player] CHECK_FOR_UPDATES bridge call failed', e);
+                // AND-002 — the capability probe stays SYNCHRONOUS so
+                // `bridgeAvailable` is correct for the setOtaProgress call
+                // immediately below (the overlay copy depends on it). The
+                // call itself returns the APK versionName, so it goes
+                // through nativeCall and its log lands a tick later; the
+                // native side has already started the OTA check by then.
+                const bridgeAvailable = nativeHas('checkForUpdates');
+                if (bridgeAvailable) {
+                  nativeCall<string>('checkForUpdates')
+                    .then((v) => {
+                      console.log('[Player] CHECK_FOR_UPDATES relayed to native, currentVersion=', v);
+                    })
+                    .catch((e) => {
+                      console.warn('[Player] CHECK_FOR_UPDATES bridge call failed', e);
+                    });
+                } else {
+                  console.log('[Player] CHECK_FOR_UPDATES ignored — no native bridge (legacy APK or browser player)');
                 }
                 // Show the overlay either way — operator sees that
                 // the message reached the device. If bridge isn't
@@ -6259,19 +6402,14 @@ function PlayerPage() {
   // preview and older APKs keep using the iframe/proxy fallback below.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const bridge = (window as any).EduCmsNative;
-    const showUrlOverlay = typeof bridge?.showUrlOverlay === 'function'
-      ? bridge.showUrlOverlay.bind(bridge)
-      : null;
-    const hideUrlOverlay = typeof bridge?.hideUrlOverlay === 'function'
-      ? bridge.hideUrlOverlay.bind(bridge)
-      : null;
-    if (!showUrlOverlay || !hideUrlOverlay) return;
+    // AND-002 — capability probe is SYNCHRONOUS (nativeHas) so this effect
+    // can bail before doing any work on a browser player / older APK,
+    // exactly as the old `typeof bridge.showUrlOverlay === 'function'`
+    // check did. Both methods are fire-and-forget (nativeFire).
+    if (!nativeHas('showUrlOverlay') || !nativeHas('hideUrlOverlay')) return;
 
     const hide = () => {
-      try { hideUrlOverlay(); } catch (err) {
-        console.warn('[Player] hideUrlOverlay bridge call failed', err);
-      }
+      nativeFire('hideUrlOverlay');
     };
 
     if (phase !== 'playing' || playbackStopped || activeEmergency || sorted.length === 0) {
@@ -6292,11 +6430,7 @@ function PlayerPage() {
       return;
     }
 
-    try {
-      showUrlOverlay(url);
-    } catch (err) {
-      console.warn('[Player] showUrlOverlay bridge call failed', err);
-    }
+    nativeFire('showUrlOverlay', url);
   }, [activeEmergency, currentIndex, isItemValid, phase, playbackStopped, sorted]);
 
   // Shared splash resolution string — used by all three pre-content phases.
@@ -6369,10 +6503,9 @@ function PlayerPage() {
       // doesn't currently expose a Sync button.)
       setTimeout(() => {
         try {
-          const bridge = (window as any).EduCmsNative;
-          if (bridge && typeof bridge.reload === 'function') {
-            bridge.reload();
-          } else if (typeof window !== 'undefined') {
+          // AND-002 — false means no transport took it (browser player /
+          // older APK), which is the web-fallback case.
+          if (!nativeFire('reload') && typeof window !== 'undefined') {
             window.location.reload();
           }
         } catch { /* swallow */ }
@@ -6391,13 +6524,16 @@ function PlayerPage() {
   //      flips exitUnavailable=true so the copy asks the operator
   //      to hit their remote's Home button.
   const handleExitApp = () => {
-    try {
-      const bridge = (window as any).EduCmsNative;
-      if (bridge && typeof bridge.exitToDeviceHome === 'function') {
-        bridge.exitToDeviceHome();
-        return;
-      }
-    } catch { /* fall through */ }
+    // AND-002 — nativeFire is synchronous and total: true means a
+    // transport (secure channel, else legacy object) accepted the call,
+    // false means there is no APK here and we fall through to the web
+    // cascade below. Same shape the try/typeof probe had.
+    //
+    // ⚠️ On a lock-task-pinned kiosk this is THE operator escape hatch —
+    // MainActivity's onExitToDeviceHome lambda calls
+    // LockTaskController.disengage() before it does anything else. Do not
+    // "simplify" this button away.
+    if (nativeFire('exitToDeviceHome')) return;
     try { window.close(); } catch { /* ignore */ }
     setPlaybackStopped(true);
     setExitUnavailable(true);
@@ -6453,14 +6589,9 @@ function PlayerPage() {
 
     // 3. Native bridge → APK wipes DataStore + reloads with empty
     //    token. On non-APK clients (browser tab) fall through to a
-    //    React-only reset.
-    try {
-      const bridge = (window as any).EduCmsNative;
-      if (bridge && typeof bridge.unpair === 'function') {
-        bridge.unpair();
-        return;
-      }
-    } catch { /* fall through to React-only path */ }
+    //    React-only reset. AND-002 — nativeFire returns false exactly
+    //    in that no-APK case and never throws.
+    if (nativeFire('unpair')) return;
     setActiveEmergency(null);
     setPlaybackStopped(false);
     setExitUnavailable(false);
@@ -6494,13 +6625,15 @@ function PlayerPage() {
   //  1. Set otaProgress so the banner switches to "in progress"
   //  2. Call native bridge so OtaUpdateWorker fires
   const handleInstallUpdate = () => {
-    const bridge = (window as any).EduCmsNative;
-    const bridgeAvailable = !!(bridge && typeof bridge.checkForUpdates === 'function');
+    // AND-002 — sync capability probe keeps setOtaProgress's
+    // `bridgeAvailable` (which drives the banner copy) correct on the
+    // same tick, exactly as the old `typeof bridge.checkForUpdates`
+    // check did. The call itself is fire-and-forget here — we don't use
+    // the returned versionName on this path.
+    const bridgeAvailable = nativeHas('checkForUpdates');
     setOtaProgress({ startedAt: Date.now(), bridgeAvailable });
     if (bridgeAvailable) {
-      try { bridge.checkForUpdates(); } catch (err) {
-        console.warn('[Player] self-update bridge call failed', err);
-      }
+      nativeFire('checkForUpdates');
     }
   };
 
@@ -6690,12 +6823,9 @@ function PlayerPage() {
             //    kiosk visibly rotates the moment the operator taps a
             //    button, BEFORE the server has been notified. No round-
             //    trip lag during setup.
-            try {
-              const bridge = (window as any).EduCmsNative;
-              if (bridge && typeof bridge.setOrientation === 'function') {
-                bridge.setOrientation(value);
-              }
-            } catch { /* bridge unavailable — CSS fallback effect handles it */ }
+            // AND-002 — fire-and-forget, never throws. A false return
+            // means no APK here and the CSS fallback effect handles it.
+            nativeFire('setOrientation', value);
             // Drive the active-button highlight + the CSS-fallback
             // effect (which only kicks in for PORTRAIT on Android-API-
             // ignoring ROMs).
@@ -7195,12 +7325,9 @@ function PlayerPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        try {
-                          const bridge = (window as any).EduCmsNative;
-                          if (bridge && typeof bridge.checkForUpdates === 'function') {
-                            bridge.checkForUpdates();
-                          }
-                        } catch { /* swallow */ }
+                        // AND-002 — fire-and-forget; nativeFire never
+                        // throws, so the prompt always advances.
+                        nativeFire('checkForUpdates');
                         setOtaStarting(true);
                       }}
                       className="px-7 py-4 rounded-xl text-lg font-bold text-white bg-indigo-600 hover:bg-indigo-500"
@@ -7617,9 +7744,11 @@ function PlayerPage() {
               // inline natively; X-Frame-Options doesn't apply to
               // file/PDF responses the same way.
               const isPdf = mime === 'application/pdf';
-              const nativeUrlOverlayAvailable = !isPdf &&
-                typeof window !== 'undefined' &&
-                typeof (window as any).EduCmsNative?.showUrlOverlay === 'function';
+              // AND-002 — this is a RENDER gate, so the capability check
+              // must stay synchronous (nativeHas). Awaiting a round trip
+              // here would flash the iframe fallback for a frame before
+              // swapping to the native-overlay placeholder.
+              const nativeUrlOverlayAvailable = !isPdf && nativeHas('showUrlOverlay');
               if (nativeUrlOverlayAvailable) {
                 return (
                   <div
@@ -7657,11 +7786,13 @@ function PlayerPage() {
                     title={item.id}
                     onLoad={(e) => {
                       const frame = e.currentTarget as HTMLIFrameElement;
-                      import('@/components/widgets/webpage-spatial-nav').then(({ injectSpatialNav }) => {
-                        if (injectSpatialNav(frame)) {
-                          try { frame.contentWindow?.focus(); } catch { /* noop */ }
-                        }
-                      }).catch(() => { /* never block playback on injection */ });
+                      // 2026-08-02 — the shim is baked into the proxied
+                      // document server-side now (the frame is sandboxed, so
+                      // contentWindow.eval is gone). This ARMS it and starts
+                      // forwarding remote-control keys over postMessage.
+                      import('@/components/widgets/webpage-spatial-nav').then(({ attachSpatialNavBridge }) => {
+                        attachSpatialNavBridge(frame);
+                      }).catch(() => { /* never block playback on the bridge */ });
                       markItemSucceeded();
                     }}
                     onError={() => {
@@ -7672,33 +7803,40 @@ function PlayerPage() {
                   />
                 );
               }
+              // PDF-ONLY BRANCH. Every text/html asset returned above via
+              // ScaledWebFrame (which IS sandboxed); `isPdf` is the only way
+              // to reach here, and `iframeSrc` is the raw asset URL.
+              //
+              // ⚠️ DELIBERATELY NOT SANDBOXED — measured, not assumed
+              // (2026-08-02). Chrome refuses to run its built-in PDF viewer
+              // inside ANY sandboxed iframe: a 4-cell probe (no sandbox /
+              // "allow-scripts allow-popups-to-escape-sandbox" /
+              // "allow-scripts allow-same-origin" / EVERY sandbox token)
+              // against the same PDF rendered the viewer ONLY in the
+              // unsandboxed cell — all three sandboxed cells painted nothing.
+              // So adding `sandbox` here does not harden this frame, it
+              // deletes the "show the lunch menu PDF on the lobby screen"
+              // feature outright.
+              //
+              // Residual exposure is bounded: the asset is served from the
+              // Supabase storage host, i.e. already cross-origin, so the
+              // same-origin policy alone denies parent.document / our
+              // localStorage. What sandbox WOULD have added is top-navigation
+              // and popup blocking, which only matter if an asset stored with
+              // mimeType 'application/pdf' is actually served with an HTML
+              // Content-Type. Close that at upload validation (out of this
+              // file's scope), not by breaking PDFs here.
               return <iframe
                 key={item.id}
                 src={iframeSrc}
                 className={classes}
-                // No sandbox attribute. The proxy strips <script> tags
-                // server-side — that's the frame-busting defense. Adding
-                // sandbox="allow-scripts allow-same-origin" was tried
-                // briefly and produced a regression (e-arc.com middle
-                // section broken too) so reverted to the script-strip
-                // baseline. See proxy.controller.ts comments.
                 title={item.id}
-                onLoad={(e) => {
-                  // Sprint 11 — operator: "didnt you apply a fix that
-                  // should let me remote control browse the website
-                  // and scroll and select the main selectable
-                  // buttons?". The fix was wired into WidgetRenderer's
-                  // WebpageWidget (template-zone widgets) but NOT this
-                  // playback-time iframe (playlist items rendering a
-                  // text/html asset). Inject the same spatial-nav
-                  // shim here too — same Api boundary, same proxy
-                  // origin makes contentWindow.eval legal.
-                  const frame = e.currentTarget as HTMLIFrameElement;
-                  import('@/components/widgets/webpage-spatial-nav').then(({ injectSpatialNav }) => {
-                    if (injectSpatialNav(frame)) {
-                      try { frame.contentWindow?.focus(); } catch { /* noop */ }
-                    }
-                  }).catch(() => { /* never block playback on injection */ });
+                onLoad={() => {
+                  // Spatial nav intentionally NOT attached: this frame is a
+                  // cross-origin PDF, so the proxy never injected a shim into
+                  // it and there is nothing to arm. (The previous
+                  // `injectSpatialNav` call here always threw SecurityError
+                  // and was silently swallowed — it never did anything.)
                   markItemSucceeded();
                 }}
                 onError={() => {
@@ -8480,10 +8618,19 @@ function PlayerPage() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            const bridge = (window as any).EduCmsNative;
-                            if (bridge && typeof bridge.openSettingsForManager === 'function') {
-                              try { bridge.openSettingsForManager(); return; } catch { /* fall through */ }
-                            }
+                            // AND-002 — fire-and-forget; true means a
+                            // transport took it, false means no APK and
+                            // we fall through to the intent: URL below.
+                            //
+                            // NOTE: this button is a NON-device-owner
+                            // affordance (it grants Manager "install
+                            // unknown apps", which a device owner never
+                            // needs). We only ever enter lock task mode
+                            // WHEN Manager is device owner, so the OS
+                            // refusing to launch Settings from a locked
+                            // task cannot strand this path in practice.
+                            // See LockTaskController's header.
+                            if (nativeFire('openSettingsForManager')) return;
                             // Fallback: Android intent URI for
                             // Settings → Apps → Manager → Install
                             // unknown apps. Tries production first,
@@ -8538,13 +8685,12 @@ function PlayerPage() {
                       // Mirror the dashboard's Push flow on-device:
                       // 1) Show progress overlay so operator sees stages.
                       // 2) Call native bridge to trigger OTA worker.
-                      const bridge = (window as any).EduCmsNative;
-                      const bridgeAvailable = !!(bridge && typeof bridge.checkForUpdates === 'function');
+                      // AND-002 — sync probe so the overlay copy is right
+                      // on this tick; the call itself is fire-and-forget.
+                      const bridgeAvailable = nativeHas('checkForUpdates');
                       setOtaProgress({ startedAt: Date.now(), bridgeAvailable });
                       if (bridgeAvailable) {
-                        try { bridge.checkForUpdates(); } catch (err) {
-                          console.warn('[Player] self-update bridge call failed', err);
-                        }
+                        nativeFire('checkForUpdates');
                       }
                     }}
                     className="shrink-0 px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold rounded-xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative"
@@ -8644,12 +8790,9 @@ function PlayerPage() {
                       // a one-shot OTA recheck on Resume so the
                       // banner clears the moment the user comes back
                       // from Settings.
-                      try {
-                        const bridge = (window as any).EduCmsNative;
-                        if (bridge && typeof bridge.checkForUpdates === 'function') {
-                          bridge.checkForUpdates();
-                        }
-                      } catch { /* no-op */ }
+                      // AND-002 — fire-and-forget; never throws, so
+                      // Resume always resumes.
+                      nativeFire('checkForUpdates');
                       setPlaybackStopped(false);
                       setExitUnavailable(false);
                     }}

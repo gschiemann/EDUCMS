@@ -76,6 +76,39 @@ function LoginContent() {
   const [useBackupCode, setUseBackupCode] = useState(false);
   const [mfaSubmitting, setMfaSubmitting] = useState(false);
 
+  // ── ACC-03: FORCED ENROLLMENT step ──────────────────────────────
+  // When /auth/login responds { mfaRequired, mfaEnrollmentRequired, mfaToken }
+  // the password was correct but an admin has REQUIRED two-factor on this
+  // account and the user has never enrolled. They cannot use the normal
+  // Settings → Security card to fix it, because that needs the session the
+  // policy is withholding. Without the branch below, setting the flag is a
+  // LOCKOUT with no path forward — which is precisely the bug this prevents.
+  //
+  // The API's /auth/mfa/required/enroll + /required/verify exist for this and
+  // are authorized by the partial mfaToken itself. /required/verify returns
+  // the real session AND the one-time backup codes, so this step ends on a
+  // "write these down" screen before we complete the sign-in.
+  const [enrollRequired, setEnrollRequired] = useState(false);
+  const [enrollSecret, setEnrollSecret] = useState<{ secret: string; otpauthUrl: string; label: string } | null>(null);
+  const [enrollQr, setEnrollQr] = useState<string | null>(null);
+  const [pendingBackupCodes, setPendingBackupCodes] = useState<string[] | null>(null);
+  const [pendingSession, setPendingSession] = useState<any>(null);
+
+  // Render the otpauth URL into a QR the moment the provisional secret
+  // arrives. `qrcode` is imported lazily so the login bundle — the first
+  // thing every user downloads — does not carry it for the 99% of sign-ins
+  // that never reach this step.
+  useEffect(() => {
+    let cancelled = false;
+    if (!enrollSecret?.otpauthUrl) { setEnrollQr(null); return; }
+    import('qrcode')
+      .then((m) => m.toDataURL(enrollSecret.otpauthUrl, { width: 200, margin: 1 }))
+      .then((url) => { if (!cancelled) setEnrollQr(url); })
+      // No QR is survivable — the manual key below it is always shown.
+      .catch(() => { if (!cancelled) setEnrollQr(null); });
+    return () => { cancelled = true; };
+  }, [enrollSecret?.otpauthUrl]);
+
   // Shared post-login completion — used by BOTH the normal password path
   // and the MFA challenge path so EULA persistence + the cross-tenant-safe
   // redirect logic live in exactly one place.
@@ -163,7 +196,91 @@ function LoginContent() {
     setMfaToken(null);
     setMfaCode('');
     setUseBackupCode(false);
+    setEnrollRequired(false);
+    setEnrollSecret(null);
+    setPendingBackupCodes(null);
+    setPendingSession(null);
     setError('');
+  };
+
+  /**
+   * ACC-03 — start forced enrollment. Trades the partial mfaToken for a
+   * provisional TOTP secret. Safe to re-run: the endpoint issues a fresh
+   * secret and clears any half-finished one, and the account is not enrolled
+   * until /required/verify succeeds.
+   */
+  const startRequiredEnrollment = async (token: string) => {
+    setError('');
+    setMfaSubmitting(true);
+    try {
+      const res = await fetch(`${API_URL}/auth/mfa/required/enroll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mfaToken: token }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.secret && data?.otpauthUrl) {
+        setEnrollSecret({ secret: data.secret, otpauthUrl: data.otpauthUrl, label: data.label || email });
+        return;
+      }
+      if (data?.code === 'MFA_TOKEN_INVALID') {
+        cancelMfa();
+        setError(t('mfaSetupTimedOut'));
+        return;
+      }
+      clog.warn('auth', 'Required-MFA enroll rejected', { status: res.status, code: data?.code });
+      setError(data?.message || t('mfaSetupFailed'));
+    } catch {
+      setError(t('mfaSetupUnreachable'));
+    } finally {
+      setMfaSubmitting(false);
+    }
+  };
+
+  /**
+   * ACC-03 — confirm the provisional secret and COMPLETE the held-back login.
+   * The response is the real session envelope plus 10 one-time backup codes,
+   * which are shown ONCE — so we park the session and render the codes first
+   * rather than redirecting straight past them.
+   */
+  const handleRequiredVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!mfaToken) return;
+    const trimmed = mfaCode.trim();
+    if (!trimmed) {
+      setError(t('mfaEnterCodeToFinish'));
+      return;
+    }
+    setError('');
+    setMfaSubmitting(true);
+    try {
+      const res = await fetch(`${API_URL}/auth/mfa/required/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mfaToken, code: trimmed }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.access_token) {
+        if (Array.isArray(data.backupCodes) && data.backupCodes.length) {
+          setPendingSession(data);
+          setPendingBackupCodes(data.backupCodes);
+        } else {
+          completeLogin(data);
+        }
+        return;
+      }
+      if (data?.code === 'MFA_TOKEN_INVALID') {
+        cancelMfa();
+        setError(t('mfaSetupTimedOut'));
+        return;
+      }
+      clog.warn('auth', 'Required-MFA verify rejected', { status: res.status, code: data?.code });
+      setError(data?.message || t('mfaCodeMismatch'));
+    } catch {
+      setError(t('mfaVerifyUnreachable'));
+    } finally {
+      setMfaSubmitting(false);
+    }
   };
 
   const handleSsoStart = async (e: React.FormEvent) => {
@@ -210,14 +327,27 @@ function LoginContent() {
       });
       const data = await res.json();
       if (res.ok && data.mfaRequired && data.mfaToken) {
-        // Password was correct, but this account has TOTP enabled. Hold
-        // the short-lived challenge token and render the second step.
-        // EULA persistence is deferred to completeLogin() so it only
-        // records on a FULLY successful sign-in (after the code check).
-        clog.info('auth', 'MFA required — showing challenge step', { email });
+        // Password was correct, but a second factor is owed. Hold the
+        // short-lived challenge token and render the second step. EULA
+        // persistence is deferred to completeLogin() so it only records on a
+        // FULLY successful sign-in (after the code check).
         setMfaToken(data.mfaToken);
         setMfaCode('');
         setUseBackupCode(false);
+
+        if (data.mfaEnrollmentRequired) {
+          // ACC-03 — an admin REQUIRED 2FA and this user has never enrolled.
+          // They cannot reach Settings → Security (that needs the session the
+          // policy is withholding), so enrollment happens right here. Without
+          // this branch the flag is a lockout with no path forward.
+          clog.info('auth', 'MFA enrollment required — starting setup', { email });
+          setEnrollRequired(true);
+          setEnrollSecret(null);
+          await startRequiredEnrollment(data.mfaToken);
+        } else {
+          clog.info('auth', 'MFA required — showing challenge step', { email });
+          setEnrollRequired(false);
+        }
       } else if (res.ok && data.access_token) {
         // Normal (no-MFA) path. Persist EULA acceptance + redirect via
         // the shared completion helper.
@@ -250,18 +380,172 @@ function LoginContent() {
             <polygon points="22,16 19,21.2 13,21.2 10,16 13,10.8 19,10.8" fill="#a5b4fc" />
           </svg>
           <h1 className="mt-4 text-xl font-semibold tracking-tight text-slate-900">
-            {mfaToken ? t('twoFactorTitle') : t('signInTitle', { brand: brand.name })}
+            {pendingBackupCodes
+              ? t('mfaBackupCodesTitle')
+              : enrollRequired
+                ? t('mfaSetupTitle')
+                : mfaToken
+                  ? t('twoFactorTitle')
+                  : t('signInTitle', { brand: brand.name })}
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            {mfaToken
-              ? (useBackupCode ? t('mfaEnterBackup') : t('mfaEnterCode'))
-              : brand.tagline}
+            {pendingBackupCodes
+              ? t('mfaBackupCodesSubtitle')
+              : enrollRequired
+                ? t('mfaSetupSubtitle')
+                : mfaToken
+                  ? (useBackupCode ? t('mfaEnterBackup') : t('mfaEnterCode'))
+                  : brand.tagline}
           </p>
         </div>
 
         {/* card */}
         <div className="bg-white border border-slate-200 rounded-2xl p-7">
-          {mfaToken ? (
+          {pendingBackupCodes ? (
+            /* ── ACC-03: one-time backup codes, shown BEFORE we redirect ──
+               `/required/verify` returns these once and never again. Handing
+               the user straight to the dashboard would silently throw away
+               their only recovery path if they later lose the phone. */
+            <div className="space-y-4">
+              <div className="flex justify-center">
+                <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center">
+                  <ShieldCheck className="w-6 h-6 text-emerald-600" />
+                </div>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">{t('mfaBackupCodesHelp')}</p>
+              <ul className="grid grid-cols-2 gap-1.5 bg-slate-50 rounded-lg p-3 list-none">
+                {pendingBackupCodes.map((c) => (
+                  <li key={c} className="font-mono text-xs text-slate-700 select-all text-center">{c}</li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                onClick={() => { navigator.clipboard?.writeText(pendingBackupCodes.join('\n')); }}
+                className="w-full border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold py-2 px-4 rounded-lg transition-colors"
+              >
+                {t('mfaCopyCodes')}
+              </button>
+              <button
+                type="button"
+                onClick={() => { const s = pendingSession; setPendingBackupCodes(null); setPendingSession(null); if (s) completeLogin(s); }}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors"
+              >
+                {t('mfaSavedCodesContinue')}
+              </button>
+            </div>
+          ) : enrollRequired && mfaToken ? (
+            /* ── ACC-03: forced-enrollment step ──────────────────────────
+               An admin required 2FA on this account and it has never been set
+               up. Settings → Security is unreachable (it needs the session
+               this policy withholds), so setup happens here. */
+            <div className="space-y-4">
+              <div className="flex justify-center">
+                <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center">
+                  <ShieldCheck className="w-6 h-6 text-indigo-600" />
+                </div>
+              </div>
+
+              {!enrollSecret ? (
+                <div className="flex flex-col items-center gap-3 py-4">
+                  {mfaSubmitting ? (
+                    <>
+                      <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
+                      <p className="text-xs text-slate-500">{t('mfaSetupPreparing')}</p>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => startRequiredEnrollment(mfaToken)}
+                      className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                    >
+                      {t('mfaSetupRetry')}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <ol className="text-xs text-slate-600 space-y-1.5 list-decimal list-inside">
+                    <li>{t('mfaSetupStep1')}</li>
+                    <li>{t('mfaSetupStep2')}</li>
+                    <li>{t('mfaSetupStep3')}</li>
+                  </ol>
+
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="rounded-xl border border-slate-200 p-3 bg-white">
+                      {enrollQr ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={enrollQr} alt={t('mfaSetupQrAlt')} width={160} height={160} className="block" />
+                      ) : (
+                        <div className="w-[160px] h-[160px] flex items-center justify-center text-slate-300">
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="w-full">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">{t('mfaSetupManualKey')}</p>
+                      <code className="block text-xs text-slate-700 select-all break-all bg-slate-50 rounded-lg px-2.5 py-2 font-mono">
+                        {enrollSecret.secret}
+                      </code>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleRequiredVerify} className="space-y-4">
+                    <div>
+                      <label htmlFor="mfa-enroll-code" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                        {t('authCode')}
+                      </label>
+                      <input
+                        id="mfa-enroll-code"
+                        name="mfa-enroll-code"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        required
+                        placeholder="123456"
+                        className={INPUT_CLS + ' tracking-[0.4em] text-center font-mono text-base'}
+                        value={mfaCode}
+                        onChange={(e) => setMfaCode(e.target.value)}
+                      />
+                    </div>
+
+                    {error && (
+                      <div className="flex items-start gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-lg">
+                        <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                        <p className="text-xs text-rose-700 font-medium">{error}</p>
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={mfaSubmitting}
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+                    >
+                      {mfaSubmitting ? (
+                        <><Loader2 className="w-4 h-4 animate-spin" /> {t('verifying')}</>
+                      ) : (
+                        t('mfaSetupFinish')
+                      )}
+                    </button>
+                  </form>
+                </>
+              )}
+
+              {!enrollSecret && error && (
+                <div className="flex items-start gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-lg">
+                  <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                  <p className="text-xs text-rose-700 font-medium">{error}</p>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={cancelMfa}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" /> {t('back')}
+              </button>
+            </div>
+          ) : mfaToken ? (
             /* ── MFA challenge step ─────────────────────────────── */
             <form onSubmit={handleMfaChallenge} className="space-y-4">
               <div className="flex justify-center">

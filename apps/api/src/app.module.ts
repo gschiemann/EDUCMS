@@ -101,6 +101,7 @@ import { RedisService } from './realtime/redis.service';
 import { APP_FILTER, APP_GUARD, APP_PIPE, APP_INTERCEPTOR } from '@nestjs/core';
 import { SanitizationPipe } from './security/sanitization.pipe';
 import { RequestLogInterceptor } from './security/request-log.interceptor';
+import { DeviceIdentityInterceptor } from './security/device-identity.interceptor';
 import { AnomalyMiddleware } from './security/anomaly.middleware';
 import { CsrfMiddleware } from './security/csrf.middleware';
 import { CsrfController } from './security/csrf.controller';
@@ -257,6 +258,18 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     {
       provide: APP_PIPE,
       useClass: SanitizationPipe,
+    },
+    {
+      // SECURITY (DT-01/DT-03, 2026-08-03). Must run BEFORE any other
+      // interceptor that reads `req.user`: it replaces a device
+      // principal's tenant identity — which JwtAuthGuard copies verbatim
+      // out of a 180-day token claim — with the LIVE Screen row, and
+      // rejects a screen whose credential has been revoked. Without it,
+      // an unpaired / re-homed / dumpstered screen keeps reading its
+      // former tenant's live emergency traffic. No-op for every
+      // non-device principal. See device-identity.interceptor.ts.
+      provide: APP_INTERCEPTOR,
+      useClass: DeviceIdentityInterceptor,
     },
     {
       // Operational stdout breadcrumb for mutating requests. NOT the

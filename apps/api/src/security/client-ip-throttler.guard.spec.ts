@@ -25,12 +25,31 @@ function req(xff: unknown, ip?: string, ips?: string[]) {
 }
 
 describe('ClientIpThrottlerGuard.getTracker', () => {
-  it('keys on the leftmost X-Forwarded-For entry (the original client)', async () => {
+  it('keys on the trusted-hop X-Forwarded-For entry, not a rotating hop', async () => {
     const { getTracker } = makeGuard();
+    // Chain [client, edge] with one attacker-injected prefix entry. With the
+    // default hop count of 2 the client sits at index len-2.
     const t = await getTracker(
       req('99.65.178.111, 10.0.0.1, 10.0.0.2', '10.0.0.1'),
     );
-    expect(t).toBe('99.65.178.111');
+    expect(t).toBe('10.0.0.1');
+  });
+
+  // ACC-08 (2026-08-01): the throttle key must not be attacker-movable. The
+  // previous leftmost-XFF rule let a client rotate it with a header, which
+  // reinstated the very bug this guard exists to fix — the shared counter
+  // never accumulated and the brute-force cap never fired.
+  it('is UNSPOOFABLE: an injected X-Forwarded-For cannot rotate the key', async () => {
+    const { getTracker } = makeGuard();
+    const keys = new Set<string>();
+    for (let i = 0; i < 50; i++) {
+      // Attacker varies the prefix per request; honest chain is unchanged.
+      keys.add(
+        await getTracker(req(`203.0.113.${i}, 99.65.178.111, 10.0.4.7`, '10.0.4.7')),
+      );
+    }
+    expect(keys.size).toBe(1); // one bucket → the cap can actually fire
+    expect([...keys][0]).toBe('99.65.178.111');
   });
 
   it('is STABLE for the same client even when trailing internal hops rotate', async () => {
@@ -52,11 +71,14 @@ describe('ClientIpThrottlerGuard.getTracker', () => {
     expect(await getTracker(req('  203.0.113.9 , 10.0.0.1'))).toBe('203.0.113.9');
   });
 
-  it('handles an array-valued x-forwarded-for header', async () => {
+  it('concatenates repeated x-forwarded-for headers instead of reading only the first', async () => {
+    // Reading array[0] would let an attacker send a SECOND header to shift the
+    // chain and move the key. The full chain here is
+    // [203.0.113.9, 10.0.0.1, 10.0.0.2] → index len-2.
     const { getTracker } = makeGuard();
     expect(
       await getTracker(req(['203.0.113.9, 10.0.0.1', '10.0.0.2'])),
-    ).toBe('203.0.113.9');
+    ).toBe('10.0.0.1');
   });
 
   it('falls back to req.ip when there is no XFF header', async () => {

@@ -7,6 +7,7 @@ import { AiService } from '../ai/ai.service';
 import { BrandingScraperService } from '../branding/branding-scraper.service';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
 import { RedisService } from '../realtime/redis.service';
+import { AppRole } from '@cms/database';
 
 // See c2-staleness-guard.spec.ts's header comment for why JwtAuthGuard's
 // own constructor deps need providers here even though these tests call
@@ -31,7 +32,11 @@ describe('C3 — version history (snapshot-on-save, cap-at-5, restore-snapshots-
   let controller: TemplatesController;
   let prismaService: any;
 
-  const req = { user: { id: 'u1', tenantId: 't1' } };
+  // INJ-003 (2026-08-02): explicit role required — the live-bound content
+  // gate is fail-CLOSED, so a role-less actor is treated as an Editor and
+  // blocked from editing already-live content. These tests exercise an
+  // admin's save/restore.
+  const req = { user: { id: 'u1', tenantId: 't1', role: AppRole.SCHOOL_ADMIN } };
 
   function baseTemplate(overrides: Record<string, unknown> = {}) {
     return {

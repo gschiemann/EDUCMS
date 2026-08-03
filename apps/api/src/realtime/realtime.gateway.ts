@@ -23,9 +23,53 @@ interface ClientContext {
   isAuthenticated: boolean;
   socket: WebSocket;
   authTimeout?: NodeJS.Timeout;
+  /** R-07 token bucket for the Redis-writing telemetry events (ACK/HEARTBEAT). */
+  telemetryTokens: number;
+  telemetryRefilledAt: number;
 }
 
-@WebSocketGateway({ path: '/realtime' })
+/**
+ * R-03 — hard ceiling on an inbound WS frame.
+ *
+ * @nestjs/platform-ws passes gateway options straight to `ws`, whose
+ * `maxPayload` DEFAULT is 100 MiB. The raw `message` handler below runs
+ * `toString()` + `JSON.parse` BEFORE any auth, so an anonymous socket could
+ * put 100 MiB of memory + event-loop pressure on the same process that serves
+ * the emergency manifest poll. Every legitimate frame (HELLO / HEARTBEAT /
+ * ACK / TIME_PING) is a few hundred bytes; 64 KiB is ~100× headroom.
+ */
+const MAX_WS_FRAME_BYTES = 64 * 1024;
+
+/**
+ * R-07 — cap the metrics blob a device can park in Redis
+ * (`device:<id>:status` hash). Real player metrics are a few hundred bytes.
+ */
+const MAX_HEARTBEAT_METRICS_BYTES = 4 * 1024;
+
+/**
+ * R-07 — per-socket token bucket on the two events that write to Redis.
+ * 30-deep burst, refilled 1/sec: a legit player (heartbeat every ~15-30s,
+ * an ACK per delivered event) never touches it; a compromised kiosk is
+ * capped at ~1 Redis write/sec instead of an unbounded rewrite loop.
+ */
+const TELEMETRY_BUCKET_CAPACITY = 30;
+const TELEMETRY_REFILL_INTERVAL_MS = 1_000;
+
+/**
+ * Byte length of a raw `ws` frame WITHOUT decoding it to a string. `ws` can
+ * hand us a Buffer (default), a string, an ArrayBuffer, or a Buffer[]
+ * fragment list depending on `binaryType` — measure all of them.
+ */
+function frameByteLength(raw: unknown): number {
+  if (typeof raw === 'string') return Buffer.byteLength(raw, 'utf8');
+  if (Buffer.isBuffer(raw)) return raw.length;
+  if (Array.isArray(raw)) return raw.reduce((n: number, b: any) => n + frameByteLength(b), 0);
+  if (raw instanceof ArrayBuffer) return raw.byteLength;
+  if (ArrayBuffer.isView(raw)) return raw.byteLength;
+  return 0;
+}
+
+@WebSocketGateway({ path: '/realtime', maxPayload: MAX_WS_FRAME_BYTES })
 export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(RealtimeGateway.name);
 
@@ -59,12 +103,29 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       isAuthenticated: false,
       socket: client,
       authTimeout,
+      telemetryTokens: TELEMETRY_BUCKET_CAPACITY,
+      telemetryRefilledAt: Date.now(),
     });
 
     // ─── RAW MESSAGE HANDLER ───
     // NestJS @SubscribeMessage decorators are unreliable with the native ws adapter.
     // Handle messages directly on the socket for guaranteed routing.
     client.on('message', (raw: Buffer | string) => {
+      // R-03: size-check the RAW frame before toString()/JSON.parse — the
+      // whole point is not to materialize an attacker-sized string on an
+      // unauthenticated socket. `maxPayload` above makes ws close the socket
+      // itself; this is the belt-and-braces for any adapter/transport that
+      // hands us a frame anyway.
+      const bytes = frameByteLength(raw);
+      if (bytes > MAX_WS_FRAME_BYTES) {
+        this.logger.warn(
+          `[WS] Oversized frame (${bytes}B > ${MAX_WS_FRAME_BYTES}B) from ${connectionId} — closing`,
+        );
+        try {
+          client.close(1009, 'Frame Too Large');
+        } catch { /* socket already gone */ }
+        return;
+      }
       try {
         const text = typeof raw === 'string' ? raw : raw.toString();
         const msg = JSON.parse(text);
@@ -237,6 +298,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   private processHeartbeat(client: WebSocket, payload: any) {
     const ctx = this.clients.get(client);
     if (!ctx || !ctx.isAuthenticated) return;
+    if (!this.consumeTelemetryToken(ctx, 'HEARTBEAT')) return;
 
     // Keep the push-health stamp fresh while the socket lives (debounced
     // to one write per screen per minute inside the helper).
@@ -245,7 +307,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     if (ctx.deviceId && this.redisService.publisher) {
       this.redisService.publisher.hset(`device:${ctx.deviceId}:status`,
         'lastSeen', Date.now(),
-        'metrics', JSON.stringify(payload.metrics || {})
+        'metrics', this.cappedMetrics(ctx, payload?.metrics)
       ).catch((err: Error) => {
         Sentry.withScope((s) => {
           s.setTag('realtime.publish', `device:${ctx.deviceId}:status`);
@@ -260,6 +322,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   private processAck(client: WebSocket, payload: any) {
     const ctx = this.clients.get(client);
     if (!ctx || !ctx.isAuthenticated) return;
+    if (!this.consumeTelemetryToken(ctx, 'ACK')) return;
 
     this.redisService.publish('metrics:ack', {
       deviceId: ctx.deviceId,
@@ -274,6 +337,61 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       });
       this.logger.warn(`realtime publish failed: ${err?.message ?? err}`);
     });
+  }
+
+  // ─── R-07: per-socket rate limit on the Redis-writing telemetry events ───
+  // Neither ACK nor HEARTBEAT was limited, so one compromised kiosk could
+  // rewrite its Redis status hash (and spray metrics:ack publishes) as fast
+  // as it could send frames. Token bucket, per socket, so a noisy device
+  // throttles only itself.
+  private consumeTelemetryToken(ctx: ClientContext, event: string): boolean {
+    const now = Date.now();
+    // Tolerate a context created outside handleConnection (older code paths /
+    // test harnesses) — start it full rather than silently disabling the cap.
+    if (!Number.isFinite(ctx.telemetryTokens)) {
+      ctx.telemetryTokens = TELEMETRY_BUCKET_CAPACITY;
+      ctx.telemetryRefilledAt = now;
+    }
+    const elapsed = now - ctx.telemetryRefilledAt;
+    if (elapsed > 0) {
+      ctx.telemetryTokens = Math.min(
+        TELEMETRY_BUCKET_CAPACITY,
+        ctx.telemetryTokens + elapsed / TELEMETRY_REFILL_INTERVAL_MS,
+      );
+      ctx.telemetryRefilledAt = now;
+    }
+    if (ctx.telemetryTokens < 1) {
+      // debug, not warn: a device-controlled event must never be able to
+      // flood the logs (that's the same class of problem as the Redis write).
+      this.logger.debug(`[WS] ${event} rate-limited for ${ctx.connectionId} (device=${ctx.deviceId})`);
+      return false;
+    }
+    ctx.telemetryTokens -= 1;
+    return true;
+  }
+
+  // ─── R-07: bound the metrics blob parked in Redis ───
+  // `hset(..., 'metrics', JSON.stringify(payload.metrics))` had no size cap,
+  // so a device could store an arbitrarily large value (and rewrite it at
+  // will). Oversized blobs are REPLACED by a small marker — we keep the
+  // heartbeat (liveness is what matters) and drop the payload.
+  private cappedMetrics(ctx: ClientContext, metrics: unknown): string {
+    let serialized: string;
+    try {
+      serialized = JSON.stringify(metrics ?? {}) ?? '{}';
+    } catch {
+      return JSON.stringify({ rejected: 'unserializable' });
+    }
+    if (Buffer.byteLength(serialized, 'utf8') > MAX_HEARTBEAT_METRICS_BYTES) {
+      this.logger.debug(
+        `[WS] HEARTBEAT metrics over ${MAX_HEARTBEAT_METRICS_BYTES}B from ${ctx.deviceId} — storing marker`,
+      );
+      return JSON.stringify({
+        rejected: 'oversized',
+        bytes: Buffer.byteLength(serialized, 'utf8'),
+      });
+    }
+    return serialized;
   }
 
   // ─── TIME_PING: clock-sync sample (frame-locked multi-screen sync) ───

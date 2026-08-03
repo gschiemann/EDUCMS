@@ -104,10 +104,24 @@ export class UsersController {
       where: { tenantId, deletedAt: null } as any,
       // 2026-05-11 — return firstName/lastName so the team list can
       // show real names instead of email prefixes.
-      select: { id: true, email: true, role: true, createdAt: true, firstName: true, lastName: true } as any,
+      //
+      // 2026-08-03 — `mfaRequired` + whether they have actually enrolled.
+      // ACC-03 made `mfaRequired` a real login gate but nothing returned it,
+      // so the Team Members list could not show (or set) the policy. The
+      // enrolled flag is derived, never the timestamp itself: an admin has no
+      // business knowing WHEN a colleague set up their authenticator, only
+      // that the policy is satisfied.
+      select: {
+        id: true, email: true, role: true, createdAt: true,
+        firstName: true, lastName: true,
+        mfaRequired: true, mfaTotpVerifiedAt: true,
+      } as any,
       orderBy: { createdAt: 'desc' },
     });
-    return users;
+    return users.map((u: any) => {
+      const { mfaTotpVerifiedAt, ...rest } = u;
+      return { ...rest, mfaEnrolled: !!mfaTotpVerifiedAt };
+    });
   }
 
   // 2026-05-11 — self-profile endpoints. Operator: "let's say Hi Greg
@@ -439,6 +453,106 @@ export class UsersController {
     // to revoke, and we'd needlessly churn the Redis marker).
     if (fromValue && !toValue) {
       await this.revokeUserTokens(id, 'canTriggerPanic removed');
+    }
+
+    return updated;
+  }
+
+  /**
+   * ACC-03 follow-up (2026-08-03) — the missing WRITER for `User.mfaRequired`.
+   *
+   * `mfaRequired` shipped as a schema column with an "admin can force 2FA"
+   * story and no reader; ACC-03 (2026-08-01) made `AuthService.login` enforce
+   * it. But nothing has ever WRITTEN it, so the enforcement was unreachable —
+   * and the moment anyone set it by hand (a script, Prisma Studio) the target
+   * had no way to satisfy it, because /auth/mfa/enroll needs the very session
+   * the policy withholds. This endpoint plus the login page's
+   * `mfaEnrollmentRequired` step are the two halves that make the flag a
+   * CONTROL instead of a lockout. Do not ship one without the other.
+   *
+   * Rules:
+   *   - DISTRICT_ADMIN / SCHOOL_ADMIN / SUPER_ADMIN only (same as
+   *     /:id/can-trigger-panic);
+   *   - the caller must OUTRANK the target (`assertCallerCanAssignRole`).
+   *     Forcing a login policy onto an account is a privilege action over
+   *     that account, so it obeys the same strictly-below-my-own-rank table
+   *     as granting a role. It also means no admin can force the policy onto
+   *     a PEER or onto themselves — self-service 2FA is Settings → Security,
+   *     which needs no privilege at all;
+   *   - target must be in the caller's tenant (SUPER_ADMIN is cross-tenant,
+   *     matching /:id/can-trigger-panic);
+   *   - every flip writes an immutable AuditLog row with before/after.
+   *
+   * TURNING IT ON REVOKES the target's live sessions. That is deliberate: a
+   * policy that only takes effect at their next natural login leaves a
+   * possibly-compromised session running for up to 30 days (rememberMe), so
+   * the tightening would not actually tighten anything. Turning it OFF is a
+   * widening and is NOT revoked — same asymmetry as the role and panic-flag
+   * endpoints above.
+   */
+  @Put(':id/mfa-required')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async setMfaRequired(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { mfaRequired: boolean },
+  ) {
+    if (typeof body?.mfaRequired !== 'boolean') {
+      throw new BadRequestException({
+        code: 'USER_MFA_REQUIRED_INVALID',
+        message: 'mfaRequired must be a boolean.',
+      });
+    }
+    const callerTenantId = req.user.tenantId;
+    const isSuper = req.user.role === AppRole.SUPER_ADMIN;
+
+    // ten-ok: resolve-then-verify — target tenant asserted with 403 directly below; SUPER_ADMIN cross-tenant by design
+    const target = await this.prisma.client.user.findUnique({
+      where: { id },
+      select: { id: true, email: true, role: true, tenantId: true, mfaRequired: true } as any,
+    });
+    if (!target) {
+      throw new HttpException({ code: 'USER_NOT_FOUND', message: 'User not found' }, HttpStatus.NOT_FOUND);
+    }
+    if (!isSuper && (target as any).tenantId !== callerTenantId) {
+      throw new ForbiddenException({ code: 'USER_NOT_IN_TENANT', message: 'Target user is not in your tenant.' });
+    }
+
+    // Rank gate. Throws 403 naming both roles, which is the message the UI
+    // surfaces — so an admin who tries it on a peer learns why in one read.
+    assertCallerCanAssignRole(req.user.role, (target as any).role);
+
+    const fromValue = !!(target as any).mfaRequired;
+    const toValue = body.mfaRequired;
+
+    const updated = await this.prisma.client.$transaction(async (tx: any) => {
+      // ten-ok: write follows the resolve-then-verify above (403 on tenant mismatch); SUPER_ADMIN cross-tenant by design
+      const u = await tx.user.update({
+        where: { id },
+        data: { mfaRequired: toValue } as any,
+        select: { id: true, email: true, role: true, mfaRequired: true } as any,
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId: (target as any).tenantId || callerTenantId,
+          userId: req.user.id,
+          action: 'USER_MFA_REQUIRED_CHANGED',
+          targetType: 'user',
+          targetId: id,
+          details: JSON.stringify({
+            email: (target as any).email,
+            fromValue,
+            toValue,
+            byRole: req.user.role,
+            byTenant: callerTenantId,
+          }),
+        },
+      });
+      return u;
+    });
+
+    if (!fromValue && toValue) {
+      await this.revokeUserTokens(id, 'mfaRequired enabled');
     }
 
     return updated;

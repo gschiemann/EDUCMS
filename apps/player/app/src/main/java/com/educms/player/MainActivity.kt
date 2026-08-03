@@ -34,6 +34,9 @@ import androidx.webkit.WebViewFeature
 import com.educms.player.bootstrap.ManagerBootstrap
 import com.educms.player.databinding.ActivityMainBinding
 import com.educms.player.logging.PlayerLogger
+import com.educms.player.security.HostAllowlist
+import com.educms.player.security.LockTaskController
+import com.educms.player.security.NativeBridgeChannel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -62,6 +65,16 @@ class MainActivity : ComponentActivity() {
     private var lastImeVisible: Boolean = false
 
     /**
+     * AND-002 — true once the origin-scoped [NativeBridgeChannel] is live
+     * on this WebView. False means this device fell back to the legacy
+     * `addJavascriptInterface` bridge alone (pre-M77 WebView), which is
+     * reachable from every frame. Surfaced in `deviceInfoJson()` so the
+     * fleet can be checked from the dashboard rather than device by
+     * device — that check is removal criterion #4 for the legacy surface.
+     */
+    private var nativeChannelActive: Boolean = false
+
+    /**
      * Belt-and-suspenders kiosk-stuck watchdog (2026-05-05).
      *
      * Operator: "i have this on one of my screens, im sure its because
@@ -83,6 +96,17 @@ class MainActivity : ComponentActivity() {
      * silently stuck.
      */
     private var lastSuccessfulLoadAtMs: Long = 0L
+
+    /**
+     * 2026-08-03 — consecutive watchdog ticks that found a stale page.
+     * Reset to 0 on every successful load / web heartbeat. Once it
+     * reaches [WATCHDOG_UNPIN_AFTER_FAILURES] we release lock task mode,
+     * because a kiosk whose WebView is durably dead cannot render the
+     * on-screen "Exit to device home" button — pinning it would be a soft
+     * brick with no operator way out. See LockTaskController's header.
+     */
+    private var watchdogConsecutiveFailures: Int = 0
+
     private val watchdogHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val watchdogTicker = object : Runnable {
         override fun run() {
@@ -93,15 +117,29 @@ class MainActivity : ComponentActivity() {
             // recovery controller will pick up the resulting load
             // event (success or error) and resume normal flow.
             if (ageMs > WATCHDOG_TIMEOUT_MS) {
+                watchdogConsecutiveFailures += 1
                 PlayerLogger.w(
                     "MainActivity",
-                    "Watchdog: no successful page load in ${ageMs / 1000}s — forcing reload",
+                    "Watchdog: no successful page load in ${ageMs / 1000}s — forcing reload " +
+                        "(consecutive failures=$watchdogConsecutiveFailures)",
                 )
+                // Safety valve — a page this broken can't show the
+                // operator's escape hatch, so give them the OS back.
+                // Re-armed automatically by the next onPageFinishedOk.
+                if (watchdogConsecutiveFailures >= WATCHDOG_UNPIN_AFTER_FAILURES) {
+                    LockTaskController.disengage(
+                        this@MainActivity,
+                        "watchdog: $watchdogConsecutiveFailures consecutive failed ticks — " +
+                            "handing the device back so an operator can reach the OS",
+                    )
+                }
                 runCatching { webView.stopLoading() }
                 lifecycleScope.launch {
                     val token = deviceStore.deviceToken.first().orEmpty()
                     loadPlayer(token)
                 }
+            } else {
+                watchdogConsecutiveFailures = 0
             }
             // Re-arm. Always re-arm — even after a forced reload —
             // so a chronic stuck-state is reloaded on every interval.
@@ -115,6 +153,18 @@ class MainActivity : ComponentActivity() {
         /** How long the page can be stale before we force a reload. 10 minutes. */
         private const val WATCHDOG_TIMEOUT_MS = 10L * 60L * 1000L
 
+        /**
+         * 2026-08-03 — after this many consecutive stale watchdog ticks
+         * (~30 min of a page that will not load) we RELEASE lock task
+         * mode. Rationale in LockTaskController's header: the operator's
+         * on-screen escape hatch lives inside the WebView, so a durably
+         * dead WebView + a pinned task = no way out without ADB. Three
+         * ticks is long enough that a transient outage never unpins a
+         * healthy fleet, short enough that a genuinely bricked screen is
+         * serviceable within one site visit.
+         */
+        private const val WATCHDOG_UNPIN_AFTER_FAILURES = 3
+
         // 2026-05-24 — operator-controlled orientation lock.
         // SharedPreferences key for the most-recently-applied value,
         // used on cold-boot before the manifest poll lands.
@@ -123,6 +173,51 @@ class MainActivity : ComponentActivity() {
         const val ORIENTATION_LANDSCAPE = "LANDSCAPE"
         const val ORIENTATION_PORTRAIT = "PORTRAIT"
         const val ORIENTATION_AUTO = "AUTO"
+
+        /**
+         * AND-008 — accepted shape for the device fingerprint handed to
+         * `setBootstrap`. It is concatenated into the log-upload and
+         * ota-state URLs, so keep it to path-safe characters. Covers every
+         * fingerprint the web player mints (`android-<androidId>`,
+         * `device-<ts>-<rand>`) plus operator `?deviceId=` values.
+         */
+        private val FINGERPRINT_RE = Regex("^[A-Za-z0-9._-]{8,128}\$")
+    }
+
+    // ─── 2026-08-03: kiosk lock task mode ───────────────────────────
+
+    /**
+     * Tracks resumed-ness for [maybeEngageLockTask]. `onPageFinishedOk`
+     * can fire while the activity is paused (a background reload), and
+     * `startLockTask()` from a non-resumed activity throws.
+     */
+    private var isResumedForLockTask: Boolean = false
+
+    /**
+     * Ask [LockTaskController] to pin the kiosk. It applies every gate
+     * itself (device owner + DO lock-task allowlist + opt-out pref), so
+     * this is a no-op on an OEM-CMS guest box and on any unprovisioned
+     * sideload — read that file's header before changing either call
+     * site.
+     *
+     * TWO deliberate constraints on WHEN we call it:
+     *
+     *  1. **Only from a RESUMED activity.** `startLockTask()` throws
+     *     `IllegalStateException` otherwise (caught, but it would just
+     *     log noise and never pin).
+     *  2. **Only after the player page has actually rendered once**
+     *     (`lastSuccessfulLoadAtMs != 0L`). This is the anti-brick rule:
+     *     the operator's on-screen way out ("Exit to device home") lives
+     *     inside the WebView, so a build that crash-loops before it can
+     *     paint must never pin itself. Combined with the watchdog's
+     *     unpin valve, a screen that cannot show its escape hatch is
+     *     never locked.
+     */
+    private fun maybeEngageLockTask(why: String) {
+        if (!isResumedForLockTask) return
+        if (lastSuccessfulLoadAtMs == 0L) return
+        runCatching { LockTaskController.engageIfPermitted(this) }
+            .onFailure { PlayerLogger.w("MainActivity", "maybeEngageLockTask($why) threw: ${it.message}") }
     }
 
     /**
@@ -581,14 +676,28 @@ class MainActivity : ComponentActivity() {
 
     private fun handleInstallPromptTrampoline(launchIntent: Intent?) {
         if (launchIntent?.action != com.educms.player.ota.OtaInstallReceiver.ACTION_LAUNCH_INSTALL_PROMPT) return
-        @Suppress("DEPRECATION")
-        val prompt: Intent? = launchIntent.getParcelableExtra(
-            com.educms.player.ota.OtaInstallReceiver.EXTRA_INSTALL_PROMPT,
-        )
+        // ⚠️ AND-006 (2026-08-01) — INTENT REDIRECTION. MainActivity is
+        // exported (it is the launcher), so ANY app on the device could
+        // send this action with its own Intent in the extras and we would
+        // have called startActivity() on it — a classic confused-deputy
+        // that lends our identity (and any URI grants riding on the
+        // forwarded Intent) to the caller.
+        //
+        // We no longer read ANY caller-supplied Intent. OtaInstallReceiver
+        // runs in THIS process (same package, no android:process) and
+        // stages the system-minted confirm Intent in an in-process holder;
+        // an external app cannot populate that. The extra it used to send
+        // is deliberately ignored even if present.
+        val prompt: Intent? = com.educms.player.ota.OtaInstallReceiver.takePendingInstallPrompt()
         if (prompt == null) {
-            PlayerLogger.w("MainActivity", "trampoline fired but no install_prompt_intent extra")
+            PlayerLogger.w(
+                "MainActivity",
+                "install-prompt trampoline fired with nothing staged in-process — ignoring (external caller?)",
+            )
             return
         }
+        // Assignment (not addFlags) — this REPLACES every flag the system
+        // intent carried, including any FLAG_GRANT_*_URI_PERMISSION.
         prompt.flags = Intent.FLAG_ACTIVITY_NEW_TASK
         try {
             startActivity(prompt)
@@ -903,8 +1012,32 @@ class MainActivity : ComponentActivity() {
             WebSettingsCompat.setForceDark(wv.settings, WebSettingsCompat.FORCE_DARK_AUTO)
         }
 
-        wv.addJavascriptInterface(
-            WebAppBridge(
+        // ── AND-002 — ONE handler set, TWO transports ───────────────
+        // Built once and handed to both the legacy
+        // `addJavascriptInterface` surface and the new origin-scoped
+        // `NativeBridgeChannel`, so the two can never drift apart.
+        // See NativeBridgeChannel's header for why both ship this
+        // release and what must be true before the legacy one is
+        // deleted.
+        val webAppBridge = WebAppBridge(
+                // AND-004 REVERTED (2026-08-03) — this call site briefly
+                // ran through an on-device operator-PIN gate. It was the
+                // WRONG LAYER and is now removed:
+                //
+                //  * The web player's unpair is THREE layers deep and runs
+                //    SERVER-FIRST (apps/web/src/app/player/page.tsx ~:6497
+                //    — `POST /api/v1/screens/unpair/:fp` at :6527, and only
+                //    THEN the native `EduCmsNative.unpair()` at :6550). By
+                //    the time this lambda runs the screen is already off
+                //    the emergency channel server-side, so gating the
+                //    native step bought zero security.
+                //  * The gate failed CLOSED with no provisioning path in
+                //    existence (see OperatorPinGate's header), which
+                //    permanently disabled the operator's on-device escape
+                //    hatch on every deployed screen.
+                //
+                // The real fix for "a student with a USB keyboard walks up
+                // to the screen" is lock-task mode — see LockTaskController.
                 onUnpair = { unpairAndRestart() },
                 onReload = { runOnUiThread { wv.reload() } },
                 getDeviceInfo = { deviceInfoJson() },
@@ -921,6 +1054,14 @@ class MainActivity : ComponentActivity() {
                     if (apiRoot.isNullOrBlank()) {
                         PlayerLogger.w("MainActivity", "uploadDiagnostics: api_root not set — cannot upload")
                         "error: api_root not configured"
+                    } else if (!HostAllowlist.requireAllowed("uploadDiagnostics", apiRoot)) {
+                        // AND-008 — the diagnostics bridge is callable from
+                        // any frame and ships the device log (device ids,
+                        // api roots, screen ids, truncated token hints) to
+                        // whatever host `api_root` names. Re-check the
+                        // destination at the point of USE so a value
+                        // persisted by an older build can't exfiltrate.
+                        "error: upload destination is not an allowed VenueOS host"
                     } else {
                         // Security: log only truncated token hint, never the full JWT.
                         PlayerLogger.i("MainActivity", "uploadDiagnostics triggered via JS bridge (jwt=${PlayerLogger.truncateSecret(jwt)})")
@@ -950,8 +1091,24 @@ class MainActivity : ComponentActivity() {
                     // onCreate re-enables the alias on next launch — so once the
                     // operator manually relaunches our app from the OEM home, we
                     // resume kiosk-home duties without a config trip.
+                    //
+                    // AND-004 REVERTED (2026-08-03) — this was briefly
+                    // wrapped in an on-device operator-PIN gate that failed
+                    // CLOSED with no provisioning path, which permanently
+                    // disabled this escape hatch on every deployed screen.
+                    // See the note on `onUnpair` above and LockTaskController
+                    // for the correct fix.
                     PlayerLogger.i("MainActivity", "Exit to device home requested via JS bridge")
                     runOnUiThread {
+                        // ── Step 0: LEAVE LOCK TASK MODE FIRST ──────────────
+                        // 2026-08-03. Inside a locked task, `finishAffinity()`
+                        // and a HOME intent are both no-ops — every step below
+                        // would run, log success, and leave the operator
+                        // exactly where they started. This IS the on-screen
+                        // escape hatch from lock task; see LockTaskController.
+                        // No-op on a screen that was never pinned.
+                        LockTaskController.disengage(this, "operator chose \"Exit to device home\"")
+
                         val pm = packageManager
                         // ── Step 1: turn OFF the KioskHomeAlias ─────────────
                         // Without this, Android's HOME resolver still finds us
@@ -1077,6 +1234,24 @@ class MainActivity : ComponentActivity() {
                     // accidentally includes it — both services append
                     // /api/v1/... themselves, so a doubled prefix would
                     // produce a 404 with no log to read.
+                    //
+                    // ⚠️ AND-001 (2026-08-01) — THIS IS THE OTA TRUST
+                    // ANCHOR. `apiRoot` arrives from JavaScript, and this
+                    // bridge is reachable from every frame the player
+                    // WebView loads (including operator-authored and
+                    // third-party iframe content). Whatever lands in the
+                    // `api_root` pref is where OtaUpdateWorker asks for an
+                    // APK — and the APK signing key is committed to a
+                    // PUBLIC repo, so an attacker-chosen OTA server is a
+                    // silent, reboot- and OTA-surviving install of an
+                    // attacker-signed build on a hallway display.
+                    //
+                    // The host is therefore pinned in NATIVE code, which
+                    // JavaScript cannot reach. Rejected values are NOT
+                    // persisted; OtaUpdateWorker re-checks at the point of
+                    // use, and PlayerApp purges a stale hostile value at
+                    // process start, so an older build's pref can't be
+                    // honoured either.
                     val cleanApiRoot = apiRoot.trim()
                         .removeSuffix("/")
                         .removeSuffix("/api/v1")
@@ -1085,6 +1260,18 @@ class MainActivity : ComponentActivity() {
                         PlayerLogger.w(
                             "MainActivity",
                             "setBootstrap rejected — empty values (apiRoot=${cleanApiRoot.length} fp=${cleanFp.length})"
+                        )
+                    } else if (!HostAllowlist.requireAllowed("setBootstrap", cleanApiRoot)) {
+                        // Refused: not a first-party host (or not https).
+                        // requireAllowed() already logged scheme+host.
+                    } else if (!FINGERPRINT_RE.matches(cleanFp)) {
+                        // AND-008 — the fingerprint is concatenated into
+                        // the log-upload / ota-state URL paths. Keep it to
+                        // path-safe characters so JS can't reshape those
+                        // URLs from inside the allowlisted host.
+                        PlayerLogger.w(
+                            "MainActivity",
+                            "setBootstrap rejected — fingerprint has an unexpected shape (len=${cleanFp.length})",
                         )
                     } else {
                         val prefs = applicationContext.getSharedPreferences(
@@ -1218,9 +1405,27 @@ class MainActivity : ComponentActivity() {
                 ctsSerial = com.educms.player.serial.SerialPortBridge(
                     getWebView = { wv },
                 ),
-            ),
-            "EduCmsNative"
         )
+
+        // ── Transport 1 (LEGACY, still required) ────────────────────
+        // Injects `window.EduCmsNative` into EVERY frame this WebView
+        // loads — including operator-authored and third-party iframes.
+        // That is exactly the AND-002 finding, and it is knowingly kept
+        // for ONE release only: the APK and the web bundle deploy
+        // independently, so removing it here would break every kiosk
+        // that hasn't yet taken the matching web deploy (and every
+        // service-worker-cached bundle still in the field).
+        //
+        // ⚠️ Do not delete this line until ALL FOUR removal criteria in
+        //    NativeBridgeChannel's header are met.
+        wv.addJavascriptInterface(webAppBridge, "EduCmsNative")
+
+        // ── Transport 2 (SECURE, preferred) ─────────────────────────
+        // Materialises `window.EduCmsNativeChannel` ONLY in a main frame
+        // whose origin is exactly BuildConfig.PLAYER_BASE_URL's. Returns
+        // false (and logs DEGRADED) on a pre-M77 WebView, where we stay
+        // on transport 1 alone.
+        nativeChannelActive = NativeBridgeChannel.attach(wv, webAppBridge)
 
         wv.webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(cm: ConsoleMessage): Boolean {
@@ -1253,6 +1458,10 @@ class MainActivity : ComponentActivity() {
             onPageFinishedOk = {
                 lastSuccessfulLoadAtMs = android.os.SystemClock.elapsedRealtime()
                 if (::recovery.isInitialized) recovery.onPageLoaded()
+                // 2026-08-03 — a healthy page is the ONLY thing that arms
+                // the kiosk lock. See maybeEngageLockTask.
+                watchdogConsecutiveFailures = 0
+                maybeEngageLockTask("page loaded")
             },
         )
     }
@@ -1334,6 +1543,17 @@ class MainActivity : ComponentActivity() {
         val cleanUrl = url.trim()
         if (cleanUrl.isBlank()) {
             hideUrlOverlay()
+            return
+        }
+        // AND-005 defence-in-depth — WebAppBridge already validated, but
+        // this is the only place that actually calls loadUrl() on the
+        // overlay WebView, so re-assert https + a real host here. Any
+        // future caller inherits the check for free.
+        if (!HostAllowlist.isSafeWebUrl(cleanUrl)) {
+            PlayerLogger.w(
+                "MainActivity",
+                "showUrlOverlay REFUSED — not a plain https URL: ${HostAllowlist.describe(cleanUrl)}",
+            )
             return
         }
         if (urlOverlayCurrentUrl == cleanUrl && urlOverlayView.visibility == View.VISIBLE) {
@@ -1512,7 +1732,12 @@ class MainActivity : ComponentActivity() {
     private fun deviceInfoJson(): String {
         val w = resources.displayMetrics.widthPixels
         val h = resources.displayMetrics.heightPixels
-        return """{"manufacturer":"${Build.MANUFACTURER}","model":"${Build.MODEL}","sdk":${Build.VERSION.SDK_INT},"width":$w,"height":$h,"appVersion":"${BuildConfig.VERSION_NAME}"}"""
+        // `secureBridge` / `lockTask` (2026-08-03) are fleet-visibility
+        // fields, not features: they answer "can we delete the legacy
+        // addJavascriptInterface surface yet?" and "is this screen
+        // actually pinned?" from the dashboard instead of by grepping
+        // per-device logs. See NativeBridgeChannel + LockTaskController.
+        return """{"manufacturer":"${Build.MANUFACTURER}","model":"${Build.MODEL}","sdk":${Build.VERSION.SDK_INT},"width":$w,"height":$h,"appVersion":"${BuildConfig.VERSION_NAME}","secureBridge":$nativeChannelActive,"lockTask":${LockTaskController.isActive(this)}}"""
     }
 
     override fun onResume() {
@@ -1546,26 +1771,30 @@ class MainActivity : ComponentActivity() {
                 binding.managerGateRetry.visibility = View.VISIBLE
             }
         }
-        // Kiosk pinning is now OPT-IN via a manifest flag (default: off).
-        // Unconditionally calling startLockTask() was trapping operators
-        // who sideloaded the APK for testing — without Device Owner
-        // provisioning Android shows a "App is pinned" dialog that
-        // swallows the back button, kills the TV remote, and has no
-        // on-screen way out.
+        // ── Kiosk lock task mode (2026-08-03) ───────────────────────
         //
-        // To enable real kiosk lock-in, provision the device as Device
-        // Owner via ADB:
-        //   adb shell dpm set-device-owner com.educms.player/.KioskAdminReceiver
-        // then set `android:requiredLockTaskFeatures` or call
-        // startLockTask() from a boot config. For normal installs we
-        // just leave the activity running full-screen / immersive,
-        // which is enough for a paired signage player.
-        if (BuildConfig.DEBUG) {
-            Log.i("MainActivity", "Kiosk pin disabled (not auto-enabled). Use Device Owner provisioning for true lock-in.")
-        }
+        // HISTORY, so nobody re-introduces the old bug: this used to be
+        // an unconditional `startLockTask()`, which trapped every
+        // operator who sideloaded the APK for testing. Without device-
+        // owner provisioning that call silently degrades to Android's
+        // *screen pinning* variant — an "App is pinned" dialog whose only
+        // exit is hold-Back+Overview, a gesture that does not exist on a
+        // signage remote. It was removed and replaced by this comment.
+        //
+        // LockTaskController is the correct version of that idea. It
+        // refuses to call startLockTask() at all unless the Manager
+        // companion is genuinely DEVICE OWNER *and* has put us on the
+        // DO's lock-task allowlist — the pair of conditions that
+        // guarantees we get the real LOCK_TASK_MODE_LOCKED and never the
+        // trapping variant. On an OEM-CMS box, or any plain sideload,
+        // every gate fails and behaviour is byte-for-byte what it is
+        // today. Read that file's header before changing this.
+        isResumedForLockTask = true
+        maybeEngageLockTask("onResume")
     }
 
     override fun onPause() {
+        isResumedForLockTask = false
         // We deliberately DON'T stopLockTask here — the activity should keep
         // its pinned state while the OS swaps focus (e.g. notification panel
         // attempts). Only release on destroy / explicit unpair.

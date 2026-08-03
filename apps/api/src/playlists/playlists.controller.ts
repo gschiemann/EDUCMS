@@ -12,6 +12,14 @@ import { PlaylistDistributionService } from './playlist-distribution.service';
 // hard-deletes its schedules, which previously BYPASSED the fallback that
 // protects screens from going dark. Shared helper with schedules.controller.
 import { reactivateFallbackIfDark } from '../schedules/go-dark-fallback';
+// INJ-003 — the live-bound content gate (an Editor may not rewrite content
+// that is already on a screen). Shared with templates.controller.
+import {
+  actorNeedsApprovalToEditLiveContent,
+  findLivePlaylistBinding,
+  requiresApprovalException,
+  auditBlockedLiveEdit,
+} from '../submissions/live-content-gate';
 import {
   PlaylistCreateSchema, type PlaylistCreateInput,
   PlaylistUpdateSchema, type PlaylistUpdateInput,
@@ -34,6 +42,36 @@ export class PlaylistsController {
       const message = this.signer.signMessage('SYNC', { source: 'playlist_update' });
       await this.redisService.publish(`tenant:${tenantId}`, message);
     } catch (e) {}
+  }
+
+  /**
+   * INJ-003 (2026-08-02) — the CONTRIBUTOR (Editor) publish gate, extended
+   * from "new schedules" to "edits of already-live content".
+   *
+   * `schedules.controller.create()` stages every CONTRIBUTOR-created
+   * schedule as a draft: *"they cannot push content live directly."* But
+   * that only covered creating a NEW schedule. `PUT /playlists/:id/items`
+   * allows CONTRIBUTOR and checked only tenant ownership — so an Editor
+   * could swap the items of a playlist that was ALREADY live and the new
+   * content shipped to every screen at the next manifest poll, un-reviewed.
+   * Same "push content live directly", just through the back door.
+   *
+   * The live-bound definition, the fail-closed role test, the full
+   * why-not-the-submission-queue analysis and the accepted residual risk all
+   * live in ONE place — `submissions/live-content-gate.ts` — shared with the
+   * identical gate on the template write paths. Read that file before
+   * changing anything here.
+   */
+  private async assertContributorMayEditLivePlaylist(
+    req: any,
+    playlistId: string,
+    isProtected: boolean,
+  ): Promise<void> {
+    if (!actorNeedsApprovalToEditLiveContent(req?.user)) return;
+    const binding = await findLivePlaylistBinding(this.prisma, req.user.tenantId, playlistId, { isProtected });
+    if (!binding) return;
+    await auditBlockedLiveEdit(this.prisma, req, 'playlist', playlistId, binding);
+    throw requiresApprovalException('playlist', binding);
   }
 
   // ─── Phase 2c — publish (distribute) this playlist to screens across child
@@ -218,6 +256,14 @@ export class PlaylistsController {
       where: { id, tenantId: req.user.tenantId },
     });
     if (!playlist) throw new HttpException({ code: 'PLAYLIST_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+
+    // INJ-003 (2026-08-02) — an Editor may not rewrite the contents of a
+    // playlist that is already live on screens, NOR of a protected
+    // (emergency / panic) playlist. `update`, `setActive` and `remove`
+    // already refuse protected playlists; this replace-all path — the one
+    // that rewrites what a lockdown board actually SHOWS — did not, and it
+    // is CONTRIBUTOR-reachable. See assertContributorMayEditLivePlaylist.
+    await this.assertContributorMayEditLivePlaylist(req, id, !!(playlist as any).isProtected);
 
     // HIGH-1 audit fix: validate every assetId in the body actually
     // belongs to the caller's tenant. Without this, a user could insert

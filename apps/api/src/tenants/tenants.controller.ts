@@ -2,6 +2,7 @@ import { Controller, Get, Put, Post, Patch, Delete, Body, Param, UseGuards, Requ
 import { Throttle } from '@nestjs/throttler';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../realtime/redis.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
@@ -15,6 +16,9 @@ export class TenantsController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    // ACC-05 — archiving a tenant must also END its users' live sessions.
+    // RealtimeModule is @Global so this resolves without an extra import.
+    private readonly redis: RedisService,
   ) {}
 
   /**
@@ -245,7 +249,26 @@ export class TenantsController {
       role: user.role,
       canTriggerPanic: user.canTriggerPanic,
     };
-    const access_token = this.jwtService.sign(payload, { expiresIn: '30d' });
+    // ── ACC-07 (2026-08-01) — a tenant switch must not EXTEND the session ──
+    // This unconditionally signed a 30-DAY token. A user who logged in
+    // WITHOUT "remember me" holds a 1-hour session (auth.module signOptions),
+    // and one click of the workspace switcher — a navigation action, not an
+    // authentication one — silently upgraded it to the 30-day rememberMe
+    // ceiling. On a shared district workstation that turns "I closed the tab"
+    // into a month-long live credential, and it made the rememberMe policy
+    // trivially bypassable. The replacement token now expires no later than
+    // the one that authorized it: switching workspaces changes SCOPE, never
+    // LIFETIME. (A floor of 60s keeps a switch made in the last seconds of a
+    // session from handing back an already-dead token.)
+    const nowSec = Math.floor(Date.now() / 1000);
+    const currentExp = typeof req.user?.tokenExp === 'number' ? req.user.tokenExp : null;
+    const remainingSec = currentExp !== null ? currentExp - nowSec : null;
+    const access_token = this.jwtService.sign(
+      payload,
+      // No `exp` on the incoming token (shouldn't happen — every issuer sets
+      // one) → fall back to the module default rather than inventing 30 days.
+      remainingSec !== null ? { expiresIn: Math.max(60, remainingSec) } : undefined,
+    );
 
     // Audit: this is a privileged action; log who switched into where.
     await this.prisma.client.auditLog.create({
@@ -485,7 +508,46 @@ export class TenantsController {
       });
       await tx.tenant.update({ where: { id }, data: { archivedAt: archived ? new Date() : null } });
     });
-    return { success: true, id, archived };
+
+    // ── ACC-05 (2026-08-01) — archiving must END the tenant's sessions ─────
+    // Archiving was a DISPLAY-layer change only: the tenant vanished from
+    // lists and maps while every one of its users kept logging in normally,
+    // and an admin among them could still fire /emergency/trigger at real
+    // screens belonging to a "retired" location. Blocking LOGIN (AuthService
+    // + SsoService) closes the front door, but a token already issued stays
+    // valid for up to 30 days — so archiving also revokes every live session
+    // for the tenant's users, using the same per-user invalid-before marker
+    // the role-downgrade path uses.
+    //
+    // Best-effort per user: archiving is an admin housekeeping action and
+    // must not 500 because one Redis write failed. Failures are counted and
+    // returned so the operator sees a partial outcome instead of a false
+    // "done", and the runtime backstop in JwtAuthGuard still refuses
+    // emergency actions from an archived tenant either way.
+    let sessionsRevoked = 0;
+    let sessionRevocationFailures = 0;
+    if (archived) {
+      const members = await this.prisma.client.user.findMany({
+        where: { tenantId: id },
+        select: { id: true },
+      });
+      for (const m of members) {
+        try {
+          await this.redis.markUserTokensInvalid(m.id);
+          sessionsRevoked += 1;
+        } catch {
+          sessionRevocationFailures += 1;
+        }
+      }
+      if (sessionRevocationFailures > 0) {
+        console.warn(
+          `[Tenants] archive ${id}: ${sessionRevocationFailures}/${members.length} session ` +
+            `revocations failed; those tokens remain valid until they expire.`,
+        );
+      }
+    }
+
+    return { success: true, id, archived, sessionsRevoked, sessionRevocationFailures };
   }
 
   @Post(':id/archive')
@@ -1034,6 +1096,39 @@ export class TenantsController {
       throw new HttpException({ code: 'TENANT_USB_INGEST_FIELDS_REQUIRED', message: 'screenId and outcome required' }, HttpStatus.BAD_REQUEST);
     }
 
+    // ── DT-07 (2026-08-03) — the screen must be the CALLER, not a path param.
+    // This route has no @RequireRoles, so RbacGuard short-circuits and a
+    // roleless device principal from ANY tenant reached it. `screenId` came
+    // from the URL and was never tied to the caller, so a device token for
+    // screen S in tenant T could write a `UsbIngestEvent` attributed to
+    // screen X in tenant U — with attacker-chosen deviceSerial,
+    // bundleVersion, assetCount, outcome and reason. That table is the
+    // record an incident reviewer consults to answer "what content was
+    // sideloaded onto this screen, and by whom".
+    //
+    // The old comment claimed "the screenId derivation alone closes the
+    // IDOR". It closed the TENANT IDOR (the tenant is derived from the
+    // screen row, not supplied) but not the SCREEN-TARGETING one. Bind it
+    // to the token, exactly as every other device telemetry route does.
+    // Operators (dashboard-driven ingest review) keep their access via the
+    // tenant check below.
+    const principal = req.user || {};
+    if (principal.kind === 'device') {
+      if (principal.sub !== screenId) {
+        throw new HttpException(
+          { code: 'TENANT_USB_INGEST_SCREEN_MISMATCH', message: 'Device may only report USB ingest for its own screen' },
+          HttpStatus.FORBIDDEN,
+        );
+      }
+    } else if (!principal.role) {
+      // Neither a device bound to this screen nor a roled user → no basis
+      // on which to write into anyone's forensic trail.
+      throw new HttpException(
+        { code: 'TENANT_USB_INGEST_FORBIDDEN', message: 'Device or operator authentication required' },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
     // ten-ok: device-reported telemetry — the screen row IS the tenant resolver; usbIngestEnabled + optional HMAC verified directly below
     const screen = await this.prisma.client.screen.findUnique({
       where: { id: screenId },
@@ -1046,6 +1141,17 @@ export class TenantsController {
     }
     if (!screen.tenant.usbIngestEnabled) {
       throw new HttpException({ code: 'TENANT_USB_INGEST_DISABLED', message: 'USB ingest is disabled for this tenant' }, HttpStatus.FORBIDDEN);
+    }
+    // DT-07, operator leg: a roled user may only write into their OWN
+    // tenant's ingest trail. SUPER_ADMIN is cross-tenant by design.
+    if (principal.kind !== 'device' && principal.role !== AppRole.SUPER_ADMIN) {
+      const callerTenantId = principal.tenantId || principal.schoolId || principal.districtId || null;
+      if (!callerTenantId || callerTenantId !== screen.tenantId) {
+        throw new HttpException(
+          { code: 'TENANT_USB_INGEST_SCREEN_UNKNOWN', message: 'Unknown or unpaired screen' },
+          HttpStatus.NOT_FOUND,
+        );
+      }
     }
 
     // Optional HMAC signature verification (defense-in-depth).

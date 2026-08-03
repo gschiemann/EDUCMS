@@ -4,6 +4,7 @@ import { AuthService } from '../auth/auth.service';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SampleDataService } from '../sample-data/sample-data.service';
+import { RedisService } from '../realtime/redis.service';
 import { JwtService } from '@nestjs/jwt';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 
@@ -120,10 +121,12 @@ describe('OnboardingService', () => {
   let emailService: EmailService;
   let prisma: PrismaService;
   let state: ReturnType<typeof createInMemoryPrisma>['state'];
+  let redisMock: { markUserTokensInvalid: jest.Mock };
 
   beforeEach(async () => {
     const mem = createInMemoryPrisma();
     state = mem.state;
+    redisMock = { markUserTokensInvalid: jest.fn().mockResolvedValue(undefined) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -137,6 +140,10 @@ describe('OnboardingService', () => {
         // any signup assertions. (Was missing → "can't resolve SampleDataService
         // at index [3]" failed the whole suite — added 2026-05-30.)
         { provide: SampleDataService, useValue: { seedForNewTenant: jest.fn().mockResolvedValue(undefined) } },
+        // ACC-02 (2026-08-01): completePasswordReset now revokes every live
+        // session for the account (markUserTokensInvalid stamps the per-user
+        // invalid-before epoch JwtAuthGuard already enforces).
+        { provide: RedisService, useValue: redisMock },
       ],
     }).compile();
 
@@ -217,6 +224,52 @@ describe('OnboardingService', () => {
 
       await service.completePasswordReset({ token, newPassword: 'brand-new-password-2' });
       expect(state.resets[0].usedAt).toBeInstanceOf(Date);
+    });
+
+    // ── ACC-02 (2026-08-01) ────────────────────────────────────────────────
+    // A password reset must be a CONTAINMENT action. Before this fix it only
+    // rotated `passwordHash`: an attacker holding a stolen JWT (up to 30 days
+    // on a rememberMe token) kept full access after the victim did the one
+    // thing every security guide tells them to do.
+    describe('ACC-02 — reset revokes existing sessions', () => {
+      async function seedAndReset(newPassword: string) {
+        await service.signup({
+          districtName: 'Acme',
+          slug: 'acme-revoke',
+          adminEmail: 'revoke@acme.edu',
+          password: 'original-password-1',
+        });
+        await service.requestPasswordReset('revoke@acme.edu');
+        const email = state.emailLogs.find((e) => e.kind === 'PASSWORD_RESET');
+        const token = decodeURIComponent(email!.body.match(/reset-password\/([^\s]+)/)![1]);
+        const userId = state.users.find((u: any) => u.email === 'revoke@acme.edu')!.id;
+        const res = await service.completePasswordReset({ token, newPassword });
+        return { res, userId };
+      }
+
+      it('stamps the per-user invalid-before marker so live JWTs stop working', async () => {
+        const { res, userId } = await seedAndReset('brand-new-password-2');
+        expect(redisMock.markUserTokensInvalid).toHaveBeenCalledWith(userId);
+        expect(res.sessionsRevoked).toBe(true);
+      });
+
+      it('still completes the reset (and reports it) when the revocation store is down', async () => {
+        // The password is already committed at that point — failing the whole
+        // request would leave the user unable to reset at all. We report the
+        // partial outcome instead of silently claiming clean containment.
+        redisMock.markUserTokensInvalid.mockRejectedValueOnce(new Error('redis down'));
+        const { res } = await seedAndReset('brand-new-password-3');
+        expect(res.ok).toBe(true);
+        expect(res.sessionsRevoked).toBe(false);
+        expect(state.resets[0].usedAt).toBeInstanceOf(Date);
+      });
+
+      it('does NOT revoke when the reset fails (no token consumed, no side effect)', async () => {
+        await expect(
+          service.completePasswordReset({ token: 'not-a-real-token', newPassword: 'abcdefgh1' }),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(redisMock.markUserTokensInvalid).not.toHaveBeenCalled();
+      });
     });
 
     it('rejects an expired reset token', async () => {

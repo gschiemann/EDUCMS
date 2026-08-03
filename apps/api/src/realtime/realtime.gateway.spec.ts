@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { WebSocket } from 'ws';
 import * as jwt from 'jsonwebtoken';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
+import { GATEWAY_OPTIONS } from '@nestjs/websockets/constants';
 
 describe('RealtimeGateway', () => {
   let gateway: RealtimeGateway;
@@ -21,7 +22,8 @@ describe('RealtimeGateway', () => {
       } as any,
       subscriber: {} as any,
       setGateway: jest.fn(),
-      publish: jest.fn(),
+      // Must resolve: processAck chains .catch() onto it.
+      publish: jest.fn().mockResolvedValue(undefined),
       // processHello now checks jwt_revoked_list via sismember (F-2 2026-05-30 —
       // JWT revocation enforced in EVERY env). 0 = not revoked → auth proceeds.
       // Without this stub the call threw ("Revocation check unavailable") and
@@ -453,6 +455,199 @@ describe('RealtimeGateway', () => {
 
       expect(frame.signature).toBeUndefined();
       expect(frame.eventId).toBeUndefined();
+    });
+  });
+
+  /**
+   * R-03 — unauthenticated 100 MiB frames.
+   *
+   * @nestjs/platform-ws hands gateway options straight to `ws`, whose
+   * maxPayload DEFAULT is 104857600 bytes, and the raw message handler runs
+   * toString() + JSON.parse BEFORE any auth. An anonymous socket could put
+   * 100 MiB of memory + event-loop pressure on the same process that serves
+   * the emergency manifest poll.
+   */
+  describe('R-03: inbound frame size cap', () => {
+    /** Grab the raw `message` listener handleConnection registers. */
+    function messageListener(ws: any): (raw: any) => void {
+      const call = (ws.on as jest.Mock).mock.calls.find((c: any[]) => c[0] === 'message');
+      expect(call).toBeDefined();
+      return call![1];
+    }
+
+    it('declares a bounded maxPayload on the gateway (ws default is 100 MiB)', () => {
+      const options = Reflect.getMetadata(GATEWAY_OPTIONS, RealtimeGateway) as any;
+      expect(options).toBeDefined();
+      expect(options.path).toBe('/realtime');
+      expect(typeof options.maxPayload).toBe('number');
+      expect(options.maxPayload).toBe(64 * 1024);
+      expect(options.maxPayload).toBeLessThan(104857600);
+    });
+
+    it('drops an oversized frame WITHOUT parsing it, and closes the socket', () => {
+      const mockWs = {
+        send: jest.fn(),
+        close: jest.fn(),
+        on: jest.fn(),
+        readyState: WebSocket.OPEN,
+      } as any;
+      gateway.handleConnection(mockWs);
+      const onMessage = messageListener(mockWs);
+
+      // A frame one byte over the cap. If the handler ever toString()s +
+      // JSON.parses this first, the whole point of the cap is gone.
+      const huge = Buffer.alloc(64 * 1024 + 1, 0x41);
+      const parseSpy = jest.spyOn(JSON, 'parse');
+      const toStringSpy = jest.spyOn(huge, 'toString');
+
+      onMessage(huge);
+
+      expect(parseSpy).not.toHaveBeenCalled();
+      expect(toStringSpy).not.toHaveBeenCalled();
+      expect(mockWs.close).toHaveBeenCalledWith(1009, 'Frame Too Large');
+      // Nothing was routed: the socket is still unauthenticated.
+      expect((gateway as any).clients.get(mockWs).isAuthenticated).toBe(false);
+
+      parseSpy.mockRestore();
+      toStringSpy.mockRestore();
+    });
+
+    it('measures oversized STRING frames too (not just Buffers)', () => {
+      const mockWs = {
+        send: jest.fn(),
+        close: jest.fn(),
+        on: jest.fn(),
+        readyState: WebSocket.OPEN,
+      } as any;
+      gateway.handleConnection(mockWs);
+      const parseSpy = jest.spyOn(JSON, 'parse');
+
+      messageListener(mockWs)('x'.repeat(64 * 1024 + 1));
+
+      expect(parseSpy).not.toHaveBeenCalled();
+      expect(mockWs.close).toHaveBeenCalledWith(1009, 'Frame Too Large');
+      parseSpy.mockRestore();
+    });
+
+    it('still routes a normally-sized frame', async () => {
+      const secret = 'test_device_jwt_secret_at_least_32_chars_long_xx';
+      process.env.DEVICE_JWT_SECRET = secret;
+      const token = jwt.sign({ deviceId: 'dev_123', tenantId: 'tenant_1' }, secret, {
+        expiresIn: '1h',
+      });
+
+      const mockWs = {
+        send: jest.fn(),
+        close: jest.fn(),
+        on: jest.fn(),
+        readyState: WebSocket.OPEN,
+      } as any;
+      gateway.handleConnection(mockWs);
+
+      messageListener(mockWs)(Buffer.from(JSON.stringify({ event: 'HELLO', data: { token } })));
+      await new Promise((r) => setImmediate(r));
+
+      expect(mockWs.close).not.toHaveBeenCalledWith(1009, 'Frame Too Large');
+      expect((gateway as any).clients.get(mockWs).isAuthenticated).toBe(true);
+    });
+  });
+
+  /**
+   * R-07 — unbounded Redis writes via ACK / HEARTBEAT.
+   *
+   * Neither handler was size-capped or rate-limited, so a single compromised
+   * kiosk could park an arbitrarily large `metrics` blob in Redis and rewrite
+   * it as fast as it could send frames.
+   */
+  describe('R-07: telemetry write limits', () => {
+    /** Authenticated context, as handleConnection + processHello would build it. */
+    function authedClient() {
+      const ws = {
+        send: jest.fn(),
+        close: jest.fn(),
+        on: jest.fn(),
+        readyState: WebSocket.OPEN,
+      } as unknown as WebSocket;
+      gateway.handleConnection(ws);
+      const ctx = (gateway as any).clients.get(ws);
+      ctx.isAuthenticated = true;
+      ctx.deviceId = 'dev_123';
+      ctx.tenantId = 'tenant_1';
+      return ws;
+    }
+
+    it('caps the metrics blob a device can park in Redis', () => {
+      const ws = authedClient();
+      const oversized = { blob: 'A'.repeat(8 * 1024) };
+
+      (gateway as any).processHeartbeat(ws, { metrics: oversized });
+
+      expect(redisService.publisher!.hset).toHaveBeenCalledTimes(1);
+      const args = (redisService.publisher!.hset as jest.Mock).mock.calls[0];
+      const stored = args[args.indexOf('metrics') + 1];
+      expect(Buffer.byteLength(stored, 'utf8')).toBeLessThanOrEqual(4 * 1024);
+      expect(JSON.parse(stored).rejected).toBe('oversized');
+      // The oversized blob itself never reaches Redis.
+      expect(stored).not.toContain('AAAAAAAA');
+    });
+
+    it('stores normal-sized metrics unchanged', () => {
+      const ws = authedClient();
+      (gateway as any).processHeartbeat(ws, { metrics: { cpu: 12, freeMb: 400 } });
+
+      const args = (redisService.publisher!.hset as jest.Mock).mock.calls[0];
+      const stored = args[args.indexOf('metrics') + 1];
+      expect(JSON.parse(stored)).toEqual({ cpu: 12, freeMb: 400 });
+    });
+
+    it('rate-limits a HEARTBEAT flood from one socket', () => {
+      const ws = authedClient();
+      for (let i = 0; i < 500; i++) {
+        (gateway as any).processHeartbeat(ws, { metrics: { i } });
+      }
+      // 30-deep bucket refilling 1/sec — a tight loop can't exceed the burst
+      // by more than a token or two of wall-clock refill.
+      const writes = (redisService.publisher!.hset as jest.Mock).mock.calls.length;
+      expect(writes).toBeLessThanOrEqual(32);
+      expect(writes).toBeGreaterThan(0);
+    });
+
+    it('rate-limits an ACK flood from one socket', () => {
+      const ws = authedClient();
+      for (let i = 0; i < 500; i++) {
+        (gateway as any).processAck(ws, { receivedEventId: `e${i}`, status: 'ok' });
+      }
+      const publishes = (redisService.publish as jest.Mock).mock.calls.length;
+      expect(publishes).toBeLessThanOrEqual(32);
+      expect(publishes).toBeGreaterThan(0);
+    });
+
+    it('throttles only the noisy socket, never a well-behaved neighbour', () => {
+      const noisy = authedClient();
+      for (let i = 0; i < 500; i++) {
+        (gateway as any).processAck(noisy, { receivedEventId: `e${i}`, status: 'ok' });
+      }
+      (redisService.publish as jest.Mock).mockClear();
+
+      const quiet = authedClient();
+      (gateway as any).processAck(quiet, { receivedEventId: 'e0', status: 'ok' });
+      expect(redisService.publish).toHaveBeenCalledTimes(1);
+    });
+
+    it('still ignores telemetry from an UNAUTHENTICATED socket', () => {
+      const ws = {
+        send: jest.fn(),
+        close: jest.fn(),
+        on: jest.fn(),
+        readyState: WebSocket.OPEN,
+      } as unknown as WebSocket;
+      gateway.handleConnection(ws);
+
+      (gateway as any).processHeartbeat(ws, { metrics: {} });
+      (gateway as any).processAck(ws, { receivedEventId: 'e', status: 'ok' });
+
+      expect(redisService.publisher!.hset).not.toHaveBeenCalled();
+      expect(redisService.publish).not.toHaveBeenCalled();
     });
   });
 });

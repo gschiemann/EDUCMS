@@ -1,6 +1,79 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
+/**
+ * INJ-002 (2026-08-02) — content CSP for the PLAYER route, REPORT-ONLY.
+ *
+ * Before this, the only CSP anywhere was `frame-ancestors 'self'` (below).
+ * The comment there justified skipping a full policy because "the widget
+ * system renders pervasive inline styles" — true, but that argues against
+ * `style-src`, not against `script-src`, `object-src`, `base-uri`,
+ * `form-action` or `frame-src`, which is where the actual containment value
+ * is. So we ship those.
+ *
+ * WHY REPORT-ONLY FIRST: the player is a life-safety surface. An enforcing
+ * policy that is even slightly wrong blanks a lockdown alert on thousands of
+ * screens. `Content-Security-Policy-Report-Only` changes nothing about what
+ * renders — the browser only logs violations to the console — so this is a
+ * zero-risk way to collect the real violation set from live kiosks (including
+ * the Chromium-83 Taurus units, which support CSP Level 2) before anyone
+ * flips it to enforcing. There is deliberately NO `report-uri`/`report-to`:
+ * we have no collector endpoint, and pointing one at a URL that 404s would
+ * add a request per violation on a metered kiosk link. Console-only for now.
+ *
+ * WHAT `script-src` COULD HONESTLY BE TODAY: `'self' 'unsafe-inline'`.
+ * Next's App Router emits its own inline bootstrap/flight scripts
+ * (`self.__next_f.push(...)`) with no nonce, so a nonce-only policy would
+ * break hydration on the player instantly. Reaching real nonces needs Next
+ * middleware to mint a per-request nonce, thread it through
+ * `next.config` → `headers` AND every inline `<script>` we emit ourselves
+ * (layout.tsx's viewport-pin script, BrandStyleInjector), plus a
+ * `'strict-dynamic'` rollout — a separate, testable piece of work. Until
+ * then `'unsafe-inline'` means this policy does NOT stop injected inline JS;
+ * what it DOES stop is loading script from a foreign host, `<object>`/applet
+ * embedding, `<base>` hijacking, and form posts off-origin.
+ */
+function playerCspReportOnly(): string {
+  const apiOrigin = (() => {
+    const raw = process.env.NEXT_PUBLIC_API_URL;
+    if (!raw) return null;
+    try {
+      return new URL(raw).origin;
+    } catch {
+      return null;
+    }
+  })();
+  // Unset NEXT_PUBLIC_API_URL is the documented local-dev case (the client
+  // falls back to localhost:8080), so fall back to the same thing rather than
+  // emitting a policy that reports a violation on every dev request.
+  const api = apiOrigin ?? 'http://localhost:8080';
+  const wsApi = api.replace(/^http/, 'ws');
+  const isDev = process.env.NODE_ENV !== 'production';
+
+  return [
+    "default-src 'self'",
+    // See the note above: 'unsafe-inline' is required by Next's own inline
+    // bootstrap today. `next dev` additionally evals its HMR runtime.
+    `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`,
+    // Widgets render pervasive inline styles + inline <style> blocks; Google
+    // Fonts is used by the templates.
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    // Assets are operator-supplied URLs (Supabase bucket, CDN, stock photos).
+    "img-src 'self' data: blob: https:",
+    "media-src 'self' blob: https:",
+    // hls.js spins up a blob: worker; the service worker is same-origin.
+    "worker-src 'self' blob:",
+    `connect-src 'self' ${api} ${wsApi} https: wss:`,
+    // The player frames: its own /player tiles, the API proxy (WEBPAGE +
+    // text/html assets), Supabase-hosted PDFs, and streaming embeds.
+    `frame-src 'self' ${api} https:`,
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ].join('; ');
+}
+
 const nextConfig: NextConfig = {
   // Inline the deploy's git SHA into the CLIENT bundle so the StaleBundleWatcher
   // (stale-tab detection) and the bug reporter's `buildSha` telemetry actually
@@ -45,6 +118,13 @@ const nextConfig: NextConfig = {
         // <style> blocks, so an enforcing content CSP needs a
         // nonce-based rollout verified across every player + widget
         // surface. These five headers carry zero rendering risk.
+        //
+        // 2026-08-02 (INJ-002): a CONTENT policy now ships on the player
+        // route in REPORT-ONLY mode — see playerCspReportOnly() above. It is
+        // scoped to /player deliberately: that is the surface an attacker
+        // reaches through a WEBPAGE widget or a text/html asset, and it is
+        // the one we can validate on real kiosks without risking the
+        // dashboard.
         source: '/:path*',
         headers: [
           { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
@@ -60,6 +140,18 @@ const nextConfig: NextConfig = {
           { key: 'Cache-Control', value: 'no-store, must-revalidate, max-age=0' },
           { key: 'Pragma', value: 'no-cache' },
           { key: 'Expires', value: '0' },
+          // REPORT-ONLY. Never promote this to `Content-Security-Policy`
+          // without first reading the violation reports off real kiosks —
+          // this route is what shows a lockdown alert.
+          { key: 'Content-Security-Policy-Report-Only', value: playerCspReportOnly() },
+        ],
+      },
+      {
+        // Player sub-routes (tiles, diagnostics) get the same report-only
+        // policy. Separate entry because Next matches one source per object.
+        source: '/player/:path*',
+        headers: [
+          { key: 'Content-Security-Policy-Report-Only', value: playerCspReportOnly() },
         ],
       },
       {

@@ -15,6 +15,8 @@
  * Same SDK + signing setup as the Player APK so OTA installs of
  * either component upgrade cleanly without signature mismatches.
  */
+import java.io.File
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -51,8 +53,12 @@ android {
         // canonical Android Enterprise dedicated-device pattern.
         // v1.0.20's watchdog relaunch stays as a belt-and-suspenders
         // backstop. See ManagerApp.pinPlayerAsHome().
-        versionCode = 10022 // 1*10000 + 0*100 + 22
-        versionName = "1.0.22"
+        // 2026-08-03 — v1.0.23. Patch bump: adds allowPlayerLockTask()
+        // (setLockTaskPackages for the Player + Manager pair) so the Player's
+        // LockTaskController can pin the kiosk. Also release-signed with the
+        // real VenueOS key from this build onward.
+        versionCode = 10023 // 1*10000 + 0*100 + 23
+        versionName = "1.0.23"
 
         // Override at build time to point at a non-default API:
         //   -PmanagerApiRoot="https://staging.venue-os.app"
@@ -83,18 +89,73 @@ android {
         }
     }
 
-    // Reuse the SAME committed debug keystore as the Player module so
-    // OTA installs work in both directions (Player can update Manager,
-    // Manager can update Player). Critical: signature mismatch between
-    // the two apps would not break each other (different package ids)
-    // but it WOULD make us inconsistent on which key signs what; same
-    // key for both keeps the operational model trivial.
+    // ─── RELEASE signing — real, but DORMANT until the owner cuts over ───
+    //
+    // ⚠️ READ apps/player/RELEASE_SIGNING.md BEFORE TURNING THIS ON. ⚠️
+    //
+    // Mirror of the block in ../app/build.gradle.kts — same four
+    // properties, same env fallback, same graceful degradation. Manager
+    // and Player MUST resolve the SAME release keystore (Manager is
+    // DEVICE_OWNER and installs Player updates; a split signing identity
+    // makes the operational model incoherent), which is why a relative
+    // RELEASE_STORE_FILE resolves against the Gradle ROOT project
+    // (apps/player/) in BOTH modules rather than the module dir.
+    //
+    //   -PreleaseStoreFile=…      / RELEASE_STORE_FILE
+    //   -PreleaseStorePassword=…  / RELEASE_STORE_PASSWORD
+    //   -PreleaseKeyAlias=…       / RELEASE_KEY_ALIAS
+    //   -PreleaseKeyPassword=…    / RELEASE_KEY_PASSWORD
+    //
+    // If any value is missing or the keystore isn't on disk, the
+    // "release" signingConfig is never created — `assembleDebug` is
+    // completely unaffected and the build does not fail.
+    val releaseStoreFile: String? = (project.findProperty("releaseStoreFile") as? String)
+        ?: System.getenv("RELEASE_STORE_FILE")
+    val releaseStorePassword: String? = (project.findProperty("releaseStorePassword") as? String)
+        ?: System.getenv("RELEASE_STORE_PASSWORD")
+    val releaseKeyAlias: String? = (project.findProperty("releaseKeyAlias") as? String)
+        ?: System.getenv("RELEASE_KEY_ALIAS")
+    val releaseKeyPassword: String? = (project.findProperty("releaseKeyPassword") as? String)
+        ?: System.getenv("RELEASE_KEY_PASSWORD")
+
+    val releaseStore: File? = releaseStoreFile
+        ?.takeIf { it.isNotBlank() }
+        ?.let { p ->
+            val f = File(p)
+            if (f.isAbsolute) f else project.rootProject.file(p)
+        }
+
+    val hasReleaseSigning: Boolean =
+        releaseStore != null && releaseStore.isFile &&
+            !releaseStorePassword.isNullOrBlank() &&
+            !releaseKeyAlias.isNullOrBlank() &&
+            !releaseKeyPassword.isNullOrBlank()
+
     signingConfigs {
+        // Reuse the SAME committed debug keystore as the Player module so
+        // OTA installs work in both directions (Player can update Manager,
+        // Manager can update Player). Critical: signature mismatch between
+        // the two apps would not break each other (different package ids)
+        // but it WOULD make us inconsistent on which key signs what; same
+        // key for both keeps the operational model trivial.
+        //
+        // ⚠️ THIS KEY IS PUBLISHED — see ../app/build.gradle.kts and
+        // apps/player/RELEASE_SIGNING.md. Treat it as compromised.
         getByName("debug") {
             storeFile = file("../app/debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"
             keyPassword = "android"
+        }
+
+        // Created ONLY when fully configured — see the block comment above.
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = releaseStore
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
         }
     }
 
@@ -112,6 +173,15 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // NEVER let a published artifact inherit a debuggable default.
+            // Already AGP's default for `release`; explicit so a future
+            // edit can't quietly flip it and so the CI guard
+            // (scripts/check-apk-debuggable.cjs) has something
+            // unambiguous to verify in the merged manifest.
+            isDebuggable = false
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 

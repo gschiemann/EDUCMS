@@ -1,5 +1,5 @@
 /**
- * Spatial-navigation shim for the WEBPAGE widget iframe.
+ * Spatial-navigation BRIDGE for the WEBPAGE proxy iframe (parent side).
  *
  * 2026-05-07 — operator: "when I use the Goodview CMS player and push a
  * URL, the remote control is able to essentially tab around the website
@@ -7,260 +7,245 @@
  * on the remote it highlights the different links on the website. Our
  * player doesn't do that at all."
  *
- * Background: Android System WebView ignores the chromium
- * `--enable-spatial-navigation` flag (gated behind a chrome:// flag
- * the OEM hasn't preset for us). The original fix in
- * apps/player/.../SpatialNavigation.kt only injected this JS into the
- * NATIVE "URL overlay" WebView — a separate Android WebView used when
- * an operator "pushes" a fullscreen URL via the bridge.
+ * ─── WHAT CHANGED 2026-08-02 (security wave, INJ-001a) ────────────────────
  *
- * 2026-05-11 — but WEBPAGE widgets inside a TEMPLATE don't go through
- * that overlay path. They render as an iframe inside the React player
- * (apps/web/src/app/player). The native shim never fires for them.
+ * This module used to hold the shim SOURCE and inject it with
+ * `iframe.contentWindow.eval(SHIM_JS)`. That only worked because the proxied
+ * frame was same-origin with the app — and that same-origin reachability was
+ * the vulnerability: anything running in the proxied page (upstream JS, or
+ * script an attacker got into it) lived in OUR origin, with read access to
+ * `parent.document`, the device token in localStorage, and the player's own
+ * state. The WEBPAGE iframe is now sandboxed WITHOUT `allow-same-origin`, so
+ * that reach is gone — and so is `contentWindow.eval`.
  *
- * Fix: replicate the same shim, but injected from the React parent
- * into the iframe's contentDocument every time the iframe loads
- * (initial load + any in-iframe navigations). Because we route every
- * WEBPAGE iframe through our same-origin `/api/v1/proxy/web` proxy,
- * the iframe is same-origin with the React app and we can call
- * `iframe.contentWindow.eval(SHIM_JS)` legally.
+ * The feature did NOT go away. The shim is now baked into the proxied document
+ * server-side (`apps/api/src/proxy/spatial-nav-shim.ts`), and this file is the
+ * PARENT half of a hardened postMessage channel:
  *
- * The shim itself is identical to the Android-injected one (kept
- * in source-parity for easier debugging when one path works and the
- * other doesn't).
+ *   parent -> frame  { vosnav: 'vosnav/1', cmd: <FIXED ENUM> }
+ *   frame  -> parent { vosnav: 'vosnav/1', evt: 'ready' | 'result', ... }
+ *
+ * SECURITY NOTES FOR ANYONE EDITING THIS FILE
+ *  • A null-origin sandboxed frame reports `event.origin === "null"`, so an
+ *    origin check on the PARENT side is worthless here. The load-bearing
+ *    check is `event.source === iframe.contentWindow` — never remove it, and
+ *    never "relax" it to an origin comparison.
+ *  • The command vocabulary is a FIXED ENUM. Never add a command that carries
+ *    code, a selector, a URL, or any other payload. There is no eval path in
+ *    either half of this protocol and there must never be one.
+ *  • Outbound posts use targetOrigin '*' because the frame is opaque and no
+ *    other value can ever match. That is safe only because we post to ONE
+ *    specific `contentWindow` and the payload is a bare enum with no secrets.
+ *  • The shim installs INERT. It only wakes on `arm`, which is why the
+ *    dashboard's WEBPAGE preview iframes (which also route through the proxy)
+ *    never get the focus-stealing behaviour that caused the 2026-06-08
+ *    "every menu click needs two clicks" fire. Callers must keep gating
+ *    `attachSpatialNavBridge` to real display surfaces.
  */
 
-/**
- * The shim JS — runs in the iframe's main world. Self-deduplicates via
- * `window.__eduCmsSpatialNav`. ~110 lines of vanilla JS, no deps.
- *
- * Listens for arrow keys + Enter/Space and moves focus geometrically
- * among visible focusable elements. Applies a high-contrast indigo
- * focus ring so the focused element is unmistakable on a TV screen
- * viewed from across the room.
- */
-export const WEBPAGE_SPATIAL_NAV_SHIM = String.raw`
-(function() {
-  if (window.__eduCmsSpatialNav) return;
-  window.__eduCmsSpatialNav = true;
-  try {
-    var FOCUS_SEL = [
-      'a[href]',
-      'button:not([disabled])',
-      'input:not([disabled]):not([type="hidden"])',
-      'select:not([disabled])',
-      'textarea:not([disabled])',
-      '[tabindex]:not([tabindex="-1"])',
-      '[role="button"]',
-      '[role="link"]',
-      '[role="menuitem"]',
-      '[role="tab"]',
-      '[contenteditable="true"]'
-    ].join(',');
+/** Protocol namespace. Byte-identical to the API's `VOSNAV_NS`. */
+export const VOSNAV_NS = 'vosnav/1';
 
-    var styleId = '__edu-cms-spatial-nav-style';
-    if (!document.getElementById(styleId)) {
-      var s = document.createElement('style');
-      s.id = styleId;
-      s.textContent = ''
-        + '*:focus, *:focus-visible {'
-        + '  outline: 3px solid #4f46e5 !important;'
-        + '  outline-offset: 2px !important;'
-        + '  box-shadow: 0 0 0 5px rgba(79, 70, 229, 0.35) !important;'
-        + '}';
-      (document.head || document.documentElement).appendChild(s);
-    }
+export type VosNavCommand =
+  | 'arm'
+  | 'disarm'
+  | 'up'
+  | 'down'
+  | 'left'
+  | 'right'
+  | 'activate';
 
-    function isVisible(el) {
-      if (!el || !el.getBoundingClientRect) return false;
-      var r = el.getBoundingClientRect();
-      if (r.width <= 0 || r.height <= 0) return false;
-      if (r.bottom < 0 || r.right < 0) return false;
-      var vh = window.innerHeight || document.documentElement.clientHeight;
-      var vw = window.innerWidth || document.documentElement.clientWidth;
-      if (r.top > vh || r.left > vw) return false;
-      var st = window.getComputedStyle(el);
-      if (st.visibility === 'hidden' || st.display === 'none') return false;
-      if (parseFloat(st.opacity) === 0) return false;
-      return true;
-    }
+/** The complete command vocabulary — the shim ignores anything else. */
+export const VOSNAV_COMMANDS: readonly VosNavCommand[] = [
+  'arm',
+  'disarm',
+  'up',
+  'down',
+  'left',
+  'right',
+  'activate',
+];
 
-    function center(r) { return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }
+/** Frame -> parent event names we will act on. Anything else is dropped. */
+export const VOSNAV_EVENTS = ['ready', 'result'] as const;
+export type VosNavEvent = (typeof VOSNAV_EVENTS)[number];
 
-    function candidates() {
-      var nodes = document.querySelectorAll(FOCUS_SEL);
-      var out = [];
-      for (var i = 0; i < nodes.length; i++) {
-        if (isVisible(nodes[i])) out.push(nodes[i]);
-      }
-      return out;
-    }
-
-    function score(curRect, candRect, dir) {
-      var cur = center(curRect), cand = center(candRect);
-      var dx = cand.x - cur.x, dy = cand.y - cur.y;
-      var inCone =
-        (dir === 'up'    && dy < -1 && Math.abs(dx) <= Math.abs(dy) + 50) ||
-        (dir === 'down'  && dy >  1 && Math.abs(dx) <= Math.abs(dy) + 50) ||
-        (dir === 'left'  && dx < -1 && Math.abs(dy) <= Math.abs(dx) + 50) ||
-        (dir === 'right' && dx >  1 && Math.abs(dy) <= Math.abs(dx) + 50);
-      if (!inCone) return Infinity;
-      var primary = (dir === 'up' || dir === 'down') ? Math.abs(dy) : Math.abs(dx);
-      var secondary = (dir === 'up' || dir === 'down') ? Math.abs(dx) : Math.abs(dy);
-      return primary + secondary * 3;
-    }
-
-    function pickInitial() {
-      var list = candidates();
-      if (!list.length) return null;
-      list.sort(function(a, b) {
-        var ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
-        if (Math.abs(ra.top - rb.top) > 8) return ra.top - rb.top;
-        return ra.left - rb.left;
-      });
-      return list[0];
-    }
-
-    function move(dir) {
-      var active = document.activeElement;
-      var list = candidates();
-      if (!list.length) {
-        // No focusable elements visible — scroll the page instead
-        // so the user can find content. Goodview's remote does this
-        // when the focus ring has nowhere to go.
-        return scrollInDir(dir);
-      }
-      if (!active || active === document.body || list.indexOf(active) === -1) {
-        var first = pickInitial();
-        if (first) { first.focus(); first.scrollIntoView({block:'nearest', inline:'nearest'}); return true; }
-        return scrollInDir(dir);
-      }
-      var curR = active.getBoundingClientRect();
-      var best = null, bestScore = Infinity;
-      for (var i = 0; i < list.length; i++) {
-        if (list[i] === active) continue;
-        var sc = score(curR, list[i].getBoundingClientRect(), dir);
-        if (sc < bestScore) { bestScore = sc; best = list[i]; }
-      }
-      if (best) {
-        best.focus();
-        best.scrollIntoView({block:'nearest', inline:'nearest'});
-        return true;
-      }
-      // No focusable target in this direction — operator hit the edge
-      // of the focusable chain. Goodview-style fallback: scroll the
-      // page in that direction so they can see what's below. After
-      // scroll, new focusable elements may come into view and the
-      // next press will pick them up.
-      return scrollInDir(dir);
-    }
-
-    // Scroll the page (or focused scrollable container) in the given
-    // direction by a viewport-relative amount. Matches the
-    // "long-press scrolls the page" UX Goodview's player has.
-    function scrollInDir(dir) {
-      var amt = Math.round((dir === 'up' || dir === 'down'
-        ? (window.innerHeight || 600)
-        : (window.innerWidth || 800)) * 0.6);
-      var dx = 0, dy = 0;
-      if (dir === 'up') dy = -amt;
-      else if (dir === 'down') dy = amt;
-      else if (dir === 'left') dx = -amt;
-      else if (dir === 'right') dx = amt;
-      try {
-        window.scrollBy({ top: dy, left: dx, behavior: 'smooth' });
-        return true;
-      } catch (e) {
-        window.scrollBy(dx, dy);
-        return true;
-      }
-    }
-
-    function activate() {
-      var el = document.activeElement;
-      if (!el || el === document.body) {
-        var first = pickInitial();
-        if (first) { first.focus(); return true; }
-        return false;
-      }
-      var tag = (el.tagName || '').toLowerCase();
-      if (tag === 'input' || tag === 'textarea' || el.isContentEditable) return false;
-      try { el.click(); } catch (e) {}
-      return true;
-    }
-
-    document.addEventListener('keydown', function(e) {
-      var ae = document.activeElement;
-      var aeTag = (ae && ae.tagName || '').toLowerCase();
-      var isTyping = (aeTag === 'input' || aeTag === 'textarea' || (ae && ae.isContentEditable));
-      var k = e.key;
-      if (k === 'ArrowUp')    { if (!isTyping && move('up'))    { e.preventDefault(); } }
-      else if (k === 'ArrowDown')  { if (!isTyping && move('down'))  { e.preventDefault(); } }
-      else if (k === 'ArrowLeft')  { if (!isTyping && move('left'))  { e.preventDefault(); } }
-      else if (k === 'ArrowRight') { if (!isTyping && move('right')) { e.preventDefault(); } }
-      else if (k === 'Enter' || k === ' ') {
-        if (!isTyping && activate()) { e.preventDefault(); }
-      }
-    }, true);
-
-    var settleTimer = null;
-    var mo = new MutationObserver(function() {
-      if (settleTimer) clearTimeout(settleTimer);
-      settleTimer = setTimeout(function() {
-        var ae = document.activeElement;
-        if (!ae || ae === document.body) {
-          var first = pickInitial();
-          if (first) first.focus();
-        }
-      }, 250);
-    });
-    mo.observe(document.documentElement, { childList: true, subtree: true });
-
-    // Auto-pick initial focus on first install so the user's very first
-    // arrow-key press has somewhere to GO TO instead of relying on
-    // pickInitial() which fires only when active === body. For TVs the
-    // user is starting cold every time; without this the first
-    // ArrowDown does nothing visible.
-    setTimeout(function() {
-      var ae = document.activeElement;
-      if (!ae || ae === document.body) {
-        var first = pickInitial();
-        if (first) first.focus();
-      }
-    }, 100);
-  } catch (err) {
-    try { console.warn('eduCmsSpatialNav init failed', err); } catch (e) {}
+/** Keyboard/remote key -> nav command. Returns null for keys we don't own. */
+export function commandForKey(key: string): VosNavCommand | null {
+  switch (key) {
+    case 'ArrowUp':
+      return 'up';
+    case 'ArrowDown':
+      return 'down';
+    case 'ArrowLeft':
+      return 'left';
+    case 'ArrowRight':
+      return 'right';
+    case 'Enter':
+    case ' ':
+      return 'activate';
+    default:
+      return null;
   }
-})();
-`;
+}
 
 /**
- * Inject the shim into a same-origin iframe. Safe to call multiple
- * times — the shim self-dedupes via `window.__eduCmsSpatialNav`.
+ * Validate an inbound `message` event as a frame->parent protocol message from
+ * THIS iframe. Exported so the protocol is unit-testable without a DOM harness.
  *
- * MUST be called AFTER `iframe.contentDocument.readyState === 'complete'`
- * (or from the iframe's `load` event handler) — running before the DOM
- * is parsed means our keydown handler binds to a non-existent document.
- *
- * Returns true if injection succeeded, false on cross-origin block or
- * any other failure (we never throw — the page still works without
- * spatial nav).
+ * Order matters: the source check is first because it is the only check that
+ * can distinguish our frame from any other frame on the page (a null-origin
+ * frame's `event.origin` is the useless string "null", and any page can post
+ * an object with our namespace in it).
  */
-export function injectSpatialNav(iframe: HTMLIFrameElement | null): boolean {
-  if (!iframe) return false;
+export function isVosNavFrameMessage(
+  ev: Pick<MessageEvent, 'source' | 'data'>,
+  iframe: HTMLIFrameElement | null,
+): boolean {
+  const expected = iframe?.contentWindow ?? null;
+  if (!expected) return false;
+  if (ev.source !== expected) return false;
+  const d = ev.data as unknown;
+  if (!d || typeof d !== 'object') return false;
+  const msg = d as { vosnav?: unknown; evt?: unknown };
+  if (msg.vosnav !== VOSNAV_NS) return false;
+  if (typeof msg.evt !== 'string') return false;
+  return (VOSNAV_EVENTS as readonly string[]).indexOf(msg.evt) !== -1;
+}
+
+/** Post one enum command into the frame. No-op if the frame is gone. */
+export function postSpatialNavCommand(
+  iframe: HTMLIFrameElement | null,
+  cmd: VosNavCommand,
+): boolean {
+  const win = iframe?.contentWindow;
+  if (!win) return false;
+  if (VOSNAV_COMMANDS.indexOf(cmd) === -1) return false;
   try {
-    const win = iframe.contentWindow as (Window & { eval?: (s: string) => unknown }) | null;
-    if (!win) return false;
-    // `eval` on the iframe's contentWindow runs the script in the
-    // iframe's main world (not the parent's). Same-origin only — if
-    // the iframe is cross-origin (which it shouldn't be since we
-    // proxy through /api/v1/proxy/web) this throws SecurityError and
-    // we silently bail.
-    (win as unknown as { eval(s: string): unknown }).eval(WEBPAGE_SPATIAL_NAV_SHIM);
+    // '*' is required: an opaque (sandboxed, no allow-same-origin) frame has
+    // no origin any other targetOrigin value could match. Safe here — one
+    // specific contentWindow, payload is a bare enum.
+    win.postMessage({ vosnav: VOSNAV_NS, cmd }, '*');
     return true;
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn('[spatial-nav] iframe injection blocked:', (e as Error)?.message);
+  } catch {
     return false;
+  }
+}
+
+type BridgeState = { detach: () => void };
+
+const BRIDGE_KEY = '__vosNavBridge';
+
+/**
+ * Arm the server-injected shim inside `iframe` and start forwarding remote /
+ * keyboard navigation into it.
+ *
+ * CALL ONLY ON REAL DISPLAY SURFACES (player / board / overlay / ribbon /
+ * scorebug / panic). On the dashboard the shim must stay inert — see the
+ * 2026-06-08 note above.
+ *
+ * Idempotent per element: re-attaching detaches the previous bridge first, so
+ * an iframe that reloads (interactive-mode link click) does not accumulate
+ * window listeners.
+ *
+ * Returns a detach function. The bridge also self-detaches once the iframe
+ * leaves the document, so playlist churn cannot leak listeners.
+ */
+export function attachSpatialNavBridge(iframe: HTMLIFrameElement | null): boolean {
+  if (!iframe || typeof window === 'undefined') return false;
+
+  const holder = iframe as HTMLIFrameElement & { [BRIDGE_KEY]?: BridgeState };
+  try {
+    holder[BRIDGE_KEY]?.detach();
+  } catch {
+    /* previous bridge already gone */
+  }
+
+  let detached = false;
+
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (detached) return;
+    if (!iframe.isConnected) {
+      detach();
+      return;
+    }
+    // If focus is inside a text field on the PARENT surface, typing wins.
+    const ae = document.activeElement;
+    const tag = (ae?.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || (ae as HTMLElement | null)?.isContentEditable) {
+      return;
+    }
+    const cmd = commandForKey(e.key);
+    if (!cmd) return;
+    if (postSpatialNavCommand(iframe, cmd)) {
+      // Nothing else on the display surfaces binds arrows/Enter (verified by
+      // grep over player/page.tsx + components/player), so swallowing them
+      // keeps the parent document from scrolling behind the frame.
+      e.preventDefault();
+    }
+  };
+
+  const onMessage = (ev: MessageEvent) => {
+    if (detached) return;
+    if (!iframe.isConnected) {
+      detach();
+      return;
+    }
+    if (!isVosNavFrameMessage(ev, iframe)) return;
+    const evt = (ev.data as { evt: VosNavEvent }).evt;
+    if (evt === 'ready') {
+      // A fresh document inside the frame (first load, or an in-frame
+      // navigation in interactive mode) announces itself inert — re-arm it.
+      postSpatialNavCommand(iframe, 'arm');
+    }
+    // 'result' is telemetry only; there is deliberately nothing to do with it
+    // beyond leaving the door open for a future HUD. Never branch on frame
+    // data into anything privileged.
+  };
+
+  function detach() {
+    if (detached) return;
+    detached = true;
+    window.removeEventListener('keydown', onKeyDown, true);
+    window.removeEventListener('message', onMessage);
+    try {
+      delete holder[BRIDGE_KEY];
+    } catch {
+      /* ignore */
+    }
+  }
+
+  window.addEventListener('keydown', onKeyDown, true);
+  window.addEventListener('message', onMessage);
+  holder[BRIDGE_KEY] = { detach };
+
+  // Arm immediately (the shim is already installed — it is injected in <head>
+  // by the proxy, so it exists before this `load` handler runs) and once more
+  // shortly after, to cover a frame that is still parsing.
+  postSpatialNavCommand(iframe, 'arm');
+  window.setTimeout(() => {
+    if (!detached && iframe.isConnected) postSpatialNavCommand(iframe, 'arm');
+  }, 300);
+
+  // Hand keyboard focus to the frame so a remote press lands on the shim's own
+  // in-frame keydown handler (the fast path). `focus()` is one of the few
+  // cross-origin-accessible Window members, so this still works on the
+  // sandboxed null-origin frame.
+  try {
+    iframe.contentWindow?.focus();
+  } catch {
+    /* opaque-origin guard */
+  }
+
+  return true;
+}
+
+/** Tear down a bridge previously attached to this iframe. */
+export function detachSpatialNavBridge(iframe: HTMLIFrameElement | null): void {
+  const holder = iframe as (HTMLIFrameElement & { [BRIDGE_KEY]?: BridgeState }) | null;
+  try {
+    holder?.[BRIDGE_KEY]?.detach();
+  } catch {
+    /* ignore */
   }
 }

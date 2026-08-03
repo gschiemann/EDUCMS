@@ -22,26 +22,29 @@ import { clientIpFromRequest } from './client-ip';
  * only remaining variable that explains a resetting shared counter is the
  * tracker KEY moving between requests.
  *
- * THE FIX: key on the LEFTMOST `X-Forwarded-For` entry (the original client),
- * which stays stable no matter how many varying internal hops Railway appends
- * downstream. For a normal single-entry XFF this equals `req.ip`, so behavior
- * is unchanged in the common case; it only diverges (correctly) when extra
- * hops are present.
+ * THE FIX: derive the tracker from `clientIpFromRequest`, which selects the
+ * `X-Forwarded-For` entry at the trusted-proxy hop position counted FROM THE
+ * RIGHT. That entry stays stable no matter how many varying internal hops
+ * Railway appends downstream. For a normal chain this equals `req.ip` in the
+ * common single-hop case, so behavior is unchanged there; it only diverges
+ * (correctly) when extra hops are present.
+ *
+ * SPOOFING (ACC-08, 2026-08-01 — the note below used to say the opposite):
+ * the earlier version of this fix keyed on the LEFTMOST XFF entry, which is
+ * the ONE position a client fully controls (proxies append, so client-supplied
+ * values arrive as a prefix). Sending a fresh `X-Forwarded-For` per request
+ * therefore rotated the throttle key at will and reinstated the very bug this
+ * guard exists to fix — every per-IP brute-force cap was one header away from
+ * never firing. Counting from the right by hop count fixes that: injected
+ * entries only lengthen the ignored prefix, and a client cannot move its own
+ * position in the chain. The key is now both STABLE and UNSPOOFABLE. See
+ * `client-ip.ts` for the full derivation + the `TRUSTED_PROXY_HOPS` env var.
  *
  * SAFETY: this override ONLY changes the throttle key derivation — it does not
  * touch authentication. It is fully defensive: it never throws (try/catch +
  * fallbacks to `req.ip` then `'unknown'`), so the guard can never 500 a login.
- * Worst case (if the leftmost XFF were itself unstable) it is no worse than the
- * prior behavior; the `[tracker-diag]` log below reveals the real values so a
- * live re-test can confirm stability rather than guess.
- *
- * SPOOFING NOTE: the leftmost XFF entry is client-settable, so a determined
- * attacker could rotate it to evade this per-IP cap. That is acceptable for a
- * defense-in-depth throttle: (a) an attacker who can spoof XFF can already
- * rotate source IPs, and (b) the PRIMARY brute-force control is Argon2 password
- * hashing, which makes online guessing infeasible regardless of this cap. This
- * change strictly improves the common (honest-client) case, where the cap
- * currently never fires at all.
+ * The `[tracker-diag]` log below reveals the real values so a live re-test can
+ * confirm stability rather than guess.
  */
 @Injectable()
 export class ClientIpThrottlerGuard extends ThrottlerGuard {
@@ -57,7 +60,7 @@ export class ClientIpThrottlerGuard extends ThrottlerGuard {
   private static readonly DIAG_BUDGET = 3;
 
   protected async getTracker(req: Record<string, any>): Promise<string> {
-    // Shared leftmost-XFF resolution (also used by AuditLog/RequestLog so the
+    // Shared hop-count XFF resolution (also used by AuditLog/RequestLog so the
     // throttle key and the forensic IP agree). A tracker key must be a
     // non-null string, so coalesce the helper's null to 'unknown'.
     const tracker = clientIpFromRequest(req) ?? 'unknown';

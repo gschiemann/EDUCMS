@@ -4076,16 +4076,37 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
 
   // Live mode — render an actual iframe routed through proxy.
   //
-  // In static (script-stripped) mode the proxy already removes
-  // <script> server-side, so no sandbox is needed (and adding one
-  // broke the static middle of pages on 2026-04-26).
+  // ─── SANDBOXED SINCE 2026-08-02 (security wave, INJ-001a) ────────────
+  // This frame carries arbitrary third-party HTML+JS (operator pastes any
+  // URL; the proxy relays whatever the upstream serves). It used to run
+  // UNSANDBOXED and SAME-ORIGIN with the app, so anything executing in the
+  // proxied page could read `parent.document`, the device token in
+  // localStorage, and drive the player. `sandbox` without
+  // `allow-same-origin` makes it a null origin: no parent DOM, no our-origin
+  // storage/cookies, and no top-level navigation (a frame-bust to a fake
+  // "lockdown lifted" page is the alert-suppression attack that mattered).
   //
-  // In interactive mode (v1.0.16+) the iframe runs the upstream
-  // page's JS. We still don't sandbox — sandbox=allow-scripts +
-  // null-origin would CORS-break every XHR the upstream site makes
-  // back to its own API. The proxy origin matches the host page,
-  // and the proxy headers explicitly allow embedding (CSP frame-
-  // ancestors:* + no X-Frame-Options).
+  // Note on the second token: `allow-popups-to-escape-sandbox` is INERT
+  // without `allow-popups`, which we do not grant — signage has no use for a
+  // popup. It is listed only to pin the intent if popups are ever enabled.
+  //
+  // Contrast with StreamingWidget / FitnessLiveTVWidget, which DO carry
+  // `allow-same-origin`: their `src` is always a foreign host, so the token
+  // restores the frame's own foreign origin. Here the src is OUR origin
+  // (/api/v1/proxy/web), so the same token would hand a hostile upstream page
+  // our DOM and our localStorage. That asymmetry is the entire fix.
+  //
+  // The old objection to sandboxing ("null-origin would CORS-break every XHR
+  // the upstream site makes back to its own API") does not apply: those XHRs
+  // are rewritten by the proxy's interactive shim to come back through
+  // /api/v1/proxy/web, which answers `Access-Control-Allow-Origin: *` — a
+  // wildcard matches an `Origin: null` request. The proxy also injects an
+  // in-memory localStorage/sessionStorage shim so a site that touches storage
+  // at import time doesn't throw SecurityError and blank the screen.
+  //
+  // Remote-control spatial navigation is UNAFFECTED: its shim is now baked
+  // into the proxied document server-side and driven over a hardened
+  // postMessage channel (see attachSpatialNavBridge below).
   //
   // `allow` widened to include clipboard-write + accelerometer +
   // gyroscope so touch-driven sites that read device orientation /
@@ -4120,6 +4141,9 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
           src={proxyUrl}
           className="w-full h-full border-0"
           style={{ overflow: config.scrollEnabled ? 'auto' : 'hidden' }}
+          // NO allow-same-origin — that is the whole point. See the block
+          // comment above before adding any token to this list.
+          sandbox="allow-scripts allow-popups-to-escape-sandbox"
           allow="autoplay; encrypted-media; clipboard-write; accelerometer; gyroscope; fullscreen"
           loading="eager"
           title="Web content"
@@ -4134,13 +4158,14 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
           // was added 2026-05-07 but ONLY covers the fullscreen "URL
           // overlay" path on the native player. WEBPAGE widgets render
           // through this iframe instead — never touched by the native
-          // shim. Inject the same shim from the React side every time
-          // the iframe loads. Same-origin via /api/v1/proxy/web, so
-          // contentWindow.eval is legal.
+          // shim.
+          //
+          // 2026-08-02: the shim is no longer eval'd into the frame from
+          // here (that required same-origin, which was the vulnerability).
+          // The proxy bakes it into the document; this handler just ARMS it
+          // over the hardened postMessage channel.
           onLoad={(e) => {
-            // Lazy import keeps the shim string out of the SSR bundle.
-            // The shim itself is ~3KB minified — runs entirely inside
-            // the iframe, no parent dependency.
+            // Lazy import keeps the bridge out of the SSR bundle.
             const frame = e.currentTarget as HTMLIFrameElement;
             // 2026-06-08 (round 2) — gate the ENTIRE spatial-nav injection
             // to real full-screen DISPLAY SURFACES (kiosk player + sport
@@ -4159,21 +4184,19 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
             // operator; reproduced in a private tab with a brand-new non-admin
             // user — not cache/session/role.) Gating only the final focus()
             // call (my first attempt) was not enough — the shim's own init +
-            // MutationObserver focus stayed. Never inject the shim at all on
-            // dashboard routes.
+            // MutationObserver focus stayed. Never ARM the shim at all on
+            // dashboard routes. (2026-08-02: the server-injected shim now
+            // also installs INERT until armed, so this gate is
+            // belt-and-suspenders rather than the only defence.)
             const path = typeof window !== 'undefined' ? window.location.pathname : '';
             const onDisplaySurface = /^\/(player|board|overlay|ribbon|scorebug|panic)(\/|$)/.test(path);
             if (!onDisplaySurface) return;
-            import('./webpage-spatial-nav').then(({ injectSpatialNav }) => {
-              if (injectSpatialNav(frame)) {
-                // Hand focus to the iframe so the next remote-control key
-                // press lands inside it (where the shim's keydown handler is
-                // bound). Display-surface only — gated above.
-                try {
-                  if (live && frame.contentWindow) frame.contentWindow.focus();
-                } catch { /* cross-origin guard — shouldn't happen via proxy */ }
-              }
-            }).catch(() => { /* never block the iframe on injection */ });
+            import('./webpage-spatial-nav').then(({ attachSpatialNavBridge }) => {
+              // Arms the in-frame shim over the hardened postMessage channel,
+              // starts forwarding remote/arrow keys, and hands focus to the
+              // frame so its own in-frame keydown handler gets the fast path.
+              attachSpatialNavBridge(frame);
+            }).catch(() => { /* never block the iframe on the bridge */ });
           }}
         />
       </div>

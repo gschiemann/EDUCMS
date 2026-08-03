@@ -15,6 +15,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.educms.player.BuildConfig
 import com.educms.player.logging.PlayerLogger
+import com.educms.player.security.HostAllowlist
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -133,6 +134,29 @@ class OtaUpdateWorker(
                     return@withContext Result.success()
                 }
 
+            // ⚠️ AND-001 (2026-08-01) — POINT-OF-USE CHECK. `api_root` is
+            // written by the `setBootstrap` JS bridge, which is reachable
+            // from every frame the player WebView loads. This worker turns
+            // that host into "where we download an APK from", and the APK
+            // signing key is public — so an attacker-chosen host here is
+            // silent RCE that survives reboots and future OTAs.
+            //
+            // The setter validates too, but an APK built BEFORE that check
+            // may have persisted a hostile value, so we re-validate here
+            // and purge rather than trust the pref. Abort with success()
+            // (not retry) so we don't burn WorkManager backoff on a value
+            // that will never become valid.
+            if (!HostAllowlist.isAllowed(apiRoot)) {
+                PlayerLogger.e(
+                    TAG,
+                    "OTA ABORTED — persisted api_root is not an allowed VenueOS host " +
+                        "(${HostAllowlist.describe(apiRoot)}; allowed: ${HostAllowlist.allowedHostsForLog()}). Purging it.",
+                )
+                applicationContext.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
+                    .edit().remove("api_root").apply()
+                return@withContext Result.success()
+            }
+
             val deviceFingerprint = applicationContext.getSharedPreferences("edu_player", Context.MODE_PRIVATE)
                 .getString("device_fingerprint", null) ?: "unknown"
 
@@ -192,6 +216,22 @@ class OtaUpdateWorker(
                 reportOtaState(
                     apiRoot, deviceFingerprint, "ERROR", null,
                     "Update available but the server returned no download URL",
+                )
+                return@withContext Result.success()
+            }
+            // AND-001, second hop — the download host is pinned too. Even
+            // an allowlisted API must not be able to point a kiosk at an
+            // arbitrary APK: `github.com` (release assets) and the
+            // first-party hosts are the only accepted first hops.
+            if (!HostAllowlist.isAllowed(apkUrl)) {
+                PlayerLogger.e(
+                    TAG,
+                    "OTA ABORTED — apkUrl host is not allowed (${HostAllowlist.describe(apkUrl)}; " +
+                        "allowed: ${HostAllowlist.allowedHostsForLog()})",
+                )
+                reportOtaState(
+                    apiRoot, deviceFingerprint, "ERROR", null,
+                    "Update rejected — the download host is not a trusted VenueOS release host",
                 )
                 return@withContext Result.success()
             }

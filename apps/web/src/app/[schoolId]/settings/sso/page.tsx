@@ -7,6 +7,8 @@ import { useParams } from 'next/navigation';
 import { ArrowLeft, Shield, Loader2, CheckCircle2, AlertCircle, KeyRound, Copy } from 'lucide-react';
 import { RoleGate } from '@/components/RoleGate';
 import { API_URL } from '@/lib/api-url';
+import { useAppStore } from '@/lib/store';
+import { tenantRoleOptions } from '@/lib/role-assignment';
 
 /**
  * SSO Settings — DISTRICT_ADMIN / SUPER_ADMIN only.
@@ -41,7 +43,19 @@ interface SpMeta {
   oidcRedirectUri: string;
 }
 
-const ROLES = ['DISTRICT_ADMIN', 'SCHOOL_ADMIN', 'CONTRIBUTOR', 'RESTRICTED_VIEWER'];
+/*
+ * The `defaultRole` options are computed per-caller (see `tenantRoleOptions`),
+ * not hard-coded.
+ *
+ * This list used to be a flat `['DISTRICT_ADMIN', 'SCHOOL_ADMIN',
+ * 'CONTRIBUTOR', 'RESTRICTED_VIEWER']`. ACC-01 (2026-08-01) gave the writer a
+ * rank gate — a caller may only assign roles strictly BELOW their own — which
+ * made the first option a guaranteed 403 for the very role this page is gated
+ * to: a DISTRICT_ADMIN cannot assign DISTRICT_ADMIN. The operator picked a
+ * legitimate-looking option, saved, and got an error with no way to tell it
+ * apart from a broken page. SUPER_ADMIN was never offered and never will be —
+ * a tenant-scoped surface must not be able to mint a platform-owner role.
+ */
 
 function CopyField({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
@@ -96,6 +110,13 @@ export default function SsoSettingsPage() {
   const [defaultRole, setDefaultRole] = useState('RESTRICTED_VIEWER');
   const [allowedEmailDomain, setAllowedEmailDomain] = useState('');
   const [autoProvision, setAutoProvision] = useState(false);
+
+  // Only roles this caller can actually assign (ACC-01 rank gate). An already
+  // stored value is kept in the list even if the caller could not have set it,
+  // so an existing config renders its own value rather than silently showing
+  // someone else's choice.
+  const callerRole = useAppStore((s) => s.user?.role);
+  const roleOptions = tenantRoleOptions(callerRole, defaultRole);
 
   const getToken = () =>
     typeof window !== 'undefined' ? localStorage.getItem('auth_token') || '' : '';
@@ -397,12 +418,15 @@ export default function SsoSettingsPage() {
                     onChange={(e) => setDefaultRole(e.target.value)}
                     className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white"
                   >
-                    {ROLES.map((r) => (
+                    {roleOptions.map((r) => (
                       <option key={r} value={r}>
                         {r.replace('_', ' ')}
                       </option>
                     ))}
                   </select>
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    {t('streamingSso.defaultRoleRankNote')}
+                  </p>
                 </div>
                 <Field
                   label={t('streamingSso.allowedEmailDomain')}

@@ -41,7 +41,7 @@ concurrency:
 
 jobs:
   build-apk:
-    name: Build debug APK
+    name: Build APK (release-signed when secrets are present)
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -52,6 +52,13 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+
+      # For the artifact guards below. They are dependency-free plain
+      # Node (no pnpm install), so this is the only setup they need.
+      - name: Set up Node (for the release guards)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -82,15 +89,60 @@ jobs:
           ls -la apps/player/gradlew apps/player/gradle/wrapper/gradle-wrapper.jar
           chmod +x apps/player/gradlew
 
-      - name: Build debug APK
+      # Materialize the release keystore from the repo secret. The private key
+      # never exists in the repo — only as RELEASE_KEYSTORE_BASE64, which is
+      # write-only in GitHub (it cannot be read back, so this is NOT a backup;
+      # the owner's copies are the backup — see apps/player/RELEASE_SIGNING.md).
+      #
+      # If the secret is absent the file is simply not created, hasReleaseSigning
+      # stays false, and the build falls back to assembleDebug below. That keeps
+      # a fork or a secretless environment building instead of hard-failing.
+      - name: Materialize release keystore
+        id: keystore
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$RELEASE_KEYSTORE_BASE64" ]; then
+            echo "::warning::RELEASE_KEYSTORE_BASE64 not set — falling back to a DEBUG build."
+            echo "available=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/venueos-release.jks"
+          # Sanity-check the decode: a PKCS12/JKS store starts with 0x30 0x82.
+          head -c 2 "$RUNNER_TEMP/venueos-release.jks" | xxd -p | grep -q '^3082' || {
+            echo "::error::Decoded keystore is not a valid key store — check RELEASE_KEYSTORE_BASE64."
+            exit 1
+          }
+          echo "available=true" >> $GITHUB_OUTPUT
+          echo "Keystore materialized ($(stat -c%s "$RUNNER_TEMP/venueos-release.jks") bytes)."
+
+      - name: Build APK
         env:
           PLAYER_BASE_URL: ${{ github.event.inputs.playerBaseUrl != '' && github.event.inputs.playerBaseUrl || 'https://venue-os.app/player' }}
+          RELEASE_STORE_FILE: ${{ runner.temp }}/venueos-release.jks
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          HAVE_KEYSTORE: ${{ steps.keystore.outputs.available }}
         run: |
           cd apps/player
           # Tee full build output so failures leave a readable artifact for
           # debugging without needing `gh auth` just to read CI logs.
           set -o pipefail
-          ./gradlew --no-daemon --stacktrace assembleDebug -PplayerBaseUrl="$PLAYER_BASE_URL" 2>&1 | tee gradle-build.log
+          if [ "$HAVE_KEYSTORE" = "true" ]; then
+            TASK=assembleRelease
+          else
+            TASK=assembleDebug
+          fi
+          echo "Gradle task: $TASK"
+          echo "task=$TASK" >> $GITHUB_ENV
+          # The locate/rename/guard steps below read this to pick the output dir.
+          if [ "$TASK" = "assembleRelease" ]; then
+            echo "VARIANT=release" >> $GITHUB_ENV
+          else
+            echo "VARIANT=debug" >> $GITHUB_ENV
+          fi
+          ./gradlew --no-daemon --stacktrace "$TASK" -PplayerBaseUrl="$PLAYER_BASE_URL" 2>&1 | tee gradle-build.log
           status=${PIPESTATUS[0]}
           exit $status
 
@@ -150,13 +202,13 @@ jobs:
           # install on older armeabi-v7a hardware (Rockchip RK3288 etc.)
           # with INSTALL_FAILED_NO_MATCHING_ABIS. Operator (2026-04-29):
           # "having issues installing our apk on other screens".
-          APK=$(find apps/player/app/build/outputs/apk/debug -name '*universal*.apk' | head -1)
+          APK=$(find apps/player/app/build/outputs/apk/${VARIANT} -name '*universal*.apk' | head -1)
           if [ -z "$APK" ]; then
             # Fallback to arm64 only if universal wasn't produced (would
             # be a build config regression — `isUniversalApk = true` in
             # app/build.gradle.kts should always produce the universal
             # variant).
-            APK=$(find apps/player/app/build/outputs/apk/debug -name '*arm64*.apk' | head -1)
+            APK=$(find apps/player/app/build/outputs/apk/${VARIANT} -name '*arm64*.apk' | head -1)
           fi
           if [ -z "$APK" ]; then
             echo "::error::No APK was produced (neither universal nor arm64-v8a)"
@@ -177,7 +229,7 @@ jobs:
             VERSION="${GITHUB_SHA:0:7}"
           fi
           NEW_NAME="edu-cms-player-v${VERSION}.apk"
-          NEW_PATH="apps/player/app/build/outputs/apk/debug/${NEW_NAME}"
+          NEW_PATH="apps/player/app/build/outputs/apk/${VARIANT}/${NEW_NAME}"
           mv "$APK" "$NEW_PATH"
           echo "apk=$NEW_PATH" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -205,9 +257,9 @@ jobs:
           # as Player's locate step above. Manager's self-update path
           # downloads this APK; armeabi-v7a screens need the universal
           # variant or self-update fails on them too.
-          MGR_APK=$(find apps/player/manager/build/outputs/apk/debug -name '*universal*.apk' 2>/dev/null | head -1 || true)
+          MGR_APK=$(find apps/player/manager/build/outputs/apk/${VARIANT} -name '*universal*.apk' 2>/dev/null | head -1 || true)
           if [ -z "$MGR_APK" ]; then
-            MGR_APK=$(find apps/player/manager/build/outputs/apk/debug -name '*arm64*.apk' 2>/dev/null | head -1 || true)
+            MGR_APK=$(find apps/player/manager/build/outputs/apk/${VARIANT} -name '*arm64*.apk' 2>/dev/null | head -1 || true)
           fi
           if [ -z "$MGR_APK" ]; then
             echo "::error::Manager APK not found. Manager is required for OTA validation."
@@ -223,7 +275,7 @@ jobs:
             MVERSION="${GITHUB_SHA:0:7}"
           fi
           MGR_NEW="edu-cms-manager-v${MVERSION}.apk"
-          MGR_NEW_PATH="apps/player/manager/build/outputs/apk/debug/${MGR_NEW}"
+          MGR_NEW_PATH="apps/player/manager/build/outputs/apk/${VARIANT}/${MGR_NEW}"
           mv "$MGR_APK" "$MGR_NEW_PATH"
           echo "apk=$MGR_NEW_PATH" >> $GITHUB_OUTPUT
           echo "version=$MVERSION" >> $GITHUB_OUTPUT
@@ -236,6 +288,39 @@ jobs:
           path: ${{ steps.locate-manager.outputs.apk }}
           retention-days: 30
           if-no-files-found: error
+
+      # ─── RELEASE GUARD ────────────────────────────────────────────
+      # Inspects the APKs we are ACTUALLY about to publish (reads the
+      # binary AndroidManifest.xml straight out of the zip) and fails if
+      # `android:debuggable="true"`. Must run BEFORE the two "Attach …
+      # to GitHub Release" steps below — that is the publish boundary.
+      #
+      # Report-only on ordinary pushes: every build prints the debuggable
+      # status of its artifacts, so the state is never a surprise.
+      - name: Report — is the built APK debuggable? (non-blocking)
+        run: |
+          node scripts/check-apk-debuggable.cjs --warn-only \
+            "${{ steps.locate.outputs.apk }}" \
+            "${{ steps.locate-manager.outputs.apk }}"
+
+      # Blocking on the PUBLISH path only (a release tag).
+      #
+      # CUTOVER COMPLETE (2026-08-03): the release keystore now exists as repo
+      # secrets, the build above runs `assembleRelease` whenever they are
+      # present, and the `ALLOW_DEBUGGABLE_RELEASE` escape has been DELETED.
+      # A debuggable published artifact is now a hard failure, which is the
+      # whole point — `android:debuggable="true"` on a shipped kiosk APK let
+      # anyone with ADB read the device token out of app-private storage
+      # (finding PLAYER-SIGN-02).
+      #
+      # Do NOT re-add an escape hatch here. If this step fails, the correct
+      # response is to fix the build, never to wave the artifact through.
+      - name: Guard — published APK must not be debuggable
+        if: startsWith(github.ref, 'refs/tags/player-v') || startsWith(github.ref, 'refs/tags/manager-v')
+        run: |
+          node scripts/check-apk-debuggable.cjs \
+            "${{ steps.locate.outputs.apk }}" \
+            "${{ steps.locate-manager.outputs.apk }}"
 
       # On tag push (player-v*) attach the APK to a GitHub Release so
       # /api/v1/player/apk/latest can resolve it without any Railway env

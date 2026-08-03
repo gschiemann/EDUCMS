@@ -143,13 +143,21 @@ describe('SsoService', () => {
     });
 
     it('encrypts oidcClientSecret before persisting', async () => {
-      await service.upsertConfig(tenant.id, {
-        provider: 'OIDC',
-        enabled: true,
-        oidcIssuer: 'https://idp.example.com',
-        oidcClientId: 'client-abc',
-        oidcClientSecret: 'very-secret',
-      });
+      await service.upsertConfig(
+        tenant.id,
+        {
+          provider: 'OIDC',
+          enabled: true,
+          oidcIssuer: 'https://idp.example.com',
+          oidcClientId: 'client-abc',
+          oidcClientSecret: 'very-secret',
+        },
+        'district-admin-id',
+        // ACC-01: arming a login path now requires an identified actor for
+        // BOTH providers (it already did for SAML — see the x509 test below).
+        // This test exercises the persist+encrypt path, so it must pass the gate.
+        'DISTRICT_ADMIN',
+      );
       const upsertArgs = prismaMock.client.tenantSSOConfig.upsert.mock.calls[0][0];
       expect(upsertArgs.create.oidcClientSecret).toBeTruthy();
       expect(upsertArgs.create.oidcClientSecret).not.toBe('very-secret');
@@ -219,6 +227,209 @@ describe('SsoService', () => {
           oidcClientId: 'client-abc',
           oidcClientSecret: 'very-secret',
         },
+        'district-admin-id',
+        'DISTRICT_ADMIN',
+      );
+      expect(prismaMock.client.tenantSSOConfig.upsert).toHaveBeenCalled();
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // ACC-01 (CRITICAL, 2026-08-01) — PRIVILEGE ESCALATION TO SUPER_ADMIN
+  //
+  // The full attack chain this suite closes:
+  //   1. POST /api/v1/signup                → self-serve DISTRICT_ADMIN,
+  //                                           ACTIVE, no approval/verification
+  //   2. POST /tenants/<own-slug>/sso       → { provider:'OIDC', enabled:true,
+  //                                             autoProvision:true,
+  //                                             defaultRole:'SUPER_ADMIN',
+  //                                             oidcIssuer:<attacker IdP> }
+  //                                           — stored VERBATIM (no validation
+  //                                             pipe, no role policy)
+  //   3. log in through the attacker's IdP  → user.create({ role:'SUPER_ADMIN' })
+  //                                           then a SUPER_ADMIN JWT
+  //   → RbacGuard passes everything, requireTenantId() returns null (no tenant
+  //     filter at all), and POST /emergency/trigger works against ANY scope.
+  //
+  // Root cause: `assertCallerCanAssignRole` was imported by exactly two files
+  // (users.controller, onboarding.service). The SSO module never called it.
+  // ══════════════════════════════════════════════════════════════════════
+  describe('ACC-01 — SSO defaultRole cannot escalate privilege', () => {
+    const attackerConfig = (defaultRole: string) => ({
+      provider: 'OIDC' as const,
+      enabled: true,
+      autoProvision: true,
+      oidcIssuer: 'https://idp.attacker.example',
+      oidcClientId: 'client-abc',
+      oidcClientSecret: 'very-secret',
+      defaultRole: defaultRole as any,
+    });
+
+    it('REJECTS a DISTRICT_ADMIN setting defaultRole:SUPER_ADMIN', async () => {
+      await expect(
+        service.upsertConfig(
+          tenant.id,
+          attackerConfig('SUPER_ADMIN'),
+          'attacker-user-id',
+          'DISTRICT_ADMIN',
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      // Fail CLOSED — nothing written, so no partial/poisoned row survives.
+      expect(prismaMock.client.tenantSSOConfig.upsert).not.toHaveBeenCalled();
+      // ...and the attempt is in the immutable trail.
+      expect(
+        prismaMock.client.auditLog.create.mock.calls.some(
+          (c: any[]) => c[0]?.data?.action === 'SSO_DEFAULT_ROLE_DENIED',
+        ),
+      ).toBe(true);
+    });
+
+    it('REJECTS even a SUPER_ADMIN setting defaultRole:SUPER_ADMIN (tenant-scoped ceiling)', async () => {
+      // SUPER_ADMIN is a platform-owner role; no tenant-scoped surface may
+      // grant it, no matter who asks. Mirrors ApiKeysService.ALLOWED_ROLES.
+      await expect(
+        service.upsertConfig(
+          tenant.id,
+          attackerConfig('SUPER_ADMIN'),
+          'super-admin-id',
+          'SUPER_ADMIN',
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prismaMock.client.tenantSSOConfig.upsert).not.toHaveBeenCalled();
+    });
+
+    it('REJECTS a DISTRICT_ADMIN granting its own rank (DISTRICT_ADMIN)', async () => {
+      // Rank rule: a caller may only assign STRICTLY BELOW itself.
+      await expect(
+        service.upsertConfig(
+          tenant.id,
+          attackerConfig('DISTRICT_ADMIN'),
+          'attacker-user-id',
+          'DISTRICT_ADMIN',
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('REJECTS an unidentified caller (fails closed)', async () => {
+      await expect(
+        service.upsertConfig(tenant.id, attackerConfig('CONTRIBUTOR'), null, null),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('ALLOWS the legitimate defaults — RESTRICTED_VIEWER and CONTRIBUTOR', async () => {
+      for (const role of ['RESTRICTED_VIEWER', 'CONTRIBUTOR']) {
+        prismaMock.client.tenantSSOConfig.upsert.mockClear();
+        await service.upsertConfig(
+          tenant.id,
+          attackerConfig(role),
+          'district-admin-id',
+          'DISTRICT_ADMIN',
+        );
+        const args = prismaMock.client.tenantSSOConfig.upsert.mock.calls[0][0];
+        expect(args.create.defaultRole).toBe(role);
+      }
+    });
+
+    it('ALLOWS a DISTRICT_ADMIN granting SCHOOL_ADMIN (one rank below)', async () => {
+      await service.upsertConfig(
+        tenant.id,
+        attackerConfig('SCHOOL_ADMIN'),
+        'district-admin-id',
+        'DISTRICT_ADMIN',
+      );
+      expect(prismaMock.client.tenantSSOConfig.upsert).toHaveBeenCalled();
+    });
+
+    it('defaults to RESTRICTED_VIEWER when no defaultRole is supplied', async () => {
+      await service.upsertConfig(
+        tenant.id,
+        {
+          provider: 'OIDC',
+          enabled: true,
+          oidcIssuer: 'https://idp.example.com',
+          oidcClientId: 'client-abc',
+          oidcClientSecret: 'very-secret',
+        },
+        'district-admin-id',
+        'DISTRICT_ADMIN',
+      );
+      const args = prismaMock.client.tenantSSOConfig.upsert.mock.calls[0][0];
+      expect(args.create.defaultRole).toBe('RESTRICTED_VIEWER');
+    });
+  });
+
+  // ACC-01 layer 4 — arming an OIDC login path is now an explicit, audited
+  // authorization step, exactly as arming SAML already was. The ASYMMETRY was
+  // the bug: OIDC had no arm check at all.
+  describe('ACC-01 — arming an OIDC login path', () => {
+    const complete = {
+      provider: 'OIDC' as const,
+      enabled: true,
+      oidcIssuer: 'https://idp.example.com',
+      oidcClientId: 'client-abc',
+      oidcClientSecret: 'very-secret',
+    };
+
+    it('REJECTS a role that may not own a tenant login path (SCHOOL_ADMIN)', async () => {
+      await expect(
+        service.upsertConfig(tenant.id, complete, 'school-admin-id', 'SCHOOL_ADMIN'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prismaMock.client.tenantSSOConfig.upsert).not.toHaveBeenCalled();
+      expect(
+        prismaMock.client.auditLog.create.mock.calls.some(
+          (c: any[]) => c[0]?.data?.action === 'SSO_OIDC_ENABLE_DENIED',
+        ),
+      ).toBe(true);
+    });
+
+    it('REFUSES to arm an INCOMPLETE OIDC config (no silent stub login)', async () => {
+      // buildOidcLoginUrl falls through its catch to a non-functional stub
+      // authorize URL when discovery fails — a login that LOOKS armed and is
+      // not. Refuse at the arm step instead.
+      await expect(
+        service.upsertConfig(
+          tenant.id,
+          { provider: 'OIDC', enabled: true, oidcIssuer: 'https://idp.example.com' },
+          'district-admin-id',
+          'DISTRICT_ADMIN',
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prismaMock.client.tenantSSOConfig.upsert).not.toHaveBeenCalled();
+    });
+
+    it('ALLOWS arming when the secret was stored on an EARLIER save', async () => {
+      // The DTO omits oidcClientSecret to mean "leave it alone"; the gate must
+      // consult the stored row rather than demand a re-paste of the secret.
+      prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValueOnce({
+        oidcClientSecret: 'already-encrypted-blob',
+      });
+      await service.upsertConfig(
+        tenant.id,
+        {
+          provider: 'OIDC',
+          enabled: true,
+          oidcIssuer: 'https://idp.example.com',
+          oidcClientId: 'client-abc',
+        },
+        'district-admin-id',
+        'DISTRICT_ADMIN',
+      );
+      expect(prismaMock.client.tenantSSOConfig.upsert).toHaveBeenCalled();
+    });
+
+    it('records an SSO_OIDC_ENABLE_ALLOWED forensic row on a successful arm', async () => {
+      await service.upsertConfig(tenant.id, complete, 'district-admin-id', 'DISTRICT_ADMIN');
+      expect(
+        prismaMock.client.auditLog.create.mock.calls.some(
+          (c: any[]) => c[0]?.data?.action === 'SSO_OIDC_ENABLE_ALLOWED',
+        ),
+      ).toBe(true);
+    });
+
+    it('lets a DISTRICT_ADMIN STORE an OIDC config while disabled (no arm gate)', async () => {
+      await service.upsertConfig(
+        tenant.id,
+        { provider: 'OIDC', enabled: false, oidcIssuer: 'https://idp.example.com' },
         'district-admin-id',
         'DISTRICT_ADMIN',
       );
@@ -322,6 +533,107 @@ describe('SsoService', () => {
       expect(createArgs.data.passwordHash).toMatch(/^sso:/);
       expect(u.email).toBe('new@acme.edu');
     });
+
+    // ── ACC-01, defence in depth at the PROVISIONING site ─────────────────
+    // The write-side gate is the primary control, but this is the line that
+    // actually mints privilege and must be safe alone: a row poisoned BEFORE
+    // the fix shipped, restored from an old backup, or written by a direct
+    // SQL/Prisma-Studio edit must still not be able to create a platform-owner.
+    describe('ACC-01 — a PRE-POISONED config row cannot provision a SUPER_ADMIN', () => {
+      it('clamps a stored defaultRole of SUPER_ADMIN down to RESTRICTED_VIEWER', async () => {
+        prismaMock.client.user.findUnique.mockResolvedValueOnce(null);
+        prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValueOnce({
+          autoProvision: true,
+          allowedEmailDomain: 'acme.edu',
+          defaultRole: 'SUPER_ADMIN', // poisoned at rest
+        });
+
+        await service.resolveOrProvisionUser(tenant.id, { email: 'attacker@acme.edu' });
+
+        const createArgs = prismaMock.client.user.create.mock.calls[0][0];
+        expect(createArgs.data.role).toBe('RESTRICTED_VIEWER');
+        expect(createArgs.data.role).not.toBe('SUPER_ADMIN');
+        // The clamp is loud — an operator must be able to find the poisoned row.
+        expect(
+          prismaMock.client.auditLog.create.mock.calls.some(
+            (c: any[]) => c[0]?.data?.action === 'SSO_DEFAULT_ROLE_CLAMPED',
+          ),
+        ).toBe(true);
+      });
+
+      it('clamps any junk/unknown stored role too', async () => {
+        prismaMock.client.user.findUnique.mockResolvedValueOnce(null);
+        prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValueOnce({
+          autoProvision: true,
+          defaultRole: 'ROOT',
+        });
+        await service.resolveOrProvisionUser(tenant.id, { email: 'x@acme.edu' });
+        expect(prismaMock.client.user.create.mock.calls[0][0].data.role).toBe(
+          'RESTRICTED_VIEWER',
+        );
+      });
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // ACC-04 — turning SSO OFF must turn SSO LOGIN off.
+  // `buildOidcLoginUrl` required `enabled`, but the two paths that actually
+  // MINT a session (validateOidcCallback, completeSsoLogin) checked only the
+  // provider — so disabling OIDC in the dashboard left the IdP round-trip
+  // fully live against the callback URL.
+  // ══════════════════════════════════════════════════════════════════════
+  describe('ACC-04 — disabling OIDC disables OIDC login', () => {
+    it('validateOidcCallback rejects when the config is DISABLED', async () => {
+      prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValueOnce({
+        provider: 'OIDC',
+        enabled: false,
+        oidcIssuer: 'https://idp.example.com',
+      });
+      await expect(
+        service.validateOidcCallback(
+          tenant.slug,
+          { code: 'abc', state: 's' },
+          'https://api.example.com',
+          { state: 's', nonce: 'n' },
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('completeSsoLogin rejects when the config is DISABLED', async () => {
+      prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValue({
+        provider: 'OIDC',
+        enabled: false,
+        autoProvision: true,
+        defaultRole: 'CONTRIBUTOR',
+      });
+      await expect(
+        service.completeSsoLogin(tenant.slug, 'OIDC', { email: 'x@acme.edu' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      // No user was provisioned and no token minted.
+      expect(prismaMock.client.user.create).not.toHaveBeenCalled();
+      expect(jwtMock.sign).not.toHaveBeenCalled();
+    });
+  });
+
+  // ACC-05 — an archived (retired) tenant must not be able to mint a session
+  // by ANY route. The password path is covered in auth.service.spec.
+  describe('ACC-05 — archived tenants cannot log in via SSO', () => {
+    it('rejects completeSsoLogin when the tenant is archived', async () => {
+      prismaMock.client.tenant.findUnique.mockResolvedValue({
+        ...tenant,
+        archivedAt: new Date(),
+      });
+      prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValue({
+        provider: 'OIDC',
+        enabled: true,
+        autoProvision: true,
+        defaultRole: 'CONTRIBUTOR',
+      });
+      await expect(
+        service.completeSsoLogin(tenant.slug, 'OIDC', { email: 'x@acme.edu' }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(jwtMock.sign).not.toHaveBeenCalled();
+    });
   });
 
   describe('mintJwtForUser', () => {
@@ -350,6 +662,9 @@ describe('SsoService', () => {
     it('mints a token and writes an audit log on success', async () => {
       prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValue({
         provider: 'OIDC',
+        // ACC-04: `enabled` is now required on the login-completion path too
+        // (it used to be checked only when BUILDING the login URL).
+        enabled: true,
         autoProvision: true,
         allowedEmailDomain: 'acme.edu',
         defaultRole: 'CONTRIBUTOR',

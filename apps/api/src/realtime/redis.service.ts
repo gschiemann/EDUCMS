@@ -2,7 +2,7 @@ import { Injectable, OnModuleDestroy, OnModuleInit, Logger, Optional } from '@ne
 import { Redis } from 'ioredis';
 import { createHash } from 'crypto';
 import { requireSecret } from '../security/required-secret';
-import { verifyWsHmac } from '../security/ws-signature';
+import { bindWsSignatureToChannel, verifyWsHmac } from '../security/ws-signature';
 import { PrismaService } from '../prisma/prisma.service';
 
 // ───────────────────────────────────────────────────────────────────
@@ -34,6 +34,13 @@ export function hashRevokedToken(token: string): string {
 
 /** 30 days — the rememberMe ceiling; matches the Redis TTLs. */
 const REVOKED_MIRROR_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * The ONLY channel families the fan-out subscriber listens on (see the
+ * psubscribe in onModuleInit) and therefore the only ones that may reach
+ * `gateway.broadcastToScope` / `sse.broadcastToScope`.
+ */
+const WS_SCOPE_CHANNEL_TYPES = new Set(['tenant', 'group', 'device']);
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
@@ -176,8 +183,29 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     try {
       const parsed = JSON.parse(message);
       const channelParts = channel.split(':');
-      if (channelParts.length < 2) return;
+      // HARDENING (R-02 follow-on): scope channels are EXACTLY two segments.
+      // `split(':')` + destructure used to accept `tenant:<A>:anything` and
+      // route it as scope `tenant:<A>` — so a channel that merely PREFIXES a
+      // real tenant (e.g. the gateway's own `tenant:<id>:devices` set key)
+      // would have fanned out to that whole tenant. Every publisher in the
+      // codebase emits exactly `tenant:<id>` | `group:<id>` | `device:<id>`
+      // (verified by sweeping every `.publish(` call site), so this rejects
+      // only malformed/injected channels.
+      if (channelParts.length !== 2) {
+        this.logger.warn(`[WS] DROPPED message on malformed channel ${channel}`);
+        return;
+      }
       const [type, id] = channelParts;
+      if (!WS_SCOPE_CHANNEL_TYPES.has(type)) {
+        // Not a deliverable scope channel — e.g. the unsigned `metrics:ack`
+        // telemetry channel, which the Redis-DOWN fallback in publish() loops
+        // back through here. It was always dropped by the HMAC gate below,
+        // but at WARN — one line per ACK from every kiosk, i.e. a
+        // device-controlled log flood while Redis is down (R-07). Drop it
+        // here, at debug, before the gate.
+        this.logger.debug(`[WS] Ignoring non-scope channel ${channel}`);
+        return;
+      }
 
       // SERVER-SIDE EMERGENCY GATE (life-safety): verify the HMAC signature
       // + freshness BEFORE fanning out to any player. Every legitimate
@@ -188,7 +216,14 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       // Stateless verify → safe across replicas. Real emergencies are still
       // guaranteed by the player's authenticated HTTPS poll backstop even if
       // a message is ever dropped here.
-      const verdict = verifyWsHmac(parsed, this.deviceSecret);
+      //
+      // R-02: verify against the channel the message ACTUALLY arrived on.
+      // The routing scope below (`type`/`id`) is read straight off this
+      // untrusted channel name, so without binding it into the signed bytes
+      // a captured tenant-A envelope replayed onto `tenant:<B>` verified
+      // byte-for-byte — defeating the very "compromised Redis" threat this
+      // gate exists for.
+      const verdict = verifyWsHmac(parsed, this.deviceSecret, undefined, channel);
       if (!verdict.ok) {
         this.logger.warn(
           `[WS] DROPPED unverified message on ${channel} ` +
@@ -207,15 +242,94 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   async publish(channel: string, payload: any) {
+    // R-02 ENFORCEMENT POINT. This is the one place that knows both the
+    // signed envelope AND the channel it is authorized for, so bind them
+    // together here — every publisher in the app gets channel-scoped
+    // signatures with no change at its call site. Envelopes that don't
+    // already carry a valid signature (unsigned telemetry, test doubles) pass
+    // through untouched; this never mints a signature for unsigned data.
+    const framed = bindWsSignatureToChannel(payload, channel, this.deviceSecret);
     if (this.connected && this.publisher) {
-      await this.publisher.publish(channel, JSON.stringify(payload));
+      await this.publisher.publish(channel, JSON.stringify(framed));
     } else {
       // Fallback: If Redis is unavailable (local dev), pipe directly to the resident websocket gateway
       if (this.gateway) {
         this.logger.debug(`[Mock Redis] Publishing to channel ${channel}`);
-        this.handleRedisMessage(channel, JSON.stringify(payload));
+        this.handleRedisMessage(channel, JSON.stringify(framed));
       }
     }
+  }
+
+  /**
+   * Add a member to a Redis set — the WRITE half of the revocation check
+   * `sismember` performs (2026-08-03).
+   *
+   * THE BUG THIS CLOSES. `RedisService` exposed `sismember` but no `sadd`,
+   * so `revokeScreenCredentials()` (screens/device-credentials.ts) called
+   * `redis.sadd?.(…)` against a method that did not exist. Optional chaining
+   * made that a silent no-op: the durable Postgres mirror was written, the
+   * `credentialEpoch` was bumped, but the HOT set every request checks first
+   * was never populated. The revocation still held — the epoch is the real
+   * control and the mirror is consulted whenever Redis is down — but the
+   * cheap tier that keeps revocation affordable at fleet scale was dead.
+   *
+   * FAIL-SAFE CONTRACT (do not weaken):
+   *   • NEVER throws. A Redis outage must not be able to fail a revocation,
+   *     and this is called from `revokeScreenCredentials`, which is on the
+   *     unpair/re-pair path a live kiosk walks at boot.
+   *   • Returns whether the member actually landed in Redis, so a caller can
+   *     record the degraded state — but no caller may treat `false` as "the
+   *     revocation failed". Postgres (`revoked_credentials`, written by
+   *     `mirrorRevokedTokenDurable`) plus `Screen.credentialEpoch` remain
+   *     authoritative, and `sismember` already falls back to the mirror.
+   *
+   * TTL. `jwt_revoked_list` is one shared set, so its TTL is per-KEY, not
+   * per-member. A device token outlives a user session by 6×, so the TTL is
+   * only ever EXTENDED here, never shortened — otherwise revoking a device
+   * would quietly shorten the window protecting every user token in the set
+   * (and vice versa). ⚠️ `auth.controller.ts` logout still calls
+   * `publisher.expire('jwt_revoked_list', 30d)` directly, which CAN shorten
+   * a window this method extended; that call is outside this change's
+   * ownership boundary — see the fix report.
+   */
+  async sadd(
+    key: string,
+    member: string,
+    opts?: { ttlSeconds?: number },
+  ): Promise<boolean> {
+    if (!this.connected || !this.publisher) {
+      this.logger.warn(
+        `Redis unavailable — '${key}' set write skipped; the durable Postgres mirror ` +
+          'and the credential epoch remain authoritative',
+      );
+      return false;
+    }
+    try {
+      await this.publisher.sadd(key, member);
+    } catch (e) {
+      this.logger.warn(
+        `Redis set write failed for '${key}' (${e instanceof Error ? e.message : e}) — ` +
+          'durable mirror remains authoritative',
+      );
+      return false;
+    }
+    // Extend-only TTL. Best-effort and separately guarded: the member is
+    // already in the set at this point, and failing to lengthen an expiry is
+    // not a reason to report the write as lost.
+    const ttl = opts?.ttlSeconds;
+    if (ttl && Number.isFinite(ttl) && ttl > 0) {
+      try {
+        const current = await this.publisher.ttl(key);
+        // -1 = no expiry (already stronger than anything we'd set)
+        // -2 = key missing (raced with an eviction — nothing to extend)
+        if (current >= 0 && current < ttl) {
+          await this.publisher.expire(key, Math.ceil(ttl));
+        }
+      } catch {
+        /* TTL extension is best-effort; the member is already stored */
+      }
+    }
+    return true;
   }
 
   /**

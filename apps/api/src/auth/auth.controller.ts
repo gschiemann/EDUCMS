@@ -1,6 +1,7 @@
-import { Body, Controller, HttpCode, HttpException, HttpStatus, Logger, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, HttpCode, HttpException, HttpStatus, Logger, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { Throttle } from '@nestjs/throttler';
+import { z } from 'zod';
 import { LoginInputSchema, type LoginInput } from '@cms/api-types';
 import { AuthService } from './auth.service';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
@@ -10,6 +11,22 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SYSTEM_TENANT_ID, ensureSystemTenant } from '../security/system-tenant';
 import { clientIpFromRequest } from '../security/client-ip';
 import type { Request } from 'express';
+
+/**
+ * ACC-02 — body shape for POST /auth/change-password.
+ *
+ * `currentPassword` is capped like the login password (a 10MB string reaching
+ * argon2.verify is a request-thread DoS). `newPassword` enforces the same
+ * 8-char floor the reset + invite paths enforce, so the change-password door
+ * can't be used to set a weaker password than the front door allows.
+ */
+const ChangePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1).max(256),
+    newPassword: z.string().min(8).max(200),
+  })
+  .strict();
+type ChangePasswordInput = z.infer<typeof ChangePasswordSchema>;
 
 @Controller('api/v1/auth')
 export class AuthController {
@@ -65,6 +82,145 @@ export class AuthController {
       mfaRequired: !!(result as any)?.mfaRequired,
     });
     return result;
+  }
+
+  /**
+   * ACC-02 (2026-08-01) — authenticated password change.
+   *
+   * THE HOLE: there was NO change-password endpoint at all. The only way to
+   * rotate a password was the emailed reset link, so a user who suspected
+   * their session was compromised had no in-product way to lock it down, and
+   * (until the sibling fix in OnboardingService) the reset didn't end sessions
+   * either.
+   *
+   * The flow, in order:
+   *   1. re-verify the CURRENT password via `validateUser` — a stolen session
+   *      alone must not be enough to change the credential. Reusing
+   *      `validateUser` also inherits its guards for free: soft-deleted users,
+   *      non-ACTIVE (INVITED) users, ARCHIVED tenants (ACC-05), and the
+   *      argon2 timing equalizer;
+   *   2. hash the new one with the platform Argon2id config (`hashPassword` —
+   *      one config, not a second copy that can drift);
+   *   3. REVOKE every live session for the user, then hand back a replacement
+   *      token pinned to the revocation epoch — so the attacker's tokens die
+   *      and the legitimate caller is not signed out by their own action;
+   *   4. audit it.
+   */
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  // Tight per-IP cap: this endpoint runs two argon2 operations (~90ms) and is
+  // never called in a loop by a legitimate client.
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  async changePassword(
+    @Body(new ZodValidationPipe(ChangePasswordSchema)) body: ChangePasswordInput,
+    @Req() req: Request,
+  ) {
+    const actor = (req as any).user;
+    const userId: string | undefined = actor?.userId || actor?.id;
+    // API keys and device tokens are machine identities with no password to
+    // change; they must not reach this path.
+    if (!userId || actor?.kind === 'api-key' || actor?.kind === 'device') {
+      throw new UnauthorizedException({
+        code: 'AUTH_PASSWORD_CHANGE_NOT_APPLICABLE',
+        message: 'Only a signed-in user account can change its password.',
+      });
+    }
+
+    // ten-ok: identity SELF-lookup — id IS the authenticated JWT principal
+    const dbUser = await this.prisma.client.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, role: true, tenantId: true, canTriggerPanic: true },
+    });
+    if (!dbUser) {
+      throw new UnauthorizedException({ code: 'AUTH_USER_NOT_FOUND', message: 'User not found' });
+    }
+
+    // 1. Re-auth with the CURRENT password.
+    const verified = await this.authService.validateUser(dbUser.email, body.currentPassword);
+    if (!verified) {
+      await this.auditPasswordChange(dbUser.tenantId, dbUser.id, req, false, 'invalid_current_password');
+      throw new UnauthorizedException({
+        code: 'AUTH_CURRENT_PASSWORD_INVALID',
+        message: 'Your current password is incorrect.',
+      });
+    }
+    if (body.newPassword === body.currentPassword) {
+      throw new BadRequestException({
+        code: 'AUTH_PASSWORD_UNCHANGED',
+        message: 'Choose a password different from your current one.',
+      });
+    }
+
+    // 2. Rotate the hash.
+    const passwordHash = await this.authService.hashPassword(body.newPassword);
+    // ten-ok: identity SELF-update — only touches the authenticated principal's own row
+    await this.prisma.client.user.update({ where: { id: dbUser.id }, data: { passwordHash } });
+
+    // 3. Kill every live session, then re-issue exactly one.
+    //    `markUserTokensInvalid(userId, nowSec)` stores `nowSec + 1`; pinning
+    //    the replacement token's `iat` to that same epoch makes it the first
+    //    token that survives the cut (guard rejects on `iat < epoch`). Every
+    //    other token the account holds — including a stolen one — is strictly
+    //    older and is now dead.
+    const nowSec = Math.floor(Date.now() / 1000);
+    const revocationEpoch = nowSec + 1;
+    let sessionsRevoked = true;
+    try {
+      await this.redisService.markUserTokensInvalid(dbUser.id, nowSec);
+    } catch (e: any) {
+      // The password IS changed at this point. Surface the partial outcome
+      // rather than silently claiming a clean containment.
+      sessionsRevoked = false;
+      this.authLogger.error(
+        `changePassword(${dbUser.id}): password rotated but session revocation FAILED: ${e?.message ?? e}`,
+      );
+    }
+    const access_token = this.authService.signSessionToken(dbUser, {
+      iatSeconds: revocationEpoch,
+    });
+
+    // 4. Audit.
+    await this.auditPasswordChange(dbUser.tenantId, dbUser.id, req, true, null, sessionsRevoked);
+
+    return {
+      success: true,
+      // Client swaps its stored token for this one; every other device is
+      // signed out. `sessionsRevoked:false` means the revocation store was
+      // unreachable — the UI should tell the user to sign out everywhere.
+      access_token,
+      sessionsRevoked,
+    };
+  }
+
+  /** Immutable forensic row for a password-change attempt (success or not). */
+  private async auditPasswordChange(
+    tenantId: string,
+    userId: string,
+    req: Request,
+    success: boolean,
+    reason: string | null,
+    sessionsRevoked?: boolean,
+  ): Promise<void> {
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId,
+          userId,
+          action: success ? 'PASSWORD_CHANGED' : 'PASSWORD_CHANGE_FAILED',
+          targetType: 'User',
+          targetId: userId,
+          details: JSON.stringify({
+            ip: clientIpFromRequest(req),
+            ua: ((req.headers['user-agent'] as string | undefined) || '').slice(0, 256),
+            ...(reason ? { reason } : {}),
+            ...(sessionsRevoked === undefined ? {} : { sessionsRevoked }),
+          }),
+        },
+      });
+    } catch (e: any) {
+      this.authLogger.warn(`auditPasswordChange failed: ${e?.message ?? e}`);
+    }
   }
 
   /**

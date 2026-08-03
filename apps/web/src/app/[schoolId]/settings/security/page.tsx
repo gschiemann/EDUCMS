@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { ArrowLeft, Lock } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { MfaCard } from '@/components/settings/MfaCard';
+import { ChangePasswordCard } from '@/components/settings/ChangePasswordCard';
 
 /**
  * Security settings — per-user account security.
@@ -38,6 +39,11 @@ export default function SecuritySettingsPage() {
       </div>
 
       <MfaCard />
+      {/* ACC-02 (2026-08-01) shipped POST /auth/change-password with no UI at
+          all — the only way to rotate a password was the emailed reset link.
+          Sits under MFA because it is the other half of "lock my account
+          down right now": rotate the credential AND end every other session. */}
+      <ChangePasswordCard />
     </div>
   );
 }

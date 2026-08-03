@@ -26,7 +26,7 @@ function makeController() {
     findUnique: jest.fn(), update: jest.fn(),
     count: jest.fn().mockResolvedValue(0), delete: jest.fn().mockResolvedValue({}),
   };
-  const user = { findUnique: jest.fn() };
+  const user = { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) };
   const screen = { count: jest.fn().mockResolvedValue(0) };
   const auditLog = { create: jest.fn().mockResolvedValue({}) };
   const prisma: any = {
@@ -36,8 +36,11 @@ function makeController() {
     },
   };
   const jwt: any = { sign: jest.fn().mockReturnValue('signed.jwt.token') };
-  const controller = new TenantsController(prisma, jwt);
-  return { controller, tenant, user, screen, auditLog, jwt };
+  // ACC-05 (2026-08-01): archiving a tenant now revokes its users' live
+  // sessions, so the controller takes RedisService.
+  const redis: any = { markUserTokensInvalid: jest.fn().mockResolvedValue(undefined) };
+  const controller = new TenantsController(prisma, jwt, redis);
+  return { controller, tenant, user, screen, auditLog, jwt, redis };
 }
 
 describe('TenantsController.switchTenant — industry safety', () => {
@@ -75,6 +78,127 @@ describe('TenantsController.switchTenant — industry safety', () => {
 
     // The whole point: a switch must not mutate the customer's tenant row.
     expect(tenant.update).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * ACC-07 (2026-08-01) — a tenant switch silently upgraded a 1-hour session to
+ * a 30-day one.
+ *
+ * `switchTenant` signed `{ expiresIn: '30d' }` unconditionally. A user who
+ * logged in WITHOUT "remember me" holds a 1-hour session (auth.module
+ * signOptions); one click of the workspace switcher — a navigation action,
+ * not an authentication one — handed them the rememberMe ceiling. On a shared
+ * district workstation that turns "I closed the tab" into a month-long live
+ * credential, and it made the rememberMe policy trivially bypassable.
+ *
+ * The rule now: switching changes SCOPE, never LIFETIME.
+ */
+describe('TenantsController.switchTenant — session lifetime (ACC-07)', () => {
+  function switchReq(tokenExp: number | undefined) {
+    return {
+      user: { id: 'u1', userId: 'u1', role: 'SUPER_ADMIN', tenantId: 't1', tokenExp },
+    } as any;
+  }
+
+  async function doSwitch(tokenExp: number | undefined) {
+    const { controller, tenant, user, jwt } = makeController();
+    tenant.findUnique.mockResolvedValue({
+      id: 't2', name: 'Pizza Co', slug: 'pizza', parentId: null, vertical: 'QSR',
+    });
+    user.findUnique.mockResolvedValue({
+      id: 'u1', email: 'a@b.c', role: 'SUPER_ADMIN', canTriggerPanic: false,
+    });
+    await controller.switchTenant(switchReq(tokenExp), { tenantId: 't2' });
+    return jwt.sign.mock.calls[0][1];
+  }
+
+  it('does NOT extend a short (1-hour) session to 30 days', async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const opts = await doSwitch(nowSec + 3600); // ~1h left
+
+    expect(opts.expiresIn).toBeLessThanOrEqual(3600);
+    expect(opts.expiresIn).toBeGreaterThan(3500);
+    // The old behavior, pinned so it can't come back.
+    expect(opts.expiresIn).not.toBe('30d');
+    expect(opts.expiresIn).toBeLessThan(30 * 24 * 3600);
+  });
+
+  it('preserves a genuine rememberMe session (no downgrade either)', async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const thirtyDays = 30 * 24 * 3600;
+    const opts = await doSwitch(nowSec + thirtyDays);
+    expect(opts.expiresIn).toBeGreaterThan(thirtyDays - 60);
+    expect(opts.expiresIn).toBeLessThanOrEqual(thirtyDays);
+  });
+
+  it('never hands back an already-dead token (60s floor at the very end of a session)', async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const opts = await doSwitch(nowSec + 1); // 1 second left
+    expect(opts.expiresIn).toBe(60);
+  });
+
+  it('falls back to the module default (not 30 days) when the token carries no exp', async () => {
+    const opts = await doSwitch(undefined);
+    expect(opts).toBeUndefined(); // → JwtModule signOptions (1h)
+  });
+});
+
+/**
+ * ACC-05 (2026-08-01) — archiving a tenant used to be a DISPLAY-layer change
+ * only: it dropped out of lists and maps while every one of its users kept
+ * logging in normally, and an admin among them could still fire
+ * /emergency/trigger at real screens belonging to a "retired" location.
+ * Blocking login closes the front door; a token already issued stays valid for
+ * up to 30 days, so archiving must also burn the live sessions.
+ */
+describe('TenantsController archive — revokes the tenant users\' sessions (ACC-05)', () => {
+  const req = { user: { userId: 'admin-1', role: 'SUPER_ADMIN', tenantId: 'other' } } as any;
+
+  function seedCalmTenant(tenant: any) {
+    tenant.findUnique.mockResolvedValue({
+      id: 'kid-1', name: 'Retired Site', slug: 'retired',
+      parentId: 'parent-1', emergencyStatus: 'INACTIVE', archivedAt: null,
+    });
+  }
+
+  it('revokes every member session on archive', async () => {
+    const { controller, tenant, user, redis } = makeController();
+    seedCalmTenant(tenant);
+    user.findMany.mockResolvedValue([{ id: 'u1' }, { id: 'u2' }, { id: 'u3' }]);
+
+    const res: any = await controller.archiveTenant(req, 'kid-1');
+
+    expect(redis.markUserTokensInvalid).toHaveBeenCalledTimes(3);
+    expect(redis.markUserTokensInvalid.mock.calls.map((c: any[]) => c[0])).toEqual([
+      'u1', 'u2', 'u3',
+    ]);
+    expect(res.sessionsRevoked).toBe(3);
+    expect(res.sessionRevocationFailures).toBe(0);
+  });
+
+  it('reports a PARTIAL outcome instead of failing the archive', async () => {
+    const { controller, tenant, user, redis } = makeController();
+    seedCalmTenant(tenant);
+    user.findMany.mockResolvedValue([{ id: 'u1' }, { id: 'u2' }]);
+    redis.markUserTokensInvalid.mockRejectedValueOnce(new Error('redis down'));
+
+    const res: any = await controller.archiveTenant(req, 'kid-1');
+    expect(res.success).toBe(true);
+    expect(res.sessionsRevoked).toBe(1);
+    expect(res.sessionRevocationFailures).toBe(1);
+  });
+
+  it('does NOT revoke on UNarchive (restoring a tenant must not sign everyone out)', async () => {
+    const { controller, tenant, user, redis } = makeController();
+    tenant.findUnique.mockResolvedValue({
+      id: 'kid-1', name: 'Restored', slug: 'restored',
+      parentId: 'parent-1', emergencyStatus: 'INACTIVE', archivedAt: new Date(),
+    });
+    user.findMany.mockResolvedValue([{ id: 'u1' }]);
+
+    await controller.unarchiveTenant(req, 'kid-1');
+    expect(redis.markUserTokensInvalid).not.toHaveBeenCalled();
   });
 });
 

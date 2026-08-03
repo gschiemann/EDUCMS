@@ -75,7 +75,28 @@
     "orgSlug": "Identificador de la organización",
     "continueSSO": "Continuar con SSO",
     "redirecting": "Redirigiendo…",
-    "cancel": "Cancelar"
+    "cancel": "Cancelar",
+    "mfaSetupTitle": "Configura la verificación en dos pasos",
+    "mfaSetupSubtitle": "Tu administrador exige verificación en dos pasos en esta cuenta.",
+    "mfaSetupStep1": "Abre tu app de autenticación (Google Authenticator, 1Password, Authy…).",
+    "mfaSetupStep2": "Escanea este código QR o introduce la clave a mano.",
+    "mfaSetupStep3": "Escribe el código de 6 dígitos que muestre para terminar de entrar.",
+    "mfaSetupQrAlt": "Código QR para tu app de autenticación",
+    "mfaSetupManualKey": "Clave para entrada manual",
+    "mfaSetupFinish": "Terminar de entrar",
+    "mfaSetupPreparing": "Preparando tu clave de configuración…",
+    "mfaSetupRetry": "Reintentar",
+    "mfaSetupTimedOut": "Tu intento de acceso caducó. Vuelve a introducir tu contraseña.",
+    "mfaSetupFailed": "No se pudo iniciar la configuración en dos pasos. Inténtalo de nuevo.",
+    "mfaSetupUnreachable": "No se puede contactar con el servidor para iniciar la configuración. Inténtalo en un momento.",
+    "mfaVerifyUnreachable": "No se puede contactar con el servidor para verificar tu código. Inténtalo en un momento.",
+    "mfaEnterCodeToFinish": "Introduce el código de 6 dígitos de tu app de autenticación.",
+    "mfaCodeMismatch": "Ese código no coincide. Inténtalo de nuevo.",
+    "mfaBackupCodesTitle": "Guarda tus códigos de respaldo",
+    "mfaBackupCodesSubtitle": "Se muestran una sola vez.",
+    "mfaBackupCodesHelp": "Cada código sirve para entrar una vez si pierdes el teléfono. Guárdalos en un lugar seguro: un gestor de contraseñas, o impresos y bajo llave.",
+    "mfaCopyCodes": "Copiar todos los códigos",
+    "mfaSavedCodesContinue": "Ya los guardé — continuar"
   },
   "account": {
     "title": "Cuenta",
@@ -211,6 +232,11 @@
     },
     "license": {
       "title": "Plan y pantallas",
+      "tierPilot": "Piloto",
+      "tierStandard": "Estándar",
+      "tierEnterprise": "Empresarial",
+      "tierEducation": "Educación",
+      "tierChain": "Cadena",
       "ofLimit": "de {limit}",
       "screensWord": "pantallas",
       "limitReached": "— límite alcanzado",
@@ -318,7 +344,20 @@
       "creating": "Creando…",
       "sending": "Enviando…",
       "createUser": "Crear usuario",
-      "sendInvitation": "Enviar invitación"
+      "sendInvitation": "Enviar invitación",
+      "mfaOn": "2FA",
+      "mfaOff": "2FA",
+      "mfaPending": "2FA…",
+      "mfaRequiredEnrolled": "La verificación en dos pasos es obligatoria y ya está configurada.",
+      "mfaRequiredPending": "La verificación en dos pasos es obligatoria: la configurará en su próximo acceso.",
+      "mfaOptional": "La verificación en dos pasos es opcional para esta persona. Haz clic para exigirla.",
+      "require2faTitle": "¿Exigir verificación en dos pasos a {email}?",
+      "require2faMessage": "Se cerrará su sesión en todos los dispositivos y se le pedirá configurar una app de autenticación la próxima vez que entre.",
+      "require2faConfirm": "Exigir dos pasos",
+      "release2faTitle": "¿Dejar de exigir verificación en dos pasos a {email}?",
+      "release2faMessage": "Conservará la app de autenticación que ya haya configurado, pero dejará de ser obligatoria.",
+      "release2faConfirm": "Dejar de exigir",
+      "mfaChangeFailed": "No se pudo cambiar el requisito de verificación en dos pasos."
     },
     "ota": {
       "playerApkTitle": "APK del reproductor",
@@ -1137,7 +1176,8 @@
     "saving": "Guardando...",
     "saveSsoConfig": "Guardar configuración de SSO",
     "testing": "Probando...",
-    "testConnection": "Probar conexión"
+    "testConnection": "Probar conexión",
+    "defaultRoleRankNote": "Solo puedes asignar roles inferiores al tuyo."
   },
   "billingCommerce": {
     "settings": "Configuración",
@@ -1296,5 +1336,22 @@
     "catVenueNetwork": "🏢 Redes de recintos",
     "catDoohDirect": "🤝 Venta directa",
     "catHouseOnly": "🏠 Solo anuncios propios"
+  },
+  "changePassword": {
+    "title": "Cambiar contraseña",
+    "subtitle": "Cambia tu contraseña y cierra la sesión en los demás dispositivos.",
+    "currentLabel": "Contraseña actual",
+    "newLabel": "Contraseña nueva",
+    "confirmLabel": "Confirma la contraseña nueva",
+    "newHelp": "Al menos {min} caracteres.",
+    "submit": "Actualizar contraseña",
+    "updating": "Actualizando…",
+    "revokeNote": "Cambiar tu contraseña cierra la sesión en todos los demás dispositivos. Este seguirá conectado.",
+    "okRevoked": "Contraseña actualizada. Se cerró la sesión en todos los demás dispositivos.",
+    "okNotRevoked": "Contraseña actualizada, pero no pudimos confirmar que las otras sesiones terminaran. Cierra sesión manualmente en los otros dispositivos si puedes.",
+    "errTooShort": "La contraseña nueva debe tener al menos {min} caracteres.",
+    "errMismatch": "Las dos contraseñas nuevas no coinciden.",
+    "errUnchanged": "Elige una contraseña distinta de la actual.",
+    "errGeneric": "No se pudo actualizar tu contraseña. Inténtalo de nuevo."
   }
 }

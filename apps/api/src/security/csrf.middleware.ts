@@ -37,6 +37,15 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   (p) => p === '/api/v1/devices/pair',
   (p) => p === '/api/v1/screens/register',
   (p) => /^\/api\/v1\/screens\/[^/]+\/cache-status$/.test(p),
+  // SSE stream-ticket mint (DT-08, 2026-08-03). The player exchanges its
+  // device credential — sent in an `Authorization: Bearer` header, which a
+  // browser cannot attach cross-site automatically, so CSRF's ambient-cookie
+  // threat model does not apply — for a 60-second single-scope ticket, so
+  // the long-lived credential stops travelling in the SSE query string
+  // (and therefore in HTTP access logs and WebView history). Same argument
+  // as /player-logs/:id below. The route is device-authenticated and
+  // throttled 60/min; it mints nothing for an unauthenticated caller.
+  (p) => /^\/api\/v1\/screens\/[^/]+\/stream-ticket$/.test(p),
   (p) => /^\/api\/v1\/tenants\/me\/usb-ingest\/screens\/[^/]+\/event$/.test(p),
   // Native APK OTA poll — Kotlin HttpURLConnection has no cookie jar,
   // so a CSRF token round-trip is impossible. Previously every

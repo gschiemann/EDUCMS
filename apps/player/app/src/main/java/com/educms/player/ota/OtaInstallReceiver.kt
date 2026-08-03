@@ -56,9 +56,18 @@ class OtaInstallReceiver : BroadcastReceiver() {
                 // Route through MainActivity trampoline. FLAG_ACTIVITY_NEW_TASK
                 // + FLAG_ACTIVITY_SINGLE_TOP so we reuse the existing
                 // MainActivity instance instead of spawning a duplicate.
+                //
+                // ⚠️ AND-006 (2026-08-01) — the confirm Intent is handed
+                // over IN-PROCESS, never as an Intent extra. MainActivity
+                // is exported, so an extra would let any app on the device
+                // make us startActivity() an Intent of its choosing. This
+                // receiver is a manifest receiver of the same package with
+                // no android:process, so it always runs in MainActivity's
+                // process and the static holder below is unreachable from
+                // outside our UID.
+                stagePendingInstallPrompt(confirm)
                 val trampoline = Intent(context, com.educms.player.MainActivity::class.java).apply {
                     action = ACTION_LAUNCH_INSTALL_PROMPT
-                    putExtra(EXTRA_INSTALL_PROMPT, confirm)
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
                 }
                 try {
@@ -154,6 +163,26 @@ class OtaInstallReceiver : BroadcastReceiver() {
     companion object {
         private const val TAG = "OtaInstallReceiver"
         const val ACTION_LAUNCH_INSTALL_PROMPT = "com.educms.player.LAUNCH_INSTALL_PROMPT"
-        const val EXTRA_INSTALL_PROMPT = "install_prompt_intent"
+
+        /**
+         * AND-006 — in-process hand-off of the system-minted install
+         * confirmation Intent. Deliberately NOT an Intent extra:
+         * MainActivity is exported, so an extra is caller-controllable by
+         * any app on the device. Only code inside our own UID can write
+         * here.
+         */
+        @Volatile
+        private var pendingInstallPrompt: Intent? = null
+
+        fun stagePendingInstallPrompt(intent: Intent) {
+            pendingInstallPrompt = intent
+        }
+
+        /** Single-use read: returns the staged Intent and clears it. */
+        fun takePendingInstallPrompt(): Intent? {
+            val staged = pendingInstallPrompt
+            pendingInstallPrompt = null
+            return staged
+        }
     }
 }

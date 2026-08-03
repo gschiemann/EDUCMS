@@ -11,7 +11,10 @@ import {
   useAutoUpdatePlayerConfig, useToggleAutoUpdatePlayer, useLatestPlayerVersion,
   useOtaWindowConfig, useUpdateOtaWindow,
   useCanaryRollout, useUpdateCanaryRollout,
+  useSetUserMfaRequired,
 } from '@/hooks/use-api';
+import { useUIStore } from '@/store/ui-store';
+import { canAssignRole } from '@/lib/role-assignment';
 import { useState, useRef, useEffect } from 'react';
 import { UsbIngestCard } from '@/components/settings/UsbIngestCard';
 import { LicenseCard } from '@/components/settings/LicenseCard';
@@ -57,6 +60,12 @@ export default function SettingsPage() {
   const [newPassword, setNewPassword] = useState('');
   const deleteUser = useDeleteUser();
   const updateRole = useUpdateUserRole();
+  // ACC-03 — admin-forced 2FA. Rank-gated server-side (a caller can only set
+  // it on someone strictly below their own role), mirrored here so the button
+  // is simply absent on a peer instead of returning a 403 when clicked.
+  const setMfaRequired = useSetUserMfaRequired();
+  const callerRole = useUIStore((s) => s.user?.role);
+  const [mfaRowError, setMfaRowError] = useState<string | null>(null);
   const updatePanicSettings = useUpdateTenantPanicSettings();
   const [showAddUser, setShowAddUser] = useState(false);
   const [newEmail, setNewEmail] = useState('');
@@ -601,6 +610,12 @@ export default function SettingsPage() {
             </div>
           )}
 
+          {mfaRowError && (
+            <div className="mx-6 mb-3 px-3 py-2 bg-rose-50 border border-rose-200 rounded-lg">
+              <p className="text-[11px] text-rose-700 font-medium">{mfaRowError}</p>
+            </div>
+          )}
+
           {users && (
             <div className="divide-y divide-slate-50">
               {users.map((user: any) => {
@@ -625,6 +640,66 @@ export default function SettingsPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
+                    {/* ACC-03 — force two-factor on this account.
+                        Only offered where the server would allow it: the
+                        caller must outrank the target, so no peer/self
+                        button that is guaranteed to 403.
+                        Turning it ON signs the target out everywhere; they
+                        are routed through the login page's enrollment step
+                        on their next sign-in, so this is a control, not a
+                        lockout. */}
+                    {canAssignRole(callerRole, user.role) && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const turningOn = !user.mfaRequired;
+                          const ok = await appConfirm({
+                            title: turningOn
+                              ? t('settings.team.require2faTitle', { email: user.email })
+                              : t('settings.team.release2faTitle', { email: user.email }),
+                            message: turningOn
+                              ? t('settings.team.require2faMessage')
+                              : t('settings.team.release2faMessage'),
+                            confirmLabel: turningOn
+                              ? t('settings.team.require2faConfirm')
+                              : t('settings.team.release2faConfirm'),
+                          });
+                          if (!ok) return;
+                          setMfaRowError(null);
+                          setMfaRequired.mutate(
+                            { id: user.id, mfaRequired: turningOn },
+                            { onError: (e: any) => setMfaRowError(e?.message || t('settings.team.mfaChangeFailed')) },
+                          );
+                        }}
+                        disabled={setMfaRequired.isPending}
+                        title={
+                          user.mfaRequired
+                            ? (user.mfaEnrolled
+                                ? t('settings.team.mfaRequiredEnrolled')
+                                : t('settings.team.mfaRequiredPending'))
+                            : t('settings.team.mfaOptional')
+                        }
+                        aria-label={
+                          user.mfaRequired
+                            ? t('settings.team.release2faTitle', { email: user.email })
+                            : t('settings.team.require2faTitle', { email: user.email })
+                        }
+                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition-colors disabled:opacity-50 ${
+                          user.mfaRequired
+                            ? (user.mfaEnrolled
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100')
+                            : 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {user.mfaRequired
+                          ? <ShieldCheck className="w-3 h-3" />
+                          : <ShieldOff className="w-3 h-3" />}
+                        {user.mfaRequired
+                          ? (user.mfaEnrolled ? t('settings.team.mfaOn') : t('settings.team.mfaPending'))
+                          : t('settings.team.mfaOff')}
+                      </button>
+                    )}
                     <select
                       value={user.role}
                       onChange={(e) => updateRole.mutate({ id: user.id, role: e.target.value })}

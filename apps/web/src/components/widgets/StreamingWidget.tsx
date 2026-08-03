@@ -267,9 +267,60 @@ function HlsStream({ url, muted, fit, live }: { url: string; muted: boolean; fit
 function IframeStream({ url, muted, live }: { url: string; muted: boolean; live: boolean }) {
   // Normalize each provider's URL into its embed form.
   const embedUrl = normalizeEmbedUrl(url, { muted, autoplay: live });
+
+  // INJ-006 (2026-08-02) — normalizeEmbedUrl used to end with
+  // "assume the URL is already an embed URL; return u", so ANY string an
+  // operator (or a template-JSON edit) put in `embedUrl` was framed verbatim
+  // on a life-safety display. Now an unrecognised host is refused and the
+  // operator is told why, instead of the screen silently hosting a stranger's
+  // page.
+  if (!embedUrl) {
+    return (
+      <div
+        className="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center"
+        style={{ background: '#0f172a', color: '#fbbf24', fontSize: '0.9em', textAlign: 'center', padding: 16 }}
+      >
+        <div>
+          <div style={{ fontSize: '2em' }}>⚠️</div>
+          <div style={{ fontWeight: 700 }}>Unsupported streaming host.</div>
+          <div style={{ fontSize: '0.85em', marginTop: 4 }}>
+            Embeds are limited to {STREAMING_EMBED_HOSTS.join(', ')}. Use an HLS (.m3u8) URL for any
+            other provider.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <iframe
       src={embedUrl}
+      // SANDBOXED (2026-08-02, INJ-001a) — matching the FitnessLiveTVWidget
+      // precedent at fitness/FitnessLiveTVWidget.tsx:342, which is
+      // `allow-scripts allow-same-origin allow-presentation`.
+      //
+      // WHY `allow-same-origin` IS CORRECT *HERE* AND WRONG ON THE PROXY
+      // FRAMES: `src` is guaranteed cross-origin (normalizeEmbedUrl only ever
+      // returns an https URL on the STREAMING_EMBED_HOSTS allowlist), so
+      // `allow-same-origin` restores the FRAME'S OWN foreign origin —
+      // youtube.com, not ours. The same-origin policy still denies
+      // parent.document and the player's localStorage device token. On the
+      // WEBPAGE proxy frames the src is OUR origin, so the same token would
+      // hand the page our DOM — which is exactly why it is absent there.
+      //
+      // MEASURED, not assumed: with `allow-same-origin` removed, a real
+      // YouTube embed renders BLACK (the player's own storage/postMessage
+      // handshake fails in an opaque origin). Vimeo survived either way.
+      // Dropping the token would therefore delete YouTube streaming, the most
+      // common provider here — a feature regression, not a hardening.
+      //
+      // What the sandbox still buys: no top-level navigation (a frame-bust to
+      // a fake "all clear" page is the alert-suppression attack that
+      // matters), no forms, no modals, no pointer lock, no downloads.
+      // `allow-presentation` keeps cast / second-screen working. NOTE:
+      // `allow-popups-to-escape-sandbox` is deliberately NOT listed — without
+      // `allow-popups` it is inert, and popups have no place on signage.
+      sandbox="allow-scripts allow-same-origin allow-presentation"
       allow="autoplay; encrypted-media; picture-in-picture"
       allowFullScreen
       style={{ width: '100%', height: '100%', border: 0 }}
@@ -278,9 +329,39 @@ function IframeStream({ url, muted, live }: { url: string; muted: boolean; live:
   );
 }
 
-function normalizeEmbedUrl(input: string, opts: { muted: boolean; autoplay: boolean }): string {
+/**
+ * The streaming hosts this widget knows how to embed. Anything else is
+ * refused — `normalizeEmbedUrl` returns '' and the caller renders an honest
+ * "unsupported streaming host" placeholder.
+ *
+ * These are exactly the providers `normalizeEmbedUrl` already had rules for
+ * (plus kick.com, which `guessPlaybackType` routes to the iframe path). Adding
+ * a host here without a matching normalise rule would frame an operator-typed
+ * URL verbatim, so keep the two lists in step.
+ */
+export const STREAMING_EMBED_HOSTS = [
+  'youtube.com',
+  'youtube-nocookie.com',
+  'youtu.be',
+  'twitch.tv',
+  'vimeo.com',
+  'kick.com',
+] as const;
+
+/** True when `host` is an allowlisted streaming host or a subdomain of one. */
+export function isAllowedStreamingHost(host: string): boolean {
+  const h = host.toLowerCase().replace(/^www\./, '');
+  for (const allowed of STREAMING_EMBED_HOSTS) {
+    // Exact host, or a dot-boundary suffix — so "youtube.com.evil.net" and
+    // "notyoutube.com" are both refused.
+    if (h === allowed || h.endsWith('.' + allowed)) return true;
+  }
+  return false;
+}
+
+export function normalizeEmbedUrl(input: string, opts: { muted: boolean; autoplay: boolean }): string {
   if (!input) return '';
-  let u = input.trim();
+  const u = input.trim();
   // YouTube watch URL → embed URL.
   const ytMatch = u.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/live\/)([\w-]+)/);
   if (ytMatch) {
@@ -316,8 +397,29 @@ function normalizeEmbedUrl(input: string, opts: { muted: boolean; autoplay: bool
     const id = vimeoMatch[1];
     return `https://player.vimeo.com/video/${id}?autoplay=${opts.autoplay ? 1 : 0}&muted=${opts.muted ? 1 : 0}&controls=0`;
   }
-  // Fall through — assume the URL is already an embed URL.
-  return u;
+  // ─── FALL-THROUGH: allowlist, don't assume (INJ-006) ────────────────
+  // Previously: "assume the URL is already an embed URL; return u". That
+  // framed anything at all — an attacker-supplied page, an intranet host, a
+  // phishing clone — full-bleed on a school display, with the widget's own
+  // `allow="autoplay; encrypted-media; picture-in-picture"` grant.
+  //
+  // Now: only a URL that (a) parses, (b) is https, and (c) lives on a host
+  // this file actually recognises, survives. Everything else returns '' and
+  // the caller renders the "unsupported streaming host" placeholder.
+  //
+  // There is deliberately NO loopback/dev exemption: it would be the one way
+  // `src` could end up SAME-ORIGIN with the app, and this iframe carries
+  // `allow-same-origin` (see the sandbox note above), which is only safe
+  // while the src is guaranteed foreign.
+  try {
+    const parsed = new URL(u);
+    if (parsed.protocol !== 'https:') return '';
+    if (!isAllowedStreamingHost(parsed.hostname)) return '';
+    return u;
+  } catch {
+    // Not an absolute URL at all (relative path, javascript:, garbage).
+    return '';
+  }
 }
 
 // ─── Ad overlay engine ─────────────────────────────────────────────────

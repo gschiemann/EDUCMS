@@ -3,6 +3,7 @@ import type { Response } from 'express';
 import { RedisService } from './redis.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { stampPushConnected } from './push-health';
+import { isEpochAcceptable } from '../screens/device-auth';
 
 /**
  * SseService — Sprint 11 Phase B realtime fallback.
@@ -50,8 +51,20 @@ interface SseClient {
   deviceId: string | null;
   res: Response;
   /** The device JWT this stream authenticated with — re-checked for
-   *  revocation periodically (S15). Absent for internal/test clients. */
+   *  revocation periodically (S15). Absent for internal/test clients AND
+   *  for every ticket-authed stream (DT-08), which is why the epoch below
+   *  exists. */
   token: string | null;
+  /**
+   * The screen's `credentialEpoch` at admission time (DT-01/DT-08).
+   *
+   * A stream opened with a 60-second stream ticket holds no token string,
+   * so the denylist sweep below has nothing to look up — without this the
+   * ticket path would have had NO revocation sweep at all and a revoked
+   * screen would keep its open stream until it happened to reconnect.
+   * `null` for internal/test clients (nothing to re-check).
+   */
+  credentialEpoch: number | null;
   /** When this client connected (ms epoch) — useful for telemetry. */
   connectedAt: number;
 }
@@ -111,6 +124,8 @@ export class SseService {
     /** The device JWT this stream authenticated with (for periodic
      *  revocation re-checks). Optional so internal callers/tests can omit it. */
     token?: string | null;
+    /** The screen's credential epoch at admission (DT-08 ticket streams). */
+    credentialEpoch?: number | null;
   }): string {
     const id = `sse-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
     const client: SseClient = {
@@ -120,6 +135,7 @@ export class SseService {
       deviceId: opts.deviceId,
       res: opts.res,
       token: opts.token ?? null,
+      credentialEpoch: opts.credentialEpoch ?? null,
       connectedAt: Date.now(),
     };
     this.clients.set(id, client);
@@ -212,32 +228,86 @@ export class SseService {
   }
 
   /**
-   * Periodically close any open stream whose device token has since been
-   * revoked (S15). Mirrors the controller's open-time
-   * `sismember('jwt_revoked_list', token)` check. FAIL-OPEN: a Redis error
-   * or missing client leaves the stream untouched — we only disconnect on a
-   * definitive revoked=true, so an emergency stream is never dropped on a
-   * transient blip. Exposed for tests via the return of closed client ids.
+   * Periodically close any open stream whose credential has since been
+   * revoked (S15 + DT-01/DT-08). Two independent checks, because there are
+   * two ways a stream's right to exist can be withdrawn:
+   *
+   *   1. the token STRING was denylisted (`jwt_revoked_list`) — only
+   *      possible for a `?token=`-authed stream, which is the one that
+   *      holds a string;
+   *   2. the SCREEN's credential was retired — `revokeScreenCredentials()`
+   *      bumps `Screen.credentialEpoch` and (for an operator revoke) flips
+   *      `status` to REVOKED. This is the authority for BOTH transports and
+   *      the ONLY one available for a ticket-authed stream, which by design
+   *      carries no long-lived credential to denylist.
+   *
+   * FAIL-OPEN throughout: a Redis or Postgres error leaves the stream
+   * untouched — we only disconnect on a definitive revocation, so an
+   * emergency stream is never dropped on a transient infra blip. Exposed
+   * for tests via the return of closed client ids.
    */
   async tickRevocation(): Promise<string[]> {
-    if (this.clients.size === 0 || !this.redis) return [];
+    if (this.clients.size === 0) return [];
     const closed: string[] = [];
     for (const client of [...this.clients.values()]) {
-      if (!client.token) continue; // internal/test client — nothing to re-check
-      let revoked = false;
-      try {
-        revoked = await this.redis.sismember('jwt_revoked_list', client.token);
-      } catch {
-        continue; // fail-open: transient Redis error must not drop the stream
-      }
-      if (!revoked) continue;
+      const verdict = await this.revocationVerdict(client);
+      if (!verdict) continue;
       // Definitive revocation — tell the client and close the stream.
-      this.writeEvent(client, 'TOKEN_REVOKED', { ts: Date.now(), reason: 'device token revoked' });
+      this.writeEvent(client, 'TOKEN_REVOKED', { ts: Date.now(), reason: verdict });
       try { client.res.end(); } catch { /* swallow */ }
       this.clients.delete(client.id);
       closed.push(client.id);
-      this.logger.log(`[SSE] closed revoked stream id=${client.id} device=${client.deviceId || '-'}`);
+      this.logger.log(
+        `[SSE] closed revoked stream id=${client.id} device=${client.deviceId || '-'} reason=${verdict}`,
+      );
     }
     return closed;
+  }
+
+  /**
+   * `null` → keep the stream. A string → close it, and use the string as
+   * the reason reported to the client.
+   */
+  private async revocationVerdict(client: SseClient): Promise<string | null> {
+    if (client.token && this.redis) {
+      try {
+        if (await this.redis.sismember('jwt_revoked_list', client.token)) {
+          return 'device token revoked';
+        }
+      } catch {
+        /* fail-open: transient Redis error must not drop the stream */
+      }
+    }
+
+    // Credential-epoch / status re-check. Runs for every device-scoped
+    // stream, so it covers the ticket path (no token) as well as a token
+    // path whose exact string was never denylisted.
+    if (client.deviceId == null || client.credentialEpoch == null) return null;
+    const db = this.prismaService?.client;
+    if (!db) return null;
+    let row: any;
+    try {
+      row = await db.screen.findUnique({
+        where: { id: client.deviceId },
+        select: { status: true, credentialEpoch: true, credentialEpochRotatedAt: true } as any,
+      });
+    } catch {
+      return null; // fail-open on a DB blip, same posture as the Redis leg
+    }
+    // A deleted screen row is a complete credential kill (device-auth.ts).
+    if (!row) return 'screen deleted';
+    if (String(row.status ?? '') === 'REVOKED') return 'screen credential revoked';
+    // Grace-window semantics, deliberately: a routine rotation (the kiosk
+    // re-registering and proving possession) must NOT drop a live emergency
+    // stream. The REVOKED check above is the operator's hard kill switch,
+    // and admission-time checks are strict — this sweep only has to catch
+    // the credential that has fallen out of the window entirely.
+    if (!isEpochAcceptable(client.credentialEpoch, {
+      credentialEpoch: Number(row.credentialEpoch ?? 0) || 0,
+      credentialEpochRotatedAt: row.credentialEpochRotatedAt ?? null,
+    })) {
+      return 'screen credential rotated';
+    }
+    return null;
   }
 }
