@@ -7,21 +7,19 @@
  *
  * P0 #5 defenses (Round 2 — graduated trust for paired re-registration):
  *   Defense 1: Paired re-registration requires proof of prior device JWT
- *              (priorDeviceToken) to mint a full 365-day token.
- *   Feature flag: STRICT_REPAIR_AUTH=true → enforce; false/unset → legacy
- *              compat (365d issued even without priorDeviceToken so existing
- *              kiosks ≤ v1.0.33 keep working until fleet update).
+ *              (priorDeviceToken) to mint a full-lifetime token.
  *
- * Tests (5 new P0 #5 cases + 4 existing P0 #7 cases retained):
- *  1. Paired screen with valid priorDeviceToken → 365-day token
- *  2. Paired screen WITHOUT priorDeviceToken + STRICT_REPAIR_AUTH=true → 1h + requiresRePair
- *  3. Paired screen with INVALID priorDeviceToken (different screenId) → 401
- *  4. Paired screen with EXPIRED priorDeviceToken → 1-hour fallback (no hard reject)
- *  5. Unpaired screen path (Round 1 fix) → 15-min token  [carried over]
- *  6. Brand-new fingerprint → screenId + short token
- *  7. Per-fingerprint cooldown → 429
- *  8. Unpaired token TTL ≤ 16 min
- *  9. STRICT_REPAIR_AUTH=false (default) + absent priorDeviceToken → legacy 365d
+ * DT-02 / DT-04 (2026-08-03 security wave) changed three things here, and
+ * the assertions below were updated to match:
+ *   • Full-lifetime is 180 days, not 365. Expiry used to be decorative
+ *     because the credential renewed itself indefinitely; it is now a real
+ *     ceiling, sized to clear a ~100-day school summer break.
+ *   • STRICT_REPAIR_AUTH is GONE. The `false` default meant a bare device
+ *     FINGERPRINT — readable by CONTRIBUTOR and RESTRICTED_VIEWER — minted
+ *     a full-lifetime credential for any screen in the tenant. Strict is
+ *     now unconditional; P5-5 asserts the old legacy branch is dead.
+ *   • Proving possession ROTATES the credential epoch, so the presented
+ *     token is retired as the new one is issued.
  */
 
 import * as jwt from 'jsonwebtoken';
@@ -47,6 +45,9 @@ const mockPrisma: any = {
       create: jest.fn(),
       update: jest.fn(),
     },
+    // DT-02: renewal now writes a SCREEN_TOKEN_RENEWED / _DOWNGRADED row so
+    // a self-renewal chain is visible in forensics.
+    auditLog: { create: jest.fn().mockResolvedValue({}) },
   },
 };
 
@@ -76,9 +77,11 @@ const makeReq = (ip = '10.0.0.1') => ({
 });
 
 // Helper: mint a real JWT as if the API had previously issued it.
-function mintTestToken(screenId: string, expiresIn: string = '365d'): string {
+// `ep` defaults to 0 — the grandfathering value that a token minted before
+// the credential-epoch column existed resolves to.
+function mintTestToken(screenId: string, expiresIn: string = '180d', ep = 0): string {
   return jwt.sign(
-    { sub: screenId, kind: 'device', fp: 'fp-paired' },
+    { sub: screenId, kind: 'device', ep },
     TEST_JWT_SECRET,
     { expiresIn: expiresIn as any },
   );
@@ -91,6 +94,9 @@ function pairedScreen(overrides: Record<string, any> = {}) {
     deviceFingerprint: 'fp-paired-001',
     pairingCode: null,
     tenantId: 'tenant-xyz',
+    status: 'ONLINE',
+    credentialEpoch: 0,
+    credentialEpochRotatedAt: null,
     resolution: null,
     osInfo: null,
     browserInfo: null,
@@ -114,10 +120,10 @@ function pairedUpdated(overrides: Record<string, any> = {}) {
 // P0 #5 — Paired re-registration graduated trust
 // ════════════════════════════════════════════════════════════════════════════
 
-// ── Test P5-1: valid priorDeviceToken → 365-day token ───────────────────────
-it('P5-1: paired re-register with valid priorDeviceToken → 365-day token issued', async () => {
+// ── Test P5-1: valid priorDeviceToken → full-lifetime (180d) token ─────────
+it('P5-1: paired re-register with valid priorDeviceToken → 180-day token issued', async () => {
   const screenId = 'screen-paired-001';
-  const validPrior = mintTestToken(screenId, '365d');
+  const validPrior = mintTestToken(screenId, '180d');
 
   mockPrisma.client.screen.findUnique.mockResolvedValue(pairedScreen({ id: screenId }));
   mockPrisma.client.screen.update.mockResolvedValue(pairedUpdated({ id: screenId }));
@@ -131,15 +137,91 @@ it('P5-1: paired re-register with valid priorDeviceToken → 365-day token issue
   expect(res.requiresRePair).toBeUndefined();
   const decoded = jwt.decode(res.deviceToken) as { iat: number; exp: number };
   const ttlDays = (decoded.exp - decoded.iat) / 86400;
-  expect(ttlDays).toBeGreaterThanOrEqual(364);
+  // DT-02: bounded at 180 days, and — critically — NOT 365. A regression
+  // back to a year would restore the "expiry is decorative" posture.
+  expect(ttlDays).toBeGreaterThanOrEqual(179);
+  expect(ttlDays).toBeLessThanOrEqual(181);
 });
 
-// ── Test P5-2: absent priorDeviceToken + STRICT=true → 1h + requiresRePair ──
-it('P5-2: paired re-register without priorDeviceToken + STRICT_REPAIR_AUTH=true → 1h token + requiresRePair', async () => {
-  process.env.STRICT_REPAIR_AUTH = 'true';
-  // Recreate controller so it reads the updated env.
-  controller = new ScreensController(mockPrisma, mockRedis, mockSigner, mockLicense, {} as any, {} as any);
+// ── Test P5-1b: DT-02 — the token carries the rotated credential epoch ─────
+it('P5-1b: DT-02 — proving possession ROTATES the credential epoch and the new token carries it', async () => {
+  const screenId = 'screen-paired-001';
+  const validPrior = mintTestToken(screenId, '180d', 4);
 
+  mockPrisma.client.screen.findUnique.mockResolvedValue(
+    pairedScreen({ id: screenId, credentialEpoch: 4 }),
+  );
+  mockPrisma.client.screen.update
+    .mockResolvedValueOnce(pairedUpdated({ id: screenId })) // the metadata write
+    .mockResolvedValueOnce({ credentialEpoch: 5 });         // the rotation write
+
+  const res = await controller.register(
+    { deviceFingerprint: 'fp-paired-001', priorDeviceToken: validPrior },
+    makeReq(),
+  );
+
+  const decoded = jwt.decode(res.deviceToken) as any;
+  expect(decoded.ep).toBe(5);
+  // The presented (epoch-4) credential is retired by the bump; only the
+  // rotation-grace window keeps it alive, and only briefly.
+  const rotationCall = mockPrisma.client.screen.update.mock.calls[1][0];
+  expect(rotationCall.data.credentialEpoch).toEqual({ increment: 1 });
+});
+
+// ── Test P5-1c: DT-02 — a STALE-epoch token cannot renew itself ────────────
+it('P5-1c: DT-02 — a superseded/revoked credential is downgraded, never renewed', async () => {
+  const screenId = 'screen-paired-001';
+  // Token from epoch 1; the screen has since moved to epoch 7 (an operator
+  // revoke, an unpair, or a rotation the thief lost the race on), and the
+  // grace window is long past.
+  const stalePrior = mintTestToken(screenId, '180d', 1);
+
+  mockPrisma.client.screen.findUnique.mockResolvedValue(
+    pairedScreen({
+      id: screenId,
+      credentialEpoch: 7,
+      credentialEpochRotatedAt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+    }),
+  );
+  mockPrisma.client.screen.update.mockResolvedValue(pairedUpdated({ id: screenId }));
+
+  const res = await controller.register(
+    { deviceFingerprint: 'fp-paired-001', priorDeviceToken: stalePrior },
+    makeReq(),
+  );
+
+  // Downgraded, not 401'd: a hard reject would let whoever rotates FIRST
+  // deliberately black out a real screen, and a dark screen is the failure
+  // mode this product exists to prevent.
+  expect(res.requiresRePair).toBe(true);
+  const decoded = jwt.decode(res.deviceToken) as { iat: number; exp: number };
+  expect(decoded.exp - decoded.iat).toBeLessThanOrEqual(3630);
+  // And it must NOT have rotated the epoch — otherwise an attacker could
+  // force a screen out of its own credential just by spamming /register.
+  const rotationCalls = mockPrisma.client.screen.update.mock.calls.filter(
+    (c: any[]) => c[0]?.data?.credentialEpoch,
+  );
+  expect(rotationCalls).toHaveLength(0);
+});
+
+// ── Test P5-1d: DT-01 — a REVOKED screen cannot re-register itself back ────
+it('P5-1d: DT-01 — a REVOKED screen is refused, credential or not', async () => {
+  const screenId = 'screen-paired-001';
+  const validPrior = mintTestToken(screenId, '180d');
+  mockPrisma.client.screen.findUnique.mockResolvedValue(
+    pairedScreen({ id: screenId, status: 'REVOKED' }),
+  );
+
+  await expect(
+    controller.register(
+      { deviceFingerprint: 'fp-paired-001', priorDeviceToken: validPrior },
+      makeReq(),
+    ),
+  ).rejects.toMatchObject({ status: 403 });
+});
+
+// ── Test P5-2: absent priorDeviceToken → 1h + requiresRePair ───────────────
+it('P5-2: paired re-register without priorDeviceToken → 1h token + requiresRePair', async () => {
   mockPrisma.client.screen.findUnique.mockResolvedValue(pairedScreen());
   mockPrisma.client.screen.update.mockResolvedValue(pairedUpdated());
 
@@ -197,23 +279,38 @@ it('P5-4: paired re-register with EXPIRED priorDeviceToken → 1-hour fallback, 
   expect(res.requiresRePair).toBe(true);
 });
 
-// ── Test P5-5: STRICT=false + absent priorToken → legacy 365d (compat) ──────
-it('P5-5: paired re-register without priorDeviceToken + STRICT_REPAIR_AUTH=false → legacy 365d (backward compat)', async () => {
-  // STRICT_REPAIR_AUTH is unset (deleted in beforeEach) — legacy path.
-  mockPrisma.client.screen.findUnique.mockResolvedValue(pairedScreen());
-  mockPrisma.client.screen.update.mockResolvedValue(pairedUpdated());
+// ── Test P5-5: DT-04 — the STRICT_REPAIR_AUTH legacy branch is DEAD ────────
+it('P5-5: DT-04 — fingerprint-only re-registration NEVER mints a full-lifetime token, flag or no flag', async () => {
+  // This test used to assert the OPPOSITE: that with STRICT_REPAIR_AUTH
+  // unset (the DEFAULT, and absent from .env.example and the CLAUDE.md env
+  // table) a bare fingerprint minted a 365-day credential. A fingerprint is
+  // not a secret — `GET /screens` handed it to every CONTRIBUTOR, and
+  // RESTRICTED_VIEWER reached the same route through the RBAC GET
+  // pass-through — so that default handed the two lowest-privilege roles
+  // device-level control of every screen in the tenant, including a
+  // destructive tenant-wide unpair. Explicitly pin the flag ON *and* OFF to
+  // prove the branch cannot come back.
+  for (const flag of ['true', 'false', undefined]) {
+    jest.clearAllMocks();
+    _registerFpCooldown.clear();
+    if (flag === undefined) delete process.env.STRICT_REPAIR_AUTH;
+    else process.env.STRICT_REPAIR_AUTH = flag;
+    controller = new ScreensController(mockPrisma, mockRedis, mockSigner, mockLicense, {} as any, {} as any);
 
-  const res = await controller.register(
-    { deviceFingerprint: 'fp-paired-001' },
-    makeReq(),
-  );
+    mockPrisma.client.screen.findUnique.mockResolvedValue(pairedScreen());
+    mockPrisma.client.screen.update.mockResolvedValue(pairedUpdated());
 
-  expect(res.paired).toBe(true);
-  expect(res.requiresRePair).toBeUndefined();
-  const decoded = jwt.decode(res.deviceToken) as { iat: number; exp: number };
-  const ttlDays = (decoded.exp - decoded.iat) / 86400;
-  // Legacy behavior: 365-day token even without priorDeviceToken.
-  expect(ttlDays).toBeGreaterThanOrEqual(364);
+    const res = await controller.register(
+      { deviceFingerprint: 'fp-paired-001' },
+      makeReq(),
+    );
+
+    expect(res.paired).toBe(true);
+    expect(res.requiresRePair).toBe(true);
+    const decoded = jwt.decode(res.deviceToken) as { iat: number; exp: number };
+    const ttlSeconds = decoded.exp - decoded.iat;
+    expect(ttlSeconds).toBeLessThanOrEqual(3630);
+  }
 });
 
 // ════════════════════════════════════════════════════════════════════════════

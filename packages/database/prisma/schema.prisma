@@ -798,6 +798,35 @@ model Screen {
   // Telemetry-only: listed in SCREEN_TELEMETRY_ONLY_FIELDS so writes never
   // thrash the manifest hot cache.
   lastPushConnectedAt                 DateTime?    @map("last_push_connected_at")
+  // ── Device-credential revocation (2026-08-03, DT-01/DT-02) ───────────
+  // Device JWTs live up to 180 days and there was previously NO way to
+  // revoke one: `status='REVOKED'` was read in 8 places and written in
+  // zero, and `jwt_revoked_list` (a) has no device writer and (b) carries
+  // a 30-day Redis TTL that is shorter than the token it would need to
+  // outlive. Deleting the Screen row was the only kill switch, and it
+  // destroyed the screen's schedules and history with it.
+  //
+  // credentialEpoch is the authoritative revocation store: a monotonic
+  // counter on the screen row itself. Every minted device token carries
+  // an `ep` claim; every device-authenticated request compares the claim
+  // against this column and refuses on mismatch. Because it lives in
+  // Postgres it has NO TTL, survives a total Redis outage, and outlives
+  // the token by construction.
+  //
+  // GRANDFATHERING: tokens minted before this column existed carry no
+  // `ep` claim and are read as epoch 0 — which is this column's default —
+  // so the entire deployed fleet keeps authenticating unchanged. The
+  // first bump (unpair / re-pair to a new tenant / explicit revoke /
+  // rotation on next register) is what retires them.
+  credentialEpoch                     Int          @default(0) @map("credential_epoch")
+  // When credentialEpoch last moved. Renewal accepts the immediately
+  // PREVIOUS epoch for CREDENTIAL_EPOCH_GRACE_MS after this stamp so a
+  // lost/retried register response (or two register calls racing on boot)
+  // can never lock a legitimate kiosk out of its own credential.
+  credentialEpochRotatedAt            DateTime?    @map("credential_epoch_rotated_at")
+  // Set alongside status='REVOKED' by the operator "Revoke credential"
+  // action. Purely forensic — the enforcement is status + credentialEpoch.
+  credentialRevokedAt                 DateTime?    @map("credential_revoked_at")
   // Android APK self-reported version. The player OTA worker already
   // POSTs versionName + versionCode to /player/update-check every 6h
   // and on boot; we just persist the two strings so admins can see at
@@ -828,6 +857,23 @@ model Screen {
   lastOtaProgress                     Int?         @map("last_ota_progress")
   lastOtaMessage                      String?      @map("last_ota_message")
   lastOtaAt                           DateTime?    @map("last_ota_at")
+  // ── Sticky OTA failure signal (2026-08-03, OTA-02) ───────────────────
+  // `lastOtaState` is last-writer-wins, so the canary auto-promote gate
+  // that read it was self-erasing: the player reports CHECKING at the
+  // head of EVERY OTA cycle, which overwrote a genuine ERROR long before
+  // the 24h soak expired — and an anonymous caller could overwrite it
+  // deliberately. These two columns are the gate's real input: once an
+  // ERROR is recorded it STAYS recorded until the install actually lands
+  // (a confirmed versionCode bump) or an operator re-pushes / re-arms the
+  // canary. No non-ERROR state report can clear them.
+  lastOtaErrorAt                      DateTime?    @map("last_ota_error_at")
+  lastOtaErrorMessage                 String?      @map("last_ota_error_message")
+  // True when the ERROR above arrived on a device-authenticated request.
+  // An authenticated failure always halts promotion; unauthenticated ones
+  // are subject to the cohort error-rate threshold (outlier rejection),
+  // so a single forged ERROR can no longer hold a fleet's patch pipeline
+  // closed forever.
+  lastOtaErrorAuthenticated           Boolean      @default(false) @map("last_ota_error_authenticated")
   // Phase 2 — last crash from Player or Manager. Captured by an
   // UncaughtExceptionHandler in each APK and POSTed to
   // /api/v1/screens/status/:fp/crash-report. Source = "player" |

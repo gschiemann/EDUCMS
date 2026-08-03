@@ -33,9 +33,13 @@ import {
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { PrismaService } from '../prisma/prisma.service';
-import { requireSecret } from '../security/required-secret';
+import { RedisService } from '../realtime/redis.service';
 import type { Request } from 'express';
-import * as jwt from 'jsonwebtoken';
+// DT-05 (2026-08-03): this file used to carry its own copy of the device
+// verifier that checked only signature + kind + sub. It now shares the one
+// implementation, which additionally enforces the revocation list, the
+// REVOKED status and the credential epoch.
+import { verifyDeviceForScreen } from '../screens/device-auth';
 
 /** Maximum log body accepted (1 MB). Enforced before DB write. */
 const MAX_BODY_BYTES = 1_048_576;
@@ -43,46 +47,45 @@ const MAX_BODY_BYTES = 1_048_576;
 /** Maximum characters stored in AuditLog.details (10 KB). */
 const DETAILS_TRUNCATE = 10_240;
 
-/**
- * Verify a device JWT from the Authorization: Bearer header AND assert that
- * its `sub` claim matches the screenId from the request path.
- *
- * Returns the verified screenId on success, or null on ANY failure (missing
- * header, wrong token kind, invalid signature, OR subject mismatch).
- *
- * Mirror of the inline verifyDeviceForScreen() in screens.controller.ts,
- * extracted here for use without importing that module.
- *
- * SECURITY (sec-fix P1, 2026-07-03): the `sub === screenId` check is
- * defense-in-depth — even a VALID device token can only attribute a log
- * upload to its OWN screen, never to an arbitrary victim screen supplied
- * in the path param. A caller with no token at all returns null here and
- * is NEVER trusted to resolve a real tenant (see ingestLog).
- */
-function verifyDeviceJwt(authHeader: string | undefined, screenId: string): string | null {
-  if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) return null;
-  const token = authHeader.slice(7).trim();
-  try {
-    const secret = requireSecret('DEVICE_JWT_SECRET', {
-      devFallback: 'dev_only_device_jwt_secret_CHANGE_ME',
-    });
-    const decoded = jwt.verify(token, secret) as any;
-    if (decoded?.kind !== 'device') return null;
-    if (typeof decoded?.sub !== 'string') return null;
-    // The token must be bound to the screen named in the path. A token
-    // minted for screen A cannot report logs for screen B.
-    if (decoded.sub !== screenId) return null;
-    return decoded.sub as string;
-  } catch {
-    return null;
-  }
-}
-
 @Controller('api/v1/player-logs')
 export class PlayerLogsController {
   private readonly logger = new Logger('PlayerLogs');
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redisService: RedisService,
+  ) {}
+
+  /**
+   * Verify a device credential bound to `screenId`.
+   *
+   * Returns the verified screenId AND the tenant resolved FROM THE LIVE
+   * SCREEN ROW, or null on ANY failure (missing header, wrong token kind,
+   * invalid signature, subject mismatch, revoked token, REVOKED screen,
+   * stale credential epoch, deleted screen).
+   *
+   * SECURITY (sec-fix P1, 2026-07-03): the `sub === screenId` check is
+   * defense-in-depth — even a VALID device token can only attribute a log
+   * upload to its OWN screen, never to an arbitrary victim screen supplied
+   * in the path param. A caller with no token at all returns null here and
+   * is NEVER trusted to resolve a real tenant (see ingestLog).
+   *
+   * DT-05 (2026-08-03): the four extra checks above came from replacing
+   * this file's private copy of the verifier with the shared one. A device
+   * whose credential an operator has revoked can no longer write into the
+   * immutable forensic log of the tenant it used to belong to.
+   */
+  private async verifyDevice(
+    req: Request,
+    screenId: string,
+  ): Promise<{ sub: string; tenantId: string | null } | null> {
+    const auth = await verifyDeviceForScreen(
+      { prisma: this.prisma, redis: this.redisService },
+      req,
+      screenId,
+    );
+    return auth.ok ? { sub: auth.sub, tenantId: auth.tenantId } : null;
+  }
 
   /**
    * POST /api/v1/player-logs/:screenId
@@ -145,28 +148,19 @@ export class PlayerLogsController {
     //     tenant's forensic trail. The upload still succeeds (early-boot
     //     uploads before pairing keep working) — it just cannot be pinned
     //     to any real tenant.
-    const jwtSub = verifyDeviceJwt(req.headers.authorization, screenId);
+    const verified = await this.verifyDevice(req, screenId);
+    const jwtSub = verified?.sub ?? null;
     const attributedScreenId = jwtSub ?? screenId;
 
-    // Resolve the screen's tenantId so the AuditLog row is scoped correctly.
-    // AuditLog.tenantId is non-nullable — we use a sentinel value when the
-    // screen can't be looked up (unpaired device, DB hiccup) rather than
-    // dropping the upload entirely. Only a VERIFIED device (jwtSub !== null)
-    // is trusted to resolve a real tenant; an unverified upload stays on the
-    // sentinel and never reaches a real tenant's audit trail.
+    // The screen's tenantId scopes the AuditLog row. AuditLog.tenantId is
+    // non-nullable — we use a sentinel when the screen can't be resolved
+    // (unpaired device, DB hiccup) rather than dropping the upload. Only a
+    // VERIFIED device is trusted to resolve a real tenant; an unverified
+    // upload stays on the sentinel and never reaches a real tenant's
+    // forensic trail. The tenant comes from the shared verifier's LIVE row
+    // read, never from a token claim (DT-03).
     const UNRESOLVED_TENANT = 'unresolved';
-    let tenantId: string = UNRESOLVED_TENANT;
-    if (jwtSub !== null) {
-      try {
-        const screen = await this.prisma.client.screen.findUnique({
-          where: { id: attributedScreenId },
-          select: { tenantId: true },
-        });
-        if (screen?.tenantId) tenantId = screen.tenantId;
-      } catch (err) {
-        this.logger.warn(`Could not resolve tenantId for screen ${attributedScreenId}: ${(err as Error).message}`);
-      }
-    }
+    const tenantId: string = verified?.tenantId ?? UNRESOLVED_TENANT;
 
     // Truncate to DETAILS_TRUNCATE chars before potential write.
     const logTail = rawBody.length > DETAILS_TRUNCATE

@@ -42,15 +42,20 @@ import {
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request as ExpressReq } from 'express';
-import * as crypto from 'crypto';
-import * as jwt from 'jsonwebtoken';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../realtime/redis.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
-import { requireSecret } from '../security/required-secret';
+import { HARDWARE_CATALOG, resolveHardwareModel } from '@cms/api-types';
+// DT-05 (2026-08-03): this controller used to carry a byte-identical COPY
+// of `verifyDeviceForScreen` that skipped the revocation list, the
+// REVOKED-status check and the live-row read. On the one route in the app
+// where a device token can fabricate a LOCKDOWN, that mattered most.
+// There is now one shared implementation.
+import { verifyDeviceForScreen } from './device-auth';
 import { GpioService, type GpioInPin, type GpioOutPin, type GpioInputState, type GpioOutputState } from './gpio.service';
 
 /** Pin sets for input validation. */
@@ -60,51 +65,36 @@ const GPIO_INPUT_STATES = new Set<GpioInputState>(['low', 'high', 'edge_rising',
 const GPIO_OUTPUT_STATES = new Set<GpioOutputState>(['low', 'high']);
 
 /**
- * Device-JWT auth check, scoped to a single screenId. Mirror of the
- * helper in `screens.controller.ts` — kept inline so this controller
- * doesn't depend on the screens controller's internals + so the
- * pattern stays in sync with the existing manifest / cache-status
- * device-auth surface.
+ * Can this screen's hardware physically HAVE a GPIO input wired to it?
  *
- * Returns the verified screenId on success or null on failure.
- * Callers should respond 401 on null.
+ * DT-06 (2026-08-03). `/gpio-event` is the one device-authenticated route
+ * that can raise a real life-safety alert: an active edge on a mapped pin
+ * synthesizes a genuine `ScreenEmergencyOverride` and a SIGNED `OVERRIDE`
+ * broadcast — indistinguishable downstream from a wall-station press. The
+ * pre-existing precondition (an admin must have mapped the pin in
+ * `Screen.config.wiring`, and `PUT /screens/:id` is admin-only) is real,
+ * but it is the operator's opt-in, not a check on the CALLER.
  *
- * Backward-compat: also accepts the short-lived HMAC header
- * (X-Device-Auth: `${ts}.${hex hmac}`) that already-shipped player
- * binaries use. Same shape as
- * `screens.controller#verifyDeviceForScreen`.
+ * This adds the physical-plausibility check: a screen whose hardware model
+ * is a KNOWN SKU with zero GPIO inputs — a browser player, a TCL/Android
+ * TV box, a NovaStar Taurus — has no dry contact to close, so a
+ * `gpio-event` from it is by definition fabricated and must never raise an
+ * emergency.
+ *
+ * FAIL-OPEN ON UNKNOWN, deliberately: `hardwareModel` is auto-detected
+ * from the user agent and is null on plenty of legitimately-paired
+ * screens. Refusing those would break real panic-button hardware whose
+ * model we simply failed to detect — an unacceptable trade in a life-
+ * safety path. Unknown ⇒ allowed; a known-zero-GPIO SKU ⇒ refused.
  */
-function verifyDeviceForScreen(req: ExpressReq, screenId: string): { ok: true; sub: string } | { ok: false; reason: string } {
-  const auth = req.headers.authorization;
-  if (auth && typeof auth === 'string' && auth.toLowerCase().startsWith('bearer ')) {
-    const token = auth.slice(7).trim();
-    try {
-      const secret = requireSecret('DEVICE_JWT_SECRET', { devFallback: 'dev_only_device_jwt_secret_CHANGE_ME' });
-      const decoded = jwt.verify(token, secret) as any;
-      if (decoded?.kind !== 'device') return { ok: false, reason: 'wrong_token_kind' };
-      if (decoded?.sub !== screenId) return { ok: false, reason: 'subject_mismatch' };
-      return { ok: true, sub: decoded.sub };
-    } catch (e) {
-      return { ok: false, reason: `jwt_invalid:${(e as Error).message}` };
-    }
-  }
-
-  const hmacHeader = req.headers['x-device-auth'];
-  if (typeof hmacHeader === 'string' && hmacHeader.includes('.')) {
-    const [tsStr, sig] = hmacHeader.split('.');
-    const ts = Number(tsStr);
-    if (!Number.isFinite(ts)) return { ok: false, reason: 'hmac_ts_bad' };
-    if (Math.abs(Date.now() - ts) > 2 * 60 * 1000) return { ok: false, reason: 'hmac_expired' };
-    const secret = requireSecret('DEVICE_SECRET_KEY', { devFallback: 'dev_only_device_secret_CHANGE_ME' });
-    const expected = crypto.createHmac('sha256', secret).update(`${screenId}:${ts}`).digest('hex');
-    const a = Buffer.from(expected);
-    const b = Buffer.from(sig);
-    if (a.length !== b.length) return { ok: false, reason: 'hmac_sig_bad' };
-    if (!crypto.timingSafeEqual(a, b)) return { ok: false, reason: 'hmac_sig_bad' };
-    return { ok: true, sub: screenId };
-  }
-
-  return { ok: false, reason: 'no_auth' };
+export function hardwareCanRaiseGpioEmergency(hardwareModel: unknown): boolean {
+  if (typeof hardwareModel !== 'string' || hardwareModel.trim() === '') return true;
+  const resolved = resolveHardwareModel(hardwareModel);
+  // 'unknown' is the catalog's own "we could not identify this device"
+  // bucket — fail OPEN, per the doc comment above.
+  if (resolved === 'unknown') return true;
+  const gpioIn = Number(HARDWARE_CATALOG[resolved]?.caps?.gpioIn ?? 0);
+  return Number.isFinite(gpioIn) && gpioIn > 0;
 }
 
 @Controller('api/v1/screens')
@@ -114,6 +104,7 @@ export class GpioController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly gpio: GpioService,
+    private readonly redisService: RedisService,
   ) {}
 
   /**
@@ -137,7 +128,18 @@ export class GpioController {
     @Req() req: ExpressReq,
     @Body() body: { pin?: string; state?: string; at?: string },
   ) {
-    const auth = verifyDeviceForScreen(req, screenId);
+    // DT-05/DT-06: the shared verifier additionally enforces the token
+    // revocation list, `status !== 'REVOKED'` and the credential epoch —
+    // so an operator who revokes a compromised screen's credential now
+    // actually cuts it off from the emergency path, which was the whole
+    // point of having a REVOKED status. `allowUnpaired: false` because a
+    // screen with no tenant has no emergency to raise.
+    const auth = await verifyDeviceForScreen(
+      { prisma: this.prisma, redis: this.redisService },
+      req,
+      screenId,
+      { allowUnpaired: false },
+    );
     if (!auth.ok) {
       throw new UnauthorizedException({ code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${auth.reason})` });
     }
@@ -172,11 +174,26 @@ export class GpioController {
       throw new HttpException({ code: 'SCREEN_NO_TENANT', message: 'Screen is not assigned to a tenant' }, HttpStatus.CONFLICT);
     }
 
+    // DT-06: physical-plausibility gate. A known-SKU screen with zero GPIO
+    // inputs cannot have had a dry contact close, so we log the event but
+    // strip its ability to raise an emergency. Passing config `null` makes
+    // `readWiring` return null, which routes `handleInputEvent` down its
+    // existing "no wiring on this pin → log only" branch — the refusal is
+    // still audited, with the same shape, and no emergency is synthesized.
+    const gpioCapable = hardwareCanRaiseGpioEmergency((screen as any).hardwareModel);
+    if (!gpioCapable) {
+      this.logger.warn(
+        `[gpio][security] refusing emergency from screen=${screen.id} ` +
+        `hardwareModel=${(screen as any).hardwareModel} (caps.gpioIn=0) — ` +
+        `event logged only; this hardware has no GPIO input to close`,
+      );
+    }
+
     const result = await this.gpio.handleInputEvent({
       screenId: screen.id as string,
       tenantId: screen.tenantId as string,
       event: { pin, state, at },
-      config: screen.config ?? null,
+      config: gpioCapable ? (screen.config ?? null) : null,
     });
 
     return result;

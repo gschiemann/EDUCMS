@@ -57,8 +57,35 @@ import { inferIfUnknown } from './hardware-detect';
 // when lastPingAt is fresh. Pure helper so the verdict is unit-tested
 // without a Prisma client (same discipline as ScreenWedgeDetectorCron.decide).
 import { deriveRenderHealth } from './render-proof';
+// 2026-08-03 security wave (DT-01…DT-05): the single device-credential
+// verification path + the revocation writer. Read `device-auth.ts` before
+// touching anything device-authenticated in this file.
+import {
+  verifyDeviceForScreen as verifyDeviceForScreenShared,
+  invalidateDeviceCredentialCache,
+  isEpochAcceptable,
+  epochFromClaim,
+  decodeDeviceTokenUnsafe,
+  DEVICE_JWT_ALGORITHMS,
+  DEVICE_TOKEN_TTL_PAIRED,
+  DEVICE_TOKEN_TTL_UNPAIRED,
+  DEVICE_TOKEN_TTL_UNPROVEN,
+} from './device-auth';
+import { revokeScreenCredentials, rotateScreenCredentialEpoch } from './device-credentials';
+import { mintStreamTicket } from './stream-ticket';
 
 const PAIRING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+/**
+ * Roles allowed to see a screen's `deviceFingerprint` / `pairingCode` in
+ * the fleet list (DT-04). CONTRIBUTOR and RESTRICTED_VIEWER can reach the
+ * list route but must not receive either value — see the strip in list().
+ */
+const ADMIN_ROLES_FOR_SCREEN_SECRETS: ReadonlySet<unknown> = new Set([
+  AppRole.SUPER_ADMIN,
+  AppRole.DISTRICT_ADMIN,
+  AppRole.SCHOOL_ADMIN,
+]);
 
 function generatePairingCode(length: number = 6): string {
   // sec-fix(wave1) #3: use crypto.randomInt (CSPRNG) instead of
@@ -73,50 +100,18 @@ function generatePairingCode(length: number = 6): string {
 }
 
 /**
- * Verify a device JWT from the Authorization: Bearer header against the
- * given screenId. Returns { ok: true, sub } on success or { ok: false, reason }.
- * Used by the player-side endpoints that used to be unauthenticated
- * (#4 emergency-assets, #5 cache-status).
+ * Device auth for this controller.
  *
- * Backward-compat: also accepts a short-lived HMAC of `${screenId}:${ts}`
- * signed with DEVICE_SECRET_KEY, passed as header X-Device-Auth:
- *   `${timestampMs}.${hex(hmac_sha256(DEVICE_SECRET_KEY, screenId + ':' + timestampMs))}`
- * Valid for 2 minutes from the signed timestamp. Preferred path is the
- * device JWT — this alt exists so already-shipped player binaries can
- * keep posting while they roll forward to the JWT-required build.
+ * 2026-08-03 (DT-05): the inline copy that used to live here checked only
+ * `signature + kind + sub`. It skipped the revocation list, the
+ * `status === 'REVOKED'` check, and the live-row read that the
+ * `JwtAuthGuard` path enforces — on nine routes, including `/gpio-event`
+ * (fabricate a LOCKDOWN) and `/unpair/:fp` (delete every schedule on the
+ * screen). There is now exactly ONE implementation, in `./device-auth`,
+ * and every device-authenticated route in the app calls it. See that file
+ * for the full check order and the fleet-grandfathering rules.
  */
-function verifyDeviceForScreen(req: ExpressReq, screenId: string): { ok: true; sub: string } | { ok: false; reason: string } {
-  const auth = req.headers.authorization;
-  if (auth && auth.toLowerCase().startsWith('bearer ')) {
-    const token = auth.slice(7).trim();
-    try {
-      const secret = requireSecret('DEVICE_JWT_SECRET', { devFallback: 'dev_only_device_jwt_secret_CHANGE_ME' });
-      const decoded = jwt.verify(token, secret) as any;
-      if (decoded?.kind !== 'device') return { ok: false, reason: 'wrong_token_kind' };
-      if (decoded?.sub !== screenId) return { ok: false, reason: 'subject_mismatch' };
-      return { ok: true, sub: decoded.sub };
-    } catch (e) {
-      return { ok: false, reason: `jwt_invalid:${(e as Error).message}` };
-    }
-  }
-
-  const hmacHeader = req.headers['x-device-auth'];
-  if (typeof hmacHeader === 'string' && hmacHeader.includes('.')) {
-    const [tsStr, sig] = hmacHeader.split('.');
-    const ts = Number(tsStr);
-    if (!Number.isFinite(ts)) return { ok: false, reason: 'hmac_ts_bad' };
-    if (Math.abs(Date.now() - ts) > 2 * 60 * 1000) return { ok: false, reason: 'hmac_expired' };
-    const secret = requireSecret('DEVICE_SECRET_KEY', { devFallback: 'dev_only_device_secret_CHANGE_ME' });
-    const expected = crypto.createHmac('sha256', secret).update(`${screenId}:${ts}`).digest('hex');
-    const a = Buffer.from(expected);
-    const b = Buffer.from(sig);
-    if (a.length !== b.length) return { ok: false, reason: 'hmac_sig_bad' };
-    if (!crypto.timingSafeEqual(a, b)) return { ok: false, reason: 'hmac_sig_bad' };
-    return { ok: true, sub: screenId };
-  }
-
-  return { ok: false, reason: 'no_auth' };
-}
+type DeviceAuthOutcome = Awaited<ReturnType<typeof verifyDeviceForScreenShared>>;
 
 // sec-fix(P0 #7) Defense 1: per-fingerprint registration cooldown.
 // @Throttle keys on IP, which is sufficient for the bulk case, but a
@@ -163,6 +158,24 @@ export class ScreensController {
     private readonly stripe: StripeService,
     private readonly menu: MenuService,
   ) {}
+
+  /**
+   * Device auth, one place. Delegates to the shared verifier so the
+   * revocation / REVOKED-status / credential-epoch checks can never drift
+   * apart between routes again (DT-05).
+   */
+  private deviceAuth(
+    req: ExpressReq,
+    screenId: string,
+    opts?: { allowUnpaired?: boolean },
+  ): Promise<DeviceAuthOutcome> {
+    return verifyDeviceForScreenShared(
+      { prisma: this.prisma, redis: this.redisService },
+      req,
+      screenId,
+      opts,
+    );
+  }
 
   private async notifySync(tenantId: string) {
     try {
@@ -238,8 +251,10 @@ export class ScreensController {
     userAgent?: string;
     /** sec-fix(P0 #5): Paired re-registration — caller sends its currently
      *  stored device JWT to prove possession of the prior credential.
-     *  Present in kiosk builds ≥ v1.0.34; absent in older builds (handled
-     *  gracefully via STRICT_REPAIR_AUTH feature flag). */
+     *  Present in kiosk builds ≥ v1.0.34. A caller that omits it now always
+     *  receives a 1-hour token + `requiresRePair` (DT-04 removed the
+     *  STRICT_REPAIR_AUTH escape hatch that used to make omitting it mint a
+     *  full-lifetime credential by default). */
     priorDeviceToken?: string;
   }, @Req() req: ExpressReq) {
     if (!body.deviceFingerprint) {
@@ -302,18 +317,31 @@ export class ScreensController {
     // sec-fix(P0 #7) Defense 2: unpaired tokens expire in 15 minutes so a
     // stolen or guessed pre-claim token is worthless once the window lapses.
     //
-    // sec-fix(P0 #5) Graduated trust for paired re-registration:
-    //   - Caller proves possession of prior device JWT → 365-day token.
-    //   - Caller has fingerprint only (no/invalid prior token) and
-    //     STRICT_REPAIR_AUTH=true → 1-hour short-lived token + requiresRePair.
-    //   - STRICT_REPAIR_AUTH=false (default) → preserve legacy behavior
-    //     (issue 365-day token) so existing kiosks ≤ v1.0.33 keep working
-    //     until a fleet-wide APK update ships priorDeviceToken support.
-    //     Flip STRICT_REPAIR_AUTH=true after fleet update.
-    //   - Prior token INVALID (wrong screenId) → hard 401 regardless of flag.
+    // sec-fix(P0 #5) Graduated trust for paired re-registration, as it
+    // stands after the 2026-08-03 wave:
+    //   - Caller proves possession of a CURRENT prior device JWT → 180-day
+    //     token, and the credential epoch ROTATES (DT-02).
+    //   - Caller presents a SUPERSEDED/revoked credential → 1-hour token +
+    //     requiresRePair, audited as a fork. Deliberately not a 401: a hard
+    //     reject would let whoever rotates first deliberately black out a
+    //     real screen.
+    //   - Caller has fingerprint only → 1-hour token + requiresRePair.
+    //   - Prior token INVALID (wrong screenId) → hard 401.
     //   - Prior token EXPIRED → downgrade to 1-hour fallback (don't reject,
     //     legitimate kiosk may have had its token expire mid-day).
-    const strictRepairAuth = process.env.STRICT_REPAIR_AUTH === 'true';
+    //
+    // 2026-08-03 (DT-04) — the `STRICT_REPAIR_AUTH=false` legacy branch is
+    // GONE. It was a fleet-migration ramp for kiosks ≤ v1.0.33 that could
+    // not send `priorDeviceToken`; prod has been pinned at v1.0.63 since
+    // 2026-07-18, so the ramp is finished. While it existed, a bare device
+    // FINGERPRINT — a value `GET /screens` hands to every CONTRIBUTOR and,
+    // via the RBAC GET pass-through, every RESTRICTED_VIEWER — minted a
+    // full-lifetime device credential for any screen in the tenant. The
+    // insecure behaviour was the DEFAULT (the env var is absent from
+    // .env.example and from the CLAUDE.md table), so every re-provision,
+    // new region, staging stack and self-hosted install silently landed on
+    // it. Strict is now unconditional: fingerprint-only re-registration
+    // gets a 1-hour token and `requiresRePair`, never a long-lived one.
 
     const deviceJwtSecret = requireSecret('DEVICE_JWT_SECRET', { devFallback: 'dev_only_device_jwt_secret_CHANGE_ME' });
 
@@ -341,44 +369,82 @@ export class ScreensController {
     //
     // For unpaired devices (no tenant claim yet) tenantId is omitted —
     // they aren't subscribed to any tenant scope until claimed.
+    //
+    // 2026-08-03 (DT-02):
+    //   • `ep` — the screen's credential epoch. This is what makes the
+    //     credential revocable at all (see device-auth.ts). A token minted
+    //     before this claim existed reads as epoch 0, which is the column
+    //     default, so the whole deployed fleet keeps working untouched.
+    //   • the `fp` claim is GONE. It made the token carry its own renewal
+    //     key: base64-decode the payload (no secret needed), read the
+    //     fingerprint, POST it back to /register, receive a brand-new
+    //     full-lifetime token, repeat forever. Nothing in the API reads
+    //     `fp` off a device principal, so dropping it is inert for
+    //     behaviour and removes the self-renewal primitive.
+    //   • paired TTL is 180 d, not 365 d. See DEVICE_TOKEN_TTL_PAIRED.
     const mintDeviceJwt = (
       screenId: string,
       isPaired: boolean,
       ttl?: string,
       tenantId?: string | null,
+      credentialEpoch?: number,
     ) => {
-      const expiresIn = (ttl ?? (isPaired ? '365d' : '15m')) as import('jsonwebtoken').SignOptions['expiresIn'];
+      const expiresIn = (ttl
+        ?? (isPaired ? DEVICE_TOKEN_TTL_PAIRED : DEVICE_TOKEN_TTL_UNPAIRED)
+      ) as import('jsonwebtoken').SignOptions['expiresIn'];
       const payload: Record<string, unknown> = {
         sub: screenId,
         deviceId: screenId,
         kind: 'device',
-        fp: body.deviceFingerprint,
+        ep: Math.max(0, Math.floor(credentialEpoch ?? 0)),
       };
       if (tenantId) payload.tenantId = tenantId;
-      return jwt.sign(payload, deviceJwtSecret, { expiresIn });
+      return jwt.sign(payload, deviceJwtSecret, { expiresIn, algorithm: DEVICE_JWT_ALGORITHMS[0] });
     };
 
     /**
-     * Validate priorDeviceToken (if supplied) against the given screenId.
+     * Validate priorDeviceToken (if supplied) against the live screen row.
      * Returns:
-     *   'valid'   — token decoded, kind=device, sub===screenId, not expired
-     *   'expired' — token is for correct screen but has expired (downgrade TTL)
+     *   'valid'   — signature ok, kind=device, sub matches, NOT expired,
+     *               AND the epoch it carries is still acceptable for this
+     *               screen (current, or the previous one inside the
+     *               rotation grace window)
+     *   'stale'   — everything above except the epoch: this credential was
+     *               superseded or revoked. Downgrade, do not hard-reject —
+     *               a hard 401 here would let an attacker who renews first
+     *               deliberately black out a real screen, and a dark screen
+     *               is the failure mode this product exists to prevent.
+     *   'expired' — bound to the right screen but past its exp
      *   'invalid' — wrong screenId or tampered (hard 401)
      *   'absent'  — no priorDeviceToken sent
+     *
+     * 2026-08-03 (DT-02): the epoch check is the piece that stops a stolen
+     * token renewing itself forever. Renewal now requires the screen to
+     * still exist, still be paired, not be REVOKED, and to still recognise
+     * the credential being presented.
      */
-    const verifyPriorToken = (screenId: string): 'valid' | 'expired' | 'invalid' | 'absent' => {
+    const verifyPriorToken = (
+      screen: { id: string; status?: string | null; tenantId?: string | null; credentialEpoch?: number | null; credentialEpochRotatedAt?: Date | null },
+    ): 'valid' | 'stale' | 'expired' | 'invalid' | 'absent' => {
       if (!body.priorDeviceToken) return 'absent';
+      const epochState = {
+        credentialEpoch: Number(screen.credentialEpoch ?? 0) || 0,
+        credentialEpochRotatedAt: screen.credentialEpochRotatedAt ?? null,
+      };
       try {
-        const decoded = jwt.verify(body.priorDeviceToken, deviceJwtSecret) as any;
+        const decoded = jwt.verify(body.priorDeviceToken, deviceJwtSecret, {
+          algorithms: DEVICE_JWT_ALGORITHMS,
+        }) as any;
         if (decoded?.kind !== 'device') return 'invalid';
-        if (decoded?.sub !== screenId) return 'invalid';
+        if (decoded?.sub !== screen.id) return 'invalid';
+        if (!isEpochAcceptable(epochFromClaim(decoded), epochState)) return 'stale';
         return 'valid';
       } catch (e: any) {
         if (e?.name === 'TokenExpiredError') {
           // Decode without verification to check screenId binding.
           const decoded = jwt.decode(body.priorDeviceToken) as any;
           if (!decoded || decoded?.kind !== 'device') return 'invalid';
-          if (decoded?.sub !== screenId) return 'invalid';
+          if (decoded?.sub !== screen.id) return 'invalid';
           return 'expired';
         }
         return 'invalid';
@@ -388,39 +454,43 @@ export class ScreensController {
     if (existing) {
       // ── Paired re-registration — graduated trust (sec-fix P0 #5) ──────────
       if (existing.tenantId) {
-        const priorStatus = verifyPriorToken(existing.id);
+        // 2026-08-03 (DT-01/DT-02): a REVOKED screen may not re-register
+        // itself back into service. Revocation is an operator decision;
+        // the way back is an operator re-pairing the screen with a fresh
+        // pairing code, not the compromised device asking nicely.
+        if ((existing as any).status === 'REVOKED') {
+          throw new HttpException(
+            { code: 'SCREEN_CREDENTIAL_REVOKED', message: 'This screen’s credential was revoked by an administrator. Re-pair it from the dashboard.' },
+            HttpStatus.FORBIDDEN,
+          );
+        }
+
+        const priorStatus = verifyPriorToken(existing as any);
 
         if (priorStatus === 'invalid') {
           // Caller supplied a token but it binds to a different screen →
-          // hard reject regardless of flag. Fingerprint alone is not enough
-          // to prove identity when a token was actively presented.
+          // hard reject. Fingerprint alone is not enough to prove identity
+          // when a token was actively presented.
           throw new HttpException({ code: 'SCREEN_TOKEN_MISMATCH', message: 'Invalid prior device token: screenId mismatch' }, HttpStatus.UNAUTHORIZED);
         }
 
-        // Determine issued TTL:
-        //   valid prior token → 365d (caller proved possession)
-        //   expired prior token → 1h fallback (device woke up with stale creds)
-        //   absent prior token + strictRepairAuth=false → 365d (legacy compat)
-        //   absent prior token + strictRepairAuth=true → 1h + requiresRePair
+        // Determine issued TTL (DT-02/DT-04):
+        //   valid prior token → 180d + ROTATE the credential epoch
+        //   stale prior token → 1h + requiresRePair (superseded/revoked
+        //                       credential — a fork; audited, not 401'd)
+        //   expired prior token → 1h + requiresRePair
+        //   absent prior token → 1h + requiresRePair (was 365d by default
+        //                       before DT-04 removed the legacy branch)
         let issuedTtl: string;
         let requiresRePair = false;
+        let renewed = false;
 
         if (priorStatus === 'valid') {
-          issuedTtl = '365d';
-        } else if (priorStatus === 'expired') {
-          // Device came back with an expired token — downgrade, don't block.
-          issuedTtl = '1h';
-          requiresRePair = true;
+          issuedTtl = DEVICE_TOKEN_TTL_PAIRED;
+          renewed = true;
         } else {
-          // absent
-          if (strictRepairAuth) {
-            issuedTtl = '1h';
-            requiresRePair = true;
-          } else {
-            // Legacy path: STRICT_REPAIR_AUTH not yet enabled.
-            // Issue 365d as before so kiosks ≤ v1.0.33 keep working.
-            issuedTtl = '365d';
-          }
+          issuedTtl = DEVICE_TOKEN_TTL_UNPROVEN;
+          requiresRePair = true;
         }
 
         // 2026-05-27 — back-fill hardwareModel if it's still null on
@@ -446,12 +516,61 @@ export class ScreensController {
           },
         });
 
+        // ── Credential rotation (DT-02) ───────────────────────────────
+        // A screen that proved possession gets a NEW epoch, so the token
+        // it just handed us is retired the moment the new one is issued
+        // (subject to the grace window that keeps a lost response from
+        // locking a real kiosk out — see CREDENTIAL_EPOCH_GRACE_MS).
+        // This is what turns "a stolen copy renews itself forever" into
+        // "two parties cannot both hold the current credential, and the
+        // fork is visible."
+        let issuedEpoch = Number((existing as any).credentialEpoch ?? 0) || 0;
+        if (renewed) {
+          try {
+            issuedEpoch = await rotateScreenCredentialEpoch(
+              { prisma: this.prisma, redis: this.redisService },
+              existing.id,
+            );
+          } catch {
+            /* rotation is best-effort: never fail a live kiosk's boot on it */
+          }
+        } else {
+          // Downgraded credentials do NOT rotate — otherwise an attacker
+          // could force-rotate a screen out of its own credential just by
+          // spamming /register with no token at all.
+          invalidateDeviceCredentialCache(existing.id);
+        }
+
+        // Renewal is a privileged event and used to write no AuditLog at
+        // all, so a self-renewal chain was invisible in forensics. Wrapped
+        // in try/catch, not just `.catch()`: an audit write must never be
+        // able to fail a live kiosk's boot, synchronously or otherwise.
+        try {
+          this.prisma.client.auditLog.create({
+            data: {
+              tenantId: existing.tenantId,
+              userId: null,
+              action: renewed ? 'SCREEN_TOKEN_RENEWED' : 'SCREEN_TOKEN_DOWNGRADED',
+              targetType: 'Screen',
+              targetId: existing.id,
+              details: JSON.stringify({
+                priorTokenStatus: priorStatus,
+                issuedTtl,
+                credentialEpoch: issuedEpoch,
+                requiresRePair,
+                ip: clientIpFromRequest(req),
+                fingerprint: body.deviceFingerprint.slice(0, 24),
+              }),
+            },
+          }).catch(() => { /* audit best-effort */ });
+        } catch { /* audit best-effort */ }
+
         return {
           screenId: updated.id,
           pairingCode: updated.pairingCode,
           paired: true,
           name: updated.name,
-          deviceToken: mintDeviceJwt(updated.id, true, issuedTtl, existing.tenantId),
+          deviceToken: mintDeviceJwt(updated.id, true, issuedTtl, existing.tenantId, issuedEpoch),
           ...(requiresRePair ? { requiresRePair: true } : {}),
         };
       }
@@ -482,7 +601,10 @@ export class ScreensController {
         pairingCode: updated.pairingCode,
         paired: false,
         name: updated.name,
-        deviceToken: mintDeviceJwt(updated.id, false), // sec-fix(P0 #7): unpaired → 15m TTL
+        // sec-fix(P0 #7): unpaired → 15m TTL. The epoch must come from the
+        // LIVE row: an unpair bumps it, and minting at a hard-coded 0 would
+        // hand back a credential the verifier immediately rejects.
+        deviceToken: mintDeviceJwt(updated.id, false, undefined, null, Number((updated as any).credentialEpoch ?? 0) || 0),
       };
     }
 
@@ -541,8 +663,43 @@ export class ScreensController {
       pairingCode: screen.pairingCode,
       paired: false,
       name: screen.name,
-      deviceToken: mintDeviceJwt(screen.id, false), // sec-fix(P0 #7): unpaired → 15m TTL
+      // sec-fix(P0 #7): unpaired → 15m TTL. Brand-new row → epoch 0.
+      deviceToken: mintDeviceJwt(screen.id, false, undefined, null, Number((screen as any).credentialEpoch ?? 0) || 0),
     };
+  }
+
+  /**
+   * POST /api/v1/screens/:id/stream-ticket
+   *
+   * DT-08 (2026-08-03) — mint a 60-second, single-purpose ticket the player
+   * can put in the SSE URL instead of its 180-day device credential.
+   *
+   * `EventSource` cannot set request headers, which is why the device token
+   * ended up in `?token=` in the first place. That put a fleet credential
+   * into Railway/Vercel HTTP access logs, on-path proxy logs and Android
+   * WebView history — none of which anyone treats as a credential store.
+   * The fix is not to move the same credential elsewhere; it is to stop
+   * putting a long-lived credential in a URL at all. This route is a normal
+   * authenticated POST (header auth, no EventSource limitation) and returns
+   * a ticket that grants exactly one thing — "open the event stream for
+   * this one screen" — for 60 seconds, and dies with the screen's
+   * credential epoch.
+   *
+   * ⚠️ The consuming half is one `if` in the realtime SSE controller and is
+   * NOT yet wired; see the handoff note in `stream-ticket.ts`.
+   */
+  @Post(':id/stream-ticket')
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  async issueStreamTicket(@Param('id') id: string, @Req() req: ExpressReq) {
+    const auth = await this.deviceAuth(req, id);
+    if (!auth.ok) {
+      throw new HttpException(
+        { code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${auth.reason})` },
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+    const { ticket, expiresAt } = mintStreamTicket(id, auth.screen.credentialEpoch);
+    return { ticket, expiresAt, expiresInMs: expiresAt - Date.now() };
   }
 
   // ─── PUBLIC: Device heartbeat / status check ───
@@ -754,6 +911,7 @@ export class ScreensController {
   async reportOtaState(
     @Param('deviceFingerprint') fingerprint: string,
     @Body() body: { state?: string; progress?: number; message?: string },
+    @Req() req?: ExpressReq,
   ) {
     if (fingerprint.startsWith('preview-')) return { ok: true, ignored: 'preview' };
     const screen = await this.prisma.client.screen.findUnique({
@@ -761,6 +919,28 @@ export class ScreensController {
       select: { id: true, name: true, lastOtaState: true, playerVersionCode: true },
     });
     if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+
+    // ── OTA-02 (2026-08-03) — is this report device-authenticated? ──────
+    // The shipped Kotlin OTA worker sends NO Authorization header on this
+    // route, and this change cannot ship an APK, so REQUIRING auth here
+    // would take the whole fleet's OTA progress reporting dark. Instead the
+    // route stays open and we record WHETHER the caller proved possession
+    // of the screen's credential; the canary auto-promote gate weights the
+    // two differently (an authenticated ERROR always halts a rollout, an
+    // anonymous one is subject to a cohort error-rate threshold, so a
+    // single forged ERROR can no longer hold a tenant's patch pipeline
+    // closed forever). Once a token-sending APK is fleet-wide this becomes
+    // a hard requirement — see OTA_REQUIRE_DEVICE_AUTH in
+    // player-ota.controller.ts.
+    let deviceAuthenticated = false;
+    if (req) {
+      try {
+        const auth = await this.deviceAuth(req, screen.id);
+        deviceAuthenticated = auth.ok;
+      } catch {
+        deviceAuthenticated = false;
+      }
+    }
 
     const ALLOWED = new Set([
       'CHECKING', 'DOWNLOADING', 'VERIFYING', 'INSTALLING', 'INSTALLED', 'ERROR',
@@ -822,6 +1002,17 @@ export class ScreensController {
       return { ok: true, ignored: 'installed-without-version-bump' };
     }
 
+    // ── OTA-02: the failure signal is STICKY ────────────────────────────
+    // `lastOtaState` is last-writer-wins, and the player reports CHECKING
+    // at the head of EVERY OTA cycle — so a genuine ERROR was routinely
+    // erased by the device's own next poll, long before the 24 h canary
+    // soak expired, and could be erased deliberately by any anonymous
+    // caller. The canary gate now reads `lastOtaErrorAt`, which only an
+    // ERROR sets and which NO state report can clear. It is cleared by
+    // exactly two things: a confirmed install (a real versionCode bump, in
+    // player-ota's persistReportedVersion) or an operator re-push / canary
+    // re-arm. `lastOtaState` keeps its existing last-writer-wins semantics
+    // because the dashboard's live progress UI depends on them.
     await this.prisma.client.screen.update({
       where: { id: screen.id },
       data: {
@@ -829,12 +1020,20 @@ export class ScreensController {
         lastOtaProgress: progress,
         lastOtaMessage: message,
         lastOtaAt: new Date(),
+        ...(state === 'ERROR'
+          ? {
+              lastOtaErrorAt: new Date(),
+              lastOtaErrorMessage: message,
+              lastOtaErrorAuthenticated: deviceAuthenticated,
+            }
+          : {}),
       } as any,
     });
 
     console.log(
       `[ota-state] fp=${fingerprint.slice(0, 18)}… state=${state} ` +
-      `progress=${progress ?? '-'} message=${(message || '').slice(0, 80)}`,
+      `progress=${progress ?? '-'} authed=${deviceAuthenticated} ` +
+      `message=${(message || '').slice(0, 80)}`,
     );
 
     return { ok: true };
@@ -1015,6 +1214,21 @@ export class ScreensController {
       // view's per-pin emergency-cache badge in apps/web/src/components/
       // screens/ScreenMap.tsx).
       const { lastCrashStack: _stack, lastSelfTestReport: _self, ...rest } = s as any;
+      // ── DT-04 (2026-08-03): stop handing pairing secrets to low-privilege
+      // roles. `deviceFingerprint` and `pairingCode` are the two values
+      // that let a caller act as, or claim, a screen: the fingerprint is
+      // the key to `POST /screens/register` and to the anonymous OTA write
+      // plane (`/player/update-check`, `/screens/status/:fp/ota-state`),
+      // and the pairing code claims the screen outright. This list route
+      // is @RequireRoles(..., CONTRIBUTOR) and RESTRICTED_VIEWER reaches
+      // it through the RBAC GET pass-through, so both values were readable
+      // by the two lowest-privilege roles in the product. The list view
+      // renders neither — the pair modal and the per-screen detail route
+      // fetch them, and those are admin-gated.
+      if (!ADMIN_ROLES_FOR_SCREEN_SECRETS.has(req.user?.role)) {
+        delete (rest as any).deviceFingerprint;
+        delete (rest as any).pairingCode;
+      }
       const chromiumMajor = this.chromiumMajor((s as any).userAgent);
       // Effective geo for the fleet map: screen-specific wins, tenant
       // building location is the fallback, none → screen stays off the
@@ -1274,7 +1488,17 @@ export class ScreensController {
                 status: 'ONLINE',
                 pairedAt: new Date(),
                 pairingCode: null, // Clear the code after pairing
-              },
+                // 2026-08-03 (DT-01/DT-03): claiming a screen retires every
+                // credential minted for it under its previous owner. This is
+                // what stops a token issued to School A from continuing to
+                // authenticate — and to carry School A's tenantId claim —
+                // after the physical screen is re-deployed to School B.
+                // It also clears an operator revoke: re-pairing IS the
+                // supported way back from `status='REVOKED'`.
+                credentialEpoch: { increment: 1 },
+                credentialEpochRotatedAt: new Date(),
+                credentialRevokedAt: null,
+              } as any,
               include: { screenGroup: { select: { id: true, name: true } } },
             });
           },
@@ -1320,6 +1544,7 @@ export class ScreensController {
       }
     }
 
+    invalidateDeviceCredentialCache(screen.id);
     this.notifySync(req.user.tenantId);
     // Keep the tenant's Stripe subscription quantity in lockstep with
     // live paired-screen usage (Stripe auto-prorates). Fire-and-forget
@@ -1372,7 +1597,7 @@ export class ScreensController {
       return { ok: true, alreadyUnpaired: true };
     }
     // Verify the caller actually owns this screen via device JWT.
-    const verified = verifyDeviceForScreen(req, screen.id);
+    const verified = await this.deviceAuth(req, screen.id);
     if (!verified.ok) {
       throw new HttpException({ code: 'SCREEN_UNPAIR_UNAUTHORIZED', message: `Unauthorized: ${verified.reason}` }, HttpStatus.UNAUTHORIZED);
     }
@@ -1396,6 +1621,14 @@ export class ScreensController {
       // Drop schedules — operator is repurposing the screen.
       await tx.schedule.deleteMany({ where: { screenId: screen.id } });
       // Clear tenant + reissue pairing code; flip status to PENDING.
+      //
+      // 2026-08-03 (DT-01): unpairing now also RETIRES THE CREDENTIAL.
+      // Before this, an unpaired screen's 365-day token kept authenticating
+      // on nine routes and kept carrying the old tenantId claim — a screen
+      // pulled out of a school went on reading that school's live emergency
+      // traffic for up to a year. Bumping the epoch inside the same
+      // transaction means the disown and the credential kill either both
+      // land or neither does.
       await tx.screen.update({
         where: { id: screen.id },
         data: {
@@ -1404,7 +1637,9 @@ export class ScreensController {
           pairingCode: newPairingCode,
           status: 'PENDING',
           lastPingAt: new Date(),
-        },
+          credentialEpoch: { increment: 1 },
+          credentialEpochRotatedAt: new Date(),
+        } as any,
       });
       await tx.auditLog.create({
         data: {
@@ -1422,6 +1657,26 @@ export class ScreensController {
         },
       }).catch(() => { /* non-fatal */ });
     });
+
+    // The epoch moved — this replica must stop honouring the retired
+    // credential immediately, not after the snapshot cache TTL.
+    invalidateDeviceCredentialCache(screen.id);
+
+    // Belt-and-braces (DT-01): the unpairing request PRESENTED its token,
+    // so record that exact string in the DURABLE revocation store too. Its
+    // expiry is derived from the JWT's own `exp` claim — 180 days for a
+    // device token, not the 30-day user-session ceiling that made
+    // `jwt_revoked_list` structurally unusable for this credential class.
+    //
+    // Scope note, stated honestly: `RedisService` exposes no `sadd`, so the
+    // hot Redis set itself is not written here and this row is consulted
+    // only on the Redis-down fallback path. That is fine — it is NOT the
+    // control. The control is `Screen.credentialEpoch`, which lives in
+    // Postgres with no TTL and is checked on every device-authenticated
+    // request whether Redis is up or not.
+    if (verified.ok && verified.token) {
+      this.redisService.mirrorRevokedTokenDurable(verified.token).catch(() => {});
+    }
 
     // Notify the prior tenant's dashboard so the screen list refreshes.
     if (previousTenantId) {
@@ -1814,7 +2069,7 @@ export class ScreensController {
     @Req() req: ExpressReq,
     @Body() body: { orientation?: string; reason?: string },
   ) {
-    const auth = verifyDeviceForScreen(req, id);
+    const auth = await this.deviceAuth(req, id);
     if (!auth.ok) {
       throw new HttpException({ code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${auth.reason})` }, HttpStatus.UNAUTHORIZED);
     }
@@ -1913,7 +2168,7 @@ export class ScreensController {
     @Req() req: ExpressReq,
     @Body() body: { source?: string; snapshot?: Record<string, unknown> },
   ) {
-    const auth = verifyDeviceForScreen(req, id);
+    const auth = await this.deviceAuth(req, id);
     if (!auth.ok) {
       throw new HttpException({ code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${auth.reason})` }, HttpStatus.UNAUTHORIZED);
     }
@@ -2311,7 +2566,15 @@ export class ScreensController {
     // force flag is the explicit opt-in for THIS push only.
     await this.prisma.client.screen.updateMany({
       where: { tenantId },
-      data: { forceApkUpdatePendingAt: new Date() } as any,
+      data: {
+        forceApkUpdatePendingAt: new Date(),
+        // OTA-02: an operator deliberately re-pushing IS the "resolved,
+        // try again" signal. It is one of only two things that clears the
+        // sticky OTA failure stamp (the other is a confirmed install).
+        lastOtaErrorAt: null,
+        lastOtaErrorMessage: null,
+        lastOtaErrorAuthenticated: false,
+      } as any,
     }).catch((e) => {
       console.warn('[force-update] forceApkUpdatePendingAt write failed', (e as Error).message);
     });
@@ -2376,6 +2639,10 @@ export class ScreensController {
       data: {
         forceApkUpdatePendingAt: new Date(),
         forceApkUpdateOverrideWindow: overrideWindow,
+        // OTA-02: re-arming a push clears the sticky failure stamp.
+        lastOtaErrorAt: null,
+        lastOtaErrorMessage: null,
+        lastOtaErrorAuthenticated: false,
       } as any,
     }).catch((e) => {
       console.warn(`[OTA ${corrId}] forceApkUpdatePendingAt write FAILED: ${(e as Error).message}`);
@@ -2502,6 +2769,60 @@ export class ScreensController {
     return { ok: true, scope: 'screen', screenId: id, corrId };
   }
 
+  /**
+   * ─── ADMIN: Revoke a screen's device credential ─────────────────────
+   *
+   * 2026-08-03 (DT-01). Until this endpoint existed there was NO
+   * proportionate response to a compromised screen. `Screen.status =
+   * 'REVOKED'` was read in eight places and written in exactly zero;
+   * `jwt_revoked_list` had no device writer and carried a 30-day TTL on a
+   * credential that lived a year. The only working kill switch was
+   * DELETING the screen — which also destroyed its schedules and its
+   * telemetry history. An operator whose kiosk went missing had to choose
+   * between losing the configuration and leaving a live credential in a
+   * dumpster.
+   *
+   * This flips `status` to REVOKED (the state the manifest endpoint has
+   * always checked) AND bumps `credentialEpoch`, which retires every token
+   * ever minted for the screen — including ones nobody is holding, which a
+   * token-string denylist could never reach. The screen row, its
+   * schedules, its group membership and its history all survive; re-pairing
+   * with a fresh pairing code brings it back.
+   */
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @Post(':id/revoke-credential')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async revokeCredential(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { reason?: string } = {},
+  ) {
+    const isSuper = req.user?.role === AppRole.SUPER_ADMIN;
+    const screen = await this.prisma.client.screen.findFirst({
+      where: isSuper ? { id } : { id, tenantId: req.user.tenantId },
+      select: { id: true, name: true, tenantId: true, credentialEpoch: true } as any,
+    });
+    if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+
+    const { credentialEpoch } = await revokeScreenCredentials(
+      { prisma: this.prisma, redis: this.redisService },
+      {
+        screenId: id,
+        reason: 'admin_revoke',
+        markRevokedStatus: true,
+        tenantId: (screen as any).tenantId,
+        userId: req.user?.id ?? null,
+        details: {
+          screenName: (screen as any).name,
+          operatorReason: typeof body?.reason === 'string' ? body.reason.slice(0, 200) : null,
+        },
+      },
+    );
+
+    if ((screen as any).tenantId) this.notifySync((screen as any).tenantId);
+    return { revoked: true, screenId: id, credentialEpoch };
+  }
+
   // ─── ADMIN: Delete a screen ───
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Delete(':id')
@@ -2514,6 +2835,12 @@ export class ScreensController {
 
     await this.prisma.client.schedule.deleteMany({ where: { screenId: id } });
     await this.prisma.client.screen.delete({ where: { id } });
+    // 2026-08-03 (DT-01): deleting the row IS a complete credential kill —
+    // every device-authenticated path now re-reads the live Screen row and
+    // refuses when it is gone (`screen_not_found`). Drop the cached
+    // credential snapshot so this replica stops honouring the token inside
+    // the 5 s TTL rather than at the end of it.
+    invalidateDeviceCredentialCache(id);
     this.notifySync(req.user.tenantId);
     // Deleting a paired screen frees a seat — re-sync Stripe quantity.
     this.stripe.syncSubscriptionQuantity(req.user.tenantId).catch(() => {});
@@ -2671,6 +2998,23 @@ export class ScreensController {
       if (isDeviceJwt) {
         if (u.sub !== screen.id) {
           return res.status(403).json({ error: 'Device token does not match screen' });
+        }
+        // 2026-08-03 (DT-01): honour the credential epoch. `JwtAuthGuard`
+        // verifies the signature but knows nothing about revocation state,
+        // so without this a token retired by an unpair / re-pair / operator
+        // revoke would keep pulling this screen's manifest — including its
+        // live `emergency` block — until it expired on its own.
+        //
+        // Read the claim off the bearer token rather than off `req.user`:
+        // the global DeviceIdentityInterceptor already rejects a stale
+        // epoch, and this defence-in-depth check must not silently invert
+        // into a false 403 if that interceptor is ever reordered or
+        // unregistered. The signature is already established by the guard.
+        const deviceClaims = decodeDeviceTokenUnsafe(
+          typeof req.headers.authorization === 'string' ? req.headers.authorization : '',
+        );
+        if (!isEpochAcceptable(epochFromClaim(deviceClaims), screen as any)) {
+          return res.status(403).json({ error: 'Device credential revoked' });
         }
       } else if (!isSuper) {
         const callerTenantId = u.schoolId || u.tenantId || u.districtId;
@@ -3575,7 +3919,7 @@ export class ScreensController {
     @Req() req: ExpressReq,
     @Body() body: { playlist?: { count: number; bytes: number }; emergency?: { count: number; bytes: number } },
   ) {
-    const authResult = verifyDeviceForScreen(req, id);
+    const authResult = await this.deviceAuth(req, id);
     if (!authResult.ok) {
       throw new HttpException({ code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${authResult.reason})` }, HttpStatus.UNAUTHORIZED);
     }
@@ -3663,7 +4007,7 @@ export class ScreensController {
       };
     },
   ) {
-    const authResult = verifyDeviceForScreen(req, id);
+    const authResult = await this.deviceAuth(req, id);
     if (!authResult.ok) {
       throw new HttpException({ code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${authResult.reason})` }, HttpStatus.UNAUTHORIZED);
     }
@@ -3735,7 +4079,7 @@ export class ScreensController {
     // screenId (or the short-lived HMAC fallback for backward compat).
     // Every successful fetch is audit-logged so we can forensically
     // answer "who asked for the lockdown video set, and when?"
-    const authResult = verifyDeviceForScreen(req, id);
+    const authResult = await this.deviceAuth(req, id);
     if (!authResult.ok) {
       throw new HttpException({ code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${authResult.reason})` }, HttpStatus.UNAUTHORIZED);
     }
@@ -4016,7 +4360,7 @@ export class ScreensController {
     @Req() req: ExpressReq,
     @Query('includeUnavailable') includeUnavailable?: string,
   ) {
-    const authResult = verifyDeviceForScreen(req, id);
+    const authResult = await this.deviceAuth(req, id);
     if (!authResult.ok) {
       throw new HttpException({ code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${authResult.reason})` }, HttpStatus.UNAUTHORIZED);
     }

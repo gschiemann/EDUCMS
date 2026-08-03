@@ -244,6 +244,22 @@ export const SCREEN_TELEMETRY_ONLY_FIELDS = new Set([
     // heartbeat would thrash the manifest cache (the exact 25 GB/mo
     // egress failure the cache exists to prevent).
     'lastPushConnectedAt',
+    // Device-credential revocation state (2026-08-03, DT-01/DT-02). None of
+    // these appear in the manifest payload, so a write must not invalidate a
+    // screen's cached content. Safe because revocation is NOT enforced via
+    // the cache: `getManifest` reads the live Screen row and 403s on
+    // REVOKED / stale-epoch BEFORE the cache is consulted, and every other
+    // device route goes through device-auth.ts's own live-row read.
+    'credentialEpoch',
+    'credentialEpochRotatedAt',
+    'credentialRevokedAt',
+    // Sticky OTA failure signal (2026-08-03, OTA-02). Written in the same
+    // statement as `lastOtaState` above; leaving them off this list would
+    // let an ERROR report thrash the cache that `lastOtaState` was
+    // deliberately listed to protect.
+    'lastOtaErrorAt',
+    'lastOtaErrorMessage',
+    'lastOtaErrorAuthenticated',
 ]);
 
 export type ManifestCacheEntry =

@@ -1213,8 +1213,24 @@ export class EmergencyController {
     // regardless of what they pass. This was previously unscoped — any
     // authenticated user could enumerate tenant IDs and harvest active
     // lockdown messages from other schools.
+    // ── DT-03 / DT-10 (2026-08-03) — device principals ──────────────────
+    // `req.user.tenantId` for a device used to come straight off a claim
+    // inside a multi-month token, so an unpaired / re-homed / dumpstered
+    // screen kept reading its FORMER tenant's live lockdown traffic —
+    // message text, media URLs, the active panic playlist — for the life
+    // of the token. The global DeviceIdentityInterceptor now re-derives
+    // that field from the live Screen row before any handler sees it (and
+    // rejects a revoked credential outright), so `callerTenantId` below is
+    // trustworthy for a device.
+    //
+    // The second half is scope: this handler applied NO per-scope filter,
+    // so a device could read `device:`-scoped messages addressed to OTHER
+    // rooms in the same tenant — precisely the isolation the sibling
+    // `/messages` handler was built to enforce. A device principal now
+    // gets the same membership filter.
+    const isDevicePrincipal = req.user?.kind === 'device';
     const callerTenantId = req.user?.schoolId || req.user?.tenantId || req.user?.districtId;
-    const isSuper = req.user?.role === AppRole.SUPER_ADMIN;
+    const isSuper = !isDevicePrincipal && req.user?.role === AppRole.SUPER_ADMIN;
     const tenantId = isSuper ? (queryTenantId || callerTenantId) : callerTenantId;
 
     if (!tenantId) {
@@ -1229,6 +1245,17 @@ export class EmergencyController {
     };
     if (scopeType) where.scopeType = scopeType;
     if (scopeId) where.scopeId = scopeId;
+
+    if (isDevicePrincipal) {
+      const screenId = typeof req.user?.sub === 'string' ? req.user.sub : null;
+      const groupId = req.user?.screenGroupId || null;
+      const scopeOr: Array<{ scopeType: string; scopeId: string }> = [
+        { scopeType: 'tenant', scopeId: tenantId },
+      ];
+      if (screenId) scopeOr.push({ scopeType: 'device', scopeId: screenId });
+      if (groupId) scopeOr.push({ scopeType: 'group', scopeId: groupId });
+      where.AND = [...(where.AND ?? []), { OR: scopeOr }];
+    }
 
     const rows = await this.prisma.client.emergencyMessage.findMany({
       where,

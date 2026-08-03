@@ -33,16 +33,21 @@
  * keeps it current; operators never have to re-sideload.
  */
 
-import { Controller, Post, Get, Body, Res, Logger, UseGuards, Param, NotFoundException } from '@nestjs/common';
-import type { Response } from 'express';
+import { Controller, Post, Get, Body, Req, Res, Logger, UseGuards, Param, NotFoundException, HttpException, HttpStatus } from '@nestjs/common';
+import type { Request as ExpressReq, Response } from 'express';
 import { Readable } from 'node:stream';
 import { Throttle } from '@nestjs/throttler';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../realtime/redis.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { isInCanaryCohort } from './canary-cohort';
+// 2026-08-03 security wave: OTA-01 (authenticate the destructive write),
+// OTA-03/04/05 (provenance pin, URL allowlist, rollback floor + kill switch).
+import { verifyDeviceForScreen } from '../screens/device-auth';
+import { evaluateReleaseForFleet, isAllowedApkUrl } from './release-policy';
 
 interface UpdateCheckBody {
   fingerprint?: string;
@@ -57,7 +62,46 @@ interface UpdateCheckBody {
 export class PlayerOtaController {
   private readonly logger = new Logger('PlayerOTA');
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redisService: RedisService,
+  ) {}
+
+  /**
+   * OTA-01 — does this request carry a valid device credential bound to the
+   * screen that owns `fingerprint`?
+   *
+   * Resolves the fingerprint to a screen id first (the OTA client speaks
+   * fingerprints, the credential speaks screen ids), then runs the SHARED
+   * device verifier — so a revoked, re-homed or deleted screen's token
+   * counts as unauthenticated here too, not merely as "wrong screen".
+   * Never throws: an unresolvable fingerprint or a DB hiccup is simply
+   * "not authenticated", which is the safe direction.
+   */
+  private async isDeviceAuthenticated(
+    req: ExpressReq | undefined,
+    fingerprint: string | undefined,
+  ): Promise<boolean> {
+    const fp = (fingerprint || '').trim();
+    if (!req || !fp) return false;
+    const auth = req.headers?.authorization;
+    if (typeof auth !== 'string' || !auth.toLowerCase().startsWith('bearer ')) return false;
+    try {
+      const screen = await this.prisma.client.screen.findFirst({
+        where: { deviceFingerprint: fp },
+        select: { id: true },
+      });
+      if (!screen) return false;
+      const result = await verifyDeviceForScreen(
+        { prisma: this.prisma, redis: this.redisService },
+        req,
+        screen.id,
+      );
+      return result.ok;
+    } catch {
+      return false;
+    }
+  }
 
   /**
    * Fire-and-forget: record the APK version the caller reported onto
@@ -68,7 +112,10 @@ export class PlayerOtaController {
    * missing-row cases (e.g. a preview fingerprint that never paired)
    * no-op instead of throwing.
    */
-  private async persistReportedVersion(body: UpdateCheckBody): Promise<void> {
+  private async persistReportedVersion(
+    body: UpdateCheckBody,
+    ctx: { deviceAuthenticated: boolean } = { deviceAuthenticated: false },
+  ): Promise<void> {
     const fp = (body?.fingerprint || '').trim();
     const vn = (body?.versionName || '').trim();
     if (!fp || !vn) return;
@@ -98,26 +145,60 @@ export class PlayerOtaController {
       // APK URL.
       const prior = await this.prisma.client.screen.findFirst({
         where: { deviceFingerprint: fp },
-        select: { id: true, playerVersionCode: true, forceApkUpdatePendingAt: true } as any,
+        select: { id: true, tenantId: true, playerVersionCode: true, forceApkUpdatePendingAt: true } as any,
       }) as any;
-      const installed = !!(
+      const claimsInstall = !!(
         prior && prior.forceApkUpdatePendingAt && vc !== null
         && (prior.playerVersionCode == null || vc > Number(prior.playerVersionCode))
       );
+
+      // ── OTA-01 (2026-08-03): clearing a pending push is now PRIVILEGED ──
+      //
+      // The attack this closes: `POST /player/update-check` takes no
+      // authentication of any kind, and this function is what clears
+      // `forceApkUpdatePendingAt`. So anyone who knew ONE device
+      // fingerprint — a value every CONTRIBUTOR (and, via the RBAC GET
+      // pass-through, every RESTRICTED_VIEWER) could read off
+      // `GET /screen-groups`, and that anyone with 60 seconds of adb on a
+      // single kiosk can read — could POST a fabricated version bump and
+      // silently cancel an operator's APK push. Looped, that holds the
+      // whole tenant fleet off the patch channel INDEFINITELY, while the
+      // dashboard's "push pending" chip clears as if the install had
+      // succeeded. That is the exact channel that would ship the fix for
+      // the confirmed debuggable-APK / stolen-token CRITICALs.
+      //
+      // Why not simply require auth on the route: the shipped Kotlin OTA
+      // worker sends no Authorization header, and this change cannot ship
+      // an APK. Requiring it would take the entire live fleet off updates —
+      // the very outcome being defended against. So the READ path stays
+      // open (the fleet keeps updating) and the one DESTRUCTIVE write is
+      // gated. The real fleet loses nothing: after a successful install the
+      // kiosk reports the new versionName, `semverGte` returns uptoDate, so
+      // there is no re-download loop; the flag simply lingers until the
+      // existing 24 h stale sweep clears it.
+      //
+      // Flip OTA_REQUIRE_DEVICE_AUTH=true once a token-sending player build
+      // is fleet-wide to make this a hard requirement.
+      const installed = claimsInstall && ctx.deviceAuthenticated;
+
       await this.prisma.client.screen.updateMany({
         where: { deviceFingerprint: fp },
         data: {
           playerVersion: vn,
           playerVersionCode: vc,
           playerVersionAt: new Date(),
-          // Clear the flag iff this report shows the install actually
-          // landed (versionCode bumped). Also clear the maintenance-
-          // window override so it doesn't linger past the install it
-          // was set for.
+          // Clear the flag iff a DEVICE-AUTHENTICATED report shows the
+          // install actually landed (versionCode bumped). Also clear the
+          // maintenance-window override so it doesn't linger past the
+          // install it was set for, and the sticky OTA failure stamp
+          // (OTA-02) — a real install is the definitive "resolved".
           ...(installed
             ? {
                 forceApkUpdatePendingAt: null as any,
                 forceApkUpdateOverrideWindow: false as any,
+                lastOtaErrorAt: null as any,
+                lastOtaErrorMessage: null as any,
+                lastOtaErrorAuthenticated: false as any,
               }
             : {}),
         } as any,
@@ -127,6 +208,29 @@ export class PlayerOtaController {
           `[ota] flag-cleared-on-install screen=${prior.id} ` +
           `prev=${prior.playerVersionCode || 'null'} new=${vc}`,
         );
+      } else if (claimsInstall) {
+        // Refused. Leave a forensic record — the audit specifically called
+        // out that this cancellation left none.
+        this.logger.warn(
+          `[ota][security] UNAUTHENTICATED install claim for screen=${prior.id} ` +
+          `prev=${prior.playerVersionCode || 'null'} claimed=${vc} — pending push ` +
+          `NOT cleared (OTA-01). Flag remains set; the 24h sweep will retire it.`,
+        );
+        this.prisma.client.auditLog.create({
+          data: {
+            tenantId: (prior as any).tenantId || 'unknown',
+            userId: null,
+            action: 'OTA_UNAUTHENTICATED_INSTALL_CLAIM',
+            targetType: 'Screen',
+            targetId: prior.id,
+            details: JSON.stringify({
+              fingerprint: fp.slice(0, 24),
+              priorVersionCode: prior.playerVersionCode ?? null,
+              claimedVersionCode: vc,
+              claimedVersionName: vn,
+            }),
+          },
+        }).catch(() => { /* audit best-effort */ });
       }
     } catch (e: any) {
       // Non-fatal — next poll will try again.
@@ -136,9 +240,24 @@ export class PlayerOtaController {
 
   @Post('update-check')
   @Throttle({ default: { limit: 120, ttl: 60_000 } })
-  async updateCheck(@Body() body: UpdateCheckBody) {
+  async updateCheck(@Body() body: UpdateCheckBody, @Req() req?: ExpressReq) {
+    // ── OTA-01 (2026-08-03) — establish whether the caller can PROVE it is
+    // the screen it claims to be. The route stays anonymous by necessity
+    // (the shipped Kotlin worker sends no Authorization header and this
+    // change cannot ship an APK), but the destructive side effect —
+    // clearing an operator's pending APK push — is gated on this.
+    const deviceAuthenticated = await this.isDeviceAuthenticated(req, body?.fingerprint);
+    if (!deviceAuthenticated && process.env.OTA_REQUIRE_DEVICE_AUTH === 'true') {
+      // Opt-in hard gate, for after a token-sending player build is
+      // fleet-wide. Off by default precisely so enabling it is a deliberate
+      // act taken with knowledge of the installed base.
+      throw new HttpException(
+        { code: 'OTA_DEVICE_AUTH_REQUIRED', message: 'Device authentication required for update-check' },
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
     // Fire-and-forget; don't block the response path on the write.
-    this.persistReportedVersion(body).catch(() => {});
+    this.persistReportedVersion(body, { deviceAuthenticated }).catch(() => {});
 
     // OTA gating (2026-04-27). Operator: "we shouldnt be auto
     // updating screens unless we check a box or something on
@@ -477,12 +596,32 @@ export class PlayerOtaController {
       // e.g. someone hand-installed a dev build with versionCode 9999 —
       // bump it to caller+1 so they still update to the tag build.
       const derivedVc = Math.max(info.derivedVersionCode, callerVc + 1);
-      // 2026-04-28 — server-computed SHA pinning closes the wormable-
-      // fleet hole. If we can't compute SHA (GitHub 5xx, network
-      // glitch, etc.), FAIL CLOSED — the kiosk's Kotlin verifier
-      // would skip checking on empty SHA, leaving a residual install-
-      // unverified-APK window. Better to return uptoDate and retry
-      // on the next periodic tick when GitHub recovers.
+      // 2026-04-28 — server-computed SHA-256 of the artifact.
+      //
+      // CORRECTED 2026-08-03 (OTA-03). The comment that used to sit here
+      // claimed this "closes the release asset swap attack vector". IT DOES
+      // NOT, and saying so was safeguard theatre of exactly the kind this
+      // repo has a documented history of. `resolveLatestPlayerReleaseSha`
+      // fetches THE SAME URL we are about to advertise and hashes whatever
+      // comes back — so if the release asset is swapped, we obligingly hash
+      // the NEW bytes and advertise a matching digest. What it actually
+      // provides is TRANSPORT integrity: the device installs the same bytes
+      // the server saw. That is worth having (it is why the fail-closed
+      // below is correct) but it is not provenance.
+      //
+      // Real provenance requires a digest recorded INDEPENDENTLY of the
+      // artifact. `evaluateReleaseForFleet` below compares against
+      // PLAYER_RELEASE_SHA_PINS — committed to the repo at release time —
+      // when a pin exists for this version, and says so in the log when one
+      // does not. The remaining hole is not fixable from this file: CI signs
+      // release APKs with a debug keystore committed to a PUBLIC repo, so
+      // anyone with `git clone` can still produce an APK that passes
+      // Android's signature-continuity check. That needs release-signing
+      // with a non-public key.
+      //
+      // Fail closed when the digest cannot be computed at all (GitHub 5xx,
+      // network glitch): the kiosk's Kotlin verifier skips checking on an
+      // empty SHA, which would leave an install-unverified-APK window.
       const sha256 = await resolveLatestPlayerReleaseSha(info.apkUrl);
       if (!sha256) {
         this.logger.warn(
@@ -493,10 +632,32 @@ export class PlayerOtaController {
         return { uptoDate: true };
       }
 
+      // ── OTA-03/04/05 — the server's own opinion about these bytes ──────
+      // URL scheme + host allowlist (the release-list fetch upstream is
+      // anonymous, so an influenced response could otherwise point the
+      // whole fleet at an arbitrary host), anti-rollback floor, per-build
+      // quarantine, and the out-of-band digest pin. Fail CLOSED and loud:
+      // returning uptoDate holds the fleet on its current build, which is
+      // always safer than installing bytes we decline to vouch for.
+      const verdict = evaluateReleaseForFleet({
+        versionName: info.versionName,
+        apkUrl: info.apkUrl,
+        computedSha: sha256,
+      });
+      if (!verdict.allowed) {
+        this.logger.error(
+          `[ota][security] decision=uptoDate-release-refused caller=${callerVn} ` +
+          `target=v${info.versionName} screen=${lookupScreenId || '-'} ` +
+          `reason=${verdict.reason} (FAIL-CLOSED — nothing advertised)`,
+        );
+        return { uptoDate: true };
+      }
+
       this.logger.log(
         `[ota] decision=install-gh caller=${callerVn} target=v${info.versionName} ` +
         `screen=${lookupScreenId || '-'} abi=${callerAbi || 'not-reported'} ` +
-        `url=${info.apkUrl.slice(0, 80)} sha=${sha256.slice(0, 12)}`,
+        `url=${info.apkUrl.slice(0, 80)} sha=${sha256.slice(0, 12)} ` +
+        `provenance=${verdict.pinned ? 'sha-pinned' : 'UNPINNED-transport-integrity-only'}`,
       );
       return {
         latest: {
@@ -702,6 +863,16 @@ export class PlayerOtaController {
         );
         return { uptoDate: true };
       }
+      // OTA-04: same URL scheme + host allowlist the Player path enforces.
+      // The Manager APK is the component that INSTALLS the Player, so an
+      // arbitrary URL here is strictly worse than one on the Player path.
+      if (!isAllowedApkUrl(info.apkUrl)) {
+        this.logger.error(
+          `[mgr-ota][security] decision=uptoDate-url-refused caller=${callerVn} ` +
+          `target=v${info.versionName} fp=${fpShort} (FAIL-CLOSED — not an allowlisted https host)`,
+        );
+        return { uptoDate: true };
+      }
       this.logger.log(
         `[mgr-ota] decision=install caller=${callerVn} target=v${info.versionName} fp=${fpShort} sha=${sha256.slice(0, 12)}`,
       );
@@ -732,8 +903,22 @@ export class PlayerOtaController {
     // set, nothing to go stale on each release. Cached 5 min.
     const explicit = process.env.PLAYER_APK_URL;
     if (explicit) {
-      res.redirect(302, explicit);
-      return;
+      // OTA-04: this 302'd to the env value VERBATIM — no scheme check, no
+      // host check. A mis-set (or maliciously set) variable pointed every
+      // operator clicking "Download Player APK" at an arbitrary host over
+      // plain http. Allow a same-origin relative path (that is the
+      // documented `/api/v1/player/apk/v/:vc` self-proxy form) and
+      // otherwise require an allowlisted https host.
+      const isRelative = explicit.startsWith('/');
+      if (isRelative || isAllowedApkUrl(explicit)) {
+        res.redirect(302, explicit);
+        return;
+      }
+      this.logger.error(
+        `[ota][security] PLAYER_APK_URL is not an allowlisted https URL — ignoring it ` +
+        `and falling back to the resolved GitHub release. Fix the env var or add its ` +
+        `host to PLAYER_APK_HOST_ALLOWLIST.`,
+      );
     }
 
     try {

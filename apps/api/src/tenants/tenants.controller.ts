@@ -1096,6 +1096,39 @@ export class TenantsController {
       throw new HttpException({ code: 'TENANT_USB_INGEST_FIELDS_REQUIRED', message: 'screenId and outcome required' }, HttpStatus.BAD_REQUEST);
     }
 
+    // ── DT-07 (2026-08-03) — the screen must be the CALLER, not a path param.
+    // This route has no @RequireRoles, so RbacGuard short-circuits and a
+    // roleless device principal from ANY tenant reached it. `screenId` came
+    // from the URL and was never tied to the caller, so a device token for
+    // screen S in tenant T could write a `UsbIngestEvent` attributed to
+    // screen X in tenant U — with attacker-chosen deviceSerial,
+    // bundleVersion, assetCount, outcome and reason. That table is the
+    // record an incident reviewer consults to answer "what content was
+    // sideloaded onto this screen, and by whom".
+    //
+    // The old comment claimed "the screenId derivation alone closes the
+    // IDOR". It closed the TENANT IDOR (the tenant is derived from the
+    // screen row, not supplied) but not the SCREEN-TARGETING one. Bind it
+    // to the token, exactly as every other device telemetry route does.
+    // Operators (dashboard-driven ingest review) keep their access via the
+    // tenant check below.
+    const principal = req.user || {};
+    if (principal.kind === 'device') {
+      if (principal.sub !== screenId) {
+        throw new HttpException(
+          { code: 'TENANT_USB_INGEST_SCREEN_MISMATCH', message: 'Device may only report USB ingest for its own screen' },
+          HttpStatus.FORBIDDEN,
+        );
+      }
+    } else if (!principal.role) {
+      // Neither a device bound to this screen nor a roled user → no basis
+      // on which to write into anyone's forensic trail.
+      throw new HttpException(
+        { code: 'TENANT_USB_INGEST_FORBIDDEN', message: 'Device or operator authentication required' },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
     // ten-ok: device-reported telemetry — the screen row IS the tenant resolver; usbIngestEnabled + optional HMAC verified directly below
     const screen = await this.prisma.client.screen.findUnique({
       where: { id: screenId },
@@ -1108,6 +1141,17 @@ export class TenantsController {
     }
     if (!screen.tenant.usbIngestEnabled) {
       throw new HttpException({ code: 'TENANT_USB_INGEST_DISABLED', message: 'USB ingest is disabled for this tenant' }, HttpStatus.FORBIDDEN);
+    }
+    // DT-07, operator leg: a roled user may only write into their OWN
+    // tenant's ingest trail. SUPER_ADMIN is cross-tenant by design.
+    if (principal.kind !== 'device' && principal.role !== AppRole.SUPER_ADMIN) {
+      const callerTenantId = principal.tenantId || principal.schoolId || principal.districtId || null;
+      if (!callerTenantId || callerTenantId !== screen.tenantId) {
+        throw new HttpException(
+          { code: 'TENANT_USB_INGEST_SCREEN_UNKNOWN', message: 'Unknown or unpaired screen' },
+          HttpStatus.NOT_FOUND,
+        );
+      }
     }
 
     // Optional HMAC signature verification (defense-in-depth).
