@@ -27,6 +27,9 @@ import { createHash } from 'node:crypto';
 import { BrandingScraperService, normalizeWebUrl } from '../branding/branding-scraper.service';
 import { summarizeUrlReference } from '../ai/signage-concierge';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
+// INJ-003 — write-time scheme/SSRF gate for URL-bearing zone config
+// (WEBPAGE / EXTERNAL_HTML / STREAMING). See zone-url-guard.ts.
+import { assertZoneUrlsSafe } from './zone-url-guard';
 import {
   TemplateNameOnlySchema, type TemplateNameOnlyInput,
   TemplateSceneUpdateSchema, type TemplateSceneUpdateInput,
@@ -229,6 +232,64 @@ export class TemplatesController {
         HttpStatus.CONFLICT,
       );
     }
+  }
+
+  /**
+   * INJ-003 (2026-08-01) — the CONTRIBUTOR (Editor) publish gate, extended
+   * from "new schedules" to "edits of already-live content".
+   *
+   * `schedules.controller.create()` states the intent plainly: *"CONTRIBUTOR
+   * (Editor) schedules are ALWAYS staged as drafts — they cannot push content
+   * live directly."* That gate only ever intercepted the creation of a NEW
+   * schedule. It said nothing about EDITING a template that is already bound
+   * to a live one — and every template write below (`update`,
+   * `replaceZones`, `restoreVersion`) allows CONTRIBUTOR and checked only
+   * tenant ownership + `isSystem`. So an Editor could take a board that was
+   * already on a wall, rewrite its zones, and have the change ship to every
+   * screen at the next manifest poll with zero review. That is the same
+   * "push content live directly" the draft gate exists to prevent, just
+   * through the back door.
+   *
+   * A template reaches a screen through exactly one path in the schema:
+   *   Schedule.isActive ─▶ Schedule.playlistId ─▶ Playlist.templateId
+   * so "live-bound" == an active Schedule in this tenant whose playlist
+   * points at this template.
+   *
+   * Admins (SCHOOL_ADMIN and up) are unaffected — they ARE the approvers.
+   * A template that is NOT live-bound stays freely editable by a
+   * CONTRIBUTOR, so the ordinary authoring flow (build a draft, submit for
+   * review, admin approves) is untouched.
+   *
+   * We reject rather than auto-file a Submission: the review queue
+   * (submissions.controller.ts) bundles asset / playlist / schedule IDS and
+   * publishes them by flipping `Asset.status` and `Schedule.isActive`. It
+   * has no template column and, more fundamentally, no staging area to
+   * PARK a proposed zone payload in until a reviewer says yes — a template
+   * edit is destructive-in-place (delete-all-zones-and-recreate). Routing
+   * this through the queue would mean a schema change plus a new pending-
+   * content store, i.e. a feature, not a fix. The 403 tells the operator
+   * exactly what to do instead.
+   */
+  private async assertContributorMayEditLiveTemplate(req: any, templateId: string): Promise<void> {
+    if (req?.user?.role !== AppRole.CONTRIBUTOR) return;
+    const liveSchedule = await this.prisma.client.schedule.findFirst({
+      where: {
+        tenantId: req.user.tenantId,
+        isActive: true,
+        playlist: { templateId },
+      },
+      select: { id: true },
+    });
+    if (!liveSchedule) return;
+    throw new HttpException(
+      {
+        code: 'REQUIRES_APPROVAL',
+        message:
+          'This template is currently live on screens, so an Editor cannot change it directly. ' +
+          'Duplicate it, edit the copy, and submit it for review — or ask an admin to make the change.',
+      },
+      HttpStatus.FORBIDDEN,
+    );
   }
 
   /**
@@ -1018,6 +1079,10 @@ export class TemplatesController {
       for (const zone of body.zones) {
         validateZoneBounds(zone);
       }
+      // INJ-003 — same scheme/SSRF gate as replaceZones. A brand-new
+      // template is not live yet, but it is one publish away, and the
+      // config written here is never re-validated on the way to a screen.
+      assertZoneUrlsSafe(body.zones);
     }
 
     // Derive orientation from dimensions if not explicitly set
@@ -2313,6 +2378,12 @@ export class TemplatesController {
     if (template.isSystem) {
       throw new HttpException({ code: 'TEMPLATE_SYSTEM_READ_ONLY', message: 'Cannot modify system templates. Duplicate it first.' }, HttpStatus.FORBIDDEN);
     }
+    // INJ-003 — an Editor may not edit a template that is already live on
+    // screens. This metadata PUT writes bgColor / bgImage / bgGradient,
+    // which render on the wall exactly like a zone does. It is also the
+    // FIRST half of the builder's two-phase save (metadata, then zones), so
+    // gating only the zones half would half-apply an Editor's save.
+    await this.assertContributorMayEditLiveTemplate(req, id);
     // C2 — staleness guard. No-op (and no behavior change) when the
     // client omits expectedUpdatedAt.
     this.assertNotStale(template, body.expectedUpdatedAt);
@@ -2372,6 +2443,9 @@ export class TemplatesController {
     if (template.isSystem) {
       throw new HttpException({ code: 'TEMPLATE_SYSTEM_READ_ONLY', message: 'Cannot modify system templates. Duplicate it first.' }, HttpStatus.FORBIDDEN);
     }
+    // INJ-003 — an Editor may not rewrite the zones of a template that is
+    // already live on screens (the un-reviewed content-injection path).
+    await this.assertContributorMayEditLiveTemplate(req, id);
     // C2 — staleness guard on the MOST destructive of the two save
     // calls (this is the delete-all-and-recreate). No-op when the
     // client omits expectedUpdatedAt.
@@ -2381,6 +2455,11 @@ export class TemplatesController {
     for (const zone of body.zones) {
       validateZoneBounds(zone);
     }
+    // INJ-003 — scheme/SSRF gate on every URL-bearing zone config
+    // (WEBPAGE / EXTERNAL_HTML / STREAMING). `defaultConfig` is z.any() and
+    // is persisted verbatim a few lines below, so this is the only place a
+    // `javascript:` / `data:` iframe src can be stopped server-side.
+    assertZoneUrlsSafe(body.zones);
 
     // Phase D2.5 — guard sceneId references. The atomic replace below
     // would happily insert sceneIds that don't belong to this template
@@ -2542,6 +2621,11 @@ export class TemplatesController {
     if (template.isSystem) {
       throw new HttpException({ code: 'TEMPLATE_SYSTEM_READ_ONLY', message: 'Cannot modify system templates. Duplicate it first.' }, HttpStatus.FORBIDDEN);
     }
+    // INJ-003 — same live-bound Editor gate as update()/replaceZones().
+    // Restore performs the identical delete-all-zones-and-recreate, so
+    // leaving it open would make the gate on those two bypassable in a
+    // single call ("restore the version I saved 30 seconds ago").
+    await this.assertContributorMayEditLiveTemplate(req, id);
     // C2 — staleness guard, same position/semantics as update()/replaceZones():
     // after the tenant/ownership fetch, before any destructive write. No-op
     // (today's blind-restore behavior) when the client omits expectedUpdatedAt.
@@ -2575,6 +2659,12 @@ export class TemplatesController {
     for (const zone of snapshotZones) {
       validateZoneBounds(zone);
     }
+    // INJ-003 — and the same URL gate, for the same reason: a snapshot
+    // written BEFORE this guard existed can still be carrying a hostile
+    // scheme. Restoring it must not be the way that value gets back onto a
+    // screen. (Snapshot rows carry defaultConfig as a JSON string; the
+    // guard handles both shapes.)
+    assertZoneUrlsSafe(snapshotZones);
 
     const [, , restored] = await this.prisma.client.$transaction([
       this.prisma.client.template.update({

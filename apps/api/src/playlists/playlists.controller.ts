@@ -36,6 +36,51 @@ export class PlaylistsController {
     } catch (e) {}
   }
 
+  /**
+   * INJ-003 (2026-08-01) — the CONTRIBUTOR (Editor) publish gate, extended
+   * from "new schedules" to "edits of already-live content".
+   *
+   * `schedules.controller.create()` stages every CONTRIBUTOR-created
+   * schedule as a draft: *"they cannot push content live directly."* But
+   * that only covered creating a NEW schedule. `PUT /playlists/:id/items`
+   * allows CONTRIBUTOR and checked only tenant ownership — so an Editor
+   * could swap the items of a playlist that was ALREADY live and the new
+   * content shipped to every screen at the next manifest poll, un-reviewed.
+   * Same "push content live directly", just through the back door.
+   *
+   * "Live-bound" == an active Schedule in this tenant pointing at this
+   * playlist (`Schedule.isActive` + `Schedule.playlistId`) — the exact
+   * relation the manifest resolver reads.
+   *
+   * Admins are unaffected; they ARE the approvers. Playlists that are not
+   * live-bound stay freely editable by an Editor, so the normal authoring
+   * flow (build it, send for review, admin publishes) is untouched.
+   *
+   * Rejects rather than auto-filing a Submission: the review queue
+   * (submissions.controller.ts) publishes by flipping `Asset.status` and
+   * `Schedule.isActive` — it has nowhere to PARK a proposed item list until
+   * a reviewer says yes, because this endpoint is a destructive in-place
+   * replace-all. Staging it would need a new pending-content store, i.e. a
+   * feature rather than a fix.
+   */
+  private async assertContributorMayEditLivePlaylist(req: any, playlistId: string): Promise<void> {
+    if (req?.user?.role !== AppRole.CONTRIBUTOR) return;
+    const liveSchedule = await this.prisma.client.schedule.findFirst({
+      where: { tenantId: req.user.tenantId, isActive: true, playlistId },
+      select: { id: true },
+    });
+    if (!liveSchedule) return;
+    throw new HttpException(
+      {
+        code: 'REQUIRES_APPROVAL',
+        message:
+          'This playlist is currently live on screens, so an Editor cannot change it directly. ' +
+          'Duplicate it, edit the copy, and submit it for review — or ask an admin to make the change.',
+      },
+      HttpStatus.FORBIDDEN,
+    );
+  }
+
   // ─── Phase 2c — publish (distribute) this playlist to screens across child
   //     locations. Copies the playlist + its assets down into each child and
   //     schedules it live there (idempotent re-publish via sourcePlaylistId).
@@ -218,6 +263,11 @@ export class PlaylistsController {
       where: { id, tenantId: req.user.tenantId },
     });
     if (!playlist) throw new HttpException({ code: 'PLAYLIST_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+
+    // INJ-003 (2026-08-01) — an Editor may not rewrite the contents of a
+    // playlist that is already live on screens. See the long note on
+    // assertContributorMayEditLivePlaylist below.
+    await this.assertContributorMayEditLivePlaylist(req, id);
 
     // HIGH-1 audit fix: validate every assetId in the body actually
     // belongs to the caller's tenant. Without this, a user could insert
