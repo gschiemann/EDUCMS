@@ -53,8 +53,12 @@ android {
         // canonical Android Enterprise dedicated-device pattern.
         // v1.0.20's watchdog relaunch stays as a belt-and-suspenders
         // backstop. See ManagerApp.pinPlayerAsHome().
-        versionCode = 10022 // 1*10000 + 0*100 + 22
-        versionName = "1.0.22"
+        // 2026-08-03 — v1.0.23. Patch bump: adds allowPlayerLockTask()
+        // (setLockTaskPackages for the Player + Manager pair) so the Player's
+        // LockTaskController can pin the kiosk. Also release-signed with the
+        // real VenueOS key from this build onward.
+        versionCode = 10023 // 1*10000 + 0*100 + 23
+        versionName = "1.0.23"
 
         // Override at build time to point at a non-default API:
         //   -PmanagerApiRoot="https://staging.venue-os.app"

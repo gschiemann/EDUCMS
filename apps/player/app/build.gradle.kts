@@ -65,8 +65,23 @@ android {
         // The `kioskHomeOptIn` pref keeps the alias enabled across
         // restarts. Alias still ships disabled so OEM-CMS boxes are
         // untouched unless the operator opts in.
-        versionCode = 10074
-        versionName = "1.0.74"
+        // 2026-08-03 — v1.1.0, the security wave. A MINOR bump, not a patch,
+        // because this build is not a drop-in successor to 1.0.74:
+        //   * Release-signed with the real VenueOS key instead of the public
+        //     committed debug keystore, so the shipped applicationId is now
+        //     `com.educms.player` (release) rather than `com.educms.player.debug`.
+        //     Android treats those as DIFFERENT APPS — this installs alongside
+        //     an old build, it does not update it.
+        //   * android:debuggable is gone (was readable via `adb run-as`).
+        //   * JS bridge now also exposed via WebViewCompat.addWebMessageListener
+        //     with origin + main-frame checks; legacy addJavascriptInterface is
+        //     kept in parallel this release (see NativeBridgeChannel header for
+        //     the legacy-removal criteria).
+        //   * Kiosk lock task mode (LockTaskController), device-owner gated.
+        //   * OTA host pinning, serial-bridge shell injection fix, intent
+        //     redirection fix, USB receiver action check.
+        versionCode = 10100
+        versionName = "1.1.0"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)
