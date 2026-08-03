@@ -155,3 +155,59 @@ swap documented in the `WebAppBridge.kt:234` KDoc.
   must be validated during the release cutover.
 - **`bundleManagerApk` still hardcodes `:manager:assembleDebug`** — a required cutover step, left
   alone deliberately rather than changed untested.
+
+---
+
+# RESOLVED + NEW BLOCKERS (2026-08-03, cross-session)
+
+A concurrent launch-readiness session operated on this same branch. Its claims are recorded below
+with an explicit note on what THIS session verified independently.
+
+## ✅ RESOLVED — `NEXT_PUBLIC_API_URL` (was Decision #1)
+
+**It is the Railway host.** Two independent sources agree:
+- This session: `.env.example:71` documents production as
+  `https://<railway-app>.up.railway.app/api/v1`, and `apps/web/vercel.json` rewrites
+  `/api/v1/:path*` to `api-production-39a1.up.railway.app`.
+- Launch-readiness session: grepped the **deployed** web bundle on `venue-os.app` and found that
+  host baked in.
+
+Consequences, both now settled:
+1. **`INJ-001` stays HIGH, not CRITICAL.** The WEBPAGE proxy iframe is cross-origin with the player,
+   so there is no `parent.localStorage` device-token theft and no DOM access to strip the emergency
+   overlay. The lead correction in `03-CONTENT-INJECTION.md` stands. The fix (sandbox + separate
+   proxy origin) is unchanged.
+2. **`HostAllowlist.kt` matches production — the Android allowlist is fleet-safe.** The
+   fleet-breaking risk flagged when that code was written is closed.
+
+## 🔴 NEW LAUNCH BLOCKER — production signing secrets are placeholders
+
+**Reported by the launch-readiness session; NOT independently verified by this session** (no Railway
+access from here). Treat as high-confidence-but-unconfirmed until checked in the Railway dashboard.
+
+- `JWT_SECRET` and `SESSION_SECRET` in Railway production are still **human-written beta placeholder
+  strings, not 64-hex**. Every user session token and express-session cookie is signed with a guessable
+  secret. This is worse than any application-layer finding in this audit: it makes session forgery a
+  guessing problem rather than an exploitation problem.
+- `DEVICE_SECRET_KEY` / `DEVICE_JWT_SECRET` are proper hex — **the device side is fine.**
+- `ANTHROPIC_API_KEY` and `PEXELS_API_KEY` absent; Stripe still on `sk_test`.
+
+**Action: rotate `JWT_SECRET` and `SESSION_SECRET` to 64-hex before launch.** Note this invalidates
+every existing operator session (users re-login) — it does NOT affect device tokens or screens.
+Generate with: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+
+## ⚠️ Pre-push hygiene — live demo credentials in untracked files
+
+`docs/research/2026-07-31-walnut-creek-demo-district/README.md` and
+`packages/database/prisma/seed-walnut-creek-demo.mjs` contain live demo credentials
+(`districtadmin@wcsd.demo` / `WalnutCreek!2026`).
+**Verified by this session: both are UNTRACKED** (`git ls-files` returns 0 matches), so a push of
+this branch does not carry them today. They must be scrubbed or excluded if they are ever staged.
+
+## Salvage-commit caveat
+
+`d0e63bda` (Android/AND-002 partial) is **unfinished salvage**, the same class as `e4883887` which
+was reverted for breaking 4 ACC-06 tests. It is retained deliberately because an agent is actively
+completing it — but note it **does not compile**: `MainActivity.kt:38` imports
+`security.LockTaskController`, which was never written. If that completion does not land, this commit
+should be reverted rather than shipped.
