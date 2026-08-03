@@ -1981,11 +1981,47 @@ export function useDeleteScene(templateId: string) {
 
 // ─── Users ──────────────────────────────────────────────────────
 
+/** A row of GET /users (the Team Members list). */
+export type TeamUser = {
+  id: string;
+  email: string;
+  role: string;
+  firstName: string | null;
+  lastName: string | null;
+  createdAt?: string;
+  /** ACC-03 — admin-forced 2FA. Enforced in AuthService.login. */
+  mfaRequired: boolean;
+  /** Whether they have actually finished TOTP enrollment. */
+  mfaEnrolled: boolean;
+};
+
 export function useUsers() {
-  return useQuery({
+  return useQuery<TeamUser[]>({
     queryKey: ['users'],
     queryFn: () => apiFetch('/users'),
     staleTime: 60_000,
+  });
+}
+
+/**
+ * ACC-03 follow-up (2026-08-03) — force (or release) two-factor for a team
+ * member.
+ *
+ * Turning it ON signs the target out of every device, so the policy takes
+ * effect now rather than at their next natural login; they are then routed
+ * through the login page's enrollment step. Rank-gated server-side: a caller
+ * can only set this on someone strictly below their own role, so a 403 here
+ * is a real answer to show the operator, not a bug.
+ */
+export function useSetUserMfaRequired() {
+  const qc = useQueryClient();
+  return useMutation<TeamUser, Error, { id: string; mfaRequired: boolean }>({
+    mutationFn: ({ id, mfaRequired }) =>
+      apiFetch(`/users/${id}/mfa-required`, {
+        method: 'PUT',
+        body: JSON.stringify({ mfaRequired }),
+      }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); },
   });
 }
 
@@ -4062,11 +4098,34 @@ export interface ApiKeyRow {
   name: string;
   prefix: string;
   role: string;
+  /**
+   * ACC-06 follow-up (2026-08-03) — the key's least-privilege grant.
+   * `null` is an UNRESTRICTED key (everything minted before scopes existed);
+   * `[]` is an explicit grant of nothing. Emergency routes are refused for
+   * every API key regardless.
+   */
+  scopes: string[] | null;
   expiresAt: string | null;
   lastUsedAt: string | null;
   revokedAt: string | null;
   createdAt: string;
   createdByUserId: string | null;
+}
+
+/** A grantable route family, from GET /api-keys/scopes. */
+export interface ApiKeyScopeFamily {
+  id: string;
+  label: string;
+  blurb: string;
+  access: readonly ('read' | 'write')[];
+}
+
+/** Response of GET /api-keys/scopes — the vocabulary THIS build enforces. */
+export interface ApiKeyScopeCatalog {
+  scopes: string[];
+  families: ApiKeyScopeFamily[];
+  defaultExpiryDays: number;
+  maxExpiryDays: number;
 }
 
 export function useApiKeys() {
@@ -4076,12 +4135,28 @@ export function useApiKeys() {
   });
 }
 
+/**
+ * The scope + expiry policy the API actually enforces.
+ *
+ * Served rather than hard-coded so the picker can never offer a scope the
+ * guard does not understand, and the "expires in N days" copy can never drift
+ * from `ApiKeysService`'s real default/ceiling — the exact drift that let the
+ * old UI imply keys never expire.
+ */
+export function useApiKeyScopeCatalog() {
+  return useQuery<ApiKeyScopeCatalog>({
+    queryKey: ['api-keys', 'scopes'],
+    queryFn: () => apiFetch('/api-keys/scopes'),
+    staleTime: 5 * 60_000,
+  });
+}
+
 export function useMintApiKey() {
   const qc = useQueryClient();
   return useMutation<
-    { id: string; token: string; prefix: string },
+    { id: string; token: string; prefix: string; scopes: string[] | null },
     Error,
-    { name: string; role: string; expiresAt?: string | null }
+    { name: string; role: string; expiresAt?: string | null; scopes?: string[] | null }
   >({
     mutationFn: (body) => apiFetch('/api-keys', { method: 'POST', body: JSON.stringify(body) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['api-keys'] }),
@@ -4274,6 +4349,42 @@ export function useMfaDisable() {
   return useMutation<{ success: true }, Error, { password: string }>({
     mutationFn: (body) =>
       apiFetch<{ success: true }>('/auth/mfa/disable', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+  });
+}
+
+/** Response of POST /auth/change-password. */
+export interface ChangePasswordResponse {
+  success: true;
+  /**
+   * Replacement session token. The server revokes EVERY live token for the
+   * user and pins this one past the cut, so the caller stays signed in while
+   * every other device is signed out. The client must swap its stored token
+   * for this or its very next request 401s.
+   */
+  access_token: string;
+  /**
+   * `false` means the password DID change but the revocation store was
+   * unreachable — other sessions may still be alive. Surface it; do not
+   * report a clean containment we did not achieve.
+   */
+  sessionsRevoked: boolean;
+}
+
+/**
+ * ACC-02 (2026-08-01) — authenticated password change.
+ *
+ * Re-verifies the current password (a stolen session alone must not be able
+ * to rotate the credential), then kills every other session. Shipped with no
+ * UI at all until 2026-08-03: a user who suspected their session was
+ * compromised had no in-product way to lock it down.
+ */
+export function useChangePassword() {
+  return useMutation<ChangePasswordResponse, Error, { currentPassword: string; newPassword: string }>({
+    mutationFn: (body) =>
+      apiFetch<ChangePasswordResponse>('/auth/change-password', {
         method: 'POST',
         body: JSON.stringify(body),
       }),

@@ -57,6 +57,7 @@ import {
 } from 'lucide-react';
 import {
   useApiKeys,
+  useApiKeyScopeCatalog,
   useMintApiKey,
   useRevokeApiKey,
   useWebhooks,
@@ -320,23 +321,69 @@ const ALLOWED_API_KEY_ROLES = [
   { value: 'RESTRICTED_VIEWER', label: 'Read-only viewer' },
 ] as const;
 
+/**
+ * Human-readable expiry for a key row.
+ *
+ * ACC-06 gave every key a real lifetime (90d default, 365d ceiling) but this
+ * table had no expiry column at all — so a key that dies in three months looks
+ * exactly like the never-expiring credential the old build actually minted.
+ * That gap is how an integration goes dark on a Saturday with nobody knowing
+ * why. `null` can only mean a pre-ACC-06 key now, and it is worth flagging
+ * rather than hiding.
+ */
+function expiryLabel(expiresAt: string | null): { text: string; cls: string } {
+  if (!expiresAt) return { text: 'Never (legacy)', cls: 'text-amber-600 font-semibold' };
+  const ms = new Date(expiresAt).getTime() - Date.now();
+  if (!Number.isFinite(ms)) return { text: '—', cls: 'text-slate-500' };
+  if (ms <= 0) return { text: 'Expired', cls: 'text-rose-600 font-semibold' };
+  const days = Math.ceil(ms / 86_400_000);
+  return {
+    text: days <= 14 ? `in ${days}d` : new Date(expiresAt).toLocaleDateString(),
+    cls: days <= 14 ? 'text-amber-600 font-semibold' : 'text-slate-500',
+  };
+}
+
 function ApiKeysSection() {
   const { data: keys, isLoading } = useApiKeys();
+  const { data: catalog } = useApiKeyScopeCatalog();
   const mint = useMintApiKey();
   const revoke = useRevokeApiKey();
   const [showNew, setShowNew] = useState(false);
   const [name, setName] = useState('');
   const [role, setRole] = useState<string>('CONTRIBUTOR');
+  // Scope selection. `null` = the operator explicitly chose an unrestricted
+  // key (the old behaviour); a Set = a narrowed grant. Default is a NARROWED
+  // key with nothing ticked, so the least-privilege path is the one you get by
+  // not thinking about it. There is no emergency scope to tick — those routes
+  // are refused for every API key, scoped or not.
+  const [scopes, setScopes] = useState<Set<string> | null>(new Set<string>());
   const [justMinted, setJustMinted] = useState<{ token: string; prefix: string } | null>(null);
   const [copiedToken, setCopiedToken] = useState(false);
+
+  const toggleScope = (scope: string) => {
+    setScopes((prev) => {
+      const next = new Set(prev ?? []);
+      if (next.has(scope)) next.delete(scope);
+      else next.add(scope);
+      // Ticking write implies read — the server treats it that way, so keep
+      // the checkboxes honest rather than letting them imply otherwise.
+      if (scope.endsWith(':write') && next.has(scope)) next.delete(scope.replace(':write', ':read'));
+      return next;
+    });
+  };
 
   const handleMint = async () => {
     setJustMinted(null);
     try {
-      const result = await mint.mutateAsync({ name: name.trim(), role });
+      const result = await mint.mutateAsync({
+        name: name.trim(),
+        role,
+        scopes: scopes === null ? null : Array.from(scopes),
+      });
       setJustMinted({ token: result.token, prefix: result.prefix });
       setName('');
       setRole('CONTRIBUTOR');
+      setScopes(new Set<string>());
       setShowNew(false);
     } catch (err: any) {
       await appAlert({
@@ -398,7 +445,12 @@ function ApiKeysSection() {
       </div>
       <p className="text-[11px] text-slate-500 mb-4">
         Bearer tokens for calling the VenueOS REST API from your own automation.
-        Each token carries a role — the same RBAC the dashboard uses applies.
+        Each token carries a role — the same RBAC the dashboard uses applies —
+        plus an optional scope grant that narrows it further. Keys{' '}
+        <strong>expire after {catalog?.defaultExpiryDays ?? 90} days</strong> by
+        default ({catalog?.maxExpiryDays ?? 365}-day maximum); rotate by minting
+        a new one and revoking the old. No API key can trigger or clear an
+        emergency — that always needs a signed-in person.
       </p>
 
       {/* Just-minted reveal banner — shows ONCE on creation. */}
@@ -469,16 +521,84 @@ function ApiKeysSection() {
               </select>
             </label>
           </div>
+          {/* Scope grant. Default = narrowed with nothing ticked, so
+              least-privilege is what you get without thinking about it. */}
+          {catalog && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-bold text-slate-600">What can this key touch?</p>
+                <label className="flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={scopes === null}
+                    onChange={(e) => setScopes(e.target.checked ? null : new Set<string>())}
+                  />
+                  Full access (no scope limit)
+                </label>
+              </div>
+              {scopes === null ? (
+                <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                  This key will reach every endpoint its role allows. Prefer
+                  ticking only what the integration needs — a leaked
+                  full-access token is a leak of everything the role can do.
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  {catalog.families.map((f) => (
+                    <div
+                      key={f.id}
+                      className="flex items-start justify-between gap-3 bg-white border border-slate-200 rounded-md px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold text-slate-700">{f.label}</p>
+                        <p className="text-[10px] text-slate-500">{f.blurb}</p>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        {f.access.map((a) => {
+                          const scope = `${f.id}:${a}`;
+                          const writeHeld = scopes.has(`${f.id}:write`);
+                          // Write implies read on the server, so show read as
+                          // satisfied (and locked) once write is ticked.
+                          const implied = a === 'read' && writeHeld;
+                          return (
+                            <label key={scope} className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={scopes.has(scope) || implied}
+                                disabled={implied}
+                                onChange={() => toggleScope(scope)}
+                              />
+                              {a}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                  {scopes.size === 0 && (
+                    <p className="text-[10px] text-slate-400">
+                      Nothing selected — this key will be refused on every
+                      endpoint. Tick at least one.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex gap-2">
             <button
               type="button"
               onClick={handleMint}
-              disabled={mint.isPending || !name.trim()}
+              disabled={mint.isPending || !name.trim() || (scopes !== null && scopes.size === 0)}
               className="text-xs font-semibold px-4 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
             >
               {mint.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               Create key
             </button>
+            <p className="text-[11px] text-slate-400 self-center">
+              Expires in {catalog?.defaultExpiryDays ?? 90} days.
+            </p>
           </div>
         </div>
       )}
@@ -506,6 +626,12 @@ function ApiKeysSection() {
                   Role
                 </th>
                 <th className="py-2 font-bold text-slate-500 text-[10px] uppercase tracking-wider">
+                  Scopes
+                </th>
+                <th className="py-2 font-bold text-slate-500 text-[10px] uppercase tracking-wider">
+                  Expires
+                </th>
+                <th className="py-2 font-bold text-slate-500 text-[10px] uppercase tracking-wider">
                   Last used
                 </th>
                 <th className="py-2 font-bold text-slate-500 text-[10px] uppercase tracking-wider">
@@ -522,6 +648,24 @@ function ApiKeysSection() {
                   </td>
                   <td className="py-2.5 font-mono text-slate-500">vos_{k.prefix}…</td>
                   <td className="py-2.5 text-slate-600">{k.role}</td>
+                  <td className="py-2.5 max-w-[24ch]">
+                    {k.scopes === null ? (
+                      <span className="text-amber-600 font-semibold" title="Unrestricted — reaches every endpoint this role allows.">
+                        Full access
+                      </span>
+                    ) : k.scopes.length === 0 ? (
+                      <span className="text-slate-400" title="Explicitly granted nothing — every endpoint is refused.">
+                        None
+                      </span>
+                    ) : (
+                      <span className="text-slate-600 break-words" title={k.scopes.join(', ')}>
+                        {k.scopes.join(', ')}
+                      </span>
+                    )}
+                  </td>
+                  <td className={`py-2.5 ${expiryLabel(k.expiresAt).cls}`}>
+                    {expiryLabel(k.expiresAt).text}
+                  </td>
                   <td className="py-2.5 text-slate-500">
                     {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : '—'}
                   </td>

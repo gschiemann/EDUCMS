@@ -75,7 +75,28 @@
     "orgSlug": "Organization slug",
     "continueSSO": "Continue with SSO",
     "redirecting": "Redirecting…",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "mfaSetupTitle": "Set up two-factor",
+    "mfaSetupSubtitle": "Your administrator requires two-factor authentication on this account.",
+    "mfaSetupStep1": "Open your authenticator app (Google Authenticator, 1Password, Authy…).",
+    "mfaSetupStep2": "Scan this QR code, or enter the key by hand.",
+    "mfaSetupStep3": "Type the 6-digit code it shows to finish signing in.",
+    "mfaSetupQrAlt": "QR code for your authenticator app",
+    "mfaSetupManualKey": "Manual entry key",
+    "mfaSetupFinish": "Finish sign-in",
+    "mfaSetupPreparing": "Preparing your setup key…",
+    "mfaSetupRetry": "Try again",
+    "mfaSetupTimedOut": "Your sign-in attempt timed out. Please enter your password again.",
+    "mfaSetupFailed": "Couldn't start two-factor setup. Please try again.",
+    "mfaSetupUnreachable": "Can't reach the server to start setup. Try again in a moment.",
+    "mfaVerifyUnreachable": "Can't reach the server to verify your code. Try again in a moment.",
+    "mfaEnterCodeToFinish": "Enter the 6-digit code from your authenticator app.",
+    "mfaCodeMismatch": "That code did not match. Please try again.",
+    "mfaBackupCodesTitle": "Save your backup codes",
+    "mfaBackupCodesSubtitle": "These are shown once and never again.",
+    "mfaBackupCodesHelp": "Each code signs you in once if you lose your phone. Store them somewhere safe — a password manager, or printed and locked away.",
+    "mfaCopyCodes": "Copy all codes",
+    "mfaSavedCodesContinue": "I've saved them — continue"
   },
   "account": {
     "title": "Account",
@@ -323,7 +344,20 @@
       "creating": "Creating…",
       "sending": "Sending…",
       "createUser": "Create user",
-      "sendInvitation": "Send invitation"
+      "sendInvitation": "Send invitation",
+      "mfaOn": "2FA",
+      "mfaOff": "2FA",
+      "mfaPending": "2FA…",
+      "mfaRequiredEnrolled": "Two-factor is required and set up.",
+      "mfaRequiredPending": "Two-factor is required — they'll set it up at their next sign-in.",
+      "mfaOptional": "Two-factor is optional for this person. Click to require it.",
+      "require2faTitle": "Require two-factor for {email}?",
+      "require2faMessage": "They'll be signed out of every device and asked to set up an authenticator app the next time they sign in.",
+      "require2faConfirm": "Require two-factor",
+      "release2faTitle": "Stop requiring two-factor for {email}?",
+      "release2faMessage": "They keep any authenticator they've already set up, but will no longer be forced to use one.",
+      "release2faConfirm": "Stop requiring",
+      "mfaChangeFailed": "Couldn't change the two-factor requirement."
     },
     "ota": {
       "playerApkTitle": "Player APK",
@@ -1142,7 +1176,8 @@
     "saving": "Saving...",
     "saveSsoConfig": "Save SSO configuration",
     "testing": "Testing...",
-    "testConnection": "Test connection"
+    "testConnection": "Test connection",
+    "defaultRoleRankNote": "You can only assign roles below your own."
   },
   "billingCommerce": {
     "settings": "Settings",
@@ -1301,5 +1336,22 @@
     "catVenueNetwork": "🏢 Venue networks",
     "catDoohDirect": "🤝 Direct sales",
     "catHouseOnly": "🏠 House ads only"
+  },
+  "changePassword": {
+    "title": "Change password",
+    "subtitle": "Rotate your password and sign out every other device.",
+    "currentLabel": "Current password",
+    "newLabel": "New password",
+    "confirmLabel": "Confirm new password",
+    "newHelp": "At least {min} characters.",
+    "submit": "Update password",
+    "updating": "Updating…",
+    "revokeNote": "Changing your password signs you out everywhere else. This device stays signed in.",
+    "okRevoked": "Password updated. Every other device has been signed out.",
+    "okNotRevoked": "Password updated — but we couldn't confirm your other sessions ended. Sign out of other devices manually if you can.",
+    "errTooShort": "New password must be at least {min} characters.",
+    "errMismatch": "The two new passwords don't match.",
+    "errUnchanged": "Choose a password different from your current one.",
+    "errGeneric": "Couldn't update your password. Please try again."
   }
 }

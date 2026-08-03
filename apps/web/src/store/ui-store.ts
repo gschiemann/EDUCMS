@@ -150,6 +150,17 @@ interface AppState {
 
   // Auth actions
   login: (token: string, user: any, remember?: boolean) => void;
+  /**
+   * Swap the stored session token in place, keeping the same user + the same
+   * durability choice the operator already made.
+   *
+   * Exists for POST /auth/change-password (ACC-02): that endpoint revokes
+   * EVERY live token for the account and returns one replacement pinned past
+   * the revocation cut. Without this the tab that just changed its own
+   * password keeps holding a now-dead token and 401s on its very next
+   * request — signed out by its own security action.
+   */
+  setToken: (token: string) => void;
   logout: () => void;
 
   // UI actions
@@ -206,6 +217,21 @@ export const useUIStore = create<AppState>((set) => ({
     }
     clog.info('auth', 'Login success', { userId: user?.id, role: user?.role, tenantId: user?.tenantId, remember: !!remember });
     set({ token, user, activeTenant: user.tenantSlug || user.tenantId });
+  },
+  setToken: (token) => {
+    // Mirror `login`'s storage placement exactly: this tab's sessionStorage
+    // always, and localStorage ONLY when the operator had chosen "keep me
+    // logged in". Writing the durable copy unconditionally would silently
+    // upgrade a per-tab session into a persistent one.
+    const ss = safeSession();
+    if (ss) {
+      try { ss.setItem(TOKEN_KEY, token); } catch { /* in-memory session still valid */ }
+    }
+    const ls = safeLocal();
+    if (ls && ls.getItem(REMEMBER_KEY) === '1') {
+      try { ls.setItem(TOKEN_KEY, token); } catch { /* storage full */ }
+    }
+    set({ token });
   },
   logout: () => {
     const ss = safeSession();
