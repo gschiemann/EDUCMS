@@ -703,6 +703,46 @@ export class ScreensController {
     return { ticket, expiresAt, expiresInMs: expiresAt - Date.now() };
   }
 
+  /**
+   * Does this heartbeat prove possession of the screen's own credential?
+   *
+   * DT-09 (2026-08-03) — `GET /screens/status/:fp` is anonymous by design
+   * (see the route comment) and used to hand back `Screen.pairingCode` to
+   * whoever asked. The pairing code is the claim credential: an unclaimed
+   * screen's code, typed into `POST /screens/pair`, moves that physical
+   * display into the typist's tenant. Device fingerprints are not secrets in
+   * practice — the dashboard shows one with a copy button, `GET /screens`
+   * carries them, and they appear in support tickets and OTA logs — so
+   * "gated by fingerprint secrecy" was gating nothing.
+   *
+   * This returns TRUE only when the caller presented the screen's device
+   * credential, which `verifyDeviceForScreen` checks against the LIVE row:
+   * signature, `kind`/`sub`, the token denylist, `status !== 'REVOKED'`, and
+   * the current `credentialEpoch`. So a revoked screen cannot read its own
+   * code back either — a revoke is exactly when an attacker would want it.
+   *
+   * Cost control: the auth path is skipped entirely when the request carries
+   * no credential material at all, which is every caller today. A kiosk
+   * heartbeats this route every 30-45 s, so an unconditional DB+Redis round
+   * trip here would be a fleet-scale regression for a field nobody reads.
+   */
+  private async heartbeatProvesDevice(req: any, screenId: string): Promise<boolean> {
+    const auth = req?.headers?.authorization;
+    const hmac = req?.headers?.['x-device-auth'];
+    const hasCredential =
+      (typeof auth === 'string' && auth.toLowerCase().startsWith('bearer ')) ||
+      typeof hmac === 'string';
+    if (!hasCredential) return false;
+    try {
+      const verdict = await this.deviceAuth(req as ExpressReq, screenId, { allowUnpaired: true });
+      return verdict.ok;
+    } catch {
+      // Never let an auth-path failure break the heartbeat itself — the
+      // dashboard's ONLINE/OFFLINE signal depends on this route answering.
+      return false;
+    }
+  }
+
   // ─── PUBLIC: Device heartbeat / status check ───
   @Get('status/:deviceFingerprint')
   async deviceStatus(
@@ -871,11 +911,24 @@ export class ScreensController {
     const FORCE_FRESH_MS = 24 * 60 * 60 * 1000;
     const forceUpdatePending = !!forceAt &&
       (Date.now() - new Date(forceAt).getTime()) < FORCE_FRESH_MS;
+
+    // DT-09 — the pairing code goes ONLY to a caller that proved possession
+    // of this screen's device credential. See heartbeatProvesDevice above for
+    // the threat model; see the fix report for the two-method sweep proving
+    // no shipped client reads this field (the pairing splash sources its code
+    // from the `POST /screens/register` response, not from here).
+    const provedDevice = screen.pairingCode
+      ? await this.heartbeatProvesDevice(req, screen.id)
+      : false;
+
     return {
       screenId: screen.id,
       paired: !!screen.tenantId,
       name: screen.name,
-      pairingCode: screen.pairingCode,
+      pairingCode: provedDevice ? screen.pairingCode : null,
+      // Say so rather than lying with a bare null, so an operator debugging
+      // with curl isn't told a screen has no code when it does.
+      ...(screen.pairingCode && !provedDevice ? { pairingCodeWithheld: true } : {}),
       ota: screenAfterUpdate ? {
         state: (screenAfterUpdate as any).lastOtaState || null,
         progress: (screenAfterUpdate as any).lastOtaProgress ?? null,
