@@ -61,24 +61,23 @@
   "pnpm": {
     "comment-overrides": "Patched floors for transitive advisories, all within-major (patch/minor) bumps. First block: dev-only toolchains (the @wdio/cli Android-E2E tree). Second block (2026-07-10 prod-audit remediation): PROD-graph transitives \u2014 ws (@nestjs/platform-ws + @supabase/realtime-js, memory-exhaustion DoS), multer 2.x (@nestjs/platform-express upload path, nested-field DoS), undici 7.x (cheerio/jsdom scraping, TLS-bypass + WS DoS), plus moderate cleanups (dompurify, postcss, qs, uuid, ip-address, brace-expansion, js-yaml, @opentelemetry/core). Selectors are version-scoped so other majors (e.g. multer 1.x direct dep, js-yaml 3.x, uuid 8.x) are untouched.",
     "overrides": {
-      "undici@<6.24.0": "^6.24.0",
       "sharp@<0.35.0": "^0.35.3",
       "basic-ftp@<5.3.1": "^5.3.1",
-      "fast-uri@<3.1.4": "^3.1.4",
       "fast-xml-builder@<1.1.7": "^1.1.7",
       "fast-xml-parser@<5.7.0": "^5.7.0",
       "tmp@<0.2.6": "^0.2.6",
       "ws@>=8.0.0 <8.21.0": "^8.21.0",
       "multer@>=2.0.0 <2.2.0": "^2.2.0",
-      "undici@>=7.0.0 <7.28.0": "^7.28.0",
       "dompurify@>=3.0.0 <3.4.11": "^3.4.11",
       "postcss@<8.5.12": "^8.5.12",
       "qs@>=6.0.0 <6.15.2": "^6.15.2",
       "uuid@>=13.0.0 <13.0.1": "^13.0.1",
-      "ip-address@>=10.0.0 <10.1.1": "^10.1.1",
       "js-yaml@>=4.0.0 <4.2.0": "^4.2.0",
       "@opentelemetry/core@>=2.0.0 <2.8.0": "^2.8.0",
-      "brace-expansion@>=4.0.0 <5.0.9": "^5.0.9"
+      "brace-expansion@>=4.0.0 <5.0.9": "^5.0.9",
+      "undici@>=7.0.0 <7.29.0": "^7.29.0",
+      "ip-address@<=10.3.0": "^10.4.0",
+      "fast-uri@>=3.0.0 <3.1.5": "^3.1.5"
     }
   }
 }
