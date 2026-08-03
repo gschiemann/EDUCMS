@@ -457,6 +457,57 @@ test.describe('Emergency path — P0-8 regression suite', () => {
   let manifestRef: { value: ReturnType<typeof baselineManifest> };
   let counters: { manifestCalls: number; registerCalls: number; emergencyStatusCalls: number };
 
+  // 2026-08-03 — WARM THE ROUTE BEFORE THE FIRST TEST.
+  //
+  // This suite cold-boots the player in every test (deliberately — the P0-8
+  // audit found bugs that only appear on cold boot), but nothing warmed the
+  // dev server first. So test #1 paid the `/player` cold compile INSIDE its
+  // 10 s manifest budget. `/player` compiles in ~12 s on a developer laptop
+  // and materially slower on a loaded CI runner, so that budget could not be
+  // met on a cold server — test #1 was losing a race it was never given time
+  // to win.
+  //
+  // It stayed hidden because chromium and webkit run as separate CI jobs:
+  // whichever hit an already-warm server passed, the other went red. On
+  // 2026-08-03 chromium passed and webkit failed with "Player never fetched
+  // the manifest — pairing/connecting got stuck", while the same spec passed
+  // 9/9 on webkit locally against a warm server. That is a test-infra race,
+  // not a WebKit behaviour difference.
+  //
+  // widget-render.spec.ts learned this in 2026-07-09 and grew a warm-up; this
+  // suite never got the same treatment. Fresh page per attempt — see the note
+  // there about why reusing one page silently collapses the retry budget.
+  test.beforeAll(async ({ browser }) => {
+    let warmed = false;
+    let lastErr: unknown = null;
+    for (let attempt = 1; attempt <= 3 && !warmed; attempt++) {
+      let warm: import('@playwright/test').Page | null = null;
+      try {
+        warm = await browser.newPage();
+        await warm.goto('http://localhost:3000/player?fp=warmup', {
+          waitUntil: 'domcontentloaded',
+          timeout: 90_000,
+        });
+        await warm.waitForTimeout(1500);
+        warmed = true;
+      } catch (err) {
+        lastErr = err;
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[emergency-path] warm-up attempt ${attempt}/3 failed: ${String(err).slice(0, 160)}`,
+        );
+      } finally {
+        if (warm) await warm.close().catch(() => {});
+      }
+    }
+    if (!warmed) {
+      throw new Error(
+        `Player route warm-up failed after 3 attempts — dev server never served /player ` +
+          `(infra/compile, not an emergency-path bug): ${String(lastErr).slice(0, 300)}`,
+      );
+    }
+  });
+
   test.beforeEach(async ({ page }) => {
     manifestRef = { value: baselineManifest() };
     counters = { manifestCalls: 0, registerCalls: 0, emergencyStatusCalls: 0 };
@@ -488,7 +539,7 @@ test.describe('Emergency path — P0-8 regression suite', () => {
     await expect
       .poll(() => counters.manifestCalls, {
         message: 'Player never fetched the manifest — pairing/connecting got stuck',
-        timeout: 10_000,
+        timeout: 45_000,
       })
       .toBeGreaterThanOrEqual(1);
   }
