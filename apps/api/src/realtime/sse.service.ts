@@ -287,7 +287,10 @@ export class SseService {
     if (!db) return null;
     let row: any;
     try {
-      row = await db.screen.findUnique({
+      // credential, not request input. This is the revocation sweep — it must
+      // read the row to LEARN the current epoch/status, so scoping it by the
+      // tenant we are validating would defeat the check.
+      row = await db.screen.findUnique({ // ten-ok: identity-derived — deviceId is an admitted stream's verified credential; the sweep must read current epoch/status
         where: { id: client.deviceId },
         select: { status: true, credentialEpoch: true, credentialEpochRotatedAt: true } as any,
       });

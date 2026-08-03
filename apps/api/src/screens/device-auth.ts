@@ -170,7 +170,10 @@ async function loadCredentialState(
   const hit = credentialCache.get(screenId);
   if (hit && Date.now() - hit.at < CREDENTIAL_CACHE_TTL_MS) return hit.state;
 
-  const row = (await prisma.client.screen.findUnique({
+  // the DT-03 fix — re-deriving tenantId from the live row instead of trusting
+  // the token's 365-day tenantId claim. Adding tenantId to the where-clause
+  // would reintroduce exactly the stale-claim trust this removes.
+  const row = (await prisma.client.screen.findUnique({ // ten-ok: identity-derived self-lookup — screenId is the verified device JWT sub; this IS the DT-03 fix (derive tenant from the live row)
     where: { id: screenId },
     select: {
       id: true,

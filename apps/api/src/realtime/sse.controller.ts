@@ -83,7 +83,10 @@ export class SseController {
    * long-lived stream should see the current row, not a cached one.
    */
   private loadScreen(screenId: string) {
-    return this.prisma.client.screen.findUnique({
+    // and this read EXISTS to derive tenantId from the live row (DT-03) —
+    // constraining by tenantId here would be circular. Caller then enforces
+    // status !== REVOKED and ticket epoch === row.credentialEpoch.
+    return this.prisma.client.screen.findUnique({ // ten-ok: identity-derived — screenId comes from a verified stream ticket and this read DERIVES tenantId (DT-03)
       where: { id: screenId },
       select: {
         tenantId: true,

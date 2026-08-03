@@ -112,7 +112,10 @@ export async function revokeScreenCredentials(
   const db = opts.tx ?? deps.prisma.client;
   const now = new Date();
 
-  const updated = await db.screen.update({
+  // screens.controller.ts @Post(':id/revoke-credential'), which does
+  // findFirst({ where: isSuper ? { id } : { id, tenantId: req.user.tenantId } })
+  // before calling in. This helper is not reachable from an unscoped path.
+  const updated = await db.screen.update({ // ten-ok: ownership resolved by caller — revoke route does findFirst({ id, tenantId }) first
     where: { id: opts.screenId },
     data: {
       credentialEpoch: { increment: 1 },
@@ -200,7 +203,9 @@ export async function rotateScreenCredentialEpoch(
   tx?: any,
 ): Promise<number> {
   const db = tx ?? deps.prisma.client;
-  const updated = await db.screen.update({
+  // is the `sub` of the verified prior token, and from the tenant-scoped revoke
+  // route above. No caller passes an unvalidated request id.
+  const updated = await db.screen.update({ // ten-ok: identity-derived — screenId is the verified prior token's sub on the renewal path
     where: { id: screenId },
     data: {
       credentialEpoch: { increment: 1 },
