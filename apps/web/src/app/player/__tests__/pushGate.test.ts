@@ -182,8 +182,19 @@ describe('player/page.tsx wiring', () => {
   it('BOTH transports run the shared gate', () => {
     const calls = src.match(/checkSensitivePush\(/g) || [];
     expect(calls.length).toBeGreaterThanOrEqual(2);
-    expect(src).toMatch(/\[Player WS\] dropped \$\{wsVerdict\.reason\}/);
-    expect(src).toMatch(/\[Player SSE\] dropped \$\{verdict\.reason\}/);
+    expect(src).toMatch(/\[Player WS\] dropped \$\{/);
+    expect(src).toMatch(/\[Player SSE\] dropped \$\{/);
+
+    // Both transports must emit the LITERAL phrase "stale/future event" for a
+    // freshness drop. emergency-path.spec.ts tests 3 and 4 count occurrences of
+    // exactly that string to prove the P0-1 gate is neither over-firing on good
+    // millisecond timestamps nor loosened to let seconds-precision ones through.
+    // A refactor renamed it to "dropped stale sensitive event" on 2026-08-03 and
+    // the guard went blind — the gate still worked, but nothing could observe
+    // it. Assert the phrase here so a rename fails fast in unit tests instead of
+    // silently disarming a life-safety regression guard in a slow E2E job.
+    const stalePhrases = src.match(/'stale\/future event'/g) || [];
+    expect(stalePhrases.length).toBeGreaterThanOrEqual(2);
     // The SSE `handle()` wrapper must gate before dispatching to the handler.
     expect(src).toMatch(/if \(!gateSse\(name, data\)\) return;/);
   });

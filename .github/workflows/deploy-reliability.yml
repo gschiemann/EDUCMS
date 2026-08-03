@@ -139,6 +139,48 @@ jobs:
         continue-on-error: true
         run: pnpm --filter api run test
 
+  web-jest:
+    name: Web Jest (unit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Generate Prisma client
+        run: cd packages/database && npx prisma generate
+      # Same reason as web-build: --ignore-scripts skips postinstall, and the
+      # web suite imports @cms/* packages whose `main` points at dist/index.js.
+      # Without these built, Jest parses raw .ts and dies on `Unexpected token
+      # 'export'`. (The "rebuild api-types before marketing jest" trap.)
+      - name: Build workspace packages
+        run: |
+          pnpm --filter @cms/api-types build
+          pnpm --filter @cms/auth-core build
+          pnpm --filter @cms/ws-events build
+          pnpm --filter @cms/scoreboard-cts build
+          pnpm --filter @cms/signage-design build
+      # BLOCKING, deliberately — unlike the API Jest job, which is
+      # continue-on-error because a fresh runner cannot rebuild argon2's native
+      # binding under --ignore-scripts. The web suite is pure JS/TS with no
+      # native deps, so there is no such excuse here.
+      #
+      # WHY THIS JOB EXISTS: from 2026-07-22 to 2026-08-03, 22 web suites
+      # failed to LOAD (next-intl shipping untransformed ESM) and nothing
+      # noticed, because no workflow ran web Jest at all — the three that
+      # mention `--filter web` all run Playwright, not Jest. A suite nobody
+      # runs is not a test, it is a comment. Fixed by
+      # apps/web/test-mocks/next-intl.tsx; this job keeps it fixed.
+      - name: Web Jest
+        run: pnpm --filter web exec jest --ci
+
   web-build:
     name: Web typecheck + build
     runs-on: ubuntu-latest
