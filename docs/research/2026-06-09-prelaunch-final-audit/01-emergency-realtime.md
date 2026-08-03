@@ -134,7 +134,7 @@ Every replica's `pmessage` handler calls `verifyWsHmac(parsed, DEVICE_SECRET_KEY
 - **Live probes**: emergency-path 200 all-ok at HEAD commit; SSE 401 unauthenticated; WS 101 on the production Railway origin; CI has a dedicated emergency-path.yml workflow.
 
 ## 4. Missing features (this section's lens)
-- Player-side cryptographic signature **verification** (per-tenant Ed25519 at pair time) — presence-check only today; documented follow-up (G8 accepted by prior audit; ws-ed25519.ts exists server-side).
+- Player-side cryptographic signature **verification** (per-tenant Ed25519 at pair time) — presence-check only today; documented follow-up (G8 accepted by prior audit). *Correction 2026-08-03 (R-08): no `ws-ed25519.ts` exists anywhere — an earlier claim that one existed server-side was wrong; the server-side HMAC fan-out gate is the real safeguard.*
 - Emergency broadcast SUCCESS-path E2E (task #206 pending — only the failure path is covered by tests today).
 - Prod-smoke probe asserting the WS upgrade (guards the Vercel-rewrite trap above).
 

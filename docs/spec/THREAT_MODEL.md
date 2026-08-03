@@ -71,7 +71,7 @@ High = single-account / data exposure · Medium = degradation / nuisance.
 | Replay of a captured trigger | High | 120 s freshness window (`maxAgeMs`) + clock-skew guard + player per-`eventId` dedup; a replayed ALL_CLEAR self-corrects within ~10 s via manifest poll | `security/ws-signature.ts:60,71-73` |
 | Single-use nonce starves multi-replica fan-out | (design note) | Deliberately **no** single-use nonce — it would make only the first replica accept and starve the rest; replay is benign for OVERRIDE and caught downstream | `security/ws-signature.ts:38-50` |
 | Redis outage drops a real alert | Critical | HTTP-polling backstop: the player polls its device-authenticated manifest carrying the live `emergency` field (same `Tenant.emergencyStatus` source of truth) | manifest endpoint `screens.controller.ts`; CLAUDE.md safeguard #4 |
-| Player can't verify end-to-end | (residual) | A separate **Ed25519** asymmetric signature path exists so no shared secret ships to kiosks; the primary safeguard remains the server-side gate, not the client check | `security/ws-ed25519.ts` (referenced `ws-signature.ts:14-17`) |
+| Player can't verify end-to-end | (residual) | **ACCEPTED GAP — no asymmetric path exists yet** (corrected 2026-08-03, R-08: an earlier revision claimed a `ws-ed25519.ts` that was never built). The player smoke-tests only for the *presence* of a `signature` field; the primary safeguard is the server-side HMAC gate at the fan-out chokepoint. Per-tenant Ed25519 verification at pair time (ControlEnvelopeV2) is the documented follow-up | `security/ws-signature.ts` header; `packages/api-types/src/capability-registry.ts` → `emergency-signed-fanout-gate` |
 
 ### 2.4 Injection & input
 
