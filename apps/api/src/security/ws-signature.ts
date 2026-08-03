@@ -27,23 +27,33 @@ import * as crypto from 'crypto';
 export const WS_SIG_MAX_AGE_MS = 120_000;
 
 /**
- * ROLLOUT FLAG — R-02 channel binding, backward-compatibility window.
+ * ROLLOUT FLAG — R-02 channel binding. **Now `false`: R-02 is fully closed.**
  *
- * `true` = the verifier ALSO accepts the legacy channel-UNBOUND canonical
- * string. This MUST stay `true` until every running replica ships the
- * channel-binding signer: Railway does rolling deploys, so during a rollout
- * old replicas are still publishing unbound signatures while new replicas
- * are already verifying. Flipping this to `false` early would DROP real
- * emergency messages mid-rollout on a life-safety path.
+ * `true` would ALSO accept the legacy channel-UNBOUND canonical string, which
+ * leaves the R-02 hole open: a captured envelope can be replayed onto another
+ * tenant's channel for as long as it is inside the freshness window, because
+ * an unbound signature was by construction never scoped to a channel.
  *
- * Flip to `false` in a FOLLOW-UP deploy, once the channel-binding build has
- * fully rolled out (no replica older than that build is serving traffic).
- * Nothing else has to change when it flips — the signer already emits the
- * bound form, and a NEW-form signature is already rejected on the wrong
- * channel regardless of this flag (the legacy fallback can only ever accept
- * an unbound signature, which by construction was never channel-scoped).
+ * Why it was `true`, and why it no longer needs to be (2026-08-03): Railway
+ * does rolling deploys, so on the FIRST deploy that carries channel binding,
+ * old replicas are still publishing unbound signatures while new replicas are
+ * already verifying. With a live fleet that window would drop real emergency
+ * messages on a life-safety path, so the safe sequence was two deploys —
+ * ship the signer with this `true`, then flip it in a follow-up.
+ *
+ * That two-step exists ONLY to protect a live fleet. There is none: zero
+ * customers, zero paired screens, and this build has never been deployed.
+ * The first deploy of this branch still has a brief cross-replica window
+ * where a message signed by an old replica is rejected — with no screens
+ * connected, that is harmless, and paying it now is better than shipping a
+ * known-open replay hole plus a "remember the follow-up deploy" item.
+ *
+ * ⚠️ IF THIS EVER NEEDS RE-INTRODUCING (e.g. a future canonical-string
+ * change shipped to a LIVE fleet): set it back to `true`, deploy, wait for a
+ * full rollout, then flip to `false` again. Do not skip that with screens in
+ * the field.
  */
-export const ACCEPT_LEGACY_UNBOUND_WS_SIG = true;
+export const ACCEPT_LEGACY_UNBOUND_WS_SIG = false;
 
 export interface WsCanonicalFields {
   eventId: string;
@@ -110,6 +120,21 @@ export function verifyWsHmac(
   secret: string,
   maxAgeMs = WS_SIG_MAX_AGE_MS,
   channel?: string,
+  /**
+   * INTERNAL — publish-side upgrade only. `bindWsSignatureToChannel` passes
+   * `true` so it can recognise the UNBOUND signature that `signMessage` just
+   * minted and re-sign it bound to the channel it is about to go out on.
+   *
+   * This is NOT an authorization decision: the envelope was created by this
+   * process microseconds earlier and has not touched Redis. The consume-side
+   * gate (`handleRedisMessage`) never passes this — it is governed solely by
+   * ACCEPT_LEGACY_UNBOUND_WS_SIG, so untrusted input is unaffected.
+   *
+   * Without this, flipping ACCEPT_LEGACY_UNBOUND_WS_SIG to false silently
+   * breaks ALL fan-out: the upgrade step stops recognising our own message,
+   * every envelope ships unbound, and the consume gate then rejects it.
+   */
+  allowUnboundForRebind = false,
 ): WsVerifyResult {
   if (!message || typeof message !== 'object') return { ok: false, reason: 'no-message' };
   if (typeof message.signature !== 'string' || message.signature.length === 0)
@@ -140,7 +165,7 @@ export function verifyWsHmac(
     // Rolling-deploy compat ONLY. An unbound signature is by construction
     // not channel-scoped, so this branch cannot weaken a NEW-form message:
     // a bound signature replayed on the wrong channel fails BOTH checks.
-    if (!ACCEPT_LEGACY_UNBOUND_WS_SIG) {
+    if (!ACCEPT_LEGACY_UNBOUND_WS_SIG && !allowUnboundForRebind) {
       return { ok: false, reason: 'bad-signature' };
     }
   }
@@ -198,7 +223,12 @@ export function bindWsSignatureToChannel<T>(
     payload?: unknown;
     signature?: unknown;
   };
-  if (!verifyWsHmac(env, secret, maxAgeMs, channel).ok) return message;
+  // `true` = also recognise the UNBOUND signature `signMessage` just minted,
+  // regardless of ACCEPT_LEGACY_UNBOUND_WS_SIG. This is our own envelope on
+  // its way OUT, not untrusted input arriving from Redis — see the parameter
+  // docs on verifyWsHmac. It still refuses anything that does not verify
+  // under this secret, so it can never mint a signature for unsigned data.
+  if (!verifyWsHmac(env, secret, maxAgeMs, channel, true).ok) return message;
   const signature = wsHmacHex(
     wsCanonicalString({
       eventId: env.eventId as string,

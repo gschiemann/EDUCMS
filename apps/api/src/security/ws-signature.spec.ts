@@ -129,22 +129,52 @@ describe('ws-signature channel binding (R-02)', () => {
     expect(verifyWsHmac(captured, SECRET, undefined, 'group:hallway').ok).toBe(false);
   });
 
-  it('the legacy-compat fallback does NOT re-open the replay (bound sig is bound)', () => {
-    // ACCEPT_LEGACY_UNBOUND_WS_SIG is true during the rolling-deploy window.
-    // It may only ever accept an UNBOUND signature — a bound one that lands
-    // on the wrong channel fails the bound check AND the legacy check.
-    expect(ACCEPT_LEGACY_UNBOUND_WS_SIG).toBe(true);
+  it('R-02 IS CLOSED: the compat flag is off, so a bound sig is bound', () => {
+    // Flipped to false on 2026-08-03 — the two-deploy compat window existed
+    // only to protect a live fleet, and there is none (zero customers, zero
+    // paired screens, this build never deployed).
+    expect(ACCEPT_LEGACY_UNBOUND_WS_SIG).toBe(false);
     const captured = signForChannel(CH_A, 'ALL_CLEAR', { overrideId: 'ovr_1' });
     expect(verifyWsHmac(captured, SECRET, undefined, CH_B).ok).toBe(false);
   });
 
-  it('still accepts a LEGACY unbound signature while the compat flag is true', () => {
-    // Rolling deploy: old replicas keep publishing unbound signatures while
-    // new replicas verify. Dropping these would drop real emergencies
-    // mid-rollout on a life-safety path.
+  it('REJECTS a legacy unbound signature now that compat is off (this is R-02)', () => {
+    // An unbound signature is by construction not channel-scoped, so while it
+    // was accepted a captured envelope could be replayed onto ANY tenant's
+    // channel inside the freshness window. That was the residual R-02 hole.
     const legacy = sign('OVERRIDE', { severity: 'LOCKDOWN' });
-    expect(verifyWsHmac(legacy, SECRET, undefined, CH_A)).toEqual({ ok: true });
-    expect(verifyWsHmac(legacy, SECRET)).toEqual({ ok: true }); // no channel passed
+    expect(verifyWsHmac(legacy, SECRET, undefined, CH_A).ok).toBe(false);
+    expect(verifyWsHmac(legacy, SECRET, undefined, CH_B).ok).toBe(false);
+  });
+
+  it('the publish-side rebind still recognises our own freshly-minted envelope', () => {
+    // REGRESSION GUARD. signMessage mints UNBOUND; RedisService.publish then
+    // upgrades via bindWsSignatureToChannel. If that upgrade were governed by
+    // ACCEPT_LEGACY_UNBOUND_WS_SIG, flipping the flag would silently break
+    // ALL fan-out — every envelope would ship unbound and be rejected at the
+    // consume gate. The `allowUnboundForRebind` parameter is what prevents it.
+    const minted = sign('OVERRIDE', { severity: 'LOCKDOWN' });
+    // The consume gate refuses it...
+    expect(verifyWsHmac(minted, SECRET, undefined, CH_A).ok).toBe(false);
+    // ...but the publish-side upgrade path recognises it and binds it.
+    const bound = bindWsSignatureToChannel(minted, CH_A, SECRET);
+    expect(bound.signature).not.toEqual(minted.signature);
+    expect(verifyWsHmac(bound, SECRET, undefined, CH_A)).toEqual({ ok: true });
+    // And the result is genuinely channel-scoped.
+    expect(verifyWsHmac(bound, SECRET, undefined, CH_B).ok).toBe(false);
+  });
+
+  it('the rebind path still cannot mint a signature for unsigned or forged data', () => {
+    // allowUnboundForRebind widens what the UPGRADE accepts, never what an
+    // unauthenticated payload can become.
+    const unsigned = { eventId: 'e1', timestamp: Date.now(), type: 'OVERRIDE', payload: {} };
+    expect(bindWsSignatureToChannel(unsigned as any, CH_A, SECRET)).toBe(unsigned);
+
+    const forged = { ...unsigned, signature: 'deadbeef' };
+    expect(bindWsSignatureToChannel(forged as any, CH_A, SECRET)).toBe(forged);
+
+    const wrongSecret = { ...sign('OVERRIDE', { severity: 'LOCKDOWN' }) };
+    expect(bindWsSignatureToChannel(wrongSecret, CH_A, 'a-different-secret')).toBe(wrongSecret);
   });
 
   it('DOCUMENTS THE FLAG FLIP: with legacy compat off, unbound sigs are rejected and bound ones still pass', () => {
@@ -175,9 +205,12 @@ describe('ws-signature channel binding (R-02)', () => {
     expect(verifyStrict(bound, CH_B)).toBe(false);
     expect(verifyStrict(legacy, CH_A)).toBe(false);
 
-    // Pre-flip, that same legacy message IS accepted — this is the only
-    // difference the flip makes, and why it must not happen mid-rollout.
-    expect(verifyWsHmac(legacy, SECRET, undefined, CH_A).ok).toBe(true);
+    // POST-FLIP (2026-08-03): the real verifier now agrees with the
+    // hand-rolled strict one on all three cases — the flip has happened, so
+    // this is no longer a forward-looking contract but the live behaviour.
+    expect(verifyWsHmac(bound, SECRET, undefined, CH_A).ok).toBe(true);
+    expect(verifyWsHmac(bound, SECRET, undefined, CH_B).ok).toBe(false);
+    expect(verifyWsHmac(legacy, SECRET, undefined, CH_A).ok).toBe(false);
   });
 
   it('bindWsSignatureToChannel upgrades a legacy envelope and pins it to that channel', () => {

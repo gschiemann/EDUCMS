@@ -124,17 +124,18 @@ describe('RedisService fan-out gate — channel binding (R-02)', () => {
     expect(gateway.broadcastToScope).not.toHaveBeenCalled();
   });
 
-  it('still delivers a LEGACY unbound signature during the rolling-deploy window', () => {
-    // An old replica (pre-binding build) publishing straight onto the bus.
-    // Dropping this mid-rollout would drop real emergencies.
+  it('DROPS a LEGACY unbound signature now that the compat window is closed', () => {
+    // Anything with PUBLISH on Redis could previously replay a captured
+    // unbound envelope onto ANY tenant channel inside the freshness window,
+    // because an unbound signature is not channel-scoped. That was the
+    // residual R-02 hole; ACCEPT_LEGACY_UNBOUND_WS_SIG=false closes it.
+    //
+    // This only became safe because there is no live fleet — see the flag's
+    // doc block. With screens in the field this must be a two-deploy flip.
     const { svc, gateway } = makeService();
     const legacy = signLegacy('ALL_CLEAR', { overrideId: 'ovr_1' });
     (svc as any).handleRedisMessage('tenant:district-a', JSON.stringify(legacy));
-    expect(gateway.broadcastToScope).toHaveBeenCalledWith(
-      'tenant',
-      'district-a',
-      expect.objectContaining({ type: 'ALL_CLEAR' }),
-    );
+    expect(gateway.broadcastToScope).not.toHaveBeenCalled();
   });
 
   it('still drops an unsigned / forged message (gate unchanged)', () => {
