@@ -71,3 +71,9 @@ MORNING_SUMMARY*.txt
 /test-uint8.mjs
 /sunny-meadow-preview.html
 /lockdown-alert-*.png
+
+# Live demo credentials — deliberately untracked (see 2026-08-01 audit).
+# Accidentally committed in ffddbdc4 and removed in the follow-up; the
+# password in README.md is a REAL production login for the demo district.
+docs/research/2026-07-31-walnut-creek-demo-district/
+packages/database/prisma/seed-walnut-creek-demo.mjs
