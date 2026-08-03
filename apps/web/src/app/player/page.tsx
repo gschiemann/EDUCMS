@@ -4962,8 +4962,16 @@ function PlayerPage() {
           name,
         );
         if (!verdict.accepted) {
+          // Keep the literal phrase "dropped stale/future event" for the stale
+          // case. The P0-1 regression guard (emergency-path.spec.ts tests 3+4)
+          // counts occurrences of exactly that string to prove the freshness
+          // gate is neither firing on good ms timestamps nor silently
+          // loosened. The pushGate refactor renamed it and the guard went
+          // blind — the gate still worked, but nothing could see it working.
           console.warn(
-            `[Player SSE] dropped ${verdict.reason} sensitive event:`,
+            `[Player SSE] dropped ${
+              verdict.reason === 'stale' ? 'stale/future event' : `${verdict.reason} sensitive event`
+            }:`,
             name, data?.eventId, 'ts=', data?.timestamp,
             'offset=', serverClockOffsetRef.current,
           );
@@ -5255,8 +5263,14 @@ function PlayerPage() {
               serverClockOffsetMs: serverClockOffsetRef.current,
             });
             if (!wsVerdict.accepted) {
+              // See the SSE gate above: the literal "dropped stale/future
+              // event" phrase is what the P0-1 freshness guard counts.
               console.warn(
-                `[Player WS] dropped ${wsVerdict.reason} sensitive event:`,
+                `[Player WS] dropped ${
+                  wsVerdict.reason === 'stale'
+                    ? 'stale/future event'
+                    : `${wsVerdict.reason} sensitive event`
+                }:`,
                 msg.type, msg.eventId, 'ts=', msg.timestamp,
                 'offset=', serverClockOffsetRef.current,
               );
