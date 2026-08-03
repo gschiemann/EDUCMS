@@ -59,7 +59,7 @@
     "typescript": "^5.3.3"
   },
   "pnpm": {
-    "comment-overrides": "Patched floors for transitive advisories, all within-major (patch/minor) bumps. First block: dev-only toolchains (the @wdio/cli Android-E2E tree). Second block (2026-07-10 prod-audit remediation): PROD-graph transitives — ws (@nestjs/platform-ws + @supabase/realtime-js, memory-exhaustion DoS), multer 2.x (@nestjs/platform-express upload path, nested-field DoS), undici 7.x (cheerio/jsdom scraping, TLS-bypass + WS DoS), plus moderate cleanups (dompurify, postcss, qs, uuid, ip-address, brace-expansion, js-yaml, @opentelemetry/core). Selectors are version-scoped so other majors (e.g. multer 1.x direct dep, js-yaml 3.x, uuid 8.x) are untouched.",
+    "comment-overrides": "Patched floors for transitive advisories, all within-major (patch/minor) bumps. First block: dev-only toolchains (the @wdio/cli Android-E2E tree). Second block (2026-07-10 prod-audit remediation): PROD-graph transitives \u2014 ws (@nestjs/platform-ws + @supabase/realtime-js, memory-exhaustion DoS), multer 2.x (@nestjs/platform-express upload path, nested-field DoS), undici 7.x (cheerio/jsdom scraping, TLS-bypass + WS DoS), plus moderate cleanups (dompurify, postcss, qs, uuid, ip-address, brace-expansion, js-yaml, @opentelemetry/core). Selectors are version-scoped so other majors (e.g. multer 1.x direct dep, js-yaml 3.x, uuid 8.x) are untouched.",
     "overrides": {
       "undici@<6.24.0": "^6.24.0",
       "sharp@<0.35.0": "^0.35.3",
@@ -76,9 +76,9 @@
       "qs@>=6.0.0 <6.15.2": "^6.15.2",
       "uuid@>=13.0.0 <13.0.1": "^13.0.1",
       "ip-address@>=10.0.0 <10.1.1": "^10.1.1",
-      "brace-expansion@>=5.0.0 <5.0.8": "^5.0.8",
       "js-yaml@>=4.0.0 <4.2.0": "^4.2.0",
-      "@opentelemetry/core@>=2.0.0 <2.8.0": "^2.8.0"
+      "@opentelemetry/core@>=2.0.0 <2.8.0": "^2.8.0",
+      "brace-expansion@>=4.0.0 <5.0.9": "^5.0.9"
     }
   }
 }

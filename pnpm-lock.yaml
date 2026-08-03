@@ -20,9 +20,9 @@ overrides:
   qs@>=6.0.0 <6.15.2: ^6.15.2
   uuid@>=13.0.0 <13.0.1: ^13.0.1
   ip-address@>=10.0.0 <10.1.1: ^10.1.1
-  brace-expansion@>=5.0.0 <5.0.8: ^5.0.8
   js-yaml@>=4.0.0 <4.2.0: ^4.2.0
   '@opentelemetry/core@>=2.0.0 <2.8.0': ^2.8.0
+  brace-expansion@>=4.0.0 <5.0.9: ^5.0.9
 
 importers:
 
@@ -4320,8 +4320,8 @@ packages:
   brace-expansion@2.1.0:
     resolution: {integrity: sha512-TN1kCZAgdgweJhWWpgKYrQaMNHcDULHkWwQIspdtjV4Y5aurRdZpjAqn6yX3FPqTA9ngHCc4hJxMAMgGfve85w==}
 
-  brace-expansion@5.0.8:
-    resolution: {integrity: sha512-JZyDyq3D4AUifKTPOB7DELf6XsB3WdPuNxCtob1vFXPsSXhdAiHBWJ/tJ8HAc9aH84BK+5JFZLNkJKx3G9kzQg==}
+  brace-expansion@5.0.9:
+    resolution: {integrity: sha512-ScQ4IuvIEF1TMlP7Zt+vjJ//9zlPb2SDcxWxM3bk8s6t6GGdJ7KO1dCcTidOPJKePW30LE/2cT7wCyPho9/Wxg==}
     engines: {node: 20 || >=22}
 
   braces@3.0.3:
@@ -13382,7 +13382,7 @@ snapshots:
     dependencies:
       balanced-match: 1.0.2
 
-  brace-expansion@5.0.8:
+  brace-expansion@5.0.9:
     dependencies:
       balanced-match: 4.0.4
 
@@ -16900,7 +16900,7 @@ snapshots:
 
   minimatch@10.2.5:
     dependencies:
-      brace-expansion: 5.0.8
+      brace-expansion: 5.0.9
 
   minimatch@3.1.5:
     dependencies:
