@@ -83,6 +83,12 @@ Six independent domains produced the same failure shape. This is the single high
 
 ### Other P1s
 
+**A live prod demo credential was committed and pushed to `origin/master` today — reversing a decision made deliberately this morning.** Found by the lead while verifying the final commit. `ffddbdc4` (the concurrent session's RS-01 security commit) swept in `docs/research/2026-07-31-walnut-creek-demo-district/`, whose `README.md:7` reads `districtadmin@wcsd.demo` / `WalnutCreek!2026` in plaintext. That folder had been kept untracked **on purpose** — the 08-03 launch-readiness doc, §4 decision 9, records: *"Walnut-Creek demo files (untracked) contain live demo credentials — scrub/exclude before they ever land in the public repo; account exists in prod."*
+
+Severity is bounded by the repo being **PRIVATE** (verified `visibility=PRIVATE`), but three things make it worth acting on: the credential is live against production, it is now in **pushed** remote history (deleting the file does not remove it), and **gitleaks passed on that very run** — proving the secret-scan gate does not catch a plaintext password written in prose, only key-shaped tokens.
+
+→ Rotate the `districtadmin@wcsd.demo` password; scrub the credential from the doc; decide whether history rewriting is warranted (owner's call — the commit is pushed and a concurrent session is active on this branch, so I did not touch it). Consider a prose-password rule in the gitleaks config, and note this is a second data point for §17 F5 (no secret scan in any git hook — a pre-commit staged-diff scan would not have caught this either without that rule).
+
 **No district-wide emergency.** Zero hierarchy references exist in the emergency module; the manifest reads only `screen.tenantId`. Measured against live prod: **41 paired screens sit under child tenants** — Walnut Creek (7 schools / 38 screens), Springfield (1 / 3), Chardon (2 / 0). A district-level lockdown reaches the district office and nothing else. Demoing "lock down all schools" on the flagship demo district would visibly fail on all 38 screens.
 
 **ACC-09 cross-tenant account hijack — still open**, flagged 08-01, fix never applied. `createUserDirect` looks up by global email, rejects only ACTIVE, and rewrites a victim tenant's `INVITED` placeholder to the attacker's `tenantId`; `acceptInvite` never asserts tenant match, so the real invitee logs into the attacker's tenant. Self-signup mints DISTRICT_ADMIN with no email verification, supplying the attacker account free.
