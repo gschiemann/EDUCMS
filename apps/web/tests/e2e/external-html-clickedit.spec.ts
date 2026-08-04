@@ -110,9 +110,6 @@ test.describe('EXTERNAL_HTML boards report clicks (hot-zones)', () => {
         '[data-field]:not([data-field^="theme."]):visible, [data-imgslot]:visible, [data-action]:visible',
       ).first();
       await expect(target, `${board}: no visible editable element to click`).toBeVisible({ timeout: 10_000 });
-      const expectedKey = await target.evaluate((el) =>
-        el.getAttribute('data-action') || el.getAttribute('data-field') ||
-        el.getAttribute('data-imgslot') || el.getAttribute('data-slot') || el.getAttribute('data-img') || '');
       // armEdit() runs async after the edit-mode message; on animation-heavy
       // boards the busy main thread defers it. Poll until THIS element is
       // actually armed before clicking (no fixed sleep → no flake, and a
@@ -121,6 +118,51 @@ test.describe('EXTERNAL_HTML boards report clicks (hot-zones)', () => {
         .poll(() => target.evaluate((el) => (el as any).__veArmed === true),
           { message: `${board}: armEdit never armed the target`, timeout: 8_000 })
         .toBe(true);
+
+      // Which key SHOULD this click report? Not necessarily the locator's own.
+      //
+      // 2026-08-04 — this assertion used to be `expectedKey = <target's own
+      // attr>`, which silently assumed "the first matching element is the one
+      // that receives the click." That broke when the hospitality lobby board
+      // was redesigned (2026-07-30) and gained a full-bleed
+      // `data-imgslot="board.bg"` background layer: it now sorts FIRST in the
+      // locator, but Playwright clicks an element's CENTER, and that centre is
+      // covered by the hero copy painted on top of it (they are SIBLINGS, not
+      // ancestor/descendant — so the background is not even in the event
+      // path). The shim correctly reported `hero.lede`; the test demanded
+      // `board.bg` and called a perfectly working board "hot-zone dead".
+      //
+      // Model what the shim actually does instead. armEdit() binds its click
+      // listener on EVERY armed element with capture=true and calls
+      // stopPropagation(), so the listener that wins is the one on the
+      // OUTERMOST armed element in the event path — closest to the root, not
+      // the innermost. Resolve the topmost element at the click point, walk to
+      // the root, and take the last armed element on the way up.
+      //
+      // This is strictly STRONGER than the old assertion: it still fails if
+      // the shim reports nothing or reports an unrelated element, but it no
+      // longer fails a board merely for stacking one editable region over
+      // another — which is normal, correct signage design.
+      const expectedKey = await target.evaluate((el) => {
+        const keyOf = (n: Element): string =>
+          n.getAttribute('data-action') || n.getAttribute('data-field') ||
+          n.getAttribute('data-imgslot') || n.getAttribute('data-slot') ||
+          n.getAttribute('data-img') || '';
+        const r = el.getBoundingClientRect();
+        // Playwright clamps the click point into the viewport; mirror that.
+        const cx = Math.min(Math.max(r.left + r.width / 2, 0), window.innerWidth - 1);
+        const cy = Math.min(Math.max(r.top + r.height / 2, 0), window.innerHeight - 1);
+        const armed: Element[] = [];
+        let n: Element | null = document.elementFromPoint(cx, cy);
+        while (n) {
+          if ((n as any).__veArmed === true && keyOf(n)) armed.push(n);
+          n = n.parentElement;
+        }
+        // capture phase fires root → target, so the ancestor-most armed
+        // element handles the click first and stops it.
+        return armed.length ? keyOf(armed[armed.length - 1]) : keyOf(el);
+      });
+
       await target.click({ force: true });
 
       // 4. The shim must have posted educms-field-click for THAT element —

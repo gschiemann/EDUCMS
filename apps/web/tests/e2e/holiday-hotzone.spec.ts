@@ -218,6 +218,35 @@ test.describe('Holiday board hot-zone (click-to-edit jump)', () => {
     const pageErrors: string[] = [];
     page.on('pageerror', (err) => {
       if (/Hydration failed|access control checks|Load failed|Failed to fetch|NetworkError/i.test(err.message)) return;
+      // 2026-08-04 — HARNESS ARTIFACT, NOT AN APP BUG. Proven, not assumed.
+      //
+      //   "Failed to read the 'serviceWorker' property from 'Navigator':
+      //    Service worker is disabled because the context is sandboxed and
+      //    lacks the 'allow-same-origin' flag."
+      //
+      // The holiday board renders in a real null-origin sandbox
+      // (`sandbox="allow-scripts"`, security finding INJ-005). Reading
+      // `navigator.serviceWorker` in such a frame throws a SecurityError.
+      //
+      // A control experiment settled where it comes from — same page, four
+      // iframes, counting this error:
+      //   sandboxed iframe, srcdoc, NO script at all ....... 1  ← thrower
+      //   sandboxed iframe, srcdoc, trivial script ......... 1
+      //   sandboxed iframe, the real board ................. 1
+      //   board + `allow-same-origin` ...................... 0
+      // An EMPTY sandboxed frame throws it, so nothing we ship is
+      // responsible: it is Playwright's own per-frame instrumentation
+      // probing the SW registry in a frame that forbids it. Corroborating:
+      // `serviceWorker` appears nowhere in the board HTML or in
+      // `_style-bridge.js` (its only script), and every real call site in
+      // apps/web goes through `getServiceWorkerContainer()`, which cannot
+      // throw.
+      //
+      // Do NOT "fix" this by adding `allow-same-origin` to the board iframe.
+      // That is the flag that makes the error go away and it is precisely the
+      // flag INJ-005 removed — restoring it would hand a board script our
+      // origin and undo the sandbox.
+      if (/Service worker is disabled because the context is sandboxed/i.test(err.message)) return;
       pageErrors.push(err.message);
     });
     const apiReqs: string[] = [];
