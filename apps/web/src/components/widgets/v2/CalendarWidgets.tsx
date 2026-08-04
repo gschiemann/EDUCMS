@@ -25,7 +25,7 @@ export function CalendarNeonGridWidget({ config }: WidgetProps<CalCfg>) {
   return (
     <div style={frameStyle(r)}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 16 }}>
-        <h2 style={{ margin: 0, fontSize: '1.6em', color: r.accent.primary, textShadow: `0 0 16px ${r.accent.primary}`, letterSpacing: '0.2em' }}>{c.title || 'UPCOMING'}</h2>
+        <h2 style={{ margin: 0, fontSize: '1.6em', color: r.accent.primary, textShadow: `0 0 16px ${r.accent.primary}`, letterSpacing: '0.2em' }} data-field="title">{c.title || 'UPCOMING'}</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 12, fontSize: r.font.size }}>
           {evs.slice(0, 6).map((e, i) => (
             <div key={i} style={{ display: 'contents' }}>
@@ -47,7 +47,7 @@ export function CalendarPaperAgendaWidget({ config }: WidgetProps<CalCfg>) {
   return (
     <div style={frameStyle(r)}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-        <h2 style={{ margin: '0 0 16px 0', fontSize: '2.2em', textAlign: 'center', borderBottom: '4px double #0a0a0a', paddingBottom: 12, fontStyle: 'italic' }}>{c.title || 'Calendar of Events'}</h2>
+        <h2 style={{ margin: '0 0 16px 0', fontSize: '2.2em', textAlign: 'center', borderBottom: '4px double #0a0a0a', paddingBottom: 12, fontStyle: 'italic' }} data-field="title">{c.title || 'Calendar of Events'}</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {evs.slice(0, 6).map((e, i) => (
             <div key={i} style={{ display: 'flex', gap: 16, paddingBottom: 8, borderBottom: '1px dashed #94a3b8', alignItems: 'baseline' }}>
@@ -70,7 +70,7 @@ export function CalendarCrayonDaysWidget({ config }: WidgetProps<CalCfg>) {
   return (
     <div style={frameStyle(r)}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 14 }}>
-        <h2 style={{ margin: 0, fontSize: '1.8em', fontWeight: 800, textAlign: 'center' }}>📅 {c.title || "What's Coming Up!"}</h2>
+        <h2 style={{ margin: 0, fontSize: '1.8em', fontWeight: 800, textAlign: 'center' }}>📅 <span data-field="title">{c.title || "What's Coming Up!"}</span></h2>
         <div style={{ display: 'grid', gap: 10 }}>
           {evs.slice(0, 5).map((e, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#fff', padding: 12, borderRadius: 16, boxShadow: '0 4px 0 rgba(0,0,0,0.08)' }}>
@@ -98,7 +98,7 @@ export function CalendarGlassTimelineWidget({ config }: WidgetProps<CalCfg>) {
     <div style={{ ...frameStyle(r), backdropFilter: 'blur(20px)' }}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <h2 style={{ margin: 0, fontSize: '1.6em', fontWeight: 700, letterSpacing: '-0.02em' }}>{c.title || 'Upcoming Events'}</h2>
+          <h2 style={{ margin: 0, fontSize: '1.6em', fontWeight: 700, letterSpacing: '-0.02em' }} data-field="title">{c.title || 'Upcoming Events'}</h2>
           <span style={{ fontSize: '0.85em', color: '#64748b' }}>{evs.length} scheduled</span>
         </div>
         <div style={{ position: 'relative', flex: 1 }}>
@@ -129,7 +129,7 @@ export function CalendarOpsQueueWidget({ config }: WidgetProps<CalCfg>) {
     <div style={frameStyle(r)}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 8 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px dashed ${r.accent.primary}55`, paddingBottom: 8, fontSize: '0.95em' }}>
-          <b style={{ color: r.accent.primary, letterSpacing: '0.2em' }}>$ {c.title?.toUpperCase() || 'EVENT QUEUE'}</b>
+          <b style={{ color: r.accent.primary, letterSpacing: '0.2em' }}>$ <span data-field="title">{c.title?.toUpperCase() || 'EVENT QUEUE'}</span></b>
           <span style={{ color: r.accent.secondary }}>{evs.length} ITEMS</span>
         </div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: r.font.size }}>

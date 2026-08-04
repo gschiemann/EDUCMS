@@ -73,8 +73,8 @@ export function CountdownNeonDigitsWidget({ config, live = true }: WidgetProps<C
   return (
     <div style={frameStyle(r)}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 24 }}>
-        <div style={{ fontSize: '0.22em', color: r.accent.secondary, letterSpacing: '0.5em', textShadow: `0 0 12px ${r.accent.secondary}` }}>▸ {labelInfo.eyebrow || 'COUNTDOWN'} ◂</div>
-        <h2 style={{ margin: 0, fontSize: '0.4em', color: '#fff', letterSpacing: '0.3em' }}>{labelInfo.primary || 'STATE FINALS'}</h2>
+        <div style={{ fontSize: '0.22em', color: r.accent.secondary, letterSpacing: '0.5em', textShadow: `0 0 12px ${r.accent.secondary}` }}>▸ <span data-field="eyebrow">{labelInfo.eyebrow || 'COUNTDOWN'}</span> ◂</div>
+        <h2 style={{ margin: 0, fontSize: '0.4em', color: '#fff', letterSpacing: '0.3em' }}><span data-field="label">{labelInfo.primary || 'STATE FINALS'}</span></h2>
         <div style={{ display: 'flex', gap: 32 }}>
           <Cell n={v.d} l="DAYS" /><Cell n={v.h} l="HRS" /><Cell n={v.m} l="MIN" /><Cell n={v.s} l="SEC" />
         </div>
@@ -89,7 +89,7 @@ export function CountdownPaperFlipWidget({ config, live = true }: WidgetProps<Cd
   return (
     <div style={frameStyle(r)}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 16, alignItems: 'center', justifyContent: 'center' }}>
-        <h2 style={{ margin: 0, fontSize: '1.5em', fontStyle: 'italic', borderBottom: '4px double #0a0a0a', paddingBottom: 10 }}>{labelInfo.primary || 'Days Until Spring Break'}</h2>
+        <h2 style={{ margin: 0, fontSize: '1.5em', fontStyle: 'italic', borderBottom: '4px double #0a0a0a', paddingBottom: 10 }}><span data-field="label">{labelInfo.primary || 'Days Until Spring Break'}</span></h2>
         <div style={{ display: 'flex', gap: 16 }}>
           {[['DAYS', v.d], ['HOURS', v.h], ['MINUTES', v.m]].map(([label, n], i) => (
             <div key={i} style={{ background: '#fff', padding: '18px 24px', boxShadow: '0 8px 24px rgba(0,0,0,0.15)', borderRadius: 4, position: 'relative', minWidth: 120 }}>
@@ -112,7 +112,7 @@ export function CountdownCrayonBlocksWidget({ config, live = true }: WidgetProps
     <div style={frameStyle(r)}>
       {r.anim.on && <style>{`@keyframes cd-bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }`}</style>}
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 16, alignItems: 'center', justifyContent: 'center' }}>
-        <h2 style={{ margin: 0, fontSize: '1.8em', fontWeight: 800 }}>🎉 {labelInfo.primary || 'Field Day in...'}</h2>
+        <h2 style={{ margin: 0, fontSize: '1.8em', fontWeight: 800 }}>🎉 <span data-field="label">{labelInfo.primary || 'Field Day in...'}</span></h2>
         <div style={{ display: 'flex', gap: 14 }}>
           {[['DAYS', v.d], ['HRS', v.h], ['MIN', v.m]].map(([label, n], i) => (
             <div key={i} style={{ background: colors[i], color: '#fff', padding: 20, borderRadius: 24, minWidth: 130, textAlign: 'center', boxShadow: '0 6px 0 rgba(0,0,0,0.15)', animation: r.anim.on ? `cd-bounce ${dur}s ease-in-out ${i * 0.2}s infinite` : 'none', transform: `rotate(${i % 2 ? 2 : -2}deg)` }}>
@@ -145,8 +145,8 @@ export function CountdownGlassRingWidget({ config, live = true }: WidgetProps<Cd
           </div>
         </div>
         <div>
-          <div style={{ fontSize: '0.85em', fontWeight: 600, letterSpacing: '0.2em', color: r.accent.primary, textTransform: 'uppercase' }}>{labelInfo.eyebrow || 'Counting down'}</div>
-          <h2 style={{ margin: '8px 0 12px 0', fontSize: '2em', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1 }}>{labelInfo.primary || 'Graduation Day'}</h2>
+          <div style={{ fontSize: '0.85em', fontWeight: 600, letterSpacing: '0.2em', color: r.accent.primary, textTransform: 'uppercase' }}><span data-field="eyebrow">{labelInfo.eyebrow || 'Counting down'}</span></div>
+          <h2 style={{ margin: '8px 0 12px 0', fontSize: '2em', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1 }}><span data-field="label">{labelInfo.primary || 'Graduation Day'}</span></h2>
           <div style={{ display: 'flex', gap: 8, fontSize: '0.85em', color: '#64748b' }}>
             <span style={{ background: 'rgba(99,102,241,0.1)', padding: '4px 12px', borderRadius: 999 }}>{v.h}h</span>
             <span style={{ background: 'rgba(168,85,247,0.1)', padding: '4px 12px', borderRadius: 999 }}>{v.m}m</span>
@@ -163,13 +163,13 @@ export function CountdownOpsTimerWidget({ config, live = true }: WidgetProps<CdC
   return (
     <div style={frameStyle(r)}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 8 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px dashed ${r.accent.secondary}55`, paddingBottom: 6, fontSize: '0.32em', color: r.accent.secondary }}><b style={{ color: r.accent.primary, letterSpacing: '0.2em' }}>● T-MINUS</b><span>{labelInfo.primary || 'TARGET_EVENT'}</span></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px dashed ${r.accent.secondary}55`, paddingBottom: 6, fontSize: '0.32em', color: r.accent.secondary }}><b style={{ color: r.accent.primary, letterSpacing: '0.2em' }}>● T-MINUS</b><span data-field="label">{labelInfo.primary || 'TARGET_EVENT'}</span></div>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, fontFamily: 'inherit', color: r.accent.primary, textShadow: `0 0 16px ${r.accent.primary}88`, letterSpacing: '0.05em' }}>
           <span style={{ fontSize: r.font.size }}>{String(v.d).padStart(3, '0')}</span><span style={{ fontSize: '0.5em', color: r.accent.secondary }}>d</span>
           <span style={{ fontSize: r.font.size, marginLeft: 12 }}>{String(v.h).padStart(2, '0')}</span><span style={{ fontSize: '0.5em', color: r.accent.secondary }}>h</span>
           <span style={{ fontSize: r.font.size, marginLeft: 12 }}>{String(v.m).padStart(2, '0')}</span><span style={{ fontSize: '0.5em', color: r.accent.secondary }}>m</span>
         </div>
-        <div style={{ borderTop: `1px dashed ${r.accent.secondary}55`, paddingTop: 6, fontSize: '0.28em', color: r.accent.secondary, display: 'flex', justifyContent: 'space-between' }}><span>$ {c.eyebrow || 'monitoring'}_</span><span>STATUS: NOMINAL</span></div>
+        <div style={{ borderTop: `1px dashed ${r.accent.secondary}55`, paddingTop: 6, fontSize: '0.28em', color: r.accent.secondary, display: 'flex', justifyContent: 'space-between' }}><span>$ <span data-field="eyebrow">{c.eyebrow || 'monitoring'}</span>_</span><span>STATUS: NOMINAL</span></div>
       </div>
     </div>
   );

@@ -30,10 +30,10 @@ export function StaffNeonCardWidget({ config }: WidgetProps<StaffCfg>) {
       <div style={{ display: 'flex', gap: 24, height: '100%' }}>
         <div style={{ width: '40%', borderRadius: 12, overflow: 'hidden', border: `3px solid ${r.accent.primary}`, boxShadow: `0 0 32px ${r.accent.primary}88` }}>{c.photoUrl ? <img src={c.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : PHOTO_PLACEHOLDER(200, r.accent.primary)}</div>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10, justifyContent: 'center' }}>
-          <div style={{ fontSize: '1em', color: r.accent.secondary, letterSpacing: '0.4em', textShadow: `0 0 8px ${r.accent.secondary}` }}>{c.eyebrow || 'STAFF SPOTLIGHT'}</div>
-          <h2 style={{ margin: 0, fontSize: '2.4em', color: r.accent.primary, textShadow: `0 0 16px ${r.accent.primary}`, lineHeight: 1 }}>{c.name}</h2>
-          <div style={{ color: r.accent.secondary, fontSize: '1em', textShadow: `0 0 8px ${r.accent.secondary}` }}>{c.subject} · YR {c.yearsAtSchool}</div>
-          {c.quote && <div style={{ fontSize: '0.9em', fontStyle: 'italic', color: '#fff', opacity: 0.85, marginTop: 8, borderLeft: `4px solid ${r.accent.primary}`, paddingLeft: 12 }}>"{c.quote}"</div>}
+          <div style={{ fontSize: '1em', color: r.accent.secondary, letterSpacing: '0.4em', textShadow: `0 0 8px ${r.accent.secondary}` }} data-field="eyebrow">{c.eyebrow || 'STAFF SPOTLIGHT'}</div>
+          <h2 style={{ margin: 0, fontSize: '2.4em', color: r.accent.primary, textShadow: `0 0 16px ${r.accent.primary}`, lineHeight: 1 }} data-field="name">{c.name}</h2>
+          <div style={{ color: r.accent.secondary, fontSize: '1em', textShadow: `0 0 8px ${r.accent.secondary}` }}><span data-field="subject">{c.subject}</span> · YR {c.yearsAtSchool}</div>
+          {c.quote && <div style={{ fontSize: '0.9em', fontStyle: 'italic', color: '#fff', opacity: 0.85, marginTop: 8, borderLeft: `4px solid ${r.accent.primary}`, paddingLeft: 12 }}>"<span data-field="quote">{c.quote}</span>"</div>}
         </div>
       </div>
     </div>
@@ -48,11 +48,11 @@ export function StaffYearbookPortraitWidget({ config }: WidgetProps<StaffCfg>) {
       <div style={{ display: 'flex', gap: 28, height: '100%', alignItems: 'center' }}>
         <div style={{ width: 220, height: 280, background: '#fff', padding: 12, boxShadow: '0 8px 16px rgba(0,0,0,0.2)', transform: 'rotate(-2deg)' }}><div style={{ width: '100%', height: '100%', overflow: 'hidden', filter: 'sepia(0.3)' }}>{c.photoUrl ? <img src={c.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : PHOTO_PLACEHOLDER(220, r.accent.primary)}</div></div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: '0.9em', letterSpacing: '0.3em', color: r.accent.primary, textTransform: 'uppercase', borderBottom: '2px solid #0a0a0a', paddingBottom: 6 }}>{c.eyebrow || 'Faculty Feature · Vol XII'}</div>
-          <h2 style={{ margin: '12px 0 4px 0', fontSize: '2.4em', fontStyle: 'italic', lineHeight: 1 }}>{c.name}</h2>
-          <div style={{ fontSize: '1em', color: '#525252' }}>{c.role} — {c.subject}</div>
-          {c.quote && <p style={{ fontSize: '1em', fontStyle: 'italic', borderTop: '1px dashed #94a3b8', borderBottom: '1px dashed #94a3b8', padding: '10px 0', margin: '14px 0' }}>"{c.quote}"</p>}
-          {c.funFact && <div style={{ fontSize: '0.85em' }}><b>Fun fact:</b> {c.funFact}</div>}
+          <div style={{ fontSize: '0.9em', letterSpacing: '0.3em', color: r.accent.primary, textTransform: 'uppercase', borderBottom: '2px solid #0a0a0a', paddingBottom: 6 }} data-field="eyebrow">{c.eyebrow || 'Faculty Feature · Vol XII'}</div>
+          <h2 style={{ margin: '12px 0 4px 0', fontSize: '2.4em', fontStyle: 'italic', lineHeight: 1 }} data-field="name">{c.name}</h2>
+          <div style={{ fontSize: '1em', color: '#525252' }}><span data-field="role">{c.role}</span> — <span data-field="subject">{c.subject}</span></div>
+          {c.quote && <p style={{ fontSize: '1em', fontStyle: 'italic', borderTop: '1px dashed #94a3b8', borderBottom: '1px dashed #94a3b8', padding: '10px 0', margin: '14px 0' }}>"<span data-field="quote">{c.quote}</span>"</p>}
+          {c.funFact && <div style={{ fontSize: '0.85em' }}><b>Fun fact:</b> <span data-field="funFact">{c.funFact}</span></div>}
         </div>
       </div>
     </div>
@@ -67,13 +67,13 @@ export function StaffCrayonHeroWidget({ config }: WidgetProps<StaffCfg>) {
       <div style={{ display: 'flex', gap: 24, height: '100%', alignItems: 'center' }}>
         <div style={{ position: 'relative', width: 220, height: 220, borderRadius: '50%', background: `linear-gradient(135deg, ${r.accent.primary}, ${r.accent.secondary})`, padding: 8, flexShrink: 0 }}>
           <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: '#fff' }}>{c.photoUrl ? <img src={c.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : PHOTO_PLACEHOLDER(220, r.accent.primary)}</div>
-          <div style={{ position: 'absolute', bottom: -8, right: -8, background: r.accent.highlight, borderRadius: '50%', width: 60, height: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, boxShadow: '0 4px 0 rgba(0,0,0,0.15)' }}>{c.emoji || '⭐'}</div>
+          <div style={{ position: 'absolute', bottom: -8, right: -8, background: r.accent.highlight, borderRadius: '50%', width: 60, height: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, boxShadow: '0 4px 0 rgba(0,0,0,0.15)' }} data-field="emoji">{c.emoji || '⭐'}</div>
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ display: 'inline-block', background: r.accent.primary, color: '#fff', padding: '6px 18px', borderRadius: 999, fontSize: '0.85em', fontWeight: 800, transform: 'rotate(-3deg)' }}>{c.eyebrow || 'TEACHER OF THE WEEK!'}</div>
-          <h2 style={{ margin: '12px 0 4px 0', fontSize: '2.6em', fontWeight: 800, lineHeight: 1 }}>{c.name}</h2>
-          <div style={{ fontSize: '1.1em', fontWeight: 700, color: r.accent.secondary }}>{c.subject}</div>
-          {c.funFact && <div style={{ marginTop: 12, background: '#fff', padding: 14, borderRadius: 16, fontSize: '0.95em', fontWeight: 600, boxShadow: '0 4px 0 rgba(0,0,0,0.08)' }}>💡 {c.funFact}</div>}
+          <div style={{ display: 'inline-block', background: r.accent.primary, color: '#fff', padding: '6px 18px', borderRadius: 999, fontSize: '0.85em', fontWeight: 800, transform: 'rotate(-3deg)' }} data-field="eyebrow">{c.eyebrow || 'TEACHER OF THE WEEK!'}</div>
+          <h2 style={{ margin: '12px 0 4px 0', fontSize: '2.6em', fontWeight: 800, lineHeight: 1 }} data-field="name">{c.name}</h2>
+          <div style={{ fontSize: '1.1em', fontWeight: 700, color: r.accent.secondary }} data-field="subject">{c.subject}</div>
+          {c.funFact && <div style={{ marginTop: 12, background: '#fff', padding: 14, borderRadius: 16, fontSize: '0.95em', fontWeight: 600, boxShadow: '0 4px 0 rgba(0,0,0,0.08)' }}>💡 <span data-field="funFact">{c.funFact}</span></div>}
         </div>
       </div>
     </div>
@@ -88,10 +88,10 @@ export function StaffGlassProfileWidget({ config }: WidgetProps<StaffCfg>) {
       <div style={{ display: 'flex', gap: 24, height: '100%', alignItems: 'center' }}>
         <div style={{ width: 200, height: 200, borderRadius: 24, overflow: 'hidden', flexShrink: 0, boxShadow: '0 12px 32px rgba(99,102,241,0.2)' }}>{c.photoUrl ? <img src={c.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : PHOTO_PLACEHOLDER(200, r.accent.primary)}</div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: '0.85em', fontWeight: 600, letterSpacing: '0.2em', color: r.accent.primary, textTransform: 'uppercase' }}>{c.eyebrow || 'Featured Educator'}</div>
-          <h2 style={{ margin: '8px 0 4px 0', fontSize: '2.4em', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1 }}>{c.name}</h2>
-          <div style={{ fontSize: '1em', color: '#64748b', fontWeight: 500 }}>{c.role} · {c.subject}</div>
-          {c.quote && <p style={{ margin: '14px 0 0 0', fontSize: '1em', color: '#475569', lineHeight: 1.5, fontStyle: 'italic' }}>"{c.quote}"</p>}
+          <div style={{ fontSize: '0.85em', fontWeight: 600, letterSpacing: '0.2em', color: r.accent.primary, textTransform: 'uppercase' }} data-field="eyebrow">{c.eyebrow || 'Featured Educator'}</div>
+          <h2 style={{ margin: '8px 0 4px 0', fontSize: '2.4em', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1 }} data-field="name">{c.name}</h2>
+          <div style={{ fontSize: '1em', color: '#64748b', fontWeight: 500 }}><span data-field="role">{c.role}</span> · <span data-field="subject">{c.subject}</span></div>
+          {c.quote && <p style={{ margin: '14px 0 0 0', fontSize: '1em', color: '#475569', lineHeight: 1.5, fontStyle: 'italic' }}>"<span data-field="quote">{c.quote}</span>"</p>}
           <div style={{ display: 'flex', gap: 12, marginTop: 14 }}>
             <div style={{ background: 'rgba(99,102,241,0.1)', padding: '8px 14px', borderRadius: 999, fontSize: '0.85em', fontWeight: 600, color: r.accent.primary }}>📅 {c.yearsAtSchool} years</div>
             {c.funFact && <div style={{ background: 'rgba(168,85,247,0.1)', padding: '8px 14px', borderRadius: 999, fontSize: '0.85em', fontWeight: 600, color: '#a855f7' }}>✨ {c.funFact?.slice(0, 30)}…</div>}
@@ -115,11 +115,11 @@ export function StaffOpsBadgeWidget({ config }: WidgetProps<StaffCfg>) {
         <div style={{ display: 'flex', gap: 18, flex: 1 }}>
           <div style={{ width: 140, height: 180, border: `2px solid ${r.accent.primary}`, borderRadius: 4, overflow: 'hidden', filter: 'grayscale(0.4) contrast(1.1)' }}>{c.photoUrl ? <img src={c.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : PHOTO_PLACEHOLDER(140, r.accent.primary)}</div>
           <div style={{ flex: 1, fontSize: r.font.size, lineHeight: 1.7, color: r.accent.secondary }}>
-            <div><b style={{ color: r.font.color }}>NAME&nbsp;&nbsp;:</b> {c.name?.toUpperCase()}</div>
-            <div><b style={{ color: r.font.color }}>ROLE&nbsp;&nbsp;:</b> {c.role}</div>
-            <div><b style={{ color: r.font.color }}>DEPT&nbsp;&nbsp;:</b> {c.subject}</div>
+            <div><b style={{ color: r.font.color }}>NAME&nbsp;&nbsp;:</b> <span data-field="name">{c.name?.toUpperCase()}</span></div>
+            <div><b style={{ color: r.font.color }}>ROLE&nbsp;&nbsp;:</b> <span data-field="role">{c.role}</span></div>
+            <div><b style={{ color: r.font.color }}>DEPT&nbsp;&nbsp;:</b> <span data-field="subject">{c.subject}</span></div>
             <div><b style={{ color: r.font.color }}>TENURE:</b> {c.yearsAtSchool} YRS</div>
-            <div style={{ marginTop: 10, color: r.accent.primary }}>&gt; {c.quote || 'STATUS: ACTIVE'}</div>
+            <div style={{ marginTop: 10, color: r.accent.primary }}>&gt; <span data-field="quote">{c.quote || 'STATUS: ACTIVE'}</span></div>
           </div>
         </div>
       </div>

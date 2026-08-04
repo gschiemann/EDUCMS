@@ -75,8 +75,8 @@ export function BellNeonPitWidget({ config, live }: WidgetProps<BellCfg>) {
   return (
     <div style={frameStyle(r)}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderBottom: `1px solid ${r.accent.primary}`, paddingBottom: 6, marginBottom: 10 }}>
-        <span style={{ color: r.accent.primary, fontSize: '1.2em', textShadow: `0 0 12px ${r.accent.primary}`, letterSpacing: '0.15em' }}>● {c.title || 'BELL SCHEDULE'}</span>
-        <span style={{ color: r.accent.highlight, fontSize: '0.75em', letterSpacing: '0.25em', textShadow: `0 0 8px ${r.accent.highlight}` }}>{c.subtitle || 'REGULAR'}</span>
+        <span style={{ color: r.accent.primary, fontSize: '1.2em', textShadow: `0 0 12px ${r.accent.primary}`, letterSpacing: '0.15em' }}>● <span data-field="title">{c.title || 'BELL SCHEDULE'}</span></span>
+        <span style={{ color: r.accent.highlight, fontSize: '0.75em', letterSpacing: '0.25em', textShadow: `0 0 8px ${r.accent.highlight}` }} data-field="subtitle">{c.subtitle || 'REGULAR'}</span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontFamily: "'JetBrains Mono', monospace" }}>
         {periods.map((p, i) => {
@@ -103,8 +103,8 @@ export function BellPaperProgramWidget({ config, live }: WidgetProps<BellCfg>) {
     <div style={frameStyle(r)}>
       <div style={{ textAlign: 'center', borderBottom: '4px double #0a0a0a', paddingBottom: 8, marginBottom: 12 }}>
         <div style={{ fontSize: '0.7em', letterSpacing: '0.4em', color: r.accent.primary, fontWeight: 700, textTransform: 'uppercase' }}>· The Daily Programme ·</div>
-        <h2 style={{ margin: '4px 0', fontSize: '2em', fontWeight: 900 }}>{c.title || 'Bell Schedule'}</h2>
-        <div style={{ fontStyle: 'italic', fontSize: '0.95em' }}>{c.subtitle || 'Regular Day'}</div>
+        <h2 style={{ margin: '4px 0', fontSize: '2em', fontWeight: 900 }} data-field="title">{c.title || 'Bell Schedule'}</h2>
+        <div style={{ fontStyle: 'italic', fontSize: '0.95em' }} data-field="subtitle">{c.subtitle || 'Regular Day'}</div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {periods.map((p, i) => {
@@ -130,7 +130,7 @@ export function BellCrayonDayplanWidget({ config, live }: WidgetProps<BellCfg>) 
   const colors = [r.accent.primary, r.accent.secondary, r.accent.highlight, '#a78bfa', '#34d399', '#fb923c', '#60a5fa', '#f472b6'];
   return (
     <div style={frameStyle(r)}>
-      <h2 style={{ margin: 0, fontSize: '1.7em', fontWeight: 800, textAlign: 'center' }}>📅 {c.title || 'Our Day!'}</h2>
+      <h2 style={{ margin: 0, fontSize: '1.7em', fontWeight: 800, textAlign: 'center' }}>📅 <span data-field="title">{c.title || 'Our Day!'}</span></h2>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
         {periods.map((p, i) => {
           const active = i === cur;
@@ -156,8 +156,8 @@ export function BellGlassTimetableWidget({ config, live }: WidgetProps<BellCfg>)
   return (
     <div style={{ ...frameStyle(r), backdropFilter: 'blur(20px)' }}>
       <div style={{ marginBottom: 12 }}>
-        {c.subtitle && <div style={{ fontSize: '0.75em', fontWeight: 600, letterSpacing: '0.2em', color: r.accent.primary, textTransform: 'uppercase' }}>{c.subtitle}</div>}
-        <h2 style={{ margin: '2px 0 0', fontSize: '1.7em', fontWeight: 600, letterSpacing: '-0.02em' }}>{c.title || 'Today'}</h2>
+        {c.subtitle && <div style={{ fontSize: '0.75em', fontWeight: 600, letterSpacing: '0.2em', color: r.accent.primary, textTransform: 'uppercase' }} data-field="subtitle">{c.subtitle}</div>}
+        <h2 style={{ margin: '2px 0 0', fontSize: '1.7em', fontWeight: 600, letterSpacing: '-0.02em' }} data-field="title">{c.title || 'Today'}</h2>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {periods.map((p, i) => {
@@ -182,7 +182,7 @@ export function BellOpsDispatchWidget({ config, live }: WidgetProps<BellCfg>) {
   const r = resolveStyle({ fontFamily: "'JetBrains Mono', monospace", fontSize: 14, textColor: '#cbd5e1', bgColor: '#0a0e14', padding: 20, borderRadius: 8, borderWidth: 1, borderColor: '#1e293b', accentColor: '#22d3ee', accentColor2: '#fbbf24', highlightColor: '#22c55e', ...(c.style || {}) });
   return (
     <div style={frameStyle(r)}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px dashed ${r.accent.primary}55`, paddingBottom: 4, marginBottom: 6, fontSize: '1em' }}><b style={{ color: r.accent.primary, letterSpacing: '0.2em' }}>● BELL.DISPATCH</b><span style={{ color: r.accent.secondary }}>{c.subtitle || 'REGULAR'}</span></div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px dashed ${r.accent.primary}55`, paddingBottom: 4, marginBottom: 6, fontSize: '1em' }}><b style={{ color: r.accent.primary, letterSpacing: '0.2em' }}>● BELL.DISPATCH</b><span style={{ color: r.accent.secondary }} data-field="subtitle">{c.subtitle || 'REGULAR'}</span></div>
       <div style={{ display: 'grid', gridTemplateColumns: '32px 80px 1fr 90px', columnGap: 8, rowGap: 2, fontSize: r.font.size }}>
         <b style={{ color: r.accent.primary }}>#</b><b style={{ color: r.accent.primary }}>TIME</b><b style={{ color: r.accent.primary }}>BLOCK</b><b style={{ color: r.accent.primary }}>STATE</b>
         {periods.map((p, i) => {

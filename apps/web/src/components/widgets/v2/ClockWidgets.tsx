@@ -106,7 +106,7 @@ export function ClockNeonPulseWidget({ config, live = true }: WidgetProps<ClockC
       )}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12 }}>
         {r.show('label', !!c.label) && c.label && (
-          <div style={{ color: r.accent.secondary, fontSize: '0.18em', letterSpacing: '0.5em', textTransform: 'uppercase', fontWeight: 400, textShadow: `0 0 8px ${r.accent.secondary}` }}>{c.label}</div>
+          <div style={{ color: r.accent.secondary, fontSize: '0.18em', letterSpacing: '0.5em', textTransform: 'uppercase', fontWeight: 400, textShadow: `0 0 8px ${r.accent.secondary}` }} data-field="label">{c.label}</div>
         )}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.05em', fontSize: r.font.size, fontWeight: r.font.weight, color: r.accent.primary, lineHeight: 1, letterSpacing: '0.02em', animation: r.anim.on ? `${pulseId} ${dur}s ease-in-out infinite` : 'none', textShadow: `0 0 8px ${r.accent.primary}, 0 0 24px ${r.accent.primary}` }}>
           <span>{t.h}</span>
@@ -156,7 +156,7 @@ export function ClockRecessBlocksWidget({ config, live = true }: WidgetProps<Clo
       {r.anim.on && <style>{`@keyframes blocks-bob { 0%,100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-6px) rotate(2deg); } }`}</style>}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 16 }}>
         {r.show('label', !!c.label) && c.label && (
-          <div style={{ color: r.accent.primary, fontSize: '0.2em', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{c.label}</div>
+          <div style={{ color: r.accent.primary, fontSize: '0.2em', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em' }} data-field="label">{c.label}</div>
         )}
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           {blocks.map(([digit, color], i) => (
@@ -222,7 +222,7 @@ export function ClockLockerFlipWidget({ config, live = true }: WidgetProps<Clock
     <div style={frameStyle(r)}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 16 }}>
         {r.show('label', !!c.label) && c.label && (
-          <div style={{ color: r.accent.primary, fontSize: '0.16em', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4em' }}>▸ {c.label} ◂</div>
+          <div style={{ color: r.accent.primary, fontSize: '0.16em', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4em' }}>▸ <span data-field="label">{c.label}</span> ◂</div>
         )}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: r.font.size }}>
           <FlipCell digit={t.h[0]} /><FlipCell digit={t.h[1]} />
@@ -269,7 +269,7 @@ export function ClockGlassMinimalWidget({ config, live = true }: WidgetProps<Clo
     <div style={{ ...frameStyle(r), backdropFilter: r.bg.blur ? `blur(${r.bg.blur}px)` : 'blur(20px)' }}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 8 }}>
         {r.show('label', !!c.label) && c.label && (
-          <div style={{ color: r.accent.primary, fontSize: '0.14em', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.3em' }}>{c.label}</div>
+          <div style={{ color: r.accent.primary, fontSize: '0.14em', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.3em' }} data-field="label">{c.label}</div>
         )}
         <div style={{ display: 'flex', alignItems: 'baseline', fontSize: r.font.size, fontWeight: r.font.weight, lineHeight: 1, letterSpacing: '-0.04em' }}>
           <span>{t.h}</span><span style={{ opacity: 0.3, margin: '0 0.05em' }}>:</span><span>{t.m}</span>
@@ -311,7 +311,7 @@ export function ClockOpsTerminalWidget({ config, live = true }: WidgetProps<Cloc
     <div style={frameStyle(r)}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 8 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.18em', color: r.accent.secondary, fontWeight: 600 }}>
-          <span>● {c.label || 'OPERATIONS'} </span>
+          <span>● <span data-field="label">{c.label || 'OPERATIONS'}</span> </span>
           <span>{c.timeZone || 'LOCAL'}</span>
         </div>
         <div style={{ borderTop: `1px dashed ${r.accent.secondary}55`, opacity: 0.5 }} />

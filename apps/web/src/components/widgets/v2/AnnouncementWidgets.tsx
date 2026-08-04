@@ -38,12 +38,12 @@ export function AnnouncementNeonAlertWidget({ config }: WidgetProps<AnnCfg>) {
       {r.anim.on && <style>{`@keyframes ${id} { 0%,100% { box-shadow: 0 0 0 4px ${r.accent.primary}, 0 0 24px ${r.accent.primary}; } 50% { box-shadow: 0 0 0 4px ${r.accent.secondary}, 0 0 32px ${r.accent.secondary}; } }`}</style>}
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'center', gap: 20, padding: 12, borderRadius: 12, animation: r.anim.on ? `${id} ${dur}s ease-in-out infinite` : 'none' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <span style={{ fontSize: '1.4em' }}>{c.icon || '⚠'}</span>
-          <span style={{ fontSize: '0.32em', fontWeight: 700, letterSpacing: '0.4em', color: r.accent.highlight, textShadow: `0 0 12px ${r.accent.highlight}` }}>{c.label || 'ALERT'}</span>
+          <span style={{ fontSize: '1.4em' }} data-field="icon">{c.icon || '⚠'}</span>
+          <span style={{ fontSize: '0.32em', fontWeight: 700, letterSpacing: '0.4em', color: r.accent.highlight, textShadow: `0 0 12px ${r.accent.highlight}` }} data-field="label">{c.label || 'ALERT'}</span>
         </div>
-        <h2 style={{ margin: 0, fontSize: r.font.size, fontWeight: r.font.weight, color: r.accent.primary, lineHeight: 1.05, letterSpacing: '0.02em', textShadow: `0 0 16px ${r.accent.primary}` }}>{c.title || 'PEP RALLY @ 2:30 — GYM A'}</h2>
-        {c.message && <p style={{ margin: 0, fontSize: '0.28em', color: '#fff', opacity: 0.9, fontWeight: 300, lineHeight: 1.4 }}>{c.message}</p>}
-        {c.cta && <div style={{ marginTop: 'auto', fontSize: '0.22em', color: r.accent.secondary, letterSpacing: '0.3em', textShadow: `0 0 8px ${r.accent.secondary}` }}>▸ {c.cta}</div>}
+        <h2 style={{ margin: 0, fontSize: r.font.size, fontWeight: r.font.weight, color: r.accent.primary, lineHeight: 1.05, letterSpacing: '0.02em', textShadow: `0 0 16px ${r.accent.primary}` }} data-field="title">{c.title || 'PEP RALLY @ 2:30 — GYM A'}</h2>
+        {c.message && <p style={{ margin: 0, fontSize: '0.28em', color: '#fff', opacity: 0.9, fontWeight: 300, lineHeight: 1.4 }} data-field="message">{c.message}</p>}
+        {c.cta && <div style={{ marginTop: 'auto', fontSize: '0.22em', color: r.accent.secondary, letterSpacing: '0.3em', textShadow: `0 0 8px ${r.accent.secondary}` }}>▸ <span data-field="cta">{c.cta}</span></div>}
       </div>
     </div>
   );
@@ -64,12 +64,12 @@ export function AnnouncementBulletinPinWidget({ config }: WidgetProps<AnnCfg>) {
       <div style={{ position: 'relative', background: '#fffbeb', padding: 32, transform: 'rotate(-1.5deg)', boxShadow: '0 12px 24px rgba(0,0,0,0.4)', height: 'calc(100% - 24px)', display: 'flex', flexDirection: 'column', gap: 12 }}>
         <span style={{ position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)', width: 28, height: 28, borderRadius: '50%', background: r.accent.primary, boxShadow: 'inset -4px -4px 6px rgba(0,0,0,0.3), 0 4px 8px rgba(0,0,0,0.4)' }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: '1.2em' }}>{c.icon || '📌'}</span>
-          <span style={{ fontSize: '0.36em', fontWeight: 700, color: r.accent.primary, letterSpacing: '0.1em', textTransform: 'uppercase' }}>{c.label || 'Reminder'}</span>
+          <span style={{ fontSize: '1.2em' }} data-field="icon">{c.icon || '📌'}</span>
+          <span style={{ fontSize: '0.36em', fontWeight: 700, color: r.accent.primary, letterSpacing: '0.1em', textTransform: 'uppercase' }} data-field="label">{c.label || 'Reminder'}</span>
         </div>
-        <h2 style={{ margin: 0, fontSize: r.font.size, fontWeight: r.font.weight, color: r.font.color, lineHeight: 1.15 }}>{c.title || "Don't forget your permission slip!"}</h2>
-        {c.message && <p style={{ margin: 0, fontSize: '0.42em', color: '#3f3f46', lineHeight: 1.4 }}>{c.message}</p>}
-        {c.cta && <div style={{ marginTop: 'auto', fontSize: '0.36em', color: r.accent.primary, fontWeight: 700, borderTop: '2px dashed #d4d4d8', paddingTop: 8 }}>→ {c.cta}</div>}
+        <h2 style={{ margin: 0, fontSize: r.font.size, fontWeight: r.font.weight, color: r.font.color, lineHeight: 1.15 }} data-field="title">{c.title || "Don't forget your permission slip!"}</h2>
+        {c.message && <p style={{ margin: 0, fontSize: '0.42em', color: '#3f3f46', lineHeight: 1.4 }} data-field="message">{c.message}</p>}
+        {c.cta && <div style={{ marginTop: 'auto', fontSize: '0.36em', color: r.accent.primary, fontWeight: 700, borderTop: '2px dashed #d4d4d8', paddingTop: 8 }}>→ <span data-field="cta">{c.cta}</span></div>}
       </div>
     </div>
   );
@@ -92,12 +92,12 @@ export function AnnouncementRainbowBubbleWidget({ config }: WidgetProps<AnnCfg>)
       <div style={{ position: 'relative', background: `linear-gradient(135deg, ${r.accent.primary}, ${r.accent.secondary})`, padding: 32, borderRadius: 40, height: '100%', display: 'flex', flexDirection: 'column', gap: 16, color: '#fff', boxShadow: '0 12px 0 rgba(0,0,0,0.12)', animation: r.anim.on ? `bubble-pop ${dur}s ease-in-out infinite` : 'none' }}>
         <span aria-hidden style={{ position: 'absolute', bottom: -20, left: 60, width: 40, height: 40, background: r.accent.primary, transform: 'rotate(45deg)', borderRadius: 6 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: '1.3em' }}>{c.icon || '🌟'}</span>
-          <span style={{ fontSize: '0.32em', fontWeight: 800, background: r.accent.highlight, color: '#1c1917', padding: '6px 18px', borderRadius: 999, transform: 'rotate(-3deg)' }}>{c.label || 'YAY!'}</span>
+          <span style={{ fontSize: '1.3em' }} data-field="icon">{c.icon || '🌟'}</span>
+          <span style={{ fontSize: '0.32em', fontWeight: 800, background: r.accent.highlight, color: '#1c1917', padding: '6px 18px', borderRadius: 999, transform: 'rotate(-3deg)' }} data-field="label">{c.label || 'YAY!'}</span>
         </div>
-        <h2 style={{ margin: 0, fontSize: r.font.size, fontWeight: r.font.weight, lineHeight: 1.05, color: '#fff', textShadow: '3px 3px 0 rgba(0,0,0,0.15)' }}>{c.title || 'Pizza day is tomorrow!'}</h2>
-        {c.message && <p style={{ margin: 0, fontSize: '0.36em', fontWeight: 600, lineHeight: 1.3, color: 'rgba(255,255,255,0.95)' }}>{c.message}</p>}
-        {c.cta && <div style={{ marginTop: 'auto', fontSize: '0.28em', background: '#fff', color: r.accent.primary, padding: '10px 20px', borderRadius: 999, alignSelf: 'flex-start', fontWeight: 800 }}>★ {c.cta} ★</div>}
+        <h2 style={{ margin: 0, fontSize: r.font.size, fontWeight: r.font.weight, lineHeight: 1.05, color: '#fff', textShadow: '3px 3px 0 rgba(0,0,0,0.15)' }} data-field="title">{c.title || 'Pizza day is tomorrow!'}</h2>
+        {c.message && <p style={{ margin: 0, fontSize: '0.36em', fontWeight: 600, lineHeight: 1.3, color: 'rgba(255,255,255,0.95)' }} data-field="message">{c.message}</p>}
+        {c.cta && <div style={{ marginTop: 'auto', fontSize: '0.28em', background: '#fff', color: r.accent.primary, padding: '10px 20px', borderRadius: 999, alignSelf: 'flex-start', fontWeight: 800 }}>★ <span data-field="cta">{c.cta}</span> ★</div>}
       </div>
     </div>
   );
@@ -117,12 +117,12 @@ export function AnnouncementGlassToastWidget({ config }: WidgetProps<AnnCfg>) {
   return (
     <div style={{ ...frameStyle(r), backdropFilter: 'blur(20px)' }}>
       <div style={{ display: 'flex', gap: 20, height: '100%', alignItems: 'center' }}>
-        <div style={{ width: 80, height: 80, flex: '0 0 80px', borderRadius: 16, background: `linear-gradient(135deg, ${r.accent.primary}, ${r.accent.secondary})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40, color: '#fff', boxShadow: `0 8px 24px ${r.accent.primary}55` }}>{c.icon || '✓'}</div>
+        <div style={{ width: 80, height: 80, flex: '0 0 80px', borderRadius: 16, background: `linear-gradient(135deg, ${r.accent.primary}, ${r.accent.secondary})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40, color: '#fff', boxShadow: `0 8px 24px ${r.accent.primary}55` }} data-field="icon">{c.icon || '✓'}</div>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {r.show('label', !!c.label) && <span style={{ fontSize: '0.22em', fontWeight: 700, letterSpacing: '0.2em', color: r.accent.primary, textTransform: 'uppercase' }}>{c.label || 'Update'}</span>}
-          <h2 style={{ margin: 0, fontSize: r.font.size, fontWeight: r.font.weight, color: r.font.color, letterSpacing: '-0.02em', lineHeight: 1.1 }}>{c.title || 'Library hours extended this week'}</h2>
-          {c.message && <p style={{ margin: 0, fontSize: '0.36em', color: '#475569', lineHeight: 1.4, fontWeight: 400 }}>{c.message}</p>}
-          {c.cta && <div style={{ marginTop: 8, fontSize: '0.28em', color: r.accent.primary, fontWeight: 600 }}>{c.cta} →</div>}
+          {r.show('label', !!c.label) && <span style={{ fontSize: '0.22em', fontWeight: 700, letterSpacing: '0.2em', color: r.accent.primary, textTransform: 'uppercase' }} data-field="label">{c.label || 'Update'}</span>}
+          <h2 style={{ margin: 0, fontSize: r.font.size, fontWeight: r.font.weight, color: r.font.color, letterSpacing: '-0.02em', lineHeight: 1.1 }} data-field="title">{c.title || 'Library hours extended this week'}</h2>
+          {c.message && <p style={{ margin: 0, fontSize: '0.36em', color: '#475569', lineHeight: 1.4, fontWeight: 400 }} data-field="message">{c.message}</p>}
+          {c.cta && <div style={{ marginTop: 8, fontSize: '0.28em', color: r.accent.primary, fontWeight: 600 }}><span data-field="cta">{c.cta}</span> →</div>}
         </div>
       </div>
     </div>
@@ -147,16 +147,16 @@ export function AnnouncementOpsDispatchWidget({ config }: WidgetProps<AnnCfg>) {
         <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px dashed ${r.accent.secondary}55`, paddingBottom: 8, fontSize: '0.32em', color: r.accent.secondary }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ width: 10, height: 10, borderRadius: '50%', background: r.accent.primary, animation: r.anim.on ? `dispatch-blink ${dur}s steps(2) infinite` : 'none' }} />
-            <b style={{ color: r.accent.primary, letterSpacing: '0.2em' }}>{c.label || 'DISPATCH'}</b>
+            <b style={{ color: r.accent.primary, letterSpacing: '0.2em' }} data-field="label">{c.label || 'DISPATCH'}</b>
           </span>
           <span>SEQ #{(Math.random() * 9000 + 1000).toFixed(0)}</span>
         </div>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 16 }}>
           <div style={{ fontSize: '0.32em', color: r.accent.highlight, letterSpacing: '0.1em' }}>&gt; INCOMING_TRANSMISSION</div>
-          <h2 style={{ margin: 0, fontSize: r.font.size, fontWeight: r.font.weight, color: r.font.color, lineHeight: 1.2 }}>{c.title || 'Lockdown drill scheduled 10:15 AM'}</h2>
-          {c.message && <p style={{ margin: 0, fontSize: '0.4em', color: r.accent.secondary, fontWeight: 400, lineHeight: 1.5 }}>{c.message}</p>}
+          <h2 style={{ margin: 0, fontSize: r.font.size, fontWeight: r.font.weight, color: r.font.color, lineHeight: 1.2 }} data-field="title">{c.title || 'Lockdown drill scheduled 10:15 AM'}</h2>
+          {c.message && <p style={{ margin: 0, fontSize: '0.4em', color: r.accent.secondary, fontWeight: 400, lineHeight: 1.5 }} data-field="message">{c.message}</p>}
         </div>
-        {c.cta && <div style={{ borderTop: `1px dashed ${r.accent.secondary}55`, paddingTop: 8, fontSize: '0.32em', color: r.accent.highlight }}>$ {c.cta}_</div>}
+        {c.cta && <div style={{ borderTop: `1px dashed ${r.accent.secondary}55`, paddingTop: 8, fontSize: '0.32em', color: r.accent.highlight }}>$ <span data-field="cta">{c.cta}</span>_</div>}
       </div>
     </div>
   );

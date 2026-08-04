@@ -20,8 +20,8 @@ export function LogoNeonEmblemWidget({ config }: WidgetProps<LogoCfg>) {
           {c.logoUrl ? <img src={c.logoUrl} alt="" style={{ width: '80%', height: '80%', objectFit: 'contain' }} /> : c.mascot}
         </div>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: r.font.size, color: r.accent.primary, textShadow: `0 0 16px ${r.accent.primary}`, letterSpacing: '0.1em', lineHeight: 1 }}>{c.schoolName?.toUpperCase()}</div>
-          <div style={{ fontSize: '0.4em', color: r.accent.secondary, letterSpacing: '0.4em', marginTop: 8, textShadow: `0 0 8px ${r.accent.secondary}` }}>★ {c.tagline} ★</div>
+          <div style={{ fontSize: r.font.size, color: r.accent.primary, textShadow: `0 0 16px ${r.accent.primary}`, letterSpacing: '0.1em', lineHeight: 1 }} data-field="schoolName">{c.schoolName?.toUpperCase()}</div>
+          <div style={{ fontSize: '0.4em', color: r.accent.secondary, letterSpacing: '0.4em', marginTop: 8, textShadow: `0 0 8px ${r.accent.secondary}` }}>★ <span data-field="tagline">{c.tagline}</span> ★</div>
         </div>
       </div>
     </div>
@@ -35,10 +35,10 @@ export function LogoVarsityPatchWidget({ config }: WidgetProps<LogoCfg>) {
     <div style={frameStyle(r)}>
       <div style={{ position: 'absolute', top: 12, right: 12, bottom: 12, left: 12, border: `3px solid ${r.accent.primary}`, borderRadius: 8, pointerEvents: 'none' }} />
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 8 }}>
-        <div style={{ fontSize: '0.5em', letterSpacing: '0.4em', color: r.accent.primary, fontWeight: 700 }}>★ {c.established} ★</div>
+        <div style={{ fontSize: '0.5em', letterSpacing: '0.4em', color: r.accent.primary, fontWeight: 700 }}>★ <span data-field="established">{c.established}</span> ★</div>
         <div style={{ fontSize: 96, lineHeight: 1, filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.4))' }}>{c.logoUrl ? <img src={c.logoUrl} alt="" style={{ width: 100, height: 100, objectFit: 'contain' }} /> : c.mascot}</div>
-        <div style={{ fontSize: r.font.size, letterSpacing: '0.2em', textAlign: 'center', lineHeight: 1.1, textShadow: '2px 2px 0 rgba(0,0,0,0.4)' }}>{c.schoolName?.toUpperCase()}</div>
-        <div style={{ background: r.accent.primary, color: '#7c1d1d', padding: '4px 16px', fontSize: '0.42em', fontWeight: 800, letterSpacing: '0.2em', borderRadius: 4 }}>{c.tagline?.toUpperCase()}</div>
+        <div style={{ fontSize: r.font.size, letterSpacing: '0.2em', textAlign: 'center', lineHeight: 1.1, textShadow: '2px 2px 0 rgba(0,0,0,0.4)' }} data-field="schoolName">{c.schoolName?.toUpperCase()}</div>
+        <div style={{ background: r.accent.primary, color: '#7c1d1d', padding: '4px 16px', fontSize: '0.42em', fontWeight: 800, letterSpacing: '0.2em', borderRadius: 4 }} data-field="tagline">{c.tagline?.toUpperCase()}</div>
       </div>
     </div>
   );
@@ -60,8 +60,8 @@ export function LogoCrayonSunWidget({ config }: WidgetProps<LogoCfg>) {
           </svg>
           <div style={{ position: 'absolute', top: 32, right: 32, bottom: 32, left: 32, background: r.accent.highlight, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 56, boxShadow: '0 8px 0 rgba(0,0,0,0.15)' }}>{c.logoUrl ? <img src={c.logoUrl} alt="" style={{ width: '70%', height: '70%' }} /> : c.mascot}</div>
         </div>
-        <h2 style={{ margin: 0, fontSize: r.font.size, fontWeight: 800, textAlign: 'center', textShadow: '3px 3px 0 #fff' }}>{c.schoolName}</h2>
-        <div style={{ fontSize: '0.55em', fontWeight: 700, color: r.accent.primary }}>♥ {c.tagline} ♥</div>
+        <h2 style={{ margin: 0, fontSize: r.font.size, fontWeight: 800, textAlign: 'center', textShadow: '3px 3px 0 #fff' }} data-field="schoolName">{c.schoolName}</h2>
+        <div style={{ fontSize: '0.55em', fontWeight: 700, color: r.accent.primary }}>♥ <span data-field="tagline">{c.tagline}</span> ♥</div>
       </div>
     </div>
   );
@@ -74,8 +74,8 @@ export function LogoGlassMarkWidget({ config }: WidgetProps<LogoCfg>) {
     <div style={{ ...frameStyle(r), backdropFilter: 'blur(20px)' }}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 16 }}>
         <div style={{ width: 140, height: 140, borderRadius: 28, background: `linear-gradient(135deg, ${r.accent.primary}, ${r.accent.secondary})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 72, color: '#fff', boxShadow: `0 16px 32px ${r.accent.primary}33` }}>{c.logoUrl ? <img src={c.logoUrl} alt="" style={{ width: '70%', height: '70%' }} /> : c.mascot}</div>
-        <h2 style={{ margin: 0, fontSize: r.font.size, fontWeight: r.font.weight, letterSpacing: '-0.02em', textAlign: 'center' }}>{c.schoolName}</h2>
-        <div style={{ fontSize: '0.45em', color: '#64748b', letterSpacing: '0.2em', textTransform: 'uppercase', fontWeight: 600 }}>{c.tagline}</div>
+        <h2 style={{ margin: 0, fontSize: r.font.size, fontWeight: r.font.weight, letterSpacing: '-0.02em', textAlign: 'center' }} data-field="schoolName">{c.schoolName}</h2>
+        <div style={{ fontSize: '0.45em', color: '#64748b', letterSpacing: '0.2em', textTransform: 'uppercase', fontWeight: 600 }} data-field="tagline">{c.tagline}</div>
       </div>
     </div>
   );
@@ -91,11 +91,11 @@ export function LogoOpsStampWidget({ config }: WidgetProps<LogoCfg>) {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, border: `2px dashed ${r.accent.primary}`, borderRadius: 8, padding: 18 }}>
           <div style={{ fontSize: 56, filter: 'grayscale(0.5)' }}>{c.logoUrl ? <img src={c.logoUrl} alt="" style={{ width: 80, height: 80 }} /> : c.mascot}</div>
           <div style={{ textAlign: 'center', color: r.accent.primary, textShadow: `0 0 8px ${r.accent.primary}88` }}>
-            <div style={{ fontSize: r.font.size, fontWeight: 700, letterSpacing: '0.15em' }}>{c.schoolName?.toUpperCase()}</div>
-            <div style={{ fontSize: '0.55em', color: r.accent.secondary, marginTop: 4 }}>// {c.tagline}</div>
+            <div style={{ fontSize: r.font.size, fontWeight: 700, letterSpacing: '0.15em' }} data-field="schoolName">{c.schoolName?.toUpperCase()}</div>
+            <div style={{ fontSize: '0.55em', color: r.accent.secondary, marginTop: 4 }}>// <span data-field="tagline">{c.tagline}</span></div>
           </div>
         </div>
-        <div style={{ borderTop: `1px dashed ${r.accent.primary}55`, paddingTop: 6, fontSize: '0.55em', color: r.accent.secondary, display: 'flex', justifyContent: 'space-between' }}><span>{c.established}</span><span>VERIFIED ✓</span></div>
+        <div style={{ borderTop: `1px dashed ${r.accent.primary}55`, paddingTop: 6, fontSize: '0.55em', color: r.accent.secondary, display: 'flex', justifyContent: 'space-between' }}><span data-field="established">{c.established}</span><span>VERIFIED ✓</span></div>
       </div>
     </div>
   );
