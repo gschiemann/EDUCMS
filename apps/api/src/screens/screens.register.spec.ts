@@ -238,6 +238,62 @@ it('P5-2: paired re-register without priorDeviceToken → 1h token + requiresReP
   expect(ttlSeconds).toBeGreaterThan(0);
 });
 
+// ── DEVAUTH-01: the unproven credential is not proof of possession ─────────
+//
+// A bare `{deviceFingerprint}` register mints a short-lived credential and
+// flags `requiresRePair`. That flag lived only in the RESPONSE — the token was
+// byte-identical to a fully paired one apart from `exp`, so replaying it as
+// `priorDeviceToken` was accepted as proof and upgraded to 180 days. Two
+// anonymous requests turned a known fingerprint into a long-lived device
+// credential (and rotated the epoch, locking the real screen out).
+it('DEVAUTH-01: the unproven token is marked as such', async () => {
+  mockPrisma.client.screen.findUnique.mockResolvedValue(pairedScreen());
+  mockPrisma.client.screen.update.mockResolvedValue(pairedUpdated());
+
+  const res = await controller.register({ deviceFingerprint: 'fp-paired-001' }, makeReq());
+
+  expect(res.requiresRePair).toBe(true);
+  expect((jwt.decode(res.deviceToken) as any).unproven).toBe(true);
+});
+
+it('DEVAUTH-01: replaying the unproven token as priorDeviceToken does NOT mint a 180-day credential', async () => {
+  mockPrisma.client.screen.findUnique.mockResolvedValue(pairedScreen());
+  mockPrisma.client.screen.update.mockResolvedValue(pairedUpdated());
+
+  // Step 1 — anonymous, fingerprint only.
+  const step1 = await controller.register({ deviceFingerprint: 'fp-paired-001' }, makeReq());
+
+  // Step 2 — present it back as proof of possession. This was the escalation.
+  mockPrisma.client.screen.findUnique.mockResolvedValue(pairedScreen());
+  mockPrisma.client.screen.update.mockResolvedValue(pairedUpdated());
+  const step2 = await controller.register(
+    { deviceFingerprint: 'fp-paired-001', priorDeviceToken: step1.deviceToken },
+    makeReq(),
+  );
+
+  // Still unproven: no upgrade, and the caller is told to re-pair.
+  expect(step2.requiresRePair).toBe(true);
+  const decoded = jwt.decode(step2.deviceToken) as { iat: number; exp: number; unproven?: boolean };
+  expect(decoded.unproven).toBe(true);
+  expect(decoded.exp - decoded.iat).toBeLessThanOrEqual(3630); // ≤ 1h, not 180d
+});
+
+it('DEVAUTH-01: a genuine paired token is still accepted (fix is not over-broad)', async () => {
+  const validPrior = mintTestToken('screen-paired-001');
+  mockPrisma.client.screen.findUnique.mockResolvedValue(pairedScreen({ id: 'screen-paired-001' }));
+  mockPrisma.client.screen.update.mockResolvedValue(pairedUpdated({ id: 'screen-paired-001' }));
+
+  const res = await controller.register(
+    { deviceFingerprint: 'fp-paired-001', priorDeviceToken: validPrior },
+    makeReq(),
+  );
+
+  expect(res.requiresRePair).toBeFalsy();
+  const decoded = jwt.decode(res.deviceToken) as { iat: number; exp: number; unproven?: boolean };
+  expect(decoded.unproven).toBeUndefined();
+  expect(decoded.exp - decoded.iat).toBeGreaterThan(3630); // the long-lived one
+});
+
 // ── Test P5-3: INVALID priorDeviceToken (different screenId) → 401 ──────────
 it('P5-3: paired re-register with priorDeviceToken for DIFFERENT screen → 401', async () => {
   const differentScreenToken = mintTestToken('screen-DIFFERENT-999');

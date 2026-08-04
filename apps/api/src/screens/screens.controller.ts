@@ -399,6 +399,24 @@ export class ScreensController {
         kind: 'device',
         ep: Math.max(0, Math.floor(credentialEpoch ?? 0)),
       };
+      // DEVAUTH-01 (2026-08-04) — MARK THE UNPROVEN CREDENTIAL.
+      //
+      // A bare `POST /screens/register {deviceFingerprint}` — no pairing code,
+      // no prior token — mints a short-lived credential and sets
+      // `requiresRePair: true` in the RESPONSE. But that flag was only ever a
+      // hint to the client; the TOKEN itself was byte-identical to a fully
+      // paired one apart from `exp`. So `verifyPriorToken` happily accepted it
+      // as proof of possession, and two anonymous requests turned knowledge of
+      // a fingerprint into a 180-day, self-renewing device credential:
+      //
+      //   1. POST /screens/register {deviceFingerprint}      -> 1h token
+      //   2. POST /screens/register {priorDeviceToken: <it>} -> 180d token
+      //
+      // Stamping the token's own privilege level into the token is what makes
+      // step 2 refusable. Additive and grandfathering-safe: every credential
+      // issued before this claim existed simply lacks it and keeps behaving
+      // exactly as it does today.
+      if (ttl === DEVICE_TOKEN_TTL_UNPROVEN) payload.unproven = true;
       if (tenantId) payload.tenantId = tenantId;
       return jwt.sign(payload, deviceJwtSecret, { expiresIn, algorithm: DEVICE_JWT_ALGORITHMS[0] });
     };
@@ -438,6 +456,14 @@ export class ScreensController {
         }) as any;
         if (decoded?.kind !== 'device') return 'invalid';
         if (decoded?.sub !== screen.id) return 'invalid';
+        // DEVAUTH-01 (2026-08-04) — an UNPROVEN credential is not proof of
+        // possession. It was minted to a caller who supplied nothing but a
+        // fingerprint, so treating it as evidence that the caller holds the
+        // screen is circular: it would upgrade a guess into a 180-day
+        // credential (and rotate the epoch, locking the real screen out).
+        // 'stale' rather than 'invalid' so the caller is told to re-pair,
+        // which is exactly the state they are in.
+        if (decoded?.unproven === true) return 'stale';
         if (!isEpochAcceptable(epochFromClaim(decoded), epochState)) return 'stale';
         return 'valid';
       } catch (e: any) {
