@@ -667,9 +667,34 @@ export class AssetsController {
       throw new HttpException({ code: 'ASSET_UPLOAD_INCOMPLETE', message: `Upload did not finish in storage: ${err.message}` }, HttpStatus.BAD_REQUEST);
     }
 
-    const fileHash = typeof body.fileHash === 'string' && /^[a-f0-9]{64}$/i.test(body.fileHash)
-      ? body.fileHash.toLowerCase()
-      : null;
+    // INTEG-01 (2026-08-04) — do NOT persist the client's claimed hash.
+    //
+    // This previously stored `body.fileHash` after checking only that it was 64
+    // hex characters. Nothing ever compared it to the bytes that landed in
+    // storage, so it was an integrity value supplied by the party it is meant
+    // to hold accountable — which is not an integrity value at all. Two things
+    // consume it and both were undermined:
+    //   - the player integrity-verifies emergency / offline media against it,
+    //     so a wrong hash either rejects legitimate lockdown media or blesses
+    //     tampered media, depending on which side the attacker controls;
+    //   - playlist distribution used to find child-tenant assets BY this hash,
+    //     which let a CONTRIBUTOR substitute content on a district push
+    //     (INTEG-02, fixed in playlist-distribution.service.ts).
+    //
+    // Recording nothing is strictly better than recording a lie. `null` is a
+    // first-class supported state on this column: `backfillManagedAssetHashes`
+    // (main.ts) computes the REAL sha256 from storage in the background, and
+    // the USB export path already self-heals a null hash rather than dropping
+    // the asset (usb-export.controller.ts:378-430, covered by S12). So the
+    // hash still arrives — it just arrives computed by us instead of asserted
+    // by the uploader.
+    //
+    // Deliberately NOT hashing inline here: this is the direct-to-storage
+    // presign path, and the object can be up to 500 MB. Downloading every
+    // upload back through the API to hash it would add egress and latency to
+    // the one flow that exists specifically to avoid both. The same reasoning
+    // as the size/mime handling directly below — trust storage, not the client.
+    const fileHash = null;
 
     // Don't trust the client's claimed size/mime — read the REAL values that
     // landed in storage (cheap metadata call, no download). A client could

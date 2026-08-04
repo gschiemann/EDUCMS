@@ -200,10 +200,31 @@ export class PlaylistDistributionService {
 
   /** Find-or-create a child Asset mirroring a parent asset (same stored file). */
   private async ensureChildAsset(parentAsset: any, childTenantId: string, actorUserId: string): Promise<string> {
-    const where: any = parentAsset.fileHash
-      ? { tenantId: childTenantId, fileHash: parentAsset.fileHash }
-      : { tenantId: childTenantId, fileUrl: parentAsset.fileUrl };
-    const existing = await this.prisma.client.asset.findFirst({ where, select: { id: true } });
+    // INTEG-02 (2026-08-04) — match on fileUrl ONLY. Never on fileHash.
+    //
+    // This used to prefer `{ tenantId: childTenantId, fileHash }` and fall back
+    // to fileUrl. That made a corporate push resolve to whatever child-tenant
+    // row happened to carry a matching hash — and `Asset.fileHash` is not
+    // trustworthy enough to key on: POST /assets/complete-upload accepted the
+    // hash from the request body and only checked it was 64 hex characters
+    // (see INTEG-01, fixed alongside this). So anyone who could upload in a
+    // CHILD tenant — CONTRIBUTOR is enough — could pre-create a row claiming
+    // the hash of content the district was about to push, pointing fileUrl at
+    // anything they liked. The district publishes, this lookup finds their row
+    // first, and their file plays on that school's screens under the
+    // district's playlist. Content substitution, no district access required.
+    //
+    // fileUrl is the right key and needs no trust: it is server-generated from
+    // the storage path (`publicUrlForPath`), and every child row this method
+    // creates copies the parent's fileUrl verbatim (below), so the find-or-
+    // create round-trip still works exactly as before. What is lost is only
+    // the incidental dedupe against a *separately uploaded* child asset that
+    // happened to share bytes — which was never required for correctness, and
+    // was precisely the substitution vector.
+    const existing = await this.prisma.client.asset.findFirst({
+      where: { tenantId: childTenantId, fileUrl: parentAsset.fileUrl },
+      select: { id: true },
+    });
     if (existing) return existing.id;
     const created = await this.prisma.client.asset.create({
       data: {
