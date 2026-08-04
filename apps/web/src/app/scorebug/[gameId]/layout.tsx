@@ -1,4 +1,11 @@
 import type { Metadata } from 'next';
+// Chromium-83/95/101 (NovaStar Taurus) runtime fixes — flex `gap` +
+// container-query units. See the /board layout note. The scorebug is usually
+// an OBS/vMix browser source on a modern engine (where this installs nothing),
+// but the route is in the taurus-safety gate's SCAN_DIRS alongside /board and
+// /ribbon because the same overlay is also driven onto in-venue LED, so it
+// gets the same treatment rather than a third behaviour.
+import { TaurusPolyfills } from '@/components/player/TaurusPolyfills';
 
 /**
  * VenueOS Sports — Sprint 13 Phase 2. Broadcast scorebug overlay.
@@ -21,5 +28,10 @@ export default function ScorebugLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <>{children}</>;
+  return (
+    <>
+      <TaurusPolyfills />
+      {children}
+    </>
+  );
 }

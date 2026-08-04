@@ -1,4 +1,11 @@
 import type { Metadata, Viewport } from 'next';
+// Chromium-83/95/101 (NovaStar Taurus) runtime fixes — flex `gap` +
+// container-query units. See the /board layout note: these mounted ONLY in the
+// player until 2026-08-03, so a ribbon on a Taurus wall lost both. A ribbon /
+// fascia strip is one of the MOST likely surfaces to be a real Taurus-driven
+// LED product, which makes this the sharpest edge of that gap. Hard no-op on
+// every modern engine.
+import { TaurusPolyfills } from '@/components/player/TaurusPolyfills';
 
 /**
  * VenueOS Sports — Sprint 13. Stadium ribbon-board route layout.
@@ -41,6 +48,7 @@ export default function RibbonLayout({
         overflow: 'hidden',
       }}
     >
+      <TaurusPolyfills />
       {children}
     </div>
   );

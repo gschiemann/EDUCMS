@@ -1,4 +1,11 @@
 import type { Metadata, Viewport } from 'next';
+// Chromium-83/95/101 (NovaStar Taurus) runtime fixes — flex `gap` +
+// container-query units. 2026-08-03: these mounted ONLY in the player, so a
+// scoreboard reached by its standalone /board URL on a Taurus LED wall lost
+// both, even though the repo's own taurus-safety gate scans this route dir
+// precisely because "sports surfaces also render on Taurus". Hard no-op on
+// every modern engine (self-detecting; installs nothing when supported).
+import { TaurusPolyfills } from '@/components/player/TaurusPolyfills';
 
 /**
  * VenueOS Sports — Sprint 13. The scoreboard board route layout.
@@ -45,6 +52,7 @@ export default function BoardLayout({
         overflow: 'hidden',
       }}
     >
+      <TaurusPolyfills />
       {children}
     </div>
   );

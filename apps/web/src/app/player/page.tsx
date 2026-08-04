@@ -36,8 +36,7 @@ import { resolveTimeline, advanceCounterTo, videoTargetMs, type TimelinePosition
 import { CtsBridge } from '@/components/player/CtsBridge';
 import { WidgetPreview } from '@/components/widgets/WidgetRenderer';
 import { WidgetErrorBoundary } from '@/components/widgets/WidgetErrorBoundary';
-import { isFlexGapSupported, applyFlexGapPolyfill } from '@/lib/flex-gap-polyfill';
-import { isCqUnitSupported, applyCqUnitPolyfill } from '@/lib/cq-unit-polyfill';
+import { useTaurusPolyfills } from '@/components/player/TaurusPolyfills';
 import { resolveAssetUrl } from '@/lib/asset-cdn';
 import { AllAssetsFailedTracker } from '@/lib/all-assets-failed-tracker';
 import { lookupKioskFrame } from '@/lib/kiosk-frame-registry';
@@ -2266,32 +2265,13 @@ function PlayerPage() {
     return () => clearInterval(id);
   }, []);
 
-  // Chromium-83 (NovaStar Taurus) flex-`gap` polyfill. On every modern browser
-  // flex gap is supported, so isFlexGapSupported() returns true and this effect
-  // installs NOTHING — zero cost, zero regression. ONLY on a Taurus does it run:
-  // convert flex-container gaps to child margins after the initial paint and
-  // re-apply on a gentle interval so freshly-swapped content (new playlist item
-  // / template) is fixed too. The polyfill marks processed elements, so each
-  // pass only touches new DOM.
-  useEffect(() => {
-    // Two independent legacy-Chromium fixes with DIFFERENT cutoffs:
-    //   • flex `gap` — Chrome 84  → only the 83 box needs it
-    //   • container-query units (cqmin/cqh) — Chrome 105 → the 83/95/101
-    //     boxes need it (a Chrome 95 box supports gap but NOT cq units, so
-    //     these must gate separately or the 95/101 boxes get missed).
-    // Each polyfill self-detects + no-ops where supported, so both are hard
-    // no-ops on every modern browser — zero cost, zero demo risk.
-    const needsGap = !isFlexGapSupported();
-    const needsCq = !isCqUnitSupported();
-    if (!needsGap && !needsCq) return; // fully modern engine → nothing to do
-    const run = () => {
-      if (needsGap) { try { applyFlexGapPolyfill(); } catch { /* never break playback */ } }
-      if (needsCq) { try { applyCqUnitPolyfill(); } catch { /* never break playback */ } }
-    };
-    const raf = requestAnimationFrame(run); // initial, after first paint
-    const id = setInterval(run, 2500);       // re-apply after content/template swaps
-    return () => { cancelAnimationFrame(raf); clearInterval(id); };
-  }, []);
+  // Chromium-83/95/101 (NovaStar Taurus) runtime fixes — flex `gap` +
+  // container-query units. 2026-08-03: the effect that used to live inline
+  // here moved verbatim into `useTaurusPolyfills` so `/board`, `/ribbon` and
+  // `/scorebug` — which render this same widget tree and are in the
+  // taurus-safety gate's SCAN_DIRS for exactly that reason — can mount it too
+  // instead of silently going without. Same behaviour, one implementation.
+  useTaurusPolyfills();
 
   const [storageInfo, setStorageInfo] = useState({ used: '1.2 GB', total: '32 GB', percent: 4 });
 
