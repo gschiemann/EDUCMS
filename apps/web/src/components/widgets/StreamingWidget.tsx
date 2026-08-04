@@ -56,6 +56,7 @@ import { useEffect, useRef, useState } from 'react';
 //     can't render it (avoids the "ad blob covers the entire
 //     screen with a solid black panel" failure mode).
 import { detectCapabilities, pickBestVideo } from '@/lib/capabilities';
+import { STREAMING_EMBED_HOSTS, isAllowedStreamingHost } from './streaming-hosts';
 
 interface AdSlotCfg {
   id: string;
@@ -330,34 +331,14 @@ function IframeStream({ url, muted, live }: { url: string; muted: boolean; live:
 }
 
 /**
- * The streaming hosts this widget knows how to embed. Anything else is
- * refused — `normalizeEmbedUrl` returns '' and the caller renders an honest
- * "unsupported streaming host" placeholder.
- *
- * These are exactly the providers `normalizeEmbedUrl` already had rules for
- * (plus kick.com, which `guessPlaybackType` routes to the iframe path). Adding
- * a host here without a matching normalise rule would frame an operator-typed
- * URL verbatim, so keep the two lists in step.
+ * The streaming hosts this widget knows how to embed live in
+ * `./streaming-hosts` — 2026-08-03, so `fitness/FitnessLiveTVWidget.tsx`
+ * (which frames operator URLs with the same `allow-same-origin` sandbox and
+ * had NO allowlist) can share one source of truth instead of drifting again.
+ * Re-exported here because the INJ-006 test suite and this file's own
+ * `normalizeEmbedUrl` both import them from this module.
  */
-export const STREAMING_EMBED_HOSTS = [
-  'youtube.com',
-  'youtube-nocookie.com',
-  'youtu.be',
-  'twitch.tv',
-  'vimeo.com',
-  'kick.com',
-] as const;
-
-/** True when `host` is an allowlisted streaming host or a subdomain of one. */
-export function isAllowedStreamingHost(host: string): boolean {
-  const h = host.toLowerCase().replace(/^www\./, '');
-  for (const allowed of STREAMING_EMBED_HOSTS) {
-    // Exact host, or a dot-boundary suffix — so "youtube.com.evil.net" and
-    // "notyoutube.com" are both refused.
-    if (h === allowed || h.endsWith('.' + allowed)) return true;
-  }
-  return false;
-}
+export { STREAMING_EMBED_HOSTS, isAllowedStreamingHost } from './streaming-hosts';
 
 export function normalizeEmbedUrl(input: string, opts: { muted: boolean; autoplay: boolean }): string {
   if (!input) return '';

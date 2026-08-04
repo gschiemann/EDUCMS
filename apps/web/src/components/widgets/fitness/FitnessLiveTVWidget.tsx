@@ -56,6 +56,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { findFastChannel } from './fastChannelCatalogs';
 import type { FastChannel } from './fastChannelCatalogs';
+// INJ-006 twin (2026-08-03) — the same host allowlist StreamingWidget got on
+// 2026-08-02. See `../streaming-hosts` for why an allowlist is what makes
+// `allow-same-origin` on these frames defensible.
+import { STREAMING_EMBED_HOSTS, safeEmbedSrc } from '../streaming-hosts';
 
 // ─── Provider type ────────────────────────────────────────────────────────────
 
@@ -236,20 +240,23 @@ export function FitnessLiveTVWidget({
       return () => { video.src = ''; };
     }
 
-    // Chromium path: lazy-load hls.js so we don't ship ~200KB to
-    // players that never touch this widget. Gracefully degrade if
-    // the CDN import fails.
+    // Chromium path: lazy-load the BUNDLED hls.js (a real dependency,
+    // `hls.js` in apps/web/package.json) via a normal dynamic import, so it
+    // still code-splits into its own chunk and costs nothing on players that
+    // never touch this widget.
+    //
+    // 2026-08-03 — this used to be `new Function('u', 'return import(u)')`
+    // pointed at `https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.mjs`:
+    // unpinned (no SRI, no integrity check) third-party code fetched at
+    // runtime and executed on the SAME surface that renders lockdown /
+    // evacuation alerts, plus a `new Function` eval that no CSP worth having
+    // would allow. `StreamingWidget.HlsStream` already did the right thing
+    // with a plain `await import('hls.js')`; this is that, and nothing else
+    // about the playback path changed.
     let cancelled = false;
     (async () => {
       try {
-        // Dynamic runtime URL import — TS static analysis can't resolve
-        // a https:// specifier so we wrap in an indirect Function() call.
-        // `webpackIgnore` tells Next's bundler to leave it as a runtime
-        // dynamic import rather than try to pre-bundle the CDN asset.
-        const mod: { default?: unknown; Hls?: unknown } = await (new Function(
-          'u',
-          'return import(/* webpackIgnore: true */ u)',
-        )('https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.mjs') as Promise<{ default?: unknown; Hls?: unknown }>);
+        const mod: { default?: unknown; Hls?: unknown } = await import('hls.js');
         if (cancelled) return;
         const Hls = (mod?.default || (mod as Record<string, unknown>)?.Hls) as {
           isSupported(): boolean;
@@ -289,11 +296,34 @@ export function FitnessLiveTVWidget({
       (CATALOG_PROVIDERS.has(effectiveProvider) && !isPlaceholder && !catalogNotFound)
     );
 
+  // INJ-006 twin (2026-08-03) — BOTH iframe sources are gated by the shared
+  // streaming-host allowlist before they can become an iframe `src`.
+  //
+  // `c.streamUrl` is a RAW operator string (it also arrives via template JSON
+  // and the manifest), and it was previously framed verbatim with
+  // `allow-scripts allow-same-origin allow-presentation`. That sandbox is only
+  // defensible while the src is guaranteed FOREIGN — `allow-same-origin`
+  // restores the frame's OWN origin, so a same-origin src would hand the page
+  // our DOM, our localStorage device token, and the ability to fake an
+  // all-clear on a life-safety display. The allowlist is what supplies that
+  // guarantee, and it is exactly what was missing here.
+  //
+  // `ytResult.embedUrl` comes from our own resolver endpoint, but it is still
+  // network-sourced JSON reaching an `src` on the same surface — gating it
+  // costs one function call and removes the endpoint from the trust boundary.
+  const safeIframeUrl = safeEmbedSrc(c.streamUrl);
+  const safeYtEmbedUrl = safeEmbedSrc(ytResult?.embedUrl);
+
   const showIframe =
-    effectiveProvider === 'iframe' && !!c.streamUrl;
+    effectiveProvider === 'iframe' && !!safeIframeUrl;
+
+  /** Operator supplied an iframe URL, but it is not an allowlisted https host. */
+  const showBlockedHost =
+    (effectiveProvider === 'iframe' && !!c.streamUrl && !safeIframeUrl) ||
+    (effectiveProvider === 'youtube-live' && !!ytResult?.embedUrl && !safeYtEmbedUrl);
 
   const showYtIframe =
-    effectiveProvider === 'youtube-live' && !!ytResult?.embedUrl && !ytLoading && !ytError;
+    effectiveProvider === 'youtube-live' && !!safeYtEmbedUrl && !ytLoading && !ytError;
 
   const showYtLoading =
     effectiveProvider === 'youtube-live' && ytLoading;
@@ -309,7 +339,7 @@ export function FitnessLiveTVWidget({
 
   const showDemo =
     !showHls && !showIframe && !showYtIframe && !showYtLoading && !showYtError
-    && !showCatalogError && !showPlaceholderError && (
+    && !showCatalogError && !showPlaceholderError && !showBlockedHost && (
       effectiveProvider === 'demo' || hasError || !c.streamUrl
     );
 
@@ -333,11 +363,11 @@ export function FitnessLiveTVWidget({
           />
         )}
 
-        {/* Iframe (raw URL or youtube-live resolved) */}
+        {/* Iframe (raw operator URL — allowlisted host only, see safeIframeUrl) */}
         {showIframe && (
           <iframe
             className="fltv-iframe"
-            src={c.streamUrl}
+            src={safeIframeUrl}
             allow="autoplay; encrypted-media; picture-in-picture"
             sandbox="allow-scripts allow-same-origin allow-presentation"
             title={resolvedChannelName || 'Live TV'}
@@ -345,11 +375,24 @@ export function FitnessLiveTVWidget({
           />
         )}
 
-        {/* YouTube Live — resolved embed */}
+        {/* Host not on the streaming allowlist — refuse to frame it, and say
+            why. Previously this URL was rendered verbatim. */}
+        {showBlockedHost && (
+          <div className="fltv-overlay-state">
+            <div className="fltv-overlay-icon">⚠️</div>
+            <div className="fltv-overlay-label">Unsupported streaming host</div>
+            <div className="fltv-overlay-sub">
+              Embeds are limited to {STREAMING_EMBED_HOSTS.join(', ')} over https.
+              Use an HLS (.m3u8) URL for any other provider.
+            </div>
+          </div>
+        )}
+
+        {/* YouTube Live — resolved embed (allowlisted host only) */}
         {showYtIframe && (
           <iframe
             className="fltv-iframe"
-            src={ytResult!.embedUrl}
+            src={safeYtEmbedUrl}
             allow="autoplay; encrypted-media; picture-in-picture"
             sandbox="allow-scripts allow-same-origin allow-presentation"
             title={ytResult!.title || resolvedChannelName || 'YouTube Live'}
