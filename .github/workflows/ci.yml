@@ -15,8 +15,16 @@ concurrency:
   # cancel-in-progress is deliberately PULL-REQUEST ONLY: a superseded PR run
   # is noise, but every commit that lands on master must keep its own verdict
   # (a cancelled master run reads as "never checked" in the history).
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # Keyed on the REF for pull_request (so a superseded PR run is cancelled) and
+  # on the individual SHA for push (so every commit that lands on master keeps
+  # its own run to completion). 2026-08-04: the first attempt expressed this as
+  # `cancel-in-progress: ${{ github.event_name == 'pull_request' }}`, and master
+  # runs were still being cancelled — a cancelled run reads as "never checked"
+  # in the history, which is the opposite of the intent. Making the GROUP unique
+  # per push cannot be got wrong: two master commits are never in the same group,
+  # so there is nothing to cancel.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
 
 jobs:
   build-and-test:
