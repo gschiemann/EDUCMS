@@ -30,6 +30,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # 2026-08-04 — every workflow now declares one. Without it, pushing three
+  # commits in a minute leaves three full runs racing on the same ref.
+  # cancel-in-progress is deliberately PULL-REQUEST ONLY: a superseded PR run
+  # is noise, but every commit that lands on master must keep its own verdict
+  # (a cancelled master run reads as "never checked" in the history).
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   prod-smoke:
     name: Prod smoke (Chromium)

@@ -1,7 +1,7 @@
 name: Android Player APK
 
-# Builds the kiosk APK on every push that touches apps/player or this
-# workflow. Uploads as a downloadable artifact named 'edu-cms-player-apk'
+# Builds the kiosk APK on a RELEASE TAG (player-v* / manager-v*) or on
+# demand. Uploads as a downloadable artifact named 'edu-cms-player-apk'
 # so non-developers can grab a fresh build straight from the GitHub UI:
 # Actions → latest run → Artifacts → download.
 #

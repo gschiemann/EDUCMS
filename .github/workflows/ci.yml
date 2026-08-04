@@ -9,10 +9,20 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # 2026-08-04 — every workflow now declares one. Without it, pushing three
+  # commits in a minute leaves three full runs racing on the same ref.
+  # cancel-in-progress is deliberately PULL-REQUEST ONLY: a superseded PR run
+  # is noise, but every commit that lands on master must keep its own verdict
+  # (a cancelled master run reads as "never checked" in the history).
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build-and-test:
     name: Build, Lint & Test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -63,6 +73,7 @@ jobs:
   accessibility:
     name: Accessibility Lint (jsx-a11y)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     # Only run when frontend or shared packages change.
@@ -191,6 +202,7 @@ jobs:
     # node_modules (hence the install step this job previously skipped); the
     # job still runs in parallel, off the build-and-test critical path.
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -226,6 +238,7 @@ jobs:
     # against this repo size; fails the job on any HIGH-confidence
     # finding so a tagged secret can't merge without explicit override.
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -250,6 +263,7 @@ jobs:
   security-scan:
     name: Container Security Scanning
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: build-and-test
     permissions:
       contents: read
