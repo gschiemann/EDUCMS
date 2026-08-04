@@ -2996,6 +2996,12 @@ export class ScreensController {
   private static readonly MANIFEST_TENANT_EMERGENCY_SELECT = {
     id: true,
     parentId: true,
+    // `archivedAt` keeps inheritance consistent with the fan-out, which
+    // excludes archived (soft-deleted) locations. Without it a district
+    // lockdown would light up every archived test tenant's leftover screens
+    // — 120 of them exist in production — while the audit trail and the
+    // pub/sub fan-out say those tenants were never involved.
+    archivedAt: true,
     emergencyStatus: true,
     emergencyType: true,
     emergencyPlaylistId: true,
@@ -3051,6 +3057,11 @@ export class ScreensController {
         if (ancestor) setTenantState(cursor, ancestor);
       }
       if (!ancestor) return null;
+      // Stop at an archived ancestor for the same reason the fan-out skips
+      // archived tenants: a retired location is not part of the live
+      // hierarchy, and inheriting THROUGH one would contradict the audit
+      // trail, which records no involvement for it.
+      if (ancestor.archivedAt) return null;
 
       if (ancestor.emergencyStatus && ancestor.emergencyStatus !== 'INACTIVE') {
         return ancestor;
@@ -3221,9 +3232,14 @@ export class ScreensController {
       // inherited state is merged into a LOCAL copy: never write the merged
       // object back through setTenantState or we would poison this school's
       // cache entry with its district's status.
+      // An ARCHIVED (soft-deleted) location never inherits — the fan-out
+      // skips it, so inheriting would put a district lockdown on the
+      // leftover screens of a retired/test tenant that no audit row, no
+      // webhook and no pub/sub message ever named.
       let inheritedFromTenantId: string | null = null;
       if (
         tenant &&
+        !tenant.archivedAt &&
         (!tenant.emergencyStatus || tenant.emergencyStatus === 'INACTIVE') &&
         tenant.parentId
       ) {
