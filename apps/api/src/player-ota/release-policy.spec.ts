@@ -89,8 +89,9 @@ describe('evaluateReleaseForFleet', () => {
     const bad = evaluateReleaseForFleet({ versionName: '1.0.74', apkUrl: GH, computedSha: 'abc' });
     expect(bad.allowed).toBe(false);
     if (!bad.allowed) expect(bad.reason).toBe('below-min-supported-version:1.0.74<1.1.0');
-    // At the floor exactly is allowed.
-    expect(evaluateReleaseForFleet({ versionName: '1.1.0', apkUrl: GH, computedSha: 'abc' }).allowed).toBe(true);
+    // At the floor exactly is allowed. (pins:{} — v1.1.0 has a REAL
+    // committed pin; this assertion tests the floor in isolation.)
+    expect(evaluateReleaseForFleet({ versionName: '1.1.0', apkUrl: GH, computedSha: 'abc', pins: {} }).allowed).toBe(true);
   });
 
   it('OTA-05: refuses a quarantined build — the per-build kill switch', () => {

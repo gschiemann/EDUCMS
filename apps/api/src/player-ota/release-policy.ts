@@ -213,7 +213,12 @@ export function quarantinedManagerVersions(): Set<string> {
  * signature-continuity check on update. Digest pinning narrows the window;
  * release-signing with a non-public key closes it.
  */
-export const PLAYER_RELEASE_SHA_PINS: Readonly<Record<string, string>> = {};
+export const PLAYER_RELEASE_SHA_PINS: Readonly<Record<string, string>> = {
+  // v1.1.0 — first release-signed build. Digest verified three ways on
+  // 2026-08-03 before pinning: gh-downloaded release asset, the live
+  // /apk/v/10100 proxy bytes, and the server-advertised sha256 all agree.
+  '1.1.0': '3ca498bd59d52cca148601d7510d4531859d54168ada46cccf01bf56e70e388f',
+};
 
 /**
  * The committed pins, plus any supplied at runtime as
