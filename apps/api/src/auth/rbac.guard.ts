@@ -1,7 +1,7 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AppRole } from '@cms/database';
-import { ROLES_KEY } from './roles.decorator';
+import { ROLES_KEY, NO_VIEWER_READ_KEY } from './roles.decorator';
 import { ALLOW_PANIC_BYPASS_KEY } from './panic-bypass.decorator';
 
 export interface RequestUser {
@@ -86,9 +86,24 @@ export class RbacGuard implements CanActivate {
     // check below still isolates the viewer to their own school. This un-breaks
     // "a viewer sees no assets, playlists or templates" (those lists 403'd)
     // WITHOUT widening any write access.
+    //
+    // AUTHZ-01 (2026-08-04) — the shortcut above rests on one assumption: that
+    // a GET only DISCLOSES data. That is not always true. Some GETs mint a
+    // credential, and reading one of those is a write capability:
+    // `GET /sports/games/:id/feed-credentials` returns a live HMAC feed token
+    // (with a ready-made curl example) that authorizes POSTs to the otherwise
+    // unauthenticated scoreboard ingest controller — so a RESTRICTED_VIEWER
+    // could read it and then drive homeScore/awayScore/clock on a physical
+    // scoreboard mid-game, and auto-fire celebrations. `@NoViewerRead()` marks
+    // those routes so the pass-through cannot reach them.
+    const noViewerRead = this.reflector.getAllAndOverride<boolean>(NO_VIEWER_READ_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
     const method = String(req.method || 'GET').toUpperCase();
     const viewerMayRead =
       typedUser.role === AppRole.RESTRICTED_VIEWER &&
+      !noViewerRead &&
       (method === 'GET' || method === 'HEAD') &&
       requiredRoles.includes(AppRole.CONTRIBUTOR);
     const hasRole =

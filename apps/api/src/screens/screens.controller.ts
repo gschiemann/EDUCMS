@@ -78,19 +78,15 @@ import { mintStreamTicket } from './stream-ticket';
 // lets it fall back to the nearest ANCESTOR tenant that is in emergency. See
 // `resolveAncestorEmergencyState` below and `emergency/tenant-hierarchy.ts`.
 import { MAX_TENANT_TREE_DEPTH } from '../emergency/tenant-hierarchy';
+import { ADMIN_ROLES_FOR_SCREEN_SECRETS } from '../security/screen-secrets';
 
 const PAIRING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
-/**
- * Roles allowed to see a screen's `deviceFingerprint` / `pairingCode` in
- * the fleet list (DT-04). CONTRIBUTOR and RESTRICTED_VIEWER can reach the
- * list route but must not receive either value — see the strip in list().
- */
-const ADMIN_ROLES_FOR_SCREEN_SECRETS: ReadonlySet<unknown> = new Set([
-  AppRole.SUPER_ADMIN,
-  AppRole.DISTRICT_ADMIN,
-  AppRole.SCHOOL_ADMIN,
-]);
+// DT-04's role set now lives in ../security/screen-secrets so every route
+// that returns Screen rows shares ONE rule. It was a private const here, and
+// the consequence was AUTHZ-01: `GET /screen-groups` embeds the same rows and
+// never got the strip, so the fingerprint kept leaking to CONTRIBUTOR and
+// RESTRICTED_VIEWER on a sibling route. Import it; do not re-declare it.
 
 function generatePairingCode(length: number = 6): string {
   // sec-fix(wave1) #3: use crypto.randomInt (CSPRNG) instead of

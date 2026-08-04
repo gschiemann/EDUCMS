@@ -7,6 +7,7 @@ import { AppRole } from '@cms/database';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
+import { stripScreenSecrets } from '../security/screen-secrets';
 import {
   ScreenGroupCreateSchema, type ScreenGroupCreateInput,
   ScreenGroupUpdateSchema, type ScreenGroupUpdateInput,
@@ -136,7 +137,15 @@ export class ScreenGroupsController {
         const pushChannel = (s as any).lastPushConnectedAt
           ? (now - new Date((s as any).lastPushConnectedAt).getTime() < 10 * 60_000 ? 'live' : 'stale')
           : 'unknown';
-        return { ...s, status: liveStatus, pushChannel };
+        // AUTHZ-01 (2026-08-04) — port the DT-04 screen-secret strip here.
+        // This route's `include.screens.select` asks for `deviceFingerprint`,
+        // and the route is @RequireRoles(..., CONTRIBUTOR) with
+        // RESTRICTED_VIEWER reaching it via the RBAC GET pass-through — so
+        // the fingerprint was being handed to the two lowest-privilege roles.
+        // DT-04 fixed exactly this on `GET /screens` and never reached its
+        // sibling. The group list UI renders neither value; the pair modal and
+        // the per-screen detail route fetch them, and both are admin-gated.
+        return stripScreenSecrets({ ...s, status: liveStatus, pushChannel }, req.user?.role);
       }),
     }));
   }

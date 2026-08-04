@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
-import { RequireRoles } from '../auth/roles.decorator';
+import { RequireRoles, NoViewerRead } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { SportsService } from './sports.service';
 import { SponsorsService } from './sponsors.service';
@@ -498,6 +498,16 @@ export class SportsController {
    * /feed route, which re-verifies the token.
    */
   @Get('games/:id/feed-credentials')
+  // AUTHZ-01 (2026-08-04) — this GET's RESPONSE IS A WRITE CREDENTIAL. It mints
+  // a live HMAC feed token (and prints a ready-to-run curl) for
+  // POST /sports/board/:id/feed, a controller with no @UseGuards whose ONLY
+  // auth is that token. RbacGuard's read-only pass-through let
+  // RESTRICTED_VIEWER — the least-privileged role in the product — read this
+  // and thereby drive homeScore/awayScore/clockMs/clockRunning on a physical
+  // scoreboard mid-game, plus auto-fire celebration cinematics via
+  // ingestByFeed's {auto:true}. CONTRIBUTOR keeps its access (feed setup is a
+  // legitimate contributor task); only the viewer pass-through is closed.
+  @NoViewerRead()
   @RequireRoles(
     AppRole.SUPER_ADMIN,
     AppRole.DISTRICT_ADMIN,
