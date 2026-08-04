@@ -245,14 +245,16 @@ export function FitnessLiveTVWidget({
     // still code-splits into its own chunk and costs nothing on players that
     // never touch this widget.
     //
-    // 2026-08-03 — this used to be `new Function('u', 'return import(u)')`
-    // pointed at `https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.mjs`:
-    // unpinned (no SRI, no integrity check) third-party code fetched at
-    // runtime and executed on the SAME surface that renders lockdown /
-    // evacuation alerts, plus a `new Function` eval that no CSP worth having
-    // would allow. `StreamingWidget.HlsStream` already did the right thing
-    // with a plain `await import('hls.js')`; this is that, and nothing else
-    // about the playback path changed.
+    // 2026-08-03 — this used to build a dynamic import through an indirect
+    // Function-constructor eval, aimed at a public jsDelivr URL pinned only by
+    // version string: unpinned (no SRI, no integrity check) third-party code
+    // fetched at runtime and executed on the SAME surface that renders
+    // lockdown / evacuation alerts, behind an eval no CSP worth having would
+    // allow. `StreamingWidget.HlsStream` already did the right thing with a
+    // plain `await import('hls.js')`; this is that, and nothing else about the
+    // playback path changed. (The old URL/eval are deliberately not spelled
+    // out here — `fitness-livetv-embed-guard.test.ts` asserts neither appears
+    // anywhere in this file.)
     let cancelled = false;
     (async () => {
       try {
