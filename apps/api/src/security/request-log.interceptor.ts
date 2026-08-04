@@ -43,7 +43,29 @@ export class RequestLogInterceptor implements NestInterceptor {
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const req = context.switchToHttp().getRequest<Request>();
-    const { method, url } = req;
+    const { method } = req;
+
+    // SDE-05 (2026-08-04) — log the PATH, never the query string.
+    //
+    // This breadcrumb recorded the full URL, so any credential a caller puts
+    // in a query parameter was copied verbatim into the operational log. That
+    // is live today on the sports feed routes, which carry their token as a
+    // query param.
+    //
+    // Uses `originalUrl || url` rather than `req.path` deliberately: under some
+    // Nest middleware mount modes `req.path` becomes relative to the mount
+    // point and loses the `/api/v1/...` prefix, which would silently degrade
+    // this record. csrf.middleware.ts:200-206 documents that and uses exactly
+    // this expression.
+    //
+    // No "safe query key" allowlist: that is a second policy with its own
+    // drift risk, and nothing consumes the query half of this breadcrumb. The
+    // durable forensic record is the AuditLog row written by domain code with
+    // structured fields (see this class's doc) — it never parses URLs, so
+    // nothing about incident forensics changes here.
+    const resourcePath = String(
+      (req as any).originalUrl || (req as any).url || (req as any).path || '',
+    ).split('?')[0];
     // Real client IP behind Railway's multi-hop proxy — NOT req.ip, which
     // resolves to a rotating internal hop (see client-ip.ts, 2026-07-07).
     const ip = clientIpFromRequest(req);
@@ -68,7 +90,7 @@ export class RequestLogInterceptor implements NestInterceptor {
             actorId: userId,
             ipAddress: ip,
             method,
-            resource: url,
+            resource: resourcePath,
             status: 'SUCCESS',
           }),
         );

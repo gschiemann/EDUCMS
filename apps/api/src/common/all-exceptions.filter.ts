@@ -136,9 +136,20 @@ export class AllExceptionsFilter implements ExceptionFilter {
     // ── Sentry capture for 5xx only ──
     let traceId: string | undefined;
     if (status >= 500) {
+      // SDE-05 (2026-08-04) — path only, never the query string.
+      //
+      // This is the more durable of the two URL sinks: it writes to the log
+      // AND tags the Sentry event, so a credential in a query parameter was
+      // being copied into a third-party service with its own retention, and
+      // kept there. The request-log interceptor is the other sink; both are
+      // fixed together so neither can be "the one that still leaks".
+      //
+      // `originalUrl || url` rather than `req.path` — see the note in
+      // request-log.interceptor.ts and csrf.middleware.ts:200-206.
+      const routePath = String(req?.originalUrl ?? req?.url ?? '').split('?')[0] || 'unknown';
       try {
         traceId = Sentry.withScope((scope) => {
-          scope.setTag('route', req?.url ?? 'unknown');
+          scope.setTag('route', routePath);
           scope.setTag('method', req?.method ?? 'unknown');
           if (req?.user?.id) scope.setUser({ id: req.user.id });
           return Sentry.captureException(exception);
@@ -147,7 +158,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         /* never let Sentry errors block response */
       }
       this.logger.error(
-        `[${req?.method} ${req?.url}] ${status} ${code}: ${
+        `[${req?.method} ${routePath}] ${status} ${code}: ${
           exception instanceof Error ? exception.message : String(exception)
         }`,
         exception instanceof Error ? exception.stack : undefined,
