@@ -16,6 +16,7 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { issueMfaChallengeToken } from './mfa-challenge-token';
 
 const TEST_SECRET = 'dev_only_jwt_secret_CHANGE_ME';
 
@@ -170,6 +171,52 @@ describe('JwtAuthGuard — revocation (P1-1 + P1-4)', () => {
         if (prevDev === undefined) delete process.env.DEVICE_JWT_SECRET;
         else process.env.DEVICE_JWT_SECRET = prevDev;
       }
+    });
+  });
+
+  /**
+   * AUTH-01 (2026-08-04) — a partial-flow token must never authenticate a session.
+   *
+   * The MFA challenge token is signed with the SAME secret as a real session
+   * token and differs only by `purpose: 'mfa_challenge'`. This guard did not
+   * look at that claim, so the token handed out after the PASSWORD step (before
+   * TOTP) was accepted as a full session: `POST /auth/change-password` with it
+   * returned a genuine access_token, and `POST /auth/mfa/disable` stripped the
+   * second factor. Password alone defeated 2FA.
+   */
+  describe('AUTH-01 — partial-flow tokens are not sessions', () => {
+    it('rejects a real issueMfaChallengeToken() token', async () => {
+      process.env.NODE_ENV = 'production';
+      // Minted exactly the way AuthService mints it after the password step.
+      const token = issueMfaChallengeToken(jwt, 'user-1', false);
+      const redis = makeRedis({ revokedTokens: new Set(), invalidBefore: null });
+      const guard = new JwtAuthGuard(jwt, redis as any);
+
+      await expect(guard.canActivate(ctxFor(token))).rejects.toThrow(
+        'Invalid or expired authentication token',
+      );
+    });
+
+    it('rejects ANY token carrying a purpose claim, not just mfa_challenge', async () => {
+      process.env.NODE_ENV = 'production';
+      // Guards the claim, not a hardcoded value — a future partial token that
+      // follows the same convention is refused without touching this guard.
+      const token = userToken({ purpose: 'password-reset' });
+      const redis = makeRedis({ revokedTokens: new Set(), invalidBefore: null });
+      const guard = new JwtAuthGuard(jwt, redis as any);
+
+      await expect(guard.canActivate(ctxFor(token))).rejects.toThrow(
+        'Invalid or expired authentication token',
+      );
+    });
+
+    it('still allows a normal session token (no purpose claim)', async () => {
+      process.env.NODE_ENV = 'production';
+      const token = userToken();
+      const redis = makeRedis({ revokedTokens: new Set(), invalidBefore: null });
+      const guard = new JwtAuthGuard(jwt, redis as any);
+
+      await expect(guard.canActivate(ctxFor(token))).resolves.toBe(true);
     });
   });
 });

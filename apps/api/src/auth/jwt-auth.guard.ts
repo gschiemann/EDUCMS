@@ -227,6 +227,37 @@ export class JwtAuthGuard implements CanActivate {
 
       const payload = await this.jwtService.verifyAsync(token, { secret });
 
+      // AUTH-01 (2026-08-04) — REJECT PARTIAL-FLOW TOKENS AS SESSIONS.
+      //
+      // The MFA challenge token is signed by the SAME JwtService, and therefore
+      // the same JWT_SECRET, as a real session token (mfa-challenge-token.ts:32).
+      // It is only distinguished by a `purpose: 'mfa_challenge'` claim, and
+      // MfaController does check it (mfa.controller.ts:489, :770) — but that
+      // check only runs on the MFA routes. This guard never looked at `purpose`
+      // at all, so the half-authenticated token minted after the PASSWORD step
+      // was accepted everywhere as a fully-authenticated session.
+      //
+      // That defeated the second factor outright. With only the password:
+      //   POST /auth/login            -> { mfaRequired: true, mfaToken }
+      //   POST /auth/change-password  with `Authorization: Bearer <mfaToken>`
+      // returned a REAL access_token carrying the victim's role and tenant, and
+      // revoked the victim's live sessions on the way past. POST /auth/mfa/disable
+      // was reachable the same way and strips MFA from the account permanently.
+      // The admin-forced `mfaRequired` policy mints the same token, so enforcing
+      // 2FA on a user gave them no protection either.
+      //
+      // Fail closed on the CLAIM, not on a list of routes: no legitimate session
+      // token sets `purpose`. Verified repo-wide — the only production writer is
+      // issueMfaChallengeToken; session tokens (auth.service.ts:171, :252,
+      // tenants.controller.ts:266) omit it, and device tokens are keyed by
+      // `kind: 'device'` instead. So any token carrying `purpose` is a
+      // partial-flow token being replayed where a session is required, and any
+      // FUTURE partial token that follows the same convention is rejected here
+      // automatically rather than needing this guard to be updated again.
+      if (payload && typeof payload === 'object' && 'purpose' in payload && (payload as any).purpose) {
+        throw new UnauthorizedException('Invalid or expired authentication token');
+      }
+
       // Token revocation checks. Lane-1 P0 fix: previously a Redis error
       // here LOGGED AND ALLOWED the token (fail-open), so a brief Redis
       // hiccup let already-revoked tokens (logout, role downgrade) keep
