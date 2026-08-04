@@ -73,3 +73,75 @@ describe('check-tenant-isolation analyzer', () => {
     expect(set.has('asset')).toBe(true);
   });
 });
+
+/**
+ * GATE-01 (2026-08-04) — two blind spots closed.
+ *
+ * STEP 2: the gate matched on argument SYNTAX, so `{ where: { id } } as any`
+ * wrapped the object literal in an AsExpression and the call became invisible.
+ * A cast is exactly what a developer writes when Prisma's types complain, which
+ * made `as any` an accidental way to silence the gate. Live example:
+ * users.controller.ts:145.
+ *
+ * STEP 3: the `ten-ok:` window was a single line, so a multi-line
+ * justification — which is what a real one looks like — did not suppress. Once
+ * step 2 made cast-wrapped calls visible, those sites would have failed CI
+ * despite the reason sitting directly above them, and the practical response
+ * would be cramming it onto one line or reaching for UPDATE_BASELINE.
+ */
+describe('GATE-01 — casts no longer hide a call, and a real justification is reachable', () => {
+  // `scan` above is scoped to its own describe; re-declare against the same
+  // accessor set so these cases are self-contained.
+  const accessors = new Set(['template', 'playlist', 'screen']);
+  const scan = (src: string) => gate.scanSourceText(src, 'fixture.ts', accessors);
+
+  it('sees through `as any` on the args object', () => {
+    expect(
+      scan(`prisma.client.template.findUnique({ where: { id } } as any);`),
+    ).toHaveLength(1);
+  });
+
+  it('sees through `as any` on the where value, and through parens', () => {
+    expect(
+      scan(`prisma.client.template.findUnique({ where: { id } as any });`),
+    ).toHaveLength(1);
+    expect(
+      scan(`prisma.client.template.findUnique(({ where: { id } }));`),
+    ).toHaveLength(1);
+  });
+
+  it('a cast does not defeat a legitimate tenant scope either (no false positive)', () => {
+    expect(
+      scan(`prisma.client.template.findUnique({ where: { id, tenantId } } as any);`),
+    ).toHaveLength(0);
+  });
+
+  it('a MULTI-LINE comment block directly above the call suppresses', () => {
+    // The shape a real justification actually takes — and the exact shape
+    // living at users.controller.ts:141-145.
+    const src = [
+      '// ten-ok: resolve-then-verify — the tenant subtree is asserted a few lines',
+      '// below (403 on miss) and SUPER_ADMIN is cross-tenant by design, so the',
+      '// lookup cannot be pre-scoped without breaking district->school reach.',
+      'prisma.client.template.findFirst({ where: { id, deletedAt: null } as any });',
+    ].join('\n');
+    const res = scan(src);
+    expect(res).toHaveLength(0);
+    expect((res as any).reviewed).toHaveLength(1);
+  });
+
+  it('the block must TOUCH the call — code in between breaks it', () => {
+    // Guards against a stale annotation drifting onto an unrelated query below.
+    const src = [
+      '// ten-ok: a reason that belongs to the statement below it, not the query',
+      'const somethingElse = 1;',
+      'prisma.client.template.findUnique({ where: { id } });',
+    ].join('\n');
+    expect(scan(src)).toHaveLength(1);
+  });
+
+  it('still requires a real reason inside the block', () => {
+    const src = ['// ten-ok:', '// (nothing useful here)', 'prisma.client.template.findUnique({ where: { id } });'].join('\n');
+    expect(scan(src)).toHaveLength(1);
+  });
+});

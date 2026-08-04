@@ -98,7 +98,28 @@ function walk(dir, out) {
 
 /** From an object-literal `where` node, does it have a top-level `id` key and
  *  NO `tenantId` key and NO compound key that mentions tenant? */
+/**
+ * GATE-01 STEP 2 (2026-08-04) — peel casts and parens before any structural test.
+ *
+ * The gate matched on the SYNTAX of the argument, so the extremely common
+ * `{ where: { id } } as any` wrapped the object literal in an AsExpression and
+ * `ts.isObjectLiteralExpression` returned false — the call became invisible.
+ * A cast is exactly what a developer writes when Prisma's types complain,
+ * which made "add `as any`" an accidental way to silence the gate.
+ */
+function unwrapExpr(node) {
+  let n = node;
+  while (
+    n &&
+    (ts.isAsExpression(n) || ts.isTypeAssertionExpression(n) || ts.isParenthesizedExpression(n))
+  ) {
+    n = n.expression;
+  }
+  return n;
+}
+
 function whereIsUnscopedById(whereObj) {
+  whereObj = unwrapExpr(whereObj);
   if (!ts.isObjectLiteralExpression(whereObj)) return false;
   let hasId = false;
   let hasTenant = false;
@@ -119,7 +140,7 @@ function whereIsUnscopedById(whereObj) {
 
 /** Find the `where:` object literal in a call's first argument. */
 function whereArg(callExpr) {
-  const arg0 = callExpr.arguments[0];
+  const arg0 = unwrapExpr(callExpr.arguments[0]);
   if (!arg0 || !ts.isObjectLiteralExpression(arg0)) return null;
   for (const prop of arg0.properties) {
     if (
@@ -167,8 +188,32 @@ function scanSourceText(text, relPath, accessors) {
         const where = whereArg(node);
         if (where && whereIsUnscopedById(where)) {
           const { line } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
-          const annotated =
-            TEN_OK_RE.test(lines[line] || '') || TEN_OK_RE.test(lines[line - 1] || '');
+          // GATE-01 STEP 3 (2026-08-04) — accept a `ten-ok:` anywhere in the
+          // CONTIGUOUS `//` comment block directly above the call, not just on
+          // the single line above it.
+          //
+          // Step 2 above makes cast-wrapped calls visible, and several of them
+          // already carry a real multi-line justification written by their
+          // author — under the old one-line window those would fail CI despite
+          // the reason sitting right there, and the practical response would
+          // be to cram it onto one line or reach for UPDATE_BASELINE. Neither
+          // improves safety.
+          //
+          // The block still has to TOUCH the call: a blank line or any code
+          // between breaks it, so a stale annotation cannot drift onto an
+          // unrelated query below it.
+          const annotated = (() => {
+            if (TEN_OK_RE.test(lines[line] || '')) return true;
+            for (let i = line - 1; i >= 0; i--) {
+              const text = (lines[i] || '').trim();
+              if (text === '') break;                 // blank line ends the block
+              if (TEN_OK_RE.test(text)) return true;
+              const isComment =
+                text.startsWith('//') || text.startsWith('*') || text.startsWith('/*');
+              if (!isComment) break;                  // hit code — stop
+            }
+            return false;
+          })();
           if (annotated) {
             findings.reviewed.push({ file: relPath, line: line + 1, model, method });
           } else {
