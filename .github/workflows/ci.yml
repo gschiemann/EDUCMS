@@ -311,8 +311,26 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
   e2e:
-    name: E2E Tests (Playwright / Chromium)
+    # 2026-08-04 — MATRIX, not a chromium pin.
+    #
+    # First attempt at fixing the 49-minute timeout pinned this job to
+    # chromium. That was wrong: only 2 of the 13 specs (emergency-path,
+    # widget-render) have a dedicated WebKit workflow, so pinning silently
+    # dropped WebKit for the other 11 — including holiday-hotzone and
+    # external-html-clickedit, the two specs that exist BECAUSE of the
+    # 2026-05-09 Safari bug that shipped broken for two months. CLAUDE.md
+    # calls WebKit coverage non-negotiable and it is right.
+    #
+    # The real problem was never the browser count, it was doing both
+    # SERIALLY in one job (playwright.config sets workers:1 in CI). Splitting
+    # into a matrix runs them concurrently: same coverage, ~half the wall
+    # clock, and a WebKit-only failure is now legible instead of buried.
+    name: E2E Tests (Playwright / ${{ matrix.browser }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
     # 2026-08-04 — this job had NO timeout. `pnpm test:e2e` runs `playwright
     # test` with no --project, so despite the job's name it executed BOTH
     # chromium AND webkit (92 tests). It ran ~49 minutes and was then killed
@@ -360,8 +378,8 @@ jobs:
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Playwright Chromium
-        run: pnpm exec playwright install chromium --with-deps
+      - name: Install Playwright browser (${{ matrix.browser }})
+        run: pnpm exec playwright install ${{ matrix.browser }} --with-deps
 
       - name: Build workspace packages (the API dev server imports @cms/* by package name)
         # Same reason as build-and-test: each job is a fresh runner, and
@@ -398,7 +416,7 @@ jobs:
       # redundant pass and roughly doubled the runtime of the job that then
       # timed out.
       - name: Run E2E Tests
-        run: pnpm --filter web exec playwright test --config playwright.config.ts --project=chromium
+        run: pnpm --filter web exec playwright test --config playwright.config.ts --project=${{ matrix.browser }}
         env:
           CI: true
           PLAYWRIGHT_ADMIN_TOKEN: ${{ secrets.PLAYWRIGHT_ADMIN_TOKEN }}
