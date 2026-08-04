@@ -168,6 +168,32 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     const ctx = this.clients.get(client);
     if (!ctx) return;
 
+    // RT-01 (2026-08-04) — HELLO WAS UNBOUNDED, AND IT IS THE EXPENSIVE FRAME.
+    //
+    // The raw dispatcher routed every HELLO here with no state check and no
+    // rate limit, and this method is fire-and-forget (not awaited), so inbound
+    // frames were never back-pressured. Each call unconditionally does a Redis
+    // `sismember`, a `screen.findUnique`, a `stampPushConnected(..., {force:true})`
+    // — force deliberately bypasses the 60s debounce, so that IS a DB write
+    // every time — and two more Redis `sadd`s.
+    //
+    // Two Prisma queries per frame, concurrent and unbounded, against a pool
+    // pinned at connection_limit=10. One socket looping HELLO saturates it in
+    // under a second, and every other consumer then fails with "Timed out
+    // fetching a new connection from the connection pool" — including
+    // GET /screens/:id/manifest, which is the HTTP-polling backstop that
+    // carries emergency lockdown state when WS is down. A device-controlled
+    // frame could take out the life-safety fallback path.
+    //
+    // A real player sends exactly ONE HELLO per connection, so neither guard
+    // changes legitimate behaviour:
+    //   1. idempotent per socket — re-HELLO on an authenticated socket has no
+    //      legitimate purpose, and
+    //   2. the existing R-07 token bucket (wired only to HEARTBEAT and ACK)
+    //      now also caps PRE-auth retries at ~1/sec on a single socket.
+    if (ctx.isAuthenticated) return;
+    if (!this.consumeTelemetryToken(ctx, 'HELLO')) return;
+
     try {
       const token = payload.token;
       if (!token) throw new Error('Missing token');
