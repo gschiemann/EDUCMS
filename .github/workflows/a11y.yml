@@ -5,8 +5,14 @@ on:
   # hot-fix that bypasses code review can't skip the a11y gate.
   # Previously this workflow only ran on PRs, leaving direct pushes
   # (rebase-and-push, emergency hot-fixes, agent commits) unaudited.
-  push:
-    branches: [master]
+  # 2026-08-04 — the push trigger is replaced by a NIGHTLY run.
+  # The 2026-05-25 rationale (a direct push must not skip the a11y gate)
+  # still holds, so the gate is NOT simply deleted — it moves to a nightly
+  # sweep of master plus the existing PR gate. A regression is caught within
+  # a day instead of within a push, which is the right trade for a 15-minute
+  # browser job on a repo that pushes to master dozens of times a day.
+  schedule:
+    - cron: '30 7 * * *'  # 07:30 UTC nightly, staggered off cross-browser
   pull_request:
     branches: [main, master, develop]
 

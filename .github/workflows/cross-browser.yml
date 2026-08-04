@@ -24,11 +24,17 @@ name: Cross-Browser
 # fragility (don't add speculatively — keep CI under 2 min/browser).
 
 on:
-  push:
-    branches: [ master ]
+  # 2026-08-04 — moved OFF every-push.
+  # The widget-render leg is now covered by ci.yml's E2E job, which since
+  # this date runs a chromium+webkit MATRIX. What is unique here is the
+  # .cjs bridge-protocol suite, and that guards board files that change
+  # rarely. Nightly + PR + on demand gives the same protection at a
+  # fraction of the cost. Emergency Path still runs on EVERY push — the
+  # life-safety gate is deliberately not on this diet.
+  schedule:
+    - cron: '0 7 * * *'   # 07:00 UTC nightly
   pull_request:
     branches: [ master ]
-  # Manual trigger for debugging
   workflow_dispatch:
 
 permissions:

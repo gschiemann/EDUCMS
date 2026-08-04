@@ -14,8 +14,15 @@ on:
   # tag pushes; tags don't have a branch diff so the paths check blocks
   # the tag event silently. Remove paths so tag pushes always build.
   # With the gradle cache + sdk cache the cost of extra runs is minimal.
+  # 2026-08-04 — NO LONGER builds on every push to master.
+  # This job is a RELEASE ARTIFACT builder (Gradle + Android SDK + two APKs,
+  # ~10-25 min a run), not a correctness check — nothing it produces gates a
+  # web/API deploy. Building it on every master push burned the majority of
+  # the Actions budget for zero signal on the pushes that never ship an APK.
+  # It still runs on the release tags (which is when an APK actually matters)
+  # and on demand. To check a Kotlin change without tagging, use
+  # `gh workflow run android-player-apk.yml --ref <branch>`.
   push:
-    branches: [master, main]
     tags:
       # Player release tag (existing) — produces edu-cms-player-v*.apk
       # release attachment.
