@@ -495,6 +495,21 @@ export class UsersController {
       throw new ForbiddenException({ code: 'USER_NOT_IN_TENANT', message: 'Target user is not in your tenant.' });
     }
 
+    // RANK GATE (2026-08-04). This was the last endpoint in the user family
+    // that scoped by tenant but NOT by rank — so a SCHOOL_ADMIN could grant
+    // or REVOKE the panic capability on a DISTRICT_ADMIN peer or superior in
+    // the same tenant.
+    //
+    // REVOKE is the dangerous direction: silently stripping canTriggerPanic
+    // from the person meant to fire a lockdown is a life-safety denial that
+    // only surfaces at the moment it matters. Every sibling action (role,
+    // delete, disable) already enforces this; the capability deciding who can
+    // START an emergency must not be the exception.
+    //
+    // assertCallerCanAssignRole refuses EQUAL rank too, so this also stops an
+    // admin re-granting themselves a capability a superior just removed.
+    assertCallerCanAssignRole(req.user.role, (target as any).role);
+
     // Defense-in-depth: never let a RESTRICTED_VIEWER carry the
     // bypass flag, regardless of how they got it. RbacGuard already
     // refuses the bypass for this role at request time
