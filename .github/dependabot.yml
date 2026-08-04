@@ -10,8 +10,29 @@
 # failed its Vercel preview build with ERR_PNPM_OUTDATED_LOCKFILE (fast 8s
 # fail — cosmetic dashboard red, zero production impact). Pausing stops that
 # noise at the source.
-#   * SECURITY updates STILL come through — Dependabot security alerts bypass
-#     `open-pull-requests-limit`, so a CVE patch is NOT suppressed by this.
+#   * SECURITY updates still bypass THIS setting — GitHub documents that
+#     "security update pull requests are not subject to this limit and do not
+#     count toward it." So the pause itself does not suppress a CVE patch.
+#
+#     BUT (2026-08-04) do not read that as "security fixes always reach us."
+#     The `ignore` blocks below are a SEPARATE suppression, and GitHub marks
+#     `ignore` as applying to security updates as well as version updates.
+#     Whether an `update-types: ["version-update:semver-major"]` entry blocks a
+#     SECURITY update that needs a major bump is genuinely not specified in
+#     GitHub's published reference — it is left ambiguous, so treat it as
+#     possible, not proven. Nobody should assume either way from this file.
+#
+#     WHAT ACTUALLY GUARANTEES COVERAGE is not Dependabot at all: the
+#     `Production Dependency Audit` job in ci.yml runs
+#     `scripts/npm-advisory-audit.cjs` on EVERY push. It enumerates the whole
+#     production closure (~800 packages) from pnpm itself, checks every version
+#     against npm's bulk advisory API, exits 1 on any HIGH or CRITICAL, and
+#     fails CLOSED (exit 2) if enumeration or the advisory lookup breaks rather
+#     than green-lighting on an error. That gate is independent of Dependabot's
+#     ignore semantics and of the major/minor distinction, so a vulnerable
+#     production dependency fails the build whether or not a Dependabot PR was
+#     ever opened. It is the control to keep working; Dependabot is convenience
+#     on top of it.
 #   * TO RE-ENABLE post-launch: set each `open-pull-requests-limit` back to
 #     2–3 (the prior values) and take the accumulated bumps as a reviewed
 #     batch on a feature branch (regenerate pnpm-lock.yaml locally so the
