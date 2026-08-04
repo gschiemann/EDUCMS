@@ -94,3 +94,42 @@ drift guard, 21 unreachable holiday boards, gitleaks pre-commit + prose
 password rule, restore drill, authed axe. Owner-only: rotate
 districtadmin@wcsd.demo password (in pushed history), Stripe live keys,
 Pluto/Xumo legal call, license-lapse policy decision.
+
+---
+
+## ⛔ SESSION STOPPED ON USAGE LIMIT — 2026-08-03 ~18:45 PT
+
+**Census work is COMPLETE and committed (`806575c8`). Nothing lost.**
+
+### TWO OPEN CI REDS — start here next session
+
+**1. gitleaks red on `b9122ea0` — CAUSE FOUND, FIX WRITTEN, COMMITTED HERE.**
+Rule `venueos-hardcoded-256bit-hex-secret` fired on the v1.1.0 SHA-256
+provenance pin at `release-policy.ts:220` — an APK digest is entropy- and
+regex-identical to a 256-bit signing key. Fix = a ONE-FILE path allowlist in
+`.gitleaks.toml` (TOML validated; do NOT widen it to a glob). Local `gitleaks
+detect --no-git` is NOT a valid check — it scans build artifacts
+(`tsconfig.tsbuildinfo`) and reports thousands of false hits; CI scans commits
+only. Verify via CI.
+
+**2. ALL 14 workflows instant-failed on `806575c8` — UNRESOLVED, NOT CODE.**
+Every workflow, `conclusion=failure`, **~5 seconds, ZERO steps executed**
+(`gh api repos/gschiemann/EDUCMS/actions/runs/30869394970/jobs` → steps=[]).
+The commit itself is clean (3 source files + 7 docs; no lockfile, no
+package.json, no build artifacts). CI ran normally 36 min earlier on
+`b9122ea0` (12 green). Actions permissions read `enabled:true`.
+
+**Leading hypothesis: GitHub Actions minutes exhausted / spending limit.** The
+repo went PRIVATE on 2026-08-01, so minutes are now metered against the
+personal account; tonight burned 24+ commits × 14 workflows including a
+25-min Android build. I could NOT confirm — `gh api users/gschiemann/settings/
+billing/actions` needs the `user` scope which the current token lacks.
+**→ Owner: check GitHub → Settings → Billing → Actions minutes + spending
+limit. If exhausted, the APK release pipeline cannot build or publish, which
+means the OTA fix shipped tonight cannot deliver v1.1.1 until it is resolved.**
+Rule out first: quota/spending limit, then any repo/org Actions restriction.
+
+### State
+- HEAD `806575c8` pushed. Prod verified healthy + OTA resolver live earlier.
+- Working tree: the `.gitleaks.toml` fix (committed with this note).
+- v1.1.1 + manager-v1.1.0 tags NOT cut — correctly blocked on CI being green.

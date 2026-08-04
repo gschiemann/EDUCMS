@@ -36,6 +36,22 @@ regexes = [
   # SHA-256 of the empty string — a well-known constant used in sync tests.
   '''e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855''',
 ]
+# 2026-08-03 — APK provenance digests are 64-hex and therefore INDISTINGUISHABLE
+# from a 256-bit signing key by regex or entropy (this rule fired on the real
+# v1.1.0 pin at release-policy.ts:220 and turned CI red).
+#
+# `release-policy.ts` is the OTA release gate: its only 64-hex literals are
+# SHA-256 digests of published APKs, deliberately committed so a build's
+# provenance is recorded INDEPENDENTLY of the artifact and reviewed like code
+# (finding OTA-03). Publishing them is the point — they are public facts about
+# public artifacts, not credentials.
+#
+# Scope is one file, not a pattern: this exempts nothing else, and any signing
+# material that ever appeared in this security-critical file would still be
+# caught by review. Do NOT widen this to a directory or a `*-policy.ts` glob.
+paths = [
+  '''apps/api/src/player-ota/release-policy\.ts$''',
+]
 
 [allowlist]
 description = "Global path allowlist — test/spec/fixture files carry deliberate fake keys"
