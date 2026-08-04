@@ -357,7 +357,21 @@
       "release2faTitle": "¿Dejar de exigir verificación en dos pasos a {email}?",
       "release2faMessage": "Conservará la app de autenticación que ya haya configurado, pero dejará de ser obligatoria.",
       "release2faConfirm": "Dejar de exigir",
-      "mfaChangeFailed": "No se pudo cambiar el requisito de verificación en dos pasos."
+      "mfaChangeFailed": "No se pudo cambiar el requisito de verificación en dos pasos.",
+      "disabledBadge": "Desactivado",
+      "invitedBadge": "Invitado",
+      "disableUser": "Desactivar",
+      "enableUser": "Activar",
+      "disableUserTitle": "¿Desactivar a {email}?",
+      "enableUserTitle": "¿Permitir que {email} vuelva a entrar?",
+      "disableUserMessage": "Se cerrará su sesión en todos los dispositivos ahora mismo y no podrá volver a iniciar sesión. No se elimina nada: puedes reactivarlo cuando quieras.",
+      "enableUserMessage": "Podrá iniciar sesión de nuevo con su contraseña actual.",
+      "disableUserConfirm": "Desactivar cuenta",
+      "enableUserConfirm": "Activar cuenta",
+      "disableUserHint": "Cortar el acceso ahora. Reversible: no se elimina nada.",
+      "enableUserHint": "Esta cuenta está desactivada. Haz clic para permitir que inicie sesión de nuevo.",
+      "cannotManageHint": "Solo puedes cambiar a personas con un rol inferior al tuyo.",
+      "statusChangeFailed": "No se pudo cambiar el acceso de esta persona."
     },
     "ota": {
       "playerApkTitle": "APK del reproductor",

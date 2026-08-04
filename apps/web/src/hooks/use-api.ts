@@ -1993,6 +1993,11 @@ export type TeamUser = {
   mfaRequired: boolean;
   /** Whether they have actually finished TOTP enrollment. */
   mfaEnrolled: boolean;
+  /**
+   * 2026-08-03 — `ACTIVE` | `DISABLED` | `INVITED`. Anything other than
+   * `ACTIVE` is refused at login (`AuthService.validateUser`).
+   */
+  status?: string;
 };
 
 export function useUsers() {
@@ -2020,6 +2025,31 @@ export function useSetUserMfaRequired() {
       apiFetch(`/users/${id}/mfa-required`, {
         method: 'PUT',
         body: JSON.stringify({ mfaRequired }),
+      }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); },
+  });
+}
+
+/**
+ * 2026-08-03 — cut a departing staff member off (or let them back in).
+ *
+ * Disable is the reversible half of "fire an employee": it flips
+ * `User.status` to `DISABLED` (login refuses anything that is not `ACTIVE`)
+ * AND burns every live session server-side, so an already-issued token stops
+ * working immediately instead of lasting up to 30 days. Re-enabling is a
+ * widening and leaves sessions alone.
+ *
+ * Rank-gated server-side — a caller can only act on someone strictly below
+ * their own role, inside their own tenant subtree — so a 403 here is a real
+ * answer to show the operator, not a bug.
+ */
+export function useSetUserDisabled() {
+  const qc = useQueryClient();
+  return useMutation<TeamUser, Error, { id: string; disabled: boolean }>({
+    mutationFn: ({ id, disabled }) =>
+      apiFetch(`/users/${id}/disabled`, {
+        method: 'PUT',
+        body: JSON.stringify({ disabled }),
       }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); },
   });

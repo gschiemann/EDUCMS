@@ -1,6 +1,6 @@
 "use client";
 
-import { Settings as SettingsIcon, Key, UserPlus, Trash2, Loader2, Shield, MonitorPlay, AlertOctagon, Usb, MapPin, Plus, Building2, ShieldCheck, ShieldOff, ChevronDown, Clock, RefreshCw, FileClock, Code2, Lock } from 'lucide-react';
+import { Settings as SettingsIcon, Key, UserPlus, Trash2, Loader2, Shield, MonitorPlay, AlertOctagon, Usb, MapPin, Plus, Building2, ShieldCheck, ShieldOff, ChevronDown, Clock, RefreshCw, FileClock, Code2, Lock, Ban } from 'lucide-react';
 import { usePathname, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { RoleGate } from '@/components/RoleGate';
@@ -11,7 +11,7 @@ import {
   useAutoUpdatePlayerConfig, useToggleAutoUpdatePlayer, useLatestPlayerVersion,
   useOtaWindowConfig, useUpdateOtaWindow,
   useCanaryRollout, useUpdateCanaryRollout,
-  useSetUserMfaRequired,
+  useSetUserMfaRequired, useSetUserDisabled,
 } from '@/hooks/use-api';
 import { useUIStore } from '@/store/ui-store';
 import { canAssignRole } from '@/lib/role-assignment';
@@ -64,7 +64,14 @@ export default function SettingsPage() {
   // it on someone strictly below their own role), mirrored here so the button
   // is simply absent on a peer instead of returning a 403 when clicked.
   const setMfaRequired = useSetUserMfaRequired();
+  // 2026-08-03 — a customer's own admin can now cut off a departing staff
+  // member (disable = reversible + revokes live sessions; remove = permanent).
+  // Both are rank-gated server-side inside the caller's own tenant subtree;
+  // the same `canAssignRole` mirror the 2FA button uses keeps the controls
+  // off peers/superiors instead of surfacing a guaranteed 403.
+  const setUserDisabled = useSetUserDisabled();
   const callerRole = useUIStore((s) => s.user?.role);
+  const callerId = useUIStore((s) => s.user?.id);
   const [mfaRowError, setMfaRowError] = useState<string | null>(null);
   const updatePanicSettings = useUpdateTenantPanicSettings();
   const [showAddUser, setShowAddUser] = useState(false);
@@ -628,14 +635,34 @@ export default function SettingsPage() {
                 const avatar = full
                   ? `${fn ? fn[0] : ''}${ln ? ln[0] : ''}`.toUpperCase() || (user.email?.substring(0, 2).toUpperCase() || '??')
                   : (user.email?.substring(0, 2).toUpperCase() || '??');
+                // 2026-08-03 — can this operator run lifecycle actions on this
+                // row? Server-side truth is subtree + strictly-below-my-rank;
+                // this mirror only decides whether to RENDER the control, so a
+                // peer/self row shows no button instead of a guaranteed 403.
+                const isSelfRow = !!callerId && user.id === callerId;
+                const manageable = !isSelfRow && canAssignRole(callerRole, user.role);
+                const isDisabled = user.status === 'DISABLED';
+                const isPending = user.status === 'INVITED';
                 return (
                 <div key={user.id} className="flex items-center justify-between px-6 py-3 hover:bg-slate-50/50 transition-colors">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-[10px] font-bold" style={{ background: 'linear-gradient(135deg, var(--brand-primary, #6366f1), color-mix(in srgb, var(--brand-primary, #6366f1) 60%, #8b5cf6))' }}>
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white text-[10px] font-bold ${isDisabled ? 'opacity-40 grayscale' : ''}`} style={{ background: 'linear-gradient(135deg, var(--brand-primary, #6366f1), color-mix(in srgb, var(--brand-primary, #6366f1) 60%, #8b5cf6))' }}>
                       {avatar}
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-slate-800">{full || user.email}</p>
+                      <p className={`text-xs font-semibold flex items-center gap-1.5 ${isDisabled ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
+                        {full || user.email}
+                        {isDisabled && (
+                          <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200 text-[9px] font-bold uppercase tracking-wide no-underline">
+                            {t('settings.team.disabledBadge')}
+                          </span>
+                        )}
+                        {isPending && (
+                          <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-bold uppercase tracking-wide">
+                            {t('settings.team.invitedBadge')}
+                          </span>
+                        )}
+                      </p>
                       <p className="text-[10px] text-slate-400">{full ? user.email : (user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'Member')}</p>
                     </div>
                   </div>
@@ -648,7 +675,7 @@ export default function SettingsPage() {
                         are routed through the login page's enrollment step
                         on their next sign-in, so this is a control, not a
                         lockout. */}
-                    {canAssignRole(callerRole, user.role) && (
+                    {manageable && (
                       <button
                         type="button"
                         onClick={async () => {
@@ -700,10 +727,58 @@ export default function SettingsPage() {
                           : t('settings.team.mfaOff')}
                       </button>
                     )}
+                    {/* 2026-08-03 — DISABLE / ENABLE. The reversible half of
+                        "this person left": flips User.status and burns their
+                        live sessions server-side, so access stops now rather
+                        than whenever their token happens to expire. Offered
+                        only on an ACTIVE/DISABLED row the caller outranks —
+                        an INVITED row still holds a placeholder password and
+                        the server refuses to toggle it. */}
+                    {manageable && !isPending && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const turningOff = !isDisabled;
+                          const ok = await appConfirm({
+                            title: turningOff
+                              ? t('settings.team.disableUserTitle', { email: user.email })
+                              : t('settings.team.enableUserTitle', { email: user.email }),
+                            message: turningOff
+                              ? t('settings.team.disableUserMessage')
+                              : t('settings.team.enableUserMessage'),
+                            tone: turningOff ? 'danger' : undefined,
+                            confirmLabel: turningOff
+                              ? t('settings.team.disableUserConfirm')
+                              : t('settings.team.enableUserConfirm'),
+                          });
+                          if (!ok) return;
+                          setMfaRowError(null);
+                          setUserDisabled.mutate(
+                            { id: user.id, disabled: turningOff },
+                            { onError: (e: any) => setMfaRowError(e?.message || t('settings.team.statusChangeFailed')) },
+                          );
+                        }}
+                        disabled={setUserDisabled.isPending}
+                        title={isDisabled ? t('settings.team.enableUserHint') : t('settings.team.disableUserHint')}
+                        aria-label={isDisabled
+                          ? t('settings.team.enableUserTitle', { email: user.email })
+                          : t('settings.team.disableUserTitle', { email: user.email })}
+                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition-colors disabled:opacity-50 ${
+                          isDisabled
+                            ? 'bg-slate-100 text-slate-500 border-slate-300 hover:bg-slate-200'
+                            : 'bg-white text-slate-400 border-slate-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200'
+                        }`}
+                      >
+                        {isDisabled ? <Lock className="w-3 h-3" /> : <Ban className="w-3 h-3" />}
+                        {isDisabled ? t('settings.team.enableUser') : t('settings.team.disableUser')}
+                      </button>
+                    )}
                     <select
                       value={user.role}
                       onChange={(e) => updateRole.mutate({ id: user.id, role: e.target.value })}
-                      className={`px-2.5 py-1 text-[10px] font-bold border rounded-lg cursor-pointer ${ROLE_COLORS[user.role] || 'bg-slate-50 text-slate-600'}`}
+                      disabled={!manageable}
+                      title={manageable ? undefined : t('settings.team.cannotManageHint')}
+                      className={`px-2.5 py-1 text-[10px] font-bold border rounded-lg ${manageable ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'} ${ROLE_COLORS[user.role] || 'bg-slate-50 text-slate-600'}`}
                     >
                       {/* SUPER_ADMIN is never an assignable option — a
                           district/school admin must not be able to promote
@@ -713,20 +788,23 @@ export default function SettingsPage() {
                           select still renders that user's role correctly. */}
                       {ROLES.filter(r => r !== 'SUPER_ADMIN' || user.role === 'SUPER_ADMIN').map(r => <option key={r} value={r}>{tenantCopy.roleLabel(r)}</option>)}
                     </select>
-                    <button
-                      onClick={async () => {
-                        const ok = await appConfirm({
-                          title: t('settings.team.removeUserTitle', { email: user.email }),
-                          message: 'They will lose access immediately. Their audit log entries stay intact for compliance.',
-                          tone: 'danger',
-                          confirmLabel: t('settings.team.removeUser'),
-                        });
-                        if (ok) deleteUser.mutate(user.id);
-                      }}
-                      className="text-slate-300 hover:text-red-500 transition-colors p-1"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    {manageable && (
+                      <button
+                        onClick={async () => {
+                          const ok = await appConfirm({
+                            title: t('settings.team.removeUserTitle', { email: user.email }),
+                            message: 'They will lose access immediately. Their audit log entries stay intact for compliance.',
+                            tone: 'danger',
+                            confirmLabel: t('settings.team.removeUser'),
+                          });
+                          if (ok) deleteUser.mutate(user.id);
+                        }}
+                        aria-label={t('settings.team.removeUserTitle', { email: user.email })}
+                        className="text-slate-300 hover:text-red-500 transition-colors p-1"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
                 );

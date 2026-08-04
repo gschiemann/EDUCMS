@@ -357,7 +357,21 @@
       "release2faTitle": "不再要求 {email} 使用双重验证？",
       "release2faMessage": "该成员已设置的验证器仍然保留，但不再强制使用。",
       "release2faConfirm": "取消要求",
-      "mfaChangeFailed": "无法更改双重验证要求。"
+      "mfaChangeFailed": "无法更改双重验证要求。",
+      "disabledBadge": "已停用",
+      "invitedBadge": "已邀请",
+      "disableUser": "停用",
+      "enableUser": "启用",
+      "disableUserTitle": "停用 {email}？",
+      "enableUserTitle": "重新允许 {email} 登录？",
+      "disableUserMessage": "将立即从所有设备登出，并且无法再次登录。不会删除任何内容 — 你可以随时重新启用。",
+      "enableUserMessage": "对方可以使用现有密码重新登录。",
+      "disableUserConfirm": "停用账户",
+      "enableUserConfirm": "启用账户",
+      "disableUserHint": "立即切断访问权限。可撤销 — 不会删除任何内容。",
+      "enableUserHint": "此账户已停用。点击以允许其重新登录。",
+      "cannotManageHint": "你只能更改角色低于自己的成员。",
+      "statusChangeFailed": "无法更改此成员的访问权限。"
     },
     "ota": {
       "playerApkTitle": "播放器 APK",

@@ -635,6 +635,42 @@ describe('OnboardingService', () => {
       expect(teacher.tenantId).toBe(admin.user.tenantId);
     });
 
+    it('a leftover invite token cannot UN-DISABLE an account the operator just cut off', async () => {
+      const admin = await service.signup({
+        districtName: 'Fired District',
+        slug: 'fired',
+        adminEmail: 'admin@fired.edu',
+        password: 'admin-password-fired',
+      });
+      await service.createInvite({
+        inviterId: admin.user.id,
+        tenantId: admin.user.tenantId,
+        email: 'leaver@fired.edu',
+        role: 'CONTRIBUTOR',
+      });
+      const inviteEmail = [...state.emailLogs].reverse().find(
+        (e) => e.kind === 'INVITE' && e.toEmail === 'leaver@fired.edu',
+      )!;
+      const token = decodeURIComponent(inviteEmail.body.match(/accept-invite\/([^\s]+)/)![1]);
+
+      // The admin sets their password directly (invite email never arrived),
+      // then later disables the account — the ORIGINAL token is still unused.
+      await service.createUserDirect({
+        inviterId: admin.user.id,
+        tenantId: admin.user.tenantId,
+        email: 'leaver@fired.edu',
+        role: 'CONTRIBUTOR',
+        password: 'handed-over-password',
+      });
+      const row = state.users.find((u) => u.email === 'leaver@fired.edu')!;
+      row.status = 'DISABLED';
+
+      await expect(
+        service.acceptInvite({ token, password: 'back-in-please-1' }),
+      ).rejects.toThrow(BadRequestException);
+      expect(state.users.find((u) => u.email === 'leaver@fired.edu')!.status).toBe('DISABLED');
+    });
+
     it('the SAME-tenant admin-sets-password recovery path still works on a PENDING row', async () => {
       const admin = await service.signup({
         districtName: 'Recovery District',

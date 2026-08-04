@@ -96,6 +96,89 @@ export class UsersController {
     }
   }
 
+  /**
+   * 2026-08-03 — THE ONE GATE for "may this caller act ON this account?"
+   *
+   * WHY THIS EXISTS. Demote, disable and delete were all `@RequireRoles(
+   * SUPER_ADMIN)`. A district that fired a staff member could not cut off
+   * their own employee's access — they had to phone the vendor. The
+   * revocation machinery underneath (`markUserTokensInvalid`, the durable
+   * revocation list, soft-delete) was built and correct; it was simply
+   * unreachable by the people who actually need it. Rather than sprinkle
+   * bespoke scope checks across three endpoints, every lifecycle action now
+   * resolves its target through here.
+   *
+   * THE RULES, all of which must pass:
+   *   1. the row exists and is not already soft-deleted;
+   *   2. SELF is refused unless the endpoint explicitly opts in (`allowSelf`)
+   *      — see `updateRole`, where self-demote is deliberately legal;
+   *   3. TENANT SUBTREE — SUPER_ADMIN is cross-tenant by design; a
+   *      DISTRICT_ADMIN reaches their own tenant plus any tenant whose
+   *      `parentId` is their tenant (exactly the reach `createInvite` already
+   *      grants for adding users, so firing mirrors hiring); everyone else is
+   *      confined to their own tenant;
+   *   4. RANK — `assertCallerCanAssignRole` (strictly below my own rank).
+   *      Nobody may act on a PEER or a SUPERIOR. This is the same table the
+   *      role-grant paths use, so "who can I fire" can never drift from "who
+   *      can I hire". It also subsumes the old CYCLE-4 auth-BUG-011 rule
+   *      (a SUPER_ADMIN cannot strip another SUPER_ADMIN) — SUPER_ADMIN is
+   *      absent from its own assignable list, so a peer super-admin is
+   *      refused here for every action, not just role changes.
+   *
+   * SELF is exempt from the rank check only (never from #1/#3), because a
+   * self-action is consented to by definition; the `allowSelf` flag is what
+   * decides whether the endpoint permits it at all.
+   */
+  private async loadManageableTarget(
+    req: any,
+    id: string,
+    opts: { allowSelf?: boolean } = {},
+  ): Promise<{ id: string; email: string; role: string; tenantId: string; status: string }> {
+    const callerRole: string = req?.user?.role;
+    const callerTenantId: string = req?.user?.tenantId;
+    const callerId: string = req?.user?.id;
+
+    // ten-ok: resolve-then-verify — the tenant subtree is asserted a few lines
+    // below (403 on miss) and SUPER_ADMIN is cross-tenant by design, so the
+    // lookup cannot be pre-scoped to the caller's tenant without breaking the
+    // district→school reach this endpoint family needs.
+    const target = await this.prisma.client.user.findFirst({
+      where: { id, deletedAt: null } as any,
+      select: { id: true, email: true, role: true, tenantId: true, status: true } as any,
+    });
+    if (!target) {
+      throw new HttpException({ code: 'USER_NOT_FOUND', message: 'User not found' }, HttpStatus.NOT_FOUND);
+    }
+
+    const isSelf = !!callerId && (target as any).id === callerId;
+    if (isSelf && !opts.allowSelf) {
+      throw new HttpException(
+        { code: 'USER_CANNOT_ACT_ON_SELF', message: 'You cannot do that to your own account.' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    if (callerRole !== AppRole.SUPER_ADMIN && (target as any).tenantId !== callerTenantId) {
+      let inSubtree = false;
+      if (callerRole === AppRole.DISTRICT_ADMIN && (target as any).tenantId) {
+        const t = await this.prisma.client.tenant.findUnique({
+          where: { id: (target as any).tenantId },
+          select: { parentId: true } as any,
+        });
+        inSubtree = !!t && (t as any).parentId === callerTenantId;
+      }
+      if (!inSubtree) {
+        throw new ForbiddenException({ code: 'USER_NOT_IN_TENANT', message: 'Target user is not in your tenant.' });
+      }
+    }
+
+    // Rank last, so a cross-tenant probe cannot use the (more specific) rank
+    // error to learn a stranger's role.
+    if (!isSelf) assertCallerCanAssignRole(callerRole, (target as any).role);
+
+    return target as any;
+  }
+
   @Get()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async list(@Request() req: any) {
@@ -111,10 +194,15 @@ export class UsersController {
       // enrolled flag is derived, never the timestamp itself: an admin has no
       // business knowing WHEN a colleague set up their authenticator, only
       // that the policy is satisfied.
+      //
+      // 2026-08-03 — `status`, so the Team Members list can show (and toggle)
+      // who is disabled. Without it the new PUT /:id/disabled control would be
+      // a button with no state to render.
       select: {
         id: true, email: true, role: true, createdAt: true,
         firstName: true, lastName: true,
         mfaRequired: true, mfaTotpVerifiedAt: true,
+        status: true,
       } as any,
       orderBy: { createdAt: 'desc' },
     });
@@ -264,45 +352,51 @@ export class UsersController {
     return user;
   }
 
+  /**
+   * 2026-08-03 — DISTRICT_ADMIN / SCHOOL_ADMIN can now demote inside their own
+   * tenant subtree. This was SUPER_ADMIN-only, which meant a district could not
+   * strip a departing employee's privileges without phoning the vendor.
+   *
+   * Two independent gates, both enforced:
+   *   - `loadManageableTarget` — the target must be in the caller's subtree AND
+   *     strictly below the caller's rank (so nobody demotes a peer or a
+   *     superior). Self is permitted here because self-demote is a legitimate,
+   *     consented action; it is the ONE lifecycle endpoint that allows it.
+   *   - `assertCallerCanAssignRole(callerRole, body.role)` — the NEW role must
+   *     also be strictly below the caller's rank, so this cannot be used to
+   *     escalate (a DISTRICT_ADMIN posting role:'SUPER_ADMIN' is refused, on
+   *     themselves as well as on anyone else).
+   */
   @Put(':id/role')
-  @RequireRoles(AppRole.SUPER_ADMIN)
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async updateRole(@Request() req: any, @Param('id') id: string, @Body() body: { role: string }) {
-    const tenantId = req.user.tenantId;
-
-    // CYCLE-1 BUG-005: even though this endpoint is gated to SUPER_ADMIN, the
-    // role string was previously written into Prisma without enum validation.
-    // A typo or a malicious caller riding a stolen SUPER_ADMIN session could
-    // corrupt the role column. Validate against the assignable allowlist.
+    // CYCLE-1 BUG-005: the role string was previously written into Prisma
+    // without enum validation. A typo or a malicious caller riding a stolen
+    // admin session could corrupt the role column. Validate against the
+    // assignable allowlist.
     if (!body?.role || typeof body.role !== 'string') {
       throw new BadRequestException({ code: 'USER_ROLE_REQUIRED', message: 'Role is required.' });
     }
     assertCallerCanAssignRole(req.user.role, body.role);
 
-    // Ensure user belongs to same tenant
-    const user = await this.prisma.client.user.findFirst({
-      where: { id, tenantId },
-    });
-    if (!user) throw new HttpException({ code: 'USER_NOT_FOUND', message: 'User not found' }, HttpStatus.NOT_FOUND);
-
-    // CYCLE-4 auth-BUG-011: SUPER_ADMIN cannot strip another SUPER_ADMIN's
-    // privileges. A SUPER_ADMIN may demote themselves (self-demote is
-    // allowed — the caller is consenting to losing their own privileges).
-    // But one SUPER_ADMIN cannot unilaterally take another SUPER_ADMIN's
-    // role away — that would let a single compromised account knock out
-    // every peer admin in the tenant.
-    if (
-      user.role === AppRole.SUPER_ADMIN &&
-      user.id !== req.user.id &&
-      body.role !== AppRole.SUPER_ADMIN
-    ) {
-      throw new ForbiddenException({ code: 'USER_CANNOT_DEMOTE_SUPER_ADMIN', message: 'SUPER_ADMIN accounts cannot demote another SUPER_ADMIN. The target user must self-demote.' });
-    }
+    // Subtree + rank gate. Self-demote stays legal (CYCLE-4 auth-BUG-011: a
+    // SUPER_ADMIN may drop their own privileges, but one SUPER_ADMIN can never
+    // strip a peer's — that rule is now enforced generically by the rank check
+    // inside the helper, for every role and every lifecycle action).
+    const user = await this.loadManageableTarget(req, id, { allowSelf: true });
+    // The user's OWN tenant owns this write and its audit row — not the
+    // caller's, which differs when a DISTRICT_ADMIN acts on a child school.
+    const tenantId = user.tenantId;
+    // Snapshot the BEFORE role: it is what the audit row and the
+    // downgrade-detection below both mean, and reading it after the write has
+    // run is how a "revoke on tightening" check silently stops firing.
+    const fromRole = user.role;
 
     // Role change + audit row atomically. "Who made this account an admin?"
     // must always be answerable; a privilege escalation with no record is
     // exactly the gap this closes.
     const updated = await this.prisma.client.$transaction(async (tx: any) => {
-      // Scoped by the caller's tenant — defense-in-depth on a PRIVILEGE
+      // Scoped by the TARGET's tenant — defense-in-depth on a PRIVILEGE
       // write (the same {id, tenantId} pair verified above; updateMany
       // because a compound {id, tenantId} isn't a Prisma unique input).
       const cnt = await tx.user.updateMany({
@@ -320,7 +414,7 @@ export class UsersController {
           action: 'USER_ROLE_CHANGED',
           targetType: 'user',
           targetId: id,
-          details: JSON.stringify({ email: user.email, fromRole: user.role, toRole: body.role }),
+          details: JSON.stringify({ email: user.email, fromRole, toRole: body.role }),
         },
       });
       return u;
@@ -331,8 +425,8 @@ export class UsersController {
     // claim for up to 30 days (rememberMe ceiling). A widening (promotion)
     // is NOT revoked: the new privileges flow in at next login, and force-
     // logging-out a just-promoted user would be pure annoyance.
-    if (isRoleDowngrade(user.role, body.role)) {
-      await this.revokeUserTokens(id, `role downgrade ${user.role}→${body.role}`);
+    if (isRoleDowngrade(fromRole, body.role)) {
+      await this.revokeUserTokens(id, `role downgrade ${fromRole}→${body.role}`);
     }
 
     return updated;
@@ -558,24 +652,112 @@ export class UsersController {
     return updated;
   }
 
-  @Delete(':id')
-  @RequireRoles(AppRole.SUPER_ADMIN)
-  async remove(@Request() req: any, @Param('id') id: string) {
-    const tenantId = req.user.tenantId;
+  /**
+   * 2026-08-03 — "our admin can't fire an employee", the reversible half.
+   *
+   * Delete is destructive and irreversible from the UI; DISABLE is the control
+   * an operator actually reaches for when someone leaves, goes on leave, or is
+   * under investigation. It was missing entirely: `User.status` gates login
+   * (`AuthService.validateUser` refuses anything that is not `ACTIVE`) but
+   * nothing outside the invite flow had ever written it.
+   *
+   * DISABLING IS A REAL CUT-OFF, not a display flag. Blocking login alone
+   * would leave an already-issued JWT working for up to 30 days (the
+   * rememberMe ceiling), so turning it on ALSO burns every live session via
+   * the durable revocation list. Re-enabling is a widening and is not
+   * revoked — same asymmetry as the role / panic / mfa endpoints.
+   *
+   * Only the ACTIVE ⇄ DISABLED pair is allowed. An `INVITED` row is refused in
+   * both directions on purpose: "enabling" one would flip it to ACTIVE while
+   * it still carries the random placeholder password from invite creation,
+   * turning a lifecycle button into an account in an unknown credential state.
+   * Those users are cancelled by deleting them or letting the invite lapse.
+   */
+  @Put(':id/disabled')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async setDisabled(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { disabled: boolean },
+  ) {
+    if (typeof body?.disabled !== 'boolean') {
+      throw new BadRequestException({ code: 'USER_DISABLED_INVALID', message: 'disabled must be a boolean.' });
+    }
+    // Self is refused: an admin disabling themselves is always a mistake, and
+    // it can strand a single-admin tenant with nobody able to re-enable them.
+    const target = await this.loadManageableTarget(req, id);
 
+    const fromStatus = target.status || 'ACTIVE';
+    const toStatus = body.disabled ? 'DISABLED' : 'ACTIVE';
+    if (fromStatus !== 'ACTIVE' && fromStatus !== 'DISABLED') {
+      throw new BadRequestException({
+        code: 'USER_STATUS_NOT_TOGGLEABLE',
+        message: `This account is ${fromStatus.toLowerCase()} and cannot be enabled or disabled. Remove them instead.`,
+      });
+    }
+    const tenantId = target.tenantId;
+
+    const updated = await this.prisma.client.$transaction(async (tx: any) => {
+      // Tenant-scoped write (defense-in-depth; the audit row rolls back if the
+      // verified row moved between check and write).
+      const cnt = await tx.user.updateMany({
+        where: { id, tenantId },
+        data: { status: toStatus } as any,
+      });
+      if (cnt.count !== 1) {
+        throw new HttpException({ code: 'USER_NOT_FOUND', message: 'User not found' }, HttpStatus.NOT_FOUND);
+      }
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId: req.user.id,
+          action: body.disabled ? 'USER_DISABLED' : 'USER_ENABLED',
+          targetType: 'user',
+          targetId: id,
+          details: JSON.stringify({
+            email: target.email,
+            role: target.role,
+            fromStatus,
+            toStatus,
+            byRole: req.user.role,
+            byTenant: req.user.tenantId,
+          }),
+        },
+      });
+      return { id, email: target.email, role: target.role, status: toStatus };
+    });
+
+    // TIGHTENING → revoke. Without this, `status` would only be consulted at
+    // the next login and an existing token would keep working for up to 30
+    // days — i.e. the "fire this person" button would not fire anyone.
+    if (body.disabled) {
+      await this.revokeUserTokens(id, 'account disabled');
+    }
+
+    return updated;
+  }
+
+  /**
+   * 2026-08-03 — opened to DISTRICT_ADMIN / SCHOOL_ADMIN. Same subtree + rank
+   * gate as demote/disable (`loadManageableTarget`): own tenant, or a child
+   * school for a DISTRICT_ADMIN, and strictly below the caller's own rank.
+   */
+  @Delete(':id')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  async remove(@Request() req: any, @Param('id') id: string) {
     // CYCLE-4 auth-BUG-013: error responses were returning 200 with
     // `{ error: '...' }` bodies, which let callers' status-code-only
     // checks swallow the failure. Standardize on HttpException so the
     // HTTP status matches the outcome.
-    // Prevent self-deletion
+    // Prevent self-deletion (kept ahead of the shared gate so the long-standing
+    // USER_CANNOT_DELETE_SELF code keeps its exact meaning for API clients).
     if (id === req.user.id) {
       throw new HttpException({ code: 'USER_CANNOT_DELETE_SELF', message: 'Cannot delete your own account' }, HttpStatus.BAD_REQUEST);
     }
 
-    const user = await this.prisma.client.user.findFirst({
-      where: { id, tenantId, deletedAt: null } as any,
-    });
-    if (!user) throw new HttpException({ code: 'USER_NOT_FOUND', message: 'User not found' }, HttpStatus.NOT_FOUND);
+    const user = await this.loadManageableTarget(req, id);
+    // The deleted user's OWN tenant owns the write + the audit row.
+    const tenantId = user.tenantId;
 
     // Soft-delete + audit atomically. A hard delete 500'd on any user with
     // history (3 required User relations default to FK Restrict, and the

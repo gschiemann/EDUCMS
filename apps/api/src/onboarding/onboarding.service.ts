@@ -754,10 +754,12 @@ export class OnboardingService {
     if (String(target.email || '').toLowerCase() !== String(invite.email || '').toLowerCase()) {
       throw invalid;
     }
-    // A stale invite must not be able to reset the password of an account that
-    // has since become ACTIVE. Invites are only ever minted against a
-    // non-ACTIVE row, so this can only be a leftover token.
-    if (target.status === 'ACTIVE') throw invalid;
+    // The row must still be waiting on THIS invite. Anything else is a stale
+    // token, and redeeming one is a credential write on an account that has
+    // moved on: ACTIVE (already accepted, or the admin set their password
+    // directly) would be a password reset by whoever kept the link, and
+    // DISABLED would silently UN-fire a staff member the operator just cut off.
+    if (target.status !== 'INVITED') throw invalid;
 
     const passwordHash = await this.authService.hashPassword(input.password);
 

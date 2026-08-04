@@ -357,7 +357,21 @@
       "release2faTitle": "Stop requiring two-factor for {email}?",
       "release2faMessage": "They keep any authenticator they've already set up, but will no longer be forced to use one.",
       "release2faConfirm": "Stop requiring",
-      "mfaChangeFailed": "Couldn't change the two-factor requirement."
+      "mfaChangeFailed": "Couldn't change the two-factor requirement.",
+      "disabledBadge": "Disabled",
+      "invitedBadge": "Invited",
+      "disableUser": "Disable",
+      "enableUser": "Enable",
+      "disableUserTitle": "Disable {email}?",
+      "enableUserTitle": "Let {email} back in?",
+      "disableUserMessage": "They're signed out of every device right now and can't sign back in. Nothing is deleted — you can turn this back on any time.",
+      "enableUserMessage": "They'll be able to sign in again with their existing password.",
+      "disableUserConfirm": "Disable account",
+      "enableUserConfirm": "Enable account",
+      "disableUserHint": "Cut off access now. Reversible — nothing is deleted.",
+      "enableUserHint": "This account is disabled. Click to let them sign in again.",
+      "cannotManageHint": "You can only change people below your own role.",
+      "statusChangeFailed": "Couldn't change this person's access."
     },
     "ota": {
       "playerApkTitle": "Player APK",
