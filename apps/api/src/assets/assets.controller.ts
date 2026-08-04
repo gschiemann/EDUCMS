@@ -567,9 +567,45 @@ export class AssetsController {
       throw new HttpException({ code: 'ASSET_FILE_TYPE_UNSUPPORTED', message: 'No file uploaded, or file type is not supported. Allowed: images (JPG/PNG/WebP/GIF), MP4/WebM video, audio, PDF. QuickTime .mov and AVI are not supported — export as MP4 first. For an SVG logo, use Settings → Branding.' }, HttpStatus.BAD_REQUEST);
     }
 
-    const ext = extname(file.originalname) || '';
-    const storagePath = `${req.user.tenantId}/emergency/${randomUUID()}${ext}`;
     const safeBuffer = this.storage.toSafeBuffer(file.buffer);
+
+    // UPLD-01 (2026-08-04) — enforce the SAME per-type size caps the media
+    // library enforces. This handler had none: its only bounds were multer's
+    // blunt 500 MB ceiling and the ALLOWED_TYPES mimetype filter, so a 400 MB
+    // "lockdown video" that `/assets/upload` rejects with ASSET_VIDEO_TOO_LARGE
+    // sailed through here.
+    //
+    // Why it matters on THIS path specifically: emergency media is precached
+    // onto every screen in the fleet, so one oversized asset is 400 MB × N
+    // screens of Supabase egress and WAN time off a single config change —
+    // precisely the egress class the 50 MB cap was introduced for. And the
+    // failure is silent and late: the upload succeeds at config time and the
+    // shortfall only shows up at incident time.
+    //
+    // Checked against the REAL in-process bytes (not a claimed size), exactly
+    // as the legacy /assets/upload path does. Caps are deliberately shared, so
+    // there is no second policy to drift out of sync.
+    const capError = perTypeSizeCapError(file.mimetype, safeBuffer.length);
+    if (capError) throw capError;
+
+    // Derive the stored extension from the VALIDATED mimetype rather than the
+    // client's filename, falling back to the filename only if the map somehow
+    // misses (it cannot today — every ALLOWED_TYPES entry has a MIME_EXTENSIONS
+    // entry, and the fileFilter exact-matches the same string).
+    //
+    // The extension is load-bearing: `screens.controller.ts` derives the
+    // manifest's mime from the URL's extension, and an extension-less URL
+    // yields a null mime, at which point the player's own fallback classifies
+    // an `https://` URL with no image extension as `text/html` — handing a
+    // lockdown video to the web/iframe render path instead of the video one.
+    //
+    // Note this makes the asserted MIME win over a DISAGREEING filename (a
+    // `flyer.pdf` sent as `image/png` now stores `.png`). Both fields are
+    // client-controlled and neither is sniffed today, so this changes which
+    // client claim wins, not whether we trust the client. Through a browser
+    // the two always agree, since File.type is derived from the extension.
+    const ext = MIME_EXTENSIONS[file.mimetype] || extname(file.originalname) || '';
+    const storagePath = `${req.user.tenantId}/emergency/${randomUUID()}${ext}`;
     let fileUrl: string;
     try {
       fileUrl = await this.storage.upload(storagePath, safeBuffer, file.mimetype);
