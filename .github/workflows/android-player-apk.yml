@@ -39,6 +39,29 @@ on:
         required: false
         default: ''
 
+# ── SUPPLY-02 (2026-08-04): every `uses:` here is pinned to a full commit SHA.
+#
+# This is the ONE job that materializes the production Android signing key: it
+# decodes RELEASE_KEYSTORE_BASE64 to disk and puts RELEASE_STORE_PASSWORD /
+# RELEASE_KEY_PASSWORD / RELEASE_KEY_ALIAS into the build step's environment.
+# Every action running in that job can read both.
+#
+# A tag like `@v4` is MUTABLE — the owner (or anyone who compromises them) can
+# repoint it at new code, and the next run executes it with no diff for us to
+# review. For a normal CI job that is an accepted risk. Here the prize is the
+# key that signs the APK for a fleet of school displays, and Android will
+# install an update signed by that key without question. So this job does not
+# get to run code we have not pinned.
+#
+# The SHAs below are exactly what those tags resolved to when pinned, so this
+# changed NO behaviour — it only removed the ability to change it silently.
+#
+# Updating one: resolve the tag yourself and read the diff first, e.g.
+#   gh api repos/actions/checkout/git/ref/tags/v4 -q .object.sha
+# Keep the trailing `# v4` comment — it is the only human-readable record of
+# which version a SHA corresponds to. Dependabot understands this format and
+# will still offer bumps (see .github/dependabot.yml).
+
 permissions:
   contents: write   # softprops/action-gh-release needs write to create Releases
 
@@ -52,10 +75,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: 17
@@ -63,15 +86,15 @@ jobs:
       # For the artifact guards below. They are dependency-free plain
       # Node (no pnpm install), so this is the only setup they need.
       - name: Set up Node (for the release guards)
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
 
       - name: Cache Gradle
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.gradle/caches
@@ -81,7 +104,7 @@ jobs:
           restore-keys: gradle-${{ runner.os }}-
 
       - name: Install Gradle (bootstrap — wrapper jar isn't committed)
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@d9c87d481d55275bb5441eef3fe0e46805f9ef70 # v3
         with:
           gradle-version: '8.7'
 
@@ -193,7 +216,7 @@ jobs:
 
       - name: Upload gradle log on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: gradle-build-log
           path: apps/player/gradle-build.log
@@ -247,7 +270,7 @@ jobs:
           ls -la "$NEW_PATH"
 
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: edu-cms-player-apk
           path: ${{ steps.locate.outputs.apk }}
@@ -293,7 +316,7 @@ jobs:
           ls -la "$MGR_NEW_PATH"
 
       - name: Upload Manager APK artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: edu-cms-manager-apk
           path: ${{ steps.locate-manager.outputs.apk }}
@@ -339,7 +362,7 @@ jobs:
       # universal, then armeabi-v7a — so naming here just needs to match.
       - name: Attach APK to GitHub Release (on tag push)
         if: startsWith(github.ref, 'refs/tags/player-v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: ${{ steps.locate.outputs.apk }}
           tag_name: ${{ github.ref_name }}
@@ -361,7 +384,7 @@ jobs:
       # APKs version independently.
       - name: Attach Manager APK to GitHub Release (on tag push)
         if: startsWith(github.ref, 'refs/tags/manager-v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: ${{ steps.locate-manager.outputs.apk }}
           tag_name: ${{ github.ref_name }}
