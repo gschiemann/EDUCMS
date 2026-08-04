@@ -157,7 +157,16 @@ export class ProxyController {
 
         contentType = upstream.contentType || 'text/html';
 
-        if (!contentType.includes('text/html') && !contentType.includes('application/xhtml')) {
+        // HTTP-01 / XSS-01 (2026-08-04) — CASE-NORMALIZE BEFORE BRANCHING.
+        // `contentType` comes verbatim off the attacker's response
+        // (safe-fetch.ts returns `String(headers['content-type'] || …)` with
+        // its case untouched). The test below used the raw value, so an
+        // upstream answering `Content-Type: TEXT/HTML` failed both
+        // `.includes()` checks and was routed into the RELAY branch instead of
+        // the sandboxed HTML branch — the one place HTML must never go.
+        const ctLower = contentType.toLowerCase();
+
+        if (!ctLower.includes('text/html') && !ctLower.includes('application/xhtml')) {
           // 2026-04-29 — operator (Nth time): "fix the URL asset,
           // shit does not work yet after so many attempts". Old code
           // 302-redirected non-HTML responses to the upstream — which
@@ -170,7 +179,44 @@ export class ProxyController {
           //
           // Cap unchanged at 10 MB; same SSRF guards apply via
           // safeFetch.
-          res.setHeader('Content-Type', contentType);
+          // ── HTTP-01 / XSS-01 (2026-08-04) — this branch escaped RS-01. ──
+          //
+          // RS-01 hardened the HTML path and the error path with an
+          // opaque-origin sandbox CSP. This relay `return`s BEFORE either of
+          // them, so it kept shipping attacker-controlled bytes under an
+          // attacker-controlled Content-Type with only helmet's global policy.
+          //
+          // That matters because of where this response LIVES. vercel.json
+          // rewrites /api/v1/:path* to the API, so
+          // https://<web-origin>/api/v1/proxy/web?url=<evil> is SAME-ORIGIN
+          // with the dashboard and can be opened as a TOP-LEVEL navigation —
+          // where an iframe `sandbox` attribute does not apply, but the CSP
+          // directive does. One operator click on a crafted link was enough.
+          //
+          // Three things close it:
+          //  1. The same sandbox CSP the HTML path gets — WITHOUT
+          //     `allow-scripts`. This branch exists to relay images, CSS,
+          //     JSON and fonts for a page rendered elsewhere; nothing it
+          //     serves legitimately needs to execute, so it gets the stricter
+          //     form. `frame-ancestors *` is kept so the player iframe can
+          //     still embed relayed sub-resources.
+          //  2. `nosniff`, so a mislabelled body cannot be re-interpreted as
+          //     HTML by content sniffing.
+          //  3. The DOCUMENT-RENDERABLE types are refused a live Content-Type.
+          //     image/svg+xml is the sharp one — an SVG is a script-bearing
+          //     document, not a picture, and it was previously relayed with
+          //     its own MIME intact. Those become an octet-stream attachment;
+          //     the sandbox already neuters them, this makes it belt-and-braces.
+          const RENDERABLE_AS_DOCUMENT = /^(image\/svg\+xml|text\/xml|application\/xml|text\/xsl|application\/xhtml)/;
+          const safeContentType = RENDERABLE_AS_DOCUMENT.test(ctLower)
+            ? 'application/octet-stream'
+            : contentType;
+          if (safeContentType !== contentType) {
+            res.setHeader('Content-Disposition', 'attachment');
+          }
+          res.setHeader('Content-Security-Policy', 'sandbox; frame-ancestors *');
+          res.setHeader('X-Content-Type-Options', 'nosniff');
+          res.setHeader('Content-Type', safeContentType);
           res.setHeader('Access-Control-Allow-Origin', '*');
           res.setHeader('Cache-Control', 'public, max-age=300');
           res.send(upstream.body);

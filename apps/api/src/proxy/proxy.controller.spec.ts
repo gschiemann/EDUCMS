@@ -88,6 +88,76 @@ describe('ProxyController — spatial-nav shim injection', () => {
     expect(shim).toContain('var PARENTS=[');
   });
 
+  /**
+   * HTTP-01 / XSS-01 (2026-08-04) — the NON-HTML relay branch escaped RS-01.
+   *
+   * RS-01 sandboxed the HTML path and the error path. The relay `return`s
+   * before both, so it shipped attacker-controlled bytes under an
+   * attacker-controlled Content-Type from an origin that vercel.json makes
+   * SAME-ORIGIN with the dashboard.
+   */
+  describe('non-HTML relay branch containment', () => {
+    function relaying(contentType: string, body = 'BYTES') {
+      mockedFetch.mockResolvedValue({
+        status: 200,
+        contentType,
+        body: Buffer.from(body, 'utf8'),
+        finalUrl: 'https://example.com/x',
+      });
+    }
+
+    it('applies a sandbox CSP + nosniff to a relayed sub-resource', async () => {
+      relaying('image/png');
+      const res = fakeRes();
+      await controller.proxyWeb('https://example.com/x.png', undefined, res as never);
+
+      const csp = res.headers['content-security-policy'] as string;
+      expect(csp).toMatch(/(^|;)\s*sandbox\s*(;|$)/);
+      // This branch relays images/CSS/JSON — nothing here should ever execute.
+      expect(csp).not.toContain('allow-scripts');
+      expect(csp).not.toContain('allow-same-origin');
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
+    });
+
+    it('refuses to relay SVG under its own MIME (it is a script-bearing document)', async () => {
+      relaying('image/svg+xml', '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+      const res = fakeRes();
+      await controller.proxyWeb('https://example.com/x.svg', undefined, res as never);
+
+      expect(res.headers['content-type']).toBe('application/octet-stream');
+      expect(res.headers['content-disposition']).toBe('attachment');
+    });
+
+    it('does the same for the other document-renderable XML types', async () => {
+      for (const ct of ['text/xml', 'application/xml', 'text/xsl']) {
+        relaying(ct);
+        const res = fakeRes();
+        await controller.proxyWeb('https://example.com/x', undefined, res as never);
+        expect(res.headers['content-type']).toBe('application/octet-stream');
+      }
+    });
+
+    it('leaves an ordinary relayed type intact', async () => {
+      relaying('application/json');
+      const res = fakeRes();
+      await controller.proxyWeb('https://example.com/x.json', undefined, res as never);
+      expect(res.headers['content-type']).toBe('application/json');
+      expect(res.headers['content-disposition']).toBeUndefined();
+    });
+
+    it('routes a CASE-VARIANT html content-type into the sandboxed HTML path, not the relay', async () => {
+      // The branch test used the raw upstream value, so `TEXT/HTML` missed both
+      // .includes() checks and fell into the relay — the one place HTML must
+      // never land.
+      relaying('TEXT/HTML; charset=utf-8', '<html><body>hi</body></html>');
+      const res = fakeRes();
+      await controller.proxyWeb('https://example.com/', undefined, res as never);
+
+      expect(res.headers['x-educms-mode']).toBe('static');
+      expect(res.body).toContain('/*VOS-SPATIAL-NAV*/');
+    });
+  });
+
   it('keeps the embedding + SSRF-facing response headers unchanged', async () => {
     const res = fakeRes();
     await controller.proxyWeb('https://example.com/', 'true', res as never);
