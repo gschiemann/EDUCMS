@@ -934,7 +934,14 @@ export class BrandingController {
 
   private handleScrapeError(e: any): never {
     if (e instanceof SsrfError) {
-      throw new HttpException({ message: e.message, code: 'BRANDING_SSRF' }, HttpStatus.BAD_REQUEST);
+      // SDE-01 (2026-08-04) — return the uniform `publicMessage`, never
+      // `message`, which names the resolved private IP. This path IS
+      // authenticated (runScrape takes a tenantId + userId), so it is the
+      // milder sibling of the unauthenticated /proxy leak — but a tenant admin
+      // still has no business enumerating our internal network from a branding
+      // scrape, and keeping both call sites identical means the next person
+      // cannot "fix" one and miss the other.
+      throw new HttpException({ message: e.publicMessage, code: 'BRANDING_SSRF' }, HttpStatus.BAD_REQUEST);
     }
     if (e?.name === 'FetchTooLargeError') {
       throw new HttpException({ message: 'Page too large to scrape', code: 'BRANDING_TOO_LARGE' }, HttpStatus.PAYLOAD_TOO_LARGE);

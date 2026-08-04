@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Res, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Query, Res, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import type { Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { safeFetch, SsrfError, FetchTooLargeError } from '../branding/safe-fetch';
@@ -40,6 +40,9 @@ function spatialNavShim(): string {
  */
 @Controller('api/v1/proxy')
 export class ProxyController {
+  // SDE-01 — SSRF refusal detail (including the resolved IP) goes HERE, never
+  // to the caller. See the SsrfError branch below.
+  private readonly logger = new Logger(ProxyController.name);
 
   // Optional — Nest auto-resolves if RendererService is in providers,
   // but we accept it as undefined to keep the controller bootable on
@@ -143,7 +146,16 @@ export class ProxyController {
           if (e instanceof SsrfError) {
             // Don't leak whether the target was private vs invalid —
             // uniform error for SSRF probing.
-            throw new HttpException({ code: 'PROXY_UPSTREAM_BLOCKED', message: `Upstream blocked: ${e.message}` }, HttpStatus.BAD_REQUEST);
+            //
+            // SDE-01 (2026-08-04): that was the INTENT, but the line below
+            // interpolated `e.message`, which carries the specific reason and
+            // the resolved IP ("DNS for x resolved to private range
+            // (10.0.0.5)"). On an UNAUTHENTICATED endpoint that is an internal
+            // network mapper. `publicMessage` is the uniform string the comment
+            // always described; the detail goes to the log instead, where it is
+            // actually useful.
+            this.logger.warn(`SSRF guard blocked upstream: ${e.message}`);
+            throw new HttpException({ code: 'PROXY_UPSTREAM_BLOCKED', message: e.publicMessage }, HttpStatus.BAD_REQUEST);
           }
           if (e instanceof FetchTooLargeError) {
             throw new HttpException({ code: 'PROXY_UPSTREAM_TOO_LARGE', message: `Upstream response too large` }, HttpStatus.PAYLOAD_TOO_LARGE);
@@ -748,7 +760,15 @@ window.addEventListener('load',function(){
       let message = 'An unknown proxy error occurred';
       let status = HttpStatus.BAD_GATEWAY;
 
-      if (err instanceof HttpException) {
+      // SDE-01 — an SsrfError reaching this generic handler (i.e. thrown
+      // somewhere other than the safeFetch branch above, such as the renderer
+      // path) must be sanitized here too, or the same resolved-IP leak returns
+      // through the HTML error page instead of the JSON one.
+      if (err instanceof SsrfError) {
+        this.logger.warn(`SSRF guard blocked upstream: ${err.message}`);
+        message = err.publicMessage;
+        status = HttpStatus.BAD_REQUEST;
+      } else if (err instanceof HttpException) {
         message = err.message;
         status = err.getStatus();
       } else if (err.message) {

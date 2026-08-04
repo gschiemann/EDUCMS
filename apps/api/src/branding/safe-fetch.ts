@@ -16,7 +16,29 @@ import * as http from 'node:http';
 import * as zlib from 'node:zlib';
 
 export class SsrfError extends Error {
-  constructor(msg: string) { super(msg); this.name = 'SsrfError'; }
+  /**
+   * SDE-01 (2026-08-04) — the message a CALLER is allowed to see.
+   *
+   * `message` deliberately carries the diagnostic detail, including the IP a
+   * hostname resolved to, because that is what makes a server log useful. But
+   * `/api/v1/proxy/web` is UNAUTHENTICATED (`@Controller('api/v1/proxy')` has
+   * no guards) and echoed `e.message` straight back, so anyone on the internet
+   * could submit `?url=http://something.internal/` and read back both the fact
+   * that it resolved privately and the exact address — an internal network
+   * mapper, free of charge, with no account.
+   *
+   * So every SsrfError now carries a second, uniform string for the wire. It is
+   * intentionally identical for a private-IP literal, a private DNS
+   * resolution, a bad scheme and a bad port: a caller who can distinguish those
+   * can still enumerate internal hostnames by watching WHICH refusal comes
+   * back, even without the address. One message tells them only "no".
+   */
+  readonly publicMessage: string;
+  constructor(msg: string, publicMessage = 'Upstream host is not permitted') {
+    super(msg);
+    this.name = 'SsrfError';
+    this.publicMessage = publicMessage;
+  }
 }
 
 export class FetchTooLargeError extends Error {
