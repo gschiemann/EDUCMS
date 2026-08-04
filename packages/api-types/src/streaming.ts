@@ -57,8 +57,10 @@ export type StreamAuthKind =
  *                     Customer runs the service entirely outside our
  *                     CMS (e.g. on a separate screen). Listed so
  *                     customers know we know about them. Grey badge.
- *                     (Currently no Streaming providers fall here —
- *                     everything has at least a bridge path.)
+ *                     Also used for a capability WE have not built yet
+ *                     where listing it still helps operators find the
+ *                     working alternative (see `iptv-m3u`, retiered from
+ *                     DIRECT by the 2026-08-03 integration census).
  */
 export type StreamIntegrationTier = 'DIRECT' | 'PARTNER' | 'BRIDGE' | 'CLOSED';
 
@@ -388,8 +390,16 @@ export const STREAM_PROVIDERS: ReadonlyArray<StreamProviderDef> = [
     id: 'iptv-m3u',
     name: 'IPTV M3U Playlist',
     category: 'custom',
-    integrationTier: 'DIRECT',
-    blurb: 'Upload a .m3u / .m3u8 playlist file (multi-channel IPTV).',
+    // Census C-2 (2026-08-03): was DIRECT — "self-serve today, green badge" —
+    // with tierReason "We parse + render channels". No M3U parser exists
+    // anywhere in the repo (two independent searches for EXTINF / EXTM3U /
+    // parseM3U returned zero) and there is no upload path, so DIRECT was a
+    // promise the product could not keep: the tile rendered a Connect button
+    // that leads nowhere, which is the exact thing this tier system was
+    // introduced to prevent. CLOSED is the honest tier — grey badge, no
+    // Connect button — and the tierReason points at what DOES work today.
+    integrationTier: 'CLOSED',
+    blurb: 'Multi-channel .m3u playlist upload — not supported yet.',
     iconEmoji: '📋',
     auth: 'customHls',
     playback: 'hls',
@@ -397,7 +407,7 @@ export const STREAM_PROVIDERS: ReadonlyArray<StreamProviderDef> = [
     pricingNote: 'Bring your own',
     allowsAdOverlay: true,
     bestFor: ['BAR', 'RESTAURANT'],
-    tierReason: 'Operator uploads their licensed M3U feed (e.g. cable provider, in-house IPTV). We parse + render channels.',
+    tierReason: 'We do not parse multi-channel M3U playlists and there is no playlist-upload path. A SINGLE live stream works today: use "Custom HLS Stream" and paste the channel\'s .m3u8 URL directly.',
   },
 ];
 

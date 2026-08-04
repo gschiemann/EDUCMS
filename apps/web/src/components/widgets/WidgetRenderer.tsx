@@ -4305,12 +4305,30 @@ function RSSWidget({ config, compact }: { config: any; compact: boolean }) {
   );
 }
 
+/**
+ * SOCIAL_FEED — deliberately NOT a live feed.
+ *
+ * 2026-08-03 integration census, finding C-1: this widget printed
+ * "Connected" whenever `embedUrl` was truthy, while nothing in the app has
+ * ever fetched a social post — no client hook, no server route, no provider
+ * credential (proven two ways: no `useLiveSocial|socialFeed|fetchSocial`
+ * anywhere in apps/web, no `instagram|facebook|walls.io|embedsocial` call in
+ * apps/api). An operator pasted a profile URL, read the word "Connected",
+ * and shipped a board that would never show a post.
+ *
+ * The App Library got this right — all four social tiles are `comingSoon`.
+ * The raw widget type is the one surface the capability truth-gate does not
+ * cover, which is exactly where the costume survived. Until a real provider
+ * integration ships, this says what is true.
+ */
 function SocialWidget({ config }: { config: any }) {
   return (
     <div className="absolute top-0 right-0 bottom-0 left-0 flex flex-col items-center justify-center" style={{ background: 'linear-gradient(135deg, #fdf2f8, #fce7f3)' }}>
       <Share2 style={{ width: '1.5em', height: '1.5em', color: '#ec4899', opacity: 0.4 }} />
       <span style={{ fontSize: '0.45em', color: '#f472b6', fontWeight: 600, marginTop: '0.3em' }}>Social Feed</span>
-      {config.embedUrl && <span style={{ fontSize: '0.35em', color: '#94a3b8', marginTop: '0.15em' }}>Connected</span>}
+      <span style={{ fontSize: '0.35em', color: '#94a3b8', marginTop: '0.15em' }}>
+        {config.embedUrl ? 'Live posts coming soon — URL saved' : 'Coming soon'}
+      </span>
     </div>
   );
 }

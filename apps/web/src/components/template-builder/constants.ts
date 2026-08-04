@@ -163,7 +163,10 @@ export const WIDGET_GROUPS: ReadonlyArray<{
       { type: 'TEXT', label: 'Text Block', desc: 'Simple text with custom styling', icon: Type },
       { type: 'RICH_TEXT', label: 'Rich Text', desc: 'Formatted text with headings & links', icon: FileText },
       { type: 'RSS_FEED', label: 'News Feed', desc: 'Headlines from any RSS source', icon: Rss },
-      { type: 'SOCIAL_FEED', label: 'Social Media', desc: 'Posts from social accounts', icon: Share2 },
+      // Census C-1 (2026-08-03): no social provider integration exists yet.
+      // The description must not imply live posts — the renderer says the
+      // same thing. Restore the original copy when a provider ships.
+      { type: 'SOCIAL_FEED', label: 'Social Media', desc: 'Placeholder tile — live posts coming soon', icon: Share2 },
     ],
   },
   {
