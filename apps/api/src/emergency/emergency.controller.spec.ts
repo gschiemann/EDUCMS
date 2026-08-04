@@ -24,7 +24,12 @@ describe('EmergencyController', () => {
       client: {
         tenant: {
           findUnique: jest.fn().mockResolvedValue({ id: 't1', panicLockdownPlaylistId: null, emergencyStatus: 'INACTIVE', emergencyPlaylistId: null, locationBasedEmergencyEnabled: false }),
+          // District fan-out (2026-08-03): tenant-scope trigger/all-clear walk
+          // Tenant.parentId for descendants. Default = 't1' is a LEAF school,
+          // so every pre-existing assertion here is the single-tenant path.
+          findMany: jest.fn().mockResolvedValue([]),
           update: jest.fn().mockResolvedValue({}),
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
         screenGroup: {
           // Default: group 'g1' belongs to tenant 't1'
@@ -577,8 +582,11 @@ describe('EmergencyController', () => {
       const body = { scopeType: 'tenant' as const, scopeId: 't1' };
       const result = await controller.clearEmergency('o1', body, req);
       expect(result.success).toBe(true);
+      // District fan-out (2026-08-03): the delete is now subtree-scoped.
+      // For a leaf school the subtree is exactly [t1], so this is the same
+      // set of rows the previous `{ tenantId: 't1' }` matched.
       expect(prismaService.client.screenEmergencyOverride.deleteMany).toHaveBeenCalledWith({
-        where: { tenantId: 't1' },
+        where: { tenantId: { in: ['t1'] } },
       });
     });
 

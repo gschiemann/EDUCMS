@@ -146,7 +146,10 @@ describe('Emergency broadcast SUCCESS path (end-to-end, stateful)', () => {
           findUnique: jest.fn().mockImplementation(({ where }: any) =>
             Promise.resolve(tenants[where.id] || null),
           ),
+          // District fan-out (2026-08-03) — 't1' is a leaf school here.
+          findMany: jest.fn().mockResolvedValue([]),
           update: jest.fn().mockResolvedValue({}),
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
         screen: {
           findUnique: jest.fn().mockResolvedValue({
