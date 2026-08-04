@@ -1535,6 +1535,11 @@ export class ScreensController {
       throw new HttpException({ code: 'SCREEN_ALREADY_PAIRED', message: 'This screen is already paired to another organization' }, HttpStatus.CONFLICT);
     }
 
+    // ISO-01 / EM-04 (2026-08-04) — the group named at claim time must belong
+    // to this tenant. Checked BEFORE the seat transaction so a bad group id
+    // costs nothing and cannot consume a licence seat on its way to failing.
+    await this.assertScreenGroupOwned(body.screenGroupId, req.user.tenantId);
+
     // Audit fix #10: wrap the seat-availability check + the screen claim
     // in a SERIALIZABLE transaction so two admins can't simultaneously pass
     // assertSeatAvailable and overshoot the seat limit. Two admins racing
@@ -1769,6 +1774,50 @@ export class ScreensController {
     return { ok: true, screenId: screen.id, newPairingCode };
   }
 
+  /**
+   * ISO-01 / EM-04 (2026-08-04) — a screen may only join a ScreenGroup that
+   * belongs to its OWN tenant.
+   *
+   * Both write sites (`PUT /screens/:id` and the pair/claim endpoint) took
+   * `body.screenGroupId` on trust and wrote it straight to the row. Nothing
+   * checked the group's tenant, and ScreenGroup ids are opaque cuids, so an
+   * admin who learned one — a support thread, a shared screenshot, a former
+   * employer — could bind their own screen into another tenant's group.
+   *
+   * That is not cosmetic. Schedule resolution matches a screen by its group
+   * (`scheduleTargetOr.push({ screenGroupId: screen.screenGroupId })`, further
+   * down this file), so the screen starts playing the OTHER tenant's playlists
+   * on hardware the attacker physically controls — a pull-based cross-tenant
+   * content read. Group scope is also a targeting unit for emergency
+   * broadcasts and for frame-locked sync.
+   *
+   * Every other controller that accepts a screenGroupId already validates it
+   * this way (schedules.controller.ts:146-153, screen-groups, emergency,
+   * sports). This file was the gap.
+   *
+   * Fails as NOT_FOUND rather than FORBIDDEN on purpose: a distinct 403 would
+   * confirm the id exists in some other tenant, turning the endpoint into an
+   * id-probing oracle.
+   */
+  private async assertScreenGroupOwned(
+    screenGroupId: string | null | undefined,
+    tenantId: string,
+  ): Promise<void> {
+    // undefined = field absent (leave unchanged); null / '' = clear the group.
+    // Neither can move a screen INTO another tenant, so neither needs a lookup.
+    if (!screenGroupId) return;
+    const owned = await this.prisma.client.screenGroup.findFirst({
+      where: { id: screenGroupId, tenantId },
+      select: { id: true },
+    });
+    if (!owned) {
+      throw new HttpException(
+        { code: 'SCREEN_GROUP_NOT_FOUND', message: 'Screen group not found' },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+  }
+
   // ─── ADMIN: Update a screen ───
   @UseGuards(JwtAuthGuard, RbacGuard)
   @Put(':id')
@@ -1795,6 +1844,9 @@ export class ScreensController {
       where: { id, tenantId: req.user.tenantId },
     });
     if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+
+    // ISO-01 / EM-04 (2026-08-04) — the target group must belong to THIS tenant.
+    await this.assertScreenGroupOwned(body.screenGroupId, req.user.tenantId);
 
     // Resolve hardwareModel against the catalog (Agent A). Permissive
     // case/whitespace normalization via resolveHardwareModel; unknown
