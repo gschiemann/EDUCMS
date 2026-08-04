@@ -88,6 +88,20 @@ const PAIRING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 // never got the strip, so the fingerprint kept leaking to CONTRIBUTOR and
 // RESTRICTED_VIEWER on a sibling route. Import it; do not re-declare it.
 
+/**
+ * AUTHZ-03 (2026-08-04) — collapse CR/LF before interpolating a
+ * client-controlled value into a log line.
+ *
+ * `POST /screens/status/:fp/crash-report` is unauthenticated by design, and its
+ * body is echoed into the Railway stream the operator actually scans. Without
+ * this, a forged report can embed newlines and write convincing fake entries
+ * beneath its own — log injection against the one surface where this data is
+ * read today.
+ */
+export function oneLineLog(value: string | null | undefined): string {
+  return String(value ?? '').replace(/[\r\n\u2028\u2029]+/g, ' ');
+}
+
 function generatePairingCode(length: number = 6): string {
   // sec-fix(wave1) #3: use crypto.randomInt (CSPRNG) instead of
   // Math.random() (predictable xorshift). Same alphabet; default
@@ -1148,6 +1162,7 @@ export class ScreensController {
       message?: string;
       stack?: string;
     },
+    @Req() req?: ExpressReq,
   ) {
     if (fingerprint.startsWith('preview-')) return { ok: true, ignored: 'preview' };
     const screen = await this.prisma.client.screen.findUnique({
@@ -1175,11 +1190,38 @@ export class ScreensController {
       } as any,
     });
 
+    // AUTHZ-03 (2026-08-04) — this route is anonymous BY DESIGN and stays that
+    // way. Both shipped APKs' crash uploaders send no Authorization header, a
+    // crash report comes from a dying process (the worst place to add an auth
+    // dependency), and no server change can retrofit a header onto already
+    // installed players. Hard-requiring auth would simply take fleet crash
+    // reporting dark.
+    //
+    // What we CAN do is stop treating every report as equally trustworthy.
+    // `heartbeatProvesDevice` is free when no credential is presented (it
+    // returns false before doing any work), so this costs nothing on the
+    // common path and records whether the caller actually proved possession of
+    // this screen's credential — mirroring the ota-state sibling above.
+    //
+    // Recorded in the log line rather than a Screen column on purpose:
+    // nothing in apps/web renders the lastCrash* fields today, so a new column
+    // would be a schema migration plus the SCREEN_TELEMETRY_ONLY_FIELDS entry
+    // in manifest-hot-cache.ts — and forgetting that entry is the documented
+    // trap that silently recreates the 25 GB/mo Supabase egress bug. Not worth
+    // it for a field with no consumer. Revisit if a crash panel is ever built.
+    const authed = req ? await this.heartbeatProvesDevice(req, screen.id) : false;
+
     // Loud Railway log — these are real crashes; we want them
     // visible in the operator's daily-glance scroll, not buried.
+    //
+    // Every interpolated field is client-controlled on an unauthenticated
+    // route, so CR/LF is stripped first: without it a forged report can embed
+    // newlines and write convincing fake entries into the operator's log
+    // stream, which is the only place this data is read today.
     console.error(
-      `[crash] fp=${fingerprint.slice(0, 18)}… source=${source} version=${versionName ?? '-'} ` +
-      `message="${(message || '').slice(0, 200)}"`,
+      `[crash] fp=${oneLineLog(fingerprint).slice(0, 18)}… authed=${authed} source=${source} ` +
+      `version=${oneLineLog(versionName) || '-'} ` +
+      `message="${oneLineLog(message).slice(0, 200)}"`,
     );
 
     return { ok: true };
@@ -1738,7 +1780,26 @@ export class ScreensController {
             name: screen.name,
             fingerprint,
             previousTenantId,
-            newPairingCode,
+            // SDE-03 (2026-08-04) — NEVER persist the fresh pairing code here.
+            //
+            // This row is written under the tenant that just LOST the screen,
+            // and `GET /api/v1/audit` is tenantId-scoped to exactly that tenant
+            // and returns `details` verbatim to any SCHOOL_ADMIN or
+            // DISTRICT_ADMIN of it. The pairing code is a live claim
+            // credential: `POST /screens/pair` looks a screen up by it and
+            // moves it into the caller's tenant, and right after an unpair the
+            // row's tenantId is null, so the SCREEN_ALREADY_PAIRED guard does
+            // not fire. Persisting it handed the previous owner a permanent key
+            // back into a display they no longer possess.
+            //
+            // A truncated prefix is NOT an acceptable middle ground: two
+            // characters of a six-character code cuts the search space by
+            // ~1000x, and no support workflow reads this field. A boolean
+            // marker keeps the forensic signal ("the code was rotated") with
+            // none of the credential. The code still goes out in the HTTP
+            // response below — to the device that just proved possession,
+            // which is the one correct recipient.
+            pairingCodeRotated: true,
           }),
         },
       }).catch(() => { /* non-fatal */ });
