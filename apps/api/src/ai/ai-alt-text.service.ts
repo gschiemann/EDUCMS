@@ -203,11 +203,27 @@ export class AiAltTextService {
    *   - Google    the tenant's gemini-* model (BYOK only — the platform
    *               fallback keys are OpenAI→Anthropic, never Google)
    *
-   * Returns one of three outcomes so the caller can emit an HONEST skip
+   * ECONOMIC-MODEL SAFETY (2026-08-03) — the S5 `AI_KEY_UNREADABLE` hard stop
+   * shipped to every spend path in `AiService.resolveProviderKey` on
+   * 2026-07-16, but THIS resolver kept a pre-hardening copy: on a decrypt
+   * failure it logged a warning and fell straight through to the platform
+   * OPENAI_API_KEY / ANTHROPIC_API_KEY. So a tenant whose BYOK key became
+   * unreadable (master-key rotation, corrupted blob) silently billed the
+   * PLATFORM Tier-1 budget for their Tier-2 alt-text — the exact thing
+   * CLAUDE.md's economic model forbids ("The platform must NEVER silently
+   * spend Tier-1 budget on Tier-2 actions"), and it was invisible because
+   * alt-text is fire-and-forget. A configured-but-unreadable key is now a
+   * hard stop: no platform call, no spend, an actionable audit row.
+   *
+   * Returns one of four outcomes so the caller can emit an HONEST skip
    * reason (2026-05-29 audit §3 fix — the old code logged
    * `no_ai_provider_configured` even when a provider WAS configured but
    * alt-text couldn't use it):
    *   - { resolved }            → a usable vision provider + key
+   *   - { unreadableKey }       → a BYOK key IS set but could not be
+   *                               decrypted. HARD STOP — never falls back
+   *                               to the platform key. Caller emits
+   *                               `ai_key_unreadable`.
    *   - { unsupportedProvider } → a BYOK key IS set, but for a provider
    *                               alt-text can't use (no recognized
    *                               vision branch). Caller emits
@@ -222,6 +238,9 @@ export class AiAltTextService {
       model: string;
       source: 'tenant' | 'platform';
     };
+    /** Set when a BYOK key exists but could not be decrypted — distinct
+     *  from both "no key at all" and "provider has no vision branch". */
+    unreadableKey?: true;
     /** Set when a BYOK key exists but its provider has no alt-text
      *  vision branch — distinct from "no key at all". */
     unsupportedProvider?: string;
@@ -255,8 +274,12 @@ export class AiAltTextService {
             },
           };
         } catch (e: any) {
-          // Decryption fail — log + try platform fallback.
-          this.logger.warn(`Tenant ${tenantId} alt-text key decrypt failed: ${e?.message}`);
+          // Decryption failed (master-key rotation, corrupted blob). This
+          // used to fall through to the platform key — silently spending
+          // Tier-1 budget on a Tier-2 action. HARD STOP instead; the caller
+          // audits `ai_key_unreadable` so the operator re-enters the key.
+          this.logger.error(`Failed to decrypt tenant AI key (${tenantId}) for alt-text: ${e?.message}`);
+          return { unreadableKey: true };
         }
       } else {
         // A BYOK key is configured but for a provider we have no vision
@@ -388,6 +411,25 @@ export class AiAltTextService {
     // at all" from "a key IS set but its provider can't do vision" so
     // the skip reason is HONEST (2026-05-29 audit §3 fix).
     const resolveOutcome = await this.resolveProvider(args.tenantId);
+    // S5 hard stop (2026-08-03): a configured-but-unreadable BYOK key must
+    // NEVER fall through to the platform (Tier-1) key. Skip + audit rather
+    // than throw — this method is fire-and-forget from the upload path and
+    // an unreadable key must not fail an operator's upload.
+    if (resolveOutcome.unreadableKey) {
+      await this.auditLog({
+        tenantId: args.tenantId,
+        userId: args.userId,
+        assetId: args.assetId,
+        action: 'AI_ALT_TEXT_SKIPPED',
+        details: {
+          reason: 'ai_key_unreadable',
+          code: 'AI_KEY_UNREADABLE',
+          message:
+            'Your saved AI key could not be read — re-enter it in Settings → AI provider.',
+        },
+      });
+      return null;
+    }
     if (resolveOutcome.unsupportedProvider) {
       await this.auditLog({
         tenantId: args.tenantId,
@@ -603,6 +645,22 @@ export class AiAltTextService {
 
     // Guard 2: resolve a vision-capable provider (HONEST skip reasons).
     const resolveOutcome = await this.resolveProvider(args.tenantId);
+    // Same S5 hard stop as generateImageAltText — a configured-but-unreadable
+    // BYOK key must never silently spend the platform (Tier-1) key.
+    if (resolveOutcome.unreadableKey) {
+      await this.auditLog({
+        tenantId: args.tenantId,
+        userId: args.userId,
+        action: 'AI_DESIGN_REFERENCE_SKIPPED',
+        details: {
+          reason: 'ai_key_unreadable',
+          code: 'AI_KEY_UNREADABLE',
+          message:
+            'Your saved AI key could not be read — re-enter it in Settings → AI provider.',
+        },
+      });
+      return null;
+    }
     if (resolveOutcome.unsupportedProvider) {
       await this.auditLog({
         tenantId: args.tenantId,

@@ -521,4 +521,87 @@ describe('AiAltTextService (P1-2)', () => {
     const audit = auditRows.find((a) => a.action === 'AI_ALT_TEXT_SKIPPED');
     expect(JSON.parse(audit.details).reason).toBe('no_ai_provider_configured');
   });
+
+  // ── S5 economic-model hard stop (2026-08-03) ─────────────────────────────
+  // `AI_KEY_UNREADABLE` reached every spend path in AiService on 2026-07-16
+  // but MISSED alt-text, which kept a pre-hardening copy of key resolution:
+  // on a decrypt failure it warned and fell through to the platform key —
+  // silently billing VenueOS's Tier-1 budget for a tenant's Tier-2 action,
+  // invisibly, because alt-text is fire-and-forget. Both vision entrypoints
+  // must now hard-stop.
+  describe('S5: configured-but-unreadable BYOK key never spends the platform key', () => {
+    beforeEach(() => {
+      // Platform keys ARE present — this is the exact condition under which
+      // the old fall-through silently spent Tier-1 budget.
+      process.env.OPENAI_API_KEY = 'sk-platform';
+      process.env.ANTHROPIC_API_KEY = 'sk-ant-platform';
+      // A key blob that `openAiKey()` cannot decrypt (not sealed output).
+      tenantsById.set('tenant-1', {
+        id: 'tenant-1',
+        aiProvider: 'openai',
+        aiKeyEncrypted: 'not-a-valid-sealed-blob',
+        aiModel: '',
+      });
+    });
+
+    it('generateImageAltText → null + ai_key_unreadable audit, NO provider call', async () => {
+      const result = await service.generateImageAltText({
+        tenantId: 'tenant-1',
+        assetId: 'asset-9',
+        imageBuffer: Buffer.from([0]),
+        mimeType: 'image/jpeg',
+      });
+
+      expect(result).toBeNull();
+      // The load-bearing assertion: no upstream call, so no platform spend.
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      const audit = auditRows.find((a) => a.action === 'AI_ALT_TEXT_SKIPPED');
+      expect(audit).toBeDefined();
+      const details = JSON.parse(audit.details);
+      expect(details.reason).toBe('ai_key_unreadable');
+      expect(details.code).toBe('AI_KEY_UNREADABLE');
+      // Must NOT masquerade as either of the pre-existing skip reasons.
+      expect(details.reason).not.toBe('no_ai_provider_configured');
+      expect(details.reason).not.toBe('provider_unsupported_for_altext');
+    });
+
+    it('analyzeDesignReference → null + ai_key_unreadable audit, NO provider call', async () => {
+      const result = await service.analyzeDesignReference({
+        tenantId: 'tenant-1',
+        imageBuffer: Buffer.from([0]),
+        mimeType: 'image/png',
+      });
+
+      expect(result).toBeNull();
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      const audit = auditRows.find((a) => a.action === 'AI_DESIGN_REFERENCE_SKIPPED');
+      expect(audit).toBeDefined();
+      const details = JSON.parse(audit.details);
+      expect(details.reason).toBe('ai_key_unreadable');
+      expect(details.code).toBe('AI_KEY_UNREADABLE');
+    });
+
+    it('a tenant that NEVER configured a key still uses the platform key (no regression)', async () => {
+      tenantsById.set('tenant-1', { id: 'tenant-1', aiProvider: null, aiKeyEncrypted: null });
+      fetchMock.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ choices: [{ message: { content: 'A red barn at dusk.' } }] }),
+      });
+
+      const result = await service.generateImageAltText({
+        tenantId: 'tenant-1',
+        imageBuffer: Buffer.from([0]),
+        mimeType: 'image/jpeg',
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.provider).toBe('openai');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const audit = auditRows.find((a) => a.action === 'AI_ALT_TEXT_GENERATED');
+      expect(JSON.parse(audit.details).source).toBe('platform');
+    });
+  });
 });
