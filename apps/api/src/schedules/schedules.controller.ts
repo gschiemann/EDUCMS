@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
@@ -24,6 +24,8 @@ import {
 @Controller('api/v1/schedules')
 @UseGuards(JwtAuthGuard, RbacGuard)
 export class SchedulesController {
+  private readonly auditLogger = new Logger('SchedulesController');
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly redisService: RedisService,
@@ -36,6 +38,53 @@ export class SchedulesController {
       const message = this.signer.signMessage('SYNC', { source: 'schedule_update' });
       await this.redisService.publish(`tenant:${tenantId}`, message);
     } catch (e) {}
+  }
+
+  /**
+   * Forensic trail for the two schedule mutations that had none (2026-08-03).
+   *
+   * `toggle` and `remove` already audit inside their transactions, and
+   * `update` audits — but ONLY when `isActive` actually flips. So the two
+   * most direct answers to "who put this on that screen" were missing:
+   *
+   *   - CREATE, the publish action itself, wrote no SCHEDULE_CREATED at all
+   *     (the only row was SUBMISSION_CREATED on the CONTRIBUTOR draft path).
+   *   - a PUT that RE-TARGETS a schedule at a different screen/group, swaps
+   *     its playlist, or moves its time window wrote nothing whatsoever.
+   *
+   * Same row shape as the existing SCHEDULE_TOGGLED / SCHEDULE_DELETED rows.
+   * AuditLog carries DB-level immutability triggers, so this goes through
+   * the normal Prisma create path.
+   *
+   * Best-effort (a DB hiccup must never fail an operator's publish) but not
+   * silent — a failure logs at warn. The delete/toggle paths that must be
+   * atomic keep their in-transaction writes untouched.
+   *
+   * `req.user` exposes the actor id as `id` on most routes and `userId` on
+   * some (the existing PUT audit row reads `userId`), so accept either.
+   */
+  private async audit(
+    req: any,
+    action: 'SCHEDULE_CREATED' | 'SCHEDULE_UPDATED',
+    scheduleId: string | null,
+    details: Record<string, unknown> = {},
+  ): Promise<void> {
+    const tenantId = req?.user?.tenantId;
+    if (!tenantId) return; // defensive — JwtAuthGuard guarantees this
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId,
+          userId: req?.user?.id ?? req?.user?.userId ?? null,
+          action,
+          targetType: 'Schedule',
+          targetId: scheduleId,
+          details: JSON.stringify(details),
+        },
+      });
+    } catch (e: any) {
+      this.auditLogger.warn(`audit(${action}, ${scheduleId}) failed: ${e?.message ?? e}`);
+    }
   }
 
   @Get()
@@ -237,6 +286,25 @@ export class SchedulesController {
         screen: { select: { id: true, name: true } },
       },
     });
+    // The publish action itself — previously invisible in forensics. Audit
+    // BOTH the live publish and the staged draft (a draft is what an
+    // approval later flips live, so the chain must start here).
+    await this.audit(req, 'SCHEDULE_CREATED', res.id, {
+      playlistId: res.playlistId,
+      playlistName: (res as any).playlist?.name ?? null,
+      screenId: res.screenId,
+      screenGroupId: res.screenGroupId,
+      isActive: res.isActive,
+      staged: !willBeActive,
+      mode,
+      startTime: res.startTime,
+      endTime: res.endTime,
+      daysOfWeek: res.daysOfWeek,
+      timeStart: res.timeStart,
+      timeEnd: res.timeEnd,
+      priority: res.priority,
+    });
+
     // Only nudge players when the new schedule is actually live.
     // Drafts don't affect the running fleet so there's no reason to
     // wake every player up to re-sync.
@@ -499,6 +567,29 @@ export class SchedulesController {
 
       return updated;
     });
+
+    // Everything a PUT can change OTHER than isActive — re-targeting the
+    // schedule at a different screen/group, swapping its playlist, moving
+    // its time window — previously left NO trail at all: the only audit row
+    // this handler wrote was SCHEDULE_TOGGLED, and only when the active
+    // state actually flipped. Re-pointing a live schedule at another screen
+    // is precisely "who changed what is on that screen", so record the
+    // before/after of every field the request actually touched. Skipped
+    // when the PUT changed nothing but isActive (already audited above).
+    const changedFields = Object.keys(data).filter((k) => k !== 'isActive');
+    if (changedFields.length > 0) {
+      await this.audit(req, 'SCHEDULE_UPDATED', id, {
+        changedFields,
+        before: Object.fromEntries(
+          changedFields.map((k) => [k, (schedule as any)[k] ?? null]),
+        ),
+        after: Object.fromEntries(
+          changedFields.map((k) => [k, (res as any)[k] ?? null]),
+        ),
+        isActive: res.isActive,
+      });
+    }
+
     this.notifySync(req.user.tenantId);
     return res;
   }

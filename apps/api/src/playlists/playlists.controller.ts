@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
@@ -30,6 +30,8 @@ import {
 @Controller('api/v1/playlists')
 @UseGuards(JwtAuthGuard, RbacGuard)
 export class PlaylistsController {
+  private readonly auditLogger = new Logger('PlaylistsController');
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly redisService: RedisService,
@@ -42,6 +44,56 @@ export class PlaylistsController {
       const message = this.signer.signMessage('SYNC', { source: 'playlist_update' });
       await this.redisService.publish(`tenant:${tenantId}`, message);
     } catch (e) {}
+  }
+
+  /**
+   * Forensic trail for playlist mutations (2026-08-03).
+   *
+   * Only `remove()` wrote an AuditLog row — every OTHER mutating endpoint
+   * (create, rename, the replace-all items write, the schedules on/off
+   * toggle, publish-to-fleet) left nothing behind. So "who changed what is
+   * on that screen" was unanswerable for the write that literally decides
+   * it: `PUT /playlists/:id/items` swaps every asset a playlist plays, and
+   * it is CONTRIBUTOR-reachable.
+   *
+   * Same row shape as `TemplatesController.audit` and the existing
+   * PLAYLIST_DELETED row: tenantId + userId + action + targetType/targetId
+   * + JSON details. AuditLog carries DB-level immutability triggers, so
+   * this goes through the normal Prisma create path — never a raw UPDATE.
+   *
+   * Best-effort by design (cheap, and a DB hiccup must never fail an
+   * operator's save), but NOT silent — a failure logs at warn so a broken
+   * audit path is visible instead of masquerading as covered. The
+   * delete/toggle paths that MUST be atomic keep their in-transaction
+   * writes; this helper is for the create/update paths only.
+   */
+  private async audit(
+    req: any,
+    action:
+      | 'PLAYLIST_CREATED'
+      | 'PLAYLIST_UPDATED'
+      | 'PLAYLIST_ITEMS_REPLACED'
+      | 'PLAYLIST_SCHEDULES_TOGGLED'
+      | 'PLAYLIST_PUBLISHED_TO_FLEET',
+    playlistId: string | null,
+    details: Record<string, unknown> = {},
+  ): Promise<void> {
+    const tenantId = req?.user?.tenantId;
+    if (!tenantId) return; // defensive — JwtAuthGuard guarantees this
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId,
+          userId: req?.user?.id ?? null,
+          action,
+          targetType: 'Playlist',
+          targetId: playlistId,
+          details: JSON.stringify(details),
+        },
+      });
+    } catch (e: any) {
+      this.auditLogger.warn(`audit(${action}, ${playlistId}) failed: ${e?.message ?? e}`);
+    }
   }
 
   /**
@@ -91,6 +143,10 @@ export class PlaylistsController {
       actorUserId: req.user.id,
       sourcePlaylistId: id,
       screenIds: Array.isArray(body?.screenIds) ? body.screenIds : [],
+    });
+    await this.audit(req, 'PLAYLIST_PUBLISHED_TO_FLEET', id, {
+      requestedScreenIds: Array.isArray(body?.screenIds) ? body.screenIds.length : 0,
+      locations: result.perLocation.map((l: any) => l.tenantId),
     });
     // Nudge each affected location's players to re-sync now (they'd otherwise
     // pick it up on the next 5-10s manifest poll).
@@ -223,6 +279,10 @@ export class PlaylistsController {
         _count: { select: { schedules: true } },
       },
     });
+    await this.audit(req, 'PLAYLIST_CREATED', res.id, {
+      name: res.name,
+      templateId: body.templateId ?? null,
+    });
     this.notifySync(req.user.tenantId);
     return res;
   }
@@ -239,6 +299,10 @@ export class PlaylistsController {
     const res = await this.prisma.client.playlist.update({
       where: { id },
       data: { name: body.name },
+    });
+    await this.audit(req, 'PLAYLIST_UPDATED', id, {
+      previousName: playlist.name,
+      name: res.name,
     });
     this.notifySync(req.user.tenantId);
     return res;
@@ -317,6 +381,19 @@ export class PlaylistsController {
         _count: { select: { schedules: true } },
       },
     });
+    // THE write that decides what a screen actually plays — this replaces
+    // every item in the playlist and is CONTRIBUTOR-reachable. Record the
+    // asset set (ids only, ordered) so a later "who changed what is on that
+    // screen" can be answered without a DB time machine.
+    await this.audit(req, 'PLAYLIST_ITEMS_REPLACED', id, {
+      name: playlist.name,
+      isProtected: !!(playlist as any).isProtected,
+      itemCount: body.items.length,
+      assetIds: body.items
+        .slice()
+        .sort((a, b) => a.sequenceOrder - b.sequenceOrder)
+        .map((i) => i.assetId),
+    });
     this.notifySync(req.user.tenantId);
     return updated;
   }
@@ -361,6 +438,14 @@ export class PlaylistsController {
     const result = await this.prisma.client.schedule.updateMany({
       where: { playlistId: id, tenantId: req.user.tenantId },
       data: { isActive: !!body.active },
+    });
+    // Turning a playlist's schedules off takes its content OFF the wall —
+    // the same class of change SCHEDULE_TOGGLED already audits one schedule
+    // at a time. This bulk door had no trail at all.
+    await this.audit(req, 'PLAYLIST_SCHEDULES_TOGGLED', id, {
+      name: playlist.name,
+      active: !!body.active,
+      scheduleCount: result.count,
     });
     // Nudge the players so they re-fetch the manifest immediately
     // instead of waiting for the next 5-10s poll — same pattern as
