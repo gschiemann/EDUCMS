@@ -52,6 +52,33 @@ const MAX_HEARTBEAT_METRICS_BYTES = 4 * 1024;
  * an ACK per delivered event) never touches it; a compromised kiosk is
  * capped at ~1 Redis write/sec instead of an unbounded rewrite loop.
  */
+/**
+ * RT-02 (2026-08-04) — concurrent-socket ceiling per paired device.
+ *
+ * Every other realtime guard is PER SOCKET: the R-07 telemetry token bucket
+ * and the RT-01 HELLO limits all hang off `ctx`. So opening a second socket
+ * re-mints a full bucket and resets every per-socket cap — which made "open
+ * more sockets" the way around all of them, and nothing bounded that.
+ *
+ * A real player holds exactly ONE socket (`apps/web/src/app/player/page.tsx`
+ * has a single `new WebSocket`). Three covers a reconnect overlapping a
+ * not-yet-reaped zombie plus a transient double-mount, with room to spare.
+ *
+ * EVICT-OLDEST, never refuse-newest. The player reconnects on any close code,
+ * so refusing the new socket would let a half-open zombie hold a kiosk's slot
+ * and lock it out of the push tier — an outage on the channel that carries
+ * lockdown alerts. Evicting the oldest always leaves the freshest socket live.
+ *
+ * NOT paired with a per-IP ceiling, deliberately: a district's entire kiosk
+ * fleet shares one NAT egress IP, so any per-IP limit low enough to matter
+ * would black out a school, and `socket.remoteAddress` is a proxy hop under
+ * Railway anyway (see security/client-ip.ts) — doing it correctly would mean
+ * re-implementing X-Forwarded-For hop counting in a WS context, i.e. inventing
+ * a new spoofing surface. The per-device cap already bounds the credentialed
+ * attacker, who is the only one that reaches this code.
+ */
+const MAX_SOCKETS_PER_DEVICE = 3;
+
 const TELEMETRY_BUCKET_CAPACITY = 30;
 const TELEMETRY_REFILL_INTERVAL_MS = 1_000;
 
@@ -152,6 +179,42 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         this.logger.error(`[WS] Failed to parse message: ${e}`);
       }
     });
+  }
+
+  /**
+   * RT-02 — close the oldest sockets for a device once it exceeds the cap.
+   *
+   * `this.clients` is a Map, so its iteration order IS connect order — the
+   * oldest qualifying socket comes first and no extra timestamp is needed.
+   *
+   * The victim is removed from `clients` BEFORE `close()` so it stops being
+   * counted and stops receiving fan-out immediately, rather than lingering
+   * until the close handshake completes. That makes handleDisconnect's lookup
+   * return undefined for it, so its `authTimeout` is cleared here instead —
+   * handleDisconnect is otherwise a no-op-safe path.
+   */
+  private enforceDeviceSocketCap(newest: ClientContext) {
+    if (!newest.deviceId) return;
+
+    const mine: ClientContext[] = [];
+    for (const ctx of this.clients.values()) {
+      if (ctx.isAuthenticated && ctx.deviceId === newest.deviceId) mine.push(ctx);
+    }
+    if (mine.length <= MAX_SOCKETS_PER_DEVICE) return;
+
+    for (const victim of mine.slice(0, mine.length - MAX_SOCKETS_PER_DEVICE)) {
+      if (victim === newest) continue; // never evict the socket we just admitted
+      this.logger.warn(
+        `[WS] device=${newest.deviceId} over socket cap (${mine.length}) — closing ${victim.connectionId}`,
+      );
+      if (victim.authTimeout) clearTimeout(victim.authTimeout);
+      this.clients.delete(victim.socket);
+      try {
+        victim.socket.close(4009, 'Too Many Connections');
+      } catch {
+        /* socket already gone — nothing to do */
+      }
+    }
   }
 
   handleDisconnect(client: WebSocket) {
@@ -275,6 +338,10 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       ctx.tenantId = decoded.tenantId;
       ctx.groupId = decoded.groupId;
       ctx.isAuthenticated = true;
+
+      // RT-02 — bound concurrent sockets for this device. Runs BEFORE AUTH_OK
+      // so the socket we just admitted is never the one evicted.
+      this.enforceDeviceSocketCap(ctx);
 
       if (ctx.authTimeout) {
         clearTimeout(ctx.authTimeout);

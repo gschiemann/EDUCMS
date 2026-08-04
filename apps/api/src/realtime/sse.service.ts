@@ -69,6 +69,13 @@ interface SseClient {
   connectedAt: number;
 }
 
+/**
+ * RT-02 — concurrent SSE streams allowed per device. Matches
+ * MAX_SOCKETS_PER_DEVICE in realtime.gateway.ts; an EventSource holds exactly
+ * one stream, so 3 covers a reconnect overlapping a not-yet-reaped zombie.
+ */
+const MAX_STREAMS_PER_DEVICE = 3;
+
 @Injectable()
 export class SseService {
   private readonly logger = new Logger(SseService.name);
@@ -111,6 +118,34 @@ export class SseService {
   }
 
   /** Register a new SSE client. Returns its id for later removal. */
+  /**
+   * RT-02 — bound concurrent SSE streams per device, evicting the OLDEST.
+   *
+   * Mirrors the WS gateway's `enforceDeviceSocketCap`, including the
+   * evict-oldest choice: the player reconnects on close, so refusing the new
+   * stream would let a half-open one hold a kiosk's slot and lock it out of
+   * push — an outage on the channel that carries lockdown alerts. `clients` is
+   * a Map, so iteration order is connect order and the oldest comes first.
+   */
+  private enforceDeviceStreamCap(newest: SseClient) {
+    if (!newest.deviceId) return;
+
+    const mine: SseClient[] = [];
+    for (const c of this.clients.values()) {
+      if (c.deviceId === newest.deviceId) mine.push(c);
+    }
+    if (mine.length <= MAX_STREAMS_PER_DEVICE) return;
+
+    for (const victim of mine.slice(0, mine.length - MAX_STREAMS_PER_DEVICE)) {
+      if (victim.id === newest.id) continue; // never evict the stream just admitted
+      this.logger.warn(
+        `[SSE] device=${newest.deviceId} over stream cap (${mine.length}) — closing ${victim.id}`,
+      );
+      this.clients.delete(victim.id);
+      try { victim.res.end(); } catch { /* already gone */ }
+    }
+  }
+
   register(opts: {
     tenantId: string | null;
     // Optional group scope (group:<screenGroupId>). When the caller can
@@ -139,6 +174,12 @@ export class SseService {
       connectedAt: Date.now(),
     };
     this.clients.set(id, client);
+
+    // RT-02 (2026-08-04) — same concurrent-stream ceiling the WS gateway
+    // applies, on the other transport. SSE is the middle realtime tier, so
+    // leaving it uncapped would just move the "open more connections" bypass
+    // one transport across.
+    this.enforceDeviceStreamCap(client);
 
     // Push-health stamp (2026-07-31): an authenticated SSE stream is a live
     // push channel — same telemetry the WS gateway stamps on AUTH_OK.
