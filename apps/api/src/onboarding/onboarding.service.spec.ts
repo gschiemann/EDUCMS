@@ -465,4 +465,201 @@ describe('OnboardingService', () => {
       expect(result2.emailDelivered).toBe(false);
     });
   });
+
+  // ─── ACC-09 (2026-08-03) — cross-tenant account hijack ────────────
+  //
+  // `createUserDirect` / `createInvite` look users up by GLOBAL email and
+  // used to reject only when the row was already ACTIVE. A PENDING/INVITED
+  // user belonging to ANOTHER tenant fell through: direct-create rewrote
+  // their `tenantId` to the caller's tenant (with a caller-chosen password),
+  // and invite-create bound a fresh token to the foreign row. `acceptInvite`
+  // never checked that the invite's tenant matched the user's, so redeeming
+  // the link landed the real invitee inside the attacker's tenant.
+  //
+  // Self-signup mints a DISTRICT_ADMIN + tenant with no email verification,
+  // so the attacking account is free. These tests pin the fix from BOTH
+  // ends: refuse to bind a foreign row, and refuse to redeem a mismatched
+  // invite.
+  describe('ACC-09 — never re-tenant an existing user', () => {
+    /** Tenant A (the victim) with one PENDING invitee, plus tenant B (the attacker). */
+    async function twoTenantsWithPendingInvitee() {
+      const victimAdmin = await service.signup({
+        districtName: 'Victim District',
+        slug: 'victim',
+        adminEmail: 'admin@victim.edu',
+        password: 'victim-admin-password',
+      });
+      await service.createInvite({
+        inviterId: victimAdmin.user.id,
+        tenantId: victimAdmin.user.tenantId,
+        email: 'pending@victim.edu',
+        role: 'SCHOOL_ADMIN',
+      });
+      const attackerAdmin = await service.signup({
+        districtName: 'Attacker District',
+        slug: 'attacker',
+        adminEmail: 'admin@attacker.evil',
+        password: 'attacker-admin-password',
+      });
+      const pending = state.users.find((u) => u.email === 'pending@victim.edu')!;
+      expect(pending.status).toBe('INVITED');
+      expect(pending.tenantId).toBe(victimAdmin.user.tenantId);
+      return { victimAdmin, attackerAdmin, pending };
+    }
+
+    it('createUserDirect REFUSES an INVITED user who belongs to another tenant (and leaves their row untouched)', async () => {
+      const { victimAdmin, attackerAdmin, pending } = await twoTenantsWithPendingInvitee();
+      const originalHash = pending.passwordHash;
+
+      await expect(
+        service.createUserDirect({
+          inviterId: attackerAdmin.user.id,
+          tenantId: attackerAdmin.user.tenantId,
+          email: 'pending@victim.edu',
+          role: 'CONTRIBUTOR',
+          password: 'attacker-chosen-password',
+        }),
+      ).rejects.toThrow(ConflictException);
+
+      const after = state.users.find((u) => u.email === 'pending@victim.edu')!;
+      expect(after.tenantId).toBe(victimAdmin.user.tenantId);
+      expect(after.status).toBe('INVITED');
+      expect(after.passwordHash).toBe(originalHash);
+      expect(state.auditLogs.some((a) => a.action === 'USER_CREATED_DIRECT')).toBe(false);
+    });
+
+    it('createInvite REFUSES to bind a fresh invite token to a foreign-tenant user', async () => {
+      const { attackerAdmin } = await twoTenantsWithPendingInvitee();
+      const invitesBefore = state.invites.length;
+
+      await expect(
+        service.createInvite({
+          inviterId: attackerAdmin.user.id,
+          tenantId: attackerAdmin.user.tenantId,
+          email: 'pending@victim.edu',
+          role: 'CONTRIBUTOR',
+        }),
+      ).rejects.toThrow(ConflictException);
+
+      expect(state.invites).toHaveLength(invitesBefore);
+    });
+
+    it('createUserDirect refuses to seize a same-tenant PENDING row that OUTRANKS the caller', async () => {
+      const districtAdmin = await service.signup({
+        districtName: 'Rank District',
+        slug: 'rank',
+        adminEmail: 'admin@rank.edu',
+        password: 'district-admin-password',
+      });
+      // A pending SCHOOL_ADMIN in this same tenant…
+      await service.createInvite({
+        inviterId: districtAdmin.user.id,
+        tenantId: districtAdmin.user.tenantId,
+        email: 'pending-principal@rank.edu',
+        role: 'SCHOOL_ADMIN',
+      });
+      // …created directly by a SCHOOL_ADMIN peer must be refused.
+      const peer = await service.createUserDirect({
+        inviterId: districtAdmin.user.id,
+        tenantId: districtAdmin.user.tenantId,
+        email: 'peer@rank.edu',
+        role: 'SCHOOL_ADMIN',
+        password: 'peer-password-123',
+      });
+
+      await expect(
+        service.createUserDirect({
+          inviterId: peer.id,
+          tenantId: districtAdmin.user.tenantId,
+          email: 'pending-principal@rank.edu',
+          role: 'CONTRIBUTOR',
+          password: 'seized-password-123',
+        }),
+      ).rejects.toThrow();
+
+      expect(state.users.find((u) => u.email === 'pending-principal@rank.edu')!.status).toBe('INVITED');
+    });
+
+    it('acceptInvite REJECTS a token whose invite tenant does not match the user tenant', async () => {
+      const { attackerAdmin, pending } = await twoTenantsWithPendingInvitee();
+
+      // Simulate an invite minted before this fix (or by any future path that
+      // skips createInvite): attacker's tenant, victim's user row.
+      const token = 'forged-cross-tenant-token';
+      state.invites.push({
+        id: 'invite-forged',
+        tenantId: attackerAdmin.user.tenantId,
+        email: pending.email,
+        role: 'CONTRIBUTOR',
+        tokenHash: hashToken(token),
+        invitedById: attackerAdmin.user.id,
+        userId: pending.id,
+        expiresAt: new Date(Date.now() + 60_000),
+        acceptedAt: null,
+      });
+
+      await expect(
+        service.acceptInvite({ token, password: 'attacker-chosen-password' }),
+      ).rejects.toThrow(BadRequestException);
+
+      const after = state.users.find((u) => u.id === pending.id)!;
+      expect(after.status).toBe('INVITED');
+      expect(after.tenantId).not.toBe(attackerAdmin.user.tenantId);
+    });
+
+    it('the LEGITIMATE invite flow still works end to end (invite → accept → session in the RIGHT tenant)', async () => {
+      const admin = await service.signup({
+        districtName: 'Happy District',
+        slug: 'happy',
+        adminEmail: 'admin@happy.edu',
+        password: 'admin-password-happy',
+      });
+
+      await service.createInvite({
+        inviterId: admin.user.id,
+        tenantId: admin.user.tenantId,
+        email: 'teacher@happy.edu',
+        role: 'CONTRIBUTOR',
+      });
+
+      const inviteEmail = [...state.emailLogs].reverse().find(
+        (e) => e.kind === 'INVITE' && e.toEmail === 'teacher@happy.edu',
+      )!;
+      const token = decodeURIComponent(inviteEmail.body.match(/accept-invite\/([^\s]+)/)![1]);
+
+      const result = await service.acceptInvite({ token, password: 'teacher-password-1' });
+      expect(result.access_token).toBe('signed.jwt');
+
+      const teacher = state.users.find((u) => u.email === 'teacher@happy.edu')!;
+      expect(teacher.status).toBe('ACTIVE');
+      expect(teacher.tenantId).toBe(admin.user.tenantId);
+    });
+
+    it('the SAME-tenant admin-sets-password recovery path still works on a PENDING row', async () => {
+      const admin = await service.signup({
+        districtName: 'Recovery District',
+        slug: 'recovery',
+        adminEmail: 'admin@recovery.edu',
+        password: 'admin-password-recov',
+      });
+      await service.createInvite({
+        inviterId: admin.user.id,
+        tenantId: admin.user.tenantId,
+        email: 'stuck@recovery.edu',
+        role: 'CONTRIBUTOR',
+      });
+
+      const created = await service.createUserDirect({
+        inviterId: admin.user.id,
+        tenantId: admin.user.tenantId,
+        email: 'stuck@recovery.edu',
+        role: 'CONTRIBUTOR',
+        password: 'admin-set-password-1',
+      });
+
+      expect(created.status).toBe('ACTIVE');
+      const row = state.users.find((u) => u.email === 'stuck@recovery.edu')!;
+      expect(row.tenantId).toBe(admin.user.tenantId);
+    });
+  });
 });

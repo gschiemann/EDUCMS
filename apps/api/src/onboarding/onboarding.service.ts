@@ -50,6 +50,57 @@ function validatePassword(password: string): void {
   }
 }
 
+/**
+ * ACC-09 (2026-08-03) — CROSS-TENANT ACCOUNT HIJACK, both halves.
+ *
+ * THE BUG. `createInvite` and `createUserDirect` both look an existing user up
+ * by GLOBAL email (`User.email` is `@unique` across the whole platform) and
+ * both only refused when that row was already `ACTIVE`. So a row in
+ * `INVITED`/`PENDING` state belonging to a DIFFERENT tenant fell through to
+ * the "re-use the placeholder" branch:
+ *
+ *   • `createUserDirect` then wrote `tenantId: <caller's tenant>` onto that
+ *     row AND set a password the caller chose — the victim's account was now
+ *     inside the attacker's tenant with attacker-known credentials.
+ *   • `createInvite` bound a fresh invite token to the foreign user; whoever
+ *     held that token could `acceptInvite` and set the password on someone
+ *     else's account.
+ *
+ * Self-signup mints a DISTRICT_ADMIN + tenant with no email verification, so
+ * the attacking account costs nothing. That made every pending invitee in the
+ * product one request away from takeover.
+ *
+ * THE RULE, fail-closed: an existing row may only be re-used as a placeholder
+ * when it (a) is not ACTIVE, (b) is not soft-deleted, (c) ALREADY belongs to
+ * the target tenant, and (d) does not outrank (or match) the caller — taking
+ * over a pending account is an act ON that account, so it obeys the same
+ * strictly-below-my-own-rank table as granting a role. Every refusal returns
+ * the SAME "already exists" conflict, so this is not an oracle for "does
+ * <email> have a pending invite in some other tenant."
+ *
+ * @param existing the row found by global email, or null
+ * @param tenantId the tenant the caller is trying to create/invite into
+ * @param callerRole the acting admin's role (rank gate)
+ */
+export function assertExistingUserIsReusable(
+  existing: { status?: string | null; tenantId?: string | null; deletedAt?: Date | null; role?: string | null } | null,
+  tenantId: string,
+  callerRole: string,
+): void {
+  if (!existing) return;
+  const conflict = new ConflictException('A user with that email already exists.');
+  if (existing.status === 'ACTIVE') throw conflict;
+  // A soft-deleted row has an anonymized email so it should never match here;
+  // refuse anyway rather than resurrect a deleted account through a side door.
+  if (existing.deletedAt) throw conflict;
+  // THE HIJACK GUARD. Never re-tenant an existing user, whatever their status.
+  if (existing.tenantId !== tenantId) throw conflict;
+  // Same-tenant, but the pending row may still outrank the caller (a
+  // SCHOOL_ADMIN must not be able to seize a pending DISTRICT_ADMIN account by
+  // "re-creating" it with a password they chose).
+  if (existing.role) assertCallerCanAssignRole(callerRole, existing.role);
+}
+
 @Injectable()
 export class OnboardingService {
   private readonly logger = new Logger(OnboardingService.name);
@@ -399,9 +450,13 @@ export class OnboardingService {
     }
 
     const existing = await this.prisma.client.user.findUnique({ where: { email } });
-    if (existing && existing.status === 'ACTIVE') {
-      throw new ConflictException('A user with that email already exists.');
-    }
+    // ACC-09 (2026-08-03) — an existing row may only ever be RE-USED as this
+    // invite's placeholder when it already belongs to THIS tenant. See
+    // `assertExistingUserIsReusable` for the hijack this closes: without the
+    // tenant check, an admin in tenant A could bind a fresh invite token to a
+    // PENDING user who lives in tenant B, then accept it themselves and own
+    // that person's account.
+    assertExistingUserIsReusable(existing, input.tenantId, inviter.role);
 
     const token = generateToken();
     const tokenHash = hashToken(token);
@@ -570,16 +625,27 @@ export class OnboardingService {
     }
 
     const existing = await this.prisma.client.user.findUnique({ where: { email } });
-    if (existing && existing.status === 'ACTIVE') {
-      throw new ConflictException('A user with that email already exists.');
-    }
+    // ACC-09 (2026-08-03) — THE CROSS-TENANT ACCOUNT HIJACK. This lookup is
+    // by GLOBAL email (User.email is @unique platform-wide), and the only
+    // rejection used to be `status === 'ACTIVE'`. A PENDING/INVITED user
+    // belonging to ANOTHER tenant fell straight through to the update branch
+    // below, which rewrote `tenantId` to the caller's own tenant. Combined
+    // with unverified self-signup (anyone can mint a DISTRICT_ADMIN + tenant
+    // for free), that was a one-request takeover of any pending invitee in
+    // the product. See `assertExistingUserIsReusable`.
+    assertExistingUserIsReusable(existing, input.tenantId, inviter.role);
 
     const passwordHash = await this.authService.hashPassword(input.password);
 
     const user = await this.prisma.client.$transaction(async (tx) => {
       let u = existing;
       if (u) {
-        const patch: any = { role, status: 'ACTIVE', passwordHash, tenantId: input.tenantId };
+        // NOTE: `tenantId` is deliberately ABSENT from this patch. The guard
+        // above already refuses a foreign-tenant row, and re-tenanting an
+        // existing account is never a legitimate outcome of "create a user" —
+        // keeping the column out of the write means a future edit to the guard
+        // cannot silently re-open the hijack.
+        const patch: any = { role, status: 'ACTIVE', passwordHash };
         if (firstName != null) patch.firstName = firstName;
         if (lastName != null) patch.lastName = lastName;
         u = await tx.user.update({
@@ -658,6 +724,40 @@ export class OnboardingService {
     if (!invite.userId) {
       throw new BadRequestException('Invite is missing its target user.');
     }
+
+    // ─── ACC-09 (2026-08-03) — the SECOND half of the cross-tenant hijack ──
+    //
+    // Accepting an invite sets a password on `invite.userId` and then mints a
+    // session for that row. Nothing ever checked that the invite and the user
+    // it points at belong to the SAME tenant, so a UserInvite created in
+    // tenant A against a user who lives in tenant B was honored: the real
+    // invitee clicked their link and landed inside the ATTACKER's tenant (or,
+    // in the mirror case, an attacker holding a token they minted took over
+    // the victim's row in the victim's own tenant).
+    //
+    // `createInvite`/`createUserDirect` now refuse to bind a foreign row in
+    // the first place, but this check is the one that matters at redemption
+    // time: it also covers invites minted BEFORE this fix and any future path
+    // that creates a UserInvite without going through those two methods.
+    //
+    // FAIL CLOSED — every mismatch is one error ("no longer valid"), never a
+    // description of what differed.
+    const target: any = (invite as any).user;
+    const invalid = new BadRequestException('This invitation is no longer valid.');
+    if (!target) throw invalid;
+    if (target.deletedAt) throw invalid;
+    // THE GUARD: invite tenant must equal the target user's tenant.
+    if (!invite.tenantId || target.tenantId !== invite.tenantId) throw invalid;
+    // The invite is addressed to an email; the row it points at must be that
+    // same person (a re-pointed userId would otherwise redeem onto someone
+    // else entirely).
+    if (String(target.email || '').toLowerCase() !== String(invite.email || '').toLowerCase()) {
+      throw invalid;
+    }
+    // A stale invite must not be able to reset the password of an account that
+    // has since become ACTIVE. Invites are only ever minted against a
+    // non-ACTIVE row, so this can only be a leftover token.
+    if (target.status === 'ACTIVE') throw invalid;
 
     const passwordHash = await this.authService.hashPassword(input.password);
 
