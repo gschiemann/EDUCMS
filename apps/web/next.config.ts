@@ -132,6 +132,68 @@ const nextConfig: NextConfig = {
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
+          // 2026-08-04 — Permissions-Policy. This was the one standard security
+          // header still missing, and district security scans look for it.
+          //
+          // Built from an ACTUAL capability census of apps/web/src, not a
+          // copied template, because a wrong value here silently disables a
+          // browser API on every screen we run:
+          //   camera        USED  — /pair (QR enrolment) and
+          //                         screens/sync-calibrate both call
+          //                         getUserMedia. Both are top-level React
+          //                         pages, and no iframe requests camera via
+          //                         `allow=`, so `self` is sufficient.
+          //   microphone    UNUSED — both getUserMedia calls pass
+          //                         `audio: false`, and there is no other
+          //                         mediaDevices caller. Denied outright.
+          //   geolocation   USED  — 21 files (address pickers).
+          //   payment       USED  — Stripe surfaces.
+          //   autoplay      USED  — signage boards: 20 files reference
+          //                         autoplay, 41 contain <video>. Left at
+          //                         `self`; denying it would black out video
+          //                         playback on every screen.
+          //   screen-wake-lock  currently 0 callers, but deliberately ALLOWED:
+          //                         this is digital signage, keeping a display
+          //                         awake is squarely in-product, and a future
+          //                         caller would otherwise hit a silent no-op
+          //                         that is painful to debug.
+          //
+          // Everything denied below has ZERO callers in the codebase: exotic
+          // hardware bridges (bluetooth/serial/usb/hid/midi), screen capture,
+          // the motion sensors, font enumeration, idle detection and XR.
+          //
+          // NOTE on semantics: a feature you do not list keeps its BROWSER
+          // DEFAULT — listing is not required to permit something. The
+          // `(self)` entries are therefore no-ops today, written out on
+          // purpose so the intent is explicit and a future edit cannot quietly
+          // change a used capability.
+          {
+            key: 'Permissions-Policy',
+            value: [
+              // used — pinned to our own origin
+              'camera=(self)',
+              'geolocation=(self)',
+              'payment=(self)',
+              'autoplay=(self)',
+              'fullscreen=(self)',
+              'screen-wake-lock=(self)',
+              // unused — denied everywhere, including our own origin
+              'microphone=()',
+              'bluetooth=()',
+              'serial=()',
+              'usb=()',
+              'hid=()',
+              'midi=()',
+              'display-capture=()',
+              'idle-detection=()',
+              'local-fonts=()',
+              'xr-spatial-tracking=()',
+              'accelerometer=()',
+              'gyroscope=()',
+              'magnetometer=()',
+              'ambient-light-sensor=()',
+            ].join(', '),
+          },
         ],
       },
       {
