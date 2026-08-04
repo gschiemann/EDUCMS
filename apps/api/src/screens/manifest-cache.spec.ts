@@ -61,11 +61,79 @@ describe('shouldBumpManifestRev (Prisma mutation hook decision)', () => {
     expect(shouldBumpManifestRev('Screen', 'update', ['lastCacheReport', 'lastCacheReportAt'])).toBe(false);
   });
 
+  // ── 2026-08-03: two paths that silently undid the egress diet ───────────
+  // Both wrote Screen columns that were absent from SCREEN_TELEMETRY_ONLY_
+  // FIELDS, so each cleared the ENTIRE manifest cache fleet-wide. A morning
+  // power-on wave (every screen re-registers) or ONE crash-looping kiosk
+  // (10 crash reports/min, forever) re-created the 25 GB/mo Supabase bill.
+  it('skips the device RE-REGISTER write shape (morning power-on wave)', () => {
+    // POST /screens/register, paired branch — screens.controller.
+    expect(
+      shouldBumpManifestRev('Screen', 'update', [
+        'resolution',
+        'osInfo',
+        'browserInfo',
+        'userAgent',
+        'ipAddress',
+        'lastPingAt',
+        'status',
+      ]),
+    ).toBe(false);
+    // Unpaired branch writes the same set (status: 'PENDING').
+    expect(
+      shouldBumpManifestRev('Screen', 'update', [
+        'resolution',
+        'osInfo',
+        'browserInfo',
+        'userAgent',
+        'ipAddress',
+        'lastPingAt',
+        'status',
+      ]),
+    ).toBe(false);
+  });
+
+  it('skips the APK CRASH-REPORT write shape (one crash-looping kiosk)', () => {
+    expect(
+      shouldBumpManifestRev('Screen', 'update', [
+        'lastCrashAt',
+        'lastCrashSource',
+        'lastCrashVersion',
+        'lastCrashMessage',
+        'lastCrashStack',
+      ]),
+    ).toBe(false);
+  });
+
+  it('STILL busts when the re-register back-fills hardwareModel (a real manifest field)', () => {
+    // `inferIfUnknown` only returns a value when the column is null, so this
+    // shape is the rare genuine back-fill — and hardwareModel IS serialized
+    // into the manifest payload, so it must invalidate. This is the guard
+    // that keeps the register-path additions from over-reaching.
+    expect(
+      shouldBumpManifestRev('Screen', 'update', [
+        'resolution',
+        'osInfo',
+        'browserInfo',
+        'userAgent',
+        'ipAddress',
+        'lastPingAt',
+        'status',
+        'hardwareModel',
+      ]),
+    ).toBe(true);
+  });
+
   it('busts on Screen updates that touch any manifest-relevant column', () => {
     expect(shouldBumpManifestRev('Screen', 'update', ['canvasW', 'canvasH'])).toBe(true);
     expect(shouldBumpManifestRev('Screen', 'update', ['syncOffsetMs'])).toBe(true);
     expect(shouldBumpManifestRev('Screen', 'update', ['screenGroupId'])).toBe(true);
     expect(shouldBumpManifestRev('Screen', 'update', ['activeBoardGameId', 'activeBoardSurface'])).toBe(true);
+    // Every scalar the cached payload actually serializes must keep busting.
+    expect(shouldBumpManifestRev('Screen', 'update', ['hardwareModel'])).toBe(true);
+    expect(shouldBumpManifestRev('Screen', 'update', ['repeats'])).toBe(true);
+    expect(shouldBumpManifestRev('Screen', 'update', ['config'])).toBe(true);
+    expect(shouldBumpManifestRev('Screen', 'update', ['tenantId'])).toBe(true);
     // Mixed telemetry + real column → bust (any real column wins).
     expect(shouldBumpManifestRev('Screen', 'update', ['lastPingAt', 'orientation'])).toBe(true);
     // Unknown/new column → bust (correctness-safe default polarity).

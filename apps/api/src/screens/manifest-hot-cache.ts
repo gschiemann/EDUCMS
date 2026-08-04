@@ -260,6 +260,57 @@ export const SCREEN_TELEMETRY_ONLY_FIELDS = new Set([
     'lastOtaErrorAt',
     'lastOtaErrorMessage',
     'lastOtaErrorAuthenticated',
+    // ── Device re-register (2026-08-03) ──────────────────────────────────
+    // `POST /screens/register` (both the paired and unpaired branches in
+    // screens.controller) rewrites this exact column set on EVERY boot,
+    // alongside the already-listed lastPingAt + status. Off this list, a
+    // morning power-on wave — the whole fleet re-registering inside a few
+    // minutes — cleared every cached manifest process-wide, once per screen,
+    // re-creating the 25 GB/mo Supabase egress the cache was built to kill
+    // (docs/research/2026-07-30-supabase-bill-diet/).
+    //
+    // Each is genuinely non-content — verified against the CACHED payload
+    // built in `getManifest` (which serializes only: tenantId/tenantName,
+    // orientation, canvasW/H, repeats, config→gpio/wiring/consoleProfile,
+    // hardwareModel, sync{} from screenGroup.syncMode + syncOffsetMs, and
+    // the schedule fan-out):
+    //   resolution  — the device-reported "WxH". Read in getManifest ONLY by
+    //                 the EMERGENCY branch (portrait-vs-landscape emergency
+    //                 playlist pick) and by buildScoreboardManifest — BOTH of
+    //                 which return BEFORE the cache is consulted and are
+    //                 rebuilt from the freshly-read Screen row on every poll,
+    //                 so neither can ever be served stale from the cache.
+    //                 It appears nowhere in the cached hashable payload.
+    //   osInfo      — dashboard diagnostics column; never serialized.
+    //   browserInfo — dashboard diagnostics column; never serialized.
+    //   userAgent   — dashboard diagnostics + the Chromium-major compat chip
+    //                 (parseChromiumMajor); never serialized.
+    //   ipAddress   — forensics only (audit/dashboard); never serialized.
+    //
+    // DELIBERATELY NOT LISTED: `hardwareModel`, which the register path also
+    // writes — it IS in the manifest payload, so it must keep busting. That
+    // write is a back-fill only (`inferIfUnknown` returns null once the
+    // column has a value), so the common re-register never includes the key
+    // and stays fully telemetry-only, while the rare genuine back-fill
+    // correctly invalidates.
+    'resolution',
+    'osInfo',
+    'browserInfo',
+    'userAgent',
+    'ipAddress',
+    // ── Player/Manager APK crash report (2026-08-03) ─────────────────────
+    // `POST /screens/status/:fingerprint/crash-report` writes these five and
+    // nothing else. A single crash-LOOPING kiosk can hit that endpoint up to
+    // its 10/min throttle indefinitely, and each write was clearing the
+    // cached manifest of every screen in the fleet — one bad device taxing
+    // everyone else's Supabase egress. All five are pure post-mortem
+    // diagnostics: their only readers are the dashboard columns selected in
+    // screen-groups.controller; none is serialized into any manifest branch.
+    'lastCrashAt',
+    'lastCrashSource',
+    'lastCrashVersion',
+    'lastCrashMessage',
+    'lastCrashStack',
 ]);
 
 export type ManifestCacheEntry =
