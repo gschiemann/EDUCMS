@@ -373,6 +373,59 @@ export class StripeService {
       throw e;
     }
 
+    // ── BILL-01 (2026-08-04): release the claim if the work fails ──────
+    //
+    // The ledger row above is INSERTed and COMMITTED on its own connection
+    // before any work happens. That is what makes the dedup atomic across
+    // pods — but it also meant a throw anywhere below permanently ATE the
+    // event: we 500, Stripe re-delivers the same event.id, the P2002 branch
+    // sees the committed row and acks it as a duplicate with a silent 200.
+    // The event is then gone forever, and the only trace is one log line.
+    //
+    // For billing that is not a wash. A dropped `customer.subscription.deleted`
+    // leaves a cancelled tenant billed and licensed; a dropped
+    // `invoice.payment_failed` leaves a delinquent tenant looking healthy.
+    //
+    // So on failure we best-effort DELETE the claim and rethrow. Stripe's
+    // retry then finds no ledger row and does real work instead of being
+    // swallowed.
+    //
+    // Safe to re-run, which is what makes this correct rather than merely
+    // hopeful: every handler's writes live in a single $transaction (so a
+    // failure leaves nothing half-applied), each is idempotent on replay
+    // (upsert + `stripeLastEventCreatedAt` watermark in
+    // syncLicenseFromSubscription, updateMany + watermark in
+    // applySubscriptionDeleted, updateMany + advance-only watermark in
+    // applyInvoicePaymentStatus), and no webhook handler writes back to
+    // Stripe — so a replay cannot double-charge or double-cancel.
+    //
+    // If the compensating delete itself fails we are exactly where we were
+    // before this change: strictly no worse, and it is logged.
+    try {
+      return await this.dispatchWebhookEvent(event, stripe);
+    } catch (err) {
+      try {
+        await this.prisma.client.processedStripeEvent.delete({ where: { id: event.id } });
+        this.logger.warn(
+          `webhook: released idempotency claim for ${event.id} (${event.type}) after failure — Stripe will retry`,
+        );
+      } catch (delErr: any) {
+        this.logger.error(
+          `webhook: FAILED to release idempotency claim for ${event.id} (${event.type}) — ` +
+          `this event will be acked as a duplicate on retry and LOST: ${delErr?.message}`,
+        );
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * The actual per-type webhook work. Split out of `handleWebhookEvent` so the
+   * idempotency claim above can be released around it (BILL-01) without
+   * wrapping the ledger INSERT itself — releasing on a P2002 would defeat the
+   * dedup it exists for.
+   */
+  private async dispatchWebhookEvent(event: any, stripe: any): Promise<any> {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object;
@@ -638,9 +691,16 @@ export class StripeService {
     event: StripeWebhookEvent,
   ): Promise<WebhookHandlerResult> {
     const sub = event.data.object;
-    const license = await this.prisma.client.license.findFirst({
-      where: { stripeSubscriptionId: sub.id as string },
-    });
+    // BILL-01 (2026-08-04) — retry the read too. `customer.subscription.deleted`
+    // is TERMINAL: Stripe emits nothing after it, so unlike the other handlers
+    // there is no later event to correct a miss. A transient pool blip here
+    // used to surface as "no matching License row" and ack a cancellation that
+    // never got applied, leaving a cancelled tenant billed and licensed.
+    const license = await withDbRetry(() =>
+      this.prisma.client.license.findFirst({
+        where: { stripeSubscriptionId: sub.id as string },
+      }),
+    );
     if (!license) {
       this.logger.log(
         `webhook: subscription ${sub.id} cancelled — no matching License row`,
@@ -660,7 +720,11 @@ export class StripeService {
       return { staleOutOfOrder: true };
     }
     const fromStatus = license.status;
-    await this.prisma.client.$transaction(async (tx) => {
+    // BILL-01 — mirror the invoice path (which already wraps its tx): this was
+    // the last bare $transaction in the webhook handlers, and it belongs to the
+    // one event type with no successor to fix it up.
+    await withDbRetry(() =>
+      this.prisma.client.$transaction(async (tx) => {
       await tx.license.updateMany({
         where: { id: license.id, tenantId: license.tenantId },
         data: {
@@ -688,7 +752,8 @@ export class StripeService {
           }),
         },
       });
-    });
+      }),
+    );
     this.logger.log(
       `webhook: subscription ${sub.id} cancelled for tenant ${license.tenantId} ` +
         `(event ${event.id})`,

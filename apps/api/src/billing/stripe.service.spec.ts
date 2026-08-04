@@ -128,6 +128,18 @@ function makeFakePrisma() {
         processed.set(id, row);
         return row;
       }),
+      // BILL-01 — the service releases its idempotency claim when the work
+      // throws, so Stripe's retry does real work instead of being acked as a
+      // duplicate. Modelled here so that release is observable.
+      delete: jest.fn(async (args: any) => {
+        const id = args.where.id as string;
+        const row = processed.get(id);
+        if (!row) {
+          throw Object.assign(new Error('Record to delete does not exist'), { code: 'P2025' });
+        }
+        processed.delete(id);
+        return row;
+      }),
     },
     license: {
       findUnique: jest.fn(async (args: any) => {
@@ -562,5 +574,83 @@ describe('StripeService.handleWebhookEvent — P0-7 audit fixes', () => {
       data: { object: { id: 'in_pp', customer: 'cus_pp', subscription: 'sub_pp' } },
     });
     expect(fake.inspect.licenses.get('tenant_A')?.status).toBe('PAST_DUE');
+  });
+});
+
+describe('BILL-01 — a failed webhook must not be silently swallowed', () => {
+  let svc: StripeService;
+  let fake: ReturnType<typeof makeFakePrisma>;
+
+  beforeEach(() => {
+    process.env.STRIPE_SECRET_KEY = 'sk_test_unit';
+    fake = makeFakePrisma();
+    svc = new StripeService(fake.prismaService);
+  });
+  afterEach(() => { delete process.env.STRIPE_SECRET_KEY; });
+
+  // THE BUG: the idempotency ledger row is INSERTed and committed on its own
+  // connection BEFORE any work runs. That is what makes dedup atomic across
+  // pods — but it meant a throw during the work permanently ATE the event: we
+  // 500, Stripe re-delivers the same event.id, the P2002 branch finds the
+  // committed row and acks it as a duplicate with a silent 200. Gone forever.
+  //
+  // For billing that is not a wash: a dropped customer.subscription.deleted
+  // leaves a cancelled tenant billed and licensed.
+
+  it('releases the idempotency claim when the handler throws', async () => {
+    const event = buildEvent({ id: 'evt_fail_1' });
+    // Make the work fail after the ledger row is committed.
+    // Fail the work AFTER the ledger row is committed. Every handler's writes
+    // go through $transaction, and a plain Error is NOT in withDbRetry's
+    // transient set, so it surfaces immediately instead of being retried away.
+    fake.inspect.clientMocks.$transaction.mockRejectedValueOnce(
+      new Error('pool exhausted'),
+    );
+
+    await expect(svc.handleWebhookEvent(event)).rejects.toThrow('pool exhausted');
+
+    // THE POINT: the claim is gone, so Stripe's retry is not treated as a dup.
+    expect(fake.inspect.processed.has('evt_fail_1')).toBe(false);
+    expect(fake.inspect.clientMocks.processedStripeEvent.delete).toHaveBeenCalledWith({
+      where: { id: 'evt_fail_1' },
+    });
+  });
+
+  it("Stripe's retry after a failure does REAL work instead of acking a duplicate", async () => {
+    const event = buildEvent({ id: 'evt_fail_2' });
+    fake.inspect.clientMocks.$transaction.mockRejectedValueOnce(
+      new Error('transient blip'),
+    );
+
+    await expect(svc.handleWebhookEvent(event)).rejects.toThrow('transient blip');
+
+    // The redelivery — this used to return { duplicate: true } and drop it.
+    const retry = await svc.handleWebhookEvent(event);
+    expect(retry).not.toEqual({ duplicate: true });
+    expect(fake.inspect.licenses.size).toBeGreaterThan(0);
+  });
+
+  it('still dedups a genuine redelivery of a SUCCESSFUL event', async () => {
+    // The release must not weaken the dedup it sits inside: only failures
+    // release the claim.
+    const event = buildEvent({ id: 'evt_ok_1' });
+    const first = await svc.handleWebhookEvent(event);
+    const second = await svc.handleWebhookEvent(event);
+
+    expect(first).toEqual({});
+    expect(second).toEqual({ duplicate: true });
+    expect(fake.inspect.clientMocks.processedStripeEvent.delete).not.toHaveBeenCalled();
+  });
+
+  it('does not release the claim when the INSERT itself lost the P2002 race', async () => {
+    // A concurrent pod already holds the claim. Deleting here would hand the
+    // event to a third delivery while the winner is still working on it.
+    const event = buildEvent({ id: 'evt_race_1' });
+    await svc.handleWebhookEvent(event); // pod A claims + completes
+    (fake.inspect.clientMocks.processedStripeEvent.delete as jest.Mock).mockClear();
+
+    const second = await svc.handleWebhookEvent(event); // pod B loses the race
+    expect(second).toEqual({ duplicate: true });
+    expect(fake.inspect.clientMocks.processedStripeEvent.delete).not.toHaveBeenCalled();
   });
 });
