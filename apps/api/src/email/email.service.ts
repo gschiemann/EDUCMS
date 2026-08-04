@@ -1,20 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-
-/**
- * The Resend "shared" sender we fall back to when EMAIL_FROM is unset.
- * Resend only DELIVERS mail from this address to the email that OWNS the
- * Resend account — every other recipient is silently dropped / spam-filtered.
- * So being on this sender means "configured to send, but NOT deliverable to
- * arbitrary recipients." Keep this in sync with the fallback in #dispatch.
- */
-const DEFAULT_EMAIL_FROM = 'VenueOS <onboarding@resend.dev>';
-
-/**
- * Matches any EMAIL_FROM whose address is the shared Resend sender — bare,
- * or wrapped in a display name like "Foo <onboarding@resend.dev>".
- */
-const SHARED_RESEND_SENDER_RE = /onboarding@resend\.dev/i;
+// The sender-identity honesty gate now lives in ONE place (2026-08-03) so the
+// two background alerting services that POST to Resend directly —
+// StorageWatchdogService + EfficiencyAlertingService — apply the exact same
+// SENT / SENT_UNVERIFIED rule this service does. See sender-identity.ts.
+import {
+  isDeliverableToArbitraryRecipients as senderIsDeliverable,
+  resendAcceptedStatus,
+  resolveEmailFrom,
+  sharedSenderWarning,
+} from './sender-identity';
 
 /**
  * EmailService — stub queue.
@@ -422,9 +417,7 @@ export class EmailService {
    *   - custom domain     → true
    */
   isDeliverableToArbitraryRecipients(): boolean {
-    const from = (process.env.EMAIL_FROM || '').trim();
-    if (!from) return false;
-    return !SHARED_RESEND_SENDER_RE.test(from);
+    return senderIsDeliverable();
   }
 
   async #dispatch(
@@ -458,8 +451,7 @@ export class EmailService {
       return 'SENT';
     }
 
-    const from = process.env.EMAIL_FROM || DEFAULT_EMAIL_FROM;
-    const deliverable = this.isDeliverableToArbitraryRecipients();
+    const from = resolveEmailFrom();
     const replyTo = process.env.EMAIL_REPLY_TO || undefined;
     // Body is plain text today — Resend accepts `text` without `html`
     // and the few inline links still render as clickable in every major
@@ -495,17 +487,10 @@ export class EmailService {
     // account owner; every other recipient is silently dropped. Don't let a
     // 200 masquerade as a confident "sent to anyone": warn loudly and report
     // SENT_UNVERIFIED so the durable row + logs tell the truth.
-    if (!deliverable) {
-      this.logger.warn(
-        `[email] Handed "${params.kind}" to Resend from the shared sender ` +
-          `(${from}), but Resend only DELIVERS that to the Resend account ` +
-          `owner — every other recipient (to=${params.to}) is silently ` +
-          `dropped. Set EMAIL_FROM to a verified custom sending domain to ` +
-          `deliver to anyone. Marking email_log SENT_UNVERIFIED.`,
-      );
-      return 'SENT_UNVERIFIED';
+    const status = resendAcceptedStatus();
+    if (status === 'SENT_UNVERIFIED') {
+      this.logger.warn(sharedSenderWarning({ kind: params.kind, to: params.to, from }));
     }
-
-    return 'SENT';
+    return status;
   }
 }

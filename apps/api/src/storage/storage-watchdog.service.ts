@@ -28,6 +28,9 @@ import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { SupabaseStorageService } from './supabase-storage.service';
 import { storageTransportState } from './storage-transport';
+// Shared sender-identity honesty gate — one source of truth for the FROM
+// header and for whether a Resend 2xx may be recorded as a confident 'SENT'.
+import { resendAcceptedStatus, resolveEmailFrom, sharedSenderWarning } from '../email/sender-identity';
 
 type WatchdogStatus = 'ok' | 'degraded' | 'down';
 
@@ -163,18 +166,30 @@ export class StorageWatchdogService implements OnModuleInit, OnModuleDestroy {
           this.logger.warn(`[storage-watchdog] RESEND_API_KEY not set — alert logged but not sent to ${email}`);
           continue;
         }
-        const from = process.env.EMAIL_FROM || 'VenueOS <onboarding@resend.dev>';
+        const from = resolveEmailFrom();
         const resp = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ from, to: [email], subject, text: body }),
         });
         if (resp.ok) {
+          // HONESTY GATE (2026-08-03) — a Resend 2xx proves ACCEPTED, not
+          // DELIVERED. On the default shared onboarding@resend.dev sender
+          // Resend delivers only to the Resend account owner and silently
+          // drops everyone else, so a hard-coded 'SENT' here was a lie —
+          // and this is the storage-OUTAGE alert, i.e. exactly the mail
+          // whose disappearance you would never notice. Same rule as
+          // EmailService via the shared sender-identity module.
+          const status = resendAcceptedStatus();
           await this.prisma.client.emailLog.update({
             where: { id: row.id },
-            data: { status: 'SENT', sentAt: new Date() },
+            data: { status, sentAt: new Date() },
           });
-          this.logger.log(`[storage-watchdog] alert sent to ${email} (${kind})`);
+          if (status === 'SENT_UNVERIFIED') {
+            this.logger.warn(sharedSenderWarning({ kind, to: email, from }));
+          } else {
+            this.logger.log(`[storage-watchdog] alert sent to ${email} (${kind})`);
+          }
         } else {
           const txt = await resp.text().catch(() => '');
           await this.prisma.client.emailLog.update({

@@ -1,6 +1,9 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { EfficiencyMetricsService } from './efficiency-metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
+// Shared sender-identity honesty gate — one source of truth for the FROM
+// header and for whether a Resend 2xx may be recorded as a confident 'SENT'.
+import { resendAcceptedStatus, resolveEmailFrom, sharedSenderWarning } from '../email/sender-identity';
 
 /**
  * EfficiencyAlertingService
@@ -163,7 +166,7 @@ export class EfficiencyAlertingService implements OnModuleInit, OnModuleDestroy 
           continue;
         }
 
-        const from = process.env.EMAIL_FROM || 'VenueOS <onboarding@resend.dev>';
+        const from = resolveEmailFrom();
         const resp = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
@@ -174,11 +177,23 @@ export class EfficiencyAlertingService implements OnModuleInit, OnModuleDestroy 
         });
 
         if (resp.ok) {
+          // HONESTY GATE (2026-08-03) — a Resend 2xx proves ACCEPTED, not
+          // DELIVERED. On the default shared onboarding@resend.dev sender
+          // Resend delivers only to the Resend account owner and silently
+          // drops everyone else, so a hard-coded 'SENT' here was a lie —
+          // and this is the egress-COST alert, i.e. exactly the mail whose
+          // disappearance shows up later as a surprise Supabase invoice.
+          // Same rule as EmailService via the shared sender-identity module.
+          const status = resendAcceptedStatus();
           await this.prisma.client.emailLog.update({
             where: { id: row.id },
-            data: { status: 'SENT', sentAt: new Date() },
+            data: { status, sentAt: new Date() },
           });
-          this.logger.log(`Efficiency alert sent to ${admin.email} (${kind})`);
+          if (status === 'SENT_UNVERIFIED') {
+            this.logger.warn(sharedSenderWarning({ kind, to: admin.email, from }));
+          } else {
+            this.logger.log(`Efficiency alert sent to ${admin.email} (${kind})`);
+          }
         } else {
           const txt = await resp.text().catch(() => '');
           await this.prisma.client.emailLog.update({
