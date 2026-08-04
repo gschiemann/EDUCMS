@@ -316,27 +316,38 @@ export class AuthController {
       throw new UnauthorizedException({ code: 'AUTH_NO_BEARER_TOKEN', message: 'No bearer token' });
     }
     const user = (req as any).user;
-    const pub = this.redisService.publisher;
     // Durable mirror FIRST (2026-07-10 durable-revocation fix; best-effort,
     // never throws): mirror the revocation to Postgres so it survives a
     // Redis outage/flush — JwtAuthGuard/SSE/WS fall back to this row when
     // Redis can't answer. Written before the Redis calls so the row lands
     // even on the 503 paths below; a mirror failure never fails the logout.
     await this.redisService.mirrorRevokedTokenDurable(token);
-    // Lane-1 P2 fix: Redis is the PRIMARY revocation store. If it's
-    // unreachable we cannot confirm the logout took on the hot path —
-    // return 503 instead of pretending success (the durable mirror above
-    // is a backstop, not the success criterion). Pairs with
-    // jwt-auth.guard.ts which fails CLOSED on Redis errors.
-    if (!pub) {
-      throw new HttpException({ code: 'AUTH_REVOCATION_SERVICE_UNAVAILABLE', message: 'Revocation service unavailable; try again' }, HttpStatus.SERVICE_UNAVAILABLE);
-    }
-    try {
-      await pub.sadd('jwt_revoked_list', token);
+    // ─── 2026-08-03 — logout must not be able to SHORTEN a revocation ─────
+    //
+    // THE BUG. This used to reach past RedisService and call
+    // `publisher.sadd(...)` + `publisher.expire('jwt_revoked_list', 30d)` on
+    // the RAW client. `jwt_revoked_list` is ONE SHARED SET whose TTL is
+    // per-KEY, not per-member: device revocation (`revokeScreenCredentials`)
+    // deliberately EXTENDS that TTL to outlive a 180-day device token. A user
+    // logging out therefore re-stamped the key at 30 days and quietly
+    // un-protected every device token in the set — the revoked kiosk token
+    // became valid again the moment the shortened expiry fired.
+    //
+    // `RedisService.sadd` already implements the extend-only TTL rule (and its
+    // docblock named THIS call as the last remaining hole). Route through it.
+    //
+    // FAIL-CLOSED SEMANTICS PRESERVED. `sadd` never throws — it returns false
+    // when Redis is unreachable or the write failed. Redis is still the
+    // PRIMARY revocation store, so a false answer means we cannot confirm the
+    // logout took on the hot path: 503 exactly as before (the durable mirror
+    // above is a backstop, not the success criterion). Pairs with
+    // jwt-auth.guard.ts, which fails CLOSED on Redis errors.
+    const revoked = await this.redisService.sadd('jwt_revoked_list', token, {
       // 30 days = rememberMe ceiling — the JWT itself expires by then, so the
-      // set never grows unboundedly. Resets each logout (acceptable).
-      await pub.expire('jwt_revoked_list', 60 * 60 * 24 * 30);
-    } catch {
+      // set never grows unboundedly. Applied as a FLOOR: only lengthens.
+      ttlSeconds: 60 * 60 * 24 * 30,
+    });
+    if (!revoked) {
       throw new HttpException({ code: 'AUTH_REVOCATION_SERVICE_UNAVAILABLE', message: 'Revocation service unavailable; try again' }, HttpStatus.SERVICE_UNAVAILABLE);
     }
     // Lane-1 P2 fix: AuditLog every logout for incident forensics

@@ -287,10 +287,14 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
    * per-member. A device token outlives a user session by 6×, so the TTL is
    * only ever EXTENDED here, never shortened — otherwise revoking a device
    * would quietly shorten the window protecting every user token in the set
-   * (and vice versa). ⚠️ `auth.controller.ts` logout still calls
-   * `publisher.expire('jwt_revoked_list', 30d)` directly, which CAN shorten
-   * a window this method extended; that call is outside this change's
-   * ownership boundary — see the fix report.
+   * (and vice versa).
+   *
+   * 2026-08-03 — the last hole is CLOSED: `auth.controller.ts` logout used to
+   * call `publisher.expire('jwt_revoked_list', 30d)` on the raw client, which
+   * could shorten a window this method had extended (re-validating a revoked
+   * 180-day device token). Logout now routes through here, so this is the ONE
+   * writer of that key's expiry. Do not add another — grep for
+   * `expire('jwt_revoked_list'` before touching any revocation path.
    */
   async sadd(
     key: string,
