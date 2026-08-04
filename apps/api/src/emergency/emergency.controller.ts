@@ -1185,23 +1185,65 @@ export class EmergencyController {
         ? new Date(Date.now() + durationMs)
         : new Date(Date.now() + 5 * 60 * 1000); // 5 min default
 
-    // Atomic message + audit so a partial failure can't orphan either row.
+    // ── EM-01 (2026-08-04) — DISTRICT BROADCASTS REACHED ZERO SCREENS ──────
+    //
+    // This handler published to exactly ONE channel and wrote exactly ONE
+    // EmergencyMessage row, both keyed on the scope the operator picked. The
+    // trigger path was fixed for this long ago (see the fan-out at the
+    // `publishChannels` comment above); broadcast and media-alert were not —
+    // `collectDescendantTenantIds` had only two call sites in this file, both
+    // on trigger/clear.
+    //
+    // BOTH delivery tiers therefore missed every child school:
+    //   * WS  — realtime.gateway matches a scope publish against the DEVICE'S
+    //           OWN tenantId, so a screen in school B never sees
+    //           `tenant:<districtId>`.
+    //   * poll — deviceMessages filters `where: { tenantId: screen.tenantId }`
+    //           with no ancestor walk (unlike the manifest, which has one).
+    //
+    // Since the documented production shape is that the district tenant owns
+    // NO screens directly (41 paired screens sit under child tenants), a
+    // district-wide broadcast was delivered to nobody — and still returned
+    // `{ success: true }`, so the operator believed seven schools had it.
+    // Silent total non-delivery on a life-safety surface.
+    //
+    // Fan out the same way trigger does: one message row per affected tenant
+    // so each school's poll finds it, and one publish per tenant channel.
+    // Each descendant gets its OWN messageId (the row id is the PK, and the
+    // player dedups on the id it is handed), so the pushed message and the
+    // polled row always agree.
+    let affectedTenantIds: string[] = [ownedTenantId];
+    if (scopeType === 'tenant') {
+      const descendantTenantIds = await collectDescendantTenantIds(
+        this.prisma.client.tenant as any,
+        scopeId,
+      );
+      affectedTenantIds = [scopeId, ...descendantTenantIds];
+    }
+    // messageId (the caller-visible one) belongs to the scope the operator
+    // targeted; descendants get derived ids.
+    const idForTenant = (tid: string) =>
+      tid === affectedTenantIds[0] ? messageId : `${messageId}_${tid}`;
+
+    // Atomic message rows + audit so a partial failure can't orphan any of them.
     await this.prisma.client.$transaction([
-      this.prisma.client.emergencyMessage.create({
-        data: {
-          id: messageId,
-          tenantId: ownedTenantId,
-          triggeredByUserId: user.id || null,
-          type: 'TEXT_BROADCAST',
-          severity,
-          textBlob: text,
-          mediaUrls: null,
-          audioUrl: null,
-          scopeType,
-          scopeId,
-          expiresAt: expiresAtDate,
-        },
-      }),
+      ...affectedTenantIds.map((tid) =>
+        this.prisma.client.emergencyMessage.create({
+          data: {
+            id: idForTenant(tid),
+            tenantId: tid,
+            triggeredByUserId: user.id || null,
+            type: 'TEXT_BROADCAST',
+            severity,
+            textBlob: text,
+            mediaUrls: null,
+            audioUrl: null,
+            scopeType,
+            scopeId,
+            expiresAt: expiresAtDate,
+          },
+        }),
+      ),
       this.prisma.client.auditLog.create({
         data: {
           action: 'BROADCAST_TEXT',
@@ -1209,34 +1251,55 @@ export class EmergencyController {
           targetId: scopeId,
           tenantId: ownedTenantId,
           userId: user.id,
-          details: JSON.stringify({ messageId, severity, len: text.length, durationMs }),
+          details: JSON.stringify({
+            messageId,
+            severity,
+            len: text.length,
+            durationMs,
+            affectedTenantCount: affectedTenantIds.length,
+          }),
         },
       }),
     ]);
 
-    const signedMessage = this.signer.signMessage('TEXT_BROADCAST', {
-      messageId,
-      severity,
-      text,
-      expiresAt: Math.floor(expiresAtDate.getTime() / 1000),
-    });
-
     const channel = `${scopeType}:${scopeId}`;
-    try {
-      await this.redisService.publish(channel, signedMessage);
-    } catch (error) {
-      Sentry.withScope((s) => {
-        s.setTag('emergency.action', 'broadcast');
-        s.setTag('emergency.scopeType', scopeType);
-        s.setUser({ id: user.id });
-        s.setExtra('messageId', messageId);
-        s.setExtra('channel', channel);
-        Sentry.captureException(error);
+    const publishTargets =
+      scopeType === 'tenant'
+        ? affectedTenantIds.map((tid) => ({ ch: `tenant:${tid}`, id: idForTenant(tid) }))
+        : [{ ch: channel, id: messageId }];
+
+    // Each publish is caught INDEPENDENTLY: one school's Redis hiccup must not
+    // skip the remaining schools' fan-out — they would each be silently
+    // demoted to the HTTP-poll tier while the operator believes it landed.
+    for (const target of publishTargets) {
+      const signedMessage = this.signer.signMessage('TEXT_BROADCAST', {
+        messageId: target.id,
+        severity,
+        text,
+        expiresAt: Math.floor(expiresAtDate.getTime() / 1000),
       });
-      console.warn(`[Emergency] Broadcast redis publish failed for ${channel}. Falling back to HTTP polling. Error: ${error}`);
+      try {
+        await this.redisService.publish(target.ch, signedMessage);
+      } catch (error) {
+        Sentry.withScope((s) => {
+          s.setTag('emergency.action', 'broadcast');
+          s.setTag('emergency.scopeType', scopeType);
+          s.setUser({ id: user.id });
+          s.setExtra('messageId', target.id);
+          s.setExtra('channel', target.ch);
+          Sentry.captureException(error);
+        });
+        console.warn(`[Emergency] Broadcast redis publish failed for ${target.ch}. Falling back to HTTP polling. Error: ${error}`);
+      }
     }
 
-    return { success: true, messageId, message: `Broadcast dispatched to ${channel}` };
+    return {
+      success: true,
+      messageId,
+      affectedTenantIds,
+      affectedTenantCount: affectedTenantIds.length,
+      message: `Broadcast dispatched to ${affectedTenantIds.length} location(s)`,
+    };
   }
 
   /**
@@ -1266,23 +1329,41 @@ export class EmergencyController {
       ? new Date(typeof body.expiresAt === 'number' ? body.expiresAt * 1000 : body.expiresAt)
       : new Date(Date.now() + 60 * 60 * 1000); // 1 hr default
 
-    // Atomic message + audit — matches the other emergency endpoints.
+    // EM-01 (2026-08-04) — same district fan-out bug as broadcastText; see the
+    // long note there. A district-scope media alert (evacuation map, shelter
+    // photo, audio instruction) published to one channel and wrote one row, so
+    // it reached zero screens whenever the district tenant owns none directly
+    // — while still returning success.
+    let affectedTenantIds: string[] = [ownedTenantId];
+    if (scopeType === 'tenant') {
+      const descendantTenantIds = await collectDescendantTenantIds(
+        this.prisma.client.tenant as any,
+        scopeId,
+      );
+      affectedTenantIds = [scopeId, ...descendantTenantIds];
+    }
+    const idForTenant = (tid: string) =>
+      tid === affectedTenantIds[0] ? messageId : `${messageId}_${tid}`;
+
+    // Atomic message rows + audit — matches the other emergency endpoints.
     await this.prisma.client.$transaction([
-      this.prisma.client.emergencyMessage.create({
-        data: {
-          id: messageId,
-          tenantId: ownedTenantId,
-          triggeredByUserId: user.id || null,
-          type: 'MEDIA_ALERT',
-          severity,
-          textBlob,
-          mediaUrls: mediaUrls && mediaUrls.length ? JSON.stringify(mediaUrls) : null,
-          audioUrl: audioUrl || null,
-          scopeType,
-          scopeId,
-          expiresAt: expiresAtDate,
-        },
-      }),
+      ...affectedTenantIds.map((tid) =>
+        this.prisma.client.emergencyMessage.create({
+          data: {
+            id: idForTenant(tid),
+            tenantId: tid,
+            triggeredByUserId: user.id || null,
+            type: 'MEDIA_ALERT',
+            severity,
+            textBlob,
+            mediaUrls: mediaUrls && mediaUrls.length ? JSON.stringify(mediaUrls) : null,
+            audioUrl: audioUrl || null,
+            scopeType,
+            scopeId,
+            expiresAt: expiresAtDate,
+          },
+        }),
+      ),
       this.prisma.client.auditLog.create({
         data: {
           action: 'MEDIA_ALERT',
@@ -1295,36 +1376,49 @@ export class EmergencyController {
             severity,
             mediaCount: mediaUrls.length,
             hasAudio: !!audioUrl,
+            affectedTenantCount: affectedTenantIds.length,
           }),
         },
       }),
     ]);
 
-    const signedMessage = this.signer.signMessage('MEDIA_ALERT', {
-      messageId,
-      severity,
-      textBlob,
-      mediaUrls,
-      audioUrl,
-      expiresAt: Math.floor(expiresAtDate.getTime() / 1000),
-    });
-
     const channel = `${scopeType}:${scopeId}`;
-    try {
-      await this.redisService.publish(channel, signedMessage);
-    } catch (error) {
-      Sentry.withScope((s) => {
-        s.setTag('emergency.action', 'media-alert');
-        s.setTag('emergency.scopeType', scopeType);
-        s.setUser({ id: user.id });
-        s.setExtra('messageId', messageId);
-        s.setExtra('channel', channel);
-        Sentry.captureException(error);
+    const publishTargets =
+      scopeType === 'tenant'
+        ? affectedTenantIds.map((tid) => ({ ch: `tenant:${tid}`, id: idForTenant(tid) }))
+        : [{ ch: channel, id: messageId }];
+
+    for (const target of publishTargets) {
+      const signedMessage = this.signer.signMessage('MEDIA_ALERT', {
+        messageId: target.id,
+        severity,
+        textBlob,
+        mediaUrls,
+        audioUrl,
+        expiresAt: Math.floor(expiresAtDate.getTime() / 1000),
       });
-      console.warn(`[Emergency] Media alert redis publish failed for ${channel}. Falling back to HTTP polling. Error: ${error}`);
+      try {
+        await this.redisService.publish(target.ch, signedMessage);
+      } catch (error) {
+        Sentry.withScope((s) => {
+          s.setTag('emergency.action', 'media-alert');
+          s.setTag('emergency.scopeType', scopeType);
+          s.setUser({ id: user.id });
+          s.setExtra('messageId', target.id);
+          s.setExtra('channel', target.ch);
+          Sentry.captureException(error);
+        });
+        console.warn(`[Emergency] Media alert redis publish failed for ${target.ch}. Falling back to HTTP polling. Error: ${error}`);
+      }
     }
 
-    return { success: true, messageId, message: `Media alert dispatched to ${channel}` };
+    return {
+      success: true,
+      messageId,
+      affectedTenantIds,
+      affectedTenantCount: affectedTenantIds.length,
+      message: `Media alert dispatched to ${affectedTenantIds.length} location(s)`,
+    };
   }
 
   /**

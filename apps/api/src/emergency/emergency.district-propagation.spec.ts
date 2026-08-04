@@ -106,6 +106,7 @@ describe('District-wide emergency propagation (fan-out + manifest inheritance)',
   let screenRows: Map<string, ScreenRow>;
   let overrides: Map<string, any>;
   let auditLogs: any[];
+  let emergencyMessages: any[];
   let playlists: Map<string, any>;
 
   const tenant = (id: string, parentId: string | null, extra: Partial<TenantRow> = {}): TenantRow => ({
@@ -179,6 +180,7 @@ describe('District-wide emergency propagation (fan-out + manifest inheritance)',
 
     overrides = new Map();
     auditLogs = [];
+    emergencyMessages = [];
     playlists = new Map([
       [
         'pl-school-a-lockdown',
@@ -287,7 +289,10 @@ describe('District-wide emergency propagation (fan-out + manifest inheritance)',
         },
         auditLog: { create: jest.fn(async ({ data }: any) => { auditLogs.push(data); return data; }) },
         emergencyMessage: {
-          create: jest.fn(async ({ data }: any) => data),
+          // EM-01: capture the rows so the fan-out can be asserted. The device
+          // poll finds a broadcast by `where: { tenantId: screen.tenantId }`,
+          // so ONE row per affected tenant is what makes it reachable at all.
+          create: jest.fn(async ({ data }: any) => { emergencyMessages.push(data); return data; }),
           findMany: jest.fn(async () => []),
           findUnique: jest.fn(async () => null),
           updateMany: jest.fn(async () => ({ count: 0 })),
@@ -672,5 +677,59 @@ describe('District-wide emergency propagation (fan-out + manifest inheritance)',
     );
     // The DB fan-out is what the manifest reads, so school-a is still locked.
     expect((await manifestFor('scr-a1')).isEmergency).toBe(true);
+  });
+  // ── EM-01 (2026-08-04) ────────────────────────────────────────────────────
+  // Trigger fanned out to every descendant; BROADCAST and MEDIA-ALERT did not.
+  // They published one channel and wrote one row, so on the documented
+  // production shape (the district owns no screens directly) a district-wide
+  // text broadcast or evacuation-map alert reached NOBODY — while still
+  // returning `{ success: true }`, so the operator believed every school had it.
+  it('a district TEXT BROADCAST reaches every descendant tenant (bus + poll)', async () => {
+    const res: any = await emergency.broadcastText(
+      { scopeType: 'tenant', scopeId: DISTRICT, text: 'Shelter in place', severity: 'CRITICAL' } as any,
+      districtAdmin,
+    );
+
+    expect(res.success).toBe(true);
+    // Bus tier: one publish per tenant — the gateway matches a `tenant:` publish
+    // against the DEVICE's own tenantId, so this is what reaches a child screen.
+    expect(publishedChannels()).toEqual(
+      expect.arrayContaining([`tenant:${DISTRICT}`, `tenant:${SCHOOL_A}`, `tenant:${SCHOOL_B}`, `tenant:${ANNEX}`]),
+    );
+    // Poll tier: one row per tenant, since deviceMessages filters on the
+    // screen's OWN tenantId with no ancestor walk.
+    const tenantsWithRow = emergencyMessages.filter((m) => m.type === 'TEXT_BROADCAST').map((m) => m.tenantId);
+    expect(tenantsWithRow).toEqual(expect.arrayContaining([DISTRICT, SCHOOL_A, SCHOOL_B, ANNEX]));
+    // Reach is reported so the UI can say "N locations" instead of guessing.
+    expect(res.affectedTenantCount).toBe(tenantsWithRow.length);
+    // Isolation still holds.
+    expect(publishedChannels()).not.toContain(`tenant:${OTHER_SCHOOL}`);
+    expect(tenantsWithRow).not.toContain(OTHER_SCHOOL);
+  });
+
+  it('a district MEDIA ALERT fans out the same way', async () => {
+    const res: any = await emergency.mediaAlert(
+      { scopeType: 'tenant', scopeId: DISTRICT, mediaUrls: [], severity: 'CRITICAL', textBlob: 'Evacuate' } as any,
+      districtAdmin,
+    );
+
+    expect(res.success).toBe(true);
+    expect(publishedChannels()).toEqual(
+      expect.arrayContaining([`tenant:${SCHOOL_A}`, `tenant:${SCHOOL_B}`, `tenant:${ANNEX}`]),
+    );
+    const tenantsWithRow = emergencyMessages.filter((m) => m.type === 'MEDIA_ALERT').map((m) => m.tenantId);
+    expect(tenantsWithRow).toEqual(expect.arrayContaining([SCHOOL_A, SCHOOL_B, ANNEX]));
+  });
+
+  it('a SCHOOL-scoped broadcast still does NOT leak upward or sideways', async () => {
+    await emergency.broadcastText(
+      { scopeType: 'tenant', scopeId: SCHOOL_B, text: 'Gym closed', severity: 'INFO' } as any,
+      districtAdmin,
+    );
+    expect(publishedChannels()).not.toContain(`tenant:${DISTRICT}`);
+    expect(publishedChannels()).not.toContain(`tenant:${SCHOOL_A}`);
+    const tenants = emergencyMessages.map((m) => m.tenantId);
+    expect(tenants).not.toContain(DISTRICT);
+    expect(tenants).not.toContain(SCHOOL_A);
   });
 });
