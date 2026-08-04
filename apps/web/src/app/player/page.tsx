@@ -4897,7 +4897,7 @@ function PlayerPage() {
     // Engaged when WS has failed >=3 times. Listens for the same
     // signed Redis-channel messages the WS does; on receive, runs
     // the same client actions (fetchContent, reload, etc.).
-    const tryOpenSse = () => {
+    const tryOpenSse = async () => {
       if (sseRef.current) return; // already open
       const token = getDeviceToken();
       if (!token) {
@@ -4906,8 +4906,59 @@ function PlayerPage() {
         engageHttpPollFallback('no-signed-token');
         return;
       }
-      const url = `${getApiRoot()}/api/v1/realtime/sse?token=${encodeURIComponent(token)}`;
-      console.log('[Player SSE] opening', url.replace(/token=[^&]+/, 'token=…'));
+
+      // ── SDE-02 / DT-08 (2026-08-04) — put a 60-SECOND TICKET in the URL,
+      // not the 180-day fleet credential.
+      //
+      // `EventSource` cannot set request headers, which is why the device JWT
+      // ended up in `?token=` originally. URLs land in Railway/Vercel access
+      // logs, on-path proxy logs and Android WebView history — none of which
+      // anyone treats as a credential store, and that token authenticates this
+      // screen for six months.
+      //
+      // The server half shipped on 2026-08-03 and has been waiting for this:
+      // `POST /screens/:id/stream-ticket` is a normal header-authenticated
+      // POST (no EventSource limitation applies), and
+      // `GET /realtime/sse?ticket=…` already verifies the ticket, refuses a
+      // REVOKED screen, and requires the ticket's epoch to still equal the
+      // screen's live credentialEpoch.
+      //
+      // FALLS BACK TO THE LEGACY `?token=` LEG ON ANY FAILURE — no screenId
+      // yet, mint returns non-OK, network error, malformed body. That is
+      // deliberate: SSE is the middle realtime tier for a screen that may be
+      // showing a lockdown alert, and a ticket-mint hiccup must degrade to
+      // today's behaviour rather than drop the tier. The legacy leg stays
+      // accepted server-side for exactly this reason; it can be deleted once
+      // the fleet is confirmed on tickets.
+      let authQuery = `token=${encodeURIComponent(token)}`;
+      let usingTicket = false;
+      if (screenId) {
+        try {
+          const res = await fetch(
+            `${getApiRoot()}/api/v1/screens/${encodeURIComponent(screenId)}/stream-ticket`,
+            { method: 'POST', headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' },
+          );
+          if (res.ok) {
+            const body = await res.json().catch(() => null);
+            if (body && typeof body.ticket === 'string' && body.ticket) {
+              authQuery = `ticket=${encodeURIComponent(body.ticket)}`;
+              usingTicket = true;
+            }
+          }
+        } catch { /* fall through to the legacy leg below */ }
+      }
+      if (!usingTicket) {
+        console.warn('[Player SSE] stream-ticket unavailable — using legacy ?token= leg');
+      }
+
+      // We awaited above, so re-check: a second call (or a WS recovery) may
+      // have opened the stream while the mint was in flight. Without this the
+      // player can end up with two EventSources and double-process every
+      // event, including emergency messages.
+      if (sseRef.current) return;
+
+      const url = `${getApiRoot()}/api/v1/realtime/sse?${authQuery}`;
+      console.log('[Player SSE] opening', url.replace(/(token|ticket)=[^&]+/, '$1=…'));
       let es: EventSource;
       try {
         es = new EventSource(url, { withCredentials: false });
@@ -5561,7 +5612,11 @@ function PlayerPage() {
           // player code doesn't need duplicate handlers — it just dispatches
           // the same actions (SYNC → fetchContent, REFRESH_WEB → reload, ...).
           if (wsFailCountRef.current >= 3 && !sseRef.current && !httpFallbackRef.current) {
-            tryOpenSse();
+            // `async` since SDE-02 (it mints a stream ticket first). Fire and
+            // forget exactly as before — it owns its own error handling and
+            // falls back to the HTTP poll tier internally, so awaiting here
+            // would only stall the WS close handler.
+            void tryOpenSse();
           }
         };
       } catch (e) {
