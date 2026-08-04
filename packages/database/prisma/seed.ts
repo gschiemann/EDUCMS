@@ -99,6 +99,28 @@ async function main() {
     },
   });
 
+  // CRED-01 (2026-08-04) — NEVER MINT A SUPER_ADMIN IN PRODUCTION FROM SEED.
+  //
+  // SEED_PASSWORD is a public constant in a public repo, and this account is
+  // the one the prod-smoke workflow logs into. It was created SUPER_ADMIN, and
+  // had to be demoted by hand in production on 2026-05-28
+  // (apps/api/scripts/demote-seed-admin.ts). Because the literal here was never
+  // changed, any fresh seed run against a production database would silently
+  // recreate a platform-wide super-admin whose password anyone can read on
+  // GitHub — undoing that remediation without a trace.
+  //
+  // Dev and test behaviour is deliberately UNCHANGED (they still get the
+  // SUPER_ADMIN they have always had, because local fixtures and several specs
+  // assume it). Only a production seed is degraded, to the same CONTRIBUTOR the
+  // live row already carries — so this matches production reality rather than
+  // fighting it.
+  const seedAdminRole = process.env.NODE_ENV === 'production' ? 'CONTRIBUTOR' : 'SUPER_ADMIN';
+  if (seedAdminRole !== 'SUPER_ADMIN') {
+    console.warn(
+      '  ⚠ NODE_ENV=production — seeding admin@springfield.edu as CONTRIBUTOR, not SUPER_ADMIN.\n' +
+      '    The seed password is public; a production super-admin must be created by hand.',
+    );
+  }
   const admin = await prisma.user.upsert({
     where: { email: 'admin@springfield.edu' },
     update: {}, // never reset a real admin's password from seed
@@ -106,7 +128,7 @@ async function main() {
       tenantId: school.id,
       email: 'admin@springfield.edu',
       passwordHash,
-      role: 'SUPER_ADMIN',
+      role: seedAdminRole,
     },
   });
   await prisma.user.upsert({
