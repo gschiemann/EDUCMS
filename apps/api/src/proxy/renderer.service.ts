@@ -146,7 +146,38 @@ export class RendererService implements OnModuleDestroy {
       // marketing sites and avoids hangs on broken video CDNs. We
       // KEEP CSS and images (they ARE visible content).
       await page.setRequestInterception(true);
-      page.on('request', (req) => {
+
+      // SSRF-01 (2026-08-04) — per-render DNS verdict cache.
+      //
+      // The DNS-resolving check used to run ONCE, on the top-level URL, because
+      // a lookup per sub-request was considered too slow. That reasoning is
+      // sound for sub-resources and wrong for navigations — see below. Caching
+      // the verdict per HOST makes the added cost one lookup per distinct host
+      // for the whole render, not one per request, which removes the reason the
+      // check was skipped in the first place.
+      //
+      // Stores the PROMISE, so N concurrent requests to the same host await a
+      // single in-flight lookup rather than starting N of them.
+      const hostVerdicts = new Map<string, Promise<unknown>>();
+      const assertNavigationHostIsPublic = (rawUrl: string): Promise<unknown> => {
+        let host: string;
+        try {
+          host = new URL(rawUrl).host;
+        } catch {
+          return Promise.reject(new SsrfError('Invalid URL'));
+        }
+        let verdict = hostVerdicts.get(host);
+        if (!verdict) {
+          verdict = assertPublicUrl(rawUrl);
+          // Swallow here so an early rejection cannot surface as an unhandled
+          // rejection; every consumer still awaits and handles it below.
+          verdict.catch(() => { /* handled at the await site */ });
+          hostVerdicts.set(host, verdict);
+        }
+        return verdict;
+      };
+
+      page.on('request', async (req) => {
         const t = req.resourceType();
         if (t === 'media' || t === 'websocket' || t === 'eventsource') {
           req.abort().catch(() => { /* request already gone */ });
@@ -156,17 +187,42 @@ export class RendererService implements OnModuleDestroy {
         // from one) can try to make the browser fetch internal
         // resources. validatePublicUrl is the synchronous half of the
         // check — it rejects file://, non-80/443 ports, and private IP
-        // LITERALS without a DNS round-trip (one per sub-request would
-        // be too slow). The top-level URL already passed the full
-        // DNS-resolving assertPublicUrl above.
+        // LITERALS without a DNS round-trip.
+        //
+        // SSRF-01 (2026-08-04) — THE SYNCHRONOUS HALF IS NOT ENOUGH FOR A
+        // NAVIGATION. validatePublicUrl only inspects an IP LITERAL; a
+        // HOSTNAME is not an IP literal, so `metadata.attacker.com` with an
+        // A record pointing at 169.254.169.254 (or 10.x, or 127.0.0.1) sailed
+        // straight through it. The comment here used to justify that by saying
+        // "the top-level URL already passed the full DNS-resolving
+        // assertPublicUrl above" — but that only covers the FIRST hop. A 302,
+        // or a `location.href` assignment, produces a NEW navigation request
+        // that the top-level check never saw, and whatever document is current
+        // when rendering finishes is what `page.content()` returns to the
+        // caller. That is an unauthenticated read-SSRF with the response body
+        // reflected back out of the production container.
+        //
+        // So: cheap synchronous check on everything, plus the DNS-resolving
+        // check on NAVIGATIONS specifically — that is the hop that turns into
+        // a read primitive. Sub-resources keep the cheap check only; they do
+        // not become the returned document.
         try {
           validatePublicUrl(req.url());
+          if (req.isNavigationRequest()) {
+            await assertNavigationHostIsPublic(req.url());
+          }
         } catch (e) {
           if (e instanceof SsrfError) {
             this.logger.warn(`[ssr] blocked sub-request ${req.url().slice(0, 80)}: ${e.message}`);
             req.abort().catch(() => { /* request already gone */ });
             return;
           }
+          // Fail CLOSED. Both guards throw only SsrfError, so anything else is
+          // an unexpected fault in the guard itself — aborting one request is
+          // strictly safer than letting an unvetted navigation proceed.
+          this.logger.warn(`[ssr] guard fault on ${req.url().slice(0, 80)} — aborting`);
+          req.abort().catch(() => { /* request already gone */ });
+          return;
         }
         req.continue().catch(() => { /* request already gone */ });
       });
