@@ -1,9 +1,33 @@
 # Player / Manager release signing — cutover runbook
 
-> **Status: NOT DONE.** The mechanism described here is built and wired.
-> It is deliberately **dormant**. Nothing in this document has been
-> executed. Completing it is an owner decision, not an engineering
-> drive-by.
+> **Status (2026-08-03): EXECUTED THROUGH STEP 7 for the Player.**
+> `player-v1.1.0` is published, release-signed (CN=VenueOS), not
+> debuggable, with the `ALLOW_DEBUGGABLE_RELEASE` escape hatch deleted
+> and the unsigned-artifact guards live in CI.
+>
+> | Step | State |
+> |---|---|
+> | 1–3 Keystore generated, backed up, loaded as Actions secrets | ✅ done |
+> | 4 Workflow builds `assembleRelease`, escape hatch deleted | ✅ done |
+> | 5 Bundled-Manager variant trap | ✅ **fixed in gradle 2026-08-03** — but v1.1.0 itself shipped with a DEBUG-signed bundled Manager. **Tag v1.1.1 (and manager-v1.1.0) and use THOSE for the reinstall tour, not v1.1.0.** |
+> | 6 R8/ProGuard field smoke on a real kiosk + Taurus | ⬜ open — do before the tour |
+> | 7 Publish-time verification | ✅ done for v1.1.0 |
+> | 8 Roll the fleet (hands-on reinstall) | ⬜ open — the dashboard's "Hands-on reinstall required" chip on each `-debug` screen is the live checklist |
+> | 9 Retire the old key + history purge | ⬜ open — after the tour |
+>
+> **Server-side state (2026-08-03):** the OTA endpoints refuse to offer
+> v1.1.0+ to `-debug` callers (`needsManualReinstall`), the anti-rollback
+> floor is `1.1.0` (the compromised-debug-key era can never be advertised
+> again), and per-release SHA pins are captured with
+> `scripts/pin-apk-sha.sh` after each tag.
+>
+> **⚠️ Rollback is degraded post-cutover — a conscious trade.** Manager's
+> on-device `RollbackInstaller` relied on debug builds permitting
+> downgrade installs; release-signed builds refuse downgrades without
+> device-owner. From v1.1.0 on, the recall path for a bad build is
+> server-side: quarantine it (`PLAYER_APK_QUARANTINE` /
+> `QUARANTINED_PLAYER_VERSIONS`) and ship a HIGHER fixed version. True
+> on-device rollback returns with device-owner provisioning (Phase C).
 
 ---
 
@@ -185,19 +209,29 @@ treat that filename as a hard failure, not something to rename past.
 **This is the line that completes the fix.** Until it is gone, the gate
 reports the violation but lets the release through.
 
-### Step 5 — Fix the bundled-Manager variant trap
+### Step 5 — Fix the bundled-Manager variant trap ✅ (gradle fixed 2026-08-03; verify on v1.1.1)
 
-`app/build.gradle.kts` has a `bundleManagerApk` task hardcoded to
-`:manager:assembleDebug`, copying from
-`manager/build/outputs/apk/debug`. Player ships the Manager APK inside
-its own assets for first-run install.
+`app/build.gradle.kts`'s `bundleManagerApk` task was hardcoded to
+`:manager:assembleDebug` — so **v1.1.0 shipped with a DEBUG-signed
+Manager at `assets/bundled/edu-cms-manager.apk`** (verified by
+unzipping the published release asset). Mixed signing identities in one
+artifact, and a bundled Manager the release-signed era can't update.
 
-Left alone, a **release** Player would bundle a **debug-signed** Manager
-— mixed signing identities inside one artifact, and a Manager that
-cannot later be updated by the release-signed one. Make the task
-variant-aware (or at minimum point it at `assembleRelease`) **with an
-Android SDK in front of you**, and confirm the bundled asset is the
-release Manager before shipping.
+Fixed: the task now keys off the same four release-signing values the
+signingConfig uses — release builds bundle `:manager:assembleRelease`
+output, debug builds are byte-for-byte unchanged. An `-unsigned` release
+output (signing didn't engage) is excluded, and a companion
+`verifyBundledManagerApk` task hard-fails the build if no bundled
+Manager lands (a plain `doLast` on the Copy would be skipped as
+NO-SOURCE in exactly that case).
+
+**Remaining verification:** the release path first runs on the next tag.
+On v1.1.1, download the release asset and confirm the bundle:
+
+```bash
+unzip -p edu-cms-player-v1.1.1.apk assets/bundled/edu-cms-manager.apk > /tmp/bundled-mgr.apk
+keytool -printcert -jarfile /tmp/bundled-mgr.apk   # must show CN=VenueOS, not androiddebugkey
+```
 
 ### Step 6 — Smoke-test minification (this is where it will break)
 

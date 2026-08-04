@@ -46,8 +46,22 @@ import { AppRole } from '@cms/database';
 import { isInCanaryCohort } from './canary-cohort';
 // 2026-08-03 security wave: OTA-01 (authenticate the destructive write),
 // OTA-03/04/05 (provenance pin, URL allowlist, rollback floor + kill switch).
+// 2026-08-03 (later, launch fixes): the repo went PRIVATE on 08-01, which
+// killed every anonymous GitHub fetch in this file — release lists 404'd,
+// SHA fetches came back empty (fail-closed), and the advertised
+// `browser_download_url` was un-downloadable by kiosks. All GitHub reads now
+// authenticate with GH_TOKEN, and the fleet downloads through OUR versioned
+// proxy (/apk/v/:vc, /manager-apk/v/:vc) instead of GitHub's CDN — which
+// also retires the anonymous-CDN throttle that made a 12 MB APK take 13
+// minutes (2026-05-12). blockedBySigningCutover keeps the pre-v1.1.0
+// `-debug` fleet from being offered an update Android must refuse.
 import { verifyDeviceForScreen } from '../screens/device-auth';
-import { evaluateReleaseForFleet, isAllowedApkUrl } from './release-policy';
+import {
+  evaluateReleaseForFleet,
+  evaluateManagerReleaseForFleet,
+  isAllowedApkUrl,
+  blockedBySigningCutover,
+} from './release-policy';
 
 interface UpdateCheckBody {
   fingerprint?: string;
@@ -589,6 +603,31 @@ export class PlayerOtaController {
         return { uptoDate: true, latestVersionName: info.versionName };
       }
 
+      // ── Signing-cutover gate (2026-08-03) ──────────────────────────
+      // A pre-v1.1.0 `-debug` install can NEVER take this update: the
+      // applicationId and the signing key both changed at v1.1.0, and
+      // Android refuses either transition. Offering it anyway means a
+      // ~6 MB download + failed install + ERROR report every 6h poll,
+      // forever. Answer with needsManualReinstall instead — the
+      // dashboard turns that into the reinstall-tour checklist.
+      // Bootstrap calls are exempt at this line by construction
+      // (isBootstrapCall handled the fresh-kiosk case above, and a
+      // fresh install crosses no boundary — it is a NEW package).
+      if (!isBootstrapCall && blockedBySigningCutover(callerVn, info.versionName)) {
+        this.logger.warn(
+          `[ota] decision=uptoDate-signing-cutover caller=${callerVn} ` +
+          `target=v${info.versionName} screen=${lookupScreenId || '-'} ` +
+          `tenant=${lookupTenantId || '-'} fp=${fpShort} — this screen needs a ` +
+          `HANDS-ON reinstall (package id + signing key changed at v1.1.0; ` +
+          `runbook apps/player/RELEASE_SIGNING.md)`,
+        );
+        return {
+          uptoDate: true,
+          needsManualReinstall: true,
+          latestVersionName: info.versionName,
+        };
+      }
+
       // Return a versionCode strictly greater than the caller's so the
       // APK's own `latestVc <= BuildConfig.VERSION_CODE` gate clears
       // and it proceeds with the download (see OtaUpdateWorker.kt:91).
@@ -596,49 +635,36 @@ export class PlayerOtaController {
       // e.g. someone hand-installed a dev build with versionCode 9999 —
       // bump it to caller+1 so they still update to the tag build.
       const derivedVc = Math.max(info.derivedVersionCode, callerVc + 1);
-      // 2026-04-28 — server-computed SHA-256 of the artifact.
+      // SHA-256 of the artifact, computed from the SAME authenticated
+      // bytes our /apk/v/:vc proxy serves (private repo since 2026-08-01:
+      // anonymous asset fetches 404, and unauthenticated hashing was
+      // theatre anyway). Because the kiosk now downloads THROUGH that
+      // proxy, this digest is exact transport integrity: the device
+      // installs byte-for-byte what the server hashed, even if the
+      // upstream asset is later swapped (the cache is immutable per
+      // versionCode). Provenance is still the out-of-band pin below.
       //
-      // CORRECTED 2026-08-03 (OTA-03). The comment that used to sit here
-      // claimed this "closes the release asset swap attack vector". IT DOES
-      // NOT, and saying so was safeguard theatre of exactly the kind this
-      // repo has a documented history of. `resolveLatestPlayerReleaseSha`
-      // fetches THE SAME URL we are about to advertise and hashes whatever
-      // comes back — so if the release asset is swapped, we obligingly hash
-      // the NEW bytes and advertise a matching digest. What it actually
-      // provides is TRANSPORT integrity: the device installs the same bytes
-      // the server saw. That is worth having (it is why the fail-closed
-      // below is correct) but it is not provenance.
-      //
-      // Real provenance requires a digest recorded INDEPENDENTLY of the
-      // artifact. `evaluateReleaseForFleet` below compares against
-      // PLAYER_RELEASE_SHA_PINS — committed to the repo at release time —
-      // when a pin exists for this version, and says so in the log when one
-      // does not. The remaining hole is not fixable from this file: CI signs
-      // release APKs with a debug keystore committed to a PUBLIC repo, so
-      // anyone with `git clone` can still produce an APK that passes
-      // Android's signature-continuity check. That needs release-signing
-      // with a non-public key.
-      //
-      // Fail closed when the digest cannot be computed at all (GitHub 5xx,
-      // network glitch): the kiosk's Kotlin verifier skips checking on an
-      // empty SHA, which would leave an install-unverified-APK window.
-      const sha256 = await resolveLatestPlayerReleaseSha(info.apkUrl);
+      // Fail closed when the digest cannot be computed at all (release
+      // missing, GH_TOKEN absent/expired, GitHub 5xx): the kiosk's Kotlin
+      // verifier skips checking on an empty SHA, which would leave an
+      // install-unverified-APK window.
+      const sha256 = await shaViaProxyCache('player', info.derivedVersionCode);
       if (!sha256) {
         this.logger.warn(
           `[ota] decision=uptoDate-no-sha caller=${callerVn} target=v${info.versionName} ` +
           `abi=${callerAbi || 'not-reported'} ` +
-          `reason=resolveLatestPlayerReleaseSha-returned-empty (FAIL-CLOSED)`,
+          `reason=apk-bytes-unfetchable-for-sha (FAIL-CLOSED — check GH_TOKEN on Railway)`,
         );
         return { uptoDate: true };
       }
 
       // ── OTA-03/04/05 — the server's own opinion about these bytes ──────
-      // URL scheme + host allowlist (the release-list fetch upstream is
-      // anonymous, so an influenced response could otherwise point the
-      // whole fleet at an arbitrary host), anti-rollback floor, per-build
-      // quarantine, and the out-of-band digest pin. Fail CLOSED and loud:
-      // returning uptoDate holds the fleet on its current build, which is
-      // always safer than installing bytes we decline to vouch for.
+      // URL scheme + host allowlist (evaluated against the UPSTREAM GitHub
+      // asset URL — the provenance of the bytes — not the proxy URL we
+      // advertise), anti-rollback floor, per-build quarantine, and the
+      // out-of-band digest pin. Fail CLOSED and loud: returning uptoDate
+      // holds the fleet on its current build, which is always safer than
+      // installing bytes we decline to vouch for.
       const verdict = evaluateReleaseForFleet({
         versionName: info.versionName,
         apkUrl: info.apkUrl,
@@ -653,17 +679,32 @@ export class PlayerOtaController {
         return { uptoDate: true };
       }
 
+      // Advertise OUR versioned proxy, not GitHub. Three reasons, each
+      // sufficient: (1) the repo is private — `browser_download_url` is a
+      // 404 for the anonymous kiosk; (2) GitHub's CDN throttles sustained
+      // anonymous downloads to a crawl (the 13-minute-APK bug, 2026-05-12);
+      // (3) the proxy serves the exact bytes the sha256 above was computed
+      // from. Built from the request's own Host — that is by definition the
+      // `api_root` the device already validated against its native
+      // HostAllowlist, so the download URL passes the same check. NOTE:
+      // deliberately info.derivedVersionCode (the real release), not the
+      // caller-bumped `derivedVc` — the proxy decodes vc → tag.
+      const origin = apiOriginFromRequest(req);
+      const advertisedApkUrl = origin
+        ? `${origin}/api/v1/player/apk/v/${info.derivedVersionCode}`
+        : info.apkUrl;
+
       this.logger.log(
         `[ota] decision=install-gh caller=${callerVn} target=v${info.versionName} ` +
         `screen=${lookupScreenId || '-'} abi=${callerAbi || 'not-reported'} ` +
-        `url=${info.apkUrl.slice(0, 80)} sha=${sha256.slice(0, 12)} ` +
+        `url=${advertisedApkUrl.slice(0, 80)} sha=${sha256.slice(0, 12)} ` +
         `provenance=${verdict.pinned ? 'sha-pinned' : 'UNPINNED-transport-integrity-only'}`,
       );
       return {
         latest: {
           versionCode: derivedVc,
           versionName: info.versionName,
-          apkUrl: info.apkUrl,
+          apkUrl: advertisedApkUrl,
           sha256,
           forced: false,
         },
@@ -777,9 +818,13 @@ export class PlayerOtaController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async redirectToLatestManagerApk(@Res() res: Response) {
     try {
-      const url = await resolveLatestManagerReleaseApk();
-      if (url) {
-        res.redirect(302, url);
+      // 302 to OUR versioned proxy (relative, so it stays on whatever
+      // host the caller reached us at). The old redirect went straight to
+      // `browser_download_url`, which is a 404 for anonymous callers now
+      // that the repo is private — and was CDN-throttled even before.
+      const info = await resolveLatestManagerReleaseInfo();
+      if (info?.derivedVersionCode) {
+        res.redirect(302, `/api/v1/player/manager-apk/v/${info.derivedVersionCode}`);
         return;
       }
     } catch (e: any) {
@@ -810,7 +855,7 @@ export class PlayerOtaController {
    */
   @Post('manager-update-check')
   @Throttle({ default: { limit: 120, ttl: 60_000 } })
-  async managerUpdateCheck(@Body() body: UpdateCheckBody) {
+  async managerUpdateCheck(@Body() body: UpdateCheckBody, @Req() req?: ExpressReq) {
     const callerVn = String(body?.versionName || '').trim() || '?';
     const callerVc = Number(body?.versionCode) || 0;
     const fp = (body?.fingerprint || '').trim();
@@ -851,36 +896,67 @@ export class PlayerOtaController {
         return { uptoDate: true, latestVersionName: info.versionName };
       }
 
+      // Signing-cutover gate — same boundary as the Player path. A
+      // `-debug` Manager (com.educms.manager.debug, compromised key) can
+      // never install a release-signed manager-v1.1.0+; don't make it
+      // download-and-fail every 30 min. No bootstrap exemption here: a
+      // fresh kiosk gets its Manager from the bundled asset or
+      // /manager-apk/latest, never from this self-update endpoint.
+      if (blockedBySigningCutover(callerVn, info.versionName)) {
+        this.logger.warn(
+          `[mgr-ota] decision=uptoDate-signing-cutover caller=${callerVn} ` +
+          `target=v${info.versionName} fp=${fpShort} — hands-on reinstall required`,
+        );
+        return {
+          uptoDate: true,
+          needsManualReinstall: true,
+          latestVersionName: info.versionName,
+        };
+      }
+
       const derivedVc = Math.max(info.derivedVersionCode, callerVc + 1);
-      // 2026-04-28 — pin SHA-256 to close the "compromised release"
-      // hole. FAIL CLOSED if we couldn't compute SHA (GitHub hiccup
-      // etc.); see /update-check Path B for the same rationale.
-      const sha256 = await resolveLatestManagerReleaseSha(info.apkUrl);
+      // SHA from the authenticated proxy-cache bytes — same rationale as
+      // /update-check (private repo; exact transport integrity). FAIL
+      // CLOSED on empty.
+      const sha256 = await shaViaProxyCache('manager', info.derivedVersionCode);
       if (!sha256) {
         this.logger.warn(
           `[mgr-ota] decision=uptoDate-no-sha caller=${callerVn} target=v${info.versionName} ` +
-          `reason=resolveLatestManagerReleaseSha-returned-empty (FAIL-CLOSED)`,
+          `reason=apk-bytes-unfetchable-for-sha (FAIL-CLOSED — check GH_TOKEN on Railway)`,
         );
         return { uptoDate: true };
       }
-      // OTA-04: same URL scheme + host allowlist the Player path enforces.
-      // The Manager APK is the component that INSTALLS the Player, so an
-      // arbitrary URL here is strictly worse than one on the Player path.
-      if (!isAllowedApkUrl(info.apkUrl)) {
+      // Full policy gate — parity with the Player path (2026-08-03). The
+      // Manager APK is the component that INSTALLS the Player, so it gets
+      // the URL allowlist AND the floor / quarantine / pin checks, not
+      // just the URL check it had before. Evaluated against the UPSTREAM
+      // GitHub asset URL (provenance), not the proxy URL we advertise.
+      const verdict = evaluateManagerReleaseForFleet({
+        versionName: info.versionName,
+        apkUrl: info.apkUrl,
+        computedSha: sha256,
+      });
+      if (!verdict.allowed) {
         this.logger.error(
-          `[mgr-ota][security] decision=uptoDate-url-refused caller=${callerVn} ` +
-          `target=v${info.versionName} fp=${fpShort} (FAIL-CLOSED — not an allowlisted https host)`,
+          `[mgr-ota][security] decision=uptoDate-release-refused caller=${callerVn} ` +
+          `target=v${info.versionName} fp=${fpShort} reason=${verdict.reason} (FAIL-CLOSED)`,
         );
         return { uptoDate: true };
       }
+      const origin = apiOriginFromRequest(req);
+      const advertisedApkUrl = origin
+        ? `${origin}/api/v1/player/manager-apk/v/${info.derivedVersionCode}`
+        : info.apkUrl;
       this.logger.log(
-        `[mgr-ota] decision=install caller=${callerVn} target=v${info.versionName} fp=${fpShort} sha=${sha256.slice(0, 12)}`,
+        `[mgr-ota] decision=install caller=${callerVn} target=v${info.versionName} fp=${fpShort} ` +
+        `url=${advertisedApkUrl.slice(0, 80)} sha=${sha256.slice(0, 12)} ` +
+        `provenance=${verdict.pinned ? 'sha-pinned' : 'UNPINNED-transport-integrity-only'}`,
       );
       return {
         latest: {
           versionCode: derivedVc,
           versionName: info.versionName,
-          apkUrl: info.apkUrl,
+          apkUrl: advertisedApkUrl,
           sha256,
           forced: false,
         },
@@ -985,7 +1061,7 @@ export class PlayerOtaController {
       throw new NotFoundException({ code: 'PLAYER_OTA_INVALID_VERSION_CODE', message: `Invalid versionCode: ${vcParam}` });
     }
     try {
-      const buf = await ensureApkInCache(vc);
+      const buf = await ensureApkInCache('player', vc);
       if (!buf) {
         throw new NotFoundException({
           code: 'PLAYER_OTA_APK_NOT_FOUND',
@@ -1017,30 +1093,119 @@ export class PlayerOtaController {
       throw new NotFoundException({ code: 'PLAYER_OTA_APK_PROXY_FAILED', message: `APK proxy failed: ${e?.message}` });
     }
   }
+
+  /**
+   * GET /api/v1/player/manager-apk/v/:vc — the Manager twin of
+   * /apk/v/:vc. Added 2026-08-03: Manager self-update and the
+   * /manager-apk/latest bootstrap redirect both used to hand out
+   * `browser_download_url`, which anonymous kiosks cannot fetch from a
+   * private repo (and which GitHub's CDN throttles regardless). Same
+   * authenticated-fetch + in-memory LRU as the Player proxy.
+   */
+  @Get('manager-apk/v/:vc')
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  async streamManagerApkByVersionCode(
+    @Param('vc') vcParam: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const vc = parseInt(vcParam, 10);
+    if (!Number.isFinite(vc) || vc <= 0) {
+      throw new NotFoundException({ code: 'PLAYER_OTA_INVALID_VERSION_CODE', message: `Invalid versionCode: ${vcParam}` });
+    }
+    try {
+      const buf = await ensureApkInCache('manager', vc);
+      if (!buf) {
+        throw new NotFoundException({
+          code: 'PLAYER_OTA_MANAGER_APK_NOT_FOUND',
+          message: `Manager APK v${vc} not found. Either no GitHub release exists with that ` +
+          `versionCode-derived tag, or GH_TOKEN is missing on Railway.`,
+        });
+      }
+      res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+      res.setHeader('Content-Length', String(buf.length));
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="venue-os-manager-vc${vc}.apk"`,
+      );
+      res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+      res.end(buf);
+    } catch (e: any) {
+      if (e instanceof NotFoundException) throw e;
+      this.logger.error(`Manager APK proxy v${vc} failed: ${e?.message}`, e?.stack);
+      throw new NotFoundException({ code: 'PLAYER_OTA_APK_PROXY_FAILED', message: `Manager APK proxy failed: ${e?.message}` });
+    }
+  }
+}
+
+/**
+ * The public origin the caller reached this API at — `https://<host>` from
+ * the request's own Host header. That host IS the device's `api_root` (the
+ * OTA worker POSTs update-check to it), so a download URL built on it is
+ * guaranteed to pass the device's native HostAllowlist. Behind Railway,
+ * `req.protocol` honors X-Forwarded-Proto via the app's trust-proxy
+ * setting; anything non-http is coerced to https (the device refuses plain
+ * http anyway, except its compiled-in loopback dev exemption).
+ */
+function apiOriginFromRequest(req?: ExpressReq): string | null {
+  try {
+    const host = req?.get?.('host');
+    if (!host) return null;
+    const proto = req?.protocol === 'http' ? 'http' : 'https';
+    return `${proto}://${host}`;
+  } catch {
+    return null;
+  }
 }
 
 // ─── APK byte cache (process-local, in-memory) ───
-// Keyed by versionCode. First fetch authenticates against GitHub API
-// (no rate limit when authed) and pulls the bytes; future requests
-// serve from cache. APKs are immutable per versionCode so the cache
-// never goes stale.
+// Keyed by `${kind}:${versionCode}` — the same cache serves the Player
+// AND Manager proxies plus the sha computation, so each artifact is
+// fetched from GitHub exactly once per process. First fetch
+// authenticates against the GitHub API (mandatory since the repo went
+// private on 2026-08-01, and rate-limit-free as a bonus); future
+// requests serve from cache. APKs are immutable per versionCode so the
+// cache never goes stale.
 //
-// Memory ceiling: 5 entries max (LRU eviction). Each APK is ~12 MB,
+// Memory ceiling: 5 entries max (LRU eviction). Each APK is 4–12 MB,
 // so worst case ~60 MB resident — well within Railway's container.
+type ApkKind = 'player' | 'manager';
 interface VersionedApkCache {
-  vc: number;
+  key: string;
   buf: Buffer;
   fetchedAt: number;
 }
-const versionedApkCache = new Map<number, VersionedApkCache>();
+const versionedApkCache = new Map<string, VersionedApkCache>();
 const VERSIONED_APK_CACHE_LIMIT = 5;
 
-async function ensureApkInCache(vc: number): Promise<Buffer | null> {
-  const hit = versionedApkCache.get(vc);
+/**
+ * Shared header set for every GitHub API call in this file. The token is
+ * NOT optional in practice: the repo is private, so an unauthenticated
+ * call 404s — but we still degrade gracefully (callers fail closed to
+ * `uptoDate`) rather than throwing, and every failure log says whether
+ * a token was present so ops can tell "missing GH_TOKEN" from a GitHub
+ * outage in one glance.
+ */
+function githubApiHeaders(accept = 'application/vnd.github+json'): Record<string, string> {
+  const headers: Record<string, string> = {
+    'User-Agent': 'edu-cms-player-ota',
+    'Accept': accept,
+  };
+  const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return headers;
+}
+
+function hasGithubToken(): boolean {
+  return !!(process.env.GH_TOKEN || process.env.GITHUB_TOKEN);
+}
+
+async function ensureApkInCache(kind: ApkKind, vc: number): Promise<Buffer | null> {
+  const key = `${kind}:${vc}`;
+  const hit = versionedApkCache.get(key);
   if (hit) {
     // LRU bump — re-insert so it's most-recently-used.
-    versionedApkCache.delete(vc);
-    versionedApkCache.set(vc, hit);
+    versionedApkCache.delete(key);
+    versionedApkCache.set(key, hit);
     return hit.buf;
   }
   const repo = process.env.PLAYER_APK_GITHUB_REPO || 'gschiemann/EDUCMS';
@@ -1050,32 +1215,32 @@ async function ensureApkInCache(vc: number): Promise<Buffer | null> {
   const minor = Math.floor((vc % 10000) / 100);
   const patch = vc % 100;
   const versionName = `${major}.${minor}.${patch}`;
-  const tag = `player-v${versionName}`;
-  const expectedAssetName = `edu-cms-player-v${versionName}.apk`;
-  const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
-  const ghHeaders: Record<string, string> = {
-    'User-Agent': 'edu-cms-player-ota-proxy',
-    'Accept': 'application/vnd.github+json',
-  };
-  if (token) ghHeaders['Authorization'] = `Bearer ${token}`;
+  const tag = `${kind}-v${versionName}`;
+  const expectedAssetName = `edu-cms-${kind}-v${versionName}.apk`;
 
   // 1) Resolve tag → release → asset id.
   const relResp = await fetch(
     `https://api.github.com/repos/${repo}/releases/tags/${tag}`,
-    { headers: ghHeaders },
+    { headers: githubApiHeaders() },
   );
   if (!relResp.ok) return null;
   const release = (await relResp.json()) as {
     assets?: Array<{ id: number; name: string; size: number; url: string }>;
   };
-  const asset = (release.assets || []).find((a) => a.name === expectedAssetName);
+  const assets = release.assets || [];
+  // Exact CI naming first; fall back to any non-x86 .apk so a renamed
+  // asset degrades to "still serveable" instead of a fleet-wide 404
+  // (current releases attach exactly ONE universal APK).
+  const asset =
+    assets.find((a) => a.name === expectedAssetName) ||
+    assets.find((a) => a.name.toLowerCase().endsWith('.apk') && !a.name.toLowerCase().includes('x86'));
   if (!asset) return null;
 
   // 2) Fetch asset bytes. The `url` field on the asset returns metadata
   // by default; setting Accept: application/octet-stream gets the
   // binary. With token, this is the AUTHENTICATED path — no throttle.
   const dlResp = await fetch(asset.url, {
-    headers: { ...ghHeaders, 'Accept': 'application/octet-stream' },
+    headers: githubApiHeaders('application/octet-stream'),
     redirect: 'follow',
   });
   if (!dlResp.ok) return null;
@@ -1083,14 +1248,35 @@ async function ensureApkInCache(vc: number): Promise<Buffer | null> {
 
   // LRU eviction.
   while (versionedApkCache.size >= VERSIONED_APK_CACHE_LIMIT) {
-    const oldestKey = versionedApkCache.keys().next().value as number | undefined;
+    const oldestKey = versionedApkCache.keys().next().value as string | undefined;
     if (oldestKey == null) break;
     versionedApkCache.delete(oldestKey);
   }
-  versionedApkCache.set(vc, { vc, buf, fetchedAt: Date.now() });
+  versionedApkCache.set(key, { key, buf, fetchedAt: Date.now() });
   // Silence the unused Readable warning if streaming isn't used.
   void Readable;
   return buf;
+}
+
+// SHA-256 per artifact, computed from the proxy-cache bytes — i.e. the
+// exact bytes a kiosk downloading through /apk/v/:vc will receive.
+// Immutable per versionCode, so entries never expire. Tiny (64 hex chars
+// per release), so no eviction needed.
+const apkShaCache = new Map<string, string>();
+async function shaViaProxyCache(kind: ApkKind, vc: number): Promise<string> {
+  if (!Number.isFinite(vc) || vc <= 0) return '';
+  const key = `${kind}:${vc}`;
+  const hit = apkShaCache.get(key);
+  if (hit) return hit;
+  try {
+    const buf = await ensureApkInCache(kind, vc);
+    if (!buf) return '';
+    const sha = require('crypto').createHash('sha256').update(buf).digest('hex');
+    apkShaCache.set(key, sha);
+    return sha;
+  } catch {
+    return '';
+  }
 }
 
 interface ArtifactCache { buf: Buffer | null; etag: string; ts: number }
@@ -1139,73 +1325,12 @@ async function serveLatestArtifactApk(res: Response): Promise<boolean> {
 }
 
 // ─── GitHub Release asset resolution (cached) ──────────────────────
-interface ReleaseCache { url: string | null; fetchedAt: number }
-let releaseCache: ReleaseCache | null = null;
 const RELEASE_TTL_MS = 5 * 60 * 1000;
-
-// Same pattern as resolveLatestReleaseInfo but for `manager-v*` tags.
-// Cached separately so a Manager release lookup doesn't bust the
-// Player-release cache and vice versa.
-let managerReleaseCache: { url: string | null; fetchedAt: number } | null = null;
-async function resolveLatestManagerReleaseApk(): Promise<string | null> {
-  const now = Date.now();
-  if (managerReleaseCache && now - managerReleaseCache.fetchedAt < RELEASE_TTL_MS) {
-    return managerReleaseCache.url;
-  }
-  const repo = process.env.PLAYER_APK_GITHUB_REPO || 'gschiemann/EDUCMS';
-  const resp = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=30`, {
-    headers: { 'User-Agent': 'edu-cms-player-ota' },
-  });
-  if (!resp.ok) {
-    managerReleaseCache = { url: null, fetchedAt: now };
-    return null;
-  }
-  const allReleases = await resp.json() as Array<{
-    tag_name?: string;
-    name?: string;
-    draft?: boolean;
-    prerelease?: boolean;
-    assets?: Array<{ name: string; browser_download_url: string }>;
-  }>;
-  if (!Array.isArray(allReleases)) {
-    managerReleaseCache = { url: null, fetchedAt: now };
-    return null;
-  }
-  const managerReleases = allReleases
-    .filter((r) => {
-      if (r.draft || r.prerelease) return false;
-      const tag = (r.tag_name || r.name || '').trim();
-      return tag.startsWith('manager-v');
-    })
-    .map((r) => {
-      const tag = (r.tag_name || r.name || '').trim();
-      const versionStr = tag.replace(/^manager-v/, '');
-      const m = versionStr.match(/^(\d+)\.(\d+)\.(\d+)/);
-      const sortKey = m
-        ? parseInt(m[1], 10) * 1_000_000 + parseInt(m[2], 10) * 1_000 + parseInt(m[3], 10)
-        : 0;
-      return { release: r, sortKey };
-    })
-    .filter((x) => x.sortKey > 0)
-    .sort((a, b) => b.sortKey - a.sortKey);
-
-  if (managerReleases.length === 0) {
-    managerReleaseCache = { url: null, fetchedAt: now };
-    return null;
-  }
-  const release = managerReleases[0].release;
-  const assets = release.assets || [];
-  const pick = (pred: (name: string) => boolean) =>
-    assets.find((a) => pred(a.name.toLowerCase()));
-  const chosen =
-    pick((n) => n.includes('arm64-v8a') && n.endsWith('.apk')) ||
-    pick((n) => n.includes('universal') && n.endsWith('.apk')) ||
-    pick((n) => n.includes('armeabi-v7a') && n.endsWith('.apk')) ||
-    pick((n) => n.endsWith('.apk') && !n.includes('x86'));
-  const url = chosen?.browser_download_url ?? null;
-  managerReleaseCache = { url, fetchedAt: now };
-  return url;
-}
+// Module-scope logger for the resolution helpers (they live outside the
+// controller class). One WARN per cache window when GitHub says no —
+// with the status code and whether we sent a token, so "missing
+// GH_TOKEN on a private repo" is diagnosable from a single log line.
+const resolveLogger = new Logger('PlayerOTA');
 
 // Richer release lookup used by /update-check — returns the APK URL,
 // the tag-derived versionName, AND a derived versionCode in the
@@ -1315,9 +1440,13 @@ async function resolveLatestReleaseInfo(callerAbi?: string): Promise<ReleaseInfo
     // tagged player-v*. GitHub returns the list in published-desc order
     // so the first match is the latest Player release.
     const resp = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=30`, {
-      headers: { 'User-Agent': 'edu-cms-player-ota' },
+      headers: githubApiHeaders(),
     });
     if (!resp.ok) {
+      resolveLogger.warn(
+        `[ota] release-list fetch failed: HTTP ${resp.status} authed=${hasGithubToken()} ` +
+        `repo=${repo} — a 404 with authed=false means GH_TOKEN is missing on a PRIVATE repo`,
+      );
       releaseInfoCache = { info: null, fetchedAt: now };
       return null;
     }
@@ -1386,7 +1515,6 @@ async function resolveLatestReleaseInfo(callerAbi?: string): Promise<ReleaseInfo
   // is O(n) on the small assets array and adds no network cost.
   if (!callerAbi) {
     releaseInfoCache = { info, fetchedAt: now };
-    releaseCache = { url: apkUrl, fetchedAt: now };
   }
   return info;
 }
@@ -1405,9 +1533,13 @@ async function resolveLatestManagerReleaseInfo(callerAbi = ''): Promise<ReleaseI
   if (!managerReleaseAssetsCache || now - managerReleaseAssetsCache.fetchedAt >= RELEASE_TTL_MS) {
     const repo = process.env.PLAYER_APK_GITHUB_REPO || 'gschiemann/EDUCMS';
     const resp = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=30`, {
-      headers: { 'User-Agent': 'edu-cms-player-ota' },
+      headers: githubApiHeaders(),
     });
     if (!resp.ok) {
+      resolveLogger.warn(
+        `[mgr-ota] release-list fetch failed: HTTP ${resp.status} authed=${hasGithubToken()} ` +
+        `repo=${repo} — a 404 with authed=false means GH_TOKEN is missing on a PRIVATE repo`,
+      );
       managerReleaseInfoCache = { info: null, fetchedAt: now };
       managerReleaseAssetsCache = { assets: [], tag: '', fetchedAt: now };
       return null;
@@ -1470,66 +1602,11 @@ async function resolveLatestManagerReleaseInfo(callerAbi = ''): Promise<ReleaseI
   return info;
 }
 
-// 2026-04-28 — server-computed SHA-256 of the latest Manager APK.
-// Downloads the APK once, hashes the bytes, caches the result for the
-// release-info TTL. Closes the "release asset swap" attack vector
-// flagged by Plan + Server audits as a P0 — without this, the
-// committed debug.keystore + empty SHA in /manager-update-check =
-// anyone with `git clone` can sign + serve a malicious update.
-//
-// Memory cost: ~10MB per cache window. Acceptable for a single
-// release artifact. Reset whenever resolveLatestManagerReleaseInfo's
-// info field changes apkUrl.
-let managerShaCache: { url: string; sha: string; fetchedAt: number } | null = null;
-async function resolveLatestManagerReleaseSha(apkUrl: string): Promise<string> {
-  if (!apkUrl) return '';
-  const now = Date.now();
-  if (managerShaCache
-      && managerShaCache.url === apkUrl
-      && now - managerShaCache.fetchedAt < RELEASE_TTL_MS) {
-    return managerShaCache.sha;
-  }
-  try {
-    const resp = await fetch(apkUrl, {
-      redirect: 'follow',
-      headers: { 'User-Agent': 'edu-cms-player-ota' },
-    });
-    if (!resp.ok || !resp.body) return '';
-    const buf = Buffer.from(await resp.arrayBuffer());
-    const sha = require('crypto').createHash('sha256').update(buf).digest('hex');
-    managerShaCache = { url: apkUrl, sha, fetchedAt: now };
-    return sha;
-  } catch (e) {
-    return '';
-  }
-}
-
-// Same pattern for Player APKs. Some env-overridden deployments set
-// PLAYER_APK_SHA256 and skip this; in the GitHub-Releases auto-resolve
-// path (the live default) we compute it here.
-let playerShaCache: { url: string; sha: string; fetchedAt: number } | null = null;
-async function resolveLatestPlayerReleaseSha(apkUrl: string): Promise<string> {
-  if (!apkUrl) return '';
-  const now = Date.now();
-  if (playerShaCache
-      && playerShaCache.url === apkUrl
-      && now - playerShaCache.fetchedAt < RELEASE_TTL_MS) {
-    return playerShaCache.sha;
-  }
-  try {
-    const resp = await fetch(apkUrl, {
-      redirect: 'follow',
-      headers: { 'User-Agent': 'edu-cms-player-ota' },
-    });
-    if (!resp.ok || !resp.body) return '';
-    const buf = Buffer.from(await resp.arrayBuffer());
-    const sha = require('crypto').createHash('sha256').update(buf).digest('hex');
-    playerShaCache = { url: apkUrl, sha, fetchedAt: now };
-    return sha;
-  } catch (e) {
-    return '';
-  }
-}
+// (The old resolveLatest{Player,Manager}ReleaseSha helpers — which
+// anonymously re-fetched `browser_download_url` and hashed whatever came
+// back — were removed 2026-08-03. Anonymous asset fetches 404 on the
+// now-private repo, and the digest belongs with the exact bytes the
+// fleet actually downloads: see shaViaProxyCache above.)
 
 // Semver-style "a >= b" for 3-part version strings (no pre-release or
 // build-metadata support — EduCMS APKs don't use them). Unparseable

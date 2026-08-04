@@ -266,31 +266,84 @@ android {
 // within sideload-friendly size; no network, no Vercel, no GitHub
 // rate limits at install time.
 //
-// The Copy task depends on :manager:assembleDebug so building Player
-// implicitly builds Manager first. The output universal Manager APK
-// goes into src/main/assets/bundled/edu-cms-manager.apk where AGP
-// picks it up via the standard mergeAssets task.
+// The Copy task depends on the matching :manager:assemble* variant so
+// building Player implicitly builds Manager first. The output universal
+// Manager APK goes into src/main/assets/bundled/edu-cms-manager.apk
+// where AGP picks it up via the standard mergeAssets task.
 //
-// ⚠️ CUTOVER TRAP (release-signing migration, see
-// apps/player/RELEASE_SIGNING.md): this is HARDCODED to the DEBUG
-// Manager variant. It is correct today (CI ships assembleDebug) and is
-// deliberately left alone so this change cannot alter today's build.
-// But a `release` Player built right now would bundle a DEBUG-signed
-// Manager — mixed signing identities inside one artifact. Making this
-// variant-aware is a REQUIRED step of the cutover checklist, not an
-// optional cleanup. Do it with a real Android SDK in front of you.
+// ✅ CUTOVER TRAP FIXED (2026-08-03). This was hardcoded to
+// :manager:assembleDebug, so the first release-signed Player (v1.1.0)
+// shipped with a DEBUG-signed Manager in its assets — mixed signing
+// identities in one artifact, and a bundled Manager the release-signed
+// era can never update (RELEASE_SIGNING.md Step 5). It now keys off the
+// SAME signal the signingConfig uses: when the four release-signing
+// values are present (CI release builds), bundle the RELEASE Manager;
+// otherwise the debug flow is byte-for-byte unchanged. The doLast guard
+// makes "signing didn't engage" (an `-unsigned` output, or no universal
+// output at all) a HARD build failure instead of a silently missing or
+// uninstallable bundled Manager. First build carrying this fix should be
+// the reinstall-tour build (v1.1.1) — do not tour with v1.1.0.
+val bundledManagerUsesRelease: Boolean = run {
+    // Recomputed here because the android{} block's equivalent vals are
+    // lambda-scoped. Same property/env names, same file resolution.
+    val storePath = (project.findProperty("releaseStoreFile") as? String)
+        ?: System.getenv("RELEASE_STORE_FILE")
+    val store = storePath?.takeIf { it.isNotBlank() }?.let { p ->
+        val f = File(p)
+        if (f.isAbsolute) f else project.rootProject.file(p)
+    }
+    val storePassword = (project.findProperty("releaseStorePassword") as? String)
+        ?: System.getenv("RELEASE_STORE_PASSWORD")
+    val keyAlias = (project.findProperty("releaseKeyAlias") as? String)
+        ?: System.getenv("RELEASE_KEY_ALIAS")
+    val keyPassword = (project.findProperty("releaseKeyPassword") as? String)
+        ?: System.getenv("RELEASE_KEY_PASSWORD")
+    store != null && store.isFile &&
+        !storePassword.isNullOrBlank() &&
+        !keyAlias.isNullOrBlank() &&
+        !keyPassword.isNullOrBlank()
+}
+
 val bundleManagerApk by tasks.registering(Copy::class) {
-    dependsOn(":manager:assembleDebug")
-    val managerOutDir = project(":manager").layout.buildDirectory.dir("outputs/apk/debug")
+    val managerVariantDir = if (bundledManagerUsesRelease) "release" else "debug"
+    dependsOn(if (bundledManagerUsesRelease) ":manager:assembleRelease" else ":manager:assembleDebug")
+    val managerOutDir = project(":manager").layout.buildDirectory.dir("outputs/apk/$managerVariantDir")
     from(managerOutDir) {
         // Universal APK works on any ABI. Per-ABI splits aren't
         // useful for a bundled installer payload — we want the
         // single artifact that PackageInstaller can hand to the
         // system regardless of the host kiosk's CPU.
         include("*-universal*.apk", "*universal*.apk")
+        // An `-unsigned` release output means signing did not engage.
+        // Never bundle it — the doLast below turns that into a loud
+        // build failure rather than an uninstallable asset.
+        exclude("*unsigned*")
     }
     into(layout.projectDirectory.dir("src/main/assets/bundled"))
     rename { "edu-cms-manager.apk" }
+}
+
+// The guard CANNOT live in a doLast on the Copy above: a Copy whose
+// include/exclude filters match zero files is skipped as NO-SOURCE and
+// its actions never run — which is precisely the failure being guarded
+// (release signing didn't engage → only an `-unsigned` APK existed →
+// exclude left nothing). A companion task always executes.
+val verifyBundledManagerApk by tasks.registering {
+    dependsOn(bundleManagerApk)
+    doLast {
+        val bundled = layout.projectDirectory
+            .dir("src/main/assets/bundled").file("edu-cms-manager.apk").asFile
+        if (!bundled.isFile) {
+            throw GradleException(
+                "bundleManagerApk produced no edu-cms-manager.apk (wanted the " +
+                    (if (bundledManagerUsesRelease) "RELEASE" else "DEBUG") +
+                    " variant) — either the Manager build made no universal APK, or " +
+                    "the only candidate was '-unsigned' (release signing did not " +
+                    "engage). Refusing to ship a Player without a matching-signature " +
+                    "bundled Manager.",
+            )
+        }
+    }
 }
 
 // Wire the bundle task to run before anything that READS the assets dir, so
@@ -312,7 +365,9 @@ val bundleManagerApk by tasks.registering(Copy::class) {
 tasks.matching {
     it.name.matches(Regex("merge.*Assets")) || it.name.contains("Lint") || it.name.startsWith("lint")
 }.configureEach {
-    dependsOn(bundleManagerApk)
+    // Through the VERIFY task (which depends on the copy), so a missing /
+    // unsigned bundled Manager fails the build instead of shipping silently.
+    dependsOn(verifyBundledManagerApk)
 }
 
 // Keep the assets/bundled/ directory clean across builds.

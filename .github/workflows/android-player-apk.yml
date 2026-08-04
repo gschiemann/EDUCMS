@@ -202,16 +202,20 @@ jobs:
           # install on older armeabi-v7a hardware (Rockchip RK3288 etc.)
           # with INSTALL_FAILED_NO_MATCHING_ABIS. Operator (2026-04-29):
           # "having issues installing our apk on other screens".
-          APK=$(find apps/player/app/build/outputs/apk/${VARIANT} -name '*universal*.apk' | head -1)
+          # `! -name '*unsigned*'`: an -unsigned release output means the
+          # signing config did not engage — treat it as "no APK" so the
+          # hard failure below fires instead of publishing an
+          # uninstallable artifact (RELEASE_SIGNING.md step 4c).
+          APK=$(find apps/player/app/build/outputs/apk/${VARIANT} -name '*universal*.apk' ! -name '*unsigned*' | head -1)
           if [ -z "$APK" ]; then
             # Fallback to arm64 only if universal wasn't produced (would
             # be a build config regression — `isUniversalApk = true` in
             # app/build.gradle.kts should always produce the universal
             # variant).
-            APK=$(find apps/player/app/build/outputs/apk/${VARIANT} -name '*arm64*.apk' | head -1)
+            APK=$(find apps/player/app/build/outputs/apk/${VARIANT} -name '*arm64*.apk' ! -name '*unsigned*' | head -1)
           fi
           if [ -z "$APK" ]; then
-            echo "::error::No APK was produced (neither universal nor arm64-v8a)"
+            echo "::error::No signed APK was produced (universal/arm64 missing, or only an -unsigned artifact exists — check the RELEASE_* secrets)"
             exit 1
           fi
           # Extract versionName from build.gradle.kts so operators can
@@ -257,12 +261,12 @@ jobs:
           # as Player's locate step above. Manager's self-update path
           # downloads this APK; armeabi-v7a screens need the universal
           # variant or self-update fails on them too.
-          MGR_APK=$(find apps/player/manager/build/outputs/apk/${VARIANT} -name '*universal*.apk' 2>/dev/null | head -1 || true)
+          MGR_APK=$(find apps/player/manager/build/outputs/apk/${VARIANT} -name '*universal*.apk' ! -name '*unsigned*' 2>/dev/null | head -1 || true)
           if [ -z "$MGR_APK" ]; then
-            MGR_APK=$(find apps/player/manager/build/outputs/apk/${VARIANT} -name '*arm64*.apk' 2>/dev/null | head -1 || true)
+            MGR_APK=$(find apps/player/manager/build/outputs/apk/${VARIANT} -name '*arm64*.apk' ! -name '*unsigned*' 2>/dev/null | head -1 || true)
           fi
           if [ -z "$MGR_APK" ]; then
-            echo "::error::Manager APK not found. Manager is required for OTA validation."
+            echo "::error::Signed Manager APK not found (missing, or only an -unsigned artifact — check the RELEASE_* secrets). Manager is required for OTA validation."
             exit 1
           fi
           MVN=$(grep -oP 'versionName\s*=\s*"\K[^"]+' apps/player/manager/build.gradle.kts | head -1)

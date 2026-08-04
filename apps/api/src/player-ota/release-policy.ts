@@ -86,8 +86,70 @@ export function isAllowedApkUrl(rawUrl: unknown): boolean {
  * it no matter what tag exists upstream.
  *
  * Format: bare semver, no `player-v` prefix. '0.0.0' = no floor.
+ *
+ * 2026-08-03 — raised to 1.1.0, the first release-signed build. Every
+ * `player-v*` release below it was signed with the debug keystore that sat
+ * in a public repo with its password committed two files away — that key is
+ * permanently compromised, so no build from that era may ever be advertised
+ * again, no matter what tag appears upstream. Safe to set now: the only
+ * callers below the [SIGNING_CUTOVER_VERSION] are `-debug` installs, which
+ * the cutover gate already answers with needsManualReinstall.
  */
-export const MIN_SUPPORTED_PLAYER_VERSION = '0.0.0';
+export const MIN_SUPPORTED_PLAYER_VERSION = '1.1.0';
+
+/**
+ * Floor for the Manager APK. Still '0.0.0': the first release-signed
+ * Manager has not been TAGGED yet (latest is manager-v1.0.23, debug era),
+ * and a 1.1.0 floor today would refuse to advertise ANY manager build —
+ * stranding the pre-cutover fleet's Manager self-update entirely. Raise to
+ * '1.1.0' right after the fleet reinstall tour, when manager-v1.1.0 exists
+ * and no `-debug` Manager remains that we care about.
+ */
+export const MIN_SUPPORTED_MANAGER_VERSION = '0.0.0';
+
+/**
+ * ─── The signing cutover (2026-08-03) ────────────────────────────────
+ *
+ * v1.1.0 is the first build signed with the real release keystore AND the
+ * first with the un-suffixed applicationId (`com.educms.player` /
+ * `com.educms.manager`). Every screen deployed before it runs the `.debug`
+ * package signed with the compromised public keystore. Android will NEVER
+ * install across that boundary — different package id installs side by
+ * side, same package id with a different key fails with
+ * INSTALL_FAILED_UPDATE_INCOMPATIBLE. There is no server-side override.
+ *
+ * Without this gate, a `-debug` caller below the boundary would be offered
+ * v1.1.0 on every 6h poll: ~6 MB downloaded, install fails, ERROR state
+ * reported, forever — bandwidth churn plus a dashboard that cries wolf.
+ * The gate answers those callers with `uptoDate + needsManualReinstall`
+ * instead, which the dashboard renders as a "hands-on reinstall required"
+ * chip — turning the dead pipeline into a live checklist for the physical
+ * reinstall tour (runbook: apps/player/RELEASE_SIGNING.md).
+ *
+ * The `-debug` marker is reliable: both build.gradle.kts files apply
+ * `versionNameSuffix = "-debug"`, and the shipped Kotlin workers report
+ * `BuildConfig.VERSION_NAME` verbatim. Manager's bootstrap call (fresh
+ * kiosk, Player absent) reports versionName "none" / vc=0 and is
+ * additionally exempted at the call site — a fresh install is a NEW
+ * package, which crosses no boundary.
+ */
+export const SIGNING_CUTOVER_VERSION = '1.1.0';
+
+/**
+ * True when [callerVersionName] identifies a pre-cutover `-debug` install
+ * and [targetVersionName] is at or past the cutover — i.e. an update
+ * Android is guaranteed to refuse. Fail-open on weird input: an
+ * unparseable caller is NOT treated as `-debug` (the gate must never
+ * strand a legitimate release-signed caller).
+ */
+export function blockedBySigningCutover(
+  callerVersionName: unknown,
+  targetVersionName: string,
+): boolean {
+  const caller = String(callerVersionName ?? '').trim().toLowerCase();
+  if (!caller.endsWith('-debug')) return false;
+  return semverGteLocal(targetVersionName, SIGNING_CUTOVER_VERSION);
+}
 
 /**
  * OTA-05 — per-build kill switch / quarantine denylist.
@@ -104,12 +166,23 @@ export const MIN_SUPPORTED_PLAYER_VERSION = '0.0.0';
  */
 export const QUARANTINED_PLAYER_VERSIONS: readonly string[] = [];
 
+/** Manager builds recalled the same way. Env hook: MANAGER_APK_QUARANTINE. */
+export const QUARANTINED_MANAGER_VERSIONS: readonly string[] = [];
+
 export function quarantinedVersions(): Set<string> {
   const fromEnv = String(process.env.PLAYER_APK_QUARANTINE || '')
     .split(',')
     .map((v) => v.trim())
     .filter(Boolean);
   return new Set([...QUARANTINED_PLAYER_VERSIONS, ...fromEnv]);
+}
+
+export function quarantinedManagerVersions(): Set<string> {
+  const fromEnv = String(process.env.MANAGER_APK_QUARANTINE || '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+  return new Set([...QUARANTINED_MANAGER_VERSIONS, ...fromEnv]);
 }
 
 /**
@@ -162,6 +235,18 @@ export function shaPins(): Record<string, string> {
   return merged;
 }
 
+/** Manager pins — same contract. Env hook: MANAGER_APK_SHA_PINS. */
+export const MANAGER_RELEASE_SHA_PINS: Readonly<Record<string, string>> = {};
+
+export function managerShaPins(): Record<string, string> {
+  const merged: Record<string, string> = { ...MANAGER_RELEASE_SHA_PINS };
+  for (const pair of String(process.env.MANAGER_APK_SHA_PINS || '').split(',')) {
+    const [v, sha] = pair.split('=').map((s) => s.trim());
+    if (v && sha) merged[v] = sha;
+  }
+  return merged;
+}
+
 export type ReleaseGateVerdict =
   | { allowed: true; pinned: boolean }
   | { allowed: false; reason: string };
@@ -190,26 +275,55 @@ export function evaluateReleaseForFleet(opts: {
   computedSha: string;
   /** Override the pin source. Tests only — production reads `shaPins()`. */
   pins?: Record<string, string>;
+  /** Override the floor. Tests only — production reads the const. */
+  floor?: string;
 }): ReleaseGateVerdict {
+  return evaluateAgainstPolicy(opts, {
+    floor: opts.floor ?? MIN_SUPPORTED_PLAYER_VERSION,
+    quarantined: quarantinedVersions(),
+    pins: opts.pins ?? shaPins(),
+  });
+}
+
+/**
+ * The identical gate for Manager builds. Manager is the MORE privileged
+ * component — it installs Player — so it gets the full policy, not just
+ * the URL check it had before (parity fix, 2026-08-03 review P2-6).
+ */
+export function evaluateManagerReleaseForFleet(opts: {
+  versionName: string;
+  apkUrl: string;
+  computedSha: string;
+  pins?: Record<string, string>;
+  floor?: string;
+}): ReleaseGateVerdict {
+  return evaluateAgainstPolicy(opts, {
+    floor: opts.floor ?? MIN_SUPPORTED_MANAGER_VERSION,
+    quarantined: quarantinedManagerVersions(),
+    pins: opts.pins ?? managerShaPins(),
+  });
+}
+
+function evaluateAgainstPolicy(
+  opts: { versionName: string; apkUrl: string; computedSha: string },
+  policy: { floor: string; quarantined: Set<string>; pins: Record<string, string> },
+): ReleaseGateVerdict {
   const { versionName, apkUrl, computedSha } = opts;
 
   if (!isAllowedApkUrl(apkUrl)) {
     return { allowed: false, reason: `apk-url-rejected:${safeHostForLog(apkUrl)}` };
   }
-  if (
-    MIN_SUPPORTED_PLAYER_VERSION !== '0.0.0' &&
-    !semverGteLocal(versionName, MIN_SUPPORTED_PLAYER_VERSION)
-  ) {
+  if (policy.floor !== '0.0.0' && !semverGteLocal(versionName, policy.floor)) {
     return {
       allowed: false,
-      reason: `below-min-supported-version:${versionName}<${MIN_SUPPORTED_PLAYER_VERSION}`,
+      reason: `below-min-supported-version:${versionName}<${policy.floor}`,
     };
   }
-  if (quarantinedVersions().has(versionName)) {
+  if (policy.quarantined.has(versionName)) {
     return { allowed: false, reason: `version-quarantined:${versionName}` };
   }
 
-  const pin = (opts.pins ?? shaPins())[versionName];
+  const pin = policy.pins[versionName];
   if (pin) {
     if (!computedSha || computedSha.toLowerCase() !== pin.toLowerCase()) {
       return { allowed: false, reason: `sha-pin-mismatch:${versionName}` };

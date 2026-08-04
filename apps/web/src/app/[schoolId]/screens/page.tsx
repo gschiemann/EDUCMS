@@ -1038,6 +1038,18 @@ function ScreenSettingsMenu({
     }
     return true;
   })();
+  // Signing cutover (2026-08-03): a `-debug` install can NEVER take a
+  // v1.1.0+ OTA — package id AND signing key changed, Android refuses
+  // both transitions. The server already answers these screens with
+  // uptoDate+needsManualReinstall; this mirrors that verdict in the UI
+  // so pushing isn't offered where it cannot work, and the fleet list
+  // doubles as the reinstall-tour checklist.
+  const needsReinstall = (() => {
+    if (!currentVersion || !latestVersion) return false;
+    if (!/-debug$/i.test(currentVersion.trim())) return false;
+    const l = latestVersion.trim().replace(/^v/i, '').split('.').map((n) => parseInt(n, 10) || 0);
+    return (l[0] ?? 0) > 1 || ((l[0] ?? 0) === 1 && (l[1] ?? 0) >= 1); // latest >= 1.1.0
+  })();
   const pushed = !!pushState;
   const pushedMsAgo = pushState ? Date.now() - pushState.at : 0;
   const updatedSincePush = !!(pushState && currentVersion && currentVersion !== (pushState.priorVersion ?? null));
@@ -1181,7 +1193,12 @@ function ScreenSettingsMenu({
                   <Download className="w-3 h-3" /> Install Player
                 </span>
               )}
-              {upToDate === false && currentVersion && (
+              {upToDate === false && currentVersion && needsReinstall && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-full px-2 py-0.5">
+                  <WifiOff className="w-3 h-3" /> Hands-on reinstall required
+                </span>
+              )}
+              {upToDate === false && currentVersion && !needsReinstall && (
                 <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
                   <RefreshCw className="w-3 h-3" /> Update available
                 </span>
@@ -1223,6 +1240,26 @@ function ScreenSettingsMenu({
             const isInFlight = pushed && !updatedSincePush;
             const TIMEOUT_MS = 35 * 60_000;  // matches periodic worker cadence
             const isTimedOut = isInFlight && pushedMsAgo > TIMEOUT_MS;
+
+            // Cutover screens get an explainer, not a push button — the
+            // server would answer any push with needsManualReinstall, and
+            // Android would refuse the install even if it didn't.
+            if (needsReinstall && !isInFlight) {
+              return (
+                <div className="w-full flex items-start gap-3 px-3.5 py-3 text-left text-xs border-b border-slate-100 bg-rose-50/40">
+                  <WifiOff className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-rose-700 font-bold">
+                      OTA can’t cross the v1.1.0 signing change
+                    </span>
+                    <span className="block text-[10px] font-normal text-slate-500 mt-0.5">
+                      Visit the screen: install the v1.1.0+ APK, re-pair it, then uninstall
+                      the old app. Runbook: apps/player/RELEASE_SIGNING.md
+                    </span>
+                  </span>
+                </div>
+              );
+            }
 
             // Effective stage — device truth first, wall-clock only as a
             // last resort.
