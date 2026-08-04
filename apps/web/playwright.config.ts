@@ -24,6 +24,12 @@ import { defineConfig, devices } from '@playwright/test';
  * was Chrome-only; we don't repeat that mistake on a life-safety surface.
  */
 export default defineConfig({
+  // Compile /player once before any browser starts — see the file header.
+  // This is what fixes the webkit-only Emergency Path red; the per-test
+  // budget bump and the beforeAll warm-up both failed for reasons
+  // documented there.
+  globalSetup: require.resolve('./tests/global-setup.ts'),
+
   testDir: './tests/e2e',
   // The emergency-path spec is fully self-contained per-test (each test
   // installs its own routes/init scripts and tears down on close). Running
