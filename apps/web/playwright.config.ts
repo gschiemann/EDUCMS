@@ -62,6 +62,30 @@ export default defineConfig({
     {
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
+      // 2026-08-04 — templates-gallery-perf is CHROMIUM-ONLY and must not even
+      // be scheduled on this project.
+      //
+      // That spec declares worker-scoped Chromium launch flags
+      // (`--disable-features=IsolateOrigins,site-per-process`,
+      // `--disable-site-isolation-trials`) via `test.use({ launchOptions })`,
+      // because its whole measurement depends on iframe long-tasks surfacing
+      // on the PARENT thread. Its body then calls
+      // `test.skip(browserName !== 'chromium')` — but that skip runs INSIDE the
+      // test, which is far too late: Playwright must launch a browser for the
+      // worker first, and the distinct launchOptions force a NEW worker to spawn
+      // just for this file. On the CI runner that launch dies with
+      // `browserType.launch: Target page, context or browser has been closed`,
+      // and the file failed 3x (initial + 2 retries) as the sole red in an
+      // otherwise 45-passing run. Locally WebKit tolerates the flags and reports
+      // "1 skipped", which is exactly why this hid for so long.
+      //
+      // testIgnore is the right lever because it excludes the file at
+      // SCHEDULING time — WebKit is never launched for it at all. A file-level
+      // `test.skip(({browserName}) => ...)` was tried first and REVERTED: it
+      // broke the skip on both engines.
+      //
+      // Chromium still runs the spec in full; nothing about the guard weakens.
+      testIgnore: /templates-gallery-perf\.spec\.ts$/,
     },
   ],
 
