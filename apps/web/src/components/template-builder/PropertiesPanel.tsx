@@ -204,6 +204,159 @@ const V2_GRADIENT_OPTIONS: [string, string][] = [
   ['radial-gradient(circle at 50% 0%, #475569, #0f172a)', 'Spotlight'],
 ];
 
+/**
+ * v2 widget pack — the "Style" section (colors + type + background).
+ *
+ * 2026-08-03 (§19 launch blocker) — this used to live INLINE in the
+ * ContentFields `default:` case, which meant it only ever rendered for
+ * v2 widgets whose canonical widget type has NO hand-built switch case
+ * (celebrations, charts, healthcare, corporate, …). The 70 v2 variants
+ * that map onto a canonical type WITH a hand-built case — CLOCK,
+ * ANNOUNCEMENT, CALENDAR, STAFF_SPOTLIGHT, COUNTDOWN, LOGO, WEATHER,
+ * BELL_SCHEDULE, TEXT, TICKER, IMAGE, RICH_TEXT, LUNCH_MENU — `break`
+ * out of the switch long before `default:`, so they reached the panel
+ * with CONTENT fields only. The operator could retype the words and
+ * change nothing else: no font, no size, no color, no background. That
+ * is an F against the §19 editability standard.
+ *
+ * Hoisting it into this helper lets ContentFields append the section
+ * AFTER the switch for EVERY zone whose `cfg.variant` resolves to a v2
+ * widget, hand-built case or not. Every v2 widget funnels `config.style`
+ * through `resolveStyle()` + `frameStyle()` (verified: all 8 packs call
+ * both), so these controls take effect live on the canvas AND on the
+ * player.
+ */
+function buildV2StyleFields(
+  cfg: Record<string, any>,
+  setField: (patch: Record<string, any>) => void,
+): React.ReactNode[] {
+  const out: React.ReactNode[] = [];
+  const SHv2 = (k: string, label: string) => (
+    <div
+      key={`shv2-${k}`}
+      className="pt-3 pb-1 px-1 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200"
+    >
+      {label}
+    </div>
+  );
+  const st: Record<string, unknown> =
+    cfg.style && typeof cfg.style === 'object' ? cfg.style : {};
+  // Patch the style object. An empty value DELETES the key so the
+  // widget falls back to its designed default instead of being
+  // pinned to '' (which would paint a blank background / no font).
+  const setStyle = (patch: Record<string, unknown>) => {
+    const next: Record<string, unknown> = { ...st };
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === '' || v == null) delete next[k];
+      else next[k] = v;
+    }
+    setField({ style: next });
+  };
+  out.push(SHv2('style', 'Colors — match your brand'));
+  out.push(
+    <ColorPickerField
+      key="v2-bg"
+      label="Background color"
+      value={String(st.bgColor || '')}
+      onChange={(v) => setStyle({ bgColor: v })}
+    />,
+  );
+  out.push(
+    <ColorPickerField
+      key="v2-text"
+      label="Text color"
+      value={String(st.textColor || '')}
+      onChange={(v) => setStyle({ textColor: v })}
+    />,
+  );
+  out.push(
+    <ColorPickerField
+      key="v2-accent"
+      label="Accent color"
+      value={String(st.accentColor || '')}
+      onChange={(v) => setStyle({ accentColor: v })}
+    />,
+  );
+  // Highlight / glow — celebration widgets paint the neon glow on
+  // their hero text + numbers with this; without the control the
+  // most prominent part of a celebration can't be rebranded.
+  out.push(
+    <ColorPickerField
+      key="v2-highlight"
+      label="Highlight / glow"
+      value={String(st.highlightColor || '')}
+      onChange={(v) => setStyle({ highlightColor: v })}
+    />,
+  );
+  out.push(
+    <ColorPickerField
+      key="v2-accent2"
+      label="Secondary accent"
+      value={String(st.accentColor2 || '')}
+      onChange={(v) => setStyle({ accentColor2: v })}
+    />,
+  );
+  out.push(SHv2('typography', 'Type'));
+  out.push(
+    <SelectField
+      key="v2-font"
+      label="Font"
+      value={String(st.fontFamily || '')}
+      options={V2_FONT_OPTIONS}
+      onChange={(v) => setStyle({ fontFamily: v })}
+    />,
+  );
+  out.push(
+    <SelectField
+      key="v2-weight"
+      label="Font weight"
+      value={st.fontWeight != null ? String(st.fontWeight) : ''}
+      options={V2_WEIGHT_OPTIONS}
+      onChange={(v) => setStyle({ fontWeight: v === '' ? '' : Number(v) })}
+    />,
+  );
+  // Text alignment — `frameStyle()` writes `textAlign` onto the widget
+  // frame, so every v2 widget honors it. §19 requires alignment.
+  out.push(
+    <SelectField
+      key="v2-align"
+      label="Text alignment"
+      value={String(st.textAlign || '')}
+      options={[
+        ['', 'Theme default'],
+        ['left', 'Left'],
+        ['center', 'Center'],
+        ['right', 'Right'],
+        ['justify', 'Justify'],
+      ]}
+      onChange={(v) => setStyle({ textAlign: v })}
+    />,
+  );
+  // Background — swap the whole backdrop for an uploaded image or
+  // a one-click gradient wash. frameStyle() prefers bgImage over
+  // bgGradient over the solid bgColor above.
+  out.push(SHv2('v2bg', 'Background'));
+  out.push(
+    <AssetPickerField
+      key="v2-bgimage"
+      label="Background image"
+      kind="image"
+      value={String(st.bgImage || '')}
+      onChange={(v) => setStyle({ bgImage: v })}
+    />,
+  );
+  out.push(
+    <SelectField
+      key="v2-bggradient"
+      label="Gradient wash"
+      value={String(st.bgGradient || '')}
+      options={V2_GRADIENT_OPTIONS}
+      onChange={(v) => setStyle({ bgGradient: v })}
+    />,
+  );
+  return out;
+}
+
 const MS_DEFAULTS_BY_TYPE: Record<string, Record<string, string>> = {
   MS_ARCADE: MS_ARCADE_DEFAULTS as any,
   MS_ATLAS: MS_ATLAS_DEFAULTS as any,
@@ -6171,109 +6324,11 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
             />,
           );
         }
-        // Brand style — overrides the widget's designed palette + font.
-        // EVERY v2 widget (celebration / scoreboard / industry pack /
-        // background / chart) funnels config.style through resolveStyle()
-        // + frameStyle(), so the controls below recolor, refont, and
-        // re-background ANY of them — fully customizable for any operator.
-        const st: Record<string, unknown> =
-          cfg.style && typeof cfg.style === 'object' ? cfg.style : {};
-        // Patch the style object. An empty value DELETES the key so the
-        // widget falls back to its designed default instead of being
-        // pinned to '' (which would paint a blank background / no font).
-        const setStyle = (patch: Record<string, unknown>) => {
-          const next: Record<string, unknown> = { ...st };
-          for (const [k, v] of Object.entries(patch)) {
-            if (v === '' || v == null) delete next[k];
-            else next[k] = v;
-          }
-          setField({ style: next });
-        };
-        fields.push(SHv2('style', 'Colors — match your brand'));
-        fields.push(
-          <ColorPickerField
-            key="v2-bg"
-            label="Background color"
-            value={String(st.bgColor || '')}
-            onChange={(v) => setStyle({ bgColor: v })}
-          />,
-        );
-        fields.push(
-          <ColorPickerField
-            key="v2-text"
-            label="Text color"
-            value={String(st.textColor || '')}
-            onChange={(v) => setStyle({ textColor: v })}
-          />,
-        );
-        fields.push(
-          <ColorPickerField
-            key="v2-accent"
-            label="Accent color"
-            value={String(st.accentColor || '')}
-            onChange={(v) => setStyle({ accentColor: v })}
-          />,
-        );
-        // Highlight / glow — celebration widgets paint the neon glow on
-        // their hero text + numbers with this; without the control the
-        // most prominent part of a celebration can't be rebranded.
-        fields.push(
-          <ColorPickerField
-            key="v2-highlight"
-            label="Highlight / glow"
-            value={String(st.highlightColor || '')}
-            onChange={(v) => setStyle({ highlightColor: v })}
-          />,
-        );
-        fields.push(
-          <ColorPickerField
-            key="v2-accent2"
-            label="Secondary accent"
-            value={String(st.accentColor2 || '')}
-            onChange={(v) => setStyle({ accentColor2: v })}
-          />,
-        );
-        fields.push(SHv2('typography', 'Type'));
-        fields.push(
-          <SelectField
-            key="v2-font"
-            label="Font"
-            value={String(st.fontFamily || '')}
-            options={V2_FONT_OPTIONS}
-            onChange={(v) => setStyle({ fontFamily: v })}
-          />,
-        );
-        fields.push(
-          <SelectField
-            key="v2-weight"
-            label="Font weight"
-            value={st.fontWeight != null ? String(st.fontWeight) : ''}
-            options={V2_WEIGHT_OPTIONS}
-            onChange={(v) => setStyle({ fontWeight: v === '' ? '' : Number(v) })}
-          />,
-        );
-        // Background — swap the whole backdrop for an uploaded image or
-        // a one-click gradient wash. frameStyle() prefers bgImage over
-        // bgGradient over the solid bgColor above.
-        fields.push(SHv2('v2bg', 'Background'));
-        fields.push(
-          <AssetPickerField
-            key="v2-bgimage"
-            label="Background image"
-            kind="image"
-            value={String(st.bgImage || '')}
-            onChange={(v) => setStyle({ bgImage: v })}
-          />,
-        );
-        fields.push(
-          <SelectField
-            key="v2-bggradient"
-            label="Gradient wash"
-            value={String(st.bgGradient || '')}
-            options={V2_GRADIENT_OPTIONS}
-            onChange={(v) => setStyle({ bgGradient: v })}
-          />,
-        );
+        // Brand style (colors / type / background) is NO LONGER pushed
+        // here — 2026-08-03 it moved to `buildV2StyleFields()`, appended
+        // AFTER the switch so it also reaches the 70 v2 variants whose
+        // canonical widget type has a hand-built case and never falls
+        // through to this `default:` branch. See the helper's header.
         break;
       }
 
@@ -6538,6 +6593,21 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
     }
   }
 
+  // ── v2 widget pack — Style section for EVERY v2 variant ───────────
+  // 2026-08-03 (§19 launch blocker). Appended AFTER the switch, so a
+  // zone whose canonical widget type has a hand-built case (CLOCK,
+  // ANNOUNCEMENT, CALENDAR, STAFF_SPOTLIGHT, COUNTDOWN, LOGO, WEATHER,
+  // BELL_SCHEDULE, TEXT, TICKER, IMAGE, RICH_TEXT, LUNCH_MENU) gets the
+  // colors / type / background controls too — those 70 variants used to
+  // `break` out of the switch before `default:` ever ran and reached the
+  // operator with content fields ONLY ("you can change the words and
+  // nothing else"). The hand-built case still owns CONTENT; this owns
+  // STYLE, so the two compose instead of competing.
+  const isV2Variant = !!(cfg.variant && V2_BY_VARIANT_ID[String(cfg.variant)]);
+  if (isV2Variant) {
+    fields.push(...buildV2StyleFields(cfg, setField));
+  }
+
   // ── Universal "make it your brand" text-style section ─────────────
   // Every text-bearing widget gets Font + Text color + B/I/U/S — even
   // the themed / MS / fitness widgets whose auto-form previously
@@ -6572,16 +6642,34 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
     // 2026-05-28 (§19) — ANIMATED_BACKGROUND added: it's a textless decorative
     // rainbow layer, so a font/color block would be a costume (the widget reads
     // neither). Its real knobs (variant, confetti) live in its own case above.
+    // 2026-08-03 (§19 launch blocker) — the blanket `!isV2Widget` skip is
+    // GONE. Its premise ("its own Style section covers this") was false for
+    // the 70 v2 variants whose canonical type has a hand-built case: they
+    // never reached the `default:` branch that used to own the v2 Style
+    // section, so BOTH escape hatches were shut and the widget was
+    // completely un-styleable. The v2 Style section now runs for every v2
+    // variant (see `buildV2StyleFields` above), so here we only need to add
+    // what `config.style` genuinely has no equivalent for: Font SIZE and
+    // B/I/U/S. Both ride the zone-wide `[data-widget-content] *:not(svg)`
+    // !important injection (BuilderZone.buildRules + the player's identical
+    // mirror), which works on ANY renderer — including a v2 widget that
+    // hard-codes its own sizes. Font-family and Text-color are deliberately
+    // NOT repeated for v2: `config.style.fontFamily` / `.textColor` flow
+    // through resolveStyle()+frameStyle() natively and two competing "Font"
+    // pickers in one panel is exactly the confusion this section exists to
+    // prevent.
     const MEDIA_ONLY = new Set(['IMAGE', 'IMAGE_CAROUSEL', 'VIDEO', 'VIDEO_CAROUSEL', 'EXTERNAL_HTML', 'ANIMATED_BACKGROUND']);
-    const isV2Widget = !!(cfg.variant && V2_BY_VARIANT_ID[String(cfg.variant)]);
+    const isV2Widget = isV2Variant;
     const alreadyStyleable = fields.some((f: any) => f && f.key === 'fontFamily');
-    if (!alreadyStyleable && !isV2Widget && !MEDIA_ONLY.has(zone.widgetType)) {
+    if (!alreadyStyleable && !MEDIA_ONLY.has(zone.widgetType)) {
       fields.push(
         <div key="_uts-hdr" className="pt-3 pb-1 px-1 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200">
           Text style — make it your brand
         </div>,
       );
-      fields.push(<FontFamilyField key="_uts-font" label="Font" value={cfg.fontFamily || ''} onChange={(v) => setField({ fontFamily: v })} />);
+      if (!isV2Widget) {
+        fields.push(<FontFamilyField key="_uts-font" label="Font" value={cfg.fontFamily || ''} onChange={(v) => setField({ fontFamily: v })} />);
+      }
       fields.push(
         <FontSizeField
           key="_uts-size"
@@ -6591,7 +6679,9 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
           getMeasuredSize={() => measureZoneFontSize(zone.id)}
         />,
       );
-      fields.push(<ColorField key="_uts-color" label="Text color" value={cfg.color || ''} onChange={(v) => setField({ color: v })} allowTransparent />);
+      if (!isV2Widget) {
+        fields.push(<ColorField key="_uts-color" label="Text color" value={cfg.color || ''} onChange={(v) => setField({ color: v })} allowTransparent />);
+      }
       fields.push(
         <FormatToggles
           key="_uts-format"
