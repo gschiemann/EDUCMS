@@ -21,6 +21,12 @@ import {
   assertAllowedEmergencyMediaUrl,
   assertAllowedEmergencyMediaUrls,
 } from './media-url-guard';
+// 2026-08-03 — district-wide propagation. `Tenant` is a tree
+// (district → school via Tenant.parentId) and every emergency write used to
+// touch exactly ONE row + publish to exactly ONE channel, so a district
+// lockdown reached the district office and nothing else. See the module
+// header for the fan-out-vs-inheritance decision and its tradeoff.
+import { collectDescendantTenantIds, isDescendantTenant } from './tenant-hierarchy';
 import {
   TriggerEmergencyInputSchema,
   ClearEmergencyInputSchema,
@@ -256,6 +262,27 @@ export class EmergencyController {
    *                          Caller must own that tenant.
    *   - unknown scopeType  : always 400 — we never guess.
    *
+   * 2026-08-03 — HIERARCHY EXTENSION (district-wide propagation).
+   * `Tenant` is a tree, and a DISTRICT_ADMIN legitimately needs to reach a
+   * school INSIDE their own district (lock down one building, not all seven).
+   * The rule is EXTENDED, never bypassed, and only in the DOWNWARD direction:
+   *
+   *     allow  ⇔  isSuper
+   *            ∨  owningTenantId === callerTenantId          (unchanged)
+   *            ∨  (caller is DISTRICT_ADMIN                   (NEW)
+   *                ∧ owningTenantId is a DESCENDANT of callerTenantId)
+   *
+   * Nothing previously permitted becomes denied. Crucially, the new clause is
+   * strictly downward and role-gated, so it can never be used to escalate:
+   *   - A SCHOOL_ADMIN targeting their district → the district is neither
+   *     their tenant nor a descendant of it → 403, exactly as before.
+   *   - A SCHOOL_ADMIN targeting a SIBLING school → not a descendant → 403.
+   *   - A DISTRICT_ADMIN of district A targeting district B (or B's schools)
+   *     → not a descendant of A → 403.
+   * The walk goes UP from the target (bounded by tree depth, ~2 lookups),
+   * never down from the caller, so an admin of a 500-school district pays the
+   * same two queries as an admin of a two-school one.
+   *
    * Throws:
    *   BadRequestException   — unknown scopeType
    *   NotFoundException     — group/screen id not found in DB
@@ -308,11 +335,22 @@ export class EmergencyController {
     }
 
     // SUPER_ADMIN may act on any tenant; everyone else is strictly
-    // confined to their own tenant. Deny anything else with 403.
+    // confined to their own tenant — or, for a DISTRICT_ADMIN, to a tenant
+    // BELOW their own in the hierarchy (see the block comment above).
     if (!isSuper && owningTenantId !== callerTenantId) {
-      throw new ForbiddenException(
-        'You do not have permission to trigger emergency actions for this scope.',
-      );
+      const mayReachDownward =
+        reqUser?.role === AppRole.DISTRICT_ADMIN &&
+        !!callerTenantId &&
+        (await isDescendantTenant(
+          this.prisma.client.tenant as any,
+          owningTenantId,
+          callerTenantId,
+        ));
+      if (!mayReachDownward) {
+        throw new ForbiddenException(
+          'You do not have permission to trigger emergency actions for this scope.',
+        );
+      }
     }
 
     return owningTenantId;
@@ -404,129 +442,210 @@ export class EmergencyController {
       }
     };
 
+    // Every tenant this trigger actually reached. For a leaf school that's
+    // just the school; for a district it's the district PLUS every
+    // non-archived descendant. Post-commit side effects (manifest-cache
+    // invalidation, pub/sub fan-out, webhooks, GPIO lamps) all iterate this
+    // list rather than the single targeted id — that was the whole bug.
+    let affectedTenantIds: string[] = [];
+
     // If targeting a tenant (e.g., a school), update its emergencyStatus persistently
     if (scopeType === 'tenant') {
+      // ── DISTRICT FAN-OUT (2026-08-03) ───────────────────────────────────
+      // Walk DOWN the hierarchy and treat every descendant as an affected
+      // tenant in its own right. See tenant-hierarchy.ts for why fan-out
+      // beats inheritance here; the short version is that each school owns
+      // its own drilled panic playlists, its own Sprint-8b per-screen config,
+      // its own WS channel and its own audit trail — and a per-tenant write
+      // is the only thing that gets all four right at once.
+      const descendantTenantIds = await collectDescendantTenantIds(
+        this.prisma.client.tenant as any,
+        scopeId,
+      );
+      affectedTenantIds = [scopeId, ...descendantTenantIds];
+
       const explicitPlaylistId = !!overridePayload.playlistId;
-      let activePlaylistId = overridePayload.playlistId || null;
-      // Portrait variant resolved alongside the landscape playlist so
-      // each screen can auto-pick the right one at manifest time.
-      // null-safe: if a tenant hasn't configured a portrait variant,
-      // this stays null and the manifest falls back to landscape.
-      let activePortraitPlaylistId: string | null = null;
-      const tenantInfo = await this.prisma.client.tenant.findUnique({ where: { id: scopeId } });
-
-      // If no playlist was explicitly provided, auto-resolve based on
-      // the configured Panic Button content for this panic type.
-      if (tenantInfo) {
-        const tenantPlaylists = this.pickTenantPanicPlaylists(tenantInfo, overridePayload.type);
-        if (!activePlaylistId) {
-          activePlaylistId = tenantPlaylists.landscape;
-          activePortraitPlaylistId = tenantPlaylists.portrait;
-        } else if (!explicitPlaylistId) {
-          activePortraitPlaylistId = tenantPlaylists.portrait;
-        }
-      }
-
       const typeKey = this.emergencyTypeKey(overridePayload.type);
-      const locationBasedOverrides: any[] = [];
-      let locationScreenCount = 0;
-      let locationSpecificCount = 0;
 
-      if ((tenantInfo as any)?.locationBasedEmergencyEnabled) {
-        const screens = await this.prisma.client.screen.findMany({
-          where: { tenantId: scopeId },
+      // Root tenant stays a findUnique so the (overwhelmingly common)
+      // single-school path issues exactly the query it always did. The
+      // descendants ride ONE extra findMany — never N.
+      const rootTenantInfo = await this.prisma.client.tenant.findUnique({ where: { id: scopeId } });
+      const tenantInfoById = new Map<string, any>([[scopeId, rootTenantInfo]]);
+      if (descendantTenantIds.length > 0) {
+        const childRows = await this.prisma.client.tenant.findMany({
+          where: { id: { in: descendantTenantIds } },
         });
-        locationScreenCount = screens.length;
+        for (const row of childRows as any[]) tenantInfoById.set(row.id, row);
+      }
 
-        for (const screen of screens) {
-          const screenContent = this.pickScreenEmergencyContent(screen, typeKey);
-          const isPortrait = this.isPortraitScreen(screen);
-          const tenantFallbackPlaylistId = isPortrait
-            ? (activePortraitPlaylistId || activePlaylistId || null)
-            : (activePlaylistId || activePortraitPlaylistId || null);
-
-          if (screenContent.playlistId || screenContent.mediaUrl) {
-            locationSpecificCount += 1;
-          }
-
-          const playlistId = screenContent.playlistId || (screenContent.mediaUrl ? null : tenantFallbackPlaylistId);
-          const mediaUrl = screenContent.playlistId
-            ? null
-            : (screenContent.mediaUrl || (playlistId ? null : (overridePayload.mediaUrl || null)));
-
-          locationBasedOverrides.push((this.prisma.client as any).screenEmergencyOverride.upsert({
-            where: { screenId: screen.id },
-            create: {
-              screenId: screen.id,
-              tenantId: scopeId,
-              type: typeKey || 'CUSTOM',
-              severity,
-              playlistId,
-              mediaUrl,
-              textBlob: overridePayload.textBlob || null,
-              expiresAt: this.emergencyExpiresAt(overridePayload.expiresAt),
-              triggeredByUserId: req.user?.id || 'admin_system',
-            },
-            update: {
-              type: typeKey || 'CUSTOM',
-              severity,
-              playlistId,
-              mediaUrl,
-              textBlob: overridePayload.textBlob || null,
-              expiresAt: this.emergencyExpiresAt(overridePayload.expiresAt),
-              triggeredByUserId: req.user?.id || 'admin_system',
-              triggeredAt: new Date(),
-            },
-          }));
+      // Sprint-8b location-based mode is a PER-TENANT opt-in, so only the
+      // tenants that enabled it need their screens loaded. Single-tenant
+      // shape is preserved verbatim; the subtree shape collapses to one
+      // findMany that we then group by tenantId.
+      const locationModeTenantIds = affectedTenantIds.filter(
+        (tid) => !!tenantInfoById.get(tid)?.locationBasedEmergencyEnabled,
+      );
+      const screensByTenant = new Map<string, any[]>();
+      if (locationModeTenantIds.length === 1 && locationModeTenantIds[0] === scopeId) {
+        screensByTenant.set(
+          scopeId,
+          await this.prisma.client.screen.findMany({ where: { tenantId: scopeId } }),
+        );
+      } else if (locationModeTenantIds.length > 0) {
+        const rows = await this.prisma.client.screen.findMany({
+          where: { tenantId: { in: locationModeTenantIds } },
+        });
+        for (const s of rows as any[]) {
+          const list = screensByTenant.get(s.tenantId) ?? [];
+          list.push(s);
+          screensByTenant.set(s.tenantId, list);
         }
       }
 
-      // ownedTenantId already verified above — use it for the audit row so
-      // the forensic trail lives with the school that was affected.
-      // Wrap state mutation + audit in one transaction so a concurrent
-      // trigger or all-clear can't leave the Tenant in a half-updated
-      // state where emergencyStatus says CRITICAL but emergencyPlaylistId
-      // is null (or vice versa). All-or-nothing. Both orientation
-      // pointers flip together so portrait + landscape screens see the
-      // same emergency transition at the same moment.
-      await this.prisma.client.$transaction([
-        this.prisma.client.tenant.update({
-          where: { id: scopeId },
-          data: {
-            emergencyStatus: severity,
-            // 2026-07-25 — persist the INCIDENT TYPE too. emergencyStatus holds
-            // the SEVERITY, and Severity/OverrideIncidentType are disjoint enums,
-            // so without this the type was lost on a tenant-scope trigger and the
-            // manifest fell back to the severity — screens rendered "CRITICAL
-            // PROTOCOL ACTIVE" instead of LOCKDOWN or EVACUATE.
-            emergencyType: overridePayload.type
-              ? String(overridePayload.type).toUpperCase()
-              : null,
-            emergencyPlaylistId: activePlaylistId || null,
-            emergencyPortraitPlaylistId: activePortraitPlaylistId || null,
-          } as any,
-        }),
-        this.prisma.client.auditLog.create({
-          data: {
-            action: 'TRIGGER_EMERGENCY',
-            targetType: scopeType,
-            targetId: scopeId,
-            tenantId: ownedTenantId,
-            userId: req.user?.id,
-            details: JSON.stringify({
-              overrideId,
-              severity,
-              type: typeKey,
-              portraitPlaylistId: activePortraitPlaylistId,
-              locationBasedEnabled: !!(tenantInfo as any)?.locationBasedEmergencyEnabled,
-              locationScreenCount,
-              locationSpecificCount,
-              triggeredByTenant: req.user?.tenantId,
-            }),
-          },
-        }),
-        ...locationBasedOverrides,
-      ]);
+      // Build the whole subtree's writes, then commit them in ONE
+      // transaction. All-or-nothing across the district: a fan-out that
+      // locked down four schools and failed on the fifth would be worse
+      // than one that failed outright, because the operator would believe
+      // the district was covered.
+      const subtreeOps: any[] = [];
+
+      for (const affectedTenantId of affectedTenantIds) {
+        const tenantInfo = tenantInfoById.get(affectedTenantId) ?? null;
+        const isOriginTenant = affectedTenantId === scopeId;
+
+        let activePlaylistId = overridePayload.playlistId || null;
+        // Portrait variant resolved alongside the landscape playlist so
+        // each screen can auto-pick the right one at manifest time.
+        // null-safe: if a tenant hasn't configured a portrait variant,
+        // this stays null and the manifest falls back to landscape.
+        let activePortraitPlaylistId: string | null = null;
+
+        // If no playlist was explicitly provided, auto-resolve based on
+        // the configured Panic Button content for this panic type — READ
+        // OFF THIS TENANT'S OWN ROW, so each school in the district plays
+        // the lockdown content that school rehearsed. An explicit
+        // playlistId from the operator still wins everywhere (it was
+        // ownership-checked against the district above).
+        if (tenantInfo) {
+          const tenantPlaylists = this.pickTenantPanicPlaylists(tenantInfo, overridePayload.type);
+          if (!activePlaylistId) {
+            activePlaylistId = tenantPlaylists.landscape;
+            activePortraitPlaylistId = tenantPlaylists.portrait;
+          } else if (!explicitPlaylistId) {
+            activePortraitPlaylistId = tenantPlaylists.portrait;
+          }
+        }
+
+        const locationBasedOverrides: any[] = [];
+        let locationScreenCount = 0;
+        let locationSpecificCount = 0;
+
+        if (tenantInfo?.locationBasedEmergencyEnabled) {
+          const screens = screensByTenant.get(affectedTenantId) ?? [];
+          locationScreenCount = screens.length;
+
+          for (const screen of screens) {
+            const screenContent = this.pickScreenEmergencyContent(screen, typeKey);
+            const isPortrait = this.isPortraitScreen(screen);
+            const tenantFallbackPlaylistId = isPortrait
+              ? (activePortraitPlaylistId || activePlaylistId || null)
+              : (activePlaylistId || activePortraitPlaylistId || null);
+
+            if (screenContent.playlistId || screenContent.mediaUrl) {
+              locationSpecificCount += 1;
+            }
+
+            const playlistId = screenContent.playlistId || (screenContent.mediaUrl ? null : tenantFallbackPlaylistId);
+            const mediaUrl = screenContent.playlistId
+              ? null
+              : (screenContent.mediaUrl || (playlistId ? null : (overridePayload.mediaUrl || null)));
+
+            locationBasedOverrides.push((this.prisma.client as any).screenEmergencyOverride.upsert({
+              where: { screenId: screen.id },
+              create: {
+                screenId: screen.id,
+                tenantId: affectedTenantId,
+                type: typeKey || 'CUSTOM',
+                severity,
+                playlistId,
+                mediaUrl,
+                textBlob: overridePayload.textBlob || null,
+                expiresAt: this.emergencyExpiresAt(overridePayload.expiresAt),
+                triggeredByUserId: req.user?.id || 'admin_system',
+              },
+              update: {
+                type: typeKey || 'CUSTOM',
+                severity,
+                playlistId,
+                mediaUrl,
+                textBlob: overridePayload.textBlob || null,
+                expiresAt: this.emergencyExpiresAt(overridePayload.expiresAt),
+                triggeredByUserId: req.user?.id || 'admin_system',
+                triggeredAt: new Date(),
+              },
+            }));
+          }
+        }
+
+        // Wrap state mutation + audit in one transaction so a concurrent
+        // trigger or all-clear can't leave the Tenant in a half-updated
+        // state where emergencyStatus says CRITICAL but emergencyPlaylistId
+        // is null (or vice versa). All-or-nothing. Both orientation
+        // pointers flip together so portrait + landscape screens see the
+        // same emergency transition at the same moment.
+        subtreeOps.push(
+          this.prisma.client.tenant.update({
+            where: { id: affectedTenantId },
+            data: {
+              emergencyStatus: severity,
+              // 2026-07-25 — persist the INCIDENT TYPE too. emergencyStatus holds
+              // the SEVERITY, and Severity/OverrideIncidentType are disjoint enums,
+              // so without this the type was lost on a tenant-scope trigger and the
+              // manifest fell back to the severity — screens rendered "CRITICAL
+              // PROTOCOL ACTIVE" instead of LOCKDOWN or EVACUATE.
+              emergencyType: overridePayload.type
+                ? String(overridePayload.type).toUpperCase()
+                : null,
+              emergencyPlaylistId: activePlaylistId || null,
+              emergencyPortraitPlaylistId: activePortraitPlaylistId || null,
+            } as any,
+          }),
+          // AUDIT: one immutable row PER AFFECTED TENANT. The forensic
+          // question "who locked down this school, and when" has to be
+          // answerable from that school's own activity trail — a single
+          // district row would make the answer wrong for the other six.
+          // `propagatedFromTenantId` links each child row back to the
+          // district action that caused it.
+          this.prisma.client.auditLog.create({
+            data: {
+              action: 'TRIGGER_EMERGENCY',
+              targetType: scopeType,
+              targetId: affectedTenantId,
+              tenantId: affectedTenantId,
+              userId: req.user?.id,
+              details: JSON.stringify({
+                overrideId,
+                severity,
+                type: typeKey,
+                portraitPlaylistId: activePortraitPlaylistId,
+                locationBasedEnabled: !!tenantInfo?.locationBasedEmergencyEnabled,
+                locationScreenCount,
+                locationSpecificCount,
+                triggeredByTenant: req.user?.tenantId,
+                // Hierarchy provenance — present on the origin row too so a
+                // reader never has to infer it from absence.
+                originTenantId: scopeId,
+                propagatedFromTenantId: isOriginTenant ? null : scopeId,
+                subtreeTenantCount: affectedTenantIds.length,
+              }),
+            },
+          }),
+          ...locationBasedOverrides,
+        );
+      }
+
+      await this.prisma.client.$transaction(subtreeOps);
     } else {
       // Non-tenant scope (group / device). Persist per-screen
       // ScreenEmergencyOverride rows so the HTTP-poll manifest backstop ALSO
@@ -583,40 +702,62 @@ export class EmergencyController {
     // tenant emergency state for 2s per tenant to dodge the polling
     // herd. Emergency trigger is the moment we MUST bust that cache
     // so the next poll from any screen in the tenant sees the new
-    // state without waiting for the 2s TTL.
-    if (scopeType === 'tenant') invalidateTenantState(scopeId);
+    // state without waiting for the 2s TTL. Every tenant in the
+    // subtree, not just the targeted one — a stale child entry would
+    // hold a school on its pre-lockdown manifest for 2 more seconds.
+    for (const tid of affectedTenantIds) invalidateTenantState(tid);
 
-    // Publish via Redis for WebSocket fanout (graceful fallback if offline)
+    // Publish via Redis for WebSocket fanout (graceful fallback if offline).
+    //
+    // ONE CHANNEL PER AFFECTED TENANT. The gateway matches a scope publish
+    // against the DEVICE'S OWN tenantId (`broadcastToScope`:
+    // `type === 'tenant' && ctx.tenantId === id`), so a screen in a child
+    // school never sees a `tenant:<districtId>` message. Publishing per
+    // descendant is what actually reaches those 41 screens. Each publish is
+    // caught INDEPENDENTLY: one school's Redis hiccup must not skip the
+    // remaining schools' fan-out — they'd each be silently demoted to the
+    // 5-10s HTTP-poll tier while the operator believes the push landed.
     const channel = `${scopeType}:${scopeId}`;
-    try {
-      await this.redisService.publish(channel, signedMessage);
-    } catch (error) {
-      Sentry.withScope((s) => {
-        s.setTag('emergency.action', 'trigger');
-        s.setTag('emergency.scopeType', scopeType);
-        s.setUser({ id: req.user?.id });
-        s.setExtra('overrideId', overrideId);
-        s.setExtra('channel', channel);
-        Sentry.captureException(error);
-      });
-      console.warn(`[Emergency] Redis publish failed for ${channel}. Realtime bypass disabled. Screens will pull via HTTP polling. Error: ${error}`);
+    const publishChannels =
+      scopeType === 'tenant' ? affectedTenantIds.map((tid) => `tenant:${tid}`) : [channel];
+    for (const ch of publishChannels) {
+      try {
+        await this.redisService.publish(ch, signedMessage);
+      } catch (error) {
+        Sentry.withScope((s) => {
+          s.setTag('emergency.action', 'trigger');
+          s.setTag('emergency.scopeType', scopeType);
+          s.setUser({ id: req.user?.id });
+          s.setExtra('overrideId', overrideId);
+          s.setExtra('channel', ch);
+          Sentry.captureException(error);
+        });
+        console.warn(`[Emergency] Redis publish failed for ${ch}. Realtime bypass disabled. Screens will pull via HTTP polling. Error: ${error}`);
+      }
     }
 
     // 2026-05-25 Developer area: outbound webhook on emergency.triggered.
     // Fire-and-forget; the response below is never blocked. Only fires
     // for tenant-scoped triggers (per-screen / per-group emergencies
     // are too granular for typical external integrations — those can
-    // listen to the WS channel directly if needed).
-    if (scopeType === 'tenant' && ownedTenantId) {
-      this.webhookDispatch.dispatch(ownedTenantId, 'emergency.triggered', {
-        overrideId,
-        scopeType,
-        scopeId,
-        severity: message.payload?.severity ?? severity,
-        type: message.payload?.type,
-        triggeredAt: new Date().toISOString(),
-        triggeredByUserId: req.user?.id ?? null,
-      });
+    // listen to the WS channel directly if needed). Fired once per
+    // affected tenant so a school's own integrations (its PA bridge, its
+    // Slack channel) see the alert that is actually running on its walls.
+    if (scopeType === 'tenant') {
+      for (const tid of affectedTenantIds) {
+        this.webhookDispatch.dispatch(tid, 'emergency.triggered', {
+          overrideId,
+          scopeType,
+          scopeId: tid,
+          severity: message.payload?.severity ?? severity,
+          type: message.payload?.type,
+          triggeredAt: new Date().toISOString(),
+          triggeredByUserId: req.user?.id ?? null,
+          // Provenance so a downstream integration can tell a district
+          // cascade apart from a school-local trigger.
+          originTenantId: scopeId,
+        });
+      }
     }
 
     // 2026-05-27 — Goodview EP6N GPIO status lamp auto-drive. Sweep
@@ -626,30 +767,42 @@ export class EmergencyController {
     // by GpioService but NEVER rolls back the emergency. Tenant-
     // scope only; group/device scope triggers don't auto-drive the
     // tenant-wide lamp signal (those have their own per-screen UX).
-    if (scopeType === 'tenant' && ownedTenantId) {
-      this.gpio
-        .driveStatusLampForEmergency({
-          tenantId: ownedTenantId,
-          state: 'high',
-          reason: 'emergency_trigger',
-          sourceContext: { overrideId, severity, type: overridePayload.type ?? null },
-        })
-        .catch((e) => {
-          Sentry.withScope((s) => {
-            s.setTag('emergency.action', 'trigger.gpio_lamp');
-            s.setTag('emergency.scopeType', scopeType);
-            s.setUser({ id: req.user?.id });
-            s.setExtra('overrideId', overrideId);
-            Sentry.captureException(e);
+    // Swept per affected tenant so a district lockdown lights the lobby
+    // lamp in every school, not just the district office.
+    if (scopeType === 'tenant') {
+      for (const tid of affectedTenantIds) {
+        this.gpio
+          .driveStatusLampForEmergency({
+            tenantId: tid,
+            state: 'high',
+            reason: 'emergency_trigger',
+            sourceContext: { overrideId, severity, type: overridePayload.type ?? null },
+          })
+          .catch((e) => {
+            Sentry.withScope((s) => {
+              s.setTag('emergency.action', 'trigger.gpio_lamp');
+              s.setTag('emergency.scopeType', scopeType);
+              s.setUser({ id: req.user?.id });
+              s.setExtra('overrideId', overrideId);
+              s.setExtra('tenantId', tid);
+              Sentry.captureException(e);
+            });
+            console.warn(`[Emergency] GPIO status-lamp auto-drive failed (trigger): ${e}`);
           });
-          console.warn(`[Emergency] GPIO status-lamp auto-drive failed (trigger): ${e}`);
-        });
+      }
     }
 
     return {
       success: true,
       overrideId,
-      message: `Emergency dispatched to ${channel}`
+      // Additive reach reporting so the operator UI can say "7 schools,
+      // 38 screens" instead of implying a district trigger hit one row.
+      affectedTenantIds,
+      affectedTenantCount: affectedTenantIds.length,
+      message:
+        affectedTenantIds.length > 1
+          ? `Emergency dispatched to ${channel} and ${affectedTenantIds.length - 1} child location(s)`
+          : `Emergency dispatched to ${channel}`,
     };
   }
 
@@ -678,35 +831,76 @@ export class EmergencyController {
       clearedBy,
     });
 
+    // Every tenant this all-clear reached — mirror of the trigger path so
+    // the two are exactly symmetric. Asymmetry here is the worst possible
+    // bug in this file: a district all-clear that leaves one school locked
+    // down is worse than no district feature at all, because the operator
+    // has been told the incident is over.
+    let affectedTenantIds: string[] = [];
+
     // If targeting a tenant, clear its emergencyStatus + audit atomically.
     // Clear BOTH orientation pointers so a portrait screen doesn't keep
     // rendering an emergency after the admin hit all-clear.
     if (scopeType === 'tenant') {
+      const descendantTenantIds = await collectDescendantTenantIds(
+        this.prisma.client.tenant as any,
+        scopeId,
+      );
+      affectedTenantIds = [scopeId, ...descendantTenantIds];
+
+      const clearedState = {
+        emergencyStatus: 'INACTIVE',
+        // Clear the incident type with the status — a stale type would make
+        // a cleared tenant look like it still has an active incident.
+        emergencyType: null,
+        emergencyPlaylistId: null,
+        emergencyPortraitPlaylistId: null,
+      } as any;
+
       await this.prisma.client.$transaction([
         this.prisma.client.tenant.update({
           where: { id: scopeId },
-          data: {
-            emergencyStatus: 'INACTIVE',
-            // Clear the incident type with the status — a stale type would make
-            // a cleared tenant look like it still has an active incident.
-            emergencyType: null,
-            emergencyPlaylistId: null,
-            emergencyPortraitPlaylistId: null,
-          } as any,
+          data: clearedState,
         }),
+        // Descendants clear in ONE statement — the data is identical for
+        // every school, unlike the trigger path where each resolves its own
+        // playlists. Empty `in` list is a no-op, so the leaf-school path
+        // costs nothing.
+        ...(descendantTenantIds.length > 0
+          ? [
+              this.prisma.client.tenant.updateMany({
+                where: { id: { in: descendantTenantIds } },
+                data: clearedState,
+              }),
+            ]
+          : []),
+        // Per-screen overrides across the WHOLE subtree. Without the `in`
+        // a rebooted screen in a child school re-reads its override row off
+        // disk and comes back up locked down — the emergency-003 bug,
+        // district-scope variant.
         (this.prisma.client as any).screenEmergencyOverride.deleteMany({
-          where: { tenantId: scopeId },
+          where: { tenantId: { in: affectedTenantIds } },
         }),
-        this.prisma.client.auditLog.create({
-          data: {
-            action: 'CLEAR_EMERGENCY',
-            targetType: scopeType,
-            targetId: scopeId,
-            tenantId: ownedTenantId,
-            userId: req.user?.id,
-            details: JSON.stringify({ overrideId, triggeredByTenant: req.user?.tenantId }),
-          },
-        }),
+        // One audit row per affected tenant, same reasoning as the trigger:
+        // each school's own trail has to record that IT was cleared.
+        ...affectedTenantIds.map((tid) =>
+          this.prisma.client.auditLog.create({
+            data: {
+              action: 'CLEAR_EMERGENCY',
+              targetType: scopeType,
+              targetId: tid,
+              tenantId: tid,
+              userId: req.user?.id,
+              details: JSON.stringify({
+                overrideId,
+                triggeredByTenant: req.user?.tenantId,
+                originTenantId: scopeId,
+                propagatedFromTenantId: tid === scopeId ? null : scopeId,
+                subtreeTenantCount: affectedTenantIds.length,
+              }),
+            },
+          }),
+        ),
       ]);
     } else if (scopeType === 'device') {
       // emergency-003 fix: previously the device-scope all-clear only
@@ -763,35 +957,46 @@ export class EmergencyController {
     }
 
     // Hot-path cache invalidation so the next manifest poll from any
-    // screen in the tenant picks up INACTIVE without waiting for TTL.
-    if (scopeType === 'tenant') invalidateTenantState(scopeId);
+    // screen in the tenant (or any school under it) picks up INACTIVE
+    // without waiting for TTL.
+    for (const tid of affectedTenantIds) invalidateTenantState(tid);
 
-    // Publish via Redis for fanout
+    // Publish via Redis for fanout — one channel per affected tenant, for
+    // the same gateway-matching reason as the trigger path, and with the
+    // same independent catch so one failed publish can't strand the rest
+    // of the district on a lockdown that has already been cleared.
     const channel = `${scopeType}:${scopeId}`;
-    try {
-      await this.redisService.publish(channel, signedMessage);
-    } catch (error) {
-      Sentry.withScope((s) => {
-        s.setTag('emergency.action', 'all-clear');
-        s.setTag('emergency.scopeType', scopeType);
-        s.setUser({ id: req.user?.id });
-        s.setExtra('overrideId', overrideId);
-        s.setExtra('channel', channel);
-        Sentry.captureException(error);
-      });
-      console.warn(`[Emergency] Redis publish failed for ${channel}.`);
+    const publishChannels =
+      scopeType === 'tenant' ? affectedTenantIds.map((tid) => `tenant:${tid}`) : [channel];
+    for (const ch of publishChannels) {
+      try {
+        await this.redisService.publish(ch, signedMessage);
+      } catch (error) {
+        Sentry.withScope((s) => {
+          s.setTag('emergency.action', 'all-clear');
+          s.setTag('emergency.scopeType', scopeType);
+          s.setUser({ id: req.user?.id });
+          s.setExtra('overrideId', overrideId);
+          s.setExtra('channel', ch);
+          Sentry.captureException(error);
+        });
+        console.warn(`[Emergency] Redis publish failed for ${ch}.`);
+      }
     }
 
     // 2026-05-25 Developer area: outbound webhook on emergency.cleared.
     // Mirror of the trigger-side dispatch above.
-    if (scopeType === 'tenant' && ownedTenantId) {
-      this.webhookDispatch.dispatch(ownedTenantId, 'emergency.cleared', {
-        overrideId,
-        scopeType,
-        scopeId,
-        clearedAt: new Date().toISOString(),
-        clearedByUserId: req.user?.id ?? null,
-      });
+    if (scopeType === 'tenant') {
+      for (const tid of affectedTenantIds) {
+        this.webhookDispatch.dispatch(tid, 'emergency.cleared', {
+          overrideId,
+          scopeType,
+          scopeId: tid,
+          clearedAt: new Date().toISOString(),
+          clearedByUserId: req.user?.id ?? null,
+          originTenantId: scopeId,
+        });
+      }
     }
 
     // 2026-05-27 — Mirror of the trigger-side GPIO status-lamp drive.
@@ -799,29 +1004,37 @@ export class EmergencyController {
     // goes dark when the emergency clears. Fire-and-forget for the
     // same reason as the trigger path — a stuck lamp must never
     // delay all-clear from reaching the player fleet.
-    if (scopeType === 'tenant' && ownedTenantId) {
-      this.gpio
-        .driveStatusLampForEmergency({
-          tenantId: ownedTenantId,
-          state: 'low',
-          reason: 'emergency_all_clear',
-          sourceContext: { overrideId },
-        })
-        .catch((e) => {
-          Sentry.withScope((s) => {
-            s.setTag('emergency.action', 'all-clear.gpio_lamp');
-            s.setTag('emergency.scopeType', scopeType);
-            s.setUser({ id: req.user?.id });
-            s.setExtra('overrideId', overrideId);
-            Sentry.captureException(e);
+    if (scopeType === 'tenant') {
+      for (const tid of affectedTenantIds) {
+        this.gpio
+          .driveStatusLampForEmergency({
+            tenantId: tid,
+            state: 'low',
+            reason: 'emergency_all_clear',
+            sourceContext: { overrideId },
+          })
+          .catch((e) => {
+            Sentry.withScope((s) => {
+              s.setTag('emergency.action', 'all-clear.gpio_lamp');
+              s.setTag('emergency.scopeType', scopeType);
+              s.setUser({ id: req.user?.id });
+              s.setExtra('overrideId', overrideId);
+              s.setExtra('tenantId', tid);
+              Sentry.captureException(e);
+            });
+            console.warn(`[Emergency] GPIO status-lamp auto-drive failed (all-clear): ${e}`);
           });
-          console.warn(`[Emergency] GPIO status-lamp auto-drive failed (all-clear): ${e}`);
-        });
+      }
     }
 
     return {
       success: true,
-      message: `All clear dispatched to ${channel} for ${overrideId}`
+      affectedTenantIds,
+      affectedTenantCount: affectedTenantIds.length,
+      message:
+        affectedTenantIds.length > 1
+          ? `All clear dispatched to ${channel} and ${affectedTenantIds.length - 1} child location(s) for ${overrideId}`
+          : `All clear dispatched to ${channel} for ${overrideId}`,
     };
   }
 

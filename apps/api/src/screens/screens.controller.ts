@@ -73,6 +73,11 @@ import {
 } from './device-auth';
 import { revokeScreenCredentials, rotateScreenCredentialEpoch } from './device-credentials';
 import { mintStreamTicket } from './stream-ticket';
+// 2026-08-03 — district-wide emergency propagation. The emergency branch of
+// the manifest resolves a screen's alert from its OWN tenant row; this bound
+// lets it fall back to the nearest ANCESTOR tenant that is in emergency. See
+// `resolveAncestorEmergencyState` below and `emergency/tenant-hierarchy.ts`.
+import { MAX_TENANT_TREE_DEPTH } from '../emergency/tenant-hierarchy';
 
 const PAIRING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -2978,6 +2983,84 @@ export class ScreensController {
     }];
   }
 
+  /**
+   * The exact Tenant columns the manifest's emergency branch reads. Shared
+   * between the screen's own tenant lookup and the ancestor walk so both
+   * populate the SAME shape into the 2s `getTenantState` cache — a cache
+   * entry written by one path and read by the other must never be missing a
+   * field the reader depends on.
+   *
+   * `parentId` is what makes district inheritance possible; `id` is carried
+   * so a resolved ancestor can be named in the manifest for diagnostics.
+   */
+  private static readonly MANIFEST_TENANT_EMERGENCY_SELECT = {
+    id: true,
+    parentId: true,
+    emergencyStatus: true,
+    emergencyType: true,
+    emergencyPlaylistId: true,
+    emergencyPortraitPlaylistId: true,
+    locationBasedEmergencyEnabled: true,
+  } as const;
+
+  /**
+   * DISTRICT-WIDE EMERGENCY INHERITANCE — the manifest-side safety net
+   * (2026-08-03).
+   *
+   * The authoritative mechanism for a district lockdown is the FAN-OUT in
+   * `emergency.controller.ts`: a district trigger writes every descendant
+   * tenant's own row, so a screen booting mid-lockdown reads its own tenant
+   * and sees the alert with zero extra work. This walk exists for the cases
+   * the fan-out provably cannot cover:
+   *
+   *   - a school tenant CREATED after the district trigger fired;
+   *   - a school row reset out-of-band (Studio edit, seed script, a partial
+   *     restore) while the district is still in emergency;
+   *   - a SCHOOL_ADMIN clearing their own school during a DISTRICT-wide
+   *     lockdown. That must NOT drop the district alert — one building's
+   *     admin does not get to cancel a district-wide incident — and this
+   *     walk is what re-asserts it on the very next poll.
+   *
+   * COST: only runs when the screen's own tenant is INACTIVE **and** has a
+   * parent, and every hop goes through the same 2s `getTenantState` cache
+   * that the screen's own tenant read uses. A 38-screen / 7-school district
+   * polling every 5s adds at most one cached district read per 2s — far
+   * below the fan-out savings, and nowhere near the manifest content
+   * fan-out that caused the July-2026 Supabase overage.
+   *
+   * Depth-bounded and cycle-guarded: `Tenant.parentId` is an unconstrained
+   * self-FK, and the life-safety path must never be what discovers a cycle.
+   *
+   * Returns the nearest ancestor tenant row that is in an active emergency,
+   * or null.
+   */
+  private async resolveAncestorEmergencyState(parentId: string | null | undefined): Promise<any | null> {
+    let cursor: string | null = parentId ?? null;
+    const seen = new Set<string>();
+
+    for (let hop = 0; hop < MAX_TENANT_TREE_DEPTH && cursor; hop++) {
+      if (seen.has(cursor)) break; // cycle guard
+      seen.add(cursor);
+
+      let ancestor = getTenantState(cursor) as any;
+      if (!ancestor) {
+        ancestor = (await this.prisma.client.tenant.findUnique({
+          where: { id: cursor },
+          select: ScreensController.MANIFEST_TENANT_EMERGENCY_SELECT as any,
+        })) as any;
+        if (ancestor) setTenantState(cursor, ancestor);
+      }
+      if (!ancestor) return null;
+
+      if (ancestor.emergencyStatus && ancestor.emergencyStatus !== 'INACTIVE') {
+        return ancestor;
+      }
+      cursor = ancestor.parentId ?? null;
+    }
+
+    return null;
+  }
+
   // ─── Player manifest (what the screen device fetches) ───
   @UseGuards(JwtAuthGuard)
   @Get(':id/manifest')
@@ -3111,34 +3194,53 @@ export class ScreensController {
       // shared across every screen in the tenant polling manifest.
       // Cache for 2s; emergency controllers explicitly invalidate on
       // trigger/all-clear so the state propagates faster than TTL.
+      //
+      // The select is MANIFEST_TENANT_EMERGENCY_SELECT — it pulls both
+      // orientation pointers (so we can pick the right one for this
+      // screen), the INCIDENT TYPE (2026-07-25: without it
+      // `tenant.emergencyType` is undefined and the manifest silently
+      // falls back to the severity, rendering "CRITICAL PROTOCOL ACTIVE"
+      // instead of LOCKDOWN), the Sprint-8b `locationBasedEmergencyEnabled`
+      // toggle, and `parentId` for the district-inheritance walk below.
+      // Cast through `any` so the controller compiles even before
+      // @prisma/client picks up the emergency_portrait_playlist_id column.
       let tenant = getTenantState(screen.tenantId) as any;
       if (!tenant) {
         tenant = await this.prisma.client.tenant.findUnique({
           where: { id: screen.tenantId },
-          // Pull both orientation pointers so we can pick the right one
-          // for this specific screen. Cast select through `any` so the
-          // controller compiles even before @prisma/client picks up the
-          // new emergency_portrait_playlist_id column (handled by the
-          // 20260420180000_add_emergency_portrait_variants migration +
-          // db:generate on next boot).
-          select: {
-            emergencyStatus: true,
-            // 2026-07-25 — the INCIDENT TYPE (LOCKDOWN / EVACUATE / ...). Must be
-            // selected explicitly or `tenant.emergencyType` is undefined and the
-            // manifest silently falls back to the severity again.
-            emergencyType: true,
-            emergencyPlaylistId: true,
-            emergencyPortraitPlaylistId: true,
-            // Sprint 8b — location-based mode toggle. When false, the
-            // manifest treats every screen as if it has no per-screen
-            // overrides set (admin hasn't opted in yet, or has opted
-            // back out — flipping the toggle off should immediately
-            // restore the simpler "every screen plays the tenant
-            // default" behavior without needing to wipe data).
-            locationBasedEmergencyEnabled: true,
-          } as any,
+          select: ScreensController.MANIFEST_TENANT_EMERGENCY_SELECT as any,
         }) as any;
         if (tenant) setTenantState(screen.tenantId, tenant);
+      }
+
+      // ── DISTRICT INHERITANCE SAFETY NET (2026-08-03) ────────────────────
+      // A district trigger FANS OUT and writes this school's own row, so in
+      // the normal case the check below finds an active emergency already
+      // and this walk never runs. It exists for the cases fan-out cannot
+      // reach — see resolveAncestorEmergencyState for the full list. The
+      // inherited state is merged into a LOCAL copy: never write the merged
+      // object back through setTenantState or we would poison this school's
+      // cache entry with its district's status.
+      let inheritedFromTenantId: string | null = null;
+      if (
+        tenant &&
+        (!tenant.emergencyStatus || tenant.emergencyStatus === 'INACTIVE') &&
+        tenant.parentId
+      ) {
+        const ancestor = await this.resolveAncestorEmergencyState(tenant.parentId);
+        if (ancestor) {
+          inheritedFromTenantId = ancestor.id ?? tenant.parentId;
+          tenant = {
+            ...tenant,
+            emergencyStatus: ancestor.emergencyStatus,
+            emergencyType: ancestor.emergencyType,
+            emergencyPlaylistId: ancestor.emergencyPlaylistId,
+            emergencyPortraitPlaylistId: ancestor.emergencyPortraitPlaylistId,
+            // NOT inherited: locationBasedEmergencyEnabled stays this
+            // school's own opt-in, because the per-screen emergency config
+            // it gates lives on THIS school's screens.
+          };
+        }
       }
 
       // Sprint 8b — per-screen override wins over tenant-wide. If we
@@ -3444,7 +3546,18 @@ export class ScreensController {
           emergencyScopeNote: activeScreenOverride?.scopeNote || null,
           // Tells the player whether it's running a per-screen or
           // tenant-wide override. Useful for the Stopped splash too.
+          // Deliberately still 'tenant' for an INHERITED district alert:
+          // from this screen's point of view it IS a tenant-wide alert, and
+          // introducing a new enum value here would change a player-visible
+          // field on a life-safety path for no behavioural gain. The
+          // provenance rides the additive field below instead.
           emergencyScope: activeScreenOverride ? 'screen' : 'tenant',
+          // 2026-08-03 — which tenant this alert actually originates from
+          // when it was INHERITED from an ancestor (district) rather than
+          // set on this screen's own tenant. Null in every other case, so
+          // existing players ignore it and support can tell "this school
+          // was locked down by its district" from a single manifest dump.
+          emergencyInheritedFromTenantId: activeScreenOverride ? null : inheritedFromTenantId,
           // 2026-05-26 audit — surface the per-screen override's expiry
           // (UNIX seconds) so the player's emergency-cache layer at
           // apps/web/.../player/page.tsx:451 anchors the cache TTL to
