@@ -564,13 +564,13 @@ importers:
       jsonwebtoken:
         specifier: ^9.0.3
         version: 9.0.3
+      prisma:
+        specifier: ^5.12.1
+        version: 5.22.0
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.39
-      prisma:
-        specifier: ^5.12.1
-        version: 5.22.0
       tsx:
         specifier: ^4.7.2
         version: 4.21.0

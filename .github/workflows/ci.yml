@@ -322,6 +322,47 @@ jobs:
         # next OS/library CVE disclosure. Make it blocking (drop
         # continue-on-error) once the CRITICAL/HIGH backlog is confirmed empty
         # in a real CI run.
+        #
+        # ── 2026-08-04: THE BACKLOG HAS NOW BEEN MEASURED. It is not empty. ──
+        #
+        # Run 30915935837 (HEAD dfffe36d) reported, with ignore-unfixed:true so
+        # every one of these HAS a fix available:
+        #
+        #     Total: 56 (HIGH: 54, CRITICAL: 2)
+        #
+        # ROOT CAUSE, from the reported package paths: the runner stage ships
+        # the BUILDER'S devDependencies. Dockerfile does
+        #     COPY --from=builder /app/node_modules ./node_modules
+        # so eslint, jest, typescript, @typescript-eslint, @nestjs/schematics
+        # and @angular-devkit/schematics-cli are all inside the production
+        # image. That is also why `Production Dependency Audit` is green while
+        # this is red: that job walks the PROD closure only, this scans the
+        # whole image. Most of the 56 are in code that never executes at
+        # runtime, which is why this is a scan-hygiene and image-size problem
+        # rather than a live exploit — but it is real and it is why the gate
+        # cannot be turned on yet.
+        #
+        # WHY THE OBVIOUS FIX IS DANGEROUS, and must not be done blind:
+        # `pnpm prune --prod` in the runner would delete the Prisma CLI, which
+        # `scripts/railway-start.sh` executes on EVERY boot to run
+        # `prisma migrate deploy` (it resolves
+        # ./packages/database/node_modules/.bin/prisma). `prisma` was declared
+        # a devDependency. That is now fixed — it moved to `dependencies` in
+        # packages/database, which is honest on its own merits since this
+        # deployment migrates on boot — and it is the PREREQUISITE for pruning.
+        #
+        # AND THE BOOT SMOKE TEST WOULD NOT CATCH IT. deploy-reliability's
+        # docker-build job runs the container with SKIP_MIGRATE='true', so the
+        # exact path a prune breaks is the one path CI never exercises.
+        # Production would be the first place it surfaced.
+        #
+        # SO THE ORDER IS: (1) prisma -> dependencies [DONE];
+        # (2) give docker-build a real postgres service and drop SKIP_MIGRATE
+        #     so migrate-on-boot is actually covered;
+        # (3) prune devDependencies from the runner stage;
+        # (4) re-measure — expect the count to collapse;
+        # (5) only then drop continue-on-error here.
+        # Do not skip step 2.
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         continue-on-error: true
         with:
