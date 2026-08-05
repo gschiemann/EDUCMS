@@ -78,3 +78,14 @@ providers' contracts. All four offer free sandboxes — see the report's
 "Real sandbox signup steps" section. Set the real `*_CLIENT_ID/SECRET` env
 vars, leave `*_API_BASE` unset, keep `SQUARE_ENV`/`CLOVER_ENV` at
 `sandbox`, and use a public tunnel for the OAuth redirect URIs.
+
+## EXTERNAL_HTML board verifier
+
+`node ../../scripts/pos-sandbox/verify-applymenu.mjs` (run from `apps/web`
+so `@playwright/test` resolves) proves the 31 `applyMenu()` signage boards
+overlay live POS data: loads `signage/menus-pos/01` over HTTP in headless
+chromium, posts the same `educms-overrides {menu:{items}}` message
+WidgetRenderer auto-posts for `signage/{qsr,menus-pos,bar}` URLs, and
+asserts a name-matched item's price flips to the POS price and an 86'd
+item gets the sold-out treatment. Uses the live sandbox feed when the API
+is up; falls back to an inline fixture.
