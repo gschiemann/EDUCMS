@@ -109,6 +109,7 @@ import { WebsocketSignerService } from './security/websocket-signer.service';
 import { AssetSanitizerService } from './security/asset-sanitizer.service';
 import { SupabaseStorageService } from './storage/supabase-storage.service';
 import { StorageWatchdogService } from './storage/storage-watchdog.service';
+import { PlatformHealthMonitorService } from './health/platform-health-monitor.service';
 import { MediaOptimizationService } from './storage/media-optimization.service';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RbacGuard } from './auth/rbac.guard';
@@ -236,6 +237,11 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     AssetSanitizerService,
     SupabaseStorageService,
     StorageWatchdogService,
+    // 2026-08-05 — in-app infra self-monitoring (DB/Redis/WS-signer every
+    // 5 min → PLATFORM_ALERT_EMAILS on transition). Replaces the external
+    // scheduled-agent health sweep. See the file header for what it
+    // deliberately does NOT cover (full-process-down = keep-warm workflow).
+    PlatformHealthMonitorService,
     MediaOptimizationService,
     // Server-side URL renderer (Puppeteer + Alpine Chromium). Used by
     // ProxyController to handle JS-heavy / AJAX-loaded sites that the

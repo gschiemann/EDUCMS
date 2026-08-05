@@ -74,65 +74,44 @@ describe('EfficiencyMetricsService.shouldAlertAnomaly — magnitude floor', () =
   });
 });
 
-describe('EfficiencyAlertingService — platform alert recipients', () => {
-  const findMany = jest.fn();
-  const emailLogCreate = jest.fn(async (args: any) => ({ id: 'log-1', ...args.data }));
-  const emailLogUpdate = jest.fn(async () => ({}));
+describe('EfficiencyAlertingService — delegates alert mail to PlatformAlertMailer', () => {
+  // Recipient routing (PLATFORM_ALERT_EMAILS vs SUPER_ADMIN sweep) is the
+  // mailer's contract now — locked in platform-alert-mailer.spec.ts. Here we
+  // only verify the alerting service hands the mailer the right alert and
+  // still raises the in-app banner.
 
-  function makeAlerting(): EfficiencyAlertingService {
-    const prisma = {
-      client: {
-        user: { findMany },
-        emailLog: { create: emailLogCreate, update: emailLogUpdate },
-      },
-    } as any;
-    return new EfficiencyAlertingService(makeMetrics() as any, prisma);
-  }
+  it('threshold crossing → one mailer.sendAlert with the egress kind + banner set', async () => {
+    const metrics = makeMetrics();
+    // Force a threshold alert regardless of ring internals.
+    jest.spyOn(metrics, 'shouldAlert').mockReturnValue({
+      threshold: 90,
+      label: 'CRITICAL',
+      egressGb: 225,
+    } as any);
+    jest.spyOn(metrics, 'shouldAlertAnomaly').mockReturnValue(null);
 
-  beforeEach(() => {
-    findMany.mockReset();
-    emailLogCreate.mockClear();
-    delete process.env.PLATFORM_ALERT_EMAILS;
-    delete process.env.RESEND_API_KEY; // no real sends in tests — logs only
+    const sendAlert = jest.fn(async (_subject: string, _body: string, _kind: string) => undefined);
+    const svc = new EfficiencyAlertingService(metrics as any, { sendAlert } as any);
+
+    await svc.runChecks();
+
+    expect(sendAlert).toHaveBeenCalledTimes(1);
+    expect(sendAlert.mock.calls[0][2]).toBe('EFFICIENCY_EGRESS_ALERT');
+    expect(svc.bannerActive).toBe(true);
+    expect(svc.bannerMessage).toContain('225');
   });
 
-  it('PLATFORM_ALERT_EMAILS routes alerts ONLY to the configured owner inbox(es)', async () => {
-    process.env.PLATFORM_ALERT_EMAILS = 'owner@personal.test, ops@personal.test';
-    const svc = makeAlerting();
+  it('quiet metrics → no mail, no banner', async () => {
+    const metrics = makeMetrics();
+    jest.spyOn(metrics, 'shouldAlert').mockReturnValue(null);
+    jest.spyOn(metrics, 'shouldAlertAnomaly').mockReturnValue(null);
 
-    const recipients = await (svc as any).resolveAlertRecipients();
-    expect(recipients).toEqual(['owner@personal.test', 'ops@personal.test']);
-    // The SUPER_ADMIN sweep must not even be queried — a test user holding
-    // SUPER_ADMIN (the 2026-07-16 work-inbox leak) can never receive one.
-    expect(findMany).not.toHaveBeenCalled();
-  });
+    const sendAlert = jest.fn(async (_subject: string, _body: string, _kind: string) => undefined);
+    const svc = new EfficiencyAlertingService(metrics as any, { sendAlert } as any);
 
-  it('falls back to the SUPER_ADMIN sweep when the env is unset (no silent alert loss)', async () => {
-    findMany.mockResolvedValue([{ email: 'admin-a@x.test' }, { email: 'work-test-user@corp.test' }]);
-    const svc = makeAlerting();
+    await svc.runChecks();
 
-    const recipients = await (svc as any).resolveAlertRecipients();
-    expect(findMany).toHaveBeenCalledTimes(1);
-    expect(recipients).toEqual(['admin-a@x.test', 'work-test-user@corp.test']);
-  });
-
-  it('sendAlertEmail logs one email per configured recipient (and never queries users)', async () => {
-    process.env.PLATFORM_ALERT_EMAILS = 'owner@personal.test';
-    const svc = makeAlerting();
-
-    await (svc as any).sendAlertEmail('[VenueOS] test subject', 'body', 'EFFICIENCY_ANOMALY_ALERT');
-
-    expect(findMany).not.toHaveBeenCalled();
-    expect(emailLogCreate).toHaveBeenCalledTimes(1);
-    expect(emailLogCreate.mock.calls[0][0].data.toEmail).toBe('owner@personal.test');
-  });
-
-  it('junk env values (no @) are ignored → fallback still works', async () => {
-    process.env.PLATFORM_ALERT_EMAILS = 'not-an-email, ,';
-    findMany.mockResolvedValue([{ email: 'admin-a@x.test' }]);
-    const svc = makeAlerting();
-
-    const recipients = await (svc as any).resolveAlertRecipients();
-    expect(recipients).toEqual(['admin-a@x.test']);
+    expect(sendAlert).not.toHaveBeenCalled();
+    expect(svc.bannerActive).toBe(false);
   });
 });

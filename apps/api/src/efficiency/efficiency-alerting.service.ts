@@ -1,16 +1,14 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { EfficiencyMetricsService } from './efficiency-metrics.service';
-import { PrismaService } from '../prisma/prisma.service';
-// Shared sender-identity honesty gate — one source of truth for the FROM
-// header and for whether a Resend 2xx may be recorded as a confident 'SENT'.
-import { resendAcceptedStatus, resolveEmailFrom, sharedSenderWarning } from '../email/sender-identity';
+import { PlatformAlertMailer } from '../email/platform-alert-mailer.service';
 
 /**
  * EfficiencyAlertingService
  *
  * Runs on a 5-minute internal interval to check egress thresholds and anomalies.
- * Sends email alerts via Resend (same pattern as EmailService) and sets an
- * in-app banner flag so the /super/efficiency page can show a top-of-page alert.
+ * Sends email alerts via PlatformAlertMailer (PLATFORM_ALERT_EMAILS routing)
+ * and sets an in-app banner flag so the /super/efficiency page can show a
+ * top-of-page alert.
  *
  * Pattern: uses setInterval (not @nestjs/schedule) to keep the dep surface flat,
  * consistent with how CanaryAutoPromoteService, PosSync, and WebhookRetryWorker
@@ -32,7 +30,7 @@ export class EfficiencyAlertingService implements OnModuleInit, OnModuleDestroy 
 
   constructor(
     private readonly metrics: EfficiencyMetricsService,
-    private readonly prisma: PrismaService,
+    private readonly mailer: PlatformAlertMailer,
   ) {}
 
   onModuleInit() {
@@ -79,7 +77,7 @@ export class EfficiencyAlertingService implements OnModuleInit, OnModuleDestroy 
         `— VenueOS Efficiency Monitor`,
       ].join('\n');
 
-      await this.sendAlertEmail(subject, body, 'EFFICIENCY_EGRESS_ALERT');
+      await this.mailer.sendAlert(subject, body, 'EFFICIENCY_EGRESS_ALERT');
       this.setBanner(`Egress ${alert.label}: ${alert.egressGb} GB used (${alert.threshold}% of ${budgetGb} GB budget)`);
     }
 
@@ -102,108 +100,8 @@ export class EfficiencyAlertingService implements OnModuleInit, OnModuleDestroy 
         `— VenueOS Efficiency Monitor`,
       ].join('\n');
 
-      await this.sendAlertEmail(subject, body, 'EFFICIENCY_ANOMALY_ALERT');
+      await this.mailer.sendAlert(subject, body, 'EFFICIENCY_ANOMALY_ALERT');
       this.setBanner(`Egress anomaly: ${anomaly.ratio}x baseline this hour (${anomaly.currentHourGb} GB)`);
-    }
-  }
-
-  /**
-   * Who receives platform-ops alerts.
-   *
-   * 2026-07-16 — egress alerts landed in the operator's WORK inbox because his
-   * work-email TEST user carries SUPER_ADMIN, and this used to mail every
-   * SUPER_ADMIN row. Platform cost telemetry is owner-ops mail, not
-   * role-derived mail: set PLATFORM_ALERT_EMAILS (comma-separated) and alerts
-   * go ONLY there. When unset, we fall back to the SUPER_ADMIN sweep so a
-   * deploy that predates the env var keeps alerting SOMEONE rather than
-   * going silent.
-   */
-  private async resolveAlertRecipients(): Promise<string[]> {
-    const configured = (process.env.PLATFORM_ALERT_EMAILS || '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter((s) => s.includes('@'));
-    if (configured.length > 0) return [...new Set(configured)];
-
-    try {
-      const superAdmins = await this.prisma.client.user.findMany({
-        where: { role: 'SUPER_ADMIN' as any },
-        select: { email: true },
-      });
-      return superAdmins.map((a: { email: string }) => a.email);
-    } catch (err: any) {
-      this.logger.warn(`Failed to fetch SUPER_ADMIN list for alert: ${err?.message}`);
-      return [];
-    }
-  }
-
-  private async sendAlertEmail(subject: string, body: string, kind: string) {
-    const recipients = await this.resolveAlertRecipients();
-    for (const email of recipients) {
-      const admin = { email };
-      try {
-        let row: any;
-        try {
-          row = await this.prisma.client.emailLog.create({
-            data: {
-              toEmail: admin.email,
-              subject,
-              body,
-              kind,
-              status: 'QUEUED',
-            },
-          });
-        } catch (persistErr: any) {
-          this.logger.error(`Failed to persist alert email log: ${persistErr?.message}`);
-          continue;
-        }
-
-        const apiKey = process.env.RESEND_API_KEY;
-        if (!apiKey) {
-          this.logger.warn(
-            `[efficiency-alert] RESEND_API_KEY not set — alert logged but not sent to ${admin.email}`,
-          );
-          continue;
-        }
-
-        const from = resolveEmailFrom();
-        const resp = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ from, to: [admin.email], subject, text: body }),
-        });
-
-        if (resp.ok) {
-          // HONESTY GATE (2026-08-03) — a Resend 2xx proves ACCEPTED, not
-          // DELIVERED. On the default shared onboarding@resend.dev sender
-          // Resend delivers only to the Resend account owner and silently
-          // drops everyone else, so a hard-coded 'SENT' here was a lie —
-          // and this is the egress-COST alert, i.e. exactly the mail whose
-          // disappearance shows up later as a surprise Supabase invoice.
-          // Same rule as EmailService via the shared sender-identity module.
-          const status = resendAcceptedStatus();
-          await this.prisma.client.emailLog.update({
-            where: { id: row.id },
-            data: { status, sentAt: new Date() },
-          });
-          if (status === 'SENT_UNVERIFIED') {
-            this.logger.warn(sharedSenderWarning({ kind, to: admin.email, from }));
-          } else {
-            this.logger.log(`Efficiency alert sent to ${admin.email} (${kind})`);
-          }
-        } else {
-          const txt = await resp.text().catch(() => '');
-          await this.prisma.client.emailLog.update({
-            where: { id: row.id },
-            data: { status: 'FAILED', error: `Resend ${resp.status}: ${txt.slice(0, 200)}` },
-          });
-        }
-      } catch (err: any) {
-        this.logger.warn(`Failed to send efficiency alert to ${admin.email}: ${err?.message}`);
-      }
     }
   }
 

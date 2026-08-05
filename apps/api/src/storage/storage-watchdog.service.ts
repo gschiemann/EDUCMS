@@ -25,12 +25,9 @@
  */
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
-import { PrismaService } from '../prisma/prisma.service';
+import { PlatformAlertMailer } from '../email/platform-alert-mailer.service';
 import { SupabaseStorageService } from './supabase-storage.service';
 import { storageTransportState } from './storage-transport';
-// Shared sender-identity honesty gate — one source of truth for the FROM
-// header and for whether a Resend 2xx may be recorded as a confident 'SENT'.
-import { resendAcceptedStatus, resolveEmailFrom, sharedSenderWarning } from '../email/sender-identity';
 
 type WatchdogStatus = 'ok' | 'degraded' | 'down';
 
@@ -48,8 +45,8 @@ export class StorageWatchdogService implements OnModuleInit, OnModuleDestroy {
   private ticking = false;
 
   constructor(
-    private readonly prisma: PrismaService,
     private readonly storage: SupabaseStorageService,
+    private readonly mailer: PlatformAlertMailer,
   ) {}
 
   onModuleInit() {
@@ -101,7 +98,7 @@ export class StorageWatchdogService implements OnModuleInit, OnModuleDestroy {
           '',
           '— VenueOS Storage Watchdog',
         ].join('\n');
-        await this.sendAlertEmail(subject, body, 'STORAGE_TRANSPORT_ALERT');
+        await this.mailer.sendAlert(subject, body, 'STORAGE_TRANSPORT_ALERT');
         try {
           Sentry.captureMessage(`${subject} — ${cause}`, 'error');
         } catch {
@@ -109,7 +106,7 @@ export class StorageWatchdogService implements OnModuleInit, OnModuleDestroy {
         }
         this.logger.warn(`[storage-watchdog] ${status.toUpperCase()} — alert dispatched (${probe.upload} / ${probe.read})`);
       } else if (recovered) {
-        await this.sendAlertEmail(
+        await this.mailer.sendAlert(
           '[VenueOS] Storage uploads recovered — primary transport healthy',
           `Storage probe is back on the primary transport (${probe.ms}ms round-trip). No action needed.\n\n— VenueOS Storage Watchdog`,
           'STORAGE_TRANSPORT_RECOVERED',
@@ -122,84 +119,6 @@ export class StorageWatchdogService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(`[storage-watchdog] tick failed: ${e?.message ?? e}`);
     } finally {
       this.ticking = false;
-    }
-  }
-
-  /**
-   * Same recipient contract + emailLog persistence as
-   * EfficiencyAlertingService.sendAlertEmail (kept in sync by hand — extract
-   * a shared mailer if a third copy ever appears).
-   */
-  private async resolveAlertRecipients(): Promise<string[]> {
-    const configured = (process.env.PLATFORM_ALERT_EMAILS || '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter((s) => s.includes('@'));
-    if (configured.length > 0) return [...new Set(configured)];
-    try {
-      const superAdmins = await this.prisma.client.user.findMany({
-        where: { role: 'SUPER_ADMIN' as any },
-        select: { email: true },
-      });
-      return superAdmins.map((a: { email: string }) => a.email);
-    } catch (err: any) {
-      this.logger.warn(`[storage-watchdog] failed to resolve alert recipients: ${err?.message}`);
-      return [];
-    }
-  }
-
-  private async sendAlertEmail(subject: string, body: string, kind: string): Promise<void> {
-    const recipients = await this.resolveAlertRecipients();
-    for (const email of recipients) {
-      try {
-        let row: any;
-        try {
-          row = await this.prisma.client.emailLog.create({
-            data: { toEmail: email, subject, body, kind, status: 'QUEUED' },
-          });
-        } catch (persistErr: any) {
-          this.logger.error(`[storage-watchdog] failed to persist email log: ${persistErr?.message}`);
-          continue;
-        }
-        const apiKey = process.env.RESEND_API_KEY;
-        if (!apiKey) {
-          this.logger.warn(`[storage-watchdog] RESEND_API_KEY not set — alert logged but not sent to ${email}`);
-          continue;
-        }
-        const from = resolveEmailFrom();
-        const resp = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ from, to: [email], subject, text: body }),
-        });
-        if (resp.ok) {
-          // HONESTY GATE (2026-08-03) — a Resend 2xx proves ACCEPTED, not
-          // DELIVERED. On the default shared onboarding@resend.dev sender
-          // Resend delivers only to the Resend account owner and silently
-          // drops everyone else, so a hard-coded 'SENT' here was a lie —
-          // and this is the storage-OUTAGE alert, i.e. exactly the mail
-          // whose disappearance you would never notice. Same rule as
-          // EmailService via the shared sender-identity module.
-          const status = resendAcceptedStatus();
-          await this.prisma.client.emailLog.update({
-            where: { id: row.id },
-            data: { status, sentAt: new Date() },
-          });
-          if (status === 'SENT_UNVERIFIED') {
-            this.logger.warn(sharedSenderWarning({ kind, to: email, from }));
-          } else {
-            this.logger.log(`[storage-watchdog] alert sent to ${email} (${kind})`);
-          }
-        } else {
-          const txt = await resp.text().catch(() => '');
-          await this.prisma.client.emailLog.update({
-            where: { id: row.id },
-            data: { status: 'FAILED', error: `Resend ${resp.status}: ${txt.slice(0, 200)}` },
-          });
-        }
-      } catch (err: any) {
-        this.logger.warn(`[storage-watchdog] failed to send alert to ${email}: ${err?.message}`);
-      }
     }
   }
 }

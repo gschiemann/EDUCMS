@@ -30,6 +30,7 @@ export function Footer() {
             { href: '/help/getting-started', label: 'Getting started' },
             { href: '/help/emergency-system', label: 'Emergency system' },
             { href: '/help/sso', label: 'SSO setup' },
+            { href: '/status', label: 'System status' },
           ]}
         />
         <FooterCol

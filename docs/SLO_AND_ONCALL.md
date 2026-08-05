@@ -53,7 +53,10 @@ them when paid monitoring + a staging env land (see Gaps).
 | Readiness | `GET /api/v1/health/ready` — 503 when DB unreachable | LIVE (use for monitoring, **not** Railway healthcheck) | `health.controller.ts:126` |
 | Emergency-path preflight | `GET /api/v1/health/emergency-path` — verifies DB + WS-signer chain | LIVE (run before a drill) | `health.controller.ts:151` |
 | Integration health | `GET` integrations-health — per-provider configured/connected status | LIVE | `apps/api/src/health/integrations-health.controller.ts:155` |
-| Cold-start / DNS-edge warmth | Vercel cron pinging `/health` every ~4 min | LIVE | `apps/web/src/app/api/cron/keepwarm/route.ts`; `apps/web/vercel.json` |
+| Cold-start warmth + outside-in health sweep | **GitHub Actions cron** every 5 min — reads the liveness BODY (`"db":"ok"`), requires `/ready` + `/emergency-path` 200; failure emails the workflow author. (The old Vercel-cron claim was stale — Hobby plan only allows daily crons; `apps/web/src/app/api/cron/keepwarm/route.ts` survives as a manual passthrough.) | LIVE | `.github/workflows/keep-warm.yml` |
+| Infra self-monitoring (DB / Redis / WS-signer) | **PlatformHealthMonitorService** — in-app probe every 5 min; on transition into degraded/critical emails `PLATFORM_ALERT_EMAILS` (re-alert ≤ 6h, recovery all-clear), Sentry capture on critical | LIVE (2026-08-05) | `apps/api/src/health/platform-health-monitor.service.ts` |
+| Storage upload transport | **StorageWatchdogService** — real upload probe every 5 min → same alert routing | LIVE | `apps/api/src/storage/storage-watchdog.service.ts` |
+| Public status page | `/status` on the web app (Vercel — independent deploy surface from the API) shows live component health: API, DB, realtime, emergency path, storage | LIVE (2026-08-05) | `apps/web/src/app/status/` |
 | Uptime + outage email/SMS | **UptimeRobot** free tier (4 monitors) | **DOCUMENTED, operator-provisioned** — setup guide exists; confirm it is actually configured for the live hosts | `docs/UPTIME_MONITORING.md` |
 | Background-service health | offline-screen-scanner, cohort outage detection, canary auto-promote, license reconcile, webhook retry | LIVE (log to stdout / Sentry) | `apps/api/src/notifications/`, `apps/api/src/billing/license-reconcile.cron.ts`, `apps/api/src/webhooks/webhook-retry.worker.ts` |
 
@@ -61,11 +64,12 @@ them when paid monitoring + a staging env land (see Gaps).
 
 ## 4. Gaps — what we do NOT have (be honest)
 
-- **No paging / on-call rotation and no real-time alerting pipeline.** Today,
-  outages surface in **Sentry** and **Vercel/Railway logs**, and UptimeRobot can
-  email/SMS — but there is **no PagerDuty/OpsGenie, no rotation, no escalation
-  policy, and no guaranteed human response time.** Detection ≠ response. This is
-  the single biggest reliability gap.
+- **No paging / on-call rotation.** Detection now emails
+  `PLATFORM_ALERT_EMAILS` in near-real-time (PlatformHealthMonitor, storage
+  watchdog, efficiency alerts, keep-warm sweep failures) — but there is still
+  **no PagerDuty/OpsGenie, no rotation, no escalation policy, and no
+  guaranteed human response time.** Detection ≠ response; email ≠ paging.
+  This remains the biggest reliability gap.
 - **No error-budget policy.** The SLOs above are not yet tied to a
   "stop-shipping-features-when-budget-burns" rule.
 - **No staging environment.** `push-to-master = production` (see
