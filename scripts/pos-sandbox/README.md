@@ -89,3 +89,18 @@ WidgetRenderer auto-posts for `signage/{qsr,menus-pos,bar}` URLs, and
 asserts a name-matched item's price flips to the POS price and an 86'd
 item gets the sold-out treatment. Uses the live sandbox feed when the API
 is up; falls back to an inline fixture.
+
+## Media + ads verifiers (2026-08-04)
+
+- `verify-hls-drop.mjs` (run from `apps/web`) — spawns a local ffmpeg live
+  HLS stream + `hls-server.mjs` (:4747), plays it through the real
+  StreamingWidget in the "HLS Sandbox Test" template (create once via
+  POST /templates with a STREAMING zone `playbackUrl:
+  http://127.0.0.1:4747/live.m3u8`), then kills + restarts the stream and
+  asserts playback resumes. Uses `channel:'chrome'` — Playwright's bundled
+  chromium has NO h264/aac decoders.
+- `verify-ads.mjs <gameId> <houseAdTemplateId>` (run from `apps/web`) —
+  asserts a sponsor airs on the public /board page (game must be LIVE) and
+  that HOUSE_AD_BANNER renders its slot + sponsor label.
+
+Full media/ads results: docs/research/2026-08-04-pos-sandbox-test/01-MEDIA-ADS-TEST.md
