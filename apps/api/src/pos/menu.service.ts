@@ -102,10 +102,11 @@ export class MenuService {
    * @param locationTenantId the child (location) tenant whose overrides
    *   apply. NEVER client-supplied — callers derive it from a verified
    *   token / connection / screen row.
-   * @param opts.catalogTenantId optional owning tenant to scope catalogs
-   *   to. When the location tenant differs from the catalog-owning chain
-   *   tenant (the normal multi-location case), pass the chain tenant id;
-   *   otherwise catalogs owned by the location tenant itself are used.
+   * @param opts.catalogTenantId optional chain (parent) tenant whose
+   *   catalogs also apply. Catalogs are resolved from BOTH this tenant
+   *   and the location tenant — a location under a chain can connect its
+   *   own POS, whose catalogs are owned by the location tenant itself.
+   *   On an externalId collision the location-owned item wins.
    * @param opts.catalogId optional — resolve a single catalog only.
    * @param opts.now injectable clock for tests.
    * @param opts.includeHidden when true, returns hidden/86'd items too
@@ -134,17 +135,36 @@ export class MenuService {
     // tenant's own catalogs when no chain tenant is given.
     const catalogTenantId = opts?.catalogTenantId ?? locationTenantId;
 
-    const catalogWhere: any = { tenantId: catalogTenantId, isActive: true };
+    // Scope to BOTH the chain tenant and the location tenant. A location
+    // under a parent can still connect its OWN POS — its synced catalogs
+    // are owned by the location tenant, not the chain. Scoping to the
+    // chain alone left those screens with an empty wall while the
+    // dashboard reported a successful sync (POS sandbox bug #2,
+    // 2026-08-04).
+    const catalogTenantIds = Array.from(
+      new Set([catalogTenantId, locationTenantId]),
+    );
+    const catalogWhere: any = {
+      tenantId: catalogTenantIds.length === 1 ? catalogTenantIds[0] : { in: catalogTenantIds },
+      isActive: true,
+    };
     if (opts?.catalogId) catalogWhere.id = opts.catalogId;
 
     const catalogs = await (this.prisma.client as any).menuCatalog.findMany({
       where: catalogWhere,
-      select: { id: true },
+      select: { id: true, tenantId: true },
     });
     if (catalogs.length === 0) {
       return { locationTenantId, generatedAt: now.toISOString(), categories: [], items: [] };
     }
     const catalogIds = catalogs.map((c: any) => c.id);
+    // Catalogs the location tenant itself owns (empty in the pure-chain
+    // case where the location only carries overrides).
+    const locationOwnedCatalogIds = new Set<string>(
+      catalogs
+        .filter((c: any) => c.tenantId === locationTenantId && c.tenantId !== catalogTenantId)
+        .map((c: any) => c.id),
+    );
 
     // Pull categories (with daypart) + items in two scoped queries, plus
     // this location's overrides keyed by menuItemId.
@@ -189,8 +209,29 @@ export class MenuService {
       }
     }
 
+    // Dedupe across the chain/location catalog merge: when an externalId
+    // exists in BOTH a location-owned and a chain-owned catalog, the
+    // location's own row wins (its POS is authoritative for that item);
+    // the chain duplicate is dropped. Items without an externalId never
+    // dedupe.
+    const locationExternalIds = new Set<string>();
+    if (locationOwnedCatalogIds.size > 0) {
+      for (const item of items) {
+        if (item.externalId && locationOwnedCatalogIds.has(item.catalogId)) {
+          locationExternalIds.add(item.externalId);
+        }
+      }
+    }
+
     const resolvedItems: ResolvedMenuItem[] = [];
     for (const item of items) {
+      if (
+        item.externalId &&
+        locationExternalIds.has(item.externalId) &&
+        !locationOwnedCatalogIds.has(item.catalogId)
+      ) {
+        continue; // chain copy shadowed by the location's own item
+      }
       // Items in a category that's currently dayparted-out are dropped
       // (unless includeHidden). Items with no category are always eligible.
       if (item.categoryId && !activeCategoryIds.has(item.categoryId) && !opts?.includeHidden) {

@@ -189,6 +189,74 @@ describe('MenuService.resolveMenuForLocation', () => {
     expect(res.categories.map((c) => c.id)).toEqual(['c-allday']);
   });
 
+  // ── Parent/child catalog scoping (POS sandbox bug #2, 2026-08-04) ──
+  // A location/school tenant WITH a parent that connects its own POS
+  // owns its catalogs itself. The device menu used to scope catalogs to
+  // the parent only, so those screens rendered an empty wall while the
+  // dashboard reported a successful sync.
+
+  it('resolves catalogs owned by the LOCATION tenant when the chain has none (child-with-own-POS)', async () => {
+    const prisma = makeMockPrisma({
+      // The school's own catalog — owned by LOC_A, not the parent chain.
+      catalogs: [{ id: 'cat-school', tenantId: LOC_A }],
+      items: [
+        { id: 'i1', externalId: 'taco', name: 'Taco', defaultPriceCents: 450, allergens: [], tags: [], sortOrder: 0, categoryId: null, catalogId: 'cat-school' },
+      ],
+    });
+    const res = await svcWith(prisma).resolveMenuForLocation(LOC_A, { catalogTenantId: TENANT });
+
+    // The item the school synced MUST reach the wall.
+    expect(res.items.map((i) => i.id)).toEqual(['i1']);
+    // The catalog query scoped to BOTH the chain and the location tenant.
+    expect(prisma.client.menuCatalog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenantId: { in: expect.arrayContaining([TENANT, LOC_A]) },
+        }),
+      }),
+    );
+  });
+
+  it('merges chain + location catalogs; location-owned item wins an externalId collision', async () => {
+    const prisma = makeMockPrisma({
+      catalogs: [
+        { id: 'cat-chain', tenantId: TENANT },
+        { id: 'cat-loc', tenantId: LOC_A },
+      ],
+      items: [
+        // Same externalId in both catalogs → the location's row wins.
+        { id: 'i-chain-burger', externalId: 'burger', name: 'Burger (chain)', defaultPriceCents: 799, allergens: [], tags: [], sortOrder: 0, categoryId: null, catalogId: 'cat-chain' },
+        { id: 'i-loc-burger', externalId: 'burger', name: 'Burger (local)', defaultPriceCents: 899, allergens: [], tags: [], sortOrder: 1, categoryId: null, catalogId: 'cat-loc' },
+        // Chain-only + location-only items both survive.
+        { id: 'i-chain-fries', externalId: 'fries', name: 'Fries', defaultPriceCents: 349, allergens: [], tags: [], sortOrder: 2, categoryId: null, catalogId: 'cat-chain' },
+        { id: 'i-loc-taco', externalId: 'taco', name: 'Taco', defaultPriceCents: 450, allergens: [], tags: [], sortOrder: 3, categoryId: null, catalogId: 'cat-loc' },
+        // No externalId → never deduped, even across catalogs.
+        { id: 'i-chain-anon', externalId: null, name: 'Special', defaultPriceCents: 500, allergens: [], tags: [], sortOrder: 4, categoryId: null, catalogId: 'cat-chain' },
+      ],
+    });
+    const res = await svcWith(prisma).resolveMenuForLocation(LOC_A, { catalogTenantId: TENANT });
+
+    const ids = res.items.map((i) => i.id);
+    expect(ids).toContain('i-loc-burger');
+    expect(ids).not.toContain('i-chain-burger');
+    expect(ids).toContain('i-chain-fries');
+    expect(ids).toContain('i-loc-taco');
+    expect(ids).toContain('i-chain-anon');
+  });
+
+  it('keeps single-tenant scoping when chain and location tenant are the same', async () => {
+    const prisma = makeMockPrisma({
+      catalogs: [{ id: 'cat-1', tenantId: LOC_A }],
+      items: [{ id: 'i1', externalId: 'a', name: 'A', defaultPriceCents: 100, allergens: [], tags: [], sortOrder: 0, categoryId: null, catalogId: 'cat-1' }],
+    });
+    const res = await svcWith(prisma).resolveMenuForLocation(LOC_A, { catalogTenantId: LOC_A });
+    expect(res.items).toHaveLength(1);
+    // Degenerate case stays a plain equality filter (no `in`).
+    expect(prisma.client.menuCatalog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ tenantId: LOC_A }) }),
+    );
+  });
+
   it('shows a dayparted item when inside its window', async () => {
     const now = new Date('2026-05-29T13:00:00Z'); // 08:00 CDT — inside breakfast
     const breakfast = { id: 'dp-bk', daysOfWeek: [], timeStart: '06:00', timeEnd: '11:00', timezone: 'America/Chicago' };

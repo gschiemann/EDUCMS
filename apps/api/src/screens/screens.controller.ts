@@ -4710,8 +4710,12 @@ export class ScreensController {
     const locationTenantId: string =
       screen.posLocation?.locationTenantId || screen.tenantId;
 
-    // The catalog-owning tenant: the location's parent (chain) if any,
-    // else the location tenant itself (single-location operator).
+    // The chain (catalog-owning) tenant: the screen tenant's parent if
+    // any, else the location tenant itself (single-location operator).
+    // resolveMenuForLocation scopes catalogs to BOTH this tenant AND the
+    // location tenant — a school/location under a parent that connects
+    // its OWN POS owns its catalogs itself, and resolving only the
+    // parent's left those walls empty (POS sandbox bug #2, 2026-08-04).
     const catalogTenantId: string =
       screen.tenant?.parentId || locationTenantId;
 
