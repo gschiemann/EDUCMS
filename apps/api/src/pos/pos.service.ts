@@ -698,8 +698,11 @@ export class PosService {
    * (already resolved from the secret) determines the tenant — the caller
    * NEVER passes a client-supplied tenantId. Reuses the same
    * `posMenuItem.upsert` keyed on `connectionId_externalId` that
-   * `syncConnection` uses, so pushed items reach the MenuBoardWidget the
-   * same way the OAuth providers' synced items do.
+   * `syncConnection` uses, AND bridges the accepted items through
+   * `MenuService.ingestPosCatalog` (fail-soft, same as `syncConnection`)
+   * so pushed items reach `resolveMenuForLocation` — the device-authed
+   * `GET /screens/:id/menu` real kiosks render — not just the dashboard
+   * preview (P2 fix, 2026-08-04 POS sandbox test bug #3).
    *
    * Documented payload shape (matches the UI's published spec):
    *   { items: [ { id|externalId, name, priceCents|price, description?,
@@ -726,6 +729,7 @@ export class PosService {
 
     let upserted = 0;
     let skipped = 0;
+    const bridgeItems: CatalogSnapshot['items'] = [];
     for (const raw of rawItems) {
       const item = this.normalizeWebhookItem(raw);
       if (!item) {
@@ -760,6 +764,15 @@ export class PosService {
         },
       });
       upserted++;
+      bridgeItems.push({
+        externalId: item.externalId,
+        name: item.name,
+        description: item.description ?? undefined,
+        priceCents: item.priceCents,
+        imageUrl: item.imageUrl ?? undefined,
+        category: item.category ?? undefined,
+        available: item.available,
+      });
     }
 
     await (this.prisma.client as any).posProviderConnection.update({
@@ -771,6 +784,26 @@ export class PosService {
         statusReason: null,
       },
     });
+
+    // Bridge the pushed items into the design-once menu platform, exactly as
+    // syncConnection does for the OAuth providers. Without this, a legacy
+    // { items: [...] } push only writes PosMenuItem rows — visible in the
+    // dashboard preview (/pos/items) but ABSENT from resolveMenuForLocation,
+    // i.e. the device-authed GET /screens/:id/menu real kiosks render
+    // ("works in preview, dead on the wall" — P2, 2026-08-04 sandbox test).
+    // Fail-soft: a bridge error must never fail the accepted catalog push.
+    if (bridgeItems.length > 0) {
+      try {
+        await this.menu.ingestPosCatalog(
+          { id: conn.id, tenantId: conn.tenantId, providerId: conn.providerId || 'custom-webhook' },
+          { items: bridgeItems, categories: [] },
+        );
+      } catch (err: any) {
+        this.logger.warn(
+          `custom-webhook menu-platform bridge failed for conn=${conn.id}: ${err?.message || err}`,
+        );
+      }
+    }
 
     return { upserted, skipped };
   }

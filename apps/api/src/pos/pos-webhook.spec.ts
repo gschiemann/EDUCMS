@@ -182,6 +182,96 @@ describe('Custom POS webhook', () => {
     });
   });
 
+  /**
+   * P2 regression (2026-08-04 POS sandbox test, bug #3): the legacy
+   * { items: [...] } shape wrote ONLY PosMenuItem rows and never called the
+   * MenuService bridge — pushed items showed in the dashboard preview
+   * (/pos/items) but were ABSENT from the device-authed
+   * GET /screens/:id/menu, i.e. invisible on real kiosks. The fix bridges
+   * accepted items through MenuService.ingestPosCatalog (fail-soft), the
+   * same path syncConnection uses for the OAuth providers.
+   */
+  describe('ingestCustomWebhookCatalog → menu-platform bridge (P2 kiosk-visibility regression)', () => {
+    let bridgeSpy: jest.SpyInstance;
+    let menu: MenuService;
+
+    beforeEach(async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          PosService,
+          MenuService,
+          {
+            provide: PrismaService,
+            useValue: { client: { posProviderConnection, posMenuItem } },
+          },
+        ],
+      }).compile();
+      svc = module.get(PosService);
+      menu = module.get(MenuService);
+      bridgeSpy = jest.spyOn(menu, 'ingestPosCatalog').mockResolvedValue({
+        itemsUpserted: 1,
+        overridesUpserted: 0,
+        overridesSkippedManual: 0,
+        locationsMapped: 0,
+        catalogId: 'cat-1',
+      });
+    });
+
+    it('bridges accepted items into MenuService.ingestPosCatalog so they reach the kiosk menu', async () => {
+      const conn = makeConnRow(SECRET);
+      await svc.ingestCustomWebhookCatalog(conn, {
+        items: [
+          {
+            id: 'pep-slice',
+            name: 'Pepperoni Pizza Slice',
+            priceCents: 450,
+            description: 'By the slice',
+            category: 'Pizza',
+          },
+        ],
+      });
+
+      expect(bridgeSpy).toHaveBeenCalledTimes(1);
+      expect(bridgeSpy).toHaveBeenCalledWith(
+        // Connection identity flows through — tenant from the SECRET-resolved
+        // connection, never the payload.
+        { id: 'conn-1', tenantId: TENANT, providerId: 'custom-webhook' },
+        {
+          items: [
+            expect.objectContaining({
+              externalId: 'pep-slice',
+              name: 'Pepperoni Pizza Slice',
+              priceCents: 450,
+              description: 'By the slice',
+              category: 'Pizza',
+              available: true,
+            }),
+          ],
+          categories: [],
+        },
+      );
+    });
+
+    it('skipped-only pushes do NOT invoke the bridge (no empty catalog churn)', async () => {
+      const conn = makeConnRow(SECRET);
+      const res = await svc.ingestCustomWebhookCatalog(conn, {
+        items: [{ name: 'no id' }, { id: 'no-name' }],
+      });
+      expect(res).toEqual({ upserted: 0, skipped: 2 });
+      expect(bridgeSpy).not.toHaveBeenCalled();
+    });
+
+    it('a bridge failure is fail-soft: the push still succeeds and PosMenuItem rows still land', async () => {
+      bridgeSpy.mockRejectedValueOnce(new Error('menu platform down'));
+      const conn = makeConnRow(SECRET);
+      const res = await svc.ingestCustomWebhookCatalog(conn, {
+        items: [{ id: 'a', name: 'Item A', priceCents: 100 }],
+      });
+      expect(res).toEqual({ upserted: 1, skipped: 0 });
+      expect(posMenuItem.upsert).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('controller POST /pos/webhook/:providerId', () => {
     const reqWith = (body: unknown) => ({ body }) as any;
 
