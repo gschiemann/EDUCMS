@@ -43,13 +43,27 @@ function isProd(): boolean {
   return process.env.CLOVER_ENV === 'production';
 }
 
+/** Dev-only sandbox-harness override (2026-08-04) — see
+ *  scripts/pos-sandbox/. Never honored in production. */
+function devOverride(): string | null {
+  const override = process.env.CLOVER_API_BASE;
+  if (override && process.env.NODE_ENV !== 'production') {
+    return override.replace(/\/$/, '');
+  }
+  return null;
+}
+
 /** API host — REST v3 + token/refresh endpoints. */
 export function cloverApiBase(): string {
+  const dev = devOverride();
+  if (dev) return dev;
   return isProd() ? 'https://api.clover.com' : 'https://apisandbox.dev.clover.com';
 }
 
 /** Account host — the OAuth authorize page the operator's browser hits. */
 export function cloverAccountBase(): string {
+  const dev = devOverride();
+  if (dev) return dev;
   return isProd() ? 'https://www.clover.com' : 'https://sandbox.dev.clover.com';
 }
 

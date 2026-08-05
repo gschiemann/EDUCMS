@@ -84,6 +84,12 @@ export function lightspeedApiBase(ctx: { domainPrefix?: string }): string {
   if (!prefix) {
     throw new Error('Lightspeed API host needs a domainPrefix (captured during OAuth)');
   }
+  // Dev-only sandbox-harness override (2026-08-04) — see
+  // scripts/pos-sandbox/. Never honored in production.
+  const override = process.env.LIGHTSPEED_API_BASE;
+  if (override && process.env.NODE_ENV !== 'production') {
+    return override.replace(/\/$/, '');
+  }
   return `https://${prefix}.retail.lightspeed.app`;
 }
 
@@ -109,7 +115,12 @@ export function lightspeedAuthorizeUrl(opts: {
   scopes?: string[];
 }): string {
   const clientId = process.env.LIGHTSPEED_CLIENT_ID || '';
-  const u = new URL('/connect', AUTHORIZE_HOST);
+  // Dev-only sandbox-harness override — mirrors lightspeedApiBase().
+  const devBase =
+    process.env.LIGHTSPEED_API_BASE && process.env.NODE_ENV !== 'production'
+      ? process.env.LIGHTSPEED_API_BASE.replace(/\/$/, '')
+      : null;
+  const u = new URL('/connect', devBase || AUTHORIZE_HOST);
   u.searchParams.set('response_type', 'code');
   u.searchParams.set('client_id', clientId);
   u.searchParams.set('redirect_uri', opts.redirectUri);

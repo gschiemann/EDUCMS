@@ -38,6 +38,14 @@ function isProd(): boolean {
 }
 
 export function squareApiBase(): string {
+  // Dev-only sandbox-harness override (2026-08-04): lets the local mock POS
+  // server (scripts/pos-sandbox/) stand in for Square so the full OAuth +
+  // catalog pipeline is testable with zero external accounts. NEVER honored
+  // in production — a prod deploy cannot be redirected via env.
+  const override = process.env.SQUARE_API_BASE;
+  if (override && process.env.NODE_ENV !== 'production') {
+    return override.replace(/\/$/, '');
+  }
   return isProd()
     ? 'https://connect.squareup.com'
     : 'https://connect.squareupsandbox.com';

@@ -74,6 +74,21 @@ export function shopifyHost(shop: string): string {
   return s;
 }
 
+/**
+ * Origin for a shop's Admin API calls — normally `https://{host}`.
+ * Dev-only sandbox-harness override (2026-08-04): SHOPIFY_API_BASE lets the
+ * local mock POS server (scripts/pos-sandbox/) stand in for the per-store
+ * host so the OAuth + catalog pipeline is testable with zero external
+ * accounts. NEVER honored in production.
+ */
+export function shopifyOrigin(host: string): string {
+  const override = process.env.SHOPIFY_API_BASE;
+  if (override && process.env.NODE_ENV !== 'production') {
+    return override.replace(/\/$/, '');
+  }
+  return `https://${host}`;
+}
+
 // ─── OAuth ──────────────────────────────────────────────────────────────
 
 export interface ShopifyOAuthToken {
@@ -110,7 +125,7 @@ export function shopifyAuthorizeUrl(opts: {
   }
   const clientId = process.env.SHOPIFY_CLIENT_ID || '';
   const scopes = (opts.scopes && opts.scopes.length ? opts.scopes : ['read_products']).join(',');
-  const u = new URL('/admin/oauth/authorize', `https://${host}`);
+  const u = new URL('/admin/oauth/authorize', shopifyOrigin(host));
   u.searchParams.set('client_id', clientId);
   u.searchParams.set('scope', scopes);
   u.searchParams.set('redirect_uri', opts.redirectUri);
@@ -139,7 +154,7 @@ export async function shopifyExchangeCode(opts: {
       'Shopify OAuth not configured: set SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET',
     );
   }
-  const res = await fetch(`https://${host}/admin/oauth/access_token`, {
+  const res = await fetch(`${shopifyOrigin(host)}/admin/oauth/access_token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -245,7 +260,7 @@ export async function shopifyFetchCatalog(
 
   let pageInfo: string | undefined;
   for (let p = 0; p < PAGE_CAP; p++) {
-    const url = new URL(`/admin/api/${version}/products.json`, `https://${host}`);
+    const url = new URL(`/admin/api/${version}/products.json`, shopifyOrigin(host));
     url.searchParams.set('limit', String(PAGE));
     // page_info is mutually exclusive with all filters except limit/fields.
     if (pageInfo) url.searchParams.set('page_info', pageInfo);
