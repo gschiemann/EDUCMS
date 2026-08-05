@@ -10,13 +10,14 @@
  * `onboarding@resend.dev` sender, Resend delivers only to the Resend account
  * owner and silently drops every other recipient.
  *
- * These tests drive the REAL private send paths of both alerting services
- * (via a stubbed global fetch + Prisma) so a future third copy — or a
- * regression back to a hard-coded 'SENT' — fails here rather than in
- * production silence.
+ * 2026-08-05 UPDATE: the duplicate hand-rolled senders are GONE — both
+ * services now delegate to the single PlatformAlertMailer (the extraction
+ * their comments demanded). These tests therefore drive the gate through
+ * that one real send path (stubbed global fetch + Prisma), wire-level FROM
+ * included, so a regression back to a hard-coded 'SENT' fails here rather
+ * than in production silence.
  */
-import { EfficiencyAlertingService } from '../efficiency/efficiency-alerting.service';
-import { StorageWatchdogService } from '../storage/storage-watchdog.service';
+import { PlatformAlertMailer } from './platform-alert-mailer.service';
 import {
   DEFAULT_EMAIL_FROM,
   isDeliverableToArbitraryRecipients,
@@ -51,7 +52,7 @@ describe('sender-identity (shared honesty gate)', () => {
   });
 });
 
-// ── Both duplicate senders must apply the same gate ────────────────────────
+// ── The one platform-alert send path must apply the same gate ──────────────
 
 type Updated = { where: { id: string }; data: Record<string, any> };
 
@@ -70,24 +71,11 @@ function makePrismaStub(updates: Updated[]) {
   } as any;
 }
 
-describe.each([
-  [
-    'StorageWatchdogService (storage-outage alert)',
-    (prisma: any) => {
-      const svc = new StorageWatchdogService(prisma, {} as any);
-      return (subject: string, body: string, kind: string) =>
-        (svc as any).sendAlertEmail(subject, body, kind);
-    },
-  ],
-  [
-    'EfficiencyAlertingService (egress-cost alert)',
-    (prisma: any) => {
-      const svc = new EfficiencyAlertingService({} as any, prisma);
-      return (subject: string, body: string, kind: string) =>
-        (svc as any).sendAlertEmail(subject, body, kind);
-    },
-  ],
-])('%s routes through the honesty gate', (_label, build) => {
+describe('PlatformAlertMailer (storage-outage + egress-cost + platform-health alerts) routes through the honesty gate', () => {
+  const build = (prisma: any) => {
+    const mailer = new PlatformAlertMailer(prisma);
+    return (subject: string, body: string, kind: string) => mailer.sendAlert(subject, body, kind);
+  };
   const savedFrom = process.env.EMAIL_FROM;
   const savedKey = process.env.RESEND_API_KEY;
   const savedRecipients = process.env.PLATFORM_ALERT_EMAILS;
