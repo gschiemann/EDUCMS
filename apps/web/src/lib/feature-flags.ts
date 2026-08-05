@@ -1,12 +1,13 @@
 import { isOpenFeatureReady, getOpenFeatureClient } from './feature-flags-init';
 
+// 2026-08-05 waste sweep: EMERGENCY_NEW_UI / SIS_INTEGRATION /
+// SPORTS_RECORDS_MILESTONES were declared here (and mirrored API-side) with
+// ZERO isFeatureEnabled() call sites on either side — flags gating nothing.
+// Removed. Add a flag back when the feature it gates actually lands.
 export const FLAGS = {
-  EMERGENCY_NEW_UI: 'emergency_new_ui',
   TEMPLATE_BUILDER_V2: 'template_builder_v2',
-  SIS_INTEGRATION: 'sis_integration',
   AUTO_BRANDING: 'auto_branding',
   SPORTS_PLAYER_STATS: 'sports_player_stats',
-  SPORTS_RECORDS_MILESTONES: 'sports_records_milestones',
 } as const;
 
 export type FlagKey = (typeof FLAGS)[keyof typeof FLAGS];
@@ -18,10 +19,7 @@ export type FlagKey = (typeof FLAGS)[keyof typeof FLAGS];
 const FLAG_DEFAULTS: Record<string, boolean> = {
   [FLAGS.TEMPLATE_BUILDER_V2]: true,
   [FLAGS.AUTO_BRANDING]: true,
-  [FLAGS.EMERGENCY_NEW_UI]: false,
-  [FLAGS.SIS_INTEGRATION]: false,
   [FLAGS.SPORTS_PLAYER_STATS]: false,
-  [FLAGS.SPORTS_RECORDS_MILESTONES]: false,
 };
 
 /**
@@ -49,8 +47,6 @@ export function isFeatureEnabled(flag: FlagKey): boolean {
   // Legacy build-time fallback.
   // Next.js requires literal `process.env.NEXT_PUBLIC_*` reads at build time.
   switch (flag) {
-    case FLAGS.EMERGENCY_NEW_UI:
-      return process.env.NEXT_PUBLIC_FF_EMERGENCY_NEW_UI === 'true';
     case FLAGS.TEMPLATE_BUILDER_V2:
       // ALWAYS ON — the builder is THE editing experience; every preset's
       // Customize button routes through it. The old `NEXT_PUBLIC_FF_..._V2`
@@ -60,12 +56,8 @@ export function isFeatureEnabled(flag: FlagKey): boolean {
       // Removed. To gate it in future, use GrowthBook (operator-toggleable),
       // not a build-time env var.
       return true;
-    case FLAGS.SIS_INTEGRATION:
-      return process.env.NEXT_PUBLIC_FF_SIS_INTEGRATION === 'true';
     case FLAGS.SPORTS_PLAYER_STATS:
       return process.env.NEXT_PUBLIC_FF_SPORTS_PLAYER_STATS === 'true';
-    case FLAGS.SPORTS_RECORDS_MILESTONES:
-      return process.env.NEXT_PUBLIC_FF_SPORTS_RECORDS_MILESTONES === 'true';
     case FLAGS.AUTO_BRANDING:
       // Default-on in development (NODE_ENV === 'development') so the
       // demo works out-of-the-box on localhost. Prod requires explicit opt-in.

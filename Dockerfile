@@ -19,8 +19,6 @@ COPY apps/api/tsconfig.build.json ./apps/api/tsconfig.build.json
 COPY apps/api/nest-cli.json ./apps/api/nest-cli.json
 COPY packages/database/package.json ./packages/database/package.json
 COPY packages/api-types/package.json ./packages/api-types/package.json
-COPY packages/auth-core/package.json ./packages/auth-core/package.json
-COPY packages/ws-events/package.json ./packages/ws-events/package.json
 COPY packages/signage-design/package.json ./packages/signage-design/package.json
 COPY packages/scoreboard-cts/package.json ./packages/scoreboard-cts/package.json
 
@@ -43,8 +41,6 @@ RUN cd packages/database && npx prisma generate
 # `main` to `dist/index.js`. Without this, Node tries to parse the raw
 # `src/index.ts` at runtime and crashes with `Unexpected token 'export'`.
 RUN cd packages/api-types && pnpm run build
-RUN cd packages/auth-core && pnpm run build
-RUN cd packages/ws-events && pnpm run build
 # @cms/signage-design — the AI-template art-director engine the API imports
 # (ai.service.ts / art-director.ts). Must be built BEFORE the API or tsc
 # fails with TS2307 "Cannot find module '@cms/signage-design'".

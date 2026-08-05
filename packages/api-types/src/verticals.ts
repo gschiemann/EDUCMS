@@ -283,10 +283,6 @@ export const VERTICAL_ROLE_LABELS: Record<Vertical, Record<string, string>> = {
   WORSHIP:     { ...CANONICAL_ROLE_LABELS },
 };
 
-export function getRoleLabel(role: string, vertical: Vertical = DEFAULT_VERTICAL): string {
-  return VERTICAL_ROLE_LABELS[vertical]?.[role] || role;
-}
-
 /**
  * Per-vertical default brand name. Every vertical defaults to "VenueOS"
  * — operator decision 2026-05-05: "lets change the default to Venue OS

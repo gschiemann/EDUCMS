@@ -645,8 +645,6 @@ import {
   LockerHallwayCountdown, LockerHallwayAnnouncement, LockerHallwayCalendar,
   LockerHallwayStaffSpotlight, LockerHallwayImageCarousel, LockerHallwayTicker,
 } from './themes/locker-hallway';
-// Side-effect import triggers registerTheme() for the background + theme picker
-import './themes/locker-hallway/index';
 registerVariant({ id: 'clock-locker-hallway',         widgetType: 'CLOCK',           name: 'Combination Lock',       description: 'Combination-dial clock with live analog hands',       category: 'HALLWAY',    render: LockerHallwayClock,          defaultConfig: { theme: 'locker-hallway', format: '12h' } });
 registerVariant({ id: 'text-locker-hallway',          widgetType: 'TEXT',            name: 'Magnetic Tiles',         description: 'Magnetic letter tiles on a brushed-steel locker strip',category: 'HALLWAY',    render: LockerHallwayText,           defaultConfig: { theme: 'locker-hallway' } });
 registerVariant({ id: 'weather-locker-hallway',       widgetType: 'WEATHER',         name: 'Locker Door Forecast',   description: 'Forecast taped inside a locker door with magnet icons', category: 'HALLWAY',   render: LockerHallwayWeather,        defaultConfig: { theme: 'locker-hallway', location: 'Springfield', units: 'imperial' } });
@@ -664,8 +662,6 @@ import {
   NewsStudioProCountdown, NewsStudioProAnnouncement, NewsStudioProCalendar,
   NewsStudioProStaffSpotlight, NewsStudioProImageCarousel, NewsStudioProTicker,
 } from './themes/news-studio-pro';
-// Side-effect import triggers registerTheme() for the background + theme picker
-import './themes/news-studio-pro/index';
 registerVariant({ id: 'clock-news-studio-pro',         widgetType: 'CLOCK',           name: 'Broadcast Clock',        description: 'Dark glass panel with blue glow, ON AIR dot + live analog hands',    category: 'BROADCAST', render: NewsStudioProClock,          defaultConfig: { theme: 'news-studio-pro', format: '12h' } });
 registerVariant({ id: 'text-news-studio-pro',          widgetType: 'TEXT',            name: 'Glass Headline Card',    description: 'Glass-panel headline with blue left accent strip + italic serif sub', category: 'BROADCAST', render: NewsStudioProText,           defaultConfig: { theme: 'news-studio-pro' } });
 registerVariant({ id: 'weather-news-studio-pro',       widgetType: 'WEATHER',         name: 'Weather Center',         description: '"WEATHER CENTER" glass panel with condition icon + 5-day strip',     category: 'BROADCAST', render: NewsStudioProWeather,        defaultConfig: { theme: 'news-studio-pro', location: 'Springfield', units: 'imperial' } });

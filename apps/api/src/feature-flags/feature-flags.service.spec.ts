@@ -45,10 +45,10 @@ afterEach(restoreEnv);
 // ---------------------------------------------------------------------------
 describe('FeatureFlagsService — env-var fallback', () => {
   it('returns false by default when the env var is unset', async () => {
-    setEnv({ FF_EMERGENCY_NEW_UI: undefined });
+    setEnv({ FF_SPORTS_PLAYER_STATS: undefined });
     const svc = new FeatureFlagsService();
     await svc.onModuleInit();
-    expect(svc.isEnabled(FLAGS.EMERGENCY_NEW_UI)).toBe(false);
+    expect(svc.isEnabled(FLAGS.SPORTS_PLAYER_STATS)).toBe(false);
   });
 
   it('returns true when env is exactly "true"', async () => {
@@ -59,10 +59,10 @@ describe('FeatureFlagsService — env-var fallback', () => {
   });
 
   it('does not accept truthy-but-not-"true" values', async () => {
-    setEnv({ FF_SIS_INTEGRATION: '1' });
+    setEnv({ FF_SPORTS_PLAYER_STATS: '1' });
     const svc = new FeatureFlagsService();
     await svc.onModuleInit();
-    expect(svc.isEnabled(FLAGS.SIS_INTEGRATION)).toBe(false);
+    expect(svc.isEnabled(FLAGS.SPORTS_PLAYER_STATS)).toBe(false);
   });
 
   it('allFlags returns every registered flag', async () => {
@@ -73,10 +73,10 @@ describe('FeatureFlagsService — env-var fallback', () => {
   });
 
   it('isEnabledAsync falls back to env var when provider is not ready', async () => {
-    setEnv({ FF_EMERGENCY_NEW_UI: 'true' });
+    setEnv({ FF_SPORTS_PLAYER_STATS: 'true' });
     const svc = new FeatureFlagsService();
     await svc.onModuleInit();
-    await expect(svc.isEnabledAsync(FLAGS.EMERGENCY_NEW_UI)).resolves.toBe(true);
+    await expect(svc.isEnabledAsync(FLAGS.SPORTS_PLAYER_STATS)).resolves.toBe(true);
   });
 });
 
@@ -96,7 +96,7 @@ describe('FeatureFlagsService — OpenFeature delegation', () => {
   it('delegates isEnabledAsync to the OpenFeature client when provider is ready', async () => {
     // Use InMemoryProvider from the SDK — no real GrowthBook required
     const provider = new InMemoryProvider({
-      [FLAGS.EMERGENCY_NEW_UI]: {
+      [FLAGS.SPORTS_PLAYER_STATS]: {
         variants: { on: true, off: false },
         defaultVariant: 'on',
         disabled: false,
@@ -112,7 +112,7 @@ describe('FeatureFlagsService — OpenFeature delegation', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (svc as any).ofClient = OpenFeature.getClient();
 
-    const result = await svc.isEnabledAsync(FLAGS.EMERGENCY_NEW_UI);
+    const result = await svc.isEnabledAsync(FLAGS.SPORTS_PLAYER_STATS);
     expect(result).toBe(true);
   });
 

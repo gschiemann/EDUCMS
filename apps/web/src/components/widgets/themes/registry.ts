@@ -1,22 +1,20 @@
 /**
- * Theme Registry — the heart of EDU CMS's "scene-aware" widget system.
+ * Shared widget-type union + theme-renderer prop contract.
  *
- * Each theme is a self-contained pack of:
- *   - a `background` (CSS value or image URL) painting the scene,
- *   - per-widget renderers that draw widgets AS scene elements
- *     (e.g., a CLOCK becomes an analog wall clock; TEXT becomes chalk
- *     handwriting on a chalkboard; ANNOUNCEMENT becomes a sticky note
- *     pinned to a bulletin board),
- *   - optional `defaultZones` so duplicating the template gives users
- *     widgets pre-positioned on the scene's matching elements.
+ * HISTORY (2026-08-05 waste sweep): this file used to also carry a runtime
+ * "theme registry" (a Map + registerTheme/getTheme/listThemes/resolveWidget)
+ * populated by 21 `themes/<name>/index.ts` side-effect modules. The registry
+ * had ZERO readers — nothing ever called getTheme/listThemes/resolveWidget —
+ * and 19 of the 21 registration modules weren't even imported (bare
+ * `./themes/<name>` imports resolve to the sibling `<name>.tsx` component
+ * file, not the directory). The runtime half and all 21 index.ts files were
+ * deleted; the theme COMPONENTS (`themes/<name>.tsx`) are alive and well,
+ * registered as picker variants via variants-register.ts. If a "theme
+ * picker" feature ever lands, rebuild the registry with a consumer first.
  *
- * Adding a new theme is a single folder + one `registerTheme()` call.
- * The registry is the *selling point*: every preset can have its own
- * visual language, and the platform learns new themes as schools/staff
- * publish them.
+ * What remains here is load-bearing: `WidgetType` and `ThemeWidgetProps`
+ * are the shared contract imported by variants.ts / variants-register.ts.
  */
-
-import type { ComponentType } from 'react';
 
 export type WidgetType =
   | 'CLOCK' | 'WEATHER' | 'COUNTDOWN' | 'TEXT' | 'RICH_TEXT'
@@ -118,69 +116,4 @@ export interface ThemeWidgetProps {
   // commit operator edits back to the zone's defaultConfig. Without it
   // EditableText.canEdit is false and click-to-edit silently no-ops.
   onConfigChange?: (patch: Record<string, any>) => void;
-}
-
-export type ThemeWidgetRenderer = ComponentType<ThemeWidgetProps>;
-
-export interface ThemeDefaultZone {
-  name: string;
-  widgetType: WidgetType | string;
-  x: number; y: number; width: number; height: number;
-  zIndex?: number;
-  sortOrder?: number;
-  defaultConfig?: Record<string, any>;
-}
-
-export interface Theme {
-  /** Unique theme id, also stored in zone.defaultConfig.theme */
-  id: string;
-  /** Human-readable label shown in the theme picker */
-  name: string;
-  /** One-sentence pitch shown beside the swatch */
-  description?: string;
-  /** CSS `background` value applied to the template root (gradient + URL etc) */
-  background: string;
-  /** Optional fallback solid color (used when background fails to load) */
-  bgColor?: string;
-  /** Per-widget-type renderers. If a widget type isn't here, the default falls through. */
-  widgets: Partial<Record<WidgetType, ThemeWidgetRenderer>>;
-  /** Optional pre-built zone layout matched to scene elements */
-  defaultZones?: ThemeDefaultZone[];
-  /** Optional small swatch URL for the theme picker */
-  thumbnailUrl?: string;
-}
-
-const themes = new Map<string, Theme>();
-
-export function registerTheme(theme: Theme): void {
-  if (themes.has(theme.id)) {
-    // Allow re-registration in dev (HMR) — last write wins
-    themes.set(theme.id, theme);
-    return;
-  }
-  themes.set(theme.id, theme);
-}
-
-export function getTheme(id: string | undefined): Theme | undefined {
-  if (!id) return undefined;
-  return themes.get(id);
-}
-
-export function listThemes(): Theme[] {
-  return Array.from(themes.values());
-}
-
-/**
- * Resolve the renderer for a (themeId, widgetType) pair.
- * Returns undefined if no theme is set or the theme doesn't override that widget.
- * Callers should fall back to their default renderer in that case.
- */
-export function resolveWidget(
-  themeId: string | undefined,
-  widgetType: string,
-): ThemeWidgetRenderer | undefined {
-  if (!themeId) return undefined;
-  const theme = themes.get(themeId);
-  if (!theme) return undefined;
-  return theme.widgets[widgetType as WidgetType];
 }

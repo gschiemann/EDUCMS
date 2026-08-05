@@ -148,7 +148,7 @@ export function blockedBySigningCutover(
 ): boolean {
   const caller = String(callerVersionName ?? '').trim().toLowerCase();
   if (!caller.endsWith('-debug')) return false;
-  return semverGteLocal(targetVersionName, SIGNING_CUTOVER_VERSION);
+  return semverGte(targetVersionName, SIGNING_CUTOVER_VERSION);
 }
 
 /**
@@ -268,7 +268,7 @@ export type ReleaseGateVerdict =
   | { allowed: false; reason: string };
 
 /** Compare 3-part semver, `a >= b`. Unparseable parts read as 0. */
-function semverGteLocal(a: string, b: string): boolean {
+export function semverGte(a: string, b: string): boolean {
   const pa = String(a).split('.').map((n) => parseInt(n, 10) || 0);
   const pb = String(b).split('.').map((n) => parseInt(n, 10) || 0);
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
@@ -329,7 +329,7 @@ function evaluateAgainstPolicy(
   if (!isAllowedApkUrl(apkUrl)) {
     return { allowed: false, reason: `apk-url-rejected:${safeHostForLog(apkUrl)}` };
   }
-  if (policy.floor !== '0.0.0' && !semverGteLocal(versionName, policy.floor)) {
+  if (policy.floor !== '0.0.0' && !semverGte(versionName, policy.floor)) {
     return {
       allowed: false,
       reason: `below-min-supported-version:${versionName}<${policy.floor}`,

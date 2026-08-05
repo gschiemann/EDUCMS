@@ -1,4 +1,3 @@
-import { Injectable } from '@nestjs/common';
 import {
   PLAYER_STATS,
   STAT_SEMANTICS,
@@ -1117,20 +1116,4 @@ export async function getPublicAthleteProfile(
     season: career?.season ?? [],
     gameLog,
   };
-}
-
-/**
- * Thin injectable wrapper so the service is available via Nest DI if a
- * later phase needs it; the computation itself is the exported pure fn
- * above (called directly from the board cache build to avoid any
- * per-request injection overhead on the hot poll).
- */
-@Injectable()
-export class SportsStatsService {
-  computePlayerSurfaces(
-    sport: string,
-    roster: readonly RosterRow[] | null | undefined,
-  ): PlayerSurfaces {
-    return computePlayerSurfaces(sport, roster);
-  }
 }

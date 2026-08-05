@@ -113,11 +113,6 @@ export function darken(hex: string, amount: number): string {
   return hslToHex({ ...hsl, l: clamp(hsl.l - amount) });
 }
 
-export function rotateHue(hex: string, degrees: number): string {
-  const hsl = hexToHsl(hex);
-  return hslToHex({ ...hsl, h: (hsl.h + degrees + 360) % 360 });
-}
-
 export function saturate(hex: string, amount: number): string {
   const hsl = hexToHsl(hex);
   return hslToHex({ ...hsl, s: clamp(hsl.s + amount) });

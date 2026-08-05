@@ -1,18 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 
-export function useDashboardStats() {
-  return useQuery({
-    queryKey: ['dashboard', 'stats'],
-    queryFn: () => apiFetch('/stats/overview'),
-    // 60s — stats counters change on a human cadence (assets uploaded,
-    // playlists scheduled). 30s was 2× the actual signal change rate
-    // and contributed to API thrash in the audit complaint.
-    refetchInterval: 60_000,
-    refetchOnWindowFocus: true,
-  });
-}
-
 export function useRecentActivity() {
   return useQuery({
     queryKey: ['dashboard', 'activity'],

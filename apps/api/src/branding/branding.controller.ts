@@ -120,10 +120,6 @@ export class BrandingController {
     // real wordmark. A valid logo must contain at least one shape
     // primitive (path, circle, rect, polygon, image, use). If it
     // doesn't, fall through to the rasterized <img> candidate below.
-    const isRealSvg = (s: string | null): boolean => {
-      if (!s || s.length < 200) return false;
-      return /<(path|circle|rect|polygon|polyline|ellipse|image|use)\b/i.test(s);
-    };
     let chosenSvgValid = isRealSvg(chosenSvg);
     if (chosenSvg && !chosenSvgValid) {
       this.logger.warn(
@@ -1102,10 +1098,6 @@ export class BrandingController {
     // SVG must contain at least one shape primitive — otherwise it's
     // probably a decorative text-only element the scraper picked up
     // by mistake. Same rule as the global adopt path.
-    const isRealSvg = (s: string | null): boolean => {
-      if (!s || s.length < 200) return false;
-      return /<(path|circle|rect|polygon|polyline|ellipse|image|use)\b/i.test(s);
-    };
     const chosenSvgValid = isRealSvg(chosenSvg);
 
     if (chosenSvg && chosenSvgValid) {
@@ -1192,6 +1184,16 @@ export class BrandingController {
  * Pure function — no controller deps — so it lives outside the class
  * and is reusable by the per-template path too.
  */
+// A valid logo SVG must contain at least one shape primitive (path,
+// circle, rect, polygon, image, use) and be non-trivial in size —
+// otherwise it's probably a decorative text-only element the scraper
+// picked up by mistake. Shared by the adopt + preview paths (was two
+// identical closures; hoisted 2026-08-05).
+function isRealSvg(s: string | null): boolean {
+  if (!s || s.length < 200) return false;
+  return /<(path|circle|rect|polygon|polyline|ellipse|image|use)\b/i.test(s);
+}
+
 function enforcePaletteContrast(palette: any, target: number = 4.5): any {
   if (!palette || typeof palette !== 'object') return palette;
   const out = { ...palette };

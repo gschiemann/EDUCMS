@@ -136,22 +136,4 @@ export class IntegrationsController {
     };
   }
 
-  /**
-   * GET /api/v1/integrations/hardware/catalog
-   *
-   * Full hardware catalog — used by the pair-screen picker so the list
-   * of supported models stays in sync with `packages/api-types/src/
-   * hardware.ts` without the frontend hard-coding it.
-   */
-  @Get('hardware/catalog')
-  @RequireRoles(
-    AppRole.SUPER_ADMIN,
-    AppRole.DISTRICT_ADMIN,
-    AppRole.SCHOOL_ADMIN,
-    AppRole.CONTRIBUTOR,
-    AppRole.RESTRICTED_VIEWER,
-  )
-  catalogHardware() {
-    return { catalog: this.hardware.catalog() };
-  }
 }

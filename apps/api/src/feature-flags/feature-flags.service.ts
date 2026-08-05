@@ -2,12 +2,13 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { OpenFeature, EvaluationContext } from '@openfeature/server-sdk';
 import { GrowthBookServerProvider } from './growthbook-provider';
 
+// 2026-08-05 waste sweep: EMERGENCY_NEW_UI / SIS_INTEGRATION /
+// SPORTS_RECORDS_MILESTONES mirrored the web declarations but had zero
+// isEnabled/isEnabledAsync call sites on either side. Removed — a flag
+// that gates nothing is a trap for the next reader.
 export const FLAGS = {
-  EMERGENCY_NEW_UI: 'emergency_new_ui',
   TEMPLATE_BUILDER_V2: 'template_builder_v2',
-  SIS_INTEGRATION: 'sis_integration',
   SPORTS_PLAYER_STATS: 'sports_player_stats',
-  SPORTS_RECORDS_MILESTONES: 'sports_records_milestones',
 } as const;
 
 export type FlagKey = (typeof FLAGS)[keyof typeof FLAGS];

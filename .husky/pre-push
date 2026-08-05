@@ -5,7 +5,7 @@
 #
 # `pnpm preflight` runs the same non-Docker checks CI does:
 #   - lockfile sync   (pnpm install --frozen-lockfile --lockfile-only)
-#   - workspace TS package builds (@cms/api-types, @cms/auth-core, @cms/ws-events)
+#   - workspace TS package builds (@cms/api-types, @cms/scoreboard-cts, @cms/signage-design)
 #   - api TS build    (catches TS errors that survived pre-commit)
 #   - web TS build    (catches Next.js prerender / type errors)
 # Budget: ~90 seconds per CLAUDE.md "Deploy Reliability" section.

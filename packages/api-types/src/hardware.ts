@@ -272,13 +272,6 @@ export function upsellsForHardware(
 }
 
 /**
- * Type-guard for HardwareModel strings.
- */
-export function isHardwareModel(v: unknown): v is HardwareModel {
-  return typeof v === 'string' && (HARDWARE_MODELS as readonly string[]).includes(v);
-}
-
-/**
  * Per-vertical hardware blurb shown in the Integration Concierge as a
  * top-pinned recommendation. Returns null if the vertical has no
  * recommended hardware yet.

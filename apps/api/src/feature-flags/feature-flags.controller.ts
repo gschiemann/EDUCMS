@@ -14,8 +14,8 @@ import { FeatureFlagsService } from './feature-flags.service';
  * any known caller. The risk it closed: leaking the full set of flag
  * names to anyone on the public internet — useful for an attacker
  * profiling staff-only / experimental capabilities. Today the FLAGS map
- * is all user-facing UI gates (EMERGENCY_NEW_UI, TEMPLATE_BUILDER_V2,
- * SIS_INTEGRATION, AUTO_BRANDING), but the architecture lets future
+ * is all user-facing UI gates (TEMPLATE_BUILDER_V2, SPORTS_PLAYER_STATS),
+ * but the architecture lets future
  * internal flags slip through automatically — guarding now stops that
  * regression class.
  */

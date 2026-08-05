@@ -47,12 +47,6 @@ export function getTextFieldDescriptor(
   return list.find((f) => f.key === fieldKey);
 }
 
-/** Does this widget have ANY inline-rewriteable (non-list) text field? */
-export function hasRewriteableText(widgetType: string): boolean {
-  const list = TEXT_FIELDS[String(widgetType || '').toUpperCase()];
-  return !!list && list.some((f) => f.kind !== 'list');
-}
-
 /**
  * The PRIMARY editable text field for a widget — the first non-list field.
  * Chat-to-edit (2a) maps a free-text "change it to …" onto this key.

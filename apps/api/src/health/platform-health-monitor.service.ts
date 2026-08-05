@@ -44,6 +44,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { PlatformAlertMailer } from '../email/platform-alert-mailer.service';
+import { withTimeout } from './with-timeout';
 
 type MonitorStatus = 'ok' | 'degraded' | 'critical';
 
@@ -61,16 +62,6 @@ const DB_RETRY_DELAY_MS = 10_000; // re-probe gap before a DB fail counts
 const PROBE_TIMEOUT_MS = 1_500;
 
 const SEVERITY_RANK: Record<MonitorStatus, number> = { ok: 0, degraded: 1, critical: 2 };
-
-async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return await Promise.race([
-    p,
-    new Promise<T>((_resolve, reject) => {
-      const t = setTimeout(() => reject(new Error(`timeout after ${ms}ms`)), ms);
-      (t as any).unref?.(); // never hold the process (or Jest) open
-    }),
-  ]);
-}
 
 @Injectable()
 export class PlatformHealthMonitorService implements OnModuleInit, OnModuleDestroy {

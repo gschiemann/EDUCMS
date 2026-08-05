@@ -58,7 +58,3 @@ export const QUARANTINED_BOARD_URLS: ReadonlySet<string> = new Set(
   QUARANTINED_BOARD_URL_LIST,
 );
 
-/** True when a board URL is on the interim quarantine denylist. */
-export function isQuarantinedBoardUrl(url: string | null | undefined): boolean {
-  return url != null && QUARANTINED_BOARD_URLS.has(url);
-}

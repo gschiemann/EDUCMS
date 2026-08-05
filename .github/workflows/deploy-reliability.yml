@@ -114,13 +114,11 @@ jobs:
           cache: pnpm
       - name: Install
         run: pnpm install --frozen-lockfile --ignore-scripts
-      - name: Generate Prisma client (must run BEFORE workspace builds — auth-core imports @prisma/client transitively)
+      - name: Generate Prisma client (must run BEFORE workspace builds — packages import @prisma/client transitively)
         run: cd packages/database && npx prisma generate
       - name: Build workspace packages
         run: |
           pnpm --filter @cms/api-types build
-          pnpm --filter @cms/auth-core build
-          pnpm --filter @cms/ws-events build
           pnpm --filter @cms/scoreboard-cts build
           pnpm --filter @cms/signage-design build
       - name: Build API
@@ -163,8 +161,6 @@ jobs:
       - name: Build workspace packages
         run: |
           pnpm --filter @cms/api-types build
-          pnpm --filter @cms/auth-core build
-          pnpm --filter @cms/ws-events build
           pnpm --filter @cms/scoreboard-cts build
           pnpm --filter @cms/signage-design build
       # BLOCKING, deliberately — unlike the API Jest job, which is
@@ -201,7 +197,7 @@ jobs:
       # 2026-05-04 — Web build was failing on CI but passing locally.
       # Cause: --ignore-scripts skips the postinstall hook + this job
       # didn't build the workspace TS packages before the Next.js
-      # build. Web imports @cms/api-types and @cms/auth-core whose
+      # build. Web imports @cms/api-types whose
       # `main` points at dist/index.js — without those built, Next
       # tries to parse raw .ts source at runtime and crashes
       # (`Unexpected token 'export'`). Locally the dist folders
@@ -211,8 +207,6 @@ jobs:
       - name: Build workspace packages
         run: |
           pnpm --filter @cms/api-types build
-          pnpm --filter @cms/auth-core build
-          pnpm --filter @cms/ws-events build
           pnpm --filter @cms/scoreboard-cts build
           pnpm --filter @cms/signage-design build
       - name: Build web

@@ -74,10 +74,6 @@
     "gap": 5,
     "cqUnits": 11
   },
-  "apps/web/src/components/widgets/AnimatedEventCountdownWidget.tsx": {
-    "gap": 4,
-    "backdropFilter": 1
-  },
   "apps/web/src/components/widgets/AnimatedHallwaySchedulePortraitWidget.tsx": {
     "gap": 5
   },

@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
+import { withTimeout } from './with-timeout';
 
 type CheckState = 'ok' | 'fail' | 'fallback' | 'degraded' | 'off';
 
@@ -19,20 +20,6 @@ interface HealthReport {
   redis?: CheckState;
   uptime?: number;
   timestamp?: string;
-}
-
-/**
- * Runs a promise with a hard timeout so a single slow downstream
- * (e.g. Postgres pooler hiccup, Redis DNS flake) can never make
- * Railway's healthcheck exceed its budget and kill the container.
- */
-async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return await Promise.race([
-    p,
-    new Promise<T>((_resolve, reject) =>
-      setTimeout(() => reject(new Error(`timeout after ${ms}ms`)), ms),
-    ),
-  ]);
 }
 
 @Controller('api/v1/health')

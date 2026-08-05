@@ -278,8 +278,6 @@ export function getPosProvider(id: string): PosProviderDef | undefined {
   return POS_PROVIDERS.find((p) => p.id === id);
 }
 
-export const POS_PROVIDER_IDS = POS_PROVIDERS.map((p) => p.id) as readonly string[];
-
 // ─── Normalized catalog DTOs (provider → our format) ────────────────────
 
 /** Single menu item / SKU normalized across providers. */

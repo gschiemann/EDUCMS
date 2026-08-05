@@ -416,9 +416,6 @@ export function getStreamProvider(id: string): StreamProviderDef | undefined {
   return STREAM_PROVIDERS.find((p) => p.id === id);
 }
 
-/** All provider ids — used for Zod enum validation at the API. */
-export const STREAM_PROVIDER_IDS = STREAM_PROVIDERS.map((p) => p.id) as readonly string[];
-
 // ─── DTO shapes for API endpoints ──────────────────────────────────────
 
 /** What the provider catalog endpoint returns to the web app. Hides

@@ -27,24 +27,15 @@
     "a11y:ci": "pnpm --filter web run a11y:ci",
     "lhci": "pnpm --filter web run lhci",
     "mobile-perf-guard": "node apps/web/tools/check-mobile-perf.cjs",
-    "preflight": "pnpm install --frozen-lockfile --lockfile-only && pnpm --filter @cms/api-types build && pnpm --filter @cms/auth-core build && pnpm --filter @cms/ws-events build && pnpm --filter @cms/scoreboard-cts build && pnpm --filter @cms/signage-design build && pnpm --filter api build && pnpm --filter web build",
+    "preflight": "pnpm install --frozen-lockfile --lockfile-only && pnpm --filter @cms/api-types build && pnpm --filter @cms/scoreboard-cts build && pnpm --filter @cms/signage-design build && pnpm --filter api build && pnpm --filter web build",
     "prepare": "husky || true"
   },
   "dependencies": {
-    "@cms/api-types": "workspace:*",
-    "@cms/auth-core": "workspace:*",
-    "@cms/ws-events": "workspace:*",
-    "argon2": "^0.44.0",
-    "cors": "^2.8.5",
     "dotenv": "^16.3.1",
-    "express": "^4.18.2",
-    "helmet": "^7.1.0",
     "pg": "^8.11.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
-    "@types/cors": "^2.8.17",
-    "@types/express": "^4.17.21",
     "@types/jest": "^29.5.11",
     "@types/node": "^20.10.4",
     "@types/pg": "^8.10.9",
@@ -54,12 +45,11 @@
     "jest": "^29.7.0",
     "supertest": "^7.2.2",
     "ts-jest": "^29.1.1",
-    "ts-node-dev": "^2.0.0",
     "turbo": "^2.9.6",
     "typescript": "^5.3.3"
   },
   "pnpm": {
-    "comment-overrides": "Patched floors for transitive advisories, all within-major (patch/minor) bumps. First block: dev-only toolchains (the @wdio/cli Android-E2E tree). Second block (2026-07-10 prod-audit remediation): PROD-graph transitives \u2014 ws (@nestjs/platform-ws + @supabase/realtime-js, memory-exhaustion DoS), multer 2.x (@nestjs/platform-express upload path, nested-field DoS), undici 7.x (cheerio/jsdom scraping, TLS-bypass + WS DoS), plus moderate cleanups (dompurify, postcss, qs, uuid, ip-address, brace-expansion, js-yaml, @opentelemetry/core). Selectors are version-scoped so other majors (e.g. multer 1.x direct dep, js-yaml 3.x, uuid 8.x) are untouched.",
+    "comment-overrides": "Patched floors for transitive advisories, all BOUNDED within-major. First block: dev-only toolchains (the @wdio/cli Android-E2E tree). Second block (2026-07-10 prod-audit remediation): PROD-graph transitives — ws (@nestjs/platform-ws + @supabase/realtime-js, memory-exhaustion DoS), multer 2.x (@nestjs/platform-express upload path, nested-field DoS), undici 7.x (cheerio/jsdom scraping, TLS-bypass + WS DoS), plus moderate cleanups (dompurify, postcss, qs, uuid, ip-address, brace-expansion, js-yaml, @opentelemetry/core). Third block (2026-08-05 hygiene sweep): advisory floors from `pnpm audit --fix`, HAND-BOUNDED — audit --fix emits unbounded '>=' floors and pnpm resolves an override range to the HIGHEST matching version, so an unbounded floor silently jumps majors (observed: sanitize-html→2.17.6 pulled ESM-only htmlparser2@12 and broke every CJS require; js-yaml 3.x consumers were forced onto 4.x which deleted safeLoad; express-4's body-parser 1.x was forced to 2.x). NEVER add an unbounded '>=' target here. sanitize-html is pinned EXACTLY 2.17.5: it is the advisory-fixed version whose htmlparser2 (^10, dual CJS/ESM) still loads under Node-20 require + Jest; 2.17.6 requires htmlparser2@12 (ESM-only). The js-yaml <3.15.0 advisory has NO fixed 3.x release (3.14.1 is the last 3.x) — left unpatched in the dev tree rather than force a breaking 3→4 jump.",
     "overrides": {
       "sharp@<0.35.0": "^0.35.3",
       "basic-ftp@<5.3.1": "^5.3.1",
@@ -68,8 +58,6 @@
       "tmp@<0.2.6": "^0.2.6",
       "ws@>=8.0.0 <8.21.0": "^8.21.0",
       "multer@>=2.0.0 <2.2.0": "^2.2.0",
-      "dompurify@>=3.0.0 <3.4.11": "^3.4.11",
-      "postcss@<8.5.12": "^8.5.12",
       "qs@>=6.0.0 <6.15.2": "^6.15.2",
       "uuid@>=13.0.0 <13.0.1": "^13.0.1",
       "js-yaml@>=4.0.0 <4.2.0": "^4.2.0",
@@ -77,7 +65,24 @@
       "brace-expansion@>=4.0.0 <5.0.9": "^5.0.9",
       "undici@>=7.0.0 <7.29.0": "^7.29.0",
       "ip-address@<=10.3.0": "^10.4.0",
-      "fast-uri@>=3.0.0 <3.1.5": "^3.1.5"
+      "fast-uri@>=3.0.0 <3.1.5": "^3.1.5",
+      "undici@<6.28.0": "^6.28.0",
+      "hono@<4.12.34": "^4.12.34",
+      "@hono/node-server@<2.0.5": "^2.0.5",
+      "esbuild@<=0.24.2": "^0.25.0",
+      "esbuild@>=0.27.3 <0.28.1": "^0.28.1",
+      "turbo@<=2.9.13": "^2.9.14",
+      "uuid@<11.1.1": "^11.1.1",
+      "form-data@>=4.0.0 <4.0.6": "^4.0.6",
+      "@babel/core@<=7.29.0": "^7.29.6",
+      "brace-expansion@>=2.0.0 <2.1.4": "^2.1.4",
+      "brace-expansion@<1.1.18": "^1.1.18",
+      "body-parser@>=2.0.0 <2.3.0": "^2.3.0",
+      "body-parser@<1.20.6": "^1.20.6",
+      "dompurify@<3.4.12": "^3.4.12",
+      "sanitize-html@>=1.18.0 <=2.17.4": "2.17.5",
+      "sanitize-html@>=2.17.6 <3": "2.17.5",
+      "postcss@<8.5.23": "^8.5.23"
     }
   }
 }

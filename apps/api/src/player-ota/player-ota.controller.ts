@@ -61,6 +61,7 @@ import {
   evaluateManagerReleaseForFleet,
   isAllowedApkUrl,
   blockedBySigningCutover,
+  semverGte,
 } from './release-policy';
 
 interface UpdateCheckBody {
@@ -1607,19 +1608,6 @@ async function resolveLatestManagerReleaseInfo(callerAbi = ''): Promise<ReleaseI
 // back — were removed 2026-08-03. Anonymous asset fetches 404 on the
 // now-private repo, and the digest belongs with the exact bytes the
 // fleet actually downloads: see shaViaProxyCache above.)
-
-// Semver-style "a >= b" for 3-part version strings (no pre-release or
-// build-metadata support — EduCMS APKs don't use them). Unparseable
-// parts compare as 0 so bad input fails safely as "not greater".
-function semverGte(a: string, b: string): boolean {
-  const pa = a.split('.').map((n) => parseInt(n, 10) || 0);
-  const pb = b.split('.').map((n) => parseInt(n, 10) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const diff = (pa[i] || 0) - (pb[i] || 0);
-    if (diff !== 0) return diff > 0;
-  }
-  return true; // equal counts as gte
-}
 
 /**
  * Sprint 11 Phase A — OTA maintenance-window check.

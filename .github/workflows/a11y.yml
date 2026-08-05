@@ -74,8 +74,6 @@ jobs:
       - name: Build workspace packages
         run: |
           pnpm --filter @cms/api-types build
-          pnpm --filter @cms/auth-core build
-          pnpm --filter @cms/ws-events build
           pnpm --filter @cms/scoreboard-cts build
           pnpm --filter @cms/signage-design build
 

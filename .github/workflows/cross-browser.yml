@@ -163,18 +163,16 @@ jobs:
 
       # Build the workspace TS packages BEFORE `next dev` boots. The
       # /player route imports CtsBridge → @cms/scoreboard-cts (and the app
-      # imports @cms/api-types / auth-core / ws-events), whose package.json
+      # imports @cms/api-types etc.), whose package.json
       # `main` points at dist/index.js. Without this build, `next dev`
       # fails to compile the player route ("Module not found / Unexpected
       # token export") and the spec stalls before the first manifest fetch.
       # Same requirement the deploy-reliability `web-build` job documents.
-      - name: Generate Prisma client (auth-core imports @prisma/client transitively)
+      - name: Generate Prisma client (workspace packages import @prisma/client transitively)
         run: pnpm --filter @cms/database run db:generate
       - name: Build workspace packages
         run: |
           pnpm --filter @cms/api-types build
-          pnpm --filter @cms/auth-core build
-          pnpm --filter @cms/ws-events build
           pnpm --filter @cms/scoreboard-cts build
           pnpm --filter @cms/signage-design build
 

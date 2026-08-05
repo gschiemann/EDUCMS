@@ -134,22 +134,6 @@ export function useUpdateScreenGroup() {
   });
 }
 
-export function useAssignScreens() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ groupId, screenIds }: { groupId: string; screenIds: string[] }) =>
-      apiFetch(`/screen-groups/${groupId}/screens`, {
-        method: 'PUT',
-        body: JSON.stringify({ screenIds }),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['screen-groups'] });
-      qc.invalidateQueries({ queryKey: ['schedules'] });
-      qc.invalidateQueries({ queryKey: ['playlists'] });
-    },
-  });
-}
-
 // ─── Screens (individual devices) ───────────────────────────────
 
 export function useScreens() {
@@ -175,20 +159,6 @@ export function useScreens() {
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
     staleTime: 0,
-  });
-}
-
-export function useCreateScreen() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (data: { name: string; location?: string; screenGroupId?: string }) =>
-      apiFetch('/screens', { method: 'POST', body: JSON.stringify(data) }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['screens'] });
-      qc.invalidateQueries({ queryKey: ['screen-groups'] });
-      qc.invalidateQueries({ queryKey: ['schedules'] });
-      qc.invalidateQueries({ queryKey: ['playlists'] });
-    },
   });
 }
 
@@ -635,14 +605,6 @@ export function usePlaylists() {
   });
 }
 
-export function usePlaylist(id: string) {
-  return useQuery({
-    queryKey: ['playlists', id],
-    queryFn: () => apiFetch(`/playlists/${id}`),
-    enabled: !!id,
-  });
-}
-
 export function useCreatePlaylist() {
   const qc = useQueryClient();
   return useMutation({
@@ -840,24 +802,6 @@ export function useAssets() {
     queryKey: ['assets'],
     queryFn: () => apiFetch('/assets'),
     staleTime: 30_000,
-  });
-}
-
-export function useRequestPresignedUrl() {
-  return useMutation({
-    mutationFn: (data: { filename: string; contentType: string; size: number; folderId?: string | null }) =>
-      apiFetch<{
-        uploadUrl: string;
-        signedUrl: string;
-        token: string;
-        storagePath: string;
-        fileUrl: string;
-        mimeType: string;
-        maxFileSize: number;
-      }>('/assets/presign', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
   });
 }
 
@@ -1206,20 +1150,6 @@ export function useTemplateBackdrops() {
     queryKey: ['template-backdrops'],
     queryFn: () => apiFetch('/templates/backdrops'),
     staleTime: 5 * 60 * 1000, // 5 min — backdrops rarely change
-  });
-}
-
-export function useSystemPresets() {
-  return useQuery({
-    queryKey: ['templates', 'system-presets'],
-    queryFn: () => apiFetch('/templates/system/presets'),
-  });
-}
-
-export function useWidgetTypes() {
-  return useQuery({
-    queryKey: ['templates', 'widget-types'],
-    queryFn: () => apiFetch('/templates/widget-types'),
   });
 }
 
@@ -2125,15 +2055,6 @@ export function useUpdateMe() {
   });
 }
 
-export function useCreateUser() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (data: { email: string; password: string; role: string }) =>
-      apiFetch('/users', { method: 'POST', body: JSON.stringify(data) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
-  });
-}
-
 export function useInviteUser() {
   const qc = useQueryClient();
   // 2026-05-11 — invite now accepts firstName + lastName so the
@@ -2695,7 +2616,7 @@ export function useUsbIngestEvents() {
 // 2026-05-04 — endpoint was wrong (`/tenants/me/branding`); fixed to
 // `/branding/me` to match Sidebar / BrandStyleInjector.
 import type { TenantBranding } from '@/lib/branding';
-export const TENANT_BRANDING_QUERY_KEY = ['branding', 'me'] as const;
+const TENANT_BRANDING_QUERY_KEY = ['branding', 'me'] as const;
 
 export function useTenantBranding() {
   return useQuery<TenantBranding | null>({
@@ -3058,80 +2979,11 @@ export function useDetachScreenFromFloor() {
 }
 
 // ─── Sprint 8b — Per-screen emergency override ──────────────────
-
-export interface ScreenEmergencyOverrideRow {
-  id: string;
-  screenId: string;
-  tenantId: string;
-  type: string;
-  severity: string;
-  scopeNote: string | null;
-  playlistId: string | null;
-  textBlob: string | null;
-  mediaUrl: string | null;
-  floorPlanId: string | null;
-  floorZoneId: string | null;
-  scenarioId: string | null;
-  triggeredByUserId: string;
-  triggeredAt: string;
-  expiresAt: string | null;
-}
-
-export interface ScreenEmergencyTriggerInput {
-  type: string;
-  severity?: string;
-  scopeNote?: string;
-  playlistId?: string;
-  textBlob?: string;
-  mediaUrl?: string;
-  expiresAt?: string;
-  floorPlanId?: string;
-  floorZoneId?: string;
-  scenarioId?: string;
-}
-
-export function useScreenEmergencyOverride(screenId: string | undefined) {
-  return useQuery<ScreenEmergencyOverrideRow | null>({
-    queryKey: ['screen-emergency-override', screenId],
-    queryFn: () => apiFetch(`/emergency/screens/${screenId}/override`),
-    enabled: !!screenId,
-    // 5min — was 30s, but this hook is called once per pin on the floor
-    // plan (50 pins × 30s = 100 GETs/min just for override status).
-    // Real triggers come through the signed WS pub/sub, NOT polling;
-    // the poll is purely a fallback when WS is offline. 5min is plenty.
-    refetchInterval: 5 * 60_000,
-    staleTime: 60_000,
-  });
-}
-
-/** Trigger emergency on a single screen. */
-export function useTriggerScreenEmergency() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ screenId, override }: { screenId: string; override: ScreenEmergencyTriggerInput }) =>
-      apiFetch(`/emergency/screens/${screenId}/trigger`, {
-        method: 'POST',
-        body: JSON.stringify(override),
-      }),
-    onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: ['screen-emergency-override', vars.screenId] });
-      qc.invalidateQueries({ queryKey: ['floor-plans'] });
-    },
-  });
-}
-
-/** Clear a single screen's emergency override. */
-export function useClearScreenEmergency() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (screenId: string) =>
-      apiFetch(`/emergency/screens/${screenId}/all-clear`, { method: 'POST', body: JSON.stringify({}) }),
-    onSuccess: (_, screenId) => {
-      qc.invalidateQueries({ queryKey: ['screen-emergency-override', screenId] });
-      qc.invalidateQueries({ queryKey: ['floor-plans'] });
-    },
-  });
-}
+// (2026-08-05 waste sweep: the read/trigger/clear/bulk-trigger hooks that
+// lived here had ZERO call sites — the floor-plan UI drives the per-screen
+// emergency endpoints through its own fetch layer. Unused mutation hooks
+// against life-safety endpoints are exactly the kind of thing that must
+// not lie around looking live. The API endpoints themselves are unchanged.)
 
 /**
  * Per-screen emergency content config — declarative, NOT a manual
@@ -3221,19 +3073,6 @@ export function useUpdateScreenEmergencyContent() {
       qc.invalidateQueries({ queryKey: ['assets'] });
       qc.invalidateQueries({ queryKey: ['floor-plans'] });
       qc.invalidateQueries({ queryKey: ['floor-plan'] });
-      qc.invalidateQueries({ queryKey: ['screen-emergency-override', vars.screenId] });
-    },
-  });
-}
-
-/** Bulk trigger across many screens (lasso / scenario). */
-export function useBulkTriggerScreenEmergency() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (input: { screenIds: string[]; override: ScreenEmergencyTriggerInput }) =>
-      apiFetch('/emergency/screens/bulk-trigger', { method: 'POST', body: JSON.stringify(input) }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['floor-plans'] });
     },
   });
 }

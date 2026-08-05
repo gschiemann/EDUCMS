@@ -73,15 +73,13 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # Build workspace TypeScript packages — apps/web's `next dev`
-      # imports @cms/api-types / @cms/auth-core / @cms/ws-events whose
+      # imports @cms/api-types (and friends) whose
       # `main` points at `dist/index.js`. The deploy-reliability workflow
       # documents this requirement; same pattern here so the dev server
       # boots clean.
       - name: Build workspace packages
         run: |
           pnpm --filter @cms/api-types build
-          pnpm --filter @cms/auth-core build
-          pnpm --filter @cms/ws-events build
           pnpm --filter @cms/scoreboard-cts build
           pnpm --filter @cms/signage-design build
 

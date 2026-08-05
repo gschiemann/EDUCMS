@@ -275,8 +275,6 @@ export function getAdNetwork(id: string): AdNetworkDef | undefined {
   return AD_NETWORKS.find((n) => n.id === id);
 }
 
-export const AD_NETWORK_IDS = AD_NETWORKS.map((n) => n.id) as readonly string[];
-
 /** Networks visible to a tenant in the picker. K12 only sees house-only. */
 export function adNetworksForVertical(vertical: string): ReadonlyArray<AdNetworkDef> {
   return AD_NETWORKS.filter((n) => {
