@@ -199,14 +199,18 @@ export class MenuService {
       const ov = overrideByItem.get(item.id);
 
       // An operator-hidden item is ALWAYS excluded (the existing rule).
-      const hidden = ov?.isHidden === true;
+      // Catalog-level POS-unavailable (item.isAvailable=false — Clover
+      // hidden, Shopify inactive, Lightspeed archived, Square deleted) is
+      // treated the same as hidden, NOT as an 86: it must never render on
+      // a board, not even greyed-out under includeUnavailable.
+      const hidden = ov?.isHidden === true || item.isAvailable === false;
       if (hidden && !opts?.includeHidden) continue;
 
       // Availability split out from hidden so we can EITHER drop 86'd
       // items (default / existing player behavior) OR include them flagged
       // available:false (includeUnavailable — menu boards grey them out).
       const soldOut = this.isItemSoldOut(ov, now);
-      const available = this.isItemAvailable(ov, now);
+      const available = item.isAvailable !== false && this.isItemAvailable(ov, now);
       if (!available && !opts?.includeUnavailable && !opts?.includeHidden) continue;
 
       const priceOverridden = ov?.priceCents != null;
@@ -570,6 +574,11 @@ export class MenuService {
         categoryId = await this.resolveOrCreateCategory(tenantId, catalog.id, it.category, categoryIdByName);
       }
 
+      // Catalog-level availability: only Square emits per-location
+      // locationPrices; Clover/Lightspeed/Shopify signal hidden/inactive/
+      // archived via the base `available` flag, so it must be persisted
+      // here or those items keep rendering on kiosks (POS-sandbox bug #1).
+      const isAvailable = it.available !== false;
       const item = await (this.prisma.client as any).menuItem.upsert({
         where: { catalogId_externalId: { catalogId: catalog.id, externalId: it.externalId } },
         update: {
@@ -577,6 +586,7 @@ export class MenuService {
           description: it.description ?? null,
           defaultPriceCents: it.priceCents,
           imageUrl: it.imageUrl ?? null,
+          isAvailable,
           ...(categoryId ? { categoryId } : {}),
         },
         create: {
@@ -588,6 +598,7 @@ export class MenuService {
           description: it.description ?? null,
           defaultPriceCents: it.priceCents,
           imageUrl: it.imageUrl ?? null,
+          isAvailable,
         },
         select: { id: true },
       });

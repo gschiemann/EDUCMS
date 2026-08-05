@@ -144,6 +144,21 @@ describe('MenuAdminService.listCatalog', () => {
     );
   });
 
+  it('surfaces catalog-level POS availability (MenuItem.isAvailable=false → available:false)', async () => {
+    const prisma = makeMockPrisma({
+      catalogs: [{ id: 'cat-1' }],
+      categories: [],
+      items: [
+        { id: 'i1', externalId: 'burger', name: 'Burger', defaultPriceCents: 799, allergens: [], tags: [], categoryId: null, sortOrder: 0, isAvailable: true },
+        { id: 'i2', externalId: 'secret', name: 'Hidden Special', defaultPriceCents: 999, allergens: [], tags: [], categoryId: null, sortOrder: 1, isAvailable: false },
+      ],
+    });
+    const out = await svcWith(prisma).listCatalog(TENANT);
+    const byId = Object.fromEntries(out.map((i: any) => [i.id, i]));
+    expect(byId['i1'].available).toBe(true);
+    expect(byId['i2'].available).toBe(false);
+  });
+
   it('returns [] when the tenant has no catalogs', async () => {
     const prisma = makeMockPrisma({ catalogs: [] });
     expect(await svcWith(prisma).listCatalog(TENANT)).toEqual([]);

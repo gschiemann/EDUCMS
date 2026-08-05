@@ -2054,6 +2054,12 @@ model MenuItem {
   // overrides adjust the base defaultPriceCents only; variant prices are
   // not (yet) location-overridable.
   variants          Json?    @map("variants")
+  // Catalog-level availability from the POS (Clover hidden/available:false,
+  // Shopify inactive product, Lightspeed archived, Square is_deleted).
+  // Providers without per-location data carry availability here; false
+  // means the POS says this item must not render anywhere. Per-location
+  // 86s stay on MenuLocationOverride.
+  isAvailable       Boolean  @default(true) @map("is_available")
   sortOrder         Int      @default(0) @map("sort_order")
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")

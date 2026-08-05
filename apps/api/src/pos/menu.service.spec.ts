@@ -469,3 +469,90 @@ describe('MenuService.ingestOperatorMenu (dashboard "paste your menu")', () => {
     await expect(svcWith(prisma).ingestOperatorMenu(TENANT, 'user-1', {} as any)).rejects.toThrow();
   });
 });
+
+// ─── POS-sandbox bug #1 (2026-08-04): catalog-level availability ─────────
+// ingestPosCatalog used to drop `item.available` on the floor, so a Clover/
+// Lightspeed/Shopify item the POS marks hidden or unavailable (only Square
+// emits per-location locationPrices) still rendered on real kiosks via the
+// device-authed GET /screens/:id/menu. Mirrors the sandbox proof: a Clover
+// snapshot with an available:false item must be absent from
+// resolveMenuForLocation output. Repro harness: scripts/pos-sandbox/.
+describe('MenuService.ingestPosCatalog — catalog-level availability', () => {
+  const cloverConn = { id: 'conn-clover', tenantId: TENANT, providerId: 'clover' };
+
+  it('persists item.available=false onto MenuItem.isAvailable (create AND update)', async () => {
+    const prisma = makeMockPrisma();
+    prisma.client.menuCatalog.findFirst.mockResolvedValue({ id: 'cat-1' });
+    // Clover-style snapshot: hidden item carries available:false, NO
+    // locationPrices (only Square emits those).
+    const snapshot = {
+      items: [
+        { externalId: 'burger', name: 'Burger', priceCents: 799, available: true },
+        { externalId: 'secret-item', name: 'Hidden Special', priceCents: 999, available: false },
+      ],
+      categories: [],
+    } as any;
+    const res = await svcWith(prisma).ingestPosCatalog(cloverConn, snapshot);
+    expect(res.itemsUpserted).toBe(2);
+
+    const calls = prisma.client.menuItem.upsert.mock.calls.map((c: any[]) => c[0]);
+    const hiddenCall = calls.find((c: any) => c.where.catalogId_externalId.externalId === 'secret-item');
+    expect(hiddenCall.create.isAvailable).toBe(false);
+    expect(hiddenCall.update.isAvailable).toBe(false); // a later sync that hides an existing item must stick
+    const visibleCall = calls.find((c: any) => c.where.catalogId_externalId.externalId === 'burger');
+    expect(visibleCall.create.isAvailable).toBe(true);
+    expect(visibleCall.update.isAvailable).toBe(true); // and un-hiding must stick too
+  });
+
+  it('treats a missing available flag as available (inherit-true, zero regression)', async () => {
+    const prisma = makeMockPrisma();
+    prisma.client.menuCatalog.findFirst.mockResolvedValue({ id: 'cat-1' });
+    await svcWith(prisma).ingestPosCatalog(cloverConn, {
+      items: [{ externalId: 'x', name: 'X', priceCents: 100 }],
+      categories: [],
+    } as any);
+    expect(prisma.client.menuItem.upsert.mock.calls[0][0].create.isAvailable).toBe(true);
+  });
+});
+
+describe('MenuService.resolveMenuForLocation — MenuItem.isAvailable (POS catalog-level)', () => {
+  const seed = () => ({
+    catalogs: [{ id: 'cat-1' }],
+    items: [
+      { id: 'i1', externalId: 'burger', name: 'Burger', defaultPriceCents: 799, allergens: [], tags: [], sortOrder: 0, categoryId: null, isAvailable: true },
+      { id: 'i2', externalId: 'secret-item', name: 'Hidden Special', defaultPriceCents: 999, allergens: [], tags: [], sortOrder: 1, categoryId: null, isAvailable: false },
+    ],
+    overrides: [],
+  });
+
+  it('drops a POS-unavailable item from the player/kiosk result (the sandbox proof)', async () => {
+    const res = await svcWith(makeMockPrisma(seed())).resolveMenuForLocation(LOC_A, { catalogTenantId: TENANT });
+    expect(res.items.map((i) => i.id)).toEqual(['i1']);
+  });
+
+  it('keeps it hidden even under includeUnavailable (POS-hidden ≠ greyed-out 86)', async () => {
+    const res = await svcWith(makeMockPrisma(seed())).resolveMenuForLocation(LOC_A, { catalogTenantId: TENANT, includeUnavailable: true });
+    expect(res.items.map((i) => i.id)).toEqual(['i1']);
+  });
+
+  it('admin console (includeHidden) still sees it, flagged available:false', async () => {
+    const res = await svcWith(makeMockPrisma(seed())).resolveMenuForLocation(LOC_A, { catalogTenantId: TENANT, includeHidden: true });
+    const byId = Object.fromEntries(res.items.map((i) => [i.id, i]));
+    expect(byId['i2']).toBeTruthy();
+    expect(byId['i2'].available).toBe(false);
+  });
+
+  it('a per-location override cannot resurrect a POS-catalog-unavailable item', async () => {
+    const s = seed();
+    (s as any).overrides = [{ menuItemId: 'i2', priceCents: null, isAvailable: true, isHidden: false, soldOutUntil: null }];
+    const res = await svcWith(makeMockPrisma(s)).resolveMenuForLocation(LOC_A, { catalogTenantId: TENANT });
+    expect(res.items.map((i) => i.id)).toEqual(['i1']);
+  });
+
+  it('legacy rows without the column (isAvailable undefined) keep rendering', async () => {
+    const s = seed();
+    (s as any).items = [{ id: 'i3', externalId: 'legacy', name: 'Legacy', defaultPriceCents: 100, allergens: [], tags: [], sortOrder: 0, categoryId: null }];
+    const res = await svcWith(makeMockPrisma(s)).resolveMenuForLocation(LOC_A, { catalogTenantId: TENANT });
+    expect(res.items.map((i) => i.id)).toEqual(['i3']);
+  });
+});

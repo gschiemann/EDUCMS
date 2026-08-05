@@ -92,10 +92,10 @@ export class MenuAdminService {
 
   /**
    * The tenant's central catalog items. One row per MenuItem across every
-   * active catalog the tenant owns. There is no central per-item on/off
-   * flag in the schema (visibility is per-location via overrides), so
-   * `available` is always true at the catalog level — a location 86 lives
-   * on the override, surfaced through the overrides read.
+   * active catalog the tenant owns. `available` reflects the catalog-level
+   * POS flag (MenuItem.isAvailable — Clover hidden, Shopify inactive,
+   * Lightspeed archived); a per-location 86 lives on the override,
+   * surfaced through the overrides read.
    */
   async listCatalog(tenantId: string): Promise<AdminCatalogItem[]> {
     const catalogs = await (this.prisma.client as any).menuCatalog.findMany({
@@ -131,7 +131,7 @@ export class MenuAdminService {
           : undefined,
         badges: [...(i.tags ?? []), ...(i.allergens ?? [])].filter(Boolean),
         imageUrl: i.imageUrl ?? undefined,
-        available: true,
+        available: i.isAvailable !== false,
       }),
     );
   }
