@@ -218,6 +218,17 @@ export const PLAYER_RELEASE_SHA_PINS: Readonly<Record<string, string>> = {
   // 2026-08-03 before pinning: gh-downloaded release asset, the live
   // /apk/v/10100 proxy bytes, and the server-advertised sha256 all agree.
   '1.1.0': '3ca498bd59d52cca148601d7510d4531859d54168ada46cccf01bf56e70e388f',
+  // v1.1.1 — THE REINSTALL-TOUR BUILD. Same release signing as 1.1.0, plus the
+  // bundled-Manager cutover fix: 1.1.0 shipped a DEBUG-signed Manager inside a
+  // release-signed Player (mixed signing identities, and a Manager the release
+  // era could never update). Build log for run 30971156239 confirms both
+  // `:manager:assembleRelease` and `:app:assembleRelease` ran, so this is the
+  // first artifact where Player and bundled Manager share one signing identity.
+  //
+  // Digest verified two independent ways on 2026-08-05 before pinning: the
+  // gh-downloaded release asset, and the bytes the live /apk/v/10101 fleet
+  // proxy actually serves (2,184,631 bytes on both).
+  '1.1.1': '07317e24bfc8b2db2eba7a562e10233e3efea114f1f969d75984ea84b6a565a8',
 };
 
 /**
