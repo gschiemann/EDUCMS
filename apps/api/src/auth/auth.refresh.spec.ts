@@ -128,7 +128,7 @@ describe('AuthService.refreshSession', () => {
     // Old token still carries the STALE claims a demotion would leave behind.
     const { service, sign, findUnique } = makeRefreshHarness({
       tokenPayload: {
-        sub: 'u1', iat: origIat, exp: origIat + HOUR, origIat,
+        sub: 'u1', iat: origIat, exp: origIat + HOUR, origIat, tenantId: 't1',
         role: 'CONTRIBUTOR', canTriggerPanic: false,
       },
     });
@@ -171,12 +171,28 @@ describe('AuthService.refreshSession', () => {
     const t = nowSec();
     const origIat = t - (SESSION_WINDOW - 30 * 60); // 30 min of window left
     const { service, sign } = makeRefreshHarness({
-      tokenPayload: { sub: 'u1', iat: t - 30 * 60, exp: t + 30 * 60, origIat },
+      // Token dies in 10 min (the realistic <15-min refresh shape); the mint
+      // must be clamped to the ~30 min of WINDOW left, not the full 1h class.
+      tokenPayload: { sub: 'u1', iat: t - 50 * 60, exp: t + 10 * 60, origIat },
     });
     await service.refreshSession('u1', 'x.y.z');
     const [, signOpts] = sign.mock.calls[0];
     expect(signOpts.expiresIn).toBeGreaterThan(25 * 60);
     expect(signOpts.expiresIn).toBeLessThanOrEqual(30 * 60);
+  });
+
+  it('refuses a NO-GAIN refresh (token already expires at the window cap) — WITHOUT touching the DB', async () => {
+    const t = nowSec();
+    const origIat = t - (SESSION_WINDOW - 10 * 60); // 10 min of window left
+    const { service, findUnique } = makeRefreshHarness({
+      // exp == origIat + 12h: a prior refresh already clamped this token to
+      // the cap. Re-minting cannot extend it; a busy console would otherwise
+      // fire a refresh (+ an audit row) on EVERY response for the final
+      // minutes of the window.
+      tokenPayload: { sub: 'u1', iat: t - 50 * 60, exp: origIat + SESSION_WINDOW, origIat },
+    });
+    await expectRefusal(service.refreshSession('u1', 'x.y.z'), 'AUTH_REFRESH_WINDOW_EXCEEDED');
+    expect(findUnique).not.toHaveBeenCalled();
   });
 
   it('rememberMe (rm claim): refresh works, keeps the SAME class and the SAME origIat', async () => {
@@ -206,8 +222,10 @@ describe('AuthService.refreshSession', () => {
     const t = nowSec();
     const iat = t - 20 * DAY;
     const { service, sign } = makeRefreshHarness({
-      // 30d lifetime → unambiguously the rememberMe class.
-      tokenPayload: { sub: 'u1', iat, exp: iat + REMEMBER_WINDOW },
+      // 25d lifetime (a derived mint, e.g. switch-to-home off a rememberMe
+      // original) — well past the 12h session shape → rememberMe class. Its
+      // exp sits 5d short of the inferred iat+30d cap, so there is gain.
+      tokenPayload: { sub: 'u1', iat, exp: t + 5 * DAY },
     });
     await service.refreshSession('u1', 'x.y.z');
     const [payload] = sign.mock.calls[0];
@@ -215,10 +233,42 @@ describe('AuthService.refreshSession', () => {
     expect(payload.origIat).toBe(iat);
   });
 
+  it('legacy LOGIN-minted rememberMe token (exp IS the 30d cap) is refused — no-gain tail guard', async () => {
+    const t = nowSec();
+    const iat = t - 20 * DAY;
+    const { service, findUnique } = makeRefreshHarness({
+      tokenPayload: { sub: 'u1', iat, exp: iat + REMEMBER_WINDOW },
+    });
+    await expectRefusal(service.refreshSession('u1', 'x.y.z'), 'AUTH_REFRESH_WINDOW_EXCEEDED');
+    expect(findUnique).not.toHaveBeenCalled();
+  });
+
+  it('refuses a switched-workspace token (payload tenantId ≠ live row) — scope must not silently flip', async () => {
+    const t = nowSec();
+    const origIat = t - 30 * 60;
+    const { service, sign } = makeRefreshHarness({
+      // Minted by tenants.controller switchTenant: carries the TARGET
+      // tenant's id, which the live user row (tenantId 't1') cannot vouch
+      // for. A re-mint from the row would flip the operator's acting tenant
+      // back to home mid-session — refuse instead (the switched token stays
+      // valid until natural expiry, exactly as before this wave).
+      tokenPayload: { sub: 'u1', iat: origIat, exp: t + 30 * 60, origIat, tenantId: 't-child' },
+    });
+    await expectRefusal(service.refreshSession('u1', 'x.y.z'), 'AUTH_REFRESH_SCOPE_CHANGED');
+    expect(sign).not.toHaveBeenCalled();
+  });
+
+  // Mid-life session shape for the account-state gates: 30 min old, 30 min of
+  // token left, so the window + no-gain pre-checks pass and the DB gate is the
+  // one under test.
+  const midLifeToken = (t: number) => ({
+    sub: 'u1', iat: t - 30 * 60, exp: t + 30 * 60, origIat: t - 30 * 60,
+  });
+
   it('401 for a DELETED user (refresh never extends a dead account)', async () => {
     const t = nowSec();
     const { service } = makeRefreshHarness({
-      tokenPayload: { sub: 'u1', iat: t, exp: t + HOUR, origIat: t },
+      tokenPayload: midLifeToken(t),
       userRow: liveRow({ deletedAt: new Date() }),
     });
     await expectRefusal(service.refreshSession('u1', 'x.y.z'), 'AUTH_REFRESH_INVALID_SESSION');
@@ -227,7 +277,7 @@ describe('AuthService.refreshSession', () => {
   it('401 for a DISABLED (non-ACTIVE) user', async () => {
     const t = nowSec();
     const { service } = makeRefreshHarness({
-      tokenPayload: { sub: 'u1', iat: t, exp: t + HOUR, origIat: t },
+      tokenPayload: midLifeToken(t),
       userRow: liveRow({ status: 'SUSPENDED' }),
     });
     await expectRefusal(service.refreshSession('u1', 'x.y.z'), 'AUTH_REFRESH_INVALID_SESSION');
@@ -236,7 +286,7 @@ describe('AuthService.refreshSession', () => {
   it('401 when the user row no longer exists', async () => {
     const t = nowSec();
     const { service } = makeRefreshHarness({
-      tokenPayload: { sub: 'u1', iat: t, exp: t + HOUR, origIat: t },
+      tokenPayload: midLifeToken(t),
       userRow: null,
     });
     await expectRefusal(service.refreshSession('u1', 'x.y.z'), 'AUTH_REFRESH_INVALID_SESSION');
@@ -245,7 +295,7 @@ describe('AuthService.refreshSession', () => {
   it('401 when the tenant was archived since login (ACC-05 parity)', async () => {
     const t = nowSec();
     const { service } = makeRefreshHarness({
-      tokenPayload: { sub: 'u1', iat: t, exp: t + HOUR, origIat: t },
+      tokenPayload: midLifeToken(t),
       userRow: liveRow({
         tenant: { slug: 'acme', vertical: 'K12', name: 'Acme', archivedAt: new Date() },
       }),

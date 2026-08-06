@@ -335,6 +335,24 @@ export class AuthService {
       });
     }
 
+    // Tail guard — refuse a NO-GAIN refresh. Once a token's `exp` already
+    // sits at (or within 60s of) everything a re-mint could grant, refreshing
+    // extends nothing: the LAST mint of a session dies at the cap by design.
+    // Without this, a busy console burns a refresh round-trip + an AuditLog
+    // row on every response through the window's final minutes (the client
+    // sees exp<15min forever). Also covers legacy login-minted rememberMe
+    // tokens, whose exp IS the cap. Same code as the window refusal — to the
+    // client both mean "this session ends where it ends"; the 401
+    // session-expired path owns the actual end.
+    const classTtlSec = rememberClass ? REMEMBER_TOKEN_TTL_SEC : SESSION_TOKEN_TTL_SEC;
+    const newExpSec = Math.min(nowSec + classTtlSec, origIat + windowSec);
+    if (exp !== null && newExpSec - exp < 60) {
+      throw new UnauthorizedException({
+        code: 'AUTH_REFRESH_WINDOW_EXCEEDED',
+        message: 'Session is past its refresh window. Please log in again.',
+      });
+    }
+
     // Re-validate against the LIVE row — refresh must never extend a session
     // for an account that was deleted, disabled, or whose tenant was retired
     // since login. Same gates as validateUser (deletedAt / non-ACTIVE status /
@@ -353,6 +371,23 @@ export class AuthService {
       });
     }
 
+    // A token minted by the workspace-switch path (tenants.controller
+    // switchTenant) carries the TARGET tenant's id — a scope the live user
+    // row does not describe. Re-minting from the row would silently flip the
+    // acting tenant back to home mid-session (API scope diverging from the
+    // workspace the operator is looking at), and ACC-07 deliberately pinned a
+    // switched session's lifetime to the token that authorized it. Refuse
+    // instead: the switched token stays exactly as valid as it was — it just
+    // doesn't slide (status quo for switched sessions; the operator
+    // re-switches after their next login).
+    if (typeof payload.tenantId === 'string' && payload.tenantId !== u.tenantId) {
+      throw new UnauthorizedException({
+        code: 'AUTH_REFRESH_SCOPE_CHANGED',
+        message:
+          'A switched-workspace session cannot be refreshed. It stays valid until it expires.',
+      });
+    }
+
     const newPayload = {
       sub: u.id,
       email: u.email,
@@ -367,10 +402,8 @@ export class AuthService {
         // Same class as the token being refreshed, clamped so `exp` never
         // lands past the window — the LAST mint of a session dies exactly at
         // origIat + 12h (or + 30d), not one class-lifetime beyond it.
-        expiresIn: Math.min(
-          rememberClass ? REMEMBER_TOKEN_TTL_SEC : SESSION_TOKEN_TTL_SEC,
-          remainingSec,
-        ),
+        // (`newExpSec - nowSec` ≡ min(class TTL, remaining window).)
+        expiresIn: newExpSec - nowSec,
       }),
       rememberClass,
       // Mirrors the login response's user shape (auth.controller returns it

@@ -69,7 +69,17 @@ export function __resetSessionLogoutFired() { sessionLogoutFired = false; }
 // so this can't loop.
 const REFRESH_WHEN_REMAINING_SEC = 15 * 60;
 let tokenRefreshInFlight: Promise<void> | null = null;
-export function __resetTokenRefreshState() { tokenRefreshInFlight = null; }
+// A 401/403 from /auth/refresh is a DECISION (past the sliding cap, revoked
+// mid-flight, switched-workspace scope…), not a hiccup — the server will give
+// the same answer for this token every time, so retrying on every subsequent
+// response would poll refresh through the session's whole final stretch.
+// Remember the refused token and stand down until the token changes
+// (re-login). Network errors and 5xx are NOT recorded — those may recover.
+let lastRefusedRefreshToken: string | null = null;
+export function __resetTokenRefreshState() {
+  tokenRefreshInFlight = null;
+  lastRefusedRefreshToken = null;
+}
 
 /** `exp` (epoch seconds) from a JWT — plain base64 payload parse, no
  *  verification (the server re-verifies; we only need the clock).
@@ -93,6 +103,7 @@ function maybeScheduleTokenRefresh(sentToken: string | null, path: string): void
   if (tokenRefreshInFlight) return; // module-level dedup: at most one in flight
   const stored = useUIStore.getState().token;
   if (!stored) return; // logged out while the request was in flight
+  if (stored === lastRefusedRefreshToken) return; // server already said no for THIS token
   const expSec = decodeJwtExpSec(stored);
   if (expSec === null) return;
   const remaining = expSec - Date.now() / 1000;
@@ -119,7 +130,14 @@ async function refreshSessionToken(stored: string): Promise<void> {
     credentials: 'include',
     headers,
   });
-  if (!res.ok) return; // refused (past cap / revoked / …) — do nothing, never retry
+  if (!res.ok) {
+    // 401/403 = a deliberate refusal for THIS token (past cap / revoked /
+    // switched scope) — record it so we never re-ask; the natural-expiry 401
+    // path owns the session's end. Other statuses (5xx/429) may recover, so
+    // they stay retryable on a later response.
+    if (res.status === 401 || res.status === 403) lastRefusedRefreshToken = stored;
+    return;
+  }
   const body = await res.json().catch(() => null);
   const next: unknown = body?.access_token;
   // Swap via the store's setter (keeps session/localStorage placement

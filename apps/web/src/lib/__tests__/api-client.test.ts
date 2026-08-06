@@ -206,4 +206,53 @@ describe('apiFetch — proactive silent refresh', () => {
     expect(emitAuthEvent).not.toHaveBeenCalled();
     expect(mockState.token).toBe(oldTok);
   });
+
+  it('a 401-refused token is never re-asked on later responses; a NEW token refreshes again', async () => {
+    const refusedTok = jwtWithExp(nowSec() + 5 * 60);
+    mockState.token = refusedTok;
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).includes('/auth/refresh')) {
+        return jsonRes(401, { code: 'AUTH_REFRESH_WINDOW_EXCEEDED' });
+      }
+      return jsonRes(200, { ok: true });
+    });
+
+    await apiFetch('/a');
+    await flush();
+    // The server said no for THIS token — every subsequent success in the
+    // session's tail must NOT re-ask (that would be a refresh per response
+    // for the token's whole final stretch).
+    await apiFetch('/b');
+    await flush();
+    await apiFetch('/c');
+    await flush();
+    expect(refreshCalls()).toHaveLength(1);
+
+    // A different token (fresh login) is a new question — allowed. (+6min so
+    // the encoded payload differs from the refused token — same exp second
+    // would mint a byte-identical JWT and correctly hit the refusal memory.)
+    mockState.token = jwtWithExp(nowSec() + 6 * 60);
+    await apiFetch('/d');
+    await flush();
+    expect(refreshCalls()).toHaveLength(2);
+  });
+
+  it('a 5xx refresh failure stays retryable on a later response (only 401/403 stand down)', async () => {
+    mockState.token = jwtWithExp(nowSec() + 5 * 60);
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).includes('/auth/refresh')) {
+        return jsonRes(503, { message: 'restarting' });
+      }
+      return jsonRes(200, { ok: true });
+    });
+
+    await apiFetch('/a');
+    await flush();
+    await apiFetch('/b');
+    await flush();
+
+    // Transient server trouble — the client may try again next response.
+    expect(refreshCalls()).toHaveLength(2);
+    expect(mockState.setToken).not.toHaveBeenCalled();
+  });
 });
