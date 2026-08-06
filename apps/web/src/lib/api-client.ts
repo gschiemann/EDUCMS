@@ -56,6 +56,79 @@ const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 // without coupling to React.
 let sessionLogoutFired = false;
 export function __resetSessionLogoutFired() { sessionLogoutFired = false; }
+
+// ── Proactive silent refresh (Trust-wave D, 2026-08-06) ──────────────────
+// A scorekeeper who logs in during warm-ups holds a 1h JWT; without refresh
+// the console 401s mid-third-quarter and the session-expired path kicks
+// them to /login. After any SUCCESSFUL authed response we peek at the
+// stored token's `exp`; inside the last 15 minutes we trade the still-valid
+// token for a fresh one at POST /auth/refresh (the server enforces
+// sliding-with-cap — plain sessions stop sliding 12h after login).
+// Failure is SILENT by design: the existing 401 session-expired path stays
+// the fallback, and the refresh response never schedules another refresh,
+// so this can't loop.
+const REFRESH_WHEN_REMAINING_SEC = 15 * 60;
+let tokenRefreshInFlight: Promise<void> | null = null;
+export function __resetTokenRefreshState() { tokenRefreshInFlight = null; }
+
+/** `exp` (epoch seconds) from a JWT — plain base64 payload parse, no
+ *  verification (the server re-verifies; we only need the clock).
+ *  null = unreadable/absent. */
+function decodeJwtExpSec(token: string): number | null {
+  try {
+    const part = token.split('.')[1];
+    if (!part) return null;
+    // base64url → base64 (atob rejects '-'/'_'; padding is optional).
+    const json = atob(part.replace(/-/g, '+').replace(/_/g, '/'));
+    const exp = JSON.parse(json)?.exp;
+    return typeof exp === 'number' ? exp : null;
+  } catch {
+    return null;
+  }
+}
+
+function maybeScheduleTokenRefresh(sentToken: string | null, path: string): void {
+  if (!sentToken) return; // unauthenticated request — zero behavior change
+  if (path.startsWith('/auth/refresh')) return; // never chain off our own refresh
+  if (tokenRefreshInFlight) return; // module-level dedup: at most one in flight
+  const stored = useUIStore.getState().token;
+  if (!stored) return; // logged out while the request was in flight
+  const expSec = decodeJwtExpSec(stored);
+  if (expSec === null) return;
+  const remaining = expSec - Date.now() / 1000;
+  // Already expired → the normal 401 path owns it; >15min left → nothing.
+  if (remaining <= 0 || remaining >= REFRESH_WHEN_REMAINING_SEC) return;
+  tokenRefreshInFlight = refreshSessionToken(stored)
+    .catch(() => { /* network failure — silent; the 401 fallback stands */ })
+    .finally(() => { tokenRefreshInFlight = null; });
+}
+
+/** Background body of the silent refresh. Raw fetch on purpose: apiFetch's
+ *  401 handler tears down the session, but a REFUSED refresh must change
+ *  nothing — the current token is still live until its natural expiry. */
+async function refreshSessionToken(stored: string): Promise<void> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${stored}`,
+  };
+  // Same header every authed mutation sends. (The API skips CSRF matching
+  // for Bearer requests, but keep the client's mutation shape uniform.)
+  try { headers['X-CSRF-Token'] = await ensureCsrfToken(); } catch { /* warn-mode ok */ }
+  const res = await fetch(`${API_URL}/auth/refresh`, {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+  });
+  if (!res.ok) return; // refused (past cap / revoked / …) — do nothing, never retry
+  const body = await res.json().catch(() => null);
+  const next: unknown = body?.access_token;
+  // Swap via the store's setter (keeps session/localStorage placement
+  // coherent with the operator's rememberMe choice) — but only if the token
+  // we refreshed is STILL the live one (not logged out / re-logged mid-flight).
+  if (typeof next === 'string' && next && useUIStore.getState().token === stored) {
+    useUIStore.getState().setToken(next);
+  }
+}
 // Subscribe to auth events so a successful re-login (auth-events emits
 // reason:'login-success') clears the flag for the next session.
 if (typeof window !== 'undefined') {
@@ -214,6 +287,10 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
       // 401 can fire a fresh logout. Pairs with the early-return at
       // line ~106.
       sessionLogoutFired = false;
+      // Trust-wave D — fire-and-forget: if the stored token is inside its
+      // last 15 minutes, silently trade it for a fresh one (see the
+      // maybeScheduleTokenRefresh block above for the full contract).
+      maybeScheduleTokenRefresh(token, path);
       // 2026-05-26 — Some NestJS controllers return JS null on "not
       // found" (e.g. /branding/me when a tenant has no branding row).
       // NestJS serializes that as a 200 with EMPTY body, not the

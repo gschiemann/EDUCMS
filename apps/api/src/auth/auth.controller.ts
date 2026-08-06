@@ -193,6 +193,77 @@ export class AuthController {
     };
   }
 
+  /**
+   * Trust-wave D (2026-08-06) — sliding session refresh.
+   *
+   * A scorekeeper who logs in during warm-ups holds a 1h JWT (auth.module
+   * signOptions) and was bounced to /login in the third quarter. The web
+   * client now trades a STILL-VALID token for a fresh one here before it
+   * expires; AuthService.refreshSession enforces the sliding cap (12h from
+   * the original login for plain sessions, the existing 30d for rememberMe).
+   *
+   * Security posture — nothing is weakened:
+   *   - guarded by the SAME JwtAuthGuard as every authed route, so an
+   *     expired token, a token in `jwt_revoked_list`, and a token behind the
+   *     per-user invalid-before epoch are all refused BEFORE this handler —
+   *     refresh can never resurrect a revoked session;
+   *   - claims are re-minted from the LIVE user row (see refreshSession);
+   *   - CSRF: authed POSTs carry `Authorization: Bearer`, which the CSRF
+   *     middleware already treats as non-forgeable (browsers never attach a
+   *     Bearer header cross-site) — same path every other authed POST takes;
+   *     the client still sends X-CSRF-Token like any mutation.
+   */
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  // A legitimate client refreshes ~once per 45min; 10/min per IP is generous
+  // headroom for a shared-NAT press box without enabling a mint loop.
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  async refresh(@Req() req: Request) {
+    const [type, token] = req.headers.authorization?.split(' ') ?? [];
+    if (type !== 'Bearer' || !token) {
+      throw new UnauthorizedException({ code: 'AUTH_NO_BEARER_TOKEN', message: 'No bearer token' });
+    }
+    const actor = (req as any).user;
+    const userId: string | undefined = actor?.userId || actor?.id;
+    // Machine identities have their own lifecycles (API keys don't expire
+    // mid-game; device tokens have a dedicated rotation path) — only a human
+    // session slides here.
+    if (!userId || actor?.kind === 'api-key' || actor?.kind === 'device') {
+      throw new UnauthorizedException({
+        code: 'AUTH_REFRESH_NOT_APPLICABLE',
+        message: 'Only a signed-in user session can be refreshed.',
+      });
+    }
+
+    const result = await this.authService.refreshSession(userId, token);
+
+    // §16 — audit every privileged action. Low-noise by design: one row per
+    // successful re-mint (~1/45min per active operator); a REFUSED refresh
+    // changes no state and already surfaces in the request log as a 401.
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId: result.user.tenantId,
+          userId: result.user.id,
+          action: 'AUTH_TOKEN_REFRESH',
+          targetType: 'User',
+          targetId: result.user.id,
+          details: JSON.stringify({
+            ip: clientIpFromRequest(req),
+            rememberMe: result.rememberClass,
+          }),
+        },
+      });
+    } catch (e: any) {
+      // Best-effort, never silent (2026-05-21 lesson).
+      this.authLogger.warn(`audit(AUTH_TOKEN_REFRESH) failed: ${e?.message ?? e}`);
+    }
+
+    // Mirror login's token response shape.
+    return { access_token: result.access_token, user: result.user };
+  }
+
   /** Immutable forensic row for a password-change attempt (success or not). */
   private async auditPasswordChange(
     tenantId: string,

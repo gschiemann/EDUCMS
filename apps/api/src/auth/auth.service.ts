@@ -5,6 +5,23 @@ import * as argon2 from 'argon2';
 import { cryptoPlatformConfig } from './crypto.config';
 import { issueMfaChallengeToken } from './mfa-challenge-token';
 
+// ── POST /auth/refresh — sliding session, capped at the ORIGINAL login ──────
+// All four windows anchor to the `origIat` claim (the real credential check),
+// which every refresh carries forward UNCHANGED. A token can slide, but the
+// session's total life stays bounded by the authentication event — a stolen
+// token cannot be kept alive forever.
+/** Non-rememberMe sessions may refresh for 12h after login: a scorekeeper who
+ *  signs in during warm-ups keeps the console through double OT without being
+ *  bounced to /login in the third quarter — and without touching the 30d
+ *  rememberMe ceiling. */
+const REFRESH_WINDOW_SESSION_SEC = 12 * 60 * 60;
+/** rememberMe keeps its existing ceiling: 30d from login, never longer. */
+const REFRESH_WINDOW_REMEMBER_SEC = 30 * 24 * 60 * 60;
+/** Mirrors auth.module signOptions `expiresIn: '1h'` — keep in sync. */
+const SESSION_TOKEN_TTL_SEC = 60 * 60;
+/** Mirrors the rememberMe `expiresIn: '30d'` used at login. */
+const REMEMBER_TOKEN_TTL_SEC = 30 * 24 * 60 * 60;
+
 /**
  * auth-BUG-006: pre-computed Argon2id hash used as a timing decoy when
  * the user lookup misses. Without this, the "user not found" branch
@@ -238,7 +255,14 @@ export class AuthService {
       email: user.email,
       tenantId: user.tenantId,
       role: user.role,
-      canTriggerPanic: user.canTriggerPanic
+      canTriggerPanic: user.canTriggerPanic,
+      // Sliding-refresh anchor (POST /auth/refresh). `origIat` = the ORIGINAL
+      // credential check; refresh re-mints tokens but carries it forward
+      // unchanged, so total session life stays capped relative to the real
+      // authentication (12h session / 30d rememberMe). `rm` marks the
+      // rememberMe class so a refresh re-mints with the same class.
+      origIat: Math.floor(Date.now() / 1000),
+      ...(rememberMe ? { rm: true } : {}),
     };
     return {
       // rememberMe was 365d — too long. A token leaked from a stolen
@@ -247,8 +271,8 @@ export class AuthService {
       // bound for "stay signed in" UX (shorter than typical password
       // policy, longer than a normal work session). After this expires,
       // the user is asked to log in again — same flow as no-rememberMe
-      // hitting the default JWT TTL. Pair with refresh-token rotation
-      // in a follow-up sprint to extend without re-prompting.
+      // hitting the default JWT TTL. (2026-08-06: POST /auth/refresh now
+      // slides sessions WITHIN these ceilings — see refreshSession.)
       access_token: this.jwtService.sign(payload, rememberMe ? { expiresIn: '30d' } : undefined),
       user: {
         id: user.id, email: user.email, role: user.role,
@@ -263,6 +287,106 @@ export class AuthService {
         tenantVertical: tenant?.vertical || 'K12',
         canTriggerPanic: user.canTriggerPanic,
       }
+    };
+  }
+
+  /**
+   * Trust-wave D (2026-08-06) — POST /auth/refresh body. Trades a STILL-VALID
+   * session token for a fresh one of the same class (sliding-with-cap).
+   *
+   * `currentToken` MUST already have passed JwtAuthGuard on this request —
+   * signature, expiry, `jwt_revoked_list`, and the per-user invalid-before
+   * epoch were all verified there, so an expired or revoked token can never
+   * reach this method (refresh cannot resurrect a revoked session). The
+   * decode below is claims-reading only, never trust-establishing.
+   *
+   * Everything minted here comes from the LIVE user row, not the old token —
+   * a role downgrade or a canTriggerPanic revocation lands at the next
+   * refresh instead of riding the stale claim until natural expiry, which
+   * NARROWS the known role-staleness gap (Standard Audit Surface §10).
+   */
+  async refreshSession(userId: string, currentToken: string) {
+    const payload = (this.jwtService.decode(currentToken) ?? {}) as Record<string, any>;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const iat = typeof payload.iat === 'number' ? payload.iat : nowSec;
+    const exp = typeof payload.exp === 'number' ? payload.exp : null;
+
+    // Token class: the explicit `rm` claim (login stamps it on rememberMe
+    // mints). Tokens minted before the claim existed fall back to lifetime
+    // inference — 1h session vs 30d rememberMe, so anything living past the
+    // 12h session window is unambiguously the rememberMe class.
+    const rememberClass =
+      payload.rm === true || (exp !== null && exp - iat > REFRESH_WINDOW_SESSION_SEC);
+
+    // Anchor: the original login. Pre-claim tokens and the secondary mint
+    // paths (MFA challenge trade-in predates origIat only in old sessions;
+    // change-password + tenant-switch don't stamp it) anchor at their own
+    // iat — the first refresh then carries that anchor down the chain.
+    const origIat = typeof payload.origIat === 'number' ? payload.origIat : iat;
+
+    // Sliding-with-cap, checked BEFORE any DB work (cheap-first). The 60s
+    // floor mirrors ACC-07: never hand back an already-(nearly-)dead token.
+    const windowSec = rememberClass ? REFRESH_WINDOW_REMEMBER_SEC : REFRESH_WINDOW_SESSION_SEC;
+    const remainingSec = origIat + windowSec - nowSec;
+    if (remainingSec < 60) {
+      throw new UnauthorizedException({
+        code: 'AUTH_REFRESH_WINDOW_EXCEEDED',
+        message: 'Session is past its refresh window. Please log in again.',
+      });
+    }
+
+    // Re-validate against the LIVE row — refresh must never extend a session
+    // for an account that was deleted, disabled, or whose tenant was retired
+    // since login. Same gates as validateUser (deletedAt / non-ACTIVE status /
+    // ACC-05 archived tenant), minus the password it doesn't have.
+    // ten-ok: identity SELF-lookup — id IS the authenticated JWT principal
+    const user = await this.prisma.client.user.findUnique({
+      where: { id: userId },
+      include: { tenant: { select: { slug: true, vertical: true, name: true, archivedAt: true } } },
+    });
+    const u = user as any;
+    if (!u || u.deletedAt || (u.status && u.status !== 'ACTIVE') || u.tenant?.archivedAt) {
+      // One opaque code for all four states — no account-state oracle.
+      throw new UnauthorizedException({
+        code: 'AUTH_REFRESH_INVALID_SESSION',
+        message: 'Session can no longer be refreshed. Please log in again.',
+      });
+    }
+
+    const newPayload = {
+      sub: u.id,
+      email: u.email,
+      tenantId: u.tenantId,
+      role: u.role,
+      canTriggerPanic: !!u.canTriggerPanic,
+      origIat,
+      ...(rememberClass ? { rm: true } : {}),
+    };
+    return {
+      access_token: this.jwtService.sign(newPayload, {
+        // Same class as the token being refreshed, clamped so `exp` never
+        // lands past the window — the LAST mint of a session dies exactly at
+        // origIat + 12h (or + 30d), not one class-lifetime beyond it.
+        expiresIn: Math.min(
+          rememberClass ? REMEMBER_TOKEN_TTL_SEC : SESSION_TOKEN_TTL_SEC,
+          remainingSec,
+        ),
+      }),
+      rememberClass,
+      // Mirrors the login response's user shape (auth.controller returns it
+      // verbatim so the client can keep its stored user coherent).
+      user: {
+        id: u.id,
+        email: u.email,
+        role: u.role,
+        firstName: u.firstName ?? null,
+        lastName: u.lastName ?? null,
+        tenantId: u.tenantId,
+        tenantSlug: u.tenant?.slug || u.tenantId,
+        tenantName: u.tenant?.name || null,
+        tenantVertical: u.tenant?.vertical || 'K12',
+        canTriggerPanic: u.canTriggerPanic,
+      },
     };
   }
 }
