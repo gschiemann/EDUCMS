@@ -19,6 +19,11 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
+// Trust wave Domain B (2026-08-06) — shared hardened poll engine
+// (self-chaining, ETag/304 revalidation, jittered backoff) + the
+// "CONNECTION LOST" staleness chip shown when the feed goes quiet.
+import { startBoardPoll, STALE_FEED_AFTER_MS } from '@/lib/board-poll';
+import { ConnectionLostPill } from '@/components/sports/ConnectionLostPill';
 import { applyCtsOverlay } from '@/lib/cts-merge';
 import {
   SituationalRow,
@@ -4086,22 +4091,37 @@ export default function ScoreboardPage() {
     return () => window.removeEventListener('resize', measure);
   }, []);
 
-  // poll the public board endpoint
+  // Poll health → staleness chip. onStatus fires every ~750ms; the chip
+  // decision changes rarely, so the health sample lands in a ref and a 1s
+  // ticker below derives the boolean (re-rendering only when it flips).
+  const pollHealth = useRef({ lastGoodAt: Date.now() });
+  const [feedStale, setFeedStale] = useState(false);
+  useEffect(() => {
+    const evalStale = () =>
+      setFeedStale(
+        navigator.onLine === false ||
+          Date.now() - pollHealth.current.lastGoodAt > STALE_FEED_AFTER_MS,
+      );
+    const t = setInterval(evalStale, 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // poll the public board endpoint — through the shared hardened engine
+  // (self-chaining so slow responses never overlap, If-None-Match/304
+  // revalidation when the API offers an ETag, jittered 1.5/3/5s backoff
+  // while it's unreachable; see lib/board-poll.ts). Cue-dedup semantics
+  // below are unchanged from the old inline load().
   useEffect(() => {
     if (!gameId) return;
-    let alive = true;
     // Cold-boot: paint the last cached frame instantly (clock frozen)
     // so a power-cycle mid-game never shows a blank or error board.
     const cached = readBoardCache<BoardData>(gameId);
     if (cached) { setData(cached); setError(null); }
-    const load = async () => {
-      try {
-        const res = await fetch(`${API_URL}/sports/board/${gameId}`, {
-          cache: 'no-store',
-        });
-        if (!res.ok) throw new Error(res.status === 404 ? 'Game not found' : `HTTP ${res.status}`);
-        const json: BoardData = await res.json();
-        if (!alive) return;
+    return startBoardPoll({
+      url: `${API_URL}/sports/board/${gameId}`,
+      intervalMs: POLL_MS,
+      onPayload: (payload) => {
+        const json = payload as BoardData;
         setData(json);
         setError(null);
         writeBoardCache(gameId, json);
@@ -4130,16 +4150,22 @@ export default function ScoreboardPage() {
         }
         firstLoad.current = false;
         pumpCues();
-      } catch (e) {
-        if (alive) setError((e as Error).message);
-      }
-    };
-    load();
-    const t = setInterval(load, POLL_MS);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
+      },
+      // 304 — content unchanged; refresh only the skew anchor so the
+      // projected clock stays honest without touching cue-dedup state.
+      onServerTime: (n) =>
+        setData((prev) => (prev ? { ...prev, serverTime: n } : prev)),
+      onStatus: (s) => {
+        pollHealth.current = { lastGoodAt: s.lastGoodAt };
+        // Error surface (renders only while data is null — cold boot on a
+        // bad gameId). Same messages the old inline load() produced.
+        if (s.lastError) setError(s.lastHttpStatus === 404 ? 'Game not found' : s.lastError);
+        else setError(null);
+        // The chip must clear the INSTANT a good poll lands; the 1s
+        // ticker above only handles the (slow) appear side.
+        if (s.online && navigator.onLine !== false) setFeedStale(false);
+      },
+    });
   }, [gameId]);
 
   // 2026-06-15 — DOUBLE-FIRE FIX. This board route is the single celebration
@@ -4350,6 +4376,7 @@ export default function ScoreboardPage() {
             }
           />
         )}
+        {feedStale && <ConnectionLostPill pulseName="venuePulse" />}
       </div>
     );
   }
@@ -4408,19 +4435,25 @@ export default function ScoreboardPage() {
             }
           />
         )}
+        {feedStale && <ConnectionLostPill pulseName="venuePulse" />}
       </div>
     );
   }
 
   return (
-    <DefaultBoardScene
-      data={data}
-      def={def}
-      displayData={displayData}
-      vp={vp}
-      activeCue={activeCue}
-      keyframes={keyframes}
-    />
+    <>
+      <DefaultBoardScene
+        data={data}
+        def={def}
+        displayData={displayData}
+        vp={vp}
+        activeCue={activeCue}
+        keyframes={keyframes}
+      />
+      {/* venuePulse is defined inside the scene's shared keyframes block —
+          @keyframes are document-global, so the sibling pill can use it. */}
+      {feedStale && <ConnectionLostPill pulseName="venuePulse" />}
+    </>
   );
 }
 

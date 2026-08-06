@@ -77,8 +77,12 @@
  * activates when there is truly no provider anywhere above the widget.
  */
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { API_URL } from '@/lib/api-url';
+// Trust wave Domain B (2026-08-06) — shared hardened poll engine
+// (self-chaining, ETag/304 revalidation, jittered backoff) so this
+// loop behaves identically to /board and /ribbon under load + outage.
+import { startBoardPoll } from '@/lib/board-poll';
 import { applyCtsOverlay } from '@/lib/cts-merge';
 import { findSport } from '@cms/api-types';
 
@@ -131,35 +135,41 @@ export function GameStateProvider({
     () => (initial ? applyCtsOverlay(initial).clockMs : 0),
   );
 
+  // Last RAW (pre-overlay) snapshot — kept so a 304's server-time sample
+  // can re-run the CTS freshness merge against un-overlaid fields.
+  // Overlaying an already-overlaid snapshot would freeze decayed CTS
+  // values in place as if they were operator inputs.
+  const rawSnapshot = useRef<GameSnapshot | null>(initial ?? null);
+
   // Poll the un-authed scoreboard endpoint at the same 750ms cadence
   // the /board/[gameId] page uses, so a template-driven board stays
-  // perfectly in sync with cues / score changes / clock toggles.
+  // perfectly in sync with cues / score changes / clock toggles — now
+  // through the shared hardened engine (self-chaining so slow responses
+  // never overlap, If-None-Match/304 revalidation when the API offers
+  // an ETag, jittered 1.5/3/5s backoff; see lib/board-poll.ts).
   useEffect(() => {
-    let alive = true;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const tick = async () => {
-      try {
-        const res = await fetch(`${API_URL}/sports/board/${encodeURIComponent(gameId)}`, {
-          cache: 'no-store',
-        });
-        if (alive && res.ok) {
-          const json = (await res.json()) as GameSnapshot;
-          // Same CTS source-of-truth merge the board/ribbon/scorebug run:
-          // fresh CTS heartbeat → its score/clock/segment/shot-clock/
-          // exclusions win; stale/absent → operator-input columns win.
-          setSnapshot(applyCtsOverlay(json));
-        }
-      } catch {
-        // Network blip — keep last snapshot, next tick retries.
-      } finally {
-        if (alive) timer = setTimeout(tick, POLL_MS);
-      }
-    };
-    tick();
-    return () => {
-      alive = false;
-      if (timer) clearTimeout(timer);
-    };
+    return startBoardPoll({
+      url: `${API_URL}/sports/board/${encodeURIComponent(gameId)}`,
+      intervalMs: POLL_MS,
+      onPayload: (payload) => {
+        const json = payload as GameSnapshot;
+        rawSnapshot.current = json;
+        // Same CTS source-of-truth merge the board/ribbon/scorebug run:
+        // fresh CTS heartbeat → its score/clock/segment/shot-clock/
+        // exclusions win; stale/absent → operator-input columns win.
+        setSnapshot(applyCtsOverlay(json));
+      },
+      // 304 — body unchanged; advance serverTime on the RAW snapshot and
+      // re-merge, so CTS freshness keeps decaying honestly (and the clock
+      // skew anchor stays current) across a long 304 run.
+      onServerTime: (n) => {
+        const raw = rawSnapshot.current;
+        if (!raw) return;
+        const next = { ...raw, serverTime: n };
+        rawSnapshot.current = next;
+        setSnapshot(applyCtsOverlay(next));
+      },
+    });
   }, [gameId]);
 
   // Clock projection — clockMs is the reading at clockUpdatedAt.

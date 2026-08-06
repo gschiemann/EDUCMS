@@ -49,6 +49,11 @@ import {
   type CSSProperties,
 } from 'react';
 import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
+// Trust wave Domain B (2026-08-06) — shared hardened poll engine
+// (self-chaining, ETag/304 revalidation, jittered backoff) + the
+// "CONNECTION LOST" staleness chip shown when the feed goes quiet.
+import { startBoardPoll, STALE_FEED_AFTER_MS } from '@/lib/board-poll';
+import { ConnectionLostPill } from '@/components/sports/ConnectionLostPill';
 import { applyCtsOverlay } from '@/lib/cts-merge';
 import { useParams } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
@@ -989,20 +994,37 @@ export default function RibbonPage() {
     }
   }, []);
 
-  // poll the public board endpoint
+  // Poll health → staleness chip. onStatus fires every ~750ms; the chip
+  // decision changes rarely, so the health sample lands in a ref and a 1s
+  // ticker below derives the boolean (re-rendering only when it flips).
+  const pollHealth = useRef({ lastGoodAt: Date.now() });
+  const [feedStale, setFeedStale] = useState(false);
+  useEffect(() => {
+    const evalStale = () =>
+      setFeedStale(
+        navigator.onLine === false ||
+          Date.now() - pollHealth.current.lastGoodAt > STALE_FEED_AFTER_MS,
+      );
+    const t = setInterval(evalStale, 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // poll the public board endpoint — through the shared hardened engine
+  // (self-chaining so slow responses never overlap, If-None-Match/304
+  // revalidation when the API offers an ETag, jittered 1.5/3/5s backoff
+  // while it's unreachable; see lib/board-poll.ts). Cue-dedup semantics
+  // below are unchanged from the old inline load().
   useEffect(() => {
     if (!gameId) return;
-    let alive = true;
     // Cold-boot: instant paint from the last cached frame so a
     // power-cycle / Wi-Fi blip never blanks the ribbon.
     const cached = readBoardCache<BoardData>(gameId);
     if (cached) setData(cached);
-    const load = async () => {
-      try {
-        const res = await fetch(`${API_URL}/sports/board/${gameId}`, { cache: 'no-store' });
-        if (!res.ok) return;
-        const json: BoardData = await res.json();
-        if (!alive) return;
+    return startBoardPoll({
+      url: `${API_URL}/sports/board/${gameId}`,
+      intervalMs: POLL_MS,
+      onPayload: (payload) => {
+        const json = payload as BoardData;
         setData(json);
         writeBoardCache(gameId, json);
         // Queue new celebration cues targeted at the ribbon. The first
@@ -1029,16 +1051,18 @@ export default function RibbonPage() {
         }
         firstLoad.current = false;
         pumpCues();
-      } catch {
-        /* keep the last good frame */
-      }
-    };
-    load();
-    const t = setInterval(load, POLL_MS);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
+      },
+      // 304 — content unchanged; refresh only the skew anchor so the
+      // projected clock stays honest without touching cue-dedup state.
+      onServerTime: (n) =>
+        setData((prev) => (prev ? { ...prev, serverTime: n } : prev)),
+      onStatus: (s) => {
+        pollHealth.current = { lastGoodAt: s.lastGoodAt };
+        // The chip must clear the INSTANT a good poll lands; the 1s
+        // ticker above only handles the (slow) appear side.
+        if (s.online && navigator.onLine !== false) setFeedStale(false);
+      },
+    });
   }, [gameId]);
 
   // 2026-06-15 — DOUBLE-FIRE FIX (ribbon surface). RibbonCueOverlay is the
@@ -1208,6 +1232,7 @@ export default function RibbonPage() {
           // /templates/:id (admin-auth-required).
           embedded={(data as { ribbonTemplate?: any }).ribbonTemplate ?? null}
         />
+        {feedStale && <ConnectionLostPill pulseName="rbnStalePulse" defineKeyframe />}
       </div>
     );
   }
@@ -1323,6 +1348,7 @@ export default function RibbonPage() {
         {data.spotlight && data.spotlight.visible && data.spotlight.title && data.spotlight.title.trim() ? (
           <SpotlightOverlay spotlight={data.spotlight} h={vp.h} w={vp.w} homeColor={data.homeColor || DEFAULT_HOME} />
         ) : null}
+        {feedStale && <ConnectionLostPill pulseName="rbnStalePulse" defineKeyframe />}
       </>
     );
     // ?canvas=WxH demo: scale the fixed ribbon canvas to fit the screen,
@@ -1470,6 +1496,7 @@ ${SCORE_MOTION_KEYFRAMES}
           }
         />
       )}
+      {feedStale && <ConnectionLostPill pulseName="rbnStalePulse" defineKeyframe />}
     </div>
   );
 }
