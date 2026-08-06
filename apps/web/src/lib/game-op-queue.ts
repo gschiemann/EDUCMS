@@ -1,0 +1,315 @@
+/**
+ * Per-game offline op queue — sports Trust wave Domain C (2026-08-06).
+ *
+ * The scorer's-table console must never silently lie. Before this module,
+ * a control write that failed offline left the optimistic score in the
+ * React Query cache with no error shown (tablet reads 21-14, board reads
+ * 14-14), and an 11s Wi-Fi blip permanently ate every tap made during it
+ * (apiFetch's network retries run 1/3/7s, then the mutation just dies).
+ * This queue is what makes keeping the optimistic value HONEST: a
+ * network-failed op is captured here and WILL be applied on reconnect.
+ *
+ * Pure logic, framework-free (no React / no network / no timers) so the
+ * coalescing + persistence + replay rules are unit-testable without
+ * mounting the 8.3k-line console page. The DOM/network wiring (replay
+ * triggers, sender) lives with `useGameControl` in hooks/use-api.ts; the
+ * banner UI reads `getSnapshot()`/`subscribe()` via useSyncExternalStore.
+ *
+ * Coalescing mirrors the server's write semantics:
+ *  - score  — a DELTA endpoint (atomic increment server-side), so entries
+ *             append; consecutive same-team deltas merge into one summed
+ *             delta. Absolute sets (typo-fix, no `delta`) never merge.
+ *  - clock / segment — absolute latest-wins server-side, so only the
+ *             latest queued entry per kind survives.
+ *  - stats  — server shallow-merges `dto.stats` into Game.stats, so the
+ *             latest entry survives but folds the superseded entry's
+ *             un-sent keys in (dropping them outright would silently lose
+ *             e.g. a queued homeFouls bump when a later currentEvent edit
+ *             replaced the entry — the exact silent-loss class this wave
+ *             kills).
+ */
+
+export type GameOpKind = 'score' | 'clock' | 'segment' | 'stats';
+
+export interface GameOp {
+  opId: string;
+  kind: GameOpKind;
+  payload: Record<string, unknown>;
+  createdAt: number;
+}
+
+export interface GameOpQueueSnapshot {
+  ops: readonly GameOp[];
+  /** True while replay() is walking the queue (banner: SYNCING). */
+  replaying: boolean;
+  /** Set when a replay empties the queue with ≥1 op sent (banner: SYNCED). */
+  lastDrainAt: number | null;
+  /** Set when the server 4xx-rejected a write (banner: REJECTED);
+   *  cleared by clearRejection() when the operator dismisses. */
+  lastRejectionAt: number | null;
+}
+
+export type GameOpSender = (op: GameOp) => Promise<unknown>;
+
+/** Injectable storage surface (sessionStorage-shaped) for tests. */
+export interface GameOpStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+const OP_KINDS: readonly GameOpKind[] = ['score', 'clock', 'segment', 'stats'];
+
+// Local id generator — timestamp + counter. Deliberately NOT
+// crypto.randomUUID (Chromium-92+; the fleet floor for shared player code
+// is Chromium 83, and uniqueness only needs to hold within one tab).
+let opCounter = 0;
+function nextOpId(): string {
+  opCounter += 1;
+  return `op${Date.now().toString(36)}-${opCounter.toString(36)}`;
+}
+
+/** sessionStorage, guarded — access itself can throw (privacy mode,
+ *  sandboxed iframe). Absent storage degrades to in-memory-only. */
+function defaultStorage(): GameOpStorage | null {
+  try {
+    if (typeof window === 'undefined' || !window.sessionStorage) return null;
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+function isGameOp(v: unknown): v is GameOp {
+  if (!v || typeof v !== 'object') return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o.opId === 'string' &&
+    OP_KINDS.includes(o.kind as GameOpKind) &&
+    !!o.payload &&
+    typeof o.payload === 'object' &&
+    typeof o.createdAt === 'number'
+  );
+}
+
+/** Same team normalization as the optimistic score path in use-api.ts
+ *  (anything that isn't 'away' increments home). */
+function teamOf(payload: Record<string, unknown>): 'home' | 'away' {
+  return payload.team === 'away' ? 'away' : 'home';
+}
+
+export class GameOpQueue {
+  private state: GameOpQueueSnapshot;
+  private listeners = new Set<() => void>();
+  /** Head op currently being sent by replay(). enqueue() must never merge
+   *  INTO it — mutating an entry mid-send would double-count the delta. */
+  private inFlightOpId: string | null = null;
+  private readonly storageKey: string;
+  private readonly storage: GameOpStorage | null;
+
+  constructor(gameId: string, storage?: GameOpStorage | null) {
+    this.storageKey = `venueos.gameops.${gameId}`;
+    this.storage = storage !== undefined ? storage : defaultStorage();
+    this.state = {
+      ops: this.load(),
+      replaying: false,
+      lastDrainAt: null,
+      lastRejectionAt: null,
+    };
+  }
+
+  size(): number {
+    return this.state.ops.length;
+  }
+
+  peekAll(): readonly GameOp[] {
+    return this.state.ops;
+  }
+
+  /** Stable-reference snapshot for useSyncExternalStore. */
+  getSnapshot(): GameOpQueueSnapshot {
+    return this.state;
+  }
+
+  subscribe(fn: () => void): () => void {
+    this.listeners.add(fn);
+    return () => {
+      this.listeners.delete(fn);
+    };
+  }
+
+  noteRejection(): void {
+    this.setState({ lastRejectionAt: Date.now() });
+  }
+
+  clearRejection(): void {
+    if (this.state.lastRejectionAt !== null) this.setState({ lastRejectionAt: null });
+  }
+
+  enqueue(kind: GameOpKind, payload: Record<string, unknown>): GameOp {
+    const ops = this.state.ops.slice();
+
+    if (kind === 'score') {
+      const last = ops.length > 0 ? ops[ops.length - 1] : undefined;
+      const delta = payload.delta;
+      const canMerge =
+        !!last &&
+        last.kind === 'score' &&
+        last.opId !== this.inFlightOpId &&
+        typeof delta === 'number' &&
+        typeof last.payload.delta === 'number' &&
+        teamOf(last.payload) === teamOf(payload);
+      if (canMerge && last) {
+        // Summed delta may reach 0 (+1 then −1) — keep the entry anyway; a
+        // 0-delta replays as a server no-op and the invariants stay simple.
+        const merged: GameOp = {
+          ...last,
+          payload: { ...last.payload, delta: (last.payload.delta as number) + (delta as number) },
+        };
+        ops[ops.length - 1] = merged;
+        this.setState({ ops });
+        this.persist();
+        return merged;
+      }
+      const entry: GameOp = { opId: nextOpId(), kind, payload, createdAt: Date.now() };
+      ops.push(entry);
+      this.setState({ ops });
+      this.persist();
+      return entry;
+    }
+
+    // clock / segment / stats — latest-wins: at most one queued entry per
+    // kind, appended at the tail (replay order = enqueue order). Removing
+    // the in-flight head here is safe: replay drops by opId (idempotent
+    // no-op after success) and on failure the newer entry is authoritative.
+    const idx = ops.findIndex((o) => o.kind === kind);
+    let nextPayload = payload;
+    if (idx !== -1) {
+      if (kind === 'stats') {
+        const oldStats = ops[idx].payload.stats;
+        const newStats = payload.stats;
+        nextPayload = {
+          stats: {
+            ...(oldStats && typeof oldStats === 'object' ? (oldStats as Record<string, unknown>) : {}),
+            ...(newStats && typeof newStats === 'object' ? (newStats as Record<string, unknown>) : {}),
+          },
+        };
+      }
+      ops.splice(idx, 1);
+    }
+    const entry: GameOp = { opId: nextOpId(), kind, payload: nextPayload, createdAt: Date.now() };
+    ops.push(entry);
+    this.setState({ ops });
+    this.persist();
+    return entry;
+  }
+
+  /**
+   * Serial, in-order replay. Each success drops its entry; the first
+   * failure stops the walk (entry stays queued — retry later). Re-entrant
+   * calls while a replay is in flight are no-ops (double-send guard for
+   * the multi-mount console page).
+   */
+  async replay(sender: GameOpSender): Promise<{ sent: number; remaining: number }> {
+    if (this.state.replaying) return { sent: 0, remaining: this.state.ops.length };
+    this.setState({ replaying: true });
+    let sent = 0;
+    try {
+      while (this.state.ops.length > 0) {
+        const op = this.state.ops[0];
+        this.inFlightOpId = op.opId;
+        try {
+          await sender(op);
+        } catch {
+          break;
+        }
+        sent += 1;
+        // Drop by opId, not position — enqueues during the await may have
+        // reshuffled the tail (latest-wins removal / appends).
+        this.setState({ ops: this.state.ops.filter((o) => o.opId !== op.opId) });
+        this.persist();
+      }
+    } finally {
+      this.inFlightOpId = null;
+      const drained = sent > 0 && this.state.ops.length === 0;
+      this.setState(
+        drained ? { replaying: false, lastDrainAt: Date.now() } : { replaying: false },
+      );
+    }
+    return { sent, remaining: this.state.ops.length };
+  }
+
+  private load(): GameOp[] {
+    if (!this.storage) return [];
+    try {
+      const raw = this.storage.getItem(this.storageKey);
+      if (!raw) return [];
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(isGameOp);
+    } catch {
+      // Corrupt JSON / storage denial — never throw, start empty.
+      return [];
+    }
+  }
+
+  private persist(): void {
+    if (!this.storage) return;
+    try {
+      if (this.state.ops.length === 0) this.storage.removeItem(this.storageKey);
+      else this.storage.setItem(this.storageKey, JSON.stringify(this.state.ops));
+    } catch {
+      // Quota / denied — queue keeps working in-memory for this tab.
+    }
+  }
+
+  private setState(patch: Partial<GameOpQueueSnapshot>): void {
+    this.state = { ...this.state, ...patch };
+    this.listeners.forEach((fn) => {
+      try {
+        fn();
+      } catch {
+        // A listener error must never break the queue.
+      }
+    });
+  }
+}
+
+// ── Per-game registry ────────────────────────────────────────────
+// useGameControl (enqueue + replay wiring) and ConnectionBanner (display)
+// must observe the SAME instance, so instances are process-wide per game.
+
+const registry = new Map<string, GameOpQueue>();
+
+export function getGameOpQueue(gameId: string): GameOpQueue {
+  let q = registry.get(gameId);
+  if (!q) {
+    q = new GameOpQueue(gameId);
+    registry.set(gameId, q);
+  }
+  return q;
+}
+
+/** Test-only reset (parallels api-client's __resetSessionLogoutFired). */
+export function __resetGameOpQueues(): void {
+  registry.clear();
+}
+
+/**
+ * Failure classifier for the enqueue decision. TRUE only when the request
+ * provably got NO response: the browser says it's offline, fetch threw its
+ * network TypeError, or apiFetch exhausted its network retries and threw
+ * its "Can't reach the server…" wrapper (api-client.ts — that path is only
+ * reached via fetch TypeErrors). Anything carrying an HTTP `status` means
+ * the server DID respond → never enqueue (see the replay-safety tradeoff
+ * comment in useGameControl).
+ */
+export function isNetworkFailure(err: unknown): boolean {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+  if (err instanceof TypeError) return true;
+  if (err instanceof Error) {
+    if (typeof (err as { status?: unknown }).status === 'number') return false;
+    if (err.message.startsWith("Can't reach the server")) return true;
+  }
+  return false;
+}

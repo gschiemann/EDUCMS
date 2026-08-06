@@ -23,6 +23,7 @@ import { useConsoleFit, FIT, type FitTier } from './use-console-fit';
 import { RunMoreMenu, OnAirBar } from './RunMoreMenu';
 import { useShowControl } from './useShowControl';
 import { RunCommandBar } from './RunCommandBar';
+import { ConnectionBanner } from './ConnectionBanner';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
@@ -571,6 +572,11 @@ function GameControl() {
           </>
         )}
       </div>
+
+      {/* Trust wave Domain C — offline/sync/rejection truth strip. In flow
+          (like GoLiveBar) so it pushes the console down, never overlapping
+          the RunCommandBar controls. */}
+      <ConnectionBanner gameId={gameId} />
 
       {/* ── mode panels ───────────────────────────────────────── */}
 

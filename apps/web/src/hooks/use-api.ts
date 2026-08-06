@@ -1,7 +1,14 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { API_URL } from '@/lib/api-url';
 import { useUIStore } from '@/store/ui-store';
+import {
+  getGameOpQueue,
+  isNetworkFailure,
+  type GameOp,
+  type GameOpKind,
+} from '@/lib/game-op-queue';
 import { findSport } from '@cms/api-types';
 import type {
   ConciergeReference,
@@ -3229,6 +3236,135 @@ export function useDuplicateGame() {
   });
 }
 
+// ── Trust wave Domain C (2026-08-06) — offline op replay wiring ─────
+// Network-failed score/clock/segment/stats writes land in the per-game
+// GameOpQueue (lib/game-op-queue.ts); this block replays them. ONE
+// controller per game no matter how many components mount useGameControl
+// (page.tsx ×3 + CueLaunchpad + Leaders/Ribbon panels all do): the first
+// mount attaches the listeners + queue subscription, the last unmount
+// tears them down. Mobile perf standard: the 5s retry timer exists ONLY
+// while (queue non-empty AND document visible) — zero timers when the
+// queue is empty or the tab is hidden.
+
+type GameOpReplayController = {
+  refs: number;
+  onDrained: () => void;
+  timer: ReturnType<typeof setTimeout> | null;
+  teardown: () => void;
+};
+const gameOpReplayControllers = new Map<string, GameOpReplayController>();
+
+function makeGameOpSender(gameId: string) {
+  return (op: GameOp): Promise<unknown> => {
+    const path =
+      op.kind === 'score'
+        ? `/sports/games/${gameId}/score`
+        : op.kind === 'clock'
+          ? `/sports/games/${gameId}/clock`
+          : op.kind === 'segment'
+            ? `/sports/games/${gameId}/segment`
+            : `/sports/games/${gameId}/stats`;
+    return apiFetch(path, { method: 'PATCH', body: JSON.stringify(op.payload) }).catch(
+      (err: unknown) => {
+        // A queued op the server DEFINITIVELY rejected (4xx) can never
+        // succeed on retry — resolve so replay() drops it instead of
+        // wedging every op behind a poison entry forever. The REJECTED
+        // banner tells the operator the board may not match.
+        const status = (err as { status?: unknown } | null)?.status;
+        if (typeof status === 'number' && status >= 400 && status < 500) {
+          getGameOpQueue(gameId).noteRejection();
+          return null;
+        }
+        throw err;
+      },
+    );
+  };
+}
+
+function attachGameOpReplay(gameId: string, qc: QueryClient): () => void {
+  if (typeof window === 'undefined') return () => {};
+  let ctl = gameOpReplayControllers.get(gameId);
+  if (!ctl) {
+    const q = getGameOpQueue(gameId);
+    const sender = makeGameOpSender(gameId);
+    const clearTimer = () => {
+      const c = gameOpReplayControllers.get(gameId);
+      if (c && c.timer !== null) {
+        clearTimeout(c.timer);
+        c.timer = null;
+      }
+    };
+    const schedule = () => {
+      const c = gameOpReplayControllers.get(gameId);
+      if (!c || c.timer !== null) return;
+      if (q.size() === 0 || document.visibilityState !== 'visible') return;
+      c.timer = setTimeout(() => {
+        const cc = gameOpReplayControllers.get(gameId);
+        if (cc) cc.timer = null;
+        void attempt();
+      }, 5_000);
+    };
+    const attempt = async () => {
+      clearTimer();
+      const c = gameOpReplayControllers.get(gameId);
+      if (!c || q.size() === 0) return;
+      const { sent, remaining } = await q.replay(sender);
+      const after = gameOpReplayControllers.get(gameId);
+      if (!after) return;
+      if (remaining > 0) {
+        schedule(); // partial / still failing — self-chained 5s retry
+        return;
+      }
+      // Drained — reconcile the console to server truth (the replayed
+      // deltas + anything a co-operator did while this tablet was out).
+      if (sent > 0) after.onDrained();
+    };
+    const onOnline = () => {
+      void attempt();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void attempt();
+      else clearTimer(); // no timers in a hidden tab
+    };
+    const unsubscribe = q.subscribe(() => {
+      if (q.size() === 0) clearTimer();
+      else if (!q.getSnapshot().replaying) schedule();
+    });
+    window.addEventListener('online', onOnline);
+    document.addEventListener('visibilitychange', onVisibility);
+    ctl = {
+      refs: 0,
+      onDrained: () => {},
+      timer: null,
+      teardown: () => {
+        clearTimer();
+        unsubscribe();
+        window.removeEventListener('online', onOnline);
+        document.removeEventListener('visibilitychange', onVisibility);
+      },
+    };
+    gameOpReplayControllers.set(gameId, ctl);
+    // Ops persisted across a mid-game console-tab reload replay right away.
+    if (q.size() > 0) void attempt();
+  }
+  ctl.refs += 1;
+  ctl.onDrained = () => {
+    qc.invalidateQueries({ queryKey: ['sports-game', gameId] });
+  };
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const c = gameOpReplayControllers.get(gameId);
+    if (!c) return;
+    c.refs -= 1;
+    if (c.refs <= 0) {
+      c.teardown();
+      gameOpReplayControllers.delete(gameId);
+    }
+  };
+}
+
 /**
  * One hook for every live-control action on a game. Each call PATCHes
  * (or POSTs, for a cue) the matching endpoint and writes the updated
@@ -3273,6 +3409,40 @@ export function useGameControl(gameId: string) {
     qc.invalidateQueries({ queryKey: gameKey });
   };
 
+  // ── Trust wave Domain C (2026-08-06) — failed writes must not lie ──
+  // REPLAY-SAFETY TRADEOFF (decided): we only enqueue ops whose request
+  // FAILED to get any response (offline / fetch TypeError / apiFetch's
+  // exhausted-network-retries wrapper — see isNetworkFailure). If the
+  // server responded at all (4xx/5xx) we refetch truth instead of
+  // queueing: a 5xx MAY have been processed before erroring, and
+  // re-sending it would double-count. The rare inverse — "server
+  // processed it but the response was lost in transit" — is accepted and
+  // mitigated by the SYNCED banner telling the operator to verify the
+  // score against the board after a sync. Server-side dedup is
+  // deliberately NOT invented here (the API belongs to another domain).
+  const opQueue = getGameOpQueue(gameId);
+  const settleFailure = (
+    kind: GameOpKind,
+    err: unknown,
+    payload: Record<string, unknown>,
+    ctx: { prev?: any } | undefined,
+  ) => {
+    if (isNetworkFailure(err)) {
+      // Keep the optimistic cache — the queue WILL apply this op on
+      // reconnect, and the ConnectionBanner shows it as queued, so the
+      // console reading stays honest instead of silently phantom.
+      opQueue.enqueue(kind, payload);
+      return;
+    }
+    // Server rejected — drop the optimistic guess (refetch truth) and
+    // surface the rejection so the operator knows the board may differ.
+    opQueue.noteRejection();
+    rollback(ctx);
+  };
+  // Replay triggers ('online', visibility→visible, 5s retry while queued
+  // + visible) attach once per game across all mounts of this hook.
+  useEffect(() => attachGameOpReplay(gameId, qc), [gameId, qc]);
+
   const score = useMutation({
     mutationFn: (body: { team?: string; delta?: number; homeScore?: number; awayScore?: number }) =>
       apiFetch(`/sports/games/${gameId}/score`, { method: 'PATCH', body: JSON.stringify(body) }),
@@ -3299,7 +3469,7 @@ export function useGameControl(gameId: string) {
       }
       return { prev };
     },
-    onError: (_e, _v, ctx) => rollback(ctx),
+    onError: (e, v, ctx) => settleFailure('score', e, v, ctx),
     onSuccess: writeBack,
   });
   const clock = useMutation({
@@ -3358,7 +3528,7 @@ export function useGameControl(gameId: string) {
       }
       return { prev };
     },
-    onError: (_e, _v, ctx) => rollback(ctx),
+    onError: (e, v, ctx) => settleFailure('clock', e, v, ctx),
     onSuccess: writeBack,
   });
   const segment = useMutation({
@@ -3389,7 +3559,7 @@ export function useGameControl(gameId: string) {
       }
       return { prev };
     },
-    onError: (_e, _v, ctx) => rollback(ctx),
+    onError: (e, v, ctx) => settleFailure('segment', e, v, ctx),
     onSuccess: writeBack,
   });
   const stats = useMutation({
@@ -3410,7 +3580,7 @@ export function useGameControl(gameId: string) {
       }
       return { prev };
     },
-    onError: (_e, _v, ctx) => rollback(ctx),
+    onError: (e, v, ctx) => settleFailure('stats', e, v, ctx),
     onSuccess: writeBack,
   });
   const status = useMutation({
