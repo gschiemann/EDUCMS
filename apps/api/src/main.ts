@@ -267,7 +267,13 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-CSRF-Token', 'If-None-Match'],
     // ETag is not a CORS-safelisted response header — without this the
     // player's cross-origin fetch can't read it and every poll stays a 200.
-    exposedHeaders: ['ETag'],
+    // X-Server-Time rides the sports-board conditional poll (a 304 has no
+    // body, so the fresh clock sample travels in the header).
+    exposedHeaders: ['ETag', 'X-Server-Time'],
+    // Cache the CORS preflight. If-None-Match is a non-safelisted request
+    // header, so Chromium preflights the conditional poll — without maxAge it
+    // re-preflights constantly and every poll costs two requests.
+    maxAge: 3600,
   });
 
   // Enable graceful shutdown — Railway sends SIGTERM on redeploy; without this,

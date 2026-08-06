@@ -1,14 +1,31 @@
 import {
-  Controller, Get, Post, Param, Body, Headers, Query,
+  Controller, Get, Post, Param, Body, Headers, Query, Res,
   HttpException, HttpStatus, Logger,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { SportsService } from './sports.service';
 import { verifyFeedToken, verifyFeedTokenFromQuery } from './sports-feed-token';
 // 2026-07-01 swim/dive DEPTH pass — swim-timing-snapshot ingest.
 import type { SwimTimingSnapshot } from '@cms/scoreboard-cts';
 // 2026-07-01 launch-sprint #272a — multi-replica-safe ingest rate limiter.
 import { RedisService } from '../realtime/redis.service';
+// Trust wave (2026-08-06) — X-Server-Time header rides every board response
+// (incl. 304s, which have no body for serverTime); Redis-TIME-aligned.
+import { TimeSyncService } from '../realtime/time-sync.service';
 import { checkIngestLimit } from '../security/ingest-rate-limit';
+
+/**
+ * RFC 9110 §13.1.2 — If-None-Match carries one or more entity-tags (or `*`).
+ * We only ever mint strong tags, but a proxy may weaken one in transit, and
+ * weak comparison is the mandated mode for If-None-Match — so accept the
+ * `W/`-prefixed form of our own tag too.
+ */
+function ifNoneMatchHits(header: string, etag: string): boolean {
+  return header.split(',').some((raw) => {
+    const t = raw.trim();
+    return t === '*' || t === etag || t === `W/${etag}`;
+  });
+}
 
 /**
  * VenueOS Sports — Sprint 13. The PUBLIC scoreboard surfaces.
@@ -45,11 +62,38 @@ export class SportsBoardController {
   constructor(
     private readonly sports: SportsService,
     private readonly redis: RedisService,
+    private readonly timeSync: TimeSyncService,
   ) {}
 
+  /**
+   * Trust wave (2026-08-06) — conditional board poll. Every response carries:
+   *   - `ETag`: strong hash of the payload minus serverTime (SportsService
+   *     computes it once per cache fill).
+   *   - `X-Server-Time`: fresh Redis-aligned server clock, so a 304 still
+   *     hands the board a skew sample despite the empty body.
+   *   - `Cache-Control: no-cache`: pollers must revalidate every time — the
+   *     whole point is the cheap 304, never a silently-reused stale body.
+   * A matching If-None-Match short-circuits to an empty 304. The 200 body
+   * still carries `serverTime` (per-request fresh) for deployed boards that
+   * don't send If-None-Match yet.
+   */
   @Get(':id')
-  board(@Param('id') id: string) {
-    return this.sports.getBoard(id);
+  async board(
+    @Param('id') id: string,
+    @Headers('if-none-match') ifNoneMatch: string | undefined,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    // Throws NotFoundException for an unknown id BEFORE any header below is
+    // set — the 404 contract is unchanged.
+    const { payload, etag } = await this.sports.getBoardWithMeta(id);
+    res.setHeader('ETag', etag);
+    res.setHeader('X-Server-Time', String(this.timeSync.now()));
+    res.setHeader('Cache-Control', 'no-cache');
+    if (ifNoneMatch && ifNoneMatchHits(ifNoneMatch, etag)) {
+      res.status(HttpStatus.NOT_MODIFIED);
+      return; // 304 — empty body by contract
+    }
+    return payload;
   }
 
   /**

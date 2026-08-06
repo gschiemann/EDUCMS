@@ -8,10 +8,11 @@ import {
   forwardRef,
   Inject,
 } from '@nestjs/common';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { wakeClockSweep } from './clock-wake';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
+import { TimeSyncService } from '../realtime/time-sync.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { SponsorsService } from './sponsors.service';
 // 2026-05-26 — reused inside getBoard() to resolve the operator-
@@ -185,6 +186,11 @@ export class SportsService {
     // the board payload. FeatureFlagsModule is @Global() so this
     // resolves without listing it in SportsModule providers.
     private readonly flags: FeatureFlagsService,
+    // Trust wave (2026-08-06) — per-request serverTime on the board payload
+    // must come from the Redis-TIME-aligned clock so multi-replica pollers
+    // never see replica-to-replica skew. RealtimeModule is @Global() and
+    // exports TimeSyncService, so this resolves without module changes.
+    private readonly timeSync: TimeSyncService,
   ) {}
 
   // ── helpers ──────────────────────────────────────────────────
@@ -566,9 +572,23 @@ export class SportsService {
   //
   // Cache is invalidated explicitly on writes (record + game.update paths)
   // via invalidateBoardCache(); the TTL is the belt-and-suspenders.
-  private boardCache = new Map<string, { ts: number; payload: any }>();
+  private boardCache = new Map<string, { ts: number; payload: any; etag: string }>();
   private static readonly BOARD_CACHE_TTL_MS = 1000;
   private invalidateBoardCache(gameId: string) { this.boardCache.delete(gameId); }
+
+  /**
+   * Strong ETag for a board payload — computed ONCE per cache fill, over the
+   * payload with the volatile per-request `serverTime` field EXCLUDED (same
+   * rule as the manifest ETag: a per-request clock inside the hashed body
+   * would rotate the tag every call and kill every 304). Deterministic from
+   * content alone — one code path builds the object (stable key order) and
+   * there is no per-replica salt — so every replica derives the same tag and
+   * a poller can hop replicas without spurious 200s. Quoted per RFC 9110.
+   */
+  private static boardEtag(payload: Record<string, unknown>): string {
+    const { serverTime: _serverTime, ...hashed } = payload;
+    return `"${createHash('sha1').update(JSON.stringify(hashed)).digest('hex').slice(0, 16)}"`;
+  }
 
   /**
    * Public board view — by game id only, NOT tenant-scoped. Scoreboard
@@ -581,14 +601,33 @@ export class SportsService {
    * game serving the same payload for ~750ms hits the DB once, not 50×.
    */
   async getBoard(id: string) {
+    return (await this.getBoardWithMeta(id)).payload;
+  }
+
+  /**
+   * Trust wave (2026-08-06) — board payload + its ETag, for the public
+   * controller's If-None-Match handling. Two rules:
+   *   - The etag rides the cache entry (hashed once per fill, serverTime
+   *     excluded — see boardEtag), so a cache hit costs zero hashing.
+   *   - `serverTime` is per-REQUEST fresh: the cached copy bakes in a value
+   *     up to BOARD_CACHE_TTL_MS stale, and boards compute clock skew from
+   *     it, so every return overrides it via spread (never mutating the
+   *     cached object — it is shared across concurrent pollers).
+   * The clock is TimeSyncService (Redis-TIME-aligned; replicas agree). Spec
+   * harnesses construct this service directly without the collaborator —
+   * hence the runtime guard, same fail-open stance as the flags read in
+   * getBoardFresh. Under Nest DI it always resolves (@Global RealtimeModule).
+   */
+  async getBoardWithMeta(id: string): Promise<{ payload: any; etag: string }> {
     const now = Date.now();
-    const hit = this.boardCache.get(id);
-    if (hit && now - hit.ts < SportsService.BOARD_CACHE_TTL_MS) {
-      return hit.payload;
+    let hit = this.boardCache.get(id);
+    if (!hit || now - hit.ts >= SportsService.BOARD_CACHE_TTL_MS) {
+      const fresh = await this.getBoardFresh(id);
+      hit = { ts: now, payload: fresh, etag: SportsService.boardEtag(fresh) };
+      this.boardCache.set(id, hit);
     }
-    const fresh = await this.getBoardFresh(id);
-    this.boardCache.set(id, { ts: now, payload: fresh });
-    return fresh;
+    const serverTime = this.timeSync ? this.timeSync.now() : Date.now();
+    return { payload: { ...hit.payload, serverTime }, etag: hit.etag };
   }
 
   private async getBoardFresh(id: string) {
