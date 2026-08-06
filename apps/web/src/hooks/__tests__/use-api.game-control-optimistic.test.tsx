@@ -31,6 +31,7 @@ jest.mock('@/lib/api-client', () => ({
 }));
 
 import { useGameControl } from '../use-api';
+import { getGameOpQueue, __resetGameOpQueues } from '@/lib/game-op-queue';
 
 /** Baseline cached game — a live football game, clock stopped at 12:00
  *  in segment 1, 0-0. Every test seeds this into the cache before
@@ -75,6 +76,11 @@ function mountGameControl(initial: ReturnType<typeof baseGame>) {
 
 beforeEach(() => {
   apiFetch.mockReset();
+  // Every mount of useGameControl now touches the shared per-game op queue
+  // (Trust wave Domain C); reset the registry + storage so queue state can't
+  // bleed across tests.
+  __resetGameOpQueues();
+  window.sessionStorage.clear();
 });
 
 describe('useGameControl — score optimistic update + rollback', () => {
@@ -342,5 +348,46 @@ describe('useGameControl — stats optimistic update + rollback', () => {
       expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: GAME_KEY }));
     });
     expect((qc.getQueryData(GAME_KEY) as any).stats.homeFouls).not.toBe(2);
+  });
+});
+
+describe('useGameControl — offline queue vs server-rejection (Trust wave Domain C)', () => {
+  it('a network-failed write ENQUEUES the op and KEEPS the optimistic cache (honest, not rolled back)', async () => {
+    // fetch's own network TypeError — the request provably got no response,
+    // so the tap WILL be applied on reconnect. Keeping the optimistic value
+    // is what makes the console honest (the ConnectionBanner shows it queued)
+    // instead of snapping the score back and silently losing the tap.
+    apiFetch.mockRejectedValue(new TypeError('Failed to fetch'));
+    const { qc, getCtl } = mountGameControl(baseGame({ homeScore: 5 }));
+
+    getCtl().score.mutate({ team: 'home', delta: 1 });
+
+    await waitFor(() => {
+      expect(getGameOpQueue(GAME_ID).size()).toBe(1);
+    });
+    expect(getGameOpQueue(GAME_ID).peekAll()[0]).toMatchObject({
+      kind: 'score',
+      payload: { team: 'home', delta: 1 },
+    });
+    // Optimistic 6 (5 + 1) is NOT rolled back — the queue makes it truthful.
+    expect((qc.getQueryData(GAME_KEY) as any).homeScore).toBe(6);
+  });
+
+  it('a 4xx server rejection does NOT enqueue — it invalidates (refetch truth) and flags REJECTED', async () => {
+    // A response with an HTTP status means the server DID process (or reject)
+    // the write; re-queuing it could double-count, so we refetch truth and
+    // surface the rejection instead.
+    apiFetch.mockRejectedValue(Object.assign(new Error('Unprocessable'), { status: 422 }));
+    const { qc, getCtl } = mountGameControl(baseGame({ homeScore: 5 }));
+    const invalidateSpy = jest.spyOn(qc, 'invalidateQueries');
+
+    getCtl().score.mutate({ team: 'home', delta: 1 });
+
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: GAME_KEY }));
+    });
+    expect(getGameOpQueue(GAME_ID).size()).toBe(0); // never queued
+    // Rejection is recorded so the banner can show its dismissible REJECTED state.
+    expect(getGameOpQueue(GAME_ID).getSnapshot().lastRejectionAt).not.toBeNull();
   });
 });

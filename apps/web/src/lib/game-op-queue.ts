@@ -205,19 +205,30 @@ export class GameOpQueue {
   }
 
   /**
-   * Serial, in-order replay. Each success drops its entry; the first
-   * failure stops the walk (entry stays queued — retry later). Re-entrant
-   * calls while a replay is in flight are no-ops (double-send guard for
-   * the multi-mount console page).
+   * Serial, in-order replay of the ops present WHEN THIS PASS STARTS. Each
+   * success drops its entry; the first failure stops the walk (entry stays
+   * queued — retry later). Ops enqueued mid-replay are intentionally left
+   * for the next trigger: this bounds each pass under sustained tapping and
+   * keeps the in-flight head un-mergeable (no double-count). Re-entrant
+   * calls while a replay is in flight are no-ops (double-send guard for the
+   * multi-mount console page).
    */
   async replay(sender: GameOpSender): Promise<{ sent: number; remaining: number }> {
     if (this.state.replaying) return { sent: 0, remaining: this.state.ops.length };
     this.setState({ replaying: true });
     let sent = 0;
+    // Snapshot the planned op ids up front; a mid-replay enqueue (a tap that
+    // failed while this pass is walking) is handled by the next trigger, not
+    // dragged into this pass.
+    const plannedIds = this.state.ops.map((o) => o.opId);
     try {
-      while (this.state.ops.length > 0) {
-        const op = this.state.ops[0];
-        this.inFlightOpId = op.opId;
+      for (const opId of plannedIds) {
+        // Look the op up live each iteration — a latest-wins enqueue during
+        // an earlier await may have superseded (removed) this entry, in
+        // which case skip it (its replacement replays on the next trigger).
+        const op = this.state.ops.find((o) => o.opId === opId);
+        if (!op) continue;
+        this.inFlightOpId = opId;
         try {
           await sender(op);
         } catch {
@@ -226,7 +237,7 @@ export class GameOpQueue {
         sent += 1;
         // Drop by opId, not position — enqueues during the await may have
         // reshuffled the tail (latest-wins removal / appends).
-        this.setState({ ops: this.state.ops.filter((o) => o.opId !== op.opId) });
+        this.setState({ ops: this.state.ops.filter((o) => o.opId !== opId) });
         this.persist();
       }
     } finally {
