@@ -263,8 +263,27 @@ export class TenantsController {
     const nowSec = Math.floor(Date.now() / 1000);
     const currentExp = typeof req.user?.tokenExp === 'number' ? req.user.tokenExp : null;
     const remainingSec = currentExp !== null ? currentExp - nowSec : null;
+    // ── Trust-wave D hardening (2026-08-09) — the ANCHOR rides through too ──
+    // A switch-minted token used to omit `origIat`; POST /auth/refresh then
+    // anchored its sliding cap at that token's own iat, so one click of
+    // switch-to-HOME re-anchored the 12h/30d ceiling — a stolen token could
+    // slide forever by re-switching. Same principle as ACC-07 above: a switch
+    // changes SCOPE — never LIFETIME, and never the refresh ANCHOR. origIat
+    // (and the rememberMe class marker) carry forward unchanged from the
+    // token that authorized the switch; absent both (legacy token), the
+    // incoming token's iat is the honest anchor — never "now".
+    const [, priorRawToken] = req.headers?.authorization?.split(' ') ?? [];
+    const prior = (priorRawToken ? this.jwtService.decode(priorRawToken) : null) as
+      | Record<string, unknown>
+      | null;
+    const priorOrigIat =
+      typeof prior?.origIat === 'number'
+        ? prior.origIat
+        : typeof prior?.iat === 'number'
+          ? prior.iat
+          : nowSec;
     const access_token = this.jwtService.sign(
-      payload,
+      { ...payload, origIat: priorOrigIat, ...(prior?.rm === true ? { rm: true } : {}) },
       // No `exp` on the incoming token (shouldn't happen — every issuer sets
       // one) → fall back to the module default rather than inventing 30 days.
       remainingSec !== null ? { expiresIn: Math.max(60, remainingSec) } : undefined,
