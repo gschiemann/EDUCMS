@@ -69,12 +69,24 @@ export function __resetSessionLogoutFired() { sessionLogoutFired = false; }
 // so this can't loop.
 const REFRESH_WHEN_REMAINING_SEC = 15 * 60;
 let tokenRefreshInFlight: Promise<void> | null = null;
-// A 401/403 from /auth/refresh is a DECISION (past the sliding cap, revoked
-// mid-flight, switched-workspace scope…), not a hiccup — the server will give
-// the same answer for this token every time, so retrying on every subsequent
-// response would poll refresh through the session's whole final stretch.
-// Remember the refused token and stand down until the token changes
-// (re-login). Network errors and 5xx are NOT recorded — those may recover.
+// Only an EXPLICIT refresh-policy refusal is a DECISION the server will
+// repeat for this token forever (past the sliding cap, dead session,
+// switched-workspace scope, wrong principal kind) — those memoize the token
+// and stand down until re-login. Every OTHER failure is treated as transient
+// and stays retryable on a later response, exactly like a 5xx. Crucially,
+// JwtAuthGuard also emits a CODE-LESS 401 ("Auth check unavailable; please
+// retry") when its Redis revocation check fails closed — memoizing that
+// permanently disabled silent refresh for a still-valid token over one Redis
+// blip (refuter P2, 2026-08-09). A truly revoked token cannot loop here:
+// every normal request 401s too, the session-expired path logs out, and the
+// stored token is gone.
+const PERMANENT_REFRESH_REFUSAL_CODES = new Set([
+  'AUTH_REFRESH_WINDOW_EXCEEDED',
+  'AUTH_REFRESH_INVALID_SESSION',
+  'AUTH_REFRESH_SCOPE_CHANGED',
+  'AUTH_REFRESH_NOT_APPLICABLE',
+  'AUTH_NO_BEARER_TOKEN',
+]);
 let lastRefusedRefreshToken: string | null = null;
 export function __resetTokenRefreshState() {
   tokenRefreshInFlight = null;
@@ -131,11 +143,16 @@ async function refreshSessionToken(stored: string): Promise<void> {
     headers,
   });
   if (!res.ok) {
-    // 401/403 = a deliberate refusal for THIS token (past cap / revoked /
-    // switched scope) — record it so we never re-ask; the natural-expiry 401
-    // path owns the session's end. Other statuses (5xx/429) may recover, so
-    // they stay retryable on a later response.
-    if (res.status === 401 || res.status === 403) lastRefusedRefreshToken = stored;
+    // Memoize ONLY an explicit refresh-policy refusal (see the code set
+    // above). A code-less 401/403 — notably the guard's transient
+    // Redis-fail-closed 401 — stays retryable on a later response, same as
+    // 5xx/429; the natural-expiry 401 path still owns the session's end.
+    if (res.status === 401 || res.status === 403) {
+      const body = await res.json().catch(() => null);
+      if (PERMANENT_REFRESH_REFUSAL_CODES.has(String(body?.code))) {
+        lastRefusedRefreshToken = stored;
+      }
+    }
     return;
   }
   const body = await res.json().catch(() => null);

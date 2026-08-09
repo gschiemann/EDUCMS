@@ -255,4 +255,32 @@ describe('apiFetch — proactive silent refresh', () => {
     expect(refreshCalls()).toHaveLength(2);
     expect(mockState.setToken).not.toHaveBeenCalled();
   });
+
+  it('a CODE-LESS 401 (guard Redis-fail-closed) stays retryable — only explicit policy codes stand down', async () => {
+    // JwtAuthGuard throws UnauthorizedException('Auth check unavailable;
+    // please retry') when its Redis revocation check fails closed — a 401
+    // with no `code` field. One Redis blip must not permanently disable
+    // silent refresh for a still-valid token (refuter P2, 2026-08-09).
+    mockState.token = jwtWithExp(nowSec() + 5 * 60);
+    let redisDown = true;
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).includes('/auth/refresh')) {
+        if (redisDown) return jsonRes(401, { message: 'Auth check unavailable; please retry' });
+        return jsonRes(200, { access_token: jwtWithExp(nowSec() + 60 * 60) });
+      }
+      return jsonRes(200, { ok: true });
+    });
+
+    await apiFetch('/a'); // near-expiry → refresh attempt #1 hits the blip
+    await flush();
+    expect(refreshCalls()).toHaveLength(1);
+    expect(mockState.setToken).not.toHaveBeenCalled();
+
+    redisDown = false;
+    await apiFetch('/b'); // token NOT memoized — attempt #2 fires and lands
+    await flush();
+    expect(refreshCalls()).toHaveLength(2);
+    expect(mockState.setToken).toHaveBeenCalledTimes(1);
+    expect(mockState.logout).not.toHaveBeenCalled();
+  });
 });
