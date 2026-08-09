@@ -118,12 +118,19 @@ export function startBoardPoll(opts: BoardPollOptions): () => void {
     fetch(url, { cache: 'no-store', headers })
       .then((res) => {
         if (stopped) return;
+        // Header reads must tolerate a Response with no usable `headers`
+        // (Jest fetch stubs commonly omit it) — a throw here would register
+        // as a failed poll and silently starve the surface of data.
+        const readHeader = (name: string): string | null => {
+          const h = (res as { headers?: { get?: (n: string) => string | null } }).headers;
+          return h && typeof h.get === 'function' ? (h.get(name) ?? null) : null;
+        };
         if (res.status === 304) {
           // Unchanged body — a good poll. Forward the server clock sample
           // (the whole point of the 304 fast path) and move on.
           settleGood();
           if (onServerTime) {
-            const raw = res.headers.get('X-Server-Time');
+            const raw = readHeader('X-Server-Time');
             const n = raw == null ? NaN : Number(raw);
             if (isFinite(n) && n > 0) onServerTime(n);
           }
@@ -139,7 +146,7 @@ export function startBoardPoll(opts: BoardPollOptions): () => void {
         }
         // 200 — remember the validator (null when the API doesn't send
         // one, which also clears a stale validator if the server stops).
-        const nextTag = res.headers.get('ETag');
+        const nextTag = readHeader('ETag');
         return res.json().then((json) => {
           if (stopped) return;
           etag = nextTag;
