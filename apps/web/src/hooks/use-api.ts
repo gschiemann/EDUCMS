@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { API_URL } from '@/lib/api-url';
@@ -3140,6 +3140,38 @@ export function useCtsSimulator(gameId: string | undefined) {
 }
 
 export function useGame(id: string | undefined) {
+  // ── Refuter fix C4 (2026-08-09) — queued-delta display overlay ─────
+  // While score DELTAS sit in the offline op queue, the 4s background
+  // refetch below overwrites the cache with server truth that EXCLUDES
+  // those queued taps — without this overlay the operator's displayed
+  // score visibly DROPPED below what they entered, inviting a double-tap.
+  // Fix: subscribers see server data with the pending queued score deltas
+  // applied on top via `select`; the CACHE itself stays pure server truth.
+  // The version counter re-arms `select` (React Query re-runs it when the
+  // function identity changes) whenever the queue changes; after replay
+  // drains + invalidates, the deltas are zero and display converges to
+  // server truth.
+  const [opsVersion, setOpsVersion] = useState(0);
+  useEffect(() => {
+    if (!id) return;
+    return getGameOpQueue(id).subscribe(() => setOpsVersion((v) => v + 1));
+  }, [id]);
+  const select = useCallback(
+    (data: any) => {
+      if (!data || !id) return data;
+      const pending = getGameOpQueue(id).pendingScoreDeltas();
+      if (pending.home === 0 && pending.away === 0) return data;
+      return {
+        ...data,
+        // Same ≥0 clamp as the optimistic path + the server's increment.
+        homeScore: Math.max(0, (Number(data.homeScore) || 0) + pending.home),
+        awayScore: Math.max(0, (Number(data.awayScore) || 0) + pending.away),
+      };
+    },
+    // opsVersion is the re-evaluation trigger, not a value read inside.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [id, opsVersion],
+  );
   return useQuery({
     queryKey: ['sports-game', id],
     queryFn: () => apiFetch(`/sports/games/${id}`),
@@ -3149,6 +3181,7 @@ export function useGame(id: string | undefined) {
     // results below keep the local console instant.
     refetchInterval: 4_000,
     staleTime: 0,
+    select,
   });
 }
 
@@ -3428,10 +3461,30 @@ export function useGameControl(gameId: string) {
     ctx: { prev?: any } | undefined,
   ) => {
     if (isNetworkFailure(err)) {
-      // Keep the optimistic cache — the queue WILL apply this op on
-      // reconnect, and the ConnectionBanner shows it as queued, so the
-      // console reading stays honest instead of silently phantom.
+      // The queue WILL apply this op on reconnect, and the
+      // ConnectionBanner shows it as queued, so the console reading
+      // stays honest instead of silently phantom.
       opQueue.enqueue(kind, payload);
+      // Refuter fix C4 (2026-08-09): once a SCORE DELTA is queued, the
+      // useGame display overlay (server truth + pending queued deltas)
+      // owns showing it — so REVERSE this tap's optimistic cache
+      // application, or the overlay would double-count it (cache already
+      // +1, overlay +1 again → displayed score jumps ABOVE what the
+      // operator entered until the next successful refetch). Subtracting
+      // the delta (not restoring a snapshot) composes correctly with
+      // other in-flight optimistic taps — same reasoning as rollback()'s
+      // no-snapshot-restore rule. The DISPLAYED value is unchanged by
+      // this handoff: cache −delta, overlay +delta. Clock/segment/stats
+      // (and absolute score sets) have no overlay, so their optimistic
+      // cache value remains the honest display until replay.
+      if (kind === 'score' && typeof payload.delta === 'number') {
+        const delta = payload.delta;
+        const key = payload.team === 'away' ? 'awayScore' : 'homeScore';
+        qc.setQueryData(gameKey, (old: any) => {
+          if (!old) return old;
+          return { ...old, [key]: Math.max(0, (Number(old[key]) || 0) - delta) };
+        });
+      }
       return;
     }
     // Server rejected — drop the optimistic guess (refetch truth) and
@@ -3443,7 +3496,16 @@ export function useGameControl(gameId: string) {
   // + visible) attach once per game across all mounts of this hook.
   useEffect(() => attachGameOpReplay(gameId, qc), [gameId, qc]);
 
+  // Refuter fix C1 (2026-08-09): networkMode 'always' on the four queueable
+  // mutations (scoped HERE, not global). React Query v5's default 'online'
+  // mode PAUSES a mutation while navigator.onLine is false — mutationFn
+  // never runs, onError never fires, settleFailure never enqueues, and a
+  // tab reload while offline silently loses every tap even as the
+  // ConnectionBanner promises they're queued. With 'always' the fetch runs,
+  // rejects (TypeError), onError fires, and the op lands in the queue +
+  // sessionStorage — the whole point of Domain C.
   const score = useMutation({
+    networkMode: 'always',
     mutationFn: (body: { team?: string; delta?: number; homeScore?: number; awayScore?: number }) =>
       apiFetch(`/sports/games/${gameId}/score`, { method: 'PATCH', body: JSON.stringify(body) }),
     onMutate: async (body) => {
@@ -3473,6 +3535,7 @@ export function useGameControl(gameId: string) {
     onSuccess: writeBack,
   });
   const clock = useMutation({
+    networkMode: 'always', // C1 — see the score mutation's note
     mutationFn: (body: { action: string; ms?: number }) =>
       apiFetch(`/sports/games/${gameId}/clock`, { method: 'PATCH', body: JSON.stringify(body) }),
     onMutate: async (body) => {
@@ -3529,9 +3592,18 @@ export function useGameControl(gameId: string) {
       return { prev };
     },
     onError: (e, v, ctx) => settleFailure('clock', e, v, ctx),
-    onSuccess: writeBack,
+    // Refuter fix C3a (2026-08-09): a SUCCESSFUL direct write of an
+    // absolute (latest-wins) kind supersedes anything queued for that
+    // kind — drop those entries so a later replay can't revert the
+    // server to the stale queued value. Score is delta-based and is
+    // deliberately NOT dropped (its queued taps still count).
+    onSuccess: (game: any) => {
+      opQueue.dropKind('clock');
+      writeBack(game);
+    },
   });
   const segment = useMutation({
+    networkMode: 'always', // C1 — see the score mutation's note
     mutationFn: (body: { segment?: number; delta?: number }) =>
       apiFetch(`/sports/games/${gameId}/segment`, { method: 'PATCH', body: JSON.stringify(body) }),
     onMutate: async (body) => {
@@ -3560,9 +3632,13 @@ export function useGameControl(gameId: string) {
       return { prev };
     },
     onError: (e, v, ctx) => settleFailure('segment', e, v, ctx),
-    onSuccess: writeBack,
+    onSuccess: (game: any) => {
+      opQueue.dropKind('segment'); // C3a — see the clock mutation's note
+      writeBack(game);
+    },
   });
   const stats = useMutation({
+    networkMode: 'always', // C1 — see the score mutation's note
     mutationFn: (body: { stats: Record<string, unknown> }) =>
       apiFetch(`/sports/games/${gameId}/stats`, { method: 'PATCH', body: JSON.stringify(body) }),
     onMutate: async (body) => {
@@ -3581,7 +3657,10 @@ export function useGameControl(gameId: string) {
       return { prev };
     },
     onError: (e, v, ctx) => settleFailure('stats', e, v, ctx),
-    onSuccess: writeBack,
+    onSuccess: (game: any) => {
+      opQueue.dropKind('stats'); // C3a — see the clock mutation's note
+      writeBack(game);
+    },
   });
   const status = useMutation({
     mutationFn: (body: { status: string }) =>

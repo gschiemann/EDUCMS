@@ -282,7 +282,7 @@ describe('isNetworkFailure — the enqueue-vs-refetch classifier', () => {
     expect(isNetworkFailure(new Error('something else'))).toBe(false);
   });
 
-  it('navigator.onLine === false → network failure regardless of error shape', () => {
+  it('status-less error + navigator.onLine === false → network failure (onLine is a supporting signal)', () => {
     const desc = Object.getOwnPropertyDescriptor(window.navigator, 'onLine');
     Object.defineProperty(window.navigator, 'onLine', { configurable: true, get: () => false });
     try {
@@ -291,5 +291,104 @@ describe('isNetworkFailure — the enqueue-vs-refetch classifier', () => {
       if (desc) Object.defineProperty(window.navigator, 'onLine', desc);
       else delete (window.navigator as unknown as Record<string, unknown>).onLine;
     }
+  });
+
+  it('C2 ORDER: an HTTP-status error is NEVER a network failure, even while navigator.onLine is false', () => {
+    // The refuter scenario: a 5xx response arrives just as the radio drops.
+    // onLine === false used to short-circuit TRUE before the status check —
+    // enqueueing (and later REPLAYING) a write the server may have already
+    // processed. Status must disqualify FIRST; onLine only supports
+    // status-less failures.
+    const desc = Object.getOwnPropertyDescriptor(window.navigator, 'onLine');
+    Object.defineProperty(window.navigator, 'onLine', { configurable: true, get: () => false });
+    try {
+      expect(isNetworkFailure(Object.assign(new Error('boom'), { status: 500 }))).toBe(false);
+      expect(isNetworkFailure(Object.assign(new Error('bad'), { status: 400 }))).toBe(false);
+      // …while a genuinely response-less failure still qualifies offline.
+      expect(isNetworkFailure(new TypeError('Failed to fetch'))).toBe(true);
+    } finally {
+      if (desc) Object.defineProperty(window.navigator, 'onLine', desc);
+      else delete (window.navigator as unknown as Record<string, unknown>).onLine;
+    }
+  });
+
+  it('C2 ORDER: an HTTP-status error is NOT a network failure while onLine is true either (both orders)', () => {
+    expect(isNetworkFailure(Object.assign(new Error('boom'), { status: 503 }))).toBe(false);
+    expect(isNetworkFailure(new TypeError('Failed to fetch'))).toBe(true);
+  });
+});
+
+describe('dropKind — direct-write supersession (refuter fix C3a)', () => {
+  it('drops only the given absolute kind, persists, and leaves score deltas intact', () => {
+    const storage = memStorage();
+    const q = new GameOpQueue(GAME_ID, storage);
+    q.enqueue('score', { team: 'home', delta: 1 });
+    q.enqueue('clock', { action: 'pause' });
+    q.enqueue('stats', { stats: { homeFouls: 2 } });
+    expect(q.dropKind('clock')).toBe(1);
+    expect(q.peekAll().map((o) => o.kind)).toEqual(['score', 'stats']);
+    // Persisted without the dropped entry (a reload must not resurrect it).
+    const reloaded = new GameOpQueue(GAME_ID, storage);
+    expect(reloaded.peekAll().map((o) => o.kind)).toEqual(['score', 'stats']);
+  });
+
+  it('is a no-op (returns 0, no notify) when nothing of that kind is queued', () => {
+    const q = new GameOpQueue(GAME_ID, null);
+    q.enqueue('score', { team: 'home', delta: 1 });
+    let notified = 0;
+    const unsub = q.subscribe(() => {
+      notified += 1;
+    });
+    expect(q.dropKind('segment')).toBe(0);
+    expect(notified).toBe(0);
+    expect(q.size()).toBe(1);
+    unsub();
+  });
+});
+
+describe('replay age-discard for absolute ops (refuter fix C3b)', () => {
+  it('discards a queued absolute op older than 10 minutes WITHOUT sending it; old score deltas still send', async () => {
+    const q = new GameOpQueue(GAME_ID, null);
+    // Enqueue both entries "10+ minutes ago".
+    const past = Date.now() - GameOpQueue.MAX_ABSOLUTE_OP_AGE_MS - 1_000;
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(past);
+    q.enqueue('clock', { action: 'pause' }); // absolute — stale, must be discarded
+    q.enqueue('score', { team: 'home', delta: 2 }); // delta — NEVER age-discarded
+    nowSpy.mockRestore();
+
+    const sent: string[] = [];
+    const res = await q.replay(async (op) => {
+      sent.push(op.kind);
+    });
+    expect(sent).toEqual(['score']); // the stale clock op never hit the wire
+    expect(res).toEqual({ sent: 1, remaining: 0 });
+    expect(q.size()).toBe(0);
+  });
+
+  it('an absolute op younger than 10 minutes still replays normally', async () => {
+    const q = new GameOpQueue(GAME_ID, null);
+    q.enqueue('clock', { action: 'pause' });
+    const sent: string[] = [];
+    await q.replay(async (op) => {
+      sent.push(op.kind);
+    });
+    expect(sent).toEqual(['clock']);
+  });
+});
+
+describe('pendingScoreDeltas — the useGame display-overlay reader (refuter fix C4)', () => {
+  it('sums queued deltas per team; absolute sets and non-score kinds are excluded', () => {
+    const q = new GameOpQueue(GAME_ID, null);
+    q.enqueue('score', { team: 'home', delta: 1 });
+    q.enqueue('score', { team: 'away', delta: 2 });
+    q.enqueue('score', { team: 'home', delta: 3 }); // separate entry (away between)
+    q.enqueue('score', { homeScore: 50 }); // absolute set — not a delta
+    q.enqueue('clock', { action: 'pause' }); // other kind
+    expect(q.pendingScoreDeltas()).toEqual({ home: 4, away: 2 });
+  });
+
+  it('returns zeros for an empty queue', () => {
+    const q = new GameOpQueue(GAME_ID, null);
+    expect(q.pendingScoreDeltas()).toEqual({ home: 0, away: 0 });
   });
 });

@@ -9,21 +9,22 @@ import { verifyFeedToken, verifyFeedTokenFromQuery } from './sports-feed-token';
 import type { SwimTimingSnapshot } from '@cms/scoreboard-cts';
 // 2026-07-01 launch-sprint #272a — multi-replica-safe ingest rate limiter.
 import { RedisService } from '../realtime/redis.service';
-// Trust wave (2026-08-06) — X-Server-Time header rides every board response
-// (incl. 304s, which have no body for serverTime); Redis-TIME-aligned.
-import { TimeSyncService } from '../realtime/time-sync.service';
 import { checkIngestLimit } from '../security/ingest-rate-limit';
 
 /**
- * RFC 9110 §13.1.2 — If-None-Match carries one or more entity-tags (or `*`).
- * We only ever mint strong tags, but a proxy may weaken one in transit, and
- * weak comparison is the mandated mode for If-None-Match — so accept the
- * `W/`-prefixed form of our own tag too.
+ * RFC 9110 §13.1.2 — If-None-Match carries one or more entity-tags (or `*`),
+ * compared with WEAK comparison (the `W/` prefix is ignored on both sides).
+ * We mint weak tags (`W/"…"` — see SportsService.boardEtag for why), but a
+ * client may still hold the strong form from a pre-weak deploy, and a proxy
+ * may add/strip the prefix in transit — so compare opaque tags only.
  */
 function ifNoneMatchHits(header: string, etag: string): boolean {
+  const opaque = etag.startsWith('W/') ? etag.slice(2) : etag;
   return header.split(',').some((raw) => {
     const t = raw.trim();
-    return t === '*' || t === etag || t === `W/${etag}`;
+    if (t === '*') return true;
+    const candidate = t.startsWith('W/') ? t.slice(2) : t;
+    return candidate === opaque;
   });
 }
 
@@ -62,15 +63,15 @@ export class SportsBoardController {
   constructor(
     private readonly sports: SportsService,
     private readonly redis: RedisService,
-    private readonly timeSync: TimeSyncService,
   ) {}
 
   /**
    * Trust wave (2026-08-06) — conditional board poll. Every response carries:
-   *   - `ETag`: strong hash of the payload minus serverTime (SportsService
-   *     computes it once per cache fill).
-   *   - `X-Server-Time`: fresh Redis-aligned server clock, so a 304 still
-   *     hands the board a skew sample despite the empty body.
+   *   - `ETag`: WEAK hash of the payload minus serverTime (SportsService
+   *     computes it once per cache fill; weak because serverTime varies per
+   *     request inside the same tag — RFC 9110 §8.8.3).
+   *   - `X-Server-Time`: fresh server clock, so a 304 still hands the board
+   *     a skew sample despite the empty body.
    *   - `Cache-Control: no-cache`: pollers must revalidate every time — the
    *     whole point is the cheap 304, never a silently-reused stale body.
    * A matching If-None-Match short-circuits to an empty 304. The 200 body
@@ -87,7 +88,13 @@ export class SportsBoardController {
     // set — the 404 contract is unchanged.
     const { payload, etag } = await this.sports.getBoardWithMeta(id);
     res.setHeader('ETag', etag);
-    res.setHeader('X-Server-Time', String(this.timeSync.now()));
+    // CLOCK-DOMAIN INVARIANT: serverTime MUST share Game.clockUpdatedAt's
+    // clock domain (raw replica Date.now()) — the board subtracts this
+    // sample against clockUpdatedAt anchors written with `new Date()`, so a
+    // Redis-corrected clock here would carry the replica-vs-Redis offset as
+    // game-clock error. A multi-replica migration moves the anchors +
+    // serverTime to TimeSyncService TOGETHER (see getBoardWithMeta).
+    res.setHeader('X-Server-Time', String(Date.now()));
     res.setHeader('Cache-Control', 'no-cache');
     if (ifNoneMatch && ifNoneMatchHits(ifNoneMatch, etag)) {
       res.status(HttpStatus.NOT_MODIFIED);

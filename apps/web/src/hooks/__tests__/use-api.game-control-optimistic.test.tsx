@@ -14,8 +14,8 @@
  * wrapper that calls the real `useGameControl` hook inside a real
  * `QueryClientProvider`, and assert against `qc.getQueryData`.
  */
-import { render, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, render, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';
 
 const GAME_ID = 'game-optimistic-1';
 const GAME_KEY = ['sports-game', GAME_ID];
@@ -30,7 +30,7 @@ jest.mock('@/lib/api-client', () => ({
   apiFetch: (path: string, opts?: FetchOpts) => apiFetch(path, opts),
 }));
 
-import { useGameControl } from '../use-api';
+import { useGame, useGameControl } from '../use-api';
 import { getGameOpQueue, __resetGameOpQueues } from '@/lib/game-op-queue';
 
 /** Baseline cached game — a live football game, clock stopped at 12:00
@@ -352,11 +352,14 @@ describe('useGameControl — stats optimistic update + rollback', () => {
 });
 
 describe('useGameControl — offline queue vs server-rejection (Trust wave Domain C)', () => {
-  it('a network-failed write ENQUEUES the op and KEEPS the optimistic cache (honest, not rolled back)', async () => {
+  it('a network-failed score delta ENQUEUES the op and hands the tap to the useGame overlay (cache back to server truth)', async () => {
     // fetch's own network TypeError — the request provably got no response,
-    // so the tap WILL be applied on reconnect. Keeping the optimistic value
-    // is what makes the console honest (the ConnectionBanner shows it queued)
-    // instead of snapping the score back and silently losing the tap.
+    // so the tap WILL be applied on reconnect. Refuter fix C4: display
+    // authority for a QUEUED delta is the useGame overlay (server truth +
+    // pending queued deltas), so the optimistic +1 is REVERSED out of the
+    // cache on enqueue — otherwise cache(+1) + overlay(+1) would show the
+    // operator a score ABOVE what they entered. The DISPLAYED value stays 6
+    // throughout (see the useGame overlay suite below).
     apiFetch.mockRejectedValue(new TypeError('Failed to fetch'));
     const { qc, getCtl } = mountGameControl(baseGame({ homeScore: 5 }));
 
@@ -369,8 +372,63 @@ describe('useGameControl — offline queue vs server-rejection (Trust wave Domai
       kind: 'score',
       payload: { team: 'home', delta: 1 },
     });
-    // Optimistic 6 (5 + 1) is NOT rolled back — the queue makes it truthful.
-    expect((qc.getQueryData(GAME_KEY) as any).homeScore).toBe(6);
+    // Cache is pure server truth again; the tap lives in the queue…
+    expect((qc.getQueryData(GAME_KEY) as any).homeScore).toBe(5);
+    // …which the useGame select overlay presents as 5 + 1 = 6.
+    expect(getGameOpQueue(GAME_ID).pendingScoreDeltas()).toEqual({ home: 1, away: 0 });
+  });
+
+  it('C1: a tap while the browser reports OFFLINE still runs, fails, and lands in the queue + sessionStorage', async () => {
+    // React Query v5's default networkMode 'online' PAUSES a mutation when
+    // offline — mutationFn never runs, onError never fires, the queue
+    // captures nothing, and a tab reload silently loses the tap while the
+    // ConnectionBanner promises it's queued. networkMode 'always' (scoped
+    // to the four queueable mutations) makes the fetch run and reject so
+    // the op actually enqueues.
+    onlineManager.setOnline(false);
+    try {
+      apiFetch.mockRejectedValue(new TypeError('Failed to fetch'));
+      const { getCtl } = mountGameControl(baseGame({ homeScore: 5 }));
+
+      getCtl().score.mutate({ team: 'home', delta: 1 });
+
+      // mutationFn RAN despite offline (would stay paused forever without
+      // networkMode 'always')…
+      await waitFor(() => {
+        expect(apiFetch).toHaveBeenCalled();
+      });
+      // …its network failure enqueued the op…
+      await waitFor(() => {
+        expect(getGameOpQueue(GAME_ID).size()).toBe(1);
+      });
+      // …and the op survived to sessionStorage (a reload replays it).
+      const raw = window.sessionStorage.getItem(`venueos.gameops.${GAME_ID}`);
+      expect(raw).toContain('"delta":1');
+    } finally {
+      onlineManager.setOnline(true);
+    }
+  });
+
+  it('C3a: a successful direct clock write drops the queued clock op; queued score deltas survive', async () => {
+    apiFetch.mockResolvedValue({ ...baseGame({ clockRunning: true }) });
+    const { getCtl } = mountGameControl(baseGame());
+    // Enqueue AFTER mount (an on-mount non-empty queue would trigger an
+    // immediate replay attempt; enqueue-while-mounted only schedules the
+    // 5s retry, which this test never reaches).
+    const q = getGameOpQueue(GAME_ID);
+    act(() => {
+      q.enqueue('clock', { action: 'pause' });
+      q.enqueue('score', { team: 'home', delta: 1 });
+    });
+
+    getCtl().clock.mutate({ action: 'start' });
+
+    // The stale queued 'pause' would REVERT the server's newer 'start' on
+    // replay — the direct write's success supersedes and drops it. The
+    // score delta (commutative increment) must NOT be dropped.
+    await waitFor(() => {
+      expect(q.peekAll().map((o) => o.kind)).toEqual(['score']);
+    });
   });
 
   it('a 4xx server rejection does NOT enqueue — it invalidates (refetch truth) and flags REJECTED', async () => {
@@ -389,5 +447,72 @@ describe('useGameControl — offline queue vs server-rejection (Trust wave Domai
     expect(getGameOpQueue(GAME_ID).size()).toBe(0); // never queued
     // Rejection is recorded so the banner can show its dismissible REJECTED state.
     expect(getGameOpQueue(GAME_ID).getSnapshot().lastRejectionAt).not.toBeNull();
+  });
+});
+
+describe('useGame — queued-delta display overlay (refuter fix C4)', () => {
+  /** Mounts the real useGame hook and exposes its latest render result. */
+  function mountGame() {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    let view!: { data?: any };
+    function Inner() {
+      view = useGame(GAME_ID) as any;
+      return null;
+    }
+    render(
+      <QueryClientProvider client={qc}>
+        <Inner />
+      </QueryClientProvider>,
+    );
+    return { qc, getData: () => view?.data };
+  }
+
+  it('a background refetch does NOT drop the displayed score while a delta sits queued; after drain it matches server', async () => {
+    // Server truth EXCLUDES the queued tap — exactly what the 4s useGame
+    // background refetch hands back while a tap sits in the offline queue.
+    apiFetch.mockResolvedValue({ ...baseGame({ homeScore: 5 }) });
+    // A tap that network-failed earlier left a queued +1 for home.
+    getGameOpQueue(GAME_ID).enqueue('score', { team: 'home', delta: 1 });
+
+    const { qc, getData } = mountGame();
+
+    // First fetch lands server truth (5) in the CACHE; the subscriber sees
+    // the overlay: 5 + queued 1 = 6 — the value the operator entered.
+    await waitFor(() => {
+      expect(getData()?.homeScore).toBe(6);
+    });
+    expect((qc.getQueryData(GAME_KEY) as any).homeScore).toBe(5); // cache stays pure
+
+    // Simulated background refetch overwriting the cache with server truth
+    // again — pre-fix this visibly DROPPED the displayed score to 5,
+    // inviting a double-tap.
+    act(() => {
+      qc.setQueryData(GAME_KEY, { ...baseGame({ homeScore: 5 }) });
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(getData()?.homeScore).toBe(6); // display did NOT drop
+
+    // Replay drains the queue (server applies the delta out-of-band here);
+    // once nothing is pending the overlay is a no-op and the display
+    // converges to whatever the cache/server says.
+    await act(async () => {
+      await getGameOpQueue(GAME_ID).replay(async () => ({}));
+    });
+    await waitFor(() => {
+      expect(getData()?.homeScore).toBe(5); // pure server truth again
+    });
+    expect(getGameOpQueue(GAME_ID).size()).toBe(0);
+  });
+
+  it('away-team deltas overlay awayScore and never bleed into homeScore', async () => {
+    apiFetch.mockResolvedValue({ ...baseGame({ homeScore: 3, awayScore: 7 }) });
+    getGameOpQueue(GAME_ID).enqueue('score', { team: 'away', delta: 2 });
+
+    const { getData } = mountGame();
+
+    await waitFor(() => {
+      expect(getData()?.awayScore).toBe(9);
+    });
+    expect(getData()?.homeScore).toBe(3);
   });
 });

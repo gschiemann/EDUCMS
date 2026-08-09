@@ -10,12 +10,16 @@
  *      fill and kill every 304.
  *   2. The etag CHANGES when the content changes (score write → explicit
  *      invalidate + new hash), so a poller holding the old tag gets a 200.
- *   3. `serverTime` in the body is per-REQUEST fresh (TimeSyncService, not
+ *   3. `serverTime` in the body is per-REQUEST fresh (raw Date.now(), NOT
  *      the value baked into the 1s cache) — even on cache hits, and without
- *      mutating the shared cached object.
+ *      mutating the shared cached object. Raw Date.now() is the invariant,
+ *      not a shortcut: serverTime must share Game.clockUpdatedAt's clock
+ *      domain (see the CLOCK-DOMAIN INVARIANT note on getBoardWithMeta).
  *   4. The controller speaks RFC-9110 conditional GET: matching
  *      If-None-Match → empty 304; otherwise 200 + ETag + X-Server-Time +
- *      Cache-Control on every response; unknown id still 404s.
+ *      Cache-Control on every response; unknown id still 404s. Tags are
+ *      minted WEAK (`W/"…"` — §8.8.3: serverTime varies per request within
+ *      one tag) and compared weakly (§13.1.2).
  *
  * Mocked-prisma pattern copied from sports.service.spec.ts; the controller
  * is `new`ed directly (guards aren't evaluated on direct method invocation
@@ -130,21 +134,29 @@ function setup() {
   const signer = { signMessage: jest.fn(() => ({ eventId: 'e', signature: 's' })) };
   const sponsorsService = { listActive: jest.fn().mockResolvedValue([]) };
   const flags = { isEnabledAsync: jest.fn().mockResolvedValue(false) };
-  // Advancing fake server clock — each now() is distinct, so "fresh per
-  // request" is distinguishable from "baked into the cache".
-  let tick = 1_000_000;
-  const timeSync = { now: jest.fn(() => (tick += 500)) };
+  // Advancing fake replica clock — serverTime now comes from raw Date.now()
+  // (the clock-domain invariant: it must match Game.clockUpdatedAt's
+  // domain). Each call is distinct, so "fresh per request" stays
+  // distinguishable from "baked into the cache". The 100ms step keeps two
+  // consecutive getBoardWithMeta calls (a handful of Date.now() reads each)
+  // comfortably inside the 1s board-cache TTL, so cache-hit assertions
+  // still exercise the hit path. Restored in afterEach.
+  let tick = Date.now();
+  const dateNowSpy = jest.spyOn(Date, 'now').mockImplementation(() => (tick += 100));
   const service = new SportsService(
     prisma as any,
     redis as any,
     signer as any,
     sponsorsService as any,
     flags as any,
-    timeSync as any,
   );
-  const controller = new SportsBoardController(service, redis as any, timeSync as any);
-  return { service, controller, timeSync, game };
+  const controller = new SportsBoardController(service, redis as any);
+  return { service, controller, dateNowSpy, game };
 }
+
+afterEach(() => {
+  jest.restoreAllMocks();
+});
 
 async function newGame(service: SportsService) {
   return service.createGame(TENANT, { sport: 'football', homeTeam: 'Home', awayTeam: 'Away' });
@@ -169,7 +181,7 @@ describe('SportsService — getBoardWithMeta (ETag + per-request serverTime)', (
 
     const a = await service.getBoardWithMeta(g.id);
     const b = await service.getBoardWithMeta(g.id); // cache hit
-    expect(a.etag).toMatch(/^"[0-9a-f]{16}"$/); // strong, quoted per RFC
+    expect(a.etag).toMatch(/^W\/"[0-9a-f]{16}"$/); // WEAK, quoted per RFC 9110 §8.8.3
     expect(b.etag).toBe(a.etag);
 
     // Force a refill (as if the 1s TTL lapsed): the freshly-built payload
@@ -195,20 +207,20 @@ describe('SportsService — getBoardWithMeta (ETag + per-request serverTime)', (
   });
 
   it('serverTime in the body is fresh per call even on cache hits, without mutating the cached object', async () => {
-    const { service, timeSync } = setup();
+    const { service } = setup();
     const g = await newGame(service);
 
     const a = await service.getBoardWithMeta(g.id);
     const b = await service.getBoardWithMeta(g.id); // cache hit — same etag
     expect(b.etag).toBe(a.etag);
-    // The advancing TimeSyncService mock steps 500ms per now() — each
-    // response carries its OWN sample, not the one baked at cache fill.
+    // The advancing Date.now mock steps 100ms per call — each response
+    // carries its OWN raw-replica-clock sample, not the one baked at
+    // cache fill (clock-domain invariant: same domain as clockUpdatedAt).
     expect(typeof a.payload.serverTime).toBe('number');
     expect(b.payload.serverTime).toBeGreaterThan(a.payload.serverTime);
-    expect(timeSync.now).toHaveBeenCalled();
 
     // Spread, not mutation: the shared cached payload keeps its original
-    // baked-in serverTime (a Date.now() sample from getBoardFresh).
+    // baked-in serverTime (the Date.now() sample from getBoardFresh).
     const cached = (service as any).boardCache.get(g.id).payload;
     expect(cached.serverTime).not.toBe(b.payload.serverTime);
   });
@@ -235,7 +247,7 @@ describe('SportsBoardController — GET board/:id conditional poll', () => {
     const body: any = await controller.board(g.id, undefined, res as any);
     expect(body.id).toBe(g.id);
     expect(body.serverTime).toEqual(expect.any(Number)); // deployed boards read the body
-    expect(headerValue(res, 'ETag')).toMatch(/^"[0-9a-f]{16}"$/);
+    expect(headerValue(res, 'ETag')).toMatch(/^W\/"[0-9a-f]{16}"$/);
     expect(headerValue(res, 'X-Server-Time')).toMatch(/^\d+$/);
     expect(headerValue(res, 'Cache-Control')).toBe('no-cache');
     expect(res.status).not.toHaveBeenCalled(); // default 200
@@ -257,9 +269,13 @@ describe('SportsBoardController — GET board/:id conditional poll', () => {
     expect(headerValue(res, 'X-Server-Time')).toMatch(/^\d+$/);
     expect(headerValue(res, 'Cache-Control')).toBe('no-cache');
 
-    // RFC 9110 §13.1.2 — weak comparison + list form must also match.
+    // RFC 9110 §13.1.2 — weak comparison + list form must also match: a
+    // client still holding the STRONG form of the same opaque tag (a
+    // pre-weak-mint deploy, or a proxy that stripped the prefix) must
+    // revalidate to a 304 too.
+    const strongForm = etag.replace(/^W\//, '');
     const weak = mkRes();
-    expect(await controller.board(g.id, `"zzz", W/${etag}`, weak as any)).toBeUndefined();
+    expect(await controller.board(g.id, `"zzz", ${strongForm}`, weak as any)).toBeUndefined();
     expect(weak.status).toHaveBeenCalledWith(304);
   });
 

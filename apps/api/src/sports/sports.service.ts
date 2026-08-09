@@ -12,7 +12,6 @@ import { createHash, randomUUID } from 'crypto';
 import { wakeClockSweep } from './clock-wake';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
-import { TimeSyncService } from '../realtime/time-sync.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { SponsorsService } from './sponsors.service';
 // 2026-05-26 — reused inside getBoard() to resolve the operator-
@@ -186,11 +185,6 @@ export class SportsService {
     // the board payload. FeatureFlagsModule is @Global() so this
     // resolves without listing it in SportsModule providers.
     private readonly flags: FeatureFlagsService,
-    // Trust wave (2026-08-06) — per-request serverTime on the board payload
-    // must come from the Redis-TIME-aligned clock so multi-replica pollers
-    // never see replica-to-replica skew. RealtimeModule is @Global() and
-    // exports TimeSyncService, so this resolves without module changes.
-    private readonly timeSync: TimeSyncService,
   ) {}
 
   // ── helpers ──────────────────────────────────────────────────
@@ -577,17 +571,26 @@ export class SportsService {
   private invalidateBoardCache(gameId: string) { this.boardCache.delete(gameId); }
 
   /**
-   * Strong ETag for a board payload — computed ONCE per cache fill, over the
+   * WEAK ETag for a board payload — computed ONCE per cache fill, over the
    * payload with the volatile per-request `serverTime` field EXCLUDED (same
    * rule as the manifest ETag: a per-request clock inside the hashed body
    * would rotate the tag every call and kill every 304). Deterministic from
    * content alone — one code path builds the object (stable key order) and
    * there is no per-replica salt — so every replica derives the same tag and
-   * a poller can hop replicas without spurious 200s. Quoted per RFC 9110.
+   * a poller can hop replicas without spurious 200s.
+   *
+   * WEAK (`W/"…"`) is load-bearing, not cosmetic (RFC 9110 §8.8.3): because
+   * `serverTime` rides the body but is excluded from the hash, two responses
+   * carrying the same tag are NOT byte-identical representations — a strong
+   * tag would license a conforming shared cache to substitute an old stored
+   * body on a 304 revalidation, freezing every poller behind it on a stale
+   * clock sample. A weak tag promises only semantic equivalence, which is
+   * exactly what this payload delivers. If-None-Match uses weak comparison
+   * anyway (§13.1.2), so 304s behave identically.
    */
   private static boardEtag(payload: Record<string, unknown>): string {
     const { serverTime: _serverTime, ...hashed } = payload;
-    return `"${createHash('sha1').update(JSON.stringify(hashed)).digest('hex').slice(0, 16)}"`;
+    return `W/"${createHash('sha1').update(JSON.stringify(hashed)).digest('hex').slice(0, 16)}"`;
   }
 
   /**
@@ -613,10 +616,15 @@ export class SportsService {
    *     up to BOARD_CACHE_TTL_MS stale, and boards compute clock skew from
    *     it, so every return overrides it via spread (never mutating the
    *     cached object — it is shared across concurrent pollers).
-   * The clock is TimeSyncService (Redis-TIME-aligned; replicas agree). Spec
-   * harnesses construct this service directly without the collaborator —
-   * hence the runtime guard, same fail-open stance as the flags read in
-   * getBoardFresh. Under Nest DI it always resolves (@Global RealtimeModule).
+   *
+   * CLOCK-DOMAIN INVARIANT: serverTime MUST share Game.clockUpdatedAt's
+   * clock domain (raw replica Date.now()) — every clock anchor this value is
+   * subtracted against (`clockUpdatedAt`, written via `new Date()` at every
+   * mutation site) is the raw replica clock, so sampling serverTime from a
+   * different clock (e.g. the Redis-corrected TimeSyncService) injects the
+   * replica-vs-Redis offset straight into the board's projected game clock.
+   * A multi-replica migration moves the anchors + serverTime to
+   * TimeSyncService TOGETHER, never one side alone.
    */
   async getBoardWithMeta(id: string): Promise<{ payload: any; etag: string }> {
     const now = Date.now();
@@ -626,7 +634,7 @@ export class SportsService {
       hit = { ts: now, payload: fresh, etag: SportsService.boardEtag(fresh) };
       this.boardCache.set(id, hit);
     }
-    const serverTime = this.timeSync ? this.timeSync.now() : Date.now();
+    const serverTime = Date.now();
     return { payload: { ...hit.payload, serverTime }, etag: hit.etag };
   }
 
