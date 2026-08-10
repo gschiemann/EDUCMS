@@ -1,0 +1,25 @@
+-- 2026-08-09 — Phase-2 Domain SHARE: scorekeeper console share-link (additive).
+--
+-- The console share credential (apps/api/src/sports/sports-console-token.ts)
+-- is a stateless, game-scoped HMAC baked into a /console/<token> link + QR
+-- handed to a student/volunteer scorekeeper. It authorizes ONLY the
+-- allowlisted in-game controls (score / clock / segment / timeouts /
+-- celebration cues) on the public SportsConsoleController — no tenant
+-- account, no content-publishing rights.
+--
+-- This column is a monotonically-incrementing version counter folded into the
+-- token's MAC ("console:<gameId>:<ver>:<iat>:<ttl>"). Incrementing it
+-- (SportsService.revokeConsoleShare / DELETE /sports/games/:id/console-share)
+-- instantly invalidates EVERY outstanding link for that game — the per-game
+-- kill-switch when a link leaks or the volunteer's shift ends.
+--
+-- Deliberately a SEPARATE counter from feed_token_version: revoking a
+-- scorekeeper's link must never kill a vendor's feed credential, and revoking
+-- a leaked feed credential must never cut off the scorekeeper mid-game.
+--
+-- Additive-only. DEFAULT 0, NOT NULL — every existing Game row becomes
+-- version 0 and no already-issued credential of any kind changes validity
+-- (console tokens did not exist before this migration). Safe to apply on the
+-- live pilot tenant with zero downtime.
+ALTER TABLE "games"
+  ADD COLUMN "console_token_version" INTEGER NOT NULL DEFAULT 0;

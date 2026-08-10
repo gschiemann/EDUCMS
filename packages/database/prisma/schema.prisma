@@ -2319,6 +2319,19 @@ model Game {
   // verifying unchanged (additive-only migration, no break to a live bridge).
   feedTokenVersion Int @default(0) @map("feed_token_version")
 
+  // 2026-08-09 — Phase-2 Domain SHARE: scorekeeper console share-link
+  // revocation. The console share token (sports-console-token.ts) is a
+  // stateless game-scoped HMAC handed to a student/volunteer scorekeeper as a
+  // /console/<token> link + QR — LIMITED in-game controls (score / clock /
+  // segment / timeouts / celebration cues), no tenant account. This counter is
+  // folded into the token MAC ("console:<gameId>:<ver>:<iat>:<ttl>") so
+  // bumping it (SportsService.revokeConsoleShare / DELETE
+  // /sports/games/:id/console-share) instantly invalidates every outstanding
+  // link for the game. Additive-only (default 0) — existing rows unaffected;
+  // deliberately a SEPARATE counter from feedTokenVersion so revoking a
+  // scorekeeper's link never kills a vendor's feed credential (or vice versa).
+  consoleTokenVersion Int @default(0) @map("console_token_version")
+
   // 2026-05-19 — Sprint 13 scoreboard builder. Each game can pick an
   // operator-customized Template for its three surfaces:
   //   * scoreboardTemplate → /board/[gameId]  (the big LED video wall)
