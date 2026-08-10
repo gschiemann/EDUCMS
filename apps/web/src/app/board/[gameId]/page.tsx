@@ -23,6 +23,7 @@ import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 // (self-chaining, ETag/304 revalidation, jittered backoff) + the
 // "CONNECTION LOST" staleness chip shown when the feed goes quiet.
 import { startBoardPoll, STALE_FEED_AFTER_MS } from '@/lib/board-poll';
+import { formatGameClock } from '@/lib/game-clock-format';
 import { ConnectionLostPill } from '@/components/sports/ConnectionLostPill';
 import { applyCtsOverlay } from '@/lib/cts-merge';
 import {
@@ -214,18 +215,12 @@ function cuePlaysHere(target?: string): boolean {
 const POLL_MS = 750;
 
 // ── formatting helpers ─────────────────────────────────────────
-
-function fmtClock(ms: number): string {
-  const safe = Math.max(0, ms);
-  if (safe >= 60_000) {
-    const m = Math.floor(safe / 60_000);
-    const s = Math.floor((safe % 60_000) / 1000);
-    return `${m}:${String(s).padStart(2, '0')}`;
-  }
-  const s = Math.floor(safe / 1000);
-  const tenths = Math.floor((safe % 1000) / 100);
-  return `${s}.${tenths}`;
-}
+// Phase-2 Domain CLOCK (2026-08-09): the board's local floor-based
+// fmtClock is gone — MM:SS now CEILs via the shared formatter so this
+// surface reads the same second as the operator console ("0:01" holds
+// until true zero, never "0:00" with time left). The board's tenths
+// mode below 60s is preserved by passing showTenths=true at its call
+// sites (truncation behavior unchanged).
 
 /** Penalty-clock format — always MM:SS, ceil to the second so the
  *  box still reads "0:01" right up to the instant it expires. */
@@ -1280,7 +1275,7 @@ function BoardScene({ data, def }: { data: BoardData; def: SportDefinition }) {
                 whiteSpace: 'nowrap',
               }}
             >
-              {fmtClock(clockMs)}
+              {formatGameClock(clockMs, true)}
               {addedTimeMin > 0 && (
                 <sup
                   style={{
@@ -3990,7 +3985,7 @@ export function PortraitBoardScene({ data, def }: { data: BoardData; def: SportD
         {teamCol('home')}
         <div style={{ width: 320, height: '100%', borderLeft: '1px solid rgba(255,255,255,0.10)', borderRight: '1px solid rgba(255,255,255,0.10)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box', paddingLeft: 8, paddingRight: 8 }}>
           <div style={{ color: '#94a3b8', fontSize: 30, fontWeight: 800, letterSpacing: 4, marginBottom: 30 }}>{segmentLabel(def, data)}</div>
-          {hasClock && <div style={{ color: '#fff', fontSize: 92, fontWeight: 800, lineHeight: 0.9, fontVariantNumeric: 'tabular-nums', marginBottom: showShot ? 40 : 0 }}>{fmtClock(clockMs)}</div>}
+          {hasClock && <div style={{ color: '#fff', fontSize: 92, fontWeight: 800, lineHeight: 0.9, fontVariantNumeric: 'tabular-nums', marginBottom: showShot ? 40 : 0 }}>{formatGameClock(clockMs, true)}</div>}
           {showShot && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <div style={{ color: '#f59e0b', fontSize: 66, fontWeight: 800, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{shotSecs}</div>

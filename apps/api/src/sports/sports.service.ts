@@ -3831,6 +3831,13 @@ export class SportsService {
     // mutable row object.
     const prevScores = { homeScore: game.homeScore, awayScore: game.awayScore };
     const updated = await this.prisma.client.game.update({ where: { id }, data });
+    // Efficiency #3 counterpart of clockAction's wake: a machine feed that
+    // starts (or re-anchors) a running clock must snap the auto-advance
+    // sweep out of its 30s idle backoff — otherwise a feed-driven segment
+    // could sit expired for up to 30s before the sweep notices. Same gate
+    // as the operator path: clock state was written AND the clock is
+    // running after the write.
+    if (clockChanged && updated.clockRunning) wakeClockSweep();
     await this.record(id, 'INGEST', applied);
 
     // AUTO celebration trigger — only on the machine-feed path, and only
@@ -5666,6 +5673,21 @@ export class SportsService {
     // snapshot instantly. Without this the TTL would mask up to 1s of
     // CTS data — fine in steady state but jarring at boot.
     this.invalidateBoardCache(gameId);
+
+    // CTS counterpart of clockAction's wakeClockSweep (efficiency #3): a
+    // snapshot that carries clock state must return the auto-advance sweep
+    // to its 1s cadence — a CTS-driven quarter could otherwise sit at 0:00
+    // for up to 30s of idle backoff before the period advances. Gate
+    // mirrors the operator path (wake only toward a RUNNING clock): use
+    // the snapshot's own running flag when present, else the fresh row's
+    // column state the sweep actually queries.
+    if (cleaned.clockMs !== undefined || cleaned.clockRunning !== undefined) {
+      const runningAfter =
+        cleaned.clockRunning !== undefined
+          ? cleaned.clockRunning
+          : syntheticNext.clockRunning === true;
+      if (runningAfter) wakeClockSweep();
+    }
 
     // Score GameEvent + AUTO celebration — same paper trail as adjustScore.
     // Only fires when the CTS-reported score differs from the prior CTS

@@ -45,6 +45,10 @@ import {
   Upload,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+// Phase-2 Domain CLOCK (2026-08-09): this page's ceil formatter (the
+// 046d73aa broadcast-semantics reference) moved verbatim into the
+// shared module so board + ribbon read the identical second.
+import { formatGameClock as fmtClock } from '@/lib/game-clock-format';
 import { RoleGate } from '@/components/RoleGate';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { Button } from '@/components/ui/button';
@@ -140,41 +144,7 @@ type ConsoleMode = 'run' | 'setup';
 type ConsoleView = 'score' | 'show' | 'pa' | '';
 
 // ── clock helpers ──────────────────────────────────────────────
-
-function fmtClock(ms: number): string {
-  // 2026-05-27 — operator bug 046d73aa: "they need to be perfectly
-  // in sync, there is a delay from when I start the game clock to
-  // when the shot clock starts...click start on game clock starts
-  // the shot clock at the exact same time".
-  //
-  // Diagnosis: server already syncs both clocks atomically — the same
-  // `now` writes both clockUpdatedAt and shotClock.at in one
-  // transaction via syncShotClockToGameClock (sports.service.ts:1565).
-  // The drift Greg perceives is a DISPLAY rounding mismatch: this
-  // game-clock formatter used floor while the shot clock at line ~1108
-  // uses Math.ceil. With floor, "4:00" appears for the 999ms BEFORE
-  // the clock truly hits 4:00 (display shows what's elapsed); with
-  // ceil, "4:00" appears DURING the 999ms of partial fourth minute
-  // (display shows what remains, matching the shot clock's "20" /
-  // "19" / ... countdown). The pro convention for COUNTDOWN clocks
-  // is ceil — so "0:00" only appears when the clock is genuinely
-  // expired, not for the last 999ms before expiration. (Floor on
-  // a countdown clock is the convention for showing elapsed time,
-  // which is the wrong question to ask of a game clock that's
-  // counting toward zero.)
-  //
-  // Net visual change: game clock now sticks at "4:20" for 1000ms
-  // before ticking to "4:19" — identical pixel-on-screen duration
-  // as before, just labeled one tick "later." At the end of a
-  // segment, "0:01" shows for 999ms before the buzzer (matches what
-  // any Daktronics All Sport / shot clock has done forever); the
-  // shot clock at 0 lines up with the game clock at its true zero.
-  const safe = Math.max(0, ms);
-  const totalSec = Math.ceil(safe / 1000);
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
+// (fmtClock now imports from @/lib/game-clock-format — see top of file.)
 
 function parseClock(text: string): number | null {
   const m = text.trim().match(/^(\d{1,3}):([0-5]?\d)$/);

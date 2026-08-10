@@ -53,6 +53,7 @@ import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
 // (self-chaining, ETag/304 revalidation, jittered backoff) + the
 // "CONNECTION LOST" staleness chip shown when the feed goes quiet.
 import { startBoardPoll, STALE_FEED_AFTER_MS } from '@/lib/board-poll';
+import { formatGameClock } from '@/lib/game-clock-format';
 import { ConnectionLostPill } from '@/components/sports/ConnectionLostPill';
 import { applyCtsOverlay } from '@/lib/cts-merge';
 import { useParams } from 'next/navigation';
@@ -297,19 +298,11 @@ class CelebrationErrorBoundary extends ReactComponent<
 
 // ── helpers ────────────────────────────────────────────────────
 
-function fmtClock(ms: number, showTenths = false): string {
-  const safe = Math.max(0, ms);
-  // Final minute of a countdown — tenths of a second, the broadcast
-  // standard. Games come down to the last fraction.
-  if (showTenths && safe < 60_000) {
-    const s = Math.floor(safe / 1000);
-    const tenths = Math.floor((safe % 1000) / 100);
-    return `${s}.${tenths}`;
-  }
-  const m = Math.floor(safe / 60_000);
-  const s = Math.floor((safe % 60_000) / 1000);
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
+// Phase-2 Domain CLOCK (2026-08-09): the ribbon's local floor-based
+// fmtClock is gone — MM:SS now CEILs via the shared formatter
+// (@/lib/game-clock-format) so this surface reads the same second as
+// the operator console. Final-minute tenths mode keeps its truncation
+// behavior; the call site's countdown-only showTenths gate carries over.
 
 /** The team nickname for ribbon display — the LAST word of the team
  *  name ("Cleveland Browns" → "BROWNS", "Las Vegas Raiders" →
@@ -1940,7 +1933,7 @@ function ScoreZone({
   // itself is non-negotiable (the ribbon must never go blank) so it
   // stays rendered regardless.
   const hasClock = def.clock.type !== 'none' && clockOn;
-  const clk = fmtClock(clockMs, def.clock.type === 'countdown');
+  const clk = formatGameClock(clockMs, def.clock.type === 'countdown');
   let statusText: string;
   if (live) {
     if (segmentOn && hasClock) statusText = `${seg} · ${clk}`;
