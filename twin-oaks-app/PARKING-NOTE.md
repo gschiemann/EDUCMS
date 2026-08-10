@@ -1,24 +1,38 @@
-# Parking branch — Twin Oaks OS
+# Twin Oaks OS — complete app, parked on this branch
 
-This directory is a **temporary parking spot**, not part of EDUCMS/VenueOS.
+**This directory is the entire Twin Oaks OS application** — a standalone
+business-management app for Twin Oaks Farm & Tech LLC. It is NOT part of
+EDUCMS/VenueOS; it lives on this EDUCMS branch only because the Claude
+session that built it can push to granted repositories but GitHub does not
+allow the integration to *create* new repositories (403 by design).
 
-The owner requested a brand-new standalone repository (`twin-oaks-app`) for
-**Twin Oaks OS** — the business operating system for Twin Oaks Farm & Tech
-LLC. The Claude session that built it cannot create GitHub repositories, so
-the irreplaceable design artifacts are parked on this branch until the new
-repository exists.
+State: **V1 financial core, built and verified** — typecheck + production
+build green, all routes smoke-tested, seeded flows verified end-to-end at
+iPhone viewport. See `README.md` (run instructions), `docs/SPEC.md`
+(owner-written master specification — source of truth), `docs/ROADMAP.md`
+(build status), `CLAUDE.md` (developer guide).
 
-Parked here:
+## Migrating to the standalone `twin-oaks-app` repository (~2 minutes)
 
-- `docs/SPEC.md` — the owner-written Master Build Specification (source of truth)
-- `docs/ROADMAP.md` — build status vs. the spec
-- `README.md`, `CLAUDE.md` — project docs
-- `package.json`, `prisma/schema.prisma`, `prisma/seed.ts`, `src/lib/domain.ts`
-  — the V1 data model, domain constants, and sample data
+1. Create the empty repo on GitHub (github.com/new → `twin-oaks-app`,
+   public, no README/gitignore/license), or have any tool with repo-creation
+   rights do it.
+2. From a checkout of this branch:
 
-The complete application (54 files — receipts/expenses/income/equipment/tax
-center UI, verified typecheck + production build + runtime smoke) was built
-in the session workspace and is pushed to the `twin-oaks-app` repository once
-it exists.
+   ```bash
+   git clone --branch claude/new-app-repository-2n8nuo \
+     https://github.com/gschiemann/EDUCMS educms-parked
+   cd educms-parked/twin-oaks-app
+   git init -b main && git add -A && git commit -m "Twin Oaks OS V1 foundation"
+   git remote add origin https://github.com/gschiemann/twin-oaks-app
+   git push -u origin main
+   ```
 
-**Once `gschiemann/twin-oaks-app` contains the full app, delete this branch.**
+   (Or simply tell a Claude session "the twin-oaks-app repo exists now —
+   move Twin Oaks OS into it" and point it at this branch.)
+
+3. Delete this branch from EDUCMS afterwards.
+
+Notes: the GitHub Actions workflow in `.github/workflows/ci.yml` only
+activates once the app sits at the root of its own repository. `.env` is
+never committed — copy `.env.example` to `.env` (dev defaults work as-is).

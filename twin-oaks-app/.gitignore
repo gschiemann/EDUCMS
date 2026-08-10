@@ -1,0 +1,26 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+*.tsbuildinfo
+
+# env — never commit secrets
+.env
+.env.*
+!.env.example
+
+# local database (SQLite dev)
+prisma/dev.db
+prisma/dev.db-journal
+prisma/*.db
+prisma/*.db-journal
+
+# uploaded receipt/document files (local dev storage)
+var/uploads/*
+!var/uploads/.gitkeep
+
+# misc
+.DS_Store
+*.log

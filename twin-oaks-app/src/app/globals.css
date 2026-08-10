@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+@theme {
+  /* Twin Oaks palette — oak green + warm amber accents */
+  --color-oak-50: #f3f7f2;
+  --color-oak-100: #e4eee1;
+  --color-oak-200: #c8dcc3;
+  --color-oak-300: #a3c29c;
+  --color-oak-500: #52794d;
+  --color-oak-600: #3f6440;
+  --color-oak-700: #2f5233;
+  --color-oak-800: #274429;
+  --color-oak-900: #1e341f;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-stone-100);
+}
