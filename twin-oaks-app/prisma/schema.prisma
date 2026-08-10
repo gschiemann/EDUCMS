@@ -1,0 +1,150 @@
+// Twin Oaks OS — V1 data model (financial core + equipment).
+//
+// Dev runs on SQLite (zero-setup). The schema is written to port cleanly to
+// Postgres (Supabase) for production: no SQLite-only types, money stored as
+// integer cents, enum-like fields are strings whose allowed values live in
+// src/lib/domain.ts (SQLite has no native enums; keep that file the source
+// of truth).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Vendor {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  notes     String?
+  createdAt DateTime  @default(now())
+  expenses  Expense[]
+}
+
+// A receipt is first-class: it can exist before it is categorized (the Inbox),
+// and it permanently stores the original image/PDF once attached.
+model Receipt {
+  id            String    @id @default(cuid())
+  status        String    @default("INBOX") // see RECEIPT_STATUSES in src/lib/domain.ts
+  filePath      String? // storage key under UPLOAD_DIR; null = record without a file yet
+  fileName      String?
+  mimeType      String?
+  fileSize      Int?
+  vendorName    String?
+  receiptDate   DateTime?
+  totalCents    Int?
+  salesTaxCents Int?
+  paymentMethod String?
+  receiptNumber String?
+  notes         String?
+  expenseId     String?
+  expense       Expense?  @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status])
+  @@index([expenseId])
+}
+
+model Expense {
+  id                 String              @id @default(cuid())
+  date               DateTime
+  vendorId           String?
+  vendor             Vendor?             @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  vendorName         String? // denormalized for fast entry + search
+  description        String
+  amountCents        Int
+  salesTaxCents      Int?
+  paymentMethod      String?
+  division           String // FARM | TECH | SHARED — see DIVISIONS
+  accountingCategory String // bookkeeping/tax category — see ACCOUNTING_CATEGORIES
+  managementCategory String? // free-form drill-down path, e.g. "Farm Equipment > Tractor #1 > Hydraulic system"
+  businessPurpose    String?
+  assetId            String?
+  asset              Asset?              @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  taxYear            Int
+  // Tax-safety principle: the app NEVER assumes deductibility. New expenses
+  // default to NEEDS_REVIEW until a human classifies them.
+  taxStatus          String              @default("NEEDS_REVIEW") // see TAX_STATUSES
+  isCapital          Boolean             @default(false) // flagged major purchase (depreciation / §179 review)
+  notes              String?
+  receipts           Receipt[]
+  maintenanceRecords MaintenanceRecord[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@index([date])
+  @@index([taxYear, division])
+  @@index([accountingCategory])
+  @@index([taxStatus])
+  @@index([assetId])
+}
+
+model Income {
+  id            String   @id @default(cuid())
+  date          DateTime
+  source        String? // customer/buyer name (free-form until Customers arrive in V2)
+  description   String
+  amountCents   Int
+  division      String // FARM | TECH | SHARED
+  category      String // see INCOME_CATEGORIES
+  paymentMethod String?
+  notes         String?
+  taxYear       Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([date])
+  @@index([taxYear, division])
+}
+
+// Equipment / capital asset profile: tractors, printers, trailers, buildings…
+model Asset {
+  id                 String              @id @default(cuid())
+  name               String // "Tractor #1", "Bambu H2D #1"
+  assetTag           String? // internal asset ID
+  kind               String // see ASSET_KINDS
+  division           String // FARM | TECH | SHARED
+  manufacturer       String?
+  model              String?
+  serialNumber       String?
+  year               Int?
+  purchaseDate       DateTime?
+  purchasePriceCents Int?
+  purchasedFrom      String?
+  financingNotes     String?
+  warrantyNotes      String?
+  currentHours       Float? // engine hours (tractors, printers use print-hours)
+  currentMileage     Float? // vehicles/trailers
+  status             String              @default("ACTIVE") // ACTIVE | SOLD | RETIRED
+  notes              String?
+  expenses           Expense[]
+  maintenance        MaintenanceRecord[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@index([kind])
+  @@index([division])
+}
+
+model MaintenanceRecord {
+  id             String   @id @default(cuid())
+  assetId        String
+  asset          Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  date           DateTime
+  hoursAtService Float?
+  category       String // see MAINTENANCE_CATEGORIES
+  description    String
+  partsCostCents Int?
+  laborCostCents Int?
+  vendorName     String?
+  notes          String?
+  expenseId      String?
+  expense        Expense? @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([assetId, date])
+}
