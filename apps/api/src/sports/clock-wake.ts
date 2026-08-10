@@ -4,14 +4,17 @@
  * SportsService → ClockAdvanceService via constructor injection would be a
  * circular dependency (ClockAdvanceService already injects SportsService).
  *
- * Contract (Phase-2 Domain CLOCK, 2026-08-09): every clock-relevant write
- * path calls wakeClockSweep() so the sweep returns to its 1s cadence
- * immediately — the operator clock-start (clockAction), the machine feed
- * (ingest / ingestByFeed), and CTS snapshot ingest (ingestCtsSnapshot).
- * Each gates the wake on the write leaving a RUNNING clock, mirroring the
- * clockAction gate. Remaining non-waking paths (raw prisma writes, admin
- * scripts) are still covered by the idle sweep's 30s fallback — for those
- * the wake stays a latency optimization, not a correctness requirement.
+ * Contract (Phase-2 Domain CLOCK, 2026-08-09): every write path that can
+ * leave the Game clock COLUMNS running calls wakeClockSweep() so the sweep
+ * returns to its 1s cadence immediately — the operator clock-start
+ * (clockAction) and the machine feed (ingest / ingestByFeed). Each gates
+ * the wake on the write leaving a RUNNING column clock. ingestCtsSnapshot
+ * deliberately does NOT wake: CTS clock state lives in the stats JSON, not
+ * the columns the sweep queries, so a wake there is a no-op that would
+ * defeat the idle-skip at snapshot rate (up to 5 Hz). Remaining non-waking
+ * paths (raw prisma writes, admin scripts) are still covered by the idle
+ * sweep's 30s fallback — for those the wake stays a latency optimization,
+ * not a correctness requirement.
  */
 let wakePending = false;
 

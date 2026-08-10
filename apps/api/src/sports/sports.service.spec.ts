@@ -1078,6 +1078,25 @@ describe('SportsService — set-sport rules', () => {
     expect(r.status).toBe('FINAL');
   });
 
+  it('volleyball: suppressAutoFinal credits the winning set but HOLDS the game — going FINAL stays operator-only (console share-link boundary)', async () => {
+    const { service } = setup();
+    const g = await newGame(service, 'volleyball');
+    let r: any;
+    for (let i = 0; i < 3; i++) {
+      await service.adjustScore(TENANT, g.id, { team: 'away', delta: 10 });
+      r = await service.adjustScore(TENANT, g.id, { team: 'home', delta: 25 }, undefined, {
+        suppressAutoFinal: true,
+      });
+    }
+    // Set majority is credited and the rally score zeroed — the board
+    // tells the truth about the sets — but the match is NOT ended.
+    expect(r.stats).toMatchObject({ homeSets: 3 });
+    expect(r.status).not.toBe('FINAL');
+    expect(r.homeScore).toBe(0);
+    expect(r.awayScore).toBe(0);
+    expect(r.endedAt ?? null).toBeNull();
+  });
+
   it('pickleball: reaching 11 by 2 wins the game', async () => {
     const { service } = setup();
     const g = await newGame(service, 'pickleball');

@@ -34,6 +34,7 @@ import {
   projectClockMs,
   fmtPadClock,
   parsePadClock,
+  sportHasTeamTimeouts,
   type PadClockAnchor,
 } from '@/lib/console-share';
 
@@ -292,6 +293,9 @@ export default function ScorekeeperPadPage() {
   const segName = def?.segment?.name || 'Period';
   const homeTimeouts = num(data.stats?.homeTimeouts, NaN);
   const awayTimeouts = num(data.stats?.awayTimeouts, NaN);
+  // T.O. buttons only for sports that DEFINE team-timeout stats (football /
+  // basketball / water polo) — anywhere else the server rejects /timeout.
+  const hasTimeouts = sportHasTeamTimeouts(def);
   const hasClock = !!def && def.clock.type !== 'none';
   const cues = (def?.celebrations || []).slice(0, 8);
 
@@ -381,7 +385,7 @@ export default function ScorekeeperPadPage() {
               onClick={() =>
                 send('/clock', 'PATCH', { action: data.clockRunning ? 'pause' : 'start' })
               }
-              className={`min-h-[56px] flex-1 rounded-xl text-base font-black uppercase tracking-wide text-white active:opacity-80 ${
+              className={`min-h-[56px] flex-1 rounded-xl text-base font-black uppercase tracking-wide text-white active:opacity-80 disabled:opacity-40 ${
                 data.clockRunning ? 'bg-red-600' : 'bg-emerald-600'
               }`}
             >
@@ -391,7 +395,7 @@ export default function ScorekeeperPadPage() {
               type="button"
               disabled={busy}
               onClick={() => setClockEdit(clockEdit === null ? fmtPadClock(clockNow) : null)}
-              className="ml-3 min-h-[56px] rounded-xl bg-slate-700 px-4 text-sm font-black uppercase tracking-wide text-white active:opacity-80"
+              className="ml-3 min-h-[56px] rounded-xl bg-slate-700 px-4 text-sm font-black uppercase tracking-wide text-white active:opacity-80 disabled:opacity-40"
             >
               Set
             </button>
@@ -432,32 +436,36 @@ export default function ScorekeeperPadPage() {
         </section>
       )}
 
-      {/* segment + timeouts */}
-      <section className="mx-4 mt-3 grid grid-cols-3 gap-3">
+      {/* segment + timeouts (T.O. only for sports that define them) */}
+      <section className={`mx-4 mt-3 grid gap-3 ${hasTimeouts ? 'grid-cols-3' : 'grid-cols-1'}`}>
         <button
           type="button"
           disabled={busy}
           onClick={() => send('/segment', 'PATCH', { delta: 1 })}
-          className="min-h-[56px] rounded-xl bg-slate-800 text-[13px] font-black uppercase tracking-wide text-white active:opacity-80"
+          className="min-h-[56px] rounded-xl bg-slate-800 text-[13px] font-black uppercase tracking-wide text-white active:opacity-80 disabled:opacity-40"
         >
           Next {segName}
         </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => send('/timeout', 'POST', { team: 'home' })}
-          className="min-h-[56px] rounded-xl bg-slate-800 text-[13px] font-black uppercase tracking-wide text-white active:opacity-80"
-        >
-          Home T.O.{isFinite(homeTimeouts) ? ` (${homeTimeouts})` : ''}
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => send('/timeout', 'POST', { team: 'away' })}
-          className="min-h-[56px] rounded-xl bg-slate-800 text-[13px] font-black uppercase tracking-wide text-white active:opacity-80"
-        >
-          Away T.O.{isFinite(awayTimeouts) ? ` (${awayTimeouts})` : ''}
-        </button>
+        {hasTimeouts && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => send('/timeout', 'POST', { team: 'home' })}
+            className="min-h-[56px] rounded-xl bg-slate-800 text-[13px] font-black uppercase tracking-wide text-white active:opacity-80 disabled:opacity-40"
+          >
+            Home T.O.{isFinite(homeTimeouts) ? ` (${homeTimeouts})` : ''}
+          </button>
+        )}
+        {hasTimeouts && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => send('/timeout', 'POST', { team: 'away' })}
+            className="min-h-[56px] rounded-xl bg-slate-800 text-[13px] font-black uppercase tracking-wide text-white active:opacity-80 disabled:opacity-40"
+          >
+            Away T.O.{isFinite(awayTimeouts) ? ` (${awayTimeouts})` : ''}
+          </button>
+        )}
       </section>
 
       {/* celebration cue row */}
@@ -473,7 +481,7 @@ export default function ScorekeeperPadPage() {
                 type="button"
                 disabled={busy}
                 onClick={() => send('/cue', 'POST', { key: c.key })}
-                className="min-h-[64px] rounded-xl bg-slate-900 px-1 text-center active:opacity-80"
+                className="min-h-[64px] rounded-xl bg-slate-900 px-1 text-center active:opacity-80 disabled:opacity-40"
               >
                 <div className="text-xl">{c.emoji}</div>
                 <div className="mt-0.5 text-[10px] font-bold leading-tight text-slate-300">
@@ -534,7 +542,7 @@ function PadCol({
             type="button"
             disabled={busy}
             onClick={() => onDelta(inc)}
-            className="min-h-[56px] rounded-xl bg-slate-800 text-xl font-black text-white active:opacity-80"
+            className="min-h-[56px] rounded-xl bg-slate-800 text-xl font-black text-white active:opacity-80 disabled:opacity-40"
           >
             +{inc}
           </button>
@@ -543,7 +551,7 @@ function PadCol({
           type="button"
           disabled={busy}
           onClick={() => onDelta(-1)}
-          className="min-h-[56px] rounded-xl bg-slate-800/60 text-xl font-black text-slate-400 active:opacity-80"
+          className="min-h-[56px] rounded-xl bg-slate-800/60 text-xl font-black text-slate-400 active:opacity-80 disabled:opacity-40"
           aria-label={`${label} minus 1 (correction)`}
         >
           −1

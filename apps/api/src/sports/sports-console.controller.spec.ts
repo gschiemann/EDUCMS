@@ -54,6 +54,19 @@ function newGameId(): string {
   return `11111111-2222-4333-8444-${String(gameSeq).padStart(12, '0')}`;
 }
 
+/** Unique per-test client IPs — the pre-verify limiter keys on the client
+ *  address, so sharing one across tests would share its window too. With
+ *  TRUSTED_PROXY_HOPS unset the resolver clamps a short X-Forwarded-For
+ *  chain to its leftmost entry, so a single-entry header IS the client. */
+let ipSeq = 0;
+function newIp(): string {
+  ipSeq += 1;
+  return `203.0.113.${ipSeq}`;
+}
+function reqFrom(ip: string = newIp()) {
+  return { headers: { 'x-forwarded-for': ip }, socket: { remoteAddress: ip } } as any;
+}
+
 function makeSportsMock(meta?: Partial<{
   tenantId: string;
   consoleTokenVersion: number;
@@ -101,7 +114,7 @@ describe('SportsConsoleController — allowlist surface', () => {
     // Adding ANY method to this controller must fail here and force a
     // security review of the new route + its CSRF exemption posture.
     expect(methods).toEqual(
-      ['authorize', 'clock', 'constructor', 'cue', 'score', 'segment', 'session', 'throwInvalid', 'timeout'].sort(),
+      ['authorize', 'clock', 'constructor', 'cue', 'score', 'segment', 'session', 'throwInvalid', 'throwRateLimited', 'timeout'].sort(),
     );
   });
 });
@@ -112,7 +125,7 @@ describe('SportsConsoleController — delegation with server-resolved tenant', (
     const sports = makeSportsMock();
     const ctl = makeController(sports);
     const tok = makeConsoleToken(gameId, { version: 0 });
-    const out = await ctl.session(tok);
+    const out = await ctl.session(tok, reqFrom());
     expect(out).toEqual({
       ok: true,
       gameId,
@@ -124,13 +137,19 @@ describe('SportsConsoleController — delegation with server-resolved tenant', (
     expect(sports.getConsoleShareMeta).toHaveBeenCalledWith(gameId);
   });
 
-  it('score with delta → adjustScore(tenantFromGame, gameId, dto)', async () => {
+  it('score with delta → adjustScore(tenantFromGame, gameId, dto) WITH suppressAutoFinal — going FINAL stays operator-only', async () => {
     const gameId = newGameId();
     const sports = makeSportsMock();
     const ctl = makeController(sports);
     const tok = makeConsoleToken(gameId, { version: 0 });
-    await ctl.score(tok, { team: 'home', delta: 3 });
-    expect(sports.adjustScore).toHaveBeenCalledWith(TENANT, gameId, { team: 'home', delta: 3 });
+    await ctl.score(tok, { team: 'home', delta: 3 }, reqFrom());
+    expect(sports.adjustScore).toHaveBeenCalledWith(
+      TENANT,
+      gameId,
+      { team: 'home', delta: 3 },
+      undefined,
+      { suppressAutoFinal: true },
+    );
     expect(sports.setScore).not.toHaveBeenCalled();
   });
 
@@ -139,7 +158,7 @@ describe('SportsConsoleController — delegation with server-resolved tenant', (
     const sports = makeSportsMock();
     const ctl = makeController(sports);
     const tok = makeConsoleToken(gameId, { version: 0 });
-    await ctl.score(tok, { homeScore: 21, awayScore: 14 });
+    await ctl.score(tok, { homeScore: 21, awayScore: 14 }, reqFrom());
     expect(sports.setScore).toHaveBeenCalledWith(TENANT, gameId, { homeScore: 21, awayScore: 14 });
     expect(sports.adjustScore).not.toHaveBeenCalled();
   });
@@ -149,13 +168,13 @@ describe('SportsConsoleController — delegation with server-resolved tenant', (
     const sports = makeSportsMock();
     const ctl = makeController(sports);
     const tok = makeConsoleToken(gameId, { version: 0 });
-    await ctl.clock(tok, { action: 'start' });
+    await ctl.clock(tok, { action: 'start' }, reqFrom());
     expect(sports.clockAction).toHaveBeenCalledWith(TENANT, gameId, { action: 'start' });
-    await ctl.clock(tok, { action: 'set', ms: 480_000 });
+    await ctl.clock(tok, { action: 'set', ms: 480_000 }, reqFrom());
     expect(sports.clockAction).toHaveBeenCalledWith(TENANT, gameId, { action: 'set', ms: 480_000 });
-    await ctl.segment(tok, { delta: 1 });
+    await ctl.segment(tok, { delta: 1 }, reqFrom());
     expect(sports.setSegment).toHaveBeenCalledWith(TENANT, gameId, { delta: 1 });
-    await ctl.timeout(tok, { team: 'away' });
+    await ctl.timeout(tok, { team: 'away' }, reqFrom());
     expect(sports.callTimeout).toHaveBeenCalledWith(TENANT, gameId, { team: 'away' });
   });
 
@@ -174,7 +193,7 @@ describe('SportsConsoleController — delegation with server-resolved tenant', (
       scorerName: 'x',
       scorerPhotoUrl: 'https://evil.example/x.png',
       target: 'BOARD',
-    } as any);
+    } as any, reqFrom());
     expect(sports.fireCue).toHaveBeenCalledTimes(1);
     expect(sports.fireCue).toHaveBeenCalledWith(TENANT, gameId, { key: 'touchdown', team: 'home' });
     const dto = sports.fireCue.mock.calls[0][2];
@@ -188,7 +207,7 @@ describe('SportsConsoleController — token gate', () => {
     const sports = makeSportsMock({ consoleTokenVersion: 1 });
     const ctl = makeController(sports);
     const tok = makeConsoleToken(gameId, { version: 0 });
-    await expectHttpError(ctl.score(tok, { team: 'home', delta: 2 }), 401);
+    await expectHttpError(ctl.score(tok, { team: 'home', delta: 2 }, reqFrom()), 401);
     expect(sports.adjustScore).not.toHaveBeenCalled();
     expect(sports.setScore).not.toHaveBeenCalled();
   });
@@ -202,7 +221,7 @@ describe('SportsConsoleController — token gate', () => {
       makeFeedToken(gameId), // bare feed token
       makeFeedToken(gameId, { version: 0, ttlSeconds: 3600 }), // structured feed token
     ]) {
-      await expectHttpError(ctl.score(bad, { team: 'home', delta: 1 }), 401);
+      await expectHttpError(ctl.score(bad, { team: 'home', delta: 1 }, reqFrom()), 401);
     }
     expect(sports.getConsoleShareMeta).not.toHaveBeenCalled();
     expect(sports.adjustScore).not.toHaveBeenCalled();
@@ -213,7 +232,7 @@ describe('SportsConsoleController — token gate', () => {
     const sports = makeSportsMock(null);
     const ctl = makeController(sports);
     const tok = makeConsoleToken(gameId, { version: 0 });
-    await expectHttpError(ctl.session(tok), 401);
+    await expectHttpError(ctl.session(tok, reqFrom()), 401);
     expect(sports.getConsoleShareMeta).toHaveBeenCalledWith(gameId);
   });
 
@@ -224,25 +243,77 @@ describe('SportsConsoleController — token gate', () => {
     const tok = makeConsoleToken(gameId, { version: 0 });
     const parts = tok.split('.');
     parts[4] = (parts[4][0] === 'f' ? 'e' : 'f') + parts[4].slice(1);
-    await expectHttpError(ctl.clock(parts.join('.'), { action: 'start' }), 401);
+    await expectHttpError(ctl.clock(parts.join('.'), { action: 'start' }, reqFrom()), 401);
     expect(sports.clockAction).not.toHaveBeenCalled();
   });
 });
 
-describe('SportsConsoleController — per-game rate limit', () => {
-  it('40/10s per game, then 429 (rotating tokens for the same game shares the window)', async () => {
+describe('SportsConsoleController — rate limits (per-IP pre-verify, per-game post-verify)', () => {
+  it('40/10s per game for AUTHENTICATED taps, then 429 (rotating tokens for the same game shares the window)', async () => {
     const gameId = newGameId();
     const sports = makeSportsMock();
     const ctl = makeController(sports);
     const tok = makeConsoleToken(gameId, { version: 0 });
+    const volunteerIp = newIp();
     for (let i = 0; i < 40; i += 1) {
-      await ctl.score(tok, { team: 'home', delta: 1 });
+      await ctl.score(tok, { team: 'home', delta: 1 }, reqFrom(volunteerIp));
     }
     // 41st call — and also prove a FRESH token for the same game doesn't
     // reset the window (the key is the embedded game id, not the token).
     const rotated = makeConsoleToken(gameId, { version: 0, ttlSeconds: 7200 });
-    await expectHttpError(ctl.score(rotated, { team: 'home', delta: 1 }), 429);
+    await expectHttpError(
+      ctl.score(rotated, { team: 'home', delta: 1 }, reqFrom(volunteerIp)),
+      429,
+    );
     expect(sports.adjustScore).toHaveBeenCalledTimes(40);
+  });
+
+  it("garbage-MAC hammering NEVER spends the volunteer's per-game budget (the lockout the old pre-verify key allowed)", async () => {
+    const gameId = newGameId();
+    const sports = makeSportsMock();
+    const ctl = makeController(sports);
+    const attackerIp = newIp();
+    // 50 well-shaped tokens with tampered MACs for the volunteer's game —
+    // more than the whole 40/10s game budget. Every one 401s at the MAC
+    // gate and spends only the ATTACKER's IP window.
+    for (let i = 0; i < 50; i += 1) {
+      const tok = makeConsoleToken(gameId, { version: 0 });
+      const parts = tok.split('.');
+      parts[4] = (parts[4][0] === 'f' ? 'e' : 'f') + parts[4].slice(1);
+      await expectHttpError(
+        ctl.score(parts.join('.'), { team: 'home', delta: 1 }, reqFrom(attackerIp)),
+        401,
+      );
+    }
+    // The legitimate volunteer's next tap still goes straight through.
+    const good = makeConsoleToken(gameId, { version: 0 });
+    await ctl.score(good, { team: 'home', delta: 1 }, reqFrom(newIp()));
+    expect(sports.adjustScore).toHaveBeenCalledTimes(1);
+  });
+
+  it('one address hammering garbage caps at 80/10s pre-verify — the 81st is 429 with NO DB read', async () => {
+    const gameId = newGameId();
+    const sports = makeSportsMock();
+    const ctl = makeController(sports);
+    const attackerIp = newIp();
+    for (let i = 0; i < 80; i += 1) {
+      const tok = makeConsoleToken(gameId, { version: 0 });
+      const parts = tok.split('.');
+      parts[4] = (parts[4][0] === 'f' ? 'e' : 'f') + parts[4].slice(1);
+      await expectHttpError(
+        ctl.score(parts.join('.'), { team: 'home', delta: 1 }, reqFrom(attackerIp)),
+        401,
+      );
+    }
+    expect(sports.getConsoleShareMeta).toHaveBeenCalledTimes(80);
+    const tok = makeConsoleToken(gameId, { version: 0 });
+    await expectHttpError(
+      ctl.score(tok, { team: 'home', delta: 1 }, reqFrom(attackerIp)),
+      429,
+    );
+    // The capped call was rejected BEFORE the meta read.
+    expect(sports.getConsoleShareMeta).toHaveBeenCalledTimes(80);
+    expect(sports.adjustScore).not.toHaveBeenCalled();
   });
 });
 

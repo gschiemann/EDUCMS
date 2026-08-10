@@ -146,7 +146,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
       //
       // `originalUrl || url` rather than `req.path` — see the note in
       // request-log.interceptor.ts and csrf.middleware.ts:200-206.
-      const routePath = String(req?.originalUrl ?? req?.url ?? '').split('?')[0] || 'unknown';
+      // The scorekeeper console carries its credential in the PATH
+      // (/sports/console/<token>/…), so the query-strip alone doesn't cover
+      // it — redact that one segment here too (same rule as the request-log
+      // interceptor, so neither sink is "the one that still leaks").
+      const routePath =
+        (String(req?.originalUrl ?? req?.url ?? '').split('?')[0] || 'unknown').replace(
+          /(\/sports\/console\/)[^/]+/,
+          '$1:token',
+        );
       try {
         traceId = Sentry.withScope((scope) => {
           scope.setTag('route', routePath);

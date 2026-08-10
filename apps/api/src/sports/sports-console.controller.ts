@@ -1,11 +1,13 @@
 import {
-  Controller, Get, Post, Patch, Param, Body,
+  Controller, Get, Post, Patch, Param, Body, Req,
   HttpException, HttpStatus,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { SportsService } from './sports.service';
 import { verifyConsoleToken, parseConsoleTokenGameId } from './sports-console-token';
 import { RedisService } from '../realtime/redis.service';
 import { checkIngestLimit } from '../security/ingest-rate-limit';
+import { clientIpFromRequest } from '../security/client-ip';
 
 /**
  * VenueOS Sports — Phase-2 Domain SHARE. The PUBLIC scorekeeper console.
@@ -62,6 +64,16 @@ export class SportsConsoleController {
   // ingest-rate-limit.ts (Redis fixed window, in-memory fallback).
   private static readonly WINDOW_MS = 10_000;
   private static readonly MAX_PER_WINDOW = 40;
+  // Pre-verify budget keyed per CLIENT IP (refuter P2, Phase-2 SHARE):
+  // the per-game budget above is only spent AFTER the MAC verifies, so an
+  // attacker who knows the public game id can no longer drain the
+  // volunteer's window with garbage tokens — their hammering is capped
+  // against their OWN address here instead. 2× the per-game budget so the
+  // IP gate can never bind first for the one legitimate pad. Residual: an
+  // attacker sharing the venue NAT can still drain this shared-IP bucket,
+  // a far narrower threat than "anyone on the internet" (and generic
+  // DDoS territory the edge owns, not this controller).
+  private static readonly IP_MAX_PER_WINDOW = 80;
 
   constructor(
     private readonly sports: SportsService,
@@ -71,37 +83,51 @@ export class SportsConsoleController {
   /**
    * Shared per-request gate, in the same defensive order as the feed
    * ingest: (1) shape-parse the token — garbage is rejected before any
-   * I/O; (2) rate-limit keyed by the game id EMBEDDED in the token — the
-   * key survives token rotation, so minting/mangling fresh garbage tokens
-   * for the same game can't dodge the limit; (3) ONE small DB read for
+   * I/O; (2) pre-verify rate-limit keyed per CLIENT IP — a garbage-MAC
+   * hammerer spends only their own budget, so they can't lock the
+   * legitimate volunteer out (refuter P2; the old key was the
+   * attacker-suppliable game id); (3) ONE small DB read for
    * {tenantId, consoleTokenVersion}; (4) constant-time MAC verify against
-   * the live version (bumping the column revokes every link). A missing
-   * game and a bad token return the SAME 401 — no game-existence oracle.
+   * the live version (bumping the column revokes every link); (5) the
+   * per-game budget, spent ONLY by authenticated taps — the key survives
+   * token rotation, so a leaked link scripted from many addresses still
+   * shares one window. A missing game and a bad token return the SAME
+   * 401 — no game-existence oracle.
    */
-  private async authorize(token: string): Promise<{
+  private async authorize(token: string, req: Request): Promise<{
     gameId: string;
     tenantId: string;
     meta: NonNullable<Awaited<ReturnType<SportsService['getConsoleShareMeta']>>>;
   }> {
     const gameId = parseConsoleTokenGameId(token);
     if (!gameId) this.throwInvalid();
+    const ip = clientIpFromRequest(req) || 'unknown';
+    const { limited: ipLimited } = await checkIngestLimit(
+      this.redis.publisher,
+      `console-ip:${ip}`,
+      SportsConsoleController.IP_MAX_PER_WINDOW,
+      SportsConsoleController.WINDOW_MS,
+    );
+    if (ipLimited) this.throwRateLimited();
+    const meta = await this.sports.getConsoleShareMeta(gameId);
+    if (!meta || !verifyConsoleToken(gameId, token, meta.consoleTokenVersion)) {
+      this.throwInvalid();
+    }
     const { limited } = await checkIngestLimit(
       this.redis.publisher,
       `console:${gameId}`,
       SportsConsoleController.MAX_PER_WINDOW,
       SportsConsoleController.WINDOW_MS,
     );
-    if (limited) {
-      throw new HttpException(
-        { code: 'SPORTS_CONSOLE_RATE_LIMITED', message: 'Console rate limit exceeded' },
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
-    const meta = await this.sports.getConsoleShareMeta(gameId);
-    if (!meta || !verifyConsoleToken(gameId, token, meta.consoleTokenVersion)) {
-      this.throwInvalid();
-    }
+    if (limited) this.throwRateLimited();
     return { gameId, tenantId: meta!.tenantId, meta: meta! };
+  }
+
+  private throwRateLimited(): never {
+    throw new HttpException(
+      { code: 'SPORTS_CONSOLE_RATE_LIMITED', message: 'Console rate limit exceeded' },
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
   }
 
   private throwInvalid(): never {
@@ -123,8 +149,8 @@ export class SportsConsoleController {
    * the public board endpoint, not here.
    */
   @Get(':token/session')
-  async session(@Param('token') token: string) {
-    const { gameId, meta } = await this.authorize(token);
+  async session(@Param('token') token: string, @Req() req: Request) {
+    const { gameId, meta } = await this.authorize(token, req);
     return {
       ok: true,
       gameId,
@@ -135,16 +161,25 @@ export class SportsConsoleController {
     };
   }
 
-  /** Score — same delta-vs-absolute dispatch as the authed controller. */
+  /**
+   * Score — same delta-vs-absolute dispatch as the authed controller,
+   * EXCEPT the delta path passes suppressAutoFinal: volleyball/pickleball
+   * set-and-match scoring may credit the winning set, but going FINAL
+   * stays operator-only (the documented boundary above — a leaked link
+   * must not be able to end a live game on every venue surface).
+   */
   @Patch(':token/score')
   async score(
     @Param('token') token: string,
     @Body() body: { team?: string; delta?: number; homeScore?: number; awayScore?: number },
+    @Req() req: Request,
   ) {
-    const { gameId, tenantId } = await this.authorize(token);
+    const { gameId, tenantId } = await this.authorize(token, req);
     const dto = body || {};
     if (typeof dto.delta === 'number') {
-      return this.sports.adjustScore(tenantId, gameId, dto);
+      return this.sports.adjustScore(tenantId, gameId, dto, undefined, {
+        suppressAutoFinal: true,
+      });
     }
     return this.sports.setScore(tenantId, gameId, dto);
   }
@@ -154,8 +189,9 @@ export class SportsConsoleController {
   async clock(
     @Param('token') token: string,
     @Body() body: { action?: string; ms?: number },
+    @Req() req: Request,
   ) {
-    const { gameId, tenantId } = await this.authorize(token);
+    const { gameId, tenantId } = await this.authorize(token, req);
     return this.sports.clockAction(tenantId, gameId, body || {});
   }
 
@@ -164,8 +200,9 @@ export class SportsConsoleController {
   async segment(
     @Param('token') token: string,
     @Body() body: { segment?: number; delta?: number },
+    @Req() req: Request,
   ) {
-    const { gameId, tenantId } = await this.authorize(token);
+    const { gameId, tenantId } = await this.authorize(token, req);
     return this.sports.setSegment(tenantId, gameId, body || {});
   }
 
@@ -174,8 +211,9 @@ export class SportsConsoleController {
   async timeout(
     @Param('token') token: string,
     @Body() body: { team?: string; type?: string },
+    @Req() req: Request,
   ) {
-    const { gameId, tenantId } = await this.authorize(token);
+    const { gameId, tenantId } = await this.authorize(token, req);
     return this.sports.callTimeout(tenantId, gameId, body || {});
   }
 
@@ -190,8 +228,9 @@ export class SportsConsoleController {
   async cue(
     @Param('token') token: string,
     @Body() body: { key?: string; cueId?: string; team?: 'home' | 'away' },
+    @Req() req: Request,
   ) {
-    const { gameId, tenantId } = await this.authorize(token);
+    const { gameId, tenantId } = await this.authorize(token, req);
     const raw = body || {};
     const dto: { key?: string; cueId?: string; team?: 'home' | 'away' } = {};
     if (typeof raw.key === 'string') dto.key = raw.key;

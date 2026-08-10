@@ -56,6 +56,22 @@ export function padIncrements(def?: { score?: { increments?: number[] } } | null
   return [1];
 }
 
+/**
+ * Whether a sport's definition declares team-timeout stats — the pad's
+ * gate for rendering the Home/Away T.O. buttons (refuter P1, Phase-2
+ * SHARE). Only football / basketball / water polo declare
+ * homeTimeouts/awayTimeouts in their `stats` list, and the server now
+ * rejects `/timeout` for every other sport, so an ungated button would be
+ * a guaranteed dead tap.
+ */
+export function sportHasTeamTimeouts(
+  def?: { stats?: { key?: string }[] } | null,
+): boolean {
+  const stats = def?.stats;
+  if (!Array.isArray(stats)) return false;
+  return stats.some((s) => s?.key === 'homeTimeouts' || s?.key === 'awayTimeouts');
+}
+
 /** The clock anchor a board poll payload carries. `receivedAt` is the
  *  LOCAL Date.now() sampled when the payload landed — serverTime minus it
  *  is the skew term, exactly the projection the board page runs. */

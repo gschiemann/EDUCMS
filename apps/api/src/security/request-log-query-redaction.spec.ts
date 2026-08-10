@@ -83,6 +83,21 @@ describe('SDE-05 — RequestLogInterceptor logs the path, never the query string
     expect(JSON.parse(logged[0]).resource).toBe('/api/v1/playlists');
   });
 
+  it('redacts the scorekeeper console token that rides in the PATH itself (Phase-2 SHARE)', async () => {
+    // Console tokens live in the path, not the query, so the query-strip
+    // alone never covered them — this pins the path-segment redaction.
+    const mac = 'abcdef0123456789abcdef0123456789';
+    const consoleToken = `11111111-2222-4333-8444-000000000001.0.1754000000.86400.${mac}`;
+    const logged = await runInterceptor({
+      originalUrl: `/api/v1/sports/console/${consoleToken}/score`,
+      url: `/api/v1/sports/console/${consoleToken}/score`,
+    });
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).not.toContain(consoleToken);
+    expect(logged[0]).not.toContain(mac);
+    expect(JSON.parse(logged[0]).resource).toBe('/api/v1/sports/console/:token/score');
+  });
+
   it('still does not log non-mutating requests at all', async () => {
     const logged = await runInterceptor({
       method: 'GET',
@@ -104,7 +119,14 @@ describe('SDE-05 — AllExceptionsFilter redacts the query string in both of its
   );
 
   it('computes a query-stripped routePath', () => {
-    expect(src).toMatch(/const routePath = String\(req\?\.originalUrl \?\? req\?\.url \?\? ''\)\.split\('\?'\)\[0\]/);
+    expect(src).toMatch(/String\(req\?\.originalUrl \?\? req\?\.url \?\? ''\)\.split\('\?'\)\[0\]/);
+  });
+
+  it('redacts the console token path segment before either sink sees it', () => {
+    // Same rule as the interceptor: the scorekeeper console credential
+    // rides in the path, so routePath must strip that segment too.
+    expect(src).toMatch(/\\\/sports\\\/console\\\//);
+    expect(src).toContain("'$1:token'");
   });
 
   it('tags Sentry with routePath, not the raw URL', () => {

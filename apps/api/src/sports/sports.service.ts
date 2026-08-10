@@ -1834,6 +1834,7 @@ export class SportsService {
     id: string,
     dto: { team?: string; delta?: number },
     actorUserId?: string,
+    opts?: { suppressAutoFinal?: boolean },
   ) {
     const game = await this.owned(tenantId, id);
     const team = dto.team === 'away' ? 'away' : 'home';
@@ -1903,7 +1904,7 @@ export class SportsService {
     // off the rally score the moment a team reaches the set target.
     const def = this.sportOf((updated as any).sport);
     if (def.key === 'volleyball' || def.key === 'pickleball') {
-      return this.applySetWin(updated, def);
+      return this.applySetWin(updated, def, opts);
     }
     return updated;
   }
@@ -3540,7 +3541,11 @@ export class SportsService {
    * bumps that team's set count, resets the rally score to 0-0, and
    * advances to the next set; winning the majority ends the match.
    */
-  private async applySetWin(game: any, def: SportDefinition): Promise<any> {
+  private async applySetWin(
+    game: any,
+    def: SportDefinition,
+    opts?: { suppressAutoFinal?: boolean },
+  ): Promise<any> {
     const h: number = game.homeScore;
     const a: number = game.awayScore;
     const deciding = game.segment >= def.segment.count;
@@ -3566,6 +3571,11 @@ export class SportsService {
     // clobbered by this set-credit write. Merge logic is unchanged.
     let matchOver = false;
     let dataSegment: number | undefined;
+    // Scorekeeper share-link boundary (refuter P2, Phase-2 SHARE): a
+    // console-token mutation may credit the winning set, but the FINAL
+    // transition stays operator-only — the game HOLDS at LIVE (set
+    // majority visible on the board) until the operator ends it.
+    const holdFinal = opts?.suppressAutoFinal === true;
     const { updated } = await this.withStatsTx(game.id, 'sports.applySetWin', (_tx, freshGame) => {
       const stats = { ...((freshGame.stats as Record<string, unknown>) || {}) };
       const wonKey = winner === 'home' ? homeKey : awayKey;
@@ -3581,10 +3591,14 @@ export class SportsService {
         homeScore: 0,
         awayScore: 0,
       };
-      if (matchOver) {
+      if (matchOver && !holdFinal) {
         data.status = 'FINAL';
         data.endedAt = new Date();
         data.clockRunning = false;
+      } else if (matchOver) {
+        // Set credited; segment stays put (already the deciding set).
+        dataSegment = freshGame.segment;
+        data.segment = dataSegment;
       } else {
         dataSegment = Math.min(def.segment.count, freshGame.segment + 1);
         data.segment = dataSegment;
@@ -3593,8 +3607,8 @@ export class SportsService {
     });
     await this.record(
       game.id,
-      matchOver ? 'STATUS' : 'SEGMENT',
-      matchOver ? { status: 'FINAL' } : { segment: dataSegment },
+      matchOver && !holdFinal ? 'STATUS' : 'SEGMENT',
+      matchOver && !holdFinal ? { status: 'FINAL' } : { segment: dataSegment },
     );
 
     // T2-10: fire the 'setWin' celebration CUE — it was dead code before
@@ -4728,6 +4742,14 @@ export class SportsService {
     const game = await this.owned(tenantId, gameId);
     const def = this.sportOf(game.sport);
 
+    // Only sports whose definition declares team-timeout stats (football /
+    // basketball / water polo) can call one — for every other sport the
+    // decrement below would compute NaN and persist `null` into the stats
+    // JSON while still pausing the clock (refuter P1, Phase-2 SHARE).
+    if (!def.stats.some((s) => s.key === statKey)) {
+      throw new BadRequestException(`${def.name} has no team timeouts`);
+    }
+
     const currentStats: Record<string, unknown> =
       game.stats && typeof game.stats === 'object'
         ? { ...(game.stats as Record<string, unknown>) }
@@ -5809,20 +5831,11 @@ export class SportsService {
     // CTS data — fine in steady state but jarring at boot.
     this.invalidateBoardCache(gameId);
 
-    // CTS counterpart of clockAction's wakeClockSweep (efficiency #3): a
-    // snapshot that carries clock state must return the auto-advance sweep
-    // to its 1s cadence — a CTS-driven quarter could otherwise sit at 0:00
-    // for up to 30s of idle backoff before the period advances. Gate
-    // mirrors the operator path (wake only toward a RUNNING clock): use
-    // the snapshot's own running flag when present, else the fresh row's
-    // column state the sweep actually queries.
-    if (cleaned.clockMs !== undefined || cleaned.clockRunning !== undefined) {
-      const runningAfter =
-        cleaned.clockRunning !== undefined
-          ? cleaned.clockRunning
-          : syntheticNext.clockRunning === true;
-      if (runningAfter) wakeClockSweep();
-    }
+    // Deliberately NO wakeClockSweep() here (refuter P2, Phase-2 CLOCK):
+    // CTS clock state lives in the stats JSON (`cts` sub-object) — this
+    // path never writes the Game.clockMs/clockRunning COLUMNS the
+    // auto-advance sweep queries, so a wake buys nothing while a 5 Hz
+    // snapshot stream would permanently defeat the sweep's idle-skip.
 
     // Score GameEvent + AUTO celebration — same paper trail as adjustScore.
     // Only fires when the CTS-reported score differs from the prior CTS

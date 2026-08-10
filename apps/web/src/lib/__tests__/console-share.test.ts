@@ -9,8 +9,10 @@ import {
   projectClockMs,
   fmtPadClock,
   parsePadClock,
+  sportHasTeamTimeouts,
   type PadClockAnchor,
 } from '../console-share';
+import { findSport } from '@cms/api-types';
 
 const GAME = 'a3d1b2c4-5678-4abc-9def-000000000001';
 const MAC = '0123456789abcdef0123456789abcdef';
@@ -62,6 +64,28 @@ describe('padIncrements — sport-aware quick buttons', () => {
     expect(padIncrements(undefined)).toEqual([1]);
     expect(padIncrements(null)).toEqual([1]);
     expect(padIncrements({})).toEqual([1]);
+  });
+});
+
+describe('sportHasTeamTimeouts — the T.O. button gate (refuter P1)', () => {
+  it('is true for exactly the sports whose defs declare team-timeout stats', () => {
+    // Pinned against the REAL sport definitions so a def change re-decides
+    // the pad automatically: football / basketball / water polo today.
+    expect(sportHasTeamTimeouts(findSport('football'))).toBe(true);
+    expect(sportHasTeamTimeouts(findSport('basketball'))).toBe(true);
+    expect(sportHasTeamTimeouts(findSport('water_polo'))).toBe(true);
+    // The sports the finding named as the NaN path: no timeout stats.
+    expect(sportHasTeamTimeouts(findSport('volleyball'))).toBe(false);
+    expect(sportHasTeamTimeouts(findSport('soccer'))).toBe(false);
+    expect(sportHasTeamTimeouts(findSport('baseball'))).toBe(false);
+  });
+
+  it('is false for missing/unknown defs and malformed stats lists', () => {
+    expect(sportHasTeamTimeouts(undefined)).toBe(false);
+    expect(sportHasTeamTimeouts(null)).toBe(false);
+    expect(sportHasTeamTimeouts({} as never)).toBe(false);
+    expect(sportHasTeamTimeouts({ stats: 'nope' } as never)).toBe(false);
+    expect(sportHasTeamTimeouts({ stats: [{ key: 'down' }] })).toBe(false);
   });
 });
 

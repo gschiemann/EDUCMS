@@ -10,7 +10,9 @@
  *
  * Mint on open: the sheet mounts this component → POST
  * /sports/games/:id/console-share issues a fresh token against the game's
- * live consoleTokenVersion (server AuditLogs the mint). Copy-link + QR
+ * live consoleTokenVersion (server AuditLogs the mint) — UNLESS the
+ * operator revoked in this tab session, which pins the revoked panel
+ * until an explicit "Create a new link" (see revokeFlagKey below). Copy-link + QR
  * (client-side qrcode lib, same privacy rationale as RoleViewQr — the
  * token is a WRITE credential and must never round-trip a third-party QR
  * service). Revoke (with confirm) bumps the version server-side, killing
@@ -30,6 +32,34 @@ interface MintResponse {
   consoleTokenVersion?: number;
 }
 
+/**
+ * Revoke must stick across sheet remounts (refuter P2, Phase-2 SHARE):
+ * without this, "Revoke all links" → close sheet → reopen silently
+ * auto-mints a fresh live 24h credential and renders it as a QR — the
+ * exact re-arm the operator just said no to. A sessionStorage flag per
+ * game suppresses the auto-mint until the operator explicitly clicks
+ * "Create a new link" (per-tab scope is the right blast radius: another
+ * device/operator opening the sheet is a fresh decision, not this one's).
+ */
+function revokeFlagKey(gameId: string): string {
+  return `venueos_console_share_revoked_${gameId}`;
+}
+function hasRevokeFlag(gameId: string): boolean {
+  try {
+    return sessionStorage.getItem(revokeFlagKey(gameId)) === '1';
+  } catch {
+    return false;
+  }
+}
+function setRevokeFlag(gameId: string, on: boolean): void {
+  try {
+    if (on) sessionStorage.setItem(revokeFlagKey(gameId), '1');
+    else sessionStorage.removeItem(revokeFlagKey(gameId));
+  } catch {
+    /* storage blocked (private mode) — degrade to old per-mount behavior */
+  }
+}
+
 export function ShareConsoleLink({ gameId }: { gameId: string }) {
   const [state, setState] = useState<'loading' | 'ready' | 'revoked' | 'error'>('loading');
   const [url, setUrl] = useState('');
@@ -41,6 +71,7 @@ export function ShareConsoleLink({ gameId }: { gameId: string }) {
   const mint = useCallback(async () => {
     setState('loading');
     setConfirming(false);
+    setRevokeFlag(gameId, false);
     try {
       const res = await apiFetch<MintResponse>(`/sports/games/${gameId}/console-share`, {
         method: 'POST',
@@ -62,8 +93,14 @@ export function ShareConsoleLink({ gameId }: { gameId: string }) {
   }, [gameId]);
 
   useEffect(() => {
+    // A remount after "Revoke all links" holds at the revoked panel —
+    // minting again requires the explicit "Create a new link" click.
+    if (hasRevokeFlag(gameId)) {
+      setState('revoked');
+      return;
+    }
     mint();
-  }, [mint]);
+  }, [gameId, mint]);
 
   useEffect(() => {
     if (!url) {
@@ -80,6 +117,7 @@ export function ShareConsoleLink({ gameId }: { gameId: string }) {
   const revoke = async () => {
     try {
       await apiFetch(`/sports/games/${gameId}/console-share`, { method: 'DELETE' });
+      setRevokeFlag(gameId, true);
       setUrl('');
       setQr('');
       setState('revoked');

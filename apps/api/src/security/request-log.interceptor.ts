@@ -65,7 +65,14 @@ export class RequestLogInterceptor implements NestInterceptor {
     // nothing about incident forensics changes here.
     const resourcePath = String(
       (req as any).originalUrl || (req as any).url || (req as any).path || '',
-    ).split('?')[0];
+    )
+      .split('?')[0]
+      // Phase-2 SHARE (refuter P2, 2026-08-10) — the scorekeeper console is
+      // the one route family whose credential rides in the PATH itself
+      // (/sports/console/<token>/…), so the query-strip above doesn't cover
+      // it: without this, every pad tap copies a live game-control token
+      // into stdout — the same leak class SDE-05 closed for feed tokens.
+      .replace(/(\/sports\/console\/)[^/]+/, '$1:token');
     // Real client IP behind Railway's multi-hop proxy — NOT req.ip, which
     // resolves to a rotating internal hop (see client-ip.ts, 2026-07-07).
     const ip = clientIpFromRequest(req);
