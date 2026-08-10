@@ -132,6 +132,19 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   // recordImpression. (Audit 37-infra R-1/R-2 — exempt + throttle land
   // TOGETHER so the exemption doesn't open an unthrottled write path.)
   (p) => /^\/api\/v1\/sports\/sponsors\/[^/]+\/impression$/.test(p),
+  // Scorekeeper console share-link mutations (Phase-2 Domain SHARE). The
+  // /console/<token> pad is a public page a volunteer opens from a link/QR
+  // with NO dashboard session — there is no CSRF cookie to round-trip
+  // (cross-origin fetch without credentials), and auth is the game-scoped
+  // console HMAC capability token IN THE PATH (sports-console-token.ts:
+  // versioned + always-expiring + constant-time verified per request), not
+  // an ambient cookie — so CSRF's threat model does not apply. Same
+  // argument as the sports /feed + /cts-snapshot exemptions above. The
+  // regex enumerates EXACTLY the SportsConsoleController mutation
+  // allowlist (score|clock|segment|timeout|cue) — never a blanket prefix,
+  // so a future route added to the controller does not silently inherit
+  // the exemption without showing up here in review.
+  (p) => /^\/api\/v1\/sports\/console\/[^/]+\/(score|clock|segment|timeout|cue)$/.test(p),
   // POS inbound webhooks (Square + custom-webhook bring-your-own POS).
   // External POS systems POST catalog/inventory/order events here
   // machine-to-machine — no browser, no session cookie — so a CSRF token

@@ -587,6 +587,72 @@ export class SportsController {
   }
 
   /**
+   * Phase-2 Domain SHARE — mint a scorekeeper console share link.
+   *
+   * Returns `{url, token, …}` for a /console/<token> page a student/
+   * volunteer opens on their phone: LIMITED live-game controls (score /
+   * clock / segment / timeouts / celebration cues — the exact allowlist on
+   * the public SportsConsoleController), no tenant account, no
+   * content-publishing rights. The token is a stateless game-scoped HMAC
+   * (sports-console-token.ts) minted against the game's CURRENT
+   * Game.consoleTokenVersion, always-expiring (default 24h, clamp via
+   * body.ttlSeconds). Same role set as feed-credentials — this response IS
+   * a write credential, so RESTRICTED_VIEWER never sees it (POST is not
+   * subject to the viewer read pass-through, and the role list excludes it
+   * anyway). Mint + revoke both write AuditLog rows (in the service).
+   *
+   * Endpoint shape mirrors the athlete share pair below: POST issues,
+   * DELETE revokes.
+   */
+  @Post('games/:id/console-share')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  async mintConsoleShare(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { ttlSeconds?: number },
+  ) {
+    const minted = await this.sports.mintConsoleShare(
+      req.user.tenantId,
+      id,
+      req?.user?.id,
+      typeof body?.ttlSeconds === 'number' ? body.ttlSeconds : undefined,
+    );
+    // The scorekeeper link lives on the WEB app, not the API — build it
+    // from the dashboard's Origin header (always present on a browser
+    // POST). Fallback to the API host keeps curl/scripts functional.
+    const host = req.get?.('host') || process.env.RAILWAY_PUBLIC_DOMAIN || 'localhost';
+    const proto = (req.headers?.['x-forwarded-proto'] as string) || req.protocol || 'https';
+    const origin =
+      typeof req.headers?.origin === 'string' && /^https?:\/\//.test(req.headers.origin)
+        ? req.headers.origin
+        : `${proto}://${host}`;
+    return { ...minted, url: `${origin}/console/${minted.token}` };
+  }
+
+  /**
+   * Revoke EVERY outstanding scorekeeper link for the game — bumps
+   * Game.consoleTokenVersion, which is folded into the console-token HMAC,
+   * so all previously-issued links stop verifying on their next request.
+   * Deliberately does NOT auto-mint a replacement (revoke means revoke);
+   * the operator POSTs again to share a fresh link. Audited in the service.
+   */
+  @Delete('games/:id/console-share')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  revokeConsoleShare(@Request() req: any, @Param('id') id: string) {
+    return this.sports.revokeConsoleShare(req.user.tenantId, id, req?.user?.id);
+  }
+
+  /**
    * Call a timeout for a team. Atomically: decrements home/awayTimeouts
    * (refuses with 400 if already 0), pauses the game clock, resets the
    * football play clock to 25s for football games, appends a TIMEOUT

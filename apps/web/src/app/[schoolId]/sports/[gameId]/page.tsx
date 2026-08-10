@@ -24,6 +24,7 @@ import { RunMoreMenu, OnAirBar } from './RunMoreMenu';
 import { useShowControl } from './useShowControl';
 import { RunCommandBar } from './RunCommandBar';
 import { ConnectionBanner } from './ConnectionBanner';
+import { ShareConsoleLink } from './ShareConsoleLink';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
@@ -1342,6 +1343,9 @@ function RunMode({
                 );
               })}
             </div>
+            {/* Phase-2 SHARE — the no-login scorekeeper pad link (mint-on-open,
+                QR + copy + revoke; server-enforced limited controls). */}
+            <ShareConsoleLink gameId={gameId} />
           </div>
         </div>
       )}

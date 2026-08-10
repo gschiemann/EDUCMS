@@ -71,6 +71,28 @@ describe('isCsrfExempt', () => {
     expect(isCsrfExempt('DELETE', '/api/v1/sports/sponsors/sp-123')).toBe(false);
   });
 
+  it('exempts EXACTLY the scorekeeper console action allowlist (Phase-2 SHARE)', () => {
+    // The /console/<token> pad mutates with NO session — auth is the
+    // game-scoped console HMAC capability token in the path
+    // (sports-console-token.ts), so CSRF's ambient-cookie model doesn't
+    // apply. The exemption enumerates the SportsConsoleController
+    // allowlist verb-for-verb — never a blanket prefix.
+    const tok = 'game-1.0.1754000000.86400.0123456789abcdef0123456789abcdef';
+    expect(isCsrfExempt('PATCH', `/api/v1/sports/console/${tok}/score`)).toBe(true);
+    expect(isCsrfExempt('PATCH', `/api/v1/sports/console/${tok}/clock`)).toBe(true);
+    expect(isCsrfExempt('PATCH', `/api/v1/sports/console/${tok}/segment`)).toBe(true);
+    expect(isCsrfExempt('POST', `/api/v1/sports/console/${tok}/timeout`)).toBe(true);
+    expect(isCsrfExempt('POST', `/api/v1/sports/console/${tok}/cue`)).toBe(true);
+    // Sanity — a path outside the enumerated allowlist gains NOTHING from
+    // the console prefix (a future route must be exempted explicitly)…
+    expect(isCsrfExempt('POST', `/api/v1/sports/console/${tok}/status`)).toBe(false);
+    expect(isCsrfExempt('POST', `/api/v1/sports/console/${tok}/roster`)).toBe(false);
+    expect(isCsrfExempt('DELETE', `/api/v1/sports/console/${tok}`)).toBe(false);
+    // …and the AUTHED mint/revoke endpoints stay fully CSRF-gated.
+    expect(isCsrfExempt('POST', '/api/v1/sports/games/game-1/console-share')).toBe(false);
+    expect(isCsrfExempt('DELETE', '/api/v1/sports/games/game-1/console-share')).toBe(false);
+  });
+
   it('exempts POS inbound webhooks (Square HMAC + custom-webhook secret) — final-beta P0', () => {
     // External POS systems POST machine-to-machine with no session; each
     // receiver self-authenticates (Square HMAC sig / X-Webhook-Secret).

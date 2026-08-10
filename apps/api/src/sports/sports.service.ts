@@ -34,6 +34,7 @@ import {
 import type { SportDefinition } from '@cms/api-types';
 import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
 import { makeFeedToken, DEFAULT_FEED_TOKEN_TTL_SEC } from './sports-feed-token';
+import { makeConsoleToken, DEFAULT_CONSOLE_TOKEN_TTL_SEC } from './sports-console-token';
 // 2026-07-01 swim/dive DEPTH pass — CTS SWIMMING scoreboard-serial ingest
 // (docs/research/2026-06-30-swim-dive-scoreboards/00-REPORT.md part A7).
 import type { SwimTimingSnapshot } from '@cms/scoreboard-cts';
@@ -438,6 +439,140 @@ export class SportsService {
       token: makeFeedToken(gameId, { version, ttlSeconds: DEFAULT_FEED_TOKEN_TTL_SEC }),
       tokenExpiresAt: new Date(Date.now() + DEFAULT_FEED_TOKEN_TTL_SEC * 1000).toISOString(),
     };
+  }
+
+  // ── scorekeeper console share-link (Phase-2 Domain SHARE) ─────
+  //
+  // The console share token (sports-console-token.ts) hands a student/
+  // volunteer LIMITED in-game control (score / clock / segment / timeouts /
+  // celebration cues ONLY) via a revocable /console/<token> link + QR — no
+  // tenant account. Game.consoleTokenVersion is folded into the MAC so
+  // bumping it revokes every outstanding link. Deliberately a SEPARATE
+  // counter from feedTokenVersion (revoking a scorekeeper never kills a
+  // vendor feed credential, and vice versa).
+
+  /**
+   * The minimal game facts the PUBLIC console controller needs per request:
+   * the live consoleTokenVersion for the MAC check, the tenantId to scope
+   * the delegated SportsService calls, and the small public identity block
+   * the /session endpoint returns (all of it already public via GET
+   * /sports/board/:id). UN-guarded — the caller has no session; the token
+   * MAC (checked by the controller against consoleTokenVersion) is the
+   * auth. Missing game → null (the controller 401s without distinguishing
+   * "no such game" from "bad token" — no existence oracle).
+   */
+  async getConsoleShareMeta(gameId: string): Promise<{
+    tenantId: string;
+    consoleTokenVersion: number;
+    sport: string;
+    status: string;
+    homeTeam: string;
+    awayTeam: string;
+  } | null> {
+    if (!gameId) return null;
+    const row = await this.prisma.client.game.findUnique({
+      where: { id: gameId },
+      select: {
+        tenantId: true,
+        consoleTokenVersion: true,
+        sport: true,
+        status: true,
+        homeTeam: true,
+        awayTeam: true,
+      },
+    });
+    return row ?? null;
+  }
+
+  /**
+   * Mint a scorekeeper console share link for a game. Tenant-scoped (404 if
+   * the game isn't the caller's). The token is minted against the game's
+   * CURRENT consoleTokenVersion, always-expiring (default 24h, clamped in
+   * sports-console-token.ts). Writes an immutable AuditLog row (privileged
+   * action — this response is a WRITE credential, same posture as
+   * feed-credentials). The token itself is deliberately NOT logged: an
+   * AuditLog reader must never be able to drive the game.
+   */
+  async mintConsoleShare(
+    tenantId: string,
+    gameId: string,
+    actorUserId?: string,
+    ttlSeconds?: number,
+  ): Promise<{
+    success: true;
+    token: string;
+    consoleTokenVersion: number;
+    tokenTtlSeconds: number;
+    expiresAt: string;
+  }> {
+    await this.owned(tenantId, gameId);
+    const row = await this.prisma.client.game.findUnique({
+      where: { id: gameId },
+      select: { consoleTokenVersion: true },
+    });
+    const version = row?.consoleTokenVersion ?? 0;
+    const token = makeConsoleToken(gameId, { version, ttlSeconds });
+    // The REAL ttl after mint's clamp rides inside the token (4th field).
+    const ttlSec = Number(token.split('.')[3]) || DEFAULT_CONSOLE_TOKEN_TTL_SEC;
+    const iatSec = Number(token.split('.')[2]) || Math.floor(Date.now() / 1000);
+    const expiresAt = new Date((iatSec + ttlSec) * 1000).toISOString();
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorUserId || null,
+          action: 'SPORTS_CONSOLE_SHARE_MINTED',
+          targetType: 'Game',
+          targetId: gameId,
+          details: JSON.stringify({
+            consoleTokenVersion: version,
+            tokenTtlSeconds: ttlSec,
+            expiresAt,
+          }),
+        },
+      });
+    } catch { /* best-effort */ }
+    return {
+      success: true,
+      token,
+      consoleTokenVersion: version,
+      tokenTtlSeconds: ttlSec,
+      expiresAt,
+    };
+  }
+
+  /**
+   * Revoke every outstanding scorekeeper link for a game by incrementing
+   * Game.consoleTokenVersion. Tenant-scoped. Unlike revokeFeedToken this
+   * deliberately does NOT auto-mint a replacement — revoke means "kill the
+   * links now"; the operator re-shares when they mean to. AuditLog row is
+   * written best-effort, matching the rest of this service's audit writes.
+   */
+  async revokeConsoleShare(
+    tenantId: string,
+    gameId: string,
+    actorUserId?: string,
+  ): Promise<{ success: true; consoleTokenVersion: number }> {
+    await this.owned(tenantId, gameId);
+    const updated = await this.prisma.client.game.update({
+      where: { id: gameId },
+      data: { consoleTokenVersion: { increment: 1 } },
+      select: { consoleTokenVersion: true },
+    });
+    const version = updated.consoleTokenVersion;
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorUserId || null,
+          action: 'SPORTS_CONSOLE_SHARE_REVOKED',
+          targetType: 'Game',
+          targetId: gameId,
+          details: JSON.stringify({ consoleTokenVersion: version }),
+        },
+      });
+    } catch { /* best-effort */ }
+    return { success: true, consoleTokenVersion: version };
   }
 
   // ── reads ────────────────────────────────────────────────────
