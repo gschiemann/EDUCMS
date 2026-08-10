@@ -10,6 +10,7 @@ import {
   type ReceiptStatus,
 } from "@/lib/domain";
 import { Card, PageHeader, btnPrimaryCls, btnSecondaryCls, inputCls, labelCls } from "@/components/ui";
+import { fileSrc } from "@/lib/storage";
 import { attachReceiptFile, updateReceipt } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +38,7 @@ export default async function ReceiptDetailPage({
 
       {receipt.filePath ? (
         <a
-          href={`/api/files/${receipt.filePath}`}
+          href={fileSrc(receipt.filePath)}
           target="_blank"
           rel="noreferrer"
           className="mb-4 block"
@@ -45,7 +46,7 @@ export default async function ReceiptDetailPage({
           {isImage ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={`/api/files/${receipt.filePath}`}
+              src={fileSrc(receipt.filePath)}
               alt="Receipt original"
               className="max-h-96 w-full rounded-2xl border border-stone-200 bg-white object-contain"
             />

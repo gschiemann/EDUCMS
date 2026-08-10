@@ -37,13 +37,20 @@ feature work.
   `actions.ts` files. Client components only where interactivity demands it
   (`BottomNav`, `QuickAdd`). Keep it that way — no client-side data layer
   until something genuinely needs one.
-- **DB:** Prisma + SQLite in dev (`pnpm db:push && pnpm db:seed`). Schema is
-  written Postgres-portable for the production move (Supabase planned): no
-  SQLite-only types, string pseudo-enums, cents integers.
-- **Files:** `src/lib/storage.ts` abstracts uploads (dev = local disk under
-  `var/uploads`, served by `/api/files/[key]`). Swap its internals for object
-  storage without touching callers. Storage keys are server-generated UUID
-  names — `isSafeStorageKey` guards traversal; keep it that way.
+- **DB:** Prisma + Postgres (`provider = "postgresql"`). For offline dev
+  without a Postgres, the schema header documents a temporary local SQLite
+  flip — never commit it. Schema stays dual-compatible: no provider-specific
+  types, string pseudo-enums, cents integers.
+- **Files:** `src/lib/storage.ts` abstracts uploads. Vercel Blob when
+  `BLOB_READ_WRITE_TOKEN` is set (storage key = blob URL); local disk under
+  `var/uploads` otherwise (storage key = UUID filename served by
+  `/api/files/[key]`). Render via `fileSrc()` — never hand-build file URLs.
+  `isSafeStorageKey` guards traversal on the local path; keep it that way.
+- **Auth:** `src/middleware.ts` + `src/lib/session.ts` + `/login`. When
+  `APP_PASSWORD` is set, every route (pages AND `/api/*`) requires the signed
+  session cookie; unset disables the gate for dev. The session module is
+  Edge-safe (Web Crypto only) — no Node imports there. Always set
+  `APP_PASSWORD` in production.
 - **All DB-backed pages export `dynamic = "force-dynamic"`** — this app is
   per-request data; static generation would query the DB at build time.
 - **Page files export only Next-recognized fields.** Shared helpers go in
@@ -75,8 +82,10 @@ SQLite) → seed → typecheck → build on every push/PR. Keep it green.
 
 ## Known state / next steps
 
-- **No auth yet** — do not deploy publicly until login lands (first platform
-  follow-up; passkeys/Face ID planned, SPEC §32).
+- **Auth:** basic owner password gate shipped (see Architecture). Passkeys/
+  Face ID still open (SPEC §32). Never deploy with `APP_PASSWORD` unset.
+- **Deploy:** code is Vercel-ready (Postgres + Blob). Pending: Vercel project
+  + database provisioning (requires a Vercel token from the owner).
 - OCR receipt auto-read, duplicate detection, CSV/PDF accountant package:
   deferred (see ROADMAP "V1 gaps").
 - V2 = customers/invoices/payments/mileage/banking; V3 = sheep; V4 = print

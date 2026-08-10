@@ -1,6 +1,12 @@
-// File storage abstraction. Dev: local disk under UPLOAD_DIR.
-// Production follow-up: swap the internals for object storage (e.g. Supabase
-// Storage) without touching callers — the app only deals in storage keys.
+// File storage abstraction — callers only deal in storage keys/URLs.
+//
+// Two backends, auto-selected:
+//   - Vercel Blob when BLOB_READ_WRITE_TOKEN is set (production on Vercel).
+//     saveUpload returns the blob's full https URL as the storage key.
+//     Blob URLs are unguessable-random; true private object storage is a
+//     planned upgrade (docs/ROADMAP.md).
+//   - Local disk under UPLOAD_DIR otherwise (dev). saveUpload returns a flat
+//     UUID filename served by /api/files/[key] (behind the login gate).
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -30,19 +36,31 @@ export async function saveUpload(file: File): Promise<{
   const bytes = Buffer.from(await file.arrayBuffer());
   const ext =
     EXT_BY_MIME[file.type] ?? path.extname(file.name).slice(0, 10) ?? "";
-  const storageKey = `${crypto.randomUUID()}${ext}`;
+  const mimeType = file.type || "application/octet-stream";
+  const fileName = file.name || "upload";
+  const generatedName = `${crypto.randomUUID()}${ext}`;
+
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    const { put } = await import("@vercel/blob");
+    const blob = await put(`receipts/${generatedName}`, bytes, {
+      access: "public",
+      contentType: mimeType,
+    });
+    return { storageKey: blob.url, fileName, mimeType, fileSize: bytes.byteLength };
+  }
+
   await mkdir(uploadRoot(), { recursive: true });
-  await writeFile(path.join(uploadRoot(), storageKey), bytes);
-  return {
-    storageKey,
-    fileName: file.name || storageKey,
-    mimeType: file.type || "application/octet-stream",
-    fileSize: bytes.byteLength,
-  };
+  await writeFile(path.join(uploadRoot(), generatedName), bytes);
+  return { storageKey: generatedName, fileName, mimeType, fileSize: bytes.byteLength };
 }
 
-// Storage keys are server-generated UUID filenames; reject anything else so
-// the file-serving route can never traverse outside the upload dir.
+// Resolve a stored key to something an <img src> / link can use.
+export function fileSrc(storageKey: string): string {
+  return storageKey.startsWith("http") ? storageKey : `/api/files/${storageKey}`;
+}
+
+// Local-disk keys are single flat server-generated filenames; reject anything
+// else so the file-serving route can never traverse outside the upload dir.
 export function isSafeStorageKey(key: string): boolean {
   return /^[A-Za-z0-9-]+(\.[A-Za-z0-9]{1,10})?$/.test(key);
 }

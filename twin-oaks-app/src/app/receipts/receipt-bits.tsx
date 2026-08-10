@@ -1,4 +1,5 @@
 import { ReceiptIcon } from "@/components/Icons";
+import { fileSrc } from "@/lib/storage";
 
 export function receiptStatusTone(status: string): string {
   switch (status) {
@@ -29,7 +30,7 @@ export function ReceiptThumb({
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={`/api/files/${filePath}`}
+        src={fileSrc(filePath)}
         alt="Receipt"
         className={`${size} shrink-0 rounded-xl border border-stone-200 object-cover`}
       />

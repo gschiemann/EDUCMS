@@ -1,17 +1,19 @@
 // Twin Oaks OS — V1 data model (financial core + equipment).
 //
-// Dev runs on SQLite (zero-setup). The schema is written to port cleanly to
-// Postgres (Supabase) for production: no SQLite-only types, money stored as
-// integer cents, enum-like fields are strings whose allowed values live in
-// src/lib/domain.ts (SQLite has no native enums; keep that file the source
-// of truth).
+// Production target is Postgres (Vercel deployment). Money is stored as
+// integer cents, and enum-like fields are strings whose allowed values live
+// in src/lib/domain.ts — keep that file the source of truth.
+//
+// Offline-only local dev without any Postgres: flip provider to "sqlite",
+// set DATABASE_URL="file:./dev.db", run `pnpm db:push && pnpm db:seed`
+// (the schema is written to work on both), and don't commit the flip.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

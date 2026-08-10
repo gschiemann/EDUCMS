@@ -28,6 +28,8 @@ without creating extra bookkeeping work.
 - **Tax Center** — per-year totals, category breakdowns, flagged items
   (needs review / missing receipts), capital purchases
 - **Backup** — one-tap full JSON export
+- **Owner login gate** — set `APP_PASSWORD` and every route requires sign-in
+  (30-day session cookie); unset in local dev to skip the gate
 
 **Tax-safety principle:** the app never decides deductibility. Uncertain
 expenses default to *Requires accountant review* and stay flagged until a
@@ -43,19 +45,23 @@ Build status: [`docs/ROADMAP.md`](docs/ROADMAP.md)
 | Framework | Next.js 15 (App Router, server components + server actions) |
 | Language | TypeScript (strict) |
 | Styling | Tailwind CSS 4 |
-| Database | Prisma ORM — SQLite in dev (zero setup), Postgres-ready for production |
-| Files | Local disk in dev via a storage abstraction (`src/lib/storage.ts`), object-storage-ready |
+| Database | Prisma ORM + Postgres (temporary SQLite flip documented in `prisma/schema.prisma` for offline dev) |
+| Files | Vercel Blob when `BLOB_READ_WRITE_TOKEN` is set; local disk otherwise (`src/lib/storage.ts`) |
+| Auth | Owner password gate via middleware (`APP_PASSWORD`); passkeys planned |
 | Money | Integer cents everywhere — never floats |
 
 ## Run it
 
 ```bash
 pnpm install          # install dependencies
-cp .env.example .env  # dev defaults work as-is
-pnpm db:push          # create the SQLite database
+cp .env.example .env  # then set DATABASE_URL to a Postgres connection string
+pnpm db:push          # create the schema
 pnpm db:seed          # optional: sample data (tractor, printer, receipts…)
 pnpm dev              # http://localhost:3000
 ```
+
+No Postgres handy? See the note at the top of `prisma/schema.prisma` for the
+one-line SQLite flip for offline development.
 
 Other commands:
 
@@ -80,7 +86,7 @@ var/uploads/       dev receipt storage (gitignored)
 
 ## Important
 
-- **No auth yet.** V1 runs locally / on a trusted private network. Login +
-  Face ID (passkeys) is the first platform follow-up before any public
-  deploy — see `docs/ROADMAP.md`.
+- **Always set `APP_PASSWORD` on any deployment.** With it unset the gate is
+  disabled (dev convenience only) — never expose an ungated instance.
+  Passkeys/Face ID are the planned upgrade — see `docs/ROADMAP.md`.
 - **Never commit `.env`** or real financial data. The seed data is fictional.
