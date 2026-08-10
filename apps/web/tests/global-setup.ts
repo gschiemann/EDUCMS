@@ -31,7 +31,16 @@
  * execute and fail with their own honest assertions; a warm-up that can red the
  * suite on its own would just move the flake rather than remove it.
  */
-const ROUTES = ['/player?fp=globalsetup-warm'];
+const ROUTES = [
+  '/player?fp=globalsetup-warm',
+  // board-live-update.spec.ts (Phase-2 E2E gate, 2026-08-10) cold-boots the
+  // public /board/[gameId] route — 4.5k lines + the sport widget graph, the
+  // same "first request pays the compile" trap this file exists for. The
+  // gameId is fake on purpose: the page is a client component, so the warm
+  // GET returns the SSR shell as soon as the compile finishes (the data
+  // poll only ever runs in a browser).
+  '/board/globalsetup-warm-000000000000',
+];
 const BUDGET_MS = 180_000;
 const BASE = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000';
 
