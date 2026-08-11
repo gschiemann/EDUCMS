@@ -88,7 +88,9 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Minus, ChevronRight, Undo2 } from 'lucide-react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { Plus, Minus, ChevronRight, Undo2, Cable } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -159,6 +161,10 @@ export function LanePadSection({
   def: SportDefinition;
   ctl: ReturnType<typeof useGameControl>;
 }) {
+  // For the auto-timing bridge link — this component only ever mounts
+  // under /[schoolId]/sports/[gameId], so the param is always present.
+  const routeParams = useParams();
+  const schoolId = String(routeParams?.schoolId ?? '');
   const stats: Record<string, unknown> = g.stats || {};
   const savedResults = readSavedResults(stats);
 
@@ -405,6 +411,17 @@ export function LanePadSection({
             <p className="text-[11px] text-slate-400">
               {headerLabel} — auto-place from fastest time. Type a mark, tab to the next lane.
             </p>
+            {/* Inputs-wave SWIM: the CTS auto-timing bridge is the live
+                alternative to this manual pad. Always visible — the bridge
+                page itself explains browser support and degrades to a
+                pointer back here on non-Chromium. */}
+            <Link
+              href={`/${schoolId}/sports/${gameId}/swim-bridge`}
+              className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold text-indigo-400 hover:text-indigo-300"
+            >
+              <Cable className="h-3.5 w-3.5" />
+              Auto-timing bridge
+            </Link>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <button
