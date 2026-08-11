@@ -2,10 +2,11 @@
   "name": "twin-oaks-app",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.33.0",
   "description": "Twin Oaks OS — the business operating system for Twin Oaks Farm & Tech LLC",
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && (test -z \"$VERCEL\" || DATABASE_URL=${DATABASE_URL_UNPOOLED:-${DATABASE_URL_NON_POOLING:-$DATABASE_URL}} prisma db push) && next build",
+    "build": "bash scripts/vercel-build.sh",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
