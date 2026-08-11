@@ -5,7 +5,7 @@
   "description": "Twin Oaks OS — the business operating system for Twin Oaks Farm & Tech LLC",
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && (test -z \"$VERCEL\" || DATABASE_URL=${DATABASE_URL_UNPOOLED:-$DATABASE_URL} prisma db push) && next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",

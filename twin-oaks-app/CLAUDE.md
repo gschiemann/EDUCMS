@@ -84,8 +84,12 @@ SQLite) → seed → typecheck → build on every push/PR. Keep it green.
 
 - **Auth:** basic owner password gate shipped (see Architecture). Passkeys/
   Face ID still open (SPEC §32). Never deploy with `APP_PASSWORD` unset.
-- **Deploy:** code is Vercel-ready (Postgres + Blob). Pending: Vercel project
-  + database provisioning (requires a Vercel token from the owner).
+- **Deploy (Vercel):** the `build` script self-applies the schema on Vercel
+  only — `$VERCEL` gates a `prisma db push`, preferring the unpooled
+  `DATABASE_URL_UNPOOLED` the Neon integration injects (DDL through the
+  pooler is unreliable); local/CI builds skip it. Project expectations:
+  root directory `twin-oaks-app`, production branch = the current dev
+  branch, Neon Postgres + Blob store connected, `APP_PASSWORD` set.
 - OCR receipt auto-read, duplicate detection, CSV/PDF accountant package:
   deferred (see ROADMAP "V1 gaps").
 - V2 = customers/invoices/payments/mileage/banking; V3 = sheep; V4 = print
