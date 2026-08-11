@@ -854,13 +854,21 @@ export class IntegrationsHealthController {
         checkedAt,
       },
       {
+        // Inputs-wave GUIDED (2026-08-10): flipped off COMING_SOON in the
+        // same commit that ships the guided setup card. HONESTY: this is the
+        // shipped generic HMAC score feed (POST /sports/board/:id/feed) with
+        // per-vendor RECIPE instructions in each game console — NOT a native
+        // Sportzcast/Scorebird protocol adapter (none exists in the codebase).
         id: 'sports-sportzcast',
         name: 'Sportzcast / Scorebird',
         category: 'sports',
-        status: 'COMING_SOON',
-        message: 'Sprint 13 Phase 4 — alternative tap-off vendor with the same ScoreSource abstraction.',
+        status: 'READY',
+        message: hasGames
+          ? 'Guided setup lives in each game console (Setup → External score feed): vendor recipe cards walk you through pointing a Sportzcast/Scorebird push at the game\'s score-feed URL + token. Uses the generic HMAC feed — instructions per vendor, not a native protocol adapter.'
+          : 'Ready — create a game, then open its console (Setup → External score feed) for the guided Sportzcast/Scorebird setup card. Uses the generic HMAC feed — instructions per vendor, not a native protocol adapter.',
         latencyMs: null,
         checkedAt,
+        configurePath: '/sports',
       },
       {
         id: 'sports-genius',

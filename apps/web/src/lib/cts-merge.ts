@@ -133,6 +133,88 @@ export function computeCtsStatus(
   return { kind: 'stale', ageMs, label: 'CTS stale — using operator inputs' };
 }
 
+// ── External score-feed liveness (Inputs-wave GUIDED, 2026-08-10) ──
+//
+// `Game.stats.feed = { lastPacketAt, source, accepted }` is stamped
+// server-side by ALL THREE machine-ingest paths (generic /feed,
+// cts-snapshot, swim-timing-snapshot) — see
+// apps/api/src/sports/sports.service.ts (feedStamp). It answers ONE
+// question for the guided "plug in your Scorebird / Sportzcast" setup
+// card: is ANYTHING pushing packets at this game? Unlike stats.cts.
+// lastUpdateAt it is NOT a render source-of-truth signal — just the
+// setup pill's heartbeat.
+
+/** The stats.feed block as written by the API. Every field optional —
+ *  defensive against older rows / partial writes. */
+export interface FeedStatsBlock {
+  /** ISO timestamp of the last machine packet (server clock). On the
+   *  generic /feed path this is throttled server-side (~5s granularity);
+   *  cts/swim stamp on every accepted snapshot. */
+  lastPacketAt?: string;
+  /** Which ingest path stamped last. */
+  source?: 'feed' | 'cts' | 'swim';
+  /** Whether that packet applied anything (false = idle heartbeat). */
+  accepted?: boolean;
+}
+
+/**
+ * Freshness window for the feed pill. Derivation: the /feed stamp is
+ * throttled to ~5s server-side + the operator console's useGame poll is
+ * 4s + clock-skew headroom → a healthy-but-idle feed can legitimately
+ * show ~9-10s of age. 20s gives 2x headroom while still flipping to
+ * stale within seconds of a real outage. (Deliberately wider than
+ * CTS_FRESH_MS — that one gates render source-of-truth at 5 Hz; this
+ * one gates a setup pill.)
+ */
+export const FEED_FRESH_MS = 20_000;
+
+/** Read the stats.feed block off a Game's stats blob, or null. Safe on
+ *  any shape — never throws. */
+export function readFeedStats(stats: unknown): FeedStatsBlock | null {
+  if (!stats || typeof stats !== 'object') return null;
+  const f = (stats as Record<string, unknown>).feed;
+  if (!f || typeof f !== 'object') return null;
+  return f as FeedStatsBlock;
+}
+
+/** Status pill state for the guided feed-setup card. */
+export type FeedStatusKind = 'never' | 'fresh' | 'stale';
+
+export interface FeedStatus {
+  kind: FeedStatusKind;
+  /** Milliseconds since the last stamped packet, or null when never. */
+  ageMs: number | null;
+  /** Human-readable pill text (age appended by the component). */
+  label: string;
+  /** Which ingest path stamped last, or null when never/unknown. */
+  source: 'feed' | 'cts' | 'swim' | null;
+}
+
+/** Compute the feed pill state. Pure — same inputs, same output. Pass
+ *  the caller's clock reference as `serverTime` (the operator console
+ *  passes Date.now(), same documented choice as CtsConsoleStatus: we
+ *  only care how long ago the server-stamped packet arrived, and the
+ *  window absorbs reasonable skew). */
+export function computeFeedStatus(stats: unknown, serverTime: number): FeedStatus {
+  const feed = readFeedStats(stats);
+  const source =
+    feed?.source === 'feed' || feed?.source === 'cts' || feed?.source === 'swim'
+      ? feed.source
+      : null;
+  if (!feed || !feed.lastPacketAt) {
+    return { kind: 'never', ageMs: null, label: 'Waiting for first packet…', source: null };
+  }
+  const t = Date.parse(feed.lastPacketAt);
+  if (!Number.isFinite(t)) {
+    return { kind: 'never', ageMs: null, label: 'Waiting for first packet…', source: null };
+  }
+  const ageMs = serverTime - t;
+  if (ageMs < FEED_FRESH_MS) {
+    return { kind: 'fresh', ageMs, label: 'Receiving', source };
+  }
+  return { kind: 'stale', ageMs, label: 'No packets', source };
+}
+
 /** A minimal shape of the board endpoint payload — the fields this
  *  helper actually reads. Compatible with the full BoardData in
  *  apps/web/src/app/board/[gameId]/page.tsx; we keep it loose here so
@@ -190,7 +272,7 @@ export function applyCtsOverlay<T extends CtsMergeInput>(input: T): T {
 
   // Build a mutable stats copy that we'll augment with per-side CTS fields.
   let statsMutated = false;
-  let stats: Record<string, unknown> =
+  const stats: Record<string, unknown> =
     input.stats && typeof input.stats === 'object'
       ? { ...(input.stats as Record<string, unknown>) }
       : {};

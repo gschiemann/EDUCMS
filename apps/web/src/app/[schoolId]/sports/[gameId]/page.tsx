@@ -25,6 +25,7 @@ import { useShowControl } from './useShowControl';
 import { RunCommandBar } from './RunCommandBar';
 import { ConnectionBanner } from './ConnectionBanner';
 import { ShareConsoleLink } from './ShareConsoleLink';
+import { ConnectScoreboardFeed } from './ConnectScoreboardFeed';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
@@ -414,32 +415,10 @@ function GameControl() {
     }
   };
 
-  // External score-feed credentials — copy the machine-to-machine ingest URL +
-  // token so a Sportzcast/console-reader/custom feed can push live score/clock
-  // without a dashboard login. Token is server-generated (HMAC); we fetch it.
-  const [feedCopied, setFeedCopied] = useState(false);
-  const copyFeedUrl = async () => {
-    try {
-      const c = await apiFetch<{ ingestUrl: string; token: string; curlExample: string }>(
-        `/sports/games/${gameId}/feed-credentials`,
-      );
-      const block =
-        `VenueOS live score feed\n` +
-        `POST to: ${c.ingestUrl}\n` +
-        `Header:   x-feed-token: ${c.token}\n` +
-        `Fields:   homeScore, awayScore, clockMs, clockRunning, segment (any subset)\n\n` +
-        `Test:\n${c.curlExample}`;
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(block);
-        setFeedCopied(true);
-        setTimeout(() => setFeedCopied(false), 2200);
-      } else {
-        window.prompt('Copy the score-feed details:', block);
-      }
-    } catch {
-      window.alert('Could not load the score-feed credentials. Try again.');
-    }
-  };
+  // External score-feed credentials moved into ConnectScoreboardFeed
+  // (Inputs-wave GUIDED, 2026-08-10) — guided vendor recipe cards + live
+  // first-packet status, mounted in the Setup "External score feed" card
+  // and the SEND TO DEVICE sheet.
 
   if (isLoading) {
     return <div className="text-center py-24 text-sm text-slate-400">Loading game…</div>;
@@ -918,41 +897,19 @@ function GameControl() {
                 </div>
 
                 {/* External score feed — the generic HMAC ingest path.
-                    Any machine that can POST JSON (Sportzcast box, a
-                    console reader, a custom script) can push live score /
-                    clock to this game without a dashboard login. The
-                    "Copy feed URL" button fetches a server-minted token
-                    from /sports/games/:id/feed-credentials and copies the
-                    ingest URL + token + a ready-to-run curl example.
-                    2026-05-28: re-surfaced — the handler existed but had
-                    no button (the toolbar entry was dropped for the
-                    CTS-only water-polo install). */}
+                    Inputs-wave GUIDED (2026-08-10): the bare "Copy feed
+                    URL" button grew into ConnectScoreboardFeed — guided
+                    vendor recipe cards (Sportzcast / Scorebird / generic,
+                    instructions over the SAME credential), mint-on-open
+                    credentials, regenerate (revoke-and-replace), and a
+                    live "Waiting for first packet… / Receiving" status
+                    row off stats.feed (existing useGame poll, no new
+                    poller). */}
                 <div>
                   <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">
                     External score feed
                   </p>
-                  <div className="rounded-xl border border-slate-200 bg-white p-3">
-                    <p className="text-xs text-slate-500 mb-3">
-                      Push live score &amp; clock from a Sportzcast box, console
-                      reader, or any script that can POST JSON. Copy the
-                      authenticated ingest URL + token below — no dashboard
-                      login needed on the sending machine.
-                    </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1.5"
-                      onClick={copyFeedUrl}
-                      title="Copy the machine-to-machine ingest URL + token (HMAC-authenticated)"
-                    >
-                      {feedCopied ? (
-                        <Check className="h-4 w-4 text-emerald-600" />
-                      ) : (
-                        <Copy className="h-4 w-4" />
-                      )}
-                      <span>{feedCopied ? 'Copied feed URL + token' : 'Copy feed URL'}</span>
-                    </Button>
-                  </div>
+                  <ConnectScoreboardFeed gameId={gameId} stats={(g.stats as Record<string, unknown> | undefined) || {}} />
                 </div>
               </div>
             </Section>
@@ -1356,6 +1313,10 @@ function RunMode({
             {/* Phase-2 SHARE — the no-login scorekeeper pad link (mint-on-open,
                 QR + copy + revoke; server-enforced limited controls). */}
             <ShareConsoleLink gameId={gameId} />
+            {/* Inputs-wave GUIDED — the vendor-box counterpart: guided
+                Sportzcast/Scorebird/generic score-feed setup with live
+                first-packet status (same card as Setup → External score feed). */}
+            <div className="mt-3 border-t border-slate-200 pt-3"><ConnectScoreboardFeed gameId={gameId} stats={(g.stats as Record<string, unknown> | undefined) || {}} /></div>
           </div>
         </div>
       )}

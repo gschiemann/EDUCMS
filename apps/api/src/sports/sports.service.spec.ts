@@ -9,6 +9,11 @@
 import { BadRequestException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { SPORT_DEFINITIONS } from '@cms/api-types';
 import { SportsService } from './sports.service';
+import {
+  verifyFeedToken,
+  DEFAULT_FEED_TOKEN_TTL_SEC,
+  MIN_FEED_TOKEN_TTL_SEC,
+} from './sports-feed-token';
 
 // ── in-memory Prisma fake ──────────────────────────────────────
 
@@ -2980,5 +2985,198 @@ describe('SportsService — getBoard() possession mirror', () => {
     const board: any = await service.getBoard(g.id);
     expect(board.possession).toBeNull();
     expect(board.stats.possession).toBeUndefined();
+  });
+});
+
+// ── Inputs-wave GUIDED (2026-08-10) — feed liveness stamp + mint audit ──────
+// `stats.feed = { lastPacketAt, source, accepted }` is the guided setup
+// card's "Waiting for first packet… / Receiving" heartbeat. It must be
+// written by ALL THREE machine-ingest paths — INCLUDING the /feed no-op
+// early-return (an idle-but-connected vendor heartbeat must not look dead,
+// the #1 way the pill could lie) — and NEVER by the manual admin path.
+describe('Inputs-wave GUIDED — stats.feed liveness stamp', () => {
+  it('/feed applied packet stamps stats.feed { source: feed, accepted: true }', async () => {
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'soccer');
+
+    await service.ingestByFeed(g.id, { homeScore: 1 });
+
+    const row = game.rows.find((r: any) => r.id === g.id);
+    const feed = (row.stats as any)?.feed;
+    expect(feed).toBeDefined();
+    expect(feed.source).toBe('feed');
+    expect(feed.accepted).toBe(true);
+    expect(Number.isFinite(Date.parse(feed.lastPacketAt))).toBe(true);
+  });
+
+  it('/feed NO-OP (empty body) still stamps — accepted:false, and no INGEST event is recorded', async () => {
+    const { service, game, gameEvent } = setup();
+    const g: any = await newGame(service, 'soccer');
+
+    await service.ingestByFeed(g.id, {});
+
+    const row = game.rows.find((r: any) => r.id === g.id);
+    const feed = (row.stats as any)?.feed;
+    expect(feed).toBeDefined();
+    expect(feed.source).toBe('feed');
+    expect(feed.accepted).toBe(false);
+    // The no-op early-return must NOT have produced an operator-column
+    // write or an INGEST GameEvent — only the liveness stamp landed.
+    expect(gameEvent.rows.filter((e: any) => e.type === 'INGEST')).toHaveLength(0);
+    expect(row.homeScore).toBe(0);
+  });
+
+  it('/feed no-op throttle: a stamp younger than 5s is NOT rewritten; a stale one is', async () => {
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'soccer');
+
+    await service.ingestByFeed(g.id, {});
+    const row = game.rows.find((r: any) => r.id === g.id);
+    const first = (row.stats as any).feed.lastPacketAt;
+
+    // Immediately again — within the 5s window, stamp must be untouched.
+    await service.ingestByFeed(g.id, {});
+    expect((row.stats as any).feed.lastPacketAt).toBe(first);
+
+    // Backdate the stamp past the window — the next no-op refreshes it.
+    // (Compare against the BACKDATED value, not `first`: a legit fresh
+    // rewrite can land in the same millisecond as `first` and serialize
+    // to an identical ISO string.)
+    const backdated = new Date(Date.now() - 10_000).toISOString();
+    row.stats = {
+      ...(row.stats as any),
+      feed: { lastPacketAt: backdated, source: 'feed', accepted: false },
+    };
+    await service.ingestByFeed(g.id, {});
+    const refreshed = (row.stats as any).feed.lastPacketAt;
+    expect(refreshed).not.toBe(backdated);
+    expect(Date.parse(refreshed)).toBeGreaterThan(Date.now() - 5_000);
+  });
+
+  it('/feed applied-path throttle: a second applied packet inside the window leaves the stamp alone', async () => {
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'soccer');
+
+    await service.ingestByFeed(g.id, { homeScore: 1 });
+    const row = game.rows.find((r: any) => r.id === g.id);
+    const first = (row.stats as any).feed.lastPacketAt;
+
+    await service.ingestByFeed(g.id, { homeScore: 2 });
+    expect(row.homeScore).toBe(2); // score still applied…
+    expect((row.stats as any).feed.lastPacketAt).toBe(first); // …stamp throttled
+  });
+
+  it('MANUAL admin ingest() never stamps stats.feed (applied or no-op)', async () => {
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'soccer');
+
+    await service.ingest(TENANT, g.id, { homeScore: 1 }); // applied, manual
+    await service.ingest(TENANT, g.id, {}); // no-op, manual
+
+    const row = game.rows.find((r: any) => r.id === g.id);
+    expect((row.stats as any)?.feed).toBeUndefined();
+  });
+
+  it('CTS snapshot ingest stamps { source: cts, accepted: true } inside its existing write', async () => {
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'water_polo');
+
+    await service.ingestCtsSnapshot(g.id, { homeScore: 1 }, { source: 'cts-feed' });
+
+    const row = game.rows.find((r: any) => r.id === g.id);
+    const feed = (row.stats as any)?.feed;
+    expect(feed).toMatchObject({ source: 'cts', accepted: true });
+    expect(Number.isFinite(Date.parse(feed.lastPacketAt))).toBe(true);
+    // The cts block still landed alongside — the stamp rode the SAME write.
+    expect((row.stats as any).cts).toBeDefined();
+  });
+
+  it('swim timing ingest stamps { source: swim, accepted: true } inside its existing write', async () => {
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'swimming');
+
+    await service.ingestSwimTimingSnapshot(
+      g.id,
+      {
+        lanes: {
+          3: { lane: 3, place: 1, minutes: 0, seconds: 51, hundredths: 90, display: '51.90', blank: false },
+        },
+        splits: {},
+        eventHeat: { eventNumber: 12, heat: 3 },
+        teamScore: null,
+        receivedAt: Date.now(),
+      } as any,
+      { tenantId: TENANT },
+    );
+
+    const row = game.rows.find((r: any) => r.id === g.id);
+    const feed = (row.stats as any)?.feed;
+    expect(feed).toMatchObject({ source: 'swim', accepted: true });
+    expect((row.stats as any).results).toHaveLength(1);
+  });
+
+  it('swim EMPTY snapshot keeps its deliberate no-write bail (no stamp — outage-masking rule)', async () => {
+    const { service, game } = setup();
+    const g: any = await newGame(service, 'swimming');
+
+    const result = await service.ingestSwimTimingSnapshot(
+      g.id,
+      { lanes: {}, splits: {}, eventHeat: null, teamScore: null, receivedAt: Date.now() } as any,
+      { tenantId: TENANT },
+    );
+    expect(result.accepted).toBe(false);
+    const row = game.rows.find((r: any) => r.id === g.id);
+    expect((row.stats as any)?.feed).toBeUndefined();
+  });
+});
+
+describe('Inputs-wave GUIDED — mintFeedCredentials audit', () => {
+  it('writes a SPORTS_FEED_TOKEN_MINTED AuditLog row — shape-pinned, token NEVER in details', async () => {
+    const { service, auditLog } = setup();
+    const g: any = await newGame(service, 'soccer');
+
+    const minted = await service.mintFeedCredentials(TENANT, g.id, 'user-1');
+
+    // The credential itself works against the game's current version.
+    expect(typeof minted.token).toBe('string');
+    expect(verifyFeedToken(g.id, minted.token, 0)).toBe(true);
+    expect(minted.tokenTtlSeconds).toBe(DEFAULT_FEED_TOKEN_TTL_SEC);
+    expect(minted.feedTokenVersion).toBe(0);
+
+    const row = auditLog.rows.find((r: any) => r.action === 'SPORTS_FEED_TOKEN_MINTED');
+    expect(row).toBeTruthy();
+    expect(row.tenantId).toBe(TENANT);
+    expect(row.userId).toBe('user-1');
+    expect(row.targetType).toBe('Game');
+    expect(row.targetId).toBe(g.id);
+    // Shape-pin: exactly the three metadata keys, nothing else.
+    const details = JSON.parse(row.details);
+    expect(Object.keys(details).sort()).toEqual(['expiresAt', 'feedTokenVersion', 'tokenTtlSeconds']);
+    expect(details.feedTokenVersion).toBe(0);
+    expect(details.tokenTtlSeconds).toBe(DEFAULT_FEED_TOKEN_TTL_SEC);
+    expect(Number.isFinite(Date.parse(details.expiresAt))).toBe(true);
+    // The token must never appear anywhere in the audit row.
+    expect(String(row.details)).not.toContain(minted.token);
+  });
+
+  it('clamps a requested TTL to the [300s, 30d] floor/ceiling', async () => {
+    const { service, auditLog } = setup();
+    const g: any = await newGame(service, 'soccer');
+
+    const floored = await service.mintFeedCredentials(TENANT, g.id, 'user-1', '60');
+    expect(floored.tokenTtlSeconds).toBe(MIN_FEED_TOKEN_TTL_SEC);
+    const audits = auditLog.rows.filter((r: any) => r.action === 'SPORTS_FEED_TOKEN_MINTED');
+    expect(audits).toHaveLength(1);
+    expect(JSON.parse(audits[0].details).tokenTtlSeconds).toBe(MIN_FEED_TOKEN_TTL_SEC);
+  });
+
+  it('404s (and does not audit) for a game outside the caller tenant', async () => {
+    const { service, auditLog } = setup();
+    const g: any = await newGame(service, 'soccer');
+
+    await expect(service.mintFeedCredentials('other-tenant', g.id, 'user-1')).rejects.toThrow(
+      NotFoundException,
+    );
+    expect(auditLog.rows.filter((r: any) => r.action === 'SPORTS_FEED_TOKEN_MINTED')).toHaveLength(0);
   });
 });

@@ -17,12 +17,6 @@ import { RequireRoles, NoViewerRead } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { SportsService } from './sports.service';
 import { SponsorsService } from './sponsors.service';
-import {
-  makeFeedToken,
-  DEFAULT_FEED_TOKEN_TTL_SEC,
-  MIN_FEED_TOKEN_TTL_SEC,
-  MAX_FEED_TOKEN_TTL_SEC,
-} from './sports-feed-token';
 
 /** Editable fields for one roster player. The service sanitizes every
  *  value — the photo URL is produced by the existing /assets/upload. */
@@ -519,8 +513,6 @@ export class SportsController {
     @Param('id') id: string,
     @Query('ttlSeconds') ttlSecondsRaw?: string,
   ) {
-    // Ownership check (throws NotFound if the game isn't this tenant's).
-    await this.sports.assertGameOwned(req.user.tenantId, id);
     // 2026-07-13 (audit W0-01.5): this endpoint used to hand out the
     // NON-EXPIRING bare token — reusable bearer material with no death date.
     // Every minted credential now carries a TTL (default 30 days, clamp
@@ -529,14 +521,18 @@ export class SportsController {
     // stop ISSUING immortal credentials. For URL-only adapter boxes, request
     // ttlSeconds <= 604800 (7 days) — that's the cap the ?token= query path
     // accepts on ingest.
-    const feedTokenVersion = await this.sports.getFeedTokenVersion(id);
-    const requested = Number(ttlSecondsRaw);
-    const ttlSeconds =
-      Number.isFinite(requested) && requested > 0
-        ? Math.min(MAX_FEED_TOKEN_TTL_SEC, Math.max(MIN_FEED_TOKEN_TTL_SEC, Math.floor(requested)))
-        : DEFAULT_FEED_TOKEN_TTL_SEC;
-    const token = makeFeedToken(id, { version: feedTokenVersion, ttlSeconds });
-    const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
+    //
+    // Inputs-wave GUIDED (2026-08-10): ownership gate + version read + TTL
+    // clamp + mint moved into SportsService.mintFeedCredentials so the mint
+    // writes the SPORTS_FEED_TOKEN_MINTED AuditLog row beside its sibling
+    // revoke audit (this response IS a write credential — AUTHZ-01). The
+    // controller keeps only the request-derived URL assembly.
+    const minted = await this.sports.mintFeedCredentials(
+      req.user.tenantId,
+      id,
+      req.user.id,
+      ttlSecondsRaw,
+    );
     const host = req.get?.('host') || process.env.RAILWAY_PUBLIC_DOMAIN || 'localhost';
     const proto = (req.headers?.['x-forwarded-proto'] as string) || req.protocol || 'https';
     const ingestUrl = `${proto}://${host}/api/v1/sports/board/${id}/feed`;
@@ -544,21 +540,21 @@ export class SportsController {
       gameId: id,
       ingestUrl,
       tokenHeader: 'x-feed-token',
-      token,
-      tokenTtlSeconds: ttlSeconds,
-      expiresAt,
+      token: minted.token,
+      tokenTtlSeconds: minted.tokenTtlSeconds,
+      expiresAt: minted.expiresAt,
       // The current feed-token version. POST games/:id/revoke-feed-token bumps
       // it, instantly invalidating every previously-issued token for this game.
-      feedTokenVersion,
+      feedTokenVersion: minted.feedTokenVersion,
       // Copy-paste example for the vendor / a quick test.
       curlExample:
         `curl -X POST "${ingestUrl}" ` +
-        `-H "x-feed-token: ${token}" -H "Content-Type: application/json" ` +
+        `-H "x-feed-token: ${minted.token}" -H "Content-Type: application/json" ` +
         `-d '{"homeScore":14,"awayScore":7,"clockMs":420000,"clockRunning":true,"segment":2}'`,
       accepts: ['homeScore', 'awayScore', 'clockMs', 'clockRunning', 'segment'],
       note:
         'Any subset of fields may be sent; omitted fields are unchanged. Rate limit: 40 requests / 10s per game. ' +
-        `Token expires ${expiresAt} — re-copy credentials here for a fresh one. ` +
+        `Token expires ${minted.expiresAt} — re-copy credentials here for a fresh one. ` +
         'URL-only integrations may pass ?token= instead of the header ONLY for tokens minted with ttlSeconds <= 604800.',
     };
   }

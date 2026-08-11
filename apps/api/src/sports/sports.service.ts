@@ -34,7 +34,12 @@ import {
 } from '@cms/api-types';
 import type { SportDefinition } from '@cms/api-types';
 import { SPONSOR_SPOT_SECONDS } from './sponsor.constants';
-import { makeFeedToken, DEFAULT_FEED_TOKEN_TTL_SEC } from './sports-feed-token';
+import {
+  makeFeedToken,
+  DEFAULT_FEED_TOKEN_TTL_SEC,
+  MIN_FEED_TOKEN_TTL_SEC,
+  MAX_FEED_TOKEN_TTL_SEC,
+} from './sports-feed-token';
 import { makeConsoleToken, DEFAULT_CONSOLE_TOKEN_TTL_SEC } from './sports-console-token';
 // 2026-07-01 swim/dive DEPTH pass — CTS SWIMMING scoreboard-serial ingest
 // (docs/research/2026-06-30-swim-dive-scoreboards/00-REPORT.md part A7).
@@ -490,6 +495,135 @@ export class SportsService {
       token: makeFeedToken(gameId, { version, ttlSeconds: DEFAULT_FEED_TOKEN_TTL_SEC }),
       tokenExpiresAt: new Date(Date.now() + DEFAULT_FEED_TOKEN_TTL_SEC * 1000).toISOString(),
     };
+  }
+
+  /**
+   * Mint the game's current feed credential (Inputs-wave GUIDED, 2026-08-10).
+   *
+   * Extracted from the controller's GET /sports/games/:id/feed-credentials so
+   * the mint gets the SAME immutable-AuditLog treatment revokeFeedToken above
+   * already has — the mint response IS a live write credential for a public
+   * scoreboard (AUTHZ-01), so handing it out is a privileged action (Standard
+   * Audit Surface §16) and must leave a forensic row. Details carry only the
+   * token's METADATA (version / ttl / expiry) — NEVER the token itself.
+   *
+   * Tenant-scoped (404 if the game isn't the caller's). Minting is stateless
+   * (no version bump) — re-opening the setup card just re-issues an
+   * equivalent credential at the current version.
+   */
+  async mintFeedCredentials(
+    tenantId: string,
+    gameId: string,
+    actorUserId?: string,
+    ttlSecondsRaw?: string,
+  ): Promise<{
+    token: string;
+    tokenTtlSeconds: number;
+    expiresAt: string;
+    feedTokenVersion: number;
+  }> {
+    // Ownership gate (throws NotFound if the game isn't this tenant's).
+    await this.owned(tenantId, gameId);
+
+    const feedTokenVersion = await this.getFeedTokenVersion(gameId);
+    const requested = Number(ttlSecondsRaw);
+    const tokenTtlSeconds =
+      Number.isFinite(requested) && requested > 0
+        ? Math.min(MAX_FEED_TOKEN_TTL_SEC, Math.max(MIN_FEED_TOKEN_TTL_SEC, Math.floor(requested)))
+        : DEFAULT_FEED_TOKEN_TTL_SEC;
+    const token = makeFeedToken(gameId, { version: feedTokenVersion, ttlSeconds: tokenTtlSeconds });
+    const expiresAt = new Date(Date.now() + tokenTtlSeconds * 1000).toISOString();
+
+    // Immutable AuditLog row — who was handed a live feed credential, at
+    // which version, expiring when. Best-effort like every other audit write
+    // in this service. The token itself must NEVER appear here.
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorUserId || null,
+          action: 'SPORTS_FEED_TOKEN_MINTED',
+          targetType: 'Game',
+          targetId: gameId,
+          details: JSON.stringify({ feedTokenVersion, tokenTtlSeconds, expiresAt }),
+        },
+      });
+    } catch { /* best-effort */ }
+
+    return { token, tokenTtlSeconds, expiresAt, feedTokenVersion };
+  }
+
+  // ── feed liveness stamp (Inputs-wave GUIDED, 2026-08-10) ──────
+  //
+  // `Game.stats.feed = { lastPacketAt, source, accepted }` is the shared
+  // "is anything talking to this game?" heartbeat behind the guided
+  // scoreboard-feed setup card's status row (Waiting for first packet… /
+  // Receiving / stale). All THREE machine-ingest paths stamp it:
+  //   - POST board/:id/feed                → source 'feed'  (ingest(), stampFeed)
+  //   - POST board/:id/cts-snapshot        → source 'cts'   (ingestCtsSnapshot)
+  //   - POST board/:id/swim-timing-snapshot→ source 'swim'  (ingestSwimTimingSnapshot)
+  // The cts/swim stamps ride their EXISTING withStatsTx whole-blob writes
+  // (zero extra writes, zero extra race surface). The generic /feed path
+  // stamps via the throttle below — including on its no-op early-return, so
+  // an idle-but-connected vendor heartbeat never looks dead on the pill.
+  // The stamp changes at most once per FEED_STAMP_MIN_INTERVAL_MS on the
+  // /feed path, so the board ETag (which hashes stats) is bumped at most
+  // every 5s by an otherwise-idle feed — bounded, and irrelevant during
+  // live play when the payload churns anyway.
+
+  private static readonly FEED_STAMP_MIN_INTERVAL_MS = 5_000;
+
+  /** Build the stats.feed stamp value. */
+  private feedStamp(
+    source: 'feed' | 'cts' | 'swim',
+    accepted: boolean,
+  ): Record<string, unknown> {
+    return { lastPacketAt: new Date().toISOString(), source, accepted };
+  }
+
+  /**
+   * Throttle gate: is a fresh stats.feed stamp worth a write? True when the
+   * blob has no (parseable) stamp yet, or the previous one is older than
+   * FEED_STAMP_MIN_INTERVAL_MS. Keeps a 4 Hz no-op heartbeat from hammering
+   * the contended stats row — the pill only needs ~5s granularity.
+   */
+  private feedStampDue(stats: unknown, now: number): boolean {
+    if (!stats || typeof stats !== 'object') return true;
+    const f = (stats as Record<string, unknown>).feed;
+    if (!f || typeof f !== 'object') return true;
+    const t = Date.parse(String((f as Record<string, unknown>).lastPacketAt));
+    if (!Number.isFinite(t)) return true;
+    return now - t > SportsService.FEED_STAMP_MIN_INTERVAL_MS;
+  }
+
+  /**
+   * Dedicated small stats write for the /feed NO-OP case (nothing to apply,
+   * so there is no existing update to fold the stamp into). Runs inside
+   * withStatsTx (Serializable + retry) because `Game.stats` is the contended
+   * blob the 5 Hz CTS/swim ingests also RMW — a plain read-modify-write here
+   * would reopen the exact lost-update race withStatsTx exists to close.
+   * Throttled via feedStampDue on the caller's already-read row (`statsHint`)
+   * so at most one such write lands per FEED_STAMP_MIN_INTERVAL_MS.
+   * Best-effort: a liveness stamp must never fail the vendor's ingest call.
+   */
+  private async stampFeedLiveness(
+    gameId: string,
+    source: 'feed' | 'cts' | 'swim',
+    accepted: boolean,
+    statsHint: unknown,
+  ): Promise<void> {
+    if (!this.feedStampDue(statsHint, Date.now())) return;
+    try {
+      await this.withStatsTx(gameId, 'sports.stampFeedLiveness', (_tx, fresh) => {
+        const prev: Record<string, unknown> =
+          fresh.stats && typeof fresh.stats === 'object'
+            ? { ...(fresh.stats as Record<string, unknown>) }
+            : {};
+        return { stats: { ...prev, feed: this.feedStamp(source, accepted) } as any };
+      });
+    } catch {
+      // Best-effort — see doc comment.
+    }
   }
 
   // ── scorekeeper console share-link (Phase-2 Domain SHARE) ─────
@@ -4398,8 +4532,10 @@ export class SportsService {
     // A machine feed has no operator at a launchpad, so this is the path
     // that should auto-fire celebrations on a score jump (the Sprint 13
     // "AUTO" trigger). The guarded admin /ingest endpoint passes no opts,
-    // staying manual.
-    return this.ingest(game.tenantId, id, dto, { auto: true });
+    // staying manual. stampFeed marks packets from this machine path in
+    // stats.feed (the guided-setup liveness pill) — the manual admin path
+    // must NOT stamp, or an operator edit would masquerade as a vendor feed.
+    return this.ingest(game.tenantId, id, dto, { auto: true, stampFeed: true });
   }
 
   async ingest(
@@ -4412,7 +4548,7 @@ export class SportsService {
       clockRunning?: boolean;
       segment?: number;
     },
-    opts: { auto?: boolean } = {},
+    opts: { auto?: boolean; stampFeed?: boolean } = {},
   ) {
     const game = await this.owned(tenantId, id);
     const data: Record<string, unknown> = {};
@@ -4494,8 +4630,31 @@ export class SportsService {
     }
 
     if (Object.keys(data).length === 0) {
-      // Nothing to apply — return the current game without a write.
+      // Nothing to apply — return the current game without an operator-column
+      // write. For the machine-feed path this is the idle-but-connected
+      // heartbeat (a vendor box POSTing an empty/unchanged body): the packet
+      // itself is liveness proof, so stamp stats.feed (throttled, via
+      // withStatsTx — see stampFeedLiveness) or the guided-setup pill would
+      // report a healthy feed as dead. accepted:false records that nothing
+      // was applied.
+      if (opts.stampFeed) {
+        await this.stampFeedLiveness(id, 'feed', false, game.stats);
+      }
       return game;
+    }
+
+    // Machine-feed liveness stamp (guided setup pill) — fold into THIS
+    // update's data so the applied case costs zero extra writes. To keep the
+    // contended-stats exposure bounded (this write is a plain update, not a
+    // withStatsTx — same as the pre-existing runningFlipped merge above), only
+    // attach a stats copy when stats is ALREADY being written (free) or the
+    // previous stamp is past the throttle window; a ≤5s-stale lastPacketAt is
+    // invisible at the pill's granularity.
+    if (opts.stampFeed && (data.stats !== undefined || this.feedStampDue(game.stats, Date.now()))) {
+      const base = data.stats ?? game.stats;
+      const baseObj: Record<string, unknown> =
+        base && typeof base === 'object' ? { ...(base as Record<string, unknown>) } : {};
+      data.stats = { ...baseObj, feed: this.feedStamp('feed', true) } as any;
     }
 
     // Capture the prior scores as PRIMITIVES before the write — the delta
@@ -6238,7 +6397,15 @@ export class SportsService {
       // Build the merged stats write so we do a single DB update.
       // Clock-running transition: slave the penalty box and shot clock —
       // same helper chain clockAction uses, same "clockMutated = true" flag.
-      let mergedStatsForWrite: Record<string, unknown> = { ...prevStats, cts: nextCts };
+      // The stats.feed liveness stamp (guided-setup pill, Inputs-wave GUIDED)
+      // rides this SAME write — the blob is being rewritten anyway, so the
+      // stamp costs nothing and stays inside the Serializable tx. Every later
+      // re-spread below ({ ...mergedStatsForWrite, … }) preserves it.
+      let mergedStatsForWrite: Record<string, unknown> = {
+        ...prevStats,
+        cts: nextCts,
+        feed: this.feedStamp('cts', true),
+      };
 
       // T2-1: merge CTS exclusions into stats.penalties (top-level, source:'cts')
       // so the existing penalty-box render path can consume them alongside
@@ -6539,7 +6706,13 @@ export class SportsService {
       const mergedResults = mergeSwimResult(prevResults, fresh);
       const sanitized = sanitizeResults(mergedResults as unknown);
 
-      const nextStats: Record<string, unknown> = { ...prevStats, results: sanitized };
+      // stats.feed liveness stamp (guided-setup pill, Inputs-wave GUIDED) —
+      // rides the existing single merged write, inside the Serializable tx.
+      const nextStats: Record<string, unknown> = {
+        ...prevStats,
+        results: sanitized,
+        feed: this.feedStamp('swim', true),
+      };
 
       // Team score (dual meets, report A7 module 0x0D) folds into the same
       // homeTimeouts-style scalar convention ingestCtsSnapshot uses for its
