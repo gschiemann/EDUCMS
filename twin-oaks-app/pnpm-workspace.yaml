@@ -1,0 +1,10 @@
+# Fence: marks twin-oaks-app as its own pnpm workspace root.
+#
+# While this app is parked inside the EDUCMS repository (which is itself a
+# pnpm monorepo), any pnpm invocation here would otherwise walk up, find the
+# EDUCMS workspace file, and resolve against the WRONG lockfile/dependency
+# tree — which is exactly how a Vercel build with "include files outside the
+# root directory" dies in the install phase. This file stops the upward walk.
+#
+# Harmless (and removable) once the app lives in its own standalone repo.
+packages: []
