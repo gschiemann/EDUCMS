@@ -4,6 +4,7 @@ import { formatCents } from "@/lib/money";
 import { formatDate, startOfMonth, startOfYear } from "@/lib/dates";
 import { Card, Chip, PageHeader, StatCard, divisionTone } from "@/components/ui";
 import { DIVISION_LABELS, type Division } from "@/lib/domain";
+import { ensureSchema } from "@/lib/ensure-schema";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,35 @@ async function sums(model: "expense" | "income", gte: Date, division?: string) {
 }
 
 export default async function DashboardPage() {
+  const db = await ensureSchema();
+  if (!db.ok) {
+    return (
+      <div>
+        <PageHeader title="Twin Oaks Farm & Tech" />
+        <Card className="border-amber-300 bg-amber-50">
+          <h2 className="mb-1 font-semibold text-amber-900">
+            Database isn&apos;t ready yet
+          </h2>
+          <p className="mb-2 text-sm text-amber-900">{db.reason}</p>
+          {db.detail ? (
+            <p className="mb-2 rounded-lg bg-white/60 p-2 font-mono text-xs text-amber-950">
+              {db.detail}
+            </p>
+          ) : null}
+          <p className="mb-1 text-xs text-amber-800">
+            Database-related settings this deployment can see:{" "}
+            {db.envNames.length > 0 ? db.envNames.join(", ") : "none"}
+          </p>
+          <p className="text-xs text-amber-800">
+            Fix: in Vercel, open the twin-oaks project → Storage → make sure the
+            Neon database is connected with env prefix DATABASE — then reload
+            this page. It sets itself up automatically.
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
   const monthStart = startOfMonth();
   const yearStart = startOfYear();
 

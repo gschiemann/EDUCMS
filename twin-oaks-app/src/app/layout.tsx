@@ -3,6 +3,7 @@ import Link from "next/link";
 import "./globals.css";
 import BottomNav from "@/components/BottomNav";
 import { SearchIcon } from "@/components/Icons";
+import { ensureSchema } from "@/lib/ensure-schema";
 
 export const metadata: Metadata = {
   title: "Twin Oaks OS",
@@ -17,7 +18,11 @@ export const viewport: Viewport = {
   themeColor: "#2f5233",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Self-heal the database schema before any page queries run (memoized;
+  // never throws — pages surface a friendly diagnostic if the DB is down).
+  await ensureSchema();
+
   return (
     <html lang="en">
       <body className="min-h-screen bg-stone-100 text-stone-900 antialiased">
