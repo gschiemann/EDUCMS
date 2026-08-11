@@ -34,9 +34,17 @@ _Last updated: 2026-08-10 (initial scaffold)._
 
 ## V2 — Customers, invoicing, mileage, banking (SPEC §34)
 
-⬜ Customers · ⬜ Quotes · ⬜ Invoices · ⬜ Payments · ⬜ Mileage ·
-⬜ Bank transaction matching · ⬜ Better tax reports · ⬜ Accountant export
-(CSV/PDF/ZIP package, SPEC §28)
+_Revenue-loop slice shipped 2026-08-11:_
+
+| Feature | Status | Notes |
+|---|---|---|
+| Customers | ✅ | Profiles (SPEC §14 contact fields), lifetime revenue + open balance rollups; deletable only when invoice-free |
+| Invoices | ✅ | Draft → sent lifecycle, line-item editor, auto numbering (INV-NNN), sales tax, derived paid/partial/overdue status, printable/PDF view; drafts editable, sent invoices immutable |
+| Payments | ✅ | Recorded against invoices; **auto-posts a linked Income row** (division-appropriate SPEC §25 category) so the books need no double entry; removing a payment removes its income row |
+| Mileage | ✅ | SPEC §19 trips (odometer or direct miles), vehicle link advances Asset.currentMileage, YTD totals, Tax Center line. No auto-deduction math — rate is the accountant's call |
+| Quotes | ⬜ | Planned: invoice `kind` variant with convert-to-invoice |
+| Bank transaction matching | ⬜ | |
+| Better tax reports / accountant export (CSV/PDF/ZIP, SPEC §28) | ⬜ | JSON backup exists today |
 
 ## V3 — Farm / livestock (SPEC §35)
 

@@ -33,6 +33,7 @@ export default async function TaxCenterPage({
     needsReview,
     missingReceipts,
     capital,
+    mileage,
   ] = await Promise.all([
     prisma.expense.aggregate({ where: { taxYear }, _sum: { amountCents: true } }),
     prisma.income.aggregate({ where: { taxYear }, _sum: { amountCents: true } }),
@@ -67,6 +68,11 @@ export default async function TaxCenterPage({
     prisma.expense.findMany({
       where: { taxYear, isCapital: true },
       orderBy: { amountCents: "desc" },
+    }),
+    prisma.mileageLog.aggregate({
+      where: { taxYear },
+      _sum: { miles: true },
+      _count: true,
     }),
   ]);
 
@@ -204,6 +210,24 @@ export default async function TaxCenterPage({
             ))}
           </div>
         )}
+      </Card>
+
+      <Card className="mb-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-semibold text-stone-900">Business mileage</h2>
+            <p className="text-xs text-stone-500">
+              {mileage._count} trip{mileage._count === 1 ? "" : "s"} logged · deduction rate is your
+              accountant&apos;s call
+            </p>
+          </div>
+          <Link href="/mileage" className="text-right">
+            <span className="block text-xl font-bold tabular-nums text-stone-900">
+              {(mileage._sum.miles ?? 0).toLocaleString("en-US", { maximumFractionDigits: 1 })} mi
+            </span>
+            <span className="text-xs font-medium text-oak-700 underline">view log</span>
+          </Link>
+        </div>
       </Card>
 
       <Card className="mb-4">

@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { CameraIcon, DollarIcon, PlusIcon, ReceiptIcon, WrenchIcon } from "./Icons";
+import { CameraIcon, DollarIcon, GridIcon, PlusIcon, ReceiptIcon, TractorIcon, WrenchIcon } from "./Icons";
 
 // SPEC §2: one large quick-add button for the records used every day.
-// Only actions that exist in V1 are listed — nothing fake.
+// Only actions that actually exist are listed — nothing fake.
 const actions = [
   { href: "/receipts/new", label: "Receipt", desc: "Snap or upload — categorize later", icon: CameraIcon },
   { href: "/expenses/new", label: "Expense", desc: "Record money going out", icon: ReceiptIcon },
   { href: "/income/new", label: "Income", desc: "Record money coming in", icon: DollarIcon },
+  { href: "/invoices/new", label: "Invoice", desc: "Bill a customer", icon: GridIcon },
+  { href: "/mileage", label: "Mileage", desc: "Log a business trip", icon: TractorIcon },
   { href: "/assets", label: "Maintenance", desc: "Log service on a machine", icon: WrenchIcon },
 ];
 

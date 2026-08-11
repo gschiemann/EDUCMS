@@ -22,9 +22,9 @@ export default async function SearchPage({
       OR: fields.map((f) => ({ [f]: { contains: t } })),
     }));
 
-  const [expenses, receipts, assets, incomes, maintenance] =
+  const [expenses, receipts, assets, incomes, maintenance, customers, invoices, trips] =
     terms.length === 0
-      ? [[], [], [], [], []]
+      ? [[], [], [], [], [], [], [], []]
       : await Promise.all([
           prisma.expense.findMany({
             where: {
@@ -62,10 +62,33 @@ export default async function SearchPage({
             take: 25,
             orderBy: { date: "desc" },
           }),
+          prisma.customer.findMany({
+            where: { AND: textAnd(["name", "company", "email", "phone", "notes"]) },
+            take: 25,
+            orderBy: { name: "asc" },
+          }),
+          prisma.invoice.findMany({
+            where: { AND: textAnd(["number", "notes", "terms"]) },
+            include: { customer: { select: { name: true } } },
+            take: 25,
+            orderBy: { issueDate: "desc" },
+          }),
+          prisma.mileageLog.findMany({
+            where: { AND: textAnd(["destination", "startLocation", "purpose", "customerName", "notes"]) },
+            take: 25,
+            orderBy: { date: "desc" },
+          }),
         ]);
 
   const total =
-    expenses.length + receipts.length + assets.length + incomes.length + maintenance.length;
+    expenses.length +
+    receipts.length +
+    assets.length +
+    incomes.length +
+    maintenance.length +
+    customers.length +
+    invoices.length +
+    trips.length;
 
   return (
     <div>
@@ -188,6 +211,72 @@ export default async function SearchPage({
                     </span>
                     <span className="font-semibold tabular-nums text-oak-700">
                       +{formatCents(i.amountCents)}
+                    </span>
+                  </Link>
+                ))}
+              </Card>
+            </section>
+          ) : null}
+
+          {invoices.length > 0 ? (
+            <section>
+              <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-stone-500">
+                Invoices
+              </h2>
+              <Card className="divide-y divide-stone-100 p-0">
+                {invoices.map((i) => (
+                  <Link
+                    key={i.id}
+                    href={`/invoices/${i.id}`}
+                    className="flex justify-between gap-3 px-4 py-3"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">
+                        {i.number} · {i.customer.name}
+                      </span>
+                      <span className="text-sm text-stone-500">{formatDate(i.issueDate)}</span>
+                    </span>
+                    <span className="font-semibold tabular-nums">{formatCents(i.totalCents)}</span>
+                  </Link>
+                ))}
+              </Card>
+            </section>
+          ) : null}
+
+          {customers.length > 0 ? (
+            <section>
+              <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-stone-500">
+                Customers
+              </h2>
+              <Card className="divide-y divide-stone-100 p-0">
+                {customers.map((c) => (
+                  <Link key={c.id} href={`/customers/${c.id}`} className="block px-4 py-3">
+                    <span className="block font-medium">{c.name}</span>
+                    <span className="text-sm text-stone-500">
+                      {[c.company, c.email, c.phone].filter(Boolean).join(" · ") || "—"}
+                    </span>
+                  </Link>
+                ))}
+              </Card>
+            </section>
+          ) : null}
+
+          {trips.length > 0 ? (
+            <section>
+              <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-stone-500">
+                Mileage
+              </h2>
+              <Card className="divide-y divide-stone-100 p-0">
+                {trips.map((t) => (
+                  <Link key={t.id} href="/mileage" className="flex justify-between gap-3 px-4 py-3">
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">{t.destination}</span>
+                      <span className="text-sm text-stone-500">
+                        {formatDate(t.date)} · {t.purpose}
+                      </span>
+                    </span>
+                    <span className="font-semibold tabular-nums">
+                      {t.miles.toLocaleString("en-US", { maximumFractionDigits: 1 })} mi
                     </span>
                   </Link>
                 ))}

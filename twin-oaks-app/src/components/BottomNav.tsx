@@ -10,7 +10,7 @@ const items = [
   { href: "/receipts", label: "Receipts", icon: ReceiptIcon, exact: false },
   null, // center slot — Quick Add
   { href: "/expenses", label: "Money", icon: DollarIcon, exact: false, also: ["/income"] },
-  { href: "/more", label: "More", icon: GridIcon, exact: false, also: ["/assets", "/tax", "/search"] },
+  { href: "/more", label: "More", icon: GridIcon, exact: false, also: ["/assets", "/tax", "/search", "/customers", "/invoices", "/mileage"] },
 ] as const;
 
 export default function BottomNav() {

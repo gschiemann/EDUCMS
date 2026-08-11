@@ -68,7 +68,20 @@ feature work.
 - **Tax statuses (SPEC §27):** LIKELY_BUSINESS, CAPITAL_ASSET,
   MIXED_PERSONAL, NEEDS_REVIEW (default), MISSING_DOCS, NOT_DEDUCTIBLE.
 - **Maintenance records** double as the hour-meter log — `addMaintenance`
-  advances `Asset.currentHours` when the service hours exceed it.
+  advances `Asset.currentHours` when the service hours exceed it (mileage
+  logs do the same for `Asset.currentMileage`).
+- **Invoices (V2):** stored status is only DRAFT | SENT | CANCELLED —
+  paid/partial/overdue are DERIVED from payments + dueDate via
+  `deriveInvoiceStatus` (invoice-bits.ts); never store them. Drafts are
+  editable; sent invoices are financial records (line edits blocked).
+  Recording a payment auto-creates a linked Income row
+  (`incomeCategoryForDivision`); deleting the payment deletes that row.
+  Invoice numbers are `INV-NNN` via `nextInvoiceNumber`.
+- **Schema changes MUST update `src/lib/ensure-schema.ts`:** regenerate the
+  DDL (`prisma migrate diff --from-empty --to-schema-datamodel
+  prisma/schema.prisma --script`), keep statements idempotent (IF NOT
+  EXISTS / duplicate_object guards), and point the probe at the NEWEST
+  table so existing databases self-upgrade.
 
 ## Commands
 

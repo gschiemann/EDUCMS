@@ -124,11 +124,107 @@ model Asset {
   notes              String?
   expenses           Expense[]
   maintenance        MaintenanceRecord[]
+  mileageLogs        MileageLog[]
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
 
   @@index([kind])
   @@index([division])
+}
+
+// ————— V2: the revenue loop (SPEC §§14–17) + mileage (§19) —————
+
+model Customer {
+  id        String    @id @default(cuid())
+  name      String
+  company   String?
+  phone     String?
+  email     String?
+  address   String?
+  notes     String?
+  invoices  Invoice[]
+  payments  Payment[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  number        String        @unique // "INV-001"
+  customerId    String
+  customer      Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  division      String // FARM | TECH | SHARED
+  // Stored base status: DRAFT | SENT | CANCELLED. Paid/partially-paid/overdue
+  // are DERIVED from payments + dueDate — never stored, never drifts.
+  status        String        @default("DRAFT")
+  issueDate     DateTime
+  dueDate       DateTime?
+  terms         String?
+  notes         String?
+  subtotalCents Int           @default(0)
+  salesTaxCents Int           @default(0)
+  totalCents    Int           @default(0)
+  taxYear       Int
+  lines         InvoiceLine[]
+  payments      Payment[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([customerId])
+  @@index([status])
+  @@index([taxYear])
+}
+
+model InvoiceLine {
+  id             String  @id @default(cuid())
+  invoiceId      String
+  invoice        Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  sortOrder      Int     @default(0)
+  description    String
+  quantity       Float   @default(1)
+  unitPriceCents Int
+  totalCents     Int
+}
+
+model Payment {
+  id          String    @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  customerId  String?
+  customer    Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  date        DateTime
+  amountCents Int
+  method      String?
+  checkNumber String?
+  notes       String?
+  incomeId    String? // the auto-created Income row that puts this payment on the books
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([invoiceId])
+}
+
+// Mileage (SPEC §19). Tax-safety: we record miles; the deduction rate and
+// treatment are the accountant's call.
+model MileageLog {
+  id             String   @id @default(cuid())
+  date           DateTime
+  startLocation  String?
+  destination    String
+  purpose        String
+  customerName   String?
+  vehicleAssetId String?
+  vehicle        Asset?   @relation(fields: [vehicleAssetId], references: [id], onDelete: SetNull)
+  startOdometer  Float?
+  endOdometer    Float?
+  miles          Float
+  notes          String?
+  taxYear        Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([date])
+  @@index([taxYear])
 }
 
 model MaintenanceRecord {

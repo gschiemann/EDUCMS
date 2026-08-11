@@ -136,6 +136,108 @@ const DDL: string[] = [
   `CREATE INDEX IF NOT EXISTS "Asset_division_idx" ON "Asset"("division")`,
   `CREATE INDEX IF NOT EXISTS "MaintenanceRecord_assetId_date_idx" ON "MaintenanceRecord"("assetId", "date")`,
 
+  // ————— V2: revenue loop + mileage —————
+
+  `CREATE TABLE IF NOT EXISTS "Customer" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "company" TEXT,
+    "phone" TEXT,
+    "email" TEXT,
+    "address" TEXT,
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "Customer_pkey" PRIMARY KEY ("id")
+)`,
+
+  `CREATE TABLE IF NOT EXISTS "Invoice" (
+    "id" TEXT NOT NULL,
+    "number" TEXT NOT NULL,
+    "customerId" TEXT NOT NULL,
+    "division" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'DRAFT',
+    "issueDate" TIMESTAMP(3) NOT NULL,
+    "dueDate" TIMESTAMP(3),
+    "terms" TEXT,
+    "notes" TEXT,
+    "subtotalCents" INTEGER NOT NULL DEFAULT 0,
+    "salesTaxCents" INTEGER NOT NULL DEFAULT 0,
+    "totalCents" INTEGER NOT NULL DEFAULT 0,
+    "taxYear" INTEGER NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "Invoice_pkey" PRIMARY KEY ("id")
+)`,
+
+  `CREATE TABLE IF NOT EXISTS "InvoiceLine" (
+    "id" TEXT NOT NULL,
+    "invoiceId" TEXT NOT NULL,
+    "sortOrder" INTEGER NOT NULL DEFAULT 0,
+    "description" TEXT NOT NULL,
+    "quantity" DOUBLE PRECISION NOT NULL DEFAULT 1,
+    "unitPriceCents" INTEGER NOT NULL,
+    "totalCents" INTEGER NOT NULL,
+    CONSTRAINT "InvoiceLine_pkey" PRIMARY KEY ("id")
+)`,
+
+  `CREATE TABLE IF NOT EXISTS "Payment" (
+    "id" TEXT NOT NULL,
+    "invoiceId" TEXT NOT NULL,
+    "customerId" TEXT,
+    "date" TIMESTAMP(3) NOT NULL,
+    "amountCents" INTEGER NOT NULL,
+    "method" TEXT,
+    "checkNumber" TEXT,
+    "notes" TEXT,
+    "incomeId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "Payment_pkey" PRIMARY KEY ("id")
+)`,
+
+  `CREATE TABLE IF NOT EXISTS "MileageLog" (
+    "id" TEXT NOT NULL,
+    "date" TIMESTAMP(3) NOT NULL,
+    "startLocation" TEXT,
+    "destination" TEXT NOT NULL,
+    "purpose" TEXT NOT NULL,
+    "customerName" TEXT,
+    "vehicleAssetId" TEXT,
+    "startOdometer" DOUBLE PRECISION,
+    "endOdometer" DOUBLE PRECISION,
+    "miles" DOUBLE PRECISION NOT NULL,
+    "notes" TEXT,
+    "taxYear" INTEGER NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "MileageLog_pkey" PRIMARY KEY ("id")
+)`,
+
+  `CREATE UNIQUE INDEX IF NOT EXISTS "Invoice_number_key" ON "Invoice"("number")`,
+  `CREATE INDEX IF NOT EXISTS "Invoice_customerId_idx" ON "Invoice"("customerId")`,
+  `CREATE INDEX IF NOT EXISTS "Invoice_status_idx" ON "Invoice"("status")`,
+  `CREATE INDEX IF NOT EXISTS "Invoice_taxYear_idx" ON "Invoice"("taxYear")`,
+  `CREATE INDEX IF NOT EXISTS "Payment_invoiceId_idx" ON "Payment"("invoiceId")`,
+  `CREATE INDEX IF NOT EXISTS "MileageLog_date_idx" ON "MileageLog"("date")`,
+  `CREATE INDEX IF NOT EXISTS "MileageLog_taxYear_idx" ON "MileageLog"("taxYear")`,
+
+  `DO $$ BEGIN
+    ALTER TABLE "Invoice" ADD CONSTRAINT "Invoice_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "Customer"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+  `DO $$ BEGIN
+    ALTER TABLE "InvoiceLine" ADD CONSTRAINT "InvoiceLine_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+  `DO $$ BEGIN
+    ALTER TABLE "Payment" ADD CONSTRAINT "Payment_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+  `DO $$ BEGIN
+    ALTER TABLE "Payment" ADD CONSTRAINT "Payment_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "Customer"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+  `DO $$ BEGIN
+    ALTER TABLE "MileageLog" ADD CONSTRAINT "MileageLog_vehicleAssetId_fkey" FOREIGN KEY ("vehicleAssetId") REFERENCES "Asset"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+
   // Foreign keys have no IF NOT EXISTS — swallow duplicate_object instead.
   `DO $$ BEGIN
     ALTER TABLE "Receipt" ADD CONSTRAINT "Receipt_expenseId_fkey" FOREIGN KEY ("expenseId") REFERENCES "Expense"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -177,7 +279,9 @@ async function ensureSchemaOnce(): Promise<DbStatus> {
     };
   }
   try {
-    await prisma.$queryRawUnsafe(`SELECT 1 FROM "Vendor" LIMIT 1`);
+    // Probe the NEWEST table — if an older deploy's schema is present but a
+    // newer model is missing, the idempotent DDL below fills the gap.
+    await prisma.$queryRawUnsafe(`SELECT 1 FROM "MileageLog" LIMIT 1`);
     return { ok: true }; // schema already present
   } catch (probeErr) {
     // Table missing (or connection issue) — attempt to apply the schema.
@@ -185,7 +289,7 @@ async function ensureSchemaOnce(): Promise<DbStatus> {
       for (const stmt of DDL) {
         await prisma.$executeRawUnsafe(stmt);
       }
-      await prisma.$queryRawUnsafe(`SELECT 1 FROM "Vendor" LIMIT 1`);
+      await prisma.$queryRawUnsafe(`SELECT 1 FROM "MileageLog" LIMIT 1`);
       console.log("[twin-oaks] database schema applied by self-heal");
       return { ok: true };
     } catch (healErr) {

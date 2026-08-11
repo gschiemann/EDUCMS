@@ -3,6 +3,9 @@ import { Card, PageHeader } from "@/components/ui";
 import { ChevronRightIcon } from "@/components/Icons";
 
 const links = [
+  { href: "/invoices", label: "Invoices", desc: "Bill customers and track what's owed" },
+  { href: "/customers", label: "Customers", desc: "Profiles, revenue, and open balances" },
+  { href: "/mileage", label: "Mileage", desc: "Business trips logged for tax time" },
   { href: "/assets", label: "Equipment & assets", desc: "Tractors, printers, trailers — profiles and maintenance" },
   { href: "/tax", label: "Tax Center", desc: "Year totals, flagged items, category breakdowns" },
   { href: "/search", label: "Search", desc: "Find any expense, receipt, or record in seconds" },
@@ -36,7 +39,7 @@ export default function MorePage() {
       <Card className="mt-4">
         <h2 className="mb-1 font-semibold text-stone-900">Coming next</h2>
         <ul className="space-y-1 text-sm text-stone-500">
-          <li>V2 — customers, quotes, invoices, payments, mileage, bank matching</li>
+          <li>V2 (rest) — quotes, bank matching, accountant export package</li>
           <li>V3 — sheep profiles, lambing, health records, livestock sales</li>
           <li>V4 — print jobs, filament inventory, per-printer profitability</li>
         </ul>

@@ -317,7 +317,123 @@ async function main() {
     },
   });
 
-  console.log("Seeded: 6 vendors, 3 assets, 7 expenses, 2 income, 3 receipts, 3 maintenance records.");
+  // --- V2: customers, invoices, payments, mileage -------------------------
+  const acme = await prisma.customer.create({
+    data: {
+      name: "Dana Reyes",
+      company: "Acme Fabrication",
+      phone: "555-201-8890",
+      email: "dana@acmefab.example",
+      address: "412 Industrial Way\nSpringfield",
+      notes: "Prefers PETG. Net-14 terms.",
+    },
+  });
+  const hartley = await prisma.customer.create({
+    data: { name: "Jane Hartley", phone: "555-330-1121", notes: "Buys market lambs each summer." },
+  });
+
+  const inv1 = await prisma.invoice.create({
+    data: {
+      number: "INV-001",
+      customerId: acme.id,
+      division: "TECH",
+      status: "SENT",
+      issueDate: new Date(2026, 7, 4, 12),
+      dueDate: new Date(2026, 7, 18, 12),
+      terms: "Due in 14 days",
+      taxYear: 2026,
+      subtotalCents: 34000,
+      salesTaxCents: 0,
+      totalCents: 34000,
+      lines: {
+        create: [
+          {
+            sortOrder: 0,
+            description: "Custom mounting brackets, PETG",
+            quantity: 20,
+            unitPriceCents: 1700,
+            totalCents: 34000,
+          },
+        ],
+      },
+    },
+  });
+  const inv1Income = await prisma.income.create({
+    data: {
+      date: new Date(2026, 7, 6, 12),
+      taxYear: 2026,
+      source: "Acme Fabrication",
+      description: "Invoice INV-001 — Acme Fabrication ($340.00)",
+      amountCents: 34000,
+      division: "TECH",
+      category: "3D-printed product sales",
+      paymentMethod: "Bank transfer",
+    },
+  });
+  await prisma.payment.create({
+    data: {
+      invoiceId: inv1.id,
+      customerId: acme.id,
+      date: new Date(2026, 7, 6, 12),
+      amountCents: 34000,
+      method: "Bank transfer",
+      incomeId: inv1Income.id,
+    },
+  });
+
+  await prisma.invoice.create({
+    data: {
+      number: "INV-002",
+      customerId: hartley.id,
+      division: "FARM",
+      status: "SENT",
+      issueDate: new Date(2026, 7, 9, 12),
+      dueDate: new Date(2026, 7, 23, 12),
+      terms: "Due on pickup",
+      taxYear: 2026,
+      subtotalCents: 67500,
+      salesTaxCents: 0,
+      totalCents: 67500,
+      lines: {
+        create: [
+          {
+            sortOrder: 0,
+            description: "Market lambs (2)",
+            quantity: 2,
+            unitPriceCents: 33750,
+            totalCents: 67500,
+          },
+        ],
+      },
+    },
+  });
+
+  await prisma.mileageLog.create({
+    data: {
+      date: new Date(2026, 7, 2, 12),
+      startLocation: "Farm",
+      destination: "Rural King, Springfield",
+      purpose: "Feed + mineral pickup",
+      startOdometer: 48210,
+      endOdometer: 48252,
+      miles: 42,
+      taxYear: 2026,
+    },
+  });
+  await prisma.mileageLog.create({
+    data: {
+      date: new Date(2026, 7, 6, 12),
+      destination: "Acme Fabrication",
+      purpose: "Deliver bracket order",
+      customerName: "Acme Fabrication",
+      miles: 18.4,
+      taxYear: 2026,
+    },
+  });
+
+  console.log(
+    "Seeded: 6 vendors, 3 assets, 7 expenses, 3 income, 3 receipts, 3 maintenance records, 2 customers, 2 invoices (1 paid), 2 mileage trips.",
+  );
 }
 
 main()
