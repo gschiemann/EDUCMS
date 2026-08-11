@@ -1050,6 +1050,41 @@ export class SportsController {
     return this.sports.hideFromScreens(req.user.tenantId, id, body?.screenIds);
   }
 
+  // ── schedule game mode (Inputs-wave SCHED) ───────────────────
+  // Auto-push the game's board to the armed screens 10 minutes before
+  // scheduledAt (baked lead, no knob), auto-revert at FINAL.
+
+  /** Read the schedule-game-mode config — armed state, target screens/
+   *  surface, pending fire time, and whether the board is already up. */
+  @Get('games/:id/auto-push')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  getAutoPush(@Request() req: any, @Param('id') id: string) {
+    return this.sports.getAutoPush(req.user.tenantId, id);
+  }
+
+  /** Arm (armed:true + screenIds [+ surface]) or disarm (armed:false)
+   *  schedule game mode. Arming requires the game time to be set — the
+   *  board goes up 10 minutes before it. */
+  @Post('games/:id/auto-push')
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  setAutoPush(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { armed?: boolean; screenIds?: string[]; surface?: string },
+  ) {
+    return this.sports.setAutoPush(req.user.tenantId, id, body ?? {}, req?.user?.id);
+  }
+
   // ── roster ───────────────────────────────────────────────────
 
   /** Every player on a game's roster (home + away). */

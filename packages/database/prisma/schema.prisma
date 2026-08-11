@@ -2364,6 +2364,17 @@ model Game {
   // style copy; a future COUNTDOWN wiring can target it. Purely additive.
   scheduledAt DateTime? @map("scheduled_at")
 
+  // 2026-08-10 — Inputs-wave SCHED: schedule game mode. When the operator
+  // arms auto-push, this is the moment the board goes up on the selected
+  // screens: scheduledAt − 10 minutes (baked default, no knob). NULL means
+  // "nothing pending" — not armed, already pushed, cancelled at FINAL, or
+  // disarmed. The GameScheduleService sweep claims due rows by atomically
+  // nulling this column (UPDATE … RETURNING — replica-safe, like the
+  // webhook-retry worker), so a value survives only until it fires. Which
+  // screens/surface (and the saved state to restore at FINAL) rides a
+  // latest-wins AUTO_PUSH GameEvent. Nullable → purely additive.
+  autoPushAt DateTime? @map("auto_push_at")
+
   tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   events GameEvent[]
   roster RosterPlayer[]
@@ -2388,6 +2399,9 @@ model Game {
   // Sports Wave S4-1 — serves the "upcoming games" list ordering query
   // (tenant-scoped, sorted by scheduledAt).
   @@index([tenantId, scheduledAt])
+  // Inputs-wave SCHED — serves GameScheduleService's tenant-less due-push
+  // sweep (auto_push_at <= NOW()); no tenant-leading index can.
+  @@index([autoPushAt])
   @@map("games")
 }
 

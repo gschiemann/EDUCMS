@@ -4099,6 +4099,52 @@ export function useHideGameFromScreens(gameId: string) {
   });
 }
 
+// ── schedule game mode (Inputs-wave SCHED) ─────────────────────
+// Auto-push the board to the armed screens 10 minutes before the game
+// time, auto-revert at FINAL.
+
+export interface AutoPushConfig {
+  armed: boolean;
+  screenIds: string[];
+  surface: string;
+  /** Pending fire time (ISO) — null once fired, cancelled, or disarmed. */
+  autoPushAt: string | null;
+  /** Set once the sweep put the board up (ISO). */
+  pushedAt: string | null;
+  /** The server's baked lead (ms before scheduledAt) — drives UI copy. */
+  leadMs: number;
+}
+
+export function useAutoPush(gameId: string | undefined) {
+  return useQuery<AutoPushConfig>({
+    queryKey: ['sports-auto-push', gameId],
+    queryFn: () => apiFetch(`/sports/games/${gameId}/auto-push`),
+    enabled: !!gameId,
+    // Deliberately NO refetchInterval (mobile perf standard — no new
+    // pollers): the armed flag only changes via this console's own
+    // mutations, and the live pieces the card renders (scheduledAt,
+    // autoPushAt via the game row) ride the existing useGame 4s poll.
+  });
+}
+
+export function useSetAutoPush(gameId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { armed: boolean; screenIds?: string[]; surface?: string }) =>
+      apiFetch(`/sports/games/${gameId}/auto-push`, {
+        method: 'POST',
+        body: JSON.stringify(vars),
+      }),
+    onSuccess: (data) => {
+      if (data) qc.setQueryData(['sports-auto-push', gameId], data);
+      // The game row carries autoPushAt (the AUTO chip on the list reads
+      // it) — refresh both game caches.
+      qc.invalidateQueries({ queryKey: ['sports-game', gameId] });
+      qc.invalidateQueries({ queryKey: ['sports-games'] });
+    },
+  });
+}
+
 // ── sports roster ──────────────────────────────────────────────
 
 export interface RosterPlayer {

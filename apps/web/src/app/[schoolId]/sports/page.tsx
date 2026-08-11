@@ -24,6 +24,9 @@ import { SPORTS, findSport, formatScore } from '@cms/api-types';
 import { AssetPicker } from '@/components/assets/AssetPicker';
 import { filterRelevantTemplates } from '@/lib/template-relevance';
 import { formatGameWhen, orderGames } from './game-list';
+// Inputs-wave SCHED — client-boundary kickoff conversion (zone-less
+// datetime-local → ISO with timezone; see scheduled-at.ts).
+import { datetimeLocalToIso } from './scheduled-at';
 
 const STATUS_BADGE: Record<string, string> = {
   SCHEDULED: 'bg-slate-100 text-slate-600',
@@ -267,6 +270,16 @@ function GameCard({
               <div className="flex items-center gap-1 text-[11px] text-slate-400 mt-0.5">
                 <Clock className="h-3 w-3" />
                 {when}
+                {/* Inputs-wave SCHED — a pending auto-push (Game.autoPushAt
+                    set) rides the same list payload: no extra fetch. */}
+                {g.autoPushAt && (
+                  <span
+                    className="inline-flex items-center text-[9px] font-black tracking-widest text-indigo-700 bg-indigo-50 border border-indigo-200 px-1 py-px rounded"
+                    title="Schedule game mode — the board goes up automatically 10 minutes before start"
+                  >
+                    AUTO
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -477,10 +490,12 @@ export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
         scoreboardTemplateId: scoreboardTemplateId || null,
         ribbonTemplateId: ribbonTemplateId || null,
         scorebugTemplateId: scorebugTemplateId || null,
-        // datetime-local gives "2026-08-21T19:00" (no seconds, no zone) —
-        // `new Date(...)` on the API side parses that as local time, which
-        // is exactly what an operator typing "7:00 PM" at their venue means.
-        scheduledAt: scheduledAt || undefined,
+        // datetime-local gives "2026-08-21T19:00" (no seconds, no zone).
+        // Inputs-wave SCHED fix: the API's `new Date(...)` parses a
+        // zone-less string in the SERVER's zone (UTC on Railway) — a
+        // 7-hour miss once auto-push acts on it. Convert HERE, where the
+        // browser knows the operator's zone, and send full ISO instead.
+        scheduledAt: datetimeLocalToIso(scheduledAt) ?? undefined,
         // Regulation period length pick (only sent when it differs from
         // the sport default — the server validates against the options).
         clockSegmentMs: clockSegmentMs ? Number(clockSegmentMs) : undefined,

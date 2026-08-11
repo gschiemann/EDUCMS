@@ -39,6 +39,7 @@ import {
   MonitorPlay,
   Star,
   RectangleHorizontal,
+  CalendarClock,
   ImageIcon,
   Volume2,
   Keyboard,
@@ -67,9 +68,14 @@ import {
   useUpdateSponsor,
   useTemplates,
   useUpdateGameDetails,
+  useAutoPush,
+  useSetAutoPush,
   type SponsorInput,
   type RosterPlayer,
 } from '@/hooks/use-api';
+// Inputs-wave SCHED — client-boundary kickoff conversion (zone-less
+// datetime-local → ISO with timezone) + the auto-push preview math.
+import { datetimeLocalToIso, autoPushMoment } from '../scheduled-at';
 import { findSport, formatScore, parseScoreInput, PLAYER_STATS, sanitizeResults } from '@cms/api-types';
 import type { SportDefinition, MeetResult, ResultEntry as ApiResultEntry } from '@cms/api-types';
 import { computeCtsStatus, type CtsStatus } from '@/lib/cts-merge';
@@ -667,6 +673,10 @@ function GameControl() {
                 <span className="font-semibold text-slate-500">More → Set up game</span>.
               </p>
               <ScheduledAtField gameId={gameId} scheduledAt={g.scheduledAt ?? null} />
+              {/* Inputs-wave SCHED — schedule game mode: the board goes up
+                  on the picked screens 10 minutes before the game time and
+                  comes back down automatically at final. */}
+              <AutoPushCard gameId={gameId} scheduledAt={g.scheduledAt ?? null} />
             </Section>
 
             {/* ── 2. TEAMS ────────────────────────────────────────
@@ -7315,7 +7325,13 @@ function ScheduledAtField({
 
   const commit = () => {
     setDirty(false);
-    update.mutate({ scheduledAt: draft || null });
+    // Inputs-wave SCHED — convert the zone-less datetime-local value to a
+    // full ISO string WITH timezone at the client boundary. The browser's
+    // zone IS the operator's zone; sending the raw string let the server
+    // (UTC on Railway) parse "19:00" as 7pm UTC — cosmetic while
+    // scheduledAt was display-only, a 7-hour miss once auto-push acts on
+    // it. See ../scheduled-at.ts.
+    update.mutate({ scheduledAt: datetimeLocalToIso(draft) });
   };
 
   return (
@@ -7351,6 +7367,193 @@ function ScheduledAtField({
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Inputs-wave SCHED (2026-08-10) — schedule game mode. One card under the
+ * "When is it?" field: pick the screens, flip it on, and the board goes up
+ * there 10 minutes before the game time (baked lead — no knob; the number
+ * comes from the API's `leadMs` so copy can't drift) and comes back down
+ * automatically at final, restoring whatever each screen showed before.
+ *
+ * Mobile-perf: NO new pollers. The screen list rides the SAME
+ * ['sports-game-screens', gameId] query ScreenPushPanel already polls
+ * (React Query dedupes by key), the config query fetches once, and the
+ * live bits (scheduledAt) ride the existing useGame 4s poll via props.
+ */
+function AutoPushCard({
+  gameId,
+  scheduledAt,
+}: {
+  gameId: string;
+  scheduledAt: string | null;
+}) {
+  const { data: cfg } = useAutoPush(gameId);
+  const { data: screens } = useGameScreens(gameId);
+  const set = useSetAutoPush(gameId);
+
+  const list: any[] = Array.isArray(screens) ? screens : [];
+  const armed = cfg?.armed === true;
+  const pushed = armed && !!cfg?.pushedAt;
+
+  // Local selection, hydrated ONCE from the stored config so a re-render
+  // (or the shared screens poll) never clobbers the operator mid-pick.
+  const [selected, setSelected] = useState<string[]>([]);
+  const [surface, setSurface] = useState<'BOARD' | 'RIBBON'>('BOARD');
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    if (hydrated || !cfg) return;
+    if (cfg.armed) {
+      setSelected(cfg.screenIds);
+      setSurface(cfg.surface === 'RIBBON' ? 'RIBBON' : 'BOARD');
+    }
+    setHydrated(true);
+  }, [cfg, hydrated]);
+
+  const pushAt = autoPushMoment(scheduledAt, cfg?.leadMs);
+  const timeFmt = (d: Date) =>
+    d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+
+  /** Arm (or re-arm with a changed selection) — latest-wins on the API. */
+  const arm = (screenIds: string[], surf: 'BOARD' | 'RIBBON') => {
+    if (screenIds.length === 0) return;
+    set.mutate({ armed: true, screenIds, surface: surf });
+  };
+
+  const toggleArmed = () => {
+    if (armed) set.mutate({ armed: false });
+    else arm(selected, surface);
+  };
+
+  const toggleScreen = (id: string) => {
+    const next = selected.includes(id)
+      ? selected.filter((x) => x !== id)
+      : [...selected, id];
+    setSelected(next);
+    // While armed, edits apply immediately (no separate save step);
+    // removing the last screen simply turns the mode off.
+    if (armed) {
+      if (next.length === 0) set.mutate({ armed: false });
+      else arm(next, surface);
+    }
+  };
+
+  const pickSurface = (surf: 'BOARD' | 'RIBBON') => {
+    setSurface(surf);
+    if (armed && selected.length > 0) arm(selected, surf);
+  };
+
+  const canArm = !!pushAt && selected.length > 0 && !set.isPending;
+
+  return (
+    <div className="mt-3 pt-3 border-t border-slate-100">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5">
+          <CalendarClock className="h-3.5 w-3.5 text-slate-400" />
+          <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
+            Schedule game mode
+          </span>
+          {armed && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">
+              {pushed ? 'On air' : 'Armed'}
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={armed}
+          aria-label="Push this game to screens automatically"
+          disabled={!armed && !canArm}
+          onClick={toggleArmed}
+          className={`relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-40 ${
+            armed ? 'bg-emerald-500' : 'bg-slate-300'
+          }`}
+        >
+          <span
+            className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${
+              armed ? 'left-[18px]' : 'left-0.5'
+            }`}
+          />
+        </button>
+      </div>
+
+      {/* Live preview — plain English, browser zone (the operator's). */}
+      {pushAt ? (
+        <p className="text-xs text-slate-500 mt-1.5">
+          {pushed
+            ? 'The board is up — it comes back down automatically at final.'
+            : `Board goes up at ${timeFmt(pushAt)} · reverts at final`}
+        </p>
+      ) : (
+        <p className="text-xs text-slate-400 mt-1.5">
+          Set a game time above first — the board goes up 10 minutes before it.
+        </p>
+      )}
+
+      {list.length === 0 ? (
+        <p className="text-xs text-slate-400 mt-2">
+          No paired screens yet — pair a display, then come back to schedule it.
+        </p>
+      ) : (
+        <>
+          {/* Which screens get the board */}
+          <div className="mt-2.5 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+            {list.map((s) => {
+              const on = selected.includes(s.id);
+              return (
+                <label
+                  key={s.id}
+                  className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 cursor-pointer transition-colors ${
+                    on ? 'border-emerald-300 bg-emerald-50/60' : 'border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    disabled={set.isPending}
+                    onChange={() => toggleScreen(s.id)}
+                    className="h-3.5 w-3.5 accent-emerald-600"
+                  />
+                  <span
+                    className={`h-2 w-2 rounded-full shrink-0 ${
+                      s.status === 'ONLINE' ? 'bg-green-500' : 'bg-slate-300'
+                    }`}
+                  />
+                  <span className="text-xs font-semibold text-slate-700 truncate">{s.name}</span>
+                </label>
+              );
+            })}
+          </div>
+
+          {/* Which surface goes up (one pick for every selected screen —
+              same Scoreboard/Ribbon vocabulary as Screen assignment). */}
+          <div className="mt-2 flex items-center gap-1.5">
+            <SurfaceBtn
+              label="Scoreboard"
+              icon={MonitorPlay}
+              active={surface === 'BOARD'}
+              disabled={set.isPending}
+              onClick={() => pickSurface('BOARD')}
+            />
+            <SurfaceBtn
+              label="Ribbon"
+              icon={RectangleHorizontal}
+              active={surface === 'RIBBON'}
+              disabled={set.isPending}
+              onClick={() => pickSurface('RIBBON')}
+            />
+          </div>
+        </>
+      )}
+
+      {set.isError && (
+        <p className="text-xs text-rose-600 mt-2">
+          {(set.error as Error)?.message || 'Could not save — try again.'}
+        </p>
+      )}
     </div>
   );
 }
