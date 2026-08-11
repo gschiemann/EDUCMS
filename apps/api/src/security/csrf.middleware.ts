@@ -114,6 +114,17 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   // exempt list — every snapshot POST got 403 CsrfError, so the live
   // CTS path was completely broken in production. Added 2026-05-28.
   (p) => /^\/api\/v1\/sports\/board\/[^/]+\/cts-snapshot$/.test(p),
+  // CTS SWIM timing-snapshot ingest (Inputs-wave SWIM). Same machine-to-
+  // machine argument as /cts-snapshot above — the dashboard's swim-bridge
+  // WebSerial page (or a Node serialport fallback at the timing table)
+  // POSTs the decoded scoreboard-serial state at ≤4 Hz with the game-
+  // scoped HMAC feed token (assertFeedAuth), not an ambient session
+  // cookie; the route is rate-limited 40/10s per game in
+  // SportsBoardController. Exempted TOGETHER WITH the first consumer so
+  // the bridge doesn't repeat the /cts-snapshot day-one bug (that route
+  // shipped un-exempted and every snapshot POST 403'd in production
+  // until 2026-05-28).
+  (p) => /^\/api\/v1\/sports\/board\/[^/]+\/swim-timing-snapshot$/.test(p),
   // CTS celebration-fired forensic write (Sprint 13). The CTS orchestrator
   // on the kiosk player POSTs here fire-and-forget when it fires a cue —
   // no browser session, so a CSRF token round-trip is impossible. The

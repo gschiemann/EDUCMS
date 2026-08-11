@@ -93,6 +93,18 @@ describe('isCsrfExempt', () => {
     expect(isCsrfExempt('DELETE', '/api/v1/sports/games/game-1/console-share')).toBe(false);
   });
 
+  it('exempts the swim timing-snapshot ingest (Inputs-wave SWIM)', () => {
+    // The swim-bridge WebSerial page (or a Node serialport fallback) POSTs
+    // decoded CTS scoreboard-serial state machine-to-machine with the
+    // game-scoped HMAC feed token — no session cookie, so no CSRF token
+    // round-trip is possible. Exempted TOGETHER WITH the first consumer so
+    // it can't repeat the /cts-snapshot day-one 403 (fixed 2026-05-28).
+    expect(isCsrfExempt('POST', '/api/v1/sports/board/game-1/swim-timing-snapshot')).toBe(true);
+    // Sanity — sibling GUARDED sports routes gain nothing from the prefix.
+    expect(isCsrfExempt('POST', '/api/v1/sports/board/game-1/swim-timing-snapshot/extra')).toBe(false);
+    expect(isCsrfExempt('PATCH', '/api/v1/sports/games/game-1/stats')).toBe(false);
+  });
+
   it('exempts POS inbound webhooks (Square HMAC + custom-webhook secret) — final-beta P0', () => {
     // External POS systems POST machine-to-machine with no session; each
     // receiver self-authenticates (Square HMAC sig / X-Webhook-Secret).
@@ -173,6 +185,21 @@ describe('CsrfMiddleware', () => {
 
     mw.use(req as any, makeRes() as any, next);
     expect(next).toHaveBeenCalled();
+  });
+
+  it('passes the swim snapshot POST with no CSRF header in enforce mode (non-exempt routes still 403)', () => {
+    process.env.CSRF_ENFORCE = 'true';
+    const mw = new CsrfMiddleware();
+    // The swim-bridge posts with only x-feed-token — no CSRF cookie, no
+    // CSRF header. The exemption must let it reach the controller (where
+    // assertFeedAuth is the real gate) instead of 403'ing before auth runs.
+    const swimReq = makeReq({ path: '/api/v1/sports/board/game-1/swim-timing-snapshot' });
+    const next = jest.fn();
+    mw.use(swimReq as any, makeRes() as any, next);
+    expect(next).toHaveBeenCalledWith();
+    // Same-shaped request against a non-exempt route is still blocked.
+    const guardedReq = makeReq({ path: '/api/v1/playlists' });
+    expect(() => mw.use(guardedReq as any, makeRes() as any, jest.fn())).toThrow(ForbiddenException);
   });
 
   it('does not block when CSRF_ENFORCE is off (warn mode)', () => {
