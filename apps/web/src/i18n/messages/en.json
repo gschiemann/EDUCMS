@@ -628,7 +628,9 @@
         "rebootOk": "Available on this device.",
         "rebootBlockedOtherOwner": "Not available — another management app already owns this device, so remote restart can’t be granted.",
         "rebootNeedsProvisioning": "Not available — remote restart needs device-owner setup, which means a factory reset and re-enrolling this box.",
-        "rebootUnavailable": "Not available — this device hasn’t granted remote restart."
+        "rebootUnavailable": "Not available — this device hasn’t granted remote restart.",
+        "blankDeviceAdmin": "Should turn the screen off. This box reports a device-admin app is active — if that admin isn’t our player, it falls back to covering the screen with black and the backlight stays lit.",
+        "blankUnknown": "Covers the screen with black. This screen hasn’t reported yet whether it can truly power its panel off, so assume the backlight stays lit."
       },
       "scheduleTitle": "On/off schedule",
       "scheduleForScreen": "Screen: {name}",
@@ -658,7 +660,9 @@
       "scheduleDelete": "Delete",
       "scheduleDeleteTitle": "Delete this schedule?",
       "scheduleDeleteBody": "The screen will stop turning itself off and on. You can add a new schedule any time.",
-      "scheduleSaveFailed": "Couldn’t save the schedule."
+      "scheduleSaveFailed": "Couldn’t save the schedule.",
+      "levelUnknown": "This screen doesn’t report its current level, so the slider sets an absolute value — not an adjustment from where it is now.",
+      "pickADay": "Pick at least one day. To stop a screen turning itself off, delete the schedule instead."
     }
   },
   "assetsLib": {

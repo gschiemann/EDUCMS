@@ -628,7 +628,9 @@
         "rebootOk": "Disponible en este dispositivo.",
         "rebootBlockedOtherOwner": "No disponible — otra aplicación de gestión ya es propietaria del dispositivo, así que no se puede conceder el reinicio remoto.",
         "rebootNeedsProvisioning": "No disponible — el reinicio remoto requiere configuración como propietario del dispositivo, lo que implica restablecer de fábrica y volver a registrar el equipo.",
-        "rebootUnavailable": "No disponible — este dispositivo no ha concedido el reinicio remoto."
+        "rebootUnavailable": "No disponible — este dispositivo no ha concedido el reinicio remoto.",
+        "blankDeviceAdmin": "Debería apagar la pantalla. Este equipo informa que hay una app de administración de dispositivos activa; si no es nuestro reproductor, cubrirá la pantalla de negro y la retroiluminación seguirá encendida.",
+        "blankUnknown": "Cubre la pantalla de negro. Esta pantalla aún no ha informado si puede apagar realmente su panel, así que asume que la retroiluminación sigue encendida."
       },
       "scheduleTitle": "Horario de encendido/apagado",
       "scheduleForScreen": "Pantalla: {name}",
@@ -658,7 +660,9 @@
       "scheduleDelete": "Eliminar",
       "scheduleDeleteTitle": "¿Eliminar este horario?",
       "scheduleDeleteBody": "La pantalla dejará de encenderse y apagarse sola. Puedes añadir un horario nuevo cuando quieras.",
-      "scheduleSaveFailed": "No se pudo guardar el horario."
+      "scheduleSaveFailed": "No se pudo guardar el horario.",
+      "levelUnknown": "Esta pantalla no informa su nivel actual, por lo que el control establece un valor absoluto, no un ajuste desde donde está ahora.",
+      "pickADay": "Elige al menos un día. Para que una pantalla deje de apagarse sola, elimina el horario."
     }
   },
   "assetsLib": {

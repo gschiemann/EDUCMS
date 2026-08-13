@@ -70,6 +70,11 @@ import {
   nativeFire,
   nativeHas,
 } from './nativeBridge';
+// Display-control EMERGENCY INTERLOCK (2026-08-13). The native display
+// layer can blank the panel and dim the backlight; while a life-safety
+// alert is on screen it must do neither. See emergencyHold.ts for the
+// raise-eagerly / release-only-from-the-server-of-record rule.
+import { signalDisplayEmergencyHold } from './emergencyHold';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Bullet-proof helpers (Phase 1 hardening)
@@ -3129,6 +3134,31 @@ function PlayerPage() {
     pushedEmergencyMessageRef.current = pushedEmergencyMessage;
   }, [pushedEmergencyMessage]);
 
+  // ── DISPLAY-CONTROL EMERGENCY INTERLOCK (2026-08-13) ──────────────────
+  // The display-control layer in the APK can add a full-screen blackout
+  // overlay ABOVE this WebView, dim the window to near-zero and blank the
+  // panel on an AlarmManager schedule. None of that may happen while a
+  // lockdown / evacuation / weather alert is on the glass.
+  //
+  // ⚠️ THIS EFFECT ONLY EVER RAISES THE HOLD — it never releases one.
+  //
+  // The native hold is PERSISTED across a process restart (that is half the
+  // point of it). This web bundle, meanwhile, can reload on its own at any
+  // time — a REFRESH_WEB, a service-worker update, a WebView OOM-kill. On
+  // that reload the component mounts with `activeEmergency === null` for
+  // the handful of frames before the cached emergency hydrates and the
+  // first manifest lands. If this effect released on `false`, a reload
+  // during a live lockdown would drop a legitimate hold and re-arm blanking
+  // on a screen showing an active alert. So the release lives on exactly
+  // one path — the manifest handler in fetchContent — which is the server
+  // of record, and which also carries the live pushed-message state.
+  //
+  // Effects run after commit, i.e. in the same frame the alert paints, and
+  // the call is a no-op on a browser player or an APK without the method.
+  useEffect(() => {
+    if (activeEmergency || pushedEmergencyMessage) signalDisplayEmergencyHold(true);
+  }, [activeEmergency, pushedEmergencyMessage]);
+
   // SECURITY (2026-07-31, operator): "the remote shouldn't allow anyone to
   // even exit out of the warning — what if the bad guy has some universal
   // remote." During ANY displayed emergency (tenant-wide override OR pushed
@@ -4220,6 +4250,26 @@ function PlayerPage() {
       // the only thing we trust to flip the overlay). If `em` is null
       // here, the server is telling us there's no emergency. Calling
       // setActiveEmergency(null) when already null is idempotent.
+      //
+      // EMERGENCY INTERLOCK (2026-08-13). THE ONE AUTHORITATIVE CALL.
+      //
+      // This is the branch a WS-less screen on the HTTP polling backstop
+      // rides — the one most likely to be on a locked-down network AND the
+      // one where a native blank schedule could otherwise fire over a live
+      // lockdown. It is also the ONLY place the hold is ever RELEASED,
+      // because the manifest is the server of record for emergency state
+      // (same principle as the ALL_CLEAR handling below: nothing but the
+      // server drops an alert). A raise is forced, so every poll re-arms a
+      // native process that restarted mid-alert; a release is deduped, so
+      // the steady state costs one bridge message, not one per poll.
+      //
+      // The pushed-message tier (SOS / TEXT_BROADCAST / MEDIA_ALERT) is
+      // read from its ref, not from `em`: it is an alert on the same glass,
+      // it has its own server-arbitrated reconcile poll, and forgetting it
+      // here would let a manifest with no tenant override release the hold
+      // out from under a live SOS takeover.
+      const holdNow = !!em || !!pushedEmergencyMessageRef.current;
+      signalDisplayEmergencyHold(holdNow, holdNow);
       setActiveEmergency(em);
       cacheEmergency(em);
       if (manifest.playlists && manifest.playlists.length > 0) {
@@ -5049,7 +5099,14 @@ function PlayerPage() {
         });
       };
       handle('SYNC', () => fetchContent());
-      handle('OVERRIDE', () => fetchContent());
+      handle('OVERRIDE', () => {
+        // Mirror of the WS branch — a new emergency-path behaviour MUST be
+        // handled on both transports or it silently no-ops for every screen
+        // behind a WS-blocking proxy (Squid / ZScaler / iboss / GoGuardian),
+        // which is exactly the population this SSE tier exists for.
+        signalDisplayEmergencyHold(true, true);
+        fetchContent();
+      });
       handle('ALL_CLEAR', () => fetchContent());
       handle('CHECK_FOR_UPDATES', () => {
         // 2026-05-16 — don't install on arrival. Show the operator-
@@ -5079,6 +5136,7 @@ function PlayerPage() {
       // EventSource opened (device JWT) and at the Redis fan-out gate;
       // the SSE `handle()` wrapper hands us the inner signed payload.
       const onEmergencyMessage = (type: 'SOS' | 'TEXT_BROADCAST' | 'MEDIA_ALERT') => (p: any) => {
+        signalDisplayEmergencyHold(true, true);
         const payload = p || {};
         setPushedEmergencyMessage({
           // The DB row id arrives as `messageId` in the signed payload;
@@ -5369,6 +5427,17 @@ function PlayerPage() {
               return;
             }
             if (msg.type === 'SYNC' || msg.type === 'OVERRIDE' || msg.type === 'ALL_CLEAR') {
+              // EMERGENCY INTERLOCK (2026-08-13) — raise the native display
+              // hold the instant an OVERRIDE lands, ahead of the manifest
+              // round-trip that confirms it. A spurious hold costs "this
+              // screen won't blank for a minute"; a late hold costs a
+              // lockdown alert behind a black overlay.
+              //
+              // ALL_CLEAR deliberately does NOT lower it. The same reasoning
+              // as the block below: a forged or replayed ALL_CLEAR must not
+              // be able to re-enable blanking on a screen that is still in a
+              // real emergency. The hold drops when the MANIFEST says clear.
+              if (msg.type === 'OVERRIDE') signalDisplayEmergencyHold(true, true);
               fetchContent();
             }
             // 2026-05-26 P0-3 — Sprint 5 emergency messages (SOS,
@@ -5379,6 +5448,9 @@ function PlayerPage() {
             // pushed-message state from the WS payload. ALL_CLEAR_MESSAGE
             // (emergency.controller.ts:981) clears.
             if (msg.type === 'SOS' || msg.type === 'TEXT_BROADCAST' || msg.type === 'MEDIA_ALERT') {
+              // Interlock: a pushed alert takes the glass exactly like a
+              // tenant override, so the display hold goes up with it.
+              signalDisplayEmergencyHold(true, true);
               const p = msg.payload || {};
               setPushedEmergencyMessage({
                 id: p.id || msg.eventId || `msg-${Date.now()}`,

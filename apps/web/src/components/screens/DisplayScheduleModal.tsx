@@ -37,8 +37,12 @@ import {
 } from '@/hooks/use-api';
 import {
   DISPLAY_SCHEDULE_DAYS,
+  ALL_DAY_INDEXES,
+  WEEKDAY_INDEXES,
   parseDays,
   serializeDays,
+  formatDays,
+  isEveryDay,
   crossesMidnight,
 } from './display-capabilities';
 
@@ -97,7 +101,8 @@ export function DisplayScheduleModal({
   const remove = useDeleteDisplaySchedule();
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [days, setDays] = useState<string[]>([...DISPLAY_SCHEDULE_DAYS]);
+  // Wire encoding throughout: 0 = Sunday … 6 = Saturday (contract C2).
+  const [days, setDays] = useState<number[]>([...ALL_DAY_INDEXES]);
   const [onTime, setOnTime] = useState('07:00');
   const [offTime, setOffTime] = useState('22:00');
   const [timezone, setTimezone] = useState(browserZone());
@@ -114,7 +119,7 @@ export function DisplayScheduleModal({
 
   const resetForm = () => {
     setEditingId(null);
-    setDays([...DISPLAY_SCHEDULE_DAYS]);
+    setDays([...ALL_DAY_INDEXES]);
     setOnTime('07:00');
     setOffTime('22:00');
     setTimezone(browserZone());
@@ -132,11 +137,19 @@ export function DisplayScheduleModal({
     setError(null);
   };
 
-  const toggleDay = (d: string) =>
+  const toggleDay = (d: number) =>
     setDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]));
 
+  // `days.length > 0` is load-bearing, not belt-and-braces: the previous
+  // build collapsed an empty selection to null and read null back as
+  // "every day", so an operator who switched every day OFF got a screen
+  // scheduled to blank every night. Zero days is now simply un-saveable —
+  // which is also exactly what the API's `.min(1)` says.
   const valid =
-    /^\d{2}:\d{2}$/.test(onTime) && /^\d{2}:\d{2}$/.test(offTime) && timezone.trim().length > 2;
+    days.length > 0 &&
+    /^\d{2}:\d{2}$/.test(onTime) &&
+    /^\d{2}:\d{2}$/.test(offTime) &&
+    timezone.trim().length > 2;
   const saving = create.isPending || update.isPending;
 
   const save = async () => {
@@ -177,7 +190,13 @@ export function DisplayScheduleModal({
   };
 
   const summarize = (s: DisplaySchedule) => {
-    const d = s.daysOfWeek ? s.daysOfWeek.replace(/,/g, ' ') : t('screens.display.everyDay');
+    // `parseDays` tolerates whatever the row actually holds. The previous
+    // `s.daysOfWeek.replace(...)` assumed a string and threw a TypeError
+    // *during render* on the real `Int[]`, unmounting the modal's subtree
+    // and handing the operator a blank page instead of a schedule list.
+    const idx = parseDays(s.daysOfWeek);
+    const d =
+      idx.length === 0 || isEveryDay(idx) ? t('screens.display.everyDay') : formatDays(idx);
     return `${d} · ${t('screens.display.onAt')} ${s.onTime} → ${t('screens.display.offAt')} ${s.offTime} · ${s.timezone}`;
   };
 
@@ -282,7 +301,7 @@ export function DisplayScheduleModal({
             <button
               type="button"
               onClick={() => {
-                setDays(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
+                setDays([...WEEKDAY_INDEXES]);
                 setOnTime('07:00');
                 setOffTime('16:00');
               }}
@@ -293,7 +312,7 @@ export function DisplayScheduleModal({
             <button
               type="button"
               onClick={() => {
-                setDays([...DISPLAY_SCHEDULE_DAYS]);
+                setDays([...ALL_DAY_INDEXES]);
                 setOnTime('07:00');
                 setOffTime('22:00');
               }}
@@ -311,20 +330,25 @@ export function DisplayScheduleModal({
           <div className="flex flex-wrap mb-3">
             {DISPLAY_SCHEDULE_DAYS.map((d) => (
               <button
-                key={d}
+                key={d.index}
                 type="button"
-                onClick={() => toggleDay(d)}
-                aria-pressed={days.includes(d)}
+                onClick={() => toggleDay(d.index)}
+                aria-pressed={days.includes(d.index)}
                 className={`mr-1 mb-1 px-3 min-h-[40px] text-[11px] font-bold rounded-lg transition-all ${
-                  days.includes(d)
+                  days.includes(d.index)
                     ? 'bg-indigo-600 text-white shadow-sm'
                     : 'bg-white text-slate-400 border border-slate-200 hover:border-indigo-300'
                 }`}
               >
-                {d}
+                {d.label}
               </button>
             ))}
           </div>
+          {days.length === 0 && (
+            <p className="text-[10px] text-amber-600 font-semibold -mt-2 mb-3">
+              {t('screens.display.pickADay')}
+            </p>
+          )}
 
           {/* Times */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-end mb-3">

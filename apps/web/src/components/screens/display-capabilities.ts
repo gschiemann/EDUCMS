@@ -26,6 +26,34 @@
  * honesty logic in one auditable place.
  */
 
+import { MIN_SAFE_BRIGHTNESS_PERCENT } from '@cms/api-types';
+
+/**
+ * BINDING CROSS-DOMAIN CONTRACTS (lead, 2026-08-13 remediation wave) — the
+ * three that this module is the web-side owner of:
+ *
+ *  C2. `daysOfWeek` is `Int[]`, 0 = Sunday … 6 = Saturday, exactly like the
+ *      existing `Schedule` / `PlaylistItem` convention in schema.prisma. The
+ *      Prisma model is authoritative. This file used to emit a comma-joined
+ *      label string ('Mon,Tue,…') and collapse "all"/"none" to null, which
+ *      the API's `z.array(z.number().int().min(0).max(6)).min(1)` rejected —
+ *      no day selection this UI could produce was acceptable, so NO on/off
+ *      schedule could ever be saved, and reading one back threw a TypeError
+ *      mid-render (`number[].replace is not a function`).
+ *
+ *  C3. BLANK and WAKE are ALWAYS AVAILABLE on every device. The player's
+ *      software floor (window brightness + a black overlay) cannot fail, so
+ *      the probe verdict names the MECHANISM, not the availability. That is
+ *      why `screenBlank: 'none'` — and even a screen that has never reported
+ *      at all — still gets a Blank/Wake pair, with copy that says which of
+ *      the two it is.
+ *
+ *  C4. Fail-OPEN for recovery, fail-CLOSED for risk. WAKE is the one control
+ *      that can only ever make a dark screen visible, so it is never gated
+ *      on a verdict. REBOOT stays gated (and, since the no-device-owner
+ *      product decision, resolves to unavailable on the entire real fleet).
+ */
+
 /** Probe verdict axes — mirrors DisplayCapabilityProbe.kt's `verdict` block. */
 export type VolumeVerdict = 'audiomanager' | 'none';
 export type BrightnessVerdict = 'sysfs' | 'settings' | 'software-dim';
@@ -52,8 +80,12 @@ export interface DisplayCapabilityVerdict {
  * the dashboard, so the operator never even has the option. (The player's
  * `allowBlack` escape hatch is deliberately NOT exposed here; blanking is a
  * separate, auto-reverting action.)
+ *
+ * Re-exported from the shared contract rather than redeclared — the floor
+ * existing as two independent `5`s is how the API and the dashboard drift
+ * apart without either side's tests noticing.
  */
-export const MIN_SAFE_BRIGHTNESS = 5;
+export const MIN_SAFE_BRIGHTNESS = MIN_SAFE_BRIGHTNESS_PERCENT;
 
 /**
  * Dead-man revert the dashboard attaches to BLANK. Per the architecture,
@@ -131,6 +163,41 @@ export interface ResolvedDisplayControls {
 const NOT_REPORTED: ControlAxis = { available: false, softwareOnly: false, noteKey: null };
 
 /**
+ * CONTRACT C3 — Blank/Wake are ALWAYS available, on every verdict and on no
+ * verdict at all. The software floor (window brightness + black overlay) is
+ * unconditional in the player, so the only thing the verdict decides here is
+ * WHICH TRUTH we print, never whether the pair renders.
+ *
+ * Two honesty subtleties baked in:
+ *  - `device-admin` no longer claims "truly turns the screen off". The probe
+ *    sets that verdict when ANY app on the box is an active device admin
+ *    (`dpm.activeAdmins`), which on a district image is routinely a
+ *    third-party MDM and not us — `lockNow()` then throws SecurityException
+ *    and the player silently falls through to the software floor. So the
+ *    device-admin copy says "should", and only `device-owner` keeps the
+ *    absolute wording.
+ *  - "never reported" gets the software-floor copy rather than silence,
+ *    because per C4 the WAKE half of this pair is the fleet's only remote
+ *    recovery from a dark screen and must never be gated on a probe.
+ */
+export function resolveBlankAxis(mech: ScreenBlankVerdict | undefined): ControlAxis {
+  if (mech === 'device-owner') {
+    return { available: true, softwareOnly: false, noteKey: 'screens.display.note.blankHardware' };
+  }
+  if (mech === 'device-admin') {
+    return {
+      available: true,
+      softwareOnly: false,
+      noteKey: 'screens.display.note.blankDeviceAdmin',
+    };
+  }
+  if (mech === 'none') {
+    return { available: true, softwareOnly: true, noteKey: 'screens.display.note.blankSoftware' };
+  }
+  return { available: true, softwareOnly: true, noteKey: 'screens.display.note.blankUnknown' };
+}
+
+/**
  * Verdict → what the UI is allowed to render.
  *
  * The subtlety worth reading twice: the verdict describes the HARDWARE path
@@ -148,7 +215,10 @@ export function resolveDisplayControls(raw: unknown): ResolvedDisplayControls {
       verdict: null,
       volume: NOT_REPORTED,
       brightness: { ...NOT_REPORTED, kind: null },
-      blank: NOT_REPORTED,
+      // C3/C4: the blank/wake pair survives "never reported". Everything
+      // else stays honestly blank — but the ONE control that can rescue a
+      // dark screen is not something we withhold pending a probe.
+      blank: resolveBlankAxis(undefined),
       reboot: NOT_REPORTED,
     };
   }
@@ -184,12 +254,7 @@ export function resolveDisplayControls(raw: unknown): ResolvedDisplayControls {
             }
           : { ...NOT_REPORTED, kind: null };
 
-  const blank: ControlAxis =
-    verdict.screenBlank === 'device-owner' || verdict.screenBlank === 'device-admin'
-      ? { available: true, softwareOnly: false, noteKey: 'screens.display.note.blankHardware' }
-      : verdict.screenBlank === 'none'
-        ? { available: true, softwareOnly: true, noteKey: 'screens.display.note.blankSoftware' }
-        : NOT_REPORTED;
+  const blank: ControlAxis = resolveBlankAxis(verdict.screenBlank);
 
   const reboot: ControlAxis =
     verdict.reboot === 'device-owner'
@@ -224,25 +289,84 @@ export function clampVolume(percent: number): number {
 
 // ─── Schedule helpers (shared by the modal + the summary chips) ──────────
 
-export const DISPLAY_SCHEDULE_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
-
 /**
- * `daysOfWeek` is stored the same way Playlist/Schedule store it: a
- * comma-joined subset, or null meaning "every day". Keep the round-trip in
- * one place so the collapse rule (0 or 7 selected → null) can't drift.
+ * CONTRACT C2. `DisplaySchedule.daysOfWeek` is `Int[]` with **0 = Sunday …
+ * 6 = Saturday** — the encoding `Schedule` and `PlaylistItem` already use in
+ * schema.prisma, and the one `DisplayScheduleCreateSchema` validates. The
+ * chips read Mon→Sun because that is how an operator reads a week; the wire
+ * value is always the integer.
+ *
+ * There is deliberately NO "empty means every day" collapse any more. It
+ * inverted the operator's intent — tapping all seven chips off (i.e. "never
+ * auto-power-off") used to serialize to null and read back as "every day",
+ * scheduling the exact nightly blank they had just switched off. Zero days
+ * is now simply invalid and Save is disabled, which is also what the API's
+ * `.min(1)` says.
  */
-export function parseDays(csv: string | null | undefined): string[] {
-  if (!csv) return [...DISPLAY_SCHEDULE_DAYS];
-  return csv
-    .split(',')
-    .map((s) => s.trim())
-    .filter((s) => (DISPLAY_SCHEDULE_DAYS as readonly string[]).includes(s));
+export interface DisplayDay {
+  /** Wire value. 0 = Sunday … 6 = Saturday. */
+  index: number;
+  /** Chip label / summary label. */
+  label: string;
 }
 
-export function serializeDays(days: string[]): string | null {
-  const kept = DISPLAY_SCHEDULE_DAYS.filter((d) => days.includes(d));
-  if (kept.length === 0 || kept.length === DISPLAY_SCHEDULE_DAYS.length) return null;
-  return kept.join(',');
+export const DISPLAY_SCHEDULE_DAYS: readonly DisplayDay[] = [
+  { index: 1, label: 'Mon' },
+  { index: 2, label: 'Tue' },
+  { index: 3, label: 'Wed' },
+  { index: 4, label: 'Thu' },
+  { index: 5, label: 'Fri' },
+  { index: 6, label: 'Sat' },
+  { index: 0, label: 'Sun' },
+];
+
+/** Mon–Fri, in wire encoding. The "School day" preset. */
+export const WEEKDAY_INDEXES: readonly number[] = [1, 2, 3, 4, 5];
+/** All seven, in the canonical Sun→Sat order the API/DB stores. */
+export const ALL_DAY_INDEXES: readonly number[] = [0, 1, 2, 3, 4, 5, 6];
+
+function isDayIndex(n: unknown): n is number {
+  return typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 6;
+}
+
+/**
+ * Read whatever the API handed back into a clean, deduped, canonically
+ * sorted `number[]`. Tolerates a legacy comma-joined label string so a row
+ * written by the pre-fix build (or a hand-seeded fixture) renders instead of
+ * throwing during list.map — see the P1 this replaces.
+ */
+export function parseDays(raw: unknown): number[] {
+  if (Array.isArray(raw)) {
+    return [...new Set(raw.filter(isDayIndex))].sort((a, b) => a - b);
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    const byLabel = new Map(DISPLAY_SCHEDULE_DAYS.map((d) => [d.label.toLowerCase(), d.index]));
+    const out = raw
+      .split(',')
+      .map((s) => s.trim())
+      .map((s) => (/^\d+$/.test(s) ? Number(s) : byLabel.get(s.toLowerCase())))
+      .filter(isDayIndex);
+    return [...new Set(out)].sort((a, b) => a - b);
+  }
+  return [];
+}
+
+/** Wire form: deduped, canonically sorted, never null. May be empty (invalid). */
+export function serializeDays(days: readonly number[]): number[] {
+  return [...new Set(days.filter(isDayIndex))].sort((a, b) => a - b);
+}
+
+/** "Mon Tue Wed" for the saved-schedule summary line. */
+export function formatDays(days: readonly number[]): string {
+  const set = new Set(serializeDays(days));
+  return DISPLAY_SCHEDULE_DAYS.filter((d) => set.has(d.index))
+    .map((d) => d.label)
+    .join(' ');
+}
+
+/** True when every day of the week is selected (summary says "Every day"). */
+export function isEveryDay(days: readonly number[]): boolean {
+  return serializeDays(days).length === 7;
 }
 
 /** True when the on→off window crosses midnight (on 18:00 → off 02:00). */

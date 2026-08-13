@@ -62,6 +62,30 @@ export const NATIVE_VALUE_METHODS = [
   'ctsSerialConnect',
   'ctsSerialDisconnect',
   'ctsSerialStatus',
+  // ── Display control (2026-08-13 wave) ──────────────────────────────
+  // The web half of the registration the player wave explicitly handed
+  // over: all four already exist in the APK's `NativeBridgeChannel.METHODS`
+  // and in its dispatch `when`, but were missing HERE, which left the drift
+  // guard in nativeBridge.test.ts red and made `nativeHas()` answer FALSE
+  // for them on any channel-transport WebView with no document-start
+  // manifest — i.e. the capability probe and every display mutator looked
+  // unavailable on exactly the devices the secure channel was built for.
+  //
+  // `probeDisplay` is the older half of the same bug (recon F1): it had a
+  // dispatch arm but no METHODS entry, so it only ever worked over the
+  // legacy `window.EduCmsNative` object. The player wave fixed the native
+  // side; this is its web counterpart.
+  //
+  // ⚠️ `displayApply` and `displaySetSchedule` are channel-ONLY by design —
+  // their `@JavascriptInterface` twins refuse the legacy every-frame
+  // transport (`{ok:false,code:'insecure-transport'}`) whenever the
+  // origin-scoped channel is live, because that legacy surface reaches
+  // operator-authored board HTML and the worst case there is a hostile
+  // board blanking a wall-mounted screen.
+  'probeDisplay',
+  'displayCapabilities',
+  'displayApply',
+  'displaySetSchedule',
 ] as const;
 
 /** Methods with no return value — use `nativeFire` (sync, void). */
@@ -75,6 +99,20 @@ export const NATIVE_VOID_METHODS = [
   'showUrlOverlay',
   'hideUrlOverlay',
   'openSettingsForManager',
+  // ⚠️ PENDING, DELIBERATELY NOT LISTED YET — `displayEmergencyHold`
+  // (2026-08-13 display-control EMERGENCY INTERLOCK). The web side already
+  // fires it (see ./emergencyHold.ts); it is fire-and-forget, so
+  // `nativeFire` posts it on the channel and returns false on an APK that
+  // predates it — nothing here gates the call.
+  //
+  // It is absent from this array ON PURPOSE: `nativeBridge.test.ts` pins
+  // these two arrays against `NativeBridgeChannel.METHODS` in the Kotlin,
+  // which is the allowlist the NATIVE side actually enforces. Adding the
+  // name here before the APK has it would turn that drift guard red for a
+  // failure that isn't real, and — worse — would make `nativeHas()` answer
+  // true for a method the channel will reject. The two entries (this array
+  // + the Kotlin METHODS allowlist) MUST land in the same commit, and until
+  // the Kotlin side has it the interlock is inert on the secure channel.
 ] as const;
 
 /**

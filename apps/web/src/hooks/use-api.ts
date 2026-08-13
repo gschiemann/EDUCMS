@@ -14,6 +14,7 @@ import type {
   ConciergeReference,
   ConciergeMessage,
   ConciergeTurnResponse,
+  DisplayActionType as ApiDisplayActionType,
 } from '@cms/api-types';
 
 // ─── Tenant Status ──────────────────────────────────────────────
@@ -364,12 +365,30 @@ export function useCalibrateFlash() {
 // "I click it but nothing changes" bug, because /screens renders from
 // useScreenGroups.
 
-export type DisplayActionType = 'volume' | 'brightness' | 'blank' | 'wake' | 'reboot';
+// CONTRACT C1 (lead, 2026-08-13): the action enum is SCREAMING_CASE and
+// `packages/api-types/src/display-control.ts` is authoritative. This hook
+// previously declared its own lowercase union ('volume' | 'blank' | …),
+// which the API's `z.enum(DISPLAY_ACTIONS)` rejected — every control in the
+// panel 400'd, 100% of the time. Import the contract; never restate it.
+export type DisplayActionType = ApiDisplayActionType;
+
+/**
+ * How long a single display-control POST may hang before we abort it.
+ *
+ * apiFetch retries only on a network TypeError, so a socket that is OPEN but
+ * never answers (wedged pod) never settles — the panel's `busy` flag would
+ * stay set forever and, since Wake is the recovery control for Blank, a
+ * screen the operator just blanked would be unrecoverable from the
+ * dashboard until a page reload. An AbortError is not a TypeError, so this
+ * fails fast without triggering a retry storm.
+ */
+export const DISPLAY_CONTROL_TIMEOUT_MS = 12_000;
 
 export interface DisplayControlArgs {
   screenId: string;
-  action: DisplayActionType;
-  /** 0..100 — required for `volume` / `brightness`, ignored otherwise. */
+  /** SCREAMING_CASE — SET_VOLUME / SET_BRIGHTNESS / BLANK / WAKE / REBOOT. */
+  action: ApiDisplayActionType;
+  /** 0..100 — required for SET_VOLUME / SET_BRIGHTNESS, ignored otherwise. */
   percent?: number;
   /** Dead-man revert: device restores prior state after this many ms. */
   revertAfterMs?: number;
@@ -377,15 +396,23 @@ export interface DisplayControlArgs {
 
 export function useDisplayControl() {
   return useMutation({
-    mutationFn: ({ screenId, action, percent, revertAfterMs }: DisplayControlArgs) =>
-      apiFetch(`/screens/${screenId}/display-control`, {
-        method: 'POST',
-        body: JSON.stringify({
-          action,
-          ...(percent !== undefined ? { percent } : {}),
-          ...(revertAfterMs !== undefined ? { revertAfterMs } : {}),
-        }),
-      }),
+    mutationFn: async ({ screenId, action, percent, revertAfterMs }: DisplayControlArgs) => {
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), DISPLAY_CONTROL_TIMEOUT_MS);
+      try {
+        return await apiFetch(`/screens/${screenId}/display-control`, {
+          method: 'POST',
+          signal: ac.signal,
+          body: JSON.stringify({
+            action,
+            ...(percent !== undefined ? { percent } : {}),
+            ...(revertAfterMs !== undefined ? { revertAfterMs } : {}),
+          }),
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+    },
   });
 }
 
@@ -394,8 +421,15 @@ export interface DisplaySchedule {
   tenantId?: string;
   screenId?: string | null;
   screenGroupId?: string | null;
-  /** Comma-joined 'Mon,Tue,…'; null = every day. */
-  daysOfWeek: string | null;
+  /**
+   * CONTRACT C2 — `Int[]`, 0 = Sunday … 6 = Saturday, straight off the
+   * Prisma row (schema.prisma `DisplaySchedule.daysOfWeek Int[]`). It is
+   * NOT a comma-joined label string and it is never null: the API's
+   * `.min(1)` refuses an empty set. Typed loosely as `unknown[]`-tolerant
+   * at the call site via `parseDays()` so a legacy/hand-seeded row can't
+   * throw during render the way `String.replace` on a number[] did.
+   */
+  daysOfWeek: number[];
   /** 'HH:MM' — when the screen wakes. */
   onTime: string;
   /** 'HH:MM' — when the screen blanks. */
@@ -436,7 +470,8 @@ export function useDisplaySchedules(target: DisplayScheduleTarget | null) {
 export interface DisplayScheduleInput {
   screenId?: string;
   screenGroupId?: string;
-  daysOfWeek: string | null;
+  /** 0 = Sunday … 6 = Saturday. At least one — see contract C2. */
+  daysOfWeek: number[];
   onTime: string;
   offTime: string;
   timezone: string;

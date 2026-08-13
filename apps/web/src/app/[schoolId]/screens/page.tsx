@@ -944,7 +944,8 @@ function ScreenSettingsMenu({
   previewHref,
   groupSyncLocked,
   onOpenDisplaySchedule,
-  isViewer,
+  displayReadOnly,
+  capabilitySource,
 }: {
   screen: any;
   pushState: { at: number; priorVersion: string | null } | undefined;
@@ -957,8 +958,24 @@ function ScreenSettingsMenu({
   groupSyncLocked?: boolean;
   /** 2026-08-13 — opens the per-screen on/off schedule editor (page owns it). */
   onOpenDisplaySchedule: () => void;
-  /** RESTRICTED_VIEWER — display controls render but stay inert. */
-  isViewer?: boolean;
+  /**
+   * The signed-in role cannot drive display control — panel renders but
+   * every control is inert.
+   *
+   * This used to be `isViewer` (RESTRICTED_VIEWER only), which meant a
+   * CONTRIBUTOR — a role the API's `@RequireRoles(SUPER_ADMIN,
+   * DISTRICT_ADMIN, SCHOOL_ADMIN)` structurally forbids — got a fully
+   * enabled panel including the rose Restart button, and only found out at
+   * the 403. The page now derives it from the same role set the API uses.
+   */
+  displayReadOnly?: boolean;
+  /**
+   * The FULL screen row for this id when the list we're rendering from is
+   * the group payload, whose `select` whitelist omits displayCapabilities.
+   * Without it a grouped screen reads "not reported yet" forever in the
+   * primary layout while the identical ungrouped screen shows controls.
+   */
+  capabilitySource?: { displayCapabilities?: unknown; displayCapabilitiesAt?: string | null } | null;
 }) {
   const t = useTranslations();
   const [open, setOpen] = useState(false);
@@ -1007,6 +1024,20 @@ function ScreenSettingsMenu({
       if (!menu) return;
       if (menu.contains(e.target as Node)) return;
       if (btn && btn.contains(e.target as Node)) return;
+      // 2026-08-13 — a click inside a globally-mounted modal dialog is NOT
+      // an outside-click for this popover. AppDialogHost renders through
+      // DashboardLayout, outside this portal, so pressing "Continue" on the
+      // Restart-device confirm used to close the popover, unmount
+      // ScreenDisplayControls mid-flight and swallow the result banner
+      // entirely: the POST still fired (React Query mutations outlive the
+      // observer) but neither "Restart command sent" nor a 409 was ever
+      // painted, and the operator walked away believing a reboot was
+      // happening. Keeping the popover alive across the dialog is what
+      // makes the confirmation flow legible.
+      const target = e.target as Element | null;
+      if (target && typeof target.closest === 'function' && target.closest('[role="dialog"]')) {
+        return;
+      }
       setOpen(false);
     };
     const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
@@ -1409,8 +1440,16 @@ function ScreenSettingsMenu({
           popover dismisses on a document-level pointerdown and would
           otherwise fight the modal. */}
       <ScreenDisplayControls
-        screen={screen}
-        readOnly={isViewer}
+        screen={
+          capabilitySource
+            ? {
+                ...screen,
+                displayCapabilities: capabilitySource.displayCapabilities,
+                displayCapabilitiesAt: capabilitySource.displayCapabilitiesAt,
+              }
+            : screen
+        }
+        readOnly={displayReadOnly}
         onOpenSchedule={() => { setOpen(false); onOpenDisplaySchedule(); }}
       />
     </div>
@@ -1517,6 +1556,15 @@ export default function ScreensPage() {
   const { data: allScreens, refetch: refetchScreens } = useScreens();
   const userRole = useUIStore((s) => s.user?.role);
   const isViewer = userRole === 'RESTRICTED_VIEWER';
+  // 2026-08-13 — display control (volume / brightness / blank / wake /
+  // reboot AND every schedule mutation) is gated by the API with
+  // @RequireRoles(SUPER_ADMIN, DISTRICT_ADMIN, SCHOOL_ADMIN). `isViewer`
+  // knows only RESTRICTED_VIEWER, so a CONTRIBUTOR saw fully enabled
+  // controls — including Restart device behind its typed-REBOOT confirm —
+  // that the API then 403'd. Mirror the API's role set exactly; a control
+  // a role can never use must not render enabled for that role.
+  const canControlDisplay =
+    userRole === 'SUPER_ADMIN' || userRole === 'DISTRICT_ADMIN' || userRole === 'SCHOOL_ADMIN';
   // Sprint 8 — fleet map view. Toggle persists in URL via search param so a
   // bookmarked map link still opens the map. (The HQ cross-location roll-up
   // now lives on the Corporate dashboard, not here — keeps Screens to a single
@@ -1527,6 +1575,20 @@ export default function ScreensPage() {
   const schoolId = params?.schoolId ?? '';
   const updateLocation = useUpdateScreenLocation();
   const flatScreens = useMemo(() => (allScreens || []) as any[], [allScreens]);
+  // id → full screen row from GET /screens. The grouped list renders from
+  // GET /screen-groups, whose `include.screens.select` whitelist does not
+  // carry displayCapabilities / displayCapabilitiesAt (the file's own
+  // comments warn three times about exactly this class of omission). Rather
+  // than have the display panel behave differently for a grouped screen
+  // than for the identical ungrouped one, look the full row up here.
+  const screenById = useMemo(() => {
+    const m = new Map<
+      string,
+      { displayCapabilities?: unknown; displayCapabilitiesAt?: string | null }
+    >();
+    for (const s of flatScreens) if (s?.id) m.set(s.id, s);
+    return m;
+  }, [flatScreens]);
 
   // Autocomplete-driven location modal. The previous appPrompt-only flow
   // silently failed when Nominatim couldn't geocode the free-text string
@@ -2322,7 +2384,13 @@ export default function ScreensPage() {
                           refreshWebPending={refreshWeb.isPending}
                           previewHref={buildPreviewUrl(screen)}
                           groupSyncLocked={group.syncMode === 'locked'}
-                          isViewer={isViewer}
+                          displayReadOnly={!canControlDisplay}
+                          // GET /screen-groups uses an explicit select
+                          // whitelist that omits displayCapabilities, so the
+                          // grouped row alone would read "not reported yet"
+                          // forever. GET /screens returns the full row —
+                          // take the capability fields from there.
+                          capabilitySource={screenById.get(screen.id) ?? null}
                           onOpenDisplaySchedule={() => setDisplayScheduleTarget({ kind: 'screen', id: screen.id, name: screen.name })}
                         />
                         </div>
@@ -2493,7 +2561,7 @@ export default function ScreensPage() {
                       onRefreshWeb={() => handleRefreshWeb(screen.id, screen.name)}
                       refreshWebPending={refreshWeb.isPending}
                       previewHref={buildPreviewUrl(screen)}
-                      isViewer={isViewer}
+                      displayReadOnly={!canControlDisplay}
                       onOpenDisplaySchedule={() => setDisplayScheduleTarget({ kind: 'screen', id: screen.id, name: screen.name })}
                     />
                     </div>
@@ -2652,7 +2720,10 @@ export default function ScreensPage() {
       {displayScheduleTarget && (
         <DisplayScheduleModal
           target={displayScheduleTarget}
-          readOnly={isViewer}
+          // POST/PUT/DELETE /display-schedules are admin-only; GET allows
+          // CONTRIBUTOR. So a contributor may OPEN this and read the
+          // schedules, but Save/Delete stay inert instead of 403'ing.
+          readOnly={!canControlDisplay}
           onClose={() => setDisplayScheduleTarget(null)}
         />
       )}

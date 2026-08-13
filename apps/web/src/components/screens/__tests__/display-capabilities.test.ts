@@ -9,6 +9,7 @@
  * even if the panel's markup is rewritten.
  */
 
+import { MIN_SAFE_BRIGHTNESS_PERCENT } from '@cms/api-types';
 import {
   resolveDisplayControls,
   parseDisplayCapabilities,
@@ -16,8 +17,12 @@ import {
   clampVolume,
   serializeDays,
   parseDays,
+  formatDays,
+  isEveryDay,
   crossesMidnight,
   MIN_SAFE_BRIGHTNESS,
+  ALL_DAY_INDEXES,
+  WEEKDAY_INDEXES,
   DISPLAY_SCHEDULE_DAYS,
 } from '../display-capabilities';
 
@@ -60,13 +65,26 @@ describe('resolveDisplayControls — tri-state', () => {
   it('treats "never reported" as unknown, NOT as unsupported', () => {
     const r = resolveDisplayControls(null);
     expect(r.reported).toBe(false);
-    // Nothing may render: not a control, and not a "not supported" claim.
+    // Nothing may be GUESSED at: not a control, and not a "not supported"
+    // claim, for every axis that has a hardware precondition.
     expect(r.volume.available).toBe(false);
     expect(r.volume.noteKey).toBeNull();
     expect(r.brightness.available).toBe(false);
-    expect(r.blank.available).toBe(false);
     expect(r.reboot.available).toBe(false);
     expect(r.reboot.noteKey).toBeNull();
+  });
+
+  // CONTRACT C3/C4 (lead, 2026-08-13). This REPLACES the old assertion that
+  // `blank.available === false` before a probe lands. Blank/Wake ride the
+  // player's unconditional software floor, and WAKE is the fleet's only
+  // remote recovery from a dark screen — withholding it pending a probe
+  // makes "a dark screen that cannot be recovered from the dashboard", which
+  // the lead named as the worst outcome in this whole feature.
+  it('keeps blank/wake available even before the screen has ever reported', () => {
+    const r = resolveDisplayControls(null);
+    expect(r.blank.available).toBe(true);
+    expect(r.blank.softwareOnly).toBe(true);
+    expect(r.blank.noteKey).toBe('screens.display.note.blankUnknown');
   });
 
   it('a partially-reported verdict leaves the missing axes unknown', () => {
@@ -130,10 +148,20 @@ describe('resolveDisplayControls — software-floor axes stay actionable but hon
     expect(r.blank.noteKey).toBe('screens.display.note.blankSoftware');
   });
 
-  it('device-admin blanking counts as a real screen-off', () => {
-    const r = resolveDisplayControls({ ...FULL_VERDICT, screenBlank: 'device-admin' });
-    expect(r.blank.softwareOnly).toBe(false);
-    expect(r.blank.noteKey).toBe('screens.display.note.blankHardware');
+  // The probe sets screenBlank:'device-admin' from `dpm.activeAdmins`, which
+  // counts EVERY admin on the box — routinely a district MDM (Hexnode,
+  // Meraki SM, Knox) rather than us. lockNow() from a non-admin app throws
+  // SecurityException and the player falls back to the software floor, so
+  // the dashboard must not promise a hardware screen-off it can't support.
+  // Only device-OWNER keeps the absolute wording.
+  it('device-admin blanking is hedged, device-owner is absolute', () => {
+    const admin = resolveDisplayControls({ ...FULL_VERDICT, screenBlank: 'device-admin' });
+    expect(admin.blank.available).toBe(true);
+    expect(admin.blank.noteKey).toBe('screens.display.note.blankDeviceAdmin');
+
+    const owner = resolveDisplayControls({ ...FULL_VERDICT, screenBlank: 'device-owner' });
+    expect(owner.blank.softwareOnly).toBe(false);
+    expect(owner.blank.noteKey).toBe('screens.display.note.blankHardware');
   });
 });
 
@@ -152,21 +180,68 @@ describe('safety clamps', () => {
     expect(clampVolume(0)).toBe(0);
     expect(clampVolume(250)).toBe(100);
   });
+
+  it('uses the SHARED floor, so the API and the dashboard cannot drift', () => {
+    expect(MIN_SAFE_BRIGHTNESS).toBe(MIN_SAFE_BRIGHTNESS_PERCENT);
+  });
 });
 
-describe('schedule day round-trip', () => {
-  it('collapses "all days" and "no days" to null (= every day)', () => {
-    expect(serializeDays([...DISPLAY_SCHEDULE_DAYS])).toBeNull();
-    expect(serializeDays([])).toBeNull();
+// CONTRACT C2 — daysOfWeek is Int[], 0=Sun..6=Sat, matching schema.prisma's
+// existing Schedule / PlaylistItem convention. These tests REPLACE the old
+// comma-joined-label round-trip, which produced a payload the API's
+// `z.array(z.number().int().min(0).max(6)).min(1)` rejected on every single
+// save — and whose "0 or 7 selected → null (= every day)" collapse silently
+// INVERTED the operator's intent when they switched every day off.
+describe('schedule day encoding (contract C2 — Int[], 0=Sun..6=Sat)', () => {
+  it('maps the chip labels to the DB/Prisma day indexes', () => {
+    expect(DISPLAY_SCHEDULE_DAYS.map((d) => [d.label, d.index])).toEqual([
+      ['Mon', 1],
+      ['Tue', 2],
+      ['Wed', 3],
+      ['Thu', 4],
+      ['Fri', 5],
+      ['Sat', 6],
+      ['Sun', 0],
+    ]);
+    expect([...WEEKDAY_INDEXES]).toEqual([1, 2, 3, 4, 5]);
+    expect([...ALL_DAY_INDEXES]).toEqual([0, 1, 2, 3, 4, 5, 6]);
   });
 
-  it('keeps a subset in canonical Mon→Sun order regardless of click order', () => {
-    expect(serializeDays(['Fri', 'Mon', 'Wed'])).toBe('Mon,Wed,Fri');
+  it('serializes to a deduped, canonically sorted number[] — never null', () => {
+    expect(serializeDays([5, 1, 3])).toEqual([1, 3, 5]);
+    expect(serializeDays([2, 2, 2])).toEqual([2]);
+    expect(serializeDays([...ALL_DAY_INDEXES])).toEqual([0, 1, 2, 3, 4, 5, 6]);
   });
 
-  it('parses null as every day and ignores junk entries', () => {
-    expect(parseDays(null)).toEqual([...DISPLAY_SCHEDULE_DAYS]);
-    expect(parseDays('Mon, Tue ,Funday')).toEqual(['Mon', 'Tue']);
+  it('NEVER collapses an empty selection to "every day" — it stays empty', () => {
+    // The old behaviour turned "never auto-power-off" into "blank every
+    // night". Empty is now simply invalid, which is also what the API says.
+    expect(serializeDays([])).toEqual([]);
+    expect(isEveryDay([])).toBe(false);
+    expect(isEveryDay([...ALL_DAY_INDEXES])).toBe(true);
+  });
+
+  it('parses the API shape (number[]) and drops out-of-range junk', () => {
+    expect(parseDays([1, 2, 3, 4, 5])).toEqual([1, 2, 3, 4, 5]);
+    expect(parseDays([6, 0, 6])).toEqual([0, 6]);
+    expect(parseDays([9, -1, 2.5, 'Mon' as unknown as number, 4])).toEqual([4]);
+  });
+
+  it('degrades gracefully on a legacy comma-joined row instead of throwing', () => {
+    // A row written by the pre-fix build, or a hand-seeded fixture. The old
+    // code called String.replace on a number[] and threw a TypeError DURING
+    // RENDER, unmounting the modal; this direction must be equally total.
+    expect(parseDays('Mon,Wed,Fri')).toEqual([1, 3, 5]);
+    expect(parseDays('1,3,5')).toEqual([1, 3, 5]);
+    expect(parseDays(null)).toEqual([]);
+    expect(parseDays(undefined)).toEqual([]);
+    expect(parseDays({} as unknown)).toEqual([]);
+  });
+
+  it('formats a summary in the operator-readable Mon→Sun order', () => {
+    expect(formatDays([5, 1, 3])).toBe('Mon Wed Fri');
+    expect(formatDays([0, 6])).toBe('Sat Sun');
+    expect(formatDays([])).toBe('');
   });
 });
 

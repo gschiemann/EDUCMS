@@ -29,6 +29,24 @@
  * screen nobody can reach is a truck roll) and BLANK always carries a
  * dead-man revert so a forgotten click can't strand a screen dark. A
  * permanent nightly off is the schedule editor's job, not this button's.
+ *
+ * ── 2026-08-13 remediation, and the two places rule 1 above now bends ──
+ *
+ * CONTRACT C3/C4 (lead). Blank/Wake render on EVERY screen, including one
+ * that has never reported — the player's software floor cannot fail, so the
+ * verdict names the mechanism, not the availability, and WAKE is the fleet's
+ * only remote recovery from a dark screen. "A dark screen that cannot be
+ * recovered from the dashboard is the worst outcome in this feature", so
+ * that pair is fail-OPEN while REBOOT stays fail-CLOSED. The schedule row is
+ * likewise un-gated: a screen paired an hour ago should still be givable a
+ * nightly off before its first probe lands.
+ *
+ * NO DEVICE OWNER (product decision, 2026-08-13). We are not provisioning
+ * the APK as Android device owner, so on today's real fleet `reboot`
+ * resolves to 'none' on every box and this panel renders NO restart button —
+ * only the one-line explainer. The button path stays for a future
+ * manufacturer-preinstalled (platform-signed) build, and the render tests
+ * cover BOTH shapes so the reboot-absent layout can't rot unnoticed.
  */
 
 import { useRef, useState } from 'react';
@@ -73,8 +91,18 @@ function ago(ts: string | null | undefined): string | null {
 
 /**
  * Slider row. `reported` is the device's own last-known level when the API
- * echoes one; when it doesn't, the readout shows "—" rather than parking
- * the thumb somewhere and implying that's where the hardware is.
+ * echoes one; when it doesn't, the readout shows "—" rather than implying
+ * the hardware is where the thumb happens to be.
+ *
+ * The thumb still has to sit SOMEWHERE, and the old `Math.max(min, 50)`
+ * parked it dead-centre on a screen that might be running at 100% — an
+ * operator who grabbed it for a small trim sent an absolute 49% and halved
+ * the panel. `unknownPark` is the honest resting position per axis, and it
+ * follows the same asymmetry the clamps do: **silence is recoverable,
+ * darkness is not.** Volume parks at its minimum, brightness parks at 100,
+ * so a blind nudge in either direction can only move toward a state the
+ * operator can see and undo. The `unknownHint` line says out loud that the
+ * slider sets an absolute value rather than adjusting from a known one.
  */
 function LevelRow({
   icon,
@@ -82,6 +110,8 @@ function LevelRow({
   note,
   min,
   reported,
+  unknownPark,
+  unknownHint,
   disabled,
   onCommit,
   accentClass,
@@ -91,13 +121,18 @@ function LevelRow({
   note: string | null;
   min: number;
   reported: number | null;
+  /** Where the thumb rests when the device has never echoed a level. */
+  unknownPark: number;
+  /** Shown only while the level is genuinely unknown. */
+  unknownHint: string;
   disabled: boolean;
   onCommit: (percent: number) => void;
   accentClass: string;
 }) {
   const [draft, setDraft] = useState<number | null>(null);
   const lastSent = useRef<number | null>(null);
-  const shown = draft ?? reported ?? Math.max(min, 50);
+  const unknown = draft === null && reported === null;
+  const shown = draft ?? reported ?? unknownPark;
 
   const commit = () => {
     if (draft === null) return;
@@ -138,8 +173,11 @@ function LevelRow({
         onTouchEnd={commit}
         onKeyUp={commit}
         onBlur={commit}
-        className={`w-full mt-1.5 ${accentClass} disabled:opacity-40 disabled:cursor-not-allowed`}
+        className={`w-full mt-1.5 ${accentClass} ${unknown ? 'opacity-60' : ''} disabled:opacity-40 disabled:cursor-not-allowed`}
       />
+      {unknown && (
+        <p className="text-[10px] text-amber-600 leading-snug mt-1">{unknownHint}</p>
+      )}
       {note && <p className="text-[10px] text-slate-400 leading-snug mt-1">{note}</p>}
     </div>
   );
@@ -179,7 +217,17 @@ export function ScreenDisplayControls({
   const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
   // Which action is in flight — the shared mutation's isPending can't tell
   // Blank from Wake, and a spinner on the wrong button is its own small lie.
+  //
+  // It is also, deliberately, NOT a global lock any more. WAKE used to be
+  // disabled while a BLANK was in flight; combined with an apiFetch that had
+  // no timeout, a wedged API left the screen dark AND the only control that
+  // recovers it greyed out indefinitely. A control must never be gated by
+  // the action it recovers from. (The 12 s abort in useDisplayControl is the
+  // other half of that fix.)
   const [busy, setBusy] = useState<DisplayActionType | null>(null);
+  /** Wake stays live no matter what else is running. */
+  const lockedBy = (action: DisplayActionType) =>
+    busy !== null && action !== 'WAKE' ? true : busy === action;
 
   // Device-echoed levels when the API provides them; otherwise unknown.
   const ds = screen?.displayState ?? null;
@@ -225,7 +273,7 @@ export function ScreenDisplayControls({
       placeholder: REBOOT_TOKEN,
     });
     if (typed?.trim().toUpperCase() !== REBOOT_TOKEN) return;
-    await send('reboot', { okMsg: t('screens.display.rebootSent') });
+    await send('REBOOT', { okMsg: t('screens.display.rebootSent') });
   };
 
   const header = (
@@ -241,7 +289,101 @@ export function ScreenDisplayControls({
     </div>
   );
 
-  // ── Nothing reported: explainer only. No control may be guessed at. ──
+  const disabled = !!readOnly;
+
+  // Blank / Wake. Rendered from a helper because it appears in BOTH the
+  // reported and the never-reported layout (contract C3) — the software
+  // floor is unconditional, so this pair is too.
+  const blankWakeRow = (
+    <div className="px-3.5 py-2.5 border-t border-slate-100">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          disabled={disabled || lockedBy('BLANK')}
+          onClick={(e) => {
+            e.stopPropagation();
+            send('BLANK', {
+              revertAfterMs: BLANK_AUTO_WAKE_MS,
+              okMsg: t('screens.display.blankSent', {
+                minutes: Math.round(BLANK_AUTO_WAKE_MS / 60_000),
+              }),
+            });
+          }}
+          className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          {busy === 'BLANK' ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <MonitorOff className="w-3.5 h-3.5" />
+          )}
+          {t('screens.display.blank')}
+        </button>
+        <button
+          type="button"
+          disabled={disabled || lockedBy('WAKE')}
+          onClick={(e) => {
+            e.stopPropagation();
+            send('WAKE', { okMsg: t('screens.display.wakeSent') });
+          }}
+          className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          {busy === 'WAKE' ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Monitor className="w-3.5 h-3.5" />
+          )}
+          {t('screens.display.wake')}
+        </button>
+      </div>
+      <p className="text-[10px] text-slate-400 leading-snug mt-1">
+        {caps.blank.noteKey ? t(caps.blank.noteKey) : ''}{' '}
+        {t('screens.display.blankAutoWake', {
+          minutes: Math.round(BLANK_AUTO_WAKE_MS / 60_000),
+        })}
+      </p>
+    </div>
+  );
+
+  const scheduleRow = (
+    <button
+      type="button"
+      onClick={onOpenSchedule}
+      className="w-full flex items-center gap-3 px-3.5 py-3 text-left text-xs font-semibold text-slate-700 hover:bg-white border-t border-slate-100 transition-colors"
+    >
+      <CalendarClock className="w-4 h-4 text-slate-400 shrink-0" />
+      <span className="flex-1 min-w-0">
+        <span className="block">{t('screens.display.scheduleRow')}</span>
+        <span className="block text-[10px] font-normal text-slate-400 mt-0.5">
+          {t('screens.display.scheduleRowSub')}
+        </span>
+      </span>
+    </button>
+  );
+
+  // Result of the last command. "Sent" — not "done": the wire tells us the
+  // API accepted it, nothing more.
+  const statusRow = status && (
+    <div
+      className={`px-3.5 py-2 flex items-start gap-1.5 text-[10px] leading-snug border-t ${
+        status.ok
+          ? 'text-emerald-700 bg-emerald-50/60 border-emerald-100'
+          : 'text-rose-700 bg-rose-50/60 border-rose-100'
+      }`}
+      role="status"
+    >
+      {status.ok ? (
+        <CheckCircle2 className="w-3 h-3 shrink-0 mt-0.5" />
+      ) : (
+        <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
+      )}
+      <span className="min-w-0">{status.msg}</span>
+    </div>
+  );
+
+  // ── Nothing reported yet ────────────────────────────────────────────
+  // Explainer + the two fail-open controls, nothing else. Volume,
+  // brightness and reboot are all still withheld — tri-state discipline
+  // holds for everything that isn't a recovery path.
   if (!caps.reported) {
     return (
       <div className="bg-slate-50/60">
@@ -252,11 +394,12 @@ export function ScreenDisplayControls({
             {t('screens.display.notReported')}
           </p>
         </div>
+        {blankWakeRow}
+        {scheduleRow}
+        {statusRow}
       </div>
     );
   }
-
-  const disabled = !!readOnly;
 
   return (
     <div className="bg-slate-50/60">
@@ -270,10 +413,12 @@ export function ScreenDisplayControls({
           note={caps.volume.noteKey ? t(caps.volume.noteKey) : null}
           min={0}
           reported={reportedVolume}
-          disabled={disabled || busy !== null}
+          unknownPark={0}
+          unknownHint={t('screens.display.levelUnknown')}
+          disabled={disabled || lockedBy('SET_VOLUME')}
           accentClass="accent-indigo-600"
           onCommit={(p) =>
-            send('volume', {
+            send('SET_VOLUME', {
               percent: clampVolume(p),
               okMsg: t('screens.display.volumeSent', { percent: clampVolume(p) }),
             })
@@ -305,10 +450,12 @@ export function ScreenDisplayControls({
           note={caps.brightness.noteKey ? t(caps.brightness.noteKey) : null}
           min={MIN_SAFE_BRIGHTNESS}
           reported={reportedBrightness}
-          disabled={disabled || busy !== null}
+          unknownPark={100}
+          unknownHint={t('screens.display.levelUnknown')}
+          disabled={disabled || lockedBy('SET_BRIGHTNESS')}
           accentClass="accent-amber-500"
           onCommit={(p) =>
-            send('brightness', {
+            send('SET_BRIGHTNESS', {
               percent: clampBrightness(p),
               okMsg: t('screens.display.brightnessSent', { percent: clampBrightness(p) }),
             })
@@ -316,63 +463,19 @@ export function ScreenDisplayControls({
         />
       )}
 
-      {/* ── Blank / Wake ───────────────────────────────────────── */}
-      {caps.blank.available && (
-        <div className="px-3.5 py-2.5 border-t border-slate-100">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={disabled || busy !== null}
-              onClick={(e) => {
-                e.stopPropagation();
-                send('blank', {
-                  revertAfterMs: BLANK_AUTO_WAKE_MS,
-                  okMsg: t('screens.display.blankSent', {
-                    minutes: Math.round(BLANK_AUTO_WAKE_MS / 60_000),
-                  }),
-                });
-              }}
-              className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              {busy === 'blank' ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <MonitorOff className="w-3.5 h-3.5" />
-              )}
-              {t('screens.display.blank')}
-            </button>
-            <button
-              type="button"
-              disabled={disabled || busy !== null}
-              onClick={(e) => {
-                e.stopPropagation();
-                send('wake', { okMsg: t('screens.display.wakeSent') });
-              }}
-              className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              {busy === 'wake' ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Monitor className="w-3.5 h-3.5" />
-              )}
-              {t('screens.display.wake')}
-            </button>
-          </div>
-          <p className="text-[10px] text-slate-400 leading-snug mt-1">
-            {caps.blank.noteKey ? t(caps.blank.noteKey) : ''}{' '}
-            {t('screens.display.blankAutoWake', {
-              minutes: Math.round(BLANK_AUTO_WAKE_MS / 60_000),
-            })}
-          </p>
-        </div>
-      )}
+      {/* ── Blank / Wake — always present (contract C3) ─────────── */}
+      {blankWakeRow}
 
       {/* ── Reboot ─────────────────────────────────────────────── */}
+      {/* NOTE: on today's fleet this ALWAYS takes the `else` branch — we do
+          not hold device owner, so the probe reports reboot:'none'. The
+          else branch is a single explanatory row, not an empty section and
+          not a dangling divider (the divider belongs to the row). */}
       {caps.reboot.available ? (
         <div className="px-3.5 py-2.5 border-t border-slate-100">
           <button
             type="button"
-            disabled={disabled || busy !== null}
+            disabled={disabled || lockedBy('REBOOT')}
             onClick={(e) => {
               e.stopPropagation();
               void confirmReboot();
@@ -381,7 +484,7 @@ export function ScreenDisplayControls({
             // as danger on a tenant whose brand primary happens to be mint.
             className="w-full flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-rose-200 bg-white text-[11px] font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            {busy === 'reboot' ? (
+            {busy === 'REBOOT' ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : (
               <Power className="w-3.5 h-3.5" />
@@ -410,39 +513,9 @@ export function ScreenDisplayControls({
       )}
 
       {/* ── On/off schedule ────────────────────────────────────── */}
-      <button
-        type="button"
-        onClick={onOpenSchedule}
-        className="w-full flex items-center gap-3 px-3.5 py-3 text-left text-xs font-semibold text-slate-700 hover:bg-white border-t border-slate-100 transition-colors"
-      >
-        <CalendarClock className="w-4 h-4 text-slate-400 shrink-0" />
-        <span className="flex-1 min-w-0">
-          <span className="block">{t('screens.display.scheduleRow')}</span>
-          <span className="block text-[10px] font-normal text-slate-400 mt-0.5">
-            {t('screens.display.scheduleRowSub')}
-          </span>
-        </span>
-      </button>
+      {scheduleRow}
 
-      {/* Result of the last command. "Sent" — not "done": the wire tells us
-          the API accepted it, nothing more. */}
-      {status && (
-        <div
-          className={`px-3.5 py-2 flex items-start gap-1.5 text-[10px] leading-snug border-t ${
-            status.ok
-              ? 'text-emerald-700 bg-emerald-50/60 border-emerald-100'
-              : 'text-rose-700 bg-rose-50/60 border-rose-100'
-          }`}
-          role="status"
-        >
-          {status.ok ? (
-            <CheckCircle2 className="w-3 h-3 shrink-0 mt-0.5" />
-          ) : (
-            <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
-          )}
-          <span className="min-w-0">{status.msg}</span>
-        </div>
-      )}
+      {statusRow}
     </div>
   );
 }
