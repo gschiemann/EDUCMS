@@ -118,6 +118,21 @@ object NativeBridgeChannel {
         "openSettingsForManager",
         // value-returning (Promise-based on the web side)
         "deviceInfo",
+        // 2026-08-13 — `probeDisplay` had a dispatch arm but was MISSING
+        // from this array, so `onMessage`'s METHODS gate replied
+        // "unknown method" and the arm was unreachable: the capability
+        // probe only ever worked over the legacy `window.EduCmsNative`
+        // object. Adding it here is what makes it reachable on every
+        // channel-transport device.
+        "probeDisplay",
+        // Display CONTROL (see com.educms.player.display). The two
+        // MUTATORS are dispatched to channel-only entry points on
+        // WebAppBridge, because their `@JavascriptInterface` twins
+        // deliberately refuse the legacy every-frame transport while
+        // this channel is live.
+        "displayCapabilities",
+        "displayApply",
+        "displaySetSchedule",
         "checkForUpdates",
         "getRecentLogs",
         "uploadDiagnostics",
@@ -315,6 +330,13 @@ object NativeBridgeChannel {
             "openSettingsForManager" -> { bridge.openSettingsForManager(); null }
             "deviceInfo" -> bridge.deviceInfo()
             "probeDisplay" -> bridge.probeDisplay()
+            "displayCapabilities" -> bridge.displayCapabilities()
+            // Channel-only entry points — a message that reaches here has
+            // already passed the exact-origin AND main-frame gates, which
+            // is precisely what the `@JavascriptInterface` twins cannot
+            // verify about their own caller.
+            "displayApply" -> bridge.displayApplyViaSecureChannel(strAt(args, 0))
+            "displaySetSchedule" -> bridge.displaySetScheduleViaSecureChannel(strAt(args, 0))
             "checkForUpdates" -> bridge.checkForUpdates()
             "getRecentLogs" -> bridge.getRecentLogs()
             "uploadDiagnostics" -> bridge.uploadDiagnostics()

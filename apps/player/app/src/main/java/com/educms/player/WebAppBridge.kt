@@ -77,6 +77,21 @@ class WebAppBridge(
      * for the trust-boundary reasoning on exposing it here.
      */
     private val probeDisplayImpl: () -> String = { "{}" },
+    /**
+     * 2026-08-13 — the WRITE half: volume / brightness / blank / wake /
+     * reboot + the on-device on-off schedule. See the block comment on
+     * `displayCapabilities()` below, and `com.educms.player.display`
+     * for the provider stack and its safety rules.
+     */
+    private val displayCapabilitiesImpl: () -> String = { """{"ok":false,"code":"unavailable"}""" },
+    private val displayApplyImpl: (String) -> String = { """{"ok":false,"code":"unavailable"}""" },
+    private val displaySetScheduleImpl: (String) -> String = { """{"ok":false,"code":"unavailable"}""" },
+    /**
+     * True when the origin-scoped [com.educms.player.security.NativeBridgeChannel]
+     * is live on this WebView. Gates the two MUTATING display methods off
+     * the legacy every-frame transport — see `displayApply()`.
+     */
+    private val secureChannelActive: () -> Boolean = { false },
 ) {
     /**
      * Escape hatch — exits our kiosk task stack and returns the user to
@@ -149,6 +164,118 @@ class WebAppBridge(
     } catch (ex: Exception) {
         PlayerLogger.w("WebAppBridge", "probeDisplay failed: ${ex.message}")
         """{"error":"${ex.message}"}"""
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Display CONTROL (2026-08-13) — the write half of the probe above.
+    //
+    // ⚠️ TRUST BOUNDARY, AND WHY THE TWO MUTATORS ARE TRANSPORT-GATED.
+    //
+    // Per this file's header, the legacy `addJavascriptInterface`
+    // surface is materialised in EVERY frame the WebView loads,
+    // including operator-authored EXTERNAL_HTML board iframes. For
+    // `probeDisplay()` the worst case is device fingerprinting. For
+    // THESE methods the worst case is a hostile board blanking a
+    // hallway screen, dimming it to nothing, or rebooting it — a real
+    // physical denial of service on hardware nobody can reach.
+    //
+    // So the two MUTATING methods refuse the legacy transport whenever
+    // the origin-scoped NativeBridgeChannel is live on this device.
+    // That is not a behaviour change for the product: `nativeBridge.ts`
+    // already PREFERS the channel, so the legitimate caller never takes
+    // this path when the channel exists. On a pre-M77 WebView, where
+    // the channel cannot attach at all, the legacy path is allowed —
+    // the same knowingly-degraded posture every other method here runs
+    // in on those devices (see NativeBridgeChannel's header).
+    //
+    // `displayCapabilities()` is READ-ONLY and stays ungated so a board
+    // can ask what it is running on, exactly like `probeDisplay()`.
+    // ────────────────────────────────────────────────────────────────
+
+    /**
+     * What this box can actually drive, and by which mechanism:
+     * `{"ok":true,"capabilities":{"BRIGHTNESS":"software-dim",…},"state":{…}}`.
+     *
+     * The dashboard MUST render its per-screen controls from this map
+     * and nothing else. A capability that is absent means the hardware
+     * cannot do it; a capability resolved to `software-dim` means the
+     * image dims but the backlight does not, and the UI is required to
+     * say so rather than pretend it is a real brightness control.
+     */
+    @JavascriptInterface
+    fun displayCapabilities(): String = try {
+        displayCapabilitiesImpl()
+    } catch (ex: Exception) {
+        PlayerLogger.w("WebAppBridge", "displayCapabilities failed: ${ex.message}")
+        """{"ok":false,"code":"exception"}"""
+    }
+
+    /**
+     * Apply one immediate action —
+     * `{"action":"SET_BRIGHTNESS","percent":40,"revertAfterMs":30000}`.
+     * Every value is validated and clamped NATIVELY (the MIN_SAFE
+     * brightness floor lives in Kotlin, not in React, precisely because
+     * this argument is attacker-controlled).
+     */
+    @JavascriptInterface
+    fun displayApply(actionJson: String): String = try {
+        if (secureChannelActive()) {
+            PlayerLogger.w(
+                "WebAppBridge",
+                "displayApply REFUSED on the legacy every-frame transport — the secure channel is live",
+            )
+            """{"ok":false,"code":"insecure-transport","message":"use the origin-scoped bridge channel"}"""
+        } else {
+            displayApplyImpl(actionJson)
+        }
+    } catch (ex: Exception) {
+        PlayerLogger.w("WebAppBridge", "displayApply failed: ${ex.message}")
+        """{"ok":false,"code":"exception"}"""
+    }
+
+    /**
+     * Install the manifest's `display` block (schedule rows + brightness
+     * policy + vendor recipe). The schedule then runs from AlarmManager
+     * ON THE DEVICE, so a screen that loses network still blanks at
+     * 22:00 and wakes at 07:00.
+     */
+    @JavascriptInterface
+    fun displaySetSchedule(configJson: String): String = try {
+        if (secureChannelActive()) {
+            PlayerLogger.w(
+                "WebAppBridge",
+                "displaySetSchedule REFUSED on the legacy every-frame transport — the secure channel is live",
+            )
+            """{"ok":false,"code":"insecure-transport","message":"use the origin-scoped bridge channel"}"""
+        } else {
+            displaySetScheduleImpl(configJson)
+        }
+    } catch (ex: Exception) {
+        PlayerLogger.w("WebAppBridge", "displaySetSchedule failed: ${ex.message}")
+        """{"ok":false,"code":"exception"}"""
+    }
+
+    /**
+     * Channel-only entry points. [com.educms.player.security.NativeBridgeChannel]
+     * dispatches here instead of to the `@JavascriptInterface` methods
+     * above, so the transport gate cannot refuse the one caller that has
+     * already passed BOTH the exact-origin and main-frame checks.
+     *
+     * Deliberately NOT annotated `@JavascriptInterface` — these names are
+     * invisible to `window.EduCmsNative` and unreachable from any frame.
+     */
+    internal fun displayApplyViaSecureChannel(actionJson: String): String = try {
+        displayApplyImpl(actionJson)
+    } catch (ex: Exception) {
+        PlayerLogger.w("WebAppBridge", "displayApply(secure) failed: ${ex.message}")
+        """{"ok":false,"code":"exception"}"""
+    }
+
+    internal fun displaySetScheduleViaSecureChannel(configJson: String): String = try {
+        displaySetScheduleImpl(configJson)
+    } catch (ex: Exception) {
+        PlayerLogger.w("WebAppBridge", "displaySetSchedule(secure) failed: ${ex.message}")
+        """{"ok":false,"code":"exception"}"""
     }
 
     /**

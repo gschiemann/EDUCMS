@@ -34,6 +34,10 @@ import androidx.webkit.WebViewFeature
 import com.educms.player.bootstrap.ManagerBootstrap
 import com.educms.player.databinding.ActivityMainBinding
 import com.educms.player.display.DisplayCapabilityProbe
+import com.educms.player.display.DisplayControlApi
+import com.educms.player.display.DisplayGuard
+import com.educms.player.display.DisplayScheduler
+import com.educms.player.display.DisplayWindowBridge
 import com.educms.player.logging.PlayerLogger
 import com.educms.player.security.HostAllowlist
 import com.educms.player.security.LockTaskController
@@ -284,6 +288,118 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // ────────────────────────────────────────────────────────────────
+    // Display control — the Activity-owned half (2026-08-13).
+    //
+    // The provider stack in `com.educms.player.display` is Context-only;
+    // these four hooks are the one thing it cannot do for itself. They
+    // are registered into DisplayWindowBridge (which holds them WEAKLY)
+    // and every one of them marshals to the UI thread, because BOTH
+    // bridge transports deliver off it: the legacy @JavascriptInterface
+    // surface runs on WebView's "JavaBridge" thread and
+    // NativeBridgeChannel hops to a background executor on purpose.
+    // ────────────────────────────────────────────────────────────────
+
+    /**
+     * Opaque black overlay used by the software-dim floor. Created
+     * lazily and added on top of the WebView + overlays in the root
+     * FrameLayout, so no layout XML change is needed and nothing about
+     * the running player is torn down — the page keeps rendering,
+     * heartbeating and holding its WebSocket behind the black.
+     */
+    private var displayBlackoutView: View? = null
+
+    /**
+     * Held as a STRONG field precisely because DisplayWindowBridge keeps
+     * only a WeakReference: when this Activity is reaped by an OEM ROM
+     * without onDestroy, the hooks go with it instead of leaking the
+     * Activity and its WebView.
+     */
+    private val displayHooks = DisplayWindowBridge.Hooks(
+        setWindowBrightness = { fraction ->
+            runOnUiThread {
+                runCatching {
+                    val lp = window.attributes
+                    // A negative value hands brightness back to the
+                    // system (BRIGHTNESS_OVERRIDE_NONE).
+                    lp.screenBrightness = if (fraction < 0f) {
+                        WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                    } else {
+                        fraction.coerceIn(0f, 1f)
+                    }
+                    window.attributes = lp
+                }.onFailure { PlayerLogger.w("DisplayWindow", "setWindowBrightness failed: ${it.message}") }
+            }
+        },
+        setBlackout = { visible -> runOnUiThread { applyBlackout(visible) } },
+        setKeepScreenOn = { on ->
+            runOnUiThread {
+                runCatching {
+                    if (on) {
+                        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    } else {
+                        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    }
+                    // activity_main.xml ALSO sets android:keepScreenOn on
+                    // the root FrameLayout. Clearing only the window flag
+                    // leaves the view-level one holding the panel lit,
+                    // which reads as "blank didn't work on this vendor".
+                    if (::binding.isInitialized) binding.root.keepScreenOn = on
+                }.onFailure { PlayerLogger.w("DisplayWindow", "setKeepScreenOn failed: ${it.message}") }
+            }
+        },
+        requestWake = { runOnUiThread { requestScreenWake() } },
+    )
+
+    private fun applyBlackout(visible: Boolean) {
+        runCatching {
+            if (!::binding.isInitialized) return@runCatching
+            if (visible) {
+                val view = displayBlackoutView ?: View(this).also { v ->
+                    v.setBackgroundColor(android.graphics.Color.BLACK)
+                    // Swallow taps so a blanked screen cannot be poked
+                    // into interacting with the page underneath.
+                    v.isClickable = true
+                    v.isFocusable = true
+                    binding.root.addView(
+                        v,
+                        android.widget.FrameLayout.LayoutParams(
+                            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                        ),
+                    )
+                    displayBlackoutView = v
+                }
+                view.visibility = View.VISIBLE
+                view.bringToFront()
+            } else {
+                displayBlackoutView?.visibility = View.GONE
+            }
+        }.onFailure { PlayerLogger.w("DisplayWindow", "applyBlackout failed: ${it.message}") }
+    }
+
+    /**
+     * Re-assert the wake flags. onCreate sets these ONCE; adding a flag
+     * that is already set does not re-trigger a wake, so we clear and
+     * re-add. Deprecated in favour of setTurnScreenOn() on API 27+, but
+     * the flag path is what the rest of this Activity uses and it works
+     * on every minSdk-24 target we ship to.
+     */
+    @Suppress("DEPRECATION")
+    private fun requestScreenWake() {
+        runCatching {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                    WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                    WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
+            )
+            if (::binding.isInitialized) binding.root.keepScreenOn = true
+            PlayerLogger.i("DisplayWindow", "wake requested via window flags")
+        }.onFailure { PlayerLogger.w("DisplayWindow", "requestScreenWake failed: ${it.message}") }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -398,6 +514,33 @@ class MainActivity : ComponentActivity() {
         setContentView(binding.root)
         webView = binding.webview
         urlOverlayView = binding.urlOverlayView
+
+        // ── Display control (2026-08-13) ────────────────────────────
+        // Order matters and is safety-critical:
+        //
+        //  1. register the window hooks, so the provider stack has
+        //     somewhere to apply to;
+        //  2. REPLAY any pending dead-man revert. If the operator was
+        //     mid-test when this process died — OOM kill, OEM battery
+        //     reaper, OTA self-update, power cut — this is what puts
+        //     the screen back. An overdue record reverts immediately;
+        //     one still in the future re-arms its alarm. This runs on
+        //     EVERY process start, not just a cold boot, because
+        //     MainActivity is the only Activity this APK has and
+        //     BootReceiver does not fire on an OOM restart;
+        //  3. re-apply the persisted brightness/blank state, so a
+        //     scheduled blank that fired while the Activity was dead
+        //     is honoured the moment a window exists again;
+        //  4. re-arm the schedule alarm. Redundant with BootReceiver
+        //     on purpose — OEM signage ROMs drop boot receivers, and
+        //     the alarm is the ONLY thing that blanks a screen whose
+        //     network is down.
+        runCatching {
+            DisplayWindowBridge.register(displayHooks)
+            DisplayGuard.replayPending(applicationContext)
+            DisplayControlApi.onWindowAttached(applicationContext)
+            DisplayScheduler.armAndApply(applicationContext)
+        }.onFailure { PlayerLogger.w("DisplayControl", "display bootstrap failed: ${it.message}") }
 
         // Self-healing recovery — catches main-frame load failures and
         // 5xx errors, shows a branded "Reconnecting…" overlay, probes
@@ -1412,6 +1555,24 @@ class MainActivity : ComponentActivity() {
                 ctsSerial = com.educms.player.serial.SerialPortBridge(
                     getWebView = { wv },
                 ),
+                // 2026-08-13 — display CONTROL (volume / brightness /
+                // blank / wake / reboot + the on-device on-off
+                // schedule). Every argument is validated natively inside
+                // DisplayControlApi; nothing here trusts the caller.
+                //
+                // These run on the caller's thread (JavaBridge for the
+                // legacy surface, the channel's worker for the secure
+                // one). That is correct: the provider stack is
+                // Context-only and marshals to the UI thread itself via
+                // DisplayWindowBridge, so a slow sysfs write never
+                // blocks a frame on a kiosk that must not jank.
+                displayCapabilitiesImpl = { DisplayControlApi.capabilitiesJson(applicationContext) },
+                displayApplyImpl = { json -> DisplayControlApi.applyJson(applicationContext, json) },
+                displaySetScheduleImpl = { json -> DisplayControlApi.setScheduleJson(applicationContext, json) },
+                // Gates the two MUTATING display methods off the legacy
+                // every-frame transport whenever the origin-scoped
+                // channel is available. See WebAppBridge.displayApply().
+                secureChannelActive = { nativeChannelActive },
         )
 
         // ── Transport 1 (LEGACY, still required) ────────────────────
@@ -1819,6 +1980,13 @@ class MainActivity : ComponentActivity() {
             urlOverlayView.loadUrl("about:blank")
         }
         if (::recovery.isInitialized) recovery.shutdown()
+        // Drop the display window hooks. The bridge holds them weakly so
+        // an un-clean death is already safe; this is the clean path.
+        // NOTE: the persisted brightness/blank STATE is deliberately left
+        // alone — a screen that is meant to be blanked overnight must
+        // stay blanked across an Activity restart, and onWindowAttached()
+        // re-applies it when a window comes back.
+        runCatching { DisplayWindowBridge.clear() }
         watchdogHandler.removeCallbacks(watchdogTicker)
         try {
             if (managerInstallReceiverRegistered) {
