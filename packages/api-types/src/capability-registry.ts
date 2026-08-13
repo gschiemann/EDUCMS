@@ -411,4 +411,25 @@ export const CAPABILITY_REGISTRY: ReadonlyArray<Capability> = [
       'Generic HMAC feed is the only end-to-end path. Daktronics is provisional; CTS water-polo strongest. NO physical hardware certification (SPT-001/003). Do not market any console as "certified."',
     dependsOn: [],
   },
+  {
+    id: 'screen-display-control',
+    name: 'Remote screen volume / brightness / blank / wake / reboot',
+    domain: 'fleet',
+    state: 'CONFIGURED',
+    owner: 'fleet/player',
+    surface:
+      'POST /screens/:id/display-control · POST|GET /screens/:id/display-capabilities · /display-schedules CRUD · manifest `display` block',
+    // No publicClaim: the API half exists and is wired, but NOTHING has been
+    // proven on a physical Goodview / Taurus / TCL panel yet. Claiming
+    // "control any screen from the dashboard" before that is exactly the
+    // "Coming soon wearing a real-button costume" this registry exists to
+    // prevent.
+    publicClaim: null,
+    evidenceTest: null,
+    verifiedAt: null,
+    expiresAt: null,
+    limitations:
+      'API + contract only, no hardware certification. Every control is gated on the player-reported capability verdict and 409s otherwise; a screen that has never reported supports nothing. Reboot needs device owner — on a box whose vendor CMS already holds it, we can never take it without a factory reset. Brightness on most boxes falls back to software dim, which dims composition only and saves no power on an LCD. Hard power-off has no public Android API at any privilege level (RS-232 is a candidate, not a shipped path). Scheduled on/off runs on-device from the manifest and has not been soak-tested across a DST boundary.',
+    dependsOn: [],
+  },
 ];

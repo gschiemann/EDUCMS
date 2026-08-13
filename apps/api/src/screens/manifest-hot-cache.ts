@@ -194,6 +194,15 @@ export const MANIFEST_FED_MODELS = new Set([
     'TemplateZone',
     'TemplateScene',
     'ScreenEmergencyOverride',
+    // Display control (2026-08-13). Both feed the manifest's `display` block:
+    // DisplaySchedule is the on/off window list the player arms as local
+    // AlarmManager alarms, DisplayVendorRecipe is the recipe catalog it
+    // matches against its own Build.* identity. Without them here an
+    // operator's schedule edit would be invisible to players for up to the
+    // 30-minute armed TTL — a screen that keeps blanking at the OLD time is
+    // indistinguishable from a broken feature.
+    'DisplaySchedule',
+    'DisplayVendorRecipe',
 ]);
 
 /** Every Prisma action that can change rows. */
@@ -260,6 +269,22 @@ export const SCREEN_TELEMETRY_ONLY_FIELDS = new Set([
     'lastOtaErrorAt',
     'lastOtaErrorMessage',
     'lastOtaErrorAuthenticated',
+    // ── Display capability verdict (2026-08-13) ──────────────────────────
+    // Written by POST /screens/:id/display-capabilities when the player
+    // reports its read-only probe. Boot-frequency across the fleet, which is
+    // exactly the morning power-on wave shape documented below — off this
+    // list it would clear every cached manifest process-wide once per screen
+    // and re-create the 25 GB/mo egress.
+    //
+    // Safe because the manifest's `display` block is deliberately INDEPENDENT
+    // of this column: vendor-recipe MATCHING happens on the device against
+    // its own Build.* identity (the recipe `match` block), and the block
+    // otherwise carries only DisplaySchedule rows + a static brightness
+    // policy. If anyone ever makes the manifest derive from the reported
+    // verdict, these two entries must come OFF this list in the same commit
+    // — at that point they stop being telemetry and start being content.
+    'displayCapabilities',
+    'displayCapabilitiesAt',
     // ── Device re-register (2026-08-03) ──────────────────────────────────
     // `POST /screens/register` (both the paired and unpaired branches in
     // screens.controller) rewrites this exact column set on EVERY boot,

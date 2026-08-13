@@ -83,6 +83,11 @@ import { AnalyticsModule } from './analytics/analytics.module';
 // Exports GpioService so EmergencyController can auto-drive a wired
 // status lamp on emergency trigger / all-clear.
 import { GpioModule } from './screens/gpio.module';
+// 2026-08-13 — display control: per-screen volume / brightness / blank /
+// wake / reboot gated on the player's reported capability verdict, plus
+// scheduled on-off windows that run ON DEVICE from the manifest, plus the
+// platform vendor-recipe catalog. See display/display.module.ts.
+import { DisplayModule } from './display/display.module';
 // 2026-05-27 — One-click Bug Reporter. BugsController is registered
 // in the `controllers` array below; BugsModule provides the
 // enrichment + AI analyzer services that back it. See bugs/*.ts and
@@ -151,6 +156,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     IntegrationsModule,
     AnalyticsModule,
     GpioModule,
+    DisplayModule,
     BugsModule,
     EfficiencyModule,
     // 2026-05-06 — operator: kiosk wedged on "429 trying to

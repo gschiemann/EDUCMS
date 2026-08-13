@@ -37,6 +37,22 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   (p) => p === '/api/v1/devices/pair',
   (p) => p === '/api/v1/screens/register',
   (p) => /^\/api\/v1\/screens\/[^/]+\/cache-status$/.test(p),
+  // Display capability report (display-control wave, 2026-08-13). The player
+  // reports its read-only DisplayCapabilityProbe verdict from NATIVE KOTLIN
+  // (HttpURLConnection — no cookie jar, so no CSRF token round-trip is
+  // possible), authenticated by the device credential in an
+  // `Authorization: Bearer` header, which a browser cannot attach cross-site
+  // automatically. Same argument as /cache-status above and /stream-ticket
+  // below. Exempted TOGETHER WITH the endpoint so it cannot repeat the
+  // day-one 403 that broke /cts-snapshot (2026-05-28) and the swim-timing
+  // ingest (2026-08-10).
+  //
+  // NOTE the deliberate asymmetry: the OPERATOR action route
+  // `/screens/:id/display-control` — which can blank or REBOOT a physical
+  // screen — is NOT listed here and stays fully CSRF-gated. It is a
+  // dashboard call with an ambient session, which is exactly the threat
+  // model CSRF exists for.
+  (p) => /^\/api\/v1\/screens\/[^/]+\/display-capabilities$/.test(p),
   // SSE stream-ticket mint (DT-08, 2026-08-03). The player exchanges its
   // device credential — sent in an `Authorization: Bearer` header, which a
   // browser cannot attach cross-site automatically, so CSRF's ambient-cookie

@@ -881,3 +881,11 @@ export * from './bugs';
 // Capability Registry — §21 verification-before-claim keystone (its CI
 // consumer is scripts/check-capability-registry.cjs).
 export * from './capability-registry';
+
+// 2026-08-13 — display control (volume / brightness / blank-wake / reboot /
+// scheduled on-off) across Goodview, Taurus, TCL and future Android signage
+// SoCs without a per-vendor SDK. Carries the capability verdict the player
+// probe reports, the pure capability gate the API 409s on and the dashboard
+// gates its controls with, the schedule contract, and the vendor-recipe
+// document schema.
+export * from './display-control';

@@ -105,6 +105,27 @@ describe('isCsrfExempt', () => {
     expect(isCsrfExempt('PATCH', '/api/v1/sports/games/game-1/stats')).toBe(false);
   });
 
+  it('exempts the display capability report but NOT display-control (2026-08-13)', () => {
+    // The player reports its DisplayCapabilityProbe verdict from native
+    // Kotlin (HttpURLConnection — no cookie jar), authenticated by the device
+    // credential in an Authorization header, so no CSRF token round-trip is
+    // possible. Exempted TOGETHER WITH the endpoint so it cannot repeat the
+    // day-one 403 that broke /cts-snapshot (2026-05-28) and swim-timing.
+    expect(isCsrfExempt('POST', '/api/v1/screens/screen-1/display-capabilities')).toBe(true);
+    // The OPERATOR action route — which can blank or REBOOT a physical screen
+    // — is a dashboard call with an ambient session. That is precisely CSRF's
+    // threat model, so it stays gated. This asymmetry is deliberate.
+    expect(isCsrfExempt('POST', '/api/v1/screens/screen-1/display-control')).toBe(false);
+    // Sibling schedule/recipe CRUD is dashboard-only and stays gated too.
+    expect(isCsrfExempt('POST', '/api/v1/display-schedules')).toBe(false);
+    expect(isCsrfExempt('PUT', '/api/v1/display-schedules/ds-1')).toBe(false);
+    expect(isCsrfExempt('DELETE', '/api/v1/display-schedules/ds-1')).toBe(false);
+    expect(isCsrfExempt('PUT', '/api/v1/display-recipes/goodview-ep6n')).toBe(false);
+    // Exact-anchored, never a prefix — a future sibling route must be
+    // exempted explicitly rather than inheriting it.
+    expect(isCsrfExempt('POST', '/api/v1/screens/screen-1/display-capabilities/extra')).toBe(false);
+  });
+
   it('exempts POS inbound webhooks (Square HMAC + custom-webhook secret) — final-beta P0', () => {
     // External POS systems POST machine-to-machine with no session; each
     // receiver self-authenticates (Square HMAC sig / X-Webhook-Secret).
