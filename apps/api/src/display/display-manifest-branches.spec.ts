@@ -28,8 +28,10 @@ import {
 const TENANT = 'tenant-a';
 const SCREEN_ID = 'screen-a';
 
+/** A GROUP-level window (screenId null) — see resolveSchedulePrecedence. */
 const scheduleRow = {
   id: 'ds-1',
+  screenId: null,
   daysOfWeek: [1, 2, 3, 4, 5],
   onTime: '07:00',
   offTime: '22:00',
@@ -177,8 +179,11 @@ async function manifestFor(
   return { status, body };
 }
 
+/** `screenId` is a precedence input, NOT a manifest field — it is not emitted. */
+const { screenId: _omitted, ...scheduleManifestFields } = scheduleRow;
+
 const EXPECTED_BLOCK = {
-  schedules: [scheduleRow],
+  schedules: [{ ...scheduleManifestFields, scope: 'group' }],
   brightness: { minSafePercent: 5, allowBlack: false },
   vendorRecipes: [
     {

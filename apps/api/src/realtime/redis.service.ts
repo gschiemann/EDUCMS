@@ -130,6 +130,27 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     this.gateway = gateway;
   }
 
+  /**
+   * Is the Redis fan-out actually up?
+   *
+   * ADDED 2026-08-13 (display-control review, P1). `publish()` does NOT throw
+   * when Redis is down — it takes the `else` branch and hands the envelope to
+   * THIS replica's local gateway. That fallback is correct (CLAUDE.md:
+   * "Redis missing → API boots anyway"), but it means a caller that infers
+   * delivery from "publish did not throw" reports success for a message that
+   * never left this process. On >1 replica, a screen socketed to the other
+   * replica gets nothing — and for an immediate display action there is no
+   * manifest backstop to catch it, so a dark screen stays dark while the
+   * audit row says "dispatched".
+   *
+   * Read-only, synchronous, never throws. Callers use it to report delivery
+   * HONESTLY; nobody should gate a publish on it (the local fallback is
+   * still better than dropping the message).
+   */
+  isConnected(): boolean {
+    return this.connected === true && !!this.publisher;
+  }
+
   async onModuleInit() {
     if (!this.publisher || !this.subscriber) return;
 

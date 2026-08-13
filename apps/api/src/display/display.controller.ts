@@ -41,9 +41,12 @@ import type { Request as ExpressReq } from 'express';
 
 import { AppRole } from '@cms/database';
 import {
+  DISPLAY_ACTIONS,
+  DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT,
   DisplayCapabilityReportSchema,
   DisplayControlActionSchema,
   MIN_SAFE_BRIGHTNESS_PERCENT,
+  displayActionSupport,
   type DisplayCapabilityReportInput,
   type DisplayControlActionInput,
 } from '@cms/api-types';
@@ -55,9 +58,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { verifyDeviceForScreen } from '../screens/device-auth';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
+import { resolveEmergencyHold } from './display-emergency-hold';
 import {
   DisplayActionUnsupportedError,
   DisplayService,
+  isDarkeningAction,
   normalizeCapabilityReport,
   verdictFromStored,
 } from './display.service';
@@ -157,14 +162,36 @@ export class DisplayController {
   async getCapabilities(@Param('id') screenId: string, @Req() req: any) {
     const screen = await this.loadOperatorScreen(screenId, req);
     const stored = screen.displayCapabilities ?? null;
+    const verdict = verdictFromStored(stored);
+
+    // Resolve every action through the SAME pure gate the control endpoint
+    // uses, so the dashboard never has to re-derive it (and can never drift
+    // from it). This is where the no-device-owner pivot becomes visible to
+    // the UI: on today's fleet `reboot` is 'none', so REBOOT comes back
+    // unsupported with DISPLAY_REBOOT_UNAVAILABLE and the dashboard must not
+    // render a reboot control at all. BLANK/WAKE resolve on every box
+    // because the software floor cannot fail.
+    const actions = Object.fromEntries(
+      DISPLAY_ACTIONS.map((action) => [
+        action,
+        displayActionSupport(action, verdict),
+      ]),
+    );
+
     return {
       screenId: screen.id,
-      verdict: verdictFromStored(stored),
+      verdict,
+      actions,
       reportedAt: screen.displayCapabilitiesAt ?? null,
       build:
         stored && typeof stored === 'object' ? (stored.build ?? null) : null,
       /** So the UI can label its floor without hard-coding the number. */
       minSafeBrightnessPercent: MIN_SAFE_BRIGHTNESS_PERCENT,
+      /**
+       * Under an unknown verdict only a raise to at least this value is
+       * accepted — the recovery half of the fail-open/fail-closed rule.
+       */
+      recoveryMinBrightnessPercent: DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT,
     };
   }
 
@@ -217,6 +244,17 @@ export class DisplayController {
       );
     }
 
+    // LIFE-SAFETY: resolve emergency state before dispatching anything that
+    // could darken the panel. Only read for the darkening direction — WAKE,
+    // volume and brightness raises must stay instant and must never depend on
+    // a DB read that could fail.
+    const emergencyHold = isDarkeningAction(body.action, body)
+      ? await resolveEmergencyHold(this.prisma, {
+          id: screen.id,
+          tenantId: screen.tenantId,
+        })
+      : { active: false, source: null };
+
     try {
       return await this.display.applyAction({
         screenId: screen.id,
@@ -228,6 +266,7 @@ export class DisplayController {
         allowBlack: body.allowBlack,
         reason: body.reason,
         capabilities: screen.displayCapabilities ?? null,
+        emergencyHold,
       });
     } catch (e) {
       if (e instanceof DisplayActionUnsupportedError) {

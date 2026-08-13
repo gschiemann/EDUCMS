@@ -99,13 +99,16 @@ export function _resetDisplayManifestLastGood(): void {
 }
 
 /** Normalise a DB row into the stable manifest entry shape. */
-export function toManifestSchedule(row: {
-  id: string;
-  daysOfWeek: number[] | null;
-  onTime: string;
-  offTime: string;
-  timezone: string;
-}): DisplayScheduleManifestEntry {
+export function toManifestSchedule(
+  row: {
+    id: string;
+    daysOfWeek: number[] | null;
+    onTime: string;
+    offTime: string;
+    timezone: string;
+  },
+  scope: 'screen' | 'group',
+): DisplayScheduleManifestEntry {
   return {
     id: row.id,
     // Sorted so two logically-identical rows can never hash differently
@@ -114,7 +117,42 @@ export function toManifestSchedule(row: {
     onTime: row.onTime,
     offTime: row.offTime,
     timezone: row.timezone,
+    scope,
   };
+}
+
+/**
+ * PRECEDENCE: a per-screen window OVERRIDES its group's windows.
+ *
+ * THE BUG THIS CLOSES (2026-08-13 review, P2). The query returns both the
+ * screen-pinned rows and the group's rows, and they used to be concatenated
+ * with nothing saying which was more specific — so the player armed BOTH.
+ * Operator sets the Gym group to 07:00/22:00, then adds a per-screen
+ * 07:00/23:30 row on the main board for a late event: the group's 22:00 blank
+ * still fires and the board goes dark 90 minutes into the event, with the
+ * operator believing the override took. The existing playlist `Schedule`
+ * model solves the same case with `priority`; this is the same idea expressed
+ * as specificity, which needs no new column and no operator decision.
+ *
+ * The rule is ALL-OR-NOTHING on purpose: any screen-level row suppresses
+ * EVERY group-level row, rather than merging per weekday. A partial merge
+ * ("the group still owns Tuesdays") is exactly the surprise that produced the
+ * dark board — an override the operator wrote must be the whole answer.
+ */
+export function resolveSchedulePrecedence(
+  rows: Array<{
+    id: string;
+    screenId: string | null;
+    daysOfWeek: number[] | null;
+    onTime: string;
+    offTime: string;
+    timezone: string;
+  }>,
+): DisplayScheduleManifestEntry[] {
+  const screenRows = rows.filter((r) => r.screenId);
+  const chosen = screenRows.length > 0 ? screenRows : rows;
+  const scope: 'screen' | 'group' = screenRows.length > 0 ? 'screen' : 'group';
+  return chosen.map((r) => toManifestSchedule(r, scope));
 }
 
 /**
@@ -158,6 +196,9 @@ export async function buildDisplayManifestBlock(
         where: { tenantId: screen.tenantId, isActive: true, OR: targetOr },
         select: {
           id: true,
+          // Needed by resolveSchedulePrecedence to tell a screen-pinned row
+          // from an inherited group row. NOT emitted into the manifest.
+          screenId: true,
           daysOfWeek: true,
           onTime: true,
           offTime: true,
@@ -191,7 +232,7 @@ export async function buildDisplayManifestBlock(
   }
 
   const block: DisplayManifestBlock = {
-    schedules: scheduleRows.map(toManifestSchedule),
+    schedules: resolveSchedulePrecedence(scheduleRows),
     brightness: {
       // Server-tunable so the floor can move without an APK release. The
       // player enforces its own native floor too — belt and braces on a
@@ -209,9 +250,25 @@ export async function buildDisplayManifestBlock(
     })),
   };
 
-  if (blockCache.size >= DISPLAY_BLOCK_MAX_ENTRIES) blockCache.clear();
+  // EVICT THE OLDEST, NEVER WIPE THE MAP. Both of these used to `.clear()`.
+  // With >1000 screens on one replica and a district-wide lockdown in
+  // progress, every screen takes the EMERGENCY branch — which returns BEFORE
+  // the manifest hot cache and therefore calls this builder on every 5 s
+  // poll. The map refilled to 1000 in ~4 s and was wiped, so the hit rate
+  // collapsed toward zero and the LIFE-SAFETY manifest path paid two extra
+  // indexed queries per screen per poll against connection_limit=10. Worse,
+  // the same wipe emptied `lastGoodBlock` — the DB-failure fail-safe — at
+  // exactly the fleet size that needs it. Same eviction as the house cache
+  // (manifest-hot-cache.ts setManifestCache).
   blockCache.set(screen.id, { block, rev: contentRev, at: Date.now() });
-  if (lastGoodBlock.size >= DISPLAY_BLOCK_MAX_ENTRIES) lastGoodBlock.clear();
+  if (blockCache.size > DISPLAY_BLOCK_MAX_ENTRIES) {
+    const oldest = blockCache.keys().next().value;
+    if (oldest) blockCache.delete(oldest);
+  }
   lastGoodBlock.set(screen.id, block);
+  if (lastGoodBlock.size > DISPLAY_BLOCK_MAX_ENTRIES) {
+    const oldest = lastGoodBlock.keys().next().value;
+    if (oldest) lastGoodBlock.delete(oldest);
+  }
   return block;
 }

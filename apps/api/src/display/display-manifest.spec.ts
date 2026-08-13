@@ -33,6 +33,7 @@ const SCREEN = { id: 'screen-a', tenantId: 'tenant-a', screenGroupId: null };
 
 const scheduleRow = {
   id: 'ds-1',
+  screenId: 'screen-a',
   daysOfWeek: [5, 1, 3],
   onTime: '07:00',
   offTime: '22:00',
@@ -125,6 +126,82 @@ describe('buildDisplayManifestBlock', () => {
       'goodview-ep6n',
       'novastar-taurus',
     ]);
+  });
+
+  describe('precedence — a per-screen window overrides its group (2026-08-13)', () => {
+    const groupRow = {
+      id: 'ds-group',
+      screenId: null,
+      daysOfWeek: [1, 2, 3, 4, 5],
+      onTime: '07:00',
+      offTime: '22:00',
+      timezone: 'America/Chicago',
+    };
+    const lateEventRow = {
+      id: 'ds-screen',
+      screenId: 'screen-a',
+      daysOfWeek: [5],
+      onTime: '07:00',
+      offTime: '23:30',
+      timezone: 'America/Chicago',
+    };
+    const GROUPED = { ...SCREEN, screenGroupId: 'group-a' };
+
+    it('suppresses the group rows entirely when a screen row exists', async () => {
+      // THE BUG: both rows used to be concatenated with nothing saying which
+      // was more specific, so the player armed both and the group's 22:00
+      // blank killed the board 90 minutes into a 23:30 event.
+      const block = await buildDisplayManifestBlock(
+        makePrisma([groupRow, lateEventRow]),
+        GROUPED,
+        1,
+      );
+      expect(block!.schedules.map((s) => s.id)).toEqual(['ds-screen']);
+      expect(block!.schedules[0]).toMatchObject({
+        offTime: '23:30',
+        scope: 'screen',
+      });
+    });
+
+    it('inherits the group rows when the screen has none of its own', async () => {
+      const block = await buildDisplayManifestBlock(
+        makePrisma([groupRow]),
+        GROUPED,
+        1,
+      );
+      expect(block!.schedules.map((s) => s.id)).toEqual(['ds-group']);
+      expect(block!.schedules[0].scope).toBe('group');
+    });
+
+    it('keeps EVERY screen row when several exist — precedence is scope, not "one wins"', async () => {
+      const second = { ...lateEventRow, id: 'ds-screen-2', daysOfWeek: [6] };
+      const block = await buildDisplayManifestBlock(
+        makePrisma([groupRow, lateEventRow, second]),
+        GROUPED,
+        1,
+      );
+      expect(block!.schedules.map((s) => s.id).sort()).toEqual([
+        'ds-screen',
+        'ds-screen-2',
+      ]);
+      expect(block!.schedules.every((s) => s.scope === 'screen')).toBe(true);
+    });
+
+    it('never emits the precedence input itself — screenId stays out of the manifest', async () => {
+      const block = await buildDisplayManifestBlock(
+        makePrisma([groupRow, lateEventRow]),
+        GROUPED,
+        1,
+      );
+      expect(Object.keys(block!.schedules[0]).sort()).toEqual([
+        'daysOfWeek',
+        'id',
+        'offTime',
+        'onTime',
+        'scope',
+        'timezone',
+      ]);
+    });
   });
 
   describe('target scoping', () => {

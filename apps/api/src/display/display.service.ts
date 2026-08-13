@@ -38,9 +38,12 @@ import * as crypto from 'crypto';
 
 import {
   DISPLAY_CONTROL_WS_TYPE,
+  DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT,
+  DISPLAY_REFUSAL_CODES,
   MIN_SAFE_BRIGHTNESS_PERCENT,
   clampBrightnessPercent,
   displayActionSupport,
+  normalizeVerdict,
   type DisplayActionType,
   type DisplayCapabilityReport,
   type DisplayCapabilityReportInput,
@@ -50,6 +53,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
+import type { EmergencyHoldResult } from './display-emergency-hold';
 
 /** AuditLog action strings. SCREAMING_SNAKE, matching the screens module. */
 export const DISPLAY_AUDIT_ACTIONS = {
@@ -64,6 +68,13 @@ export const DISPLAY_AUDIT_ACTIONS = {
   RECIPE_DELETED: 'DISPLAY_VENDOR_RECIPE_DELETED',
 } as const;
 
+/** Why an action could not be confirmed as delivered. `null` when it was. */
+export type DisplayDeliveryReason =
+  /** Redis fan-out is down: only a screen socketed to THIS replica saw it. */
+  | 'redis_unavailable'
+  /** The publish itself threw. Nothing was delivered anywhere. */
+  | 'publish_failed';
+
 export interface ApplyActionResult {
   success: true;
   action: DisplayActionType;
@@ -76,8 +87,20 @@ export interface ApplyActionResult {
   revertAfterMs: number | null;
   /** Correlates the audit row, the WS message and the player's log line. */
   actionId: string;
-  /** False when Redis was unavailable — the action was still audited. */
+  /**
+   * TRUE ONLY WHEN THE MESSAGE PROVABLY LEFT THIS PROCESS toward the screen.
+   *
+   * Do NOT infer this from "publish did not throw" — RedisService.publish
+   * silently falls back to the local in-process gateway when Redis is down,
+   * so a screen on another replica gets nothing while the call resolves
+   * normally. That was the bug: `delivered:true` + `outcome:'dispatched'` on
+   * an action that never arrived, with no manifest backstop to catch it
+   * (the manifest carries schedules only, never immediate actions). The
+   * dashboard MUST surface `false` as a failure, not a success toast.
+   */
   delivered: boolean;
+  /** Machine-readable reason when `delivered` is false; null when it is true. */
+  deliveryReason: DisplayDeliveryReason | null;
 }
 
 /**
@@ -113,14 +136,33 @@ export function verdictFromStored(
   } as DisplayCapabilityVerdict;
 }
 
-/** Normalise an inbound probe report into exactly what we persist. */
+/** Longest build string we will persist. The schema caps at 120; belt and braces. */
+const BUILD_FIELD_MAX = 120;
+
+/**
+ * Normalise an inbound probe report into exactly what we persist.
+ *
+ * BOTH `build` AND `verdict` are rebuilt field by field. The schema keeps
+ * `.passthrough()` on both so a newer APK is accepted rather than 400'd —
+ * which means unknown keys arrive, and the ONLY thing standing between them
+ * and the database is this function.
+ *
+ * That matters more than it looks: `getManifest` reads the FULL screen row
+ * live on every 5 s poll (outside the manifest hot cache), so anything parked
+ * in `Screen.displayCapabilities` is re-read fleet-wide, forever. Before this
+ * was tightened, `verdict` was assigned wholesale (`verdict: body.verdict`)
+ * and a single paired screen could store ~4 MB of junk nested under it —
+ * ~70 GB/day of Supabase egress from one device, the exact bug class the
+ * manifest cache was built to kill. The persisted document is now bounded by
+ * CONSTRUCTION: 7 capped build fields + exactly 6 enum-valued verdict fields.
+ */
 export function normalizeCapabilityReport(
   body: DisplayCapabilityReportInput,
   now: number,
 ): DisplayCapabilityReport {
   const b: any = body.build ?? {};
   const s = (x: unknown): string | null =>
-    typeof x === 'string' && x.length ? x : null;
+    typeof x === 'string' && x.length ? x.slice(0, BUILD_FIELD_MAX) : null;
   return {
     schema: typeof body.schema === 'number' ? body.schema : 1,
     probedAt: typeof body.probedAt === 'number' ? body.probedAt : null,
@@ -134,7 +176,7 @@ export function normalizeCapabilityReport(
       sdk: typeof b.sdk === 'number' ? b.sdk : null,
       release: s(b.release),
     },
-    verdict: body.verdict as unknown as DisplayCapabilityVerdict,
+    verdict: normalizeVerdict(body.verdict),
   };
 }
 
@@ -152,6 +194,31 @@ export function verdictChanged(
     before.hardPowerOff !== after.hardPowerOff ||
     before.deviceOwnerPath !== after.deviceOwnerPath
   );
+}
+
+/** Refusal code for the emergency interlock. Its own string, so it is greppable. */
+export const DISPLAY_EMERGENCY_HOLD_CODE = 'DISPLAY_EMERGENCY_HOLD';
+
+/**
+ * Would this action make the panel DARKER (or keep it dark)?
+ *
+ * BLANK and any allowBlack always qualify. A brightness request qualifies
+ * unless it provably leaves the panel clearly legible — we cannot read the
+ * screen's current level from here, so the same "provably visible" floor the
+ * unknown-verdict gate uses is the honest test. WAKE, SET_VOLUME and REBOOT
+ * are never darkening.
+ */
+export function isDarkeningAction(
+  action: DisplayActionType,
+  opts: { percent?: number; allowBlack?: boolean },
+): boolean {
+  if (opts.allowBlack === true) return true;
+  if (action === 'BLANK') return true;
+  if (action === 'SET_BRIGHTNESS') {
+    const p = typeof opts.percent === 'number' ? opts.percent : 0;
+    return p < DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT;
+  }
+  return false;
 }
 
 /** Thrown when an action exceeds the screen's reported capability → HTTP 409. */
@@ -264,10 +331,84 @@ export class DisplayService {
     reason?: string;
     /** Stored verdict document straight off the Screen row. */
     capabilities: unknown;
+    /**
+     * Server half of the emergency interlock. When active, every DARKENING
+     * action is refused (see display-emergency-hold.ts). Optional so the
+     * default is "no hold" for callers that resolve it themselves; the
+     * controller always passes it.
+     */
+    emergencyHold?: EmergencyHoldResult;
   }): Promise<ApplyActionResult> {
     const { screenId, tenantId, userId, action } = opts;
     const verdict = verdictFromStored(opts.capabilities);
-    const support = displayActionSupport(action, verdict);
+
+    // ── EMERGENCY INTERLOCK (server half) ───────────────────────────────
+    // A blanked or dimmed panel that hides an active lockdown / evacuation /
+    // weather alert can get someone hurt. The device holds the primary
+    // interlock; this refuses the operator ORIGINATING one, in the window
+    // before a hold has propagated and for a screen whose socket is down.
+    // ONLY the darkening direction is refused — WAKE, volume and brightness
+    // RAISES stay available throughout, because a guard that could stop an
+    // operator lighting a screen mid-incident is worse than the risk.
+    if (opts.emergencyHold?.active && isDarkeningAction(action, opts)) {
+      await this.writeAudit({
+        action: DISPLAY_AUDIT_ACTIONS.CONTROL,
+        screenId,
+        tenantId,
+        userId,
+        details: {
+          requested: action,
+          outcome: 'refused',
+          code: DISPLAY_EMERGENCY_HOLD_CODE,
+          emergencySource: opts.emergencyHold.source,
+          requestedPercent:
+            typeof opts.percent === 'number' ? opts.percent : null,
+          allowBlack: opts.allowBlack === true,
+          reason: opts.reason ?? null,
+        },
+      });
+      this.logger.warn(
+        `[DisplayService] REFUSED ${action} on screen=${screenId} — emergency ` +
+          `hold active (source=${opts.emergencyHold.source}).`,
+      );
+      throw new DisplayActionUnsupportedError(
+        DISPLAY_EMERGENCY_HOLD_CODE,
+        opts.emergencyHold.source === 'unreadable'
+          ? 'Emergency state could not be confirmed for this screen, so it cannot be dimmed or blanked right now. Try again in a moment.'
+          : 'An emergency alert is active on this screen. It cannot be blanked or dimmed until the all-clear.',
+        { action },
+      );
+    }
+
+    // DEAD-MAN REQUIRED FOR allowBlack. The zod schema is the boundary check
+    // (→ 400), but applyAction is also reachable from tests and any future
+    // internal caller, and this is the one flag that can leave a
+    // wall-mounted panel permanently black. Refuse it here too — belt and
+    // braces on a screen nobody can reach.
+    if (opts.allowBlack === true && typeof opts.revertAfterMs !== 'number') {
+      await this.writeAudit({
+        action: DISPLAY_AUDIT_ACTIONS.CONTROL,
+        screenId,
+        tenantId,
+        userId,
+        details: {
+          requested: action,
+          outcome: 'refused',
+          code: DISPLAY_REFUSAL_CODES.ALLOW_BLACK_REQUIRES_REVERT,
+          allowBlack: true,
+        },
+      });
+      throw new DisplayActionUnsupportedError(
+        DISPLAY_REFUSAL_CODES.ALLOW_BLACK_REQUIRES_REVERT,
+        'A deliberate blackout must carry a dead-man revert window (revertAfterMs).',
+        { action },
+      );
+    }
+
+    const support = displayActionSupport(action, verdict, {
+      percent: opts.percent,
+      allowBlack: opts.allowBlack === true,
+    });
 
     if (!support.supported) {
       // Audit the REFUSAL too. "The operator tried to reboot a screen that
@@ -310,18 +451,41 @@ export class DisplayService {
     const actionId = crypto.randomUUID();
     const revertAfterMs =
       typeof opts.revertAfterMs === 'number' ? opts.revertAfterMs : null;
+    const auditAction =
+      action === 'REBOOT'
+        ? DISPLAY_AUDIT_ACTIONS.REBOOT
+        : DISPLAY_AUDIT_ACTIONS.CONTROL;
 
+    // Transport state is knowable BEFORE the publish and synchronously, so
+    // the pre-publish audit row can already tell the truth about whether the
+    // fan-out can reach a screen on another replica. Defaults to NOT
+    // connected when the accessor is absent — never claim a delivery we
+    // cannot prove.
+    const fanoutUp =
+      typeof (this.redis as { isConnected?: () => boolean }).isConnected ===
+      'function'
+        ? (this.redis as { isConnected: () => boolean }).isConnected() === true
+        : false;
+    let delivered = fanoutUp;
+    let deliveryReason: DisplayDeliveryReason | null = fanoutUp
+      ? null
+      : 'redis_unavailable';
+
+    // The audit row goes in BEFORE the publish so a transport outage can
+    // never lose the record of who asked for what. `outcome` is honest at
+    // this point for the Redis-down case; the publish-threw case appends a
+    // CORRECTION row below rather than rewriting this one (AuditLog carries
+    // DB-level immutability triggers — rows are append-only by design).
     await this.writeAudit({
-      action:
-        action === 'REBOOT'
-          ? DISPLAY_AUDIT_ACTIONS.REBOOT
-          : DISPLAY_AUDIT_ACTIONS.CONTROL,
+      action: auditAction,
       screenId,
       tenantId,
       userId,
       details: {
         requested: action,
-        outcome: 'dispatched',
+        outcome: delivered ? 'dispatched' : 'undelivered',
+        delivered,
+        deliveryReason,
         actionId,
         mechanism: support.mechanism,
         requestedPercent:
@@ -349,13 +513,42 @@ export class DisplayService {
       issuedAt: new Date().toISOString(),
     });
 
-    let delivered = true;
+    // Publish even when the fan-out is down: the local-gateway fallback still
+    // reaches a screen socketed to THIS replica, which beats dropping the
+    // message. We just do not claim it as delivery.
     try {
       await this.redis.publish(`device:${screenId}`, signed);
     } catch (e) {
       delivered = false;
+      deliveryReason = 'publish_failed';
       this.logger.warn(
-        `[DisplayService] ${action} publish failed for device:${screenId} (audited, actionId=${actionId}): ${e}`,
+        `[DisplayService] ${action} publish THREW for device:${screenId} (actionId=${actionId}): ${e}`,
+      );
+      // Correction row — the decision row above said 'dispatched' on the
+      // strength of a connected fan-out that then failed. Leaving the log
+      // saying "dispatched" for a message that never went out is exactly the
+      // forensic lie this fix exists to kill.
+      await this.writeAudit({
+        action: auditAction,
+        screenId,
+        tenantId,
+        userId,
+        details: {
+          requested: action,
+          outcome: 'undelivered',
+          delivered: false,
+          deliveryReason,
+          actionId,
+          error: e instanceof Error ? e.message : String(e),
+        },
+      });
+    }
+
+    if (!delivered) {
+      this.logger.warn(
+        `[DisplayService] ${action} for device:${screenId} is UNCONFIRMED ` +
+          `(reason=${deliveryReason}, actionId=${actionId}) — there is no manifest ` +
+          `backstop for immediate display actions.`,
       );
     }
 
@@ -368,6 +561,7 @@ export class DisplayService {
       revertAfterMs,
       actionId,
       delivered,
+      deliveryReason,
     };
   }
 

@@ -84,16 +84,79 @@ export interface DisplayCapabilityReport {
   verdict: DisplayCapabilityVerdict;
 }
 
-const VOLUME_MECHANISMS = ['audiomanager', 'none'] as const;
-const BRIGHTNESS_MECHANISMS = ['sysfs', 'settings', 'software-dim'] as const;
-const BLANK_MECHANISMS = ['device-owner', 'device-admin', 'none'] as const;
-const REBOOT_MECHANISMS = ['device-owner', 'none'] as const;
-const HARD_POWER_OFF_MECHANISMS = ['serial-candidate', 'none'] as const;
-const DEVICE_OWNER_PATHS = [
+export const DISPLAY_VOLUME_MECHANISMS = ['audiomanager', 'none'] as const;
+export const DISPLAY_BRIGHTNESS_MECHANISMS = [
+  'sysfs',
+  'settings',
+  'software-dim',
+] as const;
+export const DISPLAY_BLANK_MECHANISMS = [
+  'device-owner',
+  'device-admin',
+  'none',
+] as const;
+export const DISPLAY_REBOOT_MECHANISMS = ['device-owner', 'none'] as const;
+export const DISPLAY_HARD_POWER_OFF_MECHANISMS = [
+  'serial-candidate',
+  'none',
+] as const;
+export const DISPLAY_DEVICE_OWNER_PATHS = [
   'held',
   'blocked-other-owner',
   'provisionable-after-factory-reset',
 ] as const;
+
+const VOLUME_MECHANISMS = DISPLAY_VOLUME_MECHANISMS;
+const BRIGHTNESS_MECHANISMS = DISPLAY_BRIGHTNESS_MECHANISMS;
+const BLANK_MECHANISMS = DISPLAY_BLANK_MECHANISMS;
+const REBOOT_MECHANISMS = DISPLAY_REBOOT_MECHANISMS;
+const HARD_POWER_OFF_MECHANISMS = DISPLAY_HARD_POWER_OFF_MECHANISMS;
+const DEVICE_OWNER_PATHS = DISPLAY_DEVICE_OWNER_PATHS;
+
+/**
+ * Pick EXACTLY the six known verdict keys, each coerced to a known
+ * mechanism, and drop everything else.
+ *
+ * WHY THIS EXISTS (2026-08-13 review, P1). The report schema keeps
+ * `.passthrough()` on `verdict` so a newer APK that adds a seventh key is
+ * ACCEPTED rather than 400'd — but the persisted document is read live on
+ * every manifest poll (`screen.findUnique` with the full row, outside the
+ * manifest hot cache). Persisting the verdict verbatim therefore let any
+ * paired screen park megabytes in `Screen.displayCapabilities` and turn its
+ * own 5 s poll into a fleet-scale Supabase egress bill — the exact bug class
+ * the manifest cache was built to kill. Validation stays permissive at the
+ * door; STORAGE is bounded here, by construction.
+ *
+ * Every fallback is the LEAST capable value, so a malformed or truncated
+ * document degrades toward "we cannot drive this", never toward permissive.
+ */
+export function normalizeVerdict(raw: unknown): DisplayCapabilityVerdict {
+  const v = (
+    raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
+  ) as Record<string, unknown>;
+  const pick = <T extends string>(
+    key: string,
+    allowed: readonly T[],
+    fallback: T,
+  ): T => {
+    const got = v[key];
+    return typeof got === 'string' && (allowed as readonly string[]).includes(got)
+      ? (got as T)
+      : fallback;
+  };
+  return {
+    volume: pick('volume', VOLUME_MECHANISMS, 'none'),
+    brightness: pick('brightness', BRIGHTNESS_MECHANISMS, 'software-dim'),
+    screenBlank: pick('screenBlank', BLANK_MECHANISMS, 'none'),
+    reboot: pick('reboot', REBOOT_MECHANISMS, 'none'),
+    hardPowerOff: pick('hardPowerOff', HARD_POWER_OFF_MECHANISMS, 'none'),
+    deviceOwnerPath: pick(
+      'deviceOwnerPath',
+      DEVICE_OWNER_PATHS,
+      'provisionable-after-factory-reset',
+    ),
+  };
+}
 
 /**
  * Body of POST /screens/:id/display-capabilities.
@@ -180,7 +243,22 @@ export const DisplayControlActionSchema = z
     /** Free-text operator note carried into the audit row. */
     reason: z.string().max(500).optional(),
   })
-  .passthrough();
+  .passthrough()
+  /**
+   * `allowBlack` is the ONE flag that can deliberately black a panel nobody
+   * can reach, and the dead-man revert is the thing that makes it
+   * survivable. The API is the only place that can enforce the conjunction —
+   * the player cannot invent a revert window the operator never sent — so a
+   * UI bug, a replayed curl or an operator experimenting can no longer mint
+   * a PERMANENT blackout whose only recovery is a second successful WS
+   * delivery. Every other path stays at or above the 5% floor via
+   * clampBrightnessPercent.
+   */
+  .refine((b) => b.allowBlack !== true || typeof b.revertAfterMs === 'number', {
+    message:
+      'allowBlack requires revertAfterMs — a deliberate blackout must carry a dead-man revert window',
+    path: ['revertAfterMs'],
+  });
 export type DisplayControlActionInput = z.infer<typeof DisplayControlActionSchema>;
 
 /** Which verdict field gates each action. */
@@ -195,41 +273,188 @@ export const DISPLAY_ACTION_CAPABILITY: Record<
   REBOOT: 'reboot',
 };
 
+/** Refusal codes. Stable strings — the dashboard keys its copy off these. */
+export const DISPLAY_REFUSAL_CODES = {
+  /** The screen has never reported, and the action is not a recovery action. */
+  UNKNOWN: 'DISPLAY_CAPABILITIES_UNKNOWN',
+  /** The reported verdict has no mechanism for this action. */
+  UNSUPPORTED: 'DISPLAY_ACTION_UNSUPPORTED',
+  /** Reboot specifically — see the NO-DEVICE-OWNER note below. */
+  REBOOT_UNAVAILABLE: 'DISPLAY_REBOOT_UNAVAILABLE',
+  /** allowBlack without a dead-man revert window. */
+  ALLOW_BLACK_REQUIRES_REVERT: 'DISPLAY_ALLOW_BLACK_REQUIRES_REVERT',
+} as const;
+
+/**
+ * The floor a brightness request must clear to count as RECOVERY on a screen
+ * that has never reported its capabilities.
+ *
+ * We cannot know a screen's current brightness from the server, so "is this
+ * an increase?" is unanswerable. What IS answerable is "does this request
+ * provably leave the panel clearly legible?" — and at or above this value it
+ * does, whichever direction it moved. That is the whole safety property the
+ * unknown-verdict gate needs: an operator can always drag the slider up and
+ * see the screen again, and can never darken hardware we have not observed.
+ */
+export const DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT = 50;
+
 export type DisplayActionSupport =
-  | { supported: true; mechanism: string }
+  | { supported: true; mechanism: string; note?: string }
   | { supported: false; code: string; message: string };
+
+/** BLANK/WAKE always resolve; the verdict names the MECHANISM, not the availability. */
+function blankMechanism(
+  verdict: DisplayCapabilityVerdict | null | undefined,
+): string {
+  const m = verdict?.screenBlank;
+  return m && m !== 'none' ? m : 'software-dim';
+}
 
 /**
  * THE capability gate. Pure, so the API, the dashboard and the tests all
  * reach the same verdict from the same input.
  *
- * A screen that has NEVER reported (verdict null) supports NOTHING — we do
- * not guess, and we do not optimistically fire an action at hardware whose
- * surface we have not observed. That is the honest reading of "never render
- * a control the hardware cannot perform".
+ * ── THE TWO RULES (lead decision, 2026-08-13) ────────────────────────────
+ *
+ * C3. BLANK and WAKE ARE ALWAYS AVAILABLE, on every box, because the
+ *     software floor (window brightness + a full-screen overlay) can never
+ *     fail. `screenBlank: 'none'` means "no PRIVILEGED blank" — no device
+ *     admin, no device owner — not "cannot blank". Refusing WAKE on that
+ *     verdict was the bug: a schedule blanks the panel through the software
+ *     floor at 22:00 and the operator can then never light it again from
+ *     the dashboard. The verdict names the MECHANISM, never the
+ *     availability.
+ *
+ * C4. FAIL-OPEN FOR RECOVERY, FAIL-CLOSED FOR RISK. A screen that has never
+ *     reported still receives and executes schedule blanks (the manifest
+ *     does not consult the verdict), so "unknown ⇒ nothing works" produced a
+ *     dark screen with no way to light it — a truck roll on a wall mount,
+ *     the worst outcome in this feature. So on a null verdict:
+ *       • WAKE is ACCEPTED (it can only ever make a dark screen visible);
+ *       • SET_BRIGHTNESS is ACCEPTED at or above
+ *         DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT, for the same reason;
+ *       • BLANK, SET_VOLUME, REBOOT and any allowBlack request are REFUSED
+ *         until the screen reports — we do not fire risk at hardware whose
+ *         surface we have not observed.
+ *
+ * NO DEVICE OWNER (product decision, 2026-08-13). We do not provision this
+ * app as Android device owner, so on today's fleet `reboot` is 'none' and
+ * REBOOT is genuinely unavailable — refused with its OWN code and a reason
+ * an operator can act on, never a generic "unsupported". It lights up
+ * unchanged the day a manufacturer preinstalls us as a platform-signed app.
  */
 export function displayActionSupport(
   action: DisplayActionType,
   verdict: DisplayCapabilityVerdict | null | undefined,
+  opts?: { percent?: number; allowBlack?: boolean },
 ): DisplayActionSupport {
-  if (!verdict) {
+  const known = !!verdict;
+  const allowBlack = opts?.allowBlack === true;
+
+  // allowBlack is the one flag that can deliberately black an unreachable
+  // panel. It is never accepted against unobserved hardware.
+  if (allowBlack && !known) {
     return {
       supported: false,
-      code: 'DISPLAY_CAPABILITIES_UNKNOWN',
+      code: DISPLAY_REFUSAL_CODES.UNKNOWN,
       message:
-        'This screen has not reported its display capabilities yet. Controls stay disabled until it does.',
+        'This screen has not reported its display capabilities yet, so it cannot be blacked out. Wake it or raise its brightness first.',
     };
   }
-  const key = DISPLAY_ACTION_CAPABILITY[action];
-  const mechanism = verdict[key];
-  if (!mechanism || mechanism === 'none') {
-    return {
-      supported: false,
-      code: 'DISPLAY_ACTION_UNSUPPORTED',
-      message: `This screen reports no ${key} control (${action}).`,
-    };
+
+  switch (action) {
+    // ── recovery: always available (C3) ────────────────────────────────
+    case 'WAKE':
+      return {
+        supported: true,
+        mechanism: blankMechanism(verdict),
+        note: known
+          ? undefined
+          : 'This screen has not reported its capabilities yet — waking uses the software floor.',
+      };
+
+    // ── risk: needs an observed verdict (C4), then always resolves (C3) ─
+    case 'BLANK':
+      if (!known) {
+        return {
+          supported: false,
+          code: DISPLAY_REFUSAL_CODES.UNKNOWN,
+          message:
+            'This screen has not reported its display capabilities yet. Blanking stays disabled until it does — Wake still works.',
+        };
+      }
+      return { supported: true, mechanism: blankMechanism(verdict) };
+
+    case 'SET_BRIGHTNESS': {
+      // The brightness type has no 'none' member: the software floor always
+      // exists, so brightness always resolves once we have a verdict.
+      if (known) return { supported: true, mechanism: verdict!.brightness };
+      const percent = opts?.percent;
+      if (
+        typeof percent === 'number' &&
+        percent >= DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT
+      ) {
+        return {
+          supported: true,
+          mechanism: 'software-dim',
+          note: 'This screen has not reported its capabilities yet — only brightness increases are accepted.',
+        };
+      }
+      return {
+        supported: false,
+        code: DISPLAY_REFUSAL_CODES.UNKNOWN,
+        message: `This screen has not reported its display capabilities yet. Until it does, brightness can only be raised (${DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT}% or more).`,
+      };
+    }
+
+    case 'SET_VOLUME':
+      if (!known) {
+        return {
+          supported: false,
+          code: DISPLAY_REFUSAL_CODES.UNKNOWN,
+          message:
+            'This screen has not reported its display capabilities yet. Volume stays disabled until it does.',
+        };
+      }
+      if (verdict!.volume === 'none') {
+        return {
+          supported: false,
+          code: DISPLAY_REFUSAL_CODES.UNSUPPORTED,
+          message: 'This screen exposes no volume control.',
+        };
+      }
+      return { supported: true, mechanism: verdict!.volume };
+
+    case 'REBOOT':
+      if (!known) {
+        return {
+          supported: false,
+          code: DISPLAY_REFUSAL_CODES.UNKNOWN,
+          message:
+            'This screen has not reported its display capabilities yet. Reboot stays disabled until it does.',
+        };
+      }
+      if (verdict!.reboot === 'none') {
+        return {
+          supported: false,
+          code: DISPLAY_REFUSAL_CODES.REBOOT_UNAVAILABLE,
+          message:
+            'Remote reboot is not available on this screen. Android exposes it only to a device-owner or platform-signed app, and this fleet is neither. Power-cycle it at the panel.',
+        };
+      }
+      return { supported: true, mechanism: verdict!.reboot };
+
+    default: {
+      // Exhaustiveness guard: a new action added to DISPLAY_ACTIONS without
+      // a case here refuses rather than falling through to permissive.
+      const unreachable: never = action;
+      return {
+        supported: false,
+        code: DISPLAY_REFUSAL_CODES.UNSUPPORTED,
+        message: `Unknown display action (${String(unreachable)}).`,
+      };
+    }
   }
-  return { supported: true, mechanism };
 }
 
 /**
@@ -260,13 +485,55 @@ const DisplayDaysOfWeek = z
   .max(7)
   .refine((d) => new Set(d).size === d.length, 'Duplicate day');
 
+/** UTC is a legal zone everywhere but is absent from supportedValuesOf. */
+const DISPLAY_EXTRA_TIMEZONES = new Set(['UTC']);
+
+let supportedZoneCache: Set<string> | null | undefined;
+
+/** `Intl.supportedValuesOf` is Node 18+/Safari 15.4+; treat absence as "unknown". */
+function supportedZones(): Set<string> | null {
+  if (supportedZoneCache !== undefined) return supportedZoneCache;
+  try {
+    const fn = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] })
+      .supportedValuesOf;
+    supportedZoneCache = typeof fn === 'function'
+      ? new Set(fn.call(Intl, 'timeZone'))
+      : null;
+  } catch {
+    supportedZoneCache = null;
+  }
+  return supportedZoneCache;
+}
+
 /**
- * IANA timezone check. `Intl.DateTimeFormat` throws RangeError on an
- * unknown zone, which is a real validation rather than a regex that accepts
- * "Not/AZone". Node ships full ICU here.
+ * IANA timezone check — must be resolvable by BOTH runtimes that read it.
+ *
+ * THE BUG THIS CLOSES (2026-08-13 review, P2). `new Intl.DateTimeFormat(…,
+ * {timeZone})` alone ACCEPTS the non-region legacy ids — 'EST', 'MST',
+ * 'HST', 'PST8PDT', 'EST5EDT' — none of which appear in
+ * `Intl.supportedValuesOf('timeZone')`. The row would store and the manifest
+ * would ship, but on the device java.time's single-argument
+ * `ZoneId.of("EST")` THROWS (those ids are reachable only through the
+ * two-argument `ZoneId.of(id, ZoneId.SHORT_IDS)` overload), so the alarm for
+ * that window is never armed and the screen silently never blanks — or never
+ * wakes — on a box nobody can reach. This contract is shared, so the
+ * validation belongs here rather than in a defensive try/catch on the player.
+ *
+ * Primary check is membership in `Intl.supportedValuesOf('timeZone')` (the
+ * canonical IANA set both runtimes agree on) plus an explicit 'UTC'. On a
+ * runtime without that API we fall back to the old ICU parse PLUS a
+ * `Region/City` shape requirement, which rejects every legacy id above
+ * because none of them contains a '/'.
  */
 export function isValidIanaTimezone(tz: unknown): boolean {
   if (typeof tz !== 'string' || tz.length === 0 || tz.length > 64) return false;
+  if (DISPLAY_EXTRA_TIMEZONES.has(tz)) return true;
+
+  const zones = supportedZones();
+  if (zones) return zones.has(tz);
+
+  // Fallback path: ICU must resolve it AND it must be Region/City shaped.
+  if (!/^[A-Za-z][A-Za-z0-9_+-]*\/[A-Za-z0-9_/+-]+$/.test(tz)) return false;
   try {
     new Intl.DateTimeFormat('en-US', { timeZone: tz });
     return true;
@@ -309,67 +576,236 @@ export const DisplayScheduleUpdateSchema = z
   .passthrough();
 export type DisplayScheduleUpdateInput = z.infer<typeof DisplayScheduleUpdateSchema>;
 
-/** The manifest's per-schedule shape. Stable, DB-sourced, no clock values. */
+/**
+ * The manifest's per-schedule shape. Stable, DB-sourced, no clock values.
+ *
+ * `scope` records WHY this row is in the block after precedence was applied
+ * server-side: a screen-level window SUPPRESSES its group's windows entirely
+ * (see resolveSchedulePrecedence in apps/api/src/display/display-manifest.ts).
+ * Without that rule the builder concatenated both and the player armed both,
+ * so a per-screen "late event until 23:30" row silently lost to the group's
+ * 22:00 blank — the board went dark 90 minutes into the event with the
+ * operator believing the override had taken. The player does not have to act
+ * on `scope`; it exists so the resolved precedence is visible rather than
+ * implied. (org.json ignores unknown keys, so this is additive on-device.)
+ */
 export interface DisplayScheduleManifestEntry {
   id: string;
   daysOfWeek: number[];
   onTime: string;
   offTime: string;
   timezone: string;
+  scope: 'screen' | 'group';
 }
 
 // ─────────────────────────────────────────────────────────────────────
 // Vendor recipes
 // ─────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────
+// Recipe allowlist — MIRRORS apps/player/.../display/VendorRecipe.kt
+// (`RecipeAllowlist`). Keep the two in sync; the device stays the security
+// boundary, this end is defence in depth.
+//
+// The 2026-08-13 review proved the gap by execution: the schema accepted
+// `{brightness:{kind:'sysfs', path:'/sys/class/backlight/../../../proc/
+// sysrq-trigger'}, blank:{kind:'broadcast', action:
+// 'android.intent.action.MASTER_CLEAR'}}` unchanged, and one PUT shipped
+// that catalog verbatim to every screen in every tenant — while this file's
+// own header claimed "defence in depth means both ends refuse". It does now.
+// ─────────────────────────────────────────────────────────────────────
+
+/** The ONLY filesystem roots a recipe may write to. Trailing slash is load-bearing. */
+export const DISPLAY_RECIPE_SYSFS_ROOTS = [
+  '/sys/class/backlight/',
+  '/sys/class/leds/',
+] as const;
+
 /**
- * Recipe shape. Validated here for STRUCTURE only — the security boundary is
- * the player's native allowlist (sysfs canonicalized under
- * /sys/class/backlight or /sys/class/leds; allowlisted broadcast action
- * prefixes, no explicit component/package targeting; Settings.System only,
- * never Secure or Global; no shell execution, ever). A recipe that fails the
- * device-side allowlist is REJECTED WHOLE and logged, never partially
- * applied. Nothing here can widen that allowlist.
+ * Vendor namespaces a broadcast action may live in. `android.` and
+ * `com.android.` are deliberately ABSENT, and every entry ends in a dot so
+ * `com.tcl.` cannot be satisfied by `com.tclEVIL.doSomething`.
  */
+export const DISPLAY_RECIPE_BROADCAST_PREFIXES = [
+  'com.gv.',
+  'com.goodview.',
+  'com.good_view.',
+  'com.novastar.',
+  'com.nova.',
+  'com.xixun.',
+  'com.tcl.',
+  'com.tclking.',
+  'com.rockchip.',
+  'com.amlogic.',
+  'com.allwinner.',
+  'com.mstar.',
+  'com.hisense.',
+  'com.philips.',
+  'com.samsung.signage.',
+  'com.lg.signage.',
+  'com.educms.display.',
+] as const;
+
+/**
+ * Settings.System keys a display recipe may write.
+ *
+ * This is the ONE place the API is deliberately STRICTER than the device
+ * (which validates the key's shape but not its name). A display recipe has
+ * no business writing anything outside the panel's own brightness surface,
+ * and a typo'd key shipped fleet-wide is a silent no-op nobody notices. To
+ * support a genuinely new vendor key: add it here, and say why in the commit.
+ */
+export const DISPLAY_RECIPE_SETTINGS_KEYS = [
+  'screen_brightness',
+  'screen_brightness_float',
+  'screen_brightness_mode',
+  'screen_off_timeout',
+  'dim_screen',
+] as const;
+
+/** ASCII space, tab, NUL, CR, LF, DEL, every other C0 byte, and Unicode whitespace. */
+function hasUnsafeChar(s: string): boolean {
+  for (const ch of s) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (code < 0x20 || code === 0x7f) return true;
+    if (/\s/u.test(ch)) return true;
+  }
+  return false;
+}
+
+/**
+ * True when `path` is provably a node strictly beneath an allowlisted sysfs
+ * root, with no traversal, no encoded traversal, no backslash and no control
+ * bytes. Purely textual — the server cannot canonicalize a device's
+ * filesystem, so it refuses anything that would REQUIRE canonicalization to
+ * be safe. The device still canonicalizes on top of this.
+ */
+export function isAllowedRecipeSysfsPath(path: unknown): boolean {
+  if (typeof path !== 'string') return false;
+  const p = path.trim();
+  if (!p || p.length > 256) return false;
+  if (hasUnsafeChar(p)) return false;
+  if (p.includes('\\')) return false;
+  // Encoded traversal / encoded separators, in any case.
+  if (/%2e|%2f|%5c|%00/i.test(p)) return false;
+  if (!p.startsWith('/')) return false;
+  if (p.split('/').some((seg) => seg === '..')) return false;
+  return DISPLAY_RECIPE_SYSFS_ROOTS.some(
+    (root) => p.startsWith(root) && p.length > root.length,
+  );
+}
+
+export function isAllowedRecipeBroadcastAction(action: unknown): boolean {
+  if (typeof action !== 'string') return false;
+  if (!/^[A-Za-z0-9_.]{1,128}$/.test(action)) return false;
+  if (action.includes('..')) return false;
+  return DISPLAY_RECIPE_BROADCAST_PREFIXES.some((p) => action.startsWith(p));
+}
+
+export function isAllowedRecipeSettingsKey(key: unknown): boolean {
+  return (
+    typeof key === 'string' &&
+    (DISPLAY_RECIPE_SETTINGS_KEYS as readonly string[]).includes(key)
+  );
+}
+
+/**
+ * Recipe shape. The SECURITY boundary is still the player's native allowlist
+ * (sysfs canonicalized under /sys/class/backlight or /sys/class/leds;
+ * allowlisted broadcast action prefixes, no explicit component/package
+ * targeting; Settings.System only, never Secure or Global; no shell
+ * execution, ever) — a recipe that fails it is REJECTED WHOLE and logged,
+ * never partially applied. Nothing here can widen that allowlist, and the
+ * checks below now REFUSE the same things at this end.
+ */
+/** Device: min ≥ 0, max > min, max ≤ 1_000_000 (overflow guard). */
+const RecipeScale = z
+  .tuple([z.number(), z.number()])
+  .refine(
+    ([min, max]) => min >= 0 && max > min && max <= 1_000_000,
+    'scale must be [min, max] with 0 ≤ min < max ≤ 1000000',
+  );
+
+/** Device: EXTRA_KEY_RE = ^[A-Za-z0-9_.]{1,64}$ */
 const RecipeExtra = z
   .object({
-    key: z.string().min(1).max(120),
+    key: z
+      .string()
+      .min(1)
+      .max(64)
+      .regex(/^[A-Za-z0-9_.]+$/, 'extra key is not a safe identifier'),
     type: z.enum(['int', 'string', 'bool']),
     from: z.enum(['percent', 'literal']),
-    value: z.union([z.string().max(200), z.number(), z.boolean()]).optional(),
-    scale: z.tuple([z.number(), z.number()]).optional(),
+    value: z.union([z.string().max(128), z.number(), z.boolean()]).optional(),
+    scale: RecipeScale.optional(),
   })
-  .strict();
+  .strict()
+  // Device: a percent handed to a bool extra is always a config error, and
+  // coercing it silently is how "set 0% brightness" becomes "power off".
+  .refine(
+    (e) => !(e.from === 'percent' && e.type === 'bool'),
+    'an extra cannot take a percent as a boolean',
+  );
 
 const RecipeBroadcast = z
   .object({
     kind: z.literal('broadcast'),
-    action: z.string().min(1).max(200),
-    extras: z.array(RecipeExtra).max(12).optional(),
+    action: z
+      .string()
+      .min(1)
+      .max(128)
+      .refine(
+        isAllowedRecipeBroadcastAction,
+        'broadcast action is not in an allowlisted vendor namespace',
+      ),
+    // MAX_EXTRAS on the device is 8; a 12-extra recipe would be rejected
+    // whole there, so refusing it here keeps both ends agreeing.
+    extras: z.array(RecipeExtra).max(8).optional(),
   })
   .strict();
 
 const RecipeSysfs = z
   .object({
     kind: z.literal('sysfs'),
-    path: z.string().min(1).max(300),
+    path: z
+      .string()
+      .min(1)
+      .max(256)
+      .refine(
+        isAllowedRecipeSysfsPath,
+        'sysfs path must be a node under /sys/class/backlight/ or /sys/class/leds/, with no traversal',
+      ),
     value: z.union([z.string().max(64), z.number()]).optional(),
     valueFrom: z.literal('percent').optional(),
-    scale: z.tuple([z.number(), z.number()]).optional(),
+    scale: RecipeScale.optional(),
   })
   .strict();
 
 const RecipeSettings = z
   .object({
     kind: z.literal('settings'),
-    key: z.string().min(1).max(120),
+    key: z
+      .string()
+      .min(1)
+      .max(64)
+      .refine(
+        isAllowedRecipeSettingsKey,
+        `settings key must be one of: ${DISPLAY_RECIPE_SETTINGS_KEYS.join(', ')}`,
+      ),
     valueFrom: z.literal('percent').optional(),
     value: z.union([z.string().max(64), z.number()]).optional(),
-    scale: z.tuple([z.number(), z.number()]).optional(),
+    scale: RecipeScale.optional(),
   })
   .strict();
 
 const RecipeStep = z.discriminatedUnion('kind', [RecipeBroadcast, RecipeSysfs, RecipeSettings]);
+
+/** Device: MATCH_RE = ^[A-Za-z0-9 ._+()\-/]{1,128}$ — a token the device would reject is refused here. */
+const RecipeMatchToken = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9 ._+()\-/]+$/, 'match token has illegal characters');
 
 export const DisplayVendorRecipeSchema = z
   .object({
@@ -380,9 +816,9 @@ export const DisplayVendorRecipeSchema = z
       .regex(/^[a-z0-9][a-z0-9-]*$/, 'kebab-case slug'),
     match: z
       .object({
-        manufacturer: z.string().max(120).optional(),
-        model: z.string().max(120).optional(),
-        board: z.string().max(120).optional(),
+        manufacturer: RecipeMatchToken.optional(),
+        model: RecipeMatchToken.optional(),
+        board: RecipeMatchToken.optional(),
       })
       .strict()
       .refine(

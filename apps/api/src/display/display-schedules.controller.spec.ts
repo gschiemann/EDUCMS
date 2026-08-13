@@ -98,12 +98,36 @@ describe('DisplaySchedule contract', () => {
     expect(isValidIanaTimezone(null)).toBe(false);
     expect(isValidIanaTimezone(42)).toBe(false);
     expect(ok({ timezone: 'Not/AZone' })).toBe(false);
-    // NOTE: ICU also resolves legacy tz-database aliases such as "CST" and
-    // "EST5EDT". Those are genuinely resolvable zones, so accepting them is
-    // correct — a regex-based "must contain a slash" check would wrongly
-    // reject "UTC" too. The line we care about is that an unresolvable
-    // string never reaches a device that has to compute a wake time from it.
-    expect(isValidIanaTimezone('EST5EDT')).toBe(true);
+  });
+
+  it('rejects the legacy non-region ids java.time cannot resolve', () => {
+    // FIXED TEST, 2026-08-13. This case previously asserted
+    // `isValidIanaTimezone('EST5EDT') === true` on the reasoning that ICU
+    // resolves it, so "accepting them is correct". That reasoning was wrong
+    // about the runtime that matters: the PLAYER arms the alarm, and
+    // java.time's single-argument `ZoneId.of("EST5EDT")` THROWS — those ids
+    // are reachable only through the two-arg `ZoneId.of(id, ZoneId.SHORT_IDS)`
+    // overload. Storing one produced a row the API accepted, the manifest
+    // shipped, and the device silently failed to arm: a screen that never
+    // blanks, or never wakes, on a box nobody can reach.
+    //
+    // None of these appear in `Intl.supportedValuesOf('timeZone')`, which is
+    // the canonical set both runtimes agree on and is now the check.
+    for (const legacy of [
+      'EST',
+      'MST',
+      'HST',
+      'PST8PDT',
+      'EST5EDT',
+      'CST6CDT',
+    ]) {
+      expect(isValidIanaTimezone(legacy)).toBe(false);
+      expect(ok({ timezone: legacy })).toBe(false);
+    }
+    // …while the real region ids for the same places stay valid.
+    expect(isValidIanaTimezone('America/New_York')).toBe(true);
+    expect(isValidIanaTimezone('America/Phoenix')).toBe(true);
+    expect(isValidIanaTimezone('Pacific/Honolulu')).toBe(true);
   });
 
   it('lets a partial update through, but still validates the fields present', () => {

@@ -82,9 +82,27 @@ describe('DisplayController', () => {
       client: {
         screen: { findFirst: jest.fn(), findUnique: jest.fn() },
         auditLog: { create: jest.fn().mockResolvedValue({}) },
+        // Emergency interlock surface. Default = quiet tenant. NOTE the
+        // fail-closed contract: omit these and every DARKENING action is
+        // refused with DISPLAY_EMERGENCY_HOLD, because an unreadable
+        // emergency state must never resolve to "go ahead and blank it".
+        screenEmergencyOverride: {
+          findUnique: jest.fn().mockResolvedValue(null),
+        },
+        tenant: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: TENANT_A,
+            parentId: null,
+            archivedAt: null,
+            emergencyStatus: 'INACTIVE',
+          }),
+        },
       },
     };
-    redis = { publish: jest.fn().mockResolvedValue(true) };
+    redis = {
+      publish: jest.fn().mockResolvedValue(true),
+      isConnected: jest.fn().mockReturnValue(true),
+    };
     display = {
       applyAction: jest.fn(),
       recordCapabilities: jest.fn().mockResolvedValue({ changed: true }),
@@ -110,25 +128,29 @@ describe('DisplayController', () => {
      * dashboard can say "this box exposes no backlight control" instead of
      * rendering a generic error.
      */
-    it('maps an unsupported action to 409 CONFLICT with the code and the verdict', async () => {
+    it('maps REBOOT on a no-device-owner box to 409 with its OWN code, not a generic error', async () => {
       prisma.client.screen.findFirst.mockResolvedValue(screenRow(BARE_VERDICT));
       // Real service, real gate — no stub, so the 409 is proven end to end.
       (controller as any).display = new DisplayService(prisma, redis, {
         signMessage: jest.fn(),
       } as any);
 
+      // Code changed from DISPLAY_ACTION_UNSUPPORTED with the 2026-08-13
+      // no-device-owner decision: reboot is genuinely unavailable on the whole
+      // fleet, so the operator gets a specific reason, not a shrug.
       await expect(
         controller.control(SCREEN_A, adminReq(), { action: 'REBOOT' } as any),
       ).rejects.toMatchObject({
         status: HttpStatus.CONFLICT,
         response: expect.objectContaining({
-          code: 'DISPLAY_ACTION_UNSUPPORTED',
+          code: 'DISPLAY_REBOOT_UNAVAILABLE',
+          message: expect.stringContaining('Power-cycle it at the panel'),
         }),
       });
       expect(redis.publish).not.toHaveBeenCalled();
     });
 
-    it('409s a screen that has never reported its capabilities', async () => {
+    it('409s a RISK action on a screen that has never reported its capabilities', async () => {
       prisma.client.screen.findFirst.mockResolvedValue(screenRow(null));
       (controller as any).display = new DisplayService(prisma, redis, {
         signMessage: jest.fn(),
@@ -144,6 +166,27 @@ describe('DisplayController', () => {
       });
     });
 
+    it('lets WAKE through on a screen that has never reported — recovery is never refused', async () => {
+      // The manifest ships schedules to a never-probed screen regardless, so
+      // that screen CAN be blanked by its own on-device alarm. Refusing the
+      // un-blank direction was a dark wall-mounted panel with no dashboard
+      // path back. (Contract C4: fail-open for recovery.)
+      prisma.client.screen.findFirst.mockResolvedValue(screenRow(null));
+      (controller as any).display = new DisplayService(prisma, redis, {
+        signMessage: jest.fn().mockReturnValue({ type: 'DISPLAY_CONTROL' }),
+      } as any);
+
+      const res: any = await controller.control(SCREEN_A, adminReq(), {
+        action: 'WAKE',
+      } as any);
+      expect(res.success).toBe(true);
+      expect(res.mechanism).toBe('software-dim');
+      expect(redis.publish).toHaveBeenCalledWith(
+        `device:${SCREEN_A}`,
+        expect.any(Object),
+      );
+    });
+
     it('lets a supported action through', async () => {
       prisma.client.screen.findFirst.mockResolvedValue(screenRow(FULL_VERDICT));
       display.applyAction.mockResolvedValue({ success: true, action: 'BLANK' });
@@ -157,6 +200,56 @@ describe('DisplayController', () => {
           action: 'BLANK',
         }),
       );
+    });
+
+    it('409s a BLANK while an emergency alert is up, and resolves the hold end to end', async () => {
+      // LIFE SAFETY. A blanked panel that hides a lockdown alert can get
+      // someone hurt, so the operator cannot originate one from the
+      // dashboard during an incident — regardless of what the screen's WS
+      // socket is doing.
+      prisma.client.screen.findFirst.mockResolvedValue(screenRow(FULL_VERDICT));
+      prisma.client.tenant.findUnique.mockResolvedValue({
+        id: TENANT_A,
+        parentId: null,
+        archivedAt: null,
+        emergencyStatus: 'LOCKDOWN',
+      });
+      (controller as any).display = new DisplayService(prisma, redis, {
+        signMessage: jest.fn().mockReturnValue({ type: 'DISPLAY_CONTROL' }),
+      } as any);
+
+      await expect(
+        controller.control(SCREEN_A, adminReq(), { action: 'BLANK' } as any),
+      ).rejects.toMatchObject({
+        status: HttpStatus.CONFLICT,
+        response: expect.objectContaining({ code: 'DISPLAY_EMERGENCY_HOLD' }),
+      });
+      expect(redis.publish).not.toHaveBeenCalled();
+    });
+
+    it('still lets WAKE and a brightness RAISE through during that same emergency', async () => {
+      prisma.client.screen.findFirst.mockResolvedValue(screenRow(FULL_VERDICT));
+      prisma.client.tenant.findUnique.mockResolvedValue({
+        id: TENANT_A,
+        parentId: null,
+        archivedAt: null,
+        emergencyStatus: 'LOCKDOWN',
+      });
+      (controller as any).display = new DisplayService(prisma, redis, {
+        signMessage: jest.fn().mockReturnValue({ type: 'DISPLAY_CONTROL' }),
+      } as any);
+
+      await expect(
+        controller.control(SCREEN_A, adminReq(), { action: 'WAKE' } as any),
+      ).resolves.toMatchObject({ success: true });
+      await expect(
+        controller.control(SCREEN_A, adminReq(), {
+          action: 'SET_BRIGHTNESS',
+          percent: 100,
+        } as any),
+      ).resolves.toMatchObject({ success: true });
+      // The recovery direction does not even pay for the emergency read.
+      expect(prisma.client.tenant.findUnique).not.toHaveBeenCalled();
     });
 
     it('400s a percent-bearing action with no percent (a different failure class than 409)', async () => {
