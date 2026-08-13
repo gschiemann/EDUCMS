@@ -28,6 +28,12 @@
 #      reset, and if the vendor CMS already holds device owner it will fail
 #      anyway. `scripts/provision-kiosk.sh` is the supported path.
 #
+# NOT the same tool as scripts/display-capability-probe.sh. That one is the
+# narrow, machine-readable capability verdict (--kv / --json) that
+# provision-kiosk.sh and fleet-display-probe.sh consume. This one is the
+# DEEP RECON dump you run once per new hardware model. Keep both; they do
+# not share a CLI.
+#
 # USAGE
 #   scripts/vendor-display-probe.sh                  # auto-detect device
 #   scripts/vendor-display-probe.sh -s <serial>      # pick a device
@@ -54,7 +60,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     -s) SERIAL="${2:-}"; shift 2 ;;
     --pull-apks) PULL_APKS=1; shift ;;
-    -h|--help) sed -n '2,45p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,51p' "$0"; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
@@ -217,8 +223,10 @@ ADMIN_LINE="$(grep -iE 'Admin ComponentInfo|admin=ComponentInfo' "$RAW/device_po
 ACCT_COUNT="$(grep -c 'Account {' "$RAW/accounts.txt" 2>/dev/null || echo 0)"
 
 # backlight
+# NOTE: the old BL_READABLE (count of bare-numeric lines) was computed and
+# never used — dead, and shellcheck SC2034 on it turned the Field Scripts
+# gate red. The DENIED count below is the one the verdict actually reads.
 BL_NODES="$(grep -oE '/sys/class/backlight/[a-zA-Z0-9_.-]+' "$RAW/sys-backlight.txt" | sort -u)"
-BL_READABLE="$(grep -cE '^[0-9]+$' "$RAW/sys-backlight.txt" 2>/dev/null || echo 0)"
 BL_DENIED="$(grep -ciE 'permission denied|no such file' "$RAW/sys-backlight.txt" 2>/dev/null || echo 0)"
 
 # settings candidates

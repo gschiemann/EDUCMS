@@ -14,7 +14,9 @@
 # DISAGREE.
 #
 # It is STRICTLY READ-ONLY — it only shells out to
-# scripts/vendor-display-probe.sh, which writes nothing to any device.
+# scripts/display-capability-probe.sh, which writes nothing to any device.
+# (NOT scripts/vendor-display-probe.sh: that is the separate deep-recon
+# tool with a different CLI and no --kv contract. Both are kept.)
 #
 # USAGE
 # -----
@@ -33,13 +35,13 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-PROBE="$HERE/vendor-display-probe.sh"
+PROBE="$HERE/display-capability-probe.sh"
 
 OUT_MD=""
 RAW_DIR=""
 SERIALS_ARG=""
 
-usage() { sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,34p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -163,9 +165,11 @@ row "  build"            build             || true
 section "INSTALL / POLICY"
 row "  manager installed" managerInstalled  || true
 row "  player installed"  playerInstalled   || true
+row "  player installer"  playerInstaller   || true
 row "  device owner"      deviceOwnerPkg    || true
 row "  owner is ours"     deviceOwnerIsOurs || true
-row "  admin active"      adminActive       || true
+row "  admin active(any)" adminActive       || true
+row "  admin is OURS"     adminOurs         || true
 row "  accounts"          accounts          || true
 row "  users"             users             || true
 
@@ -184,7 +188,13 @@ row "  sysfs mode"       sysfsMode           || true
 row "  sysfs world-write" sysfsWorldWritable || true
 row "  WRITE_SETTINGS"   writeSettingsAppop  || true
 row "  ws declared"      writeSettingsDeclared || true
+row "  battery-opt exempt" batteryOptExempt  || true
 row "  serial ports"     serialPorts         || true
+# Field-only fact, never sent to the dashboard: would `dpm
+# set-device-owner` be accepted right now? We do NOT take device owner
+# (see docs/FIELD-PROVISIONING.md §7) — this row exists so a future
+# manufacturer-preinstall decision has real data behind it.
+row "  DO window open"   deviceOwnerWindowOpen || true
 
 echo ""
 hr
@@ -194,41 +204,57 @@ for i in $COLS; do
   s="$(cat "$TMP/$i.serial")"
   dop="$(val "$i" deviceOwnerPath)"
   printf '  %s  (%s %s)\n' "$s" "$(val "$i" manufacturer)" "$(val "$i" model)"
+  echo "     → Run: scripts/provision-kiosk.sh --serial $s"
+  # We do NOT take device owner (docs/FIELD-PROVISIONING.md §7). None of
+  # the branches below change the command above — deviceOwnerPath only
+  # decides whether REBOOT exists on this unit, and today it does not.
   case "$dop" in
     held)
-      echo "     ✓ device owner already ours — reboot + blank are live. Nothing to do." ;;
-    provisionable-now)
-      echo "     → PROVISION NOW. This is the only window: once an account is added,"
-      echo "       device owner costs a FACTORY RESET (wipes the vendor CMS config)."
-      echo "       Run: scripts/provision-kiosk.sh --serial $s" ;;
+      echo "       ✓ device owner is already ours, so this unit ALSO has remote"
+      echo "         reboot. Nothing to take, nothing to undo — leave it alone." ;;
     blocked-other-owner)
-      echo "     ✗ device owner held by '$(val "$i" deviceOwnerPkg)' (vendor CMS)."
-      echo "       Remote REBOOT is unavailable. Blank/volume/dim still work."
-      echo "       Taking it back needs a FACTORY RESET — do NOT do that without"
-      echo "       the vendor CMS config written down first."
-      echo "       Run limited: scripts/provision-kiosk.sh --serial $s --no-device-owner" ;;
+      echo "       · device owner is held by '$(val "$i" deviceOwnerPkg)' (the vendor's app)."
+      echo "         Irrelevant to us: volume, brightness, blank/wake and schedules"
+      echo "         need no ownership. Do NOT factory reset to chase it." ;;
     provisionable-after-factory-reset)
-      echo "     ✗ accounts/users already on the box block device owner."
-      echo "       Remote REBOOT is unavailable until a FACTORY RESET (wipes the"
-      echo "       vendor CMS config). Decide on site; everything else still works."
-      echo "       Run limited: scripts/provision-kiosk.sh --serial $s --no-device-owner" ;;
+      if [ "$(val "$i" deviceOwnerWindowOpen)" = "yes" ]; then
+        echo "       · no owner and no accounts, so this box WOULD accept device"
+        echo "         owner. We deliberately do not take it (§7). No reset needed,"
+        echo "         no window to miss — nothing here is time-critical."
+      else
+        echo "       · no owner; accounts=$(val "$i" accounts) users=$(val "$i" users) would block it anyway."
+        echo "         Irrelevant to us — we are not taking device owner (§7)."
+      fi ;;
     *)
-      echo "     ? deviceOwnerPath=$dop — re-run the single-unit probe for detail." ;;
+      echo "       ? deviceOwnerPath=$dop — re-run the single-unit probe for detail." ;;
   esac
+  if [ "$(val "$i" reboot)" != "device-owner" ]; then
+    echo "       ! REBOOT is not available on this unit and no fallback exists."
+    echo "         The dashboard renders no reboot control for it. The future fix"
+    echo "         is a manufacturer preinstall (platform-signed system app)."
+  fi
+  if [ "$(val "$i" adminOurs)" != "yes" ]; then
+    echo "       ! blank/wake will run on the SOFTWARE OVERLAY (always works, but"
+    echo "         the backlight stays lit — no power saving). provision-kiosk.sh"
+    echo "         offers to activate device ADMIN, which upgrades it to a real"
+    echo "         screen-off. Reversible; no factory reset."
+  fi
   if [ "$(val "$i" brightness)" = "software-dim" ]; then
-    echo "     ! brightness is SOFTWARE-DIM only on this unit — the dashboard will"
-    echo "       say so. No backlight control, therefore no power saving."
+    echo "       ! brightness is SOFTWARE-DIM only on this unit — the dashboard will"
+    echo "         say so. No backlight control, therefore no power saving."
   fi
   if [ "$(val "$i" writeSettingsAppop)" != "allow" ] && [ "$(val "$i" playerInstalled)" = "yes" ]; then
-    if [ "$(val "$i" brightness)" = "settings" ]; then
-      echo "     ! WRITE_SETTINGS appop is '$(val "$i" writeSettingsAppop)' — brightness on this"
-      echo "       unit RUNS THROUGH Settings.System and will fail until"
-      echo "       provision-kiosk.sh grants the appop."
-    else
-      echo "     · WRITE_SETTINGS appop is '$(val "$i" writeSettingsAppop)'. Not required here"
-      echo "       (brightness resolves to $(val "$i" brightness)), but provision-kiosk.sh"
-      echo "       grants it anyway so the fallback path stays live."
-    fi
+    echo "       ! WRITE_SETTINGS appop is '$(val "$i" writeSettingsAppop)'. provision-kiosk.sh grants it;"
+    echo "         with it, brightness can reach the real Settings.System path."
+  fi
+  if [ "$(val "$i" batteryOptExempt)" = "no" ]; then
+    echo "       ! not exempt from battery optimisation — on/off schedules can fire"
+    echo "         late under doze. provision-kiosk.sh whitelists it."
+  fi
+  if [ "$(val "$i" vendorAutoStartHint)" != "none-matched" ]; then
+    echo "       ! vendor auto-start manager candidate(s): $(val "$i" vendorAutoStartHint)"
+    echo "         Chinese ROMs kill apps that are not ticked in their own startup"
+    echo "         manager, regardless of BootReceiver. Check it by hand (§6a)."
   fi
 done
 hr
@@ -256,11 +282,14 @@ if [ -n "$OUT_MD" ]; then
     # parsed as a printf option and silently emits nothing.
     printf -- '|---|'; for _ in $COLS; do printf -- '---|'; done; printf '\n'
     for k in manufacturer model board android sdk build \
-             managerInstalled playerInstalled deviceOwnerPkg deviceOwnerIsOurs \
-             adminActive accounts users \
+             managerInstalled playerInstalled managerVersion playerVersion \
+             playerInstaller deviceOwnerPkg deviceOwnerIsOurs \
+             adminActive adminOurs accounts users \
              volume brightness screenBlank reboot hardPowerOff deviceOwnerPath \
+             deviceOwnerWindowOpen \
              sysfsNode sysfsMode sysfsWorldWritable writeSettingsAppop \
-             writeSettingsDeclared serialPorts; do
+             writeSettingsDeclared batteryOptExempt serialPorts \
+             vendorAutoStartHint; do
       printf '| **%s** |' "$k"
       for i in $COLS; do printf ' `%s` |' "$(val "$i" "$k")"; done
       printf '\n'

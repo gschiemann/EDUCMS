@@ -14,11 +14,17 @@
 # SCOPE — deliberately narrow, so this gate cannot turn master red on
 # unrelated legacy scripts:
 #   • bash -n + the locale-bomb scan run on EVERY tracked scripts/*.sh
-#     (verified green across all 11 as of this commit).
-#   • Blocking shellcheck runs ONLY on the three FIELD scripts below.
+#     (verified green across all 12 as of this commit).
+#   • Blocking shellcheck runs ONLY on the four FIELD scripts below.
 #     The legacy scripts are shellchecked informationally; several carry
 #     pre-existing SC2164/SC2010/SC2148 warnings and fixing them is not
 #     this feature's business.
+#
+# The two probes are DIFFERENT TOOLS and both are gated:
+#   display-capability-probe.sh  narrow --kv/--json capability verdict;
+#                                the contract provision-kiosk.sh and
+#                                fleet-display-probe.sh both consume.
+#   vendor-display-probe.sh      deep recon dump for a new hardware model.
 #
 # WHAT IT CATCHES
 #   1. Syntax errors        — `bash -n`, all tracked scripts
@@ -59,6 +65,7 @@ jobs:
     env:
       FIELD_SCRIPTS: >-
         scripts/provision-kiosk.sh
+        scripts/display-capability-probe.sh
         scripts/vendor-display-probe.sh
         scripts/fleet-display-probe.sh
     steps:
