@@ -71,6 +71,12 @@ class WebAppBridge(
      * two hardware paths. See com.educms.player.serial.SerialPortBridge.
      */
     private val ctsSerial: com.educms.player.serial.SerialPortBridge? = null,
+    /**
+     * READ-ONLY display/power/audio capability probe. Backs
+     * `DisplayCapabilityProbe.probeJson()`. See `probeDisplay()` below
+     * for the trust-boundary reasoning on exposing it here.
+     */
+    private val probeDisplayImpl: () -> String = { "{}" },
 ) {
     /**
      * Escape hatch — exits our kiosk task stack and returns the user to
@@ -110,6 +116,40 @@ class WebAppBridge(
     /** Returns device info as JSON: manufacturer, model, sdk, width, height, appVersion. */
     @JavascriptInterface
     fun deviceInfo(): String = getDeviceInfo()
+
+    /**
+     * Returns this device's display/power/audio control surface as JSON —
+     * what we could drive (backlight nodes, Settings keys, device-owner
+     * state, serial ports, vendor packages) if we built a control layer.
+     * See `DisplayCapabilityProbe` for the full field list and its
+     * read-only safety contract.
+     *
+     * PULL-ONLY, BY DESIGN. This must not be folded into `deviceInfo()`
+     * or the heartbeat payload: those feed Screen telemetry, and a new
+     * high-frequency Screen field invalidates the manifest hot-cache
+     * fleet-wide (CLAUDE.md → manifest content cache, rule 7). The
+     * dashboard calls this on demand, per screen.
+     *
+     * TRUST BOUNDARY (per the file header): like every method here, this
+     * is reachable from any frame the WebView loads, including
+     * operator-authored template HTML. What it returns is device
+     * *fingerprinting* material — model, build fingerprint, installed
+     * vendor packages, admin state. It deliberately returns NO secrets:
+     * no api root, no device JWT, no pairing code, no log tail (contrast
+     * `uploadDiagnostics`, which is host-allowlist-gated for exactly that
+     * reason). A hostile iframe learns what hardware it is running on,
+     * which it can already largely infer from the UA string and screen
+     * metrics. That was judged an acceptable trade for a diagnostic the
+     * dashboard needs on every screen; if the bridge is ever narrowed to
+     * a main-frame nonce handshake, this method should ride along.
+     */
+    @JavascriptInterface
+    fun probeDisplay(): String = try {
+        probeDisplayImpl()
+    } catch (ex: Exception) {
+        PlayerLogger.w("WebAppBridge", "probeDisplay failed: ${ex.message}")
+        """{"error":"${ex.message}"}"""
+    }
 
     /**
      * Kicks off a one-time OTA update check. Called by the web player

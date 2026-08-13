@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DEBUG-ONLY manifest additions. Merged by AGP into the debug variant
+  only; the release APK is byte-for-byte unaffected.
+
+  QUERY_ALL_PACKAGES exists here for ONE reason: DisplayCapabilityProbe
+  enumerates installed packages to (a) identify which package holds
+  DEVICE OWNER, and (b) list candidate vendor display-control apps. From
+  Android 11 (API 30) up, `getInstalledPackages` is filtered to whatever
+  the manifest `<queries>` block declares unless the app holds this
+  permission — so on a release build the probe sees a handful of packages
+  and cannot tell "no vendor control app installed" from "not allowed to
+  look".
+
+  Why debug-only rather than shipping it in release:
+    - It is a broad visibility grant on an app that has just been through
+      a security remediation program. The probe is a bench/diagnostic
+      tool; the fleet does not need it to run the player.
+    - Google Play treats QUERY_ALL_PACKAGES as a restricted permission.
+      We sideload today, but keeping it out of release means the release
+      APK never has to argue that case.
+    - The probe degrades honestly without it: its `vendorPackages.
+      enumerable` field reports false, so a short candidate list is never
+      mistaken for an empty one.
+
+  The release build still reports device-owner state correctly for the
+  packages that matter — `DevicePolicyManager.isDeviceOwnerApp()` accepts
+  any package name and the Manager companion is declared in the main
+  manifest's <queries> block.
+
+  So: run the DEBUG build on the Goodview bench unit for discovery, run
+  release everywhere else.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
+</manifest>

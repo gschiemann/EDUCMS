@@ -33,6 +33,7 @@ import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import com.educms.player.bootstrap.ManagerBootstrap
 import com.educms.player.databinding.ActivityMainBinding
+import com.educms.player.display.DisplayCapabilityProbe
 import com.educms.player.logging.PlayerLogger
 import com.educms.player.security.HostAllowlist
 import com.educms.player.security.LockTaskController
@@ -1041,6 +1042,12 @@ class MainActivity : ComponentActivity() {
                 onUnpair = { unpairAndRestart() },
                 onReload = { runOnUiThread { wv.reload() } },
                 getDeviceInfo = { deviceInfoJson() },
+                // READ-ONLY capability probe (2026-08-13). Answers "what
+                // display/power/audio control does THIS box expose?" per
+                // screen, with no adb and no vendor SDK. Pull-only — it is
+                // deliberately NOT part of deviceInfoJson()/heartbeat, so
+                // it can never thrash the manifest hot-cache.
+                probeDisplayImpl = { DisplayCapabilityProbe.probeJson(applicationContext) },
                 onCheckForUpdates = { PlayerApp.fireOtaCheckNow(applicationContext) },
                 getRecentLogsImpl = {
                     PlayerLogger.i("MainActivity", "getRecentLogs requested via JS bridge")

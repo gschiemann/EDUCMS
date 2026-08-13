@@ -314,6 +314,7 @@ object NativeBridgeChannel {
             "hideUrlOverlay" -> { bridge.hideUrlOverlay(); null }
             "openSettingsForManager" -> { bridge.openSettingsForManager(); null }
             "deviceInfo" -> bridge.deviceInfo()
+            "probeDisplay" -> bridge.probeDisplay()
             "checkForUpdates" -> bridge.checkForUpdates()
             "getRecentLogs" -> bridge.getRecentLogs()
             "uploadDiagnostics" -> bridge.uploadDiagnostics()
