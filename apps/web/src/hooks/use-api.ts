@@ -342,6 +342,133 @@ export function useCalibrateFlash() {
   });
 }
 
+// ─── Display control (volume / brightness / blank / reboot) ─────────────
+//
+// 2026-08-13 — the dashboard half of the vendor-neutral display-control
+// layer. The player probes what it can actually do (DisplayCapabilityProbe)
+// and reports a verdict onto Screen.displayCapabilities; the dashboard
+// gates every control on that verdict (see components/screens/
+// display-capabilities.ts) and pushes immediate actions through the
+// endpoint below.
+//
+// CACHE SHAPE, deliberately: this is a PUSH, like useRefreshWeb — no
+// optimistic write into ['screens'] / ['screen-groups']. The API validates
+// the action against the reported capability, signs a WS message and
+// audit-logs it; it does NOT hand back a new screen row. Writing a
+// speculative `displayState` into either cache would be inventing device
+// truth we don't have (the exact lie the APK-push row was rewritten to
+// stop telling). The panel instead shows what it SENT, labelled as sent.
+// If the API later starts echoing observed device state onto the screen
+// row, add the both-caches optimistic patch used by useSetScreenOrientation
+// — patching only ['screens'] reproduces the documented LED-canvas
+// "I click it but nothing changes" bug, because /screens renders from
+// useScreenGroups.
+
+export type DisplayActionType = 'volume' | 'brightness' | 'blank' | 'wake' | 'reboot';
+
+export interface DisplayControlArgs {
+  screenId: string;
+  action: DisplayActionType;
+  /** 0..100 — required for `volume` / `brightness`, ignored otherwise. */
+  percent?: number;
+  /** Dead-man revert: device restores prior state after this many ms. */
+  revertAfterMs?: number;
+}
+
+export function useDisplayControl() {
+  return useMutation({
+    mutationFn: ({ screenId, action, percent, revertAfterMs }: DisplayControlArgs) =>
+      apiFetch(`/screens/${screenId}/display-control`, {
+        method: 'POST',
+        body: JSON.stringify({
+          action,
+          ...(percent !== undefined ? { percent } : {}),
+          ...(revertAfterMs !== undefined ? { revertAfterMs } : {}),
+        }),
+      }),
+  });
+}
+
+export interface DisplaySchedule {
+  id: string;
+  tenantId?: string;
+  screenId?: string | null;
+  screenGroupId?: string | null;
+  /** Comma-joined 'Mon,Tue,…'; null = every day. */
+  daysOfWeek: string | null;
+  /** 'HH:MM' — when the screen wakes. */
+  onTime: string;
+  /** 'HH:MM' — when the screen blanks. */
+  offTime: string;
+  /** IANA zone; the DEVICE honors this, not its own locale. */
+  timezone: string;
+  isActive: boolean;
+}
+
+export type DisplayScheduleTarget = { screenId: string } | { screenGroupId: string };
+
+function displayScheduleQs(target: DisplayScheduleTarget): string {
+  return 'screenId' in target
+    ? `screenId=${encodeURIComponent(target.screenId)}`
+    : `screenGroupId=${encodeURIComponent(target.screenGroupId)}`;
+}
+
+/**
+ * Schedules for ONE screen or ONE group. Only mounted while the schedule
+ * modal is open (`enabled`), so a closed editor costs nothing. No polling:
+ * a schedule only changes when this operator changes it, and the on-device
+ * AlarmManager — not this query — is what actually fires it.
+ */
+export function useDisplaySchedules(target: DisplayScheduleTarget | null) {
+  return useQuery<DisplaySchedule[]>({
+    queryKey: [
+      'display-schedules',
+      target && 'screenId' in target ? target.screenId : null,
+      target && 'screenGroupId' in target ? target.screenGroupId : null,
+    ],
+    queryFn: () => apiFetch(`/display-schedules?${displayScheduleQs(target!)}`),
+    enabled: !!target,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export interface DisplayScheduleInput {
+  screenId?: string;
+  screenGroupId?: string;
+  daysOfWeek: string | null;
+  onTime: string;
+  offTime: string;
+  timezone: string;
+  isActive?: boolean;
+}
+
+export function useCreateDisplaySchedule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: DisplayScheduleInput) =>
+      apiFetch('/display-schedules', { method: 'POST', body: JSON.stringify(body) }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['display-schedules'] }),
+  });
+}
+
+export function useUpdateDisplaySchedule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: Partial<DisplayScheduleInput> & { id: string }) =>
+      apiFetch(`/display-schedules/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['display-schedules'] }),
+  });
+}
+
+export function useDeleteDisplaySchedule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/display-schedules/${id}`, { method: 'DELETE' }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['display-schedules'] }),
+  });
+}
+
 /**
  * 2026-07-28 (tier-2) — fleet-learned sync-trim presets. Aggregate
  * (hardware model → median operator trim) across the whole platform; the

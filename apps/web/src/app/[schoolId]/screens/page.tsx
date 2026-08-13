@@ -1,6 +1,6 @@
 "use client";
 
-import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check, AlertCircle, Radio, Camera } from 'lucide-react';
+import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check, AlertCircle, Radio, Camera, CalendarClock } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useUpdateScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout, useSetScreenOrientation, useSetScreenCanvas, useHardwareCatalog, useSetScreenHardwareModel, useSetScreenConsoleProfile, useSetScreenSyncOffset, useSyncTrimSuggestions } from '@/hooks/use-api';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
@@ -9,6 +9,12 @@ import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 import { ReturnToFleetBanner } from '@/components/screens/ReturnToFleetBanner';
 import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
 import { FloorPlansView } from '@/components/screens/FloorPlansView';
+// 2026-08-13 — display control (volume / brightness / blank / reboot) +
+// on-off schedules. Every control is gated on the screen's OWN reported
+// probe verdict; the resolver that decides what may render lives in
+// components/screens/display-capabilities.ts.
+import { ScreenDisplayControls } from '@/components/screens/ScreenDisplayControls';
+import { DisplayScheduleModal, type DisplayScheduleTargetRef } from '@/components/screens/DisplayScheduleModal';
 // 2026-05-27 — PairScreenHardwareStep removed from the pair modal. The
 // player APK already reports its hardware (Build.MANUFACTURER + MODEL)
 // — operator should never have to type it. The step + its EP6N upsell
@@ -937,6 +943,8 @@ function ScreenSettingsMenu({
   refreshWebPending,
   previewHref,
   groupSyncLocked,
+  onOpenDisplaySchedule,
+  isViewer,
 }: {
   screen: any;
   pushState: { at: number; priorVersion: string | null } | undefined;
@@ -947,6 +955,10 @@ function ScreenSettingsMenu({
   previewHref: string;
   /** 2026-07-28 — parent group has frame-locked sync ON (shows the trim UI). */
   groupSyncLocked?: boolean;
+  /** 2026-08-13 — opens the per-screen on/off schedule editor (page owns it). */
+  onOpenDisplaySchedule: () => void;
+  /** RESTRICTED_VIEWER — display controls render but stay inert. */
+  isViewer?: boolean;
 }) {
   const t = useTranslations();
   const [open, setOpen] = useState(false);
@@ -1387,11 +1399,20 @@ function ScreenSettingsMenu({
               all fields are already on the screen payload. */}
           <ScreenDiagnostics screen={screen} groupSyncLocked={groupSyncLocked} />
 
-      {/* Footer placeholder — leaves room for restart / cache /
-          orientation / brightness settings as we build them. */}
-      <div className="px-3.5 py-2 bg-slate-50/60 border-t border-slate-100 text-[10px] text-slate-400">
-        More coming soon — restart, orientation, cache clear.
-      </div>
+      {/* 2026-08-13 — the "More coming soon — restart, orientation, cache
+          clear." stub that lived here is GONE, replaced by the real thing.
+          Volume / brightness / blank / reboot, each rendered only when this
+          screen's own probe verdict says the hardware can do it; a
+          `software-dim` box gets a slider that says so in plain language
+          rather than one that implies backlight control it doesn't have.
+          Opening the schedule editor closes the popover first — the
+          popover dismisses on a document-level pointerdown and would
+          otherwise fight the modal. */}
+      <ScreenDisplayControls
+        screen={screen}
+        readOnly={isViewer}
+        onOpenSchedule={() => { setOpen(false); onOpenDisplaySchedule(); }}
+      />
     </div>
   );
 
@@ -1513,6 +1534,11 @@ export default function ScreensPage() {
   // saw "nothing happened"). Modal forces a structured pick + sends the
   // suggestion's own lat/lng so the pin reliably drops.
   const [locationModal, setLocationModal] = useState<{ id: string; name: string; address?: string | null } | null>(null);
+  // 2026-08-13 — display on/off schedule editor. Held at page level (not
+  // inside the gear popover) so the popover can close before the modal
+  // opens; a modal nested under the popover would be dismissed by the
+  // popover's own document-level outside-click handler.
+  const [displayScheduleTarget, setDisplayScheduleTarget] = useState<DisplayScheduleTargetRef | null>(null);
   const handleSetLocation = (screenId: string, screenName: string, currentAddress?: string | null) => {
     setLocationModal({ id: screenId, name: screenName, address: currentAddress });
   };
@@ -2020,6 +2046,18 @@ export default function ScreensPage() {
                         <Camera className="w-4 h-4" /> Calibrate
                       </a>
                     )}
+                    {/* 2026-08-13 — group-wide display on/off schedule. Set
+                        it once for the hallway instead of walking every
+                        screen's gear menu. The schedule runs ON EACH DEVICE
+                        (AlarmManager), so screens keep their nightly off
+                        even when the network drops. */}
+                    <button
+                      onClick={() => setDisplayScheduleTarget({ kind: 'group', id: group.id, name: group.name })}
+                      className="px-3 py-2 transition-colors text-xs font-bold rounded-xl flex items-center gap-1.5 bg-white border border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600"
+                      title={t('screens.display.groupScheduleTitle')}
+                    >
+                      <CalendarClock className="w-4 h-4" /> {t('screens.display.groupScheduleBtn')}
+                    </button>
                     {/* 2026-05-26 — operator: "just add a pair screen
                         to group button in the top right of each group
                         so it makes more sense, maybe a little + sign
@@ -2284,6 +2322,8 @@ export default function ScreensPage() {
                           refreshWebPending={refreshWeb.isPending}
                           previewHref={buildPreviewUrl(screen)}
                           groupSyncLocked={group.syncMode === 'locked'}
+                          isViewer={isViewer}
+                          onOpenDisplaySchedule={() => setDisplayScheduleTarget({ kind: 'screen', id: screen.id, name: screen.name })}
                         />
                         </div>
                       </div>
@@ -2453,6 +2493,8 @@ export default function ScreensPage() {
                       onRefreshWeb={() => handleRefreshWeb(screen.id, screen.name)}
                       refreshWebPending={refreshWeb.isPending}
                       previewHref={buildPreviewUrl(screen)}
+                      isViewer={isViewer}
+                      onOpenDisplaySchedule={() => setDisplayScheduleTarget({ kind: 'screen', id: screen.id, name: screen.name })}
                     />
                     </div>
                   </div>
@@ -2601,6 +2643,17 @@ export default function ScreensPage() {
             refetch();
             refetchScreens();
           }}
+        />
+      )}
+
+      {/* Display on/off schedule — per screen (gear menu) or per group
+          (group header). Rendered at page level so it paints above the
+          gear popover instead of inside it. */}
+      {displayScheduleTarget && (
+        <DisplayScheduleModal
+          target={displayScheduleTarget}
+          readOnly={isViewer}
+          onClose={() => setDisplayScheduleTarget(null)}
         />
       )}
     </div>
