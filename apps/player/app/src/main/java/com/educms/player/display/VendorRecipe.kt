@@ -24,10 +24,15 @@ import java.io.File
  *
  * So the allowlist below is NATIVE and no recipe can widen it:
  *
- *   1. **sysfs** — the path must canonicalize (symlinks resolved, `..`
- *      collapsed) to something strictly UNDER `/sys/class/backlight/` or
- *      `/sys/class/leds/`. Nothing else, ever. `..` is additionally
- *      refused before canonicalization as defence in depth.
+ *   1. **sysfs** — the CALLER-SUPPLIED path, lexically normalized, must
+ *      have exactly the shape `<root><device>/<attribute>` where
+ *      `<root>` is `/sys/class/backlight/` or `/sys/class/leds/`.
+ *      Nothing else, ever. `..` is refused textually, and symlink
+ *      resolution is then applied as DEFENCE IN DEPTH — the resolved
+ *      path must land under a class root or under `/sys/devices/`,
+ *      which is where every real sysfs class symlink points. See
+ *      [RecipeAllowlist.canonicalSysfsPath] for the ordering and for
+ *      the 2026-08-13 bug that came from getting it backwards.
  *   2. **broadcast** — the action must start with an allowlisted VENDOR
  *      prefix. `android.*` is deliberately absent: `android.intent.action`
  *      contains MASTER_CLEAR, FACTORY_RESET and ACTION_SHUTDOWN. There is
@@ -204,8 +209,30 @@ object RecipeAllowlist {
     const val MAX_MATCH_LEN = 128
     const val MAX_VENDOR_ID_LEN = 64
 
+    /**
+     * Where a sysfs class symlink is allowed to RESOLVE to. Every real
+     * `/sys/class/<subsystem>/<dev>` entry is a symlink into the device tree, so this is
+     * the normal, expected destination — see [canonicalSysfsPath].
+     */
+    val SYSFS_RESOLVED_ROOTS: List<String> = listOf("/sys/devices/")
+
     /** Widest device scale we will accept. Guards against overflow. */
     const val MAX_SCALE_VALUE = 1_000_000
+
+    /**
+     * Smallest span a BRIGHTNESS scale may have.
+     *
+     * [DisplayLimits.scale] rounds to nearest, so on a scale of span S
+     * the MIN_SAFE floor of 5% maps to `min + round(S * 0.05)`. For that
+     * to be strictly above `min` — i.e. for the floor to survive the
+     * mapping at all — S must be at least 10. A recipe declaring
+     * `scale: [0, 9]` silently turned "5%, the lowest we allow" into
+     * `round(0.45)` = 0, which on a real backlight is OFF.
+     */
+    const val MIN_BRIGHTNESS_SCALE_SPAN = 10
+
+    /** A single sysfs path segment: a device dir or an attribute name. */
+    private val SYSFS_SEGMENT_RE = Regex("^[A-Za-z0-9_.:+-]{1,64}$")
 
     private val VENDOR_ID_RE = Regex("^[A-Za-z0-9_.-]{1,$MAX_VENDOR_ID_LEN}$")
     private val ACTION_RE = Regex("^[A-Za-z0-9_.]{1,$MAX_ACTION_LEN}$")
@@ -222,38 +249,102 @@ object RecipeAllowlist {
     fun hasAllowedBroadcastPrefix(action: String) = BROADCAST_PREFIXES.any { action.startsWith(it) }
 
     /**
-     * THE sysfs gate. Returns the canonical path when the target is
-     * provably under an allowlisted root, or null when it is not.
+     * THE sysfs gate. Returns the path we should actually open, or null.
      *
-     * Rejects, in order: blank, over-length, any whitespace or control
-     * byte (see [hasUnsafeChar] — a smuggled newline could split a log
-     * line or a shell-ish consumer downstream, and no real sysfs node
-     * name contains a space), non-absolute, any literal `..` segment, a
-     * canonicalization that throws, and finally anything whose CANONICAL
-     * form is not strictly beneath a root. The literal `..` check is
-     * redundant with canonicalization by design: if a future JVM or a
-     * hostile filesystem layout ever made canonicalPath lenient, the
-     * cheap textual check still holds the line.
+     * ═════════════════════════════════════════════════════════════════
+     * ⚠️  THE 2026-08-13 BUG: THIS GATE REJECTED EVERY REAL BACKLIGHT
+     * ═════════════════════════════════════════════════════════════════
+     * v1 canonicalized first and then required the CANONICAL path to sit
+     * under `/sys/class/backlight/` or `/sys/class/leds/`. But on every
+     * Linux/Android kernel since 2.6.27 a `/sys/class/<subsystem>/<dev>` entry IS a
+     * symlink into the device tree:
+     *
+     *     /sys/class/backlight/panel0
+     *         -> ../../devices/platform/soc/backlight/panel0
+     *
+     * so `File.canonicalPath` resolved it to `/sys/devices/platform/...`
+     * and the containment test failed. Every real path was rejected:
+     * [SysfsBacklightProvider] found no node on ANY device, and every
+     * `kind:"sysfs"` recipe was refused whole, so BRIGHTNESS fell all
+     * the way to software dim fleet-wide. The unit test did not catch it
+     * because `/sys` does not exist on the build host, where
+     * `canonicalPath` degrades to lexical normalization — this repo's
+     * own "green CI is not proof" trap.
+     *
+     * ─────────────────────────────────────────────────────────────────
+     * THE GATE, IN ORDER (the shape test is on the CALLER-SUPPLIED path;
+     * symlink resolution is kept as defence in depth, not as the gate)
+     * ─────────────────────────────────────────────────────────────────
+     *  1. blank / over-length → reject.
+     *  2. any whitespace or control byte ([hasUnsafeChar]) → reject. A
+     *     smuggled newline could split a log line, and no real sysfs
+     *     node name contains a space.
+     *  3. not absolute → reject.
+     *  4. LEXICAL normalization: drop `.` and empty segments, and refuse
+     *     ANY `..` segment textually. Nothing is resolved, so no
+     *     filesystem layout can influence step 5.
+     *  5. the normalized path must be exactly
+     *     `<allowlisted root><device>/<attribute>` — two segments, each
+     *     matching [SYSFS_SEGMENT_RE]. That is the shape of every real
+     *     backlight/leds attribute (`panel0/brightness`,
+     *     `lcd-backlight/bl_power`) and it makes traversal
+     *     unrepresentable rather than merely filtered: there is no
+     *     segment count in which a `..` or a nested escape could hide.
+     *  6. DEFENCE IN DEPTH: canonicalize, and require the result to land
+     *     either under an allowlisted class root (the build-host case,
+     *     where nothing resolves) or under `/sys/devices/` (the real
+     *     hardware case). A hostile symlink — say `panel0` pointing at
+     *     `/etc` — resolves outside both and is still refused.
+     *
+     * Returns the CANONICAL path, which is what callers open. Callers
+     * that cache a result and re-validate later must re-validate the
+     * ORIGINAL class path, not the returned one (see
+     * [SysfsBacklightProvider.Node]).
      */
-    fun canonicalSysfsPath(raw: String): String? {
+    fun canonicalSysfsPath(raw: String): String? =
+        canonicalSysfsPath(raw, SYSFS_ROOTS, SYSFS_RESOLVED_ROOTS)
+
+    /**
+     * Root-injectable form, so the adversarial tests can build a REAL
+     * symlink farm under a temp dir and prove step 6 actually resolves.
+     * Production always calls the two-root default above.
+     */
+    internal fun canonicalSysfsPath(
+        raw: String,
+        roots: List<String>,
+        resolvedRoots: List<String>,
+    ): String? {
         val path = raw.trim()
         if (path.isEmpty() || path.length > MAX_PATH_LEN) return null
         if (hasUnsafeChar(path)) return null
         if (!path.startsWith("/")) return null
-        // Any `..` segment, in any position.
-        if (path.split('/').any { it == ".." }) return null
+
+        val segments = path.split('/')
+        // Any `..` segment, in any position — refused textually so this
+        // never depends on canonicalization behaving.
+        if (segments.any { it == ".." }) return null
+        val meaningful = segments.filter { it.isNotEmpty() && it != "." }
+        val normalized = "/" + meaningful.joinToString("/")
+
+        val root = roots.firstOrNull { normalized.startsWith(it) } ?: return null
+        val tail = normalized.substring(root.length).split('/')
+        // Exactly <device>/<attribute>. Not one (that is the device
+        // directory itself), not three (which is how you walk out of a
+        // class tree through `device/` back-links).
+        if (tail.size != 2) return null
+        if (tail.any { !SYSFS_SEGMENT_RE.matches(it) }) return null
 
         val canonical = try {
-            File(path).canonicalPath
+            File(normalized).canonicalPath
         } catch (t: Throwable) {
             return null
         }
         if (canonical.length > MAX_PATH_LEN) return null
 
-        val underRoot = SYSFS_ROOTS.any { root ->
-            canonical.startsWith(root) && canonical.length > root.length
+        val landsSomewhereLegal = (roots + resolvedRoots).any { legal ->
+            canonical.startsWith(legal) && canonical.length > legal.length
         }
-        return if (underRoot) canonical else null
+        return if (landsSomewhereLegal) canonical else null
     }
 
     /**
@@ -318,27 +409,90 @@ object RecipeValidator {
         }
 
         val steps = listOf(
-            "brightness" to recipe.brightness,
-            "blank" to recipe.blank,
-            "wake" to recipe.wake,
+            Triple("brightness", recipe.brightness, Capability.BRIGHTNESS),
+            Triple("blank", recipe.blank, Capability.BLANK),
+            Triple("wake", recipe.wake, Capability.WAKE),
         )
         if (steps.all { it.second == null }) {
             return RecipeCheck.Rejected("recipe declares no brightness/blank/wake step")
         }
-        steps.forEach { (name, step) ->
+        steps.forEach { (name, step, capability) ->
             if (step != null) {
-                val why = validateStep(step)
+                val why = validateStep(step, capability)
                 if (why != null) return RecipeCheck.Rejected("$name: $why")
             }
         }
         return RecipeCheck.Valid(recipe)
     }
 
-    /** Returns null when the step is acceptable, else the rejection reason. */
-    fun validateStep(step: RecipeStep): String? = when (step) {
-        is RecipeStep.Broadcast -> validateBroadcast(step)
-        is RecipeStep.Sysfs -> validateSysfs(step)
-        is RecipeStep.SettingsWrite -> validateSettings(step)
+    /**
+     * Returns null when the step is acceptable, else the rejection
+     * reason.
+     *
+     * ⚠️ [capability] is NOT optional decoration — it is what enforces
+     * the MIN_SAFE brightness floor. A BRIGHTNESS step that writes a
+     * LITERAL bypasses [DisplayLimits] entirely, because the clamped
+     * percent is simply discarded. The real-world shape is
+     * `{kind:"sysfs", path:".../bl_power", value:"4"}`
+     * (FB_BLANK_POWERDOWN — a genuine vendor pattern): every
+     * SetBrightness, INCLUDING SetBrightness(100), then powers the
+     * backlight off, and the dead-man revert re-applies the same literal
+     * so the guard actively re-creates the failure. Same bypass for
+     * `kind:"broadcast"` whose extras are all literals (`state=0` on a
+     * vendor SET_POWER action).
+     *
+     * So: a BRIGHTNESS step MUST be percent-derived. Literals belong to
+     * blank/wake, where a constant is exactly what is wanted.
+     *
+     * The pass-through overload exists so a caller that genuinely has no
+     * capability context still gets the shape checks; every production
+     * call site passes one.
+     */
+    fun validateStep(step: RecipeStep, capability: Capability? = null): String? {
+        val shape = when (step) {
+            is RecipeStep.Broadcast -> validateBroadcast(step)
+            is RecipeStep.Sysfs -> validateSysfs(step)
+            is RecipeStep.SettingsWrite -> validateSettings(step)
+        }
+        if (shape != null) return shape
+        if (capability == Capability.BRIGHTNESS) return validateBrightnessStep(step)
+        return null
+    }
+
+    /** The MIN_SAFE-floor rules that only apply to a BRIGHTNESS step. */
+    private fun validateBrightnessStep(step: RecipeStep): String? = when (step) {
+        is RecipeStep.Sysfs -> when {
+            !step.fromPercent ->
+                "a brightness step must be percent-derived (valueFrom:\"percent\") — a literal " +
+                    "value bypasses the MIN_SAFE brightness floor and the dead-man revert re-applies it"
+            !isWideEnoughForFloor(step.scale) ->
+                "brightness scale span is too narrow — ${DisplayLimits.MIN_SAFE_BRIGHTNESS}% would round " +
+                    "to the scale minimum (need a span of at least ${RecipeAllowlist.MIN_BRIGHTNESS_SCALE_SPAN})"
+            else -> null
+        }
+        is RecipeStep.Broadcast -> when {
+            step.extras.none { it.from == RecipeValueSource.PERCENT } ->
+                "a brightness broadcast must carry at least one percent-derived extra — an all-literal " +
+                    "broadcast is a constant and bypasses the MIN_SAFE brightness floor"
+            step.extras.any { it.from == RecipeValueSource.PERCENT && !isWideEnoughForFloor(it.scale) } ->
+                "brightness scale span is too narrow — ${DisplayLimits.MIN_SAFE_BRIGHTNESS}% would round " +
+                    "to the scale minimum (need a span of at least ${RecipeAllowlist.MIN_BRIGHTNESS_SCALE_SPAN})"
+            else -> null
+        }
+        // Settings writes are percent-derived by construction.
+        is RecipeStep.SettingsWrite ->
+            if (!isWideEnoughForFloor(step.scale)) {
+                "brightness scale span is too narrow — ${DisplayLimits.MIN_SAFE_BRIGHTNESS}% would round " +
+                    "to the scale minimum (need a span of at least ${RecipeAllowlist.MIN_BRIGHTNESS_SCALE_SPAN})"
+            } else {
+                null
+            }
+    }
+
+    /** A null scale means the provider default (0..255 / 0..100) — always wide enough. */
+    private fun isWideEnoughForFloor(scale: RecipeScale?): Boolean {
+        val s = scale ?: return true
+        return (s.max - s.min) >= RecipeAllowlist.MIN_BRIGHTNESS_SCALE_SPAN
     }
 
     private fun validateBroadcast(step: RecipeStep.Broadcast): String? {

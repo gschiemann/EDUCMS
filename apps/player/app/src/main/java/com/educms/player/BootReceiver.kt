@@ -69,7 +69,13 @@ class BootReceiver : BroadcastReceiver() {
         // redundantly: OEM signage ROMs are known to drop boot receivers
         // (see Manager's own BootReceiver comment on whitelisting), and
         // a missed re-arm here is a screen that never wakes.
+        //  * enforceIfHeld — ⚠️ LIFE SAFETY. If the box power-cycled
+        //    DURING an emergency the hold is still on disk (it is written
+        //    with commit() for exactly this), so the screen must come
+        //    back VISIBLE rather than in whatever blanked state the
+        //    schedule left behind. This runs before the Activity does.
         try {
+            com.educms.player.display.DisplayEmergency.enforceIfHeld(context.applicationContext)
             com.educms.player.display.DisplayGuard.replayPending(context.applicationContext)
             com.educms.player.display.DisplayScheduler.armAndApply(context.applicationContext)
             PlayerLogger.i("BootReceiver", "display schedule re-armed + dead-man revert replayed")

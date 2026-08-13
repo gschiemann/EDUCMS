@@ -76,6 +76,21 @@ object DisplayScheduler {
             return
         }
         val action = if (desiredOn) DisplayAction.Wake else DisplayAction.Blank
+        // ⚠️ The registry is the single gate and it will refuse this
+        // anyway; the explicit check is here so the log says WHY a
+        // 22:00 blank did not happen, instead of an unexplained refusal
+        // buried under a provider id. [DisplayEmergency.setHold]'s
+        // release path calls armAndApply(), which re-enters here — so a
+        // window suppressed by an alert takes effect the moment the
+        // all-clear lands, rather than being skipped until tomorrow.
+        if (!desiredOn && DisplayEmergency.isHeld(app)) {
+            PlayerLogger.e(
+                TAG,
+                "schedule wants the screen OFF but an EMERGENCY ALERT is active — " +
+                    "suppressed; it will be re-evaluated on all-clear",
+            )
+            return
+        }
         PlayerLogger.i(TAG, "schedule says on=$desiredOn — applying ${action.describe()}")
         DisplayControlRegistry.apply(app, action, revertAfterMs = null)
     }

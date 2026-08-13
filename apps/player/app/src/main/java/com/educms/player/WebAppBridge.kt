@@ -84,12 +84,21 @@ class WebAppBridge(
      * for the provider stack and its safety rules.
      */
     private val displayCapabilitiesImpl: () -> String = { """{"ok":false,"code":"unavailable"}""" },
-    private val displayApplyImpl: (String) -> String = { """{"ok":false,"code":"unavailable"}""" },
-    private val displaySetScheduleImpl: (String) -> String = { """{"ok":false,"code":"unavailable"}""" },
+    /**
+     * `(actionJson, trusted)`. `trusted` is true ONLY for the channel
+     * entry point, which has verified the exact origin and the main
+     * frame; the legacy every-frame surface always passes false and gets
+     * the recovery-direction subset. See `displayApply()`.
+     */
+    private val displayApplyImpl: (String, Boolean) -> String = { _, _ -> """{"ok":false,"code":"unavailable"}""" },
+    private val displaySetScheduleImpl: (String, Boolean) -> String = { _, _ -> """{"ok":false,"code":"unavailable"}""" },
+    /** `(active, trusted)` — the ⚠️ life-safety emergency interlock. */
+    private val displayEmergencyHoldImpl: (Boolean, Boolean) -> String =
+        { _, _ -> """{"ok":false,"code":"unavailable"}""" },
     /**
      * True when the origin-scoped [com.educms.player.security.NativeBridgeChannel]
-     * is live on this WebView. Gates the two MUTATING display methods off
-     * the legacy every-frame transport — see `displayApply()`.
+     * is live on this WebView. DIAGNOSTIC ONLY since 2026-08-13 — it is
+     * no longer a gate, see `displayApply()`.
      */
     private val secureChannelActive: () -> Boolean = { false },
 ) {
@@ -169,27 +178,47 @@ class WebAppBridge(
     // ────────────────────────────────────────────────────────────────
     // Display CONTROL (2026-08-13) — the write half of the probe above.
     //
-    // ⚠️ TRUST BOUNDARY, AND WHY THE TWO MUTATORS ARE TRANSPORT-GATED.
+    // ⚠️ TRUST BOUNDARY. Per this file's header, the legacy
+    // `addJavascriptInterface` surface is materialised in EVERY frame
+    // the WebView loads, including operator-authored EXTERNAL_HTML board
+    // iframes. For `probeDisplay()` the worst case is device
+    // fingerprinting. For THESE methods the worst case is a hostile
+    // board blanking a hallway screen, dimming it to nothing, or
+    // rebooting it — a real physical denial of service on hardware
+    // nobody can reach, on a display whose other job is showing a
+    // lockdown alert.
     //
-    // Per this file's header, the legacy `addJavascriptInterface`
-    // surface is materialised in EVERY frame the WebView loads,
-    // including operator-authored EXTERNAL_HTML board iframes. For
-    // `probeDisplay()` the worst case is device fingerprinting. For
-    // THESE methods the worst case is a hostile board blanking a
-    // hallway screen, dimming it to nothing, or rebooting it — a real
-    // physical denial of service on hardware nobody can reach.
+    // ── WHY THE FIRST VERSION OF THIS GATE WAS A NO-OP ──────────────
     //
-    // So the two MUTATING methods refuse the legacy transport whenever
-    // the origin-scoped NativeBridgeChannel is live on this device.
-    // That is not a behaviour change for the product: `nativeBridge.ts`
-    // already PREFERS the channel, so the legitimate caller never takes
-    // this path when the channel exists. On a pre-M77 WebView, where
-    // the channel cannot attach at all, the legacy path is allowed —
-    // the same knowingly-degraded posture every other method here runs
-    // in on those devices (see NativeBridgeChannel's header).
+    // v1 refused the legacy transport `if (secureChannelActive())`. That
+    // INVERTS: `secureChannelActive` is false precisely on the devices
+    // where NativeBridgeChannel cannot attach — the oldest, hardest-to-
+    // reach, wall-mounted signage controllers — so the gate protected
+    // the modern boxes and left the ones that need it most wide open.
+    // Every frame on those devices could call
+    // `EduCmsNative.displayApply('{"action":"BLANK"}')` with no
+    // dead-man armed.
+    //
+    // ── THE GATE NOW ────────────────────────────────────────────────
+    //
+    // These methods pass `trusted = false` UNCONDITIONALLY, on every
+    // device, regardless of whether the channel is up. Native
+    // `DisplayControlApi` then allows only the RECOVERY-direction subset
+    // — wake, and a brightness change that raises — and refuses BLANK,
+    // REBOOT, KEEP, allowBlack, any lowering and the whole schedule
+    // installer. The full capability is reachable only through
+    // `*ViaSecureChannel`, which NativeBridgeChannel calls after it has
+    // verified the exact origin AND the main frame.
+    //
+    // A pre-channel device therefore loses REMOTE blank/dim/schedule
+    // until it can take a channel-capable WebView. A screen with no
+    // remote blank is strictly safer than one any iframe can blank, and
+    // it keeps the recovery path open in both directions.
     //
     // `displayCapabilities()` is READ-ONLY and stays ungated so a board
     // can ask what it is running on, exactly like `probeDisplay()`.
+    // `displayEmergencyHold(true)` is ungated for the same reason in
+    // reverse — it can only ever make a dark screen visible.
     // ────────────────────────────────────────────────────────────────
 
     /**
@@ -219,15 +248,10 @@ class WebAppBridge(
      */
     @JavascriptInterface
     fun displayApply(actionJson: String): String = try {
-        if (secureChannelActive()) {
-            PlayerLogger.w(
-                "WebAppBridge",
-                "displayApply REFUSED on the legacy every-frame transport — the secure channel is live",
-            )
-            """{"ok":false,"code":"insecure-transport","message":"use the origin-scoped bridge channel"}"""
-        } else {
-            displayApplyImpl(actionJson)
-        }
+        // trusted = false, ALWAYS. Not conditional on the channel — see
+        // the block comment above for why the conditional version was a
+        // no-op on exactly the devices that needed it.
+        displayApplyImpl(actionJson, false)
     } catch (ex: Exception) {
         PlayerLogger.w("WebAppBridge", "displayApply failed: ${ex.message}")
         """{"ok":false,"code":"exception"}"""
@@ -238,44 +262,90 @@ class WebAppBridge(
      * policy + vendor recipe). The schedule then runs from AlarmManager
      * ON THE DEVICE, so a screen that loses network still blanks at
      * 22:00 and wakes at 07:00.
+     *
+     * Trusted-transport only: a schedule row is a STANDING instruction to
+     * blank the panel every night, which is strictly worse than a one-off
+     * blank (that at least carries a dead-man revert).
      */
     @JavascriptInterface
     fun displaySetSchedule(configJson: String): String = try {
-        if (secureChannelActive()) {
-            PlayerLogger.w(
-                "WebAppBridge",
-                "displaySetSchedule REFUSED on the legacy every-frame transport — the secure channel is live",
-            )
-            """{"ok":false,"code":"insecure-transport","message":"use the origin-scoped bridge channel"}"""
-        } else {
-            displaySetScheduleImpl(configJson)
-        }
+        displaySetScheduleImpl(configJson, false)
     } catch (ex: Exception) {
         PlayerLogger.w("WebAppBridge", "displaySetSchedule failed: ${ex.message}")
         """{"ok":false,"code":"exception"}"""
     }
 
     /**
+     * ⚠️ LIFE SAFETY — the emergency interlock.
+     *
+     * The web player calls this whenever emergency state changes: on the
+     * signed WS OVERRIDE / ALL_CLEAR handlers, AND on every manifest poll
+     * that carries an `emergency` field so a screen with no WebSocket,
+     * riding the HTTP polling backstop, is covered too. Idempotent —
+     * re-reporting the same state is a cheap no-op.
+     *
+     * While the hold is active the native display layer refuses every
+     * BLANK, every brightness-lowering action and every REBOOT, from the
+     * bridge, the on-device scheduler and the dead-man revert alike, and
+     * forces the panel visible. See
+     * `com.educms.player.display.DisplayEmergency`.
+     *
+     * `active = true` is honoured on THIS untrusted transport on purpose:
+     * it can only ever make a dark screen visible, and a hostile frame
+     * lighting a screen up is not a threat worth a dark lockdown alert.
+     * `active = false` is a risk-direction mutation and is refused here —
+     * releasing a genuine hold would let the schedule blank the screen
+     * mid-alert.
+     */
+    @JavascriptInterface
+    fun displayEmergencyHold(active: Boolean): String = try {
+        displayEmergencyHoldImpl(active, false)
+    } catch (ex: Exception) {
+        PlayerLogger.e("WebAppBridge", "displayEmergencyHold FAILED", ex)
+        """{"ok":false,"code":"exception"}"""
+    }
+
+    /**
      * Channel-only entry points. [com.educms.player.security.NativeBridgeChannel]
      * dispatches here instead of to the `@JavascriptInterface` methods
-     * above, so the transport gate cannot refuse the one caller that has
-     * already passed BOTH the exact-origin and main-frame checks.
+     * above, so the full capability is reachable by the one caller that
+     * has already passed BOTH the exact-origin and main-frame checks.
      *
      * Deliberately NOT annotated `@JavascriptInterface` — these names are
      * invisible to `window.EduCmsNative` and unreachable from any frame.
      */
     internal fun displayApplyViaSecureChannel(actionJson: String): String = try {
-        displayApplyImpl(actionJson)
+        displayApplyImpl(actionJson, true)
     } catch (ex: Exception) {
         PlayerLogger.w("WebAppBridge", "displayApply(secure) failed: ${ex.message}")
         """{"ok":false,"code":"exception"}"""
     }
 
     internal fun displaySetScheduleViaSecureChannel(configJson: String): String = try {
-        displaySetScheduleImpl(configJson)
+        displaySetScheduleImpl(configJson, true)
     } catch (ex: Exception) {
         PlayerLogger.w("WebAppBridge", "displaySetSchedule(secure) failed: ${ex.message}")
         """{"ok":false,"code":"exception"}"""
+    }
+
+    internal fun displayEmergencyHoldViaSecureChannel(active: Boolean): String = try {
+        displayEmergencyHoldImpl(active, true)
+    } catch (ex: Exception) {
+        PlayerLogger.e("WebAppBridge", "displayEmergencyHold(secure) FAILED", ex)
+        """{"ok":false,"code":"exception"}"""
+    }
+
+    /**
+     * Whether the origin-scoped channel is live. Diagnostic only — it is
+     * deliberately NOT a gate any more (see the block comment above);
+     * exposing it keeps the boot-log/telemetry answer honest about which
+     * transport a given kiosk is on, which is removal criterion #3 in
+     * NativeBridgeChannel's header.
+     */
+    internal fun secureTransportLive(): Boolean = try {
+        secureChannelActive()
+    } catch (ex: Exception) {
+        false
     }
 
     /**

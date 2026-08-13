@@ -10,10 +10,19 @@ import java.io.File
  *
  * Most boxes expose `/sys/class/backlight/<device>/brightness` but
  * restrict it to root/system via SELinux, so `canWrite()` is false for
- * our uid and this provider correctly declines. The probe reports the
- * same finding read-only (`backlightNodes[].brightness.writable`), and
- * the verdict only says `brightness: "sysfs"` when a node is writable —
- * so the dashboard and this provider agree by construction.
+ * our uid and this provider correctly declines.
+ *
+ * ⚠️ THE PROBE AND THIS PROVIDER MUST AGREE, AND THEY NO LONGER AGREE
+ * "BY CONSTRUCTION" — that claim used to be in this header and it was
+ * FALSE: [DisplayCapabilityProbe] stat-ed the raw path with
+ * `File.canWrite()` while this provider additionally pushed it through
+ * [RecipeAllowlist.canonicalSysfsPath], so the probe could report
+ * `brightness:"sysfs"` (lighting up a real backlight slider in the
+ * dashboard) on a box where this provider had silently dropped the node
+ * and BRIGHTNESS had fallen to software dim. They agree now because the
+ * probe's verdict is DERIVED FROM [DisplayControlRegistry.capabilities]
+ * — one resolver, one answer — not because two code paths were eyeballed
+ * into matching. See the `control` section in the probe.
  *
  * Discovery is confined to [RecipeAllowlist.SYSFS_ROOTS] and every
  * candidate is put through [RecipeAllowlist.canonicalSysfsPath] even
@@ -27,8 +36,18 @@ object SysfsBacklightProvider : DisplayControlProvider {
 
     override val id: String = "sysfs-backlight"
 
-    /** Resolved node + its scale. Null means "looked, found nothing". */
-    data class Node(val brightnessPath: String, val max: Int)
+    /**
+     * Resolved node + its scale. Null means "looked, found nothing".
+     *
+     * BOTH paths are kept on purpose. [classPath] is the
+     * `/sys/class/backlight/<dev>/brightness` form the gate expects as
+     * INPUT; [resolvedPath] is what the gate returned and what we
+     * actually open (on real hardware that is a `/sys/devices/...` path,
+     * because the class entry is a symlink). Re-validating the RESOLVED
+     * path at point of use would fail the gate's class-root shape test —
+     * which is exactly the trap the gate's own header warns about.
+     */
+    data class Node(val classPath: String, val resolvedPath: String, val max: Int)
 
     @Volatile
     private var cached: Node? = null
@@ -44,10 +63,13 @@ object SysfsBacklightProvider : DisplayControlProvider {
             return ActionResult.Unsupported("sysfs backlight only handles brightness")
         }
         val n = node() ?: return ActionResult.Unsupported("no writable backlight node on this device")
-        // Re-validate at the point of USE. The path was validated at
-        // discovery, but a cached value outliving a remount/symlink swap
-        // is exactly the class of bug this gate exists for.
-        val canonical = RecipeAllowlist.canonicalSysfsPath(n.brightnessPath)
+        // Re-validate at the point of USE, from the CLASS path. The path
+        // was validated at discovery, but a cached value outliving a
+        // remount/symlink swap is exactly the class of bug this gate
+        // exists for — and re-running the gate is also what re-resolves
+        // the symlink, so a node that was swapped underneath us gets
+        // caught here rather than written to blindly.
+        val canonical = RecipeAllowlist.canonicalSysfsPath(n.classPath)
             ?: return ActionResult.Failed("backlight path failed re-validation", id)
 
         // Never write a hard 0 to a real backlight unless the operator
@@ -90,13 +112,19 @@ object SysfsBacklightProvider : DisplayControlProvider {
         val devices = if (root.isDirectory) root.listFiles()?.toList().orEmpty() else emptyList()
         var found: Node? = null
         for (dev in devices) {
+            // `/sys/class/backlight/<dev>/brightness` — the CLASS form,
+            // which is what the gate takes as input. Built from the
+            // parent's path rather than the listed File's absolutePath so
+            // it is always the class form even if listFiles() ever starts
+            // handing back resolved entries.
+            val classPath = "/sys/class/backlight/${dev.name}/brightness"
             val brightness = File(dev, "brightness")
             if (!brightness.exists() || !brightness.canWrite()) continue
-            val canonical = RecipeAllowlist.canonicalSysfsPath(brightness.absolutePath) ?: continue
+            val resolved = RecipeAllowlist.canonicalSysfsPath(classPath) ?: continue
             val max = readInt(File(dev, "max_brightness")) ?: 255
             if (max <= 0) continue
-            found = Node(canonical, max)
-            PlayerLogger.i(TAG, "writable backlight node $canonical (max=$max)")
+            found = Node(classPath, resolved, max)
+            PlayerLogger.i(TAG, "writable backlight node $classPath → $resolved (max=$max)")
             break
         }
         if (found == null) PlayerLogger.i(TAG, "no writable backlight node — brightness falls through")

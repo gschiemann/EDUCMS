@@ -10,16 +10,32 @@ import com.educms.player.logging.PlayerLogger
  * REBOOT chain has exactly one entry and why a box that cannot do it
  * reports the capability as absent rather than degraded.
  *
- * ⚠️ SAME OBJECTION AS [DeviceAdminBlankProvider], and it bites harder
- * here. `reboot()` needs BOTH (a) `ctx.packageName` to be the device
- * owner and (b) an admin ComponentName in this package to pass as the
- * argument. Today the Player has neither — MANAGER
- * (`com.educms.manager/.AdminReceiver`) is the provisioned device owner.
- * So [supports] returns an empty set on every real box, the dashboard
- * correctly hides the reboot button, and the typed-confirm flow never
- * gets a chance to fire something that would only throw. The fix is the
- * Manager-side broadcast receiver described in
- * [DeviceAdminBlankProvider]'s header.
+ * ═════════════════════════════════════════════════════════════════════
+ * ⚠️  PRODUCT DECISION 2026-08-13 — REBOOT IS UNAVAILABLE, ON PURPOSE.
+ *     DO NOT DELETE THIS PROVIDER.
+ * ═════════════════════════════════════════════════════════════════════
+ * We are NOT provisioning this app as Android device owner. `reboot()`
+ * needs BOTH (a) `ctx.packageName` to be the device owner and (b) an
+ * admin ComponentName in this package to pass as the argument, and there
+ * is no lower-privilege equivalent at any level — unlike BLANK, which
+ * has a four-rung ladder down to a software floor.
+ *
+ * So on today's fleet [supports] returns an EMPTY SET, REBOOT is
+ * therefore ABSENT from [DisplayControlRegistry.capabilities] (a
+ * capability with no provider is omitted, never degraded), and the
+ * dashboard — which is required to render controls from that map and
+ * nothing else — must not draw a reboot button at all. That is the
+ * intended end state for now, not a gap to be worked around.
+ *
+ * This class stays because the plan is a MANUFACTURER-PREINSTALLED,
+ * platform-signed build once the product is proven, which is strictly
+ * more capable than device owner. The moment `ctx.packageName` is the
+ * owner and a Player-owned admin exists, [supports] starts returning
+ * REBOOT and the whole chain lights up with no code change here.
+ *
+ * The other route, if it is ever wanted sooner, is the Manager-side
+ * broadcast receiver described in [DeviceAdminBlankProvider]'s header —
+ * Manager is already the device owner on provisioned boxes.
  *
  * API note: `reboot(ComponentName)` is API 24 and minSdk is 24, so no
  * `@RequiresApi` isolation object is needed — nothing here can leak an

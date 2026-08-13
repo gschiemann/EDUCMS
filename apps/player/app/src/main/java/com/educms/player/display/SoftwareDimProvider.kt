@@ -38,8 +38,16 @@ object SoftwareDimProvider : DisplayControlProvider {
         is DisplayAction.SetBrightness -> {
             val attached = DisplayWindowBridge.withHooks { h ->
                 // A blanked screen that is handed a brightness change is
-                // being un-blanked by the operator's intent.
-                if (action.percent > 0) h.setBlackout(false)
+                // being un-blanked by the operator's intent — and Blank
+                // dropped FLAG_KEEP_SCREEN_ON, so un-blanking has to put
+                // it back. Without this the panel was left free to sleep
+                // on the OS timeout while the mirror reported
+                // blanked=false at 60%: a dark screen the dashboard
+                // insisted was awake, which only an explicit Wake fixed.
+                if (action.percent > 0) {
+                    h.setBlackout(false)
+                    h.setKeepScreenOn(true)
+                }
                 h.setWindowBrightness(action.percent / 100f)
             }
             PlayerLogger.i(TAG, "brightness ${action.percent}% (window ${if (attached) "attached" else "detached"})")

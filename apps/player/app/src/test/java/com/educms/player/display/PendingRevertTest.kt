@@ -74,17 +74,27 @@ class PendingRevertTest {
 
     @Test
     fun `the revert action restores the snapshotted state`() {
-        val brightness = PendingRevert(Capability.BRIGHTNESS, 80, false, 1L).revertAction()
-        assertTrue(brightness is DisplayAction.SetBrightness)
-        assertEquals(80, (brightness as DisplayAction.SetBrightness).percent)
+        // NOTE (2026-08-13): `revertAction()` became `revertActions()`
+        // — a LIST — because a brightness revert on a box whose blank is
+        // a vendor power broadcast has to wake the panel too, not just
+        // write a sysfs value into a display that is still powered off.
+        // The assertions below are the same ones, over the list.
+        val brightness = PendingRevert(Capability.BRIGHTNESS, 80, false, 1L).revertActions()
+        assertEquals(DisplayAction.SetBrightness(80, allowBlack = true), brightness.first())
 
-        val volume = PendingRevert(Capability.VOLUME, 35, false, 1L).revertAction()
-        assertEquals(DisplayAction.SetVolume(35), volume)
+        val volume = PendingRevert(Capability.VOLUME, 35, false, 1L).revertActions()
+        assertEquals(listOf(DisplayAction.SetVolume(35)), volume)
 
         // A test that BLANKED a previously-lit screen reverts to Wake…
-        assertEquals(DisplayAction.Wake, PendingRevert(Capability.BLANK, 100, false, 1L).revertAction())
+        assertEquals(
+            listOf(DisplayAction.Wake),
+            PendingRevert(Capability.BLANK, 100, false, 1L).revertActions(),
+        )
         // …and one that WOKE a deliberately-dark screen reverts to Blank.
-        assertEquals(DisplayAction.Blank, PendingRevert(Capability.WAKE, 100, true, 1L).revertAction())
+        assertEquals(
+            listOf(DisplayAction.Blank),
+            PendingRevert(Capability.WAKE, 100, true, 1L).revertActions(),
+        )
     }
 
     @Test
@@ -93,7 +103,7 @@ class PendingRevertTest {
         // in — e.g. an overnight 0% poster the operator tested a
         // brightness bump against. Clamping the RESTORE would leave the
         // screen permanently 5% brighter than the operator set it.
-        val action = PendingRevert(Capability.BRIGHTNESS, 0, false, 1L).revertAction()
+        val action = PendingRevert(Capability.BRIGHTNESS, 0, false, 1L).revertActions().first()
         assertTrue(action is DisplayAction.SetBrightness)
         assertTrue("the revert must be allowed to reach 0", (action as DisplayAction.SetBrightness).allowBlack)
         assertEquals(0, (DisplayLimits.normalize(action) as DisplayAction.SetBrightness).percent)
@@ -105,8 +115,118 @@ class PendingRevertTest {
         // capability names are enum identifiers, the rest are numbers.
         Capability.values().forEach { capability ->
             val encoded = PendingRevert(capability, 50, true, 123L).encode()
-            assertEquals("exactly five fields", 5, encoded.split("|").size)
+            assertEquals("exactly six fields", 6, encoded.split("|").size)
             assertFalse(capability.name.contains("|"))
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // P0 (2026-08-13) — the single-slot dead-man revert bug.
+    //
+    // v1 stored ONE record. A second armed action overwrote the first
+    // AND snapshotted the already-applied state as "prior", so the first
+    // action became permanent with no record and no alarm — a
+    // permanently dark wall-mounted screen. These tests pin the record
+    // half of the fix; DisplayGuardMergeTest pins the merge policy.
+    // ─────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `a set round-trips and keeps one record per capability`() {
+        val records = listOf(
+            PendingRevert(Capability.BLANK, 100, false, 1_000L, ownsBlankState = true),
+            PendingRevert(Capability.BRIGHTNESS, 80, true, 2_000L, ownsBlankState = false),
+            PendingRevert(Capability.VOLUME, 35, false, 3_000L, ownsBlankState = false),
+        )
+        assertEquals(records, PendingRevert.decodeAll(PendingRevert.encodeAll(records)))
+    }
+
+    @Test
+    fun `a corrupt line cannot cost the screen the other outstanding reverts`() {
+        val good = PendingRevert(Capability.BLANK, 100, false, 1_000L, ownsBlankState = true)
+        val raw = listOf("v9|GARBAGE|x|y|z", good.encode(), "").joinToString("\n")
+        assertEquals(listOf(good), PendingRevert.decodeAll(raw))
+    }
+
+    @Test
+    fun `v1 records still decode, with v1's exact blank-state semantics`() {
+        // A device that took this APK while a v1 record was on disk must
+        // still get its screen back. v1 only ever drove on/off from a
+        // BLANK/WAKE record, so that is what ownsBlankState derives to.
+        val blank = PendingRevert.decode("v1|BLANK|100|0|1234")
+        assertEquals(
+            PendingRevert(Capability.BLANK, 100, false, 1234L, ownsBlankState = true),
+            blank,
+        )
+        val brightness = PendingRevert.decode("v1|BRIGHTNESS|80|1|1234")
+        assertEquals(
+            PendingRevert(Capability.BRIGHTNESS, 80, true, 1234L, ownsBlankState = false),
+            brightness,
+        )
+        // …and a v1 BRIGHTNESS record must NOT emit a blank action, which
+        // is exactly what v1 did.
+        assertEquals(
+            listOf(DisplayAction.SetBrightness(80, allowBlack = true)),
+            brightness!!.revertActions(),
+        )
+    }
+
+    @Test
+    fun `only the record that owns blank state may drive on-off`() {
+        // THE BUG: with two records in flight, restoring on/off from BOTH
+        // re-creates the dark screen in a new order — the BLANK revert
+        // wakes the panel, then the BRIGHTNESS revert's stale
+        // priorBlanked=true blacks it out again with nothing left to
+        // undo it.
+        val notOwner = PendingRevert(Capability.BRIGHTNESS, 40, true, 1L, ownsBlankState = false)
+        assertEquals(
+            "a non-owner must emit the value restore and nothing else",
+            listOf(DisplayAction.SetBrightness(40, allowBlack = true)),
+            notOwner.revertActions(),
+        )
+
+        val owner = PendingRevert(Capability.BRIGHTNESS, 40, true, 1L, ownsBlankState = true)
+        assertEquals(
+            listOf(DisplayAction.SetBrightness(40, allowBlack = true), DisplayAction.Blank),
+            owner.revertActions(),
+        )
+    }
+
+    @Test
+    fun `a sole brightness revert wakes the panel it may have been applied behind`() {
+        // On a vendor box brightness (sysfs) and blank (power broadcast)
+        // are unrelated mechanisms: writing a brightness value to a panel
+        // that is powered OFF changes nothing visible. The owner record
+        // must emit the Wake as well.
+        val record = PendingRevert(Capability.BRIGHTNESS, 60, false, 1L, ownsBlankState = true)
+        assertEquals(
+            listOf(DisplayAction.SetBrightness(60, allowBlack = true), DisplayAction.Wake),
+            record.revertActions(),
+        )
+    }
+
+    @Test
+    fun `restoring a deliberate 0 percent does not force a wake`() {
+        // priorPercent == 0 with priorBlanked == false is an overnight
+        // "dark by intent" poster. Waking it would fight the operator's
+        // own setting, so the trailing Wake is skipped.
+        val record = PendingRevert(Capability.BRIGHTNESS, 0, false, 1L, ownsBlankState = true)
+        assertEquals(
+            listOf(DisplayAction.SetBrightness(0, allowBlack = true)),
+            record.revertActions(),
+        )
+    }
+
+    @Test
+    fun `a reboot record can never drive the screen anywhere`() {
+        // The guard refuses to arm one; this keeps the type total.
+        assertTrue(PendingRevert(Capability.REBOOT, 100, true, 1L).revertActions().isEmpty())
+    }
+
+    @Test
+    fun `an empty set encodes and decodes to nothing pending`() {
+        assertEquals("", PendingRevert.encodeAll(emptyList()))
+        assertTrue(PendingRevert.decodeAll("").isEmpty())
+        assertTrue(PendingRevert.decodeAll(null).isEmpty())
+        assertTrue(PendingRevert.decodeAll("   ").isEmpty())
     }
 }

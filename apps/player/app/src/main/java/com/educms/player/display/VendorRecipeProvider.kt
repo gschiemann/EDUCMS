@@ -49,7 +49,12 @@ object VendorRecipeProvider : DisplayControlProvider {
             ?: return ActionResult.Unsupported("recipe '${recipe.vendorId}' declares no $capability step")
 
         // ── point-of-use re-validation ──────────────────────────────
-        RecipeValidator.validateStep(step)?.let { why ->
+        // The CAPABILITY is passed, not just the step: the rule that a
+        // BRIGHTNESS step must be percent-derived is what keeps the
+        // MIN_SAFE floor from being bypassed by a literal, and it only
+        // exists at this granularity. Re-checking without it would let a
+        // blob persisted by an older build slip a literal through here.
+        RecipeValidator.validateStep(step, capability)?.let { why ->
             PlayerLogger.e(TAG, "REJECTED at execution — recipe '${recipe.vendorId}' $capability step: $why")
             return ActionResult.Failed("recipe step rejected by the native allowlist: $why", id)
         }
@@ -60,12 +65,34 @@ object VendorRecipeProvider : DisplayControlProvider {
             DisplayAction.Wake -> 100
             else -> return ActionResult.Unsupported("vendor recipes do not handle ${action.describe()}")
         }
+        // Only a BRIGHTNESS action gets the "never write the scale
+        // minimum" floor. Blank/wake are SUPPOSED to reach the extremes —
+        // that is what they mean.
+        val floorScaleMin = when (action) {
+            is DisplayAction.SetBrightness -> !action.allowBlack
+            else -> false
+        }
 
         return when (step) {
-            is RecipeStep.Broadcast -> sendBroadcast(ctx, recipe.vendorId, step, percent)
-            is RecipeStep.Sysfs -> writeSysfs(recipe.vendorId, step, percent)
-            is RecipeStep.SettingsWrite -> writeSettings(ctx, recipe.vendorId, step, percent)
+            is RecipeStep.Broadcast -> sendBroadcast(ctx, recipe.vendorId, step, percent, floorScaleMin)
+            is RecipeStep.Sysfs -> writeSysfs(recipe.vendorId, step, percent, floorScaleMin)
+            is RecipeStep.SettingsWrite -> writeSettings(ctx, recipe.vendorId, step, percent, floorScaleMin)
         }
+    }
+
+    /**
+     * Map a percent onto a device scale, refusing to land ON the scale
+     * minimum unless the caller explicitly allowed black.
+     *
+     * Mirrors [SysfsBacklightProvider]'s `coerceAtLeast(1)` and
+     * [SettingsBrightnessProvider]'s identical floor. On many panels the
+     * scale minimum is not "very dim", it is OFF — and on some it latches
+     * the backlight driver off until a power cycle, which on a
+     * wall-mounted screen is a truck roll.
+     */
+    private fun scaleWithFloor(percent: Int, min: Int, max: Int, floorScaleMin: Boolean): Int {
+        val value = DisplayLimits.scale(percent, min, max)
+        return if (floorScaleMin && max > min) value.coerceAtLeast(min + 1) else value
     }
 
     /**
@@ -86,6 +113,7 @@ object VendorRecipeProvider : DisplayControlProvider {
         vendorId: String,
         step: RecipeStep.Broadcast,
         percent: Int,
+        floorScaleMin: Boolean,
     ): ActionResult = try {
         // Implicit intent, action only. No package, no component — see
         // the header for why that is deliberate.
@@ -94,7 +122,7 @@ object VendorRecipeProvider : DisplayControlProvider {
             when (extra.from) {
                 RecipeValueSource.PERCENT -> {
                     val scale = extra.scale
-                    val value = DisplayLimits.scale(percent, scale?.min ?: 0, scale?.max ?: 100)
+                    val value = scaleWithFloor(percent, scale?.min ?: 0, scale?.max ?: 100, floorScaleMin)
                     when (extra.type) {
                         RecipeExtraType.INT -> intent.putExtra(extra.key, value)
                         RecipeExtraType.STRING -> intent.putExtra(extra.key, value.toString())
@@ -120,7 +148,12 @@ object VendorRecipeProvider : DisplayControlProvider {
         ActionResult.Failed(t.message ?: t.javaClass.simpleName, id)
     }
 
-    private fun writeSysfs(vendorId: String, step: RecipeStep.Sysfs, percent: Int): ActionResult {
+    private fun writeSysfs(
+        vendorId: String,
+        step: RecipeStep.Sysfs,
+        percent: Int,
+        floorScaleMin: Boolean,
+    ): ActionResult {
         // Third gate on the same path: validateStep above proved it is
         // under an allowlisted root; this call gives us the CANONICAL
         // string that we actually open, so we never open the raw one.
@@ -128,7 +161,7 @@ object VendorRecipeProvider : DisplayControlProvider {
             ?: return ActionResult.Failed("sysfs path rejected by the native allowlist", id)
         val value = if (step.fromPercent) {
             val scale = step.scale
-            DisplayLimits.scale(percent, scale?.min ?: 0, scale?.max ?: 255).toString()
+            scaleWithFloor(percent, scale?.min ?: 0, scale?.max ?: 255, floorScaleMin).toString()
         } else {
             step.literal.orEmpty().trim()
         }
@@ -148,13 +181,14 @@ object VendorRecipeProvider : DisplayControlProvider {
         vendorId: String,
         step: RecipeStep.SettingsWrite,
         percent: Int,
+        floorScaleMin: Boolean,
     ): ActionResult {
         val app = ctx.applicationContext
         if (!SettingsBrightnessProvider.canWrite(app)) {
             return ActionResult.Unsupported("WRITE_SETTINGS not granted — operator must allow it in Settings")
         }
         val scale = step.scale
-        val value = DisplayLimits.scale(percent, scale?.min ?: 0, scale?.max ?: 255)
+        val value = scaleWithFloor(percent, scale?.min ?: 0, scale?.max ?: 255, floorScaleMin)
         return try {
             // Settings.System ONLY. Never Secure, never Global — see the
             // allowlist header.

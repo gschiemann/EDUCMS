@@ -1567,11 +1567,22 @@ class MainActivity : ComponentActivity() {
                 // DisplayWindowBridge, so a slow sysfs write never
                 // blocks a frame on a kiosk that must not jank.
                 displayCapabilitiesImpl = { DisplayControlApi.capabilitiesJson(applicationContext) },
-                displayApplyImpl = { json -> DisplayControlApi.applyJson(applicationContext, json) },
-                displaySetScheduleImpl = { json -> DisplayControlApi.setScheduleJson(applicationContext, json) },
-                // Gates the two MUTATING display methods off the legacy
-                // every-frame transport whenever the origin-scoped
-                // channel is available. See WebAppBridge.displayApply().
+                displayApplyImpl = { json, trusted ->
+                    DisplayControlApi.applyJson(applicationContext, json, trusted)
+                },
+                displaySetScheduleImpl = { json, trusted ->
+                    DisplayControlApi.setScheduleJson(applicationContext, json, trusted)
+                },
+                // ⚠️ LIFE SAFETY — the emergency interlock. See
+                // com.educms.player.display.DisplayEmergency.
+                displayEmergencyHoldImpl = { active, trusted ->
+                    DisplayControlApi.emergencyHoldJson(applicationContext, active, trusted)
+                },
+                // DIAGNOSTIC ONLY. This used to gate the mutators off the
+                // legacy transport, which inverted: it evaluated false on
+                // exactly the pre-channel devices that needed the gate
+                // most. The mutators now mark the legacy caller untrusted
+                // unconditionally. See WebAppBridge.displayApply().
                 secureChannelActive = { nativeChannelActive },
         )
 
@@ -1959,6 +1970,28 @@ class MainActivity : ComponentActivity() {
         // today. Read that file's header before changing this.
         isResumedForLockTask = true
         maybeEngageLockTask("onResume")
+
+        // ── Display control (2026-08-13) ────────────────────────────
+        //
+        // 1. RE-RESOLVE the provider chain. WRITE_SETTINGS is an appop
+        //    the operator grants OUT OF PROCESS — by tapping through
+        //    Settings.ACTION_MANAGE_WRITE_SETTINGS, or by a one-shot
+        //    `adb shell appops set <pkg> WRITE_SETTINGS allow` — and
+        //    neither restarts us. Without this the registry kept
+        //    reporting the pre-grant answer until the process next died,
+        //    so SettingsBrightnessProvider and ScreenTimeoutBlankProvider
+        //    were unreachable in the field no matter what the operator
+        //    did. resolve() is a handful of stats plus one canWrite().
+        //
+        // 2. ⚠️ RE-ASSERT the emergency hold. If an alert is active this
+        //    forces the panel visible again — the window hooks are
+        //    re-registered per Activity instance, and a hold that
+        //    survived a process death has to be re-applied to the NEW
+        //    window or the alert stays behind a black overlay.
+        runCatching {
+            com.educms.player.display.DisplayControlRegistry.invalidate()
+            com.educms.player.display.DisplayEmergency.enforceIfHeld(applicationContext)
+        }.onFailure { PlayerLogger.w("DisplayControl", "onResume display refresh failed: ${it.message}") }
     }
 
     override fun onPause() {

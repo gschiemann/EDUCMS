@@ -11,9 +11,25 @@ import com.educms.player.logging.PlayerLogger
  * already owns.
  *
  * ═════════════════════════════════════════════════════════════════════
- * ⚠️  OBJECTION ON RECORD — THIS PROVIDER IS INERT IN TODAY'S PLAYER
+ * ⚠️  REACHABLE IN PRINCIPLE, NOT YET ENROLLED IN PRACTICE
  * ═════════════════════════════════════════════════════════════════════
- * `lockNow()` requires the CALLING PACKAGE to be an active device admin.
+ * Product decision 2026-08-13: no device OWNER. Device ADMIN is a
+ * different, much cheaper thing and IS reachable — the operator taps
+ * through an `ACTION_ADD_DEVICE_ADMIN` intent, no factory reset, no adb,
+ * no accounts constraint — and `lockNow()` needs only
+ * USES_POLICY_FORCE_LOCK, which any active admin holds. So this is a
+ * real tier in the BLANK ladder, not dead code.
+ *
+ * What is still missing is the enrolment itself: `lockNow()` requires
+ * the CALLING PACKAGE to be an active admin, and `com.educms.player`
+ * declares no `DeviceAdminReceiver` of its own, so there is nothing for
+ * the operator to enrol yet. Until that lands, [supports] correctly
+ * returns an empty set and BLANK falls through to
+ * [ScreenTimeoutBlankProvider] (a real display-off on WRITE_SETTINGS
+ * alone) and then to [SoftwareDimProvider]. Adding the receiver +
+ * `device_admin.xml` + the enrolment prompt is a small, self-contained
+ * follow-up; nothing in THIS file changes when it does.
+ *
  * As of this commit `com.educms.player` is neither an active admin nor
  * the device owner:
  *
@@ -60,7 +76,7 @@ object DeviceAdminBlankProvider : DisplayControlProvider {
 
     override fun apply(ctx: Context, action: DisplayAction): ActionResult = when (action) {
         DisplayAction.Blank -> blank(ctx)
-        DisplayAction.Wake -> wake()
+        DisplayAction.Wake -> wake(ctx)
         else -> ActionResult.Unsupported("device-admin only handles blank/wake")
     }
 
@@ -84,12 +100,17 @@ object DeviceAdminBlankProvider : DisplayControlProvider {
         }
     }
 
-    private fun wake(): ActionResult {
+    private fun wake(ctx: Context): ActionResult {
         val attached = DisplayWindowBridge.withHooks { h ->
             h.setBlackout(false)
             h.setKeepScreenOn(true)
             h.requestWake()
         }
+        // lockNow() genuinely SLEEPS the display, so by the time a wake
+        // arrives the Activity is stopped and FLAG_TURN_SCREEN_ON has no
+        // live window to act through. This is the call that turns the
+        // panel back on from a plain Context.
+        ScreenWakeLock.pokeScreen(ctx)
         return if (attached) {
             PlayerLogger.i(TAG, "wake via window flags")
             ActionResult.Ok(id)

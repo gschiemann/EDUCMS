@@ -125,14 +125,19 @@ object NativeBridgeChannel {
         // object. Adding it here is what makes it reachable on every
         // channel-transport device.
         "probeDisplay",
-        // Display CONTROL (see com.educms.player.display). The two
-        // MUTATORS are dispatched to channel-only entry points on
-        // WebAppBridge, because their `@JavascriptInterface` twins
-        // deliberately refuse the legacy every-frame transport while
-        // this channel is live.
+        // Display CONTROL (see com.educms.player.display). The MUTATORS
+        // are dispatched to channel-only entry points on WebAppBridge,
+        // because their `@JavascriptInterface` twins UNCONDITIONALLY
+        // mark the caller untrusted and are restricted to the
+        // recovery-direction subset (wake / raise brightness).
         "displayCapabilities",
         "displayApply",
         "displaySetSchedule",
+        // ⚠️ LIFE SAFETY — the emergency interlock. The web player calls
+        // this on WS OVERRIDE / ALL_CLEAR and on every manifest poll
+        // carrying an `emergency` field, so a screen on the HTTP polling
+        // backstop is covered too. See DisplayEmergency.
+        "displayEmergencyHold",
         "checkForUpdates",
         "getRecentLogs",
         "uploadDiagnostics",
@@ -337,6 +342,7 @@ object NativeBridgeChannel {
             // verify about their own caller.
             "displayApply" -> bridge.displayApplyViaSecureChannel(strAt(args, 0))
             "displaySetSchedule" -> bridge.displaySetScheduleViaSecureChannel(strAt(args, 0))
+            "displayEmergencyHold" -> bridge.displayEmergencyHoldViaSecureChannel(boolAt(args, 0))
             "checkForUpdates" -> bridge.checkForUpdates()
             "getRecentLogs" -> bridge.getRecentLogs()
             "uploadDiagnostics" -> bridge.uploadDiagnostics()
@@ -365,6 +371,21 @@ object NativeBridgeChannel {
         args.optInt(index, fallback)
     } catch (t: Throwable) {
         fallback
+    }
+
+    /**
+     * ⚠️ Defaults TRUE, and that direction is deliberate. Its only caller
+     * is `displayEmergencyHold`, where the two outcomes are not
+     * symmetric: a spurious hold keeps a screen lit (a power bill), a
+     * missed hold lets an alert be blanked. So an argument we cannot
+     * read is treated as "there IS an emergency". `optBoolean` also
+     * accepts the strings "true"/"false", which is what a JS `true`
+     * serialised through `JSONArray` can arrive as.
+     */
+    private fun boolAt(args: JSONArray, index: Int): Boolean = try {
+        args.optBoolean(index, true)
+    } catch (t: Throwable) {
+        true
     }
 
     private fun replyOk(replyProxy: JavaScriptReplyProxy, id: String?, result: Any?) {
