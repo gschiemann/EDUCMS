@@ -48,6 +48,7 @@ import {
   type DisplayCapabilityReport,
   type DisplayCapabilityReportInput,
   type DisplayCapabilityVerdict,
+  type DisplayControlWsPayload,
 } from '@cms/api-types';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -502,7 +503,13 @@ export class DisplayService {
     // `issuedAt` rides the WS message, NOT the manifest — a per-request
     // clock value in the manifest would kill 304s fleet-wide (CLAUDE.md
     // multiscreen-sync rule 4 / manifest-cache rule 7).
-    const signed = this.signer.signMessage(DISPLAY_CONTROL_WS_TYPE, {
+    // Typed against the SHARED payload interface (2026-08-13 verify wave).
+    // Both P0-1 (no player handler at all) and P0-3 (two ends spelling one
+    // field differently) were the same defect: a wire contract that existed
+    // only as an object literal here. This annotation makes the next
+    // mismatch a compile error instead of a screen that quietly ignores its
+    // operator.
+    const payload: DisplayControlWsPayload = {
       screenId,
       actionId,
       action,
@@ -511,7 +518,8 @@ export class DisplayService {
       allowBlack: opts.allowBlack === true,
       mechanism: support.mechanism,
       issuedAt: new Date().toISOString(),
-    });
+    };
+    const signed = this.signer.signMessage(DISPLAY_CONTROL_WS_TYPE, payload);
 
     // Publish even when the fan-out is down: the local-gateway fallback still
     // reaches a screen socketed to THIS replica, which beats dropping the

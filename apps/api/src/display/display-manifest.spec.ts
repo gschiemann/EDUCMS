@@ -18,6 +18,8 @@
  *     otherwise make a groupless screen inherit every screen-pinned row.
  */
 
+import { DISPLAY_MANIFEST_VENDOR_RECIPES_KEY } from '@cms/api-types';
+
 import {
   MANIFEST_FED_MODELS,
   SCREEN_TELEMETRY_ONLY_FIELDS,
@@ -126,6 +128,39 @@ describe('buildDisplayManifestBlock', () => {
       'goodview-ep6n',
       'novastar-taurus',
     ]);
+  });
+
+  // ── P0-3 (2026-08-13 verify wave) — THE WIRE NAME ────────────────────
+  // The server emitted `display.vendorRecipes`; the device's
+  // DisplayConfigParser read `display.recipe`. Nobody had agreed a name, so
+  // every recipe a SUPER_ADMIN saved reached the glass as null and
+  // BRIGHTNESS fell to software dim fleet-wide with no error anywhere.
+  // The agreed name is `vendorRecipes` — forced, not chosen: serving ONE
+  // pre-matched recipe would require the screen's Build.* identity, which
+  // lives only in the telemetry-only Screen.displayCapabilities column.
+  it('emits the catalog under the AGREED key name, sorted most-specific-first', async () => {
+    const prisma = makePrisma(
+      [],
+      [{ vendorId: 'goodview-ep6n', priority: 10, recipe: { vendorId: 'x' } }],
+    );
+    const block: any = await buildDisplayManifestBlock(prisma, SCREEN, 1);
+    expect(DISPLAY_MANIFEST_VENDOR_RECIPES_KEY).toBe('vendorRecipes');
+    expect(
+      Object.prototype.hasOwnProperty.call(
+        block,
+        DISPLAY_MANIFEST_VENDOR_RECIPES_KEY,
+      ),
+    ).toBe(true);
+    // The device takes the FIRST matching row, so the ORDER is part of the
+    // contract, not a nicety.
+    expect(
+      prisma.client.displayVendorRecipe.findMany.mock.calls[0][0].orderBy,
+    ).toEqual([{ priority: 'desc' }, { vendorId: 'asc' }]);
+    expect(block[DISPLAY_MANIFEST_VENDOR_RECIPES_KEY][0]).toEqual({
+      vendorId: 'goodview-ep6n',
+      priority: 10,
+      recipe: { vendorId: 'x' },
+    });
   });
 
   describe('precedence — a per-screen window overrides its group (2026-08-13)', () => {
@@ -335,5 +370,38 @@ describe('manifest cache registration', () => {
         'displayCapabilitiesAt',
       ]),
     ).toBe(false);
+  });
+
+  // The registration above is only SAFE while this holds. Re-verified after
+  // the 2026-08-13 P0-2/P0-3 wave, which widened the capability vocabulary
+  // and pinned the vendor-recipe wire name — neither made the manifest read
+  // the verdict. The moment it does, the two entries above stop being
+  // telemetry and become content, and they must come OFF that list in the
+  // SAME commit or every screen serves a stale manifest until its TTL.
+  it('builds an IDENTICAL block regardless of the screen\'s reported capabilities', async () => {
+    const recipes = [
+      { vendorId: 'goodview-ep6n', priority: 10, recipe: { vendorId: 'x' } },
+    ];
+    const bare = await buildDisplayManifestBlock(
+      makePrisma([scheduleRow], recipes),
+      SCREEN,
+      1,
+    );
+    clearDisplayManifestCache();
+    const withVerdict = await buildDisplayManifestBlock(
+      makePrisma([scheduleRow], recipes),
+      {
+        ...SCREEN,
+        // Not part of DisplayManifestScreen — present here precisely to
+        // prove the builder cannot reach it.
+        displayCapabilities: {
+          verdict: { brightness: 'vendor-recipe', screenBlank: 'vendor-recipe' },
+          build: { manufacturer: 'Goodview', model: 'ECBox3576' },
+        },
+        displayCapabilitiesAt: new Date('2026-08-13T00:00:00Z'),
+      } as any,
+      1,
+    );
+    expect(JSON.stringify(withVerdict)).toEqual(JSON.stringify(bare));
   });
 });

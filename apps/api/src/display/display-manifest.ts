@@ -243,6 +243,15 @@ export async function buildDisplayManifestBlock(
       // through POST /display-control, not through this block.
       allowBlack: false,
     },
+    // ── `display.vendorRecipes` — THE agreed wire name (2026-08-13, P0-3).
+    // The device (DisplayConfigParser) reads THIS key and matches the rows
+    // against its own Build.* identity; it used to read `display.recipe`, so
+    // every recipe an operator saved reached the glass as null. The full
+    // contract — array, already ordered most-specific-first by the query's
+    // `priority desc, vendorId asc`, first MATCHING row wins, a rejected
+    // match does NOT fall through — is documented on DisplayManifestBlock in
+    // packages/api-types/src/display-control.ts. Do not rename either end
+    // without the other.
     vendorRecipes: recipeRows.map((r) => ({
       vendorId: r.vendorId,
       priority: r.priority ?? 0,

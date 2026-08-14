@@ -36,12 +36,71 @@ import { z } from 'zod';
 // Capability verdict — mirrors DisplayCapabilityProbe.verdict()
 // ─────────────────────────────────────────────────────────────────────
 
-/** How volume can be driven. */
+/**
+ * ─────────────────────────────────────────────────────────────────────
+ * MECHANISM VOCABULARY — THE DEVICE IS AUTHORITATIVE (contract C5)
+ * ─────────────────────────────────────────────────────────────────────
+ *
+ * THE P0 THIS CLOSES (2026-08-13 verify wave, P0-2). Wave 2 changed
+ * `DisplayCapabilityProbe.verdict()` to prefer the answer resolved by
+ * `DisplayControlRegistry` — i.e. the id of the provider that ACTUALLY won
+ * the chain on that box ("vendor-recipe", "sysfs-backlight", "screen-timeout"
+ * …). The zod enums below still only accepted the older heuristic vocabulary,
+ * so `POST /screens/:id/display-capabilities` 400'd on EVERY screen in the
+ * fleet and no screen could ever self-describe. Every capability-gated
+ * control then stayed on the unknown-verdict path forever.
+ *
+ * The resolution is that the DEVICE's provider-id vocabulary is the truth:
+ * `DisplayControlRegistry` is what decides what the box can do, so its
+ * provider ids are what the server must accept. These sets are therefore
+ * derived from the Kotlin, and `display-mechanism-drift.spec.ts` in
+ * apps/api PINS them against the real `override val id` constants and the
+ * probe's own fallback literals — parsed out of the .kt files — so this
+ * cannot silently drift again.
+ *
+ * Two sources feed each key, and BOTH are enumerated here:
+ *   (a) the resolved provider id, from the `control.capabilities` section;
+ *   (b) the probe's own raw heuristic literal, which is the fallback used
+ *       when that section threw (`resolved?.optString(...) ?: <literal>`).
+ * (b) is why brightness accepts BOTH 'sysfs-backlight' (the provider id) and
+ * 'sysfs' (the heuristic literal) — they are different strings meaning the
+ * same thing, and a box whose registry resolution threw emits the latter.
+ *
+ * ⚠️ ADDING A PROVIDER? Add its id here in the SAME commit, or the first
+ * screen that resolves to it 400s its whole report. The drift spec fails
+ * loudly if you forget.
+ */
+
+/** How volume can be driven. `AudioManagerProvider.id` + the probe fallback. */
 export type DisplayVolumeMechanism = 'audiomanager' | 'none';
-/** How brightness can be driven, most-real first. */
-export type DisplayBrightnessMechanism = 'sysfs' | 'settings' | 'software-dim';
-/** How the screen can be blanked/woken. */
-export type DisplayBlankMechanism = 'device-owner' | 'device-admin' | 'none';
+/**
+ * How brightness can be driven, most-real first.
+ * Chain: VendorRecipe → SysfsBacklight → SettingsBrightness → SoftwareDim.
+ * 'sysfs' is the probe's heuristic literal for the same thing as
+ * 'sysfs-backlight'; both are reachable, so both are accepted.
+ */
+export type DisplayBrightnessMechanism =
+  | 'vendor-recipe'
+  | 'sysfs-backlight'
+  | 'sysfs'
+  | 'settings'
+  | 'software-dim';
+/**
+ * How the screen can be blanked/woken.
+ * Chain: VendorRecipe → DeviceAdminBlank → ScreenTimeout → SoftwareDim.
+ * 'device-owner' and 'none' are LEGACY values from the pre-wave-2 heuristic
+ * vocabulary. They are kept accepted on purpose — refusing them would 400 a
+ * whole report over a value that is already handled (`blankMechanism` maps
+ * 'none' to the software floor, per C3), which is the exact failure this
+ * section exists to prevent.
+ */
+export type DisplayBlankMechanism =
+  | 'vendor-recipe'
+  | 'device-admin'
+  | 'screen-timeout'
+  | 'software-dim'
+  | 'device-owner'
+  | 'none';
 /** Reboot is device-owner only — no fallback exists. */
 export type DisplayRebootMechanism = 'device-owner' | 'none';
 /** Hard power-off has no public Android API at any privilege level. */
@@ -86,13 +145,18 @@ export interface DisplayCapabilityReport {
 
 export const DISPLAY_VOLUME_MECHANISMS = ['audiomanager', 'none'] as const;
 export const DISPLAY_BRIGHTNESS_MECHANISMS = [
+  'vendor-recipe',
+  'sysfs-backlight',
   'sysfs',
   'settings',
   'software-dim',
 ] as const;
 export const DISPLAY_BLANK_MECHANISMS = [
-  'device-owner',
+  'vendor-recipe',
   'device-admin',
+  'screen-timeout',
+  'software-dim',
+  'device-owner',
   'none',
 ] as const;
 export const DISPLAY_REBOOT_MECHANISMS = ['device-owner', 'none'] as const;
@@ -225,6 +289,37 @@ export const DISPLAY_REVERT_MAX_MS = 15 * 60_000;
 
 /** WS message type published on `device:<screenId>` for an immediate action. */
 export const DISPLAY_CONTROL_WS_TYPE = 'DISPLAY_CONTROL';
+
+/**
+ * The signed `DISPLAY_CONTROL` payload, exactly as `DisplayService.dispatch`
+ * emits it and the player must consume it.
+ *
+ * DECLARED HERE ON PURPOSE (2026-08-13 verify wave). P0-1 was that the player
+ * bundle has no handler for this message at all, and P0-3 was two ends
+ * spelling one field name differently. Both are the same defect — a wire
+ * contract that existed only as an object literal at the sending end. Typing
+ * it once, in the package BOTH ends import, is what makes the next mismatch a
+ * compile error instead of a silent no-op on a wall-mounted screen.
+ *
+ * NOTE `issuedAt` rides HERE and never in the manifest: it is a per-request
+ * clock value, and one of those in the manifest kills 304s fleet-wide
+ * (CLAUDE.md manifest-cache rule 7).
+ */
+export interface DisplayControlWsPayload {
+  screenId: string;
+  /** Idempotency key — the player MUST de-duplicate on this (replayed WS). */
+  actionId: string;
+  action: DisplayActionType;
+  /** Already clamped by the server. 0..100, or null for BLANK/WAKE/REBOOT. */
+  percent: number | null;
+  /** Dead-man revert window, or null for a scheduled/permanent action. */
+  revertAfterMs: number | null;
+  allowBlack: boolean;
+  /** The mechanism the SERVER expects; advisory — the device re-resolves. */
+  mechanism: string;
+  /** ISO-8601, server clock. Advisory/forensic only. */
+  issuedAt: string;
+}
 
 export const DisplayControlActionSchema = z
   .object({
@@ -674,11 +769,27 @@ function hasUnsafeChar(s: string): boolean {
 }
 
 /**
+ * A single sysfs path segment — MIRRORS `RecipeAllowlist.SYSFS_SEGMENT_RE`
+ * (`^[A-Za-z0-9_.:+-]{1,64}$`) in VendorRecipe.kt.
+ */
+const RECIPE_SYSFS_SEGMENT_RE = /^[A-Za-z0-9_.:+-]{1,64}$/;
+
+/**
  * True when `path` is provably a node strictly beneath an allowlisted sysfs
  * root, with no traversal, no encoded traversal, no backslash and no control
  * bytes. Purely textual — the server cannot canonicalize a device's
  * filesystem, so it refuses anything that would REQUIRE canonicalization to
  * be safe. The device still canonicalizes on top of this.
+ *
+ * SHAPE (2026-08-13 verify wave, P1): the device requires EXACTLY
+ * `<root><device>/<attribute>` — two segments, each matching
+ * [RECIPE_SYSFS_SEGMENT_RE]. That is `RecipeAllowlist.canonicalSysfsPath`
+ * steps 4–5, and it is what makes traversal unrepresentable rather than
+ * merely filtered. This end used to accept any depth and any characters
+ * inside the segments, so `/sys/class/backlight/panel0/device/../../x` and
+ * `/sys/class/backlight/panel,0/brightness` both saved with a 200 and were
+ * then REJECTED WHOLE on the device — killing the recipe's blank AND wake
+ * steps with no operator-visible signal anywhere.
  */
 export function isAllowedRecipeSysfsPath(path: unknown): boolean {
   if (typeof path !== 'string') return false;
@@ -689,10 +800,18 @@ export function isAllowedRecipeSysfsPath(path: unknown): boolean {
   // Encoded traversal / encoded separators, in any case.
   if (/%2e|%2f|%5c|%00/i.test(p)) return false;
   if (!p.startsWith('/')) return false;
-  if (p.split('/').some((seg) => seg === '..')) return false;
-  return DISPLAY_RECIPE_SYSFS_ROOTS.some(
-    (root) => p.startsWith(root) && p.length > root.length,
-  );
+  const segments = p.split('/');
+  if (segments.some((seg) => seg === '..')) return false;
+  // Device: lexical normalization drops '.' and empty segments first.
+  const normalized = '/' + segments.filter((s) => s && s !== '.').join('/');
+  const root = DISPLAY_RECIPE_SYSFS_ROOTS.find((r) => normalized.startsWith(r));
+  if (!root) return false;
+  const tail = normalized.slice(root.length).split('/');
+  // Exactly <device>/<attribute>. Not one (that is the class directory
+  // itself), not three (which is how you walk out through a `device/`
+  // back-link).
+  if (tail.length !== 2) return false;
+  return tail.every((seg) => RECIPE_SYSFS_SEGMENT_RE.test(seg));
 }
 
 export function isAllowedRecipeBroadcastAction(action: unknown): boolean {
@@ -718,13 +837,42 @@ export function isAllowedRecipeSettingsKey(key: unknown): boolean {
  * never partially applied. Nothing here can widen that allowlist, and the
  * checks below now REFUSE the same things at this end.
  */
-/** Device: min ≥ 0, max > min, max ≤ 1_000_000 (overflow guard). */
+/**
+ * Longest literal a step or extra may carry. Device: MAX_LITERAL_LEN = 128.
+ * Kept identical rather than "a bit stricter" — a server that refuses a
+ * recipe the DEVICE would run is its own operator-visible bug.
+ */
+export const DISPLAY_RECIPE_MAX_LITERAL_LEN = 128;
+
+/**
+ * Smallest span a BRIGHTNESS scale may have. MIRRORS
+ * `RecipeAllowlist.MIN_BRIGHTNESS_SCALE_SPAN`.
+ *
+ * `DisplayLimits.scale` rounds to nearest, so on a span S the
+ * MIN_SAFE_BRIGHTNESS_PERCENT floor maps to `min + round(S * 0.05)`. For the
+ * floor to survive that mapping at all, S must be ≥ 20 * floor%. A recipe
+ * declaring `scale: [0, 9]` turned "5%, the lowest we allow" into 0 — which
+ * on a real backlight is OFF, on a screen nobody can reach.
+ */
+export const DISPLAY_RECIPE_MIN_BRIGHTNESS_SCALE_SPAN = 10;
+
+/**
+ * Device: min ≥ 0, max > min, max ≤ 1_000_000 (overflow guard).
+ * INTEGERS: the device's `parseScale` does `.toInt()`, so `[0, 255.9]` would
+ * silently become `[0, 255]` — a value the operator never wrote.
+ */
 const RecipeScale = z
-  .tuple([z.number(), z.number()])
+  .tuple([z.number().int(), z.number().int()])
   .refine(
     ([min, max]) => min >= 0 && max > min && max <= 1_000_000,
     'scale must be [min, max] with 0 ≤ min < max ≤ 1000000',
   );
+
+/** Text a device would refuse to carry through a broadcast or a sysfs write. */
+const isSafeLiteral = (v: string | number | boolean): boolean => {
+  const s = String(v);
+  return s.length > 0 && s.length <= DISPLAY_RECIPE_MAX_LITERAL_LEN && !hasUnsafeChar(s);
+};
 
 /** Device: EXTRA_KEY_RE = ^[A-Za-z0-9_.]{1,64}$ */
 const RecipeExtra = z
@@ -736,7 +884,9 @@ const RecipeExtra = z
       .regex(/^[A-Za-z0-9_.]+$/, 'extra key is not a safe identifier'),
     type: z.enum(['int', 'string', 'bool']),
     from: z.enum(['percent', 'literal']),
-    value: z.union([z.string().max(128), z.number(), z.boolean()]).optional(),
+    value: z
+      .union([z.string().max(DISPLAY_RECIPE_MAX_LITERAL_LEN), z.number(), z.boolean()])
+      .optional(),
     scale: RecipeScale.optional(),
   })
   .strict()
@@ -745,7 +895,44 @@ const RecipeExtra = z
   .refine(
     (e) => !(e.from === 'percent' && e.type === 'bool'),
     'an extra cannot take a percent as a boolean',
-  );
+  )
+  // Device (`validateBroadcast`): a literal extra with no value is refused,
+  // and so is a value the declared type cannot hold. Both used to save with a
+  // 200 here and then reject the WHOLE recipe on the box.
+  .superRefine((e, ctx) => {
+    if (e.from !== 'literal') return;
+    if (e.value === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['value'],
+        message: `extra '${e.key}' is literal but carries no value`,
+      });
+      return;
+    }
+    if (!isSafeLiteral(e.value)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['value'],
+        message: `extra '${e.key}' literal is empty, over-long, or contains control bytes`,
+      });
+      return;
+    }
+    const lit = String(e.value).trim();
+    if (e.type === 'int' && !/^[+-]?\d+$/.test(lit)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['value'],
+        message: `extra '${e.key}' is int but literal is not an integer`,
+      });
+    }
+    if (e.type === 'bool' && !['true', 'false'].includes(lit.toLowerCase())) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['value'],
+        message: `extra '${e.key}' is bool but literal is not true/false`,
+      });
+    }
+  });
 
 const RecipeBroadcast = z
   .object({
@@ -762,7 +949,13 @@ const RecipeBroadcast = z
     // whole there, so refusing it here keeps both ends agreeing.
     extras: z.array(RecipeExtra).max(8).optional(),
   })
-  .strict();
+  .strict()
+  // Device (`validateBroadcast`): duplicate extra keys reject the recipe —
+  // the second write would silently clobber the first anyway.
+  .refine((s) => {
+    const keys = (s.extras ?? []).map((e) => e.key);
+    return new Set(keys).size === keys.length;
+  }, 'duplicate extra key');
 
 const RecipeSysfs = z
   .object({
@@ -773,13 +966,25 @@ const RecipeSysfs = z
       .max(256)
       .refine(
         isAllowedRecipeSysfsPath,
-        'sysfs path must be a node under /sys/class/backlight/ or /sys/class/leds/, with no traversal',
+        'sysfs path must be exactly <device>/<attribute> under /sys/class/backlight/ or /sys/class/leds/, with no traversal',
       ),
-    value: z.union([z.string().max(64), z.number()]).optional(),
+    value: z
+      .union([z.string().max(DISPLAY_RECIPE_MAX_LITERAL_LEN), z.number()])
+      .optional(),
     valueFrom: z.literal('percent').optional(),
     scale: RecipeScale.optional(),
   })
-  .strict();
+  .strict()
+  // Device (`validateSysfs`): "sysfs step has neither a literal value nor
+  // valueFrom:percent" — a step with nothing to write is refused whole.
+  .refine(
+    (s) => s.valueFrom === 'percent' || s.value !== undefined,
+    'a sysfs step needs either valueFrom:"percent" or a literal value',
+  )
+  .refine(
+    (s) => s.valueFrom === 'percent' || s.value === undefined || isSafeLiteral(s.value),
+    'sysfs literal is empty, over-long, or contains control bytes',
+  );
 
 const RecipeSettings = z
   .object({
@@ -793,12 +998,69 @@ const RecipeSettings = z
         `settings key must be one of: ${DISPLAY_RECIPE_SETTINGS_KEYS.join(', ')}`,
       ),
     valueFrom: z.literal('percent').optional(),
-    value: z.union([z.string().max(64), z.number()]).optional(),
+    value: z
+      .union([z.string().max(DISPLAY_RECIPE_MAX_LITERAL_LEN), z.number()])
+      .optional(),
     scale: RecipeScale.optional(),
   })
-  .strict();
+  .strict()
+  // The device's `parseStep` builds `SettingsWrite(key, scale)` and DROPS
+  // any `value` — a settings write is percent-derived by construction. A
+  // recipe carrying one is not rejected there, it is silently ignored, which
+  // is worse: the operator believes they pinned a literal and the panel does
+  // something else. Refused here, where we can say why.
+  .refine(
+    (s) => s.value === undefined,
+    'a settings step is always percent-derived — the device ignores `value`; remove it (use kind:"sysfs" for a literal write)',
+  );
 
 const RecipeStep = z.discriminatedUnion('kind', [RecipeBroadcast, RecipeSysfs, RecipeSettings]);
+type RecipeStepDoc = z.infer<typeof RecipeStep>;
+
+/**
+ * The MIN_SAFE-floor rules that only apply to the BRIGHTNESS slot.
+ * MIRRORS `RecipeValidator.validateBrightnessStep`. Returns null when the
+ * step is acceptable, else the operator-facing reason.
+ *
+ * WHY A BRIGHTNESS STEP MUST BE PERCENT-DERIVED: a literal discards the
+ * clamped percent entirely, so `DisplayLimits` is bypassed. The real-world
+ * shape is `{kind:"sysfs", path:".../bl_power", value:"4"}`
+ * (FB_BLANK_POWERDOWN — a genuine vendor pattern): every SetBrightness,
+ * INCLUDING SetBrightness(100), then powers the backlight OFF, and the
+ * dead-man revert re-applies the same literal, so the guard actively
+ * re-creates the failure. Literals belong to blank/wake, where a constant is
+ * exactly what is wanted.
+ */
+export function displayRecipeBrightnessIssue(step: RecipeStepDoc): string | null {
+  const spanOk = (scale?: [number, number]): boolean =>
+    !scale || scale[1] - scale[0] >= DISPLAY_RECIPE_MIN_BRIGHTNESS_SCALE_SPAN;
+  const narrow =
+    `brightness scale span is too narrow — ${MIN_SAFE_BRIGHTNESS_PERCENT}% would round to the ` +
+    `scale minimum (need a span of at least ${DISPLAY_RECIPE_MIN_BRIGHTNESS_SCALE_SPAN})`;
+
+  switch (step.kind) {
+    case 'sysfs':
+      if (step.valueFrom !== 'percent') {
+        return (
+          'a brightness step must be percent-derived (valueFrom:"percent") — a literal value ' +
+          'bypasses the MIN_SAFE brightness floor and the dead-man revert re-applies it'
+        );
+      }
+      return spanOk(step.scale) ? null : narrow;
+    case 'broadcast': {
+      const extras = step.extras ?? [];
+      if (!extras.some((e) => e.from === 'percent')) {
+        return (
+          'a brightness broadcast must carry at least one percent-derived extra — an ' +
+          'all-literal broadcast is a constant and bypasses the MIN_SAFE brightness floor'
+        );
+      }
+      return extras.every((e) => e.from !== 'percent' || spanOk(e.scale)) ? null : narrow;
+    }
+    case 'settings':
+      return spanOk(step.scale) ? null : narrow;
+  }
+}
 
 /** Device: MATCH_RE = ^[A-Za-z0-9 ._+()\-/]{1,128}$ — a token the device would reject is refused here. */
 const RecipeMatchToken = z
@@ -833,7 +1095,27 @@ export const DisplayVendorRecipeSchema = z
   .refine(
     (r) => !!(r.brightness || r.blank || r.wake),
     'a recipe with no brightness/blank/wake does nothing',
-  );
+  )
+  /**
+   * THE SLOT-AWARE HALF (2026-08-13 verify wave, P1). The step schemas above
+   * are capability-agnostic; the device's `RecipeValidator.validateStep`
+   * takes the CAPABILITY and applies extra rules to BRIGHTNESS only. Without
+   * this, `{brightness:{kind:'sysfs', path:'…/bl_power', value:'4'}}` saved
+   * with a 200, shipped to every screen, and was then REJECTED WHOLE on the
+   * device — so the vendor's blank AND wake steps died too, silently, with
+   * the dashboard showing a saved recipe.
+   */
+  .superRefine((r, ctx) => {
+    if (!r.brightness) return;
+    const why = displayRecipeBrightnessIssue(r.brightness);
+    if (why) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['brightness'],
+        message: why,
+      });
+    }
+  });
 export type DisplayVendorRecipeDoc = z.infer<typeof DisplayVendorRecipeSchema>;
 
 export const DisplayVendorRecipeUpsertSchema = z
@@ -873,10 +1155,69 @@ export interface DisplayManifestBlock {
     allowBlack: false;
   };
   /**
-   * The active recipe CATALOG, not a per-screen selection. The player picks
-   * the row whose `match` block fits its own Build.* identity. Keeping the
-   * choice on-device is what lets this block stay identical for every screen
-   * in the fleet and independent of Screen.displayCapabilities.
+   * ── THE VENDOR-RECIPE WIRE FIELD — `display.vendorRecipes` ─────────────
+   *
+   * THE P0 THIS CLOSES (2026-08-13 verify wave, P0-3). The server emitted
+   * `display.vendorRecipes` (an ARRAY catalog) and the device's
+   * `DisplayConfigParser` read `display.recipe` (a SINGLE object). Neither
+   * end was wrong on its own; nobody had agreed a name, so every recipe
+   * SUPER_ADMIN saved reached the glass as `null` and BRIGHTNESS fell to
+   * software dim fleet-wide with no error anywhere.
+   *
+   * THE NAME IS `vendorRecipes`, AND THE SHAPE IS THE CATALOG. This is not a
+   * coin flip — it is forced by the manifest cache contract:
+   *   • Serving ONE pre-selected recipe means MATCHING server-side, which
+   *     needs the screen's Build.* identity, which lives ONLY in
+   *     `Screen.displayCapabilities`.
+   *   • That column is in SCREEN_TELEMETRY_ONLY_FIELDS precisely so a boot
+   *     -time capability report cannot invalidate the manifest cache. The
+   *     moment the manifest derives from it, that registration flips from an
+   *     optimisation into a correctness bug (stale manifests fleet-wide) and
+   *     taking it OFF the list re-creates the 25 GB/mo Supabase egress the
+   *     cache was built to kill.
+   * So the server ships the catalog and the DEVICE picks the row whose
+   * `match` block fits its own `Build.MANUFACTURER/MODEL/BOARD`
+   * (`RecipeMatch.matches`, case-insensitive exact on each field that is
+   * PRESENT). That keeps this block byte-identical for every screen in the
+   * fleet, which is also what keeps its ETag stable.
+   *
+   * DEVICE CONTRACT (what `DisplayConfigParser` must implement):
+   *   `display.vendorRecipes` is an array, already ordered by the server
+   *   MOST-SPECIFIC-FIRST (priority desc, then vendorId asc). The device
+   *   takes the FIRST entry whose `recipe.match` fits, and rejects that one
+   *   recipe WHOLE if `RecipeValidator` refuses it — it must NOT fall
+   *   through to the next entry, because "the recipe I configured was
+   *   refused" and "a different vendor's recipe is now driving this panel"
+   *   are very different outcomes on a screen nobody can reach. An absent,
+   *   empty or all-rejected array means "no vendor recipe", which is the
+   *   safe reading: the provider chain falls back to sysfs/settings/software
+   *   -dim exactly as it does on a box with no recipe at all.
+   *   Entry shape: `{ vendorId, priority, recipe }` where `recipe` is a
+   *   [DisplayVendorRecipeDoc] — the same document `RecipeParser.parseObject`
+   *   already consumes, so only the ARRAY WRAPPER is new work on-device.
    */
-  vendorRecipes: Array<{ vendorId: string; priority: number; recipe: unknown }>;
+  vendorRecipes: DisplayVendorRecipeManifestEntry[];
 }
+
+/** One row of the `display.vendorRecipes` catalog. */
+export interface DisplayVendorRecipeManifestEntry {
+  vendorId: string;
+  /** Server-assigned sort key. Higher wins; the array is already sorted. */
+  priority: number;
+  /**
+   * Typed as `unknown` on purpose: rows are read straight out of a `Json`
+   * column, so an OLDER row written before a schema tightening is not
+   * guaranteed to satisfy today's [DisplayVendorRecipeDoc]. The device
+   * re-validates every recipe on load (`RecipeParser` → `RecipeValidator`),
+   * which is where a stale row is caught — the same "re-validate on read"
+   * discipline as `HostAllowlist.sanitizePersistedApiRoot`.
+   */
+  recipe: unknown;
+}
+
+/**
+ * The manifest key the vendor-recipe catalog rides on. Exported so the API
+ * builder, the tests and any future consumer name it once — the P0 above was
+ * a literal string typed differently at each end.
+ */
+export const DISPLAY_MANIFEST_VENDOR_RECIPES_KEY = 'vendorRecipes' as const;
