@@ -650,8 +650,14 @@ function ScreenDiagnostics({ screen, groupSyncLocked }: { screen: any; groupSync
           'Last OTA',
           otaState ? (
             <span className="flex flex-col">
-              <span className="font-semibold">
-                {otaState}{otaProg != null && otaProg < 100 ? ` ${otaProg}%` : ''}
+              {/* 2026-08-14 — UP_TO_DATE is the terminal state of a healthy
+                  check (added because the player used to return silently and
+                  leave every healthy screen pinned on CHECKING). Render it
+                  green + in plain English; leave every other state on the raw
+                  token so an unfamiliar one is never disguised as normal. */}
+              <span className={`font-semibold ${otaState === 'UP_TO_DATE' ? 'text-emerald-700' : otaState === 'ERROR' ? 'text-rose-700' : ''}`}>
+                {otaState === 'UP_TO_DATE' ? 'Up to date' : otaState}
+                {otaProg != null && otaProg < 100 ? ` ${otaProg}%` : ''}
               </span>
               {otaMsg && <span className="text-[10px] text-slate-500 truncate" title={otaMsg}>{otaMsg}</span>}
               {otaAt && <span className="text-[10px] text-slate-400">{timeAgo(otaAt)}</span>}
@@ -1306,13 +1312,22 @@ function ScreenSettingsMenu({
 
             // Effective stage — device truth first, wall-clock only as a
             // last resort.
-            const effectiveStage: 'idle' | 'pending' | 'checking' | 'downloading' | 'verifying' | 'installing' | 'installed' | 'error' | 'timeout' =
+            // 2026-08-14 — `uptodate` is a TERMINAL SUCCESS stage, not a
+            // fault. Before the player reported it, a healthy up-to-date
+            // kiosk answered a push with CHECKING and then went silent
+            // forever, so this machine sat on 'pending' (spinner) for the
+            // full 35 min and then fell into 'timeout' — amber warning
+            // chrome on a screen that did exactly the right thing. It must
+            // be matched BEFORE the isTimedOut/isInFlight fallbacks so a
+            // healthy screen never renders as a warning.
+            const effectiveStage: 'idle' | 'pending' | 'checking' | 'downloading' | 'verifying' | 'installing' | 'installed' | 'uptodate' | 'error' | 'timeout' =
               stage === 'installed' || updatedSincePush ? 'installed' :
               deviceTruth === 'INSTALLED' ? 'installed' :
               deviceTruth === 'ERROR' ? 'error' :
               deviceTruth === 'INSTALLING' ? 'installing' :
               deviceTruth === 'VERIFYING' ? 'verifying' :
               deviceTruth === 'DOWNLOADING' ? 'downloading' :
+              deviceTruth === 'UP_TO_DATE' ? 'uptodate' :
               deviceTruth === 'CHECKING' ? 'checking' :
               isTimedOut ? 'timeout' :
               isInFlight ? 'pending' :
@@ -1320,6 +1335,7 @@ function ScreenSettingsMenu({
 
             const stageIcon: React.ReactNode =
               effectiveStage === 'installed' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> :
+              effectiveStage === 'uptodate'  ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> :
               effectiveStage === 'error'     ? <WifiOff className="w-4 h-4 text-rose-600 shrink-0" /> :
               effectiveStage === 'timeout'   ? <WifiOff className="w-4 h-4 text-amber-600 shrink-0" /> :
               ['pending', 'checking', 'downloading', 'verifying', 'installing'].includes(effectiveStage)
@@ -1337,6 +1353,7 @@ function ScreenSettingsMenu({
 
             const stageLabel =
               effectiveStage === 'installed'   ? `Kiosk installed v${currentVersion} ✓` :
+              effectiveStage === 'uptodate'    ? `Kiosk checked in — already on v${currentVersion || latestVersion || '?'} ✓` :
               effectiveStage === 'error'       ? `Install error: ${otaMessage || 'unknown error'}` :
               effectiveStage === 'installing'  ? `Installing on kiosk... ${otaMessage || ''}` :
               effectiveStage === 'verifying'   ? `Verifying APK signature on kiosk...` :
@@ -1349,16 +1366,22 @@ function ScreenSettingsMenu({
                                                  'Push update to this screen';
             const stageColor =
               effectiveStage === 'installed' ? 'text-emerald-700 font-bold' :
+              // Terminal SUCCESS — must be green, never the amber/rose
+              // in-flight-or-broken chrome.
+              effectiveStage === 'uptodate'  ? 'text-emerald-700 font-bold' :
               effectiveStage === 'error'     ? 'text-rose-700 font-bold' :
               effectiveStage === 'timeout'   ? 'text-amber-700 font-bold' :
               isInFlight                     ? 'text-indigo-700 font-bold' :
                                                  'text-slate-700 font-semibold';
             // Sub-line — surface real device telemetry when in-flight.
-            const subline = isInFlight
-              ? (deviceTruth
-                  ? `Kiosk last reported ${deviceTruth} ${otaAt ? new Date(otaAt).toLocaleTimeString() : ''}`
-                  : `If WS push didn’t reach kiosk, periodic check installs within 30 min`)
-              : 'Manual only — auto-update is OFF unless you toggle it in Settings';
+            const subline =
+              effectiveStage === 'uptodate'
+                ? `Kiosk answered the push at ${otaAt ? new Date(otaAt).toLocaleTimeString() : 'check-in'} — nothing newer to install`
+                : isInFlight
+                  ? (deviceTruth
+                      ? `Kiosk last reported ${deviceTruth} ${otaAt ? new Date(otaAt).toLocaleTimeString() : ''}`
+                      : `If WS push didn’t reach kiosk, periodic check installs within 30 min`)
+                  : 'Manual only — auto-update is OFF unless you toggle it in Settings';
             return (
               <button
                 type="button"

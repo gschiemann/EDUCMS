@@ -8829,6 +8829,13 @@ function PlayerPage() {
                     case 'INSTALLED':
                       stage = { emoji: '✅', label: `Update complete${verLabel}. Player will restart.` };
                       break;
+                    // 2026-08-14 — terminal state of a healthy check. The APK
+                    // used to return silently here, so a pushed-but-already-
+                    // current kiosk sat on "Checking for update…" until the
+                    // 8-min auto-clear. Say what actually happened instead.
+                    case 'UP_TO_DATE':
+                      stage = { emoji: '✅', label: realMsg || 'Already up to date — nothing to install.' };
+                      break;
                     case 'ERROR':
                       stage = { emoji: '⚠️', label: realMsg || 'Update failed — will retry on next OTA tick.' };
                       break;

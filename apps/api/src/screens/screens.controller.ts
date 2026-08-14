@@ -1002,9 +1002,18 @@ export class ScreensController {
   // stopwatch theater.
   //
   // Body shape (all optional except state):
-  //   { state: 'CHECKING'|'DOWNLOADING'|'VERIFYING'|'INSTALLING'|'INSTALLED'|'ERROR',
+  //   { state: 'CHECKING'|'DOWNLOADING'|'VERIFYING'|'INSTALLING'|'INSTALLED'
+  //            |'UP_TO_DATE'|'ERROR',
   //     progress?: 0-100,   // download %, only meaningful during DOWNLOADING
   //     message?: string }  // human-readable detail (used for ERROR)
+  //
+  // 2026-08-14 — UP_TO_DATE added. It is the TERMINAL state of a healthy
+  // check: the player reports CHECKING at the head of every cycle and, until
+  // this landed, returned silently when the server had nothing newer — so a
+  // perfectly healthy screen sat on CHECKING forever and was indistinguishable
+  // from a wedged one (all four pilot boxes were in exactly that state).
+  // Old APKs that never send it are unaffected; they simply keep the legacy
+  // pinned-CHECKING behaviour until they take an OTA.
   //
   // Public (no auth) for the same reason /screens/status is public:
   // the kiosk has a device JWT but using it adds latency; this
@@ -1048,7 +1057,11 @@ export class ScreensController {
     }
 
     const ALLOWED = new Set([
-      'CHECKING', 'DOWNLOADING', 'VERIFYING', 'INSTALLING', 'INSTALLED', 'ERROR',
+      'CHECKING', 'DOWNLOADING', 'VERIFYING', 'INSTALLING', 'INSTALLED',
+      // Terminal success state of a check that found nothing to install.
+      // Never a fault — the dashboard must render it green, not red.
+      'UP_TO_DATE',
+      'ERROR',
     ]);
     const state = String(body?.state || '').toUpperCase().trim();
     if (!ALLOWED.has(state)) {
