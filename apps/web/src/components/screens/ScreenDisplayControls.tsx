@@ -30,16 +30,28 @@
  * dead-man revert so a forgotten click can't strand a screen dark. A
  * permanent nightly off is the schedule editor's job, not this button's.
  *
- * ── 2026-08-13 remediation, and the two places rule 1 above now bends ──
+ * ── 2026-08-13 remediation, and the places rule 1 above now bends ──
  *
- * CONTRACT C3/C4 (lead). Blank/Wake render on EVERY screen, including one
- * that has never reported — the player's software floor cannot fail, so the
- * verdict names the mechanism, not the availability, and WAKE is the fleet's
- * only remote recovery from a dark screen. "A dark screen that cannot be
- * recovered from the dashboard is the worst outcome in this feature", so
- * that pair is fail-OPEN while REBOOT stays fail-CLOSED. The schedule row is
- * likewise un-gated: a screen paired an hour ago should still be givable a
- * nightly off before its first probe lands.
+ * CONTRACT C4 (lead), corrected. "Fail-OPEN for recovery, fail-CLOSED for
+ * risk" is per-ACTION, not per-PAIR — and the first cut of this panel got
+ * that wrong by shipping Blank and Wake as one indivisible row on a screen
+ * that has never reported. The API refuses BLANK on a null verdict
+ * (DISPLAY_CAPABILITIES_UNKNOWN: "Blanking stays disabled until it does —
+ * Wake still works"), and EVERY screen in the pilot has a null verdict today
+ * because the self-report ships in this same wave and no field APK carries
+ * it. So that Blank button was not an edge case, it was a control with a
+ * 100% failure rate on the entire fleet.
+ *
+ * What an unreported screen now gets is exactly the set of actions the
+ * server's own gate accepts on a null verdict, and nothing else:
+ *   • WAKE            — can only ever make a dark screen visible.
+ *   • SET_BRIGHTNESS  — at or above RECOVERY_MIN_BRIGHTNESS, i.e. raises
+ *                       only; the slider's `min` IS that floor, so its
+ *                       whole travel is acceptable to the API.
+ *   • the on/off schedule — a screen paired an hour ago should still be
+ *                       givable a nightly off before its first probe lands.
+ * BLANK, volume and reboot render as explainer TEXT that says the screen
+ * has not reported yet — never as a dead control.
  *
  * NO DEVICE OWNER (product decision, 2026-08-13). We are not provisioning
  * the APK as Android device owner, so on today's real fleet `reboot`
@@ -70,7 +82,6 @@ import {
   resolveDisplayControls,
   clampBrightness,
   clampVolume,
-  MIN_SAFE_BRIGHTNESS,
   BLANK_AUTO_WAKE_MS,
 } from './display-capabilities';
 
@@ -242,12 +253,28 @@ export function ScreenDisplayControls({
     setBusy(action);
     setStatus(null);
     try {
-      await control.mutateAsync({
+      const res = await control.mutateAsync({
         screenId: screen.id,
         action,
         percent: opts.percent,
         revertAfterMs: opts.revertAfterMs,
       });
+      // DELIVERY HONESTY. `success:true` only means the API accepted and
+      // audited the action; `delivered` is the field that says it provably
+      // left the process toward the screen. When Redis is down (a supported
+      // deploy state — CLAUDE.md: "Redis missing → API boots anyway") the
+      // fan-out reaches only screens socketed to THIS replica, and there is
+      // no manifest backstop for immediate actions. Painting the emerald
+      // "sent" row there tells an operator a dark screen was woken when it
+      // was not — the one lie this panel must never tell.
+      //
+      // Strict `=== false`: an API build that predates the field returns it
+      // as undefined, and "the server didn't tell us" must not be rendered
+      // as "we know it failed". Only an explicit false is a failure.
+      if (res?.delivered === false) {
+        setStatus({ ok: false, msg: t('screens.display.notDelivered') });
+        return;
+      }
       setStatus({ ok: true, msg: opts.okMsg });
     } catch (e) {
       setStatus({
@@ -291,9 +318,60 @@ export function ScreenDisplayControls({
 
   const disabled = !!readOnly;
 
-  // Blank / Wake. Rendered from a helper because it appears in BOTH the
-  // reported and the never-reported layout (contract C3) — the software
-  // floor is unconditional, so this pair is too.
+  // Brightness. Rendered in BOTH layouts, because a raise is a recovery
+  // action the API accepts on a screen that has never reported — the only
+  // difference is the floor (and therefore what the slider can even express)
+  // and the copy. `caps.brightness.floor` is the API's own gate value, so
+  // every position on this track is a request the server will take.
+  const brightnessRow = caps.brightness.available && (
+    <LevelRow
+      icon={<Sun className="w-3.5 h-3.5 text-slate-400" />}
+      label={
+        caps.brightness.softwareOnly
+          ? t('screens.display.brightnessSoftwareLabel')
+          : t('screens.display.brightness')
+      }
+      // `min` is passed to every brightness note; only the recovery-only
+      // copy interpolates it, and next-intl ignores unused values.
+      note={caps.brightness.noteKey ? t(caps.brightness.noteKey, { min: caps.brightness.floor }) : null}
+      min={caps.brightness.floor}
+      reported={reportedBrightness}
+      unknownPark={100}
+      unknownHint={t('screens.display.levelUnknown')}
+      disabled={disabled || lockedBy('SET_BRIGHTNESS')}
+      accentClass="accent-amber-500"
+      onCommit={(p) => {
+        const pct = clampBrightness(p, caps.brightness.floor);
+        send('SET_BRIGHTNESS', {
+          percent: pct,
+          okMsg: t('screens.display.brightnessSent', { percent: pct }),
+        });
+      }}
+    />
+  );
+
+  // Wake — recovery direction, rendered on every screen (C3/C4).
+  const wakeButton = (
+    <button
+      type="button"
+      disabled={disabled || lockedBy('WAKE')}
+      onClick={(e) => {
+        e.stopPropagation();
+        send('WAKE', { okMsg: t('screens.display.wakeSent') });
+      }}
+      className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+    >
+      {busy === 'WAKE' ? (
+        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+      ) : (
+        <Monitor className="w-3.5 h-3.5" />
+      )}
+      {t('screens.display.wake')}
+    </button>
+  );
+
+  // Blank + Wake, for a screen that HAS reported. Both actions resolve here,
+  // so both are buttons.
   const blankWakeRow = (
     <div className="px-3.5 py-2.5 border-t border-slate-100">
       <div className="flex items-center gap-2">
@@ -318,22 +396,7 @@ export function ScreenDisplayControls({
           )}
           {t('screens.display.blank')}
         </button>
-        <button
-          type="button"
-          disabled={disabled || lockedBy('WAKE')}
-          onClick={(e) => {
-            e.stopPropagation();
-            send('WAKE', { okMsg: t('screens.display.wakeSent') });
-          }}
-          className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          {busy === 'WAKE' ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <Monitor className="w-3.5 h-3.5" />
-          )}
-          {t('screens.display.wake')}
-        </button>
+        {wakeButton}
       </div>
       <p className="text-[10px] text-slate-400 leading-snug mt-1">
         {caps.blank.noteKey ? t(caps.blank.noteKey) : ''}{' '}
@@ -341,6 +404,29 @@ export function ScreenDisplayControls({
           minutes: Math.round(BLANK_AUTO_WAKE_MS / 60_000),
         })}
       </p>
+    </div>
+  );
+
+  // Wake alone, for a screen that has NEVER reported. Blank is not a
+  // disabled button here — a greyed control still reads as "this exists,
+  // something is wrong with my permissions". It is a sentence saying the
+  // screen has not reported yet, matching how volume:none and reboot:none
+  // already render, and matching the API's own refusal message.
+  const wakeOnlyRow = (
+    <div className="px-3.5 py-2.5 border-t border-slate-100">
+      <div className="flex items-center gap-2">{wakeButton}</div>
+      <p className="text-[10px] text-slate-400 leading-snug mt-1">
+        {caps.wake.noteKey ? t(caps.wake.noteKey) : ''}
+      </p>
+      <div className="flex items-start gap-2 mt-2">
+        <MonitorOff className="w-3.5 h-3.5 text-slate-300 shrink-0 mt-0.5" />
+        <div className="min-w-0">
+          <div className="text-[11px] font-bold text-slate-400">{t('screens.display.blank')}</div>
+          <p className="text-[10px] text-slate-400 leading-snug">
+            {caps.blank.noteKey ? t(caps.blank.noteKey) : ''}
+          </p>
+        </div>
+      </div>
     </div>
   );
 
@@ -381,9 +467,10 @@ export function ScreenDisplayControls({
   );
 
   // ── Nothing reported yet ────────────────────────────────────────────
-  // Explainer + the two fail-open controls, nothing else. Volume,
-  // brightness and reboot are all still withheld — tri-state discipline
-  // holds for everything that isn't a recovery path.
+  // Explainer + EXACTLY the actions the server gate accepts on a null
+  // verdict: Wake, a brightness raise, and the schedule. Volume, Blank and
+  // Reboot are withheld — the API refuses all three here, so a button for
+  // any of them would fail 100% of the time.
   if (!caps.reported) {
     return (
       <div className="bg-slate-50/60">
@@ -394,7 +481,8 @@ export function ScreenDisplayControls({
             {t('screens.display.notReported')}
           </p>
         </div>
-        {blankWakeRow}
+        {brightnessRow}
+        {wakeOnlyRow}
         {scheduleRow}
         {statusRow}
       </div>
@@ -439,31 +527,9 @@ export function ScreenDisplayControls({
       )}
 
       {/* ── Brightness ─────────────────────────────────────────── */}
-      {caps.brightness.available && (
-        <LevelRow
-          icon={<Sun className="w-3.5 h-3.5 text-slate-400" />}
-          label={
-            caps.brightness.softwareOnly
-              ? t('screens.display.brightnessSoftwareLabel')
-              : t('screens.display.brightness')
-          }
-          note={caps.brightness.noteKey ? t(caps.brightness.noteKey) : null}
-          min={MIN_SAFE_BRIGHTNESS}
-          reported={reportedBrightness}
-          unknownPark={100}
-          unknownHint={t('screens.display.levelUnknown')}
-          disabled={disabled || lockedBy('SET_BRIGHTNESS')}
-          accentClass="accent-amber-500"
-          onCommit={(p) =>
-            send('SET_BRIGHTNESS', {
-              percent: clampBrightness(p),
-              okMsg: t('screens.display.brightnessSent', { percent: clampBrightness(p) }),
-            })
-          }
-        />
-      )}
+      {brightnessRow}
 
-      {/* ── Blank / Wake — always present (contract C3) ─────────── */}
+      {/* ── Blank / Wake — both resolve once a verdict exists ───── */}
       {blankWakeRow}
 
       {/* ── Reboot ─────────────────────────────────────────────── */}

@@ -21,7 +21,7 @@
 import * as React from 'react';
 import { render, screen as rtl, fireEvent, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { DISPLAY_ACTIONS } from '@cms/api-types';
+import { DISPLAY_ACTIONS, DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT } from '@cms/api-types';
 import { ScreenDisplayControls } from '../ScreenDisplayControls';
 
 const apiFetchMock = jest.fn().mockResolvedValue({ success: true });
@@ -51,6 +51,18 @@ const CAPABLE = {
 };
 
 /**
+ * The vocabulary a CURRENT APK actually reports: DisplayControlRegistry
+ * provider ids (contract C5), on a fleet with no device owner.
+ */
+const REGISTRY_FLEET = {
+  volume: 'audiomanager',
+  brightness: 'sysfs-backlight',
+  screenBlank: 'screen-timeout',
+  reboot: 'none',
+  deviceOwnerPath: 'provisionable-after-factory-reset',
+};
+
+/**
  * What the ENTIRE real fleet looks like after the 2026-08-13 product
  * decision not to provision as Android device owner: no reboot, and the
  * blank path is whatever device-admin/software floor the box has.
@@ -66,25 +78,56 @@ const NO_DEVICE_OWNER = {
 beforeEach(() => apiFetchMock.mockClear());
 
 describe('ScreenDisplayControls — what actually reaches the DOM', () => {
-  it('renders no sliders and no reboot before the screen has reported', () => {
+  it('renders no volume slider and no reboot before the screen has reported', () => {
     renderPanel(null);
-    expect(rtl.queryByRole('slider')).toBeNull();
+    // Brightness (raise-only) is the ONLY slider; volume has no recovery
+    // direction and the API refuses it on a null verdict.
+    expect(rtl.getAllByRole('slider')).toHaveLength(1);
     expect(rtl.queryByRole('button', { name: /Restart device/ })).toBeNull();
     expect(rtl.getByText(/hasn’t reported what it can control/i)).toBeTruthy();
   });
 
-  // Contract C3/C4. This REPLACES the previous "renders NO controls at all"
-  // assertion, which encoded the pre-remediation reading. Blank/Wake ride an
-  // unconditional software floor, and Wake is the one control that can only
-  // ever make a dark screen visible — so it is never withheld pending a
-  // probe. An unrecoverable dark screen is the worst outcome in this feature.
-  it('still offers Blank/Wake (and the schedule) on a screen that never reported', () => {
+  // Contract C4, per-ACTION. This REPLACES "still offers Blank/Wake", which
+  // shipped an ENABLED Blank button on a screen the API refuses BLANK for
+  // (DISPLAY_CAPABILITIES_UNKNOWN) — i.e. on every screen in the pilot,
+  // since no field APK carries the self-report yet. Wake stays, because an
+  // unrecoverable dark screen is the worst outcome in this feature; Blank
+  // becomes a sentence, not a dead button.
+  it('offers ONLY the recovery actions the API accepts on a screen that never reported', () => {
     renderPanel(null);
-    expect(rtl.getByRole('button', { name: /^Blank$/ })).toBeTruthy();
-    expect(rtl.getByRole('button', { name: /^Wake$/ })).toBeTruthy();
+    // Recovery direction: present and live.
+    expect(rtl.getByRole('button', { name: /^Wake$/ })).not.toBeDisabled();
+    expect(rtl.getByLabelText(/Brightness/)).toBeTruthy();
     expect(rtl.getByRole('button', { name: /On\/off schedule/ })).toBeTruthy();
-    expect(rtl.getByText(/hasn’t reported yet whether it can truly power its panel off/i))
-      .toBeTruthy();
+    // Risk direction: no control at all — not an enabled one, not a
+    // greyed-out one. A disabled button still reads as "this exists and
+    // something is wrong with me"; the truth is "this screen hasn't said".
+    expect(rtl.queryByRole('button', { name: /^Blank$/ })).toBeNull();
+    expect(rtl.getByText(/blanking stays off until it does/i)).toBeTruthy();
+    expect(rtl.getByText(/Wake always works, even before a screen reports/i)).toBeTruthy();
+  });
+
+  // The brightness slider on an unreported screen must not be able to
+  // express a request the API will refuse: its floor IS the server's
+  // recovery floor, so every position on the track is acceptable.
+  it('raise-only brightness slider starts at the server’s recovery floor', () => {
+    renderPanel(null);
+    const brightness = rtl.getByLabelText(/Brightness/) as HTMLInputElement;
+    expect(Number(brightness.min)).toBe(DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT);
+    expect(rtl.getByText(/brightness can only be RAISED/i)).toBeTruthy();
+  });
+
+  it('posts a raise-only brightness the API will accept on an unreported screen', async () => {
+    renderPanel(null);
+    const brightness = rtl.getByLabelText(/Brightness/) as HTMLInputElement;
+    // The slider cannot go below its min, but a hostile/keyboard value can.
+    fireEvent.change(brightness, { target: { value: '5' } });
+    await act(async () => {
+      fireEvent.blur(brightness);
+    });
+    const body = JSON.parse(apiFetchMock.mock.calls[0][1].body);
+    expect(body.action).toBe('SET_BRIGHTNESS');
+    expect(body.percent).toBeGreaterThanOrEqual(DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT);
   });
 
   it('renders both sliders, blank/wake and reboot on a fully-capable device', () => {
@@ -115,6 +158,31 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
     expect(rtl.getByRole('button', { name: /^Wake$/ })).toBeTruthy();
     expect(rtl.getByRole('button', { name: /On\/off schedule/ })).toBeTruthy();
     // No empty section: every direct child of the panel has content.
+    const panel = container.firstElementChild as HTMLElement;
+    Array.from(panel.children).forEach((child) => {
+      expect((child.textContent ?? '').trim().length).toBeGreaterThan(0);
+    });
+  });
+
+  // Same shape as the case above, but with the vocabulary a CURRENT APK
+  // really emits (registry provider ids, contract C5). Before C5 landed in
+  // the resolver this verdict rendered the never-reported layout — full
+  // controls silently downgraded to recovery-only on a healthy screen.
+  it('renders the real fleet’s REGISTRY verdict as fully reported, reboot absent', () => {
+    const { container } = renderPanel(REGISTRY_FLEET);
+    expect(rtl.getAllByRole('slider')).toHaveLength(2);
+    expect(rtl.getByRole('button', { name: /^Blank$/ })).toBeTruthy();
+    expect(rtl.getByRole('button', { name: /^Wake$/ })).toBeTruthy();
+    expect(rtl.queryByRole('button', { name: /Restart device/ })).toBeNull();
+    expect(rtl.getByText(/needs device-owner setup/i)).toBeTruthy();
+    // The screen-timeout blank mechanism gets its own hedged copy, not the
+    // absolute "truly turns the screen off".
+    expect(rtl.getByText(/Android screen timeout/i)).toBeTruthy();
+    expect(rtl.queryByText(/^Truly turns the screen off\./)).toBeNull();
+    // Real backlight control, so no "image only" label.
+    expect(rtl.getByLabelText('Brightness')).toBeTruthy();
+    // No empty section, no dangling divider anywhere in the reboot-absent
+    // layout — this is what the whole pilot fleet renders.
     const panel = container.firstElementChild as HTMLElement;
     Array.from(panel.children).forEach((child) => {
       expect((child.textContent ?? '').trim().length).toBeGreaterThan(0);
@@ -231,6 +299,37 @@ describe('ScreenDisplayControls — the wire shape (contract C1)', () => {
     const body = JSON.parse(apiFetchMock.mock.calls[0][1].body);
     expect(body.action).toBe('SET_VOLUME');
     expect(body.percent).toBe(30);
+  });
+
+  // DELIVERY HONESTY. `success:true` + `delivered:false` is what the API
+  // returns when Redis is down — a supported deploy state. The old panel
+  // painted the emerald "Wake command sent" row for it, telling the
+  // operator a dark screen had been woken when nothing left the process.
+  it('reports an UNDELIVERED action as a failure, not a green "sent" row', async () => {
+    apiFetchMock.mockResolvedValueOnce({
+      success: true,
+      delivered: false,
+      deliveryReason: 'redis_unavailable',
+    });
+    renderPanel(CAPABLE);
+    await act(async () => {
+      fireEvent.click(rtl.getByRole('button', { name: /^Wake$/ }));
+    });
+    await waitFor(() => expect(rtl.getByRole('status')).toBeTruthy());
+    const row = rtl.getByRole('status');
+    expect(row.textContent).toMatch(/Not delivered/i);
+    expect(row.className).toMatch(/rose/);
+    expect(rtl.queryByText(/Wake sent\./)).toBeNull();
+  });
+
+  it('still reports a DELIVERED action as sent', async () => {
+    apiFetchMock.mockResolvedValueOnce({ success: true, delivered: true, deliveryReason: null });
+    renderPanel(CAPABLE);
+    await act(async () => {
+      fireEvent.click(rtl.getByRole('button', { name: /^Wake$/ }));
+    });
+    await waitFor(() => expect(rtl.getByRole('status')).toBeTruthy());
+    expect(rtl.getByRole('status').textContent).toMatch(/Wake sent/i);
   });
 
   // Wake is the recovery control for Blank. Gating it on the action it

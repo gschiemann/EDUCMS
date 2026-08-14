@@ -613,6 +613,7 @@
       "rebootTypeBody": "This restarts a screen you may not be able to reach. Type {token} (uppercase) to go ahead.",
       "rebootSent": "Restart sent. The device should be back in about a minute.",
       "sendFailed": "Couldn’t send that command.",
+      "notDelivered": "Not delivered — the server accepted the command but couldn’t reach this screen’s live connection. Nothing changed on the screen. Try again in a moment; if it keeps failing, check that the screen is online.",
       "scheduleRow": "On/off schedule",
       "scheduleRowSub": "Turn this screen off at night — runs on the device, works offline",
       "groupScheduleBtn": "On/off",
@@ -630,7 +631,12 @@
         "rebootNeedsProvisioning": "Not available — remote restart needs device-owner setup, which means a factory reset and re-enrolling this box.",
         "rebootUnavailable": "Not available — this device hasn’t granted remote restart.",
         "blankDeviceAdmin": "Should turn the screen off. This box reports a device-admin app is active — if that admin isn’t our player, it falls back to covering the screen with black and the backlight stays lit.",
-        "blankUnknown": "Covers the screen with black. This screen hasn’t reported yet whether it can truly power its panel off, so assume the backlight stays lit."
+        "blankVendorRecipe": "Uses this manufacturer’s own power command, which on most panels is a real screen-off. If the command turns out to be wrong for this model, the player falls back to covering the screen with black.",
+        "blankScreenTimeout": "Uses the Android screen timeout to power the panel down. Most signage boxes honour it; a few ignore it and just show black.",
+        "blankNotReported": "Not available yet — until this screen says whether it can power its panel off, blanking stays off until it does. Wake and raising the brightness still work.",
+        "wakeNotReported": "Wake always works, even before a screen reports: it can only ever make a dark screen visible.",
+        "brightnessVendorRecipe": "Uses this manufacturer’s own backlight command — lower settings actually save power.",
+        "brightnessRecoveryOnly": "Until this screen reports what it can control, brightness can only be RAISED (never below {min}%) — we don’t darken hardware we haven’t seen."
       },
       "scheduleTitle": "On/off schedule",
       "scheduleForScreen": "Screen: {name}",

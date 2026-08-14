@@ -613,6 +613,7 @@
       "rebootTypeBody": "此操作会重启一台你可能无法到达的屏幕。请输入 {token}（大写）以继续。",
       "rebootSent": "重启指令已发送，设备约一分钟后恢复。",
       "sendFailed": "指令发送失败。",
+      "notDelivered": "未送达 — 服务器已接受该指令，但无法连接到这块屏幕的实时连接。屏幕上没有任何变化。请稍后重试；若持续失败，请检查该屏幕是否在线。",
       "scheduleRow": "开关机计划",
       "scheduleRowSub": "夜间自动关闭此屏幕 — 在设备本地运行，断网也有效",
       "groupScheduleBtn": "开关机",
@@ -630,7 +631,12 @@
         "rebootNeedsProvisioning": "不可用 — 远程重启需要设备所有者权限，这意味着要恢复出厂设置并重新登记此设备。",
         "rebootUnavailable": "不可用 — 此设备未授予远程重启权限。",
         "blankDeviceAdmin": "应该会关闭屏幕。该设备报告有设备管理员应用处于激活状态；如果那不是我们的播放器，则会回退到用黑色遮盖屏幕，背光仍然亮着。",
-        "blankUnknown": "用黑色遮盖屏幕。该屏幕尚未上报它是否能真正关闭面板，因此请假定背光仍然亮着。"
+        "blankVendorRecipe": "使用该厂商自有的关屏指令，在多数面板上是真正关屏。若该指令不适用于此型号，播放器会回退到用黑色遮盖屏幕。",
+        "blankScreenTimeout": "通过 Android 屏幕超时来关闭面板。多数标牌设备支持；少数会忽略，仅显示黑屏。",
+        "blankNotReported": "暂不可用 — 该屏幕尚未上报它能控制什么，因此在上报之前无法熄屏。唤醒和调高亮度仍可使用。",
+        "wakeNotReported": "唤醒始终可用，即使屏幕尚未上报：它只会让黑屏重新可见。",
+        "brightnessVendorRecipe": "使用该厂商自有的背光指令 — 调低确实能省电。",
+        "brightnessRecoveryOnly": "在该屏幕上报它能控制什么之前，亮度只能调高（不低于 {min}%）— 我们不会调暗尚未探明的硬件。"
       },
       "scheduleTitle": "开关机计划",
       "scheduleForScreen": "屏幕：{name}",

@@ -26,7 +26,10 @@
  * honesty logic in one auditable place.
  */
 
-import { MIN_SAFE_BRIGHTNESS_PERCENT } from '@cms/api-types';
+import {
+  MIN_SAFE_BRIGHTNESS_PERCENT,
+  DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT,
+} from '@cms/api-types';
 
 /**
  * BINDING CROSS-DOMAIN CONTRACTS (lead, 2026-08-13 remediation wave) — the
@@ -50,14 +53,55 @@ import { MIN_SAFE_BRIGHTNESS_PERCENT } from '@cms/api-types';
  *
  *  C4. Fail-OPEN for recovery, fail-CLOSED for risk. WAKE is the one control
  *      that can only ever make a dark screen visible, so it is never gated
- *      on a verdict. REBOOT stays gated (and, since the no-device-owner
- *      product decision, resolves to unavailable on the entire real fleet).
+ *      on a verdict — and neither is a brightness RAISE (accepted by the API
+ *      at or above DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT on a screen that
+ *      has never reported). BLANK, volume and REBOOT stay gated: the API
+ *      refuses all three on a null verdict, so rendering them enabled is a
+ *      control with a 100% failure rate. REBOOT additionally resolves to
+ *      unavailable on the entire real fleet (no device owner).
+ *
+ *  C5. THE DEVICE'S PROVIDER-ID VOCABULARY IS AUTHORITATIVE. The verdict is
+ *      written by DisplayCapabilityProbe.verdict(), which prefers
+ *      DisplayControlRegistry's resolved provider `id` strings and only falls
+ *      back to its own heuristic words when registry resolution threw. Both
+ *      vocabularies therefore appear on the wire, so both are accepted here.
+ *      The ids below were read out of the Kotlin, not guessed:
+ *        AudioManagerProvider.id       = "audiomanager"
+ *        VendorRecipeProvider.id       = "vendor-recipe"
+ *        SysfsBacklightProvider.id     = "sysfs-backlight"   (NOT "sysfs")
+ *        SettingsBrightnessProvider.id = "settings"
+ *        SoftwareDimProvider.id        = "software-dim"
+ *        DeviceAdminBlankProvider.id   = "device-admin"
+ *        ScreenTimeoutBlankProvider.id = "screen-timeout"
+ *        DeviceOwnerRebootProvider.id  = "device-owner"
+ *      An unknown string still degrades to `undefined` = "not reported",
+ *      never to a permissive guess.
  */
 
-/** Probe verdict axes — mirrors DisplayCapabilityProbe.kt's `verdict` block. */
+/**
+ * Probe verdict axes — mirrors DisplayCapabilityProbe.kt's `verdict` block,
+ * which emits EITHER a DisplayControlRegistry provider id (the normal path)
+ * OR its own heuristic word (the throw-fallback path). Legacy members are
+ * marked; they are kept because rows written by an older APK are already in
+ * `Screen.displayCapabilities` and must keep resolving to real copy.
+ */
 export type VolumeVerdict = 'audiomanager' | 'none';
-export type BrightnessVerdict = 'sysfs' | 'settings' | 'software-dim';
-export type ScreenBlankVerdict = 'device-owner' | 'device-admin' | 'none';
+export type BrightnessVerdict =
+  | 'vendor-recipe'
+  | 'sysfs-backlight'
+  /** Heuristic-fallback spelling of sysfs-backlight (and pre-C5 rows). */
+  | 'sysfs'
+  | 'settings'
+  | 'software-dim';
+export type ScreenBlankVerdict =
+  | 'vendor-recipe'
+  | 'device-admin'
+  | 'screen-timeout'
+  | 'software-dim'
+  /** Legacy: emitted before the registry owned this axis. */
+  | 'device-owner'
+  /** Legacy: "no privileged blank" — never "cannot blank" (contract C3). */
+  | 'none';
 export type RebootVerdict = 'device-owner' | 'none';
 export type HardPowerOffVerdict = 'serial-candidate' | 'none';
 export type DeviceOwnerPath =
@@ -88,6 +132,15 @@ export interface DisplayCapabilityVerdict {
 export const MIN_SAFE_BRIGHTNESS = MIN_SAFE_BRIGHTNESS_PERCENT;
 
 /**
+ * The floor a brightness request must clear to count as RECOVERY on a screen
+ * that has NEVER reported. Re-exported from the shared contract for the same
+ * reason as the floor above: `displayActionSupport('SET_BRIGHTNESS', null,
+ * {percent})` refuses anything below it, so a slider whose `min` is lower is
+ * a slider whose bottom half 409s.
+ */
+export const RECOVERY_MIN_BRIGHTNESS = DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT;
+
+/**
  * Dead-man revert the dashboard attaches to BLANK. Per the architecture,
  * operator-initiated actions carry a revert; scheduled ones never do. A
  * permanent nightly off belongs in the schedule editor, not in a button
@@ -95,9 +148,24 @@ export const MIN_SAFE_BRIGHTNESS = MIN_SAFE_BRIGHTNESS_PERCENT;
  */
 export const BLANK_AUTO_WAKE_MS = 10 * 60_000;
 
+// C5 — the union of every string the probe can put on the wire: the
+// registry provider ids (normal path) plus the heuristic/legacy words.
 const VOLUME_VALUES: readonly string[] = ['audiomanager', 'none'];
-const BRIGHTNESS_VALUES: readonly string[] = ['sysfs', 'settings', 'software-dim'];
-const BLANK_VALUES: readonly string[] = ['device-owner', 'device-admin', 'none'];
+const BRIGHTNESS_VALUES: readonly string[] = [
+  'vendor-recipe',
+  'sysfs-backlight',
+  'sysfs',
+  'settings',
+  'software-dim',
+];
+const BLANK_VALUES: readonly string[] = [
+  'vendor-recipe',
+  'device-admin',
+  'screen-timeout',
+  'software-dim',
+  'device-owner',
+  'none',
+];
 const REBOOT_VALUES: readonly string[] = ['device-owner', 'none'];
 const HARD_POWER_VALUES: readonly string[] = ['serial-candidate', 'none'];
 const OWNER_PATH_VALUES: readonly string[] = [
@@ -151,50 +219,109 @@ export interface ControlAxis {
 }
 
 export interface ResolvedDisplayControls {
-  /** The screen has sent a probe verdict. False → explainer only, no controls. */
+  /** The screen has sent a probe verdict. False → recovery controls only. */
   reported: boolean;
   verdict: DisplayCapabilityVerdict | null;
   volume: ControlAxis;
-  brightness: ControlAxis & { kind: BrightnessVerdict | null };
+  brightness: ControlAxis & {
+    kind: BrightnessVerdict | null;
+    /** Lowest percent the API will accept for THIS screen right now. */
+    floor: number;
+    /** True on an unreported screen: raises only, no darkening. */
+    recoveryOnly: boolean;
+  };
+  /** The BLANK action. Gated on a verdict (C4 — risk direction). */
   blank: ControlAxis;
+  /** The WAKE action. Never gated (C4 — recovery direction). */
+  wake: ControlAxis;
   reboot: ControlAxis;
 }
 
 const NOT_REPORTED: ControlAxis = { available: false, softwareOnly: false, noteKey: null };
 
 /**
- * CONTRACT C3 — Blank/Wake are ALWAYS available, on every verdict and on no
- * verdict at all. The software floor (window brightness + black overlay) is
- * unconditional in the player, so the only thing the verdict decides here is
- * WHICH TRUTH we print, never whether the pair renders.
+ * Does this verdict's blank mechanism reach the actual panel, or only cover
+ * it with black? `softwareOnly` drives the copy, never the availability.
  *
- * Two honesty subtleties baked in:
- *  - `device-admin` no longer claims "truly turns the screen off". The probe
+ * Honesty subtleties baked in:
+ *  - `device-admin` does NOT claim "truly turns the screen off". The probe
  *    sets that verdict when ANY app on the box is an active device admin
  *    (`dpm.activeAdmins`), which on a district image is routinely a
  *    third-party MDM and not us — `lockNow()` then throws SecurityException
  *    and the player silently falls through to the software floor. So the
- *    device-admin copy says "should", and only `device-owner` keeps the
- *    absolute wording.
- *  - "never reported" gets the software-floor copy rather than silence,
- *    because per C4 the WAKE half of this pair is the fleet's only remote
- *    recovery from a dark screen and must never be gated on a probe.
+ *    device-admin copy says "should", and only `device-owner` (legacy) keeps
+ *    the absolute wording.
+ *  - `screen-timeout` is the same shape of hedge: it drops the system screen
+ *    timeout to force the panel off, which most signage SoCs honour and some
+ *    ignore entirely.
+ *  - `vendor-recipe` is a DB-authored vendor command. It is the most likely
+ *    to be a real hardware off AND the most likely to be silently wrong (a
+ *    broadcast with no receiver is a no-op on Android), so it is hedged too.
  */
-export function resolveBlankAxis(mech: ScreenBlankVerdict | undefined): ControlAxis {
-  if (mech === 'device-owner') {
-    return { available: true, softwareOnly: false, noteKey: 'screens.display.note.blankHardware' };
+function blankNoteKey(mech: ScreenBlankVerdict | undefined): {
+  softwareOnly: boolean;
+  noteKey: string;
+} {
+  switch (mech) {
+    case 'device-owner':
+      return { softwareOnly: false, noteKey: 'screens.display.note.blankHardware' };
+    case 'device-admin':
+      return { softwareOnly: false, noteKey: 'screens.display.note.blankDeviceAdmin' };
+    case 'vendor-recipe':
+      return { softwareOnly: false, noteKey: 'screens.display.note.blankVendorRecipe' };
+    case 'screen-timeout':
+      return { softwareOnly: false, noteKey: 'screens.display.note.blankScreenTimeout' };
+    default:
+      // 'software-dim', legacy 'none', and anything unrecognised: the
+      // player's unconditional floor. Black overlay, backlight still lit.
+      return { softwareOnly: true, noteKey: 'screens.display.note.blankSoftware' };
   }
-  if (mech === 'device-admin') {
+}
+
+/**
+ * CONTRACT C3 + C4 — the pair splits.
+ *
+ * WAKE rides the player's unconditional software floor and can only ever make
+ * a dark screen visible, so it renders on every verdict AND on no verdict at
+ * all. `displayActionSupport('WAKE', null)` agrees: always supported.
+ *
+ * BLANK is the risk direction. `displayActionSupport('BLANK', null)` REFUSES
+ * with DISPLAY_CAPABILITIES_UNKNOWN ("Blanking stays disabled until it does —
+ * Wake still works"), so on an unreported screen the button is not a button:
+ * it is an explainer row. Every screen in the pilot is in that state today
+ * (the self-report ships with this wave and no field APK has it yet), which
+ * is why rendering it enabled was a control with a 100% failure rate rather
+ * than an edge case.
+ */
+export function resolveBlankAxis(
+  mech: ScreenBlankVerdict | undefined,
+  reported: boolean,
+): ControlAxis {
+  if (!reported) {
     return {
-      available: true,
-      softwareOnly: false,
-      noteKey: 'screens.display.note.blankDeviceAdmin',
+      available: false,
+      softwareOnly: true,
+      noteKey: 'screens.display.note.blankNotReported',
     };
   }
-  if (mech === 'none') {
-    return { available: true, softwareOnly: true, noteKey: 'screens.display.note.blankSoftware' };
+  const { softwareOnly, noteKey } = blankNoteKey(mech);
+  return { available: true, softwareOnly, noteKey };
+}
+
+/** WAKE — recovery direction, never gated (C3/C4). */
+export function resolveWakeAxis(
+  mech: ScreenBlankVerdict | undefined,
+  reported: boolean,
+): ControlAxis {
+  if (!reported) {
+    return {
+      available: true,
+      softwareOnly: true,
+      noteKey: 'screens.display.note.wakeNotReported',
+    };
   }
-  return { available: true, softwareOnly: true, noteKey: 'screens.display.note.blankUnknown' };
+  const { softwareOnly } = blankNoteKey(mech);
+  return { available: true, softwareOnly, noteKey: null };
 }
 
 /**
@@ -213,12 +340,26 @@ export function resolveDisplayControls(raw: unknown): ResolvedDisplayControls {
     return {
       reported: false,
       verdict: null,
+      // Volume and reboot have no recovery direction at all — the API
+      // refuses both on a null verdict, so neither renders.
       volume: NOT_REPORTED,
-      brightness: { ...NOT_REPORTED, kind: null },
-      // C3/C4: the blank/wake pair survives "never reported". Everything
-      // else stays honestly blank — but the ONE control that can rescue a
-      // dark screen is not something we withhold pending a probe.
-      blank: resolveBlankAxis(undefined),
+      // C4 recovery: a brightness RAISE is accepted on an unreported screen
+      // (>= RECOVERY_MIN_BRIGHTNESS), so the slider renders with its floor
+      // lifted to exactly what the API will take. Nothing below that is
+      // offered, because nothing below that would be executed.
+      brightness: {
+        available: true,
+        softwareOnly: true,
+        kind: null,
+        floor: RECOVERY_MIN_BRIGHTNESS,
+        recoveryOnly: true,
+        noteKey: 'screens.display.note.brightnessRecoveryOnly',
+      },
+      // Blank is withheld (risk); Wake is not (recovery). Splitting these
+      // is the whole point — an unrecoverable dark screen is the worst
+      // outcome in this feature, and a dead Blank button is the second.
+      blank: resolveBlankAxis(undefined, false),
+      wake: resolveWakeAxis(undefined, false),
       reboot: NOT_REPORTED,
     };
   }
@@ -230,31 +371,34 @@ export function resolveDisplayControls(raw: unknown): ResolvedDisplayControls {
         ? { available: false, softwareOnly: false, noteKey: 'screens.display.note.volumeNone' }
         : NOT_REPORTED;
 
-  const brightness: ControlAxis & { kind: BrightnessVerdict | null } =
-    verdict.brightness === 'sysfs'
-      ? {
-          available: true,
-          softwareOnly: false,
-          kind: 'sysfs',
-          noteKey: 'screens.display.note.brightnessSysfs',
-        }
-      : verdict.brightness === 'settings'
-        ? {
-            available: true,
-            softwareOnly: false,
-            kind: 'settings',
-            noteKey: 'screens.display.note.brightnessSettings',
-          }
-        : verdict.brightness === 'software-dim'
-          ? {
-              available: true,
-              softwareOnly: true,
-              kind: 'software-dim',
-              noteKey: 'screens.display.note.brightnessSoftware',
-            }
-          : { ...NOT_REPORTED, kind: null };
+  // C5: 'sysfs-backlight' is the real SysfsBacklightProvider id; 'sysfs' is
+  // the probe's heuristic-fallback spelling of the same thing. Both mean
+  // "real backlight control", so both get the same copy.
+  const brightnessNote: Record<BrightnessVerdict, { softwareOnly: boolean; noteKey: string }> = {
+    'vendor-recipe': { softwareOnly: false, noteKey: 'screens.display.note.brightnessVendorRecipe' },
+    'sysfs-backlight': { softwareOnly: false, noteKey: 'screens.display.note.brightnessSysfs' },
+    sysfs: { softwareOnly: false, noteKey: 'screens.display.note.brightnessSysfs' },
+    settings: { softwareOnly: false, noteKey: 'screens.display.note.brightnessSettings' },
+    'software-dim': { softwareOnly: true, noteKey: 'screens.display.note.brightnessSoftware' },
+  };
 
-  const blank: ControlAxis = resolveBlankAxis(verdict.screenBlank);
+  const brightness: ResolvedDisplayControls['brightness'] = verdict.brightness
+    ? {
+        available: true,
+        kind: verdict.brightness,
+        floor: MIN_SAFE_BRIGHTNESS,
+        recoveryOnly: false,
+        ...brightnessNote[verdict.brightness],
+      }
+    : {
+        ...NOT_REPORTED,
+        kind: null,
+        floor: MIN_SAFE_BRIGHTNESS,
+        recoveryOnly: false,
+      };
+
+  const blank: ControlAxis = resolveBlankAxis(verdict.screenBlank, true);
+  const wake: ControlAxis = resolveWakeAxis(verdict.screenBlank, true);
 
   const reboot: ControlAxis =
     verdict.reboot === 'device-owner'
@@ -272,13 +416,21 @@ export function resolveDisplayControls(raw: unknown): ResolvedDisplayControls {
           }
         : NOT_REPORTED;
 
-  return { reported: true, verdict, volume, brightness, blank, reboot };
+  return { reported: true, verdict, volume, brightness, blank, wake, reboot };
 }
 
-/** Clamp a remote brightness request to the safe floor. */
-export function clampBrightness(percent: number): number {
-  if (!Number.isFinite(percent)) return MIN_SAFE_BRIGHTNESS;
-  return Math.min(100, Math.max(MIN_SAFE_BRIGHTNESS, Math.round(percent)));
+/**
+ * Clamp a remote brightness request to the floor that applies to THIS screen.
+ *
+ * `floor` defaults to the universal safety floor. On a screen that has never
+ * reported, the caller passes RECOVERY_MIN_BRIGHTNESS instead — the API only
+ * accepts a raise there, so sending anything lower would 409 with a message
+ * the operator can do nothing about.
+ */
+export function clampBrightness(percent: number, floor: number = MIN_SAFE_BRIGHTNESS): number {
+  const lo = Math.min(100, Math.max(MIN_SAFE_BRIGHTNESS, Math.round(floor)));
+  if (!Number.isFinite(percent)) return lo;
+  return Math.min(100, Math.max(lo, Math.round(percent)));
 }
 
 /** Clamp a remote volume request to 0..100. */

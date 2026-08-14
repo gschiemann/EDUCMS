@@ -613,6 +613,7 @@
       "rebootTypeBody": "Esto reinicia una pantalla a la que quizá no puedas acceder. Escribe {token} (en mayúsculas) para continuar.",
       "rebootSent": "Reinicio enviado. El dispositivo debería volver en aproximadamente un minuto.",
       "sendFailed": "No se pudo enviar la orden.",
+      "notDelivered": "No se entregó — el servidor aceptó la orden pero no pudo alcanzar la conexión en vivo de esta pantalla. En la pantalla no cambió nada. Inténtalo de nuevo en un momento; si sigue fallando, comprueba que la pantalla esté en línea.",
       "scheduleRow": "Horario de encendido/apagado",
       "scheduleRowSub": "Apaga esta pantalla por la noche — se ejecuta en el dispositivo, funciona sin red",
       "groupScheduleBtn": "Horario",
@@ -630,7 +631,12 @@
         "rebootNeedsProvisioning": "No disponible — el reinicio remoto requiere configuración como propietario del dispositivo, lo que implica restablecer de fábrica y volver a registrar el equipo.",
         "rebootUnavailable": "No disponible — este dispositivo no ha concedido el reinicio remoto.",
         "blankDeviceAdmin": "Debería apagar la pantalla. Este equipo informa que hay una app de administración de dispositivos activa; si no es nuestro reproductor, cubrirá la pantalla de negro y la retroiluminación seguirá encendida.",
-        "blankUnknown": "Cubre la pantalla de negro. Esta pantalla aún no ha informado si puede apagar realmente su panel, así que asume que la retroiluminación sigue encendida."
+        "blankVendorRecipe": "Usa el comando de apagado propio de este fabricante, que en la mayoría de paneles apaga la pantalla de verdad. Si ese comando no es el correcto para este modelo, el reproductor cubrirá la pantalla de negro.",
+        "blankScreenTimeout": "Usa el tiempo de espera de pantalla de Android para apagar el panel. La mayoría de equipos de señalización lo respetan; algunos lo ignoran y solo muestran negro.",
+        "blankNotReported": "Aún no disponible — esta pantalla no ha informado qué puede controlar, así que apagarla queda desactivado hasta que lo haga. Encender y subir el brillo sí funcionan.",
+        "wakeNotReported": "Encender siempre funciona, incluso antes de que la pantalla informe: solo puede hacer visible una pantalla apagada.",
+        "brightnessVendorRecipe": "Usa el comando de retroiluminación propio de este fabricante — bajarlo ahorra energía de verdad.",
+        "brightnessRecoveryOnly": "Hasta que esta pantalla informe qué puede controlar, el brillo solo puede SUBIRSE (nunca por debajo del {min} %) — no oscurecemos hardware que no hemos visto."
       },
       "scheduleTitle": "Horario de encendido/apagado",
       "scheduleForScreen": "Pantalla: {name}",

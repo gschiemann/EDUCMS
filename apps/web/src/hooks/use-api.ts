@@ -394,13 +394,41 @@ export interface DisplayControlArgs {
   revertAfterMs?: number;
 }
 
+/**
+ * What POST /screens/:id/display-control hands back (ApplyActionResult in
+ * apps/api/src/display/display.service.ts).
+ *
+ * `delivered` is the load-bearing field and it is NOT implied by `success`.
+ * The API returns success:true the moment it has validated and audited the
+ * action; `delivered` is true ONLY when the message provably left the
+ * process toward the screen. With Redis down — a supported deploy state —
+ * the fan-out reaches only screens socketed to THIS replica, so
+ * `{success:true, delivered:false, deliveryReason:'redis_unavailable'}` is a
+ * FAILURE for the operator: nothing changed on the glass, and there is no
+ * manifest backstop for immediate actions the way there is for schedules.
+ * Typed here so a caller cannot quietly ignore it.
+ */
+export interface DisplayControlResult {
+  success: true;
+  action: ApiDisplayActionType;
+  mechanism: string;
+  percent: number | null;
+  clamped: boolean;
+  revertAfterMs: number | null;
+  actionId: string;
+  /** True only when the command provably left the API toward the screen. */
+  delivered: boolean;
+  /** 'redis_unavailable' | 'publish_failed' when delivered is false. */
+  deliveryReason: string | null;
+}
+
 export function useDisplayControl() {
-  return useMutation({
+  return useMutation<DisplayControlResult, Error, DisplayControlArgs>({
     mutationFn: async ({ screenId, action, percent, revertAfterMs }: DisplayControlArgs) => {
       const ac = new AbortController();
       const timer = setTimeout(() => ac.abort(), DISPLAY_CONTROL_TIMEOUT_MS);
       try {
-        return await apiFetch(`/screens/${screenId}/display-control`, {
+        return await apiFetch<DisplayControlResult>(`/screens/${screenId}/display-control`, {
           method: 'POST',
           signal: ac.signal,
           body: JSON.stringify({
