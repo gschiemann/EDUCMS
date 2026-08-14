@@ -273,7 +273,16 @@ export function recipeMatchesDevice(match: unknown, device: DeviceIdentity): boo
   for (const [want, have] of pairs) {
     if (typeof want !== 'string' || want.trim() === '') continue;
     if (typeof have !== 'string' || have.trim() === '') return false;
-    if (!have.toLowerCase().includes(want.trim().toLowerCase())) return false;
+    // EXACT, case-insensitive — deliberately NOT a substring test.
+    //
+    // This must mirror Kotlin `RecipeMatch.matches`, which uses
+    // `equals(ignoreCase = true)`. The device is the enforcement point: if we
+    // select a recipe here that the device then refuses, the vendor step is
+    // silently dropped and the box falls back to the software floor with no
+    // signal anywhere the operator can see. A substring test also matches far
+    // too much — a recipe for model "M43" would have claimed "M43GUQ-CS1382D-C"
+    // (a real box in the pilot fleet), firing another SKU's broadcasts at it.
+    if (have.trim().toLowerCase() !== want.trim().toLowerCase()) return false;
   }
   return true;
 }
@@ -579,6 +588,36 @@ export function installDisplayConfig(
     const recipeId = typeof cfg.recipe?.vendorId === 'string' ? cfg.recipe.vendorId : null;
     nativeCall<string>('displaySetSchedule', JSON.stringify(cfg))
       .then((res) => {
+        // ⚠️ A REFUSAL IS NOT A THROW. The APK answers a refused call with a
+        // JSON *string* — `{"ok":false,"code":"insecure-transport"}` — and
+        // resolves normally. Latching the fingerprint on that would mean the
+        // schedule is never retried: a screen that refused once (legacy
+        // transport, emergency hold active, a malformed block) would never
+        // blank at night, and nothing would ever say why. That is precisely
+        // the latch-on-refusal defect fixed for the emergency hold in
+        // emergencyHold.ts — same shape, one function over.
+        //
+        // So: keep the latch ONLY on an answer that is not an explicit
+        // refusal. An unparseable or empty answer is treated as success,
+        // because older APKs returned nothing meaningful here and re-arming
+        // the AlarmManager every 5–10 s poll is worse than trusting them.
+        let refused: string | null = null;
+        try {
+          const parsed = res ? (JSON.parse(res) as { ok?: unknown; code?: unknown }) : null;
+          if (parsed && parsed.ok === false) {
+            refused = typeof parsed.code === 'string' ? parsed.code : 'refused';
+          }
+        } catch {
+          /* not JSON — treat as success, see above */
+        }
+        if (refused) {
+          fpRef.current = prevFp;
+          console.warn(
+            `[display] displaySetSchedule REFUSED (${refused}) — not latching, ` +
+              'will retry on the next manifest poll',
+          );
+          return;
+        }
         console.log(
           `[display] schedule installed — ${cfg.schedules.length} window(s), ` +
             `recipe=${recipeId ?? 'none'} →`,

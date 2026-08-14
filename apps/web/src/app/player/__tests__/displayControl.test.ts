@@ -324,9 +324,27 @@ describe('vendor-recipe matching mirrors Kotlin RecipeMatch.matches', () => {
     expect(recipeMatchesDevice(undefined, { manufacturer: 'TCL' })).toBe(true);
   });
 
-  it('matches case-insensitively on a substring', () => {
-    expect(recipeMatchesDevice({ manufacturer: 'goodview' }, { manufacturer: 'Goodview Inc' }))
+  it('matches case-insensitively, but EXACTLY — never on a substring', () => {
+    // Case-insensitive equality, exactly as Kotlin's
+    // `RecipeMatch.matches` does with `equals(ignoreCase = true)`.
+    expect(recipeMatchesDevice({ manufacturer: 'goodview' }, { manufacturer: 'Goodview' }))
       .toBe(true);
+
+    // ⚠️ THIS TEST USED TO ASSERT THE OPPOSITE (2026-08-14). It was titled
+    // "matches on a substring" inside a describe block claiming to mirror
+    // Kotlin — while Kotlin does exact equality. So the test pinned a real
+    // defect: the web layer would select a recipe the device then silently
+    // refused, dropping the vendor step to the software floor with no signal
+    // anywhere the operator could see.
+    expect(recipeMatchesDevice({ manufacturer: 'goodview' }, { manufacturer: 'Goodview Inc' }))
+      .toBe(false);
+
+    // And the reason substring matching is dangerous rather than merely
+    // wrong: 'M43' is a real screen name in the pilot fleet and
+    // 'M43GUQ-CS1382D-C' is a real, DIFFERENT box's model. A substring rule
+    // would fire one SKU's vendor broadcasts at the other's panel.
+    expect(recipeMatchesDevice({ model: 'M43' }, { model: 'M43GUQ-CS1382D-C' }))
+      .toBe(false);
   });
 
   it('refuses when a constrained field is unknown on this device', () => {
