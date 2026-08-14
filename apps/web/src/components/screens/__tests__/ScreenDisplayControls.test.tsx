@@ -29,8 +29,19 @@ jest.mock('@/lib/api-client', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
 }));
 
-function renderPanel(displayCapabilities: unknown, props: { readOnly?: boolean } = {}) {
+/**
+ * Fixtures below are VERDICTS; the column holds the probe DOCUMENT with the
+ * verdict under a `verdict` key (what `normalizeCapabilityReport` writes).
+ * Since the 2026-08-14 sweep the resolver reads that column with the API's
+ * own `readStoredDisplayVerdict`, so a bare verdict is (correctly) "nothing
+ * reported" — the envelope is added here rather than in 20 call sites.
+ */
+function renderPanel(verdict: unknown, props: { readOnly?: boolean } = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const displayCapabilities =
+    verdict === null || verdict === undefined
+      ? verdict
+      : { schema: 1, reportedAt: 1_760_000_000_000, build: {}, verdict };
   return render(
     <QueryClientProvider client={qc}>
       <ScreenDisplayControls
@@ -330,6 +341,34 @@ describe('ScreenDisplayControls — the wire shape (contract C1)', () => {
     });
     await waitFor(() => expect(rtl.getByRole('status')).toBeTruthy());
     expect(rtl.getByRole('status').textContent).toMatch(/Wake sent/i);
+  });
+
+  /**
+   * A TIMED-OUT BLANK IS AN UNKNOWN, AND MUST READ AS ONE.
+   *
+   * `useDisplayControl` aborts a POST that hangs past its 12 s cap, so the
+   * button unwedges — but the rejection is a DOMException whose message is
+   * browser jargon ("The user aborted a request" / "Fetch is aborted").
+   * Rendering that verbatim reads as "the browser cancelled it", i.e. as
+   * nothing-happened, on the one action where the screen may in fact now be
+   * dark. The row must instead say we cannot tell, and name Wake.
+   */
+  it('renders a timed-out Blank as UNKNOWN, pointing at Wake — not as browser jargon', async () => {
+    const abort = new Error('The user aborted a request.');
+    abort.name = 'AbortError';
+    apiFetchMock.mockRejectedValueOnce(abort);
+    renderPanel(CAPABLE);
+    await act(async () => {
+      fireEvent.click(rtl.getByRole('button', { name: /^Blank$/ }));
+    });
+    await waitFor(() => expect(rtl.getByRole('status')).toBeTruthy());
+    const row = rtl.getByRole('status');
+    expect(row.textContent).toMatch(/can’t tell whether the screen got that command/i);
+    expect(row.textContent).toMatch(/press Wake/i);
+    expect(row.textContent).not.toMatch(/aborted/i);
+    expect(row.className).toMatch(/rose/);
+    // …and the recovery control is live, not stuck behind the dead request.
+    expect(rtl.getByRole('button', { name: /^Wake$/ })).not.toBeDisabled();
   });
 
   // Wake is the recovery control for Blank. Gating it on the action it

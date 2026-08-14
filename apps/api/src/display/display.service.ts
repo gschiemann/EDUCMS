@@ -44,6 +44,7 @@ import {
   clampBrightnessPercent,
   displayActionSupport,
   normalizeVerdict,
+  readStoredDisplayVerdict,
   type DisplayActionType,
   type DisplayCapabilityReport,
   type DisplayCapabilityReportInput,
@@ -107,35 +108,17 @@ export interface ApplyActionResult {
 /**
  * Read a stored capability document back into a verdict.
  *
- * Tolerant by design: the column is written by a device and read on a path
- * that gates operator UI. A malformed/legacy document must degrade to "we
- * know nothing" (every control disabled) rather than throw or, far worse,
- * be coerced into a permissive verdict.
+ * THE BODY MOVED (2026-08-14 sweep) to `readStoredDisplayVerdict` in
+ * `packages/api-types/src/display-control.ts`, unchanged, so the DASHBOARD
+ * resolver can call the identical function instead of keeping its own,
+ * looser copy of the rule — the divergence documented on that export let the
+ * panel enable a Blank button the API refuses. This alias stays because
+ * `verdictFromStored` is the name every call site and spec in this module
+ * already uses; it is deliberately a re-export, not a re-implementation.
  */
-export function verdictFromStored(
+export const verdictFromStored: (
   stored: unknown,
-): DisplayCapabilityVerdict | null {
-  if (!stored || typeof stored !== 'object' || Array.isArray(stored))
-    return null;
-  const v = (stored as any).verdict;
-  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
-  const str = (k: string): string | null =>
-    typeof v[k] === 'string' ? v[k] : null;
-  const volume = str('volume');
-  const brightness = str('brightness');
-  const screenBlank = str('screenBlank');
-  const reboot = str('reboot');
-  if (!volume || !brightness || !screenBlank || !reboot) return null;
-  return {
-    volume,
-    brightness,
-    screenBlank,
-    reboot,
-    hardPowerOff: str('hardPowerOff') ?? 'none',
-    deviceOwnerPath:
-      str('deviceOwnerPath') ?? 'provisionable-after-factory-reset',
-  } as DisplayCapabilityVerdict;
-}
+) => DisplayCapabilityVerdict | null = readStoredDisplayVerdict;
 
 /** Longest build string we will persist. The schema caps at 120; belt and braces. */
 const BUILD_FIELD_MAX = 120;

@@ -29,6 +29,13 @@
 import {
   MIN_SAFE_BRIGHTNESS_PERCENT,
   DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT,
+  DISPLAY_VOLUME_MECHANISMS,
+  DISPLAY_BRIGHTNESS_MECHANISMS,
+  DISPLAY_BLANK_MECHANISMS,
+  DISPLAY_REBOOT_MECHANISMS,
+  DISPLAY_HARD_POWER_OFF_MECHANISMS,
+  DISPLAY_DEVICE_OWNER_PATHS,
+  readStoredDisplayVerdict,
 } from '@cms/api-types';
 
 /**
@@ -85,29 +92,30 @@ import {
  * marked; they are kept because rows written by an older APK are already in
  * `Screen.displayCapabilities` and must keep resolving to real copy.
  */
-export type VolumeVerdict = 'audiomanager' | 'none';
-export type BrightnessVerdict =
-  | 'vendor-recipe'
-  | 'sysfs-backlight'
-  /** Heuristic-fallback spelling of sysfs-backlight (and pre-C5 rows). */
-  | 'sysfs'
-  | 'settings'
-  | 'software-dim';
-export type ScreenBlankVerdict =
-  | 'vendor-recipe'
-  | 'device-admin'
-  | 'screen-timeout'
-  | 'software-dim'
-  /** Legacy: emitted before the registry owned this axis. */
-  | 'device-owner'
-  /** Legacy: "no privileged blank" — never "cannot blank" (contract C3). */
-  | 'none';
-export type RebootVerdict = 'device-owner' | 'none';
-export type HardPowerOffVerdict = 'serial-candidate' | 'none';
-export type DeviceOwnerPath =
-  | 'held'
-  | 'blocked-other-owner'
-  | 'provisionable-after-factory-reset';
+/**
+ * ⚠️ THESE ARE DERIVED, NOT DECLARED (2026-08-14 sweep).
+ *
+ * This file used to restate all six mechanism unions AND their runtime
+ * string lists by hand — a THIRD copy of a vocabulary that already exists in
+ * the Kotlin (`override val id`) and in `@cms/api-types`. The drift guard
+ * (apps/api/src/display/display-mechanism-drift.spec.ts) parses the Kotlin
+ * and pins it against the SERVER enums; nothing pinned this copy, so the
+ * exact failure it was written to prevent stayed live one layer up: widen a
+ * server enum for a new provider id, the device reports it, the API stores
+ * it — and the dashboard silently drops that axis to "not reported", so the
+ * brightness slider disappears on precisely the boxes that have real
+ * hardware brightness control.
+ *
+ * Deriving from the shared constants makes that unrepresentable: a new
+ * mechanism is accepted here the moment the contract accepts it. Keep the
+ * per-member comments below on the CONSTANTS in api-types, not here.
+ */
+export type VolumeVerdict = (typeof DISPLAY_VOLUME_MECHANISMS)[number];
+export type BrightnessVerdict = (typeof DISPLAY_BRIGHTNESS_MECHANISMS)[number];
+export type ScreenBlankVerdict = (typeof DISPLAY_BLANK_MECHANISMS)[number];
+export type RebootVerdict = (typeof DISPLAY_REBOOT_MECHANISMS)[number];
+export type HardPowerOffVerdict = (typeof DISPLAY_HARD_POWER_OFF_MECHANISMS)[number];
+export type DeviceOwnerPath = (typeof DISPLAY_DEVICE_OWNER_PATHS)[number];
 
 export interface DisplayCapabilityVerdict {
   volume?: VolumeVerdict;
@@ -148,31 +156,15 @@ export const RECOVERY_MIN_BRIGHTNESS = DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT;
  */
 export const BLANK_AUTO_WAKE_MS = 10 * 60_000;
 
-// C5 — the union of every string the probe can put on the wire: the
-// registry provider ids (normal path) plus the heuristic/legacy words.
-const VOLUME_VALUES: readonly string[] = ['audiomanager', 'none'];
-const BRIGHTNESS_VALUES: readonly string[] = [
-  'vendor-recipe',
-  'sysfs-backlight',
-  'sysfs',
-  'settings',
-  'software-dim',
-];
-const BLANK_VALUES: readonly string[] = [
-  'vendor-recipe',
-  'device-admin',
-  'screen-timeout',
-  'software-dim',
-  'device-owner',
-  'none',
-];
-const REBOOT_VALUES: readonly string[] = ['device-owner', 'none'];
-const HARD_POWER_VALUES: readonly string[] = ['serial-candidate', 'none'];
-const OWNER_PATH_VALUES: readonly string[] = [
-  'held',
-  'blocked-other-owner',
-  'provisionable-after-factory-reset',
-];
+// C5 — the union of every string the probe can put on the wire: the registry
+// provider ids (normal path) plus the heuristic/legacy words. Taken from the
+// shared contract, never restated — see the note on the types above.
+const VOLUME_VALUES: readonly string[] = DISPLAY_VOLUME_MECHANISMS;
+const BRIGHTNESS_VALUES: readonly string[] = DISPLAY_BRIGHTNESS_MECHANISMS;
+const BLANK_VALUES: readonly string[] = DISPLAY_BLANK_MECHANISMS;
+const REBOOT_VALUES: readonly string[] = DISPLAY_REBOOT_MECHANISMS;
+const HARD_POWER_VALUES: readonly string[] = DISPLAY_HARD_POWER_OFF_MECHANISMS;
+const OWNER_PATH_VALUES: readonly string[] = DISPLAY_DEVICE_OWNER_PATHS;
 
 function pick<T extends string>(raw: unknown, allowed: readonly string[]): T | undefined {
   return typeof raw === 'string' && allowed.includes(raw) ? (raw as T) : undefined;
@@ -184,18 +176,31 @@ function pick<T extends string>(raw: unknown, allowed: readonly string[]): T | u
  * values for an axis become `undefined`, which the resolver treats as
  * "not reported" rather than "unsupported". Returns null when there is no
  * usable verdict at all.
+ *
+ * "IS THERE A VERDICT AT ALL" IS NOT DECIDED HERE (2026-08-14 sweep). That
+ * question is answered by `readStoredDisplayVerdict` — the SAME function the
+ * API's gate uses — so the panel can never treat a document as reported that
+ * `displayActionSupport` will treat as unknown. This file only NARROWS the
+ * accepted document to the UI's unions afterwards.
+ *
+ * What that changes, deliberately:
+ *   • a document missing any of volume/brightness/screenBlank/reboot is no
+ *     longer "partially reported". It is NOT REPORTED, and the panel renders
+ *     the recovery-only layout — which is exactly what the API would enforce
+ *     anyway, with a 409 instead of a disabled control.
+ *   • a BARE verdict object (no `{ verdict: … }` envelope) is refused. The
+ *     API's writer (`normalizeCapabilityReport`) always emits the envelope,
+ *     so no real row is affected; accepting the bare form only ever made the
+ *     dashboard more permissive than the server on a hand-seeded row.
+ * Both were live "enabled button, guaranteed 409" paths. Narrowing stays
+ * tri-state: an axis whose value is unrecognised is `undefined` = unknown.
  */
 export function parseDisplayCapabilities(raw: unknown): DisplayCapabilityVerdict | null {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-  const o = raw as Record<string, unknown>;
-  // Tolerate both a bare verdict object and a `{ verdict: {...} }` envelope —
-  // the probe emits a richer document and the API may store either.
-  const v =
-    o.verdict && typeof o.verdict === 'object' && !Array.isArray(o.verdict)
-      ? (o.verdict as Record<string, unknown>)
-      : o;
+  const stored = readStoredDisplayVerdict(raw);
+  if (!stored) return null;
+  const v = stored as unknown as Record<string, unknown>;
 
-  const out: DisplayCapabilityVerdict = {
+  return {
     volume: pick<VolumeVerdict>(v.volume, VOLUME_VALUES),
     brightness: pick<BrightnessVerdict>(v.brightness, BRIGHTNESS_VALUES),
     screenBlank: pick<ScreenBlankVerdict>(v.screenBlank, BLANK_VALUES),
@@ -203,10 +208,6 @@ export function parseDisplayCapabilities(raw: unknown): DisplayCapabilityVerdict
     hardPowerOff: pick<HardPowerOffVerdict>(v.hardPowerOff, HARD_POWER_VALUES),
     deviceOwnerPath: pick<DeviceOwnerPath>(v.deviceOwnerPath, OWNER_PATH_VALUES),
   };
-
-  const anything =
-    out.volume || out.brightness || out.screenBlank || out.reboot || out.hardPowerOff;
-  return anything ? out : null;
 }
 
 export interface ControlAxis {

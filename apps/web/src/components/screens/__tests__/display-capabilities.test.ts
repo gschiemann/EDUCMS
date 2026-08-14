@@ -13,8 +13,8 @@ import {
   MIN_SAFE_BRIGHTNESS_PERCENT,
   DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT,
   displayActionSupport,
+  readStoredDisplayVerdict,
   type DisplayActionType,
-  type DisplayCapabilityVerdict as ApiVerdict,
 } from '@cms/api-types';
 import {
   resolveDisplayControls,
@@ -56,6 +56,22 @@ const REGISTRY_VERDICT = {
   deviceOwnerPath: 'provisionable-after-factory-reset',
 };
 
+/**
+ * The shape `Screen.displayCapabilities` ACTUALLY holds: the probe document
+ * with the verdict under a `verdict` key, exactly what
+ * `normalizeCapabilityReport` writes. Every fixture below goes through this,
+ * because as of the 2026-08-14 sweep the dashboard reads that column with
+ * the SERVER's own reader — a bare verdict object is no longer accepted, so
+ * a test that passed one would be testing a shape no row can have.
+ */
+const stored = (verdict: Record<string, unknown>) => ({
+  schema: 1,
+  probedAt: 1_760_000_000_000,
+  reportedAt: 1_760_000_001_000,
+  build: { manufacturer: 'Goodview', model: 'M43GUQ' },
+  verdict,
+});
+
 describe('parseDisplayCapabilities', () => {
   it('returns null for anything that is not a verdict object', () => {
     expect(parseDisplayCapabilities(null)).toBeNull();
@@ -65,17 +81,42 @@ describe('parseDisplayCapabilities', () => {
     expect(parseDisplayCapabilities({})).toBeNull();
   });
 
-  it('accepts a bare verdict and a { verdict } envelope alike', () => {
-    expect(parseDisplayCapabilities(FULL_VERDICT)?.brightness).toBe('sysfs');
-    expect(parseDisplayCapabilities({ verdict: FULL_VERDICT })?.brightness).toBe('sysfs');
+  /**
+   * CHANGED 2026-08-14 (was: "accepts a bare verdict and a { verdict }
+   * envelope alike"). The old assertion pinned the WRONG contract: the
+   * dashboard accepted a bare verdict object that the API's own
+   * `verdictFromStored` rejects, so a hand-seeded/migrated row rendered an
+   * ENABLED Blank button that the API refuses with
+   * DISPLAY_CAPABILITIES_UNKNOWN. `normalizeCapabilityReport` — the only
+   * writer of this column — always emits the envelope, so nothing real
+   * regresses; the permissive half only ever produced 409s.
+   */
+  it('reads the stored envelope, and REFUSES a bare verdict (server parity)', () => {
+    expect(parseDisplayCapabilities(stored(FULL_VERDICT))?.brightness).toBe('sysfs');
+    expect(parseDisplayCapabilities(FULL_VERDICT)).toBeNull();
+  });
+
+  /**
+   * CHANGED 2026-08-14. Same reason: a document missing screenBlank (or any
+   * other core axis) is NOT a partial verdict to the API — it is no verdict
+   * at all. The narrowing behaviour it was written to pin is asserted below
+   * on a complete document.
+   */
+  it('needs all four core axes before it counts as reported at all', () => {
+    expect(
+      parseDisplayCapabilities(stored({ volume: 'audiomanager', brightness: 'sysfs' })),
+    ).toBeNull();
   });
 
   it('drops values outside the known enum instead of trusting them', () => {
-    const v = parseDisplayCapabilities({
-      volume: 'audiomanager',
-      brightness: 'root-shell',
-      reboot: 'su',
-    });
+    const v = parseDisplayCapabilities(
+      stored({
+        volume: 'audiomanager',
+        brightness: 'root-shell',
+        screenBlank: 'software-dim',
+        reboot: 'su',
+      }),
+    );
     expect(v?.volume).toBe('audiomanager');
     expect(v?.brightness).toBeUndefined();
     expect(v?.reboot).toBeUndefined();
@@ -119,8 +160,29 @@ describe('resolveDisplayControls — tri-state', () => {
     expect(r.brightness.noteKey).toBe('screens.display.note.brightnessRecoveryOnly');
   });
 
-  it('a partially-reported verdict leaves the missing axes unknown', () => {
-    const r = resolveDisplayControls({ volume: 'audiomanager' });
+  /**
+   * REWRITTEN 2026-08-14 — the old version asserted `reported === true` for
+   * `{ volume: 'audiomanager' }`, i.e. the panel showing an enabled Blank
+   * button on a document the API reads as no-verdict-at-all. That was the
+   * exact 100%-failure control this wave exists to kill, pinned by a test.
+   * A core axis missing now means the recovery-only layout, which is what
+   * the API enforces anyway.
+   */
+  it('an INCOMPLETE verdict is not reported — recovery layout, not a dead Blank', () => {
+    const r = resolveDisplayControls(stored({ volume: 'audiomanager' }));
+    expect(r.reported).toBe(false);
+    expect(r.volume.available).toBe(false);
+    expect(r.blank.available).toBe(false);
+    expect(r.wake.available).toBe(true);
+    expect(r.brightness.available).toBe(true);
+    expect(r.brightness.recoveryOnly).toBe(true);
+    expect(r.brightness.floor).toBe(RECOVERY_MIN_BRIGHTNESS);
+  });
+
+  it('a COMPLETE verdict with an unrecognised axis leaves that axis unknown', () => {
+    const r = resolveDisplayControls(
+      stored({ ...FULL_VERDICT, brightness: 'root-shell' }),
+    );
     expect(r.reported).toBe(true);
     expect(r.volume.available).toBe(true);
     expect(r.brightness.available).toBe(false);
@@ -139,7 +201,7 @@ describe('resolveDisplayControls — tri-state', () => {
 // `override val id` in apps/player/.../display/*Provider.kt.
 describe('resolveDisplayControls — registry provider ids (contract C5)', () => {
   it('accepts every id DisplayControlRegistry can resolve', () => {
-    const r = resolveDisplayControls(REGISTRY_VERDICT);
+    const r = resolveDisplayControls(stored(REGISTRY_VERDICT));
     expect(r.reported).toBe(true);
     expect(r.volume.available).toBe(true);
     expect(r.brightness.kind).toBe('sysfs-backlight');
@@ -149,28 +211,30 @@ describe('resolveDisplayControls — registry provider ids (contract C5)', () =>
   });
 
   it('maps the vendor-recipe ids to their own hedged copy', () => {
-    const b = resolveDisplayControls({ ...REGISTRY_VERDICT, brightness: 'vendor-recipe' });
+    const b = resolveDisplayControls(stored({ ...REGISTRY_VERDICT, brightness: 'vendor-recipe' }));
     expect(b.brightness.kind).toBe('vendor-recipe');
     expect(b.brightness.softwareOnly).toBe(false);
     expect(b.brightness.noteKey).toBe('screens.display.note.brightnessVendorRecipe');
 
-    const k = resolveDisplayControls({ ...REGISTRY_VERDICT, screenBlank: 'vendor-recipe' });
+    const k = resolveDisplayControls(stored({ ...REGISTRY_VERDICT, screenBlank: 'vendor-recipe' }));
     expect(k.blank.noteKey).toBe('screens.display.note.blankVendorRecipe');
   });
 
   it('treats software-dim as the floor on BOTH axes, honestly labelled', () => {
-    const r = resolveDisplayControls({
-      ...REGISTRY_VERDICT,
-      brightness: 'software-dim',
-      screenBlank: 'software-dim',
-    });
+    const r = resolveDisplayControls(
+      stored({
+        ...REGISTRY_VERDICT,
+        brightness: 'software-dim',
+        screenBlank: 'software-dim',
+      }),
+    );
     expect(r.brightness.softwareOnly).toBe(true);
     expect(r.blank.softwareOnly).toBe(true);
     expect(r.blank.noteKey).toBe('screens.display.note.blankSoftware');
   });
 
   it('still rejects a value that is not a real provider id', () => {
-    const r = resolveDisplayControls({ ...REGISTRY_VERDICT, brightness: 'sysfs-backlight-v2' });
+    const r = resolveDisplayControls(stored({ ...REGISTRY_VERDICT, brightness: 'sysfs-backlight-v2' }));
     expect(r.brightness.available).toBe(false);
     expect(r.brightness.kind).toBeNull();
   });
@@ -188,28 +252,53 @@ describe('resolveDisplayControls — registry provider ids (contract C5)', () =>
  * the API on an axis the probe simply did not mention.)
  */
 describe('UI gate ⊆ server gate (displayActionSupport)', () => {
+  /**
+   * Stored DOCUMENTS, not bare verdicts — both ends below are handed the
+   * byte-identical value, which is the only way this suite proves anything.
+   */
   const VERDICTS: unknown[] = [
     null,
     {},
+    stored({}),
+    stored(FULL_VERDICT),
+    stored(REGISTRY_VERDICT),
+    stored({ ...REGISTRY_VERDICT, volume: 'none' }),
+    stored({ ...REGISTRY_VERDICT, screenBlank: 'software-dim' }),
+    stored({ ...FULL_VERDICT, reboot: 'none', deviceOwnerPath: 'blocked-other-owner' }),
+    // The document that used to slip through: one axis only. The dashboard
+    // called it reported and lit Blank; the API calls it no verdict at all.
+    stored({ volume: 'audiomanager' }),
+    // Complete, but with junk on one axis — reported, axis unknown.
+    stored({ ...FULL_VERDICT, brightness: 'root-shell' }),
+    // A BARE verdict: the shape the dashboard used to accept and the API
+    // never has. Both must now read it as "nothing reported".
     FULL_VERDICT,
-    REGISTRY_VERDICT,
-    { ...REGISTRY_VERDICT, volume: 'none' },
-    { ...REGISTRY_VERDICT, screenBlank: 'software-dim' },
-    { ...FULL_VERDICT, reboot: 'none', deviceOwnerPath: 'blocked-other-owner' },
-    { volume: 'audiomanager' },
   ];
 
+  /**
+   * THE SERVER'S OWN PATH — not a re-implementation, and not the dashboard's
+   * parser wearing a server costume.
+   *
+   * THE BUG THIS FIXES (2026-08-14 sweep, P2). This helper used to call
+   * `parseDisplayCapabilities` — the DASHBOARD's parser — and feed the result
+   * into the server's gate. Both sides of every assertion therefore came from
+   * the same parser, so the one place the two ends actually disagreed passed
+   * silently: with fixture `{ volume: 'audiomanager' }` the real API
+   * (`verdictFromStored` → null → `displayActionSupport('BLANK', null)`)
+   * REFUSES Blank while the dashboard rendered it enabled. A test that cannot
+   * fail on the defect it is named after is worse than no test.
+   *
+   * `readStoredDisplayVerdict` is literally what `verdictFromStored` in
+   * apps/api/src/display/display.service.ts now is (that export is an alias),
+   * so this crosses the real boundary.
+   */
   const serverSays = (
     action: DisplayActionType,
     raw: unknown,
     percent?: number,
-  ): boolean => {
-    const parsed = parseDisplayCapabilities(raw);
-    // The API's verdict type declares all six axes; a partially-reported
-    // document is exactly what the server reads back off the Json column,
-    // so the cast is the honest model of the runtime value.
-    return displayActionSupport(action, parsed as ApiVerdict | null, { percent }).supported;
-  };
+  ): boolean =>
+    displayActionSupport(action, readStoredDisplayVerdict(raw), { percent })
+      .supported;
 
   it.each(VERDICTS.map((v, i) => [i, v] as const))(
     'verdict #%i offers nothing the API refuses',
@@ -237,37 +326,53 @@ describe('UI gate ⊆ server gate (displayActionSupport)', () => {
 
 describe('resolveDisplayControls — no-software-floor axes', () => {
   it('volume:none renders no control, but does explain itself', () => {
-    const r = resolveDisplayControls({ ...FULL_VERDICT, volume: 'none' });
+    const r = resolveDisplayControls(stored({ ...FULL_VERDICT, volume: 'none' }));
     expect(r.volume.available).toBe(false);
     expect(r.volume.noteKey).toBe('screens.display.note.volumeNone');
   });
 
   it('reboot:none renders no button, and names the blocker', () => {
-    const blocked = resolveDisplayControls({
-      ...FULL_VERDICT,
-      reboot: 'none',
-      deviceOwnerPath: 'blocked-other-owner',
-    });
+    const blocked = resolveDisplayControls(
+      stored({
+        ...FULL_VERDICT,
+        reboot: 'none',
+        deviceOwnerPath: 'blocked-other-owner',
+      }),
+    );
     expect(blocked.reboot.available).toBe(false);
     expect(blocked.reboot.noteKey).toBe('screens.display.note.rebootBlockedOtherOwner');
 
-    const provisionable = resolveDisplayControls({
-      ...FULL_VERDICT,
-      reboot: 'none',
-      deviceOwnerPath: 'provisionable-after-factory-reset',
-    });
+    const provisionable = resolveDisplayControls(
+      stored({
+        ...FULL_VERDICT,
+        reboot: 'none',
+        deviceOwnerPath: 'provisionable-after-factory-reset',
+      }),
+    );
     expect(provisionable.reboot.noteKey).toBe('screens.display.note.rebootNeedsProvisioning');
 
-    // No deviceOwnerPath reported at all → generic, still never a button.
+    // deviceOwnerPath omitted entirely → `readStoredDisplayVerdict` fills the
+    // least-capable default ('provisionable-after-factory-reset'), which is
+    // what the API's own gate sees, so the copy names the factory-reset path
+    // rather than the generic line. (The generic line stays reachable for a
+    // row whose deviceOwnerPath is present but unrecognised — asserted below.)
     expect(
-      resolveDisplayControls({ volume: 'none', reboot: 'none' }).reboot.noteKey,
+      resolveDisplayControls(
+        stored({ ...FULL_VERDICT, reboot: 'none', deviceOwnerPath: undefined }),
+      ).reboot.noteKey,
+    ).toBe('screens.display.note.rebootNeedsProvisioning');
+
+    expect(
+      resolveDisplayControls(
+        stored({ ...FULL_VERDICT, reboot: 'none', deviceOwnerPath: 'root-shell' }),
+      ).reboot.noteKey,
     ).toBe('screens.display.note.rebootUnavailable');
   });
 });
 
 describe('resolveDisplayControls — software-floor axes stay actionable but honest', () => {
   it('brightness:software-dim is available AND flagged software-only', () => {
-    const r = resolveDisplayControls({ ...FULL_VERDICT, brightness: 'software-dim' });
+    const r = resolveDisplayControls(stored({ ...FULL_VERDICT, brightness: 'software-dim' }));
     expect(r.brightness.available).toBe(true);
     expect(r.brightness.softwareOnly).toBe(true);
     expect(r.brightness.kind).toBe('software-dim');
@@ -275,13 +380,13 @@ describe('resolveDisplayControls — software-floor axes stay actionable but hon
   });
 
   it('brightness:sysfs is real backlight control, not flagged', () => {
-    const r = resolveDisplayControls(FULL_VERDICT);
+    const r = resolveDisplayControls(stored(FULL_VERDICT));
     expect(r.brightness.softwareOnly).toBe(false);
     expect(r.brightness.noteKey).toBe('screens.display.note.brightnessSysfs');
   });
 
   it('screenBlank:none still blanks (black overlay) but says the backlight stays lit', () => {
-    const r = resolveDisplayControls({ ...FULL_VERDICT, screenBlank: 'none' });
+    const r = resolveDisplayControls(stored({ ...FULL_VERDICT, screenBlank: 'none' }));
     expect(r.blank.available).toBe(true);
     expect(r.blank.softwareOnly).toBe(true);
     expect(r.blank.noteKey).toBe('screens.display.note.blankSoftware');
@@ -297,11 +402,11 @@ describe('resolveDisplayControls — software-floor axes stay actionable but hon
   // the dashboard must not promise a hardware screen-off it can't support.
   // Only device-OWNER keeps the absolute wording.
   it('device-admin blanking is hedged, device-owner is absolute', () => {
-    const admin = resolveDisplayControls({ ...FULL_VERDICT, screenBlank: 'device-admin' });
+    const admin = resolveDisplayControls(stored({ ...FULL_VERDICT, screenBlank: 'device-admin' }));
     expect(admin.blank.available).toBe(true);
     expect(admin.blank.noteKey).toBe('screens.display.note.blankDeviceAdmin');
 
-    const owner = resolveDisplayControls({ ...FULL_VERDICT, screenBlank: 'device-owner' });
+    const owner = resolveDisplayControls(stored({ ...FULL_VERDICT, screenBlank: 'device-owner' }));
     expect(owner.blank.softwareOnly).toBe(false);
     expect(owner.blank.noteKey).toBe('screens.display.note.blankHardware');
   });

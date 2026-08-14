@@ -83,11 +83,52 @@ function chainIds(capability: string): string[] {
   return chainProviders(capability).map((obj) => providerId(`${obj}.kt`));
 }
 
+/** `internal const val CAPABILITY_NONE = "none"` → none */
+function probeConst(name: string): string | null {
+  const src = read('DisplayCapabilityProbe.kt');
+  const m = src.match(
+    new RegExp(`const\\s+val\\s+${name}\\s*(?::\\s*String\\s*)?=\\s*"([^"]+)"`),
+  );
+  return m ? m[1] : null;
+}
+
 /**
- * The probe's own heuristic fallbacks — the `?: "literal"` / `when { … }`
- * strings in DisplayCapabilityProbe.verdict(), which are what a box emits
- * when the `control` section itself threw and the registry answer is absent.
- * These are part of the device vocabulary too.
+ * Resolve one MECHANISM-VALUED symbol the probe's fallback can emit.
+ *
+ * `AudioManagerProvider.id` → that provider's `override val id`;
+ * `CAPABILITY_NONE` / `HARD_POWER_OFF_SERIAL` → the probe's own const.
+ * Returns null for anything that is not a mechanism (local vals, JSON
+ * section names, the SCREAMING_CASE registry lookup keys).
+ */
+function resolveProbeSymbol(sym: string): string | null {
+  const provider = sym.match(/^([A-Za-z0-9_]+Provider)\.id$/);
+  if (provider) {
+    try {
+      return providerId(`${provider[1]}.kt`);
+    } catch {
+      return null;
+    }
+  }
+  if (/^[A-Z][A-Z0-9_]*$/.test(sym)) return probeConst(sym);
+  return null;
+}
+
+/**
+ * The probe's own heuristic fallbacks — what a box emits when the `control`
+ * section itself threw and the registry answer is absent. Part of the device
+ * vocabulary too.
+ *
+ * READS SYMBOLS AS WELL AS LITERALS (fixed 2026-08-14 sweep). This used to
+ * scrape ONLY quoted strings out of the `v.put("<key>", …)` call. The probe
+ * has since been refactored to reference the same constants the providers
+ * expose — `AudioManagerProvider.id`, `SoftwareDimProvider.id`,
+ * `CAPABILITY_NONE`, `HARD_POWER_OFF_SERIAL` — so four of the five keys
+ * (volume, screenBlank, reboot, hardPowerOff) yielded ZERO strings and the
+ * suite failed its own `expect(literals.length).toBeGreaterThan(0)` guard.
+ * That guard did its job: it turned a silently-vacuous assertion into a red
+ * one rather than letting the drift check quietly stop checking. Resolving
+ * the symbols restores the assertion instead of deleting it — the refactor
+ * was correct, the parser had simply not followed it.
  */
 function probeVerdictLiterals(key: string): string[] {
   const src = read('DisplayCapabilityProbe.kt');
@@ -121,11 +162,31 @@ function probeVerdictLiterals(key: string): string[] {
   }
   expect(end).toBeGreaterThan(lparen);
 
-  return [...body.slice(lparen, end).matchAll(/"([^"]+)"/g)]
+  // Strip comments FIRST. The brightness block carries the line
+  // `// SysfsBacklightProvider.id — NOT the bare "sysfs" this used to emit`,
+  // and scraping that comment's quoted "sysfs" as if it were a mechanism the
+  // probe emits is how a parse like this quietly stops describing the code:
+  // it happens to be an accepted value today, so the assertion passed while
+  // reporting a mechanism the probe explicitly no longer sends.
+  const call = body
+    .slice(lparen, end)
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\n]*/g, '');
+
+  const quoted = [...call.matchAll(/"([^"]+)"/g)]
     .map((m) => m[1])
     // The verdict key itself, and the SCREAMING_CASE registry lookup keys
     // ("VOLUME"/"BRIGHTNESS"/"BLANK"), are not mechanism values.
     .filter((s) => s !== key && !/^[A-Z_]+$/.test(s));
+
+  // …plus every symbol that RESOLVES to a mechanism string.
+  const symbols = [
+    ...call.matchAll(/\b([A-Za-z0-9_]+Provider\.id|[A-Z][A-Z0-9_]{2,})\b/g),
+  ]
+    .map((m) => resolveProbeSymbol(m[1]))
+    .filter((s): s is string => !!s);
+
+  return [...new Set([...quoted, ...symbols])];
 }
 
 describe('display mechanism vocabulary — device ids vs server enums', () => {
@@ -147,6 +208,30 @@ describe('display mechanism vocabulary — device ids vs server enums', () => {
     expect(providerId('DeviceAdminBlankProvider.kt')).toBe('device-admin');
     expect(providerId('AudioManagerProvider.kt')).toBe('audiomanager');
     expect(providerId('DeviceOwnerRebootProvider.kt')).toBe('device-owner');
+  });
+
+  /**
+   * PIN WHAT THE FALLBACK PARSE ACTUALLY RESOLVES TO.
+   *
+   * `expect(literals.length).toBeGreaterThan(0)` proves the parse found
+   * SOMETHING; it does not prove it found the right thing. Since the probe
+   * now names mechanisms symbolically, a parser bug could resolve a symbol to
+   * a plausible-but-wrong id and every membership assertion below would still
+   * pass. These are read off DisplayCapabilityProbe.verdict() by hand.
+   */
+  it('resolves the probe fallback symbols to the real mechanism strings', () => {
+    expect(probeVerdictLiterals('volume').sort()).toEqual(['audiomanager', 'none']);
+    expect(probeVerdictLiterals('brightness').sort()).toEqual([
+      'settings',
+      'software-dim',
+      'sysfs-backlight',
+    ]);
+    expect(probeVerdictLiterals('screenBlank')).toEqual(['software-dim']);
+    expect(probeVerdictLiterals('reboot').sort()).toEqual(['device-owner', 'none']);
+    expect(probeVerdictLiterals('hardPowerOff').sort()).toEqual([
+      'none',
+      'serial-candidate',
+    ]);
   });
 
   const cases: Array<{

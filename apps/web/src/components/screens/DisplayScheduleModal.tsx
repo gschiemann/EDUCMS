@@ -195,8 +195,19 @@ export function DisplayScheduleModal({
     // *during render* on the real `Int[]`, unmounting the modal's subtree
     // and handing the operator a blank page instead of a schedule list.
     const idx = parseDays(s.daysOfWeek);
+    // A ZERO-DAY ROW IS NOT "EVERY DAY" — it is a row the DEVICE DROPS.
+    // DisplayConfig.kt refuses it outright ("schedule dropped — no valid days
+    // of week"), so summarising it as "Every day" told the operator their
+    // screen turns off nightly when in fact nothing is armed at all. The API's
+    // `.min(1)` means this can only reach us from a raw-SQL/legacy row, which
+    // is exactly the case nobody would think to re-check — so it says so, and
+    // says what to do about it.
     const d =
-      idx.length === 0 || isEveryDay(idx) ? t('screens.display.everyDay') : formatDays(idx);
+      idx.length === 0
+        ? t('screens.display.noDays')
+        : isEveryDay(idx)
+          ? t('screens.display.everyDay')
+          : formatDays(idx);
     return `${d} · ${t('screens.display.onAt')} ${s.onTime} → ${t('screens.display.offAt')} ${s.offTime} · ${s.timezone}`;
   };
 

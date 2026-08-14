@@ -223,6 +223,61 @@ export function normalizeVerdict(raw: unknown): DisplayCapabilityVerdict {
 }
 
 /**
+ * READ a stored `Screen.displayCapabilities` document back into a verdict.
+ *
+ * THIS IS THE ONE DEFINITION OF "does this screen have a verdict?" and every
+ * consumer must call it — the API's gate (`displayActionSupport`), the
+ * manifest/controller read paths, and the DASHBOARD resolver
+ * (`apps/web/src/components/screens/display-capabilities.ts`). It lives in
+ * the shared contract for exactly one reason: it used to exist twice with
+ * DIFFERENT rules, and the two disagreed in the risk direction.
+ *
+ * THE DIVERGENCE THIS CLOSES (2026-08-14 sweep, P2 from the wire-verify
+ * wave). The server required all four of volume/brightness/screenBlank/reboot
+ * inside a `{ verdict: … }` envelope; the dashboard's own parser returned a
+ * verdict when ANY ONE axis parsed, and also accepted a bare (un-enveloped)
+ * verdict object. So for a document like `{ verdict: { volume:'audiomanager' } }`
+ * the panel rendered an ENABLED Blank button while the API refused BLANK with
+ * DISPLAY_CAPABILITIES_UNKNOWN — a 100%-failure control, which is the precise
+ * defect the whole capability-gating wave was written to kill. Not reachable
+ * from an API-written row today (the schema + `normalizeVerdict` always fill
+ * all six keys), but a hand-seeded, migrated, or second-writer row makes it
+ * live, and there was no test that would have caught it: the anti-drift spec
+ * fed the DASHBOARD's parser into the SERVER's gate, so the one place the two
+ * ends really disagreed passed silently.
+ *
+ * Tolerant by design in every OTHER respect: this reads a column written by a
+ * device, on a path that gates operator UI, so a malformed/legacy document
+ * must degrade to "we know nothing" (recovery-only controls) rather than
+ * throw or — far worse — be coerced into a permissive verdict.
+ */
+export function readStoredDisplayVerdict(
+  stored: unknown,
+): DisplayCapabilityVerdict | null {
+  if (!stored || typeof stored !== 'object' || Array.isArray(stored))
+    return null;
+  const v = (stored as { verdict?: unknown }).verdict;
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const rec = v as Record<string, unknown>;
+  const str = (k: string): string | null =>
+    typeof rec[k] === 'string' && rec[k] !== '' ? (rec[k] as string) : null;
+  const volume = str('volume');
+  const brightness = str('brightness');
+  const screenBlank = str('screenBlank');
+  const reboot = str('reboot');
+  if (!volume || !brightness || !screenBlank || !reboot) return null;
+  return {
+    volume,
+    brightness,
+    screenBlank,
+    reboot,
+    hardPowerOff: str('hardPowerOff') ?? 'none',
+    deviceOwnerPath:
+      str('deviceOwnerPath') ?? 'provisionable-after-factory-reset',
+  } as DisplayCapabilityVerdict;
+}
+
+/**
  * Body of POST /screens/:id/display-capabilities.
  *
  * Accepts the probe's OWN document (schema/probedAt/build/verdict/…) and

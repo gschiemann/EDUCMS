@@ -77,7 +77,11 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { appConfirm, appPrompt } from '@/components/ui/app-dialog';
-import { useDisplayControl, type DisplayActionType } from '@/hooks/use-api';
+import {
+  useDisplayControl,
+  DISPLAY_CONTROL_TIMEOUT_MS,
+  type DisplayActionType,
+} from '@/hooks/use-api';
 import {
   resolveDisplayControls,
   clampBrightness,
@@ -277,9 +281,27 @@ export function ScreenDisplayControls({
       }
       setStatus({ ok: true, msg: opts.okMsg });
     } catch (e) {
+      // THE TIMEOUT IS NOT A FAILURE — it is an UNKNOWN, and those are not
+      // the same sentence to someone standing under a dark screen.
+      //
+      // `useDisplayControl` aborts a POST that hangs past
+      // DISPLAY_CONTROL_TIMEOUT_MS, which unwedges the button (see the
+      // `lockedBy` note above). But the raw rejection is a DOMException whose
+      // message is browser jargon — Chrome says "The user aborted a request",
+      // WebKit says "Fetch is aborted" — and rendering that verbatim told the
+      // operator the browser had cancelled something, when what actually
+      // happened is: we do not know whether the screen got the command. After
+      // a BLANK that distinction IS the recovery decision, so it gets its own
+      // copy that names Wake instead of leaving the operator to guess.
+      const name = (e as { name?: unknown } | null)?.name;
+      const timedOut = name === 'AbortError' || name === 'TimeoutError';
       setStatus({
         ok: false,
-        msg: (e instanceof Error && e.message) || t('screens.display.sendFailed'),
+        msg: timedOut
+          ? t('screens.display.sendTimedOut', {
+              seconds: Math.round(DISPLAY_CONTROL_TIMEOUT_MS / 1000),
+            })
+          : (e instanceof Error && e.message) || t('screens.display.sendFailed'),
       });
     } finally {
       setBusy(null);
