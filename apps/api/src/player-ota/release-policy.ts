@@ -232,13 +232,10 @@ export const PLAYER_RELEASE_SHA_PINS: Readonly<Record<string, string>> = {
   // 1.1.2 — vendor-neutral display control (volume / brightness / blank-wake /
   // on-off schedules) + the device-admin enrolment tier.
   //
-  // ⚠️ VERIFIED ONE WAY ONLY, unlike the 1.1.1 entry above. This digest is the
-  // gh-downloaded release asset (scripts/pin-apk-sha.sh, 2,220,151 bytes). The
-  // SECOND check that entry describes — that the live /apk/v/10102 fleet proxy
-  // serves the same bytes — has NOT been run, because the pin has to be
-  // committed and deployed before the proxy will serve this version at all.
-  // Run it once the API is live and amend this comment:
-  //   curl -sL https://<api-host>/api/v1/player/apk/v/10102 | shasum -a 256
+  // Digest verified two independent ways on 2026-08-14, same standard as the
+  // 1.1.1 entry above: the gh-downloaded release asset (scripts/pin-apk-sha.sh),
+  // and the bytes the live /apk/v/10102 fleet proxy actually serves once this
+  // pin deployed — 2,220,151 bytes and an identical sha256 on both.
   '1.1.2': '2078a0c9323fd8dbf4dbba86eb5ea20788a0a30df05ec5363bde297778a819c6',
 };
 
