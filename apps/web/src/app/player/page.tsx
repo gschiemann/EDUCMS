@@ -70,6 +70,10 @@ import {
   nativeFire,
   nativeHas,
 } from './nativeBridge';
+// Display-capability self-report (2026-08-13). The last mile that makes the
+// fleet self-describing: without it the native probe is reachable only over
+// an adb cable. See displayCapabilityReport.ts for the once-per-version rule.
+import { reportDisplayCapabilities } from './displayCapabilityReport';
 // Display-control EMERGENCY INTERLOCK (2026-08-13). The native display
 // layer can blank the panel and dim the backlight; while a life-safety
 // alert is on screen it must do neither. See emergencyHold.ts for the
@@ -3553,6 +3557,32 @@ function PlayerPage() {
     raf = requestAnimationFrame(tick);
     return () => { stopped = true; cancelAnimationFrame(raf); };
   }, []);
+
+  // Report this device's display capabilities once per (screen × APK version).
+  //
+  // Deliberately AFTER first paint and one-shot: this is admin visibility, not
+  // playback. It must never compete with getting content on screen, and it must
+  // never become a per-poll write — see displayCapabilityReport.ts for why the
+  // app version is the cache key and why a non-2xx deliberately does not mark
+  // the report as done.
+  useEffect(() => {
+    if (!screenId) return;
+    if (isPreviewMode()) return;
+    let cancelled = false;
+    const t = setTimeout(() => {
+      if (cancelled) return;
+      void reportDisplayCapabilities({
+        screenId,
+        apiRoot: getApiRoot(),
+        token: getDeviceToken(),
+      }).then((status) => {
+        if (!cancelled && status !== 'skipped: already reported this version') {
+          console.log(`[display-caps] ${status}`);
+        }
+      });
+    }, 8000);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [screenId]);
 
   // POST render-proof every 30s while rendering content.
   useEffect(() => {
