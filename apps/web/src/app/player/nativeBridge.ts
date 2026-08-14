@@ -99,20 +99,17 @@ export const NATIVE_VOID_METHODS = [
   'showUrlOverlay',
   'hideUrlOverlay',
   'openSettingsForManager',
-  // ⚠️ PENDING, DELIBERATELY NOT LISTED YET — `displayEmergencyHold`
-  // (2026-08-13 display-control EMERGENCY INTERLOCK). The web side already
-  // fires it (see ./emergencyHold.ts); it is fire-and-forget, so
-  // `nativeFire` posts it on the channel and returns false on an APK that
-  // predates it — nothing here gates the call.
-  //
-  // It is absent from this array ON PURPOSE: `nativeBridge.test.ts` pins
-  // these two arrays against `NativeBridgeChannel.METHODS` in the Kotlin,
-  // which is the allowlist the NATIVE side actually enforces. Adding the
-  // name here before the APK has it would turn that drift guard red for a
-  // failure that isn't real, and — worse — would make `nativeHas()` answer
-  // true for a method the channel will reject. The two entries (this array
-  // + the Kotlin METHODS allowlist) MUST land in the same commit, and until
-  // the Kotlin side has it the interlock is inert on the secure channel.
+  // ⚠️ LIFE SAFETY — the display-control EMERGENCY INTERLOCK (2026-08-13).
+  // See ./emergencyHold.ts. The Kotlin allowlist
+  // (`NativeBridgeChannel.METHODS`, commit 3e9f7cd1) carries it, so this
+  // entry is what keeps the two sides in sync: the drift guard in
+  // `nativeBridge.test.ts` reads that Kotlin array off disk and asserts
+  // sorted equality against these two arrays, and it was RED without this
+  // line (`web-jest` is a blocking Deploy Reliability job). The functional
+  // half matters too — `nativeHas('displayEmergencyHold')` answers from
+  // KNOWN_METHODS on a channel WebView with no document-start manifest, and
+  // was answering FALSE for a method the APK does implement.
+  'displayEmergencyHold',
 ] as const;
 
 /**
@@ -279,6 +276,65 @@ export function nativeFire(method: string, ...args: unknown[]): boolean {
     }
   }
   return false;
+}
+
+/** What a transport could tell us about a fire-and-forget call. */
+export interface NativeFireOutcome {
+  /** Which transport took (or refused) the call. */
+  transport: BridgeTransport;
+  /** True when SOME transport accepted the call for delivery. */
+  delivered: boolean;
+  /**
+   * The synchronous return value — ONLY ever populated on the `legacy`
+   * transport, whose `@JavascriptInterface` methods return in-band. The
+   * channel is message-passing, so a call posted without an `id` gets no
+   * reply and this stays `undefined` there.
+   */
+  result?: unknown;
+}
+
+/**
+ * `nativeFire`, but it hands back what the transport could observe.
+ *
+ * ⚠️ WHY THIS EXISTS (2026-08-13, emergency-interlock release bug).
+ * Several display-control entry points RETURN a refusal instead of
+ * throwing — `DisplayControlApi` answers `{ok:false,code:'insecure-transport'}`
+ * for a risk-direction action that arrived on the untrusted every-frame
+ * bridge. `nativeFire` reports only "a transport took it", which is TRUE for
+ * a refusal, so a caller that latched on `nativeFire`'s boolean recorded a
+ * refused call as applied and never retried it. That is exactly how an
+ * emergency hold could be RAISED but never RELEASED on a Chromium-83/87
+ * NovaStar Taurus (where the origin-scoped channel cannot attach), pinning
+ * the panel lit forever and killing all display control on that screen.
+ *
+ * Still total: it never throws, for the same reason `nativeFire` doesn't.
+ */
+export function nativeFireChecked(method: string, ...args: unknown[]): NativeFireOutcome {
+  const ch = getChannel();
+  if (ch) {
+    try {
+      ch.postMessage(JSON.stringify({ method, args }));
+      return { transport: 'channel', delivered: true };
+    } catch (err) {
+      console.warn(`[nativeBridge] channel post failed for ${method}`, err);
+      // fall through to legacy, same as nativeFire
+    }
+  }
+  const legacy = getLegacy();
+  if (legacy) {
+    try {
+      if (typeof legacy[method] === 'function') {
+        const result = legacy[method](...args);
+        return { transport: 'legacy', delivered: true, result };
+      }
+      // Method absent on this APK — the native feature does not exist here.
+      return { transport: 'legacy', delivered: false };
+    } catch (err) {
+      console.warn(`[nativeBridge] legacy call failed for ${method}`, err);
+      return { transport: 'legacy', delivered: false };
+    }
+  }
+  return { transport: 'none', delivered: false };
 }
 
 /**

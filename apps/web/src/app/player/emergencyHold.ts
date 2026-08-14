@@ -52,14 +52,73 @@
  *
  * Idempotent by design: the same value is only re-sent when forced (a
  * raise), so a 5 s emergency poll does not spam the bridge.
+ *
+ * ============================================================
+ * 3. LATCH ONLY WHAT THE DEVICE ACTUALLY ACCEPTED (2026-08-13 review)
+ * ============================================================
+ *
+ * The release used to set `lastSent = false` BEFORE firing, and ignore the
+ * outcome. On a Chromium 83/87 NovaStar Taurus — a production target —
+ * `WebViewFeature.WEB_MESSAGE_LISTENER` is unavailable, the origin-scoped
+ * channel never attaches, and every bridge call rides the legacy
+ * `@JavascriptInterface` object, which passes `trusted = false`
+ * unconditionally. `DisplayControlApi.emergencyHoldJson` accepts a RAISE
+ * from any transport but REFUSES a release from an untrusted one, returning
+ * `{ok:false,code:'insecure-transport'}` as a STRING rather than throwing.
+ * So the raise stuck, the release was refused, the dedup latch swallowed it,
+ * and the hold became permanent — persisted across reboots, every blank and
+ * every brightness lowering refused forever, the panel pinned at 100% 24/7,
+ * with no operator-reachable recovery short of wiping app data (which also
+ * unpairs the screen).
+ *
+ * The fix is transport-aware and costs no async on the emergency path:
+ *   - `channel`: trusted, so a delivered call is an applied call.
+ *   - `legacy`:  the return value is SYNCHRONOUS, so read it. `ok !== true`
+ *                means refused — do NOT latch, and the very next manifest
+ *                poll retries the release for free (the manifest handler
+ *                calls this every poll). The retry is unbounded on purpose:
+ *                one cheap JS→Java hop per poll is nothing next to a screen
+ *                that is permanently pinned lit, and it means the release
+ *                lands the instant the device gets an APK that accepts it.
+ *   - method absent / no bridge: there is no native display layer on this
+ *                box, so there is no hold to release — latch and stay quiet.
  */
 
-import { nativeFire } from './nativeBridge';
+import { nativeFireChecked } from './nativeBridge';
 
 /** Method name on the APK's native bridge. Must match the Kotlin side. */
 export const DISPLAY_EMERGENCY_HOLD_METHOD = 'displayEmergencyHold';
 
+/** What the device did with the last signal we sent it. */
+export type HoldOutcome =
+  /** The device applied it (or is trusted enough that it must have). */
+  | 'applied'
+  /** Delivered, and the device answered with a refusal. Retry. */
+  | 'refused'
+  /** No native display layer here (browser player / pre-wave APK). */
+  | 'no-native'
+  /** Deduped — same value already applied, and no force flag. */
+  | 'skipped';
+
 let lastSent: boolean | null = null;
+let refusedReleases = 0;
+
+/**
+ * Did the device answer with an explicit refusal?
+ *
+ * Only the legacy transport can answer at all (see the header). Anything we
+ * cannot parse as `{"ok":false,...}` is treated as ACCEPTED — this must not
+ * become a source of phantom retries on an APK whose return shape changes.
+ */
+function isRefusal(result: unknown): boolean {
+  if (typeof result !== 'string' || result.length === 0) return false;
+  try {
+    const parsed = JSON.parse(result) as { ok?: unknown };
+    return parsed && typeof parsed === 'object' && parsed.ok === false;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Tell the native shell whether an emergency hold is in force.
@@ -70,22 +129,50 @@ let lastSent: boolean | null = null;
  * @param force   re-send even when the value hasn't changed. Used by the
  *                eager WS/SSE raise so a native process that restarted
  *                mid-alert is re-armed without waiting for a state flip.
- * @returns       whether a native transport accepted the call. `false` is a
- *                normal, expected outcome in a browser player.
+ * @returns       what the device did with it. `'no-native'` is a normal,
+ *                expected outcome in a browser player.
  */
-export function signalDisplayEmergencyHold(active: boolean, force = false): boolean {
+export function signalDisplayEmergencyHold(active: boolean, force = false): HoldOutcome {
   try {
-    if (!force && lastSent === active) return false;
+    if (!force && lastSent === active) return 'skipped';
+
+    const outcome = nativeFireChecked(DISPLAY_EMERGENCY_HOLD_METHOD, active);
+
+    if (!outcome.delivered) {
+      // No transport, or the method does not exist on this APK. There is no
+      // native display layer to hold, so record the state and stay quiet.
+      lastSent = active;
+      return 'no-native';
+    }
+
+    if (isRefusal(outcome.result)) {
+      // ⚠️ DO NOT LATCH. Leaving `lastSent` alone is what makes the next
+      // manifest poll re-attempt this instead of deduping it away forever.
+      refusedReleases += 1;
+      // Log the first few, then every 20th, so a Taurus stuck in this state
+      // is obvious in the device log without drowning it.
+      if (refusedReleases <= 3 || refusedReleases % 20 === 0) {
+        console.warn(
+          `[emergencyHold] device REFUSED displayEmergencyHold(${active}) on the ` +
+            `${outcome.transport} transport (attempt ${refusedReleases}) — ` +
+            'will retry on the next manifest poll',
+        );
+      }
+      return 'refused';
+    }
+
     lastSent = active;
-    return nativeFire(DISPLAY_EMERGENCY_HOLD_METHOD, active);
+    if (active) refusedReleases = 0;
+    return 'applied';
   } catch {
-    // Unreachable in practice (nativeFire is total), but this is
+    // Unreachable in practice (nativeFireChecked is total), but this is
     // emergency-path code — it does not get to throw.
-    return false;
+    return 'no-native';
   }
 }
 
 /** Test seam: forget what we last sent. Not used by production code. */
 export function __resetDisplayEmergencyHoldForTests(): void {
   lastSent = null;
+  refusedReleases = 0;
 }

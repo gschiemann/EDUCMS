@@ -36,13 +36,48 @@
  * playback or with the emergency path.
  */
 
-import { nativeCall, nativeHas } from './nativeBridge';
+import { nativeCall, nativeCallOr, nativeHas } from './nativeBridge';
+import type { DeviceIdentity } from './displayControl';
 
 /** localStorage key holding the last (screenId|appVersion) we reported. */
 const MARKER_KEY = 'edu_display_caps_reported';
 
 function markerFor(screenId: string, appVersion: string): string {
   return `${screenId}|${appVersion}`;
+}
+
+/**
+ * The APK's `versionName`, which is what "report once per app version"
+ * actually means.
+ *
+ * ⚠️ THE BUG THIS FIXES (2026-08-13 review). This used to read
+ * `probeDisplay().build.display`, which is `Build.DISPLAY` — the OS build
+ * id of the Android image, set by the box vendor and unchanged for the life
+ * of the firmware. So the cache key never moved when the APK was updated:
+ * a screen that reported once kept its marker forever, and every later APK
+ * — new providers, new mechanisms, a whole new capability — was NEVER
+ * re-reported. The dashboard's capability gating would keep gating on a
+ * verdict from an APK that is no longer installed. `deviceInfo()` is the
+ * only bridge method that exposes `appVersion` (BuildConfig.VERSION_NAME).
+ *
+ * FALLBACK. On the vanishingly rare box where `deviceInfo` is unreadable we
+ * fall back to a UTC day bucket rather than a constant. A constant would
+ * re-create the never-re-report bug; omitting the marker entirely would POST
+ * on every watchdog reload. One write per screen per day is neither.
+ */
+async function appVersionKey(now: () => number = Date.now): Promise<string> {
+  const raw = await nativeCallOr<string>('', 'deviceInfo');
+  if (raw) {
+    try {
+      const info = JSON.parse(raw) as { appVersion?: unknown };
+      if (typeof info?.appVersion === 'string' && info.appVersion.trim()) {
+        return info.appVersion.trim();
+      }
+    } catch {
+      /* fall through to the day bucket */
+    }
+  }
+  return `unknown@${new Date(now()).toISOString().slice(0, 10)}`;
 }
 
 function alreadyReported(marker: string): boolean {
@@ -71,8 +106,19 @@ export async function reportDisplayCapabilities(opts: {
   screenId: string;
   apiRoot: string;
   token: string | null;
+  /**
+   * Called with this box's `Build.MANUFACTURER/MODEL/BOARD` as soon as the
+   * probe parses — BEFORE the once-per-version marker check, so a screen
+   * that has already reported still hands its identity to the caller.
+   *
+   * The player uses it to pick which vendor recipe out of the manifest's
+   * catalog to install (see displayControl.ts). The probe is the only
+   * bridge surface that reports `board`, which is why this rides along
+   * here instead of re-probing.
+   */
+  onIdentity?: (identity: DeviceIdentity) => void;
 }): Promise<string> {
-  const { screenId, apiRoot, token } = opts;
+  const { screenId, apiRoot, token, onIdentity } = opts;
   if (!screenId || !apiRoot) return 'skipped: no screen/api';
 
   // Older APKs have no probe at all. `nativeHas` covers both transports.
@@ -92,16 +138,31 @@ export async function reportDisplayCapabilities(opts: {
   } catch {
     return 'skipped: probe not json';
   }
+  // Hand the caller this box's Build identity even when the probe has no
+  // verdict — recipe matching does not depend on the verdict, and a screen
+  // whose probe partially failed should still get its vendor recipe.
+  if (onIdentity && parsed && typeof parsed === 'object') {
+    const build = parsed.build as Record<string, unknown> | undefined;
+    if (build && typeof build === 'object') {
+      const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+      try {
+        onIdentity({
+          manufacturer: str(build.manufacturer),
+          model: str(build.model),
+          board: str(build.board),
+        });
+      } catch {
+        /* a throwing callback must not cost us the report */
+      }
+    }
+  }
+
   // The probe reports `error` instead of a verdict when it fails wholesale.
   if (!parsed || typeof parsed !== 'object' || !parsed.verdict) {
     return 'skipped: probe has no verdict';
   }
 
-  const appVersion =
-    typeof (parsed.build as Record<string, unknown> | undefined)?.display === 'string'
-      ? String((parsed.build as Record<string, unknown>).display)
-      : 'unknown';
-  const marker = markerFor(screenId, appVersion);
+  const marker = markerFor(screenId, await appVersionKey());
   if (alreadyReported(marker)) return 'skipped: already reported this version';
 
   try {

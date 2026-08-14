@@ -111,20 +111,42 @@ export function checkSensitivePush(
   }
 
   // 3. Replay, in the LRU shared by every transport.
-  if (typeof msg.eventId === 'string' && msg.eventId.length > 0) {
-    const seen = ctx.seenEventIds;
-    if (seen.has(msg.eventId)) return { accepted: false, reason: 'replay' };
-    seen.set(msg.eventId, nowFn());
-    if (seen.size > PUSH_EVENT_ID_MAX) {
-      const cutoff = nowFn() - PUSH_EVENT_ID_TTL_MS;
-      for (const [k, t] of seen) if (t < cutoff) seen.delete(k);
-      while (seen.size > PUSH_EVENT_ID_MAX) {
-        seen.delete(seen.keys().next().value as string);
-      }
-    }
+  if (!rememberEventId(ctx.seenEventIds, msg.eventId, nowFn())) {
+    return { accepted: false, reason: 'replay' };
   }
 
   return { accepted: true };
+}
+
+/**
+ * Record an eventId in the shared replay LRU.
+ *
+ * @returns false when this id has already been seen (i.e. a replay).
+ *          A missing/blank id is accepted — the caller's other checks are
+ *          what carry the weight there, exactly as before this was factored
+ *          out of {@link checkSensitivePush}.
+ *
+ * Extracted so the display-control gate can share ONE LRU with the
+ * life-safety gate across BOTH transports — a `DISPLAY_CONTROL` frame
+ * captured on WS and replayed on SSE (or vice-versa) must not blank a
+ * screen twice.
+ */
+export function rememberEventId(
+  seen: Map<string, number>,
+  eventId: unknown,
+  now: number,
+): boolean {
+  if (typeof eventId !== 'string' || eventId.length === 0) return true;
+  if (seen.has(eventId)) return false;
+  seen.set(eventId, now);
+  if (seen.size > PUSH_EVENT_ID_MAX) {
+    const cutoff = now - PUSH_EVENT_ID_TTL_MS;
+    for (const [k, t] of seen) if (t < cutoff) seen.delete(k);
+    while (seen.size > PUSH_EVENT_ID_MAX) {
+      seen.delete(seen.keys().next().value as string);
+    }
+  }
+  return true;
 }
 
 /**

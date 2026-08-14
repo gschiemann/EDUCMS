@@ -79,6 +79,17 @@ import { reportDisplayCapabilities } from './displayCapabilityReport';
 // alert is on screen it must do neither. See emergencyHold.ts for the
 // raise-eagerly / release-only-from-the-server-of-record rule.
 import { signalDisplayEmergencyHold } from './emergencyHold';
+// Display CONTROL — the consumer half (2026-08-13). Everything the operator
+// presses on the dashboard (volume / brightness / blank / wake) arrives as a
+// signed DISPLAY_CONTROL push, and every on/off schedule arrives in the
+// manifest's `display` block. Both are handed to the APK from here. See
+// displayControl.ts for the wire-shape translation and the C4 gate.
+import {
+  DISPLAY_CONTROL_TYPE,
+  dispatchDisplayControl,
+  installDisplayConfig,
+  type DeviceIdentity,
+} from './displayControl';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Bullet-proof helpers (Phase 1 hardening)
@@ -2756,6 +2767,21 @@ function PlayerPage() {
   // by ADDING to local Date.now() before comparing.
   const serverClockOffsetRef = useRef<number>(0);
 
+  // ─── Display control (2026-08-13) ────────────────────────────────────
+  // displayConfigFpRef — fingerprint of the `display` block we last handed
+  //   the device. The manifest carries the block on EVERY poll, and
+  //   `displaySetSchedule` re-persists, re-resolves the provider chain and
+  //   re-arms an AlarmManager on each call — so re-installing an unchanged
+  //   block every 5–10 s would churn SharedPreferences and the alarm for
+  //   nothing. Diff first, install only on change. Same "cheap setter"
+  //   pattern the orientation + LED-canvas branches use.
+  // deviceIdentityRef — this box's Build.MANUFACTURER/MODEL/BOARD, learned
+  //   once from the native probe. Used ONLY to pick which vendor recipe out
+  //   of the shipped catalog to hand down; the device re-checks the match
+  //   itself before ever using it (see displayControl.ts).
+  const displayConfigFpRef = useRef<string>('');
+  const deviceIdentityRef = useRef<DeviceIdentity>({});
+
   // ─── Frame-locked multi-screen sync (2026-07-28) ─────────────────────
   // docs/research/2026-07-28-multiscreen-sync/00-DESIGN.md. All of this is
   // inert until the manifest's `sync.enabled` flips true (ScreenGroup.
@@ -3575,6 +3601,14 @@ function PlayerPage() {
         screenId,
         apiRoot: getApiRoot(),
         token: getDeviceToken(),
+        // Vendor-recipe matching needs Build.MANUFACTURER/MODEL/BOARD, and
+        // the probe is the only bridge surface that reports `board`. The
+        // next manifest poll re-translates the `display` block with this
+        // identity, so the fingerprint moves and the (now recipe-carrying)
+        // config installs — no extra probe, no extra install.
+        onIdentity: (identity) => {
+          deviceIdentityRef.current = { ...deviceIdentityRef.current, ...identity };
+        },
       }).then((status) => {
         if (!cancelled && status !== 'skipped: already reported this version') {
           console.log(`[display-caps] ${status}`);
@@ -4026,7 +4060,13 @@ function PlayerPage() {
 
     // Apply manifest payload to player state. Extracted so we can replay it
     // from cache when offline.
-    const applyManifest = (manifest: any) => {
+    /**
+     * @param fromCache true when this manifest came off DISK (the offline
+     *   fallback), not from the server. It is NOT the server of record, so
+     *   the emergency-hold RELEASE must not run off it — see the interlock
+     *   block below.
+     */
+    const applyManifest = (manifest: any, fromCache = false) => {
       if (manifest.tenantId) setTenantId(manifest.tenantId);
       if (manifest.tenantName !== undefined) setTenantName(manifest.tenantName);
 
@@ -4141,6 +4181,31 @@ function PlayerPage() {
         }
         setSyncEnabled(enabled);
       }
+      // ── DISPLAY CONTROL — install the on/off schedule + vendor recipe ──
+      //
+      // This is the ONLY delivery path for the feature's headline capability.
+      // The dashboard's per-screen on/off windows and the vendor-recipe
+      // catalog both ride the manifest's `display` block; without this call
+      // `DisplayConfigStore.load` returns EMPTY on every screen in the fleet
+      // and `DisplayScheduler` logs "no active schedules" forever.
+      //
+      // Three rules, all load-bearing:
+      //   1. DIFF FIRST. The block arrives on every poll (5–10 s), and
+      //      `setScheduleJson` re-persists, re-resolves the provider chain
+      //      and re-arms an AlarmManager on every call. Fingerprint and skip.
+      //   2. NEVER INSTALL AN ABSENT BLOCK. The emergency manifest branch and
+      //      older cached payloads omit `display` entirely; treating that as
+      //      "no schedules" would DISARM a screen's overnight windows during
+      //      a lockdown. `toDeviceDisplayConfig` returns null and we no-op.
+      //   3. TRANSLATE, DON'T FORWARD. The API's block and
+      //      `DisplayConfigParser` do not speak the same shape (array-of-
+      //      recipes vs one `recipe`); displayControl.ts owns the mapping.
+      //
+      // Channel-transport only, by design: `displaySetSchedule` is refused on
+      // the legacy every-frame bridge (a standing nightly blank is strictly
+      // worse than a one-off blank, which at least carries a dead-man), so on
+      // a legacy-only box this is a logged no-op rather than a silent one.
+      installDisplayConfig(manifest.display, deviceIdentityRef.current, displayConfigFpRef);
       if (cw && ch && typeof document !== 'undefined') {
         try {
           // Persist for the next boot — pin script reads this from
@@ -4298,8 +4363,17 @@ function PlayerPage() {
       // it has its own server-arbitrated reconcile poll, and forgetting it
       // here would let a manifest with no tenant override release the hold
       // out from under a live SOS takeover.
+      //
+      // ⚠️ A CACHED MANIFEST IS NOT THE SERVER OF RECORD. `fromCache` is set
+      // by the offline fallback in fetchContent's catch, which replays a
+      // manifest off localStorage that can be hours old. RAISING off it is
+      // right (a cached manifest carrying an emergency should still hold the
+      // screen awake — that is the never-give-up posture the whole offline
+      // path is built on), but RELEASING off it would drop a live hold every
+      // time the network blipped during a lockdown, re-arming blanking on a
+      // screen showing an active alert. So the release is server-only.
       const holdNow = !!em || !!pushedEmergencyMessageRef.current;
-      signalDisplayEmergencyHold(holdNow, holdNow);
+      if (holdNow || !fromCache) signalDisplayEmergencyHold(holdNow, holdNow);
       setActiveEmergency(em);
       cacheEmergency(em);
       if (manifest.playlists && manifest.playlists.length > 0) {
@@ -4637,7 +4711,9 @@ function PlayerPage() {
       if (cached?.m) {
         const ageMin = Math.round((Date.now() - cached.at) / 60000);
         console.warn(`[Player] Falling back to cached manifest (${ageMin}m old)`);
-        applyManifest(cached.m);
+        // fromCache=true — this payload came off disk, so it may not release
+        // an emergency hold (see the interlock block in applyManifest).
+        applyManifest(cached.m, true);
         setPhase('playing');
         setError(`Offline — showing last sync (${ageMin}m ago)`);
       } else {
@@ -4973,6 +5049,30 @@ function PlayerPage() {
       if (wsReconnectRef.current) { clearTimeout(wsReconnectRef.current); wsReconnectRef.current = null; }
     };
 
+    /**
+     * Gate + forward one DISPLAY_CONTROL frame to the APK.
+     *
+     * Shared by the WS and SSE arms so a screen behind a WS-blocking school
+     * proxy (Squid / ZScaler / iboss / GoGuardian) gets the same behaviour —
+     * that population is exactly why the SSE tier exists, and every previous
+     * realtime feature wired on one transport only silently no-op'd there.
+     *
+     * The body lives in displayControl.ts (scope check, per-eventId dedup on
+     * the LRU shared with the life-safety gate, C4 recovery exemption, the
+     * bridge call) so the path an operator's click actually takes is unit
+     * tested without mounting this page.
+     */
+    const applyDisplayControl = (envelope: any, via: 'WS' | 'SSE') =>
+      dispatchDisplayControl(
+        envelope,
+        screenId,
+        {
+          seenEventIds: recentEventIdsRef.current,
+          serverClockOffsetMs: serverClockOffsetRef.current,
+        },
+        via,
+      );
+
     // Sprint 11 Phase B — SSE realtime fallback (middle tier).
     // Engaged when WS has failed >=3 times. Listens for the same
     // signed Redis-channel messages the WS does; on receive, runs
@@ -5154,6 +5254,20 @@ function PlayerPage() {
         // WebView fetches the CURRENT bundle instead of re-serving the cached
         // one — see the WS REFRESH_WEB handler for the full rationale.
         if (!nativeFire('reload')) hardCacheBustingReload();
+      });
+      // ── DISPLAY CONTROL on the SSE tier ───────────────────────────────
+      // Registered directly rather than through `handle()`, because that
+      // wrapper hands the callback only `data.payload` while this gate needs
+      // the whole envelope (signature / timestamp / eventId). Mirror of the
+      // WS arm — a new realtime behaviour wired on ONE transport silently
+      // no-ops for every screen behind a WS-blocking proxy, which is the
+      // exact population this tier exists for.
+      es.addEventListener(DISPLAY_CONTROL_TYPE, (ev) => {
+        try {
+          applyDisplayControl(JSON.parse((ev as MessageEvent).data), 'SSE');
+        } catch (e) {
+          console.warn('[Player SSE] parse failed for DISPLAY_CONTROL:', (e as Error)?.message);
+        }
       });
       // P0-2 (life-safety) — Sprint 5 emergency messages on the SSE
       // tier. SSE exists precisely for the WS-blocked-proxy case
@@ -5582,6 +5696,24 @@ function PlayerPage() {
               return;
             }
 
+            // ── DISPLAY CONTROL (2026-08-13) ──────────────────────────
+            // The operator pressed volume / brightness / blank / wake / reboot
+            // on the screen card. `DisplayService.applyAction` signs this,
+            // publishes it to `device:<screenId>`, audits it as `dispatched`
+            // and answers the dashboard `delivered:true`. THIS ARM is what
+            // makes any of that true on the glass — without it the message was
+            // parsed and dropped, and the dashboard reported success for an
+            // action that never happened.
+            //
+            // Gate + scope + dedup live in displayControl.ts (pure, tested).
+            // Note the C4 asymmetry it implements: a risk-direction action
+            // (BLANK / dim / REBOOT) must be signed and fresh, a WAKE is never
+            // dropped by a clock check — a dark screen the operator cannot
+            // recover from the dashboard is the worst outcome in this feature.
+            if (msg.type === DISPLAY_CONTROL_TYPE) {
+              applyDisplayControl(msg, 'WS');
+              return;
+            }
             if (msg.type === 'REFRESH_WEB') {
               const pl = msg.payload || msg;
               const scope = pl?.scope;
