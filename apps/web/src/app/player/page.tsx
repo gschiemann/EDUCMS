@@ -1828,6 +1828,65 @@ function DiagnosticsRow() {
     }
   };
 
+  // ── One-tap device-admin enrolment ────────────────────────────────────
+  //
+  // THE CALLER for `displayEnrollAdmin`. The enrolment wave built the whole
+  // native side — PlayerAdminReceiver, the state machine, the bridge method —
+  // and the review correctly filed "no caller in any web bundle" as a P0.
+  // This is that caller.
+  //
+  // WHY IT MATTERS: DeviceAdminBlankProvider gives a REAL panel blank via
+  // DevicePolicyManager.lockNow(), which needs an ACTIVE DEVICE ADMIN. That is
+  // NOT device owner — no factory reset, no adb, no accounts constraint, just
+  // one operator tap through the system dialog. Without it, blank falls
+  // through to the screen-timeout provider (needs the WRITE_SETTINGS appop,
+  // i.e. adb) or the software dim floor, which does not really turn the panel
+  // off and saves no power.
+  //
+  // WHY IT LIVES HERE and not in the dashboard: the dashboard runs in a
+  // browser and cannot reach the native bridge at all. Enrolment has to be
+  // initiated from inside the APK's WebView, and this panel is the established
+  // operator-on-device surface. The dashboard's job is to TELL you which
+  // screens still need the tap — the probe reports `enrollment.oneTapAvailable`
+  // for exactly that.
+  //
+  // Deliberately inside the expanded panel: enrolment must never fire
+  // automatically or nag. A signage box that pops a system security dialog on
+  // a wall in front of customers is worse than a screen that dims in software.
+  const [enrolling, setEnrolling] = useState(false);
+  const [enrollMsg, setEnrollMsg] = useState<string | null>(null);
+  const canEnroll = nativeHas('displayEnrollAdmin');
+
+  const handleEnroll = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEnrolling(true);
+    setEnrollMsg(null);
+    try {
+      const raw = await nativeCall<string>('displayEnrollAdmin');
+      // Native answers a JSON status string. Surface its own message when it
+      // has one rather than inventing our own — it knows why it declined
+      // (already enrolled, recently declined, no operator present).
+      let msg = 'Follow the prompt on this screen.';
+      try {
+        const parsed = raw ? JSON.parse(raw) : null;
+        if (parsed && typeof parsed === 'object') {
+          if (parsed.ok === false) {
+            msg = typeof parsed.code === 'string' ? `Not started: ${parsed.code}` : 'Not started.';
+          } else if (typeof parsed.state === 'string') {
+            msg = `Enrolment: ${parsed.state}`;
+          }
+        }
+      } catch {
+        /* non-JSON answer — keep the generic prompt message */
+      }
+      setEnrollMsg(msg);
+    } catch (err: any) {
+      setEnrollMsg('error: ' + (err?.message || String(err)));
+    } finally {
+      setEnrolling(false);
+    }
+  };
+
   return (
     <div className="pt-1 border-t border-slate-700/60 space-y-2">
       <div className="flex items-center justify-between">
@@ -1862,6 +1921,25 @@ function DiagnosticsRow() {
           </div>
           {uploadMsg && (
             <p className="text-[10px] text-slate-400 leading-snug">{uploadMsg}</p>
+          )}
+          {canEnroll && (
+            <div className="pt-2 border-t border-slate-700/60 space-y-1">
+              <button
+                onClick={handleEnroll}
+                disabled={enrolling}
+                className="w-full py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white rounded-md text-[11px] font-medium transition-colors"
+              >
+                {enrolling ? 'Opening…' : 'Enable scheduled screen off'}
+              </button>
+              <p className="text-[10px] text-slate-400 leading-snug">
+                Lets this screen really power its panel down on a schedule
+                instead of just dimming the image. Android will ask you to
+                confirm once.
+              </p>
+              {enrollMsg && (
+                <p className="text-[10px] text-slate-400 leading-snug">{enrollMsg}</p>
+              )}
+            </div>
           )}
         </>
       )}

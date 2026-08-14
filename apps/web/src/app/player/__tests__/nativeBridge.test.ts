@@ -421,7 +421,7 @@ describe('method tables stay in sync with the APK', () => {
     // check is that guard, which reads the Kotlin allowlist off disk; this
     // count is the cheap canary that still fires in a checkout without the
     // player sources.
-    expect(all).toHaveLength(22);
+    expect(all).toHaveLength(23);
   });
 
   it('the destructive methods every call site depends on are declared', () => {

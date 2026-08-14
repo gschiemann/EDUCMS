@@ -138,6 +138,13 @@ object NativeBridgeChannel {
         // carrying an `emergency` field, so a screen on the HTTP polling
         // backstop is covered too. See DisplayEmergency.
         "displayEmergencyHold",
+        // One-tap device-admin enrolment. Registering it here (and in
+        // nativeBridge.ts, and bumping the drift-guard canary) is the
+        // THREE-FILE ATOMIC CHANGE the enrolment wave could not make on its
+        // own: the guard asserts sorted equality between this array and the
+        // web's, so a Kotlin-only or web-only addition turns the blocking
+        // web-jest job red. See PlayerAdminReceiver / DeviceAdminEnrollment.
+        "displayEnrollAdmin",
         "checkForUpdates",
         "getRecentLogs",
         "uploadDiagnostics",
@@ -336,6 +343,7 @@ object NativeBridgeChannel {
             "deviceInfo" -> bridge.deviceInfo()
             "probeDisplay" -> bridge.probeDisplay()
             "displayCapabilities" -> bridge.displayCapabilities()
+            "displayEnrollAdmin" -> bridge.displayEnrollAdmin()
             // Channel-only entry points — a message that reaches here has
             // already passed the exact-origin AND main-frame gates, which
             // is precisely what the `@JavascriptInterface` twins cannot

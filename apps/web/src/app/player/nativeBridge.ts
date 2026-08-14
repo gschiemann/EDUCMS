@@ -84,6 +84,12 @@ export const NATIVE_VALUE_METHODS = [
   // board blanking a wall-mounted screen.
   'probeDisplay',
   'displayCapabilities',
+  // One-tap device-admin enrolment. Returns a JSON status string; it is what
+  // makes DeviceAdminBlankProvider reachable (lockNow() needs an ACTIVE admin,
+  // which is NOT device owner — no factory reset, no adb, one operator tap).
+  // Must stay in lockstep with NativeBridgeChannel.METHODS; the drift guard
+  // asserts sorted equality across the two.
+  'displayEnrollAdmin',
   'displayApply',
   'displaySetSchedule',
 ] as const;
