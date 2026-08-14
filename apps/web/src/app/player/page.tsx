@@ -1783,6 +1783,14 @@ function DiagnosticsRow() {
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // ⚠️ These two MUST stay above the early return below. They were briefly
+  // declared further down, next to handleEnroll, which made them CONDITIONAL
+  // hooks — on a screen with no native bridge the component returns before
+  // them, so the hook order changes the moment the bridge appears and React
+  // throws #310, taking the whole player down. The rules-of-hooks CI gate
+  // caught it; do not move them back for tidiness.
+  const [enrolling, setEnrolling] = useState(false);
+  const [enrollMsg, setEnrollMsg] = useState<string | null>(null);
 
   if (!nativeHas('getRecentLogs')) return null;
 
@@ -1853,8 +1861,6 @@ function DiagnosticsRow() {
   // Deliberately inside the expanded panel: enrolment must never fire
   // automatically or nag. A signage box that pops a system security dialog on
   // a wall in front of customers is worse than a screen that dims in software.
-  const [enrolling, setEnrolling] = useState(false);
-  const [enrollMsg, setEnrollMsg] = useState<string | null>(null);
   const canEnroll = nativeHas('displayEnrollAdmin');
 
   const handleEnroll = async (e: React.MouseEvent) => {
