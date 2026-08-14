@@ -1,5 +1,6 @@
 package com.educms.player.display
 
+import android.app.KeyguardManager
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
@@ -11,59 +12,41 @@ import com.educms.player.logging.PlayerLogger
  * already owns.
  *
  * ═════════════════════════════════════════════════════════════════════
- * ⚠️  REACHABLE IN PRINCIPLE, NOT YET ENROLLED IN PRACTICE
+ * ⚠️  REACHABLE — ONE OPERATOR TAP AWAY (2026-08-14)
  * ═════════════════════════════════════════════════════════════════════
  * Product decision 2026-08-13: no device OWNER. Device ADMIN is a
- * different, much cheaper thing and IS reachable — the operator taps
- * through an `ACTION_ADD_DEVICE_ADMIN` intent, no factory reset, no adb,
- * no accounts constraint — and `lockNow()` needs only
- * USES_POLICY_FORCE_LOCK, which any active admin holds. So this is a
- * real tier in the BLANK ladder, not dead code.
+ * different, much cheaper thing and IS reachable — no factory reset, no
+ * adb, no accounts constraint — and `lockNow()` needs only
+ * USES_POLICY_FORCE_LOCK, which any active admin declaring it holds.
  *
- * What is still missing is the enrolment itself: `lockNow()` requires
- * the CALLING PACKAGE to be an active admin, and `com.educms.player`
- * declares no `DeviceAdminReceiver` of its own, so there is nothing for
- * the operator to enrol yet. Until that lands, [supports] correctly
- * returns an empty set and BLANK falls through to
- * [ScreenTimeoutBlankProvider] (a real display-off on WRITE_SETTINGS
- * alone) and then to [SoftwareDimProvider]. Adding the receiver +
- * `device_admin.xml` + the enrolment prompt is a small, self-contained
- * follow-up; nothing in THIS file changes when it does.
+ * This file used to carry a long note saying the tier could never
+ * resolve because `com.educms.player` declared no `DeviceAdminReceiver`
+ * of its own, so there was nothing for the operator to enrol. THAT GAP
+ * IS CLOSED. As of 2026-08-14 the Player ships:
  *
- * As of this commit `com.educms.player` is neither an active admin nor
- * the device owner:
+ *   * `display/PlayerAdminReceiver` — our own receiver, declared in the
+ *     PLAYER manifest with BIND_DEVICE_ADMIN;
+ *   * `res/xml/player_device_admin.xml` — force-lock ONLY (contrast the
+ *     Manager's, which also declares wipe-data purely to be
+ *     device-owner-eligible; we are not doing that here);
+ *   * `DeviceAdminEnrollment` — the operator-initiated
+ *     `ACTION_ADD_DEVICE_ADMIN` prompt, plus the Settings →
+ *     Security → Device admin apps toggle, which needs no code at all.
  *
- *   * the only `DeviceAdminReceiver` in the repo is
- *     `com.educms.manager.AdminReceiver`, declared in the MANAGER
- *     manifest;
- *   * `device_admin.xml` with `<force-lock/>` is a MANAGER resource;
- *   * every device-owner check in the Player asks about MANAGER's
- *     package (`MainActivity.managerIsDeviceOwner`,
- *     `PlayerApp.maybeEnableKioskHomeAlias`, `LockTaskController`), never
- *     `ctx.packageName`.
+ * So [supports] now genuinely lights up in the field. When it does NOT,
+ * BLANK still falls through to [ScreenTimeoutBlankProvider] (a real
+ * display-off on the WRITE_SETTINGS appop alone) and then to
+ * [SoftwareDimProvider], which always works.
  *
- * The architecture assumed "any active admin with force-lock" would do.
- * It will not: the policy is scoped to the calling package, so a vendor
- * CMS's admin (which is what the probe's `activeAdminCount > 0` and its
- * `screenBlank: "device-admin"` verdict actually count) grants us
- * nothing. Implemented as specified, with an HONEST [supports] so the
- * dashboard never renders a blank button this box cannot perform — the
- * chain then falls through to [SoftwareDimProvider], which always works.
+ * ⚠️ THE MIS-READING THIS FILE EXISTS TO PREVENT, still true: the
+ * force-lock policy is scoped to the CALLING PACKAGE. "Any active admin"
+ * is NOT enough — a vendor CMS's admin (which is what the probe's
+ * `activeAdminCount > 0` counts) grants us exactly nothing. [ourAdmin]
+ * therefore asks `isAdminActive(OUR component)` and nothing else.
  *
- * THE PATH THAT WORKS, for whoever picks this up: route BLANK (and
- * REBOOT) to MANAGER over the existing signature-gated cross-app
- * broadcast — `PlayerApp.triggerManagerOtaCheck` (an explicit
- * `setPackage` intent sent with `com.educms.manager.HEALTH_PERMISSION`)
- * → `OtaTriggerReceiver` is the template, and Manager is already the
- * device owner on provisioned boxes, already declares `<force-lock/>`,
- * and already holds the admin ComponentName. That is a Manager-module
- * change, outside this commit's file domain. Note also that
- * `AdminReceiver.kt`'s "this class never calls dpm.lockNow()" comment
- * goes stale the day that lands.
- *
- * [supports] lights up automatically the moment a Player-owned admin
- * component exists, so no code here changes if the Player is ever
- * provisioned directly.
+ * Note also that if the manufacturer ever ships us preinstalled and
+ * platform-signed (the strictly-more-capable end state this fleet is
+ * heading for), nothing in this file changes.
  */
 object DeviceAdminBlankProvider : DisplayControlProvider {
 
@@ -71,8 +54,14 @@ object DeviceAdminBlankProvider : DisplayControlProvider {
 
     override val id: String = "device-admin"
 
-    override fun supports(ctx: Context): Set<Capability> =
-        if (ourAdmin(ctx) != null) setOf(Capability.BLANK, Capability.WAKE) else emptySet()
+    override fun supports(ctx: Context): Set<Capability> = when {
+        ourAdmin(ctx) == null -> emptySet()
+        // ⚠️ SEE [secureKeyguardBlocks]. Being enrolled is necessary but
+        // not sufficient — on a box with a real screen lock this tier
+        // would blank fine and then be unable to come back.
+        secureKeyguardBlocks(ctx) -> emptySet()
+        else -> setOf(Capability.BLANK, Capability.WAKE)
+    }
 
     override fun apply(ctx: Context, action: DisplayAction): ActionResult = when (action) {
         DisplayAction.Blank -> blank(ctx)
@@ -80,10 +69,69 @@ object DeviceAdminBlankProvider : DisplayControlProvider {
         else -> ActionResult.Unsupported("device-admin only handles blank/wake")
     }
 
+    /**
+     * ⚠️ THE ONE-WAY-BLANK TRAP.
+     *
+     * `lockNow()` does exactly what it says: it sleeps the panel AND
+     * engages the keyguard. On a signage box that is harmless, because
+     * these boxes ship with no screen lock — the keyguard is the
+     * swipe/none variant and `MainActivity`'s FLAG_DISMISS_KEYGUARD +
+     * `showWhenLocked` walk straight through it, which is what makes
+     * [wake] work at all.
+     *
+     * If somebody HAS set a PIN/pattern/password on the box, none of
+     * that applies: FLAG_DISMISS_KEYGUARD does not dismiss a SECURE
+     * keyguard (since API 26 that needs `requestDismissKeyguard` plus a
+     * live user authentication), so the screen would wake to a lock
+     * screen instead of to the content, with no remote way past it. A
+     * blank nobody can undo without a ladder is the single worst outcome
+     * this package has, and it is the reason [DisplayControlProvider
+     * .supports] is required to be honest rather than optimistic.
+     *
+     * So we decline the whole tier there and let BLANK/WAKE fall through
+     * to [ScreenTimeoutBlankProvider] / [SoftwareDimProvider], both of
+     * which recover from anything.
+     *
+     * `isDeviceSecure()` is API 23 (minSdk is 24), so no @RequiresApi
+     * isolation object and no ART class-load risk on the Android 7.1.2
+     * RK3288 in the pilot fleet. It answers false for swipe/none, true
+     * for PIN/pattern/password — exactly the distinction that matters.
+     * Unknown (no KeyguardManager, a throwing ROM) is treated as
+     * BLOCKED: guessing wrong toward "safe to blank" is the truck roll.
+     */
+    internal fun secureKeyguardBlocks(ctx: Context): Boolean = try {
+        val km = ctx.applicationContext.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
+        if (km == null) {
+            PlayerLogger.w(TAG, "no KeyguardManager — declining the device-admin blank tier")
+            true
+        } else {
+            km.isDeviceSecure.also {
+                if (it) {
+                    PlayerLogger.w(
+                        TAG,
+                        "a SECURE screen lock is set on this box — declining the device-admin blank tier, " +
+                            "because lockNow() would wake to a keyguard nothing can dismiss remotely",
+                    )
+                }
+            }
+        }
+    } catch (t: Throwable) {
+        PlayerLogger.w(TAG, "keyguard check threw (${t.message}) — declining the device-admin blank tier")
+        true
+    }
+
     private fun blank(ctx: Context): ActionResult {
         val dpm = dpm(ctx) ?: return ActionResult.Unsupported("no DevicePolicyManager")
         if (ourAdmin(ctx) == null) {
             return ActionResult.Unsupported("this package holds no active device admin — cannot lockNow()")
+        }
+        // Re-checked at APPLY time, not just at resolution time: the
+        // registry caches its resolution, and an operator can set a
+        // screen lock at any moment after that cache was filled.
+        if (secureKeyguardBlocks(ctx)) {
+            return ActionResult.Unsupported(
+                "a secure screen lock is set — lockNow() would wake to a keyguard we cannot dismiss remotely",
+            )
         }
         return try {
             // FLAG_KEEP_SCREEN_ON is set in MainActivity.onCreate AND on
@@ -130,11 +178,20 @@ object DeviceAdminBlankProvider : DisplayControlProvider {
      * "any active admin": another app's admin grants us nothing, and
      * treating it as ours is exactly the mis-reading that would have
      * shipped a blank button that always throws SecurityException.
+     *
+     * Asked EXACTLY of [PlayerAdminReceiver] via `isAdminActive`, rather
+     * than by scanning `activeAdmins` for our package name. Both answer
+     * the same today, but the direct question is the one that stays
+     * correct if a second Player-owned receiver is ever added (only the
+     * one declaring force-lock may drive `lockNow`), and it is the same
+     * component `DeviceAdminEnrollment` enrols — so the thing we test
+     * and the thing the operator activated can never be two different
+     * components.
      */
     private fun ourAdmin(ctx: Context): ComponentName? = try {
         val app = ctx.applicationContext
-        val manager = dpm(app)
-        manager?.activeAdmins?.firstOrNull { it.packageName == app.packageName }
+        val component = PlayerAdminReceiver.componentName(app)
+        if (dpm(app)?.isAdminActive(component) == true) component else null
     } catch (t: Throwable) {
         null
     }

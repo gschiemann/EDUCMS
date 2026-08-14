@@ -212,6 +212,68 @@ object DisplayPrefs {
         }.onFailure { PlayerLogger.w(TAG, "setPriorScreenOffTimeoutMs failed: ${it.message}") }
     }
 
+    // ─── device-admin enrolment bookkeeping ────────────────────────
+    //
+    // Our own record of the enrolment CEREMONY. The OS's
+    // `isAdminActive()` is always the authoritative answer to "are we an
+    // admin"; these three only answer "did we ask, and how did it go",
+    // which the OS does not remember for us. All default to 0 = never,
+    // and a wiped prefs file degrades to "never asked" — the safe
+    // direction, because it costs at most one extra operator-initiated
+    // prompt and never grants anything.
+    //
+    // `apply()`, not `commit()`: unlike the revert record and the
+    // emergency hold, losing one of these to a process kill costs
+    // nothing safety-relevant (worst case the prompt-pending marker is
+    // lost and the next request re-prompts). See [DeviceAdminEnrollment].
+
+    /** When we last fired ACTION_ADD_DEVICE_ADMIN. 0 = none outstanding. */
+    private const val KEY_ADMIN_PROMPTED_AT = "display_admin_prompted_at"
+
+    /** When a fired prompt was last observed NOT to have enrolled us. */
+    private const val KEY_ADMIN_DECLINED_AT = "display_admin_declined_at"
+
+    /** When we first observed ourselves to be an active admin. */
+    private const val KEY_ADMIN_ENROLLED_AT = "display_admin_enrolled_at"
+
+    /**
+     * The persisted half of [AdminEnrollmentRecord]. `isActiveAdmin` is
+     * NOT stored — it is asked of the OS on every read, because a cached
+     * copy is exactly how a screen ends up offering a blank it can no
+     * longer perform after an operator revoked the admin in Settings.
+     */
+    fun adminEnrollmentRecord(ctx: Context, isActiveAdmin: Boolean): AdminEnrollmentRecord = runCatching {
+        val p = prefs(ctx)
+        AdminEnrollmentRecord(
+            isActiveAdmin = isActiveAdmin,
+            promptedAtMs = p.getLong(KEY_ADMIN_PROMPTED_AT, 0L),
+            declinedAtMs = p.getLong(KEY_ADMIN_DECLINED_AT, 0L),
+            enrolledAtMs = p.getLong(KEY_ADMIN_ENROLLED_AT, 0L),
+        )
+    }.getOrDefault(AdminEnrollmentRecord(isActiveAdmin = isActiveAdmin))
+
+    fun setAdminEnrollmentRecord(ctx: Context, record: AdminEnrollmentRecord) {
+        runCatching {
+            val editor = prefs(ctx).edit()
+            if (record.promptedAtMs > 0L) {
+                editor.putLong(KEY_ADMIN_PROMPTED_AT, record.promptedAtMs)
+            } else {
+                editor.remove(KEY_ADMIN_PROMPTED_AT)
+            }
+            if (record.declinedAtMs > 0L) {
+                editor.putLong(KEY_ADMIN_DECLINED_AT, record.declinedAtMs)
+            } else {
+                editor.remove(KEY_ADMIN_DECLINED_AT)
+            }
+            if (record.enrolledAtMs > 0L) {
+                editor.putLong(KEY_ADMIN_ENROLLED_AT, record.enrolledAtMs)
+            } else {
+                editor.remove(KEY_ADMIN_ENROLLED_AT)
+            }
+            editor.apply()
+        }.onFailure { PlayerLogger.w(TAG, "setAdminEnrollmentRecord failed: ${it.message}") }
+    }
+
     // ─── manifest `display` block ──────────────────────────────────
 
     fun configJson(ctx: Context): String? = runCatching {

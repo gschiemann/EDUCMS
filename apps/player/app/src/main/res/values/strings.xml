@@ -9,4 +9,25 @@
     <string name="pairing_invalid_code">Enter a valid pairing code.</string>
     <string name="pairing_error">Pairing failed: %1$s</string>
     <string name="pairing_version">Player v%1$s</string>
+
+    <!--
+      Device-ADMIN enrolment copy (2026-08-14).
+
+      Every string below is read by a NON-TECHNICAL operator standing in
+      front of a wall-mounted screen, inside an Android SECURITY dialog
+      they were not expecting. Plain language, no jargon, no
+      overclaiming — we ask for exactly one power (turn the panel off)
+      and we say exactly that. Do not add "manage", "control your
+      device", "administrator privileges" or anything that reads like an
+      MDM taking over the box; it is not true and it is how a one-tap
+      setup turns into a refused setup.
+    -->
+    <!-- Shown as the app's entry in Settings → Security → Device admin apps. -->
+    <string name="device_admin_label">Turn this screen off</string>
+    <!-- The body text of the system "Activate device admin app?" dialog. -->
+    <string name="device_admin_description">Lets your administrator turn this screen off on a schedule.</string>
+    <!-- EXTRA_ADD_EXPLANATION — our own sentence above the system dialog. -->
+    <string name="device_admin_add_explanation">Lets your administrator turn this screen off on a schedule. Nothing else on this device changes.</string>
+    <!-- Shown when somebody tries to deactivate it again. -->
+    <string name="device_admin_disable_warning">Scheduled screen off will stop working. The screen will stay lit and only dim in software.</string>
 </resources>

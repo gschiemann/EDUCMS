@@ -389,6 +389,53 @@
             </intent-filter>
         </receiver>
 
+        <!--
+          ── Device ADMIN (2026-08-14) — com.educms.player.display ──
+
+          THE unlock for a real panel-off blank. `DevicePolicyManager
+          .lockNow()` sleeps the panel for real (backlight off, power
+          saved) instead of painting a black overlay over a lit one, and
+          it needs exactly one thing: that the CALLING package holds an
+          active device admin declaring force-lock. Until this receiver
+          existed, `DeviceAdminBlankProvider` could never resolve — the
+          only DeviceAdminReceiver in the repo belonged to the MANAGER
+          package, and the policy is scoped to the caller.
+
+          ⚠️ ADMIN, NOT OWNER. Device owner is the singleton role that
+          needs a factory-reset box with no accounts (product decision
+          2026-08-13: we do NOT take it). Device admin needs none of
+          that — no factory reset, no adb, no accounts constraint, many
+          admins may coexist alongside a vendor CMS's own — and the
+          operator grants it by tapping through one system dialog or one
+          toggle in Settings > Security > Device admin apps. That
+          Settings toggle is why `player_device_admin.xml` sets
+          android:visible="true".
+
+          exported="true" + permission=BIND_DEVICE_ADMIN is the required
+          contract, not a choice: the SYSTEM sends DEVICE_ADMIN_ENABLED,
+          and the permission is what guarantees only the system can. The
+          lint suppression is not needed here (BIND_* permissions are
+          the sanctioned pattern) — this mirrors, byte for byte, the
+          Manager's own AdminReceiver declaration.
+
+          FIELD-OPS NOTE: while the admin is ACTIVE, Android refuses to
+          UNINSTALL the Player until it is deactivated in Settings.
+          Package UPDATES (OTA) are unaffected.
+        -->
+        <receiver
+            android:name=".display.PlayerAdminReceiver"
+            android:label="@string/device_admin_label"
+            android:description="@string/device_admin_description"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/player_device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
         <!-- FileProvider for the OTA install intent. Android 7+ refuses
              to grant install permission to a file:// uri; everything must
              be served from a content://<authority>/<path> via FileProvider.

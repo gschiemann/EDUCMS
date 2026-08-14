@@ -224,15 +224,48 @@ object DisplayCapabilityProbe {
         out.put("deviceOwnerPackage", holder ?: JSONObject.NULL)
         out.put("deviceOwnerDetected", holder != null)
 
-        // Active device admins — a vendor CMS often registers as a plain
-        // admin WITHOUT taking device owner. That case is fine for us: we
-        // can still be provisioned, and force-lock/lockNow is available to
-        // any active admin that declares the policy (we do, in
-        // manager/src/main/res/xml/device_admin.xml).
+        // Active device admins on the box, whoever owns them.
+        //
+        // ⚠️ READ THIS COUNT CORRECTLY. A vendor CMS very often registers
+        // its own plain admin without taking device owner, so
+        // `activeAdminCount > 0` says NOTHING about what WE can do: the
+        // force-lock policy behind `lockNow()` is scoped to the calling
+        // package. The field that answers "can this Player really blank
+        // the panel" is `selfIsActiveAdmin` below — never this count.
         val admins = JSONArray()
         safe { dpm.activeAdmins }?.forEach { admins.put(it.flattenToShortString()) }
         out.put("activeAdmins", admins)
         out.put("activeAdminCount", admins.length())
+
+        // ── OUR OWN device-ADMIN enrolment (2026-08-14) ──────────────
+        //
+        // The one-tap tier. When `enrollment.state` is "not-enrolled" or
+        // "declined", this screen's BLANK is stuck on the screen-timeout
+        // or software-dim fallback and ONE operator tap
+        // (`ACTION_ADD_DEVICE_ADMIN`, or the Settings > Security >
+        // Device admin apps toggle) promotes it to a real panel-off
+        // `lockNow()`. That is the fleet question this section exists to
+        // answer without anyone walking to a screen.
+        //
+        // Read-only, like every other section here:
+        // `DeviceAdminEnrollment.probeJson` deliberately does NOT settle
+        // a pending prompt (that write belongs to MainActivity.onResume).
+        //
+        // NOTE for whoever wires the dashboard: the persisted server-side
+        // document keeps only the 6 enum verdict fields
+        // (`normalizeCapabilityReport` in apps/api), so this block rides
+        // the on-demand `probeDisplay()` call, not the stored report. The
+        // stored signal for "enrolled" is `verdict.screenBlank ==
+        // "device-admin"`, which the registry already produces.
+        out.put("selfIsActiveAdmin", safe { DeviceAdminEnrollment.isActiveAdmin(ctx) } ?: false)
+        out.put("selfAdminComponent", safe { DeviceAdminEnrollment.adminComponent(ctx).flattenToShortString() })
+        out.put("enrollment", safe { DeviceAdminEnrollment.probeJson(ctx) } ?: JSONObject())
+        // Why an ENROLLED screen can still be on the fallback tier: a
+        // PIN/pattern/password on the box makes `lockNow()` a one-way
+        // blank (see DeviceAdminBlankProvider.secureKeyguardBlocks).
+        // Without this field that box looks like an unexplained "we did
+        // the tap and nothing changed".
+        out.put("secureKeyguardBlocksBlank", safe { DeviceAdminBlankProvider.secureKeyguardBlocks(ctx) } ?: true)
 
         return out
     }

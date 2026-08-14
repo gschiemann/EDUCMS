@@ -96,6 +96,13 @@ class WebAppBridge(
     private val displayEmergencyHoldImpl: (Boolean, Boolean) -> String =
         { _, _ -> """{"ok":false,"code":"unavailable"}""" },
     /**
+     * 2026-08-14 — raises the one-time device-ADMIN enrolment dialog.
+     * Backed by `MainActivity.requestDeviceAdminEnrollment`, which owns
+     * BOTH gates (foreground Activity + recent physical presence). See
+     * `displayEnrollAdmin()` below.
+     */
+    private val displayEnrollAdminImpl: () -> String = { """{"ok":false,"code":"unavailable"}""" },
+    /**
      * True when the origin-scoped [com.educms.player.security.NativeBridgeChannel]
      * is live on this WebView. DIAGNOSTIC ONLY since 2026-08-13 — it is
      * no longer a gate, see `displayApply()`.
@@ -310,6 +317,59 @@ class WebAppBridge(
         displayEmergencyHoldImpl(active, false)
     } catch (ex: Exception) {
         PlayerLogger.e("WebAppBridge", "displayEmergencyHold FAILED", ex)
+        """{"ok":false,"code":"exception"}"""
+    }
+
+    /**
+     * ONE-TAP DEVICE-ADMIN ENROLMENT (2026-08-14).
+     *
+     * Raises the Android `ACTION_ADD_DEVICE_ADMIN` dialog for the
+     * Player's own `display.PlayerAdminReceiver`, which declares
+     * force-lock and nothing else. Approving it promotes BLANK/WAKE from
+     * the software floor (a black overlay over a still-lit panel that
+     * saves no power) to `DevicePolicyManager.lockNow()` — a real
+     * panel-off. It grants nothing else: not reboot, not silent install,
+     * not device owner.
+     *
+     * Returns `{"ok":true,"state":"prompt-pending"}`, or `ok:false` with
+     * a stable `code`: `already-enrolled`, `prompt-pending`,
+     * `recently-declined`, `no-operator-present`, `prompt-unavailable`.
+     *
+     * ─────────────────────────────────────────────────────────────────
+     * ⚠️ WHY THIS ONE IS NOT ON THE `NativeBridgeChannel` ALLOWLIST
+     * ─────────────────────────────────────────────────────────────────
+     * It is only on this legacy every-frame surface, which is the one
+     * transport that exists on 100% of the fleet (including the
+     * Chromium 83-87 Taurus, where `WEB_MESSAGE_LISTENER` is
+     * unavailable and the origin-scoped channel can never attach).
+     *
+     * Adding it to `NativeBridgeChannel.METHODS` REQUIRES the matching
+     * entry in `apps/web/src/app/player/nativeBridge.ts`
+     * (`NATIVE_VALUE_METHODS`) plus the `toHaveLength` bump in
+     * `apps/web/src/app/player/__tests__/nativeBridge.test.ts` — that
+     * suite reads the Kotlin array off disk and asserts sorted equality,
+     * so a Kotlin-only addition turns the blocking `web-jest` job RED.
+     * Those files are outside this change's file domain, so the channel
+     * registration is deliberately left as a paired follow-up: all three
+     * edits must land in ONE commit.
+     *
+     * ⚠️ The every-frame exposure is NOT unguarded. Enrolment is not a
+     * recovery-direction action, so it does not belong in
+     * `DisplayControlApi.isRecoveryAction`'s untrusted subset — but the
+     * gate that actually fits it is presence, not transport:
+     * `MainActivity.requestDeviceAdminEnrollment` refuses unless
+     * somebody physically touched this box in the last 60 s. A hostile
+     * board iframe on an unattended wall panel gets
+     * `no-operator-present` and nothing else; and even with a human
+     * present the worst outcome is a system dialog they must actively
+     * approve, rate-limited by the enrolment debounce and the
+     * once-declined cooldown.
+     */
+    @JavascriptInterface
+    fun displayEnrollAdmin(): String = try {
+        displayEnrollAdminImpl()
+    } catch (ex: Exception) {
+        PlayerLogger.w("WebAppBridge", "displayEnrollAdmin failed: ${ex.message}")
         """{"ok":false,"code":"exception"}"""
     }
 

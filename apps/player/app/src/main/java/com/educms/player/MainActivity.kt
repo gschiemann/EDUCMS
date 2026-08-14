@@ -188,6 +188,56 @@ class MainActivity : ComponentActivity() {
          * `device-<ts>-<rand>`) plus operator `?deviceId=` values.
          */
         private val FINGERPRINT_RE = Regex("^[A-Za-z0-9._-]{8,128}\$")
+
+        /**
+         * 2026-08-14 — explicit-component action that raises the
+         * device-admin enrolment dialog. See
+         * [handleDeviceAdminEnrollIntent]; deliberately NOT declared in
+         * an `<intent-filter>`.
+         */
+        const val ACTION_ENROLL_DISPLAY_ADMIN = "com.educms.player.ENROLL_DISPLAY_ADMIN"
+
+        /**
+         * How recently somebody must have touched this box for the
+         * web-bridge enrolment request to be honoured. 60 s is long
+         * enough to cover "tap the button, read the confirm copy, tap
+         * again" and far too short for an unattended wall panel.
+         */
+        private const val LOCAL_INPUT_WINDOW_MS = 60L * 1000L
+    }
+
+    // ─── 2026-08-14: physical-presence marker ───────────────────────
+
+    /**
+     * `SystemClock.elapsedRealtime()` of the last LOCAL input — a touch,
+     * a remote key, a USB keyboard. 0 = nobody has touched this box since
+     * the Activity started.
+     *
+     * ⚠️ Its only consumer is the device-admin enrolment gate (see
+     * [requestDeviceAdminEnrollment]). It is NOT a security control and
+     * must not be used as one — it is a PRESENCE control, and presence is
+     * a genuine product requirement there: enrolment ends in an Android
+     * system dialog that a human has to read and approve, so firing it
+     * when nobody is standing at the panel puts a security prompt on a
+     * wall in front of customers and blocks the content behind it until
+     * somebody drives 20 minutes to dismiss it.
+     *
+     * `elapsedRealtime`, never `currentTimeMillis`: Android steps the
+     * wall clock on first NTP sync, and a backwards step would make a
+     * stale marker look fresh.
+     */
+    @Volatile
+    private var lastLocalInputAtMs: Long = 0L
+
+    /**
+     * Called by the framework from `dispatchTouchEvent` /
+     * `dispatchKeyEvent` before the event reaches any view, so it covers
+     * the WebView, the signage remote's D-pad and a plugged-in keyboard
+     * alike.
+     */
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        lastLocalInputAtMs = android.os.SystemClock.elapsedRealtime()
     }
 
     // ─── 2026-08-03: kiosk lock task mode ───────────────────────────
@@ -524,6 +574,13 @@ class MainActivity : ComponentActivity() {
         // by Android 11+ Background Activity Launch on Goodview signage
         // ROMs. MainActivity is foregrounded so it satisfies BAL.
         handleInstallPromptTrampoline(intent)
+
+        // 2026-08-14 — field-ops device-admin enrolment trigger. A no-op
+        // on every normal launch (the action is absent), and the ONLY
+        // boot-path reference to enrolment anywhere in the app: it fires
+        // solely when somebody deliberately sent that action, never
+        // because the box booted. See handleDeviceAdminEnrollIntent.
+        handleDeviceAdminEnrollIntent(intent)
 
         // 2026-05-24 — per-screen orientation lock.
         //
@@ -874,6 +931,116 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(newIntent: Intent?) {
         super.onNewIntent(newIntent)
         handleInstallPromptTrampoline(newIntent)
+        handleDeviceAdminEnrollIntent(newIntent)
+    }
+
+    /**
+     * ── FIELD-OPS ENROLMENT TRIGGER (2026-08-14) ────────────────────
+     *
+     * A tech at the box, or the provisioning script, can raise the
+     * device-admin prompt with one line and no APK change:
+     *
+     * ```
+     * adb shell am start -n com.educms.player/com.educms.player.MainActivity \
+     *     -a com.educms.player.ENROLL_DISPLAY_ADMIN
+     * # debug builds carry applicationIdSuffix ".debug":
+     * adb shell am start -n com.educms.player.debug/com.educms.player.MainActivity \
+     *     -a com.educms.player.ENROLL_DISPLAY_ADMIN
+     * ```
+     *
+     * (The CLASS is always `com.educms.player.MainActivity` — only the
+     * package half of the component takes the suffix, which is why the
+     * `/.MainActivity` shorthand is wrong on a debug kiosk.)
+     *
+     * NOTE the explicit `-n`. This action deliberately has NO
+     * `<intent-filter>`: MainActivity is already exported (it carries
+     * LAUNCHER), so an explicit component start works, and adding a
+     * filter would create a new IMPLICIT surface any app on the box
+     * could resolve. Exposure is therefore identical to today's
+     * `OPEN_PLAYER` action, and the worst an external caller achieves is
+     * a system dialog the operator must actively approve — rate-limited
+     * by [DeviceAdminEnrollmentMath]'s debounce and decline cooldown.
+     *
+     * Not presence-gated, unlike the bridge path: whoever can send this
+     * either has a shell on the device (in which case
+     * `adb shell dpm set-active-admin …` is strictly easier and this
+     * grants nothing new) or is already an app on the box.
+     */
+    private fun handleDeviceAdminEnrollIntent(launchIntent: Intent?) {
+        if (launchIntent?.action != ACTION_ENROLL_DISPLAY_ADMIN) return
+        // Consume it, so a singleTask relaunch of a retained intent
+        // cannot re-prompt on every future resume.
+        launchIntent.action = Intent.ACTION_MAIN
+        PlayerLogger.i("DisplayControl", "device-admin enrolment requested by intent")
+        val result = com.educms.player.display.DeviceAdminEnrollment.requestEnrollment(
+            this,
+            com.educms.player.display.DeviceAdminEnrollment.SOURCE_INTENT,
+        )
+        PlayerLogger.i("DisplayControl", "enrolment intent result: $result")
+    }
+
+    /**
+     * The enrolment entry point the WEB layer calls, via
+     * `WebAppBridge.displayEnrollAdmin()`.
+     *
+     * ⚠️ TWO GATES, and both are product requirements rather than
+     * defence-in-depth theatre:
+     *
+     *  1. **A foreground Activity.** `ACTION_ADD_DEVICE_ADMIN` needs one,
+     *     and requiring it is what keeps enrolment off every background
+     *     path.
+     *  2. **Recent physical presence.** The legacy
+     *     `addJavascriptInterface` surface is materialised in EVERY frame
+     *     the WebView loads, including operator-authored EXTERNAL_HTML
+     *     board iframes (see WebAppBridge's header). Enrolment is not a
+     *     recovery-direction action, so it does not belong in the
+     *     untrusted subset — but the honest gate here is not "which
+     *     transport" (on a Chromium 83-87 Taurus there IS only the
+     *     untrusted one), it is "is a human standing at this panel".
+     *     They must be: they have to tap Activate on the system dialog.
+     *     No touch in [LOCAL_INPUT_WINDOW_MS] ⇒ the dialog would sit
+     *     unattended over the content on a wall. Refused.
+     *
+     * Everything runs on the UI thread; the bridge call can arrive on
+     * the JavaBridge thread or the channel worker.
+     */
+    private fun requestDeviceAdminEnrollment(): String {
+        val sinceInput = android.os.SystemClock.elapsedRealtime() - lastLocalInputAtMs
+        if (lastLocalInputAtMs == 0L || sinceInput > LOCAL_INPUT_WINDOW_MS) {
+            PlayerLogger.w(
+                "DisplayControl",
+                "REFUSED device-admin enrolment — no local input in the last " +
+                    "${LOCAL_INPUT_WINDOW_MS / 1000}s, so nobody is at the screen to approve the dialog",
+            )
+            return """{"ok":false,"code":"no-operator-present",""" +
+                """"message":"tap the screen first — this setup ends in a dialog somebody has to approve"}"""
+        }
+        // startActivity must run on the UI thread; the bridge does not.
+        // Hand off and answer immediately with what we know — the real
+        // outcome is settled in onResume, and the dashboard/probe reads
+        // it from `admin.enrollment.state`.
+        val latch = java.util.concurrent.CountDownLatch(1)
+        val holder = arrayOfNulls<String>(1)
+        runOnUiThread {
+            holder[0] = try {
+                com.educms.player.display.DeviceAdminEnrollment.requestEnrollment(
+                    this,
+                    com.educms.player.display.DeviceAdminEnrollment.SOURCE_BRIDGE,
+                )
+            } catch (t: Throwable) {
+                PlayerLogger.w("DisplayControl", "enrolment request threw: ${t.message}")
+                """{"ok":false,"code":"exception"}"""
+            }
+            latch.countDown()
+        }
+        // Bounded: the UI thread of a kiosk that must never jank should
+        // clear this instantly. A timeout is not a failure of the
+        // enrolment, only of our ability to report it synchronously.
+        return if (latch.await(3, java.util.concurrent.TimeUnit.SECONDS)) {
+            holder[0] ?: """{"ok":false,"code":"exception"}"""
+        } else {
+            """{"ok":true,"state":"prompt-pending","detail":"dispatched"}"""
+        }
     }
 
     private fun handleInstallPromptTrampoline(launchIntent: Intent?) {
@@ -1636,6 +1803,12 @@ class MainActivity : ComponentActivity() {
                 displayEmergencyHoldImpl = { active, trusted ->
                     DisplayControlApi.emergencyHoldJson(applicationContext, active, trusted)
                 },
+                // 2026-08-14 — one-tap device-ADMIN enrolment, the tier
+                // that turns BLANK from "black overlay over a lit panel"
+                // into a real lockNow() panel-off. Activity-scoped and
+                // presence-gated inside requestDeviceAdminEnrollment();
+                // read its KDoc before moving this anywhere.
+                displayEnrollAdminImpl = { requestDeviceAdminEnrollment() },
                 // DIAGNOSTIC ONLY. This used to gate the mutators off the
                 // legacy transport, which inverted: it evaluated false on
                 // exactly the pre-channel devices that needed the gate
@@ -2046,7 +2219,19 @@ class MainActivity : ComponentActivity() {
         //    re-registered per Activity instance, and a hold that
         //    survived a process death has to be re-applied to the NEW
         //    window or the alert stays behind a black overlay.
+        //
+        // 3. SETTLE a pending device-admin enrolment prompt (2026-08-14).
+        //    `ACTION_ADD_DEVICE_ADMIN` takes the operator out of our
+        //    Activity and back into it, so THIS is the moment we learn
+        //    how it ended. Deliberately BEFORE the invalidate: settling
+        //    a successful enrolment invalidates too, and ordering it
+        //    first means the resolution below already sees
+        //    BLANK=device-admin in the same resume — no process restart,
+        //    which is the whole point of the tier. Settling is cheap and
+        //    a no-op when no prompt is outstanding (it returns null
+        //    before touching prefs).
         runCatching {
+            com.educms.player.display.DeviceAdminEnrollment.settlePending(applicationContext)
             com.educms.player.display.DisplayControlRegistry.invalidate()
             com.educms.player.display.DisplayEmergency.enforceIfHeld(applicationContext)
         }.onFailure { PlayerLogger.w("DisplayControl", "onResume display refresh failed: ${it.message}") }
