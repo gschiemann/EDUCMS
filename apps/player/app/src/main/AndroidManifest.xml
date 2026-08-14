@@ -50,6 +50,41 @@
     <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 
     <!--
+      ── Display control (2026-08-13) — com.educms.player.display ──
+
+      MODIFY_AUDIO_SETTINGS: normal permission, auto-granted. Volume via
+      AudioManager works without it for STREAM_MUSIC, but declaring it
+      keeps us out of the DND / audio-policy edge cases that otherwise
+      throw SecurityException on some ROMs.
+
+      WRITE_SETTINGS: signature|appop. Declaring it is a PREREQUISITE for
+      the appop to be grantable at all — without the manifest entry
+      Settings.System.canWrite() is permanently false and the
+      SettingsBrightnessProvider can never light up. Declaring it grants
+      nothing on its own: the operator must still allow it through
+      Settings.ACTION_MANAGE_WRITE_SETTINGS, and canWrite() is exactly
+      what that provider's supports() returns on, so the dashboard never
+      offers a control we cannot perform.
+
+      SCHEDULE_EXACT_ALARM / USE_EXACT_ALARM: the on-device on/off
+      schedule is the whole reason a screen that loses network still
+      blanks at 22:00. Targeting API 34, SCHEDULE_EXACT_ALARM is denied
+      by default, so USE_EXACT_ALARM (API 33+, auto-granted, intended for
+      alarm-clock-class apps — which is precisely what a signage on/off
+      schedule is) is the one that actually holds. This APK is sideloaded
+      onto kiosks and never distributed through Play, so the Play policy
+      declaration that normally gates USE_EXACT_ALARM does not apply.
+      DisplayScheduler degrades to setAndAllowWhileIdle when neither is
+      granted — inexact by minutes, but it always fires.
+    -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission
+        android:name="android.permission.WRITE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+    <!--
       Permission to write to the Manager APK's PlayerHealthProvider
       (Phase 1 of the multi-APK architecture, see
       scratch/manager-apk/01-architecture-decision.md). Manager's
@@ -324,6 +359,80 @@
             android:exported="false">
             <intent-filter>
                 <action android:name="com.educms.player.WATCHDOG_TICK" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Display schedule + dead-man revert alarms (2026-08-13).
+
+             Two actions, one receiver:
+               DISPLAY_SCHEDULE_TICK — the next on/off boundary computed
+                 from the manifest's `display` block, in the SCREEN's
+                 timezone. The receiver applies the desired state and
+                 re-arms the next one (exactly one alarm outstanding at
+                 a time — see DisplayScheduler for why setInexactRepeating
+                 and WorkManager are both wrong for this).
+               DISPLAY_REVERT — the dead-man switch that restores the
+                 screen after an operator test.
+
+             exported="false": only ever targeted by PendingIntents we
+             minted ourselves. The receiver still checks intent.action
+             explicitly — a same-UID component can reach an unexported
+             receiver, and the sibling UsbAttachReceiver shipped a fix
+             for exactly that omission. -->
+        <receiver
+            android:name=".display.DisplayScheduleReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.educms.player.DISPLAY_SCHEDULE_TICK" />
+                <action android:name="com.educms.player.DISPLAY_REVERT" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+          ── Device ADMIN (2026-08-14) — com.educms.player.display ──
+
+          THE unlock for a real panel-off blank. `DevicePolicyManager
+          .lockNow()` sleeps the panel for real (backlight off, power
+          saved) instead of painting a black overlay over a lit one, and
+          it needs exactly one thing: that the CALLING package holds an
+          active device admin declaring force-lock. Until this receiver
+          existed, `DeviceAdminBlankProvider` could never resolve — the
+          only DeviceAdminReceiver in the repo belonged to the MANAGER
+          package, and the policy is scoped to the caller.
+
+          ⚠️ ADMIN, NOT OWNER. Device owner is the singleton role that
+          needs a factory-reset box with no accounts (product decision
+          2026-08-13: we do NOT take it). Device admin needs none of
+          that — no factory reset, no adb, no accounts constraint, many
+          admins may coexist alongside a vendor CMS's own — and the
+          operator grants it by tapping through one system dialog or one
+          toggle in Settings > Security > Device admin apps. That
+          Settings toggle is why `player_device_admin.xml` sets
+          android:visible="true".
+
+          exported="true" + permission=BIND_DEVICE_ADMIN is the required
+          contract, not a choice: the SYSTEM sends DEVICE_ADMIN_ENABLED,
+          and the permission is what guarantees only the system can. The
+          lint suppression is not needed here (BIND_* permissions are
+          the sanctioned pattern) — this mirrors, byte for byte, the
+          Manager's own AdminReceiver declaration.
+
+          FIELD-OPS NOTE: while the admin is ACTIVE, Android refuses to
+          UNINSTALL the Player until it is deactivated in Settings.
+          Package UPDATES (OTA) are unaffected.
+        -->
+        <receiver
+            android:name=".display.PlayerAdminReceiver"
+            android:label="@string/device_admin_label"
+            android:description="@string/device_admin_description"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/player_device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
             </intent-filter>
         </receiver>
 

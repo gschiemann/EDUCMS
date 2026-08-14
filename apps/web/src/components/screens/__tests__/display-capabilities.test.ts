@@ -1,0 +1,516 @@
+/**
+ * Capability-truth tests for the display-control resolver.
+ *
+ * These exist because the whole feature's acceptance criterion is a
+ * NEGATIVE one: "never render a control the hardware cannot perform."
+ * That's exactly the kind of rule that rots silently — a UI regression
+ * shows a working-looking slider and nobody notices until an operator on
+ * a ladder does. Pinning the resolver means the honesty logic can't drift
+ * even if the panel's markup is rewritten.
+ */
+
+import {
+  MIN_SAFE_BRIGHTNESS_PERCENT,
+  DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT,
+  displayActionSupport,
+  readStoredDisplayVerdict,
+  type DisplayActionType,
+} from '@cms/api-types';
+import {
+  resolveDisplayControls,
+  parseDisplayCapabilities,
+  clampBrightness,
+  clampVolume,
+  serializeDays,
+  parseDays,
+  formatDays,
+  isEveryDay,
+  crossesMidnight,
+  MIN_SAFE_BRIGHTNESS,
+  RECOVERY_MIN_BRIGHTNESS,
+  ALL_DAY_INDEXES,
+  WEEKDAY_INDEXES,
+  DISPLAY_SCHEDULE_DAYS,
+} from '../display-capabilities';
+
+const FULL_VERDICT = {
+  volume: 'audiomanager',
+  brightness: 'sysfs',
+  screenBlank: 'device-owner',
+  reboot: 'device-owner',
+  hardPowerOff: 'none',
+  deviceOwnerPath: 'held',
+};
+
+/**
+ * What the probe ACTUALLY emits on a modern APK: DisplayControlRegistry
+ * provider ids, read out of the Kotlin (`override val id`) rather than
+ * guessed. Contract C5 — the device's vocabulary is authoritative.
+ */
+const REGISTRY_VERDICT = {
+  volume: 'audiomanager',
+  brightness: 'sysfs-backlight',
+  screenBlank: 'screen-timeout',
+  reboot: 'none',
+  hardPowerOff: 'none',
+  deviceOwnerPath: 'provisionable-after-factory-reset',
+};
+
+/**
+ * The shape `Screen.displayCapabilities` ACTUALLY holds: the probe document
+ * with the verdict under a `verdict` key, exactly what
+ * `normalizeCapabilityReport` writes. Every fixture below goes through this,
+ * because as of the 2026-08-14 sweep the dashboard reads that column with
+ * the SERVER's own reader — a bare verdict object is no longer accepted, so
+ * a test that passed one would be testing a shape no row can have.
+ */
+const stored = (verdict: Record<string, unknown>) => ({
+  schema: 1,
+  probedAt: 1_760_000_000_000,
+  reportedAt: 1_760_000_001_000,
+  build: { manufacturer: 'Goodview', model: 'M43GUQ' },
+  verdict,
+});
+
+describe('parseDisplayCapabilities', () => {
+  it('returns null for anything that is not a verdict object', () => {
+    expect(parseDisplayCapabilities(null)).toBeNull();
+    expect(parseDisplayCapabilities(undefined)).toBeNull();
+    expect(parseDisplayCapabilities('sysfs')).toBeNull();
+    expect(parseDisplayCapabilities([])).toBeNull();
+    expect(parseDisplayCapabilities({})).toBeNull();
+  });
+
+  /**
+   * CHANGED 2026-08-14 (was: "accepts a bare verdict and a { verdict }
+   * envelope alike"). The old assertion pinned the WRONG contract: the
+   * dashboard accepted a bare verdict object that the API's own
+   * `verdictFromStored` rejects, so a hand-seeded/migrated row rendered an
+   * ENABLED Blank button that the API refuses with
+   * DISPLAY_CAPABILITIES_UNKNOWN. `normalizeCapabilityReport` — the only
+   * writer of this column — always emits the envelope, so nothing real
+   * regresses; the permissive half only ever produced 409s.
+   */
+  it('reads the stored envelope, and REFUSES a bare verdict (server parity)', () => {
+    expect(parseDisplayCapabilities(stored(FULL_VERDICT))?.brightness).toBe('sysfs');
+    expect(parseDisplayCapabilities(FULL_VERDICT)).toBeNull();
+  });
+
+  /**
+   * CHANGED 2026-08-14. Same reason: a document missing screenBlank (or any
+   * other core axis) is NOT a partial verdict to the API — it is no verdict
+   * at all. The narrowing behaviour it was written to pin is asserted below
+   * on a complete document.
+   */
+  it('needs all four core axes before it counts as reported at all', () => {
+    expect(
+      parseDisplayCapabilities(stored({ volume: 'audiomanager', brightness: 'sysfs' })),
+    ).toBeNull();
+  });
+
+  it('drops values outside the known enum instead of trusting them', () => {
+    const v = parseDisplayCapabilities(
+      stored({
+        volume: 'audiomanager',
+        brightness: 'root-shell',
+        screenBlank: 'software-dim',
+        reboot: 'su',
+      }),
+    );
+    expect(v?.volume).toBe('audiomanager');
+    expect(v?.brightness).toBeUndefined();
+    expect(v?.reboot).toBeUndefined();
+  });
+});
+
+describe('resolveDisplayControls — tri-state', () => {
+  it('treats "never reported" as unknown, NOT as unsupported', () => {
+    const r = resolveDisplayControls(null);
+    expect(r.reported).toBe(false);
+    // Volume and reboot have no recovery direction — the API refuses both
+    // on a null verdict, so neither may be offered or declared unsupported.
+    expect(r.volume.available).toBe(false);
+    expect(r.volume.noteKey).toBeNull();
+    expect(r.reboot.available).toBe(false);
+    expect(r.reboot.noteKey).toBeNull();
+  });
+
+  // CONTRACT C4, per-ACTION. The previous cut of this file asserted that the
+  // whole blank/wake PAIR survives "never reported" — but the API refuses
+  // BLANK on a null verdict (DISPLAY_CAPABILITIES_UNKNOWN) while accepting
+  // WAKE, so the pair had to split. A screen with no verdict is every screen
+  // in the pilot today, which made that Blank button a 100%-failure control.
+  it('withholds BLANK before a verdict, and says why — while WAKE stays live', () => {
+    const r = resolveDisplayControls(null);
+    expect(r.blank.available).toBe(false);
+    expect(r.blank.noteKey).toBe('screens.display.note.blankNotReported');
+    expect(r.wake.available).toBe(true);
+    expect(r.wake.noteKey).toBe('screens.display.note.wakeNotReported');
+  });
+
+  // The other half of C4's recovery direction: a RAISE is accepted on an
+  // unreported screen, so the slider renders — with its floor lifted to the
+  // exact value the API will take, so no position on the track can 409.
+  it('offers a raise-only brightness slider before a verdict', () => {
+    const r = resolveDisplayControls(null);
+    expect(r.brightness.available).toBe(true);
+    expect(r.brightness.recoveryOnly).toBe(true);
+    expect(r.brightness.floor).toBe(RECOVERY_MIN_BRIGHTNESS);
+    expect(r.brightness.kind).toBeNull();
+    expect(r.brightness.noteKey).toBe('screens.display.note.brightnessRecoveryOnly');
+  });
+
+  /**
+   * REWRITTEN 2026-08-14 — the old version asserted `reported === true` for
+   * `{ volume: 'audiomanager' }`, i.e. the panel showing an enabled Blank
+   * button on a document the API reads as no-verdict-at-all. That was the
+   * exact 100%-failure control this wave exists to kill, pinned by a test.
+   * A core axis missing now means the recovery-only layout, which is what
+   * the API enforces anyway.
+   */
+  it('an INCOMPLETE verdict is not reported — recovery layout, not a dead Blank', () => {
+    const r = resolveDisplayControls(stored({ volume: 'audiomanager' }));
+    expect(r.reported).toBe(false);
+    expect(r.volume.available).toBe(false);
+    expect(r.blank.available).toBe(false);
+    expect(r.wake.available).toBe(true);
+    expect(r.brightness.available).toBe(true);
+    expect(r.brightness.recoveryOnly).toBe(true);
+    expect(r.brightness.floor).toBe(RECOVERY_MIN_BRIGHTNESS);
+  });
+
+  it('a COMPLETE verdict with an unrecognised axis leaves that axis unknown', () => {
+    const r = resolveDisplayControls(
+      stored({ ...FULL_VERDICT, brightness: 'root-shell' }),
+    );
+    expect(r.reported).toBe(true);
+    expect(r.volume.available).toBe(true);
+    expect(r.brightness.available).toBe(false);
+    expect(r.brightness.noteKey).toBeNull();
+    // Once reported, brightness is back on the universal safety floor.
+    expect(r.brightness.floor).toBe(MIN_SAFE_BRIGHTNESS);
+    expect(r.brightness.recoveryOnly).toBe(false);
+  });
+});
+
+// CONTRACT C5 — the device's DisplayControlRegistry provider ids are the
+// authoritative vocabulary. Wave 2 changed the probe to emit them and left
+// the dashboard resolver on the older heuristic words, so a screen running a
+// current APK resolved to "not reported" on every axis and got the
+// recovery-only layout forever. These pin the real ids, copied from
+// `override val id` in apps/player/.../display/*Provider.kt.
+describe('resolveDisplayControls — registry provider ids (contract C5)', () => {
+  it('accepts every id DisplayControlRegistry can resolve', () => {
+    const r = resolveDisplayControls(stored(REGISTRY_VERDICT));
+    expect(r.reported).toBe(true);
+    expect(r.volume.available).toBe(true);
+    expect(r.brightness.kind).toBe('sysfs-backlight');
+    expect(r.brightness.noteKey).toBe('screens.display.note.brightnessSysfs');
+    expect(r.blank.available).toBe(true);
+    expect(r.blank.noteKey).toBe('screens.display.note.blankScreenTimeout');
+  });
+
+  it('maps the vendor-recipe ids to their own hedged copy', () => {
+    const b = resolveDisplayControls(stored({ ...REGISTRY_VERDICT, brightness: 'vendor-recipe' }));
+    expect(b.brightness.kind).toBe('vendor-recipe');
+    expect(b.brightness.softwareOnly).toBe(false);
+    expect(b.brightness.noteKey).toBe('screens.display.note.brightnessVendorRecipe');
+
+    const k = resolveDisplayControls(stored({ ...REGISTRY_VERDICT, screenBlank: 'vendor-recipe' }));
+    expect(k.blank.noteKey).toBe('screens.display.note.blankVendorRecipe');
+  });
+
+  it('treats software-dim as the floor on BOTH axes, honestly labelled', () => {
+    const r = resolveDisplayControls(
+      stored({
+        ...REGISTRY_VERDICT,
+        brightness: 'software-dim',
+        screenBlank: 'software-dim',
+      }),
+    );
+    expect(r.brightness.softwareOnly).toBe(true);
+    expect(r.blank.softwareOnly).toBe(true);
+    expect(r.blank.noteKey).toBe('screens.display.note.blankSoftware');
+  });
+
+  it('still rejects a value that is not a real provider id', () => {
+    const r = resolveDisplayControls(stored({ ...REGISTRY_VERDICT, brightness: 'sysfs-backlight-v2' }));
+    expect(r.brightness.available).toBe(false);
+    expect(r.brightness.kind).toBeNull();
+  });
+});
+
+/**
+ * THE ANTI-DRIFT TEST. The reviewer's finding was not merely "Blank is
+ * enabled too early" — it was that the dashboard and the API derive the same
+ * gate independently, from two copies of the rules. This asserts the only
+ * invariant that actually matters operationally, in ONE direction:
+ *
+ *   the panel never offers a control the server would refuse.
+ *
+ * (The reverse is allowed: tri-state discipline keeps the UI stricter than
+ * the API on an axis the probe simply did not mention.)
+ */
+describe('UI gate ⊆ server gate (displayActionSupport)', () => {
+  /**
+   * Stored DOCUMENTS, not bare verdicts — both ends below are handed the
+   * byte-identical value, which is the only way this suite proves anything.
+   */
+  const VERDICTS: unknown[] = [
+    null,
+    {},
+    stored({}),
+    stored(FULL_VERDICT),
+    stored(REGISTRY_VERDICT),
+    stored({ ...REGISTRY_VERDICT, volume: 'none' }),
+    stored({ ...REGISTRY_VERDICT, screenBlank: 'software-dim' }),
+    stored({ ...FULL_VERDICT, reboot: 'none', deviceOwnerPath: 'blocked-other-owner' }),
+    // The document that used to slip through: one axis only. The dashboard
+    // called it reported and lit Blank; the API calls it no verdict at all.
+    stored({ volume: 'audiomanager' }),
+    // Complete, but with junk on one axis — reported, axis unknown.
+    stored({ ...FULL_VERDICT, brightness: 'root-shell' }),
+    // A BARE verdict: the shape the dashboard used to accept and the API
+    // never has. Both must now read it as "nothing reported".
+    FULL_VERDICT,
+  ];
+
+  /**
+   * THE SERVER'S OWN PATH — not a re-implementation, and not the dashboard's
+   * parser wearing a server costume.
+   *
+   * THE BUG THIS FIXES (2026-08-14 sweep, P2). This helper used to call
+   * `parseDisplayCapabilities` — the DASHBOARD's parser — and feed the result
+   * into the server's gate. Both sides of every assertion therefore came from
+   * the same parser, so the one place the two ends actually disagreed passed
+   * silently: with fixture `{ volume: 'audiomanager' }` the real API
+   * (`verdictFromStored` → null → `displayActionSupport('BLANK', null)`)
+   * REFUSES Blank while the dashboard rendered it enabled. A test that cannot
+   * fail on the defect it is named after is worse than no test.
+   *
+   * `readStoredDisplayVerdict` is literally what `verdictFromStored` in
+   * apps/api/src/display/display.service.ts now is (that export is an alias),
+   * so this crosses the real boundary.
+   */
+  const serverSays = (
+    action: DisplayActionType,
+    raw: unknown,
+    percent?: number,
+  ): boolean =>
+    displayActionSupport(action, readStoredDisplayVerdict(raw), { percent })
+      .supported;
+
+  it.each(VERDICTS.map((v, i) => [i, v] as const))(
+    'verdict #%i offers nothing the API refuses',
+    (_i, raw) => {
+      const ui = resolveDisplayControls(raw);
+      if (ui.volume.available) expect(serverSays('SET_VOLUME', raw)).toBe(true);
+      if (ui.blank.available) expect(serverSays('BLANK', raw)).toBe(true);
+      if (ui.wake.available) expect(serverSays('WAKE', raw)).toBe(true);
+      if (ui.reboot.available) expect(serverSays('REBOOT', raw)).toBe(true);
+      if (ui.brightness.available) {
+        // Every position the slider can express, at both ends of its travel.
+        expect(serverSays('SET_BRIGHTNESS', raw, ui.brightness.floor)).toBe(true);
+        expect(serverSays('SET_BRIGHTNESS', raw, 100)).toBe(true);
+      }
+    },
+  );
+
+  it('uses the SAME recovery floor the server gate enforces', () => {
+    expect(RECOVERY_MIN_BRIGHTNESS).toBe(DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT);
+    // One below the floor is refused by the server — which is exactly why
+    // the unreported slider's `min` is the floor and not MIN_SAFE_BRIGHTNESS.
+    expect(serverSays('SET_BRIGHTNESS', null, RECOVERY_MIN_BRIGHTNESS - 1)).toBe(false);
+  });
+});
+
+describe('resolveDisplayControls — no-software-floor axes', () => {
+  it('volume:none renders no control, but does explain itself', () => {
+    const r = resolveDisplayControls(stored({ ...FULL_VERDICT, volume: 'none' }));
+    expect(r.volume.available).toBe(false);
+    expect(r.volume.noteKey).toBe('screens.display.note.volumeNone');
+  });
+
+  it('reboot:none renders no button, and names the blocker', () => {
+    const blocked = resolveDisplayControls(
+      stored({
+        ...FULL_VERDICT,
+        reboot: 'none',
+        deviceOwnerPath: 'blocked-other-owner',
+      }),
+    );
+    expect(blocked.reboot.available).toBe(false);
+    expect(blocked.reboot.noteKey).toBe('screens.display.note.rebootBlockedOtherOwner');
+
+    const provisionable = resolveDisplayControls(
+      stored({
+        ...FULL_VERDICT,
+        reboot: 'none',
+        deviceOwnerPath: 'provisionable-after-factory-reset',
+      }),
+    );
+    expect(provisionable.reboot.noteKey).toBe('screens.display.note.rebootNeedsProvisioning');
+
+    // deviceOwnerPath omitted entirely → `readStoredDisplayVerdict` fills the
+    // least-capable default ('provisionable-after-factory-reset'), which is
+    // what the API's own gate sees, so the copy names the factory-reset path
+    // rather than the generic line. (The generic line stays reachable for a
+    // row whose deviceOwnerPath is present but unrecognised — asserted below.)
+    expect(
+      resolveDisplayControls(
+        stored({ ...FULL_VERDICT, reboot: 'none', deviceOwnerPath: undefined }),
+      ).reboot.noteKey,
+    ).toBe('screens.display.note.rebootNeedsProvisioning');
+
+    expect(
+      resolveDisplayControls(
+        stored({ ...FULL_VERDICT, reboot: 'none', deviceOwnerPath: 'root-shell' }),
+      ).reboot.noteKey,
+    ).toBe('screens.display.note.rebootUnavailable');
+  });
+});
+
+describe('resolveDisplayControls — software-floor axes stay actionable but honest', () => {
+  it('brightness:software-dim is available AND flagged software-only', () => {
+    const r = resolveDisplayControls(stored({ ...FULL_VERDICT, brightness: 'software-dim' }));
+    expect(r.brightness.available).toBe(true);
+    expect(r.brightness.softwareOnly).toBe(true);
+    expect(r.brightness.kind).toBe('software-dim');
+    expect(r.brightness.noteKey).toBe('screens.display.note.brightnessSoftware');
+  });
+
+  it('brightness:sysfs is real backlight control, not flagged', () => {
+    const r = resolveDisplayControls(stored(FULL_VERDICT));
+    expect(r.brightness.softwareOnly).toBe(false);
+    expect(r.brightness.noteKey).toBe('screens.display.note.brightnessSysfs');
+  });
+
+  it('screenBlank:none still blanks (black overlay) but says the backlight stays lit', () => {
+    const r = resolveDisplayControls(stored({ ...FULL_VERDICT, screenBlank: 'none' }));
+    expect(r.blank.available).toBe(true);
+    expect(r.blank.softwareOnly).toBe(true);
+    expect(r.blank.noteKey).toBe('screens.display.note.blankSoftware');
+    // C3: the mechanism is named, the availability is not withheld — and
+    // WAKE in particular is live on the verdict that used to refuse it.
+    expect(r.wake.available).toBe(true);
+  });
+
+  // The probe sets screenBlank:'device-admin' from `dpm.activeAdmins`, which
+  // counts EVERY admin on the box — routinely a district MDM (Hexnode,
+  // Meraki SM, Knox) rather than us. lockNow() from a non-admin app throws
+  // SecurityException and the player falls back to the software floor, so
+  // the dashboard must not promise a hardware screen-off it can't support.
+  // Only device-OWNER keeps the absolute wording.
+  it('device-admin blanking is hedged, device-owner is absolute', () => {
+    const admin = resolveDisplayControls(stored({ ...FULL_VERDICT, screenBlank: 'device-admin' }));
+    expect(admin.blank.available).toBe(true);
+    expect(admin.blank.noteKey).toBe('screens.display.note.blankDeviceAdmin');
+
+    const owner = resolveDisplayControls(stored({ ...FULL_VERDICT, screenBlank: 'device-owner' }));
+    expect(owner.blank.softwareOnly).toBe(false);
+    expect(owner.blank.noteKey).toBe('screens.display.note.blankHardware');
+  });
+});
+
+describe('safety clamps', () => {
+  it('never lets a remote brightness go below the safe floor', () => {
+    expect(clampBrightness(0)).toBe(MIN_SAFE_BRIGHTNESS);
+    expect(clampBrightness(-40)).toBe(MIN_SAFE_BRIGHTNESS);
+    expect(clampBrightness(Number.NaN)).toBe(MIN_SAFE_BRIGHTNESS);
+    expect(clampBrightness(4.4)).toBe(MIN_SAFE_BRIGHTNESS);
+    expect(clampBrightness(60)).toBe(60);
+    expect(clampBrightness(1000)).toBe(100);
+  });
+
+  it('clamps to the RECOVERY floor when the caller passes it (unreported screen)', () => {
+    expect(clampBrightness(10, RECOVERY_MIN_BRIGHTNESS)).toBe(RECOVERY_MIN_BRIGHTNESS);
+    expect(clampBrightness(Number.NaN, RECOVERY_MIN_BRIGHTNESS)).toBe(RECOVERY_MIN_BRIGHTNESS);
+    expect(clampBrightness(80, RECOVERY_MIN_BRIGHTNESS)).toBe(80);
+    // A bogus floor can never lower the universal safety floor or exceed 100.
+    expect(clampBrightness(50, 0)).toBe(50);
+    expect(clampBrightness(1, 0)).toBe(MIN_SAFE_BRIGHTNESS);
+    expect(clampBrightness(1, 500)).toBe(100);
+  });
+
+  it('clamps volume to 0..100 (silence is recoverable, darkness is not)', () => {
+    expect(clampVolume(-5)).toBe(0);
+    expect(clampVolume(0)).toBe(0);
+    expect(clampVolume(250)).toBe(100);
+  });
+
+  it('uses the SHARED floor, so the API and the dashboard cannot drift', () => {
+    expect(MIN_SAFE_BRIGHTNESS).toBe(MIN_SAFE_BRIGHTNESS_PERCENT);
+  });
+});
+
+// CONTRACT C2 — daysOfWeek is Int[], 0=Sun..6=Sat, matching schema.prisma's
+// existing Schedule / PlaylistItem convention. These tests REPLACE the old
+// comma-joined-label round-trip, which produced a payload the API's
+// `z.array(z.number().int().min(0).max(6)).min(1)` rejected on every single
+// save — and whose "0 or 7 selected → null (= every day)" collapse silently
+// INVERTED the operator's intent when they switched every day off.
+describe('schedule day encoding (contract C2 — Int[], 0=Sun..6=Sat)', () => {
+  it('maps the chip labels to the DB/Prisma day indexes', () => {
+    expect(DISPLAY_SCHEDULE_DAYS.map((d) => [d.label, d.index])).toEqual([
+      ['Mon', 1],
+      ['Tue', 2],
+      ['Wed', 3],
+      ['Thu', 4],
+      ['Fri', 5],
+      ['Sat', 6],
+      ['Sun', 0],
+    ]);
+    expect([...WEEKDAY_INDEXES]).toEqual([1, 2, 3, 4, 5]);
+    expect([...ALL_DAY_INDEXES]).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  });
+
+  it('serializes to a deduped, canonically sorted number[] — never null', () => {
+    expect(serializeDays([5, 1, 3])).toEqual([1, 3, 5]);
+    expect(serializeDays([2, 2, 2])).toEqual([2]);
+    expect(serializeDays([...ALL_DAY_INDEXES])).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  });
+
+  it('NEVER collapses an empty selection to "every day" — it stays empty', () => {
+    // The old behaviour turned "never auto-power-off" into "blank every
+    // night". Empty is now simply invalid, which is also what the API says.
+    expect(serializeDays([])).toEqual([]);
+    expect(isEveryDay([])).toBe(false);
+    expect(isEveryDay([...ALL_DAY_INDEXES])).toBe(true);
+  });
+
+  it('parses the API shape (number[]) and drops out-of-range junk', () => {
+    expect(parseDays([1, 2, 3, 4, 5])).toEqual([1, 2, 3, 4, 5]);
+    expect(parseDays([6, 0, 6])).toEqual([0, 6]);
+    expect(parseDays([9, -1, 2.5, 'Mon' as unknown as number, 4])).toEqual([4]);
+  });
+
+  it('degrades gracefully on a legacy comma-joined row instead of throwing', () => {
+    // A row written by the pre-fix build, or a hand-seeded fixture. The old
+    // code called String.replace on a number[] and threw a TypeError DURING
+    // RENDER, unmounting the modal; this direction must be equally total.
+    expect(parseDays('Mon,Wed,Fri')).toEqual([1, 3, 5]);
+    expect(parseDays('1,3,5')).toEqual([1, 3, 5]);
+    expect(parseDays(null)).toEqual([]);
+    expect(parseDays(undefined)).toEqual([]);
+    expect(parseDays({} as unknown)).toEqual([]);
+  });
+
+  it('formats a summary in the operator-readable Mon→Sun order', () => {
+    expect(formatDays([5, 1, 3])).toBe('Mon Wed Fri');
+    expect(formatDays([0, 6])).toBe('Sat Sun');
+    expect(formatDays([])).toBe('');
+  });
+});
+
+describe('crossesMidnight', () => {
+  it('is false for a normal daytime window', () => {
+    expect(crossesMidnight('07:00', '22:00')).toBe(false);
+  });
+  it('is true when the off time is at or before the on time', () => {
+    expect(crossesMidnight('18:00', '02:00')).toBe(true);
+    expect(crossesMidnight('08:00', '08:00')).toBe(true);
+  });
+  it('is false for malformed input rather than throwing', () => {
+    expect(crossesMidnight('', '22:00')).toBe(false);
+  });
+});

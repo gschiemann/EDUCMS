@@ -1,0 +1,158 @@
+# Field-scripts gate.
+#
+# WHY THIS EXISTS
+# ---------------
+# `scripts/*.sh` is the ONLY tooling that runs against physical hardware on
+# a one-shot install trip. `scripts/provision-kiosk.sh` takes DEVICE OWNER,
+# which cannot be retrofitted later without a factory reset that wipes the
+# vendor CMS configuration. A script that dies halfway through on a syntax
+# error or an unbound variable costs a truck roll, and the operator is
+# standing on a ladder when it happens.
+#
+# Nothing in this repo linted shell before this gate. It runs in seconds.
+#
+# SCOPE — deliberately narrow, so this gate cannot turn master red on
+# unrelated legacy scripts:
+#   • bash -n + the locale-bomb scan run on EVERY tracked scripts/*.sh
+#     (verified green across all 12 as of this commit).
+#   • Blocking shellcheck runs ONLY on the four FIELD scripts below.
+#     The legacy scripts are shellchecked informationally; several carry
+#     pre-existing SC2164/SC2010/SC2148 warnings and fixing them is not
+#     this feature's business.
+#
+# The two probes are DIFFERENT TOOLS and both are gated:
+#   display-capability-probe.sh  narrow --kv/--json capability verdict;
+#                                the contract provision-kiosk.sh and
+#                                fleet-display-probe.sh both consume.
+#   vendor-display-probe.sh      deep recon dump for a new hardware model.
+#
+# WHAT IT CATCHES
+#   1. Syntax errors        — `bash -n`, all tracked scripts
+#   2. Real shellcheck bugs — error+warning severity, field scripts only
+#   3. The locale bomb      — `$VAR` immediately followed by a multi-byte
+#      character (e.g. `"…on $SERIAL…"`). Bash in a non-UTF-8 locale folds
+#      the first byte of that character into the identifier and dies with
+#      `SERIAL\xe2: unbound variable` under `set -u`. It reproduces on the
+#      tech's laptop, never on ours. Fix: brace it — `${SERIAL}…`.
+#      (This is a real bug that was caught and fixed during this build.)
+#   4. Missing shebang / non-executable field scripts.
+#
+name: Field Scripts
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'scripts/**'
+      - '.github/workflows/field-scripts.yml'
+  pull_request:
+    branches: [master, main]
+    paths:
+      - 'scripts/**'
+      - '.github/workflows/field-scripts.yml'
+
+concurrency:
+  # Same shape as every other workflow here: cancel superseded PR runs, but
+  # keep one run per master SHA (a cancelled run reads as "never checked").
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Shell syntax + shellcheck + locale bomb
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FIELD_SCRIPTS: >-
+        scripts/provision-kiosk.sh
+        scripts/display-capability-probe.sh
+        scripts/vendor-display-probe.sh
+        scripts/fleet-display-probe.sh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+
+      - name: 1. Syntax check every tracked shell script
+        run: |
+          set -uo pipefail
+          fail=0
+          # ecbox-verify.sh targets Android's /system/bin/sh; bash parses it
+          # fine, which is all this step asserts.
+          for f in $(git ls-files 'scripts/*.sh' 'scripts/**/*.sh'); do
+            if bash -n "$f" 2>/dev/null; then
+              echo "  ok    $f"
+            else
+              echo "  FAIL  $f"; bash -n "$f" || true; fail=1
+            fi
+          done
+          exit "$fail"
+
+      - name: 2. shellcheck the FIELD scripts (blocking)
+        run: |
+          set -uo pipefail
+          # shellcheck disable=SC2086
+          shellcheck --severity=warning $FIELD_SCRIPTS
+
+      - name: 3. shellcheck everything else (informational)
+        continue-on-error: true
+        run: |
+          for f in $(git ls-files 'scripts/*.sh' 'scripts/**/*.sh'); do
+            case " $FIELD_SCRIPTS " in *" $f "*) continue ;; esac
+            shellcheck --severity=warning "$f" || true
+          done
+
+      - name: 4. Locale bomb — a variable followed by a multi-byte character
+        run: |
+          set -uo pipefail
+          # perl, not `grep -P`: BSD grep has no -P and fails the flag with a
+          # usage error, which a naive `if grep …` reads as "no match found" —
+          # a silent false green. perl behaves identically everywhere, so the
+          # same command a dev runs on a Mac is the one CI runs.
+          detect() {
+            perl -ne 'print "$ARGV:$.: $_" if /\$\{?[A-Za-z_]\w*[^\x00-\x7F]/' "$@"
+          }
+          # Self-test: prove the detector actually fires before trusting a pass.
+          printf 'echo "on $SERIAL\xe2\x80\xa6"\n' > /tmp/locale-bomb-fixture.sh
+          if [ -z "$(detect /tmp/locale-bomb-fixture.sh)" ]; then
+            echo "FAIL: the locale-bomb detector did not fire on its own fixture."
+            echo "The check is broken; do not trust a green result from it."
+            exit 1
+          fi
+          echo "  ok    detector self-test fired"
+          hits=0
+          for f in $(git ls-files 'scripts/*.sh' 'scripts/**/*.sh'); do
+            out="$(detect "$f")"
+            if [ -n "$out" ]; then printf '%s\n' "$out"; hits=1; fi
+          done
+          if [ "$hits" = 1 ]; then
+            echo ""
+            echo "FAIL: a shell variable is immediately followed by a multi-byte"
+            echo "character. Under a non-UTF-8 locale bash folds the first byte of"
+            echo "that character into the variable name and the script dies with"
+            echo "'unbound variable' on the field tech's laptop. Brace it: \${VAR}…"
+            exit 1
+          fi
+          echo "  ok    no locale bombs"
+
+      - name: 5. Field scripts are executable and have a shebang
+        run: |
+          set -uo pipefail
+          # This repo has core.fileMode=false, so a local `chmod +x` does NOT
+          # reach the index — the bit must be set explicitly with
+          # `git update-index --chmod=+x <file>`. The check below reads the
+          # INDEX mode, not the checkout's, so it catches that mistake.
+          fail=0
+          for f in $FIELD_SCRIPTS; do
+            if [ ! -f "$f" ]; then echo "  MISSING $f"; fail=1; continue; fi
+            head -1 "$f" | grep -q '^#!' || { echo "  NO SHEBANG $f"; fail=1; }
+            mode="$(git ls-files -s "$f" | awk '{print $1}')"
+            if [ "$mode" != "100755" ]; then
+              echo "  NOT EXECUTABLE IN GIT ($mode) $f"
+              echo "    fix: git update-index --chmod=+x $f"
+              fail=1
+            fi
+            echo "  checked $f  mode=$mode"
+          done
+          exit "$fail"

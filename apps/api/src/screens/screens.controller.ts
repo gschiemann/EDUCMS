@@ -42,6 +42,16 @@ import {
   getManifestCache,
   setManifestCache,
 } from './manifest-hot-cache';
+// 2026-08-13 — display control. The manifest's `display` block carries the
+// on/off windows the player arms as LOCAL AlarmManager alarms (a screen with
+// the network cut must still blank at 22:00 and wake at 07:00) plus the
+// vendor-recipe catalog it matches against its own Build.* identity.
+// Surfaced on every manifest branch (emergency / sports / normal) for the
+// same reason `gpio` is: a screen sitting in emergency or scoreboard mode
+// must not be handed a manifest that looks like "no schedules" and disarm
+// its alarms. Every field is stable and DB-sourced — see the header of
+// display-manifest.ts before adding anything to it.
+import { buildDisplayManifestBlock } from '../display/display-manifest';
 // 2026-05-27 — Goodview EP6N GPIO state. Surfaced on every manifest
 // branch (emergency / sports / normal) so the player applies the
 // out1 / out2 lamp + horn states regardless of which path served it.
@@ -992,9 +1002,18 @@ export class ScreensController {
   // stopwatch theater.
   //
   // Body shape (all optional except state):
-  //   { state: 'CHECKING'|'DOWNLOADING'|'VERIFYING'|'INSTALLING'|'INSTALLED'|'ERROR',
+  //   { state: 'CHECKING'|'DOWNLOADING'|'VERIFYING'|'INSTALLING'|'INSTALLED'
+  //            |'UP_TO_DATE'|'ERROR',
   //     progress?: 0-100,   // download %, only meaningful during DOWNLOADING
   //     message?: string }  // human-readable detail (used for ERROR)
+  //
+  // 2026-08-14 — UP_TO_DATE added. It is the TERMINAL state of a healthy
+  // check: the player reports CHECKING at the head of every cycle and, until
+  // this landed, returned silently when the server had nothing newer — so a
+  // perfectly healthy screen sat on CHECKING forever and was indistinguishable
+  // from a wedged one (all four pilot boxes were in exactly that state).
+  // Old APKs that never send it are unaffected; they simply keep the legacy
+  // pinned-CHECKING behaviour until they take an OTA.
   //
   // Public (no auth) for the same reason /screens/status is public:
   // the kiosk has a device JWT but using it adds latency; this
@@ -1038,7 +1057,11 @@ export class ScreensController {
     }
 
     const ALLOWED = new Set([
-      'CHECKING', 'DOWNLOADING', 'VERIFYING', 'INSTALLING', 'INSTALLED', 'ERROR',
+      'CHECKING', 'DOWNLOADING', 'VERIFYING', 'INSTALLING', 'INSTALLED',
+      // Terminal success state of a check that found nothing to install.
+      // Never a fault — the dashboard must render it green, not red.
+      'UP_TO_DATE',
+      'ERROR',
     ]);
     const state = String(body?.state || '').toUpperCase().trim();
     if (!ALLOWED.has(state)) {
@@ -3741,6 +3764,23 @@ export class ScreensController {
             const s = readGpioState((screen as any).config);
             return { out1: s.out1, out2: s.out2 };
           })(),
+          // 2026-08-13 — display on/off windows + vendor recipes. Same
+          // argument as `gpio` directly above: the emergency branch must
+          // carry the same device state as the normal branch, or a screen
+          // that flips into emergency mode would see a manifest with no
+          // `display` block and could disarm its local blank/wake alarms —
+          // and then stay dark past the incident. Memoised per screen
+          // against the manifest content rev, so this costs one indexed
+          // query per screen per minute at worst, not one per poll.
+          display: await buildDisplayManifestBlock(
+            this.prisma,
+            {
+              id: screen.id,
+              tenantId: screen.tenantId ?? null,
+              screenGroupId: (screen as any).screenGroupId ?? null,
+            },
+            manifestRevAtStart,
+          ),
           playlists
         });
       }
@@ -3782,6 +3822,20 @@ export class ScreensController {
             const s = readGpioState((screen as any).config);
             return { out1: s.out1, out2: s.out2 };
           })(),
+          // 2026-08-13 — display on/off windows + vendor recipes, for the
+          // same reason as `gpio` above: a board pushed to a screen must not
+          // look like "no display schedule" and disarm its local alarms.
+          // Part of the hashed board payload below (only `generatedAt` is
+          // excluded), so a schedule edit busts this branch's ETag too.
+          display: await buildDisplayManifestBlock(
+            this.prisma,
+            {
+              id: screen.id,
+              tenantId: screen.tenantId ?? null,
+              screenGroupId: (screen as any).screenGroupId ?? null,
+            },
+            manifestRevAtStart,
+          ),
           playlists: this.buildScoreboardManifest(
             screen,
             boardGame,
@@ -3933,6 +3987,22 @@ export class ScreensController {
       nextScheduleBoundaryAt = Date.now() + 60_000;
     }
 
+    // Built OUTSIDE the payload literals so the `await` is obvious in review,
+    // and hoisted above the empty-manifest branch so BOTH bodies carry it: a
+    // screen with no playlist assigned still has to blank at 22:00 and wake
+    // at 07:00. Memoised per screen against the manifest content rev, so a
+    // schedule edit shows up on the next poll while a steady fleet pays one
+    // indexed query per screen per minute at worst.
+    const displayBlock = await buildDisplayManifestBlock(
+      this.prisma,
+      {
+        id: screen.id,
+        tenantId: screen.tenantId ?? null,
+        screenGroupId: (screen as any).screenGroupId ?? null,
+      },
+      manifestRevAtStart,
+    );
+
     if (!schedules.length) {
       // 200 with empty playlists — NOT 404. A paired screen with no
       // scheduled content is a valid "waiting for assignment" state,
@@ -3952,6 +4022,12 @@ export class ScreensController {
         emergencyStatus: 'INACTIVE',
         emptyReason: 'NO_SCHEDULE',
         message: 'This screen is paired but no playlist is scheduled. Assign a playlist from the dashboard.',
+        // 2026-08-13 — "no content scheduled" is NOT "no display schedule".
+        // A screen waiting for an assignment must still power its panel
+        // down overnight, so the display block rides this body too. It is
+        // part of the verbatim-replayed cached body, and DisplaySchedule is
+        // in MANIFEST_FED_MODELS, so an edit busts the entry.
+        display: displayBlock,
         hash: 'empty',
       };
       // Fully static body — cache and replay verbatim until content
@@ -4164,6 +4240,17 @@ export class ScreensController {
           trimMs: (screen as any).syncOffsetMs ?? 0,
         };
       })(),
+      // 2026-08-13 — display control: the on/off windows the player arms as
+      // LOCAL AlarmManager alarms (network-independent by design) plus the
+      // vendor-recipe catalog it matches against its own Build.* identity.
+      //
+      // Deliberately part of the hashed payload — editing a schedule must
+      // bust the ETag so screens pick it up on their next poll. EVERY FIELD
+      // IS STABLE: no clock value, no "ms until next off", nothing derived
+      // from Screen.displayCapabilities (which is telemetry-only and must
+      // never move this hash). Read display-manifest.ts's header before
+      // adding a field here — the same rule that governs `sync` above.
+      display: displayBlock,
       playlists: dynamicPlaylists
     };
 

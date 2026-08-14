@@ -256,6 +256,26 @@ android {
             excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1")
         }
     }
+
+    testOptions {
+        unitTests {
+            // AGP's mockable android.jar throws
+            // `RuntimeException: Method … not mocked` for EVERY platform
+            // call. The display-control unit tests exercise pure logic —
+            // the recipe allowlist, the MIN_SAFE brightness clamp, the
+            // schedule time math — but that logic logs through
+            // PlayerLogger, which bottoms out in android.util.Log. With
+            // the default (throw) posture a test would be asserting on
+            // "did this happen to avoid logging", which is worthless.
+            //
+            // Returning defaults makes Log a no-op and leaves everything
+            // under test unchanged. It does NOT affect the shipped APK,
+            // and it does not affect org.json either: the real
+            // implementation on the test classpath (see dependencies)
+            // takes precedence over the stub.
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 // ─── Bundle Manager APK in Player's assets ────────────────────────
@@ -394,6 +414,19 @@ dependencies {
     implementation("androidx.documentfile:documentfile:1.0.1")
 
     testImplementation("junit:junit:4.13.2")
+    // TEST-ONLY. `org.json` ships inside android.jar, and AGP's mockable
+    // android.jar stubs every method to throw ("Stub!"), so a JVM unit
+    // test cannot exercise any JSON parsing without a real
+    // implementation on the test classpath. AGP appends the mockable jar
+    // LAST, so this wins at test runtime and nothing else changes.
+    //
+    // It is NOT an implementation() dependency and never reaches the
+    // APK — the shipped code keeps using the platform's org.json. This
+    // is what lets the adversarial recipe tests
+    // (DisplayRecipeParserTest) run against the REAL parser rather than
+    // a hand-built object graph, which is the only way a path-traversal
+    // test proves anything about the JSON a hostile control plane sends.
+    testImplementation("org.json:json:20231013")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
 }

@@ -77,6 +77,37 @@ class WebAppBridge(
      * for the trust-boundary reasoning on exposing it here.
      */
     private val probeDisplayImpl: () -> String = { "{}" },
+    /**
+     * 2026-08-13 — the WRITE half: volume / brightness / blank / wake /
+     * reboot + the on-device on-off schedule. See the block comment on
+     * `displayCapabilities()` below, and `com.educms.player.display`
+     * for the provider stack and its safety rules.
+     */
+    private val displayCapabilitiesImpl: () -> String = { """{"ok":false,"code":"unavailable"}""" },
+    /**
+     * `(actionJson, trusted)`. `trusted` is true ONLY for the channel
+     * entry point, which has verified the exact origin and the main
+     * frame; the legacy every-frame surface always passes false and gets
+     * the recovery-direction subset. See `displayApply()`.
+     */
+    private val displayApplyImpl: (String, Boolean) -> String = { _, _ -> """{"ok":false,"code":"unavailable"}""" },
+    private val displaySetScheduleImpl: (String, Boolean) -> String = { _, _ -> """{"ok":false,"code":"unavailable"}""" },
+    /** `(active, trusted)` — the ⚠️ life-safety emergency interlock. */
+    private val displayEmergencyHoldImpl: (Boolean, Boolean) -> String =
+        { _, _ -> """{"ok":false,"code":"unavailable"}""" },
+    /**
+     * 2026-08-14 — raises the one-time device-ADMIN enrolment dialog.
+     * Backed by `MainActivity.requestDeviceAdminEnrollment`, which owns
+     * BOTH gates (foreground Activity + recent physical presence). See
+     * `displayEnrollAdmin()` below.
+     */
+    private val displayEnrollAdminImpl: () -> String = { """{"ok":false,"code":"unavailable"}""" },
+    /**
+     * True when the origin-scoped [com.educms.player.security.NativeBridgeChannel]
+     * is live on this WebView. DIAGNOSTIC ONLY since 2026-08-13 — it is
+     * no longer a gate, see `displayApply()`.
+     */
+    private val secureChannelActive: () -> Boolean = { false },
 ) {
     /**
      * Escape hatch — exits our kiosk task stack and returns the user to
@@ -149,6 +180,240 @@ class WebAppBridge(
     } catch (ex: Exception) {
         PlayerLogger.w("WebAppBridge", "probeDisplay failed: ${ex.message}")
         """{"error":"${ex.message}"}"""
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Display CONTROL (2026-08-13) — the write half of the probe above.
+    //
+    // ⚠️ TRUST BOUNDARY. Per this file's header, the legacy
+    // `addJavascriptInterface` surface is materialised in EVERY frame
+    // the WebView loads, including operator-authored EXTERNAL_HTML board
+    // iframes. For `probeDisplay()` the worst case is device
+    // fingerprinting. For THESE methods the worst case is a hostile
+    // board blanking a hallway screen, dimming it to nothing, or
+    // rebooting it — a real physical denial of service on hardware
+    // nobody can reach, on a display whose other job is showing a
+    // lockdown alert.
+    //
+    // ── WHY THE FIRST VERSION OF THIS GATE WAS A NO-OP ──────────────
+    //
+    // v1 refused the legacy transport `if (secureChannelActive())`. That
+    // INVERTS: `secureChannelActive` is false precisely on the devices
+    // where NativeBridgeChannel cannot attach — the oldest, hardest-to-
+    // reach, wall-mounted signage controllers — so the gate protected
+    // the modern boxes and left the ones that need it most wide open.
+    // Every frame on those devices could call
+    // `EduCmsNative.displayApply('{"action":"BLANK"}')` with no
+    // dead-man armed.
+    //
+    // ── THE GATE NOW ────────────────────────────────────────────────
+    //
+    // These methods pass `trusted = false` UNCONDITIONALLY, on every
+    // device, regardless of whether the channel is up. Native
+    // `DisplayControlApi` then allows only the RECOVERY-direction subset
+    // — wake, and a brightness change that raises — and refuses BLANK,
+    // REBOOT, KEEP, allowBlack, any lowering and the whole schedule
+    // installer. The full capability is reachable only through
+    // `*ViaSecureChannel`, which NativeBridgeChannel calls after it has
+    // verified the exact origin AND the main frame.
+    //
+    // A pre-channel device therefore loses REMOTE blank/dim/schedule
+    // until it can take a channel-capable WebView. A screen with no
+    // remote blank is strictly safer than one any iframe can blank, and
+    // it keeps the recovery path open in both directions.
+    //
+    // `displayCapabilities()` is READ-ONLY and stays ungated so a board
+    // can ask what it is running on, exactly like `probeDisplay()`.
+    // `displayEmergencyHold()` is ungated in BOTH directions — raising is
+    // fail-safe (it can only make a dark screen visible) and releasing is
+    // recovery-direction (it darkens nothing; every darkening action here
+    // stays trusted-only). On a pre-channel box EVERY call arrives on
+    // this transport, so a trusted-only release meant the first alert
+    // pinned the screen lit forever with no way back.
+    // ────────────────────────────────────────────────────────────────
+
+    /**
+     * What this box can actually drive, and by which mechanism:
+     * `{"ok":true,"capabilities":{"BRIGHTNESS":"software-dim",…},"state":{…}}`.
+     *
+     * The dashboard MUST render its per-screen controls from this map
+     * and nothing else. A capability that is absent means the hardware
+     * cannot do it; a capability resolved to `software-dim` means the
+     * image dims but the backlight does not, and the UI is required to
+     * say so rather than pretend it is a real brightness control.
+     */
+    @JavascriptInterface
+    fun displayCapabilities(): String = try {
+        displayCapabilitiesImpl()
+    } catch (ex: Exception) {
+        PlayerLogger.w("WebAppBridge", "displayCapabilities failed: ${ex.message}")
+        """{"ok":false,"code":"exception"}"""
+    }
+
+    /**
+     * Apply one immediate action —
+     * `{"action":"SET_BRIGHTNESS","percent":40,"revertAfterMs":30000}`.
+     * Every value is validated and clamped NATIVELY (the MIN_SAFE
+     * brightness floor lives in Kotlin, not in React, precisely because
+     * this argument is attacker-controlled).
+     */
+    @JavascriptInterface
+    fun displayApply(actionJson: String): String = try {
+        // trusted = false, ALWAYS. Not conditional on the channel — see
+        // the block comment above for why the conditional version was a
+        // no-op on exactly the devices that needed it.
+        displayApplyImpl(actionJson, false)
+    } catch (ex: Exception) {
+        PlayerLogger.w("WebAppBridge", "displayApply failed: ${ex.message}")
+        """{"ok":false,"code":"exception"}"""
+    }
+
+    /**
+     * Install the manifest's `display` block (schedule rows + brightness
+     * policy + vendor recipe). The schedule then runs from AlarmManager
+     * ON THE DEVICE, so a screen that loses network still blanks at
+     * 22:00 and wakes at 07:00.
+     *
+     * Trusted-transport only: a schedule row is a STANDING instruction to
+     * blank the panel every night, which is strictly worse than a one-off
+     * blank (that at least carries a dead-man revert).
+     */
+    @JavascriptInterface
+    fun displaySetSchedule(configJson: String): String = try {
+        displaySetScheduleImpl(configJson, false)
+    } catch (ex: Exception) {
+        PlayerLogger.w("WebAppBridge", "displaySetSchedule failed: ${ex.message}")
+        """{"ok":false,"code":"exception"}"""
+    }
+
+    /**
+     * ⚠️ LIFE SAFETY — the emergency interlock.
+     *
+     * The web player calls this whenever emergency state changes: on the
+     * signed WS OVERRIDE / ALL_CLEAR handlers, AND on every manifest poll
+     * that carries an `emergency` field so a screen with no WebSocket,
+     * riding the HTTP polling backstop, is covered too. Idempotent —
+     * re-reporting the same state is a cheap no-op.
+     *
+     * While the hold is active the native display layer refuses every
+     * BLANK, every brightness-lowering action and every REBOOT, from the
+     * bridge, the on-device scheduler and the dead-man revert alike, and
+     * forces the panel visible. See
+     * `com.educms.player.display.DisplayEmergency`.
+     *
+     * BOTH directions are honoured on THIS untrusted transport, on
+     * purpose (2026-08-14). `active = true` can only ever make a dark
+     * screen visible. `active = false` is ALSO recovery-direction: it
+     * darkens nothing by itself, and every darkening action on this
+     * transport stays trusted-only, so a hostile frame that clears a hold
+     * unlocks nothing it can use. Refusing it was worse than the threat
+     * it modelled — on a Chromium 83-87 Taurus the origin-scoped channel
+     * cannot attach at all, so EVERY call lands here, and the first alert
+     * engaged a hold nothing could ever lift. See
+     * `DisplayControlApi.emergencyHoldJson` for the full argument.
+     */
+    @JavascriptInterface
+    fun displayEmergencyHold(active: Boolean): String = try {
+        displayEmergencyHoldImpl(active, false)
+    } catch (ex: Exception) {
+        PlayerLogger.e("WebAppBridge", "displayEmergencyHold FAILED", ex)
+        """{"ok":false,"code":"exception"}"""
+    }
+
+    /**
+     * ONE-TAP DEVICE-ADMIN ENROLMENT (2026-08-14).
+     *
+     * Raises the Android `ACTION_ADD_DEVICE_ADMIN` dialog for the
+     * Player's own `display.PlayerAdminReceiver`, which declares
+     * force-lock and nothing else. Approving it promotes BLANK/WAKE from
+     * the software floor (a black overlay over a still-lit panel that
+     * saves no power) to `DevicePolicyManager.lockNow()` — a real
+     * panel-off. It grants nothing else: not reboot, not silent install,
+     * not device owner.
+     *
+     * Returns `{"ok":true,"state":"prompt-pending"}`, or `ok:false` with
+     * a stable `code`: `already-enrolled`, `prompt-pending`,
+     * `recently-declined`, `no-operator-present`, `prompt-unavailable`.
+     *
+     * ─────────────────────────────────────────────────────────────────
+     * ⚠️ WHY THIS ONE IS NOT ON THE `NativeBridgeChannel` ALLOWLIST
+     * ─────────────────────────────────────────────────────────────────
+     * It is only on this legacy every-frame surface, which is the one
+     * transport that exists on 100% of the fleet (including the
+     * Chromium 83-87 Taurus, where `WEB_MESSAGE_LISTENER` is
+     * unavailable and the origin-scoped channel can never attach).
+     *
+     * Adding it to `NativeBridgeChannel.METHODS` REQUIRES the matching
+     * entry in `apps/web/src/app/player/nativeBridge.ts`
+     * (`NATIVE_VALUE_METHODS`) plus the `toHaveLength` bump in
+     * `apps/web/src/app/player/__tests__/nativeBridge.test.ts` — that
+     * suite reads the Kotlin array off disk and asserts sorted equality,
+     * so a Kotlin-only addition turns the blocking `web-jest` job RED.
+     * Those files are outside this change's file domain, so the channel
+     * registration is deliberately left as a paired follow-up: all three
+     * edits must land in ONE commit.
+     *
+     * ⚠️ The every-frame exposure is NOT unguarded. Enrolment is not a
+     * recovery-direction action, so it does not belong in
+     * `DisplayControlApi.isRecoveryAction`'s untrusted subset — but the
+     * gate that actually fits it is presence, not transport:
+     * `MainActivity.requestDeviceAdminEnrollment` refuses unless
+     * somebody physically touched this box in the last 60 s. A hostile
+     * board iframe on an unattended wall panel gets
+     * `no-operator-present` and nothing else; and even with a human
+     * present the worst outcome is a system dialog they must actively
+     * approve, rate-limited by the enrolment debounce and the
+     * once-declined cooldown.
+     */
+    @JavascriptInterface
+    fun displayEnrollAdmin(): String = try {
+        displayEnrollAdminImpl()
+    } catch (ex: Exception) {
+        PlayerLogger.w("WebAppBridge", "displayEnrollAdmin failed: ${ex.message}")
+        """{"ok":false,"code":"exception"}"""
+    }
+
+    /**
+     * Channel-only entry points. [com.educms.player.security.NativeBridgeChannel]
+     * dispatches here instead of to the `@JavascriptInterface` methods
+     * above, so the full capability is reachable by the one caller that
+     * has already passed BOTH the exact-origin and main-frame checks.
+     *
+     * Deliberately NOT annotated `@JavascriptInterface` — these names are
+     * invisible to `window.EduCmsNative` and unreachable from any frame.
+     */
+    internal fun displayApplyViaSecureChannel(actionJson: String): String = try {
+        displayApplyImpl(actionJson, true)
+    } catch (ex: Exception) {
+        PlayerLogger.w("WebAppBridge", "displayApply(secure) failed: ${ex.message}")
+        """{"ok":false,"code":"exception"}"""
+    }
+
+    internal fun displaySetScheduleViaSecureChannel(configJson: String): String = try {
+        displaySetScheduleImpl(configJson, true)
+    } catch (ex: Exception) {
+        PlayerLogger.w("WebAppBridge", "displaySetSchedule(secure) failed: ${ex.message}")
+        """{"ok":false,"code":"exception"}"""
+    }
+
+    internal fun displayEmergencyHoldViaSecureChannel(active: Boolean): String = try {
+        displayEmergencyHoldImpl(active, true)
+    } catch (ex: Exception) {
+        PlayerLogger.e("WebAppBridge", "displayEmergencyHold(secure) FAILED", ex)
+        """{"ok":false,"code":"exception"}"""
+    }
+
+    /**
+     * Whether the origin-scoped channel is live. Diagnostic only — it is
+     * deliberately NOT a gate any more (see the block comment above);
+     * exposing it keeps the boot-log/telemetry answer honest about which
+     * transport a given kiosk is on, which is removal criterion #3 in
+     * NativeBridgeChannel's header.
+     */
+    internal fun secureTransportLive(): Boolean = try {
+        secureChannelActive()
+    } catch (ex: Exception) {
+        false
     }
 
     /**

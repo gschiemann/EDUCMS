@@ -412,8 +412,16 @@ describe('method tables stay in sync with the APK', () => {
     const b = loadBridge();
     const all = [...b.NATIVE_VOID_METHODS, ...b.NATIVE_VALUE_METHODS];
     expect(new Set(all).size).toBe(all.length);
-    // Mirrors NativeBridgeChannel.METHODS in the APK (17 methods).
-    expect(all).toHaveLength(17);
+    // Mirrors NativeBridgeChannel.METHODS in the APK. 17 → 21 on
+    // 2026-08-13 when the display-control wave added probeDisplay (recon
+    // F1's web half) plus displayCapabilities / displayApply /
+    // displaySetSchedule; → 22 when the emergency interlock added
+    // displayEmergencyHold (it was in the Kotlin allowlist but not here,
+    // which is what turned the drift guard below red). The authoritative
+    // check is that guard, which reads the Kotlin allowlist off disk; this
+    // count is the cheap canary that still fires in a checkout without the
+    // player sources.
+    expect(all).toHaveLength(23);
   });
 
   it('the destructive methods every call site depends on are declared', () => {

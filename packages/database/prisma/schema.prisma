@@ -213,6 +213,8 @@ model Tenant {
   // doesn't leave orphaned credentials sitting in the DB.
   apiKeys                         TenantApiKey[]
   webhooks                        TenantWebhook[]
+  // Scheduled screen on/off windows (display-control, 2026-08-13).
+  displaySchedules                DisplaySchedule[]
 
   @@map("tenants")
 }
@@ -693,6 +695,7 @@ model ScreenGroup {
   syncMode    String?    @map("sync_mode")
   createdAt   DateTime   @default(now()) @map("created_at")
   schedules   Schedule[]
+  displaySchedules DisplaySchedule[]
   tenant      Tenant     @relation(fields: [tenantId], references: [id])
   screens     Screen[]
 
@@ -766,6 +769,34 @@ model Screen {
   // /screens/:id/menu reads this to pick the right per-location prices.
   posLocationId                       String?      @map("pos_location_id")
   posLocation                         PosLocation? @relation(fields: [posLocationId], references: [id], onDelete: SetNull)
+  // ── Display-control capability verdict (2026-08-13) ──────────────────
+  // Last report from the player's read-only DisplayCapabilityProbe
+  // (apps/player/.../display/DisplayCapabilityProbe.kt). JSON shape is the
+  // probe's own `verdict` block plus a `build` identity echo:
+  //   { schema, probedAt, reportedAt,
+  //     build: { manufacturer, model, board, sdk, … },
+  //     verdict: { volume: 'audiomanager'|'none',
+  //                brightness: 'sysfs'|'settings'|'software-dim',
+  //                screenBlank: 'device-owner'|'device-admin'|'none',
+  //                reboot: 'device-owner'|'none',
+  //                hardPowerOff: 'serial-candidate'|'none',
+  //                deviceOwnerPath: 'held'|'blocked-other-owner'
+  //                                 |'provisionable-after-factory-reset' } }
+  //
+  // THIS IS THE TRUTH-GATE for the dashboard's per-screen display panel:
+  // the UI renders only the controls this verdict says the hardware can
+  // actually perform, and POST /screens/:id/display-control 409s on anything
+  // it does not support. Null = never reported (older APK / not yet probed)
+  // → every control is disabled, nothing is guessed.
+  //
+  // NOT manifest-rendered ON PURPOSE, and BOTH columns are listed in
+  // SCREEN_TELEMETRY_ONLY_FIELDS (manifest-hot-cache.ts): a capability
+  // report must never invalidate a screen's cached manifest. Vendor-recipe
+  // selection happens ON THE DEVICE against its own Build.* identity (the
+  // recipe `match` block), precisely so the manifest stays independent of
+  // this column and identical across the fleet.
+  displayCapabilities                 Json?        @map("display_capabilities")
+  displayCapabilitiesAt               DateTime?    @map("display_capabilities_at")
   // Last offline-cache status the player reported. JSON shape:
   //   { playlist: { count, bytes }, emergency: { count, bytes } }
   // Lets admins verify each screen actually has emergency assets on disk
@@ -1025,6 +1056,7 @@ model Screen {
   // PUT /screens/:id endpoint's relaxed `config` allow-list.
   config                              Json?
   schedules                           Schedule[]
+  displaySchedules                    DisplaySchedule[]
   screenGroup                         ScreenGroup? @relation(fields: [screenGroupId], references: [id])
   tenant                              Tenant?      @relation(fields: [tenantId], references: [id])
 
@@ -2159,6 +2191,97 @@ model Daypart {
 
   @@index([tenantId])
   @@map("dayparts")
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Display control — screen on/off scheduling + vendor recipes (2026-08-13)
+// ─────────────────────────────────────────────────────────────────────
+//
+// A wall-mounted screen that blanks at 22:00 and wakes at 07:00 MUST keep
+// doing that with the network cut. So these rows are NOT a server-side cron:
+// they ride the manifest to the player, which arms local AlarmManager
+// alarms from them and re-arms on BOOT_COMPLETED. Server push
+// (POST /screens/:id/display-control) is for immediate/manual actions only.
+//
+// Recurrence encoding follows Daypart, NOT Schedule: `daysOfWeek Int[]`
+// (0=Sunday..6=Saturday) + "HH:MM" local times + an explicit IANA
+// `timezone`. Schedule's comma-joined "Mon,Tue" string and implicit server
+// timezone are both wrong for an on-device alarm — the player has to
+// compute a real local wall-clock instant in the SCREEN's timezone, not the
+// Android default (a district can span timezones, and a factory-reset box
+// comes up on UTC).
+//
+// onTime > offTime is a legal overnight window: onTime 07:00 / offTime
+// 22:00 is a normal day; onTime 18:00 / offTime 02:00 means the screen is
+// lit 6 PM through 2 AM the next morning. Same wraparound contract as
+// Daypart.timeStart/timeEnd and Tenant.otaWindowStart/End.
+model DisplaySchedule {
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  // Exactly ONE target: a single screen or a whole group. Enforced at the
+  // API boundary (same contract as Schedule.screenId / screenGroupId).
+  screenId      String?  @map("screen_id")
+  screenGroupId String?  @map("screen_group_id")
+  // Operator-facing label ("Weekday hours", "Friday night football").
+  name          String?
+  daysOfWeek    Int[]    @default([]) @map("days_of_week") // 0=Sun..6=Sat
+  onTime        String   @map("on_time") // "HH:MM" local wake time
+  offTime       String   @map("off_time") // "HH:MM" local blank time
+  timezone      String // IANA, e.g. "America/Chicago"
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  screen      Screen?      @relation(fields: [screenId], references: [id], onDelete: Cascade)
+  screenGroup ScreenGroup? @relation(fields: [screenGroupId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, isActive])
+  @@index([screenId])
+  @@index([screenGroupId])
+  @@map("display_schedules")
+}
+
+// Vendor display-control recipes — "a new vendor is a DB row, not an APK
+// release." Goodview/Taurus/TCL each expose brightness + blank/wake through
+// a different broadcast, sysfs node or Settings key; rather than bake a
+// vendor SDK into the player we ship the RECIPE and let a generic executor
+// run it.
+//
+// PLATFORM-OWNED, NOT TENANT-OWNED: deliberately has no tenantId. A recipe
+// describes a hardware SKU, not a customer's data, and every tenant with
+// that SKU needs the same one. Writes are SUPER_ADMIN-only.
+//
+// THE RECIPE IS UNTRUSTED INPUT AT THE PLAYER. It tells a device to fire
+// broadcasts and write sysfs, so the player enforces a NATIVE allowlist no
+// recipe can widen (sysfs canonicalized under /sys/class/backlight or
+// /sys/class/leds; allowlisted broadcast action prefixes with no explicit
+// component; Settings.System only — never Secure/Global; never a shell).
+// The API validates the SHAPE on write; the device is the security boundary.
+//
+// MATCHING HAPPENS ON THE DEVICE, not here. The manifest ships the active
+// catalog verbatim and the player picks the row whose `match` block fits its
+// own Build.MANUFACTURER/MODEL/BOARD. That is what keeps the manifest's
+// `display` block byte-identical across the fleet — it must not vary with
+// Screen.displayCapabilities, or every capability report would bust the
+// manifest hot cache (CLAUDE.md rule 7 / the 25 GB/mo egress bug).
+model DisplayVendorRecipe {
+  id        String   @id @default(uuid())
+  // Stable slug, e.g. "goodview-ep6n", "novastar-taurus".
+  vendorId  String   @unique @map("vendor_id")
+  name      String
+  // Full recipe document: { vendorId, match, brightness?, blank?, wake? }.
+  // Shape validated by DisplayVendorRecipeSchema in @cms/api-types on write.
+  recipe    Json
+  isActive  Boolean  @default(true) @map("is_active")
+  // Higher wins when two recipes match the same device.
+  priority  Int      @default(0)
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([isActive, priority])
+  @@map("display_vendor_recipes")
 }
 
 // Square delta-sync watermark, one row per connection. Square's

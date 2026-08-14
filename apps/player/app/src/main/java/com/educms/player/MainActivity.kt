@@ -34,6 +34,11 @@ import androidx.webkit.WebViewFeature
 import com.educms.player.bootstrap.ManagerBootstrap
 import com.educms.player.databinding.ActivityMainBinding
 import com.educms.player.display.DisplayCapabilityProbe
+import com.educms.player.display.DisplayControlApi
+import com.educms.player.display.DisplayEmergency
+import com.educms.player.display.DisplayGuard
+import com.educms.player.display.DisplayScheduler
+import com.educms.player.display.DisplayWindowBridge
 import com.educms.player.logging.PlayerLogger
 import com.educms.player.security.HostAllowlist
 import com.educms.player.security.LockTaskController
@@ -183,6 +188,56 @@ class MainActivity : ComponentActivity() {
          * `device-<ts>-<rand>`) plus operator `?deviceId=` values.
          */
         private val FINGERPRINT_RE = Regex("^[A-Za-z0-9._-]{8,128}\$")
+
+        /**
+         * 2026-08-14 — explicit-component action that raises the
+         * device-admin enrolment dialog. See
+         * [handleDeviceAdminEnrollIntent]; deliberately NOT declared in
+         * an `<intent-filter>`.
+         */
+        const val ACTION_ENROLL_DISPLAY_ADMIN = "com.educms.player.ENROLL_DISPLAY_ADMIN"
+
+        /**
+         * How recently somebody must have touched this box for the
+         * web-bridge enrolment request to be honoured. 60 s is long
+         * enough to cover "tap the button, read the confirm copy, tap
+         * again" and far too short for an unattended wall panel.
+         */
+        private const val LOCAL_INPUT_WINDOW_MS = 60L * 1000L
+    }
+
+    // ─── 2026-08-14: physical-presence marker ───────────────────────
+
+    /**
+     * `SystemClock.elapsedRealtime()` of the last LOCAL input — a touch,
+     * a remote key, a USB keyboard. 0 = nobody has touched this box since
+     * the Activity started.
+     *
+     * ⚠️ Its only consumer is the device-admin enrolment gate (see
+     * [requestDeviceAdminEnrollment]). It is NOT a security control and
+     * must not be used as one — it is a PRESENCE control, and presence is
+     * a genuine product requirement there: enrolment ends in an Android
+     * system dialog that a human has to read and approve, so firing it
+     * when nobody is standing at the panel puts a security prompt on a
+     * wall in front of customers and blocks the content behind it until
+     * somebody drives 20 minutes to dismiss it.
+     *
+     * `elapsedRealtime`, never `currentTimeMillis`: Android steps the
+     * wall clock on first NTP sync, and a backwards step would make a
+     * stale marker look fresh.
+     */
+    @Volatile
+    private var lastLocalInputAtMs: Long = 0L
+
+    /**
+     * Called by the framework from `dispatchTouchEvent` /
+     * `dispatchKeyEvent` before the event reaches any view, so it covers
+     * the WebView, the signage remote's D-pad and a plugged-in keyboard
+     * alike.
+     */
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        lastLocalInputAtMs = android.os.SystemClock.elapsedRealtime()
     }
 
     // ─── 2026-08-03: kiosk lock task mode ───────────────────────────
@@ -284,6 +339,175 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // ────────────────────────────────────────────────────────────────
+    // Display control — the Activity-owned half (2026-08-13).
+    //
+    // The provider stack in `com.educms.player.display` is Context-only;
+    // these four hooks are the one thing it cannot do for itself. They
+    // are registered into DisplayWindowBridge (which holds them WEAKLY)
+    // and every one of them marshals to the UI thread, because BOTH
+    // bridge transports deliver off it: the legacy @JavascriptInterface
+    // surface runs on WebView's "JavaBridge" thread and
+    // NativeBridgeChannel hops to a background executor on purpose.
+    // ────────────────────────────────────────────────────────────────
+
+    /**
+     * Opaque black overlay used by the software-dim floor. Created
+     * lazily and added on top of the WebView + overlays in the root
+     * FrameLayout, so no layout XML change is needed and nothing about
+     * the running player is torn down — the page keeps rendering,
+     * heartbeating and holding its WebSocket behind the black.
+     */
+    private var displayBlackoutView: View? = null
+
+    /**
+     * Held as a STRONG field precisely because DisplayWindowBridge keeps
+     * only a WeakReference: when this Activity is reaped by an OEM ROM
+     * without onDestroy, the hooks go with it instead of leaking the
+     * Activity and its WebView.
+     */
+    private val displayHooks = DisplayWindowBridge.Hooks(
+        setWindowBrightness = { fraction ->
+            runOnUiThread {
+                runCatching {
+                    // ⚠️ LIFE-SAFETY UI-THREAD GUARD. See the note on
+                    // setBlackout below — same race, same close.
+                    if (DisplayEmergency.blocksWindowDim(
+                            DisplayEmergency.isHeld(applicationContext),
+                            fraction,
+                        )
+                    ) {
+                        PlayerLogger.e(
+                            "DisplayWindow",
+                            "REFUSED window brightness $fraction on the UI thread — " +
+                                "an emergency alert is active and this would dim the alert",
+                        )
+                        return@runCatching
+                    }
+                    val lp = window.attributes
+                    // A negative value hands brightness back to the
+                    // system (BRIGHTNESS_OVERRIDE_NONE).
+                    lp.screenBrightness = if (fraction < 0f) {
+                        WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                    } else {
+                        fraction.coerceIn(0f, 1f)
+                    }
+                    window.attributes = lp
+                }.onFailure { PlayerLogger.w("DisplayWindow", "setWindowBrightness failed: ${it.message}") }
+            }
+        },
+        // ⚠️ LIFE-SAFETY UI-THREAD GUARD — this is the LAST line of
+        // defence and it is the only one that is race-free.
+        //
+        // DisplayControlRegistry's emergency gate is check-then-act
+        // across a thread boundary: the 22:00 alarm can read
+        // isHeld()==false, pass, and post its blackout AFTER a lockdown
+        // OVERRIDE engages the hold on the bridge worker thread. Every
+        // window mutation funnels through THIS looper, and the hold is
+        // `commit()`ed before the enforce path posts anything, so a
+        // darkening post enqueued after the commit sees held=true here
+        // and dies, while one enqueued before it is followed by the
+        // enforce posts. Either interleaving ends with a visible alert.
+        setBlackout = { visible ->
+            runOnUiThread {
+                if (DisplayEmergency.blocksBlackout(DisplayEmergency.isHeld(applicationContext), visible)) {
+                    PlayerLogger.e(
+                        "DisplayWindow",
+                        "REFUSED blackout on the UI thread — an emergency alert is active " +
+                            "(a blank raced the interlock and lost)",
+                    )
+                } else {
+                    applyBlackout(visible)
+                }
+            }
+        },
+        setKeepScreenOn = { on ->
+            runOnUiThread {
+                runCatching {
+                    // ⚠️ LIFE-SAFETY UI-THREAD GUARD. Every blank clears
+                    // this flag FIRST — a window holding KEEP_SCREEN_ON
+                    // pins the panel lit whatever the vendor broadcast or
+                    // the screen-off timeout says. So a blank that lost the
+                    // race still reached HERE even with its overlay and its
+                    // dim refused, and left the panel free to sleep on the
+                    // OS timeout with a lockdown alert on it.
+                    if (DisplayEmergency.blocksKeepScreenOff(
+                            DisplayEmergency.isHeld(applicationContext),
+                            on,
+                        )
+                    ) {
+                        PlayerLogger.e(
+                            "DisplayWindow",
+                            "REFUSED clearing KEEP_SCREEN_ON on the UI thread — " +
+                                "an emergency alert is active and the panel must not be free to sleep",
+                        )
+                        return@runCatching
+                    }
+                    if (on) {
+                        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    } else {
+                        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    }
+                    // activity_main.xml ALSO sets android:keepScreenOn on
+                    // the root FrameLayout. Clearing only the window flag
+                    // leaves the view-level one holding the panel lit,
+                    // which reads as "blank didn't work on this vendor".
+                    if (::binding.isInitialized) binding.root.keepScreenOn = on
+                }.onFailure { PlayerLogger.w("DisplayWindow", "setKeepScreenOn failed: ${it.message}") }
+            }
+        },
+        requestWake = { runOnUiThread { requestScreenWake() } },
+    )
+
+    private fun applyBlackout(visible: Boolean) {
+        runCatching {
+            if (!::binding.isInitialized) return@runCatching
+            if (visible) {
+                val view = displayBlackoutView ?: View(this).also { v ->
+                    v.setBackgroundColor(android.graphics.Color.BLACK)
+                    // Swallow taps so a blanked screen cannot be poked
+                    // into interacting with the page underneath.
+                    v.isClickable = true
+                    v.isFocusable = true
+                    binding.root.addView(
+                        v,
+                        android.widget.FrameLayout.LayoutParams(
+                            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                        ),
+                    )
+                    displayBlackoutView = v
+                }
+                view.visibility = View.VISIBLE
+                view.bringToFront()
+            } else {
+                displayBlackoutView?.visibility = View.GONE
+            }
+        }.onFailure { PlayerLogger.w("DisplayWindow", "applyBlackout failed: ${it.message}") }
+    }
+
+    /**
+     * Re-assert the wake flags. onCreate sets these ONCE; adding a flag
+     * that is already set does not re-trigger a wake, so we clear and
+     * re-add. Deprecated in favour of setTurnScreenOn() on API 27+, but
+     * the flag path is what the rest of this Activity uses and it works
+     * on every minSdk-24 target we ship to.
+     */
+    @Suppress("DEPRECATION")
+    private fun requestScreenWake() {
+        runCatching {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                    WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                    WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
+            )
+            if (::binding.isInitialized) binding.root.keepScreenOn = true
+            PlayerLogger.i("DisplayWindow", "wake requested via window flags")
+        }.onFailure { PlayerLogger.w("DisplayWindow", "requestScreenWake failed: ${it.message}") }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -351,6 +575,13 @@ class MainActivity : ComponentActivity() {
         // ROMs. MainActivity is foregrounded so it satisfies BAL.
         handleInstallPromptTrampoline(intent)
 
+        // 2026-08-14 — field-ops device-admin enrolment trigger. A no-op
+        // on every normal launch (the action is absent), and the ONLY
+        // boot-path reference to enrolment anywhere in the app: it fires
+        // solely when somebody deliberately sent that action, never
+        // because the box booted. See handleDeviceAdminEnrollIntent.
+        handleDeviceAdminEnrollIntent(intent)
+
         // 2026-05-24 — per-screen orientation lock.
         //
         // Old behavior (SCREEN_ORIENTATION_FULL_SENSOR) deferred to the
@@ -398,6 +629,33 @@ class MainActivity : ComponentActivity() {
         setContentView(binding.root)
         webView = binding.webview
         urlOverlayView = binding.urlOverlayView
+
+        // ── Display control (2026-08-13) ────────────────────────────
+        // Order matters and is safety-critical:
+        //
+        //  1. register the window hooks, so the provider stack has
+        //     somewhere to apply to;
+        //  2. REPLAY any pending dead-man revert. If the operator was
+        //     mid-test when this process died — OOM kill, OEM battery
+        //     reaper, OTA self-update, power cut — this is what puts
+        //     the screen back. An overdue record reverts immediately;
+        //     one still in the future re-arms its alarm. This runs on
+        //     EVERY process start, not just a cold boot, because
+        //     MainActivity is the only Activity this APK has and
+        //     BootReceiver does not fire on an OOM restart;
+        //  3. re-apply the persisted brightness/blank state, so a
+        //     scheduled blank that fired while the Activity was dead
+        //     is honoured the moment a window exists again;
+        //  4. re-arm the schedule alarm. Redundant with BootReceiver
+        //     on purpose — OEM signage ROMs drop boot receivers, and
+        //     the alarm is the ONLY thing that blanks a screen whose
+        //     network is down.
+        runCatching {
+            DisplayWindowBridge.register(displayHooks)
+            DisplayGuard.replayPending(applicationContext)
+            DisplayControlApi.onWindowAttached(applicationContext)
+            DisplayScheduler.armAndApply(applicationContext)
+        }.onFailure { PlayerLogger.w("DisplayControl", "display bootstrap failed: ${it.message}") }
 
         // Self-healing recovery — catches main-frame load failures and
         // 5xx errors, shows a branded "Reconnecting…" overlay, probes
@@ -673,6 +931,116 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(newIntent: Intent?) {
         super.onNewIntent(newIntent)
         handleInstallPromptTrampoline(newIntent)
+        handleDeviceAdminEnrollIntent(newIntent)
+    }
+
+    /**
+     * ── FIELD-OPS ENROLMENT TRIGGER (2026-08-14) ────────────────────
+     *
+     * A tech at the box, or the provisioning script, can raise the
+     * device-admin prompt with one line and no APK change:
+     *
+     * ```
+     * adb shell am start -n com.educms.player/com.educms.player.MainActivity \
+     *     -a com.educms.player.ENROLL_DISPLAY_ADMIN
+     * # debug builds carry applicationIdSuffix ".debug":
+     * adb shell am start -n com.educms.player.debug/com.educms.player.MainActivity \
+     *     -a com.educms.player.ENROLL_DISPLAY_ADMIN
+     * ```
+     *
+     * (The CLASS is always `com.educms.player.MainActivity` — only the
+     * package half of the component takes the suffix, which is why the
+     * `/.MainActivity` shorthand is wrong on a debug kiosk.)
+     *
+     * NOTE the explicit `-n`. This action deliberately has NO
+     * `<intent-filter>`: MainActivity is already exported (it carries
+     * LAUNCHER), so an explicit component start works, and adding a
+     * filter would create a new IMPLICIT surface any app on the box
+     * could resolve. Exposure is therefore identical to today's
+     * `OPEN_PLAYER` action, and the worst an external caller achieves is
+     * a system dialog the operator must actively approve — rate-limited
+     * by [DeviceAdminEnrollmentMath]'s debounce and decline cooldown.
+     *
+     * Not presence-gated, unlike the bridge path: whoever can send this
+     * either has a shell on the device (in which case
+     * `adb shell dpm set-active-admin …` is strictly easier and this
+     * grants nothing new) or is already an app on the box.
+     */
+    private fun handleDeviceAdminEnrollIntent(launchIntent: Intent?) {
+        if (launchIntent?.action != ACTION_ENROLL_DISPLAY_ADMIN) return
+        // Consume it, so a singleTask relaunch of a retained intent
+        // cannot re-prompt on every future resume.
+        launchIntent.action = Intent.ACTION_MAIN
+        PlayerLogger.i("DisplayControl", "device-admin enrolment requested by intent")
+        val result = com.educms.player.display.DeviceAdminEnrollment.requestEnrollment(
+            this,
+            com.educms.player.display.DeviceAdminEnrollment.SOURCE_INTENT,
+        )
+        PlayerLogger.i("DisplayControl", "enrolment intent result: $result")
+    }
+
+    /**
+     * The enrolment entry point the WEB layer calls, via
+     * `WebAppBridge.displayEnrollAdmin()`.
+     *
+     * ⚠️ TWO GATES, and both are product requirements rather than
+     * defence-in-depth theatre:
+     *
+     *  1. **A foreground Activity.** `ACTION_ADD_DEVICE_ADMIN` needs one,
+     *     and requiring it is what keeps enrolment off every background
+     *     path.
+     *  2. **Recent physical presence.** The legacy
+     *     `addJavascriptInterface` surface is materialised in EVERY frame
+     *     the WebView loads, including operator-authored EXTERNAL_HTML
+     *     board iframes (see WebAppBridge's header). Enrolment is not a
+     *     recovery-direction action, so it does not belong in the
+     *     untrusted subset — but the honest gate here is not "which
+     *     transport" (on a Chromium 83-87 Taurus there IS only the
+     *     untrusted one), it is "is a human standing at this panel".
+     *     They must be: they have to tap Activate on the system dialog.
+     *     No touch in [LOCAL_INPUT_WINDOW_MS] ⇒ the dialog would sit
+     *     unattended over the content on a wall. Refused.
+     *
+     * Everything runs on the UI thread; the bridge call can arrive on
+     * the JavaBridge thread or the channel worker.
+     */
+    private fun requestDeviceAdminEnrollment(): String {
+        val sinceInput = android.os.SystemClock.elapsedRealtime() - lastLocalInputAtMs
+        if (lastLocalInputAtMs == 0L || sinceInput > LOCAL_INPUT_WINDOW_MS) {
+            PlayerLogger.w(
+                "DisplayControl",
+                "REFUSED device-admin enrolment — no local input in the last " +
+                    "${LOCAL_INPUT_WINDOW_MS / 1000}s, so nobody is at the screen to approve the dialog",
+            )
+            return """{"ok":false,"code":"no-operator-present",""" +
+                """"message":"tap the screen first — this setup ends in a dialog somebody has to approve"}"""
+        }
+        // startActivity must run on the UI thread; the bridge does not.
+        // Hand off and answer immediately with what we know — the real
+        // outcome is settled in onResume, and the dashboard/probe reads
+        // it from `admin.enrollment.state`.
+        val latch = java.util.concurrent.CountDownLatch(1)
+        val holder = arrayOfNulls<String>(1)
+        runOnUiThread {
+            holder[0] = try {
+                com.educms.player.display.DeviceAdminEnrollment.requestEnrollment(
+                    this,
+                    com.educms.player.display.DeviceAdminEnrollment.SOURCE_BRIDGE,
+                )
+            } catch (t: Throwable) {
+                PlayerLogger.w("DisplayControl", "enrolment request threw: ${t.message}")
+                """{"ok":false,"code":"exception"}"""
+            }
+            latch.countDown()
+        }
+        // Bounded: the UI thread of a kiosk that must never jank should
+        // clear this instantly. A timeout is not a failure of the
+        // enrolment, only of our ability to report it synchronously.
+        return if (latch.await(3, java.util.concurrent.TimeUnit.SECONDS)) {
+            holder[0] ?: """{"ok":false,"code":"exception"}"""
+        } else {
+            """{"ok":true,"state":"prompt-pending","detail":"dispatched"}"""
+        }
     }
 
     private fun handleInstallPromptTrampoline(launchIntent: Intent?) {
@@ -1412,6 +1780,41 @@ class MainActivity : ComponentActivity() {
                 ctsSerial = com.educms.player.serial.SerialPortBridge(
                     getWebView = { wv },
                 ),
+                // 2026-08-13 — display CONTROL (volume / brightness /
+                // blank / wake / reboot + the on-device on-off
+                // schedule). Every argument is validated natively inside
+                // DisplayControlApi; nothing here trusts the caller.
+                //
+                // These run on the caller's thread (JavaBridge for the
+                // legacy surface, the channel's worker for the secure
+                // one). That is correct: the provider stack is
+                // Context-only and marshals to the UI thread itself via
+                // DisplayWindowBridge, so a slow sysfs write never
+                // blocks a frame on a kiosk that must not jank.
+                displayCapabilitiesImpl = { DisplayControlApi.capabilitiesJson(applicationContext) },
+                displayApplyImpl = { json, trusted ->
+                    DisplayControlApi.applyJson(applicationContext, json, trusted)
+                },
+                displaySetScheduleImpl = { json, trusted ->
+                    DisplayControlApi.setScheduleJson(applicationContext, json, trusted)
+                },
+                // ⚠️ LIFE SAFETY — the emergency interlock. See
+                // com.educms.player.display.DisplayEmergency.
+                displayEmergencyHoldImpl = { active, trusted ->
+                    DisplayControlApi.emergencyHoldJson(applicationContext, active, trusted)
+                },
+                // 2026-08-14 — one-tap device-ADMIN enrolment, the tier
+                // that turns BLANK from "black overlay over a lit panel"
+                // into a real lockNow() panel-off. Activity-scoped and
+                // presence-gated inside requestDeviceAdminEnrollment();
+                // read its KDoc before moving this anywhere.
+                displayEnrollAdminImpl = { requestDeviceAdminEnrollment() },
+                // DIAGNOSTIC ONLY. This used to gate the mutators off the
+                // legacy transport, which inverted: it evaluated false on
+                // exactly the pre-channel devices that needed the gate
+                // most. The mutators now mark the legacy caller untrusted
+                // unconditionally. See WebAppBridge.displayApply().
+                secureChannelActive = { nativeChannelActive },
         )
 
         // ── Transport 1 (LEGACY, still required) ────────────────────
@@ -1798,6 +2201,40 @@ class MainActivity : ComponentActivity() {
         // today. Read that file's header before changing this.
         isResumedForLockTask = true
         maybeEngageLockTask("onResume")
+
+        // ── Display control (2026-08-13) ────────────────────────────
+        //
+        // 1. RE-RESOLVE the provider chain. WRITE_SETTINGS is an appop
+        //    the operator grants OUT OF PROCESS — by tapping through
+        //    Settings.ACTION_MANAGE_WRITE_SETTINGS, or by a one-shot
+        //    `adb shell appops set <pkg> WRITE_SETTINGS allow` — and
+        //    neither restarts us. Without this the registry kept
+        //    reporting the pre-grant answer until the process next died,
+        //    so SettingsBrightnessProvider and ScreenTimeoutBlankProvider
+        //    were unreachable in the field no matter what the operator
+        //    did. resolve() is a handful of stats plus one canWrite().
+        //
+        // 2. ⚠️ RE-ASSERT the emergency hold. If an alert is active this
+        //    forces the panel visible again — the window hooks are
+        //    re-registered per Activity instance, and a hold that
+        //    survived a process death has to be re-applied to the NEW
+        //    window or the alert stays behind a black overlay.
+        //
+        // 3. SETTLE a pending device-admin enrolment prompt (2026-08-14).
+        //    `ACTION_ADD_DEVICE_ADMIN` takes the operator out of our
+        //    Activity and back into it, so THIS is the moment we learn
+        //    how it ended. Deliberately BEFORE the invalidate: settling
+        //    a successful enrolment invalidates too, and ordering it
+        //    first means the resolution below already sees
+        //    BLANK=device-admin in the same resume — no process restart,
+        //    which is the whole point of the tier. Settling is cheap and
+        //    a no-op when no prompt is outstanding (it returns null
+        //    before touching prefs).
+        runCatching {
+            com.educms.player.display.DeviceAdminEnrollment.settlePending(applicationContext)
+            com.educms.player.display.DisplayControlRegistry.invalidate()
+            com.educms.player.display.DisplayEmergency.enforceIfHeld(applicationContext)
+        }.onFailure { PlayerLogger.w("DisplayControl", "onResume display refresh failed: ${it.message}") }
     }
 
     override fun onPause() {
@@ -1819,6 +2256,13 @@ class MainActivity : ComponentActivity() {
             urlOverlayView.loadUrl("about:blank")
         }
         if (::recovery.isInitialized) recovery.shutdown()
+        // Drop the display window hooks. The bridge holds them weakly so
+        // an un-clean death is already safe; this is the clean path.
+        // NOTE: the persisted brightness/blank STATE is deliberately left
+        // alone — a screen that is meant to be blanked overnight must
+        // stay blanked across an Activity restart, and onWindowAttached()
+        // re-applies it when a window comes back.
+        runCatching { DisplayWindowBridge.clear() }
         watchdogHandler.removeCallbacks(watchdogTicker)
         try {
             if (managerInstallReceiverRegistered) {

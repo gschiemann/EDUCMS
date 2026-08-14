@@ -200,13 +200,38 @@ class OtaUpdateWorker(
 
             val body = conn.inputStream.bufferedReader().use { it.readText() }
             val json = JSONObject(body)
+            // ── 2026-08-14 — TERMINAL STATE ON THE SUCCESS PATH ─────────────
+            // Every ERROR path below reports. Both UP-TO-DATE paths used to
+            // return silently, so `lastOtaState` stayed pinned at CHECKING
+            // forever on every HEALTHY screen — all four pilot boxes were
+            // sitting like that. That made a healthy screen indistinguishable
+            // from a genuinely wedged one, which is the actual defect (the
+            // OTA itself was working fine).
+            //
+            // Cost check before adding a write: `lastOtaState` /
+            // `lastOtaProgress` / `lastOtaMessage` / `lastOtaAt` are ALL on
+            // SCREEN_TELEMETRY_ONLY_FIELDS in apps/api/src/screens/
+            // manifest-hot-cache.ts, and the ota-state handler writes nothing
+            // else on a non-ERROR report — so this second write per check does
+            // NOT bust the manifest hot cache. (If a future edit adds a
+            // non-telemetry column to that update, re-check: this path fires
+            // fleet-wide on every 6 h tick and would re-create the 25 GB/mo
+            // Supabase egress the cache exists to kill.)
             val latest = json.optJSONObject("latest") ?: run {
                 PlayerLogger.i(TAG, "OTA check: server returned no newer release — Player is current")
+                reportOtaState(
+                    apiRoot, deviceFingerprint, "UP_TO_DATE", null,
+                    "v${BuildConfig.VERSION_NAME} — no newer release offered",
+                )
                 return@withContext Result.success()
             }
             val latestVc = latest.optInt("versionCode")
             if (latestVc <= BuildConfig.VERSION_CODE) {
                 PlayerLogger.i(TAG, "OTA check: up to date (current=${BuildConfig.VERSION_CODE}, latest=$latestVc)")
+                reportOtaState(
+                    apiRoot, deviceFingerprint, "UP_TO_DATE", null,
+                    "v${BuildConfig.VERSION_NAME} — already current",
+                )
                 return@withContext Result.success()
             }
 

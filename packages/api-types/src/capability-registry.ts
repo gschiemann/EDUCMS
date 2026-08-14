@@ -411,4 +411,31 @@ export const CAPABILITY_REGISTRY: ReadonlyArray<Capability> = [
       'Generic HMAC feed is the only end-to-end path. Daktronics is provisional; CTS water-polo strongest. NO physical hardware certification (SPT-001/003). Do not market any console as "certified."',
     dependsOn: [],
   },
+  {
+    id: 'screen-display-control',
+    // REBOOT dropped from the name 2026-08-13: the operator decided against
+    // provisioning as Android device owner, so remote reboot is genuinely
+    // unavailable on the whole fleet and the endpoint refuses it with
+    // DISPLAY_REBOOT_UNAVAILABLE. The provider stays in the player for the
+    // day a manufacturer preinstalls us platform-signed; until then naming it
+    // here would be a claim we cannot honour.
+    name: 'Remote screen volume / brightness / blank / wake',
+    domain: 'fleet',
+    state: 'CONFIGURED',
+    owner: 'fleet/player',
+    surface:
+      'POST /screens/:id/display-control · POST|GET /screens/:id/display-capabilities · /display-schedules CRUD · manifest `display` block',
+    // No publicClaim: the API half exists and is wired, but NOTHING has been
+    // proven on a physical Goodview / Taurus / TCL panel yet. Claiming
+    // "control any screen from the dashboard" before that is exactly the
+    // "Coming soon wearing a real-button costume" this registry exists to
+    // prevent.
+    publicClaim: null,
+    evidenceTest: null,
+    verifiedAt: null,
+    expiresAt: null,
+    limitations:
+      'API + contract only, no hardware certification. REMOTE REBOOT IS UNAVAILABLE: we do not provision as Android device owner (operator decision, 2026-08-13), so the endpoint refuses it with DISPLAY_REBOOT_UNAVAILABLE and the dashboard renders no reboot control; it lights up only on a manufacturer-preinstalled, platform-signed build. Volume and reboot are gated on the player-reported verdict and 409 otherwise. Blank/wake are always available because the software floor (window brightness + overlay) cannot fail — the verdict names the mechanism, not the availability. A screen that has never reported still accepts WAKE and a brightness raise (recovery), and refuses blank/volume/reboot/allowBlack (risk). Brightness on most boxes falls back to software dim, which dims composition only and saves no power on an LCD. Hard power-off has no public Android API at any privilege level (RS-232 is a candidate, not a shipped path). Scheduled on/off runs on-device from the manifest and has not been soak-tested across a DST boundary. Blank and dim are refused outright while an emergency alert is active on the screen.',
+    dependsOn: [],
+  },
 ];

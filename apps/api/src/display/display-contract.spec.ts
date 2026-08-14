@@ -1,0 +1,449 @@
+/**
+ * The shared display-control CONTRACT (@cms/api-types/display-control).
+ *
+ * These are the checks that only exist at the API boundary. Everything here
+ * closes a finding from the 2026-08-13 adversarial review, and each one was
+ * proven by EXECUTING the shipped schema — not by reading it:
+ *
+ *   1. RECIPE ALLOWLIST. `display-recipes.controller.ts` header claimed
+ *      "defence in depth means both ends refuse", but the schema validated
+ *      shape only: a sysfs path traversing to /proc/sysrq-trigger and a
+ *      broadcast of android.intent.action.MASTER_CLEAR both parsed clean and
+ *      one SUPER_ADMIN PUT shipped that catalog verbatim to every screen in
+ *      every tenant. The device is still the security boundary; this end
+ *      refuses now too. Mirrors apps/player/.../display/VendorRecipe.kt.
+ *
+ *   2. allowBlack REQUIRES A DEAD-MAN REVERT. `{action:'SET_BRIGHTNESS',
+ *      percent:0, allowBlack:true}` used to parse with revertAfterMs
+ *      undefined, and the API is the only place that can enforce the
+ *      conjunction — the player cannot invent a revert window the operator
+ *      never sent. Without it a UI bug or a replayed curl mints a
+ *      PERMANENTLY black wall-mounted panel.
+ */
+
+import {
+  DISPLAY_RECIPE_BROADCAST_PREFIXES,
+  DisplayControlActionSchema,
+  DisplayVendorRecipeSchema,
+  isAllowedRecipeBroadcastAction,
+  isAllowedRecipeSettingsKey,
+  isAllowedRecipeSysfsPath,
+} from '@cms/api-types';
+
+const recipe = (over: Record<string, unknown>) => ({
+  vendorId: 'goodview-ep6n',
+  match: { manufacturer: 'Goodview' },
+  ...over,
+});
+
+const parse = (over: Record<string, unknown>) =>
+  DisplayVendorRecipeSchema.safeParse(recipe(over)).success;
+
+describe('vendor recipe allowlist — mirrored server-side', () => {
+  it('REFUSES the exact payload the review shipped through the old schema', () => {
+    expect(
+      DisplayVendorRecipeSchema.safeParse(
+        recipe({
+          brightness: {
+            kind: 'sysfs',
+            path: '/sys/class/backlight/../../../proc/sysrq-trigger',
+            value: 'b',
+          },
+          blank: {
+            kind: 'broadcast',
+            action: 'android.intent.action.MASTER_CLEAR',
+          },
+          wake: { kind: 'settings', key: 'screen_off_timeout', value: 1 },
+        }),
+      ).success,
+    ).toBe(false);
+  });
+
+  describe('sysfs paths', () => {
+    it('accepts a node strictly beneath an allowlisted root', () => {
+      expect(
+        isAllowedRecipeSysfsPath('/sys/class/backlight/panel0/brightness'),
+      ).toBe(true);
+      expect(
+        isAllowedRecipeSysfsPath('/sys/class/leds/lcd-backlight/brightness'),
+      ).toBe(true);
+      expect(
+        parse({
+          brightness: {
+            kind: 'sysfs',
+            path: '/sys/class/backlight/panel0/brightness',
+            valueFrom: 'percent',
+            scale: [0, 255],
+          },
+        }),
+      ).toBe(true);
+    });
+
+    it('refuses traversal, encoded traversal, backslashes and control bytes', () => {
+      for (const bad of [
+        '/sys/class/backlight/../../../proc/sysrq-trigger',
+        '/sys/class/backlight/..%2f..%2fproc/sysrq-trigger',
+        '/sys/class/backlight/%2e%2e/x',
+        '/sys/class/backlight\\panel0\\brightness',
+        '/sys/class/backlight/panel0/bright ness',
+        '/sys/class/backlight/panel0/bright\nness',
+        // ⚠️ 2026-08-14: the space in THIS literal was a raw NUL byte on
+        // disk — the exact corruption `RecipeAllowlist.hasUnsafeChar`'s
+        // header warns about, reproduced here in TypeScript. Both bytes are
+        // refused by the same `code < 0x20` branch so the assertion stayed
+        // green and nobody noticed, but git classified the whole file as
+        // BINARY: no diff, no review, no blame for any change to it. Repaired
+        // to a real U+0020. If this file ever shows as `Bin` in a diff again,
+        // scan it for control bytes before anything else.
+        '/sys/class/backlight/panel0/b rightness',
+      ]) {
+        expect(isAllowedRecipeSysfsPath(bad)).toBe(false);
+        expect(
+          parse({ brightness: { kind: 'sysfs', path: bad, value: '1' } }),
+        ).toBe(false);
+      }
+    });
+
+    it('refuses anything outside the two roots, including near-misses', () => {
+      for (const bad of [
+        '/proc/sysrq-trigger',
+        '/sys/class/graphics/fb0/blank',
+        // Trailing slash on the root is load-bearing: this must NOT pass.
+        '/sys/class/backlightEVIL/panel0/brightness',
+        // The root directory itself is not a writable node.
+        '/sys/class/leds/',
+        'sys/class/backlight/panel0/brightness',
+        '',
+      ]) {
+        expect(isAllowedRecipeSysfsPath(bad)).toBe(false);
+      }
+    });
+  });
+
+  describe('broadcast actions', () => {
+    it('accepts every allowlisted vendor namespace', () => {
+      for (const prefix of DISPLAY_RECIPE_BROADCAST_PREFIXES) {
+        expect(isAllowedRecipeBroadcastAction(`${prefix}SET_BACKLIGHT`)).toBe(
+          true,
+        );
+      }
+    });
+
+    it('refuses the android namespaces and every bare/near-miss namespace', () => {
+      for (const bad of [
+        'android.intent.action.MASTER_CLEAR',
+        'android.intent.action.REBOOT',
+        'com.android.settings.APPLICATION_DEVELOPMENT_SETTINGS',
+        // Every prefix ends in a dot precisely so this cannot pass.
+        'com.tclEVIL.doSomething',
+        'com.evil.tcl.doSomething',
+        'com.gv..dotdot',
+        'com.gv.set backlight',
+        '',
+      ]) {
+        expect(isAllowedRecipeBroadcastAction(bad)).toBe(false);
+        expect(parse({ blank: { kind: 'broadcast', action: bad } })).toBe(
+          false,
+        );
+      }
+    });
+  });
+
+  describe('settings keys', () => {
+    it('accepts the known display keys and refuses everything else', () => {
+      expect(isAllowedRecipeSettingsKey('screen_brightness')).toBe(true);
+      expect(isAllowedRecipeSettingsKey('screen_brightness_mode')).toBe(true);
+      for (const bad of [
+        'screen_off_timeout_evil',
+        'install_non_market_apps',
+        'adb_enabled',
+        'device_provisioned',
+        '',
+      ]) {
+        expect(isAllowedRecipeSettingsKey(bad)).toBe(false);
+        expect(parse({ wake: { kind: 'settings', key: bad, value: 1 } })).toBe(
+          false,
+        );
+      }
+    });
+  });
+
+  it('refuses a scale the device would reject (overflow / inverted)', () => {
+    const step = (scale: [number, number]) => ({
+      kind: 'sysfs' as const,
+      path: '/sys/class/backlight/panel0/brightness',
+      valueFrom: 'percent' as const,
+      scale,
+    });
+    expect(parse({ brightness: step([0, 255]) })).toBe(true);
+    expect(parse({ brightness: step([255, 0]) })).toBe(false);
+    expect(parse({ brightness: step([-1, 255]) })).toBe(false);
+    expect(parse({ brightness: step([0, 9_999_999]) })).toBe(false);
+  });
+
+  // ───────────────────────────────────────────────────────────────────
+  // 2026-08-13 verify wave, P1 — "the server accepts recipe shapes the
+  // DEVICE rejects WHOLE". Each case below saved with a 200, shipped to
+  // every screen in every tenant, and was then refused by
+  // RecipeValidator on-device — which kills the vendor's blank AND wake
+  // steps too, because a bad recipe is rejected WHOLE. The operator saw a
+  // saved recipe and a screen that quietly fell back to software dim. No
+  // signal anywhere. These now fail at save time with a reason.
+  // ───────────────────────────────────────────────────────────────────
+  describe('rules the device applies to the BRIGHTNESS slot only', () => {
+    const sysfs = (over: Record<string, unknown>) => ({
+      kind: 'sysfs',
+      path: '/sys/class/backlight/panel0/brightness',
+      ...over,
+    });
+
+    it('refuses a literal brightness step — it bypasses the MIN_SAFE floor', () => {
+      // The real-world shape: bl_power=4 (FB_BLANK_POWERDOWN). Every
+      // SetBrightness, INCLUDING 100%, then powers the backlight OFF, and
+      // the dead-man revert re-applies it.
+      expect(
+        parse({
+          brightness: sysfs({
+            path: '/sys/class/backlight/panel0/bl_power',
+            value: '4',
+          }),
+        }),
+      ).toBe(false);
+      // …but the identical literal is FINE on blank, where a constant is
+      // exactly what is wanted.
+      expect(
+        parse({
+          blank: sysfs({
+            path: '/sys/class/backlight/panel0/bl_power',
+            value: '4',
+          }),
+          wake: sysfs({
+            path: '/sys/class/backlight/panel0/bl_power',
+            value: '0',
+          }),
+        }),
+      ).toBe(true);
+    });
+
+    it('refuses a brightness scale too narrow for the 5% floor to survive', () => {
+      // span 9: round(9 * 0.05) = 0, so "5%, the lowest we allow" writes the
+      // scale MINIMUM — which on a real backlight is OFF.
+      expect(
+        parse({
+          brightness: sysfs({ valueFrom: 'percent', scale: [0, 9] }),
+        }),
+      ).toBe(false);
+      expect(
+        parse({
+          brightness: sysfs({ valueFrom: 'percent', scale: [0, 10] }),
+        }),
+      ).toBe(true);
+    });
+
+    it('refuses an all-literal brightness broadcast, accepts a percent-derived one', () => {
+      expect(
+        parse({
+          brightness: {
+            kind: 'broadcast',
+            action: 'com.gv.display.SET_BACKLIGHT',
+            extras: [
+              { key: 'level', type: 'int', from: 'literal', value: '0' },
+            ],
+          },
+        }),
+      ).toBe(false);
+      expect(
+        parse({
+          brightness: {
+            kind: 'broadcast',
+            action: 'com.gv.display.SET_BACKLIGHT',
+            extras: [
+              { key: 'level', type: 'int', from: 'percent', scale: [0, 255] },
+            ],
+          },
+        }),
+      ).toBe(true);
+      // A percent extra with a too-narrow scale is the same floor bug.
+      expect(
+        parse({
+          brightness: {
+            kind: 'broadcast',
+            action: 'com.gv.display.SET_BACKLIGHT',
+            extras: [
+              { key: 'level', type: 'int', from: 'percent', scale: [0, 5] },
+            ],
+          },
+        }),
+      ).toBe(false);
+    });
+  });
+
+  describe('step shapes the device rejects whole', () => {
+    it('refuses a sysfs step with neither a literal nor valueFrom:percent', () => {
+      expect(
+        parse({
+          blank: { kind: 'sysfs', path: '/sys/class/backlight/panel0/bl_power' },
+        }),
+      ).toBe(false);
+    });
+
+    it('refuses a sysfs path that is not exactly <device>/<attribute>', () => {
+      for (const bad of [
+        // Three segments — how you walk out of a class tree via `device/`.
+        '/sys/class/backlight/panel0/device/uevent',
+        // One segment — the device directory itself, not an attribute.
+        '/sys/class/backlight/panel0',
+        // Illegal character inside a segment (device SYSFS_SEGMENT_RE).
+        '/sys/class/backlight/panel,0/brightness',
+        '/sys/class/leds/lcd@backlight/brightness',
+      ]) {
+        expect(isAllowedRecipeSysfsPath(bad)).toBe(false);
+        expect(parse({ blank: { kind: 'sysfs', path: bad, value: '0' } })).toBe(
+          false,
+        );
+      }
+      expect(
+        isAllowedRecipeSysfsPath('/sys/class/leds/lcd-backlight/bl_power'),
+      ).toBe(true);
+    });
+
+    it('refuses duplicate extra keys — the second write silently clobbers the first', () => {
+      expect(
+        parse({
+          blank: {
+            kind: 'broadcast',
+            action: 'com.gv.display.SET_POWER',
+            extras: [
+              { key: 'state', type: 'int', from: 'literal', value: '0' },
+              { key: 'state', type: 'int', from: 'literal', value: '1' },
+            ],
+          },
+        }),
+      ).toBe(false);
+    });
+
+    it('refuses a literal extra with no value, or a value its type cannot hold', () => {
+      const bcast = (extra: Record<string, unknown>) => ({
+        blank: {
+          kind: 'broadcast',
+          action: 'com.gv.display.SET_POWER',
+          extras: [extra],
+        },
+      });
+      expect(parse(bcast({ key: 'state', type: 'int', from: 'literal' }))).toBe(
+        false,
+      );
+      expect(
+        parse(bcast({ key: 'state', type: 'int', from: 'literal', value: 'off' })),
+      ).toBe(false);
+      expect(
+        parse(bcast({ key: 'on', type: 'bool', from: 'literal', value: 'yes' })),
+      ).toBe(false);
+      expect(
+        parse(bcast({ key: 'state', type: 'int', from: 'literal', value: 0 })),
+      ).toBe(true);
+      expect(
+        parse(bcast({ key: 'on', type: 'bool', from: 'literal', value: true })),
+      ).toBe(true);
+    });
+
+    it('refuses a non-integer scale — the device truncates it with .toInt()', () => {
+      expect(
+        parse({
+          brightness: {
+            kind: 'sysfs',
+            path: '/sys/class/backlight/panel0/brightness',
+            valueFrom: 'percent',
+            scale: [0, 255.9],
+          },
+        }),
+      ).toBe(false);
+    });
+
+    it('refuses a `value` on a settings step — the device silently drops it', () => {
+      // Not a device REJECTION, a device SILENCE: `parseStep` builds
+      // SettingsWrite(key, scale) and discards `value` entirely, so the
+      // operator believes they pinned a literal and the panel does
+      // something else. Refused here, where we can say why.
+      expect(
+        parse({
+          brightness: {
+            kind: 'settings',
+            key: 'screen_brightness',
+            value: 200,
+          },
+        }),
+      ).toBe(false);
+      expect(
+        parse({
+          brightness: {
+            kind: 'settings',
+            key: 'screen_brightness',
+            valueFrom: 'percent',
+            scale: [0, 255],
+          },
+        }),
+      ).toBe(true);
+    });
+  });
+
+  it('refuses a match token with characters the device would reject', () => {
+    expect(
+      DisplayVendorRecipeSchema.safeParse({
+        vendorId: 'goodview-ep6n',
+        match: { manufacturer: 'Goodview\n; rm -rf /' },
+        blank: { kind: 'broadcast', action: 'com.gv.BLANK' },
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('allowBlack requires a dead-man revert', () => {
+  const parseAction = (b: Record<string, unknown>) =>
+    DisplayControlActionSchema.safeParse(b).success;
+
+  it('refuses allowBlack with no revertAfterMs', () => {
+    expect(
+      parseAction({ action: 'SET_BRIGHTNESS', percent: 0, allowBlack: true }),
+    ).toBe(false);
+  });
+
+  it('accepts allowBlack that carries one', () => {
+    expect(
+      parseAction({
+        action: 'SET_BRIGHTNESS',
+        percent: 0,
+        allowBlack: true,
+        revertAfterMs: 30_000,
+      }),
+    ).toBe(true);
+  });
+
+  it('leaves every other action untouched — the floor already protects them', () => {
+    expect(parseAction({ action: 'SET_BRIGHTNESS', percent: 0 })).toBe(true);
+    expect(parseAction({ action: 'BLANK' })).toBe(true);
+    expect(parseAction({ action: 'WAKE' })).toBe(true);
+    expect(
+      parseAction({ action: 'SET_BRIGHTNESS', percent: 0, allowBlack: false }),
+    ).toBe(true);
+  });
+
+  it('still enforces the revert-window bounds', () => {
+    expect(
+      parseAction({
+        action: 'SET_BRIGHTNESS',
+        percent: 0,
+        allowBlack: true,
+        revertAfterMs: 10,
+      }),
+    ).toBe(false);
+    expect(
+      parseAction({
+        action: 'SET_BRIGHTNESS',
+        percent: 0,
+        allowBlack: true,
+        revertAfterMs: 60 * 60_000,
+      }),
+    ).toBe(false);
+  });
+});

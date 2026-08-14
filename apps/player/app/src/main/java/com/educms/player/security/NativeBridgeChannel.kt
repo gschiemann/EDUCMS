@@ -118,6 +118,33 @@ object NativeBridgeChannel {
         "openSettingsForManager",
         // value-returning (Promise-based on the web side)
         "deviceInfo",
+        // 2026-08-13 — `probeDisplay` had a dispatch arm but was MISSING
+        // from this array, so `onMessage`'s METHODS gate replied
+        // "unknown method" and the arm was unreachable: the capability
+        // probe only ever worked over the legacy `window.EduCmsNative`
+        // object. Adding it here is what makes it reachable on every
+        // channel-transport device.
+        "probeDisplay",
+        // Display CONTROL (see com.educms.player.display). The MUTATORS
+        // are dispatched to channel-only entry points on WebAppBridge,
+        // because their `@JavascriptInterface` twins UNCONDITIONALLY
+        // mark the caller untrusted and are restricted to the
+        // recovery-direction subset (wake / raise brightness).
+        "displayCapabilities",
+        "displayApply",
+        "displaySetSchedule",
+        // ⚠️ LIFE SAFETY — the emergency interlock. The web player calls
+        // this on WS OVERRIDE / ALL_CLEAR and on every manifest poll
+        // carrying an `emergency` field, so a screen on the HTTP polling
+        // backstop is covered too. See DisplayEmergency.
+        "displayEmergencyHold",
+        // One-tap device-admin enrolment. Registering it here (and in
+        // nativeBridge.ts, and bumping the drift-guard canary) is the
+        // THREE-FILE ATOMIC CHANGE the enrolment wave could not make on its
+        // own: the guard asserts sorted equality between this array and the
+        // web's, so a Kotlin-only or web-only addition turns the blocking
+        // web-jest job red. See PlayerAdminReceiver / DeviceAdminEnrollment.
+        "displayEnrollAdmin",
         "checkForUpdates",
         "getRecentLogs",
         "uploadDiagnostics",
@@ -315,6 +342,15 @@ object NativeBridgeChannel {
             "openSettingsForManager" -> { bridge.openSettingsForManager(); null }
             "deviceInfo" -> bridge.deviceInfo()
             "probeDisplay" -> bridge.probeDisplay()
+            "displayCapabilities" -> bridge.displayCapabilities()
+            "displayEnrollAdmin" -> bridge.displayEnrollAdmin()
+            // Channel-only entry points — a message that reaches here has
+            // already passed the exact-origin AND main-frame gates, which
+            // is precisely what the `@JavascriptInterface` twins cannot
+            // verify about their own caller.
+            "displayApply" -> bridge.displayApplyViaSecureChannel(strAt(args, 0))
+            "displaySetSchedule" -> bridge.displaySetScheduleViaSecureChannel(strAt(args, 0))
+            "displayEmergencyHold" -> bridge.displayEmergencyHoldViaSecureChannel(boolAt(args, 0))
             "checkForUpdates" -> bridge.checkForUpdates()
             "getRecentLogs" -> bridge.getRecentLogs()
             "uploadDiagnostics" -> bridge.uploadDiagnostics()
@@ -343,6 +379,21 @@ object NativeBridgeChannel {
         args.optInt(index, fallback)
     } catch (t: Throwable) {
         fallback
+    }
+
+    /**
+     * ⚠️ Defaults TRUE, and that direction is deliberate. Its only caller
+     * is `displayEmergencyHold`, where the two outcomes are not
+     * symmetric: a spurious hold keeps a screen lit (a power bill), a
+     * missed hold lets an alert be blanked. So an argument we cannot
+     * read is treated as "there IS an emergency". `optBoolean` also
+     * accepts the strings "true"/"false", which is what a JS `true`
+     * serialised through `JSONArray` can arrive as.
+     */
+    private fun boolAt(args: JSONArray, index: Int): Boolean = try {
+        args.optBoolean(index, true)
+    } catch (t: Throwable) {
+        true
     }
 
     private fun replyOk(replyProxy: JavaScriptReplyProxy, id: String?, result: Any?) {

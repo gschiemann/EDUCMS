@@ -51,6 +51,38 @@ class BootReceiver : BroadcastReceiver() {
         com.educms.player.watchdog.Watchdog.arm(context.applicationContext)
         PlayerLogger.i("BootReceiver", "HeartbeatService and Watchdog armed")
 
+        // 2026-08-13 — display control. AlarmManager alarms do NOT
+        // survive a reboot, so without this a screen that was scheduled
+        // to wake at 07:00 stays dark after an overnight power cut —
+        // the exact failure the on-device scheduler exists to prevent.
+        //
+        // Both calls are network-free and read only from prefs, so they
+        // work on a box whose Wi-Fi has not come up yet (and on one
+        // whose Wi-Fi never comes up again).
+        //
+        //  * replayPending — restore the screen if the box died mid-test
+        //    with a dead-man revert outstanding.
+        //  * armAndApply   — put the screen into the state the schedule
+        //    says it should be in right now, then arm the next boundary.
+        //
+        // MainActivity.onCreate does the same thing, deliberately
+        // redundantly: OEM signage ROMs are known to drop boot receivers
+        // (see Manager's own BootReceiver comment on whitelisting), and
+        // a missed re-arm here is a screen that never wakes.
+        //  * enforceIfHeld — ⚠️ LIFE SAFETY. If the box power-cycled
+        //    DURING an emergency the hold is still on disk (it is written
+        //    with commit() for exactly this), so the screen must come
+        //    back VISIBLE rather than in whatever blanked state the
+        //    schedule left behind. This runs before the Activity does.
+        try {
+            com.educms.player.display.DisplayEmergency.enforceIfHeld(context.applicationContext)
+            com.educms.player.display.DisplayGuard.replayPending(context.applicationContext)
+            com.educms.player.display.DisplayScheduler.armAndApply(context.applicationContext)
+            PlayerLogger.i("BootReceiver", "display schedule re-armed + dead-man revert replayed")
+        } catch (e: Exception) {
+            PlayerLogger.w("BootReceiver", "display schedule re-arm failed", e)
+        }
+
         // 2026-04-28 — operator: 'i rebooted the player and nothing
         // fucking happened'. ROOT CAUSE: this BootReceiver did NOT
         // kick the OTA worker. WorkManager's periodic schedule uses

@@ -72,6 +72,22 @@ object DisplayCapabilityProbe {
     private const val SCHEMA = 1
 
     /**
+     * The one verdict value that is NOT a [DisplayControlProvider.id]:
+     * "this box genuinely cannot do it". Only `reboot`, `volume` and
+     * `hardPowerOff` can ever carry it — BRIGHTNESS, BLANK and WAKE
+     * always resolve to a mechanism (contract C3).
+     */
+    internal const val CAPABILITY_NONE = "none"
+
+    /**
+     * `hardPowerOff` has no provider (nothing in the registry can cut
+     * panel power), so its non-"none" value is a probe-only finding: a
+     * serial node exists, which MIGHT carry the panel's RS-232 command
+     * set. It is a lead for field ops, never a capability claim.
+     */
+    internal const val HARD_POWER_OFF_SERIAL = "serial-candidate"
+
+    /**
      * Kernel backlight nodes, in descending order of "this is the real
      * panel backlight". Presence alone is a finding; readability and
      * writability are separate findings (most boxes expose the node but
@@ -142,6 +158,7 @@ object DisplayCapabilityProbe {
         section(root, "features") { systemFeatures(ctx) }
         section(root, "vendorPackages") { vendorPackages(ctx) }
         section(root, "serial") { serialSurface(ctx) }
+        section(root, "control") { resolvedControl(ctx) }
 
         root.put("verdict", verdict(root))
         return root
@@ -207,15 +224,48 @@ object DisplayCapabilityProbe {
         out.put("deviceOwnerPackage", holder ?: JSONObject.NULL)
         out.put("deviceOwnerDetected", holder != null)
 
-        // Active device admins — a vendor CMS often registers as a plain
-        // admin WITHOUT taking device owner. That case is fine for us: we
-        // can still be provisioned, and force-lock/lockNow is available to
-        // any active admin that declares the policy (we do, in
-        // manager/src/main/res/xml/device_admin.xml).
+        // Active device admins on the box, whoever owns them.
+        //
+        // ⚠️ READ THIS COUNT CORRECTLY. A vendor CMS very often registers
+        // its own plain admin without taking device owner, so
+        // `activeAdminCount > 0` says NOTHING about what WE can do: the
+        // force-lock policy behind `lockNow()` is scoped to the calling
+        // package. The field that answers "can this Player really blank
+        // the panel" is `selfIsActiveAdmin` below — never this count.
         val admins = JSONArray()
         safe { dpm.activeAdmins }?.forEach { admins.put(it.flattenToShortString()) }
         out.put("activeAdmins", admins)
         out.put("activeAdminCount", admins.length())
+
+        // ── OUR OWN device-ADMIN enrolment (2026-08-14) ──────────────
+        //
+        // The one-tap tier. When `enrollment.state` is "not-enrolled" or
+        // "declined", this screen's BLANK is stuck on the screen-timeout
+        // or software-dim fallback and ONE operator tap
+        // (`ACTION_ADD_DEVICE_ADMIN`, or the Settings > Security >
+        // Device admin apps toggle) promotes it to a real panel-off
+        // `lockNow()`. That is the fleet question this section exists to
+        // answer without anyone walking to a screen.
+        //
+        // Read-only, like every other section here:
+        // `DeviceAdminEnrollment.probeJson` deliberately does NOT settle
+        // a pending prompt (that write belongs to MainActivity.onResume).
+        //
+        // NOTE for whoever wires the dashboard: the persisted server-side
+        // document keeps only the 6 enum verdict fields
+        // (`normalizeCapabilityReport` in apps/api), so this block rides
+        // the on-demand `probeDisplay()` call, not the stored report. The
+        // stored signal for "enrolled" is `verdict.screenBlank ==
+        // "device-admin"`, which the registry already produces.
+        out.put("selfIsActiveAdmin", safe { DeviceAdminEnrollment.isActiveAdmin(ctx) } ?: false)
+        out.put("selfAdminComponent", safe { DeviceAdminEnrollment.adminComponent(ctx).flattenToShortString() })
+        out.put("enrollment", safe { DeviceAdminEnrollment.probeJson(ctx) } ?: JSONObject())
+        // Why an ENROLLED screen can still be on the fallback tier: a
+        // PIN/pattern/password on the box makes `lockNow()` a one-way
+        // blank (see DeviceAdminBlankProvider.secureKeyguardBlocks).
+        // Without this field that box looks like an unexplained "we did
+        // the tap and nothing changed".
+        out.put("secureKeyguardBlocksBlank", safe { DeviceAdminBlankProvider.secureKeyguardBlocks(ctx) } ?: true)
 
         return out
     }
@@ -278,6 +328,16 @@ object DisplayCapabilityProbe {
                         val fo = JSONObject()
                         fo.put("readable", file.canRead())
                         fo.put("writable", file.canWrite())
+                        // The SAME gate the control layer applies. A node
+                        // that is writable but not allowlisted is one the
+                        // provider will refuse — reporting only
+                        // `writable` is what let the probe and the
+                        // registry disagree. `writable && allowlisted` is
+                        // the honest "we could drive this" answer.
+                        fo.put(
+                            "allowlisted",
+                            RecipeAllowlist.canonicalSysfsPath("${node.absolutePath}/$f") != null,
+                        )
                         fo.put("value", safe { file.readText().trim().take(32) } ?: JSONObject.NULL)
                         entry.put(f, fo)
                     }
@@ -474,17 +534,83 @@ object DisplayCapabilityProbe {
     // ─────────────────────────────────────────────────────────────────
 
     /**
+     * ⚠️ THE ONE RESOLVER. `DisplayControlRegistry` decides which
+     * mechanism actually drives each capability; this section reports its
+     * answer verbatim so the probe and the control layer cannot disagree.
+     *
+     * They USED to. The probe stat-ed `/sys/class/backlight/<dev>/
+     * brightness` with `File.canWrite()` and reported `brightness:
+     * "sysfs"`, while [SysfsBacklightProvider] additionally pushed the
+     * same path through [RecipeAllowlist.canonicalSysfsPath] and dropped
+     * it. Result: the dashboard lit up a real backlight slider on a box
+     * whose BRIGHTNESS had silently fallen to software dim — "coming
+     * soon wearing a real-button costume", from two code paths that a
+     * comment claimed agreed "by construction". Deriving the verdict
+     * from the registry is what makes that claim true.
+     *
+     * Still read-only: every `supports()` in the chain is a stat, a
+     * prefs read or a `canWrite()` — the registry never drives the panel
+     * to answer this.
+     */
+    private fun resolvedControl(ctx: Context): JSONObject {
+        val out = JSONObject()
+        val caps = JSONObject()
+        DisplayControlRegistry.capabilities(ctx.applicationContext).forEach { (capability, providerId) ->
+            caps.put(capability.name, providerId)
+        }
+        out.put("capabilities", caps)
+        out.put("minSafeBrightness", DisplayLimits.MIN_SAFE_BRIGHTNESS)
+        out.put("emergencyHold", DisplayEmergency.isHeld(ctx))
+        return out
+    }
+
+    /**
      * Per-capability answer of the form: can we drive this TODAY on this
      * box, and by which mechanism. This is what the dashboard should key
-     * its per-screen control UI off — never render a brightness slider on
-     * a screen whose verdict says `none`.
+     * its per-screen control UI off.
+     *
+     * ⚠️ The verdict names the MECHANISM, never whether the capability
+     * exists. BRIGHTNESS, BLANK and WAKE ALWAYS resolve, because the
+     * software floor cannot fail — so `screenBlank` is never `"none"`,
+     * and a dashboard that hides the blank/wake buttons when it sees
+     * `software-dim` is reading this wrong. REBOOT is the one capability
+     * that genuinely can be absent, and on a non-device-owner fleet it
+     * always is.
+     *
+     * ═════════════════════════════════════════════════════════════════
+     * ⚠️ THE VOCABULARY IS `DisplayControlProvider.id`. NOTHING ELSE.
+     * ═════════════════════════════════════════════════════════════════
+     * Contract C5 (2026-08-14): the DEVICE's provider ids are
+     * authoritative, and the server's zod enums are widened to accept
+     * them. So the throw-fallback arms below emit the SAME strings the
+     * registry would — `"sysfs-backlight"`, not `"sysfs"` — because a
+     * verdict that speaks two vocabularies depending on whether
+     * resolution threw is a 400 waiting to happen on the one screen
+     * where it matters. The exhaustive set this method can emit:
+     *
+     * ```
+     * volume        "audiomanager" | "none"
+     * brightness    "vendor-recipe" | "sysfs-backlight" | "settings" | "software-dim"
+     * screenBlank   "vendor-recipe" | "device-admin" | "screen-timeout" | "software-dim"
+     * reboot        "device-owner" | "none"
+     * hardPowerOff  "serial-candidate" | "none"          (no provider — probe-only)
+     * deviceOwnerPath "held" | "blocked-other-owner" | "provisionable-after-factory-reset"
+     * ```
      */
     private fun verdict(root: JSONObject): JSONObject {
         val v = JSONObject()
+        // Registry-resolved answers, when the section landed. The raw
+        // heuristics below are the fallback for a box where resolution
+        // itself threw — never a second opinion.
+        val resolved = root.optJSONObject("control")?.optJSONObject("capabilities")
 
         // Volume — AudioManager, no permission, every Android box.
         val audioOk = root.optJSONObject("audio")?.optBoolean("available") == true
-        v.put("volume", if (audioOk) "audiomanager" else "none")
+        v.put(
+            "volume",
+            resolved?.optString("VOLUME")?.ifEmpty { null }
+                ?: if (audioOk) AudioManagerProvider.id else CAPABILITY_NONE,
+        )
 
         // Brightness — best available mechanism, most-real first.
         val nodes = root.optJSONArray("backlightNodes") ?: JSONArray()
@@ -495,33 +621,40 @@ object DisplayCapabilityProbe {
         }
         val canWriteSettings = root.optJSONObject("brightness")?.optBoolean("canWriteSettings") == true
         v.put(
-            "brightness", when {
-                writableNode -> "sysfs"
-                canWriteSettings -> "settings"
-                else -> "software-dim"   // always available; dims composition only
+            "brightness",
+            resolved?.optString("BRIGHTNESS")?.ifEmpty { null } ?: when {
+                // SysfsBacklightProvider.id — NOT the bare "sysfs" this
+                // used to emit. See the vocabulary note above.
+                writableNode -> SysfsBacklightProvider.id
+                canWriteSettings -> SettingsBrightnessProvider.id
+                else -> SoftwareDimProvider.id   // always available; dims composition only
             }
         )
 
-        // Screen blank/wake — needs an active device admin with force-lock.
         val admin = root.optJSONObject("admin")
         val isDo = admin?.optBoolean("managerIsDeviceOwner") == true ||
             admin?.optBoolean("selfIsDeviceOwner") == true
-        val anyAdmin = (admin?.optInt("activeAdminCount") ?: 0) > 0
-        v.put(
-            "screenBlank", when {
-                isDo -> "device-owner"
-                anyAdmin -> "device-admin"
-                else -> "none"
-            }
-        )
 
-        // Reboot — device owner ONLY. No fallback exists.
-        v.put("reboot", if (isDo) "device-owner" else "none")
+        // Screen blank/wake — ALWAYS available; this names the mechanism.
+        v.put("screenBlank", resolved?.optString("BLANK")?.ifEmpty { null } ?: SoftwareDimProvider.id)
+
+        // Reboot — device owner ONLY. No fallback exists at any privilege
+        // level, and we deliberately do not take device owner, so on
+        // today's fleet the registry omits it entirely.
+        val resolvedReboot = resolved?.optString("REBOOT")?.ifEmpty { null }
+        v.put(
+            "reboot",
+            resolvedReboot ?: when {
+                resolved != null -> CAPABILITY_NONE
+                isDo -> DeviceOwnerRebootProvider.id
+                else -> CAPABILITY_NONE
+            },
+        )
 
         // Hard power-off — no public Android API at any privilege level.
         // Vendor service, RS-232 or CEC, or nothing.
         val serialNodes = root.optJSONObject("serial")?.optJSONArray("devNodes")?.length() ?: 0
-        v.put("hardPowerOff", if (serialNodes > 0) "serial-candidate" else "none")
+        v.put("hardPowerOff", if (serialNodes > 0) HARD_POWER_OFF_SERIAL else CAPABILITY_NONE)
 
         // Can we even take device owner, if we don't have it?
         val doHeld = admin?.optBoolean("deviceOwnerDetected") == true

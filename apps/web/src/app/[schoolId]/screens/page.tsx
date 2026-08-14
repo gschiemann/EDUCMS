@@ -1,6 +1,6 @@
 "use client";
 
-import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check, AlertCircle, Radio, Camera } from 'lucide-react';
+import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check, AlertCircle, Radio, Camera, CalendarClock } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useUpdateScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout, useSetScreenOrientation, useSetScreenCanvas, useHardwareCatalog, useSetScreenHardwareModel, useSetScreenConsoleProfile, useSetScreenSyncOffset, useSyncTrimSuggestions } from '@/hooks/use-api';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
@@ -9,6 +9,12 @@ import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
 import { ReturnToFleetBanner } from '@/components/screens/ReturnToFleetBanner';
 import { ScreenLocationModal } from '@/components/screens/ScreenLocationModal';
 import { FloorPlansView } from '@/components/screens/FloorPlansView';
+// 2026-08-13 — display control (volume / brightness / blank / reboot) +
+// on-off schedules. Every control is gated on the screen's OWN reported
+// probe verdict; the resolver that decides what may render lives in
+// components/screens/display-capabilities.ts.
+import { ScreenDisplayControls } from '@/components/screens/ScreenDisplayControls';
+import { DisplayScheduleModal, type DisplayScheduleTargetRef } from '@/components/screens/DisplayScheduleModal';
 // 2026-05-27 — PairScreenHardwareStep removed from the pair modal. The
 // player APK already reports its hardware (Build.MANUFACTURER + MODEL)
 // — operator should never have to type it. The step + its EP6N upsell
@@ -644,8 +650,14 @@ function ScreenDiagnostics({ screen, groupSyncLocked }: { screen: any; groupSync
           'Last OTA',
           otaState ? (
             <span className="flex flex-col">
-              <span className="font-semibold">
-                {otaState}{otaProg != null && otaProg < 100 ? ` ${otaProg}%` : ''}
+              {/* 2026-08-14 — UP_TO_DATE is the terminal state of a healthy
+                  check (added because the player used to return silently and
+                  leave every healthy screen pinned on CHECKING). Render it
+                  green + in plain English; leave every other state on the raw
+                  token so an unfamiliar one is never disguised as normal. */}
+              <span className={`font-semibold ${otaState === 'UP_TO_DATE' ? 'text-emerald-700' : otaState === 'ERROR' ? 'text-rose-700' : ''}`}>
+                {otaState === 'UP_TO_DATE' ? 'Up to date' : otaState}
+                {otaProg != null && otaProg < 100 ? ` ${otaProg}%` : ''}
               </span>
               {otaMsg && <span className="text-[10px] text-slate-500 truncate" title={otaMsg}>{otaMsg}</span>}
               {otaAt && <span className="text-[10px] text-slate-400">{timeAgo(otaAt)}</span>}
@@ -937,6 +949,9 @@ function ScreenSettingsMenu({
   refreshWebPending,
   previewHref,
   groupSyncLocked,
+  onOpenDisplaySchedule,
+  displayReadOnly,
+  capabilitySource,
 }: {
   screen: any;
   pushState: { at: number; priorVersion: string | null } | undefined;
@@ -947,6 +962,26 @@ function ScreenSettingsMenu({
   previewHref: string;
   /** 2026-07-28 — parent group has frame-locked sync ON (shows the trim UI). */
   groupSyncLocked?: boolean;
+  /** 2026-08-13 — opens the per-screen on/off schedule editor (page owns it). */
+  onOpenDisplaySchedule: () => void;
+  /**
+   * The signed-in role cannot drive display control — panel renders but
+   * every control is inert.
+   *
+   * This used to be `isViewer` (RESTRICTED_VIEWER only), which meant a
+   * CONTRIBUTOR — a role the API's `@RequireRoles(SUPER_ADMIN,
+   * DISTRICT_ADMIN, SCHOOL_ADMIN)` structurally forbids — got a fully
+   * enabled panel including the rose Restart button, and only found out at
+   * the 403. The page now derives it from the same role set the API uses.
+   */
+  displayReadOnly?: boolean;
+  /**
+   * The FULL screen row for this id when the list we're rendering from is
+   * the group payload, whose `select` whitelist omits displayCapabilities.
+   * Without it a grouped screen reads "not reported yet" forever in the
+   * primary layout while the identical ungrouped screen shows controls.
+   */
+  capabilitySource?: { displayCapabilities?: unknown; displayCapabilitiesAt?: string | null } | null;
 }) {
   const t = useTranslations();
   const [open, setOpen] = useState(false);
@@ -995,6 +1030,20 @@ function ScreenSettingsMenu({
       if (!menu) return;
       if (menu.contains(e.target as Node)) return;
       if (btn && btn.contains(e.target as Node)) return;
+      // 2026-08-13 — a click inside a globally-mounted modal dialog is NOT
+      // an outside-click for this popover. AppDialogHost renders through
+      // DashboardLayout, outside this portal, so pressing "Continue" on the
+      // Restart-device confirm used to close the popover, unmount
+      // ScreenDisplayControls mid-flight and swallow the result banner
+      // entirely: the POST still fired (React Query mutations outlive the
+      // observer) but neither "Restart command sent" nor a 409 was ever
+      // painted, and the operator walked away believing a reboot was
+      // happening. Keeping the popover alive across the dialog is what
+      // makes the confirmation flow legible.
+      const target = e.target as Element | null;
+      if (target && typeof target.closest === 'function' && target.closest('[role="dialog"]')) {
+        return;
+      }
       setOpen(false);
     };
     const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
@@ -1263,13 +1312,22 @@ function ScreenSettingsMenu({
 
             // Effective stage — device truth first, wall-clock only as a
             // last resort.
-            const effectiveStage: 'idle' | 'pending' | 'checking' | 'downloading' | 'verifying' | 'installing' | 'installed' | 'error' | 'timeout' =
+            // 2026-08-14 — `uptodate` is a TERMINAL SUCCESS stage, not a
+            // fault. Before the player reported it, a healthy up-to-date
+            // kiosk answered a push with CHECKING and then went silent
+            // forever, so this machine sat on 'pending' (spinner) for the
+            // full 35 min and then fell into 'timeout' — amber warning
+            // chrome on a screen that did exactly the right thing. It must
+            // be matched BEFORE the isTimedOut/isInFlight fallbacks so a
+            // healthy screen never renders as a warning.
+            const effectiveStage: 'idle' | 'pending' | 'checking' | 'downloading' | 'verifying' | 'installing' | 'installed' | 'uptodate' | 'error' | 'timeout' =
               stage === 'installed' || updatedSincePush ? 'installed' :
               deviceTruth === 'INSTALLED' ? 'installed' :
               deviceTruth === 'ERROR' ? 'error' :
               deviceTruth === 'INSTALLING' ? 'installing' :
               deviceTruth === 'VERIFYING' ? 'verifying' :
               deviceTruth === 'DOWNLOADING' ? 'downloading' :
+              deviceTruth === 'UP_TO_DATE' ? 'uptodate' :
               deviceTruth === 'CHECKING' ? 'checking' :
               isTimedOut ? 'timeout' :
               isInFlight ? 'pending' :
@@ -1277,6 +1335,7 @@ function ScreenSettingsMenu({
 
             const stageIcon: React.ReactNode =
               effectiveStage === 'installed' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> :
+              effectiveStage === 'uptodate'  ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> :
               effectiveStage === 'error'     ? <WifiOff className="w-4 h-4 text-rose-600 shrink-0" /> :
               effectiveStage === 'timeout'   ? <WifiOff className="w-4 h-4 text-amber-600 shrink-0" /> :
               ['pending', 'checking', 'downloading', 'verifying', 'installing'].includes(effectiveStage)
@@ -1294,6 +1353,7 @@ function ScreenSettingsMenu({
 
             const stageLabel =
               effectiveStage === 'installed'   ? `Kiosk installed v${currentVersion} ✓` :
+              effectiveStage === 'uptodate'    ? `Kiosk checked in — already on v${currentVersion || latestVersion || '?'} ✓` :
               effectiveStage === 'error'       ? `Install error: ${otaMessage || 'unknown error'}` :
               effectiveStage === 'installing'  ? `Installing on kiosk... ${otaMessage || ''}` :
               effectiveStage === 'verifying'   ? `Verifying APK signature on kiosk...` :
@@ -1306,16 +1366,22 @@ function ScreenSettingsMenu({
                                                  'Push update to this screen';
             const stageColor =
               effectiveStage === 'installed' ? 'text-emerald-700 font-bold' :
+              // Terminal SUCCESS — must be green, never the amber/rose
+              // in-flight-or-broken chrome.
+              effectiveStage === 'uptodate'  ? 'text-emerald-700 font-bold' :
               effectiveStage === 'error'     ? 'text-rose-700 font-bold' :
               effectiveStage === 'timeout'   ? 'text-amber-700 font-bold' :
               isInFlight                     ? 'text-indigo-700 font-bold' :
                                                  'text-slate-700 font-semibold';
             // Sub-line — surface real device telemetry when in-flight.
-            const subline = isInFlight
-              ? (deviceTruth
-                  ? `Kiosk last reported ${deviceTruth} ${otaAt ? new Date(otaAt).toLocaleTimeString() : ''}`
-                  : `If WS push didn’t reach kiosk, periodic check installs within 30 min`)
-              : 'Manual only — auto-update is OFF unless you toggle it in Settings';
+            const subline =
+              effectiveStage === 'uptodate'
+                ? `Kiosk answered the push at ${otaAt ? new Date(otaAt).toLocaleTimeString() : 'check-in'} — nothing newer to install`
+                : isInFlight
+                  ? (deviceTruth
+                      ? `Kiosk last reported ${deviceTruth} ${otaAt ? new Date(otaAt).toLocaleTimeString() : ''}`
+                      : `If WS push didn’t reach kiosk, periodic check installs within 30 min`)
+                  : 'Manual only — auto-update is OFF unless you toggle it in Settings';
             return (
               <button
                 type="button"
@@ -1387,11 +1453,28 @@ function ScreenSettingsMenu({
               all fields are already on the screen payload. */}
           <ScreenDiagnostics screen={screen} groupSyncLocked={groupSyncLocked} />
 
-      {/* Footer placeholder — leaves room for restart / cache /
-          orientation / brightness settings as we build them. */}
-      <div className="px-3.5 py-2 bg-slate-50/60 border-t border-slate-100 text-[10px] text-slate-400">
-        More coming soon — restart, orientation, cache clear.
-      </div>
+      {/* 2026-08-13 — the "More coming soon — restart, orientation, cache
+          clear." stub that lived here is GONE, replaced by the real thing.
+          Volume / brightness / blank / reboot, each rendered only when this
+          screen's own probe verdict says the hardware can do it; a
+          `software-dim` box gets a slider that says so in plain language
+          rather than one that implies backlight control it doesn't have.
+          Opening the schedule editor closes the popover first — the
+          popover dismisses on a document-level pointerdown and would
+          otherwise fight the modal. */}
+      <ScreenDisplayControls
+        screen={
+          capabilitySource
+            ? {
+                ...screen,
+                displayCapabilities: capabilitySource.displayCapabilities,
+                displayCapabilitiesAt: capabilitySource.displayCapabilitiesAt,
+              }
+            : screen
+        }
+        readOnly={displayReadOnly}
+        onOpenSchedule={() => { setOpen(false); onOpenDisplaySchedule(); }}
+      />
     </div>
   );
 
@@ -1496,6 +1579,15 @@ export default function ScreensPage() {
   const { data: allScreens, refetch: refetchScreens } = useScreens();
   const userRole = useUIStore((s) => s.user?.role);
   const isViewer = userRole === 'RESTRICTED_VIEWER';
+  // 2026-08-13 — display control (volume / brightness / blank / wake /
+  // reboot AND every schedule mutation) is gated by the API with
+  // @RequireRoles(SUPER_ADMIN, DISTRICT_ADMIN, SCHOOL_ADMIN). `isViewer`
+  // knows only RESTRICTED_VIEWER, so a CONTRIBUTOR saw fully enabled
+  // controls — including Restart device behind its typed-REBOOT confirm —
+  // that the API then 403'd. Mirror the API's role set exactly; a control
+  // a role can never use must not render enabled for that role.
+  const canControlDisplay =
+    userRole === 'SUPER_ADMIN' || userRole === 'DISTRICT_ADMIN' || userRole === 'SCHOOL_ADMIN';
   // Sprint 8 — fleet map view. Toggle persists in URL via search param so a
   // bookmarked map link still opens the map. (The HQ cross-location roll-up
   // now lives on the Corporate dashboard, not here — keeps Screens to a single
@@ -1506,6 +1598,20 @@ export default function ScreensPage() {
   const schoolId = params?.schoolId ?? '';
   const updateLocation = useUpdateScreenLocation();
   const flatScreens = useMemo(() => (allScreens || []) as any[], [allScreens]);
+  // id → full screen row from GET /screens. The grouped list renders from
+  // GET /screen-groups, whose `include.screens.select` whitelist does not
+  // carry displayCapabilities / displayCapabilitiesAt (the file's own
+  // comments warn three times about exactly this class of omission). Rather
+  // than have the display panel behave differently for a grouped screen
+  // than for the identical ungrouped one, look the full row up here.
+  const screenById = useMemo(() => {
+    const m = new Map<
+      string,
+      { displayCapabilities?: unknown; displayCapabilitiesAt?: string | null }
+    >();
+    for (const s of flatScreens) if (s?.id) m.set(s.id, s);
+    return m;
+  }, [flatScreens]);
 
   // Autocomplete-driven location modal. The previous appPrompt-only flow
   // silently failed when Nominatim couldn't geocode the free-text string
@@ -1513,6 +1619,11 @@ export default function ScreensPage() {
   // saw "nothing happened"). Modal forces a structured pick + sends the
   // suggestion's own lat/lng so the pin reliably drops.
   const [locationModal, setLocationModal] = useState<{ id: string; name: string; address?: string | null } | null>(null);
+  // 2026-08-13 — display on/off schedule editor. Held at page level (not
+  // inside the gear popover) so the popover can close before the modal
+  // opens; a modal nested under the popover would be dismissed by the
+  // popover's own document-level outside-click handler.
+  const [displayScheduleTarget, setDisplayScheduleTarget] = useState<DisplayScheduleTargetRef | null>(null);
   const handleSetLocation = (screenId: string, screenName: string, currentAddress?: string | null) => {
     setLocationModal({ id: screenId, name: screenName, address: currentAddress });
   };
@@ -2020,6 +2131,18 @@ export default function ScreensPage() {
                         <Camera className="w-4 h-4" /> Calibrate
                       </a>
                     )}
+                    {/* 2026-08-13 — group-wide display on/off schedule. Set
+                        it once for the hallway instead of walking every
+                        screen's gear menu. The schedule runs ON EACH DEVICE
+                        (AlarmManager), so screens keep their nightly off
+                        even when the network drops. */}
+                    <button
+                      onClick={() => setDisplayScheduleTarget({ kind: 'group', id: group.id, name: group.name })}
+                      className="px-3 py-2 transition-colors text-xs font-bold rounded-xl flex items-center gap-1.5 bg-white border border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600"
+                      title={t('screens.display.groupScheduleTitle')}
+                    >
+                      <CalendarClock className="w-4 h-4" /> {t('screens.display.groupScheduleBtn')}
+                    </button>
                     {/* 2026-05-26 — operator: "just add a pair screen
                         to group button in the top right of each group
                         so it makes more sense, maybe a little + sign
@@ -2284,6 +2407,14 @@ export default function ScreensPage() {
                           refreshWebPending={refreshWeb.isPending}
                           previewHref={buildPreviewUrl(screen)}
                           groupSyncLocked={group.syncMode === 'locked'}
+                          displayReadOnly={!canControlDisplay}
+                          // GET /screen-groups uses an explicit select
+                          // whitelist that omits displayCapabilities, so the
+                          // grouped row alone would read "not reported yet"
+                          // forever. GET /screens returns the full row —
+                          // take the capability fields from there.
+                          capabilitySource={screenById.get(screen.id) ?? null}
+                          onOpenDisplaySchedule={() => setDisplayScheduleTarget({ kind: 'screen', id: screen.id, name: screen.name })}
                         />
                         </div>
                       </div>
@@ -2453,6 +2584,8 @@ export default function ScreensPage() {
                       onRefreshWeb={() => handleRefreshWeb(screen.id, screen.name)}
                       refreshWebPending={refreshWeb.isPending}
                       previewHref={buildPreviewUrl(screen)}
+                      displayReadOnly={!canControlDisplay}
+                      onOpenDisplaySchedule={() => setDisplayScheduleTarget({ kind: 'screen', id: screen.id, name: screen.name })}
                     />
                     </div>
                   </div>
@@ -2601,6 +2734,20 @@ export default function ScreensPage() {
             refetch();
             refetchScreens();
           }}
+        />
+      )}
+
+      {/* Display on/off schedule — per screen (gear menu) or per group
+          (group header). Rendered at page level so it paints above the
+          gear popover instead of inside it. */}
+      {displayScheduleTarget && (
+        <DisplayScheduleModal
+          target={displayScheduleTarget}
+          // POST/PUT/DELETE /display-schedules are admin-only; GET allows
+          // CONTRIBUTOR. So a contributor may OPEN this and read the
+          // schedules, but Save/Delete stay inert instead of 403'ing.
+          readOnly={!canControlDisplay}
+          onClose={() => setDisplayScheduleTarget(null)}
         />
       )}
     </div>

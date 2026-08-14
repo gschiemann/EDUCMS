@@ -62,6 +62,36 @@ export const NATIVE_VALUE_METHODS = [
   'ctsSerialConnect',
   'ctsSerialDisconnect',
   'ctsSerialStatus',
+  // ── Display control (2026-08-13 wave) ──────────────────────────────
+  // The web half of the registration the player wave explicitly handed
+  // over: all four already exist in the APK's `NativeBridgeChannel.METHODS`
+  // and in its dispatch `when`, but were missing HERE, which left the drift
+  // guard in nativeBridge.test.ts red and made `nativeHas()` answer FALSE
+  // for them on any channel-transport WebView with no document-start
+  // manifest — i.e. the capability probe and every display mutator looked
+  // unavailable on exactly the devices the secure channel was built for.
+  //
+  // `probeDisplay` is the older half of the same bug (recon F1): it had a
+  // dispatch arm but no METHODS entry, so it only ever worked over the
+  // legacy `window.EduCmsNative` object. The player wave fixed the native
+  // side; this is its web counterpart.
+  //
+  // ⚠️ `displayApply` and `displaySetSchedule` are channel-ONLY by design —
+  // their `@JavascriptInterface` twins refuse the legacy every-frame
+  // transport (`{ok:false,code:'insecure-transport'}`) whenever the
+  // origin-scoped channel is live, because that legacy surface reaches
+  // operator-authored board HTML and the worst case there is a hostile
+  // board blanking a wall-mounted screen.
+  'probeDisplay',
+  'displayCapabilities',
+  // One-tap device-admin enrolment. Returns a JSON status string; it is what
+  // makes DeviceAdminBlankProvider reachable (lockNow() needs an ACTIVE admin,
+  // which is NOT device owner — no factory reset, no adb, one operator tap).
+  // Must stay in lockstep with NativeBridgeChannel.METHODS; the drift guard
+  // asserts sorted equality across the two.
+  'displayEnrollAdmin',
+  'displayApply',
+  'displaySetSchedule',
 ] as const;
 
 /** Methods with no return value — use `nativeFire` (sync, void). */
@@ -75,6 +105,17 @@ export const NATIVE_VOID_METHODS = [
   'showUrlOverlay',
   'hideUrlOverlay',
   'openSettingsForManager',
+  // ⚠️ LIFE SAFETY — the display-control EMERGENCY INTERLOCK (2026-08-13).
+  // See ./emergencyHold.ts. The Kotlin allowlist
+  // (`NativeBridgeChannel.METHODS`, commit 3e9f7cd1) carries it, so this
+  // entry is what keeps the two sides in sync: the drift guard in
+  // `nativeBridge.test.ts` reads that Kotlin array off disk and asserts
+  // sorted equality against these two arrays, and it was RED without this
+  // line (`web-jest` is a blocking Deploy Reliability job). The functional
+  // half matters too — `nativeHas('displayEmergencyHold')` answers from
+  // KNOWN_METHODS on a channel WebView with no document-start manifest, and
+  // was answering FALSE for a method the APK does implement.
+  'displayEmergencyHold',
 ] as const;
 
 /**
@@ -241,6 +282,65 @@ export function nativeFire(method: string, ...args: unknown[]): boolean {
     }
   }
   return false;
+}
+
+/** What a transport could tell us about a fire-and-forget call. */
+export interface NativeFireOutcome {
+  /** Which transport took (or refused) the call. */
+  transport: BridgeTransport;
+  /** True when SOME transport accepted the call for delivery. */
+  delivered: boolean;
+  /**
+   * The synchronous return value — ONLY ever populated on the `legacy`
+   * transport, whose `@JavascriptInterface` methods return in-band. The
+   * channel is message-passing, so a call posted without an `id` gets no
+   * reply and this stays `undefined` there.
+   */
+  result?: unknown;
+}
+
+/**
+ * `nativeFire`, but it hands back what the transport could observe.
+ *
+ * ⚠️ WHY THIS EXISTS (2026-08-13, emergency-interlock release bug).
+ * Several display-control entry points RETURN a refusal instead of
+ * throwing — `DisplayControlApi` answers `{ok:false,code:'insecure-transport'}`
+ * for a risk-direction action that arrived on the untrusted every-frame
+ * bridge. `nativeFire` reports only "a transport took it", which is TRUE for
+ * a refusal, so a caller that latched on `nativeFire`'s boolean recorded a
+ * refused call as applied and never retried it. That is exactly how an
+ * emergency hold could be RAISED but never RELEASED on a Chromium-83/87
+ * NovaStar Taurus (where the origin-scoped channel cannot attach), pinning
+ * the panel lit forever and killing all display control on that screen.
+ *
+ * Still total: it never throws, for the same reason `nativeFire` doesn't.
+ */
+export function nativeFireChecked(method: string, ...args: unknown[]): NativeFireOutcome {
+  const ch = getChannel();
+  if (ch) {
+    try {
+      ch.postMessage(JSON.stringify({ method, args }));
+      return { transport: 'channel', delivered: true };
+    } catch (err) {
+      console.warn(`[nativeBridge] channel post failed for ${method}`, err);
+      // fall through to legacy, same as nativeFire
+    }
+  }
+  const legacy = getLegacy();
+  if (legacy) {
+    try {
+      if (typeof legacy[method] === 'function') {
+        const result = legacy[method](...args);
+        return { transport: 'legacy', delivered: true, result };
+      }
+      // Method absent on this APK — the native feature does not exist here.
+      return { transport: 'legacy', delivered: false };
+    } catch (err) {
+      console.warn(`[nativeBridge] legacy call failed for ${method}`, err);
+      return { transport: 'legacy', delivered: false };
+    }
+  }
+  return { transport: 'none', delivered: false };
 }
 
 /**

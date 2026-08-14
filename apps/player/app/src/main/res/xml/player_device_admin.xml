@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Device-ADMIN policy set for com.educms.player's own
+  `display.PlayerAdminReceiver`.
+
+  ⚠️  ONE POLICY. FORCE-LOCK. NOTHING ELSE. ⚠️
+
+  `DevicePolicyManager.lockNow()` — the only DPM call the Player makes —
+  requires USES_POLICY_FORCE_LOCK and nothing more. Every extra policy
+  declared here is extra scary text in the `ACTION_ADD_DEVICE_ADMIN`
+  system dialog the operator has to read and approve, and extra text is
+  how a one-tap setup becomes a refused setup.
+
+  DELIBERATE CONTRAST WITH `manager/src/main/res/xml/device_admin.xml`,
+  which also declares `<wipe-data/>`: Manager declares it purely to be
+  DEVICE-OWNER-eligible (an owner-provisioning path we have decided NOT
+  to take — product decision 2026-08-13). We are not doing that here.
+  This receiver exists for exactly one reason: a real panel-off blank.
+  If you find yourself adding a policy, first prove there is a
+  DevicePolicyManager call in the Player that needs it.
+
+  android:visible="true" (the platform default, stated explicitly because
+  it is load-bearing here — Manager sets it FALSE). It is what puts
+  "VenueOS Player" in Settings → Security → Device admin apps, which is
+  the ONE enrolment path that needs no adb, no dashboard, no web deploy
+  and no code on our side: an operator standing at the screen can toggle
+  it on directly. `PlayerAdminReceiver.onEnabled` fires either way, so
+  the provider chain re-resolves the same instant however it was enabled.
+-->
+<device-admin xmlns:android="http://schemas.android.com/apk/res/android"
+    android:visible="true">
+    <uses-policies>
+        <force-lock />
+    </uses-policies>
+</device-admin>
