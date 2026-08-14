@@ -312,7 +312,8 @@ class DisplayScheduleMathTest {
         listOf(null, "", "not json", "[]").forEach { raw ->
             val config = DisplayConfigParser.parse(raw)
             assertEquals(0, config.schedules.size)
-            assertNull(config.recipe)
+            assertEquals(0, config.recipes.size)
+            assertNull(config.matchingRecipe("Goodview", "ECBox3576", "rk3288"))
         }
     }
 

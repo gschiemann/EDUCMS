@@ -2,10 +2,23 @@ package com.educms.player.display
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
 import com.educms.player.logging.PlayerLogger
 import java.io.File
+
+/**
+ * Whether a broadcast action has an installed receiver — and whether the
+ * answer can be trusted.
+ *
+ * [UNKNOWN] exists because Android 11+ package-visibility filtering makes
+ * an empty `queryBroadcastReceivers` result ambiguous. Treating that as
+ * ABSENT would silently demote every real vendor recipe on a modern box;
+ * treating ABSENT as UNKNOWN would keep the fleet-wide brick. The two
+ * cases have to stay distinguishable.
+ */
+internal enum class BroadcastPresence { PRESENT, ABSENT, UNKNOWN }
 
 /**
  * Executes a validated [VendorRecipe] — the top of the BRIGHTNESS and
@@ -36,9 +49,83 @@ object VendorRecipeProvider : DisplayControlProvider {
 
     override val id: String = "vendor-recipe"
 
+    /**
+     * ⚠️ HONEST, NOT DECLARATIVE.
+     *
+     * This used to return `recipe.declaredCapabilities()` — i.e. it
+     * believed a DB row. Combined with the registry binding BLANK/WAKE to
+     * the FIRST provider that claims them and never falling through, one
+     * mis-typed vendor action (a typo, a firmware revision, a bring-up
+     * guess — the expected state for a feature whose whole point is "a
+     * new vendor is a DB row") disabled WAKE on every matching SKU. An
+     * implicit broadcast with no receiver is a SILENT NO-OP on Android:
+     * it does not throw, so every layer reported success while a
+     * wall-mounted screen stayed dark. Contract C4's named worst outcome.
+     *
+     * So a BROADCAST step only counts as support when a receiver for it
+     * actually exists AND we can see the whole package list
+     * ([broadcastPresence]). Sysfs and settings steps are unaffected —
+     * both are re-validated and their failures are real exceptions.
+     */
     override fun supports(ctx: Context): Set<Capability> {
         val recipe = activeRecipe(ctx) ?: return emptySet()
-        return recipe.declaredCapabilities()
+        // blank and wake almost always share ONE action (a vendor
+        // SET_POWER with state=0/1), and the registry asks this once per
+        // chain — so memoise per call rather than paying a binder round
+        // trip for the same string three times.
+        val seen = HashMap<String, BroadcastPresence>()
+        return recipe.declaredCapabilities().filterTo(mutableSetOf()) { capability ->
+            val step = recipe.stepFor(capability)
+            if (step !is RecipeStep.Broadcast) {
+                true
+            } else {
+                val presence = seen.getOrPut(step.action) { broadcastPresence(ctx, step.action) }
+                if (presence == BroadcastPresence.ABSENT) {
+                    PlayerLogger.w(
+                        TAG,
+                        "recipe '${recipe.vendorId}' declares $capability via ${step.action} but NO receiver " +
+                            "is installed — not claiming it; the chain falls through to a generic mechanism",
+                    )
+                    false
+                } else {
+                    true
+                }
+            }
+        }
+    }
+
+    /**
+     * Can we see a receiver for this action, and can we trust the answer?
+     *
+     * Android 11+ package-visibility filtering means an empty result is
+     * only conclusive when we can enumerate everything — below API 30 (no
+     * filtering) or with `QUERY_ALL_PACKAGES` (the debug build). This is
+     * the same precise test [DisplayCapabilityProbe.vendorPackages] uses
+     * for its `enumerable` field, deliberately rather than a heuristic:
+     * treating a FILTERED empty list as "no receiver" would silently
+     * demote every real vendor recipe on modern boxes.
+     */
+    internal fun broadcastPresence(ctx: Context, action: String): BroadcastPresence = try {
+        val app = ctx.applicationContext
+        val pm = app.packageManager
+        val receivers = pm.queryBroadcastReceivers(Intent(action), 0)
+        when {
+            receivers.isNotEmpty() -> BroadcastPresence.PRESENT
+            visibilityIsComplete(app) -> BroadcastPresence.ABSENT
+            else -> BroadcastPresence.UNKNOWN
+        }
+    } catch (t: Throwable) {
+        // Never let a PackageManager hiccup demote a working recipe.
+        PlayerLogger.w(TAG, "receiver lookup for '$action' failed: ${t.message}")
+        BroadcastPresence.UNKNOWN
+    }
+
+    private fun visibilityIsComplete(ctx: Context): Boolean = try {
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.R ||
+            ctx.checkSelfPermission("android.permission.QUERY_ALL_PACKAGES") ==
+            PackageManager.PERMISSION_GRANTED
+    } catch (t: Throwable) {
+        false
     }
 
     override fun apply(ctx: Context, action: DisplayAction): ActionResult {
@@ -96,19 +183,52 @@ object VendorRecipeProvider : DisplayControlProvider {
     }
 
     /**
-     * The recipe from the persisted `display` block, IF it matches this
-     * device. Re-parsed and re-validated by [DisplayConfigStore]; a
-     * recipe that fails validation is dropped whole, so this returns
-     * null rather than a half-usable object.
+     * This box's recipe from the persisted `display` block's CATALOG, or
+     * null.
+     *
+     * The manifest ships every tenant's recipes to every screen and the
+     * DEVICE picks — see [DisplayConfig.matchingRecipe] for the selection
+     * rule and `DisplayConfigParser`'s header for why the catalog shape is
+     * the wire contract. Re-parsed and re-validated by [DisplayConfigStore]
+     * on every load; a recipe that fails validation is dropped whole, so
+     * this returns null rather than a half-usable object.
      */
-    private fun activeRecipe(ctx: Context): VendorRecipe? {
-        val recipe = DisplayConfigStore.load(ctx).recipe ?: return null
-        return if (recipe.match.matches(Build.MANUFACTURER, Build.MODEL, Build.BOARD)) recipe else null
-    }
+    internal fun activeRecipe(ctx: Context): VendorRecipe? =
+        DisplayConfigStore.load(ctx).matchingRecipe(Build.MANUFACTURER, Build.MODEL, Build.BOARD)
 
     // ─── executors ──────────────────────────────────────────────────
 
     private fun sendBroadcast(
+        ctx: Context,
+        vendorId: String,
+        step: RecipeStep.Broadcast,
+        percent: Int,
+        floorScaleMin: Boolean,
+    ): ActionResult {
+        // ⚠️ AN UNHANDLED BROADCAST IS A FAILURE, NOT A SUCCESS.
+        // `sendBroadcast` of an implicit intent with no matching receiver
+        // is a silent no-op on Android — it does not throw. Returning Ok
+        // for it is what let one mis-typed action string in one DB row
+        // report "Wake succeeded" while a wall-mounted panel stayed dark
+        // forever. Failing here is what makes the registry's BLANK/WAKE
+        // fall-through reach the generic mechanism underneath.
+        //
+        // Only a CONCLUSIVE absence fails: on Android 11+ without
+        // QUERY_ALL_PACKAGES an empty result may just be package-visibility
+        // filtering, and demoting a working vendor recipe on that evidence
+        // would be the same over-claim in the other direction.
+        if (broadcastPresence(ctx, step.action) == BroadcastPresence.ABSENT) {
+            PlayerLogger.e(
+                TAG,
+                "recipe '$vendorId' broadcast ${step.action} has NO installed receiver — " +
+                    "refusing so the chain can fall through instead of silently doing nothing",
+            )
+            return ActionResult.Failed("no installed receiver for broadcast '${step.action}'", id)
+        }
+        return sendBroadcastNow(ctx, vendorId, step, percent, floorScaleMin)
+    }
+
+    private fun sendBroadcastNow(
         ctx: Context,
         vendorId: String,
         step: RecipeStep.Broadcast,

@@ -72,6 +72,22 @@ object DisplayCapabilityProbe {
     private const val SCHEMA = 1
 
     /**
+     * The one verdict value that is NOT a [DisplayControlProvider.id]:
+     * "this box genuinely cannot do it". Only `reboot`, `volume` and
+     * `hardPowerOff` can ever carry it — BRIGHTNESS, BLANK and WAKE
+     * always resolve to a mechanism (contract C3).
+     */
+    internal const val CAPABILITY_NONE = "none"
+
+    /**
+     * `hardPowerOff` has no provider (nothing in the registry can cut
+     * panel power), so its non-"none" value is a probe-only finding: a
+     * serial node exists, which MIGHT carry the panel's RS-232 command
+     * set. It is a lead for field ops, never a capability claim.
+     */
+    internal const val HARD_POWER_OFF_SERIAL = "serial-candidate"
+
+    /**
      * Kernel backlight nodes, in descending order of "this is the real
      * panel backlight". Presence alone is a finding; readability and
      * writability are separate findings (most boxes expose the node but
@@ -527,6 +543,26 @@ object DisplayCapabilityProbe {
      * `software-dim` is reading this wrong. REBOOT is the one capability
      * that genuinely can be absent, and on a non-device-owner fleet it
      * always is.
+     *
+     * ═════════════════════════════════════════════════════════════════
+     * ⚠️ THE VOCABULARY IS `DisplayControlProvider.id`. NOTHING ELSE.
+     * ═════════════════════════════════════════════════════════════════
+     * Contract C5 (2026-08-14): the DEVICE's provider ids are
+     * authoritative, and the server's zod enums are widened to accept
+     * them. So the throw-fallback arms below emit the SAME strings the
+     * registry would — `"sysfs-backlight"`, not `"sysfs"` — because a
+     * verdict that speaks two vocabularies depending on whether
+     * resolution threw is a 400 waiting to happen on the one screen
+     * where it matters. The exhaustive set this method can emit:
+     *
+     * ```
+     * volume        "audiomanager" | "none"
+     * brightness    "vendor-recipe" | "sysfs-backlight" | "settings" | "software-dim"
+     * screenBlank   "vendor-recipe" | "device-admin" | "screen-timeout" | "software-dim"
+     * reboot        "device-owner" | "none"
+     * hardPowerOff  "serial-candidate" | "none"          (no provider — probe-only)
+     * deviceOwnerPath "held" | "blocked-other-owner" | "provisionable-after-factory-reset"
+     * ```
      */
     private fun verdict(root: JSONObject): JSONObject {
         val v = JSONObject()
@@ -537,7 +573,11 @@ object DisplayCapabilityProbe {
 
         // Volume — AudioManager, no permission, every Android box.
         val audioOk = root.optJSONObject("audio")?.optBoolean("available") == true
-        v.put("volume", resolved?.optString("VOLUME")?.ifEmpty { null } ?: if (audioOk) "audiomanager" else "none")
+        v.put(
+            "volume",
+            resolved?.optString("VOLUME")?.ifEmpty { null }
+                ?: if (audioOk) AudioManagerProvider.id else CAPABILITY_NONE,
+        )
 
         // Brightness — best available mechanism, most-real first.
         val nodes = root.optJSONArray("backlightNodes") ?: JSONArray()
@@ -550,9 +590,11 @@ object DisplayCapabilityProbe {
         v.put(
             "brightness",
             resolved?.optString("BRIGHTNESS")?.ifEmpty { null } ?: when {
-                writableNode -> "sysfs"
-                canWriteSettings -> "settings"
-                else -> "software-dim"   // always available; dims composition only
+                // SysfsBacklightProvider.id — NOT the bare "sysfs" this
+                // used to emit. See the vocabulary note above.
+                writableNode -> SysfsBacklightProvider.id
+                canWriteSettings -> SettingsBrightnessProvider.id
+                else -> SoftwareDimProvider.id   // always available; dims composition only
             }
         )
 
@@ -561,18 +603,25 @@ object DisplayCapabilityProbe {
             admin?.optBoolean("selfIsDeviceOwner") == true
 
         // Screen blank/wake — ALWAYS available; this names the mechanism.
-        v.put("screenBlank", resolved?.optString("BLANK")?.ifEmpty { null } ?: "software-dim")
+        v.put("screenBlank", resolved?.optString("BLANK")?.ifEmpty { null } ?: SoftwareDimProvider.id)
 
         // Reboot — device owner ONLY. No fallback exists at any privilege
         // level, and we deliberately do not take device owner, so on
         // today's fleet the registry omits it entirely.
         val resolvedReboot = resolved?.optString("REBOOT")?.ifEmpty { null }
-        v.put("reboot", resolvedReboot ?: if (resolved != null) "none" else if (isDo) "device-owner" else "none")
+        v.put(
+            "reboot",
+            resolvedReboot ?: when {
+                resolved != null -> CAPABILITY_NONE
+                isDo -> DeviceOwnerRebootProvider.id
+                else -> CAPABILITY_NONE
+            },
+        )
 
         // Hard power-off — no public Android API at any privilege level.
         // Vendor service, RS-232 or CEC, or nothing.
         val serialNodes = root.optJSONObject("serial")?.optJSONArray("devNodes")?.length() ?: 0
-        v.put("hardPowerOff", if (serialNodes > 0) "serial-candidate" else "none")
+        v.put("hardPowerOff", if (serialNodes > 0) HARD_POWER_OFF_SERIAL else CAPABILITY_NONE)
 
         // Can we even take device owner, if we don't have it?
         val doHeld = admin?.optBoolean("deviceOwnerDetected") == true

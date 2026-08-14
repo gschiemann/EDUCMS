@@ -151,7 +151,8 @@ class RecipeParserTest {
         // The schedules survive — a bad recipe must not disarm the
         // on/off schedule, which is what actually keeps the screen sane.
         assertEquals(1, config.schedules.size)
-        assertNull("the hostile recipe must not be installed", config.recipe)
+        assertEquals("the hostile recipe must not be installed", 0, config.recipes.size)
+        assertNull("…and nothing can select it", config.matchingRecipe("any", "any", "any"))
         assertTrue("the operator must be told why", config.warnings.any { it.contains("recipe rejected") })
     }
 }

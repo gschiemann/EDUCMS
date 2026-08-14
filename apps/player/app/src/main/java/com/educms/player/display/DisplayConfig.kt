@@ -9,35 +9,56 @@ import org.json.JSONObject
  * The manifest's `display` block, as the device sees it.
  *
  * ─────────────────────────────────────────────────────────────────────
- * WIRE SHAPE
+ * WIRE SHAPE — MUST MATCH `DisplayManifestBlock` EXACTLY
  * ─────────────────────────────────────────────────────────────────────
+ * The authority is `packages/api-types/src/display-control.ts`
+ * (`DisplayManifestBlock`) as emitted by
+ * `apps/api/src/display/display-manifest.ts` (`buildDisplayManifestBlock`):
+ *
  * ```json
  * {
- *   "version": 1,
- *   "timezone": "America/Los_Angeles",
- *   "brightness": { "defaultPercent": 80 },
  *   "schedules": [
- *     { "id": "s1", "daysOfWeek": ["Mon","Tue","Wed","Thu","Fri"],
+ *     { "id": "s1", "daysOfWeek": [1,2,3,4,5],
  *       "onTime": "07:00", "offTime": "22:00",
- *       "timezone": "America/Los_Angeles", "isActive": true }
+ *       "timezone": "America/Los_Angeles", "scope": "screen" }
  *   ],
- *   "recipe": {
- *     "vendorId": "goodview-ecbox",
- *     "match": { "manufacturer": "Goodview", "model": "ECBox3576" },
- *     "brightness": { "kind": "sysfs", "path": "/sys/class/backlight/panel0/brightness",
- *                     "valueFrom": "percent", "scale": [0, 255] },
- *     "blank":  { "kind": "broadcast", "action": "com.gv.display.SET_POWER",
- *                 "extras": [ { "key": "state", "type": "int", "from": "literal", "value": "0" } ] },
- *     "wake":   { "kind": "broadcast", "action": "com.gv.display.SET_POWER",
- *                 "extras": [ { "key": "state", "type": "int", "from": "literal", "value": "1" } ] }
- *   }
+ *   "brightness": { "minSafePercent": 5, "allowBlack": false },
+ *   "vendorRecipes": [
+ *     { "vendorId": "goodview-ecbox", "priority": 100, "recipe": {
+ *         "vendorId": "goodview-ecbox",
+ *         "match": { "manufacturer": "Goodview", "model": "ECBox3576" },
+ *         "brightness": { "kind": "sysfs", "path": "/sys/class/backlight/panel0/brightness",
+ *                         "valueFrom": "percent", "scale": [0, 255] },
+ *         "blank":  { "kind": "broadcast", "action": "com.gv.display.SET_POWER",
+ *                     "extras": [ { "key": "state", "type": "int", "from": "literal", "value": "0" } ] },
+ *         "wake":   { "kind": "broadcast", "action": "com.gv.display.SET_POWER",
+ *                     "extras": [ { "key": "state", "type": "int", "from": "literal", "value": "1" } ] }
+ *     } }
+ *   ]
  * }
  * ```
  *
- * `daysOfWeek` accepts the three-letter names the rest of this repo uses
- * for `Schedule.daysOfWeek` ("Mon,Tue,Wed" — see
- * `apps/web/src/app/player/page.tsx`), a JSON array of those names, or a
- * JSON array of 0..6 integers (0 = Sunday, matching `Date.getDay()`).
+ * ⚠️ `vendorRecipes` IS THE NAME. THE DEVICE MOVED, NOT THE SERVER
+ * (2026-08-14). This parser used to read a SINGULAR `recipe` object that
+ * the server has never emitted, so a vendor recipe upsert returned 200,
+ * wrote an AuditLog row, shipped in every manifest — and reached exactly
+ * nothing. The server's shape is the right one and it is why it wins: it
+ * ships the whole CATALOG, identical for every screen in the fleet, and
+ * the DEVICE picks the row that fits its own `Build.*`. That is what
+ * keeps the block independent of `Screen.displayCapabilities` and lets it
+ * stay in the ETag-hashed, per-screen-cached manifest payload without
+ * varying per screen. Matching on-device is [DisplayConfig.matchingRecipe].
+ *
+ * The singular `recipe` key is still accepted, as a single unprioritised
+ * entry, so a hand-pushed config or a blob persisted by an older APK
+ * keeps working. It is NOT the wire contract.
+ *
+ * `daysOfWeek` accepts the Int[] the server actually sends (0 = Sunday …
+ * 6 = Saturday — contract C2, Prisma-authoritative), the three-letter
+ * names the rest of this repo uses for `Schedule.daysOfWeek`
+ * ("Mon,Tue,Wed"), or a JSON array of those names. `scope` is read and
+ * ignored: precedence is already resolved server-side, and org.json
+ * drops unknown keys, so it costs nothing.
  *
  * ─────────────────────────────────────────────────────────────────────
  * MANIFEST-CACHE RULE (CLAUDE.md rule 7) — READ BEFORE EXTENDING
@@ -62,14 +83,60 @@ import org.json.JSONObject
  * comes back. Same reason `onTime == offTime` drops the row instead of
  * guessing between "always on" and "never on".
  */
+/**
+ * One row of the server's vendor-recipe CATALOG.
+ *
+ * `priority` mirrors `DisplayVendorRecipe.priority`; the server already
+ * sorts by `priority desc, vendorId asc` and [DisplayConfig.matchingRecipe]
+ * re-applies exactly that order so the device and the dashboard agree on
+ * which row wins when two match the same box.
+ */
+data class VendorRecipeEntry(
+    val vendorId: String,
+    val priority: Int,
+    val recipe: VendorRecipe,
+)
+
 data class DisplayConfig(
     val version: Int = 1,
     val schedules: List<DisplaySchedule> = emptyList(),
     val defaultBrightnessPercent: Int? = null,
-    val recipe: VendorRecipe? = null,
+    /**
+     * `brightness.minSafePercent` as the server sent it.
+     *
+     * READ AND REPORTED, DELIBERATELY NOT ENFORCED HERE. The binding
+     * floor stays [DisplayLimits.MIN_SAFE_BRIGHTNESS], a compile-time
+     * constant on the device, because the whole point of a native floor
+     * is that a compromised or mis-configured control plane cannot lower
+     * it. Surfacing the server's number in
+     * [DisplayControlApi.capabilitiesJson] is what lets the dashboard
+     * show the two side by side instead of silently believing its own.
+     */
+    val serverMinSafeBrightnessPercent: Int? = null,
+    /** The whole catalog; [matchingRecipe] picks this box's row. */
+    val recipes: List<VendorRecipeEntry> = emptyList(),
     /** Human-readable notes about what we refused, for the ops report. */
     val warnings: List<String> = emptyList(),
 ) {
+    /**
+     * The highest-priority recipe whose `match` block fits this box, or
+     * null.
+     *
+     * Pure — `Build.*` is passed IN rather than read here — so the
+     * selection rule that decides whether a screen gets vendor power
+     * control has a test that cannot be skipped for want of an emulator.
+     * Nulls are coerced to "" so a ROM that reports no MODEL cannot NPE a
+     * hallway kiosk; an all-null `match` still matches everything, which
+     * is how a single-SKU tenant configures one recipe.
+     */
+    fun matchingRecipe(manufacturer: String?, model: String?, board: String?): VendorRecipe? =
+        recipes
+            .filter { it.recipe.match.matches(manufacturer.orEmpty(), model.orEmpty(), board.orEmpty()) }
+            // Server order, re-applied: priority desc, then vendorId asc.
+            .sortedWith(compareByDescending<VendorRecipeEntry> { it.priority }.thenBy { it.vendorId })
+            .firstOrNull()
+            ?.recipe
+
     companion object {
         val EMPTY = DisplayConfig()
     }
@@ -97,27 +164,79 @@ object DisplayConfigParser {
         val defaultBrightness = brightness?.let {
             if (it.has("defaultPercent")) it.optInt("defaultPercent", -1).takeIf { p -> p in 0..100 } else null
         }
-
-        val recipe = root.optJSONObject("recipe")?.let { obj ->
-            when (val check = RecipeParser.parseObject(obj)) {
-                is RecipeCheck.Valid -> check.recipe
-                is RecipeCheck.Rejected -> {
-                    // Loud: a rejected recipe means an operator configured
-                    // vendor control and is not getting it.
-                    PlayerLogger.e(TAG, "VENDOR RECIPE REJECTED WHOLE — ${check.reason}")
-                    warnings += "recipe rejected: ${check.reason}"
-                    null
-                }
-            }
+        val serverMinSafe = brightness?.let {
+            if (it.has("minSafePercent")) it.optInt("minSafePercent", -1).takeIf { p -> p in 0..100 } else null
         }
 
         return DisplayConfig(
             version = root.optInt("version", 1),
             schedules = schedules,
             defaultBrightnessPercent = defaultBrightness,
-            recipe = recipe,
+            serverMinSafeBrightnessPercent = serverMinSafe,
+            recipes = parseRecipes(root, warnings),
             warnings = warnings,
         )
+    }
+
+    /**
+     * The `vendorRecipes` CATALOG (the wire contract), plus the legacy
+     * singular `recipe` for back-compat.
+     *
+     * PARSE POSTURE, and it differs from the schedule rows on purpose: a
+     * single malformed recipe is dropped INDIVIDUALLY here, because one
+     * bad row in a fleet-wide catalog must not cost every OTHER vendor
+     * its control. Inside one recipe nothing is partial — [RecipeParser]
+     * still rejects a recipe WHOLE, since a recipe whose `wake` step was
+     * silently dropped is a screen that turns off and never comes back.
+     */
+    private fun parseRecipes(root: JSONObject, warnings: MutableList<String>): List<VendorRecipeEntry> {
+        val out = mutableListOf<VendorRecipeEntry>()
+
+        val arr = root.optJSONArray("vendorRecipes")
+        if (arr != null) {
+            for (i in 0 until arr.length()) {
+                val row = arr.optJSONObject(i)
+                if (row == null) {
+                    warnings += "vendorRecipes[$i] is not an object"
+                    continue
+                }
+                // The recipe body is nested under `recipe`; the row's own
+                // `vendorId`/`priority` are the catalog's, not the body's.
+                val body = row.optJSONObject("recipe")
+                if (body == null) {
+                    warnings += "vendorRecipes[$i] carries no recipe object"
+                    continue
+                }
+                val label = row.optString("vendorId", "").trim().ifEmpty { body.optString("vendorId", "?") }
+                when (val check = RecipeParser.parseObject(body)) {
+                    is RecipeCheck.Valid -> out += VendorRecipeEntry(
+                        vendorId = check.recipe.vendorId,
+                        priority = row.optInt("priority", 0),
+                        recipe = check.recipe,
+                    )
+                    is RecipeCheck.Rejected -> {
+                        // Loud: a rejected recipe means an operator
+                        // configured vendor control and is not getting it.
+                        PlayerLogger.e(TAG, "VENDOR RECIPE '$label' REJECTED WHOLE — ${check.reason}")
+                        warnings += "recipe '$label' rejected: ${check.reason}"
+                    }
+                }
+            }
+        }
+
+        root.optJSONObject("recipe")?.let { obj ->
+            when (val check = RecipeParser.parseObject(obj)) {
+                is RecipeCheck.Valid ->
+                    // Lowest precedence: an explicit catalog row always
+                    // beats a legacy singular one for the same box.
+                    out += VendorRecipeEntry(check.recipe.vendorId, priority = Int.MIN_VALUE, recipe = check.recipe)
+                is RecipeCheck.Rejected -> {
+                    PlayerLogger.e(TAG, "VENDOR RECIPE REJECTED WHOLE — ${check.reason}")
+                    warnings += "recipe rejected: ${check.reason}"
+                }
+            }
+        }
+        return out
     }
 
     private fun parseSchedules(
@@ -357,7 +476,8 @@ object DisplayConfigStore {
         PlayerLogger.i(
             TAG,
             "display config saved — ${parsed.schedules.size} schedule(s), " +
-                "recipe=${parsed.recipe?.vendorId ?: "none"}, ${parsed.warnings.size} warning(s)",
+                "${parsed.recipes.size} vendor recipe(s) in the catalog " +
+                "[${parsed.recipes.joinToString(",") { it.vendorId }}], ${parsed.warnings.size} warning(s)",
         )
         parsed.warnings.forEach { PlayerLogger.w(TAG, "config warning: $it") }
         return parsed

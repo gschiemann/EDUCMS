@@ -181,6 +181,40 @@ class DisplayEmergencyTest {
     // ─── the untrusted-transport allowlist (same shape, one rule) ────
 
     @Test
+    fun `releasing the hold is a RECOVERY-direction action, so it must be reachable everywhere`() {
+        // ⚠️ THE 2026-08-14 REVERSAL. `setHold(false)` used to be refused
+        // on the legacy every-frame transport as a "risk-direction
+        // mutation". On a Chromium 83-87 NovaStar Taurus — in the pilot
+        // fleet, CLAUDE.md rule 10 — NativeBridgeChannel cannot attach at
+        // all, so EVERY call including the all-clear arrives untrusted:
+        // the first alert engaged a hold nothing could ever lift, and the
+        // screen was pinned lit with all display control dead and no
+        // operator recovery.
+        //
+        // The reason it is safe is asserted right here rather than in a
+        // comment: on that same transport every DARKENING action is still
+        // refused, so a hostile board that clears a hold unlocks nothing
+        // it can then use. The pair of assertions below is the whole
+        // argument — if a future change ever admits a darkening action on
+        // the untrusted transport, THIS test is the one that must go red
+        // before the release gate can be reconsidered.
+        listOf(
+            DisplayAction.Blank,
+            DisplayAction.Reboot,
+            DisplayAction.SetBrightness(0),
+            DisplayAction.SetBrightness(49),
+            DisplayAction.SetBrightness(100, allowBlack = true),
+            DisplayAction.SetVolume(0),
+        ).forEach { action ->
+            assertFalse(
+                "a hostile board must not reach ${action.describe()} — this is what makes " +
+                    "admitting the hold RELEASE on the same transport safe",
+                DisplayControlApi.isRecoveryAction(50, action),
+            )
+        }
+    }
+
+    @Test
     fun `the untrusted transport admits only recovery-direction actions`() {
         // The legacy addJavascriptInterface object is materialised in
         // EVERY frame the WebView loads, including operator-authored

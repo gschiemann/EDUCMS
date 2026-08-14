@@ -35,6 +35,7 @@ import com.educms.player.bootstrap.ManagerBootstrap
 import com.educms.player.databinding.ActivityMainBinding
 import com.educms.player.display.DisplayCapabilityProbe
 import com.educms.player.display.DisplayControlApi
+import com.educms.player.display.DisplayEmergency
 import com.educms.player.display.DisplayGuard
 import com.educms.player.display.DisplayScheduler
 import com.educms.player.display.DisplayWindowBridge
@@ -319,6 +320,20 @@ class MainActivity : ComponentActivity() {
         setWindowBrightness = { fraction ->
             runOnUiThread {
                 runCatching {
+                    // ⚠️ LIFE-SAFETY UI-THREAD GUARD. See the note on
+                    // setBlackout below — same race, same close.
+                    if (DisplayEmergency.blocksWindowDim(
+                            DisplayEmergency.isHeld(applicationContext),
+                            fraction,
+                        )
+                    ) {
+                        PlayerLogger.e(
+                            "DisplayWindow",
+                            "REFUSED window brightness $fraction on the UI thread — " +
+                                "an emergency alert is active and this would dim the alert",
+                        )
+                        return@runCatching
+                    }
                     val lp = window.attributes
                     // A negative value hands brightness back to the
                     // system (BRIGHTNESS_OVERRIDE_NONE).
@@ -331,10 +346,53 @@ class MainActivity : ComponentActivity() {
                 }.onFailure { PlayerLogger.w("DisplayWindow", "setWindowBrightness failed: ${it.message}") }
             }
         },
-        setBlackout = { visible -> runOnUiThread { applyBlackout(visible) } },
+        // ⚠️ LIFE-SAFETY UI-THREAD GUARD — this is the LAST line of
+        // defence and it is the only one that is race-free.
+        //
+        // DisplayControlRegistry's emergency gate is check-then-act
+        // across a thread boundary: the 22:00 alarm can read
+        // isHeld()==false, pass, and post its blackout AFTER a lockdown
+        // OVERRIDE engages the hold on the bridge worker thread. Every
+        // window mutation funnels through THIS looper, and the hold is
+        // `commit()`ed before the enforce path posts anything, so a
+        // darkening post enqueued after the commit sees held=true here
+        // and dies, while one enqueued before it is followed by the
+        // enforce posts. Either interleaving ends with a visible alert.
+        setBlackout = { visible ->
+            runOnUiThread {
+                if (DisplayEmergency.blocksBlackout(DisplayEmergency.isHeld(applicationContext), visible)) {
+                    PlayerLogger.e(
+                        "DisplayWindow",
+                        "REFUSED blackout on the UI thread — an emergency alert is active " +
+                            "(a blank raced the interlock and lost)",
+                    )
+                } else {
+                    applyBlackout(visible)
+                }
+            }
+        },
         setKeepScreenOn = { on ->
             runOnUiThread {
                 runCatching {
+                    // ⚠️ LIFE-SAFETY UI-THREAD GUARD. Every blank clears
+                    // this flag FIRST — a window holding KEEP_SCREEN_ON
+                    // pins the panel lit whatever the vendor broadcast or
+                    // the screen-off timeout says. So a blank that lost the
+                    // race still reached HERE even with its overlay and its
+                    // dim refused, and left the panel free to sleep on the
+                    // OS timeout with a lockdown alert on it.
+                    if (DisplayEmergency.blocksKeepScreenOff(
+                            DisplayEmergency.isHeld(applicationContext),
+                            on,
+                        )
+                    ) {
+                        PlayerLogger.e(
+                            "DisplayWindow",
+                            "REFUSED clearing KEEP_SCREEN_ON on the UI thread — " +
+                                "an emergency alert is active and the panel must not be free to sleep",
+                        )
+                        return@runCatching
+                    }
                     if (on) {
                         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                     } else {

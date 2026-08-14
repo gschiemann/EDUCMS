@@ -50,11 +50,17 @@ object DisplayControlApi {
      *   "state": { "brightnessPercent": 80, "volumePercent": 40, "blanked": false,
      *              "deviceVolumePercent": 40 },
      *   "minSafeBrightness": 5,
+     *   "serverMinSafeBrightness": 5,
      *   "pendingRevertInMs": 24500,
      *   "schedules": 2,
      *   "recipe": "goodview-ecbox",
+     *   "recipeCatalog": 4,
      *   "warnings": [] }
      * ```
+     *
+     * `recipe` is the catalog row this box MATCHED (null when none fits
+     * its `Build.*`); `recipeCatalog` is how many rows the manifest
+     * carried, so "null out of 4" is distinguishable from "none configured".
      *
      * REBOOT is ABSENT from `capabilities` on a box that cannot do it —
      * the dashboard must render controls from this map and nothing else.
@@ -78,7 +84,15 @@ object DisplayControlApi {
             .put("state", state)
             .put("minSafeBrightness", DisplayLimits.MIN_SAFE_BRIGHTNESS)
             .put("schedules", config.schedules.size)
-            .put("recipe", config.recipe?.vendorId ?: JSONObject.NULL)
+            // What this box actually MATCHED out of the catalog, plus how
+            // big the catalog was — "recipe: null, catalog: 4" is the
+            // signature of a match block that does not fit this Build.*,
+            // which is otherwise indistinguishable from "no recipes".
+            .put("recipe", VendorRecipeProvider.activeRecipe(app)?.vendorId ?: JSONObject.NULL)
+            .put("recipeCatalog", config.recipes.size)
+            // Reported, not enforced — the binding floor is the native
+            // constant above. See DisplayConfig.serverMinSafeBrightnessPercent.
+            .put("serverMinSafeBrightness", config.serverMinSafeBrightnessPercent ?: JSONObject.NULL)
 
         DisplayGuard.peek(app)?.let {
             out.put("pendingRevertInMs", (it.dueAtEpochMs - System.currentTimeMillis()).coerceAtLeast(0))
@@ -168,26 +182,68 @@ object DisplayControlApi {
      * AND on every manifest poll carrying an `emergency` field — the
      * second one is what covers a screen with no WebSocket riding the
      * HTTP polling backstop. Idempotent: re-reporting the same state is
-     * a cheap no-op, which is what makes per-poll calling safe.
+     * cheap, which is what makes per-poll calling safe. (A re-raise is
+     * NOT a no-op any more — it re-enforces; see [DisplayEmergency
+     * .enforceNow]. It stays cheap because every step of the enforce is
+     * a set-to-a-known-value.)
      *
-     * `active=true` is accepted from ANY transport (it can only make a
-     * dark screen visible). `active=false` is a mutating,
-     * risk-direction operation and is trusted-only — otherwise a hostile
-     * board could clear a genuine hold and let the schedule blank the
-     * screen mid-lockdown.
+     * ═════════════════════════════════════════════════════════════════
+     * BOTH DIRECTIONS ARE ACCEPTED ON THE UNTRUSTED TRANSPORT — and that
+     * is a deliberate 2026-08-14 reversal of the original rule.
+     * ═════════════════════════════════════════════════════════════════
+     * `active=true` was always ungated: it can only make a dark screen
+     * visible. `active=false` was trusted-only, on the reasoning that a
+     * hostile board could clear a genuine hold and let the schedule
+     * blank the screen mid-lockdown. That reasoning does not survive
+     * contact with the fleet, for two independent reasons:
+     *
+     *  1. **It bricked the feature on the oldest boxes.** On a Chromium
+     *     83-87 NovaStar Taurus — an explicitly supported production
+     *     target (CLAUDE.md rule 10) that is in the pilot fleet TODAY —
+     *     `WebViewFeature.WEB_MESSAGE_LISTENER` is unavailable, so
+     *     `NativeBridgeChannel.attach()` returns false and
+     *     `window.EduCmsNativeChannel` never exists. EVERY call from the
+     *     player, including the all-clear, arrives here with
+     *     trusted=false. The first alert therefore engaged a hold that
+     *     nothing could ever lift: panel pinned at 100% forever, every
+     *     schedule blank and every brightness lowering refused for the
+     *     life of the install, deferred dead-man reverts never firing,
+     *     and no operator-reachable recovery short of a factory reset.
+     *     A hold that cannot be released is not a safety feature.
+     *
+     *  2. **Release is recovery-direction, so it gains an attacker
+     *     nothing.** Clearing the hold does not darken anything; it only
+     *     returns the layer to normal operation. And on that same
+     *     untrusted transport every darkening action is STILL refused by
+     *     [isRecoveryAction] — BLANK, any brightness lowering, any
+     *     allowBlack, KEEP and SET_SCHEDULE are all trusted-only. So a
+     *     hostile board that clears a hold unlocks precisely nothing it
+     *     can then use. The worst it can do is let a legitimate,
+     *     operator-configured schedule run, which is the normal state of
+     *     the product.
+     *
+     * Contract C4, applied consistently: fail-open for recovery,
+     * fail-closed for risk. Raising is fail-safe, releasing is recovery,
+     * and BOTH belong on the recovery side of the line. The release is
+     * logged at WARN with its transport so the forensic trail still
+     * shows exactly which surface cleared a life-safety hold.
      */
     fun emergencyHoldJson(ctx: Context, active: Boolean, trusted: Boolean): String = try {
         val app = ctx.applicationContext
         if (!active && !trusted) {
-            refuseUntrusted("EMERGENCY_HOLD_RELEASE")
-        } else {
-            val persisted = DisplayEmergency.setHold(app, active)
-            JSONObject()
-                .put("ok", true)
-                .put("emergencyHold", DisplayEmergency.isHeld(app))
-                .put("persisted", persisted)
-                .toString()
+            PlayerLogger.w(
+                TAG,
+                "emergency hold RELEASE accepted on the untrusted every-frame transport — " +
+                    "release is recovery-direction and every darkening action stays trusted-only there; " +
+                    "refusing it is what pinned Chromium-83 boxes lit forever",
+            )
         }
+        val persisted = DisplayEmergency.setHold(app, active)
+        JSONObject()
+            .put("ok", true)
+            .put("emergencyHold", DisplayEmergency.isHeld(app))
+            .put("persisted", persisted)
+            .toString()
     } catch (t: Throwable) {
         PlayerLogger.e(TAG, "emergencyHoldJson FAILED", t)
         errorJson("exception", t.message ?: t.javaClass.simpleName)
@@ -217,7 +273,8 @@ object DisplayControlApi {
             JSONObject()
                 .put("ok", true)
                 .put("schedules", config.schedules.size)
-                .put("recipe", config.recipe?.vendorId ?: JSONObject.NULL)
+                .put("recipe", VendorRecipeProvider.activeRecipe(app)?.vendorId ?: JSONObject.NULL)
+                .put("recipeCatalog", config.recipes.size)
                 .put("warnings", org.json.JSONArray(config.warnings))
                 .toString()
         } catch (t: Throwable) {

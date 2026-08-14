@@ -217,8 +217,12 @@ class WebAppBridge(
     //
     // `displayCapabilities()` is READ-ONLY and stays ungated so a board
     // can ask what it is running on, exactly like `probeDisplay()`.
-    // `displayEmergencyHold(true)` is ungated for the same reason in
-    // reverse — it can only ever make a dark screen visible.
+    // `displayEmergencyHold()` is ungated in BOTH directions — raising is
+    // fail-safe (it can only make a dark screen visible) and releasing is
+    // recovery-direction (it darkens nothing; every darkening action here
+    // stays trusted-only). On a pre-channel box EVERY call arrives on
+    // this transport, so a trusted-only release meant the first alert
+    // pinned the screen lit forever with no way back.
     // ────────────────────────────────────────────────────────────────
 
     /**
@@ -290,12 +294,16 @@ class WebAppBridge(
      * forces the panel visible. See
      * `com.educms.player.display.DisplayEmergency`.
      *
-     * `active = true` is honoured on THIS untrusted transport on purpose:
-     * it can only ever make a dark screen visible, and a hostile frame
-     * lighting a screen up is not a threat worth a dark lockdown alert.
-     * `active = false` is a risk-direction mutation and is refused here —
-     * releasing a genuine hold would let the schedule blank the screen
-     * mid-alert.
+     * BOTH directions are honoured on THIS untrusted transport, on
+     * purpose (2026-08-14). `active = true` can only ever make a dark
+     * screen visible. `active = false` is ALSO recovery-direction: it
+     * darkens nothing by itself, and every darkening action on this
+     * transport stays trusted-only, so a hostile frame that clears a hold
+     * unlocks nothing it can use. Refusing it was worse than the threat
+     * it modelled — on a Chromium 83-87 Taurus the origin-scoped channel
+     * cannot attach at all, so EVERY call lands here, and the first alert
+     * engaged a hold nothing could ever lift. See
+     * `DisplayControlApi.emergencyHoldJson` for the full argument.
      */
     @JavascriptInterface
     fun displayEmergencyHold(active: Boolean): String = try {
