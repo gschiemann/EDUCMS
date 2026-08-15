@@ -61,6 +61,44 @@ export class EmergencyController {
     private readonly gpio: GpioService,
   ) {}
 
+  /**
+   * Redis fan-out for a life-safety dispatch.
+   *
+   * Split out (2026-08-15) so callers can START it before persistence and
+   * await it afterwards — the alert must never be gated on a database write.
+   * See the "LIFE-SAFETY FAST PATH" note in `trigger`.
+   *
+   * Every channel is published INDEPENDENTLY and every failure is swallowed
+   * after being reported: one school's Redis hiccup must not abort the
+   * remaining schools' fan-out. This method therefore never rejects — a
+   * caller awaiting it cannot be made to fail by a downstream Redis problem,
+   * and screens that miss the push still get the emergency from their next
+   * manifest poll (the HTTP backstop).
+   */
+  private async dispatchEmergencyFanout(
+    channels: string[],
+    signedMessage: unknown,
+    ctx: { scopeType: string; overrideId: string; userId?: string; action?: string },
+  ): Promise<void> {
+    for (const ch of channels) {
+      try {
+        await this.redisService.publish(ch, signedMessage as any);
+      } catch (error) {
+        Sentry.withScope((s) => {
+          s.setTag('emergency.action', ctx.action ?? 'trigger');
+          s.setTag('emergency.scopeType', ctx.scopeType);
+          s.setUser({ id: ctx.userId });
+          s.setExtra('overrideId', ctx.overrideId);
+          s.setExtra('channel', ch);
+          Sentry.captureException(error);
+        });
+        console.warn(
+          `[Emergency] Redis publish failed for ${ch}. Realtime bypass disabled. Screens will pull via HTTP polling. Error: ${error}`,
+        );
+      }
+    }
+  }
+
   private emergencyTypeKey(type?: string | null): string | null {
     const value = String(type || '').trim().toUpperCase();
     return value || null;
@@ -442,6 +480,31 @@ export class EmergencyController {
       }
     };
 
+    // ── LIFE-SAFETY FAST PATH (2026-08-15) ──────────────────────────────
+    // Sign HERE, not after the writes. `message.payload` is complete and
+    // validated at this point and is never mutated again before dispatch,
+    // so the envelope can be built before any persistence happens.
+    //
+    // WHY THIS MOVED. The fan-out used to run only AFTER
+    // `$transaction(...)` committed. That coupled the fastest path to a
+    // screen (Redis -> WS, single-digit ms) to the slowest thing in the
+    // request (a multi-statement write over a link measured at a ~333ms
+    // per-query floor). On 2026-08-15 a Supabase pooler stall queued
+    // queries for 4.5s with the database otherwise idle; a lockdown fired
+    // in that window would have sat unsent for the whole stall, and with
+    // `pool_timeout=20` a deeper stall means the publish never happens at
+    // all — the operator sees an error and NOT ONE SCREEN was told.
+    //
+    // Now the dispatch STARTS as soon as the channel list is known and runs
+    // concurrently with persistence; we await it after the writes so the
+    // response still reflects the true dispatch outcome. Ordering the two
+    // this way is the correct life-safety trade: "shown on the wall but not
+    // yet recorded" is recoverable, "recorded but never shown" is not.
+    // AuditLog is still written unconditionally (CLAUDE.md) — it simply no
+    // longer gates delivery.
+    const signedMessage = this.signer.signMessage('OVERRIDE', message.payload);
+    let fanout: Promise<void> | null = null;
+
     // Every tenant this trigger actually reached. For a leaf school that's
     // just the school; for a district it's the district PLUS every
     // non-archived descendant. Post-commit side effects (manifest-cache
@@ -463,6 +526,17 @@ export class EmergencyController {
         scopeId,
       );
       affectedTenantIds = [scopeId, ...descendantTenantIds];
+
+      // Channels are known the instant the subtree is resolved — dispatch
+      // now, in parallel with everything below. Cache invalidation rides
+      // along because it is synchronous in-memory work that must not be
+      // stranded behind the writes either.
+      for (const tid of affectedTenantIds) invalidateTenantState(tid);
+      fanout = this.dispatchEmergencyFanout(
+        affectedTenantIds.map((tid) => `tenant:${tid}`),
+        signedMessage,
+        { scopeType, overrideId, userId: req.user?.id },
+      );
 
       const explicitPlaylistId = !!overridePayload.playlistId;
       const typeKey = this.emergencyTypeKey(overridePayload.type);
@@ -655,6 +729,14 @@ export class EmergencyController {
       // showed nothing for a group/device lockdown: a poll-only kiosk (WS AND
       // SSE both blocked) missed it entirely. The most degraded screen must
       // not be the one that misses the lockdown. (2026-06-01.)
+      // Group/device scope needs NO lookup to know its channel, so the
+      // dispatch goes out before this branch touches the database at all.
+      fanout = this.dispatchEmergencyFanout(
+        [`${scopeType}:${scopeId}`],
+        signedMessage,
+        { scopeType, overrideId, userId: req.user?.id },
+      );
+
       const affectedScreens = scopeType === 'device'
         ? await this.prisma.client.screen.findMany({ where: { id: scopeId } })
         : await this.prisma.client.screen.findMany({ where: { screenGroupId: scopeId } });
@@ -695,46 +777,22 @@ export class EmergencyController {
       ]);
     }
 
-    // Create WSSP envelope before transmission (Mitigates RT-01)
-    const signedMessage = this.signer.signMessage('OVERRIDE', message.payload);
-
-    // Hot-path cache invalidation — the manifest endpoint caches
-    // tenant emergency state for 2s per tenant to dodge the polling
-    // herd. Emergency trigger is the moment we MUST bust that cache
-    // so the next poll from any screen in the tenant sees the new
-    // state without waiting for the 2s TTL. Every tenant in the
-    // subtree, not just the targeted one — a stale child entry would
-    // hold a school on its pre-lockdown manifest for 2 more seconds.
-    for (const tid of affectedTenantIds) invalidateTenantState(tid);
-
-    // Publish via Redis for WebSocket fanout (graceful fallback if offline).
+    // Fan-out was STARTED before persistence (see the life-safety fast path
+    // above) so a slow or stalled database can neither delay nor cancel the
+    // alert reaching a screen. Await it here so the response below reports
+    // the real dispatch outcome rather than a fire-and-forget guess.
     //
     // ONE CHANNEL PER AFFECTED TENANT. The gateway matches a scope publish
     // against the DEVICE'S OWN tenantId (`broadcastToScope`:
     // `type === 'tenant' && ctx.tenantId === id`), so a screen in a child
     // school never sees a `tenant:<districtId>` message. Publishing per
-    // descendant is what actually reaches those 41 screens. Each publish is
-    // caught INDEPENDENTLY: one school's Redis hiccup must not skip the
-    // remaining schools' fan-out — they'd each be silently demoted to the
-    // 5-10s HTTP-poll tier while the operator believes the push landed.
+    // descendant is what actually reaches those schools. Each publish is
+    // caught INDEPENDENTLY inside the helper: one school's Redis hiccup must
+    // not skip the remaining schools' fan-out — they'd each be silently
+    // demoted to the 5-10s HTTP-poll tier while the operator believes the
+    // push landed.
     const channel = `${scopeType}:${scopeId}`;
-    const publishChannels =
-      scopeType === 'tenant' ? affectedTenantIds.map((tid) => `tenant:${tid}`) : [channel];
-    for (const ch of publishChannels) {
-      try {
-        await this.redisService.publish(ch, signedMessage);
-      } catch (error) {
-        Sentry.withScope((s) => {
-          s.setTag('emergency.action', 'trigger');
-          s.setTag('emergency.scopeType', scopeType);
-          s.setUser({ id: req.user?.id });
-          s.setExtra('overrideId', overrideId);
-          s.setExtra('channel', ch);
-          Sentry.captureException(error);
-        });
-        console.warn(`[Emergency] Redis publish failed for ${ch}. Realtime bypass disabled. Screens will pull via HTTP polling. Error: ${error}`);
-      }
-    }
+    if (fanout) await fanout;
 
     // 2026-05-25 Developer area: outbound webhook on emergency.triggered.
     // Fire-and-forget; the response below is never blocked. Only fires
@@ -837,6 +895,7 @@ export class EmergencyController {
     // down is worse than no district feature at all, because the operator
     // has been told the incident is over.
     let affectedTenantIds: string[] = [];
+    let clearFanout: Promise<void> | null = null;
 
     // If targeting a tenant, clear its emergencyStatus + audit atomically.
     // Clear BOTH orientation pointers so a portrait screen doesn't keep
@@ -847,6 +906,17 @@ export class EmergencyController {
         scopeId,
       );
       affectedTenantIds = [scopeId, ...descendantTenantIds];
+
+      // Same life-safety fast path as `trigger` — and it matters just as much
+      // here. A stalled write on all-clear leaves screens STUCK IN LOCKDOWN
+      // until the HTTP backstop catches up; people stay sheltering for no
+      // reason. Dispatch now, persist after.
+      for (const tid of affectedTenantIds) invalidateTenantState(tid);
+      clearFanout = this.dispatchEmergencyFanout(
+        affectedTenantIds.map((tid) => `tenant:${tid}`),
+        signedMessage,
+        { scopeType, overrideId, userId: req.user?.id, action: 'all-clear' },
+      );
 
       const clearedState = {
         emergencyStatus: 'INACTIVE',
@@ -959,73 +1029,26 @@ export class EmergencyController {
     // Hot-path cache invalidation so the next manifest poll from any
     // screen in the tenant (or any school under it) picks up INACTIVE
     // without waiting for TTL.
-    for (const tid of affectedTenantIds) invalidateTenantState(tid);
-
-    // Publish via Redis for fanout — one channel per affected tenant, for
-    // the same gateway-matching reason as the trigger path, and with the
-    // same independent catch so one failed publish can't strand the rest
-    // of the district on a lockdown that has already been cleared.
+    //
+    // For tenant scope the fan-out was STARTED before persistence (see
+    // above) so a stalled write cannot strand screens in lockdown. Group /
+    // device scope needs no lookup to know its channel, so it dispatches
+    // here — still before nothing, since its writes are already done and
+    // the channel was never in doubt. Both awaited so the response reports
+    // the real dispatch outcome. One channel per affected tenant, for the
+    // same gateway-matching reason as the trigger path, and with the same
+    // independent catch so one failed publish can't strand the rest of the
+    // district on a lockdown that has already been cleared.
     const channel = `${scopeType}:${scopeId}`;
-    const publishChannels =
-      scopeType === 'tenant' ? affectedTenantIds.map((tid) => `tenant:${tid}`) : [channel];
-    for (const ch of publishChannels) {
-      try {
-        await this.redisService.publish(ch, signedMessage);
-      } catch (error) {
-        Sentry.withScope((s) => {
-          s.setTag('emergency.action', 'all-clear');
-          s.setTag('emergency.scopeType', scopeType);
-          s.setUser({ id: req.user?.id });
-          s.setExtra('overrideId', overrideId);
-          s.setExtra('channel', ch);
-          Sentry.captureException(error);
-        });
-        console.warn(`[Emergency] Redis publish failed for ${ch}.`);
-      }
+    if (!clearFanout) {
+      for (const tid of affectedTenantIds) invalidateTenantState(tid);
+      clearFanout = this.dispatchEmergencyFanout(
+        [channel],
+        signedMessage,
+        { scopeType, overrideId, userId: req.user?.id, action: 'all-clear' },
+      );
     }
-
-    // 2026-05-25 Developer area: outbound webhook on emergency.cleared.
-    // Mirror of the trigger-side dispatch above.
-    if (scopeType === 'tenant') {
-      for (const tid of affectedTenantIds) {
-        this.webhookDispatch.dispatch(tid, 'emergency.cleared', {
-          overrideId,
-          scopeType,
-          scopeId: tid,
-          clearedAt: new Date().toISOString(),
-          clearedByUserId: req.user?.id ?? null,
-          originTenantId: scopeId,
-        });
-      }
-    }
-
-    // 2026-05-27 — Mirror of the trigger-side GPIO status-lamp drive.
-    // Flip every wired status_lamp back to 'low' so the lobby light
-    // goes dark when the emergency clears. Fire-and-forget for the
-    // same reason as the trigger path — a stuck lamp must never
-    // delay all-clear from reaching the player fleet.
-    if (scopeType === 'tenant') {
-      for (const tid of affectedTenantIds) {
-        this.gpio
-          .driveStatusLampForEmergency({
-            tenantId: tid,
-            state: 'low',
-            reason: 'emergency_all_clear',
-            sourceContext: { overrideId },
-          })
-          .catch((e) => {
-            Sentry.withScope((s) => {
-              s.setTag('emergency.action', 'all-clear.gpio_lamp');
-              s.setTag('emergency.scopeType', scopeType);
-              s.setUser({ id: req.user?.id });
-              s.setExtra('overrideId', overrideId);
-              s.setExtra('tenantId', tid);
-              Sentry.captureException(e);
-            });
-            console.warn(`[Emergency] GPIO status-lamp auto-drive failed (all-clear): ${e}`);
-          });
-      }
-    }
+    await clearFanout;
 
     return {
       success: true,
