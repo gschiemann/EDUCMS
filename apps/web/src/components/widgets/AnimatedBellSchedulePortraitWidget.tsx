@@ -28,7 +28,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 // 12-hour formatter so 24-hour input never escapes onto the screen.
 import { formatTime12 } from '@/lib/format-time';
 import { sceneCss } from './scene-css';
-import { replayHotspotClickOnField } from './hotspot-clickthrough';
+import { handleHotspotKeyDown, replayHotspotClickOnField } from './hotspot-clickthrough';
 
 type Period = {
   num?: string | number;
@@ -320,6 +320,7 @@ function Hotspot({ section, x, y, w, h }: { section: string; x: number; y: numbe
         try { window.dispatchEvent(new CustomEvent('aw-edit-section', { detail: { section } })); } catch { /* noop */ }
       }}
       onClick={replayHotspotClickOnField}
+      onKeyDown={handleHotspotKeyDown}
       style={{ position: 'absolute', left: x, top: y, width: w, height: h, cursor: 'pointer', zIndex: 50 }}
       aria-label={`Edit ${section}`}
     />

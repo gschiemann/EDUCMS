@@ -38,7 +38,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { sceneCss } from './scene-css';
-import { replayHotspotClickOnField } from './hotspot-clickthrough';
+import { handleHotspotKeyDown, replayHotspotClickOnField } from './hotspot-clickthrough';
 
 interface Cfg {
   logoUrl?: string;
@@ -444,6 +444,7 @@ function Hotspot({ section, x, y, w, h }: { section: string; x: number; y: numbe
         try { window.dispatchEvent(new CustomEvent('aw-edit-section', { detail: { section } })); } catch { /* noop */ }
       }}
       onClick={replayHotspotClickOnField}
+      onKeyDown={handleHotspotKeyDown}
       style={{ position: 'absolute', left: x, top: y, width: w, height: h, cursor: 'pointer', zIndex: 50 }}
       aria-label={`Edit ${section}`}
     />

@@ -32,17 +32,17 @@
  * Hotspots only render in the builder (`!isLive`), so this never runs on a
  * paired screen or the published player.
  */
-import type { MouseEvent as ReactMouseEvent } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 
-export function replayHotspotClickOnField(e: ReactMouseEvent<HTMLElement>): void {
-  const el = e.currentTarget;
-  if (!el || typeof document === 'undefined') return;
+/** Shared core: find the field under (x, y) and open it for editing. */
+function openFieldAt(el: HTMLElement, x: number, y: number, stop: () => void): void {
+  if (typeof document === 'undefined') return;
 
   // Momentarily make the overlay transparent to hit-testing so we can see what
   // it is covering, then restore it before anything can repaint.
   const prev = el.style.pointerEvents;
   el.style.pointerEvents = 'none';
-  const under = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+  const under = document.elementFromPoint(x, y) as HTMLElement | null;
   el.style.pointerEvents = prev;
 
   const fieldEl = under?.closest?.('[data-field]') as HTMLElement | null;
@@ -50,8 +50,32 @@ export function replayHotspotClickOnField(e: ReactMouseEvent<HTMLElement>): void
 
   // The field is a SIBLING subtree, never a descendant of this hotspot, so the
   // replayed event cannot re-enter this handler.
-  e.stopPropagation();
+  stop();
   fieldEl.dispatchEvent(
-    new MouseEvent('click', { bubbles: true, cancelable: true, clientX: e.clientX, clientY: e.clientY }),
+    new MouseEvent('click', { bubbles: true, cancelable: true, clientX: x, clientY: y }),
   );
+}
+
+export function replayHotspotClickOnField(e: ReactMouseEvent<HTMLElement>): void {
+  const el = e.currentTarget;
+  if (!el) return;
+  openFieldAt(el, e.clientX, e.clientY, () => e.stopPropagation());
+}
+
+/**
+ * Keyboard equivalent. The hotspots already carry `role="button"` and
+ * `tabIndex={0}`, so they land in the tab order — but before this they had no
+ * key handler, meaning a keyboard user could focus one and nothing would
+ * happen. Enter/Space now does exactly what clicking the middle of the hotspot
+ * does, which is also what `jsx-a11y/click-events-have-key-events` is asking
+ * for. Uses the hotspot's own centre because a key event carries no pointer
+ * coordinates (clientX/clientY would be 0,0 and resolve to the wrong element).
+ */
+export function handleHotspotKeyDown(e: ReactKeyboardEvent<HTMLElement>): void {
+  if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+  const el = e.currentTarget;
+  if (!el) return;
+  const r = el.getBoundingClientRect();
+  e.preventDefault(); // Space would otherwise scroll the builder canvas
+  openFieldAt(el, r.left + r.width / 2, r.top + r.height / 2, () => e.stopPropagation());
 }
