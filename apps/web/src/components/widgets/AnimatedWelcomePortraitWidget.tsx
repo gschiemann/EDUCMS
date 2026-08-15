@@ -31,6 +31,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { sceneCss } from './scene-css';
+import { replayHotspotClickOnField } from './hotspot-clickthrough';
 
 
 interface Cfg {
@@ -463,6 +464,7 @@ function Hotspot({ section, x, y, w, h }: { section: string; x: number; y: numbe
       onPointerDown={() => {
         try { window.dispatchEvent(new CustomEvent('aw-edit-section', { detail: { section } })); } catch {}
       }}
+      onClick={replayHotspotClickOnField}
       style={{ position: 'absolute', left: x, top: y, width: w, height: h, cursor: 'pointer', zIndex: 50 }}
       aria-label={`Edit ${section}`}
     />

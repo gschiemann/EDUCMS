@@ -37,6 +37,45 @@ const BULK_URL = 'https://registry.npmjs.org/-/npm/v1/security/advisories/bulk';
 const CHUNK = 800; // package names per request — well under endpoint limits
 const FAIL_SEVERITIES = new Set(['high', 'critical']);
 
+/**
+ * WAIVERS — advisories with NO upstream fix whose vulnerable code path is
+ * provably unreachable in our usage.
+ *
+ * Rules, so this never becomes a place to silence real findings:
+ *   - Only for advisories where no fixed version exists. If a fix ships, pin a
+ *     floor in root package.json `pnpm.overrides` instead and delete the entry.
+ *   - `reason` must name the unreachable code path, not hand-wave.
+ *   - `expires` is mandatory. Past that date the waiver STOPS applying and the
+ *     gate goes red again, forcing a re-review. A waiver that silently lives
+ *     forever is how a real vulnerability gets ignored.
+ *   - A waived advisory is still printed, loudly, on every run.
+ */
+const WAIVERS = [
+  {
+    name: 'extract-zip',
+    url: 'https://github.com/advisories/GHSA-jmr9-qjv8-65gv',
+    expires: '2026-11-15',
+    reason:
+      'No fixed version exists (advisory covers <=2.0.1, i.e. every published release). ' +
+      'Reaches the prod graph only as puppeteer-core -> @puppeteer/browsers, whose ' +
+      'extract-zip use is the browser DOWNLOAD-and-unzip path. apps/api/src/proxy/' +
+      'renderer.service.ts launches with an explicit executablePath (PUPPETEER_EXECUTABLE_PATH ' +
+      'or /usr/bin/chromium-browser) and never downloads a browser, so the symlink-traversal ' +
+      'unzip path is unreachable. Re-check when @puppeteer/browsers drops extract-zip or a ' +
+      'patched release lands.',
+  },
+];
+
+/** Waiver for this finding, or null. Expired waivers deliberately do not match. */
+function findWaiver(finding, today) {
+  for (const w of WAIVERS) {
+    if (w.name !== finding.name) continue;
+    if (w.expires <= today) return { ...w, expired: true };
+    return w;
+  }
+  return null;
+}
+
 /** Deduped `name -> Set(version)` for the entire production closure. */
 function collectProdPackages() {
   const res = spawnSync(
@@ -146,9 +185,31 @@ async function postChunk(entries) {
     console.log(`  [${f.severity.toUpperCase()}] ${f.name} (vulnerable: ${f.vulnerable}) — ${f.title} ${f.url}`);
   }
 
-  const blocking = findings.filter((f) => FAIL_SEVERITIES.has(f.severity));
+  const today = new Date().toISOString().slice(0, 10);
+  const blocking = [];
+  const waived = [];
+  for (const f of findings.filter((x) => FAIL_SEVERITIES.has(x.severity))) {
+    const w = findWaiver(f, today);
+    if (w && !w.expired) waived.push({ ...f, waiver: w });
+    else blocking.push({ ...f, expiredWaiver: w ? w.expires : null });
+  }
+
+  if (waived.length > 0) {
+    console.log(`\nWAIVED (${waived.length}) — no upstream fix, vulnerable path unreachable here:`);
+    for (const f of waived) {
+      console.log(`  [${f.severity.toUpperCase()}] ${f.name} — waiver expires ${f.waiver.expires}`);
+      console.log(`      ${f.waiver.reason}`);
+    }
+    console.log('  Waivers are reviewed on expiry. See WAIVERS in scripts/npm-advisory-audit.cjs.');
+  }
+
   if (blocking.length > 0) {
     console.error(`\nFAIL: ${blocking.length} HIGH/CRITICAL prod advisor${blocking.length === 1 ? 'y' : 'ies'}. Pin a fix floor in root package.json pnpm.overrides.`);
+    for (const f of blocking) {
+      if (f.expiredWaiver) {
+        console.error(`  NOTE: ${f.name} had a waiver that EXPIRED on ${f.expiredWaiver} — re-review it, then extend or fix.`);
+      }
+    }
     process.exit(1);
   }
   console.log('\nOK: no HIGH/CRITICAL prod advisories (moderate/low reported above do not gate).');

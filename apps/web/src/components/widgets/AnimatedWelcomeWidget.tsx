@@ -31,6 +31,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { sceneCss } from './scene-css';
+import { replayHotspotClickOnField } from './hotspot-clickthrough';
 
 
 interface Cfg {
@@ -561,42 +562,7 @@ function Hotspot({ section, x, y, w, h }: { section: string; x: number; y: numbe
           window.dispatchEvent(new CustomEvent('aw-edit-section', { detail: { section } }));
         } catch { /* noop */ }
       }}
-      onClick={(e) => {
-        // 2026-08-09 — HAND THE CLICK THROUGH TO THE TEXT UNDERNEATH.
-        //
-        // These hotspots sit at z-index 50, directly over the scene's
-        // `[data-field]` elements. BuilderZone's one-click text editor
-        // resolves its target with `e.target.closest('[data-field]')` —
-        // and the hotspot has no such ancestor, so every click on the
-        // title/announcement/teacher text resolved to NULL and fell
-        // through to plain zone-select. Net effect: the per-field style
-        // controls (font SIZE, colour, weight — the bottom bar's
-        // "click any text on the canvas to edit its style") could never
-        // be reached on this widget, so the only size control an
-        // operator could find was the zone-wide one, which resizes
-        // EVERY text role at once and flattens the type hierarchy.
-        //
-        // Fix: after the section dispatch above (which still runs on
-        // pointerdown, so panel-scrolling is unchanged), look up what
-        // sits beneath the pointer and, when it's a real field, replay
-        // the click on it. BuilderZone's delegated onClick then sees
-        // the field as the target and opens per-field editing.
-        const el = e.currentTarget as HTMLElement;
-        const prev = el.style.pointerEvents;
-        el.style.pointerEvents = 'none';
-        const under = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
-        el.style.pointerEvents = prev;
-        const fieldEl = under?.closest?.('[data-field]') as HTMLElement | null;
-        if (!fieldEl) return; // non-text part of the hotspot (sun, balloons) — leave as-is
-        // Swallow the hotspot's own click so the zone doesn't also
-        // process it as a bare select, then replay on the field. The
-        // field is a SIBLING subtree, not a descendant of this hotspot,
-        // so the replayed event cannot re-enter this handler.
-        e.stopPropagation();
-        fieldEl.dispatchEvent(
-          new MouseEvent('click', { bubbles: true, cancelable: true, clientX: e.clientX, clientY: e.clientY }),
-        );
-      }}
+      onClick={replayHotspotClickOnField}
       style={{
         position: 'absolute',
         left: x, top: y, width: w, height: h,

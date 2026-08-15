@@ -168,6 +168,30 @@ for (const file of walk(ROOT)) {
   }
 }
 
+// ── Hotspot click-through ────────────────────────────────────────────
+// A scene widget that paints click hotspots OVER its own [data-field] text
+// blocks BuilderZone's one-click text editor: the overlay is the click target,
+// `closest('[data-field]')` returns null, and the per-field style controls
+// (font size / colour / weight) become unreachable. The operator is then left
+// with only the zone-wide font-size control, which flattens every text role to
+// a single size — the "I can't edit text size" report. Any widget with a
+// high-z hotspot AND data-field text must route clicks through
+// replayHotspotClickOnField().
+for (const file of walk(ROOT)) {
+  const src = fs.readFileSync(file, 'utf8');
+  if (!src.includes('data-field')) continue;
+  if (!/class(Name)?="[^"]*hotspot|<Hotspot\b/.test(src)) continue;
+  const z = /zIndex:\s*(\d+)/.exec(src);
+  if (!z || Number(z[1]) < 10) continue;
+  // Must be WIRED UP, not merely imported — an unused import would otherwise
+  // satisfy this check while the widget stays blocked.
+  if (/onClick=\{\s*replayHotspotClickOnField\s*\}/.test(src)) continue;
+  const rel = path.relative(path.join(__dirname, '..', '..', '..'), file);
+  violations.push(
+    `${rel}  has a z-index:${z[1]} click hotspot over [data-field] text but does not call replayHotspotClickOnField() — the per-field text editor is unreachable on this widget.`,
+  );
+}
+
 if (violations.length) {
   console.error('\nFAIL — widget <style> blocks must route their CSS through sceneCss().\n');
   console.error('Flattened Tailwind preflight outranks unboosted scene CSS (2,0,0), which zeroes');

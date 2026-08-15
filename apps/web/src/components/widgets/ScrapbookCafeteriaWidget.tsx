@@ -6,6 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { sceneCss } from './scene-css';
+import { replayHotspotClickOnField } from './hotspot-clickthrough';
 
 type MenuCard = { title?: string; desc?: string; badges?: { label?: string; kind?: 'v' | 'gf' | 'dy' | 'pk' }[]; accent?: string; rot?: string; tape?: string };
 
@@ -218,6 +219,7 @@ function Hotspot({ section, x, y, w, h }: { section: string; x: number; y: numbe
       onPointerDown={() => {
         try { window.dispatchEvent(new CustomEvent('aw-edit-section', { detail: { section } })); } catch { /* noop */ }
       }}
+      onClick={replayHotspotClickOnField}
       style={{ position: 'absolute', left: x, top: y, width: w, height: h, cursor: 'pointer', zIndex: 50 }}
       aria-label={`Edit ${section}`}
     />
