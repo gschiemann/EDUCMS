@@ -13,6 +13,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { usePosMenuItems } from '@/lib/menu/use-pos-menu-items';
+import { sceneCss } from '../scene-css';
 
 /**
  * ComboCarouselWidget — auto-rotating combo / value-meal carousel.
@@ -149,7 +150,7 @@ export function ComboCarouselWidget({
 
   return (
     <div className="rcc-root" style={{ ['--rcc-accent' as string]: accent } as React.CSSProperties}>
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       <div className="rcc-bg" />
       <div className="rcc-glow" aria-hidden />

@@ -16,6 +16,7 @@ import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 import { useAutoFitText } from './useAutoFitText';
 import { useTextStyleOverrides } from './useTextStyleOverrides';
+import { sceneCss } from '../scene-css';
 
 export interface HsZineConfig {
   schoolName?: string;
@@ -162,7 +163,7 @@ export function HsZineWidget({ config, live }: { config?: HsZineConfig; live?: b
         color: '#15120d',
       }}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
       <div className="hs-zn-streaks" />
 
       <div className="hs-zn-mast">

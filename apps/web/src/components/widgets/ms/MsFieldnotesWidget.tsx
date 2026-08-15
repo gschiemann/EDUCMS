@@ -25,6 +25,7 @@
 import * as React from 'react';
 import { HsStage } from '../hs/HsStage';
 import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
+import { sceneCss } from '../scene-css';
 
 export interface MsFieldnotesConfig {
   // Top masthead — school lockup
@@ -372,7 +373,7 @@ export function MsFieldnotesWidget({ config, live }: { config?: MsFieldnotesConf
         color: '#1e1a14',
       }}
     >
-      <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      <style dangerouslySetInnerHTML={{ __html: sceneCss(CSS) }} />
 
       {/* Stage-level kraft-paper noise overlay (mockup .stage::before). */}
       <div className="ms-fn-stage-noise" aria-hidden="true" />

@@ -1084,7 +1084,7 @@ export function CtsAnnouncementWidget({ config }: { config?: AnnouncementCfg }) 
           {entry?.text || ''}
         </span>
       </div>
-      <style>{`@keyframes ctsAnnounceIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+      <style>{sceneCss(`@keyframes ctsAnnounceIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }`)}</style>
     </div>
   );
 }
@@ -1247,10 +1247,10 @@ export function CtsCelebrationWidget({ config, live: liveSurface }: { config?: C
         {isActive ? text : idleText}
       </span>
       <LiveDot live={live} hideLiveDot={cfg.hideLiveDot} />
-      <style>{`
+      <style>{sceneCss(`
         @keyframes ctsCelebPulse { from { transform: scale(1); } to { transform: scale(1.08); } }
         @keyframes ctsCelebSweep { from { background-position: 0 0; } to { background-position: 96px 0; } }
-      `}</style>
+      `)}</style>
     </div>
   );
 }
@@ -1291,6 +1291,7 @@ import { CelFootballTouchdownWidget, CelFootballFieldGoalWidget } from '../v2/Ce
 import { CelBasketballThreeWidget, CelBasketballBuzzerWidget, CelBasketballDunkWidget } from '../v2/CelebrationsBasketballWidgets';
 import { ScGoalRetroWidget, ScGoalNeonWidget, HkGoalNeonWidget, HkGoalRetroWidget, LxGoalWidget, LxBehindTheBackWidget, LxBigSaveWidget, TnAceWidget, TnWinnerWidget, TnMatchPointWidget, GfAceWidget, GfEagleWidget, GfBirdieWidget, TrWorldRecordWidget, TrFinishWidget, TrPersonalBestWidget, SwRecordWidget, SwFinishWidget } from '../v2/CelebrationsOtherSportsWidgets';
 import { CelBaseballHomeRunWidget, CelBaseballGrandSlamWidget, CelBaseballStrikeoutWidget, CelBaseballDoublePlayWidget } from '../v2/CelebrationsBaseballWidgets';
+import { sceneCss } from '../scene-css';
 
 /**
  * Available cue catalog. Operator picks cue IDs from this list to

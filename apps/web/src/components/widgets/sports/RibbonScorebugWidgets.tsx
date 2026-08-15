@@ -38,6 +38,7 @@ import { findSport, formatScore } from '@cms/api-types';
 import { useGameState, fmtClock, fmtSegment, type GameSnapshot } from './GameStateContext';
 import { liveNeutral } from './cts-fields';
 import { FitOneLine } from './FitOneLine';
+import { sceneCss } from '../scene-css';
 
 const STATUS_BG: Record<string, string> = {
   SCHEDULED: '#475569', PRE_GAME: '#d97706', LIVE: '#dc2626', HALFTIME: '#2563eb', FINAL: '#1e293b',
@@ -140,7 +141,7 @@ export function RibbonScoreboardWidget({ config }: { config?: RibbonCfg }) {
 
   return (
     <div ref={ref} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: c.bgColor ?? '#05070d', color: '#fff', fontFamily: 'Inter, system-ui, sans-serif', display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
-      <style>{`@keyframes ribbonReel{from{transform:translateX(0)}to{transform:translateX(-50%)}}`}</style>
+      <style>{sceneCss(`@keyframes ribbonReel{from{transform:translateX(0)}to{transform:translateX(-50%)}}`)}</style>
       {/* score-follow anchor */}
       <div style={{ display: 'flex', alignItems: 'center', height: '100%', padding: `0 ${px(0.3)}px`, background: '#05070d', flexShrink: 0 }}>
         <TeamChip abbrText={homeAbbrText} scoreText={homeScoreText} color={homeColor} side="l" />

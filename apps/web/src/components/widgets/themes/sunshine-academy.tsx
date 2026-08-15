@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CalendarDays, Cloud, CloudRain, CloudSnow, CloudLightning, Sun, Wind, Droplets } from 'lucide-react';
 import { fetchWeather, getWMO } from '../WidgetRenderer';
+import { sceneCss } from '../scene-css';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SUNSHINE ACADEMY THEME
@@ -113,7 +114,7 @@ export function SunshineAcademyTicker({ config }: { config: any }) {
       <div style={{ whiteSpace: 'nowrap', animation: 'tickerScroll 30s linear infinite', fontSize: '2em', fontWeight: 800, color: '#3A2E2A', paddingLeft: '100%' }}>
         {text}     *     {text}
       </div>
-      <style>{`@keyframes tickerScroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`}</style>
+      <style>{sceneCss(`@keyframes tickerScroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`)}</style>
     </div>
   );
 }

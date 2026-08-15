@@ -22,6 +22,7 @@
 
 import { useEffect, useState } from 'react';
 import { parseTimeToMinutes, formatTime12 } from '@/lib/format-time';
+import { sceneCss } from '../scene-css';
 
 export interface EventTonightConfig {
   /** Headlining act / band / DJ. Default "TONIGHT'S SHOW". */
@@ -85,7 +86,7 @@ export function EventTonightWidget({
       className="bet-root"
       style={{ '--bet-accent': accent, '--bet-accent2': accent2 } as React.CSSProperties}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Background stack — gig-poster gradient + grain */}
       <div className="bet-bg" />

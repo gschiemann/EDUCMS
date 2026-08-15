@@ -29,6 +29,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { sceneCss } from '../scene-css';
 
 export interface FitnessAdCreative {
   id: string;
@@ -153,7 +154,7 @@ export function FitnessAdBannerWidget({
   if (creatives.length === 0) {
     return (
       <div className="fabw-root fabw-empty" style={{ '--fabw-accent': accent } as React.CSSProperties}>
-        <style>{CSS}</style>
+        <style>{sceneCss(CSS)}</style>
         <div className="fabw-empty-inner">
           <span className="fabw-empty-badge">AD SLOT</span>
           <span className="fabw-empty-text">No creatives scheduled — configure under Ads</span>
@@ -166,7 +167,7 @@ export function FitnessAdBannerWidget({
 
   return (
     <div className="fabw-root" style={{ '--fabw-accent': accent } as React.CSSProperties}>
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Creative layer — crossfade between slides. Each creative is
           rendered in its own absolutely-positioned layer and opacity-

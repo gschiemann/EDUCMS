@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Clock, Calendar, AlertTriangle, CloudRain, Sun, Cloud, Snowflake, Bus } from 'lucide-react';
 import { useLiveWeather } from '../use-live-weather';
+import { sceneCss } from '../scene-css';
 
 const BL = {
   bg: '#000000',
@@ -104,7 +105,7 @@ export function BusLoopTicker({ config, compact }: { config: any; compact?: bool
           </span>
         </div>
       </div>
-      <style>{`@keyframes busTicker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`}</style>
+      <style>{sceneCss(`@keyframes busTicker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`)}</style>
     </div>
   );
 }

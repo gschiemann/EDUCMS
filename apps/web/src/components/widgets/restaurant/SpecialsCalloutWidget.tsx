@@ -12,6 +12,7 @@
 // price/item feeds).
 
 import { usePosMenuItems } from '@/lib/menu/use-pos-menu-items';
+import { sceneCss } from '../scene-css';
 
 /**
  * SpecialsCalloutWidget — "TODAY ONLY" big-type promo card.
@@ -94,7 +95,7 @@ export function SpecialsCalloutWidget({
 
   return (
     <div className="rsc-root" style={{ background: bg, ['--rsc-accent' as string]: accent, ['--rsc-soft' as string]: accentSoft } as React.CSSProperties}>
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       <div className="rsc-grain" aria-hidden />
       <div className="rsc-stamp" aria-hidden>

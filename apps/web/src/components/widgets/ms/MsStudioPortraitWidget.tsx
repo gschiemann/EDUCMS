@@ -35,6 +35,7 @@
 import * as React from 'react';
 import { HsStage } from '../hs/HsStage';
 import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
+import { sceneCss } from '../scene-css';
 
 export interface MsStudioPortraitConfig {
   // HUD — ON AIR cabochon
@@ -274,7 +275,7 @@ export function MsStudioPortraitWidget({
         color: '#f6f1e8',
       }}
     >
-      <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      <style dangerouslySetInnerHTML={{ __html: sceneCss(CSS) }} />
 
       {/* Faint scanline overlay (mockup paints on .stage::before). */}
       <div className="ms-st-p-scanlines" aria-hidden="true" />

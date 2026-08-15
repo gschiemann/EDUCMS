@@ -60,6 +60,7 @@ import type { FastChannel } from './fastChannelCatalogs';
 // 2026-08-02. See `../streaming-hosts` for why an allowlist is what makes
 // `allow-same-origin` on these frames defensible.
 import { STREAMING_EMBED_HOSTS, safeEmbedSrc } from '../streaming-hosts';
+import { sceneCss } from '../scene-css';
 
 // ─── Provider type ────────────────────────────────────────────────────────────
 
@@ -348,7 +349,7 @@ export function FitnessLiveTVWidget({
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="fltv-root" style={{ '--fltv-accent': accent } as React.CSSProperties}>
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       <div className="fltv-frame">
         {/* ─── Playback surface ─── */}

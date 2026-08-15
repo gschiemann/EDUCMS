@@ -14,6 +14,7 @@
 import React from 'react';
 import { resolveStyle, frameStyle } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
+import { sceneCss } from '../scene-css';
 
 function px(z: number, f: number): number { return Math.max(8, Math.round(z * f)); }
 
@@ -291,11 +292,11 @@ export function BgAnimatedFlow({ config, live = true, height = 480 }: WidgetProp
   const d3 = (22 / speed).toFixed(2);
   return (
     <div style={frameStyle(r)}>
-      <style>{`
+      <style>{sceneCss(`
 @keyframes bgflow_flow1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(60px,40px); } }
 @keyframes bgflow_flow2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-50px,60px); } }
 @keyframes bgflow_flow3 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(40px,-40px); } }
-`}</style>
+`)}</style>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: '#0b0c14', overflow: 'hidden' }}>
         <div
           style={{

@@ -12,6 +12,7 @@
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { WidgetStyle } from './_shared/styleSystem';
 import type { WidgetProps } from './_shared/types';
+import { sceneCss } from '../scene-css';
 
 interface HeadlineCfg {
   style?: WidgetStyle;
@@ -36,7 +37,7 @@ export function HeadlineNeonMarqueeWidget({ config }: WidgetProps<HeadlineCfg>) 
   const dur = animDurationSec(r.anim.speed, 1.2);
   return (
     <div style={frameStyle(r)}>
-      {r.anim.on && <style>{`@keyframes hl-bulb-${r.accent.primary.replace(/[^a-z0-9]/gi,'')} { 50% { opacity: 0.4; } }`}</style>}
+      {r.anim.on && <style>{sceneCss(`@keyframes hl-bulb-${r.accent.primary.replace(/[^a-z0-9]/gi,'')} { 50% { opacity: 0.4; } }`)}</style>}
       <div style={{ position: 'absolute', top: 16, right: 16, bottom: 16, left: 16, border: `4px solid ${r.accent.highlight}`, borderRadius: 12, pointerEvents: 'none' }} />
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 16, position: 'relative' }}>
         {[0,1,2,3,4,5,6,7].map(i => (
@@ -96,7 +97,7 @@ export function HeadlineCrayonBannerWidget({ config }: WidgetProps<HeadlineCfg>)
   const colors = [r.accent.primary, r.accent.secondary, r.accent.highlight, '#a78bfa', '#fb923c'];
   return (
     <div style={frameStyle(r)}>
-      {r.anim.on && <style>{`@keyframes crayon-wiggle { 0%,100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }`}</style>}
+      {r.anim.on && <style>{sceneCss(`@keyframes crayon-wiggle { 0%,100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }`)}</style>}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 20 }}>
         {r.show('eyebrow', !!c.eyebrow) && <div style={{ display: 'flex', gap: 6 }}>{[0,1,2].map(i => <span key={i} style={{ background: colors[i], color: '#fff', padding: '6px 16px', borderRadius: 999, fontSize: '0.18em', fontWeight: 800, transform: `rotate(${i % 2 === 0 ? -3 : 3}deg)`, boxShadow: '0 4px 0 rgba(0,0,0,0.12)' }}>{(c.eyebrow || 'NEWS!').split(' ')[i] || ['BIG','BIG','NEWS!'][i]}</span>)}</div>}
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 8, fontSize: r.font.size, fontWeight: r.font.weight, lineHeight: 1.05 }}>

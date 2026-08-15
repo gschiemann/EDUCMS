@@ -34,6 +34,7 @@ import type { WidgetProps } from './_shared/types';
 import type { WidgetStyle } from './_shared/styleSystem';
 import { API_URL } from '@/lib/api-url';
 import { readBoardCache, writeBoardCache } from '@/lib/sports-board-cache';
+import { sceneCss } from '../scene-css';
 
 type Tier = 'hs' | 'college' | 'pro';
 
@@ -516,7 +517,7 @@ function HsScene({
 
   return (
     <div style={stage}>
-      <style>{`@keyframes vsbBlink{0%,100%{opacity:1}50%{opacity:.25}}`}</style>
+      <style>{sceneCss(`@keyframes vsbBlink{0%,100%{opacity:1}50%{opacity:.25}}`)}</style>
 
       {/* HOME side */}
       <div style={sideBlock('home')} />

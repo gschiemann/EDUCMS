@@ -16,6 +16,7 @@
  */
 
 import { usePosMenuItems } from '@/lib/menu/use-pos-menu-items';
+import { sceneCss } from '../scene-css';
 
 export interface BarCocktail {
   /** Cocktail name — the "headline" line in the menu. */
@@ -86,7 +87,7 @@ export function CocktailMenuWidget({
 
   return (
     <div className="bcm-root" style={{ '--bcm-cols': String(columns) } as React.CSSProperties}>
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Slate texture stack */}
       <div className="bcm-slate" />

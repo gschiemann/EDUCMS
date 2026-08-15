@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { sceneCss } from '../scene-css';
 
 export interface FitnessWorkoutTimerConfig {
   mode?: 'tabata' | 'hiit' | 'emom' | 'amrap' | 'custom';
@@ -135,7 +136,7 @@ export function FitnessWorkoutTimerWidget({
     const previewAccent = workColor;
     return (
       <div className="fwtw-root" style={{ '--fwtw-accent': previewAccent, '--fwtw-bg-tint': previewAccent } as React.CSSProperties}>
-        <style>{CSS}</style>
+        <style>{sceneCss(CSS)}</style>
         <div className="fwtw-bg" />
         <div className="fwtw-glow" />
         {c.classTitle && (
@@ -172,7 +173,7 @@ export function FitnessWorkoutTimerWidget({
       style={{ '--fwtw-accent': accent, '--fwtw-bg-tint': accent } as React.CSSProperties}
       onClick={handleClick}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
       <div className="fwtw-bg" />
       <div className="fwtw-glow" />
 

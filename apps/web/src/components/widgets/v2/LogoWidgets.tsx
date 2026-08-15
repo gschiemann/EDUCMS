@@ -6,6 +6,7 @@
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { WidgetStyle } from './_shared/styleSystem';
 import type { WidgetProps } from './_shared/types';
+import { sceneCss } from '../scene-css';
 
 interface LogoCfg { style?: WidgetStyle; logoUrl?: string; emoji?: string; schoolName?: string; tagline?: string; established?: string; mascot?: string; }
 const FALLBACK = { schoolName: 'Roosevelt Academy', tagline: 'Excellence · Honor · Service', established: 'EST. 1948', mascot: '🦅' };
@@ -50,7 +51,7 @@ export function LogoCrayonSunWidget({ config }: WidgetProps<LogoCfg>) {
   const dur = animDurationSec(r.anim.speed, 12);
   return (
     <div style={frameStyle(r)}>
-      {r.anim.on && <style>{`@keyframes logo-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>}
+      {r.anim.on && <style>{sceneCss(`@keyframes logo-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`)}</style>}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 14, position: 'relative' }}>
         <div style={{ position: 'relative', width: 180, height: 180 }}>
           <svg width="180" height="180" style={{ animation: r.anim.on ? `logo-spin ${dur}s linear infinite` : 'none' }}>

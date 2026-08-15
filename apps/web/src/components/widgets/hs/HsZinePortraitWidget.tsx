@@ -34,6 +34,7 @@ import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 import { useAutoFitText } from './useAutoFitText';
 import { useTextStyleOverrides } from './useTextStyleOverrides';
+import { sceneCss } from '../scene-css';
 
 export interface HsZineConfig {
   schoolName?: string;
@@ -213,7 +214,7 @@ export function HsZinePortraitWidget({ config, live }: { config?: Cfg; live?: bo
         rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bungee&family=Caveat:wght@600;700&family=Courier+Prime:wght@400;700&family=Permanent+Marker&family=Special+Elite&display=swap"
       />
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* photocopy streak overlay */}
       <div className="hs-zp-streaks" />

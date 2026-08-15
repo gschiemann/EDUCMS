@@ -17,6 +17,7 @@
  */
 import type { CSSProperties, ReactNode } from 'react';
 import type { SportDefinition } from '@cms/api-types';
+import { sceneCss } from '../../scene-css';
 
 function px(zoneH: number, f: number): number {
   return Math.max(8, Math.round(zoneH * f));
@@ -378,7 +379,7 @@ export function SituationalRow({ def, stats, h, accent, ink, dim, hairline }: Ro
   // instead. The class is keyed by `h` so two strips at different
   // sizes never collide on the generated rule. (CLAUDE.md rule #10.)
   const rowClass = `venueSitRow-h${h}`;
-  const gapCss = <style>{`.${rowClass} > * + * { margin-left: ${gap}px; }`}</style>;
+  const gapCss = <style>{sceneCss(`.${rowClass} > * + * { margin-left: ${gap}px; }`)}</style>;
 
   let content: ReactNode;
   let wrap = false;

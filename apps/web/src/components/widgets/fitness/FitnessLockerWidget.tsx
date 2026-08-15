@@ -34,6 +34,7 @@
 
 import { HsStage } from '../hs/HsStage';
 import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
+import { sceneCss } from '../scene-css';
 
 export interface FitnessLockerConfig {
   // Gym logo — optional image for the banner area
@@ -145,7 +146,7 @@ export function FitnessLockerWidget({ config }: { config?: FitnessLockerConfig }
         fontFamily: "'Outfit', sans-serif",
       }}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       <div className="fl-paper">
 

@@ -37,6 +37,7 @@ import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 import { useAutoFitText } from './useAutoFitText';
 import { useTextStyleOverrides } from './useTextStyleOverrides';
+import { sceneCss } from '../scene-css';
 
 export interface HsTerminalConfig {
   schoolHost?: string;
@@ -215,7 +216,7 @@ export function HsTerminalPortraitWidget({ config, live }: { config?: Cfg; live?
         rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap"
       />
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* CRT overlays */}
       <div className="hs-tp-scan" />

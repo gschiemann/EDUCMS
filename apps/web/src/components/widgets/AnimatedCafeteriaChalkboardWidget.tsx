@@ -5,6 +5,7 @@
 // Same 5-day weekMenu shape as AnimatedCafeteriaElementaryWidget.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 type MenuItem = { emoji?: string; name?: string; meta?: string; price?: string };
 type WeekMenu = {
@@ -170,7 +171,7 @@ export function AnimatedCafeteriaChalkboardWidget({ config, live }: { config: Cf
         background: '#0a0e27',
       }}
     >
-      <style>{CSS_CHALK}</style>
+      <style>{sceneCss(CSS_CHALK)}</style>
 
       <div
         className="ch-stage"

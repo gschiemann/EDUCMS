@@ -5,6 +5,7 @@
 // Ticker pinned position:absolute bottom:0 inside stage — preserve.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 type MenuCard = { title?: string; desc?: string; badges?: { label?: string; kind?: 'v' | 'gf' | 'dy' | 'pk' }[]; accent?: string; rot?: string; tape?: string };
 
@@ -114,7 +115,7 @@ export function ScrapbookCafeteriaWidget({ config, live }: { config: Cfg; live?:
         background: '#0f172a',
       }}
     >
-      <style>{CSS_SBC}</style>
+      <style>{sceneCss(CSS_SBC)}</style>
 
       <div
         className="sbc-stage"

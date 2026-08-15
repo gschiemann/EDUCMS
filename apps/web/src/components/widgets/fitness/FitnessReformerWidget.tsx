@@ -27,6 +27,7 @@
 
 import { useEffect, useState } from 'react';
 import { HsStage } from '../hs/HsStage';
+import { sceneCss } from '../scene-css';
 
 export interface FitnessReformerConfig {
   // Gym logo — optional image that replaces the text logo in the header
@@ -218,7 +219,7 @@ export function FitnessReformerWidget({ config }: { config?: FitnessReformerConf
       stageClassName="fz-stage"
       stageStyle={{ background: '#f5efe3', color: '#2a2620', fontFamily: "'Inter', system-ui, sans-serif" }}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Header band */}
       <div className="fz-head">

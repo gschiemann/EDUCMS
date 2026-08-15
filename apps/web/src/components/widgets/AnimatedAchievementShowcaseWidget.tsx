@@ -4,6 +4,7 @@
 // Citation layout preserved verbatim (including -webkit-line-clamp: 3 on .reason) per user's explicit instruction.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 type HonorEntry = { rank?: string | number; name?: string; emoji?: string };
 type Stat = { emoji?: string; value?: string | number; label?: string };
@@ -144,7 +145,7 @@ export function AnimatedAchievementShowcaseWidget({ config, live }: { config?: C
         background: '#0f172a',
       }}
     >
-      <style>{CSS_AS}</style>
+      <style>{sceneCss(CSS_AS)}</style>
       <div
         className="as-stage"
         style={{

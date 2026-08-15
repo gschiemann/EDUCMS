@@ -62,3 +62,15 @@ jobs:
       # landmine class was manual-run-only. Wire it in as a hard gate.
       - name: Check inset-shorthand CSSOM-serialization landmine (player/widget styles)
         run: node apps/web/tools/check-inset-serialization.cjs
+
+      # 2026-08-09: the cascade-layers flattener (our Chromium-95 hotfix) boosts
+      # Tailwind preflight to `:not(#\#):not(#\#){padding:0;margin:0}` = (2,0,0),
+      # which outranks the UNLAYERED CSS every scene widget injects in its own
+      # <style> tag — zeroing every padding/margin and resetting heading sizes
+      # across the board. That is how the flagship Animated Rainbow rendered its
+      # 110px title at 16px with the teacher photo box collapsed to 2px.
+      # `sceneCss()` fixes it, but only for widgets that actually call it, and a
+      # widget that injects raw CSS still type-checks, still renders, and only
+      # looks subtly wrong on a screen in a school. Hard-gate it.
+      - name: Check every widget <style> routes through sceneCss()
+        run: node apps/web/tools/check-scene-css.cjs

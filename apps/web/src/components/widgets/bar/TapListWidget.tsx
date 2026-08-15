@@ -17,6 +17,7 @@
  */
 
 import { usePosMenuItems } from '@/lib/menu/use-pos-menu-items';
+import { sceneCss } from '../scene-css';
 
 export interface BarTap {
   /** Beer name — main billing on the tap. e.g. "Pliny the Elder" */
@@ -107,7 +108,7 @@ export function TapListWidget({
       className="btl-root"
       style={{ '--btl-accent': accent, '--btl-cols': String(columns) } as React.CSSProperties}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Background stack */}
       <div className="btl-bg" />

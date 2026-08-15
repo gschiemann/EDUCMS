@@ -5,6 +5,7 @@
 // Ticker is pinned position:absolute bottom:0 inside the stage — preserve.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 type Row = { num?: string | number; time?: string; name?: string; room?: string; highlight?: boolean };
 
@@ -120,7 +121,7 @@ export function ScrapbookHallwayWidget({ config, live }: { config: Cfg; live?: b
         background: '#0f172a',
       }}
     >
-      <style>{CSS_SBH}</style>
+      <style>{sceneCss(CSS_SBH)}</style>
 
       <div
         className="sbh-stage"

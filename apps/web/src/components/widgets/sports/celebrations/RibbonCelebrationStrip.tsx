@@ -38,6 +38,7 @@
  */
 
 import { useId } from 'react';
+import { sceneCss } from '../../scene-css';
 
 export interface RibbonCelebrationStripConfig {
   /** Hero title — "GOAL!", "SAVE!", "EXCLUSION", "POWER PLAY" etc. */
@@ -157,7 +158,7 @@ export function RibbonCelebrationStrip({
     >
       {/* Inline keyframes — scoped via the per-instance uid so multiple
           strips on the same ribbon (one per segment) never collide. */}
-      <style>{`
+      <style>{sceneCss(`
         @keyframes ${animEnter} {
           0%   { opacity: 0; transform: translateY(${Math.round(height * 0.1)}px); }
           100% { opacity: 1; transform: translateY(0); }
@@ -170,7 +171,7 @@ export function RibbonCelebrationStrip({
           0%   { background-position: 0 0; }
           100% { background-position: ${Math.round(height * 0.45)}px 0; }
         }
-      `}</style>
+      `)}</style>
 
       {/* Subtle vignette so center text reads cleanly against the
           striped background. */}

@@ -34,6 +34,7 @@ import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem
 import type { WidgetStyle } from './_shared/styleSystem';
 import type { WidgetProps } from './_shared/types';
 import { useBranding, type BrandSnapshot } from '@/lib/branding-context';
+import { sceneCss } from '../scene-css';
 
 interface TickerCfg {
   style?: WidgetStyle;
@@ -131,7 +132,7 @@ export function TickerNeonLedWidget({ config }: WidgetProps<TickerCfg>) {
   const dur = animDurationSec(r.anim.speed, 30); const text = [...msgs, ...msgs].map(m => `★ ${m}`).join('   ');
   return (
     <div style={frameStyle(r)}>
-      <style>{ANIM_CSS}</style>
+      <style>{sceneCss(ANIM_CSS)}</style>
       <div style={{ display: 'flex', alignItems: 'center', height: '100%', gap: 16 }}>
         {c.stamp && <div style={{ background: r.accent.highlight, color: '#000', padding: '8px 20px', fontWeight: 800, fontSize: '0.5em', letterSpacing: '0.3em', height: '100%', display: 'flex', alignItems: 'center', boxShadow: `0 0 20px ${r.accent.highlight}` }}>● {c.stamp}</div>}
         <div style={{ flex: 1, overflow: 'hidden' }}>
@@ -149,7 +150,7 @@ export function TickerPaperPressWidget({ config }: WidgetProps<TickerCfg>) {
   const dur = animDurationSec(r.anim.speed, 35); const text = [...msgs, ...msgs].map(m => m).join('  ❖  ');
   return (
     <div style={{ ...frameStyle(r), borderTop: '4px double #0a0a0a', borderBottom: '4px double #0a0a0a' }}>
-      <style>{ANIM_CSS}</style>
+      <style>{sceneCss(ANIM_CSS)}</style>
       <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
         <div style={{ background: r.accent.primary, color: '#fff', padding: '14px 24px', fontWeight: 800, fontSize: '0.5em', letterSpacing: '0.3em', height: '100%', display: 'flex', alignItems: 'center' }}>{c.stamp || 'EXTRA'}</div>
         <div style={{ flex: 1, overflow: 'hidden' }}>
@@ -168,7 +169,7 @@ export function TickerCrayonTrainWidget({ config }: WidgetProps<TickerCfg>) {
   const stream = [...msgs, ...msgs];
   return (
     <div style={frameStyle(r)}>
-      <style>{ANIM_CSS}</style>
+      <style>{sceneCss(ANIM_CSS)}</style>
       <div style={{ background: `linear-gradient(90deg, ${r.accent.primary}, ${r.accent.secondary})`, borderRadius: 999, height: '100%', display: 'flex', alignItems: 'center', overflow: 'hidden', boxShadow: '0 4px 0 rgba(0,0,0,0.1)' }}>
         <div style={{ fontSize: '1.5em', padding: '0 20px' }}>🚂</div>
         <div style={{ flex: 1, overflow: 'hidden' }}>
@@ -188,7 +189,7 @@ export function TickerGlassFlowWidget({ config }: WidgetProps<TickerCfg>) {
   const dur = animDurationSec(r.anim.speed, 40); const text = [...msgs, ...msgs].join('     ◆     ');
   return (
     <div style={{ ...frameStyle(r), backdropFilter: 'blur(20px)' }}>
-      <style>{ANIM_CSS}</style>
+      <style>{sceneCss(ANIM_CSS)}</style>
       <div style={{ display: 'flex', alignItems: 'center', height: '100%', gap: 16 }}>
         {c.stamp && <div style={{ background: `linear-gradient(135deg, ${r.accent.primary}, #a855f7)`, color: '#fff', padding: '8px 20px', borderRadius: 999, fontSize: '0.7em', fontWeight: 600, letterSpacing: '0.2em', marginLeft: 12 }}>{c.stamp}</div>}
         <div style={{ flex: 1, overflow: 'hidden' }}>
@@ -206,7 +207,7 @@ export function TickerOpsFeedWidget({ config }: WidgetProps<TickerCfg>) {
   const dur = animDurationSec(r.anim.speed, 50); const text = [...msgs, ...msgs].map(m => `[OK] ${m}`).join('  ::  ');
   return (
     <div style={frameStyle(r)}>
-      <style>{ANIM_CSS}</style>
+      <style>{sceneCss(ANIM_CSS)}</style>
       <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
         <div style={{ background: r.accent.secondary, color: '#000', padding: '6px 16px', fontWeight: 700, fontSize: '0.85em', letterSpacing: '0.2em', height: '100%', display: 'flex', alignItems: 'center' }}>● {c.stamp || 'FEED'}</div>
         <div style={{ flex: 1, overflow: 'hidden', padding: '0 12px' }}>

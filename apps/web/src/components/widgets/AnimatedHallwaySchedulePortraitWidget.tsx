@@ -29,6 +29,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 type PeriodRow = { num?: string | number; time?: string; name?: string; room?: string };
 
@@ -179,7 +180,7 @@ export function AnimatedHallwaySchedulePortraitWidget({ config, live }: { config
         background: '#fef8e7',
       }}
     >
-      <style>{CSS_HSP}</style>
+      <style>{sceneCss(CSS_HSP)}</style>
       <div
         className="hsp-stage"
         style={{

@@ -16,6 +16,7 @@ import React from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
 import { useElementSize } from './_shared/useElementSize';
+import { sceneCss } from '../scene-css';
 
 function px(z: number, f: number): number { return Math.max(8, Math.round(z * f)); }
 
@@ -60,11 +61,11 @@ export function CelHockeyGoalWidget({ config, live = true, height = 480 }: Widge
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`
+      {animOn && <style>{sceneCss(`
         @keyframes celHkGoalPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
         @keyframes celHkGoalShake { 0%, 100% { transform: translate(0,0); } 10%, 30%, 50%, 70%, 90% { transform: translate(-8px, 0); } 20%, 40%, 60%, 80% { transform: translate(8px, 0); } }
         @keyframes celHkGoalSpark { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
-      `}</style>}
+      `)}</style>}
 
       <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundImage: `repeating-linear-gradient(135deg, ${r.bg.color} 0 100px, #000 100px 200px)` }} />
       <Sparkles on={animOn} count={120} color="#fff" kf="celHkGoalSpark" dur={sparkDur} />
@@ -121,10 +122,10 @@ export function CelHockeyHatTrickWidget({ config, live = true, height = 480 }: W
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`
+      {animOn && <style>{sceneCss(`
         @keyframes celHkHtBurst { 0% { transform: scale(0); opacity: 0; } 30% { transform: scale(1.15); opacity: 1; } 60% { transform: scale(1); } 100% { transform: scale(1); opacity: 1; } }
         @keyframes celHkHtSpark { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
-      `}</style>}
+      `)}</style>}
 
       <Sparkles on={animOn} count={140} color={r.accent.highlight} kf="celHkHtSpark" dur={sparkDur} />
 
@@ -186,7 +187,7 @@ export function CelHockeyPowerPlayWidget({ config, live = true, height = 480 }: 
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`@keyframes celHkPpPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }`}</style>}
+      {animOn && <style>{sceneCss(`@keyframes celHkPpPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }`)}</style>}
       <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundImage: `repeating-linear-gradient(135deg, #000 0 100px, ${r.bg.color} 100px 200px)` }} />
 
       {wide ? (
@@ -244,7 +245,7 @@ export function CelHockeyShortyWidget({ config, live = true, height = 480 }: Wid
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`@keyframes celHkShortySweep { 0% { transform: translateX(-100%); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateX(700%); opacity: 0; } }`}</style>}
+      {animOn && <style>{sceneCss(`@keyframes celHkShortySweep { 0% { transform: translateX(-100%); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateX(700%); opacity: 0; } }`)}</style>}
 
       <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, pointerEvents: 'none' }}>
         {Array.from({length:8}).map((_,i) => (
@@ -305,7 +306,7 @@ export function CelHockeyBigSaveWidget({ config, live = true, height = 480 }: Wi
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`@keyframes celHkSaveBurst { 0% { transform: scale(0); opacity: 0; } 30% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }`}</style>}
+      {animOn && <style>{sceneCss(`@keyframes celHkSaveBurst { 0% { transform: scale(0); opacity: 0; } 30% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }`)}</style>}
 
       {wide ? (
         <>
@@ -364,7 +365,7 @@ export function CelHockeyEmptyNetWidget({ config, live = true, height = 480 }: W
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`@keyframes celHkEnSpark { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }`}</style>}
+      {animOn && <style>{sceneCss(`@keyframes celHkEnSpark { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }`)}</style>}
       <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundImage: `repeating-linear-gradient(135deg, ${r.bg.color} 0 100px, #000 100px 200px)` }} />
       <Sparkles on={animOn} count={100} color={r.accent.highlight} kf="celHkEnSpark" dur={sparkDur} />
 

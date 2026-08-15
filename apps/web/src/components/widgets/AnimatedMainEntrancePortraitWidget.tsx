@@ -33,6 +33,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 interface Cfg {
   eyebrow?: string;
@@ -113,7 +114,7 @@ export function AnimatedMainEntrancePortraitWidget({ config, live }: { config?: 
         background: '#dbeafe',
       }}
     >
-      <style>{CSS_MEP}</style>
+      <style>{sceneCss(CSS_MEP)}</style>
 
       <div
         className="mep-stage"

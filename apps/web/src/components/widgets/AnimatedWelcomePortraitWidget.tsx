@@ -30,6 +30,8 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
+
 
 interface Cfg {
   logoUrl?: string;
@@ -291,7 +293,10 @@ export function AnimatedWelcomePortraitWidget({
         background: '#BFE8FF',
       }}
     >
-      <style>{CSS}</style>
+      {/* Specificity-boosted — see scene-css.ts. Flattened Tailwind
+          preflight otherwise outranks this scene's own class selectors,
+          zeroing every padding/margin and resetting heading sizes. */}
+      <style>{sceneCss(CSS)}</style>
       <div
         className="awp-stage"
         style={{

@@ -21,6 +21,7 @@
 
 import { HsStage } from '../hs/HsStage';
 import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
+import { sceneCss } from '../scene-css';
 
 export interface FitnessVaultConfig {
   // Gym logo — optional image that replaces the text logo in the header
@@ -148,7 +149,7 @@ export function FitnessVaultWidget({ config }: { config?: FitnessVaultConfig }) 
   // dangerouslySetInnerHTML if the operator includes inline HTML.
   return (
     <HsStage stageClassName="fv-stage" stageStyle={{ background: '#13100c', color: '#f4f0e6', fontFamily: "'Outfit', sans-serif" }}>
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Hazard stripes top */}
       <div className="fv-haz" />

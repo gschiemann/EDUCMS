@@ -27,6 +27,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 // (hallway tower screens). Pipe period start/end through the shared
 // 12-hour formatter so 24-hour input never escapes onto the screen.
 import { formatTime12 } from '@/lib/format-time';
+import { sceneCss } from './scene-css';
 
 type Period = {
   num?: string | number;
@@ -223,7 +224,7 @@ export function AnimatedBellSchedulePortraitWidget({ config, live }: { config?: 
         background: '#0f172a',
       }}
     >
-      <style>{CSS_BSP}</style>
+      <style>{sceneCss(CSS_BSP)}</style>
       <div
         className="bsp-stage"
         style={{

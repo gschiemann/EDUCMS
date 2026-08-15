@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from 'react';
 import { useLiveWeather } from '../use-live-weather';
+import { sceneCss } from '../scene-css';
 
 // ─── Palette ────────────────────────────────────────────────────────────
 export const FC = {
@@ -97,7 +98,7 @@ export const FINAL_CHANCE_BG = buildFinalChanceBg();
 // ─── Animation keyframes (one global injection) ─────────────────────────
 function FCAnimations() {
   return (
-    <style>{`
+    <style>{sceneCss(`
       @keyframes fc-bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
       @keyframes fc-bounce-big { 0%,100%{transform:translateY(0) rotate(-3deg)} 50%{transform:translateY(-14px) rotate(3deg)} }
       @keyframes fc-float { 0%,100%{transform:translateY(0) rotate(0)} 50%{transform:translateY(-12px) rotate(8deg)} }
@@ -108,7 +109,7 @@ function FCAnimations() {
       @keyframes fc-confetti-fall { 0%{transform:translateY(-10vh) rotate(0)} 100%{transform:translateY(110vh) rotate(720deg)} }
       @keyframes fc-shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
       @keyframes fc-pop { 0%{transform:scale(0.85)} 60%{transform:scale(1.08)} 100%{transform:scale(1)} }
-    `}</style>
+    `)}</style>
   );
 }
 
@@ -472,7 +473,7 @@ export function FinalChanceTicker({ config }: { config: any }) {
       }}>
         {text}   ★   {text}
       </div>
-      <style>{`@keyframes fc-ticker { 0% { transform: translateX(0) } 100% { transform: translateX(-50%) } }`}</style>
+      <style>{sceneCss(`@keyframes fc-ticker { 0% { transform: translateX(0) } 100% { transform: translateX(-50%) } }`)}</style>
     </div>
   );
 }

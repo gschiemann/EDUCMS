@@ -18,6 +18,7 @@
 // with the landscape's `bh-*`.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 type Row = { num?: string | number; time?: string; name?: string; room?: string; highlight?: boolean };
 
@@ -139,7 +140,7 @@ export function BulletinHallwayPortraitWidget({ config, live }: { config?: Cfg; 
         background: '#1c0e02',
       }}
     >
-      <style>{CSS_BHP}</style>
+      <style>{sceneCss(CSS_BHP)}</style>
 
       <div
         className="bhp-stage"

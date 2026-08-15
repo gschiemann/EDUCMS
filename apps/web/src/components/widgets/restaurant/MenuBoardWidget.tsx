@@ -15,6 +15,7 @@
 // dashboard preview. It also re-renders on a poll instead of the old
 // one-shot useEffect, so a price change / 86 reaches the wall live.
 import { usePosMenuItems } from '@/lib/menu/use-pos-menu-items';
+import { sceneCss } from '../scene-css';
 
 /**
  * MenuBoardWidget — multi-column QSR / counter-service menu.
@@ -141,7 +142,7 @@ export function MenuBoardWidget({
 
   return (
     <div className="rmb-root" style={{ background: bg, color: ink, ['--rmb-accent' as string]: accent } as React.CSSProperties}>
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       <div className="rmb-header">
         <div className="rmb-rule" aria-hidden />

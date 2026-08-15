@@ -32,6 +32,7 @@
  */
 
 import { HsStage } from '../hs/HsStage';
+import { sceneCss } from '../scene-css';
 
 export interface FitnessSplashConfig {
   // Gym logo image — replaces the text logo circle in the header when set
@@ -146,7 +147,7 @@ export function FitnessSplashWidget({ config }: { config?: FitnessSplashConfig }
         fontFamily: "'Outfit', sans-serif",
       }}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Header */}
       <div className="fp-head">

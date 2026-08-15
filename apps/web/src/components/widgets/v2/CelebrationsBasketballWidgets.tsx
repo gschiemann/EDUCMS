@@ -13,6 +13,7 @@ import React from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
 import { useElementSize } from './_shared/useElementSize';
+import { sceneCss } from '../scene-css';
 
 function px(z: number, f: number): number { return Math.max(8, Math.round(z * f)); }
 
@@ -61,11 +62,11 @@ export function CelBasketballThreeWidget({ config, live = true, height = 480 }: 
   const wide = width > 0 ? width / Math.max(boxH, 1) >= WIDE_RATIO : true;
 
   const keyframes = animOn && (
-    <style>{`
+    <style>{sceneCss(`
       @keyframes celBkThreePulse  { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
       @keyframes celBkThreeSwoosh { 0% { stroke-dashoffset: 2200; } 100% { stroke-dashoffset: 0; } }
       @keyframes celBkThreeSpin   { from { transform: rotate(0); } to { transform: rotate(360deg); } }
-    `}</style>
+    `)}</style>
   );
 
   const ball = (size: number, marginRight: number | string) => (
@@ -142,11 +143,11 @@ export function CelBasketballDunkWidget({ config, live = true, height = 480 }: W
   const wide = width > 0 ? width / Math.max(boxH, 1) >= WIDE_RATIO : true;
 
   const keyframes = animOn && (
-    <style>{`
+    <style>{sceneCss(`
       @keyframes celBkDunkBurst { 0% { transform: scale(0); opacity: 0; } 30% { transform: scale(1.15); opacity: 1; } 60% { transform: scale(1); } 100% { transform: scale(1); opacity: 1; } }
       @keyframes celBkDunkRipple { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.3); } }
       @keyframes celBkDunkSpark { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
-    `}</style>
+    `)}</style>
   );
 
   const rim = (svgW: string, svgH: string) => (
@@ -233,10 +234,10 @@ export function CelBasketballBuzzerWidget({ config, live = true, height = 480 }:
   const wide = width > 0 ? width / Math.max(boxH, 1) >= WIDE_RATIO : true;
 
   const keyframes = animOn && (
-    <style>{`
+    <style>{sceneCss(`
       @keyframes celBkBuzzerThump { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
       @keyframes celBkBuzzerSpark { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
-    `}</style>
+    `)}</style>
   );
 
   if (!wide) {
@@ -303,10 +304,10 @@ export function CelBasketballBlockWidget({ config, live = true, height = 480 }: 
   const wide = width > 0 ? width / Math.max(boxH, 1) >= WIDE_RATIO : true;
 
   const keyframes = animOn && (
-    <style>{`
+    <style>{sceneCss(`
       @keyframes celBkBlockBurst { 0% { transform: scale(0); opacity: 0; } 30% { transform: scale(1.15); opacity: 1; } 60% { transform: scale(1); } 100% { transform: scale(1); opacity: 1; } }
       @keyframes celBkBlockPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
-    `}</style>
+    `)}</style>
   );
 
   const rejection = (svgW: number, svgH: number) => (
@@ -380,7 +381,7 @@ export function CelBasketballStealWidget({ config, live = true, height = 480 }: 
   const wide = width > 0 ? width / Math.max(boxH, 1) >= WIDE_RATIO : true;
 
   const keyframes = animOn && (
-    <style>{`@keyframes celBkStealSweep { 0% { transform: translateX(-100%); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateX(700%); opacity: 0; } }`}</style>
+    <style>{sceneCss(`@keyframes celBkStealSweep { 0% { transform: translateX(-100%); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateX(700%); opacity: 0; } }`)}</style>
   );
 
   const arrows = (
@@ -449,11 +450,11 @@ export function CelBasketballAlleyOopWidget({ config, live = true, height = 480 
   const wide = width > 0 ? width / Math.max(boxH, 1) >= WIDE_RATIO : true;
 
   const keyframes = animOn && (
-    <style>{`
+    <style>{sceneCss(`
       @keyframes celBkOopPulse  { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
       @keyframes celBkOopSwoosh { 0% { stroke-dashoffset: 2200; } 100% { stroke-dashoffset: 0; } }
       @keyframes celBkOopSpark  { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
-    `}</style>
+    `)}</style>
   );
 
   if (!wide) {
@@ -523,10 +524,10 @@ export function CelBasketballAndOneWidget({ config, live = true, height = 480 }:
   const wide = width > 0 ? width / Math.max(boxH, 1) >= WIDE_RATIO : true;
 
   const keyframes = animOn && (
-    <style>{`
+    <style>{sceneCss(`
       @keyframes celBkA1Thump { 0%, 100% { transform: scaleX(1); } 50% { transform: scaleX(1.04); } }
       @keyframes celBkA1Pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
-    `}</style>
+    `)}</style>
   );
 
   if (!wide) {
@@ -594,11 +595,11 @@ export function CelBasketballTripleDoubleWidget({ config, live = true, height = 
   const wide = width > 0 ? width / Math.max(boxH, 1) >= WIDE_RATIO : true;
 
   const keyframes = animOn && (
-    <style>{`
+    <style>{sceneCss(`
       @keyframes celBkTdSlide { 0% { transform: translateX(-30%); opacity: 0; } 100% { transform: translateX(0); opacity: 1; } }
       @keyframes celBkTdPunch { 0% { transform: scale(2.4); opacity: 0; } 30% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.06); } }
       @keyframes celBkTdSpark { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
-    `}</style>
+    `)}</style>
   );
 
   if (!wide) {

@@ -10,6 +10,7 @@ import React from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
 import { useElementSize } from './_shared/useElementSize';
+import { sceneCss } from '../scene-css';
 
 function px(z: number, f: number): number { return Math.max(8, Math.round(z * f)); }
 
@@ -151,7 +152,7 @@ function Vignette() {
 /** Shared keyframe block used across the ribbon celebrations. */
 function RibbonKeyframes() {
   return (
-    <style>{`
+    <style>{sceneCss(`
       @keyframes celOtherEchoFly { from { transform: translateX(0); } to { transform: translateX(-200px); } }
       @keyframes celOtherGrid { from { background-position: 0 0; } to { background-position: 200px 0; } }
       @keyframes celOtherSwoosh { 0% { stroke-dashoffset: 600; } 100% { stroke-dashoffset: 0; } }
@@ -165,7 +166,7 @@ function RibbonKeyframes() {
       @keyframes celOtherSpark { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
       @keyframes celOtherStripeFly { from { transform: translateX(0); } to { transform: translateX(-200px); } }
       @keyframes celOtherArrowSweep { 0% { transform: translateX(-300px); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateX(7400px); opacity: 0; } }
-    `}</style>
+    `)}</style>
   );
 }
 
@@ -1968,14 +1969,14 @@ export function SwSplitWidget({ config, live = true, height = 480 }: WidgetProps
 /** Shared keyframe block injected once per render. */
 function StatusKeyframes() {
   return (
-    <style>{`
+    <style>{sceneCss(`
       @keyframes celStatusPulse  { 0%,100%{transform:scale(1)} 50%{transform:scale(1.06)} }
       @keyframes celStatusFadeUp { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
       @keyframes celStatusShine  { 0%{transform:translateX(-120%) skewX(-18deg)} 100%{transform:translateX(220%) skewX(-18deg)} }
       @keyframes celStatusFlash  { 0%,100%{opacity:1} 50%{opacity:0.25} }
       @keyframes celStatusRing   { from{transform:scale(0.6);opacity:0.9} to{transform:scale(2.4);opacity:0} }
       @keyframes celConfetti     { from{transform:translateY(-120%)} to{transform:translateY(110%)} }
-    `}</style>
+    `)}</style>
   );
 }
 
@@ -2374,7 +2375,7 @@ export function CelPregameIntroWidget({
 
   return (
     <div ref={ref} style={{ ...frameStyle(r), background: '#05070d', overflow: 'hidden' }}>
-      {animOn && <style>{kfBlock}</style>}
+      {animOn && <style>{sceneCss(kfBlock)}</style>}
 
       {/* Diagonal stripe background — low-opacity team color accents */}
       <div

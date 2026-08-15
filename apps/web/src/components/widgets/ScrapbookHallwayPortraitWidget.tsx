@@ -23,6 +23,7 @@
 // paper-grain repeating-radial-gradient texture, washi-tape strips, polaroids with offset shadows.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 type Row = { num?: string | number; time?: string; name?: string; room?: string; highlight?: boolean };
 
@@ -152,7 +153,7 @@ export function ScrapbookHallwayPortraitWidget({ config, live }: { config?: Cfg;
         rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Patrick+Hand&family=Permanent+Marker&family=Special+Elite&family=Shadows+Into+Light&family=Kalam:wght@400;700&display=swap"
       />
-      <style>{CSS_SBHP}</style>
+      <style>{sceneCss(CSS_SBHP)}</style>
 
       <div
         className="sbhp-stage"

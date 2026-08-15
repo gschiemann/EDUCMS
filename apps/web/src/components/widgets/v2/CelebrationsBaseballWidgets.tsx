@@ -20,6 +20,7 @@ import type { CSSProperties } from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
 import { useElementSize } from './_shared/useElementSize';
+import { sceneCss } from '../scene-css';
 
 /* ──────────── shared helpers (local; no globals) ──────────── */
 
@@ -80,10 +81,10 @@ export function CelBaseballStrikeoutWidget({ config, live = true, height = 480 }
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`
+      {animOn && <style>{sceneCss(`
         @keyframes celBbSoSpin  { from { transform: rotate(0); } to { transform: rotate(360deg); } }
         @keyframes celBbSoBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-      `}</style>}
+      `)}</style>}
 
       {wide ? (
         <>
@@ -186,13 +187,13 @@ export function CelBaseballHomeRunWidget({ config, live = true, height = 480 }: 
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`
+      {animOn && <style>{sceneCss(`
         @keyframes celBbHrSwoosh { 0% { stroke-dashoffset: 2200; } 100% { stroke-dashoffset: 0; } }
         @keyframes celBbHrSlideL { 0% { transform: translateX(-30%); opacity: 0; } 25% { opacity: 1; } 100% { transform: translateX(0); opacity: 1; } }
         @keyframes celBbHrSlideR { 0% { transform: translateX( 30%); opacity: 0; } 25% { opacity: 1; } 100% { transform: translateX(0); opacity: 1; } }
         @keyframes celBbHrSpark  { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
         @keyframes celBbHrPunch  { 0% { transform: scale(2.2); opacity: 0; } 35% { transform: scale(1); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
-      `}</style>}
+      `)}</style>}
 
       <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
         backgroundImage: 'repeating-linear-gradient(135deg, rgba(255,255,255,0.08) 0 8px, rgba(255,255,255,0) 8px 16px)' }} />
@@ -288,11 +289,11 @@ export function CelBaseballGrandSlamWidget({ config, live = true, height = 480 }
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`
+      {animOn && <style>{sceneCss(`
         @keyframes celBbGsBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
         @keyframes celBbGsPunch { 0% { transform: scale(2.4); opacity: 0; } 30% { transform: scale(1); opacity: 1; } 70% { transform: scale(1); } 100% { transform: scale(1.06); } }
         @keyframes celBbGsSpark { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
-      `}</style>}
+      `)}</style>}
 
       <Sparkles on={animOn} count={wide ? 120 : 80} color={r.accent.highlight} kf="celBbGsSpark" dur={sparkDur} />
 
@@ -357,12 +358,12 @@ export function CelBaseballNoHitterWidget({ config, live = true, height = 480 }:
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`
+      {animOn && <style>{sceneCss(`
         @keyframes celBbNhGlow  { 0%, 100% { filter: drop-shadow(0 0 30px ${r.accent.highlight}); } 50% { filter: drop-shadow(0 0 80px ${r.accent.highlight}); } }
         @keyframes celBbNhPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
         @keyframes celBbNhSlide { 0% { transform: translateX(-30%); opacity: 0; } 25% { opacity: 1; } 100% { transform: translateX(0); opacity: 1; } }
         @keyframes celBbNhRise  { 0% { transform: translateY(18%); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
-      `}</style>}
+      `)}</style>}
 
       <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: `radial-gradient(ellipse at center, ${r.accent.primary}55 0%, transparent 60%)`, animation: animOn ? `celBbNhPulse ${pulse} ease-in-out infinite` : undefined }} />
 
@@ -426,10 +427,10 @@ export function CelBaseballStolenBaseWidget({ config, live = true, height = 480 
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`
+      {animOn && <style>{sceneCss(`
         @keyframes celBbSbSweep { 0% { transform: translateX(-30%); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateX(220%); opacity: 0; } }
         @keyframes celBbSbRise  { 0% { transform: translateY(16%); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
-      `}</style>}
+      `)}</style>}
 
       <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, pointerEvents: 'none', opacity: wide ? 1 : 0.4 }}>
         {Array.from({ length: 10 }).map((_, i) => (
@@ -496,11 +497,11 @@ export function CelBaseballDoublePlayWidget({ config, live = true, height = 480 
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`
+      {animOn && <style>{sceneCss(`
         @keyframes celBbDpSwoosh { 0% { stroke-dashoffset: 2200; } 100% { stroke-dashoffset: 0; } }
         @keyframes celBbDpSlide  { 0% { transform: translateX(20%); opacity: 0; } 100% { transform: translateX(0); opacity: 1; } }
         @keyframes celBbDpRise   { 0% { transform: translateY(20%); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
-      `}</style>}
+      `)}</style>}
 
       {wide ? (
         <>
@@ -568,12 +569,12 @@ export function CelBaseballTriplePlayWidget({ config, live = true, height = 480 
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`
+      {animOn && <style>{sceneCss(`
         @keyframes celBbTpBurst { 0% { transform: scale(0); opacity: 0; } 30% { transform: scale(1.15); opacity: 1; } 60% { transform: scale(1); } 100% { transform: scale(1); opacity: 1; } }
         @keyframes celBbTpBurstR { 0% { transform: rotate(45deg) scale(0); opacity: 0; } 30% { transform: rotate(45deg) scale(1.15); opacity: 1; } 60% { transform: rotate(45deg) scale(1); } 100% { transform: rotate(45deg) scale(1); opacity: 1; } }
         @keyframes celBbTpPunch { 0% { transform: scale(2.4); opacity: 0; } 30% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.06); } }
         @keyframes celBbTpSpark { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
-      `}</style>}
+      `)}</style>}
 
       <Sparkles on={animOn} count={wide ? 150 : 90} color={r.accent.highlight} kf="celBbTpSpark" dur={sparkDur} />
 
@@ -641,13 +642,13 @@ export function CelBaseballWalkOffWidget({ config, live = true, height = 480 }: 
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`
+      {animOn && <style>{sceneCss(`
         @keyframes celBbWoFly    { from { transform: translateX(0); } to { transform: translateX(-200px); } }
         @keyframes celBbWoSpark  { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
         @keyframes celBbWoSlideL { 0% { transform: translateX(-30%); opacity: 0; } 100% { transform: translateX(0); opacity: 1; } }
         @keyframes celBbWoSlideR { 0% { transform: translateX(30%); opacity: 0; } 100% { transform: translateX(0); opacity: 1; } }
         @keyframes celBbWoRise   { 0% { transform: translateY(20%); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
-      `}</style>}
+      `)}</style>}
 
       <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundImage: `repeating-linear-gradient(135deg, ${r.bg.color} 0 100px, #000 100px 200px)`, animation: animOn ? `celBbWoFly ${fly} linear infinite` : undefined, willChange: animOn ? 'transform' : undefined }} />
 

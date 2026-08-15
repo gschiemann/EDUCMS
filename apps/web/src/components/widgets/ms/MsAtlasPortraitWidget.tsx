@@ -25,6 +25,7 @@
 import * as React from 'react';
 import { HsStage } from '../hs/HsStage';
 import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
+import { sceneCss } from '../scene-css';
 
 export interface MsAtlasPortraitConfig {
   // Top band — brand
@@ -380,7 +381,7 @@ export function MsAtlasPortraitWidget({ config, live }: { config?: MsAtlasPortra
         color: '#0b1220',
       }}
     >
-      <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      <style dangerouslySetInnerHTML={{ __html: sceneCss(CSS) }} />
 
       {/* Faint contour-line decoration drifting across the stage
           (the HTML mockup paints this on .stage::before; HsStage owns

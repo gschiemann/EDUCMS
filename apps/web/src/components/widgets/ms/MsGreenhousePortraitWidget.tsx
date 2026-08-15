@@ -10,6 +10,7 @@
 import * as React from 'react';
 import { HsStage } from '../hs/HsStage';
 import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
+import { sceneCss } from '../scene-css';
 
 export interface MsGreenhousePortraitConfig {
   // Top band — conservatory lockup
@@ -292,7 +293,7 @@ export function MsGreenhousePortraitWidget({
         color: '#1f2a1c',
       }}
     >
-      <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      <style dangerouslySetInnerHTML={{ __html: sceneCss(CSS) }} />
 
       {/* Foxing/aging spots — randomly scattered tiny rust marks. */}
       <div className="ms-gh-p-foxing" aria-hidden="true" />

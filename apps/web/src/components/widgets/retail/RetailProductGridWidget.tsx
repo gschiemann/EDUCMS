@@ -1,5 +1,7 @@
 'use client';
 
+
+import { sceneCss } from '../scene-css';
 /**
  * RetailProductGridWidget — N-column lookbook grid.
  *
@@ -107,7 +109,7 @@ export function RetailProductGridWidget({
         } as React.CSSProperties
       }
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {(c.heading || c.subheading) && (
         <header className="rpgw-header">

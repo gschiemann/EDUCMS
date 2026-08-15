@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Bell } from 'lucide-react';
 import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
+import { sceneCss } from '../scene-css';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PRINCIPAL'S OFFICE THEME - Premium Mahogany & Gold Brass Plaque Aesthetic
@@ -209,7 +210,7 @@ export function PrincipalsOfficeTicker({ config }: { config: any }) {
       }}>
         {text}   ✦   {text}
       </div>
-      <style>{`@keyframes officeTicker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`}</style>
+      <style>{sceneCss(`@keyframes officeTicker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`)}</style>
     </div>
   );
 }

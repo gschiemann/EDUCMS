@@ -3,6 +3,7 @@
 // PORTED 2026-04-20 from scratch/design/animated-bus-board.html — transform:scale pattern, isLive-gated hotspots.
 
 import { useEffect, useRef, useState, useMemo } from 'react';
+import { sceneCss } from './scene-css';
 
 type Route = {
   num?: string | number;
@@ -112,7 +113,7 @@ export function AnimatedBusBoardWidget({ config, live }: { config?: Cfg; live?: 
         background: '#bae6fd',
       }}
     >
-      <style>{CSS_BB}</style>
+      <style>{sceneCss(CSS_BB)}</style>
 
       <div
         className="bb-stage"

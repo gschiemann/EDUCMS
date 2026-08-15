@@ -6,6 +6,7 @@
 // padding-bottom: 140 so a 2-line MEMO paragraph can't crash into the ticker band.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 type MenuItem = { emoji?: string; name?: string; meta?: string; price?: string };
 type WeekMenu = {
@@ -163,7 +164,7 @@ export function BulletinCafeteriaWidget({ config, live }: { config: Cfg; live?: 
         background: '#1c0e02',
       }}
     >
-      <style>{CSS_CORK}</style>
+      <style>{sceneCss(CSS_CORK)}</style>
 
       <div
         className="bc-stage"

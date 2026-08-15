@@ -23,6 +23,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
+import { sceneCss } from '../scene-css';
 import {
   CATEGORY_LABELS,
   sourcesByCategory,
@@ -253,7 +254,7 @@ export function FitnessAppLibraryWidget({
       style={{ '--falw-accent': accent } as React.CSSProperties}
       aria-label={title}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* ── Background: charcoal + dual aurora radial glows ── */}
       <div className="falw-bg" aria-hidden />

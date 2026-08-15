@@ -13,6 +13,7 @@
 import React from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
+import { sceneCss } from '../scene-css';
 
 function px(z: number, f: number): number { return Math.max(8, Math.round(z * f)); }
 
@@ -163,7 +164,7 @@ export function RibbonTickerWidget({ config, live = true, height = 480 }: Widget
 
   return (
     <div style={frameStyle(r)}>
-      <style>{`@keyframes svRibbonMarquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }`}</style>
+      <style>{sceneCss(`@keyframes svRibbonMarquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }`)}</style>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', alignItems: 'stretch', overflow: 'hidden' }}>
         <div style={{ width: px(height, 1.5), background: home.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-around', flexShrink: 0 }}>
           <span style={{ fontWeight: 800, fontSize: px(height, 0.5), letterSpacing: '-0.04em', lineHeight: 1, marginRight: px(height, 0.0625) }}>{home.code}</span>
@@ -909,10 +910,10 @@ export function GoalCelebrationWidget({ config, live = true, height = 480 }: Wid
 
   return (
     <div style={frameStyle(r)}>
-      <style>{`
+      <style>{sceneCss(`
         @keyframes svGoalPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.04); } }
         @keyframes svGoalBurst { 0% { opacity: 0.35; } 50% { opacity: 0.85; } 100% { opacity: 0.35; } }
-      `}</style>
+      `)}</style>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
         <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: 'radial-gradient(circle at 50% 50%, #fff8 0%, transparent 50%)', animation: animate ? `svGoalBurst ${dur}s ease-in-out infinite` : 'none' }} />
         <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, padding: px(height, 0.0741), color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', boxSizing: 'border-box' }}>

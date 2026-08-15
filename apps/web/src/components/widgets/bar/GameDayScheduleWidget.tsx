@@ -18,6 +18,7 @@
 
 import { useEffect, useState } from 'react';
 import { parseTimeToMinutes, formatTime12 } from '@/lib/format-time';
+import { sceneCss } from '../scene-css';
 
 export interface BarGame {
   /** League shorthand. NFL / NBA / MLB / NHL / NCAAF / NCAAB / MLS / etc. */
@@ -101,7 +102,7 @@ export function GameDayScheduleWidget({
       className="bgds-root"
       style={{ '--bgds-accent': accent } as React.CSSProperties}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       <div className="bgds-bg" />
       <div className="bgds-glow" />

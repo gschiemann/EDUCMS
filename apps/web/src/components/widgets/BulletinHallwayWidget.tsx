@@ -5,6 +5,7 @@
 // Ticker pinned position:absolute bottom:14px inside cork frame — preserve.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 type Row = { num?: string | number; time?: string; name?: string; room?: string; highlight?: boolean };
 
@@ -126,7 +127,7 @@ export function BulletinHallwayWidget({ config, live }: { config: Cfg; live?: bo
         background: '#1c0e02',
       }}
     >
-      <style>{CSS_BH}</style>
+      <style>{sceneCss(CSS_BH)}</style>
 
       <div
         className="bh-stage"

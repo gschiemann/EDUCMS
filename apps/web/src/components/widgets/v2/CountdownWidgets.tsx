@@ -17,6 +17,7 @@ import type { WidgetStyle } from './_shared/styleSystem';
 import type { WidgetProps } from './_shared/types';
 import { resolveCountdownTarget } from '../countdown-utils';
 import type { CountdownConfig } from '../countdown-utils';
+import { sceneCss } from '../scene-css';
 
 interface CdCfg extends CountdownConfig {
   style?: WidgetStyle;
@@ -110,7 +111,7 @@ export function CountdownCrayonBlocksWidget({ config, live = true }: WidgetProps
   const dur = animDurationSec(r.anim.speed, 3); const colors = [r.accent.primary, r.accent.secondary, r.accent.highlight, '#a78bfa'];
   return (
     <div style={frameStyle(r)}>
-      {r.anim.on && <style>{`@keyframes cd-bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }`}</style>}
+      {r.anim.on && <style>{sceneCss(`@keyframes cd-bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }`)}</style>}
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 16, alignItems: 'center', justifyContent: 'center' }}>
         <h2 style={{ margin: 0, fontSize: '1.8em', fontWeight: 800 }}>🎉 <span data-field="label">{labelInfo.primary || 'Field Day in...'}</span></h2>
         <div style={{ display: 'flex', gap: 14 }}>

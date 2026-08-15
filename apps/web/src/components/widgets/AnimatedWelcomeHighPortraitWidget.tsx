@@ -36,6 +36,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 interface Cfg {
   logoUrl?: string;
@@ -307,7 +308,7 @@ export function AnimatedWelcomeHighPortraitWidget({
       ref={wrapperRef}
       style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fce7f3' }}
     >
-      <style>{CSS_HSP}</style>
+      <style>{sceneCss(CSS_HSP)}</style>
 
       <div
         className="hsp-stage"

@@ -3,6 +3,7 @@
 // PORTED 2026-04-20 from scratch/design/animated-hallway-schedule.html — transform:scale pattern, isLive-gated hotspots.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 type PeriodRow = { num?: string | number; time?: string; name?: string; room?: string };
 
@@ -162,7 +163,7 @@ export function AnimatedHallwayScheduleWidget({ config, live }: { config?: Cfg; 
         background: '#fef8e7',
       }}
     >
-      <style>{CSS_HS}</style>
+      <style>{sceneCss(CSS_HS)}</style>
       <div
         className="hs-stage"
         style={{

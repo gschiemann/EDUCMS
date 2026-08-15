@@ -28,6 +28,7 @@
  */
 
 import { HsStage } from '../hs/HsStage';
+import { sceneCss } from '../scene-css';
 
 export interface FitnessRecessConfig {
   // Gym logo — optional image for the header area
@@ -147,7 +148,7 @@ export function FitnessRecessWidget({ config }: { config?: FitnessRecessConfig }
         fontWeight: 500,
       }}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Decorative sun + clouds */}
       <div className="fr-sun" />
@@ -351,7 +352,17 @@ const CSS = `
 }
 
 .fr-ksched-h {
-  font-size: 74px !important;
+  /* 2026-08-09 — !important REMOVED. It existed only to beat .fr-h3 above,
+     which this rule already outranks on source order at equal specificity.
+     Once scene CSS is specificity-boosted (see scene-css.ts), an !important
+     here becomes (3,1,0)-important and outranks the OPERATOR's own
+     !important override — both the per-field editor and the zone-wide
+     font-size control — because among competing !important author
+     declarations specificity decides. That silently ignored the operator's
+     text edits on this heading, on real screens, not just in the builder.
+     Never use !important in scene CSS for a property an operator can edit;
+     check-scene-css.cjs now fails on it. */
+  font-size: 74px;
   margin-bottom: 10px;
 }
 .fr-item {

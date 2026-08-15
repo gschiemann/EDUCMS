@@ -29,6 +29,7 @@ import { useHsLiveClock, resolveHsClock, resolveHsDate } from './useHsLiveClock'
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 import { useAutoFitText } from './useAutoFitText';
 import { useTextStyleOverrides } from './useTextStyleOverrides';
+import { sceneCss } from '../scene-css';
 
 export interface HsTransitConfig {
   schoolCode?: string;
@@ -188,7 +189,7 @@ export function HsTransitWidget({ config, live }: { config?: HsTransitConfig; li
         color: '#fff',
       }}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       <div className="hs-tr-mast">
         <div className="hs-tr-code" data-field="schoolCode" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolCode}</div>

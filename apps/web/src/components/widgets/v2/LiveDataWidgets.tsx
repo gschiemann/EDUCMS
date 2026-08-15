@@ -8,6 +8,7 @@
 import React from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
+import { sceneCss } from '../scene-css';
 
 function px(z: number, f: number): number { return Math.max(8, Math.round(z * f)); }
 
@@ -117,7 +118,7 @@ export function StockTickerWidget({ config, live = true, height = 480 }: WidgetP
 
   return (
     <div style={{ ...frameStyle(r), padding: 0, backgroundColor: '#0a0d12' }}>
-      <style>{`@keyframes ldw_tickerScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }`}</style>
+      <style>{sceneCss(`@keyframes ldw_tickerScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }`)}</style>
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: `${px(height, 0.044)}px ${px(height, 0.056)}px ${px(height, 0.022)}px` }}>
           <div style={{ fontFamily: 'Plus Jakarta Sans', color: '#fff', fontSize: px(height, 0.05), fontWeight: 800, letterSpacing: '-0.02em' }}>Markets</div>

@@ -25,6 +25,7 @@ import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 import { useAutoFitText } from './useAutoFitText';
 import { useTextStyleOverrides } from './useTextStyleOverrides';
+import { sceneCss } from '../scene-css';
 
 export interface HsBroadcastConfig {
   schoolChip?: string;
@@ -162,7 +163,7 @@ export function HsBroadcastWidget({ config, live }: { config?: HsBroadcastConfig
         color: '#f3f5f9',
       }}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
       <div className="hs-bc-scan" />
 
       <div className="hs-bc-netbar">

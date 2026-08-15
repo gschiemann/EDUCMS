@@ -27,6 +27,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 type MenuItem = { emoji?: string; name?: string; meta?: string; price?: string };
 type WeekMenu = {
@@ -200,7 +201,7 @@ export function AnimatedCafeteriaHighPortraitWidget({ config, live }: { config?:
         background: '#070b18',
       }}
     >
-      <style>{CSS_HSP}</style>
+      <style>{sceneCss(CSS_HSP)}</style>
 
       <div
         className="hsp-stage"

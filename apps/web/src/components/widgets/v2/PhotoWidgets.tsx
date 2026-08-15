@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { WidgetStyle } from './_shared/styleSystem';
 import type { WidgetProps } from './_shared/types';
+import { sceneCss } from '../scene-css';
 
 interface PhotoCfg { style?: WidgetStyle; photos?: { url?: string; caption?: string }[]; title?: string; rotateMs?: number; }
 const Placeholder = ({ accent, label = 'photo' }: { accent: string; label?: string }) => (
@@ -21,7 +22,7 @@ export function PhotoNeonGlitchWidget({ config }: WidgetProps<PhotoCfg>) {
   const idx = useRotate(photos.length, c.rotateMs || 4000); const dur = animDurationSec(r.anim.speed, 0.4);
   return (
     <div style={frameStyle(r)}>
-      {r.anim.on && <style>{`@keyframes glitch { 0%,90%,100% { transform: translate(0); } 92% { transform: translate(-3px,2px); } 95% { transform: translate(2px,-2px); } }`}</style>}
+      {r.anim.on && <style>{sceneCss(`@keyframes glitch { 0%,90%,100% { transform: translate(0); } 92% { transform: translate(-3px,2px); } 95% { transform: translate(2px,-2px); } }`)}</style>}
       <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: 8, overflow: 'hidden', border: `2px solid ${r.accent.primary}`, boxShadow: `0 0 24px ${r.accent.primary}88`, animation: r.anim.on ? `glitch ${dur * 6}s steps(2) infinite` : 'none' }}>
         {photos[idx]?.url ? <img src={photos[idx].url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'saturate(1.4) contrast(1.1)' }} /> : <Placeholder accent={r.accent.primary} label={photos[idx]?.caption || 'photo'} />}
         <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: `linear-gradient(180deg, transparent 50%, rgba(255,43,214,0.15) 100%)`, mixBlendMode: 'screen' }} />

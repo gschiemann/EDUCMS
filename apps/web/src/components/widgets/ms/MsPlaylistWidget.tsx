@@ -24,6 +24,7 @@
 import * as React from 'react';
 import { HsStage } from '../hs/HsStage';
 import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
+import { sceneCss } from '../scene-css';
 
 export interface MsPlaylistConfig {
   // App bar — brand
@@ -311,7 +312,7 @@ export function MsPlaylistWidget({ config, live }: { config?: MsPlaylistConfig; 
         fontFamily: "'Inter', system-ui, sans-serif",
       }}
     >
-      <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      <style dangerouslySetInnerHTML={{ __html: sceneCss(CSS) }} />
 
       {/* Subtle film-grain noise overlay (matches .stage::before) */}
       <div className="ms-pl-grain" aria-hidden="true" />

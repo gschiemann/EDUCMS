@@ -32,6 +32,7 @@ import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 import { useAutoFitText } from './useAutoFitText';
 import { useTextStyleOverrides } from './useTextStyleOverrides';
+import { sceneCss } from '../scene-css';
 
 export interface HsTerminalConfig {
   schoolHost?: string;
@@ -196,7 +197,7 @@ export function HsTerminalWidget({ config, live }: { config?: HsTerminalConfig; 
         color: '#9bff9b',
       }}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
       <div className="hs-tm-scan" />
       <div className="hs-tm-vignette" />
 

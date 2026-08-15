@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactElement } from 'react';
+import { sceneCss } from '../scene-css';
 
 /**
  * RetailLoyaltyQRWidget — "Scan to join" loyalty signup callout.
@@ -143,7 +144,7 @@ export function RetailLoyaltyQRWidget({
         } as React.CSSProperties
       }
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       <div className="rlqw-content-pane">
         <div className="rlqw-eyebrow">{eyebrow}</div>

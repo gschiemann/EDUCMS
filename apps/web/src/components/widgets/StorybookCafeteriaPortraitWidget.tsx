@@ -19,6 +19,7 @@
 // countdown days, ticker speed).
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 type MenuItem = { emoji?: string; name?: string; meta?: string; price?: string };
 type WeekMenu = {
@@ -207,7 +208,7 @@ export function StorybookCafeteriaPortraitWidget({ config, live }: { config?: Cf
       }}
     >
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=EB+Garamond:ital,wght@0,400;0,500;0,700;1,400;1,500&family=Pinyon+Script&family=Tangerine:wght@400;700&display=swap" />
-      <style>{CSS_BOOK_PORTRAIT}</style>
+      <style>{sceneCss(CSS_BOOK_PORTRAIT)}</style>
 
       <div
         className="bkp-stage"

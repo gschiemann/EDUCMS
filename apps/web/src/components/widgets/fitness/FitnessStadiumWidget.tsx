@@ -33,6 +33,7 @@
 
 import { useEffect, useState } from 'react';
 import { HsStage } from '../hs/HsStage';
+import { sceneCss } from '../scene-css';
 
 export interface FitnessStadiumConfig {
   // Gym logo — optional image for the TV pane mark area
@@ -161,7 +162,7 @@ export function FitnessStadiumWidget({ config }: { config?: FitnessStadiumConfig
 
   return (
     <HsStage stageClassName="fs-stadium-stage" stageStyle={{ background: '#07070c', color: '#f4f5f7', fontFamily: "'Outfit', system-ui, sans-serif" }}>
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Scorebug — top ribbon */}
       <div className="fs-scorebug">

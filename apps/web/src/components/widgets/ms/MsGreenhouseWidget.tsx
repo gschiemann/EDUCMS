@@ -27,6 +27,7 @@
 import * as React from 'react';
 import { HsStage } from '../hs/HsStage';
 import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
+import { sceneCss } from '../scene-css';
 
 export interface MsGreenhouseConfig {
   // Top band — conservatory lockup
@@ -305,7 +306,7 @@ export function MsGreenhouseWidget({ config, live }: { config?: MsGreenhouseConf
         color: '#1f2a1c',
       }}
     >
-      <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      <style dangerouslySetInnerHTML={{ __html: sceneCss(CSS) }} />
 
       {/* Foxing/aging spots — the mockup paints these on .stage::before
           but HsStage owns its ::before; render as a dedicated layer. */}

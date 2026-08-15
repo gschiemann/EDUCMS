@@ -15,6 +15,7 @@
 import { useEffect, useState } from 'react';
 import { calendarDaysUntil, resolveCountdownTarget } from '../countdown-utils';
 import { useLiveWeather } from '../use-live-weather';
+import { sceneCss } from '../scene-css';
 
 const FONT_DISPLAY = "var(--font-fredoka), ui-rounded, 'Arial Rounded MT Bold', system-ui, sans-serif";
 const FONT_BODY    = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif";
@@ -438,7 +439,7 @@ export function TickerLed({ config }: { config: any }) {
       }}>
         {text}   ●   {text}
       </div>
-      <style>{`@keyframes mod-tk { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }`}</style>
+      <style>{sceneCss(`@keyframes mod-tk { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }`)}</style>
     </div>
   );
 }
@@ -462,7 +463,7 @@ export function TickerPastel({ config }: { config: any }) {
       }}>
         {text}   ★   {text}
       </div>
-      <style>{`@keyframes mod-tk2 { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }`}</style>
+      <style>{sceneCss(`@keyframes mod-tk2 { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }`)}</style>
     </div>
   );
 }
@@ -487,7 +488,7 @@ export function TickerAlert({ config }: { config: any }) {
       }}>
         ⚠   {text}   ⚠   {text}
       </div>
-      <style>{`@keyframes mod-tk3 { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }`}</style>
+      <style>{sceneCss(`@keyframes mod-tk3 { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }`)}</style>
     </div>
   );
 }

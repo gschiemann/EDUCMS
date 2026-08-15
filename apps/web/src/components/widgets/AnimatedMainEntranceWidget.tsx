@@ -3,6 +3,7 @@
 // PORTED 2026-04-20 from scratch/design/animated-main-entrance.html — transform:scale pattern, isLive-gated hotspots.
 
 import { useEffect, useRef, useState, useMemo } from 'react';
+import { sceneCss } from './scene-css';
 
 interface Cfg {
   eyebrow?: string;
@@ -83,7 +84,7 @@ export function AnimatedMainEntranceWidget({ config, live }: { config?: Cfg; liv
         background: '#dbeafe',
       }}
     >
-      <style>{CSS_ME}</style>
+      <style>{sceneCss(CSS_ME)}</style>
 
       <div
         className="me-stage"

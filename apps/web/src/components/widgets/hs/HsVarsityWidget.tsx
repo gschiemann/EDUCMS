@@ -32,6 +32,7 @@ import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 import { useAutoFitText } from './useAutoFitText';
 import { useTextStyleOverrides } from './useTextStyleOverrides';
+import { sceneCss } from '../scene-css';
 
 export interface HsVarsityConfig {
   schoolInitials?: string;
@@ -200,7 +201,7 @@ export function HsVarsityWidget({ config, live }: { config?: HsVarsityConfig; li
         color: '#fff',
       }}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
       {/* Diagonal pitch stripe overlay */}
       <div className="hs-varsity-stripes" />
 

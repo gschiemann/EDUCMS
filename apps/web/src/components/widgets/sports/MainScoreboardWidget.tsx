@@ -43,6 +43,7 @@ import { useGameState, fmtClock, type GameSnapshot } from './GameStateContext';
 import { FitOneLine } from './FitOneLine';
 import { liveNeutral } from './cts-fields';
 import type { BaseCfg, WidgetProps } from '../v2/_shared/types';
+import { sceneCss } from '../scene-css';
 
 const DEFAULT_HOME = '#1e3a8a';
 const DEFAULT_AWAY = '#b91c1c';
@@ -335,7 +336,7 @@ export function MainScoreboardWidget({ config, live = true }: WidgetProps<MainSc
           backgroundImage: 'repeating-linear-gradient(115deg, rgba(255,255,255,0.018) 0 60px, rgba(255,255,255,0) 60px 120px)',
         }}
       >
-        <style>{`@keyframes mainSbBlink{0%,100%{opacity:1}50%{opacity:.25}}@keyframes mainSbClk{0%,100%{opacity:1}50%{opacity:.5}}`}</style>
+        <style>{sceneCss(`@keyframes mainSbBlink{0%,100%{opacity:1}50%{opacity:.25}}@keyframes mainSbClk{0%,100%{opacity:1}50%{opacity:.5}}`)}</style>
 
         {/* HOME side */}
         <div style={sideBlock('home')} />

@@ -19,6 +19,7 @@
 
 import { useEffect, useState } from 'react';
 import { parseTimeToMinutes, formatTime12 } from '@/lib/format-time';
+import { sceneCss } from '../scene-css';
 
 export interface HappyHourFeaturedDrink {
   name: string;
@@ -104,7 +105,7 @@ export function HappyHourCountdownWidget({
       className={'bhh-root bhh-state-' + state.toLowerCase()}
       style={{ '--bhh-accent': accent } as React.CSSProperties}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       <div className="bhh-bg" />
       <div className="bhh-glow" />

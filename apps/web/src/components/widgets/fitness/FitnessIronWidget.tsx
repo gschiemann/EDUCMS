@@ -33,6 +33,7 @@
 
 import { useEffect, useState } from 'react';
 import { HsStage } from '../hs/HsStage';
+import { sceneCss } from '../scene-css';
 
 export interface FitnessIronConfig {
   // Gym logo — optional image for the header stencil area
@@ -141,7 +142,7 @@ export function FitnessIronWidget({ config }: { config?: FitnessIronConfig }) {
       stageClassName="fi-iron-stage"
       stageStyle={{ background: '#181816', color: '#f4f0e8', fontFamily: "'Outfit', system-ui, sans-serif" }}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Caution-tape header ribbon */}
       <div className="fi-tape" />

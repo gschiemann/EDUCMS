@@ -17,6 +17,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { sceneCss } from '../scene-css';
 
 const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 type DayKey = (typeof DAY_KEYS)[number];
@@ -135,7 +136,7 @@ export function RetailStorefrontHoursWidget({
         } as React.CSSProperties
       }
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       <div className="rshw-header">
         <div className="rshw-eyebrow">{eyebrow}</div>

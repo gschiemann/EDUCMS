@@ -13,6 +13,7 @@
 // fits any container. Fixed pixels only inside the stage.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 type Row = { num?: string; time?: string; name?: string; room?: string; highlight?: boolean };
 
@@ -145,7 +146,7 @@ export function StorybookHallwayPortraitWidget({ config, live }: { config?: Cfg;
         rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=EB+Garamond:ital,wght@0,400;0,500;0,700;1,400;1,500&family=Pinyon+Script&family=Tangerine:wght@400;700&display=swap"
       />
-      <style>{CSS_SHP}</style>
+      <style>{sceneCss(CSS_SHP)}</style>
 
       <div
         className="shp-book"

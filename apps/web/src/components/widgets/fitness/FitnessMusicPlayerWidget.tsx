@@ -29,6 +29,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from '../scene-css';
 
 export interface FitnessMusicPlayerConfig {
   provider?: 'spotify' | 'apple_music' | 'pandora_business' | 'soundmachine' | 'custom' | 'demo';
@@ -128,7 +129,7 @@ export function FitnessMusicPlayerWidget({
 
   return (
     <div className="fmpw-root" style={{ '--fmpw-accent': accent } as React.CSSProperties}>
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Background: charcoal + radial accent glow + grain */}
       <div className="fmpw-bg" />

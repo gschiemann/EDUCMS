@@ -27,6 +27,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 interface Cfg {
   logoUrl?: string;
@@ -217,7 +218,7 @@ export function AnimatedWelcomeMiddleWidget({ config, live }: { config: Cfg; liv
       ref={wrapperRef}
       style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f172a' }}
     >
-      <style>{CSS_MS}</style>
+      <style>{sceneCss(CSS_MS)}</style>
 
       <div
         className="ms-stage"

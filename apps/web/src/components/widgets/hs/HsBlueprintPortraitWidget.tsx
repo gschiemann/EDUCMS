@@ -21,6 +21,7 @@ import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 import { useAutoFitText } from './useAutoFitText';
 import { useTextStyleOverrides } from './useTextStyleOverrides';
 import type { HsBlueprintConfig } from './HsBlueprintWidget';
+import { sceneCss } from '../scene-css';
 
 type Cfg = HsBlueprintConfig;
 
@@ -142,7 +143,7 @@ export function HsBlueprintPortraitWidget({
         rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;900&family=IBM+Plex+Mono:wght@500;700&family=JetBrains+Mono:wght@500;700&display=swap"
       />
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* TITLE BLOCK — top 500px, full width, real architectural drawing's title bar */}
       <div className="hs-bpp-titleblock">

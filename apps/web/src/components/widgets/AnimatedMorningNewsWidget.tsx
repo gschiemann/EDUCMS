@@ -3,6 +3,7 @@
 // PORTED 2026-04-20 from scratch/design/animated-morning-news.html — transform:scale pattern, isLive-gated hotspots.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 type Story = { category?: string; title?: string; time?: string };
 
@@ -121,7 +122,7 @@ export function AnimatedMorningNewsWidget({ config, live }: { config?: Cfg; live
         background: '#0f172a',
       }}
     >
-      <style>{CSS_MN}</style>
+      <style>{sceneCss(CSS_MN)}</style>
       <div
         className="mn-stage"
         style={{

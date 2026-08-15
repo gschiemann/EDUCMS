@@ -26,6 +26,7 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { FitText } from './FitText';
+import { sceneCss } from '../scene-css';
 
 interface Props {
   children: React.ReactNode;
@@ -144,9 +145,9 @@ export function EditableText({
         {canEdit && (
           // Show the chip on host hover. Scoped so it doesn't leak
           // and doesn't require a global stylesheet.
-          <style>{`
+          <style>{sceneCss(`
             div:hover > .edu-edit-chip { opacity: 1; }
-          `}</style>
+          `)}</style>
         )}
       </div>
     );

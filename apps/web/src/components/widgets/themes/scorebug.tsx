@@ -25,6 +25,7 @@ import { FitText } from './FitText';
 import { EditableText } from './EditableText';
 import { resolveCountdownTarget } from '../countdown-utils';
 import { fetchWeather, getWMO } from '../WidgetRenderer';
+import { sceneCss } from '../scene-css';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '') : 'http://localhost:8080';
 function resolveUrl(url: string | undefined | null): string {
@@ -131,9 +132,9 @@ export function ScorebugLogo({ config }: { config: any; compact?: boolean }) {
           boxShadow: `0 0 8px ${SB.live}`,
           animation: 'sb-pulse 1.4s ease-in-out infinite',
         }} />
-        <style>{`
+        <style>{sceneCss(`
           @keyframes sb-pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.35 } }
-        `}</style>
+        `)}</style>
       </div>
     </div>
   );
@@ -1102,13 +1103,13 @@ export function ScorebugTicker({ config, compact }: { config: any; compact?: boo
         </div>
       </div>
 
-      <style>{`
+      <style>{sceneCss(`
         @keyframes sb-ticker-scroll {
           0%   { transform: translateX(0); }
           100% { transform: translateX(-50%); }
         }
         @keyframes sb-pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.35 } }
-      `}</style>
+      `)}</style>
     </div>
   );
 }

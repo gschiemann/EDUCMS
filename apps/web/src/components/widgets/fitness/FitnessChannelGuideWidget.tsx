@@ -32,6 +32,7 @@
 
 import { useEffect, useState } from 'react';
 import { HsStage } from '../hs/HsStage';
+import { sceneCss } from '../scene-css';
 
 export interface FitnessChannelGuideConfig {
   // Gym logo — optional image for the top bar brand area
@@ -230,7 +231,7 @@ export function FitnessChannelGuideWidget({ config }: { config?: FitnessChannelG
       stageClassName="fc-channel-stage"
       stageStyle={{ background: '#040816', color: '#e8f0ff', fontFamily: "'Outfit', system-ui, sans-serif" }}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Top bar */}
       <div className="fc-top">

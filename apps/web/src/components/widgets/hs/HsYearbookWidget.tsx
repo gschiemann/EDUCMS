@@ -25,6 +25,7 @@ import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 import { useAutoFitText } from './useAutoFitText';
 import { useTextStyleOverrides } from './useTextStyleOverrides';
+import { sceneCss } from '../scene-css';
 
 export interface HsYearbookConfig {
   schoolName?: string;
@@ -169,7 +170,7 @@ export function HsYearbookWidget({ config, live }: { config?: HsYearbookConfig; 
         color: '#1a1a17',
       }}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
       <div className="hs-yb-grain" />
       <div className="hs-yb-divider" />
 

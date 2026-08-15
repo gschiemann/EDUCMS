@@ -27,6 +27,7 @@ import * as React from 'react';
 import { HsStage } from '../hs/HsStage';
 import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
 import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
+import { sceneCss } from '../scene-css';
 
 export interface MsArcadePortraitConfig {
   // HUD — school identity
@@ -253,7 +254,7 @@ export function MsArcadePortraitWidget({
         color: '#f1f1ff',
       }}
     >
-      <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      <style dangerouslySetInnerHTML={{ __html: sceneCss(CSS) }} />
 
       {/* Soft ambient green vignette at the top (matches .stage::before in the mockup) */}
       <div className="ms-arc-p-glow" />

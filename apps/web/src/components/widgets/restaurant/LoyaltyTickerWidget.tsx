@@ -20,6 +20,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { sceneCss } from '../scene-css';
 
 export interface LoyaltyTickerConfig {
   /** Brand / loyalty program name shown as the eyebrow chip. */
@@ -97,7 +98,7 @@ export function LoyaltyTickerWidget({
 
   return (
     <div className="rlt-root" style={{ background: themeBg, color: themeInk, ['--rlt-accent' as string]: accent } as React.CSSProperties}>
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       <div className="rlt-strip">
         {/* Brand chip */}

@@ -49,6 +49,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { getSourceById, type FitnessSource } from './fitnessSourceCatalog';
+import { sceneCss } from '../scene-css';
 
 // ─── Config contract ────────────────────────────────────────────────────────
 
@@ -230,7 +231,7 @@ export function FitnessStickLauncherWidget({
       role="status"
       aria-label={`${appName} on ${sName} — ${displayState}`}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Layered backgrounds */}
       <div className="fsl-bg" style={bgStyle} />

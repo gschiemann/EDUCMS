@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Trophy, Flame, ChevronRight } from 'lucide-react';
+import { sceneCss } from '../scene-css';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // HIGH SCHOOL ATHLETICS JUMBOTRON THEME
@@ -254,12 +255,12 @@ export function AthleticsTicker({ config }: { config: any }) {
           </div>
         ))}
       </div>
-      <style>{`
+      <style>{sceneCss(`
         @keyframes scroll-left {
           0% { transform: translateX(0); }
           100% { transform: translateX(-50%); }
         }
-      `}</style>
+      `)}</style>
     </div>
   );
 }

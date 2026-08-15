@@ -6,6 +6,7 @@
 import React from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
+import { sceneCss } from '../scene-css';
 
 function px(z: number, f: number): number { return Math.max(8, Math.round(z * f)); }
 
@@ -28,7 +29,7 @@ export function NowServingWidget({ config, live = true, height = 480 }: WidgetPr
 
   return (
     <div style={frameStyle(r)}>
-      {animOn && <style>{`@keyframes nowServingPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.02); } }`}</style>}
+      {animOn && <style>{sceneCss(`@keyframes nowServingPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.02); } }`)}</style>}
 
       <div style={{ position: 'absolute', top: '5%', left: '5%', right: '5%', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
         <div>
@@ -219,7 +220,7 @@ export function CodeBannerWidget({ config, live = true, height = 480 }: WidgetPr
 
   return (
     <div style={frameStyle(r)}>
-      {animOn && <style>{`@keyframes codeBannerFlash { 0%, 100% { background: #160102; } 50% { background: #5c0008; } }`}</style>}
+      {animOn && <style>{sceneCss(`@keyframes codeBannerFlash { 0%, 100% { background: #160102; } 50% { background: #5c0008; } }`)}</style>}
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, animation: animOn ? `codeBannerFlash ${flash} infinite alternate` : undefined }} />
 
       <div style={{ position: 'absolute', top: '5%', left: 0, right: 0, textAlign: 'center', color: r.accent.primary, fontSize: px(height, 0.075), fontWeight: 800, letterSpacing: '0.12em' }}>{kind}</div>

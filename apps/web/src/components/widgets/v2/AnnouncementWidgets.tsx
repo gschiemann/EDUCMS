@@ -11,6 +11,7 @@
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { WidgetStyle } from './_shared/styleSystem';
 import type { WidgetProps } from './_shared/types';
+import { sceneCss } from '../scene-css';
 
 interface AnnCfg {
   style?: WidgetStyle;
@@ -35,7 +36,7 @@ export function AnnouncementNeonAlertWidget({ config }: WidgetProps<AnnCfg>) {
   const id = 'ann-neon-' + r.accent.primary.replace(/[^a-z0-9]/gi, '');
   return (
     <div style={frameStyle(r)}>
-      {r.anim.on && <style>{`@keyframes ${id} { 0%,100% { box-shadow: 0 0 0 4px ${r.accent.primary}, 0 0 24px ${r.accent.primary}; } 50% { box-shadow: 0 0 0 4px ${r.accent.secondary}, 0 0 32px ${r.accent.secondary}; } }`}</style>}
+      {r.anim.on && <style>{sceneCss(`@keyframes ${id} { 0%,100% { box-shadow: 0 0 0 4px ${r.accent.primary}, 0 0 24px ${r.accent.primary}; } 50% { box-shadow: 0 0 0 4px ${r.accent.secondary}, 0 0 32px ${r.accent.secondary}; } }`)}</style>}
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'center', gap: 20, padding: 12, borderRadius: 12, animation: r.anim.on ? `${id} ${dur}s ease-in-out infinite` : 'none' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <span style={{ fontSize: '1.4em' }} data-field="icon">{c.icon || '⚠'}</span>
@@ -88,7 +89,7 @@ export function AnnouncementRainbowBubbleWidget({ config }: WidgetProps<AnnCfg>)
   const dur = animDurationSec(r.anim.speed, 3);
   return (
     <div style={frameStyle(r)}>
-      {r.anim.on && <style>{`@keyframes bubble-pop { 0%,100% { transform: scale(1); } 50% { transform: scale(1.03); } }`}</style>}
+      {r.anim.on && <style>{sceneCss(`@keyframes bubble-pop { 0%,100% { transform: scale(1); } 50% { transform: scale(1.03); } }`)}</style>}
       <div style={{ position: 'relative', background: `linear-gradient(135deg, ${r.accent.primary}, ${r.accent.secondary})`, padding: 32, borderRadius: 40, height: '100%', display: 'flex', flexDirection: 'column', gap: 16, color: '#fff', boxShadow: '0 12px 0 rgba(0,0,0,0.12)', animation: r.anim.on ? `bubble-pop ${dur}s ease-in-out infinite` : 'none' }}>
         <span aria-hidden style={{ position: 'absolute', bottom: -20, left: 60, width: 40, height: 40, background: r.accent.primary, transform: 'rotate(45deg)', borderRadius: 6 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -142,7 +143,7 @@ export function AnnouncementOpsDispatchWidget({ config }: WidgetProps<AnnCfg>) {
   const dur = animDurationSec(r.anim.speed, 1.5);
   return (
     <div style={frameStyle(r)}>
-      {r.anim.on && <style>{`@keyframes dispatch-blink { 50% { opacity: 0.3; } }`}</style>}
+      {r.anim.on && <style>{sceneCss(`@keyframes dispatch-blink { 50% { opacity: 0.3; } }`)}</style>}
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px dashed ${r.accent.secondary}55`, paddingBottom: 8, fontSize: '0.32em', color: r.accent.secondary }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

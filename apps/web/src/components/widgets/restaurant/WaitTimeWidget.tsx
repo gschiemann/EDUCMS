@@ -23,6 +23,7 @@
 
 import { useEffect, useState } from 'react';
 import { formatTime12 } from '@/lib/format-time';
+import { sceneCss } from '../scene-css';
 
 export interface WaitTimeConfig {
   /** Estimated wait in minutes. */
@@ -77,7 +78,7 @@ export function WaitTimeWidget({
 
   return (
     <div className="rwt-root" style={{ ['--rwt-status' as string]: status.color } as React.CSSProperties}>
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       <div className="rwt-bg" />
       <div className="rwt-glow" aria-hidden />

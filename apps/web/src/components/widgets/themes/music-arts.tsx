@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
+import { sceneCss } from '../scene-css';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MUSIC & ARTS THEME - Velvet Curtain, Spotlight, Elegant Neons
@@ -238,7 +239,7 @@ export function MusicArtsTicker({ config, compact }: { config: any; compact?: bo
           {text}   🎵   {text}
         </div>
       </div>
-      <style>{`@keyframes musicTicker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`}</style>
+      <style>{sceneCss(`@keyframes musicTicker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`)}</style>
     </div>
   );
 }

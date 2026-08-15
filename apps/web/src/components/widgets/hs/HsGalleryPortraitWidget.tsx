@@ -48,6 +48,7 @@ import { useHsLiveClock, resolveHsClock, resolveHsDate } from './useHsLiveClock'
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 import { useAutoFitText } from './useAutoFitText';
 import { useTextStyleOverrides } from './useTextStyleOverrides';
+import { sceneCss } from '../scene-css';
 
 export interface HsGalleryConfig {
   schoolName?: string;
@@ -212,7 +213,7 @@ export function HsGalleryPortraitWidget({ config, live }: { config?: Cfg; live?:
         rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,700;1,400;1,500&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=Inter:wght@400;500;600&display=swap"
       />
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* ============================ REGION 1: PLAQUE HEADER 100-880 ============================ */}
       <div className="hs-glp-mast">

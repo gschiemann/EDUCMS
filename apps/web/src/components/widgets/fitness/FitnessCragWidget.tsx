@@ -29,6 +29,7 @@
  */
 
 import { HsStage } from '../hs/HsStage';
+import { sceneCss } from '../scene-css';
 
 export interface FitnessCragConfig {
   // Gym logo — optional image for the header
@@ -315,7 +316,7 @@ export function FitnessCragWidget({ config }: { config?: FitnessCragConfig }) {
       stageClassName="fg-stage"
       stageStyle={{ background: '#f0e7d4', color: '#1f1610', fontFamily: "'Outfit', sans-serif" }}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Header */}
       <div className="fg-head">

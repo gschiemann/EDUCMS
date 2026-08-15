@@ -20,6 +20,7 @@
 // only where the vertical layout demanded them.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 type HonorEntry = { rank?: string | number; name?: string; emoji?: string };
 type Stat = { emoji?: string; value?: string | number; label?: string };
@@ -147,7 +148,7 @@ export function AnimatedAchievementShowcasePortraitWidget({ config, live }: { co
         background: '#0f172a',
       }}
     >
-      <style>{CSS_ASP}</style>
+      <style>{sceneCss(CSS_ASP)}</style>
       <div
         className="asp-stage"
         style={{

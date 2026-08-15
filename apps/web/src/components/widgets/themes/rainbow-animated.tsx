@@ -24,6 +24,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { resolveCountdownTarget, calendarDaysUntil } from '../countdown-utils';
 import { useLiveWeather } from '../use-live-weather';
+import { sceneCss } from '../scene-css';
 
 // ─────────────────────────────────────────────────────────────────
 // Shared scale-to-fit hook — used by every component below
@@ -83,7 +84,7 @@ function ScaleWrap({ naturalW, naturalH, children, bg }: {
 // Inject the keyframes once globally (idempotent)
 function GlobalAnimations() {
   return (
-    <style suppressHydrationWarning>{ANIM_CSS}</style>
+    <style suppressHydrationWarning>{sceneCss(ANIM_CSS)}</style>
   );
 }
 

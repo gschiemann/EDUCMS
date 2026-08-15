@@ -7,6 +7,7 @@ import React from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
 import { useElementSize } from './_shared/useElementSize';
+import { sceneCss } from '../scene-css';
 
 function px(z: number, f: number): number { return Math.max(8, Math.round(z * f)); }
 
@@ -93,11 +94,11 @@ export function CelFootballTouchdownWidget({ config, live = true, height = 480 }
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`
+      {animOn && <style>{sceneCss(`
         @keyframes celFbTdShake   { 0%, 100% { transform: translate(0,0); } 10%, 30%, 50%, 70%, 90% { transform: translate(-8px, 0); } 20%, 40%, 60%, 80% { transform: translate(8px, 0); } }
         @keyframes celFbTdSpark   { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
         @keyframes celFbYardFly   { from { transform: translateX(0); } to { transform: translateX(-100px); } }
-      `}</style>}
+      `)}</style>}
 
       <YardLines color="rgba(255,255,255,0.13)" animOn={animOn} dur={yardDur} />
       <Sparkles on={animOn} count={100} color={r.accent.highlight} kf="celFbTdSpark" dur={sparkDur} />
@@ -154,11 +155,11 @@ export function CelFootballPickSixWidget({ config, live = true, height = 480 }: 
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`
+      {animOn && <style>{sceneCss(`
         @keyframes celFbP6SlideL    { 0% { transform: translateX(-30%); opacity: 0; } 100% { transform: translateX(0); opacity: 1; } }
         @keyframes celFbArrowSweep  { 0% { transform: translateX(-100%); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateX(700%); opacity: 0; } }
         @keyframes celFbYardFly     { from { transform: translateX(0); } to { transform: translateX(-100px); } }
-      `}</style>}
+      `)}</style>}
 
       <YardLines color={`${r.accent.primary}33`} animOn={animOn} dur={yardDur} />
       <Arrows color={r.accent.primary} count={10} animOn={animOn} dur={arrowDur} />
@@ -213,7 +214,7 @@ export function CelFootballFieldGoalWidget({ config, live = true, height = 480 }
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`@keyframes celFbFgBall { 0% { offset-distance: 0%; } 100% { offset-distance: 100%; } }`}</style>}
+      {animOn && <style>{sceneCss(`@keyframes celFbFgBall { 0% { offset-distance: 0%; } 100% { offset-distance: 100%; } }`)}</style>}
 
       {wide ? (
         <>
@@ -290,10 +291,10 @@ export function CelFootballSackWidget({ config, live = true, height = 480 }: Wid
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`
+      {animOn && <style>{sceneCss(`
         @keyframes celFbSackShake { 0%, 100% { transform: translate(0,0); } 10%, 30%, 50%, 70%, 90% { transform: translate(-8px, 0); } 20%, 40%, 60%, 80% { transform: translate(8px, 0); } }
         @keyframes celFbSackPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
-      `}</style>}
+      `)}</style>}
 
       <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
         backgroundImage: 'repeating-linear-gradient(135deg, rgba(255,255,255,0.06) 0 8px, rgba(255,255,255,0) 8px 16px)' }} />
@@ -356,11 +357,11 @@ export function CelFootballFirstDownWidget({ config, live = true, height = 480 }
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`
+      {animOn && <style>{sceneCss(`
         @keyframes celFbFdArrow { 0% { transform: translateX(-100%); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateX(700%); opacity: 0; } }
         @keyframes celFbYardFly { from { transform: translateX(0); } to { transform: translateX(-100px); } }
         @keyframes celFbArrowSweep { 0% { transform: translateX(-100%); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateX(700%); opacity: 0; } }
-      `}</style>}
+      `)}</style>}
 
       <YardLines color={`${r.accent.primary}33`} animOn={animOn} dur={yardDur} />
       <Arrows color={r.accent.primary} count={8} animOn={animOn} dur={arrowDur} />
@@ -408,7 +409,7 @@ export function CelFootballInterceptionWidget({ config, live = true, height = 48
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`@keyframes celFbArrowSweep { 0% { transform: translateX(-100%); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateX(700%); opacity: 0; } }`}</style>}
+      {animOn && <style>{sceneCss(`@keyframes celFbArrowSweep { 0% { transform: translateX(-100%); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateX(700%); opacity: 0; } }`)}</style>}
       <Arrows color={r.accent.primary} count={6} animOn={animOn} dur={arrowDur} />
 
       {wide ? (
@@ -465,11 +466,11 @@ export function CelFootballSafetyWidget({ config, live = true, height = 480 }: W
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`
+      {animOn && <style>{sceneCss(`
         @keyframes celFbSafetyThump { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
         @keyframes celFbSafetyShake { 0%, 100% { transform: translate(0,0); } 10%, 30%, 50%, 70%, 90% { transform: translate(-8px, 0); } 20%, 40%, 60%, 80% { transform: translate(8px, 0); } }
         @keyframes celFbSafetySpark { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
-      `}</style>}
+      `)}</style>}
 
       <Sparkles on={animOn} count={80} color="#fff" kf="celFbSafetySpark" dur={sparkDur} />
 
@@ -512,7 +513,7 @@ export function CelFootballFumbleRecoveryWidget({ config, live = true, height = 
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`@keyframes celFbArrowSweep { 0% { transform: translateX(-100%); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateX(700%); opacity: 0; } }`}</style>}
+      {animOn && <style>{sceneCss(`@keyframes celFbArrowSweep { 0% { transform: translateX(-100%); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateX(700%); opacity: 0; } }`)}</style>}
       <Arrows color={r.accent.primary} count={5} animOn={animOn} dur={arrowDur} />
 
       {wide ? (

@@ -17,6 +17,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { sceneCss } from '../scene-css';
 
 export interface RetailLookbookSlide {
   id?: string;
@@ -114,7 +115,7 @@ export function RetailLookbookCarouselWidget({
         } as React.CSSProperties
       }
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {slides.map((s, i) => {
         const isActive = i === idx;

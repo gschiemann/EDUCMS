@@ -15,6 +15,7 @@ import React from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
 import { useElementSize } from './_shared/useElementSize';
+import { sceneCss } from '../scene-css';
 
 function px(z: number, f: number): number { return Math.max(8, Math.round(z * f)); }
 
@@ -79,10 +80,10 @@ export function CelSoccerGoalWidget({ config, live = true, height = 480 }: Widge
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`
+      {animOn && <style>{sceneCss(`
         @keyframes celScGoalFly   { from { transform: translateX(0); } to { transform: translateX(-200px); } }
         @keyframes celScGoalSpark { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
-      `}</style>}
+      `)}</style>}
 
       <div aria-hidden style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundImage: `repeating-linear-gradient(0deg, ${r.bg.color} 0 80px, rgba(0,0,0,0.2) 80px 160px)`, animation: animOn ? `celScGoalFly ${flyDur} linear infinite` : undefined, willChange: animOn ? 'transform' : undefined }} />
       <Sparkles on={animOn} count={140} color={r.accent.highlight} kf="celScGoalSpark" dur={sparkDur} />
@@ -147,10 +148,10 @@ export function CelSoccerHatTrickWidget({ config, live = true, height = 480 }: W
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`
+      {animOn && <style>{sceneCss(`
         @keyframes celScHtDrop  { 0% { transform: translateY(-30%) rotate(-8deg); opacity: 0; } 60% { transform: translateY(2%) rotate(2deg); opacity: 1; } 100% { transform: translateY(0) rotate(0); } }
         @keyframes celScHtSpark { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
-      `}</style>}
+      `)}</style>}
 
       <Sparkles on={animOn} count={120} color={r.accent.highlight} kf="celScHtSpark" dur={sparkDur} />
 
@@ -211,11 +212,11 @@ export function CelSoccerGolazoWidget({ config, live = true, height = 480 }: Wid
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`
+      {animOn && <style>{sceneCss(`
         @keyframes celScGlPunch { 0% { transform: scale(2.4); opacity: 0; } 30% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.06); } }
         @keyframes celScGlPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
         @keyframes celScGlSpark { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
-      `}</style>}
+      `)}</style>}
 
       <Sparkles on={animOn} count={150} color={r.accent.highlight} kf="celScGlSpark" dur={sparkDur} />
 
@@ -277,7 +278,7 @@ export function CelSoccerRedCardWidget({ config, live = true, height = 480 }: Wi
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`@keyframes celScRcBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>}
+      {animOn && <style>{sceneCss(`@keyframes celScRcBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }`)}</style>}
 
       {wide ? (
         <>
@@ -329,11 +330,11 @@ export function CelSoccerPenaltySaveWidget({ config, live = true, height = 480 }
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`
+      {animOn && <style>{sceneCss(`
         @keyframes celScPsBurst { 0% { transform: scale(0); opacity: 0; } 30% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
         @keyframes celScPsBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
         @keyframes celScPsSpark { 0% { transform: translateY(80px) scale(0); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-560px) scale(.6); opacity: 0; } }
-      `}</style>}
+      `)}</style>}
 
       <Sparkles on={animOn} count={120} color={r.accent.primary} kf="celScPsSpark" dur={sparkDur} />
 
@@ -401,7 +402,7 @@ export function CelSoccerFreeKickWidget({ config, live = true, height = 480 }: W
 
   return (
     <div ref={ref} style={frameStyle(r)}>
-      {animOn && <style>{`@keyframes celScFkSwoosh { 0% { stroke-dashoffset: 2200; } 100% { stroke-dashoffset: 0; } }`}</style>}
+      {animOn && <style>{sceneCss(`@keyframes celScFkSwoosh { 0% { stroke-dashoffset: 2200; } 100% { stroke-dashoffset: 0; } }`)}</style>}
 
       {wide ? (
         <>

@@ -4,6 +4,7 @@
 // Food-truck window metaphor: striped awning, order-window frame, chalkboard grid menu. Same 5-day weekMenu shape.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 type MenuItem = { emoji?: string; name?: string; meta?: string; price?: string };
 type WeekMenu = {
@@ -163,7 +164,7 @@ export function AnimatedCafeteriaFoodtruckWidget({ config, live }: { config: Cfg
         background: '#0a0e27',
       }}
     >
-      <style>{CSS_FT}</style>
+      <style>{sceneCss(CSS_FT)}</style>
 
       <div
         className="ft-stage"

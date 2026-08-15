@@ -30,6 +30,7 @@ import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 import { useAutoFitText } from './useAutoFitText';
 import { useTextStyleOverrides } from './useTextStyleOverrides';
 import type { HsBroadcastConfig } from './HsBroadcastWidget';
+import { sceneCss } from '../scene-css';
 
 type Cfg = HsBroadcastConfig;
 
@@ -121,7 +122,7 @@ export function HsBroadcastPortraitWidget({ config, live }: { config?: Cfg; live
         rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700;900&family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@500;700&display=swap"
       />
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Scanline + signal-glow overlay (full stage) */}
       <div className="hs-bcp-scan" />

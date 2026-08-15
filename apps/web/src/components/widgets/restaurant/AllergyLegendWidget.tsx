@@ -1,5 +1,7 @@
 'use client';
 
+
+import { sceneCss } from '../scene-css';
 /**
  * AllergyLegendWidget — small icon legend explaining dietary chips.
  *
@@ -67,7 +69,7 @@ export function AllergyLegendWidget({
 
   return (
     <div className={`ral-root ral-${layout}`} style={{ background: bg, color: ink, ['--ral-accent' as string]: accent } as React.CSSProperties}>
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {title && <div className="ral-title" style={{ color: subInk }}>{title}</div>}
 

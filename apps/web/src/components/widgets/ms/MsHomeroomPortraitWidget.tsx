@@ -29,6 +29,7 @@
 import * as React from 'react';
 import { HsStage } from '../hs/HsStage';
 import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
+import { sceneCss } from '../scene-css';
 
 export interface MsHomeroomPortraitConfig {
   // School / brand
@@ -347,7 +348,7 @@ export function MsHomeroomPortraitWidget({
         color: '#1f2230',
       }}
     >
-      <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      <style dangerouslySetInnerHTML={{ __html: sceneCss(CSS) }} />
 
       {/* Wood-grain wainscoting along the bottom (mockup paints this on
           .stage::before; we use a dedicated div so HsStage's own ::before

@@ -16,6 +16,7 @@ import { useHsLiveClock, resolveHsClock, resolveHsDate } from './useHsLiveClock'
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 import { useAutoFitText } from './useAutoFitText';
 import { useTextStyleOverrides } from './useTextStyleOverrides';
+import { sceneCss } from '../scene-css';
 
 export interface HsBlueprintConfig {
   schoolCode?: string;
@@ -182,7 +183,7 @@ export function HsBlueprintWidget({ config, live }: { config?: HsBlueprintConfig
         color: '#eaf3ff',
       }}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       <div className="hs-bp-titleblock">
         <div className="hs-bp-cell">

@@ -33,6 +33,7 @@ import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 import { useAutoFitText } from './useAutoFitText';
 import { useTextStyleOverrides } from './useTextStyleOverrides';
+import { sceneCss } from '../scene-css';
 
 export interface HsYearbookConfig {
   schoolName?: string;
@@ -201,7 +202,7 @@ export function HsYearbookPortraitWidget({ config, live }: { config?: Cfg; live?
         rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Lora:ital,wght@0,400;0,500;1,400;1,500&family=Inter:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap"
       />
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Paper grain overlay (full stage) */}
       <div className="hs-ybp-grain" />

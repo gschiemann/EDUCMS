@@ -1,5 +1,7 @@
 'use client';
 
+
+import { sceneCss } from '../scene-css';
 /**
  * RetailWayfindingMapWidget — simple SVG store map with department callouts.
  *
@@ -91,7 +93,7 @@ export function RetailWayfindingMapWidget({
         } as React.CSSProperties
       }
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       <header className="rwmw-header">
         <h2 className="rwmw-heading">{heading}</h2>

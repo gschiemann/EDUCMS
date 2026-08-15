@@ -22,6 +22,7 @@
 // keyframe re-prefixed `bbp-*` to avoid collision with landscape `bb-*`.
 
 import { useEffect, useRef, useState, useMemo } from 'react';
+import { sceneCss } from './scene-css';
 
 type Route = {
   num?: string | number;
@@ -133,7 +134,7 @@ export function AnimatedBusBoardPortraitWidget({ config, live }: { config?: Cfg;
         background: '#bae6fd',
       }}
     >
-      <style>{CSS_BBP}</style>
+      <style>{sceneCss(CSS_BBP)}</style>
 
       <div
         className="bbp-stage"

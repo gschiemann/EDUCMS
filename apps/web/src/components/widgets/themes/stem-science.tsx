@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
+import { sceneCss } from '../scene-css';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STEM SCIENCE THEME - Cyberpunk / Futuristic Lab
@@ -232,7 +233,7 @@ export function StemScienceTicker({ config, compact }: { config: any; compact?: 
           {text}   ||   {text}
         </div>
       </div>
-      <style>{`@keyframes stemTicker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`}</style>
+      <style>{sceneCss(`@keyframes stemTicker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`)}</style>
     </div>
   );
 }

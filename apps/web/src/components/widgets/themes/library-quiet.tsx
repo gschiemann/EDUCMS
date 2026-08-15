@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
+import { sceneCss } from '../scene-css';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LIBRARY QUIET THEME - Elegant Wood, Brass & Leather
@@ -189,7 +190,7 @@ export function LibraryQuietTicker({ config, compact }: { config: any; compact?:
           {text}   ✦   {text}
         </div>
       </div>
-      <style>{`@keyframes libraryTicker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`}</style>
+      <style>{sceneCss(`@keyframes libraryTicker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`)}</style>
     </div>
   );
 }

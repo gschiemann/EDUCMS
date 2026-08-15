@@ -25,6 +25,7 @@ import { useHsLiveClock, resolveHsClock, resolveHsDate } from './useHsLiveClock'
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 import { useAutoFitText } from './useAutoFitText';
 import { useTextStyleOverrides } from './useTextStyleOverrides';
+import { sceneCss } from '../scene-css';
 
 export interface HsGalleryConfig {
   schoolName?: string;
@@ -176,7 +177,7 @@ export function HsGalleryWidget({ config, live }: { config?: HsGalleryConfig; li
         color: '#1a1814',
       }}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       <div className="hs-gl-mast">
         <div className="hs-gl-logo" data-field="schoolName" data-fit data-fit-min="40" style={{ whiteSpace: 'pre-wrap' as const }}>{c.schoolName}</div>

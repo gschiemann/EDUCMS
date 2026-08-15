@@ -18,6 +18,7 @@
 //   • Bottom ~240px: Chalk ticker with eraser-streak background
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 type MenuItem = { emoji?: string; name?: string; meta?: string; price?: string };
 type WeekMenu = {
@@ -221,7 +222,7 @@ export function AnimatedCafeteriaChalkboardPortraitWidget({ config, live }: { co
         background: '#0a0e27',
       }}
     >
-      <style>{CSS_CHP}</style>
+      <style>{sceneCss(CSS_CHP)}</style>
 
       <div
         className="chp-stage"

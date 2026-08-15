@@ -33,6 +33,7 @@ import React from 'react';
 import { useGameState, useRenderSurface, type GameSnapshot } from './GameStateContext';
 import { FitOneLine, FitBox } from './FitOneLine';
 import { deriveCtsField } from './cts-fields';
+import { sceneCss } from '../scene-css';
 
 /**
  * Resolve which team side a CTS-bound element reads, honoring the
@@ -287,7 +288,7 @@ export function GameStatusWidget({ config, live = true }: { config: ElCfg; live?
   const pulse = !!st.pulse && live !== false;
   return (
     <div style={{ width: '100%', height: '100%', background: config.bgColor ?? 'transparent', overflow: 'hidden' }}>
-      {pulse && <style>{`@keyframes sbStatusPulse{0%,100%{opacity:1}50%{opacity:.6}}`}</style>}
+      {pulse && <style>{sceneCss(`@keyframes sbStatusPulse{0%,100%{opacity:1}50%{opacity:.6}}`)}</style>}
       <FitBox
         baseFontPx={config.fontSize ?? 400}
         align={config.align ?? 'center'}

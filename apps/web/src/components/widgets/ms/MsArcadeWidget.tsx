@@ -26,6 +26,7 @@
 import { useEffect } from 'react';
 import { HsStage } from '../hs/HsStage';
 import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
+import { sceneCss } from '../scene-css';
 
 export interface MsArcadeConfig {
   // HUD — school identity
@@ -271,7 +272,7 @@ export function MsArcadeWidget({
         color: '#f1f1ff',
       }}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Soft ambient green vignette at the top (matches .stage::before in the mockup) */}
       <div className="ms-arc-glow" />

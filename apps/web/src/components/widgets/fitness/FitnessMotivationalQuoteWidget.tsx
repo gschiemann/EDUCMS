@@ -9,6 +9,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from '../scene-css';
 
 export interface FitnessMotivationalQuoteConfig {
   quotes?: Array<{ text: string; author?: string }>;
@@ -167,7 +168,7 @@ export function FitnessMotivationalQuoteWidget({
         '--fmqw-items': align === 'left' ? 'flex-start' : 'center',
       } as React.CSSProperties}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Background gradient */}
       <div className="fmqw-bg" />

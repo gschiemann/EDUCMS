@@ -39,6 +39,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 export type DecorationVariant =
   | 'confetti'
@@ -114,7 +115,7 @@ export function DecorationWidget({ config }: { config: DecorationConfig }) {
           self-contained — no global stylesheet dependency. The names
           are prefixed `dw-` to avoid collision with the existing
           themed-widget keyframes (`abw-*`, `mn-*`, `bb-*`, etc). */}
-      <style>{`
+      <style>{sceneCss(`
         @keyframes dw-confettiFall {
           0%   { transform: translate3d(0, -10%, 0) rotate(0deg); opacity: 0; }
           10%  { opacity: 1; }
@@ -151,7 +152,7 @@ export function DecorationWidget({ config }: { config: DecorationConfig }) {
           0%, 100% { box-shadow: inset 0 0 30px 0 var(--glow, #fbbf2444),  0 0 0 0 var(--glow, #fbbf2444); opacity: 0.6; }
           50%      { box-shadow: inset 0 0 80px 20px var(--glow, #fbbf2466), 0 0 50px 10px var(--glow, #fbbf2466); opacity: 1; }
         }
-      `}</style>
+      `)}</style>
     </div>
   );
 }
@@ -396,9 +397,9 @@ function PulseGlowVariant({ glowColor, speed }: { glowColor?: string; speed: num
       }}
       aria-hidden
     >
-      <style>{`
+      <style>{sceneCss(`
         :root { --glow-bright: ${glowBright}; }
-      `}</style>
+      `)}</style>
     </div>
   );
 }

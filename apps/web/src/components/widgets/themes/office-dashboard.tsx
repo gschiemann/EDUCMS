@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { LayoutDashboard, Users, Calendar, AlertTriangle, Building, CheckCircle2 } from 'lucide-react';
+import { sceneCss } from '../scene-css';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // OFFICE DASHBOARD THEME - Clean, corporate, premium glassmorphism
@@ -213,7 +214,7 @@ export function OfficeDashboardTicker({ config, compact }: { config: any; compac
           {text}   •   {text}
         </div>
       </div>
-      <style>{`@keyframes dashTicker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`}</style>
+      <style>{sceneCss(`@keyframes dashTicker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`)}</style>
     </div>
   );
 }

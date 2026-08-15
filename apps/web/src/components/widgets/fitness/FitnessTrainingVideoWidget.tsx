@@ -32,6 +32,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { sceneCss } from '../scene-css';
 
 export interface FitnessTrainingVideoConfig {
   /** .mp4 URL played muted + looped. Required for actual playback. */
@@ -109,7 +110,7 @@ export function FitnessTrainingVideoWidget({
 
   return (
     <div className="ftvw-root" style={{ '--ftvw-accent': accent } as React.CSSProperties}>
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Background */}
       <div className="ftvw-bg" />

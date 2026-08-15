@@ -28,6 +28,7 @@
  */
 
 import { HsStage } from '../hs/HsStage';
+import { sceneCss } from '../scene-css';
 
 export interface FitnessDiscothequeConfig {
   // Instructor photo — optional image for the instructor avatar circle
@@ -102,7 +103,7 @@ export function FitnessDiscothequeWidget({ config }: { config?: FitnessDiscotheq
       stageClassName="fd-disco-stage"
       stageStyle={{ background: '#0a0510', color: '#fff4f8', fontFamily: "'Outfit', system-ui, sans-serif" }}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Disco ball corner */}
       <div className="fd-ball" />

@@ -20,6 +20,7 @@
 
 import { HsStage } from '../hs/HsStage';
 import { sanitizeWidgetHtml } from '@/lib/sanitize-html';
+import { sceneCss } from '../scene-css';
 
 export interface FitnessLobbyConfig {
   // Gym logo — optional image that replaces the text logo in the header
@@ -259,7 +260,7 @@ function Room({ config, idx }: RoomProps) {
 export function FitnessLobbyWidget({ config }: { config?: FitnessLobbyConfig }) {
   return (
     <HsStage stageClassName="fb-stage" stageStyle={{ background: '#13100c', color: '#f1ead8', fontFamily: "'Inter', system-ui, sans-serif", fontWeight: 300 }}>
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Header */}
       <div className="fb-head">

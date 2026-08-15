@@ -7,6 +7,7 @@
 import React from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
+import { sceneCss } from '../scene-css';
 
 function px(z: number, f: number): number { return Math.max(8, Math.round(z * f)); }
 
@@ -415,7 +416,7 @@ export function SpinToWinWidget({ config, live = true, height = 480 }: WidgetPro
   return (
     <div style={frameStyle(r)}>
       {live && r.anim.on && (
-        <style>{`@keyframes touchengage_spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+        <style>{sceneCss(`@keyframes touchengage_spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`)}</style>
       )}
       <div style={{
         position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,

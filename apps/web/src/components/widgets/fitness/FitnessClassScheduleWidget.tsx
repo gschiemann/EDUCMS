@@ -9,6 +9,7 @@
 //   • Loose input ("8" → 8:00am, "1pm" → 1:00pm) works
 //   • Display always renders 12-hour, matching every other widget.
 import { parseTimeToMinutes, formatTime12Spaced } from '@/lib/format-time';
+import { sceneCss } from '../scene-css';
 
 /**
  * FitnessClassScheduleWidget — today's gym class schedule on a wall display.
@@ -141,7 +142,7 @@ export function FitnessClassScheduleWidget({
 
   return (
     <div className="fcsw-root" style={{ '--fcsw-accent': accent } as React.CSSProperties}>
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Charcoal gradient + radial glow + grain */}
       <div className="fcsw-bg" />

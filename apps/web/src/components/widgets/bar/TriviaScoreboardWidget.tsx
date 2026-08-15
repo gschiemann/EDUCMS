@@ -21,6 +21,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { sceneCss } from '../scene-css';
 
 export interface TriviaTeam {
   name: string;
@@ -104,7 +105,7 @@ export function TriviaScoreboardWidget({
       className="bts-root"
       style={{ '--bts-accent': accent } as React.CSSProperties}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       <div className="bts-bg" />
       <div className="bts-glow" />

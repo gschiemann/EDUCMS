@@ -32,6 +32,7 @@
 import React from 'react';
 import { resolveStyle, frameStyle } from './_shared/styleSystem';
 import type { BaseCfg, WidgetProps } from './_shared/types';
+import { sceneCss } from '../scene-css';
 
 function px(z: number, f: number): number { return Math.max(8, Math.round(z * f)); }
 
@@ -340,7 +341,7 @@ export function NewArrivalsWidget({ config, live = true, height = 480 }: WidgetP
   const animOn = r.anim.on && live;
   return (
     <div style={frameStyle(r)}>
-      {animOn && <style>{`@keyframes retailMarquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }`}</style>}
+      {animOn && <style>{sceneCss(`@keyframes retailMarquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }`)}</style>}
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ fontSize: px(height, 0.05), fontWeight: 700, letterSpacing: '3px', color: '#aeaeb6', textTransform: 'uppercase' }}>{c.eyebrow ?? 'Just In'}</div>
         <div style={{ fontSize: px(height, 0.13), fontWeight: 700, letterSpacing: '-0.5px', margin: `${px(height, 0.035)}px 0 ${px(height, 0.075)}px`, color: '#1d1d1f' }}>{c.title ?? 'New Arrivals'}</div>

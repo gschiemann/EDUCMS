@@ -24,6 +24,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 type MenuItem = { emoji?: string; name?: string; meta?: string; price?: string };
 type WeekMenu = {
@@ -202,7 +203,7 @@ export function AnimatedCafeteriaElementaryPortraitWidget({ config, live }: { co
         background: '#fce7f3',
       }}
     >
-      <style>{CSS_CAFE_PORTRAIT}</style>
+      <style>{sceneCss(CSS_CAFE_PORTRAIT)}</style>
 
       <div
         className="cep-stage"

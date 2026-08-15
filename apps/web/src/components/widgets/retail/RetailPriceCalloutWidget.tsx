@@ -1,5 +1,7 @@
 'use client';
 
+
+import { sceneCss } from '../scene-css';
 /**
  * RetailPriceCalloutWidget — single-product hero with big-price callout.
  *
@@ -85,7 +87,7 @@ export function RetailPriceCalloutWidget({
         } as React.CSSProperties
       }
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       <div className="rpcw-image-pane">
         {c.imageUrl ? (

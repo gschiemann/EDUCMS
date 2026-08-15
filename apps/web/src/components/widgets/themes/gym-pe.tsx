@@ -6,6 +6,7 @@ import { fetchWeather, getWMO } from '../WidgetRenderer';
 // we re-format the time half through the shared helper so 24-hour input
 // never escapes onto the canvas.
 import { formatTime12 } from '@/lib/format-time';
+import { sceneCss } from '../scene-css';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GYM & PE THEME - High energy, neon greens, dark background, sports fonts
@@ -209,7 +210,7 @@ export function GymPETicker({ config }: { config: any }) {
       <div data-field="messages" style={{ whiteSpace: 'nowrap', animation: 'gymTicker 20s linear infinite', fontSize: '5cqi', fontWeight: 900, fontStyle: 'italic', color: '#022c22', textTransform: 'uppercase', paddingLeft: '100%', textShadow: '2px 2px 0 rgba(255,255,255,0.3)' }}>
         {text}   ///   {text}
       </div>
-      <style>{`@keyframes gymTicker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`}</style>
+      <style>{sceneCss(`@keyframes gymTicker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`)}</style>
     </div>
   );
 }

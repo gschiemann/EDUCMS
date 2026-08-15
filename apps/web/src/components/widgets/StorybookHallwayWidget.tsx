@@ -7,6 +7,7 @@
 // Ticker uses @keyframes sh-tickerScroll with will-change: transform.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 type Row = { num?: string; time?: string; name?: string; room?: string; highlight?: boolean };
 
@@ -137,7 +138,7 @@ export function StorybookHallwayWidget({ config, live }: { config: Cfg; live?: b
         background: '#1c1206',
       }}
     >
-      <style>{CSS_SH}</style>
+      <style>{sceneCss(CSS_SH)}</style>
 
       <div
         className="sh-book"

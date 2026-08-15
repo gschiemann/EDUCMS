@@ -20,6 +20,7 @@
 // keeps working. Animations re-prefixed `mnp-*` to avoid collisions.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 type Story = { category?: string; title?: string; time?: string };
 
@@ -136,7 +137,7 @@ export function AnimatedMorningNewsPortraitWidget({ config, live }: { config?: C
         background: '#0f172a',
       }}
     >
-      <style>{CSS_MNP}</style>
+      <style>{sceneCss(CSS_MNP)}</style>
       <div
         className="mnp-stage"
         style={{

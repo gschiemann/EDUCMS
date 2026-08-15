@@ -27,6 +27,7 @@
     "a11y:ci": "pnpm --filter web run a11y:ci",
     "lhci": "pnpm --filter web run lhci",
     "mobile-perf-guard": "node apps/web/tools/check-mobile-perf.cjs",
+    "scene-css-guard": "node apps/web/tools/check-scene-css.cjs",
     "preflight": "pnpm install --frozen-lockfile --lockfile-only && pnpm --filter @cms/api-types build && pnpm --filter @cms/scoreboard-cts build && pnpm --filter @cms/signage-design build && pnpm --filter api build && pnpm --filter web build",
     "prepare": "husky || true"
   },

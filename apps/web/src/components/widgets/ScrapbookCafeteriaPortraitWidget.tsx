@@ -16,6 +16,7 @@
 // identically. Same data flow (live clock, countdown days). Hotspots gated by !isLive.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 type MenuCard = { title?: string; desc?: string; badges?: { label?: string; kind?: 'v' | 'gf' | 'dy' | 'pk' }[]; accent?: string; rot?: string; tape?: string };
 
@@ -128,7 +129,7 @@ export function ScrapbookCafeteriaPortraitWidget({ config, live }: { config?: Cf
         background: '#0f172a',
       }}
     >
-      <style>{CSS_SBP}</style>
+      <style>{sceneCss(CSS_SBP)}</style>
 
       <div
         className="sbp-stage"

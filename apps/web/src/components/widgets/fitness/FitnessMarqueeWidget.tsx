@@ -33,6 +33,7 @@
 
 import { useEffect, useState } from 'react';
 import { HsStage } from '../hs/HsStage';
+import { sceneCss } from '../scene-css';
 
 export interface FitnessMarqueeConfig {
   // Gym logo — optional image for the marquee header
@@ -187,7 +188,7 @@ export function FitnessMarqueeWidget({ config }: { config?: FitnessMarqueeConfig
       stageClassName="fm-marquee-stage"
       stageStyle={{ background: '#0a0612', color: '#fff8e7', fontFamily: "'Outfit', system-ui, sans-serif" }}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Bulb-bordered marquee */}
       <div className="fm-marquee">

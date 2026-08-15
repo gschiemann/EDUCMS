@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Cloud, CloudRain, Sun, Wind, Calendar as CalendarIcon, Info } from 'lucide-react';
 import { useLiveWeather } from '../use-live-weather';
+import { sceneCss } from '../scene-css';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LOBBY WELCOME THEME - Modern Glassmorphism & Architectural Elegance
@@ -219,7 +220,7 @@ export function LobbyWelcomeTicker({ config }: { config: any }) {
       }}>
         {text}   •   {text}
       </div>
-      <style>{`@keyframes lobbyTicker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`}</style>
+      <style>{sceneCss(`@keyframes lobbyTicker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`)}</style>
     </div>
   );
 }

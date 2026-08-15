@@ -30,6 +30,7 @@ import { useHsLiveClock, resolveHsClock } from './useHsLiveClock';
 import { useHsLiveWeather, describeWmo } from './useHsLiveWeather';
 import { useAutoFitText } from './useAutoFitText';
 import { useTextStyleOverrides } from './useTextStyleOverrides';
+import { sceneCss } from '../scene-css';
 
 export interface HsVarsityConfig {
   schoolInitials?: string;
@@ -222,7 +223,7 @@ export function HsVarsityPortraitWidget({ config, live }: { config?: Cfg; live?:
         rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Bungee&family=Black+Ops+One&family=Oswald:wght@500;700&family=Inter:wght@500;700&display=swap"
       />
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Diagonal pitch stripe overlay (full stage) */}
       <div className="hs-vp-stripes" />

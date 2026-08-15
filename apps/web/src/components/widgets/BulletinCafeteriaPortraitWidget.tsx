@@ -15,6 +15,7 @@
 //   ~240px  allergen ticker on bottom strip with handwritten "ALLERGENS:" label
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 type MenuItem = { emoji?: string; name?: string; meta?: string; price?: string };
 type WeekMenu = {
@@ -169,7 +170,7 @@ export function BulletinCafeteriaPortraitWidget({ config, live }: { config?: Cfg
         background: '#1c0e02',
       }}
     >
-      <style>{CSS_CORK_PORTRAIT}</style>
+      <style>{sceneCss(CSS_CORK_PORTRAIT)}</style>
 
       <div
         className="bcp-stage"

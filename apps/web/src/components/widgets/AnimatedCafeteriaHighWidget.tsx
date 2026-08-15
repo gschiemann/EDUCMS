@@ -3,6 +3,7 @@
 // PORTED 2026-04-20 from scratch/design/animated-cafeteria-high.html — transform:scale pattern, isLive-gated hotspots.
 
 import { useEffect, useRef, useState, useMemo } from 'react';
+import { sceneCss } from './scene-css';
 
 type MenuItem = { emoji?: string; name?: string; meta?: string; price?: string };
 type WeekMenu = {
@@ -184,7 +185,7 @@ export function AnimatedCafeteriaHighWidget({ config, live }: { config?: Cfg; li
         background: '#fce7f3',
       }}
     >
-      <style>{CSS_HS}</style>
+      <style>{sceneCss(CSS_HS)}</style>
 
       <div
         className="hs-stage"

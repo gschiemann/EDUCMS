@@ -20,6 +20,7 @@
 import { useEffect, useState } from 'react';
 import { resolveCountdownTarget } from '../countdown-utils';
 import { useLiveWeather } from '../use-live-weather';
+import { sceneCss } from '../scene-css';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '') : 'http://localhost:8080';
 function resolveUrl(url: string | undefined | null): string {
@@ -92,7 +93,7 @@ export function DinerChalkboardText({ config }: { config: any } & { onConfigChan
       }}>
         {content}
       </div>
-      <style>{`@keyframes dc-chalkin { 0%{opacity:0;filter:blur(3px)} 100%{opacity:1;filter:blur(0)} }`}</style>
+      <style>{sceneCss(`@keyframes dc-chalkin { 0%{opacity:0;filter:blur(3px)} 100%{opacity:1;filter:blur(0)} }`)}</style>
     </div>
   );
 }
@@ -307,7 +308,7 @@ export function DinerChalkboardTicker({ config }: { config: any }) {
           {repeated}
         </span>
       </div>
-      <style>{`@keyframes dc-ticker { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }`}</style>
+      <style>{sceneCss(`@keyframes dc-ticker { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }`)}</style>
     </div>
   );
 }

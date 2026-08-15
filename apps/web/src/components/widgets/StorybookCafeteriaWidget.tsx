@@ -6,6 +6,7 @@
 // could overlap the book's top-left corner flourish — repositioned here so the logo sits below the corner SVG.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 type MenuItem = { emoji?: string; name?: string; meta?: string; price?: string };
 type WeekMenu = {
@@ -159,7 +160,7 @@ export function StorybookCafeteriaWidget({ config, live }: { config: Cfg; live?:
         background: '#1c1206',
       }}
     >
-      <style>{CSS_BOOK}</style>
+      <style>{sceneCss(CSS_BOOK)}</style>
 
       <div
         className="book-stage"

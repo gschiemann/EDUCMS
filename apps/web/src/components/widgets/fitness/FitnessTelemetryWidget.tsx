@@ -29,6 +29,7 @@
 
 import { useEffect, useState } from 'react';
 import { HsStage } from '../hs/HsStage';
+import { sceneCss } from '../scene-css';
 
 export interface FitnessTelemetryConfig {
   // Gym logo — optional image that replaces the text logo in the top bar
@@ -235,7 +236,7 @@ export function FitnessTelemetryWidget({ config }: { config?: FitnessTelemetryCo
       stageClassName="ft-stage"
       stageStyle={{ background: '#020a06', color: '#9bff9b', fontFamily: "'JetBrains Mono', monospace" }}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Top status bar */}
       <div className="ft-top">

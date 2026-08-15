@@ -20,6 +20,7 @@
 import * as React from 'react';
 import { HsStage } from '../hs/HsStage';
 import { useLiveTemplateData, fmt } from '../lib/useLiveTemplateData';
+import { sceneCss } from '../scene-css';
 
 export interface MsPaperConfig {
   // Weather cluster (top-left masthead)
@@ -355,7 +356,7 @@ export function MsPaperWidget({ config, live }: { config: MsPaperConfig; live?: 
         fontFamily: "'Source Serif 4', Georgia, serif",
       }}
     >
-      <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      <style dangerouslySetInnerHTML={{ __html: sceneCss(CSS) }} />
 
       {/* Faint horizontal fold line + edge vignette */}
       <div className="ms-pp-paperfx" aria-hidden="true" />

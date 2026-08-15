@@ -26,6 +26,7 @@ import { useEffect, useState } from 'react';
 import { EditableText } from './EditableText';
 import { calendarDaysUntil, resolveCountdownTarget } from '../countdown-utils';
 import { useLiveWeather } from '../use-live-weather';
+import { sceneCss } from '../scene-css';
 
 // ─── Palette pulled from the scene illustration ─────────────────────────
 export const BTS = {
@@ -95,7 +96,7 @@ export function BackToSchoolText({ config, onConfigChange }: { config: any; onCo
           {content}
         </EditableText>
       </div>
-      <style>{`@keyframes bts-chalkin { 0%{opacity:0;filter:blur(4px)} 100%{opacity:1;filter:blur(0)} }`}</style>
+      <style>{sceneCss(`@keyframes bts-chalkin { 0%{opacity:0;filter:blur(4px)} 100%{opacity:1;filter:blur(0)} }`)}</style>
     </div>
   );
 }
@@ -448,7 +449,7 @@ export function BackToSchoolTicker({ config }: { config: any }) {
       }}>
         {text}  ★  {text}
       </div>
-      <style>{`@keyframes bts-ticker { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }`}</style>
+      <style>{sceneCss(`@keyframes bts-ticker { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }`)}</style>
     </div>
   );
 }

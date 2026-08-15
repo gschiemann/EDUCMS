@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 // start/end through the shared 12-hour formatter so 24-hour input never
 // surfaces on the canvas.
 import { formatTime12 } from '@/lib/format-time';
+import { sceneCss } from './scene-css';
 
 type Period = {
   num?: string | number;
@@ -214,7 +215,7 @@ export function AnimatedBellScheduleWidget({ config, live }: { config?: Cfg; liv
         background: '#0f172a',
       }}
     >
-      <style>{CSS_BS}</style>
+      <style>{sceneCss(CSS_BS)}</style>
       <div
         className="bs-stage"
         style={{

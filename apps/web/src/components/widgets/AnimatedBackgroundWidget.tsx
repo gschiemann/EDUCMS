@@ -23,6 +23,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { sceneCss } from './scene-css';
 
 const CANVAS_W = 1920;
 const CANVAS_H = 1080;
@@ -93,7 +94,7 @@ export function AnimatedBackgroundWidget({ config }: { config: Cfg }) {
         pointerEvents: 'none', // Background is purely decorative, never blocks editor clicks
       }}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
       <div
         className="abw-stage"
         style={{

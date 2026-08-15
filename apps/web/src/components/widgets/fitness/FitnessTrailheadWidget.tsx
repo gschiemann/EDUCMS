@@ -26,6 +26,7 @@
 
 import { useEffect, useState } from 'react';
 import { HsStage } from '../hs/HsStage';
+import { sceneCss } from '../scene-css';
 
 export interface FitnessTrailheadConfig {
   // Gym logo — optional image for the sign area
@@ -254,7 +255,7 @@ export function FitnessTrailheadWidget({ config }: { config?: FitnessTrailheadCo
       stageClassName="fh-stage"
       stageStyle={{ background: '#e9dfc6', color: '#1a2e22', fontFamily: "'Outfit', sans-serif" }}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* National-park-style sign */}
       <div className="fh-sign">

@@ -26,6 +26,7 @@ import { FitText } from './FitText';
 import { EditableText } from './EditableText';
 import { resolveCountdownTarget } from '../countdown-utils';
 import { fetchWeather, getWMO } from '../WidgetRenderer';
+import { sceneCss } from '../scene-css';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '') : 'http://localhost:8080';
 function resolveUrl(url: string | undefined | null): string {
@@ -382,9 +383,9 @@ export function JumbotronProText({ config, compact, onConfigChange }: { config: 
             </div>
           )}
         </div>
-        <style>{`
+        <style>{sceneCss(`
           @keyframes jp-blink { 0%,49%{opacity:1} 50%,100%{opacity:0.3} }
-        `}</style>
+        `)}</style>
       </div>
     </div>
   );
@@ -1265,13 +1266,13 @@ export function JumbotronProTicker({ config }: { config: any; compact?: boolean 
             {joined}
           </div>
         </div>
-        <style>{`
+        <style>{sceneCss(`
           @keyframes jp-ticker-scroll {
             0%   { transform: translateX(0%); }
             100% { transform: translateX(-50%); }
           }
           @keyframes jp-blink { 0%,49%{opacity:1} 50%,100%{opacity:0.3} }
-        `}</style>
+        `)}</style>
       </div>
     </div>
   );

@@ -23,6 +23,7 @@ import { useEffect, useState } from 'react';
 import { resolveStyle, frameStyle, animDurationSec } from './_shared/styleSystem';
 import type { WidgetStyle } from './_shared/styleSystem';
 import type { WidgetProps } from './_shared/types';
+import { sceneCss } from '../scene-css';
 
 // ─────────────────────────────────────────────────────────────────────
 // Shared time hook
@@ -98,11 +99,11 @@ export function ClockNeonPulseWidget({ config, live = true }: WidgetProps<ClockC
   return (
     <div style={frameStyle(r)}>
       {r.anim.on && (
-        <style>{`
+        <style>{sceneCss(`
           @keyframes ${pulseId} { 0%,100% { filter: drop-shadow(0 0 12px ${r.accent.primary}) drop-shadow(0 0 32px ${r.accent.primary}); }
             50% { filter: drop-shadow(0 0 24px ${r.accent.primary}) drop-shadow(0 0 64px ${r.accent.primary}); } }
           @keyframes ${pulseId}-blink { 50% { opacity: 0.2; } }
-        `}</style>
+        `)}</style>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12 }}>
         {r.show('label', !!c.label) && c.label && (
@@ -153,7 +154,7 @@ export function ClockRecessBlocksWidget({ config, live = true }: WidgetProps<Clo
 
   return (
     <div style={frameStyle(r)}>
-      {r.anim.on && <style>{`@keyframes blocks-bob { 0%,100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-6px) rotate(2deg); } }`}</style>}
+      {r.anim.on && <style>{sceneCss(`@keyframes blocks-bob { 0%,100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-6px) rotate(2deg); } }`)}</style>}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 16 }}>
         {r.show('label', !!c.label) && c.label && (
           <div style={{ color: r.accent.primary, fontSize: '0.2em', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em' }} data-field="label">{c.label}</div>

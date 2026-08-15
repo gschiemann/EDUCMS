@@ -21,6 +21,7 @@ import { useEffect, useState } from 'react';
 // of "Period 1: 8:00 - 8:50" lines through the shared 12-hour helper.
 import { formatTime12 } from '@/lib/format-time';
 import { useLiveWeather } from '../use-live-weather';
+import { sceneCss } from '../scene-css';
 
 // ─── Palette ────────────────────────────────────────────
 export const MSH = {
@@ -217,7 +218,7 @@ export function MSHallTicker({ config }: { config: any }) {
           {repeated}
         </span>
       </div>
-      <style>{`@keyframes msh-ticker { 0%{transform:translate(0, -50%)} 100%{transform:translate(-50%, -50%)} }`}</style>
+      <style>{sceneCss(`@keyframes msh-ticker { 0%{transform:translate(0, -50%)} 100%{transform:translate(-50%, -50%)} }`)}</style>
     </div>
   );
 }

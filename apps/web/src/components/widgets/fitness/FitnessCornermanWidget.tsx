@@ -29,6 +29,7 @@
  */
 
 import { HsStage } from '../hs/HsStage';
+import { sceneCss } from '../scene-css';
 
 export interface FitnessCornermanConfig {
   // Fighter photos — optional images for the VS card portraits
@@ -172,7 +173,7 @@ export function FitnessCornermanWidget({ config }: { config?: FitnessCornermanCo
         fontFamily: "'Outfit', sans-serif",
       }}
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       {/* Top strap */}
       <div className="fn-strap">

@@ -277,6 +277,7 @@ import { CampusQuadLogo, CampusQuadText, CampusQuadClock, CampusQuadWeather, Cam
 import { AchievementHallLogo, AchievementHallText, AchievementHallClock, AchievementHallWeather, AchievementHallCountdown, AchievementHallAnnouncement, AchievementHallCalendar, AchievementHallStaffSpotlight, AchievementHallImageCarousel, AchievementHallTicker } from './themes/achievement-hall';
 // Countdown helpers (recurring period support — used by every Countdown variant)
 import { resolveCountdownTarget } from './countdown-utils';
+import { sceneCss } from './scene-css';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // THEME SYSTEM
@@ -1196,7 +1197,7 @@ function WeatherWidget({ config, compact }: { config: any; compact: boolean }) {
             {loading ? 'Loading weather...' : 'Location not found'}
           </span>
         </div>
-        <style>{`@keyframes pulse { 0%,100% { opacity:0.4 } 50% { opacity:1 } }`}</style>
+        <style>{sceneCss(`@keyframes pulse { 0%,100% { opacity:0.4 } 50% { opacity:1 } }`)}</style>
       </div>
     );
   }
@@ -2401,7 +2402,7 @@ function TickerWidget({ config }: { config: any }) {
           {sep}{text}
         </span>
       </div>
-      <style>{`@keyframes ticker-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`}</style>
+      <style>{sceneCss(`@keyframes ticker-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`)}</style>
     </div>
   );
 }
@@ -2899,7 +2900,7 @@ function CarouselSlide({
           We keep the keyframes in the renderer so a CMS deploy never
           ships HTML carousels with broken transitions if a Tailwind
           config drift drops the custom keyframes. */}
-      <style>{`
+      <style>{sceneCss(`
         @keyframes cms-carousel-fade {
           from { opacity: 0; }
           to   { opacity: 1; }
@@ -2920,7 +2921,7 @@ function CarouselSlide({
           from { transform: scale(0.92); opacity: 0; }
           to   { transform: scale(1);    opacity: 1; }
         }
-      `}</style>
+      `)}</style>
       <div className="absolute top-0 right-0 bottom-0 left-0" style={transitionStyle(transition)}>
         {mediaKind === 'image' ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -4516,7 +4517,7 @@ function SunnyMeadowClock({ config, compact }: { config: any; compact: boolean }
       background: 'linear-gradient(180deg, #DBF0FF 0%, #FFF1B8 65%, #FFD8A8 100%)',
       fontFamily: SUNNY_FONT_DISPLAY,
     }}>
-      <style>{SUNNY_KEYFRAMES}</style>
+      <style>{sceneCss(SUNNY_KEYFRAMES)}</style>
 
       {/* Drifting cloud top-left */}
       <div style={{ position: 'absolute', top: '8%', left: '-6%', animation: 'sunny-cloud-drift 22s ease-in-out infinite', opacity: 0.85 }}>
@@ -4692,7 +4693,7 @@ function SunnyMeadowWeather({ config, compact }: { config: any; compact: boolean
   if (loading || !weather) {
     return (
       <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex items-center justify-center" style={{ background: bucketInfo.sky, fontFamily: SUNNY_FONT_DISPLAY }}>
-        <style>{SUNNY_KEYFRAMES}</style>
+        <style>{sceneCss(SUNNY_KEYFRAMES)}</style>
         <div style={{ animation: 'sunny-bob 2.5s ease-in-out infinite', color: SUNNY.textSoft, fontSize: '0.6em', fontWeight: 600 }}>
           {loading ? 'Checking the sky...' : 'Location not found'}
         </div>
@@ -4702,7 +4703,7 @@ function SunnyMeadowWeather({ config, compact }: { config: any; compact: boolean
 
   return (
     <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden" style={{ background: bucketInfo.sky, fontFamily: SUNNY_FONT_DISPLAY }}>
-      <style>{SUNNY_KEYFRAMES}</style>
+      <style>{sceneCss(SUNNY_KEYFRAMES)}</style>
 
       {/* Twinkling stars on clear */}
       {bucketInfo.bucket === 'clear' && (
@@ -4830,7 +4831,7 @@ function SunnyMeadowStaffSpotlight({ config, compact }: { config: any; compact: 
       background: 'linear-gradient(180deg, #FFF6D4 0%, #FFE6A7 60%, #FFD08A 100%)',
       fontFamily: SUNNY_FONT_DISPLAY,
     }}>
-      <style>{SUNNY_KEYFRAMES}</style>
+      <style>{sceneCss(SUNNY_KEYFRAMES)}</style>
 
       {/* Doodle stars at corners */}
       <SunnyStar size={compact ? 14 : 22} color={SUNNY.rose}      style={{ position: 'absolute', top: '8%',  left: '6%',  animation: 'sunny-twinkle 2.4s ease-in-out infinite' }} />
@@ -4904,9 +4905,9 @@ function SunnyMeadowStaffSpotlight({ config, compact }: { config: any; compact: 
             ) : (
               <div style={{ width: '100%', height: '100%' }}>
                 <SunnyMeadowFallbackAvatar size={compact ? 120 : 240} />
-                <style>{`
+                <style>{sceneCss(`
                   div > svg { width: 100% !important; height: 100% !important; }
-                `}</style>
+                `)}</style>
               </div>
             )}
           </div>

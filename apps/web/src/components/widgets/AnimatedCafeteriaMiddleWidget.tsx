@@ -3,6 +3,7 @@
 // PORTED 2026-04-20 from scratch/design/animated-cafeteria-middle.html — transform:scale pattern, isLive-gated hotspots.
 
 import { useEffect, useRef, useState, useMemo } from 'react';
+import { sceneCss } from './scene-css';
 
 type MenuItem = { emoji?: string; name?: string; meta?: string; price?: string };
 type WeekMenu = {
@@ -175,7 +176,7 @@ export function AnimatedCafeteriaMiddleWidget({ config, live }: { config?: Cfg; 
         background: '#0a0e27',
       }}
     >
-      <style>{CSS_MS}</style>
+      <style>{sceneCss(CSS_MS)}</style>
 
       <div
         className="ms-stage"

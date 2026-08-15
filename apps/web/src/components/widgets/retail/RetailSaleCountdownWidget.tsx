@@ -16,6 +16,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { sceneCss } from '../scene-css';
 
 export interface RetailSaleCountdownConfig {
   /** ISO 8601 timestamp when the sale ends. e.g. "2026-05-15T23:59:00-05:00". */
@@ -96,7 +97,7 @@ export function RetailSaleCountdownWidget({
         } as React.CSSProperties
       }
     >
-      <style>{CSS}</style>
+      <style>{sceneCss(CSS)}</style>
 
       <div className="rscw-eyebrow">{eyebrow}</div>
       <h1 className="rscw-headline">{headline}</h1>
