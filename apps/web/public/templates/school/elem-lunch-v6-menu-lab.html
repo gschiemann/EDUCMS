@@ -12,10 +12,10 @@
     :root{--sw:1920px;--sh:1080px;--ss:1;--bg:#2146e8;--surface:#fffdf4;--text:#11162a;--primary:#2146e8;--secondary:#0c1b74;--accent:#d8ff53;--accent2:#dfe7ff;--positive:#d8ff53;--negative:#ff6b43;--blue:var(--primary);--acid:var(--accent);--paper:var(--surface);--ink:var(--text);--orange:var(--negative);--ice:var(--accent2);--font-display:"Archivo Black";--font-body:"DM Sans";--font-condensed:"IBM Plex Mono"}
     *{box-sizing:border-box}
     html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0c1b74;font-family:var(--font-body),sans-serif}
-    .viewport{position:fixed;inset:0;display:grid;place-items:center}.outer{width:calc(var(--sw)*var(--ss));height:calc(var(--sh)*var(--ss))}
+    .viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center}.outer{width:calc(var(--sw)*var(--ss));height:calc(var(--sh)*var(--ss))}
     .stage{position:relative;width:var(--sw);height:var(--sh);overflow:hidden;transform:scale(var(--ss));transform-origin:0 0;background:var(--bg);color:white}
-    .board-bg{position:absolute;inset:0;z-index:-1;background-position:center;background-size:cover;background-repeat:no-repeat}
-    .grid{position:absolute;inset:0;opacity:.15;background-image:linear-gradient(rgba(255,255,255,.8) 2px,transparent 2px),linear-gradient(90deg,rgba(255,255,255,.8) 2px,transparent 2px);background-size:64px 64px}
+    .board-bg{position:absolute;top:0;right:0;bottom:0;left:0;z-index:-1;background-position:center;background-size:cover;background-repeat:no-repeat}
+    .grid{position:absolute;top:0;right:0;bottom:0;left:0;opacity:.15;background-image:linear-gradient(rgba(255,255,255,.8) 2px,transparent 2px),linear-gradient(90deg,rgba(255,255,255,.8) 2px,transparent 2px);background-size:64px 64px}
     .masthead{position:absolute;left:70px;top:56px;width:700px;height:165px;border-left:18px solid var(--acid);padding-left:28px}
     .eyebrow{font:700 24px var(--font-condensed);text-transform:uppercase;letter-spacing:.13em;color:var(--acid)}
     .title{margin-top:6px;font:400 87px/.88 var(--font-display);letter-spacing:-.05em}
@@ -24,7 +24,7 @@
     .logo.has-img span{display:none}
     .school{margin-left:24px;font:400 34px/1.05 var(--font-display);max-width:370px}.date{margin-left:auto;writing-mode:vertical-rl;transform:rotate(180deg);font:700 18px var(--font-condensed);letter-spacing:.08em;text-transform:uppercase;color:var(--ice)}
     .photo-ring{position:absolute;left:70px;top:280px;width:790px;height:720px;background:var(--acid);clip-path:circle(47% at 50% 50%)}
-    .video,.photo-fallback{position:absolute;inset:22px;width:calc(100% - 44px);height:calc(100% - 44px);object-fit:cover;object-position:center;clip-path:circle(47% at 50% 50%)}
+    .video,.photo-fallback{position:absolute;top:22px;right:22px;bottom:22px;left:22px;width:calc(100% - 44px);height:calc(100% - 44px);object-fit:cover;object-position:center;clip-path:circle(47% at 50% 50%)}
     .video{z-index:2}.photo-fallback{z-index:1;display:block;background:url("menu-assets/salad-prep-poster.jpg") center/cover no-repeat}
     .video-status{position:absolute;left:136px;top:312px;z-index:5;height:60px;padding:0 22px;display:flex;align-items:center;background:var(--acid);color:var(--ink);font:700 20px var(--font-condensed);letter-spacing:.06em;text-transform:uppercase;clip-path:polygon(0 0,94% 0,100% 50%,94% 100%,0 100%,5% 50%)}
     .video-status:before{content:"";width:13px;height:13px;margin-right:12px;background:var(--orange);border-radius:50%}
