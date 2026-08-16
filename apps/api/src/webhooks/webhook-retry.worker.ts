@@ -134,6 +134,35 @@ export class WebhookRetryWorker implements OnModuleInit, OnModuleDestroy {
     const batch = Number(process.env.WEBHOOK_RETRY_BATCH) || 50;
     const heartbeatMs = this.heartbeatMs();
 
+    // ── IDLE GATE (2026-08-15 efficiency audit) ─────────────────────────
+    // This worker used to open every 5s tick with TWO unconditional UPDATE
+    // statements (the stranded-reclaim + the claim), against a table that
+    // has never held a row in this deployment — ~35k pointless write
+    // statements/day, each paying WAL + a pooler round trip, and together
+    // one of the largest single sources of DB statements in the system.
+    // One cheap existence probe now decides whether either write can
+    // possibly have work: a PENDING row that is due (next_retry_at) OR
+    // in-flight with an expired lease (reclaimable). Empty -> return
+    // without writing anything. Pickup latency is unchanged (same 5s
+    // cadence); only the idle cost changes. Multi-replica safe: the probe
+    // is read-only and the claim itself still uses FOR UPDATE SKIP LOCKED.
+    const reclaimMs = this.reclaimThresholdMs(heartbeatMs);
+    const hasWork = await this.prisma.client.$queryRawUnsafe<Array<{ one: number }>>(
+      `
+      SELECT 1 AS one FROM "webhook_deliveries"
+       WHERE "status" = 'PENDING'
+         AND (
+           ("next_retry_at" IS NOT NULL AND "next_retry_at" <= NOW())
+           OR ("next_retry_at" IS NULL AND "updated_at" < NOW() - ($1 * INTERVAL '1 millisecond'))
+         )
+       LIMIT 1
+      `,
+      reclaimMs,
+    );
+    if (!hasWork || hasWork.length === 0) {
+      return { claimed: 0, delivered: 0, failed: 0 };
+    }
+
     // ── RECLAIM stranded in-flight deliveries (2026-07-04, lease-hardened 2026-07-07) ──
     await this.reclaimStranded(heartbeatMs);
 

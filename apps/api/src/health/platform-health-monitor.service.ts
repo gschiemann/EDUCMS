@@ -53,6 +53,16 @@ interface ProbeResult {
   db: 'ok' | 'fail';
   redis: 'ok' | 'off' | 'fail';
   wsSigner: 'ok' | 'fail';
+  /**
+   * HOW the db probe failed (2026-08-15). The 2026-08-15 page said
+   * "database unreachable" when the database was up, idle, and answering —
+   * just slower than the 1.5s probe budget during a pooler stall. An
+   * operator reads "unreachable" as a total outage and reacts accordingly;
+   * a SLOW database is a different incident with different remedies. So the
+   * alert must say which one happened, and how slow the probe actually was.
+   */
+  dbFailKind?: 'slow' | 'unreachable';
+  dbProbeMs?: number;
 }
 
 const TICK_MS = 5 * 60_000;
@@ -101,23 +111,35 @@ export class PlatformHealthMonitorService implements OnModuleInit, OnModuleDestr
     });
   }
 
-  /** One DB reachability check. */
-  private async dbOnce(): Promise<boolean> {
+  /**
+   * One DB reachability check. Distinguishes a probe that TIMED OUT (the
+   * database is answering, just slower than PROBE_TIMEOUT_MS — a latency
+   * incident) from one that ERRORED (connection refused / DNS / auth — a
+   * genuine reachability incident), and reports how long the probe took.
+   */
+  private async dbOnce(): Promise<{ ok: boolean; kind?: 'slow' | 'unreachable'; ms: number }> {
+    const t0 = Date.now();
     try {
       await withTimeout(this.prisma.client.$queryRaw`SELECT 1`, PROBE_TIMEOUT_MS);
-      return true;
-    } catch {
-      return false;
+      return { ok: true, ms: Date.now() - t0 };
+    } catch (e: any) {
+      const ms = Date.now() - t0;
+      // withTimeout rejects with its own timeout error at ~PROBE_TIMEOUT_MS;
+      // anything materially faster than the budget was a hard failure from
+      // the driver (refused / reset / auth), not slowness.
+      const timedOut = ms >= PROBE_TIMEOUT_MS - 50;
+      return { ok: false, kind: timedOut ? 'slow' : 'unreachable', ms };
     }
   }
 
   async probe(): Promise<ProbeResult> {
     // DB — re-probe once after a pause so a transient pooler blip never pages.
-    let db: ProbeResult['db'] = (await this.dbOnce()) ? 'ok' : 'fail';
-    if (db === 'fail') {
+    let dbProbe = await this.dbOnce();
+    if (!dbProbe.ok) {
       await this.pause(DB_RETRY_DELAY_MS);
-      db = (await this.dbOnce()) ? 'ok' : 'fail';
+      dbProbe = await this.dbOnce();
     }
+    const db: ProbeResult['db'] = dbProbe.ok ? 'ok' : 'fail';
 
     // Redis — only a CONFIGURED-but-unreachable Redis is unhealthy. An
     // unconfigured deploy (no REDIS_URL) runs the designed HTTP-polling
@@ -149,7 +171,13 @@ export class PlatformHealthMonitorService implements OnModuleInit, OnModuleDestr
 
     const status: MonitorStatus =
       db === 'fail' || wsSigner === 'fail' ? 'critical' : redis === 'fail' ? 'degraded' : 'ok';
-    return { status, db, redis, wsSigner };
+    return {
+      status,
+      db,
+      redis,
+      wsSigner,
+      ...(dbProbe.ok ? {} : { dbFailKind: dbProbe.kind, dbProbeMs: dbProbe.ms }),
+    };
   }
 
   async tick(): Promise<void> {
@@ -167,19 +195,27 @@ export class PlatformHealthMonitorService implements OnModuleInit, OnModuleDestr
 
       if (enteredUnhealthy || worsened || stillUnhealthy) {
         this.lastAlertAt = now;
+        // "unreachable" vs "SLOW" is the difference between "the platform is
+        // down" and "the platform is slow" — say the true one (2026-08-15:
+        // a 1.5s-slow pooler stall paged as "database unreachable").
+        const dbFailLabel =
+          result.dbFailKind === 'slow'
+            ? `database SLOW — probe took ${result.dbProbeMs ?? '>timeout'}ms (budget ${PROBE_TIMEOUT_MS}ms); DB is answering but latency is critical`
+            : 'database unreachable';
         const subject =
           result.status === 'critical'
-            ? `[VenueOS] PLATFORM CRITICAL — ${result.db === 'fail' ? 'database unreachable' : 'emergency signing chain broken'}`
+            ? `[VenueOS] PLATFORM CRITICAL — ${result.db === 'fail' ? dbFailLabel : 'emergency signing chain broken'}`
             : '[VenueOS] Platform DEGRADED — Redis unreachable, realtime on polling fallback';
         const body = [
           result.status === 'critical'
             ? 'The API is up but a load-bearing dependency is failing. Dashboards, manifests, and the emergency trigger chain may be impacted RIGHT NOW.'
             : 'Redis is configured but unreachable. Realtime is riding the HTTP-polling fallback — emergency alerts still deliver (screens poll their manifest), but push delivery and multi-screen sync are degraded.',
           '',
-          `Checks: db=${result.db}  redis=${result.redis}  ws_signer=${result.wsSigner}`,
+          `Checks: db=${result.db}${result.db === 'fail' ? ` (${result.dbFailKind ?? 'unknown'}, probe ${result.dbProbeMs ?? '?'}ms)` : ''}  redis=${result.redis}  ws_signer=${result.wsSigner}`,
           '',
           'Likely causes (CLAUDE.md-documented):',
-          '  - db fail: Supabase pooler hiccup, or DATABASE_URL missing connection_limit=10&pool_timeout=20',
+          '  - db SLOW: Supabase pooler stall or connection-pool queueing — screens keep working (HTTP-poll backstop); watch, do not panic',
+          '  - db unreachable: connection refused/DNS/auth — check Supabase status + DATABASE_URL (session mode, port 5432, connection_limit=10&pool_timeout=20)',
           '  - redis fail: Railway Redis addon restart/outage — API keeps working on the polling fallback',
           '  - ws_signer fail: DEVICE_SECRET_KEY / signer misconfiguration — treat as emergency-path outage',
           '',

@@ -188,7 +188,14 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
       where: {
         status: 'ONLINE',
         tenantId: { not: null }, // unpaired screens have no tenant channel
-        lastPingAt: { gte: pingFreshCutoff },
+        // Bounded on BOTH sides (2026-08-15): the Walnut Creek demo seeder
+        // FUTURE-DATES lastPingAt (~a month ahead) so demo screens read as
+        // ONLINE in the dashboard. An open-ended `gte` therefore counted 34
+        // fake screens as "freshly pinging" forever, and this cron kept
+        // evaluating them as wedge candidates — REFRESH_WEB pushes into the
+        // void plus audit-log noise on every sweep. A ping from the future
+        // is by definition not a real heartbeat.
+        lastPingAt: { gte: pingFreshCutoff, lte: new Date(now) },
         OR: [
           { lastCacheReportAt: { lt: cacheStaleCutoff } },
           {

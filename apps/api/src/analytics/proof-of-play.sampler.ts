@@ -148,7 +148,12 @@ export class ProofOfPlaySampler implements OnModuleInit, OnModuleDestroy {
           where: {
             tenantId: { not: null },
             pairedAt: { not: null },
-            lastPingAt: { gte: onlineSince },
+            // Both-sided (2026-08-15): seeded demo screens carry FUTURE-DATED
+            // lastPingAt so they look ONLINE in demos. Open-ended `gte`
+            // counted those 34 fakes as live and fabricated proof-of-play
+            // samples for screens that do not exist. A future ping is not a
+            // heartbeat.
+            lastPingAt: { gte: onlineSince, lte: now },
           },
           select: { id: true, tenantId: true, screenGroupId: true },
         }),

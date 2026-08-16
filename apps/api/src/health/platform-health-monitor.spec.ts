@@ -79,6 +79,32 @@ describe('probe() classification', () => {
     expect(res.status).toBe('critical');
   });
 
+  /**
+   * 2026-08-15 — the incident that motivated this: a 1.5s-slow pooler stall
+   * paged as "database unreachable" while the DB was up and answering. The
+   * probe must now say WHICH failure happened, because an operator reacts
+   * to "unreachable" (total outage) very differently from "slow".
+   */
+  it('a fast driver error classifies as UNREACHABLE (refused/DNS/auth, not slowness)', async () => {
+    const { svc } = makeMonitor({ dbOk: false }); // rejects immediately
+    jest.spyOn(svc as any, 'pause').mockResolvedValue(undefined);
+    const res = await svc.probe();
+    expect(res.db).toBe('fail');
+    expect(res.dbFailKind).toBe('unreachable');
+    expect(res.dbProbeMs).toBeLessThan(500); // failed far under the budget
+  });
+
+  it('a probe that exhausts its 1500ms budget classifies as SLOW — the DB is answering', async () => {
+    const { svc, prisma } = makeMonitor({ dbOk: true });
+    jest.spyOn(svc as any, 'pause').mockResolvedValue(undefined);
+    // A query that never resolves: only withTimeout's 1500ms rejection fires.
+    prisma.client.$queryRaw.mockImplementation(() => new Promise(() => undefined));
+    const res = await svc.probe();
+    expect(res.db).toBe('fail');
+    expect(res.dbFailKind).toBe('slow');
+    expect(res.dbProbeMs).toBeGreaterThanOrEqual(1450);
+  }, 15_000);
+
   it('one transient DB blip → second probe passes → ok (no page for a pooler hiccup)', async () => {
     const { svc, prisma } = makeMonitor({ dbOk: true });
     jest.spyOn(svc as any, 'pause').mockResolvedValue(undefined);

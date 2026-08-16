@@ -192,6 +192,40 @@ describe('RealtimeGateway', () => {
     });
 
     /**
+     * 2026-08-15 — heartbeat ACK. The player force-closes its socket after
+     * 60s without ANY inbound message; until this reply existed, a screen
+     * with sync disabled and no events flowing heard nothing after AUTH_OK
+     * and tore down a healthy socket every ~75s, fleet-wide, forever. The
+     * ACK is a bare unsigned control frame (same class as AUTH_OK /
+     * TIME_PONG); pre-auth sockets still get silence, and it must carry NO
+     * clock field — TIME_PONG is the only time authority (sync rule #3).
+     */
+    it('answers HEARTBEAT with a bare HEARTBEAT_ACK, only after auth', async () => {
+      const mockWs = { send: jest.fn(), close: jest.fn(), on: jest.fn(), readyState: WebSocket.OPEN } as unknown as WebSocket;
+      const secret = 'test_device_jwt_secret_at_least_32_chars_long_xx';
+      process.env.DEVICE_JWT_SECRET = secret;
+      const token = jwt.sign({ deviceId: 'dev_123', tenantId: 'tenant_1' }, secret, { expiresIn: '1h' });
+
+      gateway.handleConnection(mockWs);
+
+      // Pre-auth: no reply at all — the unauthenticated surface stays zero.
+      (gateway as any).processHeartbeat(mockWs, {});
+      expect(mockWs.send).not.toHaveBeenCalled();
+
+      await (gateway as any).processHello(mockWs, { token });
+      (mockWs.send as jest.Mock).mockClear();
+
+      (gateway as any).processHeartbeat(mockWs, {});
+      const ackCall = (mockWs.send as jest.Mock).mock.calls
+        .map((c: any[]) => JSON.parse(c[0]))
+        .find((m: any) => m.type === 'HEARTBEAT_ACK');
+      expect(ackCall).toBeDefined();
+      // Bare ack: no serverNow / timestamp that could be misread as a clock.
+      expect(ackCall.payload.serverNow).toBeUndefined();
+      expect(ackCall.payload.t0).toBeUndefined();
+    });
+
+    /**
      * Group-scoped realtime delivery (2026-06-01). The WS gateway already
      * matched type==='group' && ctx.groupId===id in broadcastToScope, and
      * redis already psubscribes group:* — but ctx.groupId was only ever set

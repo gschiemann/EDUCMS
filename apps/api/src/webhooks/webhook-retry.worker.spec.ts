@@ -106,10 +106,23 @@ class FakeDeliveries {
     return 0;
   }
 
-  /** Interprets $queryRawUnsafe — the claim. Returns the claimed rows. */
-  async queryRaw(sql: string): Promise<
-    Array<Pick<Row, 'id' | 'webhook_id' | 'event' | 'body' | 'signed_timestamp' | 'attempts'>>
-  > {
+  /**
+   * Interprets $queryRawUnsafe — the idle-gate existence probe (2026-08-15)
+   * or the claim, dispatched on SQL shape exactly like execRaw does.
+   */
+  async queryRaw(sql: string, ...params: unknown[]): Promise<any[]> {
+    if (/SELECT 1 AS one/.test(sql)) {
+      // EXISTENCE PROBE: due (next_retry_at <= now) OR stranded
+      // (next_retry_at NULL + lease older than the $1 threshold).
+      const threshold = Number(params[0]);
+      const hit = this.rows.some(
+        (r) =>
+          r.status === 'PENDING' &&
+          ((r.next_retry_at !== null && r.next_retry_at <= this.now) ||
+            (r.next_retry_at === null && r.updated_at < this.now - threshold)),
+      );
+      return hit ? [{ one: 1 }] : [];
+    }
     const lim = sql.match(/LIMIT (\d+)/);
     const limit = lim ? Number(lim[1]) : 50;
     const due = this.rows
@@ -150,7 +163,7 @@ function makeWorker(opts?: { deliverOk?: boolean }) {
   const prisma = {
     client: {
       $executeRawUnsafe: jest.fn((sql: string, ...p: unknown[]) => db.execRaw(sql, ...p)),
-      $queryRawUnsafe: jest.fn((sql: string) => db.queryRaw(sql)),
+      $queryRawUnsafe: jest.fn((sql: string, ...p: unknown[]) => db.queryRaw(sql, ...p)),
       tenantWebhook: {
         findMany: jest.fn(async ({ where }: any) => {
           const ids: string[] = where?.id?.in ?? [];
@@ -206,6 +219,45 @@ function makeWorker(opts?: { deliverOk?: boolean }) {
   return { worker, prisma, dispatch, db, sends };
 }
 
+// ── Idle gate (2026-08-15 efficiency audit) ────────────────────────────────
+// The worker used to open every 5s tick with two unconditional UPDATEs against
+// a usually-empty table (~35k pointless write statements/day). These pin the
+// gate: an empty queue costs exactly ONE read and ZERO writes, and the gate
+// can never hide work — due AND stranded rows both open the drain.
+describe('WebhookRetryWorker — idle gate', () => {
+  it('an empty queue costs exactly one read-only probe and zero writes', async () => {
+    const { worker, prisma } = makeWorker();
+    const res = await worker.tick();
+
+    expect(res).toEqual({ claimed: 0, delivered: 0, failed: 0 });
+    expect(prisma.client.$queryRawUnsafe).toHaveBeenCalledTimes(1); // the probe
+    expect(String(prisma.client.$queryRawUnsafe.mock.calls[0][0])).toMatch(/SELECT 1 AS one/);
+    expect(prisma.client.$executeRawUnsafe).not.toHaveBeenCalled(); // no reclaim, no writes
+  });
+
+  it('a DUE row opens the drain (probe -> reclaim -> claim -> delivery attempt)', async () => {
+    const { worker, prisma, db, dispatch } = makeWorker();
+    dispatch.attemptDelivery.mockResolvedValue({ ok: true });
+    db.seed({ id: 'due1', status: 'PENDING', next_retry_at: db.now - 1, updated_at: db.now - 1 });
+
+    const res = await worker.tick();
+
+    expect(res.claimed).toBe(1);
+    expect(prisma.client.$executeRawUnsafe).toHaveBeenCalled(); // reclaim ran
+  });
+
+  it('a STRANDED row alone (no due rows) still opens the drain — the gate cannot starve crash recovery', async () => {
+    const { worker, db } = makeWorker();
+    db.seed({ id: 'stranded1', status: 'PENDING', next_retry_at: null, updated_at: 0 });
+
+    const res = await worker.tick();
+
+    // Reclaim re-armed it (next_retry_at = now) and the claim picked it up
+    // in the SAME tick — identical to pre-gate behavior.
+    expect(res.claimed).toBe(1);
+  });
+});
+
 // ── Mock-level ordering / isolation properties (no real SQL needed) ─────────
 describe('WebhookRetryWorker — reclaim runs first, error-isolated', () => {
   function makeOrderWorker() {
@@ -218,7 +270,11 @@ describe('WebhookRetryWorker — reclaim runs first, error-isolated', () => {
           execCalls.push(sql);
           return 0;
         }),
-        $queryRawUnsafe: jest.fn(async () => {
+        $queryRawUnsafe: jest.fn(async (sql: string) => {
+          if (/SELECT 1 AS one/.test(sql)) {
+            order.push('probe');
+            return [{ one: 1 }]; // pretend work exists so the drain proceeds
+          }
           order.push('claim');
           return []; // no due rows → drain is a no-op after the reclaim
         }),
@@ -234,8 +290,9 @@ describe('WebhookRetryWorker — reclaim runs first, error-isolated', () => {
     const { worker, order, execCalls } = makeOrderWorker();
     await worker.tick();
 
-    // Reclaim must run first so a just-re-armed row is claimable this cycle.
-    expect(order).toEqual(['reclaim', 'claim']);
+    // The idle-gate probe opens the drain (read-only), then reclaim must run
+    // before the claim so a just-re-armed row is claimable this same cycle.
+    expect(order).toEqual(['probe', 'reclaim', 'claim']);
 
     const sql = execCalls[0];
     expect(sql).toMatch(/UPDATE "webhook_deliveries"/);
@@ -252,7 +309,9 @@ describe('WebhookRetryWorker — reclaim runs first, error-isolated', () => {
 
     const res = await worker.tick();
 
-    expect(prisma.client.$queryRawUnsafe).toHaveBeenCalledTimes(1);
+    // Two $queryRawUnsafe calls: the idle-gate probe, then — despite the
+    // reclaim blowing up — the claim still runs (best-effort hardening).
+    expect(prisma.client.$queryRawUnsafe).toHaveBeenCalledTimes(2);
     expect(res).toEqual({ claimed: 0, delivered: 0, failed: 0 });
   });
 });
@@ -265,7 +324,11 @@ describe('WebhookRetryWorker — reclaim threshold vs heartbeat', () => {
   });
 
   async function captureReclaimThresholdMs(): Promise<number> {
-    const { worker, prisma } = makeWorker();
+    const { worker, prisma, db } = makeWorker();
+    // Seed one stranded row (PENDING, next_retry_at NULL, ancient lease) so
+    // the idle gate sees work and the reclaim statement actually fires —
+    // this helper reads the threshold off that statement's SQL.
+    db.seed({ id: 'stranded', status: 'PENDING', next_retry_at: null, updated_at: 0 });
     await worker.tick();
     const call = prisma.client.$executeRawUnsafe.mock.calls.find((c: any[]) =>
       /SET "next_retry_at" = NOW\(\)/.test(c[0]),

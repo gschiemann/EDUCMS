@@ -393,6 +393,21 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     if (!ctx || !ctx.isAuthenticated) return;
     if (!this.consumeTelemetryToken(ctx, 'HEARTBEAT')) return;
 
+    // ACK the heartbeat (2026-08-15). The player's dead-connection detector
+    // (player/page.tsx ~L5470) force-closes the socket after 60s without ANY
+    // inbound message — and until this reply existed, a screen with sync
+    // disabled and no events flowing heard NOTHING after AUTH_OK, so every
+    // such screen tore down and re-authenticated a perfectly healthy socket
+    // every ~75s, forever (measured fleet-wide). The player refreshes its
+    // watchdog on any inbound frame (onmessage stamps lastWsMessageAt before
+    // parsing), so this single unsigned control frame — same class as
+    // AUTH_OK / TIME_PONG — ends the churn with zero player changes. Sits
+    // AFTER the telemetry-token gate so a heartbeat flood earns no
+    // amplification. Deliberately carries no timestamp: TIME_PONG is the
+    // only clock authority (sync rule #3), and a bare ack cannot be misread
+    // as one.
+    this.send(client, 'HEARTBEAT_ACK', {});
+
     // Keep the push-health stamp fresh while the socket lives (debounced
     // to one write per screen per minute inside the helper).
     stampPushConnected(this.prisma.client, ctx.deviceId, ctx.tenantId);
