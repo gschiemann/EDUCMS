@@ -3818,6 +3818,8 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
   //   ?img=…         per-image-slot URL overrides (G3) — keyed by the
   //                  template's data-img / data-slot, applied as
   //                  background-image / src on the matching element.
+  //   ?video=…       per-video-slot URL overrides — keyed by data-videoslot
+  //                  and applied to the matching <video> / <source> element.
   // The V2 shim (apps/web/scripts/inject-shim-v2.cjs) reads them all
   // and applies them at first paint. Only non-empty keys are sent so a
   // template's own defaults show through for anything the operator
@@ -3836,6 +3838,7 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
       ['text', config?.textOverrides],
       ['textStyles', styles],
       ['img', config?.imageOverrides],
+      ['video', config?.videoOverrides],
       // ?actions=… per-[data-action] button → platform touch-action map
       // ({ key: { type, target } }). The kiosk shim reads it and, on a
       // visitor tap, posts educms-action to the parent; the PLAYER runs it
@@ -3876,7 +3879,7 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
       result += `${result.includes('?') ? '&' : '?'}freeze=1`;
     }
     return result;
-  }, [url, config?.brand, config?.textOverrides, config?.textStyles, config?._styles, config?.imageOverrides, config?.actionOverrides, freeze]);
+  }, [url, config?.brand, config?.textOverrides, config?.textStyles, config?._styles, config?.imageOverrides, config?.videoOverrides, config?.actionOverrides, freeze]);
 
   // ── Live menu feed (CTS-style) ──────────────────────────────────
   // QSR / restaurant / bar menu boards feed live the same way the sports
@@ -3928,9 +3931,10 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
     if (config?.textOverrides) payload.text = config.textOverrides;
     if (styles) payload.textStyles = styles;
     if (config?.imageOverrides) payload.img = config.imageOverrides;
+    if (config?.videoOverrides) payload.video = config.videoOverrides;
     if (config?.actionOverrides) payload.actions = config.actionOverrides;
     try { win.postMessage(payload, '*'); } catch { /* detached / cross-origin — ignore */ }
-  }, [inlineHtml, config?.brand, config?.textOverrides, config?.textStyles, config?._styles, config?.imageOverrides, config?.actionOverrides]);
+  }, [inlineHtml, config?.brand, config?.textOverrides, config?.textStyles, config?._styles, config?.imageOverrides, config?.videoOverrides, config?.actionOverrides]);
   useEffect(() => {
     postDesignerOverrides();
     const el = frameRef.current;

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Inject the EduCMS V3 rebrand+text+image-overrides shim.
+ * Inject the EduCMS rebrand+text+image+video-overrides shim.
  *
  * Successor to `inject-brand-shim.cjs` (V1, colors only) and the V2
  * shim (added editable text). V3 adds per-image-slot overrides for the
@@ -25,6 +25,9 @@
  *                   `data-has-image="true"` so the slot's empty-state
  *                   placeholder hides (templates already gate `.ph` /
  *                   `.ph-empty` on that attribute).
+ *   - `video`       per-video-slot URL overrides keyed by
+ *                   `data-videoslot`. Applied to a <video> or <source>,
+ *                   then reloads the owning video for immediate preview.
  *
  * The shim is per-file (not a shared script) because templates are
  * self-contained — no external imports — and the iframe is sandboxed
@@ -50,7 +53,11 @@ const path = require('path');
 // 80 templates. No arg = every template under public/templates.
 const SUBDIR = process.argv[2] ? process.argv[2].replace(/^\/+|\/+$/g, '') : '';
 const ROOT = path.resolve(__dirname, '../public/templates', SUBDIR);
-const MARKER = 'EDUCMS-SHIM-V7';
+const MARKER = 'EDUCMS-SHIM-V8';
+// V8 = V7 PLUS first-class replaceable video sources (`?video=` /
+// `videoOverrides`) and independently replaceable video posters via
+// `data-posterslot`. Video hot-zones report kind:"video" so the editor jumps
+// to a video-only asset picker instead of the image picker.
 // V7 = V6 PLUS a `hidden` key in the per-field style-override map (CRUSH E6,
 // 2026-07-03). THE BUG: clearing a field's text in PropertiesPanel deletes its
 // textOverrides entry, which resurrects the BOARD'S OWN DEFAULT COPY (the shim
@@ -92,10 +99,10 @@ const MARKER = 'EDUCMS-SHIM-V7';
 // HTML-entity-decodes text overrides (so "Mix & Match" no longer renders the
 // literal "&amp;"). V5/V4/V3/V2/V1 are removed + replaced (pure superset — zero
 // regression for the live player, which never enters edit mode).
-const OLD_MARKERS = ['EDUCMS-SHIM-V6', 'EDUCMS-SHIM-V5', 'EDUCMS-SHIM-V4', 'EDUCMS-SHIM-V3', 'EDUCMS-SHIM-V2', 'EDUCMS-BRAND-SHIM'];
+const OLD_MARKERS = ['EDUCMS-SHIM-V7', 'EDUCMS-SHIM-V6', 'EDUCMS-SHIM-V5', 'EDUCMS-SHIM-V4', 'EDUCMS-SHIM-V3', 'EDUCMS-SHIM-V2', 'EDUCMS-BRAND-SHIM'];
 
 // Inline runtime — minified, runs at end of <head> before first paint.
-// Reads `brand`, `text`, `textStyles`, `img` from URL params; applies
+// Reads `brand`, `text`, `textStyles`, `img`, `video` from URL params; applies
 // brand to :root CSS vars, then walks `[data-field]` elements post-load
 // and applies textContent / inline-style overrides, and walks
 // `[data-img]` / `[data-slot]` image slots applying the URL override as
@@ -113,6 +120,9 @@ const OLD_MARKERS = ['EDUCMS-SHIM-V6', 'EDUCMS-SHIM-V5', 'EDUCMS-SHIM-V4', 'EDUC
 // the url() context.
 const SHIM = `<script>/*${MARKER}*/(function(){try{
 var editMode=false;
+function applyPosters(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\\\"');var safe=v.replace(/["'()\\s]/g,'');var el=document.querySelector('[data-posterslot="'+esc+'"]');if(!el)return;if(safe)el.setAttribute('poster',safe);else el.removeAttribute('poster');el.setAttribute('data-has-image',safe?'true':'false');});}
+function applyVideos(video){if(!video)return;Object.keys(video).forEach(function(k){var v=video[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\\\"');var safe=v.replace(/["'()\\s]/g,'');var el=document.querySelector('[data-videoslot="'+esc+'"]');if(!el)return;var owner=el.tagName==='VIDEO'?el:(el.closest?el.closest('video'):null);if(el.tagName==='VIDEO'||el.tagName==='SOURCE'){if(safe)el.setAttribute('src',safe);else el.removeAttribute('src');}else{el.setAttribute('data-video',safe);}el.setAttribute('data-has-video',safe?'true':'false');if(owner){try{owner.load();if(owner.autoplay&&safe){var play=owner.play();if(play&&play.catch)play.catch(function(){});}}catch(e){}}});}
+function armMediaEdit(){document.querySelectorAll('[data-posterslot],[data-videoslot]').forEach(function(el){if(el.__veMediaArmed)return;el.__veMediaArmed=true;el.style.cursor='pointer';var isVideo=el.hasAttribute('data-videoslot');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed #06b6d4';el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-videoslot')||el.getAttribute('data-posterslot')||'';try{parent.postMessage({type:'educms-field-click',key:key,kind:isVideo?'video':'img'},'*');}catch(_){}},true);});}
 // ── Gallery FREEZE mode ──────────────────────────────────────────────
 // Installed FIRST (this script is at end of <head>, before the board's own
 // <body> scripts), so the timer-wrappers below capture every timer the board
@@ -131,21 +141,21 @@ function freezeNow(){window.setInterval=_si;window.setTimeout=_st;if(_raf)window
 // itself recorded/cleared.
 _st(freezeNow,1400);window.__educmsFreezeNow=freezeNow;}());
 function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
-function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{}};}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{},video:dec(q.get('video'))||{}};}
 var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
 text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
-primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold','--c-accent2'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],secondary:['--secondary','--brand-secondary','--brand2','--c-secondary'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold'],accent2:['--accent2','--brand-accent2','--c-accent2'],positive:['--positive','--pos','--brand-positive','--c-positive'],negative:['--negative','--neg','--brand-negative','--c-negative'],
 fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
 function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
 var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
 function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);if(Object.prototype.hasOwnProperty.call(s,'hidden')){el.style.display=s.hidden?'none':'';}}}});}
 function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\\\"');var safe=v.replace(/["'()\\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
 function armEdit(){document.querySelectorAll('[data-field],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':'#06b6d4');el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(el.hasAttribute('data-field')?'text':'img');try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
-function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);if(editMode)armEdit();}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);applyPosters(p.img);applyVideos(p.video);if(editMode){armEdit();armMediaEdit();}}
 applyBrand(readParams().brand);
 if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
 try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
-addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();}}}catch(_){}});
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});applyPosters(d.img||{});applyVideos(d.video||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();armMediaEdit();}}}catch(_){}});
 }catch(e){}})();</script>`;
 
 function walk(dir) {
@@ -167,7 +177,7 @@ function removeLegacyShim(html, marker) {
   return html.replace(re, '');
 }
 
-const files = walk(ROOT);
+const files = fs.statSync(ROOT).isDirectory() ? walk(ROOT) : [ROOT];
 let injected = 0, replaced = 0, skipped = 0;
 for (const file of files) {
   let html = fs.readFileSync(file, 'utf8');

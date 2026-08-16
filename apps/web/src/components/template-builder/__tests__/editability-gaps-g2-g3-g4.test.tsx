@@ -232,7 +232,50 @@ describe('G3 — EXTERNAL_HTML editor discovers swappable images', () => {
     });
     render(<ContentFields zone={makeZone('EXTERNAL_HTML', { url: '/templates/imgonly.html' })} updateZone={jest.fn()} />);
     expect(await screen.findByText('Images', {}, { timeout: 3000 })).toBeTruthy();
-    expect(screen.queryByText(/no editable text or image hooks/i)).toBeNull();
+    expect(screen.queryByText(/no editable text, image, or video hooks/i)).toBeNull();
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// G3b — EXTERNAL_HTML video + poster replacement
+// ────────────────────────────────────────────────────────────────────────────
+const VIDEO_TEMPLATE_HTML = `<!doctype html><html><head></head><body>
+  <video data-videoslot="feature.clip" data-posterslot="feature.poster" data-aspect="16:9"></video>
+  <h1 data-field="title">Fresh today</h1>
+</body></html>`;
+
+describe('G3b — EXTERNAL_HTML editor discovers swappable video and poster slots', () => {
+  let originalFetch: typeof global.fetch;
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve(VIDEO_TEMPLATE_HTML),
+    }) as unknown as typeof global.fetch;
+  });
+  afterEach(() => {
+    global.fetch = originalFetch;
+    jest.restoreAllMocks();
+  });
+
+  it('surfaces separate Videos and Images controls for the clip and poster', async () => {
+    render(<ContentFields zone={makeZone('EXTERNAL_HTML', { url: '/templates/video.html' })} updateZone={jest.fn()} />);
+    expect(await screen.findByText('Videos', {}, { timeout: 3000 })).toBeTruthy();
+    expect(screen.getByText('Images')).toBeTruthy();
+    expect(screen.getByText(/Feature .* Clip \(16:9\)/i)).toBeTruthy();
+    expect(screen.getByText(/Feature .* Poster \(16:9\)/i)).toBeTruthy();
+  });
+
+  it('writes a selected clip to cfg.videoOverrides', async () => {
+    const updateZone = jest.fn();
+    render(<ContentFields zone={makeZone('EXTERNAL_HTML', { url: '/templates/video.html' })} updateZone={updateZone} />);
+    await screen.findByText('Videos', {}, { timeout: 3000 });
+    const urlInputs = screen.getAllByPlaceholderText(/https:.* or pick from library/i);
+    fireEvent.change(urlInputs[0], { target: { value: 'https://cdn.example.com/lunch.mp4' } });
+    fireEvent.blur(urlInputs[0]);
+    expect(updateZone).toHaveBeenCalled();
+    const vo = lastCfg(updateZone).videoOverrides as Record<string, string>;
+    expect(vo['feature.clip']).toBe('https://cdn.example.com/lunch.mp4');
   });
 });
 

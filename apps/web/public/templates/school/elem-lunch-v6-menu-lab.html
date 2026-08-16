@@ -1,0 +1,116 @@
+<!doctype html>
+<!-- APPROVED 2026-08-16 — K-12 menu refresh · Elementary · Menu Lab.
+     Fixed 1920x1080 + authored 1080x1920 portrait.
+     Reviewed by user. DO NOT regress to viewport-relative scene units. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Elementary Menu · Menu Lab</title>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=DM+Sans:wght@500;600;700;800&family=IBM+Plex+Mono:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{--sw:1920px;--sh:1080px;--ss:1;--bg:#2146e8;--surface:#fffdf4;--text:#11162a;--primary:#2146e8;--secondary:#0c1b74;--accent:#d8ff53;--accent2:#dfe7ff;--positive:#d8ff53;--negative:#ff6b43;--blue:var(--primary);--acid:var(--accent);--paper:var(--surface);--ink:var(--text);--orange:var(--negative);--ice:var(--accent2);--font-display:"Archivo Black";--font-body:"DM Sans";--font-condensed:"IBM Plex Mono"}
+    *{box-sizing:border-box}
+    html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0c1b74;font-family:var(--font-body),sans-serif}
+    .viewport{position:fixed;inset:0;display:grid;place-items:center}.outer{width:calc(var(--sw)*var(--ss));height:calc(var(--sh)*var(--ss))}
+    .stage{position:relative;width:var(--sw);height:var(--sh);overflow:hidden;transform:scale(var(--ss));transform-origin:0 0;background:var(--bg);color:white}
+    .board-bg{position:absolute;inset:0;z-index:-1;background-position:center;background-size:cover;background-repeat:no-repeat}
+    .grid{position:absolute;inset:0;opacity:.15;background-image:linear-gradient(rgba(255,255,255,.8) 2px,transparent 2px),linear-gradient(90deg,rgba(255,255,255,.8) 2px,transparent 2px);background-size:64px 64px}
+    .masthead{position:absolute;left:70px;top:56px;width:700px;height:165px;border-left:18px solid var(--acid);padding-left:28px}
+    .eyebrow{font:700 24px var(--font-condensed);text-transform:uppercase;letter-spacing:.13em;color:var(--acid)}
+    .title{margin-top:6px;font:400 87px/.88 var(--font-display);letter-spacing:-.05em}
+    .identity{position:absolute;right:70px;top:56px;width:530px;height:126px;border-top:3px solid white;border-bottom:3px solid white;display:flex;align-items:center}
+    .logo{width:88px;height:88px;display:grid;place-items:center;background:var(--acid);background-position:center;background-size:cover;color:var(--ink);font:400 38px var(--font-display);clip-path:polygon(50% 0,100% 25%,92% 82%,50% 100%,8% 82%,0 25%)}
+    .logo.has-img span{display:none}
+    .school{margin-left:24px;font:400 34px/1.05 var(--font-display);max-width:370px}.date{margin-left:auto;writing-mode:vertical-rl;transform:rotate(180deg);font:700 18px var(--font-condensed);letter-spacing:.08em;text-transform:uppercase;color:var(--ice)}
+    .photo-ring{position:absolute;left:70px;top:280px;width:790px;height:720px;background:var(--acid);clip-path:circle(47% at 50% 50%)}
+    .video,.photo-fallback{position:absolute;inset:22px;width:calc(100% - 44px);height:calc(100% - 44px);object-fit:cover;object-position:center;clip-path:circle(47% at 50% 50%)}
+    .video{z-index:2}.photo-fallback{z-index:1;display:block;background:url("menu-assets/salad-prep-poster.jpg") center/cover no-repeat}
+    .video-status{position:absolute;left:136px;top:312px;z-index:5;height:60px;padding:0 22px;display:flex;align-items:center;background:var(--acid);color:var(--ink);font:700 20px var(--font-condensed);letter-spacing:.06em;text-transform:uppercase;clip-path:polygon(0 0,94% 0,100% 50%,94% 100%,0 100%,5% 50%)}
+    .video-status:before{content:"";width:13px;height:13px;margin-right:12px;background:var(--orange);border-radius:50%}
+    .tag{position:absolute;left:584px;top:694px;width:326px;height:214px;display:grid;place-items:center;text-align:center;background:var(--orange);color:white;font:400 38px/.98 var(--font-display);clip-path:polygon(0 0,88% 0,100% 18%,93% 100%,8% 92%);transform:rotate(4deg)}
+    .sheet{position:absolute;left:924px;right:70px;top:236px;bottom:64px;background:var(--paper);color:var(--ink);padding:48px 52px 42px;clip-path:polygon(0 0,95% 0,100% 7%,100% 100%,5% 100%,0 93%)}
+    .sheet:before{content:"";position:absolute;right:0;top:0;width:76px;height:76px;background:#d8d1ba;clip-path:polygon(0 0,100% 100%,0 100%)}
+    .code{font:700 22px var(--font-condensed);letter-spacing:.1em;text-transform:uppercase;color:var(--blue)}
+    .entree{margin-top:11px;font:400 79px/.9 var(--font-display);letter-spacing:-.05em}
+    .description{margin-top:16px;font:700 28px/1.28 var(--font-body);color:#4b5060;max-width:770px}
+    .measure{margin-top:28px;height:8px;background:repeating-linear-gradient(90deg,var(--ink) 0 8px,transparent 8px 16px)}
+    .row{height:86px;display:grid;grid-template-columns:190px 1fr;align-items:center;border-bottom:3px solid var(--ink)}
+    .row b{font:700 22px var(--font-condensed);text-transform:uppercase;letter-spacing:.05em;color:var(--blue)}.row span{font:800 31px/1.05 var(--font-body)}
+    .alternate{margin-top:18px;padding:14px 24px;background:var(--acid);clip-path:polygon(0 0,98% 0,100% 50%,98% 100%,0 100%,2% 50%);display:flex;align-items:center;gap:25px}
+    .alternate b{font:700 19px var(--font-condensed);text-transform:uppercase;letter-spacing:.08em}.alternate span{font:800 29px var(--font-body)}
+    .bottom{position:absolute;left:52px;right:52px;bottom:23px;display:flex;justify-content:space-between;align-items:flex-end;font:700 18px var(--font-condensed);text-transform:uppercase}
+    .bottom strong{color:var(--orange)}.barcode{width:175px;height:28px;background:repeating-linear-gradient(90deg,var(--ink) 0 4px,transparent 4px 8px,var(--ink) 8px 10px,transparent 10px 15px)}
+    .is-portrait .masthead{left:56px;top:52px;width:665px;height:174px}.is-portrait .title{font-size:78px}
+    .is-portrait .identity{left:56px;right:56px;top:258px;width:auto;height:112px}.is-portrait .school{font-size:30px;max-width:700px}.is-portrait .date{font-size:17px}
+    .is-portrait .photo-ring{left:110px;top:406px;width:860px;height:760px}.is-portrait .tag{left:664px;top:936px;width:300px;height:188px;font-size:34px}.is-portrait .video-status{left:154px;top:438px;height:56px;font-size:18px}
+    .is-portrait .sheet{left:56px;right:56px;top:1194px;bottom:50px;padding:44px 48px 36px}.is-portrait .entree{font-size:69px}.is-portrait .description{font-size:26px;max-width:830px}.is-portrait .measure{margin-top:20px}.is-portrait .row{height:88px;grid-template-columns:185px 1fr}.is-portrait .row span{font-size:29px}.is-portrait .alternate{margin-top:21px;padding:17px 22px}.is-portrait .alternate span{font-size:27px}.is-portrait .bottom{bottom:26px;font-size:16px}.is-portrait .barcode{width:145px}
+    @media(prefers-reduced-motion:reduce){.video{display:none}.photo-fallback{display:block}.video-status:after{content:" · static fallback"}}
+  </style>
+<script>/*EDUCMS-SHIM-V8*/(function(){try{
+var editMode=false;
+function applyPosters(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var el=document.querySelector('[data-posterslot="'+esc+'"]');if(!el)return;if(safe)el.setAttribute('poster',safe);else el.removeAttribute('poster');el.setAttribute('data-has-image',safe?'true':'false');});}
+function applyVideos(video){if(!video)return;Object.keys(video).forEach(function(k){var v=video[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var el=document.querySelector('[data-videoslot="'+esc+'"]');if(!el)return;var owner=el.tagName==='VIDEO'?el:(el.closest?el.closest('video'):null);if(el.tagName==='VIDEO'||el.tagName==='SOURCE'){if(safe)el.setAttribute('src',safe);else el.removeAttribute('src');}else{el.setAttribute('data-video',safe);}el.setAttribute('data-has-video',safe?'true':'false');if(owner){try{owner.load();if(owner.autoplay&&safe){var play=owner.play();if(play&&play.catch)play.catch(function(){});}}catch(e){}}});}
+function armMediaEdit(){document.querySelectorAll('[data-posterslot],[data-videoslot]').forEach(function(el){if(el.__veMediaArmed)return;el.__veMediaArmed=true;el.style.cursor='pointer';var isVideo=el.hasAttribute('data-videoslot');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed #06b6d4';el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-videoslot')||el.getAttribute('data-posterslot')||'';try{parent.postMessage({type:'educms-field-click',key:key,kind:isVideo?'video':'img'},'*');}catch(_){}},true);});}
+// ── Gallery FREEZE mode ──────────────────────────────────────────────
+// Installed FIRST (this script is at end of <head>, before the board's own
+// <body> scripts), so the timer-wrappers below capture every timer the board
+// starts. Strict NO-OP unless the URL carries freeze=1.
+var FROZEN=(function(){try{return new URLSearchParams(location.search).get('freeze')==='1';}catch(e){return false;}})();
+var _frzStyle=null;
+function _unfreeze(){if(_frzStyle){try{if(_frzStyle.parentNode)_frzStyle.parentNode.removeChild(_frzStyle);}catch(e){}_frzStyle=null;}}
+(function(){if(!FROZEN)return;var ivs=[],tos=[],rafs=[];var _si=window.setInterval,_st=window.setTimeout,_raf=window.requestAnimationFrame;
+window.setInterval=function(){var id=_si.apply(window,arguments);try{ivs.push(id);}catch(e){}return id;};
+window.setTimeout=function(){var id=_st.apply(window,arguments);try{tos.push(id);}catch(e){}return id;};
+if(_raf)window.requestAnimationFrame=function(cb){var id=_raf.call(window,cb);try{rafs.push(id);}catch(e){}return id;};
+function freezeNow(){window.setInterval=_si;window.setTimeout=_st;if(_raf)window.requestAnimationFrame=_raf;try{for(var i=0;i<ivs.length;i++)clearInterval(ivs[i]);}catch(e){}try{for(var j=0;j<tos.length;j++)clearTimeout(tos[j]);}catch(e){}try{if(_raf)for(var k=0;k<rafs.length;k++)cancelAnimationFrame(rafs[k]);}catch(e){}try{var hi=_st(function(){},0);if(typeof hi==='number'&&hi>0){var lo=hi>100000?hi-100000:0;for(var z=hi;z>lo;z--){clearTimeout(z);clearInterval(z);}}}catch(e){}if(!_frzStyle){try{_frzStyle=document.createElement('style');_frzStyle.setAttribute('data-educms-freeze','1');_frzStyle.appendChild(document.createTextNode('*{animation:none!important;transition:none!important;}'));(document.head||document.documentElement).appendChild(_frzStyle);}catch(e){}}}
+// Settle window: let the board's auto-fit (setTimeout(autofit,500)+fonts.ready)
+// finish before killing its timers; then a brute-force id sweep catches any the
+// wrappers missed. Scheduled via the REAL setTimeout so this scheduler isn't
+// itself recorded/cleared.
+_st(freezeNow,1400);window.__educmsFreezeNow=freezeNow;}());
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{},video:dec(q.get('video'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],secondary:['--secondary','--brand-secondary','--brand2','--c-secondary'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold'],accent2:['--accent2','--brand-accent2','--c-accent2'],positive:['--positive','--pos','--brand-positive','--c-positive'],negative:['--negative','--neg','--brand-negative','--c-negative'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);if(Object.prototype.hasOwnProperty.call(s,'hidden')){el.style.display=s.hidden?'none':'';}}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function armEdit(){document.querySelectorAll('[data-field],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':'#06b6d4');el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(el.hasAttribute('data-field')?'text':'img');try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);applyPosters(p.img);applyVideos(p.video);if(editMode){armEdit();armMediaEdit();}}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});applyPosters(d.img||{});applyVideos(d.video||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();armMediaEdit();}}}catch(_){}});
+}catch(e){}})();</script>
+</head>
+<body>
+  <div class="viewport"><div class="outer"><main class="stage" id="stage">
+    <div class="video-settings" hidden aria-hidden="true"><span data-field="video.playbackRate">1</span><span data-field="video.loop">yes</span></div>
+    <div class="board-bg" data-imgslot="board.background" aria-label="Replaceable board background"></div>
+    <div class="grid"></div>
+    <header class="masthead"><div class="eyebrow" data-field="menu.kicker">Cafeteria test kitchen · Line 03</div><div class="title" data-field="menu.title">Today's Menu Lab</div></header>
+    <section class="identity" data-module="identity"><div class="logo" data-imgslot="school.logo" data-aspect="1:1"><span data-field="school.initials">MG</span></div><div class="school" data-field="school.name">Maple Grove Elementary</div><div class="date"><span data-field="menu.date">Monday · August 17</span> · <span data-field="clock.time" data-live="clock">11:45 AM</span></div></section>
+    <section class="photo-ring" data-module="food-video"><div class="photo-fallback" data-imgslot="entree.video.poster" data-aspect="1:1"></div><video class="video" src="menu-assets/salad-prep-4k.mp4" autoplay muted loop playsinline preload="metadata" data-videoslot="entree.video" data-aspect="16:9"></video></section>
+    <div class="video-status" data-field="video.status">Muted kitchen video</div>
+    <div class="tag" data-field="nutrition.note">TOSSED<br>TO ORDER<br>FRESH</div>
+    <section class="sheet" data-module="menu">
+      <div class="code" data-field="entree.label">Build No. 0817 · Featured line</div>
+      <div class="entree" data-field="entree.name">Garden Salad Bar</div>
+      <div class="description" data-field="entree.description">Mixed greens, tomatoes, cucumber, peppers, and a choice of grilled chicken or chickpeas.</div>
+      <div class="measure"></div>
+      <div class="row"><b data-field="side.0.label">Whole grain</b><span data-field="side.0.name">Warm dinner roll</span></div>
+      <div class="row"><b data-field="side.1.label">Fruit</b><span data-field="side.1.name">Seedless grapes</span></div>
+      <div class="row"><b data-field="side.2.label">Drink</b><span data-field="side.2.name">Cold low-fat milk</span></div>
+      <div class="alternate"><b data-field="alternate.label">Alternate</b><span data-field="alternate.name">Bean & cheese burrito</span></div>
+      <div class="bottom"><span><strong data-field="allergen.label">Contains:</strong> <span data-field="allergen.value">wheat · milk · egg</span></span><div class="barcode" aria-hidden="true"></div></div>
+    </section>
+  </main></div></div>
+  <script>
+    (function(){var root=document.documentElement,stage=document.getElementById('stage'),video=document.querySelector('[data-videoslot="entree.video"]');function fit(){var q=new URLSearchParams(location.search),p=(q.get('o')||'').indexOf('p')===0||(!q.get('o')&&innerHeight>innerWidth),w=p?1080:1920,h=p?1920:1080;stage.classList.toggle('is-portrait',p);root.style.setProperty('--sw',w+'px');root.style.setProperty('--sh',h+'px');root.style.setProperty('--ss',Math.min(innerWidth/w,innerHeight/h));}function clock(){var el=document.querySelector('[data-live="clock"]');if(el)el.textContent=new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit'}).format(new Date());}function mediaSettings(){var rate=parseFloat(document.querySelector('[data-field="video.playbackRate"]').textContent)||1,loop=document.querySelector('[data-field="video.loop"]').textContent.toLowerCase();video.playbackRate=Math.min(2,Math.max(.25,rate));video.loop=!/^(no|false|off|0)$/.test(loop);}video.addEventListener('error',function(){video.style.display='none';});addEventListener('resize',fit);fit();document.addEventListener('DOMContentLoaded',function(){clock();mediaSettings();setInterval(clock,30000);});})();
+  </script>
+</body>
+</html>

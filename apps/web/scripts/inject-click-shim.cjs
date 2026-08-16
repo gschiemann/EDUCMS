@@ -125,7 +125,7 @@ for (const file of files) {
   if (html.includes(MARKER) || html.includes(FREEZE_MARKER)) { skipped++; continue; }
   // inject-shim-v2 V6/V7 already bundle click-to-edit AND freeze → SKIP.
   // (V7 = CRUSH E6, adds a `hidden` style key; same click/freeze contract as V6.)
-  if (html.includes('EDUCMS-SHIM-V6') || html.includes('EDUCMS-SHIM-V7')) { skipped++; continue; }
+  if (html.includes('EDUCMS-SHIM-V6') || html.includes('EDUCMS-SHIM-V7') || html.includes('EDUCMS-SHIM-V8')) { skipped++; continue; }
   // External kiosk shim already provides click-to-edit + freeze (+ engine hook).
   if (/src=["'][^"']*_edit-shim\.js/.test(html)) { skipped++; continue; }
   // No editable fields → nothing to arm / no point freezing a static doc here.

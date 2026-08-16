@@ -2785,7 +2785,11 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       fields.push(<ColorPickerField key="b-surface" label="Cards / panels" value={brand.surface || ''} onChange={(v) => setBrand({ surface: v })} />);
       fields.push(<ColorPickerField key="b-text" label="Text" value={brand.text || ''} onChange={(v) => setBrand({ text: v })} />);
       fields.push(<ColorPickerField key="b-primary" label="Primary / signature" value={brand.primary || ''} onChange={(v) => setBrand({ primary: v })} />);
+      fields.push(<ColorPickerField key="b-secondary" label="Secondary" value={brand.secondary || ''} onChange={(v) => setBrand({ secondary: v })} />);
       fields.push(<ColorPickerField key="b-accent" label="Accent / highlight" value={brand.accent || ''} onChange={(v) => setBrand({ accent: v })} />);
+      fields.push(<ColorPickerField key="b-accent2" label="Supporting accent" value={brand.accent2 || ''} onChange={(v) => setBrand({ accent2: v })} />);
+      fields.push(<ColorPickerField key="b-positive" label="Positive / fresh" value={brand.positive || ''} onChange={(v) => setBrand({ positive: v })} />);
+      fields.push(<ColorPickerField key="b-negative" label="Warning / allergen" value={brand.negative || ''} onChange={(v) => setBrand({ negative: v })} />);
       fields.push(SH('brand-fonts', 'Fonts'));
       fields.push(fontField('fontDisplay', 'Headlines'));
       fields.push(fontField('fontBody', 'Body text'));
@@ -7174,6 +7178,12 @@ function ExternalHtmlTextEditor({
   const [discoveredImages, setDiscoveredImages] = useState<
     Array<{ key: string; label: string; aspect: string }> | null
   >(null);
+  // Video slots use a dedicated override map so the asset picker can enforce
+  // video MIME types instead of pretending a clip is an image URL. Posters
+  // remain image slots via data-posterslot and are edited independently.
+  const [discoveredVideos, setDiscoveredVideos] = useState<
+    Array<{ key: string; label: string; aspect: string }> | null
+  >(null);
   // Button wiring (operator: "wire our touch content manager to each button").
   // discoveredActions: leaf buttons marked [data-action] that can fire a
   // PLATFORM touch-action (open-url, webhook, request-help, …). The shim posts
@@ -7185,12 +7195,12 @@ function ExternalHtmlTextEditor({
   useEffect(() => {
     if (!url && !inlineHtml) {
       setDiscoveredFields([]);
-      setDiscoveredImages([]); setDiscoveredActions([]);
+      setDiscoveredImages([]); setDiscoveredVideos([]); setDiscoveredActions([]);
       return;
     }
     let cancelled = false;
     setDiscoveredFields(null);
-    setDiscoveredImages(null); setDiscoveredActions(null);
+    setDiscoveredImages(null); setDiscoveredVideos(null); setDiscoveredActions(null);
     // Inline (AI Designer) → parse cfg.html directly; url board → fetch it.
     const htmlSource: Promise<string> = inlineHtml
       ? Promise.resolve(inlineHtml)
@@ -7200,7 +7210,7 @@ function ExternalHtmlTextEditor({
         if (cancelled) return;
         if (!html) {
           setDiscoveredFields([]);
-          setDiscoveredImages([]); setDiscoveredActions([]);
+          setDiscoveredImages([]); setDiscoveredVideos([]); setDiscoveredActions([]);
           return;
         }
         try {
@@ -7245,10 +7255,10 @@ function ExternalHtmlTextEditor({
           // template paints it). So data-imgslot wins as the KEY; for the older
           // convention, data-slot / data-img IS the key. (V4 shim applies by
           // the same precedence.)
-          const imgNodes = doc.querySelectorAll('[data-imgslot],[data-img],[data-widget="image-slot"]');
+          const imgNodes = doc.querySelectorAll('[data-imgslot],[data-posterslot],[data-img],[data-widget="image-slot"]');
           imgNodes.forEach((el) => {
             const e = el as HTMLElement;
-            const key = e.getAttribute('data-imgslot') || e.getAttribute('data-slot') || e.getAttribute('data-img') || '';
+            const key = e.getAttribute('data-imgslot') || e.getAttribute('data-posterslot') || e.getAttribute('data-slot') || e.getAttribute('data-img') || '';
             if (!key || imgSeen.has(key)) return;
             imgSeen.add(key);
             // Friendly label: the slot's caption text (e.g. "Group portrait"),
@@ -7259,6 +7269,24 @@ function ExternalHtmlTextEditor({
             imgOut.push({ key, label, aspect });
           });
           setDiscoveredImages(imgOut);
+
+          // First-class replaceable video sources. A template marks the
+          // playable <video> (or its <source>) with data-videoslot. The poster
+          // is intentionally a separate data-posterslot image hook so schools
+          // can replace either asset without coupling the two.
+          const videoSeen = new Set<string>();
+          const videoOut: Array<{ key: string; label: string; aspect: string }> = [];
+          doc.querySelectorAll('[data-videoslot]').forEach((el) => {
+            const e = el as HTMLElement;
+            const key = e.getAttribute('data-videoslot') || '';
+            if (!key || videoSeen.has(key)) return;
+            videoSeen.add(key);
+            const lblNode = e.querySelector('.lbl, .label, figcaption');
+            const label = (lblNode?.textContent || '').trim() || prettyFieldLabel(key);
+            const aspect = e.getAttribute('data-aspect') || '';
+            videoOut.push({ key, label, aspect });
+          });
+          setDiscoveredVideos(videoOut);
 
           // Button wiring — discover [data-action] leaf buttons. Static parse,
           // same as text/images. The button's own text is the friendly label.
@@ -7275,11 +7303,11 @@ function ExternalHtmlTextEditor({
           setDiscoveredActions(actOut);
         } catch {
           setDiscoveredFields([]);
-          setDiscoveredImages([]); setDiscoveredActions([]);
+          setDiscoveredImages([]); setDiscoveredVideos([]); setDiscoveredActions([]);
         }
       })
       .catch(() => {
-        if (!cancelled) { setDiscoveredFields([]); setDiscoveredImages([]); setDiscoveredActions([]); }
+        if (!cancelled) { setDiscoveredFields([]); setDiscoveredImages([]); setDiscoveredVideos([]); setDiscoveredActions([]); }
       });
     return () => { cancelled = true; };
   }, [url, inlineHtml]);
@@ -7326,6 +7354,8 @@ function ExternalHtmlTextEditor({
         const safeKey = d.key.replace(/"/g, '');
         const sel = d.kind === 'action'
           ? `[data-edit-action="${safeKey}"]`
+          : d.kind === 'video'
+          ? `[data-edit-video="${safeKey}"]`
           : d.kind === 'img'
           ? `[data-edit-img="${safeKey}"]`
           : `[data-edit-field="${safeKey}"]`;
@@ -7362,6 +7392,8 @@ function ExternalHtmlTextEditor({
   // background-image / src on the matching [data-img]/[data-slot] element.
   const imageOverrides: Record<string, string> =
     (cfg?.imageOverrides && typeof cfg.imageOverrides === 'object') ? cfg.imageOverrides : {};
+  const videoOverrides: Record<string, string> =
+    (cfg?.videoOverrides && typeof cfg.videoOverrides === 'object') ? cfg.videoOverrides : {};
 
   // AI Designer boards have no url (inline srcdoc) — only show the "pick a
   // template" placeholder when there's NEITHER a url NOR inline html. Without
@@ -7374,17 +7406,17 @@ function ExternalHtmlTextEditor({
       </div>
     );
   }
-  if (discoveredFields === null || discoveredImages === null || discoveredActions === null) {
+  if (discoveredFields === null || discoveredImages === null || discoveredVideos === null || discoveredActions === null) {
     return (
       <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-500">
         Scanning template…
       </div>
     );
   }
-  if (discoveredFields.length === 0 && discoveredImages.length === 0 && discoveredActions.length === 0) {
+  if (discoveredFields.length === 0 && discoveredImages.length === 0 && discoveredVideos.length === 0 && discoveredActions.length === 0) {
     return (
       <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800">
-        This template has no editable text or image hooks yet. Recolor / restyle via the controls below; we&apos;ll add inline editing to this template in a future update.
+        This template has no editable text, image, or video hooks yet. Recolor / restyle via the controls below; we&apos;ll add inline editing to this template in a future update.
       </div>
     );
   }
@@ -7443,6 +7475,12 @@ function ExternalHtmlTextEditor({
     if (!value || !value.trim()) delete next[key];
     else next[key] = value.trim();
     setField({ imageOverrides: Object.keys(next).length ? next : undefined });
+  };
+  const setVideoOverride = (key: string, value: string) => {
+    const next = { ...videoOverrides };
+    if (!value || !value.trim()) delete next[key];
+    else next[key] = value.trim();
+    setField({ videoOverrides: Object.keys(next).length ? next : undefined });
   };
 
   // Button wiring — per-[data-action] platform action map. Stored as
@@ -7530,6 +7568,28 @@ function ExternalHtmlTextEditor({
 
   return (
     <div className="space-y-3">
+      {discoveredVideos.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white/70 p-3 space-y-2">
+          <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200 pb-1">
+            Videos
+          </div>
+          {discoveredVideos.map((vid) => (
+            <div
+              key={`video:${vid.key}`}
+              data-edit-video={vid.key}
+              onFocusCapture={() => pingHighlight(vid.key)}
+              onClickCapture={() => pingHighlight(vid.key)}
+            >
+              <AssetPickerField
+                label={vid.aspect ? `${vid.label} (${vid.aspect})` : vid.label}
+                kind="video"
+                value={videoOverrides[vid.key] || ''}
+                onChange={(v) => setVideoOverride(vid.key, v)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
       {/* G3 — image slots. Rendered first so a hero photo is the operator's
           top edit. AssetPickerField supports both the asset library AND a
           pasted URL (its built-in URL input), satisfying the §19 "asset

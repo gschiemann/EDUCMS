@@ -1,0 +1,147 @@
+<!doctype html>
+<!-- APPROVED 2026-08-16 — K-12 menu refresh · Elementary · Fresh Counter.
+     Fixed 1920x1080 + authored 1080x1920 portrait.
+     Reviewed by user. DO NOT regress to viewport-relative scene units. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Elementary Menu · Fresh Counter</title>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=DM+Sans:wght@500;600;700;800&family=IBM+Plex+Mono:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{--sw:1920px;--sh:1080px;--ss:1;--bg:#f5f1e6;--surface:#fffdf6;--text:#18211d;--primary:#0d4934;--secondary:#18211d;--accent:#d9f44a;--accent2:#fffdf6;--positive:#0d4934;--negative:#ff654f;--forest:var(--primary);--lime:var(--accent);--paper:var(--bg);--coral:var(--negative);--ink:var(--text);--cream:var(--surface);--font-display:"Archivo Black";--font-body:"DM Sans";--font-condensed:"IBM Plex Mono"}
+    *{box-sizing:border-box}
+    html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#061d15;font-family:var(--font-body),sans-serif}
+    .viewport{position:fixed;inset:0;display:grid;place-items:center}.outer{width:calc(var(--sw)*var(--ss));height:calc(var(--sh)*var(--ss))}
+    .stage{position:relative;width:var(--sw);height:var(--sh);overflow:hidden;transform:scale(var(--ss));transform-origin:0 0;background:var(--bg);color:var(--ink)}
+    .board-bg{position:absolute;inset:0;z-index:-1;background-position:center;background-size:cover;background-repeat:no-repeat}
+    .brand-rail{position:absolute;inset:0 auto 0 0;width:350px;background:var(--forest);clip-path:polygon(0 0,100% 0,87% 100%,0 100%);color:white;padding:68px 66px}
+    .monogram{width:112px;height:112px;display:grid;place-items:center;border:8px solid var(--lime);background-position:center;background-size:cover;font:400 52px var(--font-display);transform:rotate(-3deg)}
+    .monogram.has-img span{display:none}
+    .school{position:absolute;left:66px;bottom:222px;width:238px;font:400 42px/.94 var(--font-display);letter-spacing:-.045em}
+    .rail-note{position:absolute;left:66px;bottom:76px;width:220px;padding-top:22px;border-top:3px solid rgba(255,255,255,.35);font:700 24px/1.35 var(--font-condensed);text-transform:uppercase;color:#d8e8df}
+    .header{position:absolute;left:406px;right:78px;top:55px;height:126px;border-bottom:3px solid var(--ink);display:flex;align-items:flex-start}
+    .date{font:700 27px var(--font-condensed);text-transform:uppercase;letter-spacing:.12em;color:var(--forest)}
+    .title{position:absolute;left:0;bottom:12px;font:400 73px/.9 var(--font-display);letter-spacing:-.045em}
+    .service{margin-left:auto;font:700 25px var(--font-condensed);text-transform:uppercase;letter-spacing:.08em;color:#536258}
+    .photo-wrap{position:absolute;left:394px;top:216px;width:612px;height:750px;background:var(--lime);clip-path:ellipse(48% 50% at 50% 50%)}
+    .photo{position:absolute;inset:18px;background:url("menu-assets/teriyaki-chicken.jpg") center/cover no-repeat;clip-path:ellipse(48% 50% at 50% 50%);transition:opacity .35s ease}
+    .carousel-state{position:absolute;left:430px;top:236px;z-index:4;min-width:228px;height:62px;padding:0 22px;display:flex;align-items:center;gap:18px;background:var(--forest);color:white;font:700 20px var(--font-condensed);text-transform:uppercase;clip-path:polygon(0 0,94% 0,100% 50%,94% 100%,0 100%,5% 50%)}
+    .carousel-state .bars{display:flex;gap:7px}.carousel-state i{display:block;width:28px;height:7px;background:rgba(255,255,255,.3)}.carousel-state i.active{background:var(--lime)}
+    .photo-caption{position:absolute;left:420px;top:838px;width:560px;height:112px;display:flex;align-items:center;justify-content:center;text-align:center;background:var(--coral);color:white;font:700 23px/1.25 var(--font-condensed);text-transform:uppercase;letter-spacing:.06em;clip-path:polygon(6% 0,100% 0,94% 100%,0 100%);transform:rotate(-2deg)}
+    .menu{position:absolute;left:1070px;right:78px;top:226px;bottom:104px}
+    .feature-label{font:700 25px var(--font-condensed);text-transform:uppercase;letter-spacing:.13em;color:var(--coral)}
+    .feature{margin-top:12px;font:400 88px/.92 var(--font-display);letter-spacing:-.05em}
+    .feature-desc{margin-top:18px;max-width:670px;font:700 30px/1.25 var(--font-body);color:#4c5b52}
+    .rule{margin-top:28px;height:9px;background:var(--forest);clip-path:polygon(0 0,100% 0,98% 100%,0 100%)}
+    .choice{height:104px;display:grid;grid-template-columns:184px 1fr;align-items:center;border-bottom:2px solid #c9c7bd}
+    .choice b{font:700 23px var(--font-condensed);text-transform:uppercase;letter-spacing:.06em;color:var(--forest)}
+    .choice span{font:800 32px/1.08 var(--font-body)}
+    .alternate{margin-top:30px;display:grid;grid-template-columns:86px 1fr;gap:20px;align-items:center}
+    .alt-number{height:76px;display:grid;place-items:center;background:var(--lime);font:400 36px var(--font-display);clip-path:polygon(0 0,82% 0,100% 50%,82% 100%,0 100%,12% 50%)}
+    .alternate b{display:block;font:700 21px var(--font-condensed);text-transform:uppercase;color:var(--coral);letter-spacing:.1em}.alternate span{display:block;margin-top:3px;font:800 30px var(--font-body)}
+    .footer{position:absolute;left:1070px;right:78px;bottom:47px;height:42px;border-top:2px solid var(--ink);padding-top:12px;display:flex;justify-content:space-between;font:700 19px var(--font-condensed);text-transform:uppercase;letter-spacing:.03em}
+    .footer strong{color:var(--coral)}
+    .is-portrait .brand-rail{inset:0 0 auto 0;width:1080px;height:288px;clip-path:polygon(0 0,100% 0,100% 84%,0 100%);padding:50px 58px}
+    .is-portrait .monogram{width:104px;height:104px;font-size:46px}.is-portrait .school{left:190px;top:53px;bottom:auto;width:590px;font-size:54px}.is-portrait .rail-note{left:auto;right:58px;bottom:68px;width:210px;font-size:19px;text-align:right}
+    .is-portrait .header{left:58px;right:58px;top:316px;height:144px}.is-portrait .title{font-size:70px}.is-portrait .service{font-size:20px}
+    .is-portrait .photo-wrap{left:144px;top:500px;width:792px;height:600px}.is-portrait .photo-caption{left:170px;top:1024px;width:740px;height:100px;font-size:22px}.is-portrait .carousel-state{left:170px;top:514px;height:58px;font-size:18px}
+    .is-portrait .menu{left:72px;right:72px;top:1150px;bottom:118px}.is-portrait .feature{font-size:72px}.is-portrait .feature-desc{font-size:26px;max-width:900px}.is-portrait .rule{margin-top:16px}
+    .is-portrait .choice{height:84px;grid-template-columns:190px 1fr}.is-portrait .choice span{font-size:29px}.is-portrait .alternate{margin-top:14px}.is-portrait .alt-number{height:64px;font-size:30px}.is-portrait .alternate span{font-size:27px}.is-portrait .footer{left:72px;right:72px;bottom:44px;font-size:18px}
+  </style>
+<script>/*EDUCMS-SHIM-V8*/(function(){try{
+var editMode=false;
+function applyPosters(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var el=document.querySelector('[data-posterslot="'+esc+'"]');if(!el)return;if(safe)el.setAttribute('poster',safe);else el.removeAttribute('poster');el.setAttribute('data-has-image',safe?'true':'false');});}
+function applyVideos(video){if(!video)return;Object.keys(video).forEach(function(k){var v=video[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var el=document.querySelector('[data-videoslot="'+esc+'"]');if(!el)return;var owner=el.tagName==='VIDEO'?el:(el.closest?el.closest('video'):null);if(el.tagName==='VIDEO'||el.tagName==='SOURCE'){if(safe)el.setAttribute('src',safe);else el.removeAttribute('src');}else{el.setAttribute('data-video',safe);}el.setAttribute('data-has-video',safe?'true':'false');if(owner){try{owner.load();if(owner.autoplay&&safe){var play=owner.play();if(play&&play.catch)play.catch(function(){});}}catch(e){}}});}
+function armMediaEdit(){document.querySelectorAll('[data-posterslot],[data-videoslot]').forEach(function(el){if(el.__veMediaArmed)return;el.__veMediaArmed=true;el.style.cursor='pointer';var isVideo=el.hasAttribute('data-videoslot');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed #06b6d4';el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-videoslot')||el.getAttribute('data-posterslot')||'';try{parent.postMessage({type:'educms-field-click',key:key,kind:isVideo?'video':'img'},'*');}catch(_){}},true);});}
+// ── Gallery FREEZE mode ──────────────────────────────────────────────
+// Installed FIRST (this script is at end of <head>, before the board's own
+// <body> scripts), so the timer-wrappers below capture every timer the board
+// starts. Strict NO-OP unless the URL carries freeze=1.
+var FROZEN=(function(){try{return new URLSearchParams(location.search).get('freeze')==='1';}catch(e){return false;}})();
+var _frzStyle=null;
+function _unfreeze(){if(_frzStyle){try{if(_frzStyle.parentNode)_frzStyle.parentNode.removeChild(_frzStyle);}catch(e){}_frzStyle=null;}}
+(function(){if(!FROZEN)return;var ivs=[],tos=[],rafs=[];var _si=window.setInterval,_st=window.setTimeout,_raf=window.requestAnimationFrame;
+window.setInterval=function(){var id=_si.apply(window,arguments);try{ivs.push(id);}catch(e){}return id;};
+window.setTimeout=function(){var id=_st.apply(window,arguments);try{tos.push(id);}catch(e){}return id;};
+if(_raf)window.requestAnimationFrame=function(cb){var id=_raf.call(window,cb);try{rafs.push(id);}catch(e){}return id;};
+function freezeNow(){window.setInterval=_si;window.setTimeout=_st;if(_raf)window.requestAnimationFrame=_raf;try{for(var i=0;i<ivs.length;i++)clearInterval(ivs[i]);}catch(e){}try{for(var j=0;j<tos.length;j++)clearTimeout(tos[j]);}catch(e){}try{if(_raf)for(var k=0;k<rafs.length;k++)cancelAnimationFrame(rafs[k]);}catch(e){}try{var hi=_st(function(){},0);if(typeof hi==='number'&&hi>0){var lo=hi>100000?hi-100000:0;for(var z=hi;z>lo;z--){clearTimeout(z);clearInterval(z);}}}catch(e){}if(!_frzStyle){try{_frzStyle=document.createElement('style');_frzStyle.setAttribute('data-educms-freeze','1');_frzStyle.appendChild(document.createTextNode('*{animation:none!important;transition:none!important;}'));(document.head||document.documentElement).appendChild(_frzStyle);}catch(e){}}}
+// Settle window: let the board's auto-fit (setTimeout(autofit,500)+fonts.ready)
+// finish before killing its timers; then a brute-force id sweep catches any the
+// wrappers missed. Scheduled via the REAL setTimeout so this scheduler isn't
+// itself recorded/cleared.
+_st(freezeNow,1400);window.__educmsFreezeNow=freezeNow;}());
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{},video:dec(q.get('video'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],secondary:['--secondary','--brand-secondary','--brand2','--c-secondary'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold'],accent2:['--accent2','--brand-accent2','--c-accent2'],positive:['--positive','--pos','--brand-positive','--c-positive'],negative:['--negative','--neg','--brand-negative','--c-negative'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);if(Object.prototype.hasOwnProperty.call(s,'hidden')){el.style.display=s.hidden?'none':'';}}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function armEdit(){document.querySelectorAll('[data-field],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':'#06b6d4');el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(el.hasAttribute('data-field')?'text':'img');try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);applyPosters(p.img);applyVideos(p.video);if(editMode){armEdit();armMediaEdit();}}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});applyPosters(d.img||{});applyVideos(d.video||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();armMediaEdit();}}}catch(_){}});
+}catch(e){}})();</script>
+</head>
+<body>
+  <div class="viewport"><div class="outer"><main class="stage" id="stage">
+    <div class="carousel-data" hidden aria-hidden="true">
+      <div data-carousel-slide="0">
+        <i data-imgslot="entree.carousel.0.photo" data-aspect="4:3" data-img="menu-assets/teriyaki-chicken.jpg"></i>
+        <i data-field="entree.carousel.0.label">Today's featured bowl</i><i data-field="entree.carousel.0.name">Teriyaki Chicken</i><i data-field="entree.carousel.0.description">Grilled chicken, brown rice, cabbage, carrots, and house teriyaki glaze.</i><i data-field="entree.carousel.0.note">Scratch-cooked chicken · steamed rice · fresh vegetables</i><i data-field="entree.carousel.0.vegetable">Sesame green beans</i><i data-field="entree.carousel.0.fruit">Mandarin oranges</i><i data-field="entree.carousel.0.alternate">Cheese quesadilla</i><i data-field="entree.carousel.0.allergen">soy · wheat</i>
+      </div>
+      <div data-carousel-slide="1">
+        <i data-imgslot="entree.carousel.1.photo" data-aspect="4:3" data-img="menu-assets/chicken-tenders.jpg"></i>
+        <i data-field="entree.carousel.1.label">Today's hot entrée</i><i data-field="entree.carousel.1.name">Crispy Chicken Tenders</i><i data-field="entree.carousel.1.description">Whole-grain breaded chicken served with roasted broccoli and green beans.</i><i data-field="entree.carousel.1.note">Crispy whole-grain coating · green vegetables · house ranch</i><i data-field="entree.carousel.1.vegetable">Roasted broccoli</i><i data-field="entree.carousel.1.fruit">Fresh apple slices</i><i data-field="entree.carousel.1.alternate">Hummus snack box</i><i data-field="entree.carousel.1.allergen">wheat · milk</i>
+      </div>
+      <div data-carousel-slide="2">
+        <i data-imgslot="entree.carousel.2.photo" data-aspect="4:3" data-img="menu-assets/grilled-cheese.jpg"></i>
+        <i data-field="entree.carousel.2.label">Today's comfort classic</i><i data-field="entree.carousel.2.name">Grilled Cheese</i><i data-field="entree.carousel.2.description">Toasted whole-grain bread with melted cheddar and Swiss cheese.</i><i data-field="entree.carousel.2.note">Toasted whole-grain bread · melted cheese · warm tomato soup</i><i data-field="entree.carousel.2.vegetable">Tomato soup</i><i data-field="entree.carousel.2.fruit">Seedless grapes</i><i data-field="entree.carousel.2.alternate">SunButter &amp; jelly sandwich</i><i data-field="entree.carousel.2.allergen">wheat · milk</i>
+      </div>
+      <i data-field="carousel.seconds">7</i>
+    </div>
+    <div class="board-bg" data-imgslot="board.background" aria-label="Replaceable board background"></div>
+    <aside class="brand-rail" data-module="identity">
+      <div class="monogram" data-imgslot="school.logo" data-aspect="1:1"><span data-field="school.initials">MG</span></div>
+      <div class="school" data-field="school.name">Maple Grove Elementary</div>
+      <div class="rail-note" data-field="service.hours">Lunch service<br>11:00–12:45</div>
+    </aside>
+    <header class="header">
+      <div><div class="date" data-field="menu.kicker">Monday · August 17</div><div class="title" data-field="menu.title">Fresh at the counter</div></div>
+      <div class="service"><span data-field="service.station">Station 02</span> · <span data-field="clock.time" data-live="clock">11:45 AM</span></div>
+    </header>
+    <section class="photo-wrap" data-module="food-carousel"><div class="photo" id="carouselPhoto"></div></section>
+    <div class="carousel-state" aria-label="Rotating through three entrée options"><span id="carouselCount">01 / 03</span><span class="bars"><i class="active"></i><i></i><i></i></span></div>
+    <div class="photo-caption" id="carouselCaption" data-field="entree.carousel.0.note">Scratch-cooked chicken · steamed rice · fresh vegetables</div>
+    <section class="menu" data-module="menu">
+      <div class="feature-label" id="carouselLabel" data-field="entree.carousel.0.label">Today's featured bowl</div>
+      <div class="feature" id="carouselName" data-field="entree.carousel.0.name">Teriyaki Chicken</div>
+      <div class="feature-desc" id="carouselDescription" data-field="entree.carousel.0.description">Grilled chicken, brown rice, cabbage, carrots, and house teriyaki glaze.</div>
+      <div class="rule"></div>
+      <div class="choice"><b data-field="side.0.label">Vegetable</b><span id="carouselVegetable" data-field="entree.carousel.0.vegetable">Sesame green beans</span></div>
+      <div class="choice"><b data-field="side.1.label">Fruit</b><span id="carouselFruit" data-field="entree.carousel.0.fruit">Mandarin oranges</span></div>
+      <div class="choice"><b data-field="side.2.label">Drink</b><span data-field="side.2.name">Cold low-fat milk</span></div>
+      <div class="alternate"><div class="alt-number">A</div><div><b data-field="alternate.label">Alternate choice</b><span id="carouselAlternate" data-field="entree.carousel.0.alternate">Cheese quesadilla</span></div></div>
+    </section>
+    <footer class="footer"><span><strong data-field="allergen.label">Contains:</strong> <span id="carouselAllergen" data-field="entree.carousel.0.allergen">soy · wheat</span></span><span data-field="footer.note">Fresh fruit and water daily</span></footer>
+  </main></div></div>
+  <script>
+    (function(){
+      var root=document.documentElement,stage=document.getElementById('stage');
+      function fit(){var q=new URLSearchParams(location.search),p=(q.get('o')||'').indexOf('p')===0||(!q.get('o')&&innerHeight>innerWidth),w=p?1080:1920,h=p?1920:1080;stage.classList.toggle('is-portrait',p);root.style.setProperty('--sw',w+'px');root.style.setProperty('--sh',h+'px');root.style.setProperty('--ss',Math.min(innerWidth/w,innerHeight/h));}
+      var slides=[].slice.call(document.querySelectorAll('[data-carousel-slide]')),index=0,photo=document.getElementById('carouselPhoto'),fields={label:'carouselLabel',name:'carouselName',description:'carouselDescription',note:'carouselCaption',vegetable:'carouselVegetable',fruit:'carouselFruit',alternate:'carouselAlternate',allergen:'carouselAllergen'};
+      function slideValue(node,key){var el=node.querySelector('[data-field$=".'+key+'"]');return el?el.textContent:'';}
+      function show(next,instant){index=next;photo.style.opacity=instant?'1':'0';setTimeout(function(){var node=slides[index],image=node.querySelector('[data-imgslot]'),prefix='entree.carousel.'+index+'.';photo.style.backgroundImage="url('"+(image.getAttribute('data-img')||'')+"')";photo.setAttribute('data-imgslot',prefix+'photo');Object.keys(fields).forEach(function(k){var el=document.getElementById(fields[k]);el.textContent=slideValue(node,k);el.setAttribute('data-field',prefix+k);});document.getElementById('carouselCount').textContent=String(index+1).padStart(2,'0')+' / '+String(slides.length).padStart(2,'0');document.querySelectorAll('.carousel-state .bars i').forEach(function(el,i){el.classList.toggle('active',i===index);});photo.style.opacity='1';},instant?0:220);}
+      function clock(){var el=document.querySelector('[data-live="clock"]');if(el)el.textContent=new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit'}).format(new Date());}
+      addEventListener('resize',fit);fit();
+      document.addEventListener('DOMContentLoaded',function(){clock();show(0,true);setInterval(clock,30000);if(!matchMedia('(prefers-reduced-motion: reduce)').matches){var seconds=Math.max(3,parseFloat((document.querySelector('[data-field="carousel.seconds"]')||{}).textContent)||7);setInterval(function(){show((index+1)%slides.length,false);},seconds*1000);}});
+    })();
+  </script>
+</body>
+</html>
