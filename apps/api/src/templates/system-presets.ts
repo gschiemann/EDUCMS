@@ -488,6 +488,113 @@ const RAW_SYSTEM_PRESETS: SystemPreset[] = [
     screenWidth: 3840, screenHeight: 2160, bgColor: '#060f06',
     zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/terminal.html' } }],
   },
+
+  // ════════════════════════════════════════════════════════════════
+  // Campus Pulse — the approved 2026-08-15 high-school line (Codex
+  // design round, implemented 2026-08-16). Six concepts, each ONE
+  // maintained HTML source carrying BOTH fixed scenes (1920x1080
+  // landscape + 1080x1920 portrait via .is-portrait, exact 2x on
+  // native 4K). The boards ship their own educms bridge (overrides /
+  // edit-mode / field-click / freeze) — do NOT run inject-shim on
+  // templates/school/. Spec: scratch/handoff/campus-pulse-k12-design-
+  // round-2026-08-15/IMPLEMENTATION-PROMPT.md.
+  // ════════════════════════════════════════════════════════════════
+  {
+    id: 'preset-school-hs-campus-pulse-01',
+    name: 'Campus Pulse · Campus Magazine',
+    description: "Editorial front-page lobby: masthead + seal, angled hero photograph with index tab, oversized serif headline with italic cut, three-column brief grid (announcement + events), utility bar with live clock/weather.",
+    category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#f4f0e8',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/campus-pulse/01-campus-magazine.html', campusPulse: true, liveClock: true, liveDate: true, liveWeather: true, clockTimezone: '', clockFormat: '12h', weatherLocation: '', weatherUnits: 'imperial' } }],
+  },
+  {
+    id: 'preset-school-hs-campus-pulse-02',
+    name: 'Campus Pulse · Digital Signal',
+    description: "Phosphor-teal broadcast panel: signal-bar masthead, scanline hero with clipped photo, mono data blocks for announcement + events, live telemetry strip with clock/weather readouts.",
+    category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#071315',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/campus-pulse/02-digital-signal.html', campusPulse: true, liveClock: true, liveDate: true, liveWeather: true, clockTimezone: '', clockFormat: '12h', weatherLocation: '', weatherUnits: 'imperial' } }],
+  },
+  {
+    id: 'preset-school-hs-campus-pulse-03',
+    name: 'Campus Pulse · Neo Yearbook',
+    description: "Modern yearbook spread: plum + gold duotone, taped photo frame, oversized annual headline, signature-strip announcement, event index rows, ribbon ticker with live time.",
+    category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#f3efe5',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/campus-pulse/03-neo-yearbook.html', campusPulse: true, liveClock: true, liveDate: true, liveWeather: true, clockTimezone: '', clockFormat: '12h', weatherLocation: '', weatherUnits: 'imperial' } }],
+  },
+  {
+    id: 'preset-school-hs-campus-pulse-04',
+    name: 'Campus Pulse · Varsity Broadcast',
+    description: "Game-night broadcast package: midnight-blue arena gradient, electric-red score bug masthead, cut-corner hero photo, lower-third announcement, fixture list, crawl ticker with clock/weather caps.",
+    category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#07111f',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/campus-pulse/04-varsity-broadcast.html', campusPulse: true, liveClock: true, liveDate: true, liveWeather: true, clockTimezone: '', clockFormat: '12h', weatherLocation: '', weatherUnits: 'imperial' } }],
+  },
+  {
+    id: 'preset-school-hs-campus-pulse-05',
+    name: 'Campus Pulse · Metro Wayfinding',
+    description: "Transit-grade wayfinding: cobalt line-map spine, platform-style hero with route roundels, departure-row events, service-notice announcement, concourse ticker with live clock/weather.",
+    category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#f2f5f7',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/campus-pulse/05-metro-wayfinding.html', campusPulse: true, liveClock: true, liveDate: true, liveWeather: true, clockTimezone: '', clockFormat: '12h', weatherLocation: '', weatherUnits: 'imperial' } }],
+  },
+  {
+    id: 'preset-school-hs-campus-pulse-06',
+    name: 'Campus Pulse · Aurora Fold',
+    description: "Blue-hour festival poster: indigo-violet aurora folds, lantern-lit hero photograph, coral display headline, folded announcement card, event constellation list, glow ticker with live time.",
+    category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#120a2e',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/campus-pulse/06-aurora-fold.html', campusPulse: true, liveClock: true, liveDate: true, liveWeather: true, clockTimezone: '', clockFormat: '12h', weatherLocation: '', weatherUnits: 'imperial' } }],
+  },
+  {
+    id: 'preset-school-hs-campus-pulse-01-portrait',
+    name: 'Campus Pulse · Campus Magazine — Portrait',
+    description: "Editorial front-page lobby: masthead + seal, angled hero photograph with index tab, oversized serif headline with italic cut, three-column brief grid (announcement + events), utility bar with live clock/weather. Portrait-authored composition of the same source; content and styling stay in lockstep with the landscape sibling.",
+    category: 'LOBBY_WELCOME', orientation: 'PORTRAIT', schoolLevel: 'HIGH',
+    screenWidth: 2160, screenHeight: 3840, bgColor: '#f4f0e8',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/campus-pulse/01-campus-magazine.html?o=portrait', campusPulse: true, liveClock: true, liveDate: true, liveWeather: true, clockTimezone: '', clockFormat: '12h', weatherLocation: '', weatherUnits: 'imperial' } }],
+  },
+  {
+    id: 'preset-school-hs-campus-pulse-02-portrait',
+    name: 'Campus Pulse · Digital Signal — Portrait',
+    description: "Phosphor-teal broadcast panel: signal-bar masthead, scanline hero with clipped photo, mono data blocks for announcement + events, live telemetry strip with clock/weather readouts. Portrait-authored composition of the same source; content and styling stay in lockstep with the landscape sibling.",
+    category: 'LOBBY_WELCOME', orientation: 'PORTRAIT', schoolLevel: 'HIGH',
+    screenWidth: 2160, screenHeight: 3840, bgColor: '#071315',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/campus-pulse/02-digital-signal.html?o=portrait', campusPulse: true, liveClock: true, liveDate: true, liveWeather: true, clockTimezone: '', clockFormat: '12h', weatherLocation: '', weatherUnits: 'imperial' } }],
+  },
+  {
+    id: 'preset-school-hs-campus-pulse-03-portrait',
+    name: 'Campus Pulse · Neo Yearbook — Portrait',
+    description: "Modern yearbook spread: plum + gold duotone, taped photo frame, oversized annual headline, signature-strip announcement, event index rows, ribbon ticker with live time. Portrait-authored composition of the same source; content and styling stay in lockstep with the landscape sibling.",
+    category: 'LOBBY_WELCOME', orientation: 'PORTRAIT', schoolLevel: 'HIGH',
+    screenWidth: 2160, screenHeight: 3840, bgColor: '#f3efe5',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/campus-pulse/03-neo-yearbook.html?o=portrait', campusPulse: true, liveClock: true, liveDate: true, liveWeather: true, clockTimezone: '', clockFormat: '12h', weatherLocation: '', weatherUnits: 'imperial' } }],
+  },
+  {
+    id: 'preset-school-hs-campus-pulse-04-portrait',
+    name: 'Campus Pulse · Varsity Broadcast — Portrait',
+    description: "Game-night broadcast package: midnight-blue arena gradient, electric-red score bug masthead, cut-corner hero photo, lower-third announcement, fixture list, crawl ticker with clock/weather caps. Portrait-authored composition of the same source; content and styling stay in lockstep with the landscape sibling.",
+    category: 'LOBBY_WELCOME', orientation: 'PORTRAIT', schoolLevel: 'HIGH',
+    screenWidth: 2160, screenHeight: 3840, bgColor: '#07111f',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/campus-pulse/04-varsity-broadcast.html?o=portrait', campusPulse: true, liveClock: true, liveDate: true, liveWeather: true, clockTimezone: '', clockFormat: '12h', weatherLocation: '', weatherUnits: 'imperial' } }],
+  },
+  {
+    id: 'preset-school-hs-campus-pulse-05-portrait',
+    name: 'Campus Pulse · Metro Wayfinding — Portrait',
+    description: "Transit-grade wayfinding: cobalt line-map spine, platform-style hero with route roundels, departure-row events, service-notice announcement, concourse ticker with live clock/weather. Portrait-authored composition of the same source; content and styling stay in lockstep with the landscape sibling.",
+    category: 'LOBBY_WELCOME', orientation: 'PORTRAIT', schoolLevel: 'HIGH',
+    screenWidth: 2160, screenHeight: 3840, bgColor: '#f2f5f7',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/campus-pulse/05-metro-wayfinding.html?o=portrait', campusPulse: true, liveClock: true, liveDate: true, liveWeather: true, clockTimezone: '', clockFormat: '12h', weatherLocation: '', weatherUnits: 'imperial' } }],
+  },
+  {
+    id: 'preset-school-hs-campus-pulse-06-portrait',
+    name: 'Campus Pulse · Aurora Fold — Portrait',
+    description: "Blue-hour festival poster: indigo-violet aurora folds, lantern-lit hero photograph, coral display headline, folded announcement card, event constellation list, glow ticker with live time. Portrait-authored composition of the same source; content and styling stay in lockstep with the landscape sibling.",
+    category: 'LOBBY_WELCOME', orientation: 'PORTRAIT', schoolLevel: 'HIGH',
+    screenWidth: 2160, screenHeight: 3840, bgColor: '#120a2e',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/campus-pulse/06-aurora-fold.html?o=portrait', campusPulse: true, liveClock: true, liveDate: true, liveWeather: true, clockTimezone: '', clockFormat: '12h', weatherLocation: '', weatherUnits: 'imperial' } }],
+  },
   {
     id: 'preset-hs-transit',
     name: '✈️ Transit — Airport Departure Board',

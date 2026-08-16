@@ -17,6 +17,18 @@ export interface SignageTemplate {
 }
 
 export const SIGNAGE_TEMPLATES: SignageTemplate[] = [
+  { id: "preset-school-hs-campus-pulse-01", name: "Campus Pulse · Campus Magazine", group: "High School · Campus Pulse", url: "/templates/school/campus-pulse/01-campus-magazine.html" },
+  { id: "preset-school-hs-campus-pulse-02", name: "Campus Pulse · Digital Signal", group: "High School · Campus Pulse", url: "/templates/school/campus-pulse/02-digital-signal.html" },
+  { id: "preset-school-hs-campus-pulse-03", name: "Campus Pulse · Neo Yearbook", group: "High School · Campus Pulse", url: "/templates/school/campus-pulse/03-neo-yearbook.html" },
+  { id: "preset-school-hs-campus-pulse-04", name: "Campus Pulse · Varsity Broadcast", group: "High School · Campus Pulse", url: "/templates/school/campus-pulse/04-varsity-broadcast.html" },
+  { id: "preset-school-hs-campus-pulse-05", name: "Campus Pulse · Metro Wayfinding", group: "High School · Campus Pulse", url: "/templates/school/campus-pulse/05-metro-wayfinding.html" },
+  { id: "preset-school-hs-campus-pulse-06", name: "Campus Pulse · Aurora Fold", group: "High School · Campus Pulse", url: "/templates/school/campus-pulse/06-aurora-fold.html" },
+  { id: "preset-school-hs-campus-pulse-01-portrait", name: "Campus Pulse · Campus Magazine — Portrait", group: "High School · Campus Pulse", url: "/templates/school/campus-pulse/01-campus-magazine.html?o=portrait" },
+  { id: "preset-school-hs-campus-pulse-02-portrait", name: "Campus Pulse · Digital Signal — Portrait", group: "High School · Campus Pulse", url: "/templates/school/campus-pulse/02-digital-signal.html?o=portrait" },
+  { id: "preset-school-hs-campus-pulse-03-portrait", name: "Campus Pulse · Neo Yearbook — Portrait", group: "High School · Campus Pulse", url: "/templates/school/campus-pulse/03-neo-yearbook.html?o=portrait" },
+  { id: "preset-school-hs-campus-pulse-04-portrait", name: "Campus Pulse · Varsity Broadcast — Portrait", group: "High School · Campus Pulse", url: "/templates/school/campus-pulse/04-varsity-broadcast.html?o=portrait" },
+  { id: "preset-school-hs-campus-pulse-05-portrait", name: "Campus Pulse · Metro Wayfinding — Portrait", group: "High School · Campus Pulse", url: "/templates/school/campus-pulse/05-metro-wayfinding.html?o=portrait" },
+  { id: "preset-school-hs-campus-pulse-06-portrait", name: "Campus Pulse · Aurora Fold — Portrait", group: "High School · Campus Pulse", url: "/templates/school/campus-pulse/06-aurora-fold.html?o=portrait" },
   { id: "preset-hs-ath-gameday", name: "Athletics — Game Day Hub", group: "High School", url: "/templates/hs/ath-gameday.html" },
   { id: "preset-hs-ath-standings", name: "Athletics — Standings & AOTW", group: "High School", url: "/templates/hs/ath-standings.html" },
   { id: "preset-hs-ath-broadcast", name: "Athletics — Broadcast Desk", group: "High School", url: "/templates/hs/ath-broadcast.html" },

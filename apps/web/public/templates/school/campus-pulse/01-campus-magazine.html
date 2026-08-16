@@ -1,0 +1,193 @@
+<!doctype html>
+<!-- APPROVED 2026-08-16 — Campus Pulse · High School · Campus Magazine.
+     User-reviewed in scratch/design/campus-pulse-hs-v1.html. Dual-orientation
+     fixed-canvas source. Do not flatten editable fields or regress to viewport-relative sizing.
+     CAMPUS PULSE · HIGH SCHOOL · V1 — CAMPUS MAGAZINE
+     Local design study only. Dual fixed scenes: 1920×1080 landscape and
+     1080×1920 portrait. Each scales exactly 2× on a native 4K panel.
+     Same editable field and image-slot contract in both orientations. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Campus Pulse · High School · Campus Magazine</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@500;600;700&family=DM+Serif+Display:ital@0;1&family=League+Spartan:wght@600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --brand:#1457d9; --brand2:#082a70; --accent:#f4c447; --accent2:#f36b46;
+      --ink:#0c1730; --bg:#f4f0e8; --surface:#fffdf7; --pos:#19a875; --neg:#d83d51;
+      --f-display:'DM Serif Display'; --f-head:'League Spartan'; --f-body:'DM Sans'; --f-mono:'Space Mono'; --scale:1;
+      --stage-w:1920px; --stage-h:1080px; --stage-scale:1;
+    }
+    * { box-sizing:border-box; } [data-module],[data-module]>* { min-width:0; min-height:0; }
+    html, body { width:100%; height:100%; margin:0; overflow:hidden; background:#121722; }
+    body { font-family:var(--f-body), sans-serif; color:var(--ink); }
+    .viewport { position:fixed; top:0; right:0; bottom:0; left:0; display:grid; place-items:center; }
+    .outer { width:calc(var(--stage-w) * var(--stage-scale)); height:calc(var(--stage-h) * var(--stage-scale)); }
+    .stage { position:relative; width:var(--stage-w); height:var(--stage-h); overflow:hidden; transform:scale(var(--stage-scale)); transform-origin:0 0; background:var(--bg); }
+    .grain { position:absolute; top:0; right:0; bottom:0; left:0; pointer-events:none; opacity:.15; mix-blend-mode:multiply; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='130' height='130' viewBox='0 0 130 130'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.16'/%3E%3C/svg%3E"); }
+    .brand-bar { position:absolute; top:0; left:0; width:22px; height:1080px; background:var(--brand); }
+    .accent-cut { position:absolute; top:0; left:22px; width:500px; height:28px; background:var(--accent); }
+    .masthead { position:absolute; top:50px; left:78px; width:930px; height:108px; display:flex; align-items:center; border-top:2px solid var(--ink); border-bottom:2px solid var(--ink); }
+    .seal { width:78px; height:78px; margin-right:24px; background:var(--brand); color:#fff; display:grid; place-items:center; transform:rotate(-3deg); font-family:var(--f-head); font-size:31px; font-weight:800; letter-spacing:-2px; box-shadow:8px 8px 0 var(--accent); background-size:cover; background-position:center; }
+    .seal.has-img { color:transparent; box-shadow:none; }
+    .school { min-width:0; }
+    .school-name { font-family:var(--f-head); font-size:42px; line-height:.95; font-weight:800; text-transform:uppercase; letter-spacing:.02em; white-space:nowrap; }
+    .school-motto { margin-top:8px; font-family:var(--f-mono); font-size:14px; font-weight:700; letter-spacing:.2em; text-transform:uppercase; color:var(--brand); }
+    .issue { margin-left:auto; text-align:right; font-family:var(--f-mono); text-transform:uppercase; }
+    .issue b { display:block; font-size:16px; letter-spacing:.12em; }
+    .issue span { display:block; margin-top:5px; font-size:12px; color:#53607a; letter-spacing:.12em; }
+
+    .hero-copy { position:absolute; top:196px; left:78px; width:820px; height:530px; z-index:4; }
+    .kicker { display:flex; align-items:center; font-family:var(--f-mono); font-size:15px; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:var(--brand); }
+    .kicker::before { content:''; width:54px; height:9px; margin-right:17px; background:var(--accent); transform:skewX(-20deg); }
+    .hero-title { margin:33px 0 0; max-width:780px; font-family:var(--f-display); font-size:142px; font-weight:400; letter-spacing:-.045em; line-height:.76; }
+    .hero-title .italic { display:block; color:var(--brand); font-style:italic; padding-left:105px; }
+    .hero-deck { width:600px; margin:37px 0 0 108px; padding-left:24px; border-left:7px solid var(--accent2); font-size:26px; line-height:1.22; font-weight:600; color:#354057; }
+    .edition-no { position:absolute; top:484px; left:0; font-family:var(--f-mono); font-size:12px; letter-spacing:.17em; text-transform:uppercase; color:#6d7689; transform:rotate(-90deg); transform-origin:0 0; }
+
+    .photo-frame { position:absolute; top:50px; right:0; width:870px; height:700px; overflow:hidden; background:var(--brand2); clip-path:polygon(13% 0,100% 0,100% 100%,0 100%,0 19%); }
+    .photo { position:absolute; top:0; right:0; bottom:0; left:0; background-image:linear-gradient(95deg,rgba(8,42,112,.34),transparent 42%),url('assets/campus-pulse-hs-students-v1.jpg'); background-size:cover; background-position:center; filter:saturate(.88) contrast(1.04); transform:scale(1.01); animation:photoDrift 18s ease-in-out infinite alternate; }
+    .photo-grade { position:absolute; top:0; right:0; bottom:0; left:0; pointer-events:none; background:linear-gradient(180deg,rgba(20,87,217,.05),transparent 45%,rgba(8,42,112,.42)); mix-blend-mode:multiply; }
+    .photo-label { position:absolute; right:36px; bottom:34px; max-width:480px; padding:16px 20px 14px; background:var(--accent); color:var(--ink); font-family:var(--f-mono); font-size:14px; font-weight:700; line-height:1.35; letter-spacing:.07em; text-transform:uppercase; box-shadow:-9px 9px 0 var(--brand); }
+    .photo-index { position:absolute; top:36px; right:38px; width:72px; height:72px; border:2px solid rgba(255,255,255,.74); color:#fff; display:grid; place-items:center; font-family:var(--f-head); font-size:22px; font-weight:800; border-radius:50%; }
+    @keyframes photoDrift { from { transform:scale(1.01) translateX(0); } to { transform:scale(1.055) translateX(-9px); } }
+
+    .brief { position:absolute; left:78px; right:78px; bottom:107px; height:245px; display:grid; grid-template-columns:560px 1fr 1fr 1fr; border-top:5px solid var(--ink); border-bottom:2px solid var(--ink); z-index:8; background:rgba(244,240,232,.96); }
+    .lead-brief { padding:26px 36px 20px 0; border-right:2px solid var(--ink); }
+    .brief-label { display:inline-block; padding:8px 12px 7px; background:var(--brand); color:#fff; font-family:var(--f-mono); font-size:13px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; }
+    .brief-message { margin-top:17px; font-family:var(--f-head); font-size:31px; line-height:1.02; font-weight:700; text-transform:uppercase; }
+    .brief-meta { margin-top:16px; font-size:15px; color:#4c5870; font-weight:600; }
+    .event { position:relative; padding:27px 24px 20px 30px; border-right:1px solid #9aa1ac; }
+    .event:last-child { border-right:0; }
+    .event-num { position:absolute; top:20px; right:19px; font-family:var(--f-display); font-size:55px; font-style:italic; color:rgba(20,87,217,.18); }
+    .event-time { font-family:var(--f-mono); font-size:13px; font-weight:700; letter-spacing:.12em; color:var(--brand); text-transform:uppercase; }
+    .event-title { margin-top:21px; max-width:210px; font-family:var(--f-head); font-size:31px; font-weight:800; line-height:.93; text-transform:uppercase; }
+    .event-place { position:absolute; left:30px; right:20px; bottom:25px; padding-top:10px; border-top:1px solid #b8b9b7; font-size:14px; color:#596175; font-weight:600; }
+
+    .utility { position:absolute; left:0; right:0; bottom:0; height:72px; display:flex; align-items:center; background:var(--ink); color:#fff; overflow:hidden; z-index:9; }
+    .utility-brand { height:72px; min-width:300px; display:flex; align-items:center; padding:0 40px 0 78px; background:var(--accent); color:var(--ink); font-family:var(--f-head); font-size:20px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; clip-path:polygon(0 0,90% 0,100% 100%,0 100%); }
+    .utility-message { flex:1; min-width:0; padding-left:28px; white-space:nowrap; overflow:hidden; font-family:var(--f-mono); font-size:16px; font-weight:700; letter-spacing:.03em; }
+    .utility-message span { display:inline-block; min-width:100%; animation:ticker 34s linear infinite; }
+    .utility-live { height:72px; min-width:335px; display:flex; align-items:center; justify-content:flex-end; padding-right:60px; font-family:var(--f-mono); font-size:16px; font-weight:700; letter-spacing:.08em; }
+    .weather { margin-left:22px; color:var(--accent); }
+    @keyframes ticker { from { transform:translateX(0); } to { transform:translateX(-42%); } }
+    @media (prefers-reduced-motion:reduce) { .photo, .utility-message span { animation:none; } }
+
+    /* LONG-VIEW PASS — 65-inch display at 10–20 feet. 52px is the floor. */
+    .seal{width:112px;height:112px;margin-right:28px;font-size:52px}.seal.has-img .placeholder{display:none}
+    .masthead{top:30px;left:78px;width:1020px;height:150px;z-index:10}.school-name{font-size:52px}.school-motto,.issue span{display:none}.issue{flex:0 0 240px;width:240px}.issue b{font-size:52px;line-height:.85;text-align:right}
+    .hero-copy{top:215px;width:860px;height:425px}.kicker{font-size:52px;letter-spacing:.04em}.kicker:before{height:16px}
+    .hero-title{margin-top:22px;font-size:172px;line-height:.72}.hero-title>span:first-child{display:block}.hero-title .italic{padding-left:92px}
+    .hero-deck{margin:26px 0 0 96px;width:690px;font-size:60px;line-height:1.05}.edition-no{display:none}
+    .photo-frame{top:30px;height:650px;background-size:cover;background-position:center}.photo-label{right:34px;bottom:28px;width:610px;max-width:none;font-size:52px;line-height:1.02;letter-spacing:0}.photo-index{width:94px;height:94px;font-size:52px}
+    .brief{bottom:112px;height:310px;grid-template-columns:600px repeat(3,1fr)}.lead-brief{padding:25px 28px 18px 0}.brief-label{font-size:52px;line-height:1;padding:10px 15px}.brief-message{margin-top:18px;font-size:60px;line-height:.95}.brief-meta{display:none}
+    .event{padding:30px 18px 20px 26px;overflow:hidden}.event-num{top:12px;right:14px;font-size:80px}.event-time{font-size:52px;letter-spacing:0}.event-title{margin-top:26px;font-size:60px;line-height:.88}.event-place{display:none}
+    .utility{height:112px}.utility-brand{height:112px;min-width:360px;padding-left:78px;font-size:52px}.utility-message{font-size:52px;line-height:1;letter-spacing:0}.utility-live{position:relative;z-index:2;height:112px;min-width:430px;padding-right:45px;font-size:52px;letter-spacing:0;background:var(--ink)}.weather{margin-left:24px}
+    .is-frozen *{animation-play-state:paused!important}.is-editing [data-field],.is-editing [data-imgslot]{cursor:pointer}.is-editing [data-field]:hover,.is-editing [data-imgslot]:hover{outline:4px dashed #22d3ee;outline-offset:5px}
+
+    /* Portrait is a real re-composition, not a rotated or letterboxed board. */
+    .is-portrait .brand-bar{height:1920px;width:16px}.is-portrait .accent-cut{left:16px;width:470px;height:24px}
+    .is-portrait .masthead{top:38px;left:54px;width:972px;height:132px}.is-portrait .seal{width:104px;height:104px}.is-portrait .school-name{font-size:52px;width:545px;white-space:normal;line-height:.9}.is-portrait .issue{margin-left:auto}.is-portrait .issue b{font-size:52px;max-width:245px;text-align:right}
+    .is-portrait .photo-frame{top:190px;right:0;width:1080px;height:540px;clip-path:polygon(9% 0,100% 0,100% 100%,0 100%,0 13%)}.is-portrait .photo{background-position:62% center}.is-portrait .photo-index{top:30px;right:32px}.is-portrait .photo-label{right:34px;bottom:28px;width:760px;font-size:52px}
+    .is-portrait .hero-copy{top:780px;left:54px;width:972px;height:405px}.is-portrait .kicker{font-size:52px}.is-portrait .hero-title{font-size:166px;line-height:.72;margin-top:26px}.is-portrait .hero-title .italic{padding-left:100px}.is-portrait .hero-deck{margin:32px 0 0 100px;width:820px;font-size:64px}
+    .is-portrait .brief{left:54px;right:54px;bottom:140px;height:540px;grid-template-columns:repeat(3,1fr);grid-template-rows:260px 280px}.is-portrait .lead-brief{grid-column:1/4;padding:20px 32px;border-right:0;border-bottom:2px solid var(--ink)}.is-portrait .brief-message{margin-top:12px;font-size:60px;line-height:.95;white-space:normal}.is-portrait .event{padding:26px 16px 18px 24px}.is-portrait .event-num{font-size:68px}.is-portrait .event-time{font-size:52px}.is-portrait .event-title{font-size:58px;margin-top:26px}
+    .is-portrait .utility{height:140px}.is-portrait .utility-brand{height:140px;min-width:430px;padding-left:54px;font-size:52px}.is-portrait .utility-message{display:none}.is-portrait .utility-live{height:140px;min-width:570px;padding-right:54px;font-size:52px}
+
+    /* COLLISION-SAFE PASS 2026-08-15 — every content module owns a fixed,
+       non-overlapping region. Captions never sit on photography and the
+       long ticker is intentionally hidden instead of being visually clipped. */
+    .issue{display:none}
+    .masthead{width:970px}
+    .photo-frame{height:610px;clip-path:polygon(13% 0,100% 0,100% 100%,0 100%,0 19%)}
+    .photo,.photo-grade{bottom:194px}
+    .photo-label{left:0;right:0;bottom:0;width:auto;height:190px;max-width:none;padding:16px 150px 16px 34px;display:flex;align-items:center;background:var(--accent);box-shadow:inset 10px 0 0 var(--brand);font-size:52px;line-height:.96}
+    .photo-index{top:auto;right:30px;bottom:48px}
+    .utility-message{display:none}
+    .utility-brand{min-width:520px;clip-path:polygon(0 0,92% 0,100% 100%,0 100%)}
+    .utility-live{margin-left:auto}
+    .brief-message{margin-top:12px;font-size:52px;line-height:.9}
+    .is-portrait .masthead{width:972px}
+    .is-portrait .photo-frame{height:540px}
+    .is-portrait .photo,.is-portrait .photo-grade{bottom:192px}
+    .is-portrait .photo-label{left:0;right:0;bottom:0;width:auto;height:190px;padding:14px 150px 14px 34px}
+    .is-portrait .photo-index{top:auto;right:28px;bottom:48px}
+  </style>
+</head>
+<body>
+  <div data-widget="theme" hidden>
+    <span data-field="theme.brand">#1457d9</span><span data-field="theme.brand2">#082a70</span>
+    <span data-field="theme.accent">#f4c447</span><span data-field="theme.accent2">#f36b46</span>
+    <span data-field="theme.ink">#0c1730</span><span data-field="theme.bg">#f4f0e8</span>
+    <span data-field="theme.pos">#19a875</span><span data-field="theme.neg">#d83d51</span>
+    <span data-field="theme.fDisplay">DM Serif Display</span><span data-field="theme.fHead">League Spartan</span>
+    <span data-field="theme.fBody">DM Sans</span><span data-field="theme.fMono">Space Mono</span><span data-field="theme.scale">1</span>
+  </div>
+  <div class="viewport"><div class="outer"><main class="stage">
+    <div class="brand-bar"></div><div class="accent-cut"></div><div class="grain"></div>
+
+    <header class="masthead" data-module="identity">
+      <div class="seal" data-imgslot="school.logo"><span class="placeholder" data-field="school.initials">NS</span></div>
+      <div class="school">
+        <div class="school-name" data-field="school.name">Northstar High School</div>
+        <div class="school-motto" data-field="school.motto">Every voice · Every future</div>
+      </div>
+      <div class="issue"><b data-field="issue.label">Campus Pulse</b><span data-field="issue.meta">Vol. 08 · No. 15</span></div>
+    </header>
+
+    <section class="hero-copy" data-module="hero">
+      <div class="kicker" data-live="today" data-field="hero.eyebrow">Friday · August 15</div>
+      <h1 class="hero-title"><span data-field="hero.titleLine1" data-fit data-fit-min="112">Make today</span><span class="italic" data-field="hero.titleLine2" data-fit data-fit-min="112">count.</span></h1>
+      <p class="hero-deck" data-field="hero.deck">One campus. Every voice. All in.</p>
+      <div class="edition-no" data-field="hero.sideNote">The daily brief · Northstar, California</div>
+    </section>
+
+    <section class="photo-frame" data-module="hero-media">
+      <div class="photo" data-imgslot="hero.photo" data-img="assets/campus-pulse-hs-students-v1.jpg"></div><div class="photo-grade"></div><div class="photo-index" data-field="feature.label">01</div>
+      <div class="photo-label" data-field="feature.caption">Student Film Festival submissions open today · Media Lab 214</div>
+    </section>
+
+    <section class="brief" data-module="daily-brief">
+      <article class="lead-brief">
+        <div class="brief-label" data-field="announcement.label">Today</div>
+        <div class="brief-message" data-field="announcement.message">Fall kickoff assembly starts at 9:40 in the main gym.</div>
+        <div class="brief-meta" data-field="announcement.meta">Doors open after second period · Sit with your advisory</div>
+      </article>
+      <article class="event"><span class="event-num" data-field="events.0.index">01</span><div class="event-time" data-field="events.0.time">11:30</div><div class="event-title" data-field="events.0.title">Club Rush</div><div class="event-place" data-field="events.0.place">Central quad · 34 groups</div></article>
+      <article class="event"><span class="event-num" data-field="events.1.index">02</span><div class="event-time" data-field="events.1.time">4:00</div><div class="event-title" data-field="events.1.title">Girls Soccer</div><div class="event-place" data-field="events.1.place">Northstar Field · Roosevelt</div></article>
+      <article class="event"><span class="event-num" data-field="events.2.index">03</span><div class="event-time" data-field="events.2.time">7:30</div><div class="event-title" data-field="events.2.title">Opening Night</div><div class="event-place" data-field="events.2.place">Black Box · Student one-acts</div></article>
+    </section>
+
+    <footer class="utility" data-module="utility-ticker">
+      <div class="utility-brand" data-field="ticker.label">Northstar Now</div>
+      <div class="utility-message"><span data-field="ticker.message">YEARBOOK PORTRAITS · COUNSELING DROP-INS · PARKING PERMITS DUE · VOLUNTEERS NEEDED FOR SATURDAY</span></div>
+      <div class="utility-live"><span data-live="clock" data-field="clock.time">8:42 AM</span><span class="weather" data-field="weather.current">☀ 72°</span></div>
+    </footer>
+  </main></div></div>
+  <script>
+  (function(){
+    var root=document.documentElement, stage=document.querySelector('.stage'), outer=document.querySelector('.outer');
+    var params=new URLSearchParams(location.search), explicit=(params.get('o')||params.get('orientation')||'').toLowerCase();
+    function portrait(){return explicit?explicit.indexOf('p')===0:innerHeight>innerWidth;}
+    function fit(){var p=portrait(),w=p?1080:1920,h=p?1920:1080;root.classList.toggle('is-portrait',p);root.style.setProperty('--stage-w',w+'px');root.style.setProperty('--stage-h',h+'px');root.style.setProperty('--stage-scale',Math.min(innerWidth/w,innerHeight/h));stage.style.width=w+'px';stage.style.height=h+'px';outer.style.width='calc('+w+'px * var(--stage-scale))';outer.style.height='calc('+h+'px * var(--stage-scale))';setTimeout(fitAll,0);}
+    addEventListener('resize',fit);
+    function decode(value){if(!value)return{};try{return JSON.parse(value);}catch(_){try{var b=value.replace(/-/g,'+').replace(/_/g,'/');while(b.length%4)b+='=';var text=decodeURIComponent(Array.prototype.map.call(atob(b),function(c){return'%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(text);}catch(__){return{};}}}
+    function nodes(key,attr){var all=document.querySelectorAll('['+attr+']'),out=[];for(var i=0;i<all.length;i++)if(all[i].getAttribute(attr)===key)out.push(all[i]);return out;}
+    function setText(el,value){el.textContent=value;if(el.hasAttribute('data-live'))el.setAttribute('data-pin','1');}
+    var themeMap={brand:'--brand',brand2:'--brand2',accent:'--accent',accent2:'--accent2',ink:'--ink',bg:'--bg',pos:'--pos',neg:'--neg',fDisplay:'--f-display',fHead:'--f-head',fBody:'--f-body',fMono:'--f-mono',scale:'--scale'};
+    function applyTheme(){Object.keys(themeMap).forEach(function(k){var e=document.querySelector('[data-field="theme.'+k+'"]');if(!e)return;var v=e.textContent.trim();root.style.setProperty(themeMap[k],v);});}
+    function image(el,value){var v=typeof value==='string'?value:(el.getAttribute('data-img')||'');if(v){el.style.backgroundImage='url("'+v.replace(/["'()\s]/g,'')+'")';el.style.backgroundSize='cover';el.style.backgroundPosition='center';el.classList.add('has-img');}else{el.style.backgroundImage='';el.classList.remove('has-img');}}
+    function apply(payload){payload=payload||{};var b=payload.brand||{},text=payload.text||{},styles=payload.textStyles||{},imgs=payload.img||{};var aliases={primary:'brand',secondary:'brand2',accent:'accent',accent2:'accent2',text:'ink',background:'bg',positive:'pos',negative:'neg',fontDisplay:'fDisplay',fontHeading:'fHead',fontBody:'fBody',fontMono:'fMono',scale:'scale'};Object.keys(aliases).forEach(function(k){if(b[k]!=null){var e=document.querySelector('[data-field="theme.'+aliases[k]+'"]');if(e)e.textContent=String(b[k]);}});applyTheme();if(b.surface!=null)root.style.setProperty("--surface",String(b.surface));if(Object.prototype.hasOwnProperty.call(b,"backgroundImage")){var bgUrl=String(b.backgroundImage||"").replace(/["'()\s]/g,"");stage.style.backgroundImage=bgUrl?"url("+bgUrl+")":"";}if(b.backgroundSize)stage.style.backgroundSize=b.backgroundSize;if(b.backgroundPosition)stage.style.backgroundPosition=b.backgroundPosition;var keys={};Object.keys(text).forEach(function(k){keys[k]=1;});Object.keys(styles).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var list=nodes(k,'data-field');for(var i=0;i<list.length;i++){if(typeof text[k]==='string')setText(list[i],text[k]);var s=styles[k]||{};if(s.color)list[i].style.color=s.color;if(s.fontSize!=null){var base=Number.parseFloat(getComputedStyle(list[i]).fontSize)||52,max=+(list[i].dataset.safeFontMax||(list[i].dataset.safeFontMax=String(Math.max(52,Math.round(base*1.12))))),want=Number.parseFloat(String(s.fontSize));list[i].style.fontSize=(isFinite(want)?Math.min(want,max):base)+'px';}if(s.fontWeight!=null)list[i].style.fontWeight=String(s.fontWeight);if(s.fontFamily)list[i].style.fontFamily=s.fontFamily;if(s.textAlign)list[i].style.textAlign=s.textAlign;if(s.lineHeight!=null)list[i].style.lineHeight=String(s.lineHeight);if(s.fontStyle)list[i].style.fontStyle=s.fontStyle;if(s.textDecoration)list[i].style.textDecoration=s.textDecoration;if(s.backgroundColor)list[i].style.backgroundColor=s.backgroundColor;if(s.hidden)list[i].style.display='none';}});Object.keys(imgs).forEach(function(k){var list=nodes(k,'data-imgslot');for(var i=0;i<list.length;i++)image(list[i],imgs[k]);});var photos=nodes("hero.photo","data-imgslot"),logos=nodes("school.logo","data-imgslot");for(var pi=0;pi<photos.length;pi++){if(b.heroImageFit)photos[pi].style.backgroundSize=b.heroImageFit;if(b.heroImagePosition)photos[pi].style.backgroundPosition=b.heroImagePosition;}for(var li=0;li<logos.length;li++){if(b.logoImageFit)logos[li].style.backgroundSize=b.logoImageFit;if(b.logoImagePosition)logos[li].style.backgroundPosition=b.logoImagePosition;}setTimeout(fitAll,0);}
+    function fitOne(el){if(el.closest('[data-widget="theme"]')||getComputedStyle(el).display==='none')return;el.setAttribute('data-fit','');var min=+(el.getAttribute('data-fit-min')||52),start=parseFloat(getComputedStyle(el).fontSize);if(!isFinite(start))return;var size=Math.max(min,start);el.style.fontSize=size+'px';var guard=180;while(guard--&&size>min&&(el.scrollWidth>el.clientWidth+1||el.scrollHeight>el.clientHeight+1)){size-=2;el.style.fontSize=size+'px';}}
+    function fitAll(){var all=document.querySelectorAll('[data-field]');for(var i=0;i<all.length;i++)fitOne(all[i]);}
+    function arm(){root.classList.add('is-editing');var all=document.querySelectorAll('[data-field],[data-imgslot]');for(var i=0;i<all.length;i++){if(all[i].dataset.armed)continue;all[i].dataset.armed='1';all[i].addEventListener('click',function(e){e.preventDefault();e.stopPropagation();var isImg=this.hasAttribute('data-imgslot');parent.postMessage({type:'educms-field-click',key:this.getAttribute(isImg?'data-imgslot':'data-field'),kind:isImg?'img':'text'},'*');},true);}}
+    function tick(){var d=new Date(),time=d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}),date=d.toLocaleDateString([],{weekday:'long',month:'long',day:'numeric'});document.querySelectorAll('[data-live="clock"]').forEach(function(e){if(!e.hasAttribute('data-pin'))e.textContent=time;});document.querySelectorAll('[data-live="today"]').forEach(function(e){if(!e.hasAttribute('data-pin'))e.textContent=date;});}
+    document.querySelectorAll('[data-imgslot]').forEach(function(el){image(el);});applyTheme();var observer=new MutationObserver(function(){applyTheme();setTimeout(fitAll,0);}),theme=document.querySelector('[data-widget="theme"]');if(theme)observer.observe(theme,{subtree:true,childList:true,characterData:true});
+    apply({brand:decode(params.get('brand')),text:decode(params.get('text')),textStyles:decode(params.get('textStyles')),img:decode(params.get('img'))});if(params.get('freeze')==='1')root.classList.add('is-frozen');addEventListener('message',function(e){var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides')apply(d);if(d.type==='educms-edit-mode'){root.classList.toggle('is-editing',!!d.on);if(d.on)arm();}if(d.type==='educms-freeze')root.classList.add('is-frozen');if(d.type==='educms-unfreeze')root.classList.remove('is-frozen');});
+    fit();tick();setInterval(tick,30000);if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fitAll);try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+  })();
+  </script>
+</body>
+</html>

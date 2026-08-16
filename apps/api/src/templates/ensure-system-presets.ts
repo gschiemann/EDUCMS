@@ -404,31 +404,35 @@ for (const id of QSR_REDESIGN_ALSO_RESTAURANT) {
   PRESET_VERTICALS.set(id, ['QSR', 'RESTAURANT']);
 }
 
-// Interactive touch kiosks (2026-06-03). Flagship interactive showcases tagged
-// 'ALL' so the "Touch Kiosks" section appears in EVERY vertical's gallery —
-// per operator request (2026-06-03), kept universal for testing ease. The
-// 'ALL' sentinel is matched for every caller by verticalMatchOr +
-// verticalTagIncludes. (To split them per-vertical later, swap 'ALL' for the
-// natural verticals, e.g. food→['QSR','RESTAURANT'].)
-PRESET_VERTICALS.set('preset-kiosk-food', ['ALL']);
-PRESET_VERTICALS.set('preset-kiosk-realestate', ['ALL']);
-PRESET_VERTICALS.set('preset-kiosk-museum', ['ALL']);
-PRESET_VERTICALS.set('preset-kiosk-office', ['ALL']);
-PRESET_VERTICALS.set('preset-kiosk-gym', ['ALL']);
-PRESET_VERTICALS.set('preset-kiosk-school', ['ALL']);
-PRESET_VERTICALS.set('preset-kiosk-qsr', ['ALL']);
-PRESET_VERTICALS.set('preset-kiosk-bar', ['ALL']);
-PRESET_VERTICALS.set('preset-kiosk-clinic', ['ALL']);
-PRESET_VERTICALS.set('preset-kiosk-qsr-pickup', ['ALL']);
-PRESET_VERTICALS.set('preset-kiosk-office-room', ['ALL']);
-PRESET_VERTICALS.set('preset-kiosk-realestate-models', ['ALL']);
-PRESET_VERTICALS.set('preset-kiosk-realestate-resident', ['ALL']);
-PRESET_VERTICALS.set('preset-kiosk-food-nutrition', ['ALL']);
-PRESET_VERTICALS.set('preset-kiosk-museum-quest', ['ALL']);
-PRESET_VERTICALS.set('preset-kiosk-gym-workout', ['ALL']);
-PRESET_VERTICALS.set('preset-kiosk-bar-jukebox', ['ALL']);
-PRESET_VERTICALS.set('preset-kiosk-school-frontoffice', ['ALL']);
-PRESET_VERTICALS.set('preset-kiosk-vet', ['ALL']);
+// Interactive touch kiosks — retagged per-vertical for launch (2026-08-16).
+// These shipped as 'ALL' in 2026-06-03 "for testing ease", which put a Bar &
+// Tap House kiosk, a Fast-Food Self-Order kiosk, and a Veterinary Check-In
+// inside every K-12 school's Touch Kiosks tab (operator: "i saw incorrect
+// templates in k-12"). Each kiosk now carries its natural vertical(s); the
+// boot seeder re-syncs Template.vertical from this map on every deploy, so
+// existing DB rows migrate automatically. K-12 keeps the kiosks a school
+// would actually deploy: Campus Hub, Front Office Check-In, the museum/
+// exhibit pair (science fairs, open houses), and Nutrition & Allergens
+// (cafeteria allergen boards are a real K-12 need).
+PRESET_VERTICALS.set('preset-kiosk-food', ['QSR', 'RESTAURANT']);
+PRESET_VERTICALS.set('preset-kiosk-realestate', ['CORPORATE', 'HOSPITALITY']);
+PRESET_VERTICALS.set('preset-kiosk-museum', ['HOSPITALITY', 'CORPORATE', 'K12']);
+PRESET_VERTICALS.set('preset-kiosk-office', ['CORPORATE']);
+PRESET_VERTICALS.set('preset-kiosk-gym', ['GYM']);
+PRESET_VERTICALS.set('preset-kiosk-school', ['K12']);
+PRESET_VERTICALS.set('preset-kiosk-qsr', ['QSR']);
+PRESET_VERTICALS.set('preset-kiosk-bar', ['BAR']);
+PRESET_VERTICALS.set('preset-kiosk-clinic', ['HEALTHCARE']);
+PRESET_VERTICALS.set('preset-kiosk-qsr-pickup', ['QSR', 'RESTAURANT']);
+PRESET_VERTICALS.set('preset-kiosk-office-room', ['CORPORATE']);
+PRESET_VERTICALS.set('preset-kiosk-realestate-models', ['CORPORATE', 'HOSPITALITY']);
+PRESET_VERTICALS.set('preset-kiosk-realestate-resident', ['CORPORATE', 'HOSPITALITY']);
+PRESET_VERTICALS.set('preset-kiosk-food-nutrition', ['QSR', 'RESTAURANT', 'K12']);
+PRESET_VERTICALS.set('preset-kiosk-museum-quest', ['HOSPITALITY', 'CORPORATE', 'K12']);
+PRESET_VERTICALS.set('preset-kiosk-gym-workout', ['GYM']);
+PRESET_VERTICALS.set('preset-kiosk-bar-jukebox', ['BAR', 'RESTAURANT']);
+PRESET_VERTICALS.set('preset-kiosk-school-frontoffice', ['K12']);
+PRESET_VERTICALS.set('preset-kiosk-vet', ['HEALTHCARE']);
 
 /**
  * Resolve the stored `Template.vertical` tag for a preset id. Returns a
