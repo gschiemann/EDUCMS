@@ -612,8 +612,18 @@ describe('District-wide emergency propagation (fan-out + manifest inheritance)',
     const before = prisma.client.tenant.findUnique.mock.calls.length;
     const m = await manifestFor('scr-district'); // DISTRICT.parentId === null
     expect(m.isEmergency).toBe(false);
-    // Exactly one tenant read: the screen's own row. No walk.
-    expect(prisma.client.tenant.findUnique.mock.calls.length - before).toBe(1);
+    // The invariant is NO ANCESTOR WALK — every tenant read the manifest
+    // makes must target the screen's OWN tenant, never a parent. (Until
+    // 2026-08-16 the count-based proxy `=== 1` worked because the second
+    // own-tenant read — the "paired with: <name>" manifest field — was
+    // hidden inside a Prisma `include` the mock never counted. The include
+    // was split into an explicit parallel findUnique for the round-trip
+    // win, so assert the actual invariant instead of the call count.)
+    const newCalls = prisma.client.tenant.findUnique.mock.calls.slice(before);
+    expect(newCalls.length).toBeGreaterThanOrEqual(1);
+    for (const call of newCalls) {
+      expect(call[0]?.where?.id).toBe(DISTRICT); // own tenant only — no walk
+    }
   });
 
   // ── 6. audit ─────────────────────────────────────────────────────────────

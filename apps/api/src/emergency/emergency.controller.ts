@@ -1693,18 +1693,30 @@ export class EmergencyController {
       scopeOr.push({ scopeType: 'group', scopeId: screen.screenGroupId });
     }
 
-    const rows = await this.prisma.client.emergencyMessage.findMany({
-      where: {
-        tenantId,
-        clearedAt: null,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-        AND: [{ OR: scopeOr }],
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
-
-    const tenant = await this.prisma.client.tenant.findUnique({ where: { id: tenantId } });
+    // 2026-08-16 (efficiency audit) — these two reads are independent once
+    // tenantId is known, and this endpoint runs every ~10s on EVERY device,
+    // uncached by design (it is the emergency HTTP backstop). Sequential,
+    // they serialized two ~212ms round trips; parallel they cost one. The
+    // tenant read also used to pull the FULL 49-column row — including
+    // cleverAccessToken — per poll, to use exactly two fields. Select only
+    // those two: less wire, and an OAuth token has no business riding a
+    // device-poll buffer every ten seconds.
+    const [rows, tenant] = await Promise.all([
+      this.prisma.client.emergencyMessage.findMany({
+        where: {
+          tenantId,
+          clearedAt: null,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+          AND: [{ OR: scopeOr }],
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }),
+      this.prisma.client.tenant.findUnique({
+        where: { id: tenantId },
+        select: { emergencyStatus: true, emergencyPlaylistId: true },
+      }),
+    ]);
 
     return {
       tenantId,

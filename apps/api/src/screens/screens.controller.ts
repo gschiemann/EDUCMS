@@ -3258,21 +3258,49 @@ export class ScreensController {
     // on the kiosk (5 consecutive failures → WebView hard reload),
     // so a transient pool blip here is the single most visible
     // failure mode for the kiosk experience.
+    // 2026-08-16 (efficiency audit) — this read runs on EVERY poll of every
+    // screen (the auth/revocation check is deliberately uncached), and the
+    // old `include: { screenGroup, tenant }` made Prisma emit THREE
+    // sequential statements inside an implicit transaction — at the
+    // measured ~212ms/round-trip that was >600ms of pure serialization on
+    // the fleet's hottest endpoint. Split: fetch the screen alone (also the
+    // fastest possible 403 for a revoked device), then load the two
+    // relations IN PARALLEL and reattach. The assembled object is
+    // shape-identical to the include, so the manifest payload — and
+    // therefore the ETag and the hot-cache contract — are byte-for-byte
+    // unchanged.
     const screen = await withDbRetry(
-      () => this.prisma.client.screen.findUnique({
-        where: { id },
-        // 2026-05-19 — also pull the tenant name so the manifest can
-        // surface "paired with: <tenant>" on the player info card.
-        // Operator: "i do so much testing i cant remember where i
-        // paired them anymore."
-        include: { screenGroup: true, tenant: { select: { name: true } } }
-      }),
+      () => this.prisma.client.screen.findUnique({ where: { id } }),
       { label: 'screen.findUnique[manifest]' },
     );
 
     if (!screen || screen.status === 'REVOKED') {
       return res.status(403).json({ error: 'Device invalid or revoked' });
     }
+
+    // 2026-05-19 — tenant name surfaces "paired with: <tenant>" on the
+    // player info card; screenGroup carries syncMode for the frame-locked
+    // sync block. FKs come off the authoritative just-read screen row —
+    // exactly the rows the old include joined server-side.
+    const [manifestScreenGroup, manifestTenantName] = await withDbRetry(
+      () =>
+        Promise.all([
+          (screen as any).screenGroupId
+            ? // ten-ok: FK sourced from the device's own authoritative Screen row (self-scoped manifest read)
+              this.prisma.client.screenGroup.findUnique({ where: { id: (screen as any).screenGroupId } })
+            : Promise.resolve(null),
+          (screen as any).tenantId
+            ? // ten-ok: FK sourced from the device's own authoritative Screen row (self-scoped manifest read)
+              this.prisma.client.tenant.findUnique({
+                where: { id: (screen as any).tenantId },
+                select: { name: true },
+              })
+            : Promise.resolve(null),
+        ]),
+      { label: 'screen.relations[manifest]' },
+    );
+    (screen as any).screenGroup = manifestScreenGroup;
+    (screen as any).tenant = manifestTenantName;
 
     // Any successful manifest fetch means the device is alive + talking
     // to us — touch lastPingAt so the dashboard list endpoint (which
@@ -3286,7 +3314,10 @@ export class ScreensController {
     if (!shouldSkipLastPingWrite(screen.id)) {
       markLastPingWritten(screen.id);
       this.prisma.client.screen
-        .update({ where: { id: screen.id }, data: { lastPingAt: new Date() } })
+        // select:{id} — fire-and-forget telemetry; without it Prisma RETURNINGs
+        // all ~88 columns (incl. the crash-stack and cache-report blobs) back
+        // over the wire on every debounced ping, to be thrown away.
+        .update({ where: { id: screen.id }, data: { lastPingAt: new Date() }, select: { id: true } })
         .catch(() => { /* non-fatal; next manifest fetch will retry */ });
     }
 
@@ -4343,6 +4374,8 @@ export class ScreensController {
           lastCacheReport: body as any,
           lastCacheReportAt: new Date(),
         },
+        // Fire-and-forget telemetry — don't RETURNING the whole 88-column row.
+        select: { id: true },
       }),
     );
     markCacheReportWritten(id, sig);
@@ -4461,6 +4494,8 @@ export class ScreensController {
         ...(hash != null ? { lastRenderedHash: hash } : {}),
         ...(syncReport ? { lastSyncReport: syncReport, lastSyncReportAt: new Date() } : {}),
       } as any,
+      // Fire-and-forget telemetry — don't RETURNING the whole 88-column row.
+      select: { id: true },
       }),
     );
     markRenderProofWritten(id);
