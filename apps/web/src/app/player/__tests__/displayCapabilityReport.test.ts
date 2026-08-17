@@ -90,6 +90,40 @@ describe('reportDisplayCapabilities', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
+  it('RE-REPORTS when the verdict changes on the SAME APK — a permission grant', async () => {
+    // ⚠️ FOUND ON THE FIRST REAL INSTALL (TC22, 2026-08-17). The operator
+    // sideloads, the screen reports `software-dim`, and THEN the operator
+    // grants WRITE_SETTINGS + device admin. With an app-version-only marker
+    // the stored verdict stayed `software-dim` until the next APK release,
+    // so the dashboard kept hiding the real blank/brightness controls the
+    // grants had just unlocked.
+    await expect(reportDisplayCapabilities(OPTS)).resolves.toBe('reported');
+    (global.fetch as jest.Mock).mockClear();
+
+    // Same APK version, same Build.DISPLAY — only the verdict moved.
+    callMock.mockResolvedValue(
+      JSON.stringify({
+        schema: 1,
+        build: {
+          manufacturer: 'Goodview',
+          model: 'ECBox3576',
+          board: 'rk3288',
+          display: 'rk3288-userdebug 7.1.2 NHG47K eng.20200612',
+        },
+        verdict: { brightness: 'settings', screenBlank: 'device-admin' },
+      }),
+    );
+    await expect(reportDisplayCapabilities(OPTS)).resolves.toBe('reported');
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    // And the new state dedupes exactly like the old one did.
+    (global.fetch as jest.Mock).mockClear();
+    await expect(reportDisplayCapabilities(OPTS)).resolves.toBe(
+      'skipped: already reported this version',
+    );
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it('re-reports for a different screen id on the same box', async () => {
     await reportDisplayCapabilities(OPTS);
     (global.fetch as jest.Mock).mockClear();
@@ -104,7 +138,7 @@ describe('reportDisplayCapabilities', () => {
     mockAppVersion(null);
     await expect(reportDisplayCapabilities(OPTS)).resolves.toBe('reported');
     const marker = window.localStorage.getItem('edu_display_caps_reported');
-    expect(marker).toMatch(/^screen-1\|unknown@\d{4}-\d{2}-\d{2}$/);
+    expect(marker).toMatch(/^screen-1\|unknown@\d{4}-\d{2}-\d{2}\|[0-9a-z]+$/);
 
     (global.fetch as jest.Mock).mockClear();
     await expect(reportDisplayCapabilities(OPTS)).resolves.toBe(

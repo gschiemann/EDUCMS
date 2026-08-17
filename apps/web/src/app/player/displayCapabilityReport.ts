@@ -17,18 +17,29 @@
  * self-describing and we never need physical access to answer "what can this
  * screen do?".
  *
- * REPORT ONCE PER (screen × app version), NOT PER LOAD.
+ * REPORT ONCE PER (screen × app version × VERDICT STATE), NOT PER LOAD.
  * The player page reloads on a watchdog, on REFRESH_WEB pushes, and on
  * network recovery. POSTing on every load would write the Screen row at
  * page-load frequency across the fleet. That write is safe for the manifest
  * hot cache today — `displayCapabilities` / `displayCapabilitiesAt` are both
  * listed in SCREEN_TELEMETRY_ONLY_FIELDS (see manifest-hot-cache.ts, which
  * documents exactly why and when that must change) — but "safe for the cache"
- * is not a licence to write it constantly. The verdict only changes when the
- * APK changes or an operator grants a permission, so the app version is the
- * right cache key. `DisplayControlRegistry.invalidate()` on the native side
- * handles the permission-grant case within a session; the next version bump
- * re-reports regardless.
+ * is not a licence to write it constantly.
+ *
+ * WHY THE VERDICT STATE IS PART OF THE KEY (2026-08-17, found on the FIRST
+ * real install). The verdict changes on exactly two events: an APK update, and
+ * an operator granting a permission (WRITE_SETTINGS appop, device-admin
+ * activation). The original key was app-version-only, so a grant made AFTER
+ * the first report left `Screen.displayCapabilities` stale until the next APK
+ * — observed live on TC22 the day the fleet moved to 1.1.2: the box reported
+ * `software-dim` before its grants landed, and nothing would ever have
+ * refreshed it. Folding a signature of the verdict into the marker means the
+ * next natural reload after a grant re-reports, with zero extra writes in the
+ * steady state: an unchanged verdict still dedupes exactly as before.
+ *
+ * The signature covers ONLY `verdict` — never the whole probe payload, which
+ * carries `probedAt` and would re-POST on every single reload, the exact
+ * write-frequency bug this marker exists to prevent.
  *
  * BEST-EFFORT, ALWAYS. This is admin visibility, never safety-critical. Every
  * failure path is swallowed: an old APK without `probeDisplay`, a bridge that
@@ -39,11 +50,31 @@
 import { nativeCall, nativeCallOr, nativeHas } from './nativeBridge';
 import type { DeviceIdentity } from './displayControl';
 
-/** localStorage key holding the last (screenId|appVersion) we reported. */
+/** localStorage key holding the last (screenId|appVersion|verdictSig) we reported. */
 const MARKER_KEY = 'edu_display_caps_reported';
 
-function markerFor(screenId: string, appVersion: string): string {
-  return `${screenId}|${appVersion}`;
+function markerFor(screenId: string, appVersion: string, verdictSig: string): string {
+  return `${screenId}|${appVersion}|${verdictSig}`;
+}
+
+/**
+ * Tiny stable signature of the verdict object. Not cryptographic and does not
+ * need to be — it only has to differ when the verdict differs, so a
+ * permission grant (brightness "software-dim" → "settings", blank →
+ * "device-admin") busts the dedup marker. djb2 over the JSON string; a hash
+ * collision merely skips one re-report until the next APK bump, which is
+ * exactly the pre-2026-08-17 behaviour.
+ */
+function verdictSignature(verdict: unknown): string {
+  let s: string;
+  try {
+    s = JSON.stringify(verdict) ?? '';
+  } catch {
+    s = '';
+  }
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
 }
 
 /**
@@ -162,7 +193,7 @@ export async function reportDisplayCapabilities(opts: {
     return 'skipped: probe has no verdict';
   }
 
-  const marker = markerFor(screenId, await appVersionKey());
+  const marker = markerFor(screenId, await appVersionKey(), verdictSignature(parsed.verdict));
   if (alreadyReported(marker)) return 'skipped: already reported this version';
 
   try {
