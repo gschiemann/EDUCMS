@@ -29,6 +29,39 @@ jest.mock('../security/required-secret', () => ({
 import { PlayerOtaController } from './player-ota.controller';
 import { invalidateDeviceCredentialCache } from '../screens/device-auth';
 
+// ⚠️ HERMETIC FETCH — this spec used to hit the LIVE GitHub API (2026-08-17).
+//
+// The harness mocks Prisma, Redis and required-secret, but `updateCheck`'s
+// release lookup calls raw `fetch('https://api.github.com/...releases...')`,
+// which nothing here intercepted. So every run of this file made a real
+// network call and pulled the repo's ACTUAL latest release — the CI log
+// literally showed `decision=install-gh target=v1.1.2` the day v1.1.2
+// shipped. It stayed green only while GitHub answered inside Jest's 5s
+// budget. On 2026-08-17 the shared Actions runners were rate-limited and the
+// same test timed out twice in a row (run 32037673294 + its rerun), turning
+// `Build, Lint & Test` — a BLOCKING job — red on a web-only commit that
+// could not have caused it. Locally the same call left an undici keep-alive
+// socket open and Jest hung at exit.
+//
+// A unit test that depends on api.github.com's mood is not a test. The
+// controller reads exactly `resp.ok`, `resp.status` and `resp.json()` (an
+// array of releases); an empty array is the "no release found" path, which
+// is irrelevant to what THIS spec asserts — it exercises the AUTHZ split
+// (anonymous read stays open, the destructive clear is gated), not release
+// resolution. Release-resolution behaviour has its own coverage; if a future
+// spec needs a populated catalog, extend the mock — do not remove it.
+const realFetch = global.fetch;
+beforeAll(() => {
+  global.fetch = jest.fn().mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: async () => [],
+  }) as unknown as typeof fetch;
+});
+afterAll(() => {
+  global.fetch = realFetch;
+});
+
 const SECRET = 'dev_only_device_jwt_secret_CHANGE_ME';
 const SCREEN_ID = 'screen-ota-1';
 const FP = 'android-abcdef123456';
