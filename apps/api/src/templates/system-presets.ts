@@ -437,11 +437,11 @@ const RAW_SYSTEM_PRESETS: SystemPreset[] = [
 
   {
     id: 'preset-cafeteria-animated-middle',
-    name: '🏟️ Animated Cafeteria · Middle School',
-    description: 'Varsity / stadium-styled cafeteria menu board — pennants, scoreboard, weekly menu, chef polaroid, birthdays, allergen ticker.',
+    name: '🚏 Cafeteria · Campus Lineup — Route Split',
+    description: 'Middle-school lunch board — transit-line layout with a synchronized three-choice photo carousel (real food photography), live/manual clock, editable photos, logo, background, carousel timing, full brand styling, allergen line, and an authored portrait composition.',
     category: 'CAFETERIA', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE',
-    screenWidth: 3840, screenHeight: 2160, bgColor: '#0f172a',
-    zones: [{ name: 'Scene', widgetType: 'ANIMATED_CAFETERIA_MS', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#071b23',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/ms-lunch-campus-lineup.html' } }],
   },
   {
     id: 'preset-cafeteria-animated-high',
@@ -1243,11 +1243,11 @@ const RAW_SYSTEM_PRESETS: SystemPreset[] = [
   },
 {
     id: 'preset-cafeteria-animated-middle-portrait',
-    name: '🏟️ Animated Cafeteria · Middle School — Portrait',
-    description: 'Varsity / stadium-styled cafeteria menu board built FOR portrait — pennant bunting + varsity-letter logo, scoreboard hero with bulb perimeter, Mon-Fri tab strip + featured menu, chef polaroid + birthdays two-up, allergen icons strip, PA-system ticker. Real vertical layout, not letterboxed. · 4K portrait',
+    name: '🚏 Cafeteria · Campus Lineup — Route Split — Portrait',
+    description: 'Middle-school lunch board built FOR portrait — the Route Split transit-line carousel in its separately authored 1080×1920 composition. Same three-choice photo carousel, live/manual clock, and full editability. Real vertical layout, not letterboxed. · 4K portrait',
     category: 'CAFETERIA', orientation: 'PORTRAIT', schoolLevel: 'MIDDLE',
-    screenWidth: 2160, screenHeight: 3840, bgColor: '#0f172a',
-    zones: [{ name: 'Scene', widgetType: 'ANIMATED_CAFETERIA_MS_PORTRAIT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    screenWidth: 2160, screenHeight: 3840, bgColor: '#071b23',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/ms-lunch-campus-lineup.html?o=portrait' } }],
   },
 {
     id: 'preset-cafeteria-chalkboard-portrait',
@@ -3138,6 +3138,8 @@ const MODERN_SCHOOL_PRESETS: SystemPreset[] = [
   // Middle School — Lobby Welcome (replaces Paper/Homeroom/Greenhouse/Field Notes/Atlas/Arcade)
   { id: 'preset-school-ms-lobby-1', name: '🎒 Lobby Welcome — Bold', description: 'Modern middle-school lobby — vibrant full-bleed hero, giant WELCOME, day/date chip, announcement ribbon, color-tabbed club cards, lunch tile, live clock. Energetic school spirit.', category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE', screenWidth: 3840, screenHeight: 2160, bgColor: '#1e40af', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/ms-lobby-v1.html' } }] },
   { id: 'preset-school-ms-lobby-2', name: '🎒 Lobby Welcome — Light', description: 'Modern middle-school lobby — airy light canvas, huge WELCOME, soft white club cards with accent tabs, announcement band, full-width lunch hero. Clean and premium.', category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE', screenWidth: 3840, screenHeight: 2160, bgColor: '#eef2ff', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/ms-lobby-v2.html' } }] },
+  { id: 'preset-school-ms-lunch-signal-deck', name: '📟 Cafeteria · Campus Lineup — Signal Deck', description: 'Middle-school lunch board — split signal-deck layout with a rotated choice number, synchronized three-choice photo carousel (real food photography), live/manual clock, editable photos/logo/background, carousel timing, full brand styling, and an authored portrait composition.', category: 'CAFETERIA', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE', screenWidth: 3840, screenHeight: 2160, bgColor: '#f1eee5', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/ms-lunch-signal-deck.html' } }] },
+  { id: 'preset-school-ms-lunch-poster-loop', name: '🎞️ Cafeteria · Campus Lineup — Poster Loop', description: 'Middle-school lunch board — wide poster-format photo carousel with side rail navigation, synchronized copy and details per choice, live/manual clock, editable photos/logo/background, carousel timing, full brand styling, and an authored portrait composition.', category: 'CAFETERIA', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE', screenWidth: 3840, screenHeight: 2160, bgColor: '#e9efeb', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/ms-lunch-poster-loop.html' } }] },
   { id: 'preset-school-ms-lobby-3', name: '🎒 Lobby Welcome — Dark', description: 'Modern middle-school lobby — confident near-black canvas with a vivid lime accent, date-forward hero, numbered club cards, bold lunch tile. Cool and contemporary.', category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE', screenWidth: 3840, screenHeight: 2160, bgColor: '#0a0a0a', zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/school/ms-lobby-v3.html' } }] },
 ];
 

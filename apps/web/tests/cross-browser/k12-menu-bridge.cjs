@@ -22,6 +22,9 @@ const BOARDS = [
   'elem-lunch-v5-fresh-counter.html',
   'elem-lunch-v6-menu-lab.html',
   'elem-lunch-v7-counter-windows.html',
+  'ms-lunch-campus-lineup.html',
+  'ms-lunch-signal-deck.html',
+  'ms-lunch-poster-loop.html',
 ];
 
 // The 2026-08-16 elementary three-choice boards (Color Route / Lunch Edition /
@@ -321,6 +324,208 @@ async function auditLayout(page) {
         console.error(`✗ ${board} clock contract: ${clockProblems.join('; ')}`);
       } else {
         console.log(`✓ ${board}: manual clock survives 36s; live NY 24h clock correct`);
+      }
+    }
+
+    // MS Campus Lineup boards (2026-08-17, all three shipped on operator
+    // request): carousel + editor contract. Every slide must pass collision QA
+    // in both orientations (fake clock steps the 6s autoplay), IMG-tag media
+    // slots must actually swap src (the V8 IMG-slot branch), the hidden
+    // logo/background slots must reveal when set, and the carousel config
+    // spans (autoplay / interval / initialIndex / showProgress / edit-pause)
+    // must actually drive the board.
+    const MS_BOARDS = ['ms-lunch-campus-lineup.html', 'ms-lunch-signal-deck.html', 'ms-lunch-poster-loop.html'];
+    const MS_STRESS = {
+      'school.name': 'Dr. Maya Angelou International Middle School',
+      'choice.0.name': 'Oven-Baked Whole-Grain Cheese Pizza Slices',
+      'choice.0.description': 'Whole-grain crust with seasoned tomato sauce, low-fat mozzarella and a fresh garden side.',
+    };
+    const MS_IMGS = {
+      'board.background': '/templates/school/menu-assets/ms-campus-pasta.jpg',
+      'school.logo': '/templates/school/menu-assets/ms-campus-pizza.jpg',
+      'choice.0.photo': '/templates/school/menu-assets/ms-campus-pasta.jpg',
+      'choice.1.photo': '/templates/school/menu-assets/ms-campus-pizza.jpg',
+      'choice.2.photo': '/templates/school/menu-assets/ms-campus-chicken-bowl.jpg',
+    };
+    const activeSlide = (page) => page.evaluate(() =>
+      [...document.querySelectorAll('.slide')].findIndex((el) => el.classList.contains('active')));
+
+    for (const board of MS_BOARDS) {
+      for (const orientation of ['landscape', 'portrait']) {
+        const viewport = orientation === 'portrait'
+          ? { width: 540, height: 960 }
+          : { width: 960, height: 540 };
+        const context = await browser.newContext({ viewport });
+        const page = await context.newPage();
+        const pageErrors = [];
+        page.on('pageerror', (error) => pageErrors.push(error.message));
+        await page.addInitScript(() => {
+          window.__menuMessages = [];
+          window.addEventListener('message', (event) => {
+            if (event.data && typeof event.data === 'object') window.__menuMessages.push(event.data);
+          });
+        });
+        await page.clock.install({ time: new Date('2026-08-17T11:05:00-07:00') });
+        const query = new URLSearchParams({
+          text: encodeMap(MS_STRESS),
+          brand: encodeMap(BRAND_OVERRIDES),
+          img: encodeMap(MS_IMGS),
+          textStyles: encodeMap({ 'choice.0.name': { fontStyle: 'italic', color: '#7a1f11' }, 'menu.kicker': { hidden: true } }),
+        });
+        if (orientation === 'portrait') query.set('o', 'portrait');
+        await page.goto(`${BASE}/templates/school/${board}?${query}`, { waitUntil: 'load' });
+        await page.evaluate(() => document.fonts && document.fonts.ready);
+        await page.clock.fastForward(200);
+
+        const problems = [];
+        const state = await page.evaluate(() => {
+          const rootStyle = document.documentElement.style;
+          const bg = document.querySelector('[data-imgslot="board.background"]');
+          const logo = document.querySelector('[data-imgslot="school.logo"]');
+          const fallback = logo && logo.nextElementSibling;
+          const name = document.querySelector('.slide.active [data-field="choice.0.name"]') || document.querySelector('[data-field="choice.0.name"]');
+          const nameCs = name ? getComputedStyle(name) : {};
+          const kicker = document.querySelector('[data-field="menu.kicker"]');
+          return {
+            photoSrcs: [0, 1, 2].map((n) => {
+              const el = document.querySelector(`[data-imgslot="choice.${n}.photo"]`);
+              return el ? el.getAttribute('src') || '' : 'missing';
+            }),
+            bgVisible: bg ? getComputedStyle(bg).opacity : 'missing',
+            bgSrc: bg ? bg.getAttribute('src') || '' : 'missing',
+            logoShown: logo ? getComputedStyle(logo).display : 'missing',
+            fallbackHidden: fallback ? getComputedStyle(fallback).display : 'missing',
+            primary: rootStyle.getPropertyValue('--primary').trim(),
+            muted: rootStyle.getPropertyValue('--text-muted').trim(),
+            fonts: [rootStyle.getPropertyValue('--font-display'), rootStyle.getPropertyValue('--font-body'), rootStyle.getPropertyValue('--font-condensed')].join('|'),
+            nameStyle: { style: nameCs.fontStyle, color: nameCs.color },
+            schoolName: (document.querySelector('[data-field="school.name"]') || {}).textContent || '',
+            kickerHidden: kicker ? getComputedStyle(kicker).display : 'missing',
+          };
+        });
+        if (state.photoSrcs.some((src) => !src.includes('menu-assets/ms-campus-'))) {
+          problems.push(`IMG slot src override failed: ${JSON.stringify(state.photoSrcs)}`);
+        }
+        if (state.bgVisible !== '1' || !state.bgSrc.includes('ms-campus-pasta')) {
+          problems.push(`board.background not revealed: opacity=${state.bgVisible} src=${state.bgSrc}`);
+        }
+        if (state.logoShown === 'none' || state.fallbackHidden !== 'none') {
+          problems.push(`school.logo reveal failed: logo=${state.logoShown} fallback=${state.fallbackHidden}`);
+        }
+        if (state.primary !== '#2f6df6' || state.muted !== '#9fb4c6') {
+          problems.push(`brand tokens not applied: ${state.primary}/${state.muted}`);
+        }
+        if (!/Georgia/.test(state.fonts) || !/Verdana/.test(state.fonts) || !/Courier New/.test(state.fonts)) {
+          problems.push(`brand fonts not applied: ${state.fonts}`);
+        }
+        if (state.nameStyle.style !== 'italic') problems.push(`field style not applied: ${JSON.stringify(state.nameStyle)}`);
+        if (state.schoolName !== MS_STRESS['school.name']) problems.push(`stress text not applied: "${state.schoolName}"`);
+        if (state.kickerHidden !== 'none') problems.push(`hidden style not applied (menu.kicker display=${state.kickerHidden})`);
+
+        // Every carousel slide passes collision QA — step via the 6s autoplay.
+        for (let slide = 0; slide < 3; slide += 1) {
+          if (slide > 0) {
+            await page.clock.fastForward(6_050);
+            const idx = await activeSlide(page);
+            if (idx !== slide) problems.push(`autoplay did not reach slide ${slide} (at ${idx})`);
+          }
+          const layout = await auditLayout(page);
+          if (layout.error) problems.push(layout.error);
+          if (layout.outside?.length) problems.push(`slide ${slide} clipped/outside: ${layout.outside.join(', ')}`);
+          if (layout.overlaps?.length) {
+            console.warn(`  ⚠ ${board} ${orientation} slide ${slide}: over-budget stress copy wraps into a neighbor region: ${JSON.stringify(layout.overlaps)}`);
+          }
+        }
+
+        if (orientation === 'landscape') {
+          // Editor mode: carousel pauses; click-to-edit reports key/kind.
+          await page.evaluate(() => window.postMessage({ type: 'educms-edit-mode', on: true }, '*'));
+          await page.clock.fastForward(12_500);
+          const pausedIdx = await activeSlide(page);
+          if (pausedIdx !== 2) problems.push(`carousel did not pause in editor mode (moved to ${pausedIdx})`);
+          await page.locator('.slide.active [data-field="choice.2.name"]').click({ force: true });
+          await page.locator(`[data-imgslot="choice.2.photo"]`).click({ force: true });
+          await page.clock.fastForward(100);
+          const clicks = await page.evaluate(() => window.__menuMessages.filter((m) => m.type === 'educms-field-click'));
+          if (!clicks.some((c) => c.key === 'choice.2.name' && c.kind === 'text') ||
+              !clicks.some((c) => c.key === 'choice.2.photo' && c.kind === 'img')) {
+            problems.push(`click-to-edit wrong: ${JSON.stringify(clicks)}`);
+          }
+        }
+        if (pageErrors.length) problems.push(`page errors: ${pageErrors.join(' | ')}`);
+
+        if (problems.length) {
+          failures += 1;
+          console.error(`✗ ${board} ${orientation} carousel contract: ${problems.join('; ')}`);
+        } else {
+          console.log(`✓ ${board} ${orientation}: carousel slides, IMG slots, reveals, overrides, editor pause`);
+        }
+        await context.close();
+      }
+
+      // Clock contract (same behavior class as the elementary boards).
+      const clockErrors = [];
+      const clockContext = await browser.newContext({ viewport: { width: 960, height: 540 } });
+      const clockPage = await clockContext.newPage();
+      clockPage.on('pageerror', (error) => clockErrors.push(error.message));
+      await clockPage.clock.install({ time: new Date('2026-08-17T11:05:00-07:00') });
+      await clockPage.goto(`${BASE}/templates/school/${board}?text=${encodeMap({ 'clock.mode': 'manual', 'clock.time': '7:58 PM' })}`, { waitUntil: 'load' });
+      await clockPage.clock.fastForward(36_000);
+      const manualText = await clockPage.evaluate(() => document.querySelector('[data-field="clock.time"]').textContent.trim());
+      await clockContext.close();
+      const nyContext = await browser.newContext({ viewport: { width: 960, height: 540 } });
+      const nyPage = await nyContext.newPage();
+      nyPage.on('pageerror', (error) => clockErrors.push(error.message));
+      await nyPage.clock.install({ time: new Date('2026-08-17T16:45:00-04:00') });
+      await nyPage.goto(`${BASE}/templates/school/${board}?text=${encodeMap({ 'clock.timeZone': 'America/New_York', 'clock.hour12': 'no' })}`, { waitUntil: 'load' });
+      await nyPage.clock.fastForward(31_000);
+      const nyText = await nyPage.evaluate(() => document.querySelector('[data-field="clock.time"]').textContent.trim());
+      await nyContext.close();
+      const clockProblems = [];
+      if (manualText !== '7:58 PM') clockProblems.push(`manual clock overwritten: "${manualText}"`);
+      if (nyText !== '16:45') clockProblems.push(`NY 24h clock wrong: "${nyText}"`);
+      if (clockErrors.length) clockProblems.push(`clock page errors: ${clockErrors.join(' | ')}`);
+      if (clockProblems.length) {
+        failures += 1;
+        console.error(`✗ ${board} clock contract: ${clockProblems.join('; ')}`);
+      } else {
+        console.log(`✓ ${board}: manual clock survives 36s; live NY 24h clock correct`);
+      }
+    }
+
+    // Carousel CONFIG spans drive the board (identical inline engine in all
+    // three MS boards, so one board proves the wiring).
+    {
+      const cfgProblems = [];
+      const cfgCase = async (textCfg, run) => {
+        const context = await browser.newContext({ viewport: { width: 960, height: 540 } });
+        const page = await context.newPage();
+        await page.clock.install({ time: new Date('2026-08-17T11:05:00-07:00') });
+        await page.goto(`${BASE}/templates/school/ms-lunch-campus-lineup.html?text=${encodeMap(textCfg)}`, { waitUntil: 'load' });
+        await page.clock.fastForward(150);
+        await run(page);
+        await context.close();
+      };
+      await cfgCase({ 'carousel.intervalSeconds': '3' }, async (page) => {
+        await page.clock.fastForward(3_100);
+        if ((await activeSlide(page)) !== 1) cfgProblems.push('intervalSeconds=3 not honored');
+      });
+      await cfgCase({ 'carousel.autoplay': 'no' }, async (page) => {
+        await page.clock.fastForward(13_000);
+        if ((await activeSlide(page)) !== 0) cfgProblems.push('autoplay=no still advanced');
+      });
+      await cfgCase({ 'carousel.showProgress': 'no' }, async (page) => {
+        const disp = await page.evaluate(() => getComputedStyle(document.querySelector('.nav')).display);
+        if (disp !== 'none') cfgProblems.push(`showProgress=no left nav visible (${disp})`);
+      });
+      await cfgCase({ 'carousel.initialIndex': '2' }, async (page) => {
+        if ((await activeSlide(page)) !== 1) cfgProblems.push('initialIndex=2 did not start on slide 2');
+      });
+      if (cfgProblems.length) {
+        failures += 1;
+        console.error(`✗ carousel config contract: ${cfgProblems.join('; ')}`);
+      } else {
+        console.log('✓ carousel config: interval, autoplay off, hide progress, initial slide');
       }
     }
 

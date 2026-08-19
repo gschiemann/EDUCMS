@@ -165,6 +165,9 @@ export const SIGNAGE_TEMPLATES: SignageTemplate[] = [
   { id: "preset-school-ms-lobby-1", name: "Middle School · Lobby Welcome — Bold", group: "Middle School", url: "/templates/school/ms-lobby-v1.html" },
   { id: "preset-school-ms-lobby-2", name: "Middle School · Lobby Welcome — Light", group: "Middle School", url: "/templates/school/ms-lobby-v2.html" },
   { id: "preset-school-ms-lobby-3", name: "Middle School · Lobby Welcome — Dark", group: "Middle School", url: "/templates/school/ms-lobby-v3.html" },
+  { id: "preset-cafeteria-animated-middle", name: "Middle School · Campus Lineup — Route Split", group: "Middle School", url: "/templates/school/ms-lunch-campus-lineup.html" },
+  { id: "preset-school-ms-lunch-signal-deck", name: "Middle School · Campus Lineup — Signal Deck", group: "Middle School", url: "/templates/school/ms-lunch-signal-deck.html" },
+  { id: "preset-school-ms-lunch-poster-loop", name: "Middle School · Campus Lineup — Poster Loop", group: "Middle School", url: "/templates/school/ms-lunch-poster-loop.html" },
 ];
 
 // Boards the operator may OFFER as a NEW choice in the builder's "Industry
