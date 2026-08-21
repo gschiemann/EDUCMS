@@ -60,7 +60,14 @@ concurrency:
 jobs:
   webkit-holiday-bridge:
     name: WebKit · Holiday bridge + sports celebration pack
-    runs-on: ubuntu-latest
+    # 2026-08-18 — PINNED to ubuntu-24.04 (was ubuntu-latest): GitHub's rolling
+    # runner-image update (the same one forcing Node-24 action runtimes) wedges
+    # Playwright 1.59 WebKit — WPEWebProcess launches then hangs until the job
+    # timeout ("cancelled" verdict), while Chromium passes. Mixed-fleet rollout
+    # made it intermittent (same commit green 08-17, hung 08-18 with no code
+    # change). Unpin only after a Playwright upgrade whose WebKit build passes
+    # this job on ubuntu-latest.
+    runs-on: ubuntu-24.04
     # 2026-05-12 — the WebKit install on a cold runner (`apt-get
     # update && apt-get install` for ~160 packages of WebKit system
     # deps) takes 3-7 min ON ITS OWN. The actual protocol test takes
@@ -138,7 +145,14 @@ jobs:
 
   webkit-widget-render:
     name: WebKit + Chromium · React widget render smoke
-    runs-on: ubuntu-latest
+    # 2026-08-18 — PINNED to ubuntu-24.04 (was ubuntu-latest): GitHub's rolling
+    # runner-image update (the same one forcing Node-24 action runtimes) wedges
+    # Playwright 1.59 WebKit — WPEWebProcess launches then hangs until the job
+    # timeout ("cancelled" verdict), while Chromium passes. Mixed-fleet rollout
+    # made it intermittent (same commit green 08-17, hung 08-18 with no code
+    # change). Unpin only after a Playwright upgrade whose WebKit build passes
+    # this job on ubuntu-latest.
+    runs-on: ubuntu-24.04
     # Boots `next dev` (first-compile of the /player route ~30-60s) then
     # runs the widget grid in BOTH chromium and webkit. Cap generous to
     # absorb the cold WebKit-deps install + first Next compile; real test

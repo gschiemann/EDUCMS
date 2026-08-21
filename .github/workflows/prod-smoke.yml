@@ -113,7 +113,14 @@ jobs:
   # /player render, never the authed dashboard's client-side navigation.
   webkit-nav:
     name: WebKit dashboard nav (favicon-crash canary)
-    runs-on: ubuntu-latest
+    # 2026-08-18 — PINNED to ubuntu-24.04 (was ubuntu-latest): GitHub's rolling
+    # runner-image update (the same one forcing Node-24 action runtimes) wedges
+    # Playwright 1.59 WebKit — WPEWebProcess launches then hangs until the job
+    # timeout ("cancelled" verdict), while Chromium passes. Mixed-fleet rollout
+    # made it intermittent (same commit green 08-17, hung 08-18 with no code
+    # change). Unpin only after a Playwright upgrade whose WebKit build passes
+    # this job on ubuntu-latest.
+    runs-on: ubuntu-24.04
     # WebKit cold-install of ~160 system deps is the slow part (3-7 min); the
     # nav smoke itself runs in well under a minute. Cap at 15 to absorb it.
     timeout-minutes: 15
