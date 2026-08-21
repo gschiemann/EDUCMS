@@ -597,11 +597,11 @@ const RAW_SYSTEM_PRESETS: SystemPreset[] = [
   },
   {
     id: 'preset-hs-transit',
-    name: '✈️ Transit — Airport Departure Board',
-    description: 'Solari split-flap departure board: amber-on-black flap rows, today\'s classes as departures with room-as-gate and a live status column (ON TIME / BOARDING / DEPARTED), split-flap clock, PA ticker. The live row flips. 4K, both orientations.',
+    name: '🧭 Wayfinder — Campus Grid',
+    description: 'Campus navigation board — color-keyed direction rail, floor-plan grid with a pulsing you-are-here marker, popular-destinations directory, live/manual clock, notice band. Fully editable routes, rooms, legend, and school logo; authored portrait composition. (Replaces the airport-styled Transit board.)',
     category: 'LOBBY_WELCOME', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
-    screenWidth: 3840, screenHeight: 2160, bgColor: '#080808',
-    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/hall-wayfinder.html' } }],
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#f5f6f0',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/hall-wayfinder-campus-grid.html' } }],
   },
   {
     id: 'preset-hs-gallery',
@@ -911,11 +911,19 @@ const RAW_SYSTEM_PRESETS: SystemPreset[] = [
   },
   {
     id: 'preset-hs-hall-wayfinder',
-    name: '🛫 Hallway — Departures Board',
-    description: 'Solari split-flap departures for transition periods: amber-on-black flap rows, classes as departures with room-as-gate and a live status column (ON TIME / BOARDING / DEPARTED), split-flap clock, PA ticker. 4K, both orientations.',
+    name: '🧭 Wayfinder — Colorline',
+    description: 'Hallway navigation board — bold color-coded route chevrons with directions and rooms, current-period band with next-bell readout, you-are-here mini-map, live/manual clock, access-update footer. Fully editable routes, map labels, and school logo; authored portrait composition.',
     category: 'HALLWAY_DISPLAY', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
-    screenWidth: 3840, screenHeight: 2160, bgColor: '#080808',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#f1eee5',
     zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/hall-wayfinder.html' } }],
+  },
+  {
+    id: 'preset-hs-wayfinder-signal-stack',
+    name: '🚦 Wayfinder — Signal Stack',
+    description: 'Hallway navigation board — four stacked signal-shaped route banners with arrows, directions and rooms, current-period column with next-bell readout and you-are-here, live/manual clock, route-note footer. Fully editable routes and school logo; authored portrait composition.',
+    category: 'HALLWAY_DISPLAY', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#101a3a',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/hall-wayfinder-signal-stack.html' } }],
   },
   // ─── MS Pack — Arcade + Atlas (more in pipeline) ───────────────
   // Approved 2026-04-25 — matches scratch/design/arcade-ms-v2.html.
@@ -1323,11 +1331,11 @@ const RAW_SYSTEM_PRESETS: SystemPreset[] = [
   },
 {
     id: 'preset-hs-transit-portrait',
-    name: '✈️ Transit — Portrait',
-    description: 'Departure-board lobby built FOR portrait — airport mast header, FLIGHT INFO TODAY featured-flight card with giant gate plinth, 7-row split-flap departures table, today\'s crew teacher spotlight, advisory + countdown, PA ticker. Real vertical layout, not letterboxed. · 4K portrait',
+    name: '🧭 Wayfinder — Campus Grid — Portrait',
+    description: 'Campus navigation board built FOR portrait — the Campus Grid direction rail, floor plan, and destinations directory in their separately authored 1080×1920 composition. Same full editability and live/manual clock. Real vertical layout, not letterboxed. · 4K portrait',
     category: 'LOBBY_WELCOME', orientation: 'PORTRAIT', schoolLevel: 'HIGH',
-    screenWidth: 2160, screenHeight: 3840, bgColor: '#0a0f1c',
-    zones: [{ name: 'Scene', widgetType: 'HS_TRANSIT_PORTRAIT', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: {} }],
+    screenWidth: 2160, screenHeight: 3840, bgColor: '#f5f6f0',
+    zones: [{ name: 'Scene', widgetType: 'EXTERNAL_HTML', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { url: '/templates/hs/hall-wayfinder-campus-grid.html?o=portrait' } }],
   },
 {
     id: 'preset-hs-varsity-portrait',

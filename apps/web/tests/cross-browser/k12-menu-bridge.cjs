@@ -132,11 +132,17 @@ async function auditLayout(page) {
 }
 
 (async () => {
-  const server = spawn('python3', ['-m', 'http.server', String(PORT), '--directory', PUBLIC_DIR], {
+  // ulimit bump: WebKit holds paused byte-range connections open while the
+  // news boards stream their MP4, and after ~90 page loads the server can
+  // exhaust the default macOS 256-fd limit — every later goto then times out
+  // (first seen when the wayfinder pass landed after the video passes).
+  const server = spawn('/bin/sh', ['-c', `ulimit -n 4096 2>/dev/null; exec python3 -m http.server ${PORT} --directory "${PUBLIC_DIR}"`], {
     stdio: ['ignore', 'ignore', 'ignore'],
   });
   await waitForServer();
   const browser = await webkit.launch({ headless: true });
+  // Second instance for the late sections — see the wayfinder comment.
+  let wfBrowser = null;
   let failures = 0;
 
   try {
@@ -699,13 +705,169 @@ async function auditLayout(page) {
       }
     }
 
+    // Hall Wayfinder boards run in a FRESH WebKit instance: by this point the
+    // shared browser has served ~70 contexts incl. MP4 streaming, and its
+    // network process can wedge — every goto then times out at this exact
+    // boundary while a fresh instance loads the same URL instantly.
+    wfBrowser = await webkit.launch({ headless: true });
+    // Hall Wayfinder boards (2026-08-21, all three shipped on operator
+    // request): text/clock boards under /templates/hs/. Generic layout QA in
+    // both orientations, plus an editor pass proving the canonical
+    // brand-token ALIAS seam (each board's themed palette vars are aliased to
+    // --primary/--secondary/… so V8 brand overrides restyle the design), the
+    // school.logo div slot reveal, stress copy, styles, click kinds, and the
+    // clock contract.
+    const WAYFINDER_BOARDS = [
+      { file: 'hall-wayfinder.html', primaryEl: '.route.r1' },
+      { file: 'hall-wayfinder-campus-grid.html', primaryEl: '.top .logo' },
+      { file: 'hall-wayfinder-signal-stack.html', primaryEl: '.signal.s1' },
+    ];
+    const WAYFINDER_STRESS = {
+      'school.name': 'Dr. Maya Angelou International High School',
+      'notice.message': 'C-wing elevator is offline today for scheduled maintenance. Please use the B-wing lift beside the library until Friday.',
+    };
+    for (const { file: board, primaryEl } of WAYFINDER_BOARDS) {
+      for (const orientation of ['landscape', 'portrait']) {
+        const viewport = orientation === 'portrait'
+          ? { width: 540, height: 960 }
+          : { width: 960, height: 540 };
+        const context = await wfBrowser.newContext({ viewport });
+        const page = await context.newPage();
+        const pageErrors = [];
+        page.on('pageerror', (error) => pageErrors.push(error.message));
+        await page.addInitScript(() => {
+          window.__menuMessages = [];
+          window.addEventListener('message', (event) => {
+            if (event.data && typeof event.data === 'object') window.__menuMessages.push(event.data);
+          });
+        });
+        const query = orientation === 'portrait' ? '?o=portrait' : '';
+        await page.goto(`${BASE}/templates/hs/${board}${query}`, { waitUntil: 'domcontentloaded' });
+        await page.evaluate(() => document.fonts && document.fonts.ready);
+        const marker = await page.content();
+        const ready = await page.evaluate(() => window.__menuMessages.some((m) => m.type === 'educms-ready'));
+        const layout = await auditLayout(page);
+        const problems = [];
+        if (!marker.includes('EDUCMS-SHIM-V8')) problems.push('missing V8 editor bridge');
+        if (!ready) problems.push('missing educms-ready');
+        if (layout.error) problems.push(layout.error);
+        if (layout.outside?.length) problems.push(`clipped/outside: ${layout.outside.join(', ')}`);
+        if (layout.overlaps?.length) problems.push(`text overlaps: ${JSON.stringify(layout.overlaps)}`);
+        if (pageErrors.length) problems.push(`page errors: ${pageErrors.join(' | ')}`);
+        if (problems.length) {
+          failures += 1;
+          console.error(`✗ ${board} ${orientation}: ${problems.join('; ')}`);
+        } else {
+          console.log(`✓ ${board} ${orientation}: no clipping or text collisions`);
+        }
+        await context.close();
+      }
+
+      // Landscape editor contract.
+      {
+        const context = await wfBrowser.newContext({ viewport: { width: 960, height: 540 } });
+        const page = await context.newPage();
+        const pageErrors = [];
+        page.on('pageerror', (error) => pageErrors.push(error.message));
+        await page.addInitScript(() => {
+          window.__menuMessages = [];
+          window.addEventListener('message', (event) => {
+            if (event.data && typeof event.data === 'object') window.__menuMessages.push(event.data);
+          });
+        });
+        const query = new URLSearchParams({
+          text: encodeMap(WAYFINDER_STRESS),
+          brand: encodeMap(BRAND_OVERRIDES),
+          img: encodeMap({ 'school.logo': '/templates/school/menu-assets/ms-campus-pizza.jpg' }),
+          textStyles: encodeMap({ 'school.name': { fontStyle: 'italic' }, 'school.systemName': { hidden: true } }),
+        });
+        await page.goto(`${BASE}/templates/hs/${board}?${query}`, { waitUntil: 'domcontentloaded' });
+        await page.evaluate(() => document.fonts && document.fonts.ready);
+        await delay(150);
+        const state = await page.evaluate((sel) => {
+          const rootStyle = document.documentElement.style;
+          const logo = document.querySelector('[data-imgslot="school.logo"]');
+          const primaryNode = document.querySelector(sel);
+          const nameEl = document.querySelector('[data-field="school.name"]');
+          const sysEl = document.querySelector('[data-field="school.systemName"]');
+          return {
+            primaryVar: rootStyle.getPropertyValue('--primary').trim(),
+            primaryPaint: primaryNode ? getComputedStyle(primaryNode).backgroundColor : 'missing',
+            logoHasImg: logo ? logo.classList.contains('has-img') : 'missing',
+            logoBg: logo ? (logo.style.backgroundImage || '') : 'missing',
+            nameStyle: nameEl ? getComputedStyle(nameEl).fontStyle : 'missing',
+            sysHidden: sysEl ? getComputedStyle(sysEl).display : 'missing',
+            schoolName: nameEl ? nameEl.textContent : '',
+          };
+        }, primaryEl);
+        const layout = await auditLayout(page);
+        const problems = [];
+        if (state.primaryVar !== '#2f6df6') problems.push(`brand primary var not applied: ${state.primaryVar}`);
+        if (state.primaryPaint !== 'rgb(47, 109, 246)') problems.push(`brand alias did not restyle ${primaryEl}: ${state.primaryPaint}`);
+        if (state.logoHasImg !== true || !state.logoBg.includes('ms-campus-pizza')) problems.push(`logo slot reveal failed: ${state.logoHasImg}/${state.logoBg}`);
+        if (state.nameStyle !== 'italic') problems.push(`field style failed: ${state.nameStyle}`);
+        if (state.sysHidden !== 'none') problems.push(`hidden style failed: ${state.sysHidden}`);
+        if (state.schoolName !== WAYFINDER_STRESS['school.name']) problems.push(`stress text failed: "${state.schoolName}"`);
+        if (layout.outside?.length) problems.push(`stress copy clipped/outside: ${layout.outside.join(', ')}`);
+        if (layout.overlaps?.length) {
+          console.warn(`  ⚠ ${board} landscape: over-budget stress copy wraps into a neighbor region: ${JSON.stringify(layout.overlaps)}`);
+        }
+        await page.evaluate(() => window.postMessage({ type: 'educms-edit-mode', on: true }, '*'));
+        await delay(40);
+        await page.locator('[data-field="school.name"]').click({ force: true });
+        await delay(40);
+        const clicks = await page.evaluate(() => window.__menuMessages.filter((m) => m.type === 'educms-field-click'));
+        if (!clicks.some((c) => c.key === 'school.name' && c.kind === 'text')) {
+          problems.push(`click-to-edit wrong: ${JSON.stringify(clicks)}`);
+        }
+        if (pageErrors.length) problems.push(`page errors: ${pageErrors.join(' | ')}`);
+        if (problems.length) {
+          failures += 1;
+          console.error(`✗ ${board} editor contract: ${problems.join('; ')}`);
+        } else {
+          console.log(`✓ ${board}: brand alias restyle, logo reveal, styles, stress copy, hot zones`);
+        }
+        await context.close();
+      }
+
+      // Clock contract.
+      const clockErrors = [];
+      const clockContext = await wfBrowser.newContext({ viewport: { width: 960, height: 540 } });
+      const clockPage = await clockContext.newPage();
+      clockPage.on('pageerror', (error) => clockErrors.push(error.message));
+      await clockPage.clock.install({ time: new Date('2026-08-21T10:24:00-07:00') });
+      await clockPage.goto(`${BASE}/templates/hs/${board}?text=${encodeMap({ 'clock.mode': 'manual', 'clock.time': '7:58 PM' })}`, { waitUntil: 'domcontentloaded' });
+      await clockPage.clock.fastForward(36_000);
+      const manualText = await clockPage.evaluate(() => document.querySelector('[data-field="clock.time"]').textContent.trim());
+      await clockContext.close();
+      const nyContext = await wfBrowser.newContext({ viewport: { width: 960, height: 540 } });
+      const nyPage = await nyContext.newPage();
+      nyPage.on('pageerror', (error) => clockErrors.push(error.message));
+      await nyPage.clock.install({ time: new Date('2026-08-21T16:45:00-04:00') });
+      await nyPage.goto(`${BASE}/templates/hs/${board}?text=${encodeMap({ 'clock.timeZone': 'America/New_York', 'clock.hour12': 'no' })}`, { waitUntil: 'domcontentloaded' });
+      await nyPage.clock.fastForward(31_000);
+      const nyText = await nyPage.evaluate(() => document.querySelector('[data-field="clock.time"]').textContent.trim());
+      await nyContext.close();
+      const clockProblems = [];
+      if (manualText !== '7:58 PM') clockProblems.push(`manual clock overwritten: "${manualText}"`);
+      if (nyText !== '16:45') clockProblems.push(`NY 24h clock wrong: "${nyText}"`);
+      if (clockErrors.length) clockProblems.push(`clock page errors: ${clockErrors.join(' | ')}`);
+      if (clockProblems.length) {
+        failures += 1;
+        console.error(`✗ ${board} clock contract: ${clockProblems.join('; ')}`);
+      } else {
+        console.log(`✓ ${board}: manual clock survives 36s; live NY 24h clock correct`);
+      }
+    }
+
+
     // Video resilience states (identical engine in all three news boards; one
     // board proves the wiring): failure→poster, reduced-motion→poster,
     // autoplay=no→poster, and no page errors in any of them.
     {
       const vProblems = [];
       const vCase = async (label, url, contextOpts, check) => {
-        const context = await browser.newContext({ viewport: { width: 960, height: 540 }, ...contextOpts });
+        const context = await wfBrowser.newContext({ viewport: { width: 960, height: 540 }, ...contextOpts });
         const page = await context.newPage();
         const errs = [];
         page.on('pageerror', (e) => errs.push(e.message));
@@ -740,7 +902,7 @@ async function auditLayout(page) {
     }
 
     // Prove the new first-class video transport and hot-zone in the real board.
-    const context = await browser.newContext({ viewport: { width: 960, height: 540 } });
+    const context = await wfBrowser.newContext({ viewport: { width: 960, height: 540 } });
     const page = await context.newPage();
     await page.addInitScript(() => {
       window.__menuMessages = [];
@@ -777,6 +939,7 @@ async function auditLayout(page) {
     }
     await context.close();
   } finally {
+    if (wfBrowser) await wfBrowser.close();
     await browser.close();
     server.kill();
   }
