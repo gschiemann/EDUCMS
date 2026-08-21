@@ -52,7 +52,9 @@ export const SIGNAGE_TEMPLATES: SignageTemplate[] = [
   // React→EXTERNAL_HTML conversions (2026-06-08 designer batch) — universal school
   // boards rebuilt as flagship single-file HTML (live schedule engine + photo slots).
   { id: "preset-bell-schedule", name: "Bell Schedule — Live Board", group: "School", url: "/templates/hs/bell-schedule.html" },
-  { id: "preset-morning-news", name: "Morning News — Daily Rundown", group: "School", url: "/templates/hs/morning-news.html" },
+  { id: "preset-morning-news", name: "Morning News — Headline Split", group: "School", url: "/templates/hs/morning-news.html" },
+  { id: "preset-hs-news-rundown-desk", name: "Morning News — Rundown Desk", group: "School", url: "/templates/hs/morning-news-rundown-desk.html" },
+  { id: "preset-hs-news-daily-cut", name: "Morning News — Daily Cut", group: "School", url: "/templates/hs/morning-news-daily-cut.html" },
   { id: "preset-achievement-showcase", name: "Achievement Showcase — Wall of Fame", group: "School", url: "/templates/hs/achievement.html" },
   { id: "preset-sig-bar-01", name: "Bar · Tap List", group: "Bar", url: "/templates/signage/bar/01-tap-list-flagship.html" },
   { id: "preset-sig-bar-02", name: "Bar · Cocktails", group: "Bar", url: "/templates/signage/bar/02-cocktail-menu.html" },

@@ -529,6 +529,216 @@ async function auditLayout(page) {
       }
     }
 
+    // Morning News boards (2026-08-18, all three shipped on operator request):
+    // video-led broadcast boards under /templates/hs/. Generic layout QA both
+    // orientations, then the video editor contract — slot swaps (video, poster
+    // via the shared story.poster key, logo/background reveals), playback
+    // config spans, autoplay-off, failure→poster, reduced-motion→poster, and
+    // the clock contract.
+    const NEWS_BOARDS = ['morning-news.html', 'morning-news-rundown-desk.html', 'morning-news-daily-cut.html'];
+    const NEWS_STRESS = {
+      'school.name': 'Dr. Maya Angelou International High School',
+      'story.headline': 'Peer tutoring program expands to every grade level',
+      'story.summary': 'Student mentors are available before school, at lunch, and after the final bell in the library collaboration zone.',
+    };
+    for (const board of NEWS_BOARDS) {
+      for (const orientation of ['landscape', 'portrait']) {
+        const viewport = orientation === 'portrait'
+          ? { width: 540, height: 960 }
+          : { width: 960, height: 540 };
+        const context = await browser.newContext({ viewport });
+        const page = await context.newPage();
+        const pageErrors = [];
+        page.on('pageerror', (error) => pageErrors.push(error.message));
+        await page.addInitScript(() => {
+          window.__menuMessages = [];
+          window.addEventListener('message', (event) => {
+            if (event.data && typeof event.data === 'object') window.__menuMessages.push(event.data);
+          });
+        });
+        const query = orientation === 'portrait' ? '?o=portrait' : '';
+        await page.goto(`${BASE}/templates/hs/${board}${query}`, { waitUntil: 'load' });
+        await page.evaluate(() => document.fonts && document.fonts.ready);
+        const marker = await page.content();
+        const ready = await page.evaluate(() => window.__menuMessages.some((m) => m.type === 'educms-ready'));
+        const layout = await auditLayout(page);
+        const problems = [];
+        if (!marker.includes('EDUCMS-SHIM-V8')) problems.push('missing V8 editor bridge');
+        if (!ready) problems.push('missing educms-ready');
+        if (layout.error) problems.push(layout.error);
+        if (layout.outside?.length) problems.push(`clipped/outside: ${layout.outside.join(', ')}`);
+        if (layout.overlaps?.length) problems.push(`text overlaps: ${JSON.stringify(layout.overlaps)}`);
+        if (pageErrors.length) problems.push(`page errors: ${pageErrors.join(' | ')}`);
+        if (problems.length) {
+          failures += 1;
+          console.error(`✗ ${board} ${orientation}: ${problems.join('; ')}`);
+        } else {
+          console.log(`✓ ${board} ${orientation}: no clipping or text collisions`);
+        }
+        await context.close();
+      }
+
+      // Landscape editor contract.
+      {
+        const context = await browser.newContext({ viewport: { width: 960, height: 540 } });
+        const page = await context.newPage();
+        const pageErrors = [];
+        page.on('pageerror', (error) => pageErrors.push(error.message));
+        await page.addInitScript(() => {
+          window.__menuMessages = [];
+          window.addEventListener('message', (event) => {
+            if (event.data && typeof event.data === 'object') window.__menuMessages.push(event.data);
+          });
+        });
+        const query = new URLSearchParams({
+          text: encodeMap({ ...NEWS_STRESS, 'video.playbackRate': '1.25', 'video.loop': 'no' }),
+          brand: encodeMap(BRAND_OVERRIDES),
+          img: encodeMap({
+            'board.background': '/templates/school/menu-assets/ms-campus-pizza.jpg',
+            'school.logo': '/templates/school/menu-assets/ms-campus-pasta.jpg',
+            'story.poster': '/templates/school/menu-assets/ms-campus-chicken-bowl.jpg',
+          }),
+          video: encodeMap({ 'story.video': '/templates/school/menu-assets/salad-prep-4k.mp4' }),
+          textStyles: encodeMap({ 'story.headline': { fontStyle: 'italic' }, 'program.name': { hidden: true } }),
+        });
+        await page.goto(`${BASE}/templates/hs/${board}?${query}`, { waitUntil: 'load' });
+        await page.evaluate(() => document.fonts && document.fonts.ready);
+        await delay(150);
+        const state = await page.evaluate(() => {
+          const rootStyle = document.documentElement.style;
+          const bg = document.querySelector('[data-imgslot="board.background"]');
+          const logo = document.querySelector('[data-imgslot="school.logo"]');
+          const fallback = logo && logo.nextElementSibling;
+          const poster = document.querySelector('[data-imgslot="story.poster"]');
+          const video = document.querySelector('[data-videoslot="story.video"]');
+          const headline = document.querySelector('[data-field="story.headline"]');
+          const program = document.querySelector('[data-field="program.name"]');
+          return {
+            bgVisible: bg ? getComputedStyle(bg).opacity : 'missing',
+            bgSrc: bg ? bg.getAttribute('src') || '' : 'missing',
+            logoShown: logo ? getComputedStyle(logo).display : 'missing',
+            fallbackHidden: fallback ? getComputedStyle(fallback).display : 'missing',
+            posterSrc: poster ? poster.getAttribute('src') || '' : 'missing',
+            videoSrc: video ? video.getAttribute('src') || '' : 'missing',
+            videoPosterAttr: video ? video.getAttribute('poster') || '' : 'missing',
+            rate: video ? video.playbackRate : 'missing',
+            loop: video ? video.loop : 'missing',
+            primary: rootStyle.getPropertyValue('--primary').trim(),
+            muted: rootStyle.getPropertyValue('--text-muted').trim(),
+            headlineStyle: headline ? getComputedStyle(headline).fontStyle : 'missing',
+            programHidden: program ? getComputedStyle(program).display : 'missing',
+            schoolName: (document.querySelector('[data-field="school.name"]') || {}).textContent || '',
+          };
+        });
+        const layout = await auditLayout(page);
+        const problems = [];
+        if (state.bgVisible !== '1' || !state.bgSrc.includes('ms-campus-pizza')) problems.push(`bg reveal failed: ${state.bgVisible}/${state.bgSrc}`);
+        if (state.logoShown === 'none' || state.fallbackHidden !== 'none') problems.push(`logo reveal failed: ${state.logoShown}/${state.fallbackHidden}`);
+        if (!state.posterSrc.includes('ms-campus-chicken-bowl')) problems.push(`poster img swap failed: ${state.posterSrc}`);
+        if (!state.videoPosterAttr.includes('ms-campus-chicken-bowl')) problems.push(`video poster attr swap failed: ${state.videoPosterAttr}`);
+        if (!state.videoSrc.includes('salad-prep-4k')) problems.push(`video swap failed: ${state.videoSrc}`);
+        if (state.rate !== 1.25 || state.loop !== false) problems.push(`playback config failed: rate=${state.rate} loop=${state.loop}`);
+        if (state.primary !== '#2f6df6' || state.muted !== '#9fb4c6') problems.push(`brand tokens failed: ${state.primary}/${state.muted}`);
+        if (state.headlineStyle !== 'italic') problems.push(`field style failed: ${state.headlineStyle}`);
+        if (state.programHidden !== 'none') problems.push(`hidden style failed: ${state.programHidden}`);
+        if (state.schoolName !== NEWS_STRESS['school.name']) problems.push(`stress text failed: "${state.schoolName}"`);
+        if (layout.outside?.length) problems.push(`stress copy clipped/outside: ${layout.outside.join(', ')}`);
+        if (layout.overlaps?.length) {
+          console.warn(`  ⚠ ${board} landscape: over-budget stress copy wraps into a neighbor region: ${JSON.stringify(layout.overlaps)}`);
+        }
+        // Click-to-edit kinds: text, img (revealed logo), video.
+        await page.evaluate(() => window.postMessage({ type: 'educms-edit-mode', on: true }, '*'));
+        await delay(40);
+        await page.locator('[data-field="story.headline"]').click({ force: true });
+        await page.locator('[data-imgslot="school.logo"]').click({ force: true });
+        await page.locator('[data-videoslot="story.video"]').click({ force: true });
+        await delay(40);
+        const clicks = await page.evaluate(() => window.__menuMessages.filter((m) => m.type === 'educms-field-click'));
+        if (!clicks.some((c) => c.key === 'story.headline' && c.kind === 'text') ||
+            !clicks.some((c) => c.key === 'school.logo' && c.kind === 'img') ||
+            !clicks.some((c) => c.key === 'story.video' && c.kind === 'video')) {
+          problems.push(`click-to-edit wrong: ${JSON.stringify(clicks)}`);
+        }
+        if (pageErrors.length) problems.push(`page errors: ${pageErrors.join(' | ')}`);
+        if (problems.length) {
+          failures += 1;
+          console.error(`✗ ${board} editor contract: ${problems.join('; ')}`);
+        } else {
+          console.log(`✓ ${board}: video/poster/logo/background swaps, playback config, styles, hot zones`);
+        }
+        await context.close();
+      }
+
+      // Clock contract.
+      const clockErrors = [];
+      const clockContext = await browser.newContext({ viewport: { width: 960, height: 540 } });
+      const clockPage = await clockContext.newPage();
+      clockPage.on('pageerror', (error) => clockErrors.push(error.message));
+      await clockPage.clock.install({ time: new Date('2026-08-18T08:05:00-07:00') });
+      await clockPage.goto(`${BASE}/templates/hs/${board}?text=${encodeMap({ 'clock.mode': 'manual', 'clock.time': '7:58 PM' })}`, { waitUntil: 'load' });
+      await clockPage.clock.fastForward(36_000);
+      const manualText = await clockPage.evaluate(() => document.querySelector('[data-field="clock.time"]').textContent.trim());
+      await clockContext.close();
+      const nyContext = await browser.newContext({ viewport: { width: 960, height: 540 } });
+      const nyPage = await nyContext.newPage();
+      nyPage.on('pageerror', (error) => clockErrors.push(error.message));
+      await nyPage.clock.install({ time: new Date('2026-08-18T16:45:00-04:00') });
+      await nyPage.goto(`${BASE}/templates/hs/${board}?text=${encodeMap({ 'clock.timeZone': 'America/New_York', 'clock.hour12': 'no' })}`, { waitUntil: 'load' });
+      await nyPage.clock.fastForward(31_000);
+      const nyText = await nyPage.evaluate(() => document.querySelector('[data-field="clock.time"]').textContent.trim());
+      await nyContext.close();
+      const clockProblems = [];
+      if (manualText !== '7:58 PM') clockProblems.push(`manual clock overwritten: "${manualText}"`);
+      if (nyText !== '16:45') clockProblems.push(`NY 24h clock wrong: "${nyText}"`);
+      if (clockErrors.length) clockProblems.push(`clock page errors: ${clockErrors.join(' | ')}`);
+      if (clockProblems.length) {
+        failures += 1;
+        console.error(`✗ ${board} clock contract: ${clockProblems.join('; ')}`);
+      } else {
+        console.log(`✓ ${board}: manual clock survives 36s; live NY 24h clock correct`);
+      }
+    }
+
+    // Video resilience states (identical engine in all three news boards; one
+    // board proves the wiring): failure→poster, reduced-motion→poster,
+    // autoplay=no→poster, and no page errors in any of them.
+    {
+      const vProblems = [];
+      const vCase = async (label, url, contextOpts, check) => {
+        const context = await browser.newContext({ viewport: { width: 960, height: 540 }, ...contextOpts });
+        const page = await context.newPage();
+        const errs = [];
+        page.on('pageerror', (e) => errs.push(e.message));
+        await page.goto(url, { waitUntil: 'load' });
+        await delay(400);
+        const st = await page.evaluate(() => {
+          const media = document.querySelector('.media');
+          const video = media.querySelector('video');
+          return { cls: media.className, videoDisplay: getComputedStyle(video).display, paused: video.paused };
+        });
+        await check(st, errs);
+        await context.close();
+      };
+      await vCase('failure', `${BASE}/templates/hs/morning-news.html?video=${encodeMap({ 'story.video': '/templates/hs/news-assets/missing.mp4' })}`, {}, async (st, errs) => {
+        if (!/failed/.test(st.cls) || st.videoDisplay !== 'none') vProblems.push(`failure state wrong: ${st.cls}/${st.videoDisplay}`);
+        if (errs.length) vProblems.push(`failure case errors: ${errs.join('|')}`);
+      });
+      await vCase('reduced', `${BASE}/templates/hs/morning-news.html`, { reducedMotion: 'reduce' }, async (st, errs) => {
+        if (!/reduced/.test(st.cls) || st.videoDisplay !== 'none') vProblems.push(`reduced-motion state wrong: ${st.cls}/${st.videoDisplay}`);
+        if (errs.length) vProblems.push(`reduced case errors: ${errs.join('|')}`);
+      });
+      await vCase('autoplay-off', `${BASE}/templates/hs/morning-news.html?text=${encodeMap({ 'video.autoplay': 'no' })}`, {}, async (st, errs) => {
+        if (!/reduced/.test(st.cls) || !st.paused) vProblems.push(`autoplay=no state wrong: ${st.cls}/paused=${st.paused}`);
+        if (errs.length) vProblems.push(`autoplay case errors: ${errs.join('|')}`);
+      });
+      if (vProblems.length) {
+        failures += 1;
+        console.error(`✗ news video resilience: ${vProblems.join('; ')}`);
+      } else {
+        console.log('✓ news video resilience: failure→poster, reduced-motion→poster, autoplay off');
+      }
+    }
+
     // Prove the new first-class video transport and hot-zone in the real board.
     const context = await browser.newContext({ viewport: { width: 960, height: 540 } });
     const page = await context.newPage();
