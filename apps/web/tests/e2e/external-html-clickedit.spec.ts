@@ -144,10 +144,20 @@ test.describe('EXTERNAL_HTML boards report clicks (hot-zones)', () => {
       // longer fails a board merely for stacking one editable region over
       // another — which is normal, correct signage design.
       const expectedKey = await target.evaluate((el) => {
+        // 2026-08-21 — V8 media hot-zones: armMediaEdit() arms <video>
+        // elements (data-videoslot / data-posterslot) with its OWN marker
+        // (__veMediaArmed) and its own capture listener that reports the
+        // video/poster key. A board whose video overlays the first visible
+        // slot (morning-news: full-bleed board.background under the story
+        // video) correctly reports the VIDEO on a centre click — the model
+        // must consider media-armed elements or it calls that a dead zone.
         const keyOf = (n: Element): string =>
           n.getAttribute('data-action') || n.getAttribute('data-field') ||
-          n.getAttribute('data-imgslot') || n.getAttribute('data-slot') ||
+          n.getAttribute('data-imgslot') || n.getAttribute('data-videoslot') ||
+          n.getAttribute('data-posterslot') || n.getAttribute('data-slot') ||
           n.getAttribute('data-img') || '';
+        const isArmed = (n: Element): boolean =>
+          (n as any).__veArmed === true || (n as any).__veMediaArmed === true;
         const r = el.getBoundingClientRect();
         // Playwright clamps the click point into the viewport; mirror that.
         const cx = Math.min(Math.max(r.left + r.width / 2, 0), window.innerWidth - 1);
@@ -155,7 +165,7 @@ test.describe('EXTERNAL_HTML boards report clicks (hot-zones)', () => {
         const armed: Element[] = [];
         let n: Element | null = document.elementFromPoint(cx, cy);
         while (n) {
-          if ((n as any).__veArmed === true && keyOf(n)) armed.push(n);
+          if (isArmed(n) && keyOf(n)) armed.push(n);
           n = n.parentElement;
         }
         // capture phase fires root → target, so the ancestor-most armed
@@ -198,7 +208,7 @@ test.describe('EXTERNAL_HTML boards report clicks (hot-zones)', () => {
       }
       expect(click, `${board}: clicking an element did NOT post educms-field-click (hot-zone dead)`).not.toBeNull();
       expect(click.key, `${board}: educms-field-click reported the wrong key`).toBe(expectedKey);
-      expect(['text', 'img', 'action'], `${board}: bad kind`).toContain(click.kind);
+      expect(['text', 'img', 'action', 'video'], `${board}: bad kind`).toContain(click.kind);
 
       expect(pageErrors, `${board}: uncaught pageerror(s): ${pageErrors.slice(0, 3).join(' || ')}`).toEqual([]);
     });
