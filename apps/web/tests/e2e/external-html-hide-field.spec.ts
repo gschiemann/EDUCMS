@@ -25,19 +25,54 @@ import { test, expect } from '@playwright/test';
  * asserts the element is visible again (computed display !== 'none').
  * Also proves the SAME override still carries a live text change (hiding
  * doesn't clobber other style/text overrides on the same field) and that
- * the marker is the new V7 (regression guard: a future re-bake that
- * silently drops the `hidden` clause would leave this test red instead of
- * a silent no-op).
+ * the baked shim still implements the `hidden` clause (regression guard: a
+ * re-bake that silently drops it leaves this red instead of a silent no-op).
+ *
+ * 2026-08-21 — this spec used to pin the exact marker `EDUCMS-SHIM-V7` and
+ * two hard-coded field keys from the board of the day. Both went stale the
+ * moment the board was redesigned and the shim moved to V8, turning a
+ * healthy board into a red build. The contract is "current shim, >= the
+ * version that introduced `hidden`, and a real field on this board" — so
+ * the version is compared numerically and the fields are discovered.
  */
 
 const BOARD = '/templates/hs/achievement.html';
-const FIELD_KEY = 'school.name';
+
+/** The first two visible, independent text fields on the board — discovered
+ *  rather than hard-coded so a redesign changes the copy, not the gate. */
+async function twoVisibleFields(page: import('@playwright/test').Page): Promise<[string, string]> {
+  const keys = await page.evaluate(() => {
+    const out: string[] = [];
+    for (const el of document.querySelectorAll('[data-field]')) {
+      const key = el.getAttribute('data-field') || '';
+      if (!key || key.startsWith('theme.') || key.startsWith('clock.') || key.startsWith('video.')) continue;
+      if (!(el.textContent || '').trim()) continue;
+      const cs = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      if (cs.display === 'none' || cs.visibility === 'hidden' || r.width < 2 || r.height < 2) continue;
+      // Skip a field that contains another — hiding a parent hides the child,
+      // which would make the sibling-independence assertion meaningless.
+      if (out.some((k) => {
+        const prev = document.querySelector(`[data-field="${k}"]`);
+        return prev && (prev.contains(el) || el.contains(prev));
+      })) continue;
+      out.push(key);
+      if (out.length === 2) break;
+    }
+    return out;
+  });
+  expect(keys.length, `${BOARD}: expected two independent visible text fields`).toBe(2);
+  return [keys[0], keys[1]];
+}
 
 test.describe('EXTERNAL_HTML boards — hide/show a field (E6)', () => {
-  test(`shim carries EDUCMS-SHIM-V7 with a hidden key: ${BOARD}`, async ({ page }) => {
+  test(`shim carries the hidden key: ${BOARD}`, async ({ page }) => {
     const res = await page.request.get(BOARD);
     const html = await res.text();
-    expect(html, 'board must carry the V7 marker (re-bake did not land)').toContain('EDUCMS-SHIM-V7');
+    const marker = html.match(/EDUCMS-SHIM-V(\d+)/);
+    expect(marker, 'board must carry a baked EduCMS shim (re-bake did not land)').toBeTruthy();
+    expect(Number(marker![1]), 'shim must be at least V7 — the version that introduced the hidden clause')
+      .toBeGreaterThanOrEqual(7);
     expect(html, 'applyTextAndStyles must read styles[key].hidden').toMatch(/hasOwnProperty\.call\(s,'hidden'\)/);
   });
 
@@ -51,6 +86,7 @@ test.describe('EXTERNAL_HTML boards — hide/show a field (E6)', () => {
 
     await page.goto(BOARD, { waitUntil: 'domcontentloaded' });
 
+    const [FIELD_KEY] = await twoVisibleFields(page);
     const target = page.locator(`[data-field="${FIELD_KEY}"]`).first();
     await expect(target, `${BOARD}: ${FIELD_KEY} not found`).toBeVisible({ timeout: 10_000 });
 
@@ -110,8 +146,9 @@ test.describe('EXTERNAL_HTML boards — hide/show a field (E6)', () => {
     test.setTimeout(30_000);
     await page.goto(BOARD, { waitUntil: 'domcontentloaded' });
 
+    const [FIELD_KEY, SIBLING_KEY] = await twoVisibleFields(page);
     const hidden = page.locator(`[data-field="${FIELD_KEY}"]`).first();
-    const sibling = page.locator('[data-field="school.sub"]').first();
+    const sibling = page.locator(`[data-field="${SIBLING_KEY}"]`).first();
     await expect(hidden).toBeVisible({ timeout: 10_000 });
     await expect(sibling).toBeVisible({ timeout: 10_000 });
 
