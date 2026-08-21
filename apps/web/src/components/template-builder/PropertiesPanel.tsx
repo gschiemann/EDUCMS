@@ -3070,7 +3070,9 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       // Mirror BOTH on every write so legacy + v2 variants render the
       // same selection. Legacy widgets ignore the v2-shaped extras.
       fields.push(<SelectField key="format" label="Format" value={cfg.format || (cfg.format24 ? '24h' : '12h')} options={[['12h','12-hour'],['24h','24-hour']]} onChange={(v) => setField({ format: v, format24: v === '24h' })} />);
-      fields.push(<TextField key="timezone" label="Timezone (optional)" value={cfg.timezone || cfg.timeZone || ''} placeholder="America/Chicago" onChange={(v) => setField({ timezone: v, timeZone: v })} />);
+      // 2026-08-21 — was a free-text IANA input ("America/Chicago" by hand);
+      // operator standard is now "pick the time zone and done".
+      fields.push(<SettingSelect key="timezone" label="Time zone" value={cfg.timezone || cfg.timeZone || ''} options={BOARD_TIMEZONES} onChange={(v) => setField({ timezone: v, timeZone: v })} />);
       if (!isShapeTheme) {
         // showSeconds / showDays / bgColor are ignored by shape
         // themes (clock face is baked into the SVG).
@@ -4498,7 +4500,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
 
       fields.push(SH('weather', 'Weather — auto-detected from the player'));
       fields.push(<TextField key="weatherLocation" label="ZIP code override (leave blank to auto-detect)" value={cfg.weatherLocation || ''} placeholder="auto-detect" onChange={(v) => setField({ weatherLocation: v })} />);
-      fields.push(<TextField key="weatherUnits" label="Units (imperial / metric)" value={cfg.weatherUnits || 'imperial'} placeholder="imperial" onChange={(v) => setField({ weatherUnits: (v.trim().toLowerCase() === 'metric' ? 'metric' : 'imperial') })} />);
+      fields.push(<SelectField key="weatherUnits" label="Units" value={cfg.weatherUnits || 'imperial'} options={[['imperial','°F'],['metric','°C']]} onChange={(v) => setField({ weatherUnits: v })} />);
 
       fields.push(SH('announcement', 'Big announcement (center cloud)'));
       fields.push(<TextField key="announcementLabel" label="Small label" value={cfg.announcementLabel || ''} placeholder="Big News" onChange={(v) => setField({ announcementLabel: v })} />);
@@ -5629,7 +5631,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
     case 'FITNESS_AD_BANNER': {
       // Rotating gym promo creative. Each creative is { headline, sub,
       // ctaText, ctaUrl?, durationMs? }; we render a small array editor.
-      fields.push(<TextField key="rotationMs" label="Rotate every (ms)" value={String(cfg.rotationMs || 8000)} placeholder="8000" onChange={(v) => setField({ rotationMs: parseInt(v) || 8000 })} />);
+      fields.push(<SettingNumber key="rotationMs" label="Rotate every (seconds)" value={String((cfg.rotationMs || 8000) / 1000)} min={2} max={300} onChange={(v) => setField({ rotationMs: Math.round((parseFloat(v) || 8.0) * 1000) })} />);
       fields.push(<ColorPickerField key="accentColor" label="Accent color (AD chip + progress)" value={cfg.accentColor || '#fbbf24'} onChange={(v) => setField({ accentColor: v })} />);
       fields.push(<ToggleField key="showAdBadge" label='Show "AD" disclosure chip' value={cfg.showAdBadge !== false} onChange={(v) => setField({ showAdBadge: v })} />);
       fields.push(<ToggleField key="enableImpressionLogging" label="Log impressions to /ads/impressions" value={cfg.enableImpressionLogging !== false} onChange={(v) => setField({ enableImpressionLogging: v })} />);
@@ -5691,7 +5693,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
           />
         </div>
       );
-      fields.push(<TextField key="rotationMs" label="Rotate every (ms)" value={String(cfg.rotationMs || 12000)} placeholder="12000" onChange={(v) => setField({ rotationMs: parseInt(v) || 12000 })} />);
+      fields.push(<SettingNumber key="rotationMs" label="Rotate every (seconds)" value={String((cfg.rotationMs || 12000) / 1000)} min={2} max={300} onChange={(v) => setField({ rotationMs: Math.round((parseFloat(v) || 12.0) * 1000) })} />);
       fields.push(<ColorPickerField key="accentColor" label="Accent color" value={cfg.accentColor || '#39ff14'} onChange={(v) => setField({ accentColor: v })} />);
       fields.push(<ToggleField key="showAuthor" label="Show author name" value={cfg.showAuthor !== false} onChange={(v) => setField({ showAuthor: v })} />);
       fields.push(<SelectField key="transitionStyle" label="Transition" value={cfg.transitionStyle || 'crossfade'} options={[['crossfade','Crossfade'],['typewriter','Typewriter'],['slide','Slide']]} onChange={(v) => setField({ transitionStyle: v })} />);
@@ -5896,7 +5898,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
     // ToggleField / ColorPickerField / AssetPickerField, plus TextAreaField
     // with safe JSON parse for array editors (slides / hours / departments).
     case 'RETAIL_LOOKBOOK_CAROUSEL': {
-      fields.push(<TextField key="rotationMs" label="Rotate every (ms)" value={String(cfg.rotationMs ?? 6000)} placeholder="6000" onChange={(v) => setField({ rotationMs: parseInt(v) || 6000 })} />);
+      fields.push(<SettingNumber key="rotationMs" label="Rotate every (seconds)" value={String((cfg.rotationMs ?? 6000) / 1000)} min={2} max={300} onChange={(v) => setField({ rotationMs: Math.round((parseFloat(v) || 6.0) * 1000) })} />);
       fields.push(<TextField key="fadeMs" label="Crossfade duration (ms)" value={String(cfg.fadeMs ?? 800)} placeholder="800" onChange={(v) => setField({ fadeMs: parseInt(v) || 800 })} />);
       fields.push(<ColorPickerField key="inkColor" label="Caption ink color" value={cfg.inkColor || '#ffffff'} onChange={(v) => setField({ inkColor: v })} />);
       fields.push(<ColorPickerField key="accentColor" label="Eyebrow + price accent" value={cfg.accentColor || '#e8c87a'} onChange={(v) => setField({ accentColor: v })} />);
@@ -6003,7 +6005,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
     case 'RESTAURANT_COMBO_CAROUSEL': {
       fields.push(<TextField key="title" label="Section title" value={cfg.title || ''} placeholder="COMBOS · BUILT TO SHARE" onChange={(v) => setField({ title: v })} />);
       fields.push(<ColorPickerField key="accentColor" label="Mustard accent color" value={cfg.accentColor || '#e8b94a'} onChange={(v) => setField({ accentColor: v })} />);
-      fields.push(<TextField key="rotationMs" label="Rotate every (ms)" value={String(cfg.rotationMs || 7000)} placeholder="7000" onChange={(v) => setField({ rotationMs: parseInt(v) || 7000 })} />);
+      fields.push(<SettingNumber key="rotationMs" label="Rotate every (seconds)" value={String((cfg.rotationMs || 7000) / 1000)} min={2} max={300} onChange={(v) => setField({ rotationMs: Math.round((parseFloat(v) || 7.0) * 1000) })} />);
       fields.push(<ListItemsEditor key="combos" label="Combos" itemNoun="combo" help="Each combo is one slide in the carousel." value={cfg.combos} onChange={(v) => setField({ combos: v })} newItem={{ name: '', includes: [], price: '', imageUrl: '', emoji: '', badge: '', tileBg: '' }} fields={[
         { key: 'name', label: 'Combo name', type: 'text', placeholder: 'Big Burger Combo' },
         { key: 'price', label: 'Price', type: 'price', placeholder: '$9.99' },
@@ -6031,7 +6033,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
     }
     case 'RESTAURANT_LOYALTY_TICKER': {
       fields.push(<TextField key="programName" label="Program name (eyebrow chip)" value={cfg.programName || ''} placeholder="REWARDS" onChange={(v) => setField({ programName: v })} />);
-      fields.push(<TextField key="rotationMs" label="Rotate every (ms)" value={String(cfg.rotationMs || 5500)} placeholder="5500" onChange={(v) => setField({ rotationMs: parseInt(v) || 5500 })} />);
+      fields.push(<SettingNumber key="rotationMs" label="Rotate every (seconds)" value={String((cfg.rotationMs || 5500) / 1000)} min={2} max={300} onChange={(v) => setField({ rotationMs: Math.round((parseFloat(v) || 5.5) * 1000) })} />);
       fields.push(<ColorPickerField key="accentColor" label="Mustard accent color" value={cfg.accentColor || '#e8b94a'} onChange={(v) => setField({ accentColor: v })} />);
       fields.push(<SelectField key="theme" label="Background theme" value={cfg.theme || 'charcoal'} options={[['cream','Cream'],['charcoal','Charcoal'],['red','Red']]} onChange={(v) => setField({ theme: v })} />);
       fields.push(<TextField key="qrUrl" label="QR sign-up URL (optional)" value={cfg.qrUrl || ''} placeholder="https://example.com/join" onChange={(v) => setField({ qrUrl: v })} />);
@@ -7428,7 +7430,28 @@ function ExternalHtmlTextEditor({
     if (!sections[f.sectionKey]) sections[f.sectionKey] = [];
     sections[f.sectionKey].push(f);
   }
+  // ── Board settings (2026-08-21) — operator: "the time and date on these
+  // templates has way too many fields and the time zone is free text…"
+  // The boards' hidden config spans (clock / carousel / video / media /
+  // motion) are real data-fields, so they rendered as a wall of cryptic
+  // free-text inputs. They are CONFIGURATION, not copy: pull the exact keys
+  // out of the generic sections and render curated controls (dropdowns,
+  // checkboxes, numbers) below. Everything still writes the same
+  // textOverrides transport the boards already read — no new protocol.
+  // Unknown keys under those prefixes (e.g. a visible `video.status` label)
+  // stay in the generic list untouched.
+  const cfgDefaults: Record<string, string> = {};
+  for (const sec of Object.keys(sections)) {
+    const kept: typeof discoveredFields = [];
+    for (const f of sections[sec]) {
+      if (BOARD_CONFIG_KEYS.has(f.key)) cfgDefaults[f.key] = f.defaultText;
+      else kept.push(f);
+    }
+    if (kept.length) sections[sec] = kept;
+    else delete sections[sec];
+  }
   const sectionOrder = Object.keys(sections);
+  const hasCfg = (k: string) => k in cfgDefaults;
 
   const setOverride = (key: string, value: string, defaultText: string) => {
     const next = { ...textOverrides };
@@ -7442,6 +7465,26 @@ function ExternalHtmlTextEditor({
     }
     setField({ textOverrides: Object.keys(next).length ? next : undefined });
   };
+  // Board-settings writes. One PATCH → one setField commit: the naive
+  // "call setOverride twice" would build both `next` maps from the SAME
+  // stale textOverrides prop inside a single event handler, and the second
+  // write would silently drop the first (the time-style control writes
+  // clock.mode AND clock.hour12 together). Values equal to the board's own
+  // default are removed, so untouched settings never bloat the config.
+  const setCfgMany = (patch: Record<string, string>) => {
+    const next = { ...textOverrides };
+    for (const [k, v] of Object.entries(patch)) {
+      const dflt = cfgDefaults[k] ?? '';
+      if (!v || v === dflt) delete next[k];
+      else next[k] = v;
+    }
+    setField({ textOverrides: Object.keys(next).length ? next : undefined });
+  };
+  const cfgVal = (k: string, fb = ''): string => (textOverrides[k] ?? cfgDefaults[k] ?? fb);
+  const cfgOn = (k: string, fb = 'yes'): boolean => !BOARD_OFFISH.test(cfgVal(k, fb) || fb);
+  const clockStyle: 'live12' | 'live24' | 'fixed' =
+    /^(manual|static)$/i.test(cfgVal('clock.mode', 'live')) ? 'fixed'
+      : BOARD_OFFISH.test(cfgVal('clock.hour12', 'yes')) ? 'live24' : 'live12';
   const setStylesMap = (s: FieldStyleMap) => {
     setField({ _styles: Object.keys(s).length ? s : undefined });
   };
@@ -7630,6 +7673,78 @@ function ExternalHtmlTextEditor({
           })}
         </div>
       )}
+      {hasCfg('clock.timeZone') && (
+        <div className="rounded-xl border border-slate-200 bg-white/70 p-3 space-y-2" data-edit-field="clock.time">
+          <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200 pb-1">
+            Clock
+          </div>
+          <SettingSelect
+            label="Time zone"
+            value={cfgVal('clock.timeZone', '')}
+            options={BOARD_TIMEZONES}
+            onChange={(v) => setCfgMany({ 'clock.timeZone': v })}
+          />
+          <SettingSelect
+            label="Time style"
+            value={clockStyle}
+            options={[
+              ['live12', '2:30 PM — live, 12-hour'],
+              ['live24', '14:30 — live, 24-hour'],
+              ['fixed', 'Fixed text — always show what I type'],
+            ]}
+            onChange={(v) =>
+              v === 'fixed'
+                ? setCfgMany({ 'clock.mode': 'manual' })
+                : setCfgMany({ 'clock.mode': 'live', 'clock.hour12': v === 'live24' ? 'no' : 'yes' })
+            }
+          />
+          {clockStyle === 'fixed' && (
+            <TextField
+              label="Clock text"
+              value={cfgVal('clock.time')}
+              placeholder="7:58 PM"
+              onChange={(v) => setCfgMany({ 'clock.time': v })}
+            />
+          )}
+        </div>
+      )}
+      {hasCfg('carousel.intervalSeconds') && (
+        <div className="rounded-xl border border-slate-200 bg-white/70 p-3 space-y-2">
+          <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200 pb-1">
+            Slideshow
+          </div>
+          <SettingCheck label="Rotate slides automatically" checked={cfgOn('carousel.autoplay')} onChange={(on) => setCfgMany({ 'carousel.autoplay': on ? 'yes' : 'no' })} />
+          <SettingNumber label="Seconds per slide" value={cfgVal('carousel.intervalSeconds', '6')} min={3} max={30} onChange={(v) => setCfgMany({ 'carousel.intervalSeconds': v })} />
+          <SettingSelect label="Start on slide" value={cfgVal('carousel.initialIndex', '1')} options={[['1', 'Slide 1'], ['2', 'Slide 2'], ['3', 'Slide 3']]} onChange={(v) => setCfgMany({ 'carousel.initialIndex': v })} />
+          <SettingCheck label="Show the slide buttons" checked={cfgOn('carousel.showProgress')} onChange={(on) => setCfgMany({ 'carousel.showProgress': on ? 'yes' : 'no' })} />
+          {hasCfg('media.fit') && (
+            <>
+              <SettingSelect label="Photo crop" value={cfgVal('media.fit', 'cover')} options={[['cover', 'Fill the frame (crops edges)'], ['contain', 'Show the whole photo (may letterbox)']]} onChange={(v) => setCfgMany({ 'media.fit': v })} />
+              <div className="grid grid-cols-2 gap-2">
+                <SettingSelect label="Focus — horizontal" value={cfgVal('media.positionX', '50%')} options={[['0%', 'Left'], ['50%', 'Center'], ['100%', 'Right']]} onChange={(v) => setCfgMany({ 'media.positionX': v })} />
+                <SettingSelect label="Focus — vertical" value={cfgVal('media.positionY', '50%')} options={[['0%', 'Top'], ['50%', 'Center'], ['100%', 'Bottom']]} onChange={(v) => setCfgMany({ 'media.positionY': v })} />
+              </div>
+            </>
+          )}
+        </div>
+      )}
+      {hasCfg('video.playbackRate') && (
+        <div className="rounded-xl border border-slate-200 bg-white/70 p-3 space-y-2">
+          <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200 pb-1">
+            Video playback
+          </div>
+          <SettingCheck label="Play automatically" checked={cfgOn('video.autoplay')} onChange={(on) => setCfgMany({ 'video.autoplay': on ? 'yes' : 'no' })} />
+          <SettingCheck label="Loop" checked={cfgOn('video.loop')} onChange={(on) => setCfgMany({ 'video.loop': on ? 'yes' : 'no' })} />
+          <SettingCheck label="Muted (screens require this for autoplay)" checked={cfgOn('video.muted')} onChange={(on) => setCfgMany({ 'video.muted': on ? 'yes' : 'no' })} />
+          <SettingSelect label="Speed" value={cfgVal('video.playbackRate', '1')} options={[['0.5', '0.5× — half speed'], ['0.75', '0.75×'], ['1', 'Normal'], ['1.25', '1.25×'], ['1.5', '1.5×'], ['2', '2× — double speed']]} onChange={(v) => setCfgMany({ 'video.playbackRate': v })} />
+          <SettingNumber label="Start at (seconds in)" value={cfgVal('video.startSeconds', '0')} min={0} max={600} onChange={(v) => setCfgMany({ 'video.startSeconds': v })} />
+          <SettingSelect label="Video crop" value={cfgVal('video.fit', 'cover')} options={[['cover', 'Fill the frame (crops edges)'], ['contain', 'Show the whole video (may letterbox)']]} onChange={(v) => setCfgMany({ 'video.fit': v })} />
+          <div className="grid grid-cols-2 gap-2">
+            <SettingSelect label="Focus — horizontal" value={cfgVal('video.positionX', '50%')} options={[['0%', 'Left'], ['50%', 'Center'], ['100%', 'Right']]} onChange={(v) => setCfgMany({ 'video.positionX': v })} />
+            <SettingSelect label="Focus — vertical" value={cfgVal('video.positionY', '50%')} options={[['0%', 'Top'], ['50%', 'Center'], ['100%', 'Bottom']]} onChange={(v) => setCfgMany({ 'video.positionY': v })} />
+          </div>
+        </div>
+      )}
       {sectionOrder.map((sec) => (
         <div key={sec} className="rounded-xl border border-slate-200 bg-white/70 p-3 space-y-2">
           <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200 pb-1">
@@ -7810,6 +7925,102 @@ function QrUrlField({ label, value, onChange }: { label: string; value: string; 
       <p className="text-[10px] text-slate-500 mt-1 leading-snug">
         {busy ? 'Generating QR…' : err ? <span className="text-rose-500">{err}</span> : 'Paste your link — the QR code regenerates automatically. It bakes into the board, so it scans even offline.'}
       </p>
+    </div>
+  );
+}
+
+// ── Board-settings primitives (2026-08-21) ─────────────────────────────────
+// The exact hidden-config keys the packaged boards read (elem-lunch clock
+// spans; ms-lunch carousel/media; morning-news video). Only these keys are
+// lifted out of the generic free-text list — any OTHER key under the same
+// prefixes is real board copy and stays editable as text.
+const BOARD_CONFIG_KEYS = new Set([
+  'clock.mode', 'clock.timeZone', 'clock.locale', 'clock.hour12', 'clock.time',
+  'carousel.autoplay', 'carousel.intervalSeconds', 'carousel.initialIndex', 'carousel.showProgress',
+  'media.fit', 'media.positionX', 'media.positionY',
+  'video.autoplay', 'video.loop', 'video.muted', 'video.playbackRate', 'video.startSeconds',
+  'video.fit', 'video.positionX', 'video.positionY',
+  'motion.reduced', // honored automatically from the OS setting — never an operator knob
+]);
+// Same falsy vocabulary the boards' inline engines parse.
+const BOARD_OFFISH = /^(no|false|off|0)$/i;
+/** Curated zones — "pick the time zone and done". '' = the screen's own local
+ *  time (the default every board ships with). An already-saved zone outside
+ *  this list still shows (appended as "Custom: …") so nothing is clobbered. */
+const BOARD_TIMEZONES: Array<[string, string]> = [
+  ['', "Screen's local time"],
+  ['America/New_York', 'Eastern — New York'],
+  ['America/Chicago', 'Central — Chicago'],
+  ['America/Denver', 'Mountain — Denver'],
+  ['America/Phoenix', 'Arizona — no DST'],
+  ['America/Los_Angeles', 'Pacific — Los Angeles'],
+  ['America/Anchorage', 'Alaska'],
+  ['Pacific/Honolulu', 'Hawaii'],
+  ['America/Toronto', 'Toronto'],
+  ['America/Mexico_City', 'Mexico City'],
+  ['Europe/London', 'London'],
+  ['Europe/Paris', 'Paris'],
+  ['Europe/Berlin', 'Berlin'],
+  ['Asia/Tokyo', 'Tokyo'],
+  ['Australia/Sydney', 'Sydney'],
+];
+
+function SettingSelect({ label, value, options, onChange }: {
+  label: string; value: string; options: Array<[string, string]>; onChange: (v: string) => void;
+}) {
+  const known = options.some(([v]) => v === value);
+  return (
+    <div>
+      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 cursor-pointer"
+      >
+        {options.map(([v, text]) => (
+          <option key={v || '(default)'} value={v}>{text}</option>
+        ))}
+        {!known && value !== '' && <option value={value}>{`Custom: ${value}`}</option>}
+      </select>
+    </div>
+  );
+}
+
+function SettingCheck({ label, checked, onChange }: { label: string; checked: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <label className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer select-none">
+      <input
+        type="checkbox"
+        aria-label={label}
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-3.5 w-3.5 rounded border-slate-300 accent-indigo-600"
+      />
+      {label}
+    </label>
+  );
+}
+
+function SettingNumber({ label, value, min, max, onChange }: {
+  label: string; value: string; min: number; max: number; onChange: (v: string) => void;
+}) {
+  return (
+    <div>
+      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
+      <input
+        type="number"
+        aria-label={label}
+        value={value}
+        min={min}
+        max={max}
+        onChange={(e) => {
+          const n = parseFloat(e.target.value);
+          if (!Number.isFinite(n)) { onChange(''); return; }
+          onChange(String(Math.min(max, Math.max(min, n))));
+        }}
+        className="w-24 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700"
+      />
     </div>
   );
 }

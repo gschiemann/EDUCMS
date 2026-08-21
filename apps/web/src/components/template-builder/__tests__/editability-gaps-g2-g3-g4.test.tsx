@@ -325,3 +325,120 @@ describe('G3 — imageOverrides round-trips editor → ?img= → shim decode', (
     expect(encodeImgParam({ hero: undefined as unknown as string })).toBeNull();
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// Board settings (2026-08-21) — operator: "the time zone is free text… it
+// should be as simple as pick the time zone and done", "i see nothing but
+// free form text in most fields". The packaged boards' hidden config spans
+// must surface as curated controls (selects / checkboxes / numbers), never
+// as raw text inputs — and real board copy must stay free text.
+// ────────────────────────────────────────────────────────────────────────────
+const CONFIG_BOARD_HTML = `<!doctype html><html><head></head><body><main id="stage">
+  <div hidden aria-hidden="true"><span data-field="clock.mode">live</span><span data-field="clock.timeZone"></span><span data-field="clock.locale">en-US</span><span data-field="clock.hour12">yes</span><span data-field="carousel.autoplay">yes</span><span data-field="carousel.intervalSeconds">6</span><span data-field="carousel.initialIndex">1</span><span data-field="carousel.showProgress">yes</span><span data-field="media.fit">cover</span><span data-field="media.positionX">50%</span><span data-field="media.positionY">50%</span><span data-field="motion.reduced">no</span><span data-field="video.autoplay">yes</span><span data-field="video.loop">yes</span><span data-field="video.muted">yes</span><span data-field="video.playbackRate">1</span><span data-field="video.startSeconds">0</span><span data-field="video.fit">cover</span><span data-field="video.positionX">50%</span><span data-field="video.positionY">50%</span></div>
+  <div data-field="clock.time">8:06</div>
+  <h1 data-field="story.headline">Big news</h1>
+</main></body></html>`;
+
+describe('Board settings — config spans become curated controls, not free text', () => {
+  let originalFetch: typeof global.fetch;
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve(CONFIG_BOARD_HTML),
+    }) as unknown as typeof global.fetch;
+  });
+  afterEach(() => {
+    global.fetch = originalFetch;
+    jest.restoreAllMocks();
+  });
+  const mount = (cfg: Record<string, unknown> = {}) => {
+    const updateZone = jest.fn();
+    render(<ContentFields zone={makeZone('EXTERNAL_HTML', { url: '/templates/test.html', ...cfg })} updateZone={updateZone} />);
+    return updateZone;
+  };
+  const overridesOf = (updateZone: jest.Mock): Record<string, string> =>
+    (lastCfg(updateZone).textOverrides ?? {}) as Record<string, string>;
+
+  it('renders the Clock group as selects; timezone pick writes clock.timeZone', async () => {
+    const updateZone = mount();
+    expect(await screen.findByText('Clock', {}, { timeout: 3000 })).toBeTruthy();
+    const tz = screen.getByLabelText('Time zone') as HTMLSelectElement;
+    expect(tz.tagName).toBe('SELECT');
+    fireEvent.change(tz, { target: { value: 'America/Chicago' } });
+    expect(overridesOf(updateZone)['clock.timeZone']).toBe('America/Chicago');
+  });
+
+  it('time style is one select: 24-hour writes clock.hour12=no (live default stays clean)', async () => {
+    const updateZone = mount();
+    await screen.findByText('Clock', {}, { timeout: 3000 });
+    const style = screen.getByLabelText('Time style') as HTMLSelectElement;
+    expect(style.tagName).toBe('SELECT');
+    fireEvent.change(style, { target: { value: 'live24' } });
+    const o = overridesOf(updateZone);
+    expect(o['clock.hour12']).toBe('no');
+    expect(o['clock.mode']).toBeUndefined(); // 'live' == board default → no override stored
+  });
+
+  it('fixed-text style writes clock.mode=manual; a saved manual mode shows the Clock text input', async () => {
+    const updateZone = mount();
+    await screen.findByText('Clock', {}, { timeout: 3000 });
+    fireEvent.change(screen.getByLabelText('Time style'), { target: { value: 'fixed' } });
+    expect(overridesOf(updateZone)['clock.mode']).toBe('manual');
+    // Re-mount as it would come back from the store.
+    render(<ContentFields zone={makeZone('EXTERNAL_HTML', { url: '/templates/test.html', textOverrides: { 'clock.mode': 'manual' } })} updateZone={jest.fn()} />);
+    expect(await screen.findByText('Clock text', {}, { timeout: 3000 })).toBeTruthy();
+  });
+
+  it('the raw config spans are GONE from the generic field list', async () => {
+    mount();
+    await screen.findByText('Clock', {}, { timeout: 3000 });
+    // Old behavior rendered e.g. clock.locale ("en-US") and clock.mode
+    // ("live") as text inputs — the exact free-form wall the operator flagged.
+    expect(screen.queryByDisplayValue('en-US')).toBeNull();
+    expect(screen.queryByDisplayValue('live')).toBeNull();
+    expect(screen.queryByDisplayValue('yes')).toBeNull();
+  });
+
+  it('Slideshow group: interval is a bounded number, autoplay is a checkbox', async () => {
+    const updateZone = mount();
+    await screen.findByText('Slideshow', {}, { timeout: 3000 });
+    const secs = screen.getByLabelText('Seconds per slide') as HTMLInputElement;
+    expect(secs.type).toBe('number');
+    fireEvent.change(secs, { target: { value: '10' } });
+    expect(overridesOf(updateZone)['carousel.intervalSeconds']).toBe('10');
+    const auto = screen.getByLabelText('Rotate slides automatically') as HTMLInputElement;
+    expect(auto.type).toBe('checkbox');
+    fireEvent.click(auto);
+    expect(overridesOf(updateZone)['carousel.autoplay']).toBe('no');
+  });
+
+  it('Video group: speed is a select, loop is a checkbox', async () => {
+    const updateZone = mount();
+    await screen.findByText('Video playback', {}, { timeout: 3000 });
+    const speed = screen.getByLabelText('Speed') as HTMLSelectElement;
+    expect(speed.tagName).toBe('SELECT');
+    fireEvent.change(speed, { target: { value: '1.5' } });
+    expect(overridesOf(updateZone)['video.playbackRate']).toBe('1.5');
+    fireEvent.click(screen.getByLabelText('Loop'));
+    expect(overridesOf(updateZone)['video.loop']).toBe('no');
+  });
+
+  it('real board copy is still free text (story.headline keeps its input)', async () => {
+    mount();
+    await screen.findByText('Clock', {}, { timeout: 3000 });
+    expect(screen.getByPlaceholderText('Big news')).toBeTruthy();
+  });
+});
+
+describe('CLOCK — timezone is a picker, not free-form IANA text', () => {
+  it('renders a Time zone select that writes cfg.timezone + cfg.timeZone', () => {
+    const updateZone = jest.fn();
+    render(<ContentFields zone={makeZone('CLOCK', {})} updateZone={updateZone} />);
+    const tz = screen.getByLabelText('Time zone') as HTMLSelectElement;
+    expect(tz.tagName).toBe('SELECT');
+    fireEvent.change(tz, { target: { value: 'America/Denver' } });
+    expect(lastCfg(updateZone).timezone).toBe('America/Denver');
+    expect(lastCfg(updateZone).timeZone).toBe('America/Denver');
+  });
+});
