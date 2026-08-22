@@ -1,0 +1,140 @@
+<!doctype html>
+<!-- APPROVED 2026-08-21 — operator: "the halloween templates are done, add all 3 options"
+     (elementary) and "middle school halloween done, add these 3 as well".
+     Byte-faithful port of the reviewed candidate. Fixed 1920x1080 with an authored
+     portrait state (?o=portrait). DO NOT regress to viewport-relative scene units. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Middle School Halloween — Neon Circuit</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --stage-w:1920px;--stage-h:1080px;--stage-scale:1;
+      --void:#070812;--surface:#101329;--surface2:#181d3a;--grid:#303760;
+      --ink:#f7f8ff;--muted:#b8bfd8;--acid:#c6ff3f;--cyan:#36e6eb;
+      --violet:#9a63ff;--hot:#ff526f;--display:'Bebas Neue',sans-serif;
+      --body:'Space Grotesk',sans-serif
+    }
+    *{box-sizing:border-box}
+    html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#03040a;color:var(--ink);font-family:var(--body)}
+    .viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center}
+    .stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+    .stage{position:relative;width:var(--stage-w);height:var(--stage-h);overflow:hidden;transform:scale(var(--stage-scale));transform-origin:0 0;background:linear-gradient(135deg,var(--void) 0 48%,#0c0e1f 48% 100%)}
+    .bg-image{position:absolute;top:0;right:0;bottom:0;left:0;background-size:cover;background-position:center;opacity:.11;mix-blend-mode:luminosity}.bg-image.has-img{opacity:.34;mix-blend-mode:normal}
+    .gridwash{position:absolute;top:0;right:0;bottom:0;left:0;opacity:.27;background-image:linear-gradient(var(--grid) 2px,transparent 2px),linear-gradient(90deg,var(--grid) 2px,transparent 2px);background-size:76px 76px;mask-image:linear-gradient(115deg,#000,transparent 62%)}
+    .slash{position:absolute;z-index:1;pointer-events:none;background:var(--violet);opacity:.18;clip-path:polygon(14% 0,100% 0,86% 100%,0 100%)}
+    .slash.a{left:1030px;top:62px;width:440px;height:14px}.slash.b{left:90px;bottom:125px;width:590px;height:10px;background:var(--cyan)}
+    .trace{position:absolute;z-index:1;pointer-events:none;border:5px solid var(--cyan);opacity:.38}
+    .trace.a{left:36px;top:170px;width:230px;height:166px;border-right:0;border-bottom:0}.trace.b{right:38px;bottom:142px;width:220px;height:190px;border-left:0;border-top:0;border-color:var(--acid)}
+    .trace::before,.trace::after{content:'';position:absolute;width:20px;height:20px;background:currentColor;clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)}
+    .trace.a::before{left:-12px;top:-12px}.trace.a::after{right:-10px;top:-12px}.trace.b::before{right:-12px;bottom:-12px}.trace.b::after{left:-10px;bottom:-12px}
+    .scene{position:relative;z-index:3;width:100%;height:100%;display:grid;grid-template-rows:110px minmax(0,1fr) 84px;gap:18px;padding:30px 46px 28px}
+    .mast,.content,.footer{width:100%;min-width:0;max-width:100%}
+    .mast{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:40px;min-height:0;padding:10px 26px 12px;border-bottom:5px solid var(--violet);background:linear-gradient(90deg,rgba(16,19,41,.96),rgba(16,19,41,.62));clip-path:polygon(0 0,100% 0,calc(100% - 34px) 100%,34px 100%)}
+    .brand{min-width:0;display:flex;align-items:center;gap:20px}
+    .logo{position:relative;flex:0 0 82px;width:82px;height:82px;display:grid;place-items:center;background:var(--acid);color:var(--void);background-size:cover;background-position:center;clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%);font:700 36px/1 var(--body)}
+    .logo::after{content:'';position:absolute;top:8px;right:8px;bottom:8px;left:8px;border:3px solid var(--void);clip-path:inherit}.logo.has-img .logo-fallback{display:none}
+    .school-lockup{min-width:0;display:grid;gap:12px}
+    .school-name{max-width:650px;font:700 48px/.96 var(--body);letter-spacing:-1.6px;white-space:nowrap}
+    .school-type{font:700 34px/1 var(--body);letter-spacing:3px;text-transform:uppercase;color:var(--acid)}
+    .now{display:flex;align-items:center;gap:10px;min-width:0}
+    .now span{display:block;min-width:0;padding:15px 25px;background:var(--surface2);border-top:3px solid var(--cyan);clip-path:polygon(12px 0,100% 0,calc(100% - 12px) 100%,0 100%);font:700 34px/1 var(--body);white-space:nowrap;text-align:center}
+    .now .now-time{background:var(--acid);border-color:var(--acid);color:var(--void)}
+    .now .now-weather{border-color:var(--hot)}
+    .content{display:grid;grid-template-columns:minmax(0,1030px) minmax(0,1fr);gap:42px;min-height:0}
+    .poster{position:relative;min-width:0;min-height:0;overflow:hidden;display:grid;grid-template-rows:82px 250px 124px minmax(0,1fr);padding:42px 52px 38px;background:linear-gradient(145deg,rgba(24,29,58,.98),rgba(12,14,31,.96));border-left:8px solid var(--acid);clip-path:polygon(0 0,96% 0,100% 6%,100% 94%,96% 100%,0 100%)}
+    .poster::before{content:'';position:absolute;right:34px;top:32px;width:150px;height:150px;border-top:6px solid var(--hot);border-right:6px solid var(--hot);opacity:.7}
+    .poster::after{content:'';position:absolute;right:42px;top:40px;width:24px;height:24px;background:var(--hot);clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)}
+    .kicker{position:relative;z-index:2;min-width:0;font:700 36px/1 var(--body);letter-spacing:4px;text-transform:uppercase;color:var(--cyan)}
+    h1{position:relative;z-index:2;min-width:0;max-width:100%;display:grid;align-content:center;gap:8px;margin:0;font:400 126px/.88 var(--display);letter-spacing:1px;text-transform:uppercase}
+    h1 span{display:block;min-width:0;max-width:100%}h1 span:last-child{color:var(--acid);text-shadow:8px 8px 0 rgba(154,99,255,.55)}
+    .lead{position:relative;z-index:2;max-width:860px;font:700 42px/1.16 var(--body);letter-spacing:-1px;color:var(--muted)}
+    .signal-row{position:relative;z-index:2;min-width:0;min-height:0;display:grid;grid-template-columns:470px minmax(0,1fr);align-items:end;gap:26px;padding-top:18px}
+    .countdown{position:relative;width:470px;height:206px;display:grid;grid-template-columns:132px minmax(0,1fr);align-items:center;gap:12px;padding:24px 36px;background:var(--violet);color:var(--ink);clip-path:polygon(0 20%,12% 0,88% 0,100% 20%,100% 80%,88% 100%,12% 100%,0 80%)}
+    .countdown::before{content:'';position:absolute;top:10px;right:10px;bottom:10px;left:10px;border:3px solid var(--cyan);clip-path:inherit;opacity:.8}
+    .count-num,.count-label{position:relative;z-index:1;min-width:0}.count-num{font:400 118px/.8 var(--display);text-align:center}.count-label{font:700 36px/.98 var(--body);text-transform:uppercase}
+    .tagline{align-self:center;padding:24px 12px 22px 34px;border-left:6px solid var(--hot);font:700 34px/1.12 var(--body);letter-spacing:3px;text-transform:uppercase;color:var(--ink)}
+    .visual-panel{min-width:0;min-height:0;display:grid;grid-template-rows:216px 120px minmax(0,1fr);gap:12px}
+    .hero{position:relative;min-width:0;min-height:0;overflow:hidden;background:linear-gradient(125deg,var(--violet),var(--surface2) 48%,var(--cyan));background-size:cover;background-position:center;clip-path:polygon(0 0,100% 0,100% 82%,92% 100%,0 100%,8% 50%)}
+    .hero.has-img::before,.hero.has-img .hero-fallback{display:none}.hero.has-img{background-color:var(--surface)}
+    .hero::before{content:'';position:absolute;top:0;right:0;bottom:0;left:0;background:repeating-linear-gradient(125deg,transparent 0 36px,rgba(7,8,18,.3) 36px 42px)}
+    .hero-fallback{position:absolute;top:0;right:0;bottom:0;left:0;display:grid;grid-template-columns:minmax(0,290px) minmax(0,1fr);align-items:center;gap:34px;padding:30px 72px 34px 88px}
+    .hero-date{position:relative;z-index:2;min-width:0;font:400 92px/.82 var(--display);letter-spacing:2px;white-space:nowrap;color:var(--acid);text-shadow:7px 7px 0 rgba(7,8,18,.65)}
+    .hero-signal{position:relative;z-index:2;min-width:0;display:grid;align-content:center;gap:20px}
+    .hero-rail{position:relative;width:100%;height:10px;background:linear-gradient(90deg,var(--hot) 0 34%,var(--acid) 34% 62%,var(--cyan) 62% 100%);transform:skewX(-18deg);box-shadow:0 0 20px rgba(54,230,235,.35)}
+    .hero-rail::before,.hero-rail::after{content:'';position:absolute;top:50%;width:22px;height:22px;transform:translateY(-50%);background:var(--void);border:5px solid var(--acid);border-radius:50%}.hero-rail::before{left:24%}.hero-rail::after{right:18%;border-color:var(--cyan)}
+    .hero-copy{min-width:0;font:700 38px/.96 var(--body);letter-spacing:3px;text-transform:uppercase;color:var(--ink)}
+    .event-intro{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:18px;border-bottom:4px solid var(--grid)}
+    .events-heading{min-width:0;font:400 50px/.9 var(--display);letter-spacing:1px;text-transform:uppercase;color:var(--ink)}
+    .events-sub{min-width:0;max-width:310px;font:700 34px/1 var(--body);text-align:right;color:var(--cyan)}
+    .events{min-width:0;min-height:0;overflow:hidden;display:grid;grid-template-rows:repeat(3,minmax(0,1fr));gap:10px}
+    .event{position:relative;min-width:0;min-height:0;overflow:hidden;display:grid;grid-template-columns:58px minmax(0,1fr);align-items:center;gap:16px;padding:14px 56px 14px 22px;background:var(--surface2);border-left:6px solid var(--cyan);clip-path:polygon(0 0,calc(100% - 34px) 0,100% 50%,calc(100% - 34px) 100%,0 100%,18px 50%)}
+    .event:nth-child(2){border-color:var(--violet);background:#222044}.event:nth-child(3){border-color:var(--hot);background:#25172d}
+    .event::after{content:'';position:absolute;right:22px;top:50%;width:18px;height:18px;transform:translateY(-50%);background:var(--acid);clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)}
+    .event-index{font:400 48px/1 var(--display);color:var(--acid);text-align:center}
+    .event-copy{min-width:0;display:grid;align-content:center;gap:5px}
+    .event-title{min-width:0;max-width:100%;font:700 40px/.98 var(--body);letter-spacing:-1px}
+    .event-meta{min-width:0;max-width:100%;font:700 34px/1 var(--body);color:var(--muted)}
+    .footer{display:grid;place-items:center;min-height:0;padding:10px 60px;background:var(--acid);color:var(--void);clip-path:polygon(24px 0,100% 0,calc(100% - 24px) 100%,0 100%);font:700 38px/1.05 var(--body);text-align:center}
+    .stage[data-orient="port"] .slash.a{left:570px;top:310px;width:380px}.stage[data-orient="port"] .slash.b{left:110px;bottom:150px;width:430px}
+    .stage[data-orient="port"] .trace.a{left:28px;top:290px;width:150px;height:130px}.stage[data-orient="port"] .trace.b{right:30px;bottom:168px;width:140px;height:150px}
+    .stage[data-orient="port"] .scene{grid-template-rows:230px minmax(0,1fr) 110px;gap:24px;padding:46px 40px 42px}
+    .stage[data-orient="port"] .mast{grid-template-columns:minmax(0,1fr);grid-template-rows:100px 82px;gap:18px;padding:12px 28px 18px}
+    .stage[data-orient="port"] .brand{justify-content:center}.stage[data-orient="port"] .logo{width:94px;height:94px;flex-basis:94px}
+    .stage[data-orient="port"] .school-name{max-width:700px;font-size:52px}.stage[data-orient="port"] .school-type{font-size:36px}
+    .stage[data-orient="port"] .now{width:100%;justify-content:center}.stage[data-orient="port"] .now span{flex:1;max-width:310px;padding:16px 14px;font-size:34px}
+    .stage[data-orient="port"] .content{grid-template-columns:minmax(0,1fr);grid-template-rows:620px minmax(0,1fr);gap:24px}
+    .stage[data-orient="port"] .poster{grid-template-rows:82px 206px 94px minmax(0,1fr);padding:34px 46px 30px;clip-path:polygon(0 0,94% 0,100% 10%,100% 100%,0 100%)}
+    .stage[data-orient="port"] h1{font-size:108px;gap:6px}.stage[data-orient="port"] .lead{font-size:38px;max-width:920px}
+    .stage[data-orient="port"] .signal-row{grid-template-columns:400px minmax(0,1fr);gap:26px;padding-top:10px}
+    .stage[data-orient="port"] .countdown{width:400px;height:160px;grid-template-columns:116px minmax(0,1fr);padding:18px 32px}.stage[data-orient="port"] .count-num{font-size:90px}.stage[data-orient="port"] .count-label{font-size:34px}.stage[data-orient="port"] .tagline{font-size:34px;padding-block:14px}
+    .stage[data-orient="port"] .visual-panel{grid-template-rows:230px 104px minmax(0,1fr);gap:14px}.stage[data-orient="port"] .hero{clip-path:polygon(0 0,100% 0,100% 84%,92% 100%,0 100%,5% 50%)}
+    .stage[data-orient="port"] .event-intro{padding-inline:10px}.stage[data-orient="port"] .events-heading{font-size:56px}.stage[data-orient="port"] .events-sub{font-size:34px;max-width:420px}
+    .stage[data-orient="port"] .events{gap:12px}.stage[data-orient="port"] .event{padding:16px 66px 16px 28px;grid-template-columns:64px minmax(0,1fr);gap:20px}.stage[data-orient="port"] .event-title{font-size:44px}.stage[data-orient="port"] .event-meta{font-size:36px}.stage[data-orient="port"] .event-index{font-size:52px}
+    .stage[data-orient="port"] .footer{font-size:42px;padding-inline:56px}
+    @media(prefers-reduced-motion:reduce){*{animation:none!important}}
+  </style>
+</head>
+<body>
+  <div class="viewport"><div class="stage-outer"><main class="stage" id="stage" data-orient="land" data-qa-min-font="34">
+    <div class="bg-image" data-imgslot="background.image"></div><div class="gridwash"></div><div class="slash a"></div><div class="slash b"></div><div class="trace a"></div><div class="trace b"></div>
+    <div data-widget="theme" hidden>
+      <span data-field="theme.background" data-css-var="--void">#070812</span><span data-field="theme.surface" data-css-var="--surface">#101329</span><span data-field="theme.surfaceAlt" data-css-var="--surface2">#181d3a</span><span data-field="theme.grid" data-css-var="--grid">#303760</span><span data-field="theme.text" data-css-var="--ink">#f7f8ff</span><span data-field="theme.muted" data-css-var="--muted">#b8bfd8</span><span data-field="theme.primary" data-css-var="--acid">#c6ff3f</span><span data-field="theme.secondary" data-css-var="--cyan">#36e6eb</span><span data-field="theme.tertiary" data-css-var="--violet">#9a63ff</span><span data-field="theme.alert" data-css-var="--hot">#ff526f</span><span data-field="theme.displayFont" data-css-var="--display" data-css-font>Bebas Neue</span><span data-field="theme.bodyFont" data-css-var="--body" data-css-font>Space Grotesk</span><span data-field="countdown.target">10-31</span><span data-field="clock.timezone">America/Los_Angeles</span><span data-field="clock.hour12">true</span><span data-field="date.format">short</span>
+    </div>
+    <div class="scene" data-qa-flow="full scene">
+      <header class="mast" data-widget="masthead" data-qa-boundary="masthead" data-qa-flow="masthead">
+        <div class="brand"><div class="logo" data-imgslot="school.logo" data-qa-boundary="school logo"><span class="logo-fallback" data-field="school.initials">NR</span></div><div class="school-lockup" data-qa-stack="school identity"><div class="school-name" data-field="school.name" data-fit="single" data-fit-min="30" data-fit-max="48" data-fit-max-port="52">Northridge</div><div class="school-type" data-field="school.type" data-fit="single" data-fit-min="30" data-fit-max="34" data-fit-max-port="36">Middle School</div></div></div>
+        <div class="now" data-widget="live status" data-qa-boundary="live status"><span class="now-date" data-field="date.value" data-live="date" data-readonly="live" data-fit="single" data-fit-min="30" data-fit-max="34">Fri · Oct 31</span><span class="now-time" data-field="clock.value" data-live="time" data-readonly="live" data-fit="single" data-fit-min="30" data-fit-max="34">8:42 AM</span><span class="now-weather" data-field="weather.value" data-live="weather" data-fit="single" data-fit-min="30" data-fit-max="34">68° · Clear</span></div>
+      </header>
+      <section class="content" data-qa-flow="main content">
+        <article class="poster" data-widget="headline" data-qa-boundary="headline poster" data-qa-flow="headline poster">
+          <div class="kicker" data-field="headline.kicker" data-fit="box" data-fit-min="30" data-fit-max="36" data-fit-height="82">Campus signal // October 31</div>
+          <h1 data-fit="box" data-fit-min="68" data-fit-max="126" data-fit-max-port="108" data-fit-height="250" data-fit-height-port="206" data-qa-stack="headline lines"><span data-field="headline.line1">Own the</span><span data-field="headline.line2">Night</span></h1>
+          <div class="lead" data-field="headline.note" data-fit="box" data-fit-min="30" data-fit-max="42" data-fit-max-port="38" data-fit-height="126" data-fit-height-port="94">Costumes, music, and school spirit—built for a night everyone can enjoy.</div>
+          <div class="signal-row" data-qa-flow="countdown and tagline">
+            <div class="countdown" data-widget="countdown" data-qa-boundary="countdown"><div class="count-num" data-field="countdown.value" data-readonly="live">71</div><div class="count-label" data-field="countdown.label" data-fit="box" data-fit-min="30" data-fit-max="36" data-fit-max-port="34" data-fit-height="138" data-fit-height-port="120">days until Halloween</div></div>
+            <div class="tagline" data-field="signal.tagline" data-fit="box" data-fit-min="30" data-fit-max="34" data-fit-height="160" data-fit-height-port="160">After dark energy. All-school spirit.</div>
+          </div>
+        </article>
+        <aside class="visual-panel" data-qa-flow="media and events">
+          <div class="hero" data-widget="hero media" data-imgslot="hero.media" data-qa-boundary="hero media"><div class="hero-fallback"><div class="hero-date" data-field="media.fallbackDate" data-fit="single" data-fit-min="34" data-fit-max="92">OCT 31</div><div class="hero-signal"><div class="hero-rail" aria-hidden="true"></div><div class="hero-copy" data-field="media.fallbackLabel" data-fit="box" data-fit-min="30" data-fit-max="38" data-fit-height="80">Spirit after dark</div></div></div></div>
+          <div class="event-intro" data-widget="events heading" data-qa-boundary="events heading"><div class="events-heading" data-field="events.heading" data-fit="single" data-fit-min="30" data-fit-max="50" data-fit-max-port="56">Halloween Circuit</div><div class="events-sub" data-field="events.subheading" data-fit="box" data-fit-min="30" data-fit-max="34" data-fit-height="120">Three ways to plug in</div></div>
+          <div class="events" data-widget="events" data-qa-flow="events list">
+            <div class="event" data-widget="event.1" data-qa-boundary="event one"><div class="event-index" data-field="event.1.number">01</div><div class="event-copy" data-qa-stack="event one copy"><div class="event-title" data-field="event.1.title" data-fit="single" data-fit-min="30" data-fit-max="40" data-fit-max-port="44">Costume Social</div><div class="event-meta" data-field="event.1.meta" data-fit="box" data-fit-min="30" data-fit-max="34" data-fit-max-port="36" data-fit-height="72">Friday · Commons · 6:30 PM</div></div></div>
+            <div class="event" data-widget="event.2" data-qa-boundary="event two"><div class="event-index" data-field="event.2.number">02</div><div class="event-copy" data-qa-stack="event two copy"><div class="event-title" data-field="event.2.title" data-fit="single" data-fit-min="30" data-fit-max="40" data-fit-max-port="44">Neon Spirit Day</div><div class="event-meta" data-field="event.2.meta" data-fit="box" data-fit-min="30" data-fit-max="34" data-fit-max-port="36" data-fit-height="72">Thursday · Campus-wide</div></div></div>
+            <div class="event" data-widget="event.3" data-qa-boundary="event three"><div class="event-index" data-field="event.3.number">03</div><div class="event-copy" data-qa-stack="event three copy"><div class="event-title" data-field="event.3.title" data-fit="single" data-fit-min="30" data-fit-max="40" data-fit-max-port="44">DJ Lunch Mix</div><div class="event-meta" data-field="event.3.meta" data-fit="box" data-fit-min="30" data-fit-max="34" data-fit-max-port="36" data-fit-height="72">Wednesday · Courtyard</div></div></div>
+          </div>
+        </aside>
+      </section>
+      <footer class="footer" data-widget="footer note" data-field="note.text" data-fit="box" data-fit-min="30" data-fit-max="38" data-fit-max-port="42" data-fit-height="84" data-fit-height-port="110" data-qa-boundary="footer note">School-safe costumes only · No masks or prop weapons · Everyone belongs</footer>
+    </div>
+  </main></div></div>
+  <script>(function(){var root=document.documentElement,stage=document.getElementById('stage');function fit(){var s=getComputedStyle(root),w=parseFloat(s.getPropertyValue('--stage-w')),h=parseFloat(s.getPropertyValue('--stage-h'));root.style.setProperty('--stage-scale',Math.min(innerWidth/w,innerHeight/h))}function orient(){var q=new URLSearchParams(location.search),p=q.get('o')==='portrait'||(!q.get('o')&&innerHeight>innerWidth);root.style.setProperty('--stage-w',p?'1080px':'1920px');root.style.setProperty('--stage-h',p?'1920px':'1080px');stage.dataset.orient=p?'port':'land';fit()}function media(){document.querySelectorAll('[data-imgslot][data-img]').forEach(function(e){var v=e.getAttribute('data-img');if(v){e.style.backgroundImage='url("'+v.replace(/"/g,'')+'")';e.classList.add('has-img')}})}orient();media();addEventListener('resize',orient);if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fit)})();</script>
+  <script src="_holiday-runtime.js?v=20260821-1"></script>
+  <script src="_style-bridge.js?v=20260821-style-3"></script>
+</body>
+</html>

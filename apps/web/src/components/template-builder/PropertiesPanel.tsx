@@ -6777,11 +6777,9 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
 // multi-line variants exist.
 
 // Schema parity with `apps/web/src/components/widgets/hs/useTextStyleOverrides.ts#TextStyleOverride`.
-// NOTE: `hidden` is EXTERNAL_HTML-board-only (CRUSH E6, 2026-07-03) — it rides
-// the same `_styles`/`textStyles` transport but is applied ONLY by the
-// packaged-board shim (`inject-shim-v2.cjs` EDUCMS-SHIM-V7's
-// applyTextAndStyles), not by `useTextStyleOverrides.ts` (React-zone HS
-// widgets don't need it; a zone can just be deleted/hidden on the canvas).
+// `hidden` rides the same `_styles`/`textStyles` transport across packaged
+// boards, React-zone fields, and sandboxed holiday iframes. BuilderZone and
+// the holiday style bridge both apply it to the targeted field only.
 type FieldStyleProp =
   | 'fontSize'
   | 'color'
@@ -6813,8 +6811,7 @@ type FieldStyle = {
   italic?: boolean;
   underline?: boolean;
   strikethrough?: boolean;
-  /** EXTERNAL_HTML boards only — `true` hides the element (`display:none`
-   *  via the packaged-board shim); `false`/absent shows it. See E6 note above. */
+  /** `true` hides the targeted field (`display:none`); false/absent shows it. */
   hidden?: boolean;
 };
 type FieldStyleMap = Record<string, FieldStyle>;

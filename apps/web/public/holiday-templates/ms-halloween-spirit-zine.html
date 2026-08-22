@@ -1,0 +1,156 @@
+<!doctype html>
+<!-- APPROVED 2026-08-21 — operator: "the halloween templates are done, add all 3 options"
+     (elementary) and "middle school halloween done, add these 3 as well".
+     Byte-faithful port of the reviewed candidate. Fixed 1920x1080 with an authored
+     portrait state (?o=portrait). DO NOT regress to viewport-relative scene units. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Middle School Halloween — Spirit Zine</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Permanent+Marker&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --stage-w:1920px;--stage-h:1080px;--stage-scale:1;
+      --ink:#17121c;--paper:#f4efdf;--acid:#c8ff28;--orange:#ff6a2b;
+      --pink:#f04ca0;--violet:#5e2e91;--cyan:#3bd4df;--muted:#c7bdd0;
+      --display:'Bebas Neue',sans-serif;--body:'Space Grotesk',sans-serif;
+      --marker:'Permanent Marker',cursive
+    }
+    *{box-sizing:border-box}
+    html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#0e0b11;color:var(--paper);font-family:var(--body)}
+    .viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center}
+    .stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+    .stage{position:relative;width:var(--stage-w);height:var(--stage-h);overflow:hidden;transform:scale(var(--stage-scale));transform-origin:0 0;background:var(--ink)}
+    .background-image{position:absolute;top:0;right:0;bottom:0;left:0;background-size:cover;background-position:center;opacity:.13;filter:grayscale(1) contrast(1.6)}
+    .background-image.has-img{opacity:.22}
+    .paper-noise{position:absolute;top:0;right:0;bottom:0;left:0;pointer-events:none;background-image:radial-gradient(circle at 2px 2px,rgba(244,239,223,.17) 1.5px,transparent 1.8px),linear-gradient(116deg,transparent 0 41%,rgba(94,46,145,.34) 41% 62%,transparent 62%);background-size:11px 11px,100% 100%}
+    .slash{position:absolute;z-index:1;left:66px;top:172px;width:1110px;height:56px;background:var(--acid);clip-path:polygon(0 12%,96% 0,100% 74%,4% 100%);transform:rotate(-2deg)}
+    .slash.two{left:1290px;top:856px;width:540px;height:42px;background:var(--pink);transform:rotate(3deg)}
+    .scene{position:relative;z-index:2;width:100%;height:100%;padding:34px 50px 28px;display:grid;grid-template-rows:152px minmax(0,1fr) 204px 74px;gap:18px}
+
+    .mast{display:flex;align-items:center;justify-content:space-between;gap:34px;min-width:0;border-top:8px solid var(--paper);border-bottom:8px solid var(--paper);padding:12px 0}
+    .brand{display:flex;align-items:center;gap:22px;min-width:0;flex:1 1 auto}
+    .logo{position:relative;width:94px;height:94px;flex:0 0 94px;display:grid;place-items:center;background:var(--acid);color:var(--ink);background-size:cover;background-position:center;clip-path:polygon(6% 0,100% 5%,95% 94%,3% 100%,0 15%);font:400 48px/1 var(--display)}
+    .logo::after{content:'';position:absolute;top:7px;right:7px;bottom:7px;left:7px;border:4px solid var(--ink);clip-path:inherit;pointer-events:none}
+    .logo.has-img .logo-fallback{display:none}
+    .school{min-width:0;max-width:680px;font:400 66px/.92 var(--display);letter-spacing:1.5px;text-transform:uppercase;color:var(--paper)}
+    .live{position:relative;width:904px;flex:0 0 904px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-self:stretch;background:var(--paper);color:var(--ink);padding:9px 20px}
+    .live::before,.live::after{content:'';position:absolute;top:0;bottom:0;width:18px;background:var(--ink);pointer-events:none}
+    .live::before{left:0;clip-path:polygon(0 0,55% 8%,10% 18%,60% 30%,0 42%,55% 56%,8% 70%,62% 84%,0 100%)}
+    .live::after{right:0;clip-path:polygon(100% 0,45% 8%,90% 18%,40% 30%,100% 42%,45% 56%,92% 70%,38% 84%,100% 100%)}
+    .live-item{display:flex;flex-direction:column;justify-content:center;align-items:center;min-width:0;text-align:center;padding:0 18px;border-left:7px solid var(--ink)}
+    .live-item:first-child{border-left:0}
+    .live-label{width:100%;font:700 34px/.92 var(--body);text-transform:uppercase;color:var(--violet);overflow-wrap:anywhere}
+    .live-value{width:100%;margin-top:7px;font:400 42px/.9 var(--display);letter-spacing:1px}
+
+    .main{display:grid;grid-template-columns:minmax(0,830px) minmax(0,1fr);gap:54px;min-height:0;min-width:0}
+    .hero-copy{min-width:0;min-height:0;display:flex;flex-direction:column;justify-content:center;padding:8px 0 0}
+    .kicker{align-self:flex-start;max-width:100%;padding:12px 24px 10px;background:var(--pink);color:var(--ink);clip-path:polygon(2% 8%,100% 0,97% 90%,0 100%);font:700 38px/.95 var(--body);text-transform:uppercase;transform:rotate(-1deg)}
+    h1{width:100%;min-width:0;margin:16px 0 10px;display:flex;flex-direction:column;gap:10px;font:400 152px/.82 var(--display);letter-spacing:2px;text-transform:uppercase;color:var(--paper)}
+    h1 span{display:block;width:max-content;max-width:100%}
+    h1 span:first-child{text-shadow:9px 9px 0 var(--violet)}
+    h1 span:last-child{max-width:calc(100% - 70px);color:var(--acid);text-shadow:9px 9px 0 var(--orange);margin-left:70px}
+    .headline-note{width:92%;padding:16px 24px 15px;border-left:12px solid var(--cyan);font:600 38px/1.12 var(--body);color:var(--paper)}
+
+    .media-zone{position:relative;min-width:0;min-height:0;padding:16px 18px 16px 28px}
+    .photo-shadow{position:absolute;top:30px;right:18px;bottom:14px;left:44px;background:var(--orange);clip-path:polygon(3% 2%,98% 0,100% 91%,94% 100%,2% 97%,0 11%)}
+    .hero-media{position:absolute;top:0;right:34px;bottom:22px;left:0;background-color:var(--violet);background-image:url('/templates/school/campus-pulse/assets/campus-pulse-hs-arts-media-v1.jpg');background-size:cover;background-position:center;filter:grayscale(.38) contrast(1.17) saturate(.9);clip-path:polygon(2% 5%,12% 2%,27% 4%,39% 0,53% 4%,69% 1%,82% 5%,98% 2%,100% 17%,97% 31%,100% 47%,97% 62%,100% 79%,96% 96%,80% 99%,65% 96%,51% 100%,36% 96%,21% 99%,4% 95%,1% 81%,3% 66%,0 51%,3% 35%,0 18%)}
+    .hero-media::after{content:'';position:absolute;top:0;right:0;bottom:0;left:0;background:radial-gradient(circle,transparent 0 2px,rgba(23,18,28,.45) 2.5px 4px,transparent 4.5px);background-size:12px 12px;mix-blend-mode:multiply;opacity:.6}
+    .tape{position:absolute;z-index:3;width:190px;height:54px;background:rgba(200,255,40,.88);clip-path:polygon(2% 8%,98% 0,100% 90%,0 100%)}
+    .tape.a{left:52px;top:4px}
+    .tape.b{right:14px;bottom:4px;background:rgba(59,212,223,.82)}
+    .countdown{position:absolute;z-index:4;right:12px;top:22px;width:340px;height:340px;display:grid;place-items:center;text-align:center;color:var(--ink);background:var(--acid);clip-path:polygon(50% 0,60% 8%,72% 3%,78% 14%,92% 12%,91% 28%,100% 38%,91% 50%,100% 63%,89% 70%,91% 86%,75% 85%,65% 98%,52% 90%,38% 100%,28% 88%,12% 91%,11% 74%,0 64%,9% 50%,0 38%,12% 29%,10% 13%,28% 14%,37% 2%);transform:rotate(4deg)}
+    .countdown>div{width:250px;height:286px;display:flex;flex-direction:column;align-items:center;justify-content:center;transform:rotate(-4deg)}
+    .count-number{width:100%;font:400 88px/.74 var(--display);color:var(--violet)}
+    .count-label{width:100%;margin-top:9px;font:700 32px/.94 var(--body);text-transform:uppercase;overflow-wrap:anywhere}
+
+    .events{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;min-height:0;min-width:0}
+    .event{position:relative;min-width:0;padding:30px 30px 22px 40px;color:var(--ink);background:var(--paper);clip-path:polygon(0 8%,5% 0,18% 4%,31% 0,46% 4%,61% 0,76% 4%,91% 0,100% 8%,98% 93%,87% 100%,71% 96%,55% 100%,39% 96%,21% 100%,4% 95%)}
+    .event:nth-child(2){background:var(--orange)}
+    .event:nth-child(3){background:var(--cyan)}
+    .event-index{position:absolute;right:25px;top:24px;font:400 64px/.8 var(--display);color:var(--violet);opacity:.72}
+    .event-copy{width:calc(100% - 62px);min-width:0}
+    .event-title{width:100%;font:400 55px/.9 var(--display);letter-spacing:.7px;text-transform:uppercase}
+    .event-meta{width:100%;margin-top:12px;font:700 34px/1.04 var(--body);color:var(--violet)}
+    .footer{display:flex;align-items:center;justify-content:center;min-width:0;padding:7px 40px;border-top:8px solid var(--acid);border-bottom:8px solid var(--acid);font:600 38px/1.06 var(--body);text-align:center;color:var(--paper)}
+
+    [data-orient="port"] .paper-noise{background-image:radial-gradient(circle at 2px 2px,rgba(244,239,223,.17) 1.5px,transparent 1.8px),linear-gradient(162deg,transparent 0 31%,rgba(94,46,145,.34) 31% 58%,transparent 58%);background-size:11px 11px,100% 100%}
+    [data-orient="port"] .slash{left:48px;top:322px;width:880px;height:54px}
+    [data-orient="port"] .slash.two{left:560px;top:1460px;width:440px;height:44px}
+    [data-orient="port"] .scene{padding:40px 46px 34px;grid-template-rows:268px 922px 440px 92px;gap:22px}
+    [data-orient="port"] .mast{flex-direction:column;align-items:stretch;justify-content:flex-start;gap:18px;padding:12px 0 14px}
+    [data-orient="port"] .brand{justify-content:flex-start;min-height:96px}
+    [data-orient="port"] .logo{width:90px;height:90px;flex-basis:90px;font-size:46px}
+    [data-orient="port"] .school{max-width:840px;font-size:65px}
+    [data-orient="port"] .live{width:100%;flex:0 0 112px;padding:7px 12px}
+    [data-orient="port"] .live-item{padding:0 10px;border-left-width:6px}
+    [data-orient="port"] .live-label{font-size:34px}
+    [data-orient="port"] .live-value{font-size:40px}
+    [data-orient="port"] .main{grid-template-columns:1fr;grid-template-rows:470px minmax(0,1fr);gap:24px}
+    [data-orient="port"] .hero-copy{justify-content:flex-start;padding-top:4px}
+    [data-orient="port"] .kicker{font-size:38px;padding:11px 22px}
+    [data-orient="port"] h1{font-size:139px;margin:16px 0 10px;gap:8px;line-height:.8}
+    [data-orient="port"] h1 span:last-child{margin-left:62px}
+    [data-orient="port"] .headline-note{width:94%;font-size:38px;padding:12px 22px 12px}
+    [data-orient="port"] .media-zone{padding:18px 22px 14px 26px}
+    [data-orient="port"] .photo-shadow{top:32px;right:18px;bottom:14px;left:42px}
+    [data-orient="port"] .hero-media{top:0;right:28px;bottom:18px;left:0;background-position:center}
+    [data-orient="port"] .countdown{width:340px;height:340px;right:12px;top:16px}
+    [data-orient="port"] .countdown>div{width:250px;height:286px}
+    [data-orient="port"] .count-number{font-size:88px}
+    [data-orient="port"] .count-label{font-size:32px}
+    [data-orient="port"] .events{grid-template-columns:1fr;grid-template-rows:repeat(3,minmax(0,1fr));gap:14px}
+    [data-orient="port"] .event{padding:19px 38px 17px 44px;clip-path:polygon(0 12%,5% 1%,17% 5%,31% 0,45% 5%,60% 1%,74% 5%,88% 0,100% 10%,98% 88%,87% 100%,71% 95%,55% 100%,39% 95%,21% 100%,4% 91%)}
+    [data-orient="port"] .event:nth-child(2),[data-orient="port"] .event:nth-child(3){transform:none}
+    [data-orient="port"] .event-index{right:34px;top:30px;font-size:68px}
+    [data-orient="port"] .event-copy{width:calc(100% - 78px)}
+    [data-orient="port"] .event-title{font-size:58px}
+    [data-orient="port"] .event-meta{font-size:36px;margin-top:10px}
+    [data-orient="port"] .footer{font-size:40px;padding:7px 30px}
+    @media(prefers-reduced-motion:reduce){*{animation:none!important}}
+  </style>
+</head>
+<body>
+  <div class="viewport"><div class="stage-outer"><main class="stage" id="stage" data-orient="land" data-qa-min-font="34">
+    <div class="background-image" data-imgslot="background.image"></div><div class="paper-noise"></div><div class="slash"></div><div class="slash two"></div>
+    <div data-widget="theme" hidden>
+      <span data-field="theme.background" data-css-var="--ink">#17121c</span><span data-field="theme.paper" data-css-var="--paper">#f4efdf</span><span data-field="theme.acid" data-css-var="--acid">#c8ff28</span><span data-field="theme.orange" data-css-var="--orange">#ff6a2b</span><span data-field="theme.pink" data-css-var="--pink">#f04ca0</span><span data-field="theme.violet" data-css-var="--violet">#5e2e91</span><span data-field="theme.cyan" data-css-var="--cyan">#3bd4df</span><span data-field="theme.muted" data-css-var="--muted">#c7bdd0</span>
+      <span data-field="theme.displayFont" data-css-var="--display" data-css-font>Bebas Neue</span><span data-field="theme.bodyFont" data-css-var="--body" data-css-font>Space Grotesk</span><span data-field="theme.markerFont" data-css-var="--marker" data-css-font>Permanent Marker</span>
+      <span data-field="countdown.target">10-31</span><span data-field="clock.timezone">America/Los_Angeles</span><span data-field="clock.hour12">true</span><span data-field="date.format">short</span>
+    </div>
+    <div class="scene" data-qa-flow="scene" data-qa-boundary="stage-safe-area">
+      <header class="mast" data-widget="masthead" data-qa-boundary="masthead">
+        <div class="brand"><div class="logo" data-imgslot="school.logo" data-qa-boundary="school-logo"><span class="logo-fallback" data-field="school.initials">RV</span></div><div class="school" data-field="school.name" data-fit="box" data-fit-min="30" data-fit-max="66" data-fit-height="100" data-fit-height-port="96">Ridgeview Middle School</div></div>
+        <div class="live" data-qa-boundary="live-strip">
+          <div class="live-item" data-qa-stack="date"><div class="live-label" data-field="date.label" data-fit="box" data-fit-min="30" data-fit-max="34" data-fit-height="60">Today</div><div class="live-value" data-field="date.value" data-live="date" data-readonly="live" data-fit="single" data-fit-min="30" data-fit-max="42">Fri · Oct 31</div></div>
+          <div class="live-item" data-qa-stack="clock"><div class="live-label" data-field="clock.label" data-fit="box" data-fit-min="30" data-fit-max="34" data-fit-height="60">Right Now</div><div class="live-value" data-field="clock.value" data-live="time" data-readonly="live" data-fit="single" data-fit-min="30" data-fit-max="42">8:42 AM</div></div>
+          <div class="live-item" data-qa-stack="weather"><div class="live-label" data-field="weather.label" data-fit="box" data-fit-min="30" data-fit-max="34" data-fit-height="60">Outside</div><div class="live-value" data-field="weather.value" data-fit="single" data-fit-min="30" data-fit-max="42">66° · Clear</div></div>
+        </div>
+      </header>
+      <section class="main" data-qa-flow="main">
+        <article class="hero-copy" data-widget="headline" data-qa-flow="headline">
+          <div class="kicker" data-field="headline.kicker" data-fit="box" data-fit-min="30" data-fit-max="38" data-fit-height="104" data-fit-height-port="104" data-qa-group="headline-order">One week. All the spirit.</div>
+          <h1 data-fit="box" data-fit-min="80" data-fit-max="152" data-fit-max-port="139" data-fit-height="270" data-fit-height-port="235" data-qa-stack="headline-lines"><span data-field="headline.line1" data-qa-group="headline-order">Halloween</span><span data-field="headline.line2" data-qa-group="headline-order">Spirit Week</span></h1>
+          <div class="headline-note" data-field="headline.note" data-fit="box" data-fit-min="30" data-fit-max="38" data-fit-height="150" data-fit-height-port="150">Show up. Dress up. Keep it school-appropriate.</div>
+        </article>
+        <article class="media-zone" data-widget="media" data-qa-boundary="hero-media-zone">
+          <div class="photo-shadow"></div><div class="hero-media" data-imgslot="hero.media" data-img="/templates/school/campus-pulse/assets/campus-pulse-hs-arts-media-v1.jpg"></div><div class="tape a"></div><div class="tape b"></div>
+          <div class="countdown" data-widget="countdown" data-qa-boundary="countdown-stamp"><div data-qa-stack="countdown-copy"><div class="count-number" data-field="countdown.value" data-readonly="live">3</div><div class="count-label" data-field="countdown.label" data-fit="box" data-fit-min="30" data-fit-max="34" data-fit-height="210">days to Halloween</div></div></div>
+        </article>
+      </section>
+      <section class="events" data-widget="events" data-qa-flow="events">
+        <article class="event" data-widget="event.1" data-qa-boundary="event-1"><div class="event-index">01</div><div class="event-copy" data-qa-stack="event-1-copy"><div class="event-title" data-field="event.1.title" data-fit="box" data-fit-min="30" data-fit-max="55" data-fit-height="74" data-fit-height-port="66">Costume Day</div><div class="event-meta" data-field="event.1.meta" data-fit="box" data-fit-min="30" data-fit-max="34" data-fit-height="62">Friday · All day</div></div></article>
+        <article class="event" data-widget="event.2" data-qa-boundary="event-2"><div class="event-index">02</div><div class="event-copy" data-qa-stack="event-2-copy"><div class="event-title" data-field="event.2.title" data-fit="box" data-fit-min="30" data-fit-max="55" data-fit-height="74" data-fit-height-port="66">Door Design Vote</div><div class="event-meta" data-field="event.2.meta" data-fit="box" data-fit-min="30" data-fit-max="34" data-fit-height="62">Thursday · Advisory</div></div></article>
+        <article class="event" data-widget="event.3" data-qa-boundary="event-3"><div class="event-index">03</div><div class="event-copy" data-qa-stack="event-3-copy"><div class="event-title" data-field="event.3.title" data-fit="box" data-fit-min="30" data-fit-max="55" data-fit-height="74" data-fit-height-port="66">Glow Dance</div><div class="event-meta" data-field="event.3.meta" data-fit="box" data-fit-min="30" data-fit-max="34" data-fit-height="62">Friday · Gym · 6:30</div></div></article>
+      </section>
+      <footer class="footer" data-widget="note" data-field="note.text" data-fit="box" data-fit-min="30" data-fit-max="38" data-fit-max-port="40" data-fit-height="74" data-fit-height-port="92" data-qa-boundary="footer-note">Costumes: faces visible · no props that look like weapons · bring your school ID</footer>
+    </div>
+  </main></div></div>
+  <script>(function(){var root=document.documentElement,stage=document.getElementById('stage');function fit(){var s=getComputedStyle(root),w=parseFloat(s.getPropertyValue('--stage-w')),h=parseFloat(s.getPropertyValue('--stage-h'));root.style.setProperty('--stage-scale',Math.min(innerWidth/w,innerHeight/h))}function orient(){var q=new URLSearchParams(location.search),p=q.get('o')==='portrait'||(!q.get('o')&&innerHeight>innerWidth);root.style.setProperty('--stage-w',p?'1080px':'1920px');root.style.setProperty('--stage-h',p?'1920px':'1080px');stage.dataset.orient=p?'port':'land';fit()}function media(){document.querySelectorAll('[data-imgslot][data-img]').forEach(function(e){var v=e.getAttribute('data-img');if(v){e.style.backgroundImage='url("'+v.replace(/"/g,'')+'")';e.classList.add('has-img')}})}orient();media();addEventListener('resize',orient);if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fit)})();</script>
+  <script src="_holiday-runtime.js?v=20260821-1"></script>
+  <script src="_style-bridge.js?v=20260821-style-3"></script>
+</body>
+</html>

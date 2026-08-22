@@ -33,6 +33,8 @@ import {
   mergeHolidayTextStyleMaps,
   type HolidayTextStyleMap,
 } from './holiday-style-contract';
+import { resolveHolidayTemplateSource } from './holiday-source-contract';
+import { resolveHolidayDesignSource } from './holiday-design-options';
 
 /**
  * targetOrigin for every parent -> board postMessage.
@@ -52,6 +54,27 @@ import {
  */
 const HOLIDAY_FRAME_TARGET_ORIGIN = '*';
 
+const HOLIDAY_BRAND_VAR_DEFAULTS = {
+  '--brand-primary': '#4f46e5',
+  '--brand-accent': '#ec4899',
+} as const;
+
+/**
+ * CSS custom properties do not cross an iframe document boundary. Resolve the
+ * builder/player brand tokens on the host element and send concrete values to
+ * the sandboxed holiday document, where `_style-bridge.js` recreates them.
+ */
+function readHolidayBrandVars(host: HTMLElement | null): Record<string, string> {
+  if (!host || typeof window === 'undefined') return { ...HOLIDAY_BRAND_VAR_DEFAULTS };
+  const computed = window.getComputedStyle(host);
+  return Object.fromEntries(
+    Object.entries(HOLIDAY_BRAND_VAR_DEFAULTS).map(([name, fallback]) => [
+      name,
+      computed.getPropertyValue(name).trim() || fallback,
+    ]),
+  );
+}
+
 export type HolidayVariant =
   | 'christmas'
   | 'easter'
@@ -65,7 +88,16 @@ export type HolidayGradeLevel = 'es' | 'ms' | 'hs';
 export interface HolidayConfig {
   variant?: HolidayVariant;
   gradeLevel?: HolidayGradeLevel;
-  /** Force portrait mode — picks the *-portrait.html sibling. */
+  /**
+   * Optional design alternate for holidays that have more than one approved
+   * board (see holiday-design-options.ts). Unset keeps the canonical board.
+   */
+  design?: string;
+  /**
+   * Force portrait mode — selects a dedicated sibling when one exists and
+   * otherwise safely falls back to the canonical board with an explicit
+   * portrait marker while that board's dedicated composition is refreshed.
+   */
   portrait?: boolean;
   /**
    * Per-field text overrides keyed by the iframe's data-field
@@ -178,14 +210,17 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
   };
 
   // Public path served by Next — copies live in apps/web/public/holiday-templates.
-  // Any lint-flagged "iframe with src from variable" worry is addressed by
-  // the fact that variant + gradeLevel are constrained to the literal unions
-  // above; nothing user-typed flows into the URL. The "-portrait" suffix is
-  // also a literal so URL injection isn't possible.
+  // The source contract knows which dedicated portrait files actually exist;
+  // missing portrait siblings reuse their canonical board with an explicit
+  // portrait marker instead of producing a 404.
+  // A holiday can have several approved designs (elementary Halloween ships
+  // three). An explicit `design` selects one; anything else keeps the canonical
+  // routing untouched, so saved templates are unaffected.
+  const design = (config.design as string | undefined) || undefined;
   const src = useMemo(() => {
-    const suffix = portrait ? '-portrait' : '';
-    return `/holiday-templates/${gradeLevel}-${variant}${suffix}.html`;
-  }, [variant, gradeLevel, portrait]);
+    return resolveHolidayDesignSource({ variant, gradeLevel, design, portrait })
+      ?? resolveHolidayTemplateSource({ variant, gradeLevel, portrait }).src;
+  }, [variant, gradeLevel, design, portrait]);
 
   // ── Bridge: listen for messages FROM the iframe ─────────────
   // The injected holiday-bridge script posts schema on load + click
@@ -248,6 +283,13 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
         // Also re-flush per-field style overrides (font-size + color +
         // weight). Posted to _style-bridge.js inside each holiday HTML.
         try {
+          iframeRef.current?.contentWindow?.postMessage(
+            {
+              type: 'template-apply-brand-vars',
+              vars: readHolidayBrandVars(wrapperRef.current),
+            },
+            HOLIDAY_FRAME_TARGET_ORIGIN,
+          );
           iframeRef.current?.contentWindow?.postMessage(
             { type: 'template-apply-styles', styles: styleOverrides },
             HOLIDAY_FRAME_TARGET_ORIGIN,
@@ -328,6 +370,23 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
       );
     } catch { /* swallow */ }
   }, [styleOverrides]);
+
+  // Brand variables inherit through normal React DOM, but not through an
+  // iframe. Send their resolved values after every host render so a live brand
+  // kit change reaches the holiday board even when no text style changed.
+  useEffect(() => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    try {
+      win.postMessage(
+        {
+          type: 'template-apply-brand-vars',
+          vars: readHolidayBrandVars(wrapperRef.current),
+        },
+        HOLIDAY_FRAME_TARGET_ORIGIN,
+      );
+    } catch { /* swallow */ }
+  });
 
   // ── HOTSPOT TOGGLE ──────────────────────────────────────────────
   // Mirror BuilderZone's "show editable affordances on selected zones"

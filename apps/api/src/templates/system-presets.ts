@@ -1458,6 +1458,33 @@ const RAW_SYSTEM_PRESETS: SystemPreset[] = [
     screenWidth: 3840, screenHeight: 2160, bgColor: '#1a0a2a',
     zones: [{ name: 'Halloween Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'halloween', gradeLevel: 'es' } }],
   },
+  // Three approved elementary Halloween designs (2026-08-21 design round).
+  // Same holiday, same editor bridge; `design` selects the board file. The
+  // canonical preset above is untouched so saved templates keep their look.
+  {
+    id: 'preset-holiday-halloween-es-moonlight',
+    name: '🎃 Halloween — Elementary · Friendly Moonlight',
+    description: 'Friendly moonlit Halloween lobby — smiling moon, gentle ghosts and a countdown to the parade. Editable copy, three photo slots, authored portrait composition.',
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'ELEMENTARY',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#160d2c',
+    zones: [{ name: 'Halloween Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'halloween', gradeLevel: 'es', design: 'moonlight' } }],
+  },
+  {
+    id: 'preset-holiday-halloween-es-parade',
+    name: '🎃 Halloween — Elementary · Costume Parade',
+    description: 'Costume-parade Halloween lobby — parade route, costume call-outs and bright banners. Editable copy, three photo slots, authored portrait composition.',
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'ELEMENTARY',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#3b174f',
+    zones: [{ name: 'Halloween Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'halloween', gradeLevel: 'es', design: 'parade' } }],
+  },
+  {
+    id: 'preset-holiday-halloween-es-storybook',
+    name: '🎃 Halloween — Elementary · Storybook Night',
+    description: 'Storybook Halloween lobby — open-book spread, warm lantern light and a gentle night scene. Editable copy, three photo slots, authored portrait composition.',
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'ELEMENTARY',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#17112c',
+    zones: [{ name: 'Halloween Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'halloween', gradeLevel: 'es', design: 'storybook' } }],
+  },
   {
     id: 'preset-holiday-halloween-ms',
     name: '🎃 Halloween — Middle School',
@@ -1465,6 +1492,31 @@ const RAW_SYSTEM_PRESETS: SystemPreset[] = [
     category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE',
     screenWidth: 3840, screenHeight: 2160, bgColor: '#0f0a1a',
     zones: [{ name: 'Halloween Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'halloween', gradeLevel: 'ms' } }],
+  },
+  // Three approved middle-school Halloween designs (2026-08-21 design round).
+  {
+    id: 'preset-holiday-halloween-ms-neon-circuit',
+    name: '🎃 Halloween — Middle School · Neon Circuit',
+    description: 'Neon-circuit Halloween board — OCT 31 spirit-after-dark treatment, glowing rails and event rows. Editable copy, three photo slots, authored portrait composition.',
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0a0a18',
+    zones: [{ name: 'Halloween Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'halloween', gradeLevel: 'ms', design: 'neon-circuit' } }],
+  },
+  {
+    id: 'preset-holiday-halloween-ms-spirit-zine',
+    name: '🎃 Halloween — Middle School · Spirit Zine',
+    description: 'Cut-and-paste spirit-zine Halloween board — torn paper, marker headlines and taped photos. Editable copy, three photo slots, authored portrait composition.',
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#151122',
+    zones: [{ name: 'Halloween Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'halloween', gradeLevel: 'ms', design: 'spirit-zine' } }],
+  },
+  {
+    id: 'preset-holiday-halloween-ms-midnight-broadcast',
+    name: '🎃 Halloween — Middle School · Midnight Broadcast',
+    description: 'Student-media Halloween board — broadcast desk, Halloween Highlights rundown and ticker. Editable copy, three photo slots, authored portrait composition.',
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'MIDDLE',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0b0f1d',
+    zones: [{ name: 'Halloween Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'halloween', gradeLevel: 'ms', design: 'midnight-broadcast' } }],
   },
   {
     id: 'preset-holiday-halloween-hs',

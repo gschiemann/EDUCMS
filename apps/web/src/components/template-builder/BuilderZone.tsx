@@ -674,16 +674,38 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
           const align = typeof s.textAlign === 'string' && ['left', 'center', 'right', 'justify'].includes(s.textAlign)
             ? s.textAlign : null;
           const decorations: string[] = [];
-          if (s.underline === true) decorations.push('underline');
-          if (s.strikethrough === true) decorations.push('line-through');
+          if (typeof s.textDecoration === 'string' && s.textDecoration.trim()) {
+            decorations.push(s.textDecoration.trim());
+          } else {
+            if (s.underline === true) decorations.push('underline');
+            if (s.strikethrough === true) decorations.push('line-through');
+          }
           if (fam) rules.push(`font-family: ${fam} !important`);
           if (sz) rules.push(`font-size: ${sz}px !important`);
           if (col) rules.push(`color: ${col} !important`);
           if (lh) rules.push(`line-height: ${lh} !important`);
           if (align) rules.push(`text-align: ${align} !important`);
-          if (s.bold === true) rules.push(`font-weight: 800 !important`);
-          if (s.italic === true) rules.push(`font-style: italic !important`);
+          if (typeof s.fontWeight === 'number' && Number.isFinite(s.fontWeight)) {
+            rules.push(`font-weight: ${s.fontWeight} !important`);
+          } else if (s.bold === true) rules.push(`font-weight: 800 !important`);
+          if (s.fontStyle === 'italic' || s.fontStyle === 'normal') {
+            rules.push(`font-style: ${s.fontStyle} !important`);
+          } else if (s.italic === true) rules.push(`font-style: italic !important`);
           if (decorations.length) rules.push(`text-decoration: ${decorations.join(' ')} !important`);
+          return rules;
+        };
+
+        // Element-level controls must target the field itself only. Applying
+        // a background or display rule to every descendant would paint each
+        // nested span separately or hide unrelated inner structure.
+        const buildFieldOnlyRules = (s: any): string[] => {
+          const rules: string[] = [];
+          const bg = typeof s.backgroundColor === 'string' && s.backgroundColor.trim();
+          if (bg) rules.push(`background-color: ${bg} !important`);
+          if (s.hidden === true) rules.push('display: none !important');
+          else if (s.visibility === 'hidden' || s.visibility === 'visible') {
+            rules.push(`visibility: ${s.visibility} !important`);
+          }
           return rules;
         };
 
@@ -734,12 +756,14 @@ function BuilderZoneImpl({ zone, selected, previewMode, onPointerDown, onResizeP
         // win over zone-wide for the targeted field.
         for (const [fieldKey, fieldStyle] of Object.entries(stylesPerField)) {
           const r = buildRules(fieldStyle);
-          if (!r.length) continue;
+          const fieldOnly = buildFieldOnlyRules(fieldStyle);
+          if (!r.length && !fieldOnly.length) continue;
           // CSS attribute selector escaping — field keys may include
           // dots (e.g. "agenda.0.t"). The dot inside an attribute
           // value is fine; the value just needs quoting.
           const sel = `${contentSel} [data-field="${fieldKey.replace(/"/g, '\\"')}"]`;
-          cssChunks.push(`${sel}, ${sel} *:not(svg):not(svg *) { ${r.join('; ')} }`);
+          if (r.length) cssChunks.push(`${sel}, ${sel} *:not(svg):not(svg *) { ${r.join('; ')} }`);
+          if (fieldOnly.length) cssChunks.push(`${sel} { ${fieldOnly.join('; ')} }`);
         }
         if (!cssChunks.length) return null;
         return <style>{cssChunks.join('\n')}</style>;

@@ -7,7 +7,7 @@ import {
   Palette, Image as ImageIcon, X, Paintbrush,
   Copy, Lock, Unlock, ChevronUp, ChevronDown, Trash2,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
-  Bold, Italic, Underline, Strikethrough,
+  Bold, Italic, Underline, Strikethrough, Eye, EyeOff,
   RefreshCw, Maximize2, Clock, Thermometer, Gauge, Calendar, Globe, MousePointer,
   Layers3, Sparkles, AppWindow,
   // Wave C (2026-07-02) — draft-recovery bar, save-conflict bar. The
@@ -57,7 +57,11 @@ import { readDraft, clearDraft, isDraftNewer, createAutosaveScheduler, formatDra
 // E3 (CRUSH Wave E, 2026-07-03) — "Put on a screen" express lane, shared
 // with the gallery's GalleryCard action (see lib/put-on-screen.ts).
 import { usePutOnScreen } from '@/lib/put-on-screen';
-import { mergeHolidayTextStyleMaps } from '@/components/widgets/holiday-style-contract';
+import {
+  isHolidayStyleToggleActive,
+  mergeHolidayTextStyleMaps,
+  updateHolidayStyleToggle,
+} from '@/components/widgets/holiday-style-contract';
 import type { Template, Zone } from './types';
 
 interface Props {
@@ -1516,12 +1520,26 @@ function BuilderBottomBar() {
     ? mergeHolidayTextStyleMaps(cfg.__styles, canonicalFieldStyles) as Record<string, any>
     : canonicalFieldStyles;
   const curFieldStyle = (activeFieldName && fieldStyles[activeFieldName]) || {};
+  const fieldBoldOn = isHolidayStyleToggleActive(curFieldStyle, 'bold');
+  const fieldItalicOn = isHolidayStyleToggleActive(curFieldStyle, 'italic');
+  const fieldUnderlineOn = isHolidayStyleToggleActive(curFieldStyle, 'underline');
+  const fieldStrikethroughOn = isHolidayStyleToggleActive(curFieldStyle, 'strikethrough');
+  const fieldHiddenOn = isHolidayStyleToggleActive(curFieldStyle, 'hidden');
   const setFieldStyleProp = (prop: string, value: number | string | boolean | undefined) => {
     if (!selectedZone || !activeFieldName) return;
-    const existing = { ...(fieldStyles[activeFieldName] || {}) };
-    if (value === undefined || value === '' || value === false || (typeof value === 'number' && !Number.isFinite(value))) {
+    const current = { ...(fieldStyles[activeFieldName] || {}) };
+    const toggleProps = ['bold', 'italic', 'underline', 'strikethrough', 'hidden'] as const;
+    const isToggle = (toggleProps as readonly string[]).includes(prop);
+    const existing = isToggle
+      ? updateHolidayStyleToggle(
+          current,
+          prop as (typeof toggleProps)[number],
+          value === true,
+        ) as Record<string, any>
+      : current;
+    if (!isToggle && (value === undefined || value === '' || value === false || (typeof value === 'number' && !Number.isFinite(value)))) {
       delete existing[prop];
-    } else {
+    } else if (!isToggle) {
       existing[prop] = value;
     }
     const nextStyles = { ...fieldStyles };
@@ -1670,31 +1688,31 @@ function BuilderBottomBar() {
 
               {smallBtn(
                 'Bold (Ctrl/⌘+B)',
-                () => setFieldStyleProp('bold', curFieldStyle.bold !== true),
+                () => setFieldStyleProp('bold', !fieldBoldOn),
                 <Bold className="w-3.5 h-3.5" />,
                 false,
-                curFieldStyle.bold === true,
+                fieldBoldOn,
               )}
               {smallBtn(
                 'Italic (Ctrl/⌘+I)',
-                () => setFieldStyleProp('italic', curFieldStyle.italic !== true),
+                () => setFieldStyleProp('italic', !fieldItalicOn),
                 <Italic className="w-3.5 h-3.5" />,
                 false,
-                curFieldStyle.italic === true,
+                fieldItalicOn,
               )}
               {smallBtn(
                 'Underline (Ctrl/⌘+U)',
-                () => setFieldStyleProp('underline', curFieldStyle.underline !== true),
+                () => setFieldStyleProp('underline', !fieldUnderlineOn),
                 <Underline className="w-3.5 h-3.5" />,
                 false,
-                curFieldStyle.underline === true,
+                fieldUnderlineOn,
               )}
               {smallBtn(
                 'Strikethrough',
-                () => setFieldStyleProp('strikethrough', curFieldStyle.strikethrough !== true),
+                () => setFieldStyleProp('strikethrough', !fieldStrikethroughOn),
                 <Strikethrough className="w-3.5 h-3.5" />,
                 false,
-                curFieldStyle.strikethrough === true,
+                fieldStrikethroughOn,
               )}
 
               <div className="w-px h-5 bg-slate-200 mx-0.5" />
@@ -1712,6 +1730,33 @@ function BuilderBottomBar() {
                   className="absolute inset-0 opacity-0 cursor-pointer"
                 />
               </label>
+
+              <label className="relative w-8 h-8 rounded-md flex items-center justify-center cursor-pointer hover:bg-slate-100" title="Text background color" aria-label="Text background color">
+                <Paintbrush className="w-3.5 h-3.5 text-slate-600" />
+                <span
+                  className="absolute bottom-1 left-1.5 right-1.5 h-1 rounded-sm border border-slate-300"
+                  style={{ background: curFieldStyle.backgroundColor || 'transparent' }}
+                />
+                <input
+                  type="color"
+                  value={/^#[0-9a-f]{6}$/i.test(curFieldStyle.backgroundColor || '') ? curFieldStyle.backgroundColor : '#ffffff'}
+                  onChange={(e) => setFieldStyleProp('backgroundColor', e.target.value)}
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                />
+              </label>
+              {curFieldStyle.backgroundColor && smallBtn(
+                'Clear text background',
+                () => setFieldStyleProp('backgroundColor', undefined),
+                <span className="text-[10px] font-bold">BG×</span>,
+              )}
+
+              {smallBtn(
+                fieldHiddenOn ? 'Show field' : 'Hide field',
+                () => setFieldStyleProp('hidden', !fieldHiddenOn),
+                fieldHiddenOn ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />,
+                false,
+                fieldHiddenOn,
+              )}
 
               {/* Brand-color presets — resolve to the per-template brand kit
                   (BuilderCanvas scopes --brand-primary / --brand-accent to

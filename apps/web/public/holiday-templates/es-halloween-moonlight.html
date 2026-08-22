@@ -1,0 +1,139 @@
+<!doctype html>
+<!-- APPROVED 2026-08-21 — operator: "the halloween templates are done, add all 3 options"
+     (elementary) and "middle school halloween done, add these 3 as well".
+     Byte-faithful port of the reviewed candidate. Fixed 1920x1080 with an authored
+     portrait state (?o=portrait). DO NOT regress to viewport-relative scene units. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Elementary Halloween — Friendly Moonlight</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chewy&family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --stage-w:1920px;--stage-h:1080px;--stage-scale:1;
+      --night:#160d2c;--night-soft:#2c1850;--orange:#ff7a1a;--gold:#ffc658;
+      --cream:#fff8df;--purple:#8a5ce6;--green:#72b84a;--shadow:#090512;--night-deep:#0b0717;--hill:#12091f;
+      --purple-dark:#5d2e98;--purple-shadow:#6a399e;--status-label:#6d3b8f;--earth:#6e572f;--meta:#5d2e73;--pumpkin-alt:#f39544;--moon-hi:#fffef3;--moon-edge:#f3d98b;
+      --display:'Chewy',cursive;--body:'Fredoka',sans-serif;
+    }
+    *{box-sizing:border-box}
+    html,body{width:100%;height:100%;margin:0;overflow:hidden;background:var(--shadow);font-family:var(--body);color:var(--cream)}
+    .viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;overflow:hidden}
+    .stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+    .stage{position:relative;width:var(--stage-w);height:var(--stage-h);overflow:hidden;transform:scale(var(--stage-scale));transform-origin:0 0;background:linear-gradient(180deg,var(--night-soft),var(--night) 58%,var(--night-deep))}
+    .background-image{position:absolute;top:0;right:0;bottom:0;left:0;background-size:cover;background-position:center;opacity:.24;z-index:0}
+    .background-image.has-img{opacity:.42}
+    .hill{position:absolute;left:-140px;right:-140px;bottom:-310px;height:560px;border-radius:50%;background:var(--hill);z-index:1;box-shadow:0 -16px 60px rgba(138,92,230,.18)}
+    .stars{position:absolute;top:0;right:0;bottom:0;left:0;z-index:1;pointer-events:none}
+    .stars i{position:absolute;width:7px;height:7px;border-radius:50%;background:var(--cream);box-shadow:0 0 18px var(--gold);animation:twinkle 3.4s ease-in-out infinite}
+    .stars i:nth-child(1){left:6%;top:16%}.stars i:nth-child(2){left:19%;top:31%;animation-delay:.8s}.stars i:nth-child(3){left:45%;top:11%;animation-delay:1.5s}.stars i:nth-child(4){left:70%;top:26%;animation-delay:.4s}.stars i:nth-child(5){left:92%;top:12%;animation-delay:1.1s}
+    @keyframes twinkle{0%,100%{opacity:.32;transform:scale(.75)}50%{opacity:1;transform:scale(1.35)}}
+    .scene{position:relative;z-index:4;width:100%;height:100%;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:128px 1fr 300px 96px;padding:36px 58px 30px;gap:14px}
+    .scene>*{min-width:0;max-width:100%}
+    .mast{display:flex;align-items:center;justify-content:space-between;gap:40px;min-width:0}
+    .identity{display:flex;align-items:center;gap:24px;min-width:0}
+    .logo{width:104px;height:104px;flex:0 0 104px;display:grid;place-items:center;border:7px solid var(--gold);border-radius:50%;background:linear-gradient(145deg,var(--orange),var(--purple));background-size:cover;background-position:center;box-shadow:0 9px 0 var(--purple-dark);font:700 42px/1 var(--body)}
+    .logo.has-img .logo-fallback{display:none}
+    .school{min-width:0;max-width:860px;font:700 58px/.95 var(--body);white-space:nowrap;letter-spacing:-1.8px}
+    .school b{color:var(--gold)}
+    .status{display:flex;align-items:stretch;gap:14px;flex:none}
+    .status-piece{width:304px;min-width:0;padding:13px 8px 12px;text-align:center;border:5px solid var(--orange);background:var(--cream);color:var(--night);clip-path:polygon(14px 0,calc(100% - 14px) 0,100% 14px,100% calc(100% - 14px),calc(100% - 14px) 100%,14px 100%,0 calc(100% - 14px),0 14px)}
+    .status-piece.alt{border-color:var(--purple);background:var(--gold)}.status-piece.weather{border-color:var(--green);background:var(--cream)}
+    .status-label{display:block;font:700 36px/1 var(--body);color:var(--status-label);text-transform:uppercase;letter-spacing:-.5px}
+    .status-value{display:block;margin-top:7px;font:700 42px/.95 var(--body);white-space:nowrap}
+    .hero{display:grid;grid-template-columns:minmax(0,1fr) 510px;align-items:center;gap:56px;min-height:0}
+    .hero-copy{width:100%;max-width:100%;min-width:0;padding:0 0 0 22px}
+    .kicker{max-width:100%;font:700 43px/1 var(--body);color:var(--gold);letter-spacing:1px}
+    h1{margin:8px 0 10px;font:400 146px/.93 var(--display);letter-spacing:1px;color:var(--orange);text-shadow:8px 9px 0 var(--purple-shadow),0 0 34px rgba(255,122,26,.35)}
+    h1 span{display:block;color:var(--cream)}
+    h1 span+span{margin-top:34px}
+    .hero-note{max-width:1120px;font:600 45px/1.12 var(--body);letter-spacing:-.8px}
+    .moon-wrap{position:relative;height:100%;display:grid;place-items:center}
+    .moon{position:relative;width:430px;height:430px;border-radius:50%;display:grid;place-items:center;text-align:center;background:radial-gradient(circle at 35% 28%,var(--moon-hi),var(--cream) 48%,var(--moon-edge));box-shadow:0 0 0 14px rgba(255,198,88,.14),0 0 100px rgba(255,198,88,.45);color:var(--night);background-size:cover;background-position:center}
+    .moon.has-img{overflow:hidden;color:var(--cream);text-shadow:0 4px 18px rgba(0,0,0,.8)}
+    .moon.has-img::after{content:'';position:absolute;top:0;right:0;bottom:0;left:0;background:var(--night);opacity:.34;z-index:0}
+    .moon-face{position:absolute;top:0;right:0;bottom:0;left:0;z-index:0}.moon.has-img .moon-face{display:none}
+    .moon-face::before,.moon-face::after{content:'';position:absolute;top:78px;width:28px;height:42px;border-radius:50%;background:var(--earth)}.moon-face::before{left:128px}.moon-face::after{right:128px}
+    .moon-smile{position:absolute;left:50%;top:130px;width:114px;height:58px;transform:translateX(-50%);border:12px solid var(--earth);border-top:0;border-radius:0 0 90px 90px}
+    .count{position:relative;z-index:1;margin-top:150px}
+    .count-number{font:400 142px/.75 var(--display);color:var(--orange)}
+    .moon.has-img .count-number{color:var(--cream)}
+    .count-label{margin-top:12px;font:700 36px/1.05 var(--body);max-width:280px;text-transform:uppercase;letter-spacing:.8px}
+    .bat{position:absolute;width:104px;height:48px;animation:float 2.6s ease-in-out infinite}.bat.a{left:12px;top:100px}.bat.b{right:8px;bottom:100px;animation-delay:.8s}.bat::before,.bat::after{content:'';position:absolute;top:0;width:56px;height:48px;background:var(--shadow)}.bat::before{left:0;clip-path:polygon(100% 42%,68% 0,42% 30%,0 7%,23% 58%,0 100%,48% 74%,70% 100%)}.bat::after{right:0;clip-path:polygon(0 42%,32% 0,58% 30%,100% 7%,77% 58%,100% 100%,52% 74%,30% 100%)}
+    @keyframes float{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-14px) rotate(4deg)}}
+    .events{display:grid;grid-template-columns:repeat(3,1fr);gap:32px;align-items:end}
+    .pumpkin{position:relative;min-width:0;height:264px;display:grid;place-items:center;text-align:center;padding:46px 34px 28px;color:var(--night);filter:drop-shadow(0 13px 0 var(--purple-dark)) drop-shadow(0 18px 20px rgba(0,0,0,.3))}
+    .pumpkin>div{width:100%;min-width:0}
+    .pumpkin::before,.pumpkin::after{content:'';position:absolute;z-index:-1;background:var(--orange);border-radius:46% 46% 44% 44%/52% 52% 48% 48%}
+    .pumpkin::before{top:22px;right:22px;bottom:0;left:22px}.pumpkin::after{left:50%;top:0;width:35px;height:52px;transform:translateX(-50%) rotate(4deg);border-radius:12px 12px 3px 3px;background:var(--green)}
+    .pumpkin:nth-child(2)::before{background:var(--gold)}.pumpkin:nth-child(3)::before{background:var(--pumpkin-alt)}
+    .pumpkin-rib{position:absolute;z-index:-1;top:47px;bottom:24px;left:50%;width:40%;transform:translateX(-50%);border-left:6px solid rgba(108,53,22,.22);border-right:6px solid rgba(108,53,22,.22);border-radius:50%}
+    .event-title{font:700 49px/.92 var(--body);letter-spacing:-1px}
+    .event-meta{margin-top:10px;font:700 34px/1 var(--body);color:var(--meta)}
+    .footer{align-self:end;display:flex;align-items:center;justify-content:center;min-width:0;padding:8px 42px;background:var(--purple);clip-path:polygon(22px 0,calc(100% - 22px) 0,100% 50%,calc(100% - 22px) 100%,22px 100%,0 50%);font:700 43px/1 var(--body);letter-spacing:.2px;text-align:center;color:var(--cream)}
+    [data-orient="port"] .scene{grid-template-rows:250px 470px 1fr 104px;padding:54px 58px 48px;gap:28px}
+    [data-orient="port"] .mast{flex-direction:column;justify-content:flex-start;gap:22px}
+    [data-orient="port"] .identity{width:100%;justify-content:center}
+    [data-orient="port"] .school{font-size:64px}
+    [data-orient="port"] .status{width:100%;justify-content:center}
+    [data-orient="port"] .status-piece{width:304px}
+    [data-orient="port"] .hero{display:flex;flex-direction:column;gap:24px;text-align:center}
+    [data-orient="port"] .hero-copy{padding:0;display:flex;flex-direction:column;align-items:center}
+    [data-orient="port"] .kicker{font-size:51px}
+    [data-orient="port"] h1{font-size:146px;line-height:.93;margin:8px 0 10px}
+    [data-orient="port"] .hero-note{font-size:45px;max-width:900px}
+    [data-orient="port"] .moon-wrap{position:absolute;top:400px;right:70px;width:380px;height:auto;opacity:.22;z-index:-1}
+    [data-orient="port"] .moon{width:360px;height:360px}
+    [data-orient="port"] .count{opacity:0}
+    [data-orient="port"] .events{grid-template-columns:1fr;gap:28px;align-content:center}
+    [data-orient="port"] .pumpkin{height:226px;padding:40px 70px 20px}
+    [data-orient="port"] .event-title{font-size:61px}
+    [data-orient="port"] .event-meta{font-size:40px}
+    .portrait-count{display:none}
+    [data-orient="port"] .portrait-count{display:flex;align-items:center;justify-content:center;gap:14px;height:112px;min-width:0;background:var(--cream);color:var(--night);clip-path:polygon(28px 0,calc(100% - 28px) 0,100% 50%,calc(100% - 28px) 100%,28px 100%,0 50%);font:700 52px/1 var(--body);white-space:nowrap}
+    [data-orient="port"] .footer{font-size:46px;min-height:104px;padding-inline:62px}
+    @media (prefers-reduced-motion:reduce){*{animation:none!important}}
+  </style>
+</head>
+<body>
+  <div class="viewport"><div class="stage-outer"><main class="stage" id="stage" data-orient="land" data-qa-min-font="36">
+    <div class="background-image" data-imgslot="background.image"></div>
+    <div class="stars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div><div class="hill" aria-hidden="true"></div>
+    <div data-widget="theme" hidden>
+      <span data-field="theme.background" data-css-var="--night">#160d2c</span><span data-field="theme.backgroundSoft" data-css-var="--night-soft">#2c1850</span><span data-field="theme.backgroundDeep" data-css-var="--night-deep">#0b0717</span><span data-field="theme.hill" data-css-var="--hill">#12091f</span><span data-field="theme.primary" data-css-var="--orange">#ff7a1a</span><span data-field="theme.secondary" data-css-var="--purple">#8a5ce6</span><span data-field="theme.secondaryDark" data-css-var="--purple-dark">#5d2e98</span><span data-field="theme.secondaryShadow" data-css-var="--purple-shadow">#6a399e</span><span data-field="theme.accent" data-css-var="--gold">#ffc658</span><span data-field="theme.positive" data-css-var="--green">#72b84a</span><span data-field="theme.text" data-css-var="--cream">#fff8df</span><span data-field="theme.shadow" data-css-var="--shadow">#090512</span><span data-field="theme.statusLabel" data-css-var="--status-label">#6d3b8f</span><span data-field="theme.meta" data-css-var="--meta">#5d2e73</span><span data-field="theme.pumpkinAlt" data-css-var="--pumpkin-alt">#f39544</span><span data-field="theme.earth" data-css-var="--earth">#6e572f</span><span data-field="theme.moonHighlight" data-css-var="--moon-hi">#fffef3</span><span data-field="theme.moonEdge" data-css-var="--moon-edge">#f3d98b</span><span data-field="theme.displayFont" data-css-var="--display" data-css-font>Chewy</span><span data-field="theme.bodyFont" data-css-var="--body" data-css-font>Fredoka</span><span data-field="countdown.target">10-31</span><span data-field="clock.timezone">America/Los_Angeles</span><span data-field="clock.hour12">true</span><span data-field="date.format">short</span>
+    </div>
+    <div class="scene" data-qa-flow="scene">
+      <header class="mast" data-widget="masthead" data-qa-boundary="masthead">
+        <div class="identity"><div class="logo" data-imgslot="school.logo" data-qa-boundary="school-logo"><span class="logo-fallback" data-field="school.initials">MT</span></div><div class="school" data-fit="single" data-fit-min="36" data-fit-max="64"><span data-field="school.name">Maple Tree</span> <b data-field="school.type">Elementary</b></div></div>
+        <div class="status"><div class="status-piece" data-qa-boundary="date-status"><span class="status-label" data-field="date.label" data-fit="single" data-fit-min="30" data-fit-max="36">Today</span><span class="status-value" data-field="date.value" data-live="date" data-readonly="live" data-fit="single" data-fit-min="32" data-fit-max="42">Fri · Oct 31</span></div><div class="status-piece alt" data-qa-boundary="clock-status"><span class="status-label" data-field="clock.label" data-fit="single" data-fit-min="30" data-fit-max="36">Right now</span><span class="status-value" data-field="clock.value" data-live="time" data-readonly="live" data-fit="single" data-fit-min="32" data-fit-max="42">8:42 AM</span></div><div class="status-piece weather" data-qa-boundary="weather-status"><span class="status-label" data-field="weather.label" data-fit="single" data-fit-min="30" data-fit-max="36">Outside</span><span class="status-value" data-field="weather.value" data-fit="single" data-fit-min="32" data-fit-max="42">72° · Sunny</span></div></div>
+      </header>
+      <section class="hero" data-qa-boundary="hero">
+        <div class="hero-copy" data-widget="headline" data-qa-boundary="headline"><div class="kicker" data-field="headline.kicker" data-fit="single" data-fit-min="36" data-fit-max="43" data-qa-group="headline-block">A friendly, not-too-spooky day</div><h1 data-fit="box" data-fit-min="96" data-fit-max="146" data-fit-max-port="146" data-fit-height="320" data-fit-height-port="320" data-qa-stack="headline"><span data-field="headline.line1" data-qa-group="headline-block">Happy</span><span data-field="headline.line2" data-qa-group="headline-block">Halloween!</span></h1><div class="hero-note" data-field="headline.note" data-fit="box" data-fit-min="36" data-fit-max="45" data-fit-height="126" data-fit-height-port="126">Wear your costume Friday—the parade starts at 2!</div></div>
+        <div class="moon-wrap" data-qa-boundary="moon-group"><div class="bat a" data-qa-boundary="bat-left"></div><div class="moon" data-widget="countdown" data-imgslot="hero.media" data-qa-boundary="countdown-moon"><div class="moon-face"><div class="moon-smile"></div></div><div class="count" data-qa-stack="countdown"><div class="count-number" data-field="countdown.value" data-readonly="live" data-fit="single" data-fit-min="72" data-fit-max="142">3</div><div class="count-label" data-field="countdown.label" data-fit="box" data-fit-min="32" data-fit-max="36" data-fit-height="144">sleeps till the parade</div></div></div><div class="bat b" data-qa-boundary="bat-right"></div></div>
+      </section>
+      <section class="events" data-widget="events" data-qa-flow="events" data-qa-boundary="events">
+        <div class="portrait-count" data-fit="single" data-fit-min="36" data-fit-max="52" data-qa-boundary="portrait-count"><span data-field="countdown.value" data-readonly="live">3</span><span data-field="countdown.label">sleeps till the parade</span></div>
+        <article class="pumpkin" data-widget="event.1" data-qa-boundary="event-1"><span class="pumpkin-rib"></span><div><div class="event-title" data-field="event.1.title" data-fit="box" data-fit-min="36" data-fit-max="61" data-fit-height="80">Costume Parade</div><div class="event-meta" data-field="event.1.meta" data-fit="box" data-fit-min="36" data-fit-max="40" data-fit-height="72">Friday · Gym · 2:00</div></div></article>
+        <article class="pumpkin" data-widget="event.2" data-qa-boundary="event-2"><span class="pumpkin-rib"></span><div><div class="event-title" data-field="event.2.title" data-fit="box" data-fit-min="36" data-fit-max="61" data-fit-height="80">Pumpkin Art</div><div class="event-meta" data-field="event.2.meta" data-fit="box" data-fit-min="36" data-fit-max="40" data-fit-height="72">Monday · Art Room</div></div></article>
+        <article class="pumpkin" data-widget="event.3" data-qa-boundary="event-3"><span class="pumpkin-rib"></span><div><div class="event-title" data-field="event.3.title" data-fit="box" data-fit-min="36" data-fit-max="61" data-fit-height="80">Wear Orange</div><div class="event-meta" data-field="event.3.meta" data-fit="box" data-fit-min="36" data-fit-max="40" data-fit-height="72">Thursday · All Day</div></div></article>
+      </section>
+      <footer class="footer" data-widget="note" data-field="note.text" data-fit="box" data-fit-min="36" data-fit-max="43" data-fit-max-port="46" data-fit-height="96" data-fit-height-port="104" data-qa-boundary="footer-note">Costumes on · masks off · families welcome</footer>
+    </div>
+  </main></div></div>
+  <script>
+  (function(){
+    var root=document.documentElement,stage=document.getElementById('stage');
+    function orient(){var p=new URLSearchParams(location.search).get('o')==='portrait'||(!new URLSearchParams(location.search).get('o')&&innerHeight>innerWidth);root.style.setProperty('--stage-w',p?'1080px':'1920px');root.style.setProperty('--stage-h',p?'1920px':'1080px');stage.dataset.orient=p?'port':'land';fit();}
+    function fit(){var s=getComputedStyle(root),w=parseFloat(s.getPropertyValue('--stage-w')),h=parseFloat(s.getPropertyValue('--stage-h'));root.style.setProperty('--stage-scale',Math.min(innerWidth/w,innerHeight/h));}
+    function live(){var d=new Date(),days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],h=d.getHours(),m=d.getMinutes(),ap=h>=12?'PM':'AM';h=h%12||12;document.querySelectorAll('[data-live="date"]').forEach(function(e){e.textContent=days[d.getDay()]+' · '+months[d.getMonth()]+' '+d.getDate()});document.querySelectorAll('[data-live="time"]').forEach(function(e){e.textContent=h+':'+String(m).padStart(2,'0')+' '+ap});}
+    function media(){document.querySelectorAll('[data-imgslot][data-img]').forEach(function(e){var v=e.getAttribute('data-img');if(v){e.style.backgroundImage='url("'+v.replace(/"/g,'')+'")';e.classList.add('has-img')}})}
+    orient();media();addEventListener('resize',orient);if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fit);
+  })();
+  </script>
+  <script src="_holiday-runtime.js?v=20260821-1"></script>
+  <script src="_style-bridge.js?v=20260821-style-3"></script>
+</body>
+</html>
