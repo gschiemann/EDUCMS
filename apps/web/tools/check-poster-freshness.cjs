@@ -60,6 +60,31 @@ function postersFor(board) {
   return [base + '.png', base + '-portrait.png'];
 }
 
+// PROVENANCE (2026-08-21). "The poster PNG must also change" is a proxy, and
+// it false-fails in a real case: edit a board in a way that alters its HTML but
+// not a single rendered pixel (e.g. a line of the inlined engine that this
+// board's markup never uses) and the freshly regenerated PNG is byte-identical,
+// so git records no change and the guard cries stale about a current poster.
+//
+// The poster generator now records the sha256 of the exact board HTML it
+// captured. For any board carrying that provenance we can answer the real
+// question — "was this poster generated from THIS version of the board?" —
+// instead of guessing from byte churn. Boards with no entry yet keep the
+// original rule, so coverage only ever tightens.
+const crypto = require('crypto');
+const fs = require('fs');
+const MANIFEST = PREFIX + '_thumbs/poster-manifest.json';
+let provenance = {};
+try { provenance = JSON.parse(fs.readFileSync(MANIFEST, 'utf8')); } catch (_) { /* not yet recorded */ }
+function posterMatchesBoard(board) {
+  const key = board.slice(PREFIX.length).replace(/\.html$/, '');
+  const recorded = provenance[key];
+  if (!recorded) return null; // no provenance — caller falls back to byte churn
+  try {
+    return crypto.createHash('sha256').update(fs.readFileSync(board)).digest('hex').slice(0, 16) === recorded;
+  } catch (_) { return null; }
+}
+
 const changed = changedFiles();
 if (changed === null) {
   console.log('poster-freshness: could not compute git diff (shallow clone?) — skipping.');
@@ -67,7 +92,15 @@ if (changed === null) {
 }
 const changedSet = new Set(changed);
 const boards = changed.filter(isBoard);
-const violations = boards.filter((b) => !postersFor(b).some((png) => changedSet.has(png)));
+const violations = boards.filter((b) => {
+  // Provenance is AUTHORITATIVE when present: it answers "was this poster
+  // captured from this exact board?", which byte churn only gestures at. A
+  // regenerated PNG plus a later board edit would sail past the churn rule and
+  // ship a stale gallery card; the hash catches it.
+  const fresh = posterMatchesBoard(b);
+  if (fresh !== null) return fresh === false;
+  return !postersFor(b).some((png) => changedSet.has(png));
+});
 
 if (violations.length) {
   console.error('\n[X] Stale gallery posters — ' + violations.length + ' board(s) changed but their poster PNG did NOT:\n');
@@ -76,6 +109,9 @@ if (violations.length) {
   console.error('apps/web/src/components/templates/ScaledTemplateThumbnail.tsx:');
   console.error('  node apps/web/scripts/gen-template-posters.cjs http://localhost:3000');
   console.error('(start a static server for apps/web/public first). The gallery shows a');
+  console.error('Posters carrying provenance in _thumbs/poster-manifest.json are checked');
+  console.error('against the board HTML they were captured from, so a regenerated poster');
+  console.error('that is byte-identical still passes — but a stale one never does.');
   console.error('pre-rendered PNG per board, so an un-regenerated poster ships the OLD look.\n');
   process.exit(1);
 }
