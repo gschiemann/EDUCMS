@@ -1,0 +1,176 @@
+<!doctype html>
+<!-- APPROVED 2026-08-21 — operator: "the halloween templates are done, add all 3 options"
+     (elementary) and "middle school halloween done, add these 3 as well".
+     Byte-faithful port of the reviewed candidate. Fixed 1920x1080 with an authored
+     portrait state (?o=portrait). DO NOT regress to viewport-relative scene units. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>High School Halloween — Editorial After Dark</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,700;6..96,900&amp;family=IBM+Plex+Mono:wght@600;700&amp;family=League+Spartan:wght@600;700;800&amp;display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --stage-w:1920px;--stage-h:1080px;--stage-scale:1;
+      --night:#11100f;--paper:#f1eadc;--ink:#171411;--orange:#ee5b2a;
+      --violet:#6544a8;--gold:#e9b946;--mist:#c7c0b5;--rule:#3d3934;
+      --display:'Bodoni Moda',serif;--body:'League Spartan',sans-serif;--mono:'IBM Plex Mono',monospace;
+    }
+    *{box-sizing:border-box}
+    html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#090807;color:var(--paper);font-family:var(--body)}
+    .viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center}
+    .stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+    .stage{position:relative;width:var(--stage-w);height:var(--stage-h);overflow:hidden;transform:scale(var(--stage-scale));transform-origin:0 0;background:var(--night)}
+    .background-media{position:absolute;top:0;right:0;bottom:0;left:0;background-position:center;background-size:cover;filter:grayscale(1) contrast(1.25);opacity:.1}
+    .background-media.has-img{opacity:.17}
+    .paper-grain{position:absolute;top:0;right:0;bottom:0;left:0;pointer-events:none;opacity:.27;background-image:radial-gradient(circle at 2px 2px,rgba(241,234,220,.3) 1px,transparent 1.2px),linear-gradient(110deg,transparent 0 69%,rgba(101,68,168,.24) 69% 100%);background-size:9px 9px,100% 100%}
+    .margin-rule{position:absolute;z-index:1;left:19px;top:0;bottom:0;width:8px;background:var(--orange)}
+    .scene{position:relative;z-index:2;width:100%;height:100%;padding:34px 46px 28px;display:grid;grid-template-rows:128px minmax(0,1fr) 188px 64px;gap:18px}
+
+    .mast{min-width:0;display:grid;grid-template-columns:410px minmax(0,1fr) 666px;align-items:center;gap:26px;padding:10px 0;border-top:7px solid var(--paper);border-bottom:3px solid var(--paper)}
+    .brand{min-width:0;display:flex;align-items:center;gap:18px}
+    .logo{position:relative;width:86px;height:86px;flex:0 0 86px;display:grid;place-items:center;border:5px solid var(--paper);background-position:center;background-size:cover;color:var(--paper)}
+    .logo.has-img .logo-fallback{display:none}
+    .logo-fallback{width:100%;text-align:center;font:800 38px/1 var(--body);letter-spacing:-1px}
+    .school-copy{min-width:0;display:flex;flex-direction:column;gap:6px}
+    .school-name{width:100%;font:800 47px/.9 var(--body);letter-spacing:-1.5px;text-transform:uppercase}
+    .school-type{width:100%;font:600 34px/1 var(--mono);color:var(--gold);text-transform:uppercase}
+    .publication{min-width:0;text-align:center;border-left:2px solid var(--rule);border-right:2px solid var(--rule);padding:0 22px}
+    .publication-name{width:100%;font:900 66px/.9 var(--display);letter-spacing:-2px;white-space:nowrap}
+    .publication-issue{width:100%;margin-top:6px;font:700 34px/1 var(--mono);color:var(--orange);text-transform:uppercase}
+    .dateline{align-self:stretch;min-width:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));background:var(--paper);color:var(--ink)}
+    .datum{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 12px;border-left:3px solid var(--ink);text-align:center}
+    .datum:first-child{border-left:0}
+    .datum-label{width:100%;font:700 34px/.95 var(--mono);color:var(--violet);text-transform:uppercase}
+    .datum-value{width:100%;margin-top:7px;font:800 38px/.95 var(--body);letter-spacing:-.6px}
+
+    .main{min-width:0;min-height:0;display:grid;grid-template-columns:760px minmax(0,1fr);gap:44px}
+    .story{position:relative;min-width:0;min-height:0;display:flex;flex-direction:column;justify-content:center;padding:8px 0 4px 34px;border-left:12px solid var(--orange)}
+    .story::after{content:'';position:absolute;left:10px;right:40px;bottom:2px;height:3px;background:var(--rule)}
+    .kicker{width:100%;font:700 36px/1 var(--mono);color:var(--gold);letter-spacing:1px;text-transform:uppercase}
+    .headline{width:100%;margin:12px 0 14px;font:900 140px/.9 var(--display);letter-spacing:-8px;text-transform:uppercase}
+    .headline span{display:block;width:100%}
+    .headline .second{color:var(--orange);font-style:italic;padding-left:62px}
+    .dek{width:94%;font:700 40px/1.02 var(--body);letter-spacing:-.7px;color:var(--mist)}
+    .countdown{width:94%;min-width:0;margin-top:20px;display:grid;grid-template-columns:150px minmax(0,1fr);align-items:center;border-top:4px solid var(--paper);border-bottom:4px solid var(--paper)}
+    .count-value{width:100%;padding:7px 18px 3px 0;font:900 88px/.88 var(--display);color:var(--gold);text-align:center;border-right:4px solid var(--paper)}
+    .count-label{width:100%;padding:10px 20px;font:700 35px/.98 var(--mono);text-transform:uppercase}
+
+    .photo-desk{position:relative;min-width:0;min-height:0;padding:18px 0 20px 22px}
+    .photo-back{position:absolute;left:0;right:28px;top:0;bottom:36px;background:var(--violet);clip-path:polygon(0 6%,96% 0,100% 94%,5% 100%)}
+    .hero-media{position:absolute;left:24px;right:0;top:22px;bottom:0;overflow:hidden;background-color:#5c5046;background-position:center 42%;background-size:cover;filter:grayscale(1) contrast(1.18);clip-path:polygon(2% 0,100% 4%,97% 100%,0 94%)}
+    .hero-media::before{content:'';position:absolute;top:0;right:0;bottom:0;left:0;z-index:1;background:linear-gradient(135deg,rgba(101,68,168,.84),rgba(238,91,42,.62));mix-blend-mode:color;pointer-events:none}
+    .hero-media::after{content:'';position:absolute;top:0;right:0;bottom:0;left:0;z-index:2;background:linear-gradient(180deg,transparent 48%,rgba(17,16,15,.8) 100%);pointer-events:none}
+    .photo-placeholder{position:absolute;top:0;right:0;bottom:0;left:0;z-index:0;display:grid;place-items:center;padding:80px;text-align:center;font:800 64px/.9 var(--body);text-transform:uppercase;color:var(--paper)}
+    .hero-media.has-img .photo-placeholder{display:none}
+    .photo-tag{position:absolute;z-index:4;top:0;right:30px;max-width:460px;padding:12px 22px 10px;background:var(--gold);color:var(--ink);font:700 34px/.95 var(--mono);text-align:center;text-transform:uppercase;clip-path:polygon(0 0,100% 0,calc(100% - 18px) 100%,18px 100%)}
+    .photo-caption{position:absolute;z-index:4;left:52px;right:150px;bottom:24px;display:grid;grid-template-columns:minmax(0,1fr) 300px;align-items:end;gap:24px;color:var(--paper)}
+    .caption-title{width:100%;font:800 44px/.95 var(--body);text-transform:uppercase}
+    .caption-credit{width:100%;font:700 34px/1 var(--mono);text-align:right;color:var(--gold)}
+    .folio{position:absolute;z-index:5;right:0;bottom:0;width:118px;height:118px;display:grid;place-items:center;background:var(--paper);color:var(--ink);clip-path:polygon(0 24%,24% 0,100% 0,100% 100%,0 100%)}
+    .folio-value{width:100%;padding:18px 0 0 18px;font:900 56px/1 var(--display);text-align:center}
+
+    .events{min-width:0;min-height:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:7px solid var(--paper);border-bottom:3px solid var(--paper)}
+    .event{min-width:0;display:grid;grid-template-columns:92px minmax(0,1fr);align-items:center;gap:22px;padding:18px 34px 16px;border-left:3px solid var(--paper)}
+    .event:first-child{border-left:0}
+    .event-number{width:100%;font:900 64px/.88 var(--display);color:var(--orange);text-align:center}
+    .event-copy{min-width:0;display:flex;flex-direction:column;gap:10px}
+    .event-title{width:100%;font:800 46px/.92 var(--body);letter-spacing:-1.2px;text-transform:uppercase}
+    .event-meta{width:100%;font:700 34px/1 var(--mono);color:var(--gold)}
+    .footer{min-width:0;display:flex;align-items:center;justify-content:center;padding:5px 38px;background:var(--orange);color:var(--ink);font:800 36px/1 var(--body);letter-spacing:-.3px;text-align:center;text-transform:uppercase;clip-path:polygon(18px 0,100% 0,calc(100% - 18px) 100%,0 100%)}
+
+    [data-orient="port"] .paper-grain{background-image:radial-gradient(circle at 2px 2px,rgba(241,234,220,.3) 1px,transparent 1.2px),linear-gradient(158deg,transparent 0 60%,rgba(101,68,168,.24) 60% 100%);background-size:9px 9px,100% 100%}
+    [data-orient="port"] .margin-rule{left:16px;width:7px}
+    [data-orient="port"] .scene{padding:38px 42px 34px;grid-template-rows:250px minmax(0,1fr) 462px 96px;gap:22px}
+    [data-orient="port"] .mast{grid-template-columns:1fr;grid-template-rows:86px 60px 74px;gap:6px;padding:9px 0}
+    [data-orient="port"] .brand{justify-content:center;gap:16px}
+    [data-orient="port"] .logo{width:76px;height:76px;flex-basis:76px;border-width:4px}
+    [data-orient="port"] .logo-fallback{font-size:34px}
+    [data-orient="port"] .school-copy{gap:3px}
+    [data-orient="port"] .school-name{font-size:44px}
+    [data-orient="port"] .school-type{font-size:34px}
+    [data-orient="port"] .publication{display:flex;align-items:center;justify-content:center;gap:22px;border:0;border-top:2px solid var(--rule);border-bottom:2px solid var(--rule);padding:5px 12px}
+    [data-orient="port"] .publication-name{width:auto;max-width:650px;font-size:55px}
+    [data-orient="port"] .publication-issue{width:auto;max-width:290px;margin:0;font-size:34px}
+    [data-orient="port"] .dateline{align-self:stretch}
+    [data-orient="port"] .datum{padding:5px 10px}
+    [data-orient="port"] .datum-label{font-size:34px}
+    [data-orient="port"] .datum-value{margin-top:4px;font-size:36px}
+    [data-orient="port"] .main{grid-template-columns:1fr;grid-template-rows:438px minmax(0,1fr);gap:24px}
+    [data-orient="port"] .story{justify-content:flex-start;padding:9px 18px 6px 28px;border-left-width:10px}
+    [data-orient="port"] .story::after{right:18px}
+    [data-orient="port"] .kicker{font-size:36px;text-align:center}
+    [data-orient="port"] .headline{margin:14px 0 10px;font-size:136px;line-height:.92;letter-spacing:-7px;text-align:center;white-space:nowrap}
+    [data-orient="port"] .headline span{display:inline;width:auto}
+    [data-orient="port"] .headline .second{padding-left:22px}
+    [data-orient="port"] .dek{width:100%;font-size:40px;text-align:center}
+    [data-orient="port"] .countdown{width:94%;grid-template-columns:180px minmax(0,1fr);margin:16px auto 0}
+    [data-orient="port"] .count-value{font-size:88px}
+    [data-orient="port"] .count-label{font-size:35px;text-align:left}
+    [data-orient="port"] .photo-desk{padding:18px 0 22px 18px}
+    [data-orient="port"] .photo-back{right:24px;bottom:36px}
+    [data-orient="port"] .hero-media{left:20px;top:22px;background-position:center}
+    [data-orient="port"] .photo-tag{right:28px;font-size:34px}
+    [data-orient="port"] .photo-caption{left:48px;right:136px;bottom:28px;grid-template-columns:minmax(0,1fr) 270px;gap:18px}
+    [data-orient="port"] .caption-title{font-size:40px}
+    [data-orient="port"] .caption-credit{font-size:32px}
+    [data-orient="port"] .folio{width:108px;height:108px}
+    [data-orient="port"] .folio-value{font-size:52px}
+    [data-orient="port"] .events{grid-template-columns:1fr;grid-template-rows:repeat(3,minmax(0,1fr))}
+    [data-orient="port"] .event{grid-template-columns:96px minmax(0,1fr);gap:24px;padding:10px 44px 8px 30px;border-left:0;border-top:3px solid var(--paper)}
+    [data-orient="port"] .event:first-child{border-top:0}
+    [data-orient="port"] .event-number{font-size:68px}
+    [data-orient="port"] .event-copy{gap:8px}
+    [data-orient="port"] .event-title{font-size:48px}
+    [data-orient="port"] .event-meta{font-size:36px}
+    [data-orient="port"] .footer{font-size:38px;padding:8px 46px}
+    @media(prefers-reduced-motion:reduce){*{animation:none!important}}
+  </style>
+</head>
+<body>
+  <div class="viewport"><div class="stage-outer"><main class="stage" id="stage" data-orient="land" data-qa-min-font="34">
+    <div class="background-media" data-imgslot="background.image"></div><div class="paper-grain" aria-hidden="true"></div><div class="margin-rule" aria-hidden="true"></div>
+    <div data-widget="theme" hidden>
+      <span data-field="theme.background" data-css-var="--night">#11100f</span><span data-field="theme.paper" data-css-var="--paper">#f1eadc</span><span data-field="theme.ink" data-css-var="--ink">#171411</span><span data-field="theme.primary" data-css-var="--orange">#ee5b2a</span><span data-field="theme.secondary" data-css-var="--violet">#6544a8</span><span data-field="theme.accent" data-css-var="--gold">#e9b946</span><span data-field="theme.muted" data-css-var="--mist">#c7c0b5</span><span data-field="theme.rule" data-css-var="--rule">#3d3934</span>
+      <span data-field="theme.displayFont" data-css-var="--display" data-css-font>Bodoni Moda</span><span data-field="theme.bodyFont" data-css-var="--body" data-css-font>League Spartan</span><span data-field="theme.monoFont" data-css-var="--mono" data-css-font>IBM Plex Mono</span>
+      <span data-field="countdown.target">10-31</span><span data-field="clock.timezone">America/Los_Angeles</span><span data-field="clock.hour12">true</span><span data-field="date.format">short</span>
+    </div>
+    <div class="scene" data-qa-flow="scene" data-qa-boundary="stage-safe-area">
+      <header class="mast" data-widget="masthead" data-qa-boundary="masthead">
+        <div class="brand"><div class="logo" data-imgslot="school.logo" data-qa-boundary="school-logo"><span class="logo-fallback" data-field="school.initials" data-fit="single" data-fit-min="30" data-fit-max="38">NHS</span></div><div class="school-copy" data-qa-stack="school-identity"><div class="school-name" data-field="school.name" data-fit="single" data-fit-min="30" data-fit-max="47" data-fit-max-port="44">Northgate</div><div class="school-type" data-field="school.type" data-fit="single" data-fit-min="30" data-fit-max="34">High School</div></div></div>
+        <div class="publication"><div class="publication-name" data-field="publication.name" data-fit="single" data-fit-min="30" data-fit-max="66" data-fit-max-port="55">The Night Edition</div><div class="publication-issue" data-field="publication.issue" data-fit="single" data-fit-min="30" data-fit-max="34">Vol. 84 / 02</div></div>
+        <div class="dateline" data-qa-boundary="date-time-weather">
+          <div class="datum" data-qa-stack="date"><div class="datum-label" data-field="date.label" data-fit="single" data-fit-min="30" data-fit-max="34">Date</div><div class="datum-value" data-field="date.value" data-live="date" data-readonly="live" data-fit="single" data-fit-min="30" data-fit-max="38" data-fit-max-port="36">Fri · Oct 31</div></div>
+          <div class="datum" data-qa-stack="time"><div class="datum-label" data-field="clock.label" data-fit="single" data-fit-min="30" data-fit-max="34">Time</div><div class="datum-value" data-field="clock.value" data-live="time" data-readonly="live" data-fit="single" data-fit-min="30" data-fit-max="38" data-fit-max-port="36">8:42 PM</div></div>
+          <div class="datum" data-qa-stack="weather"><div class="datum-label" data-field="weather.label" data-fit="single" data-fit-min="30" data-fit-max="34">Weather</div><div class="datum-value" data-field="weather.value" data-live="weather" data-readonly="live" data-fit="single" data-fit-min="30" data-fit-max="38" data-fit-max-port="36">61° · Clear</div></div>
+        </div>
+      </header>
+      <section class="main" data-qa-flow="main">
+        <article class="story" data-widget="headline" data-qa-flow="headline-story">
+          <div class="kicker" data-field="headline.kicker" data-fit="single" data-fit-min="30" data-fit-max="36">Halloween / Special Edition</div>
+          <h1 class="headline" data-fit="box" data-fit-min="76" data-fit-max="140" data-fit-max-port="136" data-fit-height="260" data-fit-height-port="150"><span data-field="headline.line1">After</span><span class="second" data-field="headline.line2">Dark</span></h1>
+          <div class="dek" data-field="headline.summary" data-fit="box" data-fit-min="30" data-fit-max="40" data-fit-height="92" data-fit-height-port="82">Costume showcase, courtyard film, and a student band finale.</div>
+          <div class="countdown" data-widget="countdown" data-qa-boundary="countdown-rule"><div class="count-value" data-field="countdown.value" data-readonly="live" data-fit="single" data-fit-min="60" data-fit-max="88">3</div><div class="count-label" data-field="countdown.label" data-fit="box" data-fit-min="30" data-fit-max="35" data-fit-height="86">school days to October 31</div></div>
+        </article>
+        <article class="photo-desk" data-widget="photo-desk" data-qa-boundary="photo-desk">
+          <div class="photo-back" aria-hidden="true"></div><div class="hero-media" data-imgslot="hero.media" data-img="/templates/school/campus-pulse/assets/campus-pulse-hs-students-v1.jpg"><div class="photo-placeholder" data-field="media.placeholder" data-fit="box" data-fit-min="30" data-fit-max="64" data-fit-height="180">Student Life Photo</div></div>
+          <div class="photo-tag" data-field="media.section" data-fit="single" data-fit-min="30" data-fit-max="34">Student Photo Desk</div>
+          <div class="photo-caption"><div class="caption-title" data-field="media.caption" data-fit="box" data-fit-min="30" data-fit-max="44" data-fit-height="92">Northgate students set the scene for Friday night.</div><div class="caption-credit" data-field="media.credit" data-fit="box" data-fit-min="30" data-fit-max="34" data-fit-height="80">Photo: Student Media</div></div>
+          <div class="folio"><div class="folio-value" data-field="publication.page" data-fit="single" data-fit-min="30" data-fit-max="56" data-fit-max-port="52">31</div></div>
+        </article>
+      </section>
+      <section class="events" data-widget="events" data-qa-flow="events" data-qa-boundary="event-columns">
+        <article class="event" data-widget="event.1"><div class="event-number" data-field="event.1.number" data-fit="single" data-fit-min="30" data-fit-max="64">01</div><div class="event-copy" data-qa-stack="event-1-copy"><div class="event-title" data-field="event.1.title" data-fit="single" data-fit-min="30" data-fit-max="46" data-fit-max-port="48">Costume Showcase</div><div class="event-meta" data-field="event.1.meta" data-fit="single" data-fit-min="30" data-fit-max="34" data-fit-max-port="36">Friday · Quad · Lunch</div></div></article>
+        <article class="event" data-widget="event.2"><div class="event-number" data-field="event.2.number" data-fit="single" data-fit-min="30" data-fit-max="64">02</div><div class="event-copy" data-qa-stack="event-2-copy"><div class="event-title" data-field="event.2.title" data-fit="single" data-fit-min="30" data-fit-max="46" data-fit-max-port="48">Night Market</div><div class="event-meta" data-field="event.2.meta" data-fit="single" data-fit-min="30" data-fit-max="34" data-fit-max-port="36">Clubs · 5:30 PM</div></div></article>
+        <article class="event" data-widget="event.3"><div class="event-number" data-field="event.3.number" data-fit="single" data-fit-min="30" data-fit-max="64">03</div><div class="event-copy" data-qa-stack="event-3-copy"><div class="event-title" data-field="event.3.title" data-fit="single" data-fit-min="30" data-fit-max="46" data-fit-max-port="48">Courtyard Cinema</div><div class="event-meta" data-field="event.3.meta" data-fit="single" data-fit-min="30" data-fit-max="34" data-fit-max-port="36">Gates open · 7:00 PM</div></div></article>
+      </section>
+      <footer class="footer" data-widget="note" data-field="note.text" data-fit="box" data-fit-min="30" data-fit-max="36" data-fit-max-port="38" data-fit-height="64" data-fit-height-port="96" data-qa-boundary="footer-note">School-safe costumes only · Faces visible · No prop weapons · Student ID required after 5 PM</footer>
+    </div>
+  </main></div></div>
+  <script>(function(){var root=document.documentElement,stage=document.getElementById('stage');function fit(){var s=getComputedStyle(root),w=parseFloat(s.getPropertyValue('--stage-w')),h=parseFloat(s.getPropertyValue('--stage-h'));root.style.setProperty('--stage-scale',Math.min(innerWidth/w,innerHeight/h))}function orient(){var q=new URLSearchParams(location.search),p=q.get('o')==='portrait'||(!q.get('o')&&innerHeight>innerWidth);root.style.setProperty('--stage-w',p?'1080px':'1920px');root.style.setProperty('--stage-h',p?'1920px':'1080px');stage.dataset.orient=p?'port':'land';fit()}orient();addEventListener('resize',orient);if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fit)})();</script>
+  <script src="_holiday-runtime.js?v=20260821-1"></script>
+  <script src="_style-bridge.js?v=20260821-style-3"></script>
+</body>
+</html>

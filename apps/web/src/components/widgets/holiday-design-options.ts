@@ -41,6 +41,11 @@ export const HOLIDAY_DESIGN_OPTIONS: Readonly<Record<string, readonly HolidayDes
     { key: 'spirit-zine', label: 'Spirit Zine', file: 'ms-halloween-spirit-zine' },
     { key: 'midnight-broadcast', label: 'Midnight Broadcast', file: 'ms-halloween-midnight-broadcast' },
   ],
+  'hs-halloween': [
+    { key: 'fright-night-cinema', label: 'Fright Night Cinema', file: 'hs-halloween-fright-night-cinema' },
+    { key: 'midnight-gallery', label: 'Midnight Gallery', file: 'hs-halloween-midnight-gallery' },
+    { key: 'editorial-after-dark', label: 'Editorial After Dark', file: 'hs-halloween-editorial-after-dark' },
+  ],
 };
 
 export function holidayDesignsFor(

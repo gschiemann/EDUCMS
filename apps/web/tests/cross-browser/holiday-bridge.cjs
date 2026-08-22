@@ -57,6 +57,7 @@ const TEMPLATES = [
   // bridge contract as every board above, so they get the same coverage.
   'es-halloween-moonlight', 'es-halloween-parade', 'es-halloween-storybook',
   'ms-halloween-neon-circuit', 'ms-halloween-spirit-zine', 'ms-halloween-midnight-broadcast',
+  'hs-halloween-fright-night-cinema', 'hs-halloween-midnight-gallery', 'hs-halloween-editorial-after-dark',
 ];
 const REPORT_TARGETS = [...TEMPLATES, 'sandbox-null-origin'];
 

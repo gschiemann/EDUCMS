@@ -1,0 +1,121 @@
+<!doctype html>
+<!-- APPROVED 2026-08-21 — operator: "the halloween templates are done, add all 3 options"
+     (elementary) and "middle school halloween done, add these 3 as well".
+     Byte-faithful port of the reviewed candidate. Fixed 1920x1080 with an authored
+     portrait state (?o=portrait). DO NOT regress to viewport-relative scene units. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>High School Halloween — Fright Night Cinema</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@600;700&family=Oswald:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --stage-w:1920px;--stage-h:1080px;--stage-scale:1;
+      --night:#09090d;--velvet:#7b1422;--velvet-dark:#33070d;--paper:#f1dfbd;
+      --gold:#f3ba54;--gold-light:#ffe1a0;--ink:#151116;--white:#fff8e9;--smoke:#b9ac9a;
+      --display:'Bebas Neue',sans-serif;--body:'DM Sans',sans-serif;--condensed:'Oswald',sans-serif;
+    }
+    *{box-sizing:border-box}
+    html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#030305;color:var(--white);font-family:var(--body)}
+    .viewport{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;overflow:hidden}
+    .stage-outer{width:calc(var(--stage-w)*var(--stage-scale));height:calc(var(--stage-h)*var(--stage-scale))}
+    .stage{position:relative;width:var(--stage-w);height:var(--stage-h);overflow:hidden;transform:scale(var(--stage-scale));transform-origin:0 0;background:radial-gradient(circle at 53% 38%,#33221b 0,rgba(51,34,27,.28) 27%,transparent 52%),linear-gradient(145deg,var(--velvet-dark),var(--night) 46%,#050507)}
+    .background-image{position:absolute;top:0;right:0;bottom:0;left:0;z-index:0;background-size:cover;background-position:center;opacity:.13;filter:saturate(.65) contrast(1.15)}
+    .background-image.has-img{opacity:.28}
+    .grain{position:absolute;top:0;right:0;bottom:0;left:0;z-index:1;pointer-events:none;opacity:.28;background-image:repeating-radial-gradient(circle at 30% 20%,rgba(255,255,255,.09) 0 1px,transparent 1px 5px);background-size:9px 9px;mix-blend-mode:overlay}
+    .film-edge{position:absolute;left:0;right:0;height:23px;z-index:2;background-color:var(--night);background-image:repeating-linear-gradient(90deg,transparent 0 28px,var(--gold) 28px 64px,transparent 64px 92px)}
+    .film-edge.top{top:0}.film-edge.bottom{bottom:0}
+    .projector-beam{position:absolute;z-index:1;right:-160px;top:150px;width:1160px;height:650px;background:linear-gradient(100deg,transparent,rgba(255,225,160,.10));clip-path:polygon(100% 0,0 42%,0 58%,100% 100%)}
+    .scene{position:relative;z-index:3;width:100%;height:100%;display:grid;grid-template-rows:110px minmax(0,1fr) 214px 78px;gap:18px;padding:28px 42px 22px}
+    .scene>*{min-width:0;max-width:100%}
+    .mast{display:flex;align-items:center;justify-content:space-between;gap:34px;min-width:0;border-bottom:4px solid var(--gold)}
+    .identity{display:flex;align-items:center;gap:20px;min-width:0}
+    .logo{position:relative;width:92px;height:92px;flex:0 0 92px;display:grid;place-items:center;background:var(--gold);background-size:cover;background-position:center;color:var(--ink);clip-path:polygon(0 16px,20px 0,100% 0,100% calc(100% - 16px),calc(100% - 20px) 100%,0 100%);font:700 42px/1 var(--condensed);box-shadow:10px 8px 0 var(--velvet)}
+    .logo.has-img .logo-fallback{display:none}
+    .school-copy{min-width:0;display:flex;align-items:baseline;gap:16px;white-space:nowrap}
+    .school-name{font:400 54px/.95 var(--display);letter-spacing:1px;color:var(--white)}
+    .school-type{font:700 34px/1 var(--condensed);letter-spacing:2px;text-transform:uppercase;color:var(--gold)}
+    .status{display:grid;grid-template-columns:repeat(3,250px);gap:10px;flex:0 0 auto}
+    .status-piece{position:relative;min-width:0;height:90px;padding:8px 18px 8px 24px;color:var(--ink);background:var(--paper);clip-path:polygon(14px 0,100% 0,calc(100% - 14px) 100%,0 100%)}
+    .status-piece:nth-child(2){background:var(--gold)}.status-piece:nth-child(3){background:var(--gold-light)}
+    .status-label{display:block;font:700 34px/.85 var(--condensed);text-transform:uppercase;color:var(--velvet);letter-spacing:1px}
+    .status-value{display:block;margin-top:4px;font:700 34px/1 var(--body);white-space:nowrap}
+    .core{display:grid;grid-template-columns:minmax(0,1050px) minmax(0,1fr);gap:44px;min-height:0}
+    .feature{position:relative;min-width:0;min-height:0;padding:28px;background-color:var(--gold);background-image:radial-gradient(circle,var(--night) 0 6px,transparent 7px);background-size:34px 34px;background-position:0 0;clip-path:polygon(24px 0,calc(100% - 24px) 0,100% 24px,100% calc(100% - 24px),calc(100% - 24px) 100%,24px 100%,0 calc(100% - 24px),0 24px);filter:drop-shadow(17px 15px 0 rgba(0,0,0,.46))}
+    .hero-media{position:absolute;top:34px;right:34px;bottom:34px;left:34px;background-color:#211218;background-image:linear-gradient(180deg,rgba(0,0,0,.04),rgba(0,0,0,.84));background-size:cover;background-position:center;overflow:hidden;clip-path:polygon(18px 0,calc(100% - 18px) 0,100% 18px,100% calc(100% - 18px),calc(100% - 18px) 100%,18px 100%,0 calc(100% - 18px),0 18px)}
+    .hero-media::after{content:'';position:absolute;top:0;right:0;bottom:0;left:0;z-index:2;background:linear-gradient(180deg,rgba(9,9,13,.14) 42%,rgba(9,9,13,.88) 100%)}
+    .curtain{position:absolute;top:0;right:0;bottom:0;left:0;z-index:1;background:linear-gradient(105deg,var(--velvet-dark),var(--velvet) 14%,var(--velvet-dark) 28%,var(--velvet) 42%,var(--velvet-dark) 55%,var(--velvet) 72%,var(--velvet-dark) 88%);clip-path:polygon(0 0,100% 0,86% 22%,74% 8%,60% 26%,50% 10%,38% 28%,25% 9%,12% 24%)}
+    .hero-media.has-img .curtain{opacity:.28}
+    .projector-mark{position:absolute;z-index:1;left:50%;top:46%;width:210px;height:210px;transform:translate(-50%,-50%);border:13px solid rgba(243,186,84,.58);border-radius:50%}
+    .projector-mark::before{content:'';position:absolute;left:73px;top:48px;border-left:70px solid rgba(243,186,84,.72);border-top:48px solid transparent;border-bottom:48px solid transparent}
+    .hero-media.has-img .projector-mark{display:none}
+    .media-badge{position:absolute;z-index:4;left:58px;top:56px;max-width:640px;padding:10px 28px;background:var(--paper);color:var(--ink);clip-path:polygon(0 0,calc(100% - 20px) 0,100% 50%,calc(100% - 20px) 100%,0 100%,14px 50%);font:700 34px/1 var(--condensed);letter-spacing:2px;text-transform:uppercase}
+    .media-caption{position:absolute;z-index:4;left:64px;right:64px;bottom:54px;padding:12px 20px 10px;border-top:4px solid var(--gold);border-bottom:4px solid var(--gold);background:rgba(9,9,13,.72);font:400 44px/.98 var(--display);letter-spacing:1px;text-align:center;text-transform:uppercase}
+    .billing{display:grid;grid-template-rows:auto auto auto minmax(112px,1fr);align-content:center;min-width:0;padding:10px 0 4px}
+    .eyebrow{font:700 35px/1 var(--condensed);color:var(--gold);letter-spacing:3px;text-transform:uppercase}
+    .headline{display:flex;flex-direction:column;gap:4px;margin:8px 0 14px;font:400 104px/.9 var(--display);letter-spacing:2px;text-transform:uppercase}
+    .headline span:first-child{color:var(--white)}.headline span:last-child{color:var(--gold);text-shadow:8px 7px 0 var(--velvet)}
+    .summary{max-width:720px;font:700 38px/1.08 var(--body);color:var(--smoke);letter-spacing:-.6px}
+    .count-ticket{align-self:end;display:grid;grid-template-columns:148px minmax(0,1fr);align-items:center;min-width:0;min-height:112px;margin-top:14px;background:var(--paper);color:var(--ink);clip-path:polygon(18px 0,100% 0,calc(100% - 18px) 100%,0 100%,0 18px)}
+    .count-value{display:grid;place-items:center;height:78px;border-right:5px dashed var(--velvet);font:400 82px/.9 var(--display);color:var(--velvet)}
+    .count-copy{padding:8px 24px;font:700 34px/.98 var(--condensed);letter-spacing:1px;text-transform:uppercase}
+    .events{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;min-height:0}
+    .event{position:relative;display:grid;grid-template-columns:86px minmax(0,1fr);align-items:center;gap:18px;min-width:0;padding:22px 42px 20px 26px;background:var(--paper);color:var(--ink);clip-path:polygon(16px 0,calc(100% - 16px) 0,100% 16px,100% calc(50% - 12px),calc(100% - 12px) 50%,100% calc(50% + 12px),100% calc(100% - 16px),calc(100% - 16px) 100%,16px 100%,0 calc(100% - 16px),0 calc(50% + 12px),12px 50%,0 calc(50% - 12px),0 16px)}
+    .event:nth-child(2){background:var(--gold-light)}.event:nth-child(3){background:var(--gold)}
+    .event::after{content:'';position:absolute;top:18px;bottom:18px;left:110px;border-left:4px dashed var(--velvet)}
+    .event-number{font:400 66px/.9 var(--display);color:var(--velvet);text-align:center}
+    .event-copy{min-width:0;padding-left:8px}
+    .event-title{font:700 40px/.95 var(--condensed);text-transform:uppercase;letter-spacing:.5px}
+    .event-meta{margin-top:9px;font:700 34px/1 var(--body);color:var(--velvet-dark);letter-spacing:-.6px}
+    .footer{display:grid;grid-template-columns:200px minmax(0,1fr);align-items:center;min-width:0;background:var(--velvet);border-top:4px solid var(--gold);border-bottom:4px solid var(--gold);color:var(--white)}
+    .rating{display:grid;place-items:center;height:100%;border-right:4px solid var(--gold);font:400 40px/1 var(--display);letter-spacing:2px;text-transform:uppercase;color:var(--gold-light);white-space:nowrap}
+    .note{min-width:0;padding:8px 34px;font:700 34px/1 var(--condensed);letter-spacing:1px;text-align:center;text-transform:uppercase}
+
+    [data-orient="port"] .scene{grid-template-rows:220px 920px 520px 110px;gap:20px;padding:40px 42px}
+    [data-orient="port"] .mast{flex-direction:column;justify-content:flex-start;gap:18px;padding-bottom:14px}
+    [data-orient="port"] .identity{width:100%;justify-content:center}.stage[data-orient="port"] .logo{width:96px;height:96px;flex-basis:96px}.stage[data-orient="port"] .school-copy{gap:14px}.stage[data-orient="port"] .school-name{font-size:54px}.stage[data-orient="port"] .school-type{font-size:34px}
+    [data-orient="port"] .status{width:100%;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.stage[data-orient="port"] .status-piece{height:90px;padding:8px 11px 8px 18px}.stage[data-orient="port"] .status-label{font-size:34px}.stage[data-orient="port"] .status-value{font-size:34px}
+    [data-orient="port"] .core{grid-template-columns:minmax(0,1fr);grid-template-rows:500px 400px;gap:20px}
+    [data-orient="port"] .feature{padding:26px}.stage[data-orient="port"] .hero-media{top:32px;right:32px;bottom:32px;left:32px}.stage[data-orient="port"] .media-caption{left:54px;right:54px;bottom:48px;font-size:42px}.stage[data-orient="port"] .media-badge{left:54px;top:52px}
+    [data-orient="port"] .billing{grid-template-rows:auto auto auto minmax(100px,1fr);padding:0;text-align:center}.stage[data-orient="port"] .eyebrow{font-size:36px}.stage[data-orient="port"] .headline{font-size:82px;line-height:.9;gap:2px;margin:5px 0 8px}.stage[data-orient="port"] .summary{max-width:900px;margin:0 auto;font-size:36px;line-height:1.04}.stage[data-orient="port"] .count-ticket{width:100%;grid-template-columns:156px minmax(0,1fr);min-height:100px;margin-top:10px;text-align:left}.stage[data-orient="port"] .count-value{font-size:76px}.stage[data-orient="port"] .count-copy{font-size:34px}
+    [data-orient="port"] .events{grid-template-columns:minmax(0,1fr);grid-template-rows:repeat(3,minmax(0,1fr));gap:12px}.stage[data-orient="port"] .event{grid-template-columns:96px minmax(0,1fr);padding:10px 54px 10px 30px}.stage[data-orient="port"] .event::after{left:126px}.stage[data-orient="port"] .event-number{font-size:72px}.stage[data-orient="port"] .event-copy{padding-left:12px}.stage[data-orient="port"] .event-title{font-size:42px}.stage[data-orient="port"] .event-meta{font-size:34px;margin-top:5px}
+    [data-orient="port"] .footer{grid-template-columns:180px minmax(0,1fr)}.stage[data-orient="port"] .rating{font-size:40px}.stage[data-orient="port"] .note{font-size:34px;padding-inline:26px}
+    @media(prefers-reduced-motion:reduce){*{animation:none!important}}
+  </style>
+</head>
+<body>
+  <div class="viewport"><div class="stage-outer"><main class="stage" id="stage" data-orient="land" data-qa-min-font="34">
+    <div class="background-image" data-imgslot="background.image"></div><div class="grain" aria-hidden="true"></div><div class="film-edge top" aria-hidden="true"></div><div class="film-edge bottom" aria-hidden="true"></div><div class="projector-beam" aria-hidden="true"></div>
+    <div data-widget="theme" hidden>
+      <span data-field="theme.background" data-css-var="--night">#09090d</span><span data-field="theme.velvet" data-css-var="--velvet">#7b1422</span><span data-field="theme.velvetDark" data-css-var="--velvet-dark">#33070d</span><span data-field="theme.paper" data-css-var="--paper">#f1dfbd</span><span data-field="theme.gold" data-css-var="--gold">#f3ba54</span><span data-field="theme.goldLight" data-css-var="--gold-light">#ffe1a0</span><span data-field="theme.text" data-css-var="--white">#fff8e9</span><span data-field="theme.ink" data-css-var="--ink">#151116</span><span data-field="theme.muted" data-css-var="--smoke">#b9ac9a</span><span data-field="theme.displayFont" data-css-var="--display" data-css-font>Bebas Neue</span><span data-field="theme.bodyFont" data-css-var="--body" data-css-font>DM Sans</span><span data-field="theme.condensedFont" data-css-var="--condensed" data-css-font>Oswald</span><span data-field="countdown.target">10-31</span><span data-field="clock.timezone">America/Los_Angeles</span><span data-field="clock.hour12">true</span><span data-field="date.format">short</span>
+    </div>
+    <div class="scene" data-qa-flow="scene" data-qa-boundary="stage-safe-area">
+      <header class="mast" data-widget="masthead" data-qa-boundary="masthead">
+        <div class="identity"><div class="logo" data-imgslot="school.logo" data-qa-boundary="school-logo"><span class="logo-fallback" data-field="school.initials">FH</span></div><div class="school-copy"><span class="school-name" data-field="school.name" data-fit="single" data-fit-min="34" data-fit-max="54">Franklin</span><span class="school-type" data-field="school.type" data-fit="single" data-fit-min="34" data-fit-max="36">High School</span></div></div>
+        <div class="status" data-qa-boundary="date-time-weather"><div class="status-piece" data-qa-stack="date-status"><span class="status-label" data-field="date.label">Tonight</span><span class="status-value" data-field="date.value" data-live="date" data-readonly="live" data-fit="single" data-fit-min="30" data-fit-max="34">Fri · Oct 31</span></div><div class="status-piece" data-qa-stack="clock-status"><span class="status-label" data-field="clock.label">Doors</span><span class="status-value" data-field="clock.value" data-live="time" data-readonly="live" data-fit="single" data-fit-min="30" data-fit-max="34">7:00 PM</span></div><div class="status-piece" data-qa-stack="weather-status"><span class="status-label" data-field="weather.label">Outside</span><span class="status-value" data-field="weather.value" data-live="weather" data-fit="single" data-fit-min="30" data-fit-max="34">61° · Clear</span></div></div>
+      </header>
+      <section class="core" data-qa-flow="core">
+        <div class="feature" data-widget="hero" data-qa-boundary="marquee-frame"><div class="hero-media" data-imgslot="hero.media" data-media-accept="image/*,video/*"><div class="curtain" aria-hidden="true"></div><div class="projector-mark" aria-hidden="true"></div></div><div class="media-badge" data-field="media.badge" data-fit="single" data-fit-min="30" data-fit-max="34">Student Film Showcase</div><div class="media-caption" data-field="media.caption" data-fit="box" data-fit-min="30" data-fit-max="44" data-fit-height="94">Official student selection · 2026</div></div>
+        <div class="billing" data-widget="headline" data-qa-flow="billing">
+          <div class="eyebrow" data-field="headline.eyebrow" data-fit="single" data-fit-min="30" data-fit-max="35">One night only · October 31</div>
+          <h1 class="headline" data-fit="box" data-fit-min="68" data-fit-max="104" data-fit-max-port="82" data-fit-height="184" data-fit-height-port="142" data-qa-stack="headline-lines"><span data-field="headline.line1">Fright Night</span><span data-field="headline.line2">Cinema</span></h1>
+          <div class="summary" data-field="headline.summary" data-fit="box" data-fit-min="30" data-fit-max="38" data-fit-max-port="36" data-fit-height="90" data-fit-height-port="76">Student films, costume runway, and a school-safe feature under the marquee.</div>
+          <div class="count-ticket" data-widget="countdown" data-qa-boundary="admission-countdown"><div class="count-value" data-field="countdown.value" data-readonly="live" data-fit="single" data-fit-min="64" data-fit-max="82">3</div><div class="count-copy" data-field="countdown.label" data-fit="box" data-fit-min="30" data-fit-max="34" data-fit-height="76">school days until the premiere</div></div>
+        </div>
+      </section>
+      <section class="events" data-widget="events" data-qa-flow="events" data-qa-boundary="ticket-events">
+        <article class="event" data-widget="event.1" data-qa-boundary="ticket-1"><span class="event-number" data-field="event.1.number">01</span><div class="event-copy" data-qa-stack="event-1-copy"><div class="event-title" data-field="event.1.title" data-fit="box" data-fit-min="30" data-fit-max="40" data-fit-max-port="42" data-fit-height="82">Student Shorts</div><div class="event-meta" data-field="event.1.meta" data-fit="box" data-fit-min="30" data-fit-max="34" data-fit-height="74">Auditorium · 7:00 PM</div></div></article>
+        <article class="event" data-widget="event.2" data-qa-boundary="ticket-2"><span class="event-number" data-field="event.2.number">02</span><div class="event-copy" data-qa-stack="event-2-copy"><div class="event-title" data-field="event.2.title" data-fit="box" data-fit-min="30" data-fit-max="40" data-fit-max-port="42" data-fit-height="82">Costume Runway</div><div class="event-meta" data-field="event.2.meta" data-fit="box" data-fit-min="30" data-fit-max="34" data-fit-height="74">Main Stage · 7:45 PM</div></div></article>
+        <article class="event" data-widget="event.3" data-qa-boundary="ticket-3"><span class="event-number" data-field="event.3.number">03</span><div class="event-copy" data-qa-stack="event-3-copy"><div class="event-title" data-field="event.3.title" data-fit="box" data-fit-min="30" data-fit-max="40" data-fit-max-port="42" data-fit-height="82">Feature Screening</div><div class="event-meta" data-field="event.3.meta" data-fit="box" data-fit-min="30" data-fit-max="34" data-fit-height="74">Auditorium · 8:30 PM</div></div></article>
+      </section>
+      <footer class="footer" data-widget="note" data-qa-boundary="rating-note"><div class="rating" data-field="note.rating">All Ages</div><div class="note" data-field="note.text" data-fit="box" data-fit-min="30" data-fit-max="34" data-fit-height="62" data-fit-height-port="90">Costumes welcome · No face-covering masks or prop weapons</div></footer>
+    </div>
+  </main></div></div>
+  <script>(function(){var root=document.documentElement,stage=document.getElementById('stage');function fit(){var s=getComputedStyle(root),w=parseFloat(s.getPropertyValue('--stage-w')),h=parseFloat(s.getPropertyValue('--stage-h'));root.style.setProperty('--stage-scale',Math.min(innerWidth/w,innerHeight/h))}function orient(){var q=new URLSearchParams(location.search),p=q.get('o')==='portrait'||(!q.get('o')&&innerHeight>innerWidth);root.style.setProperty('--stage-w',p?'1080px':'1920px');root.style.setProperty('--stage-h',p?'1920px':'1080px');stage.dataset.orient=p?'port':'land';fit()}orient();addEventListener('resize',orient);if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fit)})();</script>
+  <script src="_holiday-runtime.js?v=20260821-1"></script>
+  <script src="_style-bridge.js?v=20260821-style-3"></script>
+</body>
+</html>

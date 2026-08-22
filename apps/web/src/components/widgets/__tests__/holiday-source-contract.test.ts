@@ -97,7 +97,7 @@ describe('holiday template source selection', () => {
     // Canonical, v2, flagship, and dedicated portrait boards all load the
     // same bridge. Keeping this inventory assertion explicit prevents a new
     // static board from silently shipping with a stale cached bridge URL.
-    expect(boardFiles).toHaveLength(55);
+    expect(boardFiles).toHaveLength(58);
     boardFiles.forEach(expectVersionedBridge);
   });
 });

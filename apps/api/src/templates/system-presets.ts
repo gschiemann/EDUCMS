@@ -1526,6 +1526,31 @@ const RAW_SYSTEM_PRESETS: SystemPreset[] = [
     screenWidth: 3840, screenHeight: 2160, bgColor: '#0a0a0a',
     zones: [{ name: 'Halloween Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'halloween', gradeLevel: 'hs' } }],
   },
+  // Three approved high-school Halloween designs (2026-08-21 design round).
+  {
+    id: 'preset-holiday-halloween-hs-fright-night-cinema',
+    name: '🎃 Halloween — High School · Fright Night Cinema',
+    description: 'Cinema-marquee Halloween board — feature billing, showtimes and a marquee bulb frame. Editable copy, three photo slots, authored portrait composition.',
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0a0712',
+    zones: [{ name: 'Halloween Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'halloween', gradeLevel: 'hs', design: 'fright-night-cinema' } }],
+  },
+  {
+    id: 'preset-holiday-halloween-hs-midnight-gallery',
+    name: '🎃 Halloween — High School · Midnight Gallery',
+    description: 'Gallery-wall Halloween board — framed student work, exhibit labels and a five-slot photo wall. Editable copy, five photo slots, authored portrait composition.',
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0c0a14',
+    zones: [{ name: 'Halloween Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'halloween', gradeLevel: 'hs', design: 'midnight-gallery' } }],
+  },
+  {
+    id: 'preset-holiday-halloween-hs-editorial-after-dark',
+    name: '🎃 Halloween — High School · Editorial After Dark',
+    description: 'Editorial Halloween board — magazine masthead, feature photo and a dark-mode story column. Editable copy, three photo slots, authored portrait composition.',
+    category: 'HOLIDAYS', orientation: 'LANDSCAPE', schoolLevel: 'HIGH',
+    screenWidth: 3840, screenHeight: 2160, bgColor: '#0b0b12',
+    zones: [{ name: 'Halloween Scene', widgetType: 'HOLIDAY', x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 0, defaultConfig: { variant: 'halloween', gradeLevel: 'hs', design: 'editorial-after-dark' } }],
+  },
 
   // ─── Thanksgiving (November) ─────────────────────────────────────
   {
