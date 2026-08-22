@@ -6,9 +6,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@500;700;800&family=League+Spartan:wght@700;800;900&display=swap" rel="stylesheet">
 <style>
   /* engineering seam — canonical brand tokens (identical values; lets brand overrides reach this design) */
-  :root{--text:#11243a;--font-display:'League Spartan',sans-serif;--font-body:'DM Sans',sans-serif;--surface:#f5f0e6;--primary:#f15e4a;--secondary:#ffc83d;--accent:#1684c7;--accent2:#d9e7e8;}
+  :root{--text:#11243a;--surface:#f5f0e6;--primary:#f15e4a;--secondary:#ffc83d;--accent:#1684c7;--accent2:#d9e7e8;}
 
-  :root{--paper:var(--surface);--ink:var(--text);--coral:var(--primary);--sun:var(--secondary);--blue:var(--accent);--soft:var(--accent2);--font-display:var(--font-display);--font-body:var(--font-body)}
+  :root{--paper:var(--surface);--ink:var(--text);--coral:var(--primary);--sun:var(--secondary);--blue:var(--accent);--soft:var(--accent2);--font-display:'League Spartan',sans-serif;--font-body:'DM Sans',sans-serif}
   *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#09131f}#stage{position:absolute;width:1920px;height:1080px;overflow:hidden;transform-origin:top left;background:var(--paper);color:var(--ink);font-family:var(--font-body)}
   .top{position:absolute;left:0;top:0;width:1920px;height:132px;border-bottom:5px solid var(--ink);display:flex;align-items:center;padding:0 58px;gap:24px}.mark{width:78px;height:78px;background:var(--ink);color:var(--sun);display:grid;place-items:center;font:900 29px var(--font-display)}.school{font:800 30px var(--font-body)}.series{margin-top:4px;font:800 20px var(--font-body);letter-spacing:.13em;text-transform:uppercase;color:#536576}.edition{margin-left:auto;text-align:right}.edition .eyebrow{font:800 20px var(--font-body);letter-spacing:.14em;text-transform:uppercase;color:#536576}.edition .date{margin-top:4px;font:900 34px var(--font-display)}
   .stripe{position:absolute;left:0;top:132px;width:1920px;height:22px;background:linear-gradient(90deg,var(--coral) 0 32%,var(--sun) 32% 61%,var(--blue) 61%)}

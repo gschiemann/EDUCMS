@@ -37,16 +37,12 @@ const OTHERS = [
 ];
 const ALL = [...BELL, ...OTHERS];
 
-// KNOWN DESIGN DEFECT — reported to the design owner, not worked around here.
-//
-// hs/achievement-victory-wall PORTRAIT: the "The Scoreboard" panel heading
-// overruns its cyan panel and is painted over by the adjacent navy panel, so
-// the word reads as "THE SCOREBO…" (verified by screenshot at 1080x1920, and
-// by a 34x39px painted-glyph overlap with awards.1.number). The LANDSCAPE
-// composition — the only orientation this board ships a preset for — is
-// clean, so the board ships and the portrait fix belongs to whoever owns the
-// composition. Remove this entry the moment that heading fits its panel.
-const KNOWN_DEFECTS = new Set(['hs/achievement-victory-wall|portrait']);
+// No known defects. (An entry here would name a board+orientation whose
+// design owner still owes a fix; it is a disclosure, never a way to quiet a
+// gate. 2026-08-21: the one entry that briefly lived here turned out to be a
+// self-referential CSS variable in the port — MY bug, not the design's — so
+// it was fixed at the source rather than excused.)
+const KNOWN_DEFECTS = new Set();
 
 const BRAND = {
   background: '#0d2137', surface: '#fdf8ec', text: '#f2f7fb', muted: '#9fb4c6',

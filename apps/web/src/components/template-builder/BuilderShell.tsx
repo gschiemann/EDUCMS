@@ -57,6 +57,7 @@ import { readDraft, clearDraft, isDraftNewer, createAutosaveScheduler, formatDra
 // E3 (CRUSH Wave E, 2026-07-03) — "Put on a screen" express lane, shared
 // with the gallery's GalleryCard action (see lib/put-on-screen.ts).
 import { usePutOnScreen } from '@/lib/put-on-screen';
+import { mergeHolidayTextStyleMaps } from '@/components/widgets/holiday-style-contract';
 import type { Template, Zone } from './types';
 
 interface Props {
@@ -1507,7 +1508,13 @@ function BuilderBottomBar() {
   // animated widgets, etc.) gets the per-field path.
   const supportsPerFieldStyles = !!selectedZone && !isImage && !isTextStyle && !isSportEl;
   const isPerFieldText = supportsPerFieldStyles && !!activeFieldName;
-  const fieldStyles = (cfg._styles && typeof cfg._styles === 'object' ? cfg._styles : {}) as Record<string, any>;
+  const canonicalFieldStyles = (cfg._styles && typeof cfg._styles === 'object' ? cfg._styles : {}) as Record<string, any>;
+  // HOLIDAY briefly shipped a private `__styles` map. Read it into the
+  // toolbar so existing saved templates show their real values, then migrate
+  // the full merged map atomically on the first edit/reset below.
+  const fieldStyles = wt === 'HOLIDAY'
+    ? mergeHolidayTextStyleMaps(cfg.__styles, canonicalFieldStyles) as Record<string, any>
+    : canonicalFieldStyles;
   const curFieldStyle = (activeFieldName && fieldStyles[activeFieldName]) || {};
   const setFieldStyleProp = (prop: string, value: number | string | boolean | undefined) => {
     if (!selectedZone || !activeFieldName) return;
@@ -1523,7 +1530,9 @@ function BuilderBottomBar() {
     } else {
       nextStyles[activeFieldName] = existing;
     }
-    setCfg({ _styles: nextStyles });
+    setCfg(wt === 'HOLIDAY'
+      ? { _styles: nextStyles, __styles: {} }
+      : { _styles: nextStyles });
   };
   // Read the rendered px on the focused field so the size stepper
   // anchors on the design value (280, 180, etc.) instead of falling
@@ -1776,7 +1785,9 @@ function BuilderBottomBar() {
                   if (!activeFieldName) return;
                   const next = { ...fieldStyles };
                   delete next[activeFieldName];
-                  setCfg({ _styles: next });
+                  setCfg(wt === 'HOLIDAY'
+                    ? { _styles: next, __styles: {} }
+                    : { _styles: next });
                 },
                 <span className="text-[10px] font-bold">↺</span>,
                 true,

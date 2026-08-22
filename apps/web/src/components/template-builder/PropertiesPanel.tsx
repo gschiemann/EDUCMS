@@ -150,6 +150,7 @@ import {
   type HolidayVariant,
   type HolidayGradeLevel,
 } from '@/components/widgets/HolidayWidget';
+import { mergeHolidayTextStyleMaps } from '@/components/widgets/holiday-style-contract';
 
 // v2 widget pack — lookup by the kebab variant id stored in
 // `cfg.variant` (e.g. 'cel-football-touchdown', 'scoreboard-hs').
@@ -4176,6 +4177,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         ['ms', 'Middle School'],
         ['hs', 'High School'],
       ];
+      const holidayStyles = mergeHolidayTextStyleMaps(cfg.__styles, cfg._styles);
       fields.push(
         <SelectField
           key="variant"
@@ -4213,8 +4215,11 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
             const next = { ...(cfg.fields || {}), [key]: value };
             setField({ fields: next });
           }}
-          styles={cfg.__styles as FieldStyleMap | undefined}
-          onStylesChange={(s) => setField({ __styles: s })}
+          styles={holidayStyles as FieldStyleMap}
+          // StyleableField now targets the app-wide `_styles` transport.
+          // Clearing the legacy map here makes a future direct caller migrate
+          // atomically instead of letting an old value reappear underneath.
+          onStylesChange={(s) => setField({ _styles: s, __styles: {} })}
         />,
       );
       break;
@@ -6785,8 +6790,14 @@ type FieldStyleProp =
   | 'textDecoration'
   | 'fontFamily'
   | 'lineHeight'
+  | 'textAlign'
   | 'backgroundColor'
-  | 'hidden';
+  | 'hidden'
+  | 'visibility'
+  | 'bold'
+  | 'italic'
+  | 'underline'
+  | 'strikethrough';
 type FieldStyle = {
   fontSize?: number;
   color?: string;
@@ -6795,7 +6806,13 @@ type FieldStyle = {
   textDecoration?: 'underline' | 'line-through' | 'underline line-through' | 'none';
   fontFamily?: string;
   lineHeight?: number;
+  textAlign?: 'left' | 'center' | 'right' | 'justify';
   backgroundColor?: string;
+  visibility?: 'visible' | 'hidden';
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
   /** EXTERNAL_HTML boards only — `true` hides the element (`display:none`
    *  via the packaged-board shim); `false`/absent shows it. See E6 note above. */
   hidden?: boolean;
@@ -6812,11 +6829,11 @@ function updateFieldStyleMap(
   styles: FieldStyleMap | undefined,
   fieldName: string,
   prop: FieldStyleProp,
-  value: number | string | undefined,
+  value: number | string | boolean | undefined,
 ): FieldStyleMap {
   const existing = styles || {};
   const current = { ...(existing[fieldName] || {}) };
-  if (value === undefined || value === '' || (typeof value === 'number' && !Number.isFinite(value))) {
+  if (value === undefined || value === '' || value === false || (typeof value === 'number' && !Number.isFinite(value))) {
     delete current[prop];
   } else {
     (current as any)[prop] = value;

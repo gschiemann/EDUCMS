@@ -29,6 +29,10 @@
 
 import { useEffect, useMemo, useRef } from 'react';
 import { useBuilderStore } from '@/components/template-builder/useBuilderStore';
+import {
+  mergeHolidayTextStyleMaps,
+  type HolidayTextStyleMap,
+} from './holiday-style-contract';
 
 /**
  * targetOrigin for every parent -> board postMessage.
@@ -69,15 +73,13 @@ export interface HolidayConfig {
    * the iframe via postMessage on every change.
    */
   fields?: Record<string, string>;
+  /** Canonical per-field style map written by BuilderBottomBar. */
+  _styles?: HolidayTextStyleMap;
   /**
-   * Per-field style overrides (fontSize / color / fontWeight) keyed
-   * by the iframe's data-field attribute. Forwarded to the iframe
-   * via postMessage; applied as inline styles by _style-bridge.js
-   * inside each holiday HTML. Cleared values fall back to the CSS
-   * class default. Mirrors the HS widget per-element style override
-   * mechanism (useTextStyleOverrides) on the iframe side.
+   * Legacy holiday-only style map. Read and merged for backwards
+   * compatibility; the next field-style edit migrates it to `_styles`.
    */
-  __styles?: Record<string, { fontSize?: number; color?: string; fontWeight?: number }>;
+  __styles?: HolidayTextStyleMap;
 }
 
 /**
@@ -156,7 +158,13 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
   const gradeLevel: HolidayGradeLevel = config.gradeLevel || 'es';
   const portrait: boolean = !!config.portrait;
   const fields = config.fields || {};
-  const styleOverrides = config.__styles;
+  // `_styles` is the app-wide canonical transport. Keep reading the original
+  // holiday `__styles` key so templates saved before the toolbar migration
+  // render exactly as they did; canonical values win property-by-property.
+  const styleOverrides = useMemo(
+    () => mergeHolidayTextStyleMaps(config.__styles, config._styles),
+    [config.__styles, config._styles],
+  );
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
@@ -241,7 +249,7 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
         // weight). Posted to _style-bridge.js inside each holiday HTML.
         try {
           iframeRef.current?.contentWindow?.postMessage(
-            { type: 'template-apply-styles', styles: config.__styles || {} },
+            { type: 'template-apply-styles', styles: styleOverrides },
             HOLIDAY_FRAME_TARGET_ORIGIN,
           );
         } catch { /* swallow */ }
@@ -286,7 +294,7 @@ export function HolidayWidget({ config }: { config: HolidayConfig }) {
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [config.fields, config.__styles]);
+  }, [config.fields, styleOverrides]);
 
   // ── Push field updates DOWN to the iframe whenever they change.
   // We do this in an effect (not on the iframe element) so even the
