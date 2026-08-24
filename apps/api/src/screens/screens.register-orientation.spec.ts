@@ -25,6 +25,7 @@
  */
 
 import { ScreensController, resolveManifestOrientation } from './screens.controller';
+import { detectHardwareModel } from './hardware-detect';
 
 jest.mock('../security/required-secret', () => ({
   requireSecret: (_name: string, opts?: { devFallback?: string }) =>
@@ -199,5 +200,49 @@ describe('resolveManifestOrientation — makes AUTO mean auto-detect', () => {
   it('is case-insensitive on the stored column', () => {
     expect(resolveManifestOrientation('auto', '2160×3840')).toBe('PORTRAIT');
     expect(resolveManifestOrientation('portrait', '1920×1080')).toBe('PORTRAIT');
+  });
+});
+
+/**
+ * ⭐ THE CHASSIS BEATS THE FRAMEBUFFER.
+ *
+ * A MAXHUB L55VEC is a floor-standing PORTRAIT KIOSK — it physically cannot be
+ * mounted landscape. It nonetheless reports a 3840×2160 LANDSCAPE framebuffer,
+ * so every resolution-based rule gets it exactly backwards, and an operator was
+ * forced to set portrait by hand on a unit that is only ever portrait. Real UA
+ * from the operator's own unit:
+ *
+ *   Mozilla/5.0 (Linux; Android 13; L55VEC Build/TQ2A.230405.003.E1; wv) …
+ *
+ * The MODEL is the signal the panel isn't. These pin that, and pin the limit:
+ * only hardware that genuinely cannot be rotated carries `nativeOrientation`,
+ * so a panel an operator MIGHT hang either way is never overridden.
+ */
+describe('fixed-orientation chassis outranks the reported framebuffer', () => {
+  const L55VEC_UA =
+    'Mozilla/5.0 (Linux; Android 13; L55VEC Build/TQ2A.230405.003.E1; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/101.0.4951.61 Safari/537.36 EduCmsPlayer/1.1.2 (Android 13)';
+
+  it('detects the L55VEC from its real user-agent', () => {
+    expect(detectHardwareModel({ userAgent: L55VEC_UA, osInfo: 'Android' })).toBe('maxhub-l55vec');
+  });
+
+  it('AUTO resolves to PORTRAIT despite a LANDSCAPE framebuffer', () => {
+    // Without the chassis lookup this returns LANDSCAPE — the exact bug.
+    expect(resolveManifestOrientation('AUTO', '3840×2160', 'maxhub-l55vec')).toBe('PORTRAIT');
+  });
+
+  it('still falls back to the framebuffer for hardware with no fixed orientation', () => {
+    expect(resolveManifestOrientation('AUTO', '2160×3840', 'generic-android')).toBe('PORTRAIT');
+    expect(resolveManifestOrientation('AUTO', '3840×2160', 'generic-android')).toBe('LANDSCAPE');
+    expect(resolveManifestOrientation('AUTO', '3840×2160', null)).toBe('LANDSCAPE');
+  });
+
+  it('NEVER overrides an explicit operator choice, not even on a fixed chassis', () => {
+    // If someone genuinely wants this kiosk driven landscape, they win.
+    expect(resolveManifestOrientation('LANDSCAPE', '3840×2160', 'maxhub-l55vec')).toBe('LANDSCAPE');
+  });
+
+  it('an unknown model id degrades to the framebuffer rule instead of throwing', () => {
+    expect(resolveManifestOrientation('AUTO', '2160×3840', 'not-a-real-model')).toBe('PORTRAIT');
   });
 });

@@ -94,6 +94,26 @@ export const HARDWARE_PRESENTATIONS: Record<HardwareModel, HardwarePresentation>
     ],
     chromium83: false,
   },
+  'maxhub-l55vec': {
+    id: 'maxhub-l55vec',
+    name: 'MAXHUB L55VEC portrait kiosk',
+    manufacturer: 'MAXHUB',
+    blurb:
+      'Floor-standing 55" portrait kiosk. Fixed-orientation chassis — VenueOS sets it portrait automatically on pair, because the panel itself reports landscape and cannot be trusted to say which way up it is.',
+    highlights: [
+      'Portrait orientation applied automatically — no setup question',
+      'Amlogic T982 · Android 13 · Chromium 101',
+      '3840x2160 panel',
+    ],
+    orderHref: null,
+    approxPriceUsd: null,
+    hasWiringPanel: false,
+    caveats: [
+      'Reports a 3840x2160 LANDSCAPE framebuffer despite being a portrait-only chassis — orientation comes from the model, never the reported resolution',
+      'I/O and memory figures in HARDWARE_CATALOG are conservative defaults, not vendor-datasheet values',
+    ],
+    chromium83: false,
+  },
   'novastar-taurus': {
     id: 'novastar-taurus',
     name: 'NovaStar Taurus T6 / T6N',

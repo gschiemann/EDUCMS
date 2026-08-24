@@ -34,6 +34,7 @@ export type HardwareModel =
   | 'goodview-ep6n'
   | 'goodview-ecbox3576'
   | 'novastar-taurus'
+  | 'maxhub-l55vec'
   | 'pi5'
   | 'generic-android'
   | 'web'
@@ -44,6 +45,7 @@ export const HARDWARE_MODELS: readonly HardwareModel[] = [
   'goodview-ep6n',
   'goodview-ecbox3576',
   'novastar-taurus',
+  'maxhub-l55vec',
   'pi5',
   'generic-android',
   'web',
@@ -65,6 +67,26 @@ export interface HardwareCapabilities {
   socOs: string;
   /** Verticals this hardware is recommended for (informational). */
   recommendedVerticals: string[];
+  /**
+   * The orientation this chassis PHYSICALLY IS, when the product only exists
+   * one way up (a floor-standing kiosk / totem). Omitted for the normal case
+   * of a flat panel that can be hung either way.
+   *
+   * ⚠️ WHY THIS EXISTS (2026-08-24). Orientation cannot be read off the
+   * panel: a MAXHUB L55VEC kiosk reports a 3840×2160 LANDSCAPE framebuffer
+   * even though the product cannot be mounted landscape at all, while a
+   * Goodview M43GUQ hung portrait reports 2160×3840 because its ROM was
+   * configured for it. Same mounting, opposite readings, and no Android API
+   * distinguishes them — so an operator was forced to set portrait by hand on
+   * a unit that is only ever portrait.
+   *
+   * The MODEL is the signal the framebuffer isn't. When the chassis only
+   * exists one way up, that is a hardware fact we can assert without asking.
+   * Only set this for hardware that genuinely cannot be mounted the other
+   * way; a panel an operator MIGHT rotate must stay undeclared, or we would
+   * be overriding a real installation choice with a guess.
+   */
+  nativeOrientation?: 'PORTRAIT' | 'LANDSCAPE';
   /** Whether the device has each capability. */
   caps: {
     /** # of native RS232 ports on the device's I/O ring (not via USB-serial adapter). */
@@ -255,6 +277,42 @@ export const HARDWARE_CATALOG: Record<HardwareModel, HardwareCapabilities> = {
 
   // Source: generic Android stick / set-top box (the "no-name" tier).
   // Single HDMI out, no special I/O, modern Chromium via Play Services.
+  'maxhub-l55vec': {
+    name: 'MAXHUB L55VEC portrait kiosk',
+    productPageUrl: null,
+    socOs: 'Amlogic T982 (t982_ar301) · Android 13 · Chromium 101',
+    recommendedVerticals: ['RETAIL', 'QSR', 'CORPORATE'],
+    // ⭐ The whole point of this entry. A floor-standing kiosk chassis: it
+    // cannot be mounted landscape, yet it reports a 3840×2160 LANDSCAPE
+    // framebuffer, so every resolution-based guess gets it exactly wrong.
+    nativeOrientation: 'PORTRAIT',
+    caps: {
+      // SoC/OS/Chromium above are READ FROM A REAL UNIT (Build.* + UA of the
+      // operator's own L55VEC). The I/O and memory figures below are NOT —
+      // they are the conservative generic-Android defaults, deliberately not
+      // invented from a spec sheet nobody here has read. They gate optional
+      // UI only (serial panels, GPIO setup); understating them hides a panel
+      // rather than offering one the hardware cannot honour. Correct them
+      // from the vendor datasheet when someone has it in hand.
+      serialPorts: 0,
+      rs485: false,
+      gpioIn: 0,
+      gpioOut: 0,
+      hdmiIn: false,
+      hdmiOut: true,
+      rj45In: true,
+      rj45Out: false,
+      powerOutVolts: null,
+      npuTops: 0,
+      cpuCores: 4,
+      ramGb: 2,
+      storageGb: 16,
+      decode4k: true,
+      fanless: false,
+      duty247Rated: false,
+      chromiumMin: 101,
+    },
+  },
   'generic-android': {
     name: 'Generic Android player',
     productPageUrl: null,

@@ -173,10 +173,30 @@ export function parseReportedResolution(
 export function resolveManifestOrientation(
   orientation: string | null | undefined,
   resolution: string | null | undefined,
+  hardwareModel?: string | null,
 ): 'LANDSCAPE' | 'PORTRAIT' | 'AUTO' {
   const raw = typeof orientation === 'string' ? orientation.toUpperCase() : '';
   if (raw === 'LANDSCAPE' || raw === 'PORTRAIT') return raw;
   if (raw !== 'AUTO') return 'LANDSCAPE'; // null/empty/unknown → historical default
+
+  // ⭐ THE CHASSIS BEATS THE FRAMEBUFFER (2026-08-24).
+  //
+  // Some hardware only exists one way up. A MAXHUB L55VEC is a floor-standing
+  // portrait kiosk that CANNOT be mounted landscape — and it reports a
+  // 3840x2160 LANDSCAPE framebuffer, so the resolution check below gets it
+  // exactly backwards and an operator had to set portrait by hand on a unit
+  // that is only ever portrait.
+  //
+  // When the catalog says a chassis has a fixed orientation, that is a
+  // hardware fact and outranks anything the panel reports about itself. Only
+  // models that genuinely cannot be rotated carry `nativeOrientation`; a panel
+  // an operator MIGHT hang either way stays undeclared and falls through, so
+  // this can never override a real installation choice.
+  const native = hardwareModel
+    ? HARDWARE_CATALOG[hardwareModel as HardwareModel]?.nativeOrientation
+    : undefined;
+  if (native) return native;
+
   const dims = parseReportedResolution(resolution);
   if (!dims) return 'AUTO';
   return dims.h > dims.w ? 'PORTRAIT' : 'LANDSCAPE';
@@ -787,6 +807,17 @@ export class ScreensController {
     // absent resolution falls through to the column default untouched — an
     // operator can still override per-screen either way.
     const derivedOrientation = ((): 'PORTRAIT' | 'LANDSCAPE' | null => {
+      // ⭐ CHASSIS FIRST. A fixed-orientation product (the MAXHUB L55VEC
+      // portrait kiosk) reports a LANDSCAPE framebuffer, so the resolution
+      // rule below would write an explicit 'LANDSCAPE' into the column —
+      // and an explicit value short-circuits resolveManifestOrientation,
+      // permanently defeating the catalog lookup for every unit of that
+      // model. The model is the trustworthy signal here; the panel is not.
+      const nativeFromChassis = detectedHardware
+        ? HARDWARE_CATALOG[detectedHardware as HardwareModel]?.nativeOrientation
+        : undefined;
+      if (nativeFromChassis) return nativeFromChassis;
+
       const raw = typeof body.resolution === 'string' ? body.resolution : '';
       // Players report "2160×3840" with U+00D7, not an ASCII 'x'. Accept both
       // (plus '*') so a client that changes its separator cannot silently
@@ -3944,7 +3975,7 @@ export class ScreensController {
           tenantName: (screen as any).tenant?.name || null,
           generatedAt: new Date().toISOString(),
           // 2026-05-24 — orientation lock for sports-mode screens too.
-          orientation: resolveManifestOrientation((screen as any).orientation, (screen as any).resolution),
+          orientation: resolveManifestOrientation((screen as any).orientation, (screen as any).resolution, (screen as any).hardwareModel),
           // 2026-06-24 — carry the LED canvas dims + tile-repeat on the
           // SCOREBOARD manifest too (the normal playlist branch already does).
           // Without these the player's TemplateScaler keeps a stale/empty
@@ -4185,7 +4216,7 @@ export class ScreensController {
         //
         // All four are stable Screen columns — no clock, no per-request value
         // — so the verbatim-replayed cache stays hash-stable.
-        orientation: resolveManifestOrientation((screen as any).orientation, (screen as any).resolution),
+        orientation: resolveManifestOrientation((screen as any).orientation, (screen as any).resolution, (screen as any).hardwareModel),
         canvasW: (screen as any).canvasW ?? null,
         canvasH: (screen as any).canvasH ?? null,
         repeats: (screen as any).repeats ?? 1,
@@ -4332,7 +4363,7 @@ export class ScreensController {
       // applies on boot and on every manifest poll (cheap setter — only
       // calls setRequestedOrientation if the value changed). Older APKs
       // (no orientation field expected) ignore unknown fields.
-      orientation: resolveManifestOrientation((screen as any).orientation, (screen as any).resolution),
+      orientation: resolveManifestOrientation((screen as any).orientation, (screen as any).resolution, (screen as any).hardwareModel),
       // 2026-05-26 — LED canvas dimensions for narrow-chain panels.
       // Null = use controller's native viewport. Player reads these
       // on every manifest poll and applies via document.documentElement

@@ -74,6 +74,22 @@ export function detectHardwareModel(input: DetectInput): HardwareModel {
     return 'goodview-ecbox3576';
   }
 
+  // MAXHUB L55VEC — floor-standing 55" PORTRAIT KIOSK.
+  //
+  // ⭐ Matched BEFORE the generic-Android fallback because this model carries
+  // `nativeOrientation: 'PORTRAIT'`, and that is the only way VenueOS can know
+  // which way up it is. The unit reports a 3840x2160 LANDSCAPE framebuffer
+  // even though the chassis cannot be mounted landscape at all, so every
+  // resolution-based guess gets it exactly backwards. Real UA from the
+  // operator's own unit:
+  //   Mozilla/5.0 (Linux; Android 13; L55VEC Build/TQ2A.230405.003.E1; wv) ...
+  // Build.MANUFACTURER and Build.BRAND both read "MAXHUB"; board/device are
+  // "t982_ar301" (Amlogic T982) — deliberately NOT matched on, because a
+  // Goodview M43GUQ in the same fleet reports the identical board.
+  if (ua.includes('l55vec') || ua.includes('maxhub')) {
+    return 'maxhub-l55vec';
+  }
+
   // NovaStar Taurus LED controller. Ships Chromium 83 (CLAUDE.md rule
   // #10). The Taurus UA contains "Taurus" verbatim plus a NovaStar
   // marker on most firmware revisions.
