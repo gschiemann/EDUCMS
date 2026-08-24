@@ -237,6 +237,16 @@ export const PLAYER_RELEASE_SHA_PINS: Readonly<Record<string, string>> = {
   // and the bytes the live /apk/v/10102 fleet proxy actually serves once this
   // pin deployed — 2,220,151 bytes and an identical sha256 on both.
   '1.1.2': '2078a0c9323fd8dbf4dbba86eb5ea20788a0a30df05ec5363bde297778a819c6',
+  // 1.1.3 — on-glass volume UI (FLAG_SHOW_UI) + perceptual gamma-2.2
+  // brightness curve across sysfs / Settings / software-dim (field reports
+  // from the first real M43+G43 volume/brightness session, 2026-08-25).
+  //
+  // Digest captured from the gh-downloaded release asset right after the
+  // Android Player APK run for tag player-v1.1.3 went green
+  // (scripts/pin-apk-sha.sh, 2026-08-24). Second verification path — the
+  // live /apk/v/10103 fleet-proxy bytes — owed once this pin deploys, same
+  // standard as the 1.1.1/1.1.2 entries above.
+  '1.1.3': '4f511b234459da16051d85fa755a88d3bfa14ebac071f6185b77d640b4f883dc',
 };
 
 /**
