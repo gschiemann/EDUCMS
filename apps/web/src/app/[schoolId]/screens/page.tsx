@@ -1059,6 +1059,36 @@ function ScreenSettingsMenu({
     maxHeight: number;
   } | null>(null);
 
+  // 2026-08-25 — "you removed all the volume and brightness settings".
+  // Nothing was removed: when the anchor clamps the panel's maxHeight,
+  // everything below the fold was reachable only by a scrollbar that
+  // macOS/iOS render as an invisible overlay — so a height-clamped
+  // popover was indistinguishable from a complete one, and the
+  // operator read the clipped edge as deleted controls. `moreBelow`
+  // drives an explicit fade + chevron at the clipped edge (and the
+  // scroller styles its scrollbar always-visible).
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [moreBelow, setMoreBelow] = useState(false);
+  const recalcScrollHint = () => {
+    const el = scrollRef.current;
+    if (!el) { setMoreBelow(false); return; }
+    setMoreBelow(el.scrollHeight - el.scrollTop - el.clientHeight > 8);
+  };
+  useEffect(() => {
+    if (!open) { setMoreBelow(false); return; }
+    recalcScrollHint();
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    // Content height changes while open without a scroll event — the
+    // hardware catalog resolves, the details drawer toggles, an OTA
+    // stage row swaps in. Observe both the scrollport and the content.
+    const ro = new ResizeObserver(() => recalcScrollHint());
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, anchor, detailsOpen]);
+
   // Anchor math lives in a standalone, unit-tested module (mobile bug #217,
   // 2026-07-01 — apps/web/src/lib/clamp-popover-anchor.ts +
   // clamp-popover-anchor.test.ts) so the exact clamping behavior can be
@@ -1259,7 +1289,7 @@ function ScreenSettingsMenu({
     // portal boundary.
     <div
       ref={menuRef}
-      className="fixed rounded-xl bg-white border border-slate-200 shadow-[0_12px_32px_rgba(15,23,42,0.18)] overflow-y-auto overflow-x-hidden z-[9999]"
+      className="fixed rounded-xl bg-white border border-slate-200 shadow-[0_12px_32px_rgba(15,23,42,0.18)] overflow-hidden z-[9999]"
       style={
         anchor
           ? {
@@ -1277,6 +1307,19 @@ function ScreenSettingsMenu({
           : { top: -9999, right: 0 }
       }
     >
+      {/* Inner scroller — separated from the anchored shell so the
+          "more below" fade can sit fixed over the clipped edge. The
+          scrollbar is styled ALWAYS-VISIBLE: macOS/iOS overlay
+          scrollbars are invisible until touched, which made a
+          height-clamped menu indistinguishable from a complete one
+          (2026-08-25: "you removed all the volume and brightness
+          settings" — they were 40px below the fold). */}
+      <div
+        ref={scrollRef}
+        onScroll={recalcScrollHint}
+        className="overflow-y-auto overflow-x-hidden [scrollbar-width:thin] [scrollbar-color:#cbd5e1_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300"
+        style={anchor ? { maxHeight: anchor.maxHeight } : undefined}
+      >
           {/* Identity header — the operator must always know WHICH
               screen they're configuring (2026-08-24: "it doesnt even
               say the name of the screen you are looking at"). Sticky
@@ -1538,6 +1581,16 @@ function ScreenSettingsMenu({
             <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${detailsOpen ? 'rotate-180' : ''}`} />
           </button>
           {detailsOpen && <DeviceDetails screen={s} />}
+      </div>
+      {/* "More below" affordance — rendered over the clipped edge only
+          while there is actually more to scroll to; disappears at the
+          bottom. pointer-events-none so it never eats a click on the
+          row beneath it. */}
+      {moreBelow && (
+        <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-9 bg-gradient-to-t from-white via-white/75 to-transparent flex items-end justify-center pb-0.5">
+          <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+        </div>
+      )}
     </div>
   );
 
