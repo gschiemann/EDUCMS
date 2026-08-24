@@ -878,18 +878,12 @@ class MainActivity : ComponentActivity() {
                 val token = deviceStore.deviceToken.first()
                 loadPlayer(token.orEmpty())
             }
-            // Fire the legacy permission prompt for future OTAs only
-            // after Manager is installed — at that point the popup
-            // can't conflict with the gate-driven install dialog.
-            maybePromptForInstallPermission()
-            // v1.0.57 — and the Manager's permission too. Without
-            // this, Manager has REQUEST_INSTALL_PACKAGES in its
-            // manifest but the per-app source toggle is OFF, so its
-            // background OTA installs fail silently. Player is the
-            // only foreground process that can launch Settings on
-            // the operator's behalf; tagging it onto the existing
-            // permission prompt flow gets both grants in one visit.
-            maybePromptForManagerInstallPermission()
+            // 2026-08-24 — the install-permission prompts that used to fire
+            // HERE (Player's, then the Manager's) are now steps 1 and 2 of
+            // SetupCeremony, which onResume drives. They fired from onCreate
+            // side by side with the Home prompt below, so a first boot
+            // stacked three dialogs on top of each other; the ceremony runs
+            // one at a time and resumes after each Settings round-trip.
             // Player bundles Manager. Re-run bootstrap even when
             // Manager is present so beta Player OTAs can carry Manager
             // upgrades forward on non-device-owner Goodview hardware.
@@ -911,13 +905,12 @@ class MainActivity : ComponentActivity() {
             proceedWithBootstrapOrRequestPermission()
         }
 
-        // v1.0.65 — offer to make Player the device's HOME app. This
-        // is the non-Device-Owner path to OTA auto-relaunch: when
-        // Player is HOME, the OS itself brings it back after an
-        // update install. Fires once per install, gated inside the
-        // method (skipped under Device Owner — which pins HOME for us
-        // — and skipped if Player is already HOME).
-        maybePromptForHomeAppSetup()
+        // 2026-08-24 — the Home-app prompt that used to fire here is now the
+        // LAST step of SetupCeremony (it is the one grant that touches the
+        // vendor CMS's own territory, so everything cheaper runs first).
+        // The whole ceremony is driven from onResume — which always runs
+        // right after onCreate, and again after every Settings round-trip,
+        // which is what chains the steps into one guided flow.
     }
 
     /**
@@ -1077,26 +1070,24 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * First-run permission prompt. Android ≥ 8 gates ACTION_INSTALL_PACKAGE
-     * behind a per-app user toggle in Settings (NOT developer mode — a
-     * standard end-user permission). Without it, OTAs fail with a vague
-     * "For your security, your phone isn't allowed to install unknown
-     * apps from this source" dialog that confuses operators.
+     * 2026-08-24 — the first-run permission prompts that lived here
+     * (install-unknown-apps for Player, then for the Manager companion,
+     * then the Home-app opt-in) MOVED to
+     * `com.educms.player.setup.SetupCeremony`, which also adds the three
+     * grants they never asked for: WRITE_SETTINGS (real brightness),
+     * battery exemption, and device ADMIN (a true panel-off).
      *
-     * Flow:
-     *   1. Check packageManager.canRequestPackageInstalls()
-     *   2. If false AND we haven't asked yet this install, show a friendly
-     *      dialog explaining what's needed.
-     *   3. On Allow: deep-link to the per-app settings page pre-filtered
-     *      to this package via ACTION_MANAGE_UNKNOWN_APP_SOURCES.
-     *   4. User toggles the switch, hits Back, we're in business.
+     * They fired from onCreate side by side, so a first boot stacked
+     * three dialogs at once; the ceremony offers ONE at a time and is
+     * driven from onResume, so it resumes itself after every Settings
+     * round-trip. Their SharedPreferences keys are unchanged, so a screen
+     * already set up never re-nags after this ships.
      *
-     * We only nag once per install (tracked in SharedPreferences)
-     * because operators SHOULD be able to defer this without the kiosk
-     * pestering them every reboot. Re-offer the dialog from the web
-     * player's overlay if they ever try to Check-for-updates and it
-     * still isn't granted — see SoftwareInfoRow on the web side.
+     * `applyRemoteFocus` below STAYS — the ceremony is handed it as its
+     * dialog decorator, so there is still exactly one implementation of
+     * the kiosk remote-focus treatment.
      */
+
     /**
      * Make a native AlertDialog reachable by the kiosk REMOTE. Taurus /
      * OEM signage ROMs strip the default button focus-highlight
@@ -1122,241 +1113,6 @@ class MainActivity : ComponentActivity() {
             }
         }
         dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.requestFocus()
-    }
-
-    private fun maybePromptForInstallPermission() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        if (packageManager.canRequestPackageInstalls()) return
-        val prefs = getSharedPreferences("edu_player", Context.MODE_PRIVATE)
-        if (prefs.getBoolean("installPromptShown", false)) return
-
-        applyRemoteFocus(AlertDialog.Builder(this)
-            .setTitle("One-time setup")
-            .setMessage(
-                "To apply player updates automatically, EduCMS needs permission " +
-                "to install updates. Tap Allow to open the setting — you'll " +
-                "only need to do this once. After you grant it, future updates " +
-                "install with a quick confirmation."
-            )
-            .setPositiveButton("Allow") { _, _ ->
-                try {
-                    val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
-                        .setData(Uri.parse("package:$packageName"))
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    startActivity(intent)
-                } catch (e: Exception) {
-                    Log.w("MainActivity", "Could not open install-sources settings", e)
-                }
-            }
-            .setNegativeButton("Later") { _, _ -> /* remind from overlay */ }
-            .setCancelable(true)
-            .show())
-
-        prefs.edit().putBoolean("installPromptShown", true).apply()
-    }
-
-    /**
-     * v1.0.57 — Manager install-permission grant flow.
-     *
-     * Operator (2026-05-15): "i want the APK upgrade to fucking work,
-     * it has never worked in 57 fucking versions, the player gets
-     * permissions for unknown but the manager never gets a popup to
-     * set those permissions, and the upgrade never fully works".
-     *
-     * The bug: Manager APK gets sideloaded by Player's ManagerBootstrap
-     * via PackageInstaller. Manager declares REQUEST_INSTALL_PACKAGES
-     * in its manifest, but Android STILL requires the user to toggle
-     * "Allow from this source" per-app in Settings before that
-     * permission is effective. Manager has NO MainActivity (it's a
-     * daemon) so it can't open Settings itself — its existing
-     * `maybePromptForInstallPermission` in ManagerApp.onCreate posts
-     * a notification that kiosk operators on Taurus / LED controllers
-     * almost never see (notification shade is hidden in kiosk mode
-     * or behind hardware bezels).
-     *
-     * Result: Player can install Manager fine (Player has the
-     * permission), but when Manager later tries to install a Player
-     * update it gets blocked with no operator-facing prompt → "upgrade
-     * never fully works".
-     *
-     * THIS FIX: Player is the only foreground-privileged process on
-     * the kiosk. Right after Player's own permission grant flow, AND
-     * once Manager is detected as installed, Player launches Settings
-     * pre-filtered to Manager's per-app source page on behalf of
-     * Manager. The operator who's already standing at the kiosk
-     * granting Player's permission grants Manager's in the same
-     * session. One walk-up, both permissions sorted.
-     *
-     * Tracked in SharedPreferences ("managerInstallPromptShown") so
-     * we nag once per install. Operator can defer via "Later"; the
-     * overlay-side software-info row in the web player offers a
-     * "re-prompt" button for missed cases.
-     */
-    private fun maybePromptForManagerInstallPermission() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        // Skip if Manager isn't installed (bootstrap hasn't completed
-        // yet, or operator opted out via skip-manager.txt). Will run
-        // again on next launch when bootstrap finishes.
-        val managerPkg = listOf("com.educms.manager", "com.educms.manager.debug").firstOrNull { pkg ->
-            try {
-                @Suppress("DEPRECATION")
-                packageManager.getPackageInfo(pkg, 0)
-                true
-            } catch (_: Exception) { false }
-        } ?: run {
-            PlayerLogger.i("MainActivity", "Manager not installed yet — deferring permission prompt")
-            return
-        }
-        val prefs = getSharedPreferences("edu_player", Context.MODE_PRIVATE)
-        if (prefs.getBoolean("managerInstallPromptShown", false)) return
-
-        applyRemoteFocus(AlertDialog.Builder(this)
-            .setTitle("One more setup step")
-            .setMessage(
-                "EduCMS also needs to grant install permission to the companion app " +
-                "(Manager) that delivers Player updates in the background. Tap Allow " +
-                "to open the setting — same one-time flow you just did for Player. " +
-                "Without this, automatic updates won't apply."
-            )
-            .setPositiveButton("Allow") { _, _ ->
-                try {
-                    val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
-                        .setData(Uri.parse("package:$managerPkg"))
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    startActivity(intent)
-                    PlayerLogger.i("MainActivity", "Opened Settings for Manager install-sources ($managerPkg)")
-                } catch (e: Exception) {
-                    Log.w("MainActivity", "Could not open Manager install-sources settings", e)
-                }
-            }
-            .setNegativeButton("Later") { _, _ ->
-                PlayerLogger.i("MainActivity", "Operator deferred Manager install-perm prompt")
-            }
-            .setCancelable(true)
-            .show())
-
-        prefs.edit().putBoolean("managerInstallPromptShown", true).apply()
-    }
-
-    /**
-     * v1.0.65 — Home-app setup prompt (the non-Device-Owner path to
-     * OTA auto-relaunch).
-     *
-     * After an OTA install the Player process is killed; for it to
-     * come back ON SCREEN by itself, the OS has to relaunch it — and
-     * the only thing Android will auto-relaunch is the HOME app.
-     * Under Device Owner, Manager pins Player as HOME via
-     * DevicePolicyManager and this prompt is unnecessary. WITHOUT
-     * Device Owner there is no API to pin it — the operator has to
-     * pick Player as the Home app once, in Settings. This prompt
-     * walks them through that on the first launch after a sideload.
-     *
-     * Skipped when:
-     *   - Manager is Device Owner (HOME is pinned for us already)
-     *   - Player is already the Home app
-     *   - the prompt has been shown once before (operator can
-     *     re-trigger from the web overlay's software-info row)
-     *
-     * On "Set as home" we (1) flip on the kioskHomeOptIn pref so
-     * PlayerApp keeps the KioskHomeAlias enabled, (2) enable that
-     * alias now so Player is a selectable Home candidate, and (3)
-     * deep-link to the Home-app settings screen. The alias ships
-     * DISABLED precisely so we never register as a launcher on an
-     * OEM-CMS box unless the operator deliberately opts in here.
-     */
-    private fun maybePromptForHomeAppSetup() {
-        val prefs = getSharedPreferences("edu_player", Context.MODE_PRIVATE)
-        if (prefs.getBoolean("homeSetupPromptShown", false)) return
-
-        // Device Owner already pins HOME for us — no operator step.
-        if (managerIsDeviceOwner()) {
-            prefs.edit().putBoolean("homeSetupPromptShown", true).apply()
-            return
-        }
-        // Already the Home app — nothing to do.
-        if (isPlayerTheHomeApp()) {
-            prefs.edit().putBoolean("homeSetupPromptShown", true).apply()
-            return
-        }
-
-        applyRemoteFocus(AlertDialog.Builder(this)
-            .setTitle("Finish update setup")
-            .setMessage(
-                "Set Venue OS Player as this screen's Home app so it " +
-                "comes back automatically after an update installs — " +
-                "no walking up to the screen. Tap \"Set as home\", then " +
-                "choose Venue OS Player from the list. One-time setup.",
-            )
-            .setPositiveButton("Set as home") { _, _ ->
-                prefs.edit().putBoolean("kioskHomeOptIn", true).apply()
-                enableKioskHomeAlias()
-                openHomeSettings()
-                PlayerLogger.i("MainActivity", "Operator opted into kiosk Home-app setup")
-            }
-            .setNegativeButton("Not now") { _, _ ->
-                PlayerLogger.i("MainActivity", "Operator deferred Home-app setup")
-            }
-            .setCancelable(true)
-            .show())
-
-        prefs.edit().putBoolean("homeSetupPromptShown", true).apply()
-    }
-
-    private fun managerIsDeviceOwner(): Boolean = try {
-        val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE)
-            as? android.app.admin.DevicePolicyManager
-        dpm != null && (
-            dpm.isDeviceOwnerApp("com.educms.manager") ||
-                dpm.isDeviceOwnerApp("com.educms.manager.debug")
-        )
-    } catch (_: Exception) { false }
-
-    private fun isPlayerTheHomeApp(): Boolean = try {
-        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-        val res = packageManager.resolveActivity(
-            intent,
-            android.content.pm.PackageManager.MATCH_DEFAULT_ONLY,
-        )
-        res?.activityInfo?.packageName == packageName
-    } catch (_: Exception) { false }
-
-    /** Enable our own KioskHomeAlias so Player shows up as a Home-app
-     *  candidate. Toggling our own component needs no permission. */
-    private fun enableKioskHomeAlias() {
-        try {
-            val alias = android.content.ComponentName(
-                packageName,
-                "com.educms.player.KioskHomeAlias",
-            )
-            packageManager.setComponentEnabledSetting(
-                alias,
-                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                android.content.pm.PackageManager.DONT_KILL_APP,
-            )
-            PlayerLogger.i("MainActivity", "KioskHomeAlias enabled (operator opt-in)")
-        } catch (e: Exception) {
-            PlayerLogger.w("MainActivity", "enableKioskHomeAlias failed: ${e.message}")
-        }
-    }
-
-    /** Deep-link to the Home-app picker. ACTION_HOME_SETTINGS isn't on
-     *  every OEM ROM, so fall back to the top-level Settings app. */
-    private fun openHomeSettings() {
-        try {
-            startActivity(
-                Intent(Settings.ACTION_HOME_SETTINGS)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
-        } catch (_: Exception) {
-            try {
-                startActivity(
-                    Intent(Settings.ACTION_SETTINGS)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                )
-            } catch (e: Exception) {
-                PlayerLogger.w("MainActivity", "openHomeSettings failed: ${e.message}")
-            }
-        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -2235,6 +1991,29 @@ class MainActivity : ComponentActivity() {
             com.educms.player.display.DisplayControlRegistry.invalidate()
             com.educms.player.display.DisplayEmergency.enforceIfHeld(applicationContext)
         }.onFailure { PlayerLogger.w("DisplayControl", "onResume display refresh failed: ${it.message}") }
+
+        // ── Guided setup (2026-08-24) ───────────────────────────────
+        //
+        // THE reason this lives in onResume and not onCreate: every grant
+        // in the ceremony ends with the operator leaving us for a system
+        // Settings screen and coming back — which IS an onResume. Driving
+        // from here is what turns six separate permissions into one flow
+        // that keeps moving on its own, and it means a grant made outside
+        // the ceremony (or a step declined and later granted by hand) is
+        // noticed the moment we are foregrounded again.
+        //
+        // Ordered AFTER the display refresh above on purpose: settlePending
+        // + invalidate have already run, so a device-admin enrolment the
+        // operator just completed is visible as satisfied here and the
+        // ceremony moves on to the next step instead of re-offering it.
+        //
+        // Gated on Manager being installed because until it is, the
+        // manager-install gate owns the screen and runs its own
+        // permission flow (proceedWithBootstrapOrRequestPermission) —
+        // two dialog drivers at once is the exact stacking this replaced.
+        if (readManagerVersion() != null) {
+            com.educms.player.setup.SetupCeremony.resume(this, ::applyRemoteFocus)
+        }
     }
 
     override fun onPause() {
@@ -2400,8 +2179,10 @@ class MainActivity : ComponentActivity() {
      * but when i clicked back out of the permissions window it
      * dissappeared". Two dialogs were racing: the system Install
      * dialog (from PackageInstaller) and the deep-linked Settings
-     * page (from maybePromptForInstallPermission) — first re-launch
-     * was needed to clear the conflict.
+     * page (from what is now SetupCeremony's install step) — first
+     * re-launch was needed to clear the conflict. That is also why the
+     * ceremony refuses to run until Manager is installed: this flow owns
+     * the screen until then, and two dialog drivers is the same race.
      *
      * v1.0.24 fix: do them in sequence, not in parallel.
      *   1. If install-unknown-apps permission missing → set gate
