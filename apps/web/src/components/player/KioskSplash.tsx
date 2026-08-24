@@ -36,6 +36,40 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+
+/**
+ * Per-device record that the installer has answered the orientation step.
+ *
+ * Device-local on purpose: the question is about THIS panel's physical
+ * mounting, which no server-side value can answer (see the step's own comment
+ * in the pairing block). Storing it here is what makes it a one-time setup
+ * question instead of something that reappears on every watchdog reload.
+ *
+ * A cleared cache re-asks, which is the correct failure direction — asking a
+ * second time costs one tap, silently defaulting to landscape costs a
+ * sideways screen nobody notices until it is on a wall.
+ */
+const ORIENTATION_CHOSEN_KEY = 'edu_orientation_chosen';
+
+function hasOrientationChoice(): boolean {
+  if (typeof window === 'undefined') return true; // never show it during SSR
+  try {
+    return window.localStorage.getItem(ORIENTATION_CHOSEN_KEY) === '1';
+  } catch {
+    // Storage unavailable — do NOT gate the pairing code behind a question we
+    // can never record as answered, or the screen can never be paired at all.
+    return true;
+  }
+}
+
+function rememberOrientationChosen(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(ORIENTATION_CHOSEN_KEY, '1');
+  } catch {
+    /* non-fatal — the step simply reappears next reload */
+  }
+}
 import { Wifi, QrCode, MonitorPlay } from 'lucide-react';
 
 type Mode = 'registering' | 'pairing';
@@ -182,6 +216,12 @@ export function KioskSplash({
   hardwareModel,
 }: KioskSplashProps) {
   const activeOrientation = orientation || 'LANDSCAPE';
+
+  // Has this device's installer already answered the orientation step?
+  // Read lazily (never during SSR) so the first paint is already correct and
+  // a re-installed screen does not flash the step at an operator who answered
+  // it minutes ago.
+  const [orientationChosen, setOrientationChosen] = useState<boolean>(() => hasOrientationChoice());
   const displayName = brandName && brandName.trim() ? brandName : 'VenueOS';
 
   // ─── OTA banner state ────────────────────────────────────────
@@ -326,7 +366,75 @@ export function KioskSplash({
         ) : null}
 
         {/* ── Pairing mode: the hero is the 6-character code ── */}
-        {mode === 'pairing' && (
+        {/* ── STEP 1: which way is this screen mounted? ──────────────────
+            Shown BEFORE the pairing code, once per device.
+
+            ⚠️ WHY THIS IS A STEP AND NOT AUTO-DETECTED (2026-08-24). We
+            cannot detect it. A panel physically bolted sideways still reports
+            its framebuffer: an operator's freshly-installed portrait screen
+            reported `DISPLAY 3840×2160` — landscape — because that ROM does
+            not know it has been turned. Two OTHER portrait boxes in the same
+            fleet report 2160×3840, because THEIR vendor ROMs were configured
+            for portrait. Same physical mounting, opposite readings, and
+            nothing in Android distinguishes them. Deriving orientation from
+            the reported resolution is therefore right for one box and wrong
+            for the next, which is exactly what happened.
+
+            So the installer — who is standing in front of the glass and can
+            see the answer instantly — tells us once, before anything else.
+            Asking here beats asking in the dashboard because the person who
+            enters the pairing code is often not the person who hung the
+            screen.
+
+            Deliberately NOT skippable and with no default highlighted: a
+            pre-selected answer is how every screen silently ends up landscape.
+            It records the choice per-device, so it is asked once, not on every
+            reload. */}
+        {mode === 'pairing' && onOrientationChange && !orientationChosen && (
+          <>
+            <div className="kiosk-instructions">
+              <span className="kiosk-instruction-label">Step 1 of 2</span>
+              <span className="kiosk-instruction-line">
+                How is this screen mounted?
+              </span>
+            </div>
+
+            <div className="kiosk-orient-choice" role="group" aria-label="Screen orientation">
+              {(['LANDSCAPE', 'PORTRAIT'] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => {
+                    onOrientationChange(v);
+                    rememberOrientationChosen();
+                    setOrientationChosen(true);
+                  }}
+                  className="kiosk-orient-choice-btn"
+                >
+                  <span
+                    className={
+                      v === 'PORTRAIT'
+                        ? 'kiosk-orient-glyph kiosk-orient-glyph-portrait'
+                        : 'kiosk-orient-glyph kiosk-orient-glyph-landscape'
+                    }
+                    aria-hidden
+                  />
+                  <span className="kiosk-orient-choice-label">
+                    {v === 'LANDSCAPE' ? 'Landscape' : 'Portrait'}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <div className="kiosk-status-row">
+              <span className="kiosk-status-text">
+                The screen rotates as soon as you choose. Pick the one that looks right.
+              </span>
+            </div>
+          </>
+        )}
+
+        {mode === 'pairing' && (!onOrientationChange || orientationChosen) && (
           <>
             <div className="kiosk-instructions">
               <span className="kiosk-instruction-label">To activate this screen</span>
@@ -1337,6 +1445,71 @@ const CSS = `
 }
 /* Adjacent-sibling spacing — CSS 2.1 selector, works everywhere
    including Chromium 83 (no flex-spacing-shorthand required). */
+/* ── Step 1: orientation choice ────────────────────────────────────────
+   Deliberately large. This is read from across a room by someone holding a
+   drill, frequently while the whole splash is rendering SIDEWAYS — that is
+   the exact condition the step exists to fix, so it has to stay legible at
+   90 degrees. Sized in vmin so it is bounded by the SHORTER axis and cannot
+   overflow whichever way the panel is turned.
+
+   No pre-selected option and no hover-only affordance: a default is how
+   every screen quietly ends up landscape, and a wall panel has no cursor. */
+.kiosk-orient-choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  margin: 2vmin 0 1vmin;
+}
+.kiosk-orient-choice-btn {
+  appearance: none;
+  font: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Per-child margin, NOT flex gap — Chromium 83 on NovaStar Taurus predates
+     gap on flex containers and would render these touching. CLAUDE.md #10. */
+  margin: 1.2vmin 1.6vmin;
+  padding: 3vmin 4vmin;
+  border: 2px solid rgba(148, 163, 184, 0.35);
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.55);
+  color: #e2e8f0;
+  transition: border-color 120ms ease, background 120ms ease, transform 80ms ease;
+}
+.kiosk-orient-choice-btn:hover,
+.kiosk-orient-choice-btn:focus-visible {
+  border-color: var(--kiosk-brand, #6366f1);
+  background: rgba(30, 41, 59, 0.75);
+  outline: none;
+}
+.kiosk-orient-choice-btn:active {
+  transform: scale(0.97);
+}
+.kiosk-orient-choice-label {
+  margin-top: 1.4vmin;
+  font-size: clamp(15px, 2.4vmin, 26px);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+/* A plain outline of the panel shape — reads instantly at a glance and needs
+   no icon font or SVG asset. */
+.kiosk-orient-glyph {
+  display: block;
+  border: 3px solid currentColor;
+  border-radius: 4px;
+  opacity: 0.85;
+}
+.kiosk-orient-glyph-landscape {
+  width: 11vmin;
+  height: 7vmin;
+}
+.kiosk-orient-glyph-portrait {
+  width: 7vmin;
+  height: 11vmin;
+}
+
 .kiosk-orient-btn + .kiosk-orient-btn {
   margin-left: 8px;
 }
