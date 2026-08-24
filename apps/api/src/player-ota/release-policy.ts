@@ -247,6 +247,17 @@ export const PLAYER_RELEASE_SHA_PINS: Readonly<Record<string, string>> = {
   // live /apk/v/10103 fleet-proxy bytes — owed once this pin deploys, same
   // standard as the 1.1.1/1.1.2 entries above.
   '1.1.3': '4f511b234459da16051d85fa755a88d3bfa14ebac071f6185b77d640b4f883dc',
+  // 1.1.4 — the guided first-boot SetupCeremony (six grants, one dialog at
+  // a time: install perms, WRITE_SETTINGS, battery exemption, device admin,
+  // HOME) on top of 1.1.3's volume UI + perceptual brightness curve. Cut so
+  // one per-screen push delivers both waves in a single field trip.
+  //
+  // Digest captured from the gh-downloaded release asset immediately after
+  // the Android Player APK run for tag player-v1.1.4 went green
+  // (scripts/pin-apk-sha.sh, 2026-08-24). Second verification path — the
+  // live /apk/v/10104 fleet-proxy bytes — is checked right after this pin
+  // deploys, same standard as the 1.1.1/1.1.2/1.1.3 entries above.
+  '1.1.4': 'a5edb94a990fec82926035a22a960164f22d4a593d38d26dc75b92d57ea51973',
 };
 
 /**
