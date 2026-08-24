@@ -4069,6 +4069,60 @@ function PlayerPage() {
         pollFails = 0;
         const data = await res.json();
         if (data.paired) {
+          // ⚠️ EXCHANGE THE CREDENTIAL BEFORE ADVANCING (2026-08-24).
+          //
+          // THE BUG THIS FIXES. This heartbeat tells us we are paired, but
+          // its response carries NO deviceToken — deliberately, it is an
+          // unauthenticated status endpoint. So the token we are still
+          // holding is the UNPAIRED one minted by our first
+          // `POST /screens/register`, back when this screen had no tenant.
+          // Advancing straight to 'connecting' on that credential meant every
+          // device-authenticated call — manifest, cache-status,
+          // emergency-assets — 401'd forever, and the WS never authenticated.
+          // The screen sat in a permanent "reconnecting" loop that ONLY a
+          // manual refresh cleared, because a refresh re-runs Phase 1, which
+          // re-registers and DOES persist the paired token.
+          //
+          // Observed live on 2026-08-24 on two freshly-installed boxes (M43
+          // and G43 on v1.1.2): paired cleanly, then 401'd every 30s for ~9
+          // minutes until the operator refreshed them by hand.
+          //
+          // So: do here what the refresh does. Re-register with our prior
+          // token as proof-of-possession; the server sees the screen is now
+          // paired and mints the full paired credential.
+          //
+          // ON FAILURE WE DO NOT ADVANCE. Staying on the pairing splash keeps
+          // this 3s poll alive and self-heals on the next tick. Advancing
+          // without a paired credential is the exact dead-end above, and it
+          // is unrecoverable without physical access to the screen.
+          let exchanged = false;
+          try {
+            const prior = getDeviceToken();
+            const rr = await fetch(`${getApiRoot()}/api/v1/screens/register`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                deviceFingerprint: fp,
+                ...(prior ? { priorDeviceToken: prior } : {}),
+              }),
+            });
+            if (rr.ok) {
+              const rd = await rr.json();
+              if (rd?.deviceToken) {
+                try { localStorage.setItem(LS_TOKEN, rd.deviceToken); } catch {}
+              }
+              // A 2xx without a token still counts: an older API may not mint
+              // one here, and in that case the credential we already hold is
+              // the best available. Never block on a field we cannot require.
+              exchanged = true;
+            }
+          } catch {
+            /* leave exchanged=false — next tick retries in 3s */
+          }
+          if (!exchanged) {
+            pollFails += 1;
+            return;
+          }
           setScreenName(data.name);
           setScreenId(data.screenId);
           setPhase('connecting');

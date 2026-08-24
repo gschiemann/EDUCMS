@@ -693,6 +693,42 @@ export class ScreensController {
       { userAgent: body.userAgent, osInfo: body.osInfo },
       undefined,
     );
+
+    // 2026-08-24 — DERIVE ORIENTATION FROM THE PANEL THE DEVICE JUST REPORTED.
+    //
+    // THE BUG THIS FIXES. `Screen.orientation` is `@default("LANDSCAPE")`, so
+    // every auto-created row claimed landscape no matter what the hardware
+    // said. The manifest hands that value to the player, which applies it via
+    // setRequestedOrientation — so a PORTRAIT panel got actively forced into
+    // landscape. Observed on two 2160×3840 signage panels the day the fleet
+    // moved to v1.1.2: one letterboxed its content into a landscape strip in
+    // the middle of the glass, the other rendered the whole UI rotated 90°.
+    // Both were unreadable, and neither was "not yet configured" — the server
+    // was asserting the wrong answer.
+    //
+    // It only surfaced now because every previously-paired screen had been set
+    // to AUTO by hand long ago; a brand-new row is the only way to meet the
+    // raw default. The device reports `resolution` on this very request, so
+    // guessing is unnecessary — h > w is portrait, and nothing else needs to
+    // be true for that to hold on a fixed-mount panel.
+    //
+    // Landscape resolves to the same value the column default already had, so
+    // this changes behaviour for portrait hardware ONLY. An unparseable or
+    // absent resolution falls through to the column default untouched — an
+    // operator can still override per-screen either way.
+    const derivedOrientation = ((): 'PORTRAIT' | 'LANDSCAPE' | null => {
+      const raw = typeof body.resolution === 'string' ? body.resolution : '';
+      // Players report "2160×3840" with U+00D7, not an ASCII 'x'. Accept both
+      // (plus '*') so a client that changes its separator cannot silently
+      // reintroduce the forced-landscape bug.
+      const m = raw.match(/^\s*(\d{2,6})\s*[x×X*]\s*(\d{2,6})\s*$/);
+      if (!m) return null;
+      const w = Number(m[1]);
+      const h = Number(m[2]);
+      if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+      return h > w ? 'PORTRAIT' : 'LANDSCAPE';
+    })();
+
     const screen = await this.prisma.client.screen.create({
       data: {
         name: `Screen-${pairingCode}`,
@@ -700,6 +736,7 @@ export class ScreensController {
         pairingCode,
         status: 'PENDING',
         resolution: body.resolution || null,
+        ...(derivedOrientation ? { orientation: derivedOrientation } : {}),
         osInfo: body.osInfo || null,
         browserInfo: body.browserInfo || null,
         userAgent: body.userAgent || null,
