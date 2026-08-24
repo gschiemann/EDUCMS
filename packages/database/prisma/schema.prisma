@@ -717,10 +717,32 @@ model Screen {
   // 2026-05-24 — operator-controllable orientation lock. Replaces the
   // old SCREEN_ORIENTATION_FULL_SENSOR behavior on stationary signage
   // hardware (Goodview, Taurus, BrightSign) that has no useful
-  // accelerometer. Values: 'LANDSCAPE' | 'PORTRAIT' | 'AUTO'. Default
-  // LANDSCAPE matches the pre-2026-05-24 effective behavior so every
-  // already-paired kiosk continues to behave the same after migrate.
-  orientation                         String       @default("LANDSCAPE")
+  // accelerometer. Values: 'LANDSCAPE' | 'PORTRAIT' | 'AUTO'.
+  //
+  // 2026-08-24 — DEFAULT CHANGED 'LANDSCAPE' -> 'AUTO'.
+  //
+  // The LANDSCAPE default was correct for exactly one moment: the May-2026
+  // migration, where it preserved existing behaviour for kiosks already in
+  // the field. But it then became the default for every NEW screen, where
+  // that reasoning does not apply — and the manifest does not merely RECORD
+  // this value, the player APPLIES it via setRequestedOrientation. So the
+  // server was actively forcing landscape onto hardware it had never asked
+  // about. Two 2160×3840 panels installed on 2026-08-24 came up letterboxed
+  // and 90°-rotated because of it. It went unnoticed for three months only
+  // because every screen paired before then had been switched to AUTO by
+  // hand.
+  //
+  // AUTO (-> SCREEN_ORIENTATION_UNSPECIFIED) means "follow the panel", which
+  // is the only honest default for a value nobody has set. `register` now
+  // also derives PORTRAIT/LANDSCAPE outright from the resolution the device
+  // reports, so AUTO is the fallback for the narrower case where the device
+  // told us nothing parseable.
+  //
+  // EXISTING ROWS ARE UNTOUCHED — a default change is DDL only. That is
+  // deliberate: an existing 'LANDSCAPE' row is ambiguous (untouched default,
+  // or an operator deliberately landscaping a sideways-mounted panel) and
+  // silently rewriting it would break the second case.
+  orientation                         String       @default("AUTO")
   // 2026-05-26 — LED canvas dimensions. Some LED controllers (NovaStar
   // Taurus, SMART LED POSTER) report a frame buffer (typically 1920×1080)
   // that's WIDER than the physical LED's visible pixels — e.g. a single

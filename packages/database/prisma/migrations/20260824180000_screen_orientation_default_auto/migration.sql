@@ -1,0 +1,38 @@
+-- 2026-08-24 — screens.orientation default: 'LANDSCAPE' -> 'AUTO'
+--
+-- WHY. The manifest does not merely RECORD this value; the player APPLIES it
+-- via setRequestedOrientation. A 'LANDSCAPE' default therefore meant the
+-- server actively FORCED landscape onto every newly-registered screen, having
+-- never asked the hardware what it was. Two 2160×3840 portrait signage panels
+-- installed on 2026-08-24 came up unusable because of it — one letterboxed its
+-- content into a strip across the middle of the glass, the other rendered the
+-- entire UI rotated 90°.
+--
+-- The LANDSCAPE default was correct for exactly one moment: the 2026-05-24
+-- migration that introduced this column, where it preserved behaviour for
+-- kiosks already in the field. It then silently became the default for every
+-- NEW screen, where that reasoning does not apply. It stayed hidden for three
+-- months because every screen paired before then had been switched to AUTO by
+-- hand — a brand-new row was the only way to meet the raw default, and new
+-- rows only appeared once device fingerprints changed (debug -> release
+-- signing key re-scopes ANDROID_ID on Android 8+).
+--
+-- AUTO maps to SCREEN_ORIENTATION_UNSPECIFIED — "follow the panel" — which is
+-- the only honest default for a value nobody has set.
+--
+-- SAFETY. This is DDL ONLY: it changes what future INSERTs get when the column
+-- is omitted. Not a backfill.
+--
+--   * EXISTING ROWS ARE NOT TOUCHED, deliberately. An existing 'LANDSCAPE' row
+--     is ambiguous — it may be the untouched default, or an operator who
+--     deliberately landscaped a sideways-mounted panel. Rewriting it would
+--     silently break the second case. Those rows are corrected one at a time
+--     from the dashboard's per-screen orientation control.
+--   * No column is dropped, renamed, retyped or made stricter, and no existing
+--     read changes shape — additive-only, per the V1 pilot rule that master is
+--     a release branch.
+--   * `POST /screens/register` additionally derives PORTRAIT/LANDSCAPE outright
+--     from the resolution the device reports on that same request, so this
+--     default now only applies when the device told us nothing parseable.
+
+ALTER TABLE "screens" ALTER COLUMN "orientation" SET DEFAULT 'AUTO';
