@@ -118,6 +118,55 @@ function isPreviewMode(): boolean {
   return qp('preview') === '1';
 }
 
+/** id of the &lt;style&gt; element injected alongside a 90° body rotation. */
+const ROTATION_FIX_STYLE_ID = 'edu-rotation-viewport-fix';
+
+/**
+ * Companion to the 90° body rotation — WITHOUT THIS THE ROTATION IS HALF-DONE.
+ *
+ * ⚠️ THE BUG (2026-08-24, reproduced in a real browser before fixing).
+ * Both rotation paths set `body { width:100vh; height:100vw; transform:
+ * rotate(90deg) }`, which correctly produces a portrait frame — `body` really
+ * does measure 720×1280 on a 1280×720 viewport. The transform also makes body
+ * the containing block for `position:fixed` descendants, exactly as the
+ * existing comments claim.
+ *
+ * But **viewport units are always resolved against the VIEWPORT, never against
+ * a transformed ancestor.** The player's root `<main>` carries Tailwind's
+ * `min-h-screen` (= `min-height:100vh`), so inside that 720×1280 frame it
+ * sized itself 720×**720** — a square. Measured live: `main.offsetHeight` was
+ * 720 where the frame was 1280. The content therefore rendered as a band with
+ * dead space above and below, which is precisely what the operator photographed
+ * on a 2160×3840 panel: "the g43 is showing the content shrunk in landscape".
+ *
+ * The fix is to size the root off its containing block (`100%`) instead of the
+ * viewport, which the rotated body has already given an explicit width/height.
+ * Verified in-browser BEFORE shipping: injecting this exact rule moved `main`
+ * from 720×720 to 720×1280 and corrected its `fixed`-positioned children to
+ * 720×1280 as well.
+ *
+ * `!important` is required — it is overriding a Tailwind utility class.
+ * Idempotent, and a no-op to remove when it was never added.
+ */
+function setRotationViewportFix(on: boolean): void {
+  if (typeof document === 'undefined') return;
+  const existing = document.getElementById(ROTATION_FIX_STYLE_ID);
+  if (!on) {
+    existing?.remove();
+    return;
+  }
+  if (existing) return;
+  const style = document.createElement('style');
+  style.id = ROTATION_FIX_STYLE_ID;
+  // Scoped to the direct root only. Deliberately NOT a blanket
+  // `[class*="h-screen"]` sweep: widgets and boards legitimately use viewport
+  // units for their own scaling maths, and silently redefining those would
+  // trade a visible letterbox for a subtle, much harder-to-diagnose drift.
+  style.textContent =
+    'body > main{width:100%!important;height:100%!important;min-height:100%!important;}';
+  document.head.appendChild(style);
+}
+
 /** True when running inside the Android player WebView (passed via ?client=android). */
 function isAndroidWebView(): boolean {
   if (typeof window === 'undefined') return false;
@@ -2479,6 +2528,7 @@ function PlayerPage() {
   //
   // Detection: 2 seconds after we asked for PORTRAIT, check if
   // window.innerWidth > innerHeight. If yes, the ROM didn't rotate —
+  // ⚠️ THE ROTATION IS ONLY HALF THE JOB — see setRotationViewportFix.
   // apply a body transform:rotate(90deg) so the operator at least sees
   // rotated content. Same approach the preview path uses (see below).
   //
@@ -2497,6 +2547,9 @@ function PlayerPage() {
         body.style.cssText = '';
         html.style.cssText = '';
       }
+      // Always clear the companion rule, even if the body was already clean —
+      // leaving it behind would pin `main` to 100% of an UNrotated body.
+      setRotationViewportFix(false);
       return;
     }
     const handle = window.setTimeout(() => {
@@ -2520,6 +2573,10 @@ function PlayerPage() {
         'overflow:hidden',
         'margin:0',
       ].join(';') + ';';
+      // Viewport units do not follow the rotated body — without this the root
+      // <main> stays at 100vh and the content letterboxes. See
+      // setRotationViewportFix.
+      setRotationViewportFix(true);
     }, 2000);
     return () => window.clearTimeout(handle);
   }, [manifestOrientation]);
@@ -2554,17 +2611,20 @@ function PlayerPage() {
         'overflow:hidden',
         'margin:0',
       ].join(';') + ';';
+      setRotationViewportFix(true);
     } else {
       // Explicit landscape: reset anything a portrait-preview before it
       // might have left behind (same tab, navigated between previews).
       html.style.cssText = '';
       body.style.cssText = '';
+      setRotationViewportFix(false);
     }
     return () => {
       // Restore whatever was there before on unmount so hot-reloading the
       // dev server doesn't persist weird body styles into the admin UI.
       if (prevHtml == null) html.removeAttribute('style'); else html.setAttribute('style', prevHtml);
       if (prevBody == null) body.removeAttribute('style'); else body.setAttribute('style', prevBody);
+      setRotationViewportFix(false);
     };
   }, [previewOrientation]);
 
