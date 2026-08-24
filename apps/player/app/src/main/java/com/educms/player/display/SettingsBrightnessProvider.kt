@@ -47,8 +47,12 @@ object SettingsBrightnessProvider : DisplayControlProvider {
         if (!canWrite(app)) {
             return ActionResult.Unsupported("WRITE_SETTINGS not granted — operator must allow it in Settings")
         }
+        // Perceptual (gamma) map, 2026-08-25 — see
+        // DisplayLimits.perceptualBrightnessDuty. Same mapping as the
+        // sysfs provider so a screen whose verdict flips between the two
+        // mechanisms keeps the same slider feel.
         val floor = if (action.allowBlack) 0 else 1
-        val target = DisplayLimits.scale(action.percent, 0, ANDROID_MAX).coerceAtLeast(floor)
+        val target = DisplayLimits.scaleBrightnessPerceptual(action.percent, 0, ANDROID_MAX).coerceAtLeast(floor)
         return try {
             // Manual mode first: an auto-brightness ROM would otherwise
             // overwrite our value on the next ambient-sensor tick.

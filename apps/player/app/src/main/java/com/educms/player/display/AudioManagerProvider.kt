@@ -42,7 +42,15 @@ object AudioManagerProvider : DisplayControlProvider {
             val max = manager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
             if (max <= 0) return ActionResult.Failed("STREAM_MUSIC reports max volume 0", id)
             val target = DisplayLimits.scale(action.percent, 0, max)
-            manager.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
+            // FLAG_SHOW_UI (2026-08-25) — operator: volume changed "in the
+            // background... would be nice to see it as you adjusted it on
+            // the screen". Flags=0 applied silently; this pops the OS
+            // volume panel for ~2s on the glass. Both construction sites
+            // (dashboard command, dead-man revert) are moments the level
+            // genuinely changes, so on-screen feedback is honest for both
+            // — there is no boot-time volume restore that would toast on
+            // every restart.
+            manager.setStreamVolume(AudioManager.STREAM_MUSIC, target, AudioManager.FLAG_SHOW_UI)
             PlayerLogger.i(TAG, "volume ${action.percent}% → $target/$max via $id")
             ActionResult.Ok(id, "$target/$max")
         } catch (t: Throwable) {

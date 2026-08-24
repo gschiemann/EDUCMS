@@ -48,7 +48,10 @@ object SoftwareDimProvider : DisplayControlProvider {
                     h.setBlackout(false)
                     h.setKeepScreenOn(true)
                 }
-                h.setWindowBrightness(action.percent / 100f)
+                // Perceptual (gamma) duty, 2026-08-25 — same curve as the
+                // sysfs/Settings providers so every mechanism's "40%"
+                // looks alike. See DisplayLimits.perceptualBrightnessDuty.
+                h.setWindowBrightness(DisplayLimits.perceptualBrightnessDuty(action.percent).toFloat())
             }
             PlayerLogger.i(TAG, "brightness ${action.percent}% (window ${if (attached) "attached" else "detached"})")
             ActionResult.Ok(id, if (attached) null else "deferred — no window attached")
@@ -71,7 +74,10 @@ object SoftwareDimProvider : DisplayControlProvider {
             val attached = DisplayWindowBridge.withHooks { h ->
                 h.setBlackout(false)
                 h.setKeepScreenOn(true)
-                h.setWindowBrightness(restore / 100f)
+                // Same perceptual curve as SetBrightness above — a wake
+                // must restore the exact duty the mirror's percent maps
+                // to, or wake would visibly jump brightness.
+                h.setWindowBrightness(DisplayLimits.perceptualBrightnessDuty(restore).toFloat())
                 h.requestWake()
             }
             PlayerLogger.i(TAG, "wake → ${restore}% (window ${if (attached) "attached" else "detached"})")

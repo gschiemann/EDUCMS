@@ -165,6 +165,55 @@ object DisplayLimits {
     }
 
     /**
+     * Display gamma for the perceptual brightness map below. 2.2 is the
+     * display-industry standard exponent (sRGB-era CRT gamma; the
+     * Android system slider applies its own variant of the same idea).
+     */
+    const val BRIGHTNESS_GAMMA = 2.2
+
+    /**
+     * Perceptual brightness duty for a slider percent, 0.0..1.0.
+     *
+     * 2026-08-25 — operator: "i go down to 5% but it still seems
+     * brighter than that to me". He is right: backlight DUTY was mapped
+     * linearly from the slider, but human brightness perception is
+     * roughly a power law — 5% duty reads as ~25-30% as bright, so the
+     * bottom half of the slider barely did anything and the range felt
+     * top-heavy. Pushing the percent through gamma makes equal slider
+     * steps FEEL like equal brightness steps: 50% → 22% duty, 25% → 5%,
+     * 5% → 0.1% (very dim, floored to the device minimum by the scale
+     * function / provider floors — never hard off unless allowBlack).
+     *
+     * BRIGHTNESS ONLY. Volume stays on the linear [scale] — Android's
+     * volume steps are already perceptually spaced by the OS — and
+     * vendor-recipe scales stay linear because existing installs were
+     * tuned against that mapping.
+     */
+    fun perceptualBrightnessDuty(percent: Int): Double {
+        val p = percent.coerceIn(0, 100)
+        if (p == 0) return 0.0
+        if (p == 100) return 1.0
+        return Math.pow(p / 100.0, BRIGHTNESS_GAMMA)
+    }
+
+    /**
+     * Perceptual counterpart of [scale] for BRIGHTNESS writes (sysfs
+     * node, Settings.System). Same endpoint guarantees: 0 → `min`,
+     * 100 → `max`, monotonic in between. A non-zero percent whose duty
+     * rounds to `min` is bumped one step up when the scale has room, so
+     * the low end of the slider stays distinguishable from "off" —
+     * callers still apply their own allowBlack floors on top.
+     */
+    fun scaleBrightnessPerceptual(percent: Int, min: Int, max: Int): Int {
+        if (max <= min) return min
+        val p = percent.coerceIn(0, 100)
+        if (p == 0) return min
+        if (p == 100) return max
+        val raw = min + Math.round((max - min) * perceptualBrightnessDuty(p)).toInt()
+        return raw.coerceAtLeast(minOf(min + 1, max))
+    }
+
+    /**
      * Normalise an action to what we are actually willing to perform.
      * Applied at the registry boundary so EVERY entry point — bridge,
      * scheduler, dead-man revert — gets the same clamp.

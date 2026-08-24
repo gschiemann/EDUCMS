@@ -75,8 +75,12 @@ object SysfsBacklightProvider : DisplayControlProvider {
         // Never write a hard 0 to a real backlight unless the operator
         // explicitly asked for black — on many panels 0 latches the
         // backlight driver off and only a power cycle brings it back.
+        // Perceptual (gamma) map, 2026-08-25 — see
+        // DisplayLimits.perceptualBrightnessDuty: linear duty made the
+        // slider's bottom half do almost nothing ("5% still seems
+        // brighter than that").
         val floor = if (action.allowBlack) 0 else 1
-        val target = DisplayLimits.scale(action.percent, 0, n.max).coerceAtLeast(floor)
+        val target = DisplayLimits.scaleBrightnessPerceptual(action.percent, 0, n.max).coerceAtLeast(floor)
 
         return try {
             File(canonical).writeText(target.toString())
