@@ -80,8 +80,8 @@ android {
         //   * Kiosk lock task mode (LockTaskController), device-owner gated.
         //   * OTA host pinning, serial-bridge shell injection fix, intent
         //     redirection fix, USB receiver action check.
-        versionCode = 10102
-        versionName = "1.1.2"
+        versionCode = 10103
+        versionName = "1.1.3"
 
         // Override at build time:  -PplayerBaseUrl="https://your.app/player"
         val playerBaseUrl: String = (project.findProperty("playerBaseUrl") as? String)
