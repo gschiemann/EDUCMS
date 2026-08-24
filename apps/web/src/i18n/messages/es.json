@@ -594,6 +594,7 @@
       "title": "Control de pantalla",
       "checkedAgo": "comprobado {ago}",
       "notReported": "Esta pantalla aún no ha informado de lo que puede controlar. El reproductor comprueba su propio hardware al arrancar y envía el resultado en su siguiente conexión; los controles aparecerán aquí automáticamente. Los reproductores de navegador nunca informan y no se pueden controlar de forma remota.",
+      "browserPlayer": "Este es un reproductor de navegador: el control remoto de energía, brillo y horarios de encendido/apagado requiere la app Android del reproductor en un dispositivo compatible.",
       "volume": "Volumen",
       "volumeSent": "Volumen ajustado al {percent}% — enviado.",
       "brightness": "Brillo",

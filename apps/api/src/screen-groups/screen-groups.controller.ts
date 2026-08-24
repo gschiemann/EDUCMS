@@ -102,6 +102,16 @@ export class ScreenGroupsController {
             // group.screens[N] (same bug class as the 2026-04-27 fix
             // above: omit it here and the chip reads undefined forever).
             lastPushConnectedAt: true,
+            // 2026-08-24 — settings-menu cleanup. The per-screen menu now
+            // GATES its LED-canvas section on hardwareModel (LED-canvas
+            // hardware only) and shows the detected model in the header.
+            // Same bug class as the 2026-04-27 fix above: without this a
+            // grouped Taurus read hardwareModel=undefined and the LED
+            // canvas picker silently vanished for exactly the screens
+            // that need it. (`config` — consoleProfile — is a JSON blob
+            // and stays off the 10s-refetch list payload on purpose; the
+            // dashboard reads it off the full GET /screens row instead.)
+            hardwareModel: true,
             // lastCrashStack deliberately omitted from the list
             // endpoint — 8KB per row × N screens is too much for a
             // dashboard that re-fetches every 10s. Stack lives on the

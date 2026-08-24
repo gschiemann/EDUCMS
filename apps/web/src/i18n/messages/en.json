@@ -594,6 +594,7 @@
       "title": "Display control",
       "checkedAgo": "checked {ago}",
       "notReported": "This screen hasn’t reported what it can control yet. The player checks its own hardware at startup and sends the result on its next check-in — controls appear here automatically once it does. Browser-based players never report and cannot be controlled remotely.",
+      "browserPlayer": "This is a browser player — remote power, brightness and on/off schedules need the Android player app on a supported device.",
       "volume": "Volume",
       "volumeSent": "Volume set to {percent}% — sent.",
       "brightness": "Brightness",

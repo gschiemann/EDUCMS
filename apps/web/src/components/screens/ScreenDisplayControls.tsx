@@ -218,12 +218,24 @@ export function ScreenDisplayControls({
   screen,
   readOnly,
   onOpenSchedule,
+  browserPlayer,
 }: {
   screen: DisplayControlScreen;
   /** RESTRICTED_VIEWER — read-only, every control inert. */
   readOnly?: boolean;
   /** Opens the schedule modal (the parent closes the popover first). */
   onOpenSchedule: () => void;
+  /**
+   * 2026-08-24 settings-menu cleanup — the parent knows this screen runs in
+   * a plain browser (non-Android osInfo / 'web' hardware bucket), where no
+   * native bridge will EVER report capabilities or act on a command. The
+   * unreported-branch recovery controls (Wake, brightness raise, on/off
+   * schedule) are honest offers on a silent Android box, but on a browser
+   * player they are dead buttons — every one fails 100% of the time. When
+   * true AND nothing has reported, collapse to a one-line explanation.
+   * A capability report, if one ever arrives, overrides this hint.
+   */
+  browserPlayer?: boolean;
 }) {
   const t = useTranslations();
   const control = useDisplayControl();
@@ -487,6 +499,24 @@ export function ScreenDisplayControls({
       <span className="min-w-0">{status.msg}</span>
     </div>
   );
+
+  // ── Browser player, nothing reported ────────────────────────────────
+  // One honest sentence instead of recovery controls that structurally
+  // cannot work (no native bridge → no report, no command ever lands).
+  // See the `browserPlayer` prop doc above.
+  if (browserPlayer && !caps.reported) {
+    return (
+      <div className="bg-slate-50/60">
+        {header}
+        <div className="px-3.5 pb-3 pt-1 flex items-start gap-2">
+          <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+          <p className="text-[10px] text-slate-500 leading-snug">
+            {t('screens.display.browserPlayer')}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // ── Nothing reported yet ────────────────────────────────────────────
   // Explainer + EXACTLY the actions the server gate accepts on a null

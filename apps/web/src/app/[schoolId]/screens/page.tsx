@@ -1,6 +1,6 @@
 "use client";
 
-import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check, AlertCircle, Radio, Camera, CalendarClock } from 'lucide-react';
+import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check, AlertCircle, Radio, Camera, CalendarClock, ChevronDown } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useUpdateScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout, useSetScreenOrientation, useSetScreenCanvas, useHardwareCatalog, useSetScreenHardwareModel, useSetScreenConsoleProfile, useSetScreenSyncOffset, useSyncTrimSuggestions } from '@/hooks/use-api';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
@@ -356,34 +356,276 @@ function CanaryRolloutTile({ canary }: { canary: { percent: number; setAt: strin
   );
 }
 
-// Phase B closeout — per-screen diagnostics block inside the settings
-// popover. Rolls up every field already on the Screen payload into a
-// compact 2-column grid:
+// ─────────────────────────────────────────────────────────────────────
+// 2026-08-24 — per-screen settings menu, cleaned up. Operator: "we have
+// so many settings you need to scroll to use them, it doesnt even say
+// the name of the screen you are looking at in the settings, there are
+// LED poster settings in standard LCD screens, the controller type
+// should auto detect and not have a drop down".
 //
-//   OS / browser         resolution
-//   APK + reported-at    Manager + reported-at
-//   Cache state          Last OTA state + message
-//   Address / location   Latest fingerprint
-//
-// Operators previously had to inspect the React Query devtools or curl
-// /api/v1/screens/status/<fp> to see this. Now it's one click in the
-// gear popover next to the screen row. No new endpoint — purely a
-// presentation enhancement.
-function ScreenDiagnostics({ screen, groupSyncLocked }: { screen: any; groupSyncLocked?: boolean }) {
+// Shape of the menu now: identity header (screen name + detected
+// hardware) → two quick actions → only the settings that apply to THIS
+// screen's hardware (each section below gates itself off the detected
+// model and returns null when it doesn't apply) → one collapsed
+// "Device details" drawer holding every read-only diagnostic plus the
+// hardware-correction escape hatch. The hardware DROPDOWN is gone from
+// the face of the menu: the server already auto-detects the model from
+// the player's own check-in (apps/api/src/screens/hardware-detect.ts,
+// back-filled on /register) — the dashboard shows the answer instead
+// of asking the question.
+// ─────────────────────────────────────────────────────────────────────
+
+/** Shared section label so the menu reads as one system. */
+function MenuSectionLabel({ children, hint }: { children: React.ReactNode; hint?: string }) {
+  return (
+    <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400" title={hint}>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Orientation — one-tap segmented chips instead of the old <select>.
+ * Auto listed first because it IS the default (966780af): the player's
+ * sensor / native-resolution heuristic decides, and the other two are
+ * explicit overrides for sideways mounts. Same mutation + ~10s
+ * signed-WS convergence as before. stopPropagation + no
+ * disabled-while-pending: the defenses the LED canvas buttons earned
+ * on 2026-05-26 ("its stuck on 1 now and i cant switch it") — a hung
+ * first request must not wedge the control.
+ */
+function OrientationSection({ screen }: { screen: any }) {
   const t = useTranslations();
-  // 2026-05-24 — per-screen orientation lock control. Lives inside the
-  // diagnostics drawer (right next to Resolution) so operators with a
-  // sideways-mounted Goodview / Taurus screen can flip orientation in
-  // one click without climbing a ladder.
   const setOrientation = useSetScreenOrientation();
+  const current: string = screen?.orientation || 'AUTO';
+  const options: Array<{ v: 'AUTO' | 'LANDSCAPE' | 'PORTRAIT'; label: string; hint: string }> = [
+    { v: 'AUTO', label: 'Auto', hint: `${t('screens.autoSensor')} — the player works out which way the panel faces. Right for almost every screen.` },
+    { v: 'LANDSCAPE', label: t('screens.landscape'), hint: 'Force landscape.' },
+    { v: 'PORTRAIT', label: t('screens.portrait'), hint: 'Force portrait — for sideways-mounted panels.' },
+  ];
+  return (
+    <div className="px-3.5 py-2.5 border-b border-slate-100">
+      <MenuSectionLabel hint="Takes effect on the device within ~10 seconds via signed push.">
+        {t('screens.orientation')}
+      </MenuSectionLabel>
+      <div className="flex items-center gap-1 mt-1.5">
+        {options.map((o) => (
+          <button
+            key={o.v}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (o.v === current) return;
+              setOrientation.mutate({ id: screen.id, orientation: o.v });
+            }}
+            title={o.hint}
+            aria-pressed={o.v === current}
+            className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold border transition-colors ${
+              o.v === current
+                ? 'bg-indigo-600 text-white border-indigo-600'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-indigo-50 hover:border-indigo-200'
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+      {(setOrientation.isPending || setOrientation.isError) && (
+        <div className="text-[10px] text-slate-400 mt-1">
+          {setOrientation.isPending ? 'Saving…' : 'Could not save — tap again.'}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Hardware that actually drives a multi-panel LED canvas (the player
+ * IS the LED controller and needs the panel count to size its render
+ * surface). Same rule + id list as KioskSplash's LED banner
+ * (isLedCanvasHardware) — source of truth for the ids:
+ * packages/api-types/src/hardware-models.ts.
+ */
+const LED_CANVAS_HARDWARE = ['novastar-taurus', 'goodview-ecbox3576'];
+
+/**
+ * LED canvas — daisy-chained 320×1080 panel-count picker.
+ *
+ * ONLY rendered on LED-canvas hardware. Every other model — EP6N / Pi /
+ * generic Android / browser — renders at native resolution, so this
+ * section was pure noise there (operator, 2026-08-24: "there are LED
+ * poster settings in standard LCD screens"). Escape hatch: if an
+ * override IS set (canvasW/H non-null) the section renders regardless
+ * of the detected model, so a mis-detected screen can always see and
+ * clear its override.
+ */
+function LedCanvasSection({ screen }: { screen: any }) {
   const setCanvas = useSetScreenCanvas();
-  // 2026-07-28 — frame-locked sync latency trim (rendered only when the
-  // parent group has syncMode='locked'; see groupSyncLocked prop).
+  const currentCanvasW: number | null = typeof screen?.canvasW === 'number' ? screen.canvasW : null;
+  const currentCanvasH: number | null = typeof screen?.canvasH === 'number' ? screen.canvasH : null;
+  const currentPanelN: number | null =
+    currentCanvasW && currentCanvasH === 1080 && currentCanvasW % 320 === 0
+      ? currentCanvasW / 320
+      : null;
+  const isLedHardware = LED_CANVAS_HARDWARE.includes(screen?.hardwareModel);
+  const hasOverride = currentCanvasW !== null || currentCanvasH !== null;
+  if (!isLedHardware && !hasOverride) return null;
+  return (
+    <div className="px-3.5 py-2.5 border-b border-slate-100">
+      <MenuSectionLabel hint="How many 320×1080 LED panels are daisy-chained on this controller. The player sizes its canvas to match. Off = controller's native viewport.">
+        LED canvas
+      </MenuSectionLabel>
+      <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+        <button
+          type="button"
+          onClick={(e) => {
+            // stopPropagation + no disabled-while-pending — see the
+            // 2026-05-26 "its stuck on 1" incident: the popover's
+            // document-level outside-handler must not see this click,
+            // and a hung first request must not wedge the buttons.
+            e.stopPropagation();
+            if (currentCanvasW === null && currentCanvasH === null) return;
+            setCanvas.mutate({ id: screen.id, canvasW: null, canvasH: null });
+          }}
+          className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors ${
+            currentPanelN === null && currentCanvasW === null
+              ? 'bg-slate-700 text-white border-slate-700'
+              : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+          }`}
+          title="Clear the LED canvas override. Player uses the controller's native viewport."
+        >
+          Off
+        </button>
+        {[1, 2, 3, 4, 5, 6].map((n) => {
+          const w = 320 * n;
+          const h = 1080;
+          const active = currentPanelN === n;
+          return (
+            <button
+              key={n}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (active) return;
+                setCanvas.mutate({ id: screen.id, canvasW: w, canvasH: h });
+              }}
+              className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors ${
+                active
+                  ? 'bg-indigo-600 text-white border-indigo-600'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-indigo-50 hover:border-indigo-200'
+              }`}
+              title={`${n} panel${n === 1 ? '' : 's'} = ${w}×${h}`}
+            >
+              {n}
+            </button>
+          );
+        })}
+        <span className="text-[10px] text-slate-400 ml-1 font-mono">
+          {currentCanvasW && currentCanvasH
+            ? `${currentCanvasW}×${currentCanvasH}`
+            : 'native'}
+          {setCanvas.isPending && ' · saving…'}
+          {setCanvas.isError && ' · error'}
+        </span>
+      </div>
+      {!isLedHardware && hasOverride && (
+        <div className="text-[10px] text-amber-600 mt-1">
+          Canvas override set on non-LED hardware — "Off" clears it.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Scoreboard console — which timing console feeds this screen over
+ * serial (water-polo pilot, 2026-06-01). Persists
+ * Screen.config.consoleProfile → manifest → CtsBridge. Only meaningful
+ * on hardware WITH a serial path (EP6N dual RS232, ECBox RS232) — on
+ * everything else (LCD TVs, browser players, Taurus) it was a
+ * confusing dropdown about a port that doesn't exist. Gated on the
+ * detected model's serial capability; escape hatch: renders whenever a
+ * profile is already set so existing config can be seen + cleared.
+ */
+function ConsoleSection({ screen }: { screen: any }) {
+  const catalogQ = useHardwareCatalog();
+  const setConsole = useSetScreenConsoleProfile();
+  // Options kept in sync with the package's ConsoleProfileId + the
+  // manifest allow-list; inlined so the dashboard route doesn't pull
+  // the player-oriented @cms/scoreboard-cts runtime into its bundle.
+  const CONSOLE_OPTIONS: Array<{ id: string; label: string; group: string; help: string; provisional?: boolean }> = [
+    { id: 'cts-gen6', label: 'CTS Gen 6 / System 6', group: 'Colorado Time Systems', help: 'Wired RS-232 (1/4" jack) → native serial port.' },
+    { id: 'cts-gen7', label: 'CTS Gen 7 (RS-232 output)', group: 'Colorado Time Systems', help: 'Gen 7 via its RS-232 output (legacy CTS protocol — same as Gen 6). Its RS-485 "Gen7/WA-2" output is a different protocol, not decoded yet.' },
+    { id: 'cts-wttc', label: 'CTS Wireless Tabletop (WTTC)', group: 'Colorado Time Systems', help: 'USB-B → FTDI USB-serial adapter (/dev/ttyUSB0). Byte format pending a live capture.', provisional: true },
+    { id: 'daktronics-allsport', label: 'Daktronics All Sport 5000', group: 'Daktronics', help: 'Enhanced RTD over RS-232. Byte offsets pending a real-hardware capture — playClock/possession unconfirmed.', provisional: true },
+  ];
+  const CONSOLE_GROUPS = Array.from(new Set(CONSOLE_OPTIONS.map((o) => o.group)));
+  const currentConsole: string =
+    (screen?.config && typeof screen.config === 'object' && typeof (screen.config as any).consoleProfile === 'string')
+      ? (screen.config as any).consoleProfile
+      : '';
+  const model = (catalogQ.data?.models ?? []).find((m) => m.id === (screen?.hardwareModel ?? 'unknown')) ?? null;
+  const caps = model?.caps;
+  const hasSerial = !!caps && (caps.serialPorts >= 1 || caps.rs485);
+  if (!hasSerial && !currentConsole) return null;
+  return (
+    <div className="px-3.5 py-2.5 border-b border-slate-100">
+      <MenuSectionLabel hint="Which scoreboard timing console feeds this screen. Drives the serial settings + the port the player opens.">
+        Scoreboard console
+      </MenuSectionLabel>
+      <select
+        value={currentConsole || '__none__'}
+        disabled={setConsole.isPending}
+        onChange={(e) => {
+          const next = e.target.value;
+          const payload = next === '__none__' ? null : next;
+          if ((payload ?? '') === currentConsole) return;
+          setConsole.mutate({ id: screen.id, consoleProfile: payload });
+        }}
+        className="mt-1.5 w-full text-[11px] font-medium text-slate-700 bg-white border border-slate-200 rounded px-1.5 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <option value="__none__">Not set (defaults to CTS Gen 6)</option>
+        {CONSOLE_GROUPS.map((g) => (
+          <optgroup key={g} label={g}>
+            {CONSOLE_OPTIONS.filter((o) => o.group === g).map((o) => (
+              <option key={o.id} value={o.id}>{o.label}</option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+      {(() => {
+        const sel = CONSOLE_OPTIONS.find((o) => o.id === currentConsole);
+        return sel ? (
+          <div className="text-[10px] text-slate-500 mt-1">
+            {sel.help}
+            {sel.provisional && (
+              <span className="ml-1 inline-block rounded bg-amber-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700">
+                capture pending
+              </span>
+            )}
+          </div>
+        ) : null;
+      })()}
+    </div>
+  );
+}
+
+/**
+ * Frame-locked sync latency trim (2026-07-28) — logic unchanged, now
+ * its own section. Parent mounts it only when the group has
+ * syncMode='locked'. Mixed display models add different FIXED pipeline
+ * delays (TV motion smoothing alone is 30-80ms) that no clock can see
+ * — this is the AVR lip-sync knob: point a phone camera at both
+ * screens, nudge until the flips align. Positive = this screen flips
+ * EARLIER (compensates a slow display).
+ */
+function SyncTrimSection({ screen }: { screen: any }) {
   const setSyncOffset = useSetScreenSyncOffset();
-  // Tier-2: fleet-learned starting trim for this screen's hardware model.
-  const trimSuggestions = useSyncTrimSuggestions(!!groupSyncLocked);
+  // Tier-2: fleet-learned starting trim for this screen's hardware
+  // model. Mounted-only-when-locked, so the query is always enabled.
+  const trimSuggestions = useSyncTrimSuggestions(true);
   const modelSuggestion = (() => {
-    if (!groupSyncLocked || !screen?.hardwareModel) return null;
+    if (!screen?.hardwareModel) return null;
     const s = trimSuggestions.data?.suggestions?.find(
       (x) => x.hardwareModel === screen.hardwareModel,
     );
@@ -393,21 +635,190 @@ function ScreenDiagnostics({ screen, groupSyncLocked }: { screen: any; groupSync
     if ((screen?.syncOffsetMs ?? 0) !== 0) return null;
     return s;
   })();
-  const currentOrientation: string = screen?.orientation || 'LANDSCAPE';
-  // 2026-05-26 — LED canvas (N-panel daisy-chain). Operator clicks a
-  // panel count; we resolve to canvasW = 320 × N, canvasH = 1080.
-  // null = clear override (uses the controller's native viewport,
-  // fine for standard landscape kiosks).
-  const currentCanvasW: number | null = typeof screen?.canvasW === 'number' ? screen.canvasW : null;
-  const currentCanvasH: number | null = typeof screen?.canvasH === 'number' ? screen.canvasH : null;
-  const currentPanelN: number | null =
-    currentCanvasW && currentCanvasH === 1080 && currentCanvasW % 320 === 0
-      ? currentCanvasW / 320
-      : null;
-  // 2026-05-27 — content tile-repeat UI picker removed from this card
-  // (operator wanted score-repeat in the Ribbon Content panel as the
-  // single source of truth). The `repeats` field stays in the data
-  // model for the player's tile-rendering path — see player/page.tsx.
+  return (
+    <div className="px-3.5 py-2.5 border-b border-slate-100">
+      <MenuSectionLabel hint="Nudge when this display flips relative to its frame-locked group. Positive = flip earlier (compensates a slow display).">
+        Sync trim
+      </MenuSectionLabel>
+      <div className="flex items-center flex-wrap gap-1 mt-1.5">
+        {[-25, -5, +5, +25].map((step) => (
+          <button
+            key={step}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              const cur = typeof screen?.syncOffsetMs === 'number' ? screen.syncOffsetMs : 0;
+              const next = Math.max(-2000, Math.min(2000, cur + step));
+              if (next !== cur) setSyncOffset.mutate({ id: screen.id, syncOffsetMs: next });
+            }}
+            className="px-2 py-0.5 rounded text-[10px] font-bold border bg-white text-slate-600 border-slate-200 hover:bg-indigo-50 hover:border-indigo-200 transition-colors"
+            title={`${step > 0 ? 'Flip this screen ' + step + 'ms earlier (display is slow)' : 'Flip this screen ' + -step + 'ms later (display is fast)'}`}
+          >
+            {step > 0 ? `+${step}` : step}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if ((screen?.syncOffsetMs ?? 0) !== 0) setSyncOffset.mutate({ id: screen.id, syncOffsetMs: null });
+          }}
+          className="px-2 py-0.5 rounded text-[10px] font-bold border bg-white text-slate-500 border-slate-200 hover:bg-slate-50 transition-colors"
+          title="Clear the trim back to 0ms"
+        >
+          Reset
+        </button>
+        <span className="text-[10px] text-slate-400 ml-1 font-mono">
+          {(screen?.syncOffsetMs ?? 0)}ms
+          {setSyncOffset.isPending && ' · saving…'}
+          {setSyncOffset.isError && ' · error'}
+        </span>
+      </div>
+      {/* Tier-2 — fleet-learned preset: other venues already trimmed
+          this display model; offer their median as a one-tap start. */}
+      {modelSuggestion && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setSyncOffset.mutate({ id: screen.id, syncOffsetMs: modelSuggestion.medianTrimMs });
+          }}
+          className="mt-1 px-2 py-0.5 rounded text-[10px] font-bold border bg-indigo-50 text-indigo-600 border-indigo-200 hover:bg-indigo-100 transition-colors"
+          title={`Learned across the fleet: ${modelSuggestion.sampleCount} screens of this model (${screen.hardwareModel}) run a median trim of ${modelSuggestion.medianTrimMs > 0 ? '+' : ''}${modelSuggestion.medianTrimMs}ms. Apply it as a starting point, then fine-tune by eye or camera.`}
+        >
+          Model preset: {modelSuggestion.medianTrimMs > 0 ? '+' : ''}{modelSuggestion.medianTrimMs}ms · Apply
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Hardware identity — READ-ONLY by default. The server auto-detects
+ * the model from the player's own check-in (hardware-detect.ts,
+ * back-filled on /register), so the operator is shown the answer, not
+ * asked the question (2026-08-24: "the controller type should auto
+ * detect and not have a drop down"). "Change" reveals the catalog
+ * select for the one case detection gets it wrong or comes back
+ * unknown — a value picked there is a manual override the server
+ * never overwrites (inferIfUnknown only fills a null column).
+ */
+function HardwareIdentityBlock({ screen }: { screen: any }) {
+  const catalogQ = useHardwareCatalog();
+  const setHardware = useSetScreenHardwareModel();
+  const [editing, setEditing] = useState(false);
+  const currentModelId: string = screen?.hardwareModel ?? 'unknown';
+  const catalogModels = catalogQ.data?.models ?? [];
+  const current = catalogModels.find((m) => m.id === currentModelId) ?? null;
+  const known = !!current && current.id !== 'unknown';
+  const caps = known ? current!.caps : undefined;
+  // Only the trues show — accuracy beats noise.
+  const badges: { label: string }[] = [];
+  if (caps) {
+    if (caps.serialPorts >= 2) badges.push({ label: 'Dual RS232' });
+    else if (caps.serialPorts >= 1) badges.push({ label: 'RS232' });
+    if (caps.rs485) badges.push({ label: 'RS485' });
+    if (caps.gpioIn > 0 || caps.gpioOut > 0) {
+      badges.push({ label: `GPIO ${caps.gpioIn}in/${caps.gpioOut}out` });
+    }
+    if (caps.hdmiIn) badges.push({ label: 'HDMI IN' });
+    if (caps.rj45Out) badges.push({ label: 'RJ45 passthrough' });
+    if (caps.powerOutVolts != null) badges.push({ label: `${caps.powerOutVolts}V aux out` });
+    if (caps.npuTops > 0) badges.push({ label: `${caps.npuTops} TOPS NPU` });
+    if (caps.decode4k) badges.push({ label: '4K decode' });
+    if (caps.fanless) badges.push({ label: 'Fanless' });
+    if (caps.duty247Rated) badges.push({ label: '24/7 rated' });
+  }
+
+  return (
+    <div className="px-3.5 py-3 border-t border-slate-100">
+      <div className="flex items-center justify-between gap-2">
+        <MenuSectionLabel hint="Detected automatically from the player's check-in. Change it only if the detection is wrong.">
+          Hardware
+        </MenuSectionLabel>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setEditing((v) => !v); }}
+          className="text-[10px] font-semibold text-slate-400 hover:text-slate-700 px-1.5 py-0.5 rounded hover:bg-slate-100 transition-colors"
+          title="Override the auto-detected hardware model"
+        >
+          {editing ? 'Done' : 'Change'}
+        </button>
+      </div>
+      <div className="text-[11px] font-medium text-slate-700 mt-1">
+        {known
+          ? current!.name
+          : <span className="text-slate-400">Not detected — the player reports it on its next check-in</span>}
+        {setHardware.isPending && <span className="text-slate-400"> · saving…</span>}
+      </div>
+      {known && current!.socOs && (
+        <div className="text-[10px] text-slate-500 mt-0.5" title={current!.socOs}>{current!.socOs}</div>
+      )}
+      {editing && (
+        <select
+          value={currentModelId}
+          disabled={setHardware.isPending || catalogQ.isLoading}
+          onChange={(e) => {
+            const next = e.target.value;
+            if (next === currentModelId) return;
+            // Picking "unknown" stores 'unknown'; the "Unassigned"
+            // sentinel ('__clear__') sends null to clear the column —
+            // which re-arms server auto-detect on the next check-in.
+            const payload = next === '__clear__' ? null : next;
+            setHardware.mutate({ id: screen.id, hardwareModel: payload });
+            setEditing(false);
+          }}
+          className="mt-1.5 w-full text-[11px] font-medium text-slate-700 bg-white border border-slate-200 rounded px-1.5 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <option value="__clear__">Unassigned (re-detect on next check-in)</option>
+          {catalogModels.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+            </option>
+          ))}
+        </select>
+      )}
+      {badges.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-1.5">
+          {badges.map((b) => (
+            <span
+              key={b.label}
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100"
+            >
+              <CheckCircle2 className="w-2.5 h-2.5" />
+              {b.label}
+            </span>
+          ))}
+        </div>
+      )}
+      {/* CLAUDE.md rule #10 — Chromium 83 warning. Only fires for
+          hardware whose minimum WebView is ≤ 83 (today: Taurus). */}
+      {caps && caps.chromiumMin <= 83 && (
+        <div
+          className="flex items-start gap-2 px-2 py-1.5 rounded border border-amber-200 bg-amber-50 mt-1.5"
+          title="This hardware ships an older Chromium that does not support modern CSS shorthand."
+        >
+          <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="text-[10px] text-amber-800 leading-snug">
+            <span className="font-bold">Chromium {caps.chromiumMin} device.</span>
+            {' '}Uses long-hand CSS per CLAUDE.md rule #10
+            (no <code className="font-mono bg-amber-100 px-1 rounded">inset</code> shorthand,
+            no flex <code className="font-mono bg-amber-100 px-1 rounded">gap</code>).
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Device details — every read-only diagnostic in one drawer, collapsed
+ * by default so the menu's face stays short. Rolls up the fields
+ * already on the Screen payload (no new endpoint): OS / push channel /
+ * APK versions / cache / OTA / location, plus hardware identity and
+ * the device fingerprint. Operators only come here when support asks.
+ */
+function DeviceDetails({ screen }: { screen: any }) {
   const cache: any = screen?.lastCacheReport || null;
   const cacheLine = cache
     ? `${cache.totalAssets ?? '?'} assets · ${cache.totalBytes != null ? Math.round(cache.totalBytes / 1024 / 1024) + ' MB' : '? size'}`
@@ -436,434 +847,66 @@ function ScreenDiagnostics({ screen, groupSyncLocked }: { screen: any; groupSync
   );
 
   return (
-    <div className="px-3.5 py-3 border-t border-slate-100 bg-slate-50/40">
-      <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-2">
-        Diagnostics
-      </div>
-      <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
-        {row('OS', screen?.osInfo)}
-        {row('Resolution', screen?.resolution)}
-        {/* 2026-07-31 — push-channel health (see the poll-only chip). */}
-        {row('Push channel', (screen as any)?.pushChannel === 'live'
-          ? 'Live (instant commands)'
-          : (screen as any)?.pushChannel === 'stale'
-            ? 'Down — polling only'
-            : 'Unknown')}
-        {/* 2026-05-24 — interactive orientation control. Asks the API
-            to flip LANDSCAPE / PORTRAIT / AUTO; signed WS broadcast +
-            manifest poll converge the kiosk within ~10s. */}
-        <div className="flex flex-col min-w-0">
-          <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{t('screens.orientation')}</div>
-          <select
-            value={currentOrientation}
-            disabled={setOrientation.isPending}
-            onChange={(e) => {
-              const next = e.target.value as 'LANDSCAPE' | 'PORTRAIT' | 'AUTO';
-              if (next === currentOrientation) return;
-              setOrientation.mutate({ id: screen.id, orientation: next });
-            }}
-            className="text-[11px] font-medium text-slate-700 bg-white border border-slate-200 rounded px-1.5 py-0.5 mt-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Flip the kiosk between landscape, portrait, or sensor-decides (AUTO). Takes effect on the device within ~10s via signed WS broadcast."
-          >
-            <option value="LANDSCAPE">{t('screens.landscape')}</option>
-            <option value="PORTRAIT">{t('screens.portrait')}</option>
-            <option value="AUTO">{t('screens.autoSensor')}</option>
-          </select>
-        </div>
-        {/* 2026-05-26 — LED canvas (daisy-chained 320×1080 panels).
-            Operator: "put it on the screen settings from the dashboard
-            itself". Each click = 1-panel-step. Signed-WS pushes the
-            new canvas to the kiosk in ~150ms; on-screen splash +
-            content immediately resize to fit. "Off" clears the
-            override (back to controller's native viewport). */}
-        <div className="flex flex-col min-w-0 col-span-2">
-          <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
-            LED canvas (320×1080 panels)
-          </div>
-          <div className="flex items-center gap-1 mt-1 flex-wrap">
-            <button
-              type="button"
-              onClick={(e) => {
-                // 2026-05-26 — operator: "its stuck on 1 now and i cant
-                // switch it to anything else". Zero PUT requests in the
-                // audit log despite the operator clicking. Suspected
-                // setCanvas.isPending stuck true (hung first request)
-                // OR document-mousedown outside-handler in the popover
-                // closing the menu before the React click fires.
-                // Defenses:
-                //   - stopPropagation so the popover's document-mouseup
-                //     outside-handler can't see this and close the
-                //     menu mid-click
-                //   - Dropped `disabled={setCanvas.isPending}` — relying
-                //     on React Query's internal queueing instead
-                e.stopPropagation();
-                if (currentCanvasW === null && currentCanvasH === null) return;
-                // eslint-disable-next-line no-console
-                console.log('[LED canvas] clicking Off', { screenId: screen.id, current: { w: currentCanvasW, h: currentCanvasH } });
-                setCanvas.mutate({ id: screen.id, canvasW: null, canvasH: null });
-              }}
-              className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors ${
-                currentPanelN === null && currentCanvasW === null
-                  ? 'bg-slate-700 text-white border-slate-700'
-                  : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
-              }`}
-              title="Clear the LED canvas override. Player uses the controller's native viewport (fine for landscape kiosks)."
-            >
-              Off
-            </button>
-            {[1, 2, 3, 4, 5, 6].map((n) => {
-              const w = 320 * n;
-              const h = 1080;
-              const active = currentPanelN === n;
-              return (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (active) return;
-                    // eslint-disable-next-line no-console
-                    console.log('[LED canvas] clicking', n, { screenId: screen.id, w, h });
-                    setCanvas.mutate({ id: screen.id, canvasW: w, canvasH: h });
-                  }}
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors ${
-                    active
-                      ? 'bg-indigo-600 text-white border-indigo-600'
-                      : 'bg-white text-slate-600 border-slate-200 hover:bg-indigo-50 hover:border-indigo-200'
-                  }`}
-                  title={`${n} panel${n === 1 ? '' : 's'} = ${w}×${h}`}
-                >
-                  {n}
-                </button>
-              );
-            })}
-            <span className="text-[10px] text-slate-400 ml-1 font-mono">
-              {currentCanvasW && currentCanvasH
-                ? `${currentCanvasW}×${currentCanvasH}`
-                : 'native'}
-              {setCanvas.isPending && ' · saving…'}
-              {setCanvas.isError && ' · error'}
-            </span>
-          </div>
-        </div>
-        {/* 2026-07-28 — frame-locked sync: per-screen latency trim. Only
-            rendered when this screen's group has sync ON. Mixed display
-            models add different FIXED pipeline delays (TV motion smoothing
-            alone is 30-80ms) that no clock can see — this is the AVR
-            lip-sync knob: point a phone camera at both screens, nudge
-            until the flips align. Positive = this screen flips EARLIER
-            (compensates a slow display). Same stopPropagation +
-            no-disabled-on-pending patterns as the canvas buttons above. */}
-        {groupSyncLocked && (
-          <div className="col-span-2">
-            <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">Sync trim</div>
-            <div className="flex items-center flex-wrap gap-1">
-              {[-25, -5, +5, +25].map((step) => (
-                <button
-                  key={step}
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const cur = typeof screen?.syncOffsetMs === 'number' ? screen.syncOffsetMs : 0;
-                    const next = Math.max(-2000, Math.min(2000, cur + step));
-                    if (next !== cur) setSyncOffset.mutate({ id: screen.id, syncOffsetMs: next });
-                  }}
-                  className="px-2 py-0.5 rounded text-[10px] font-bold border bg-white text-slate-600 border-slate-200 hover:bg-indigo-50 hover:border-indigo-200 transition-colors"
-                  title={`${step > 0 ? 'Flip this screen ' + step + 'ms earlier (display is slow)' : 'Flip this screen ' + -step + 'ms later (display is fast)'}`}
-                >
-                  {step > 0 ? `+${step}` : step}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if ((screen?.syncOffsetMs ?? 0) !== 0) setSyncOffset.mutate({ id: screen.id, syncOffsetMs: null });
-                }}
-                className="px-2 py-0.5 rounded text-[10px] font-bold border bg-white text-slate-500 border-slate-200 hover:bg-slate-50 transition-colors"
-                title="Clear the trim back to 0ms"
-              >
-                Reset
-              </button>
-              <span className="text-[10px] text-slate-400 ml-1 font-mono">
-                {(screen?.syncOffsetMs ?? 0)}ms
-                {setSyncOffset.isPending && ' · saving…'}
-                {setSyncOffset.isError && ' · error'}
+    <div className="bg-slate-50/40">
+      <div className="px-3.5 py-3">
+        <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
+          {row('OS', screen?.osInfo)}
+          {row('Browser', screen?.browserInfo)}
+          {/* 2026-07-31 — push-channel health (see the poll-only chip). */}
+          {row('Push channel', (screen as any)?.pushChannel === 'live'
+            ? 'Live (instant commands)'
+            : (screen as any)?.pushChannel === 'stale'
+              ? 'Down — polling only'
+              : 'Unknown')}
+          {row(
+            'Player APK',
+            playerV ? (
+              <>
+                <span className="font-mono">v{playerV}</span>
+                {playerVAt && <span className="text-slate-400"> · {timeAgo(playerVAt)}</span>}
+              </>
+            ) : null,
+          )}
+          {row(
+            'Manager APK',
+            managerV ? (
+              <>
+                <span className="font-mono">v{managerV}</span>
+                {managerVAt && <span className="text-slate-400"> · {timeAgo(managerVAt)}</span>}
+              </>
+            ) : null,
+          )}
+          {row('Cache', cacheLine)}
+          {row('Emergency cache', emergencyLine)}
+          {row(
+            'Last OTA',
+            otaState ? (
+              <span className="flex flex-col">
+                {/* 2026-08-14 — UP_TO_DATE is the terminal state of a healthy
+                    check. Green + plain English; every other state stays on
+                    the raw token so an unfamiliar one is never disguised as
+                    normal. */}
+                <span className={`font-semibold ${otaState === 'UP_TO_DATE' ? 'text-emerald-700' : otaState === 'ERROR' ? 'text-rose-700' : ''}`}>
+                  {otaState === 'UP_TO_DATE' ? 'Up to date' : otaState}
+                  {otaProg != null && otaProg < 100 ? ` ${otaProg}%` : ''}
+                </span>
+                {otaMsg && <span className="text-[10px] text-slate-500 truncate" title={otaMsg}>{otaMsg}</span>}
+                {otaAt && <span className="text-[10px] text-slate-400">{timeAgo(otaAt)}</span>}
               </span>
-            </div>
-            {/* Tier-2 — fleet-learned preset: other venues already trimmed
-                this display model; offer their median as a one-tap start. */}
-            {modelSuggestion && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSyncOffset.mutate({ id: screen.id, syncOffsetMs: modelSuggestion.medianTrimMs });
-                }}
-                className="mt-1 px-2 py-0.5 rounded text-[10px] font-bold border bg-indigo-50 text-indigo-600 border-indigo-200 hover:bg-indigo-100 transition-colors"
-                title={`Learned across the fleet: ${modelSuggestion.sampleCount} screens of this model (${screen.hardwareModel}) run a median trim of ${modelSuggestion.medianTrimMs > 0 ? '+' : ''}${modelSuggestion.medianTrimMs}ms. Apply it as a starting point, then fine-tune by eye or camera.`}
-              >
-                Model preset: {modelSuggestion.medianTrimMs > 0 ? '+' : ''}{modelSuggestion.medianTrimMs}ms · Apply
-              </button>
-            )}
-          </div>
-        )}
-        {/* 2026-06-26 — Removed the "Image fit" (Fit/Fill/Stretch) control.
-            Operator: don't add another setting to the screen menu — the
-            player auto-fits (object-fit:fill / stretch) every image; a
-            correctly-sized image looks perfect, a wrong one stretches. No
-            per-screen toggle. */}
-        {/* 2026-05-27 — Removed "Content tile-repeat" picker from screen
-            settings. Operator: "we built the repeat of the score right
-            into the [ribbon content] settings but then you added it
-            again under the screen settings…keep it here in the ribbon
-            setup area".
-            For sports ribbons, the in-game "Score 1×/2×/3×/4×" picker
-            in the Ribbon Content panel (sports/[gameId]) controls how
-            the scoreboard recurs inside one ribbon render.
-            The underlying `repeats` field + player tile-rendering code
-            stay intact (player/page.tsx + screens.controller.ts) so a
-            future non-sports use case (e.g. retail 40ft LED with a
-            non-ribbon playlist) can re-surface this picker without
-            re-plumbing the data path. */}
-        {row(
-          'Player APK',
-          playerV ? (
-            <>
-              <span className="font-mono">v{playerV}</span>
-              {playerVAt && <span className="text-slate-400"> · {timeAgo(playerVAt)}</span>}
-            </>
-          ) : null,
-        )}
-        {row(
-          'Manager APK',
-          managerV ? (
-            <>
-              <span className="font-mono">v{managerV}</span>
-              {managerVAt && <span className="text-slate-400"> · {timeAgo(managerVAt)}</span>}
-            </>
-          ) : null,
-        )}
-        {row('Cache', cacheLine)}
-        {row('Emergency cache', emergencyLine)}
-        {row(
-          'Last OTA',
-          otaState ? (
-            <span className="flex flex-col">
-              {/* 2026-08-14 — UP_TO_DATE is the terminal state of a healthy
-                  check (added because the player used to return silently and
-                  leave every healthy screen pinned on CHECKING). Render it
-                  green + in plain English; leave every other state on the raw
-                  token so an unfamiliar one is never disguised as normal. */}
-              <span className={`font-semibold ${otaState === 'UP_TO_DATE' ? 'text-emerald-700' : otaState === 'ERROR' ? 'text-rose-700' : ''}`}>
-                {otaState === 'UP_TO_DATE' ? 'Up to date' : otaState}
-                {otaProg != null && otaProg < 100 ? ` ${otaProg}%` : ''}
-              </span>
-              {otaMsg && <span className="text-[10px] text-slate-500 truncate" title={otaMsg}>{otaMsg}</span>}
-              {otaAt && <span className="text-[10px] text-slate-400">{timeAgo(otaAt)}</span>}
-            </span>
-          ) : null,
-        )}
-        {row(
-          'Location',
-          screen?.address
-            ? <span title={`${screen.latitude}, ${screen.longitude}`}>{screen.address}</span>
-            : screen?.latitude != null
-              ? <span className="font-mono">{Number(screen.latitude).toFixed(3)}, {Number(screen.longitude).toFixed(3)}</span>
-              : null,
-        )}
-      </div>
-      {/* 2026-05-27 — player-hardware panel. Drives capability-gated UI
-          downstream (GPIO setup, dual-RS232 wiring, HDMI-IN streaming
-          overlay). Hidden when the screen's hardwareModel is null or
-          'unknown' — the operator picks a model from the dropdown to
-          surface the capability chips + per-feature subpanels. */}
-      <ScreenHardwarePanel screen={screen} />
-    </div>
-  );
-}
-
-/**
- * 2026-05-27 — Hardware identification + capability matrix for a single
- * screen. Lives inside the per-screen Diagnostics drawer (right under
- * the diagnostics grid).
- *
- * Reads the catalog from GET /api/v1/hardware/catalog (cached for the
- * session). Surfaces:
- *   - A dropdown of every known SKU (operator picks the hardware model)
- *   - Capability badges accurate to the picked model (only the trues show)
- *   - A Chromium-83 warning chip for Taurus deployments (CLAUDE.md rule #10)
- *
- * Saves go through the existing PUT /screens/:id endpoint; the API
- * validates the value against HARDWARE_CATALOG before persisting.
- */
-function ScreenHardwarePanel({ screen }: { screen: any }) {
-  const catalogQ = useHardwareCatalog();
-  const setHardware = useSetScreenHardwareModel();
-  const setConsole = useSetScreenConsoleProfile();
-  // 2026-06-01 — which scoreboard console feeds this screen (water polo
-  // pilot). Options kept in sync with the package's ConsoleProfileId +
-  // the manifest allow-list; inlined here so the dashboard route doesn't
-  // pull the player-oriented @cms/scoreboard-cts runtime into its bundle.
-  const CONSOLE_OPTIONS: Array<{ id: string; label: string; group: string; help: string; provisional?: boolean }> = [
-    { id: 'cts-gen6', label: 'CTS Gen 6 / System 6', group: 'Colorado Time Systems', help: 'Wired RS-232 (1/4" jack) → native serial port.' },
-    { id: 'cts-gen7', label: 'CTS Gen 7 (RS-232 output)', group: 'Colorado Time Systems', help: 'Gen 7 via its RS-232 output (legacy CTS protocol — same as Gen 6). Its RS-485 "Gen7/WA-2" output is a different protocol, not decoded yet.' },
-    { id: 'cts-wttc', label: 'CTS Wireless Tabletop (WTTC)', group: 'Colorado Time Systems', help: 'USB-B → FTDI USB-serial adapter (/dev/ttyUSB0). Byte format pending a live capture.', provisional: true },
-    { id: 'daktronics-allsport', label: 'Daktronics All Sport 5000', group: 'Daktronics', help: 'Enhanced RTD over RS-232. Byte offsets pending a real-hardware capture — playClock/possession unconfirmed.', provisional: true },
-  ];
-  const CONSOLE_GROUPS = Array.from(new Set(CONSOLE_OPTIONS.map((o) => o.group)));
-  const currentConsole: string =
-    (screen?.config && typeof screen.config === 'object' && typeof screen.config.consoleProfile === 'string')
-      ? screen.config.consoleProfile
-      : '';
-  const currentModelId: string = screen?.hardwareModel ?? 'unknown';
-  const catalogModels = catalogQ.data?.models ?? [];
-  const current = catalogModels.find((m) => m.id === currentModelId)
-    // Fall back to the unknown entry while the catalog is loading.
-    ?? catalogModels.find((m) => m.id === 'unknown')
-    ?? null;
-  const caps = current?.caps;
-  // Build the badge list — only the trues show, accuracy beats noise.
-  const badges: { label: string; tone?: 'warn' | 'info' }[] = [];
-  if (caps) {
-    if (caps.serialPorts >= 2) badges.push({ label: 'Dual RS232' });
-    else if (caps.serialPorts >= 1) badges.push({ label: 'RS232' });
-    if (caps.rs485) badges.push({ label: 'RS485' });
-    if (caps.gpioIn > 0 || caps.gpioOut > 0) {
-      badges.push({ label: `GPIO ${caps.gpioIn}in/${caps.gpioOut}out` });
-    }
-    if (caps.hdmiIn) badges.push({ label: 'HDMI IN' });
-    if (caps.rj45Out) badges.push({ label: 'RJ45 passthrough' });
-    if (caps.powerOutVolts != null) badges.push({ label: `${caps.powerOutVolts}V aux out` });
-    if (caps.npuTops > 0) badges.push({ label: `${caps.npuTops} TOPS NPU` });
-    if (caps.decode4k) badges.push({ label: '4K decode' });
-    if (caps.fanless) badges.push({ label: 'Fanless' });
-    if (caps.duty247Rated) badges.push({ label: '24/7 rated' });
-  }
-
-  return (
-    <div className="px-3.5 py-3 border-t border-slate-100 bg-slate-50/40">
-      <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-2">
-        Hardware
-      </div>
-      <div className="flex flex-col gap-2">
-        {/* Model picker — saves via PUT /screens/:id. */}
-        <div className="flex flex-col min-w-0">
-          <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">
-            Model
-          </div>
-          <select
-            value={currentModelId}
-            disabled={setHardware.isPending || catalogQ.isLoading}
-            onChange={(e) => {
-              const next = e.target.value;
-              if (next === currentModelId) return;
-              // Picking "unknown" stores 'unknown'; picking the
-              // "Unassigned" sentinel (value '__clear__') sends null
-              // to clear the column entirely. Operator distinction:
-              // "I don't know" vs "this hasn't been set yet".
-              const payload = next === '__clear__' ? null : next;
-              setHardware.mutate({ id: screen.id, hardwareModel: payload });
-            }}
-            className="text-[11px] font-medium text-slate-700 bg-white border border-slate-200 rounded px-1.5 py-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Pick the physical player hardware behind this screen. Drives capability badges + future I/O configuration panels."
-          >
-            {/* "__clear__" maps to null on save — explicitly mark unassigned. */}
-            <option value="__clear__">Unassigned (clear)</option>
-            {catalogModels.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-          {current && current.id !== 'unknown' && (
-            <div className="text-[10px] text-slate-500 mt-1" title={current.socOs}>
-              {current.socOs}
-            </div>
+            ) : null,
+          )}
+          {row(
+            'Location',
+            screen?.address
+              ? <span title={`${screen.latitude}, ${screen.longitude}`}>{screen.address}</span>
+              : screen?.latitude != null
+                ? <span className="font-mono">{Number(screen.latitude).toFixed(3)}, {Number(screen.longitude).toFixed(3)}</span>
+                : null,
           )}
         </div>
-
-        {/* Capability badges — only trues show. Hidden when no model
-            picked (current === unknown or null catalog). */}
-        {current && current.id !== 'unknown' && badges.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-0.5">
-            {badges.map((b) => (
-              <span
-                key={b.label}
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100"
-              >
-                <CheckCircle2 className="w-2.5 h-2.5" />
-                {b.label}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {/* 2026-06-01 — scoreboard console picker (water-polo pilot).
-            Shows for any known hardware model; persists
-            Screen.config.consoleProfile → manifest → CtsBridge, which
-            picks the serial settings + default tty + decoder. Gen 6 stays
-            the default (unchanged for every existing install); WTTC
-            selects the USB-serial (/dev/ttyUSB0) path. */}
-        {current && current.id !== 'unknown' && (
-          <div className="flex flex-col min-w-0 border-t border-slate-100 pt-2 mt-0.5">
-            <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">
-              Scoreboard console
-            </div>
-            <select
-              value={currentConsole || '__none__'}
-              disabled={setConsole.isPending}
-              onChange={(e) => {
-                const next = e.target.value;
-                const payload = next === '__none__' ? null : next;
-                if ((payload ?? '') === currentConsole) return;
-                setConsole.mutate({ id: screen.id, consoleProfile: payload });
-              }}
-              className="text-[11px] font-medium text-slate-700 bg-white border border-slate-200 rounded px-1.5 py-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Which scoreboard timing console feeds this screen. Drives the serial settings + the port the player opens."
-            >
-              <option value="__none__">Not set (defaults to CTS Gen 6)</option>
-              {CONSOLE_GROUPS.map((g) => (
-                <optgroup key={g} label={g}>
-                  {CONSOLE_OPTIONS.filter((o) => o.group === g).map((o) => (
-                    <option key={o.id} value={o.id}>{o.label}</option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-            {(() => {
-              const sel = CONSOLE_OPTIONS.find((o) => o.id === currentConsole);
-              return sel ? (
-                <div className="text-[10px] text-slate-500 mt-1">
-                  {sel.help}
-                  {sel.provisional && (
-                    <span className="ml-1 inline-block rounded bg-amber-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700">
-                      capture pending
-                    </span>
-                  )}
-                </div>
-              ) : null;
-            })()}
-          </div>
-        )}
-
-        {/* CLAUDE.md rule #10 — Chromium 83 warning. Only fires for
-            hardware whose minimum WebView is ≤ 83 (today: Taurus). */}
-        {current && current.id !== 'unknown' && caps && caps.chromiumMin <= 83 && (
-          <div
-            className="flex items-start gap-2 px-2 py-1.5 rounded border border-amber-200 bg-amber-50 mt-1"
-            title="This hardware ships an older Chromium that does not support modern CSS shorthand."
-          >
-            <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
-            <div className="text-[10px] text-amber-800 leading-snug">
-              <span className="font-bold">Chromium {caps.chromiumMin} device.</span>
-              {' '}Uses long-hand CSS per CLAUDE.md rule #10
-              (no <code className="font-mono bg-amber-100 px-1 rounded">inset</code> shorthand,
-              no flex <code className="font-mono bg-amber-100 px-1 rounded">gap</code>).
-            </div>
-          </div>
-        )}
       </div>
+      <HardwareIdentityBlock screen={screen} />
+      <DeviceFingerprintRow fingerprint={(screen as any).deviceFingerprint || ''} />
     </div>
   );
 }
@@ -981,10 +1024,23 @@ function ScreenSettingsMenu({
    * Without it a grouped screen reads "not reported yet" forever in the
    * primary layout while the identical ungrouped screen shows controls.
    */
-  capabilitySource?: { displayCapabilities?: unknown; displayCapabilitiesAt?: string | null } | null;
+  capabilitySource?: {
+    displayCapabilities?: unknown;
+    displayCapabilitiesAt?: string | null;
+    // 2026-08-24 settings-menu cleanup — the menu also reads these two
+    // through the same full-row fallback: `config` (consoleProfile) is a
+    // JSON blob the group select deliberately keeps off the 10s-refetch
+    // payload, and `hardwareModel` doubles up here so pre-existing group
+    // payloads (older API) still gate correctly.
+    hardwareModel?: string | null;
+    config?: unknown;
+  } | null;
 }) {
   const t = useTranslations();
   const [open, setOpen] = useState(false);
+  // Device-details drawer — collapsed by default so the menu's face
+  // stays short (2026-08-24: "so many settings you need to scroll").
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -1017,6 +1073,11 @@ function ScreenSettingsMenu({
         buttonRect: { top: r.top, bottom: r.bottom, right: r.right },
         viewportWidth: window.innerWidth,
         viewportHeight: window.innerHeight,
+        // 2026-08-24 — 256px forced every section into a single cramped
+        // column and most of the scrolling. 320 still fits every
+        // viewport ≥ 344px; below that the clamp derives a narrower
+        // width exactly as before.
+        nominalWidth: 320,
       }),
     );
   };
@@ -1150,6 +1211,41 @@ function ScreenSettingsMenu({
     ? 'timeout'
     : 'pending';
 
+  // ── 2026-08-24 settings-menu cleanup ──────────────────────────────
+  // Merged row: group rows come from the screen-groups select
+  // whitelist, which deliberately omits the big JSON columns
+  // (displayCapabilities, config). The page passes the full
+  // GET /screens row as `capabilitySource`; take the whitelisted-away
+  // fields from there so grouped and ungrouped screens render the
+  // same menu.
+  const fullRow: any = capabilitySource ?? null;
+  const s: any = fullRow
+    ? {
+        ...screen,
+        displayCapabilities: fullRow.displayCapabilities,
+        displayCapabilitiesAt: fullRow.displayCapabilitiesAt,
+        hardwareModel: (screen as any).hardwareModel ?? fullRow.hardwareModel ?? null,
+        config: (screen as any).config ?? fullRow.config ?? null,
+      }
+    : screen;
+
+  // What KIND of player is this? Drives which sections exist at all —
+  // a browser player has no APK to push and no native bridge to
+  // power-control, so those sections were dead weight there ("every
+  // setting needs to make sense").
+  const osInfoLc = String(s?.osInfo || '').toLowerCase();
+  const isAndroidPlayer = osInfoLc.includes('android') || !!s?.playerVersion;
+  const isBrowserPlayer =
+    !isAndroidPlayer &&
+    (s?.hardwareModel === 'web' || (!!osInfoLc && !osInfoLc.includes('android')));
+
+  // Detected hardware name for the identity header. Session-cached
+  // catalog query — N rows share one fetch.
+  const catalogQ = useHardwareCatalog();
+  const detectedModel =
+    (catalogQ.data?.models ?? []).find((m) => m.id === (s?.hardwareModel ?? 'unknown')) ?? null;
+  const detectedName = detectedModel && detectedModel.id !== 'unknown' ? detectedModel.name : null;
+
   const menu = (
     // Plain positioned div, not role="menu". Using the WAI menu role
     // requires roving tabindex + arrow-key navigation + proper
@@ -1181,94 +1277,91 @@ function ScreenSettingsMenu({
           : { top: -9999, right: 0 }
       }
     >
-          {/* Sticky close button — guarantees the popover is dismissable on
-              touch (iOS tap-outside via document events is unreliable) without
-              re-adding a chunky header. Stays pinned while the menu scrolls. */}
-          <div className="sticky top-0 z-10 flex justify-end bg-white/95 backdrop-blur-sm px-1.5 pt-1.5 -mb-1">
+          {/* Identity header — the operator must always know WHICH
+              screen they're configuring (2026-08-24: "it doesnt even
+              say the name of the screen you are looking at"). Sticky
+              so the name stays put if the menu ever scrolls; also
+              carries the X, which guarantees the popover is
+              dismissable on touch (iOS tap-outside via document
+              events is unreliable). */}
+          <div className="sticky top-0 z-10 bg-white border-b border-slate-100 px-3.5 py-2.5">
+            <div className="flex items-center gap-2">
+              <span
+                className={`w-2 h-2 rounded-full shrink-0 ${
+                  s.status === 'ONLINE' ? 'bg-emerald-500' : s.status === 'PENDING' ? 'bg-amber-400' : 'bg-slate-300'
+                }`}
+                title={s.status === 'ONLINE' ? t('screens.statusOnline') : s.status === 'PENDING' ? t('screens.statusPending') : t('screens.statusOffline')}
+              />
+              <span className="flex-1 min-w-0 text-[13px] font-bold text-slate-800 truncate" title={s.name}>
+                {s.name || 'Screen'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                aria-label={t('screens.closeSettings')}
+                className="p-1 -mr-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 active:bg-slate-200 shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {/* Auto-detected hardware identity — the answer, not a
+                dropdown ("the controller type should auto detect").
+                Correction lives under Device details → Change. */}
+            <div className="text-[10px] text-slate-400 font-medium mt-0.5 truncate">
+              {detectedName ?? (isBrowserPlayer ? 'Browser player' : isAndroidPlayer ? 'Android player' : 'Player')}
+              {s.resolution ? ` · ${s.resolution}` : ''}
+            </div>
+          </div>
+
+          {/* Quick actions — the two things operators actually reach
+              for. Everything else is a setting, below. */}
+          <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-slate-100">
+            <a
+              href={previewHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => setOpen(false)}
+              title="Open this screen's player in a browser tab"
+              className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors"
+            >
+              <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+              Preview
+            </a>
             <button
               type="button"
-              onClick={() => setOpen(false)}
-              aria-label={t('screens.closeSettings')}
-              className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 active:bg-slate-200"
+              onClick={() => { setOpen(false); onRefreshWeb(); }}
+              disabled={refreshWebPending}
+              title="Reload the player page on the device — picks up any deployed fix. Not an APK update."
+              className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
-              <X className="w-4 h-4" />
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshWebPending ? 'animate-spin text-indigo-500' : 'text-slate-400'}`} />
+              {refreshWebPending ? 'Refreshing…' : 'Refresh'}
             </button>
           </div>
-          {/* Menu — action rows only, no chunky header. The old
-              header repeated the screen name + version that's
-              already visible on the row; the Integration Lead
-              called it redundant. Rows below are regular menuitem-
-              style clickable entries. */}
 
-          {/* APK version comparison strip — operator (2026-04-27):
-              "when i hit settings on a screen, it should do a check
-              and say this is the current version on the screen and
-              this is the available version and have me click a
-              button to push the upgrade." */}
-          <div className="px-3.5 py-2.5 border-b border-slate-100 bg-slate-50/40">
-            <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">{t('screens.playerVersion')}</div>
-            <div className="flex items-center justify-between gap-2 text-[11px]">
-              <div>
-                <div className="text-slate-400">{t('screens.current')}</div>
-                <div className="font-bold text-slate-800">
-                  {currentVersion ? `v${currentVersion}` : t('screens.notReported')}
-                </div>
-              </div>
-              <div className="text-slate-300">→</div>
-              <div className="text-right">
-                <div className="text-slate-400">{t('screens.latest')}</div>
-                <div className="font-bold text-slate-800">
-                  {latestVersion ? `v${latestVersion}` : <Loader2 className="w-3 h-3 inline animate-spin text-slate-300" />}
-                </div>
-              </div>
+          {/* Player app (APK) — Android players ONLY. A browser player
+              has no APK, so the old always-on version strip + push
+              button were noise there ("every setting needs to make
+              sense"). Up to date + nothing in flight = one quiet
+              line, no button (the old button was disabled anyway). */}
+          {isAndroidPlayer && upToDate === true && !pushed && (
+            <div
+              className="flex items-center gap-2 px-3.5 py-2.5 border-b border-slate-100"
+              title={`Latest published APK is v${latestVersion}. Updates are manual — push from here when one is available.`}
+            >
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span className="text-[11px] font-semibold text-emerald-700">
+                Player app v{currentVersion} — up to date
+              </span>
             </div>
-            {/* Status pill — green when up-to-date, amber when behind,
-                grey when unknown. */}
-            <div className="mt-2">
-              {upToDate === true && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
-                  <CheckCircle2 className="w-3 h-3" /> Up to date
-                </span>
-              )}
-              {/* 2026-04-29 — operator: "instead of saying upgrade
-                  it should say install player when its not deteteced".
-                  When the screen has no playerVersion at all (Manager
-                  is alone on the kiosk, OR Player was uninstalled),
-                  copy reads "Install Player" instead of "Update
-                  available". The action is the same — Manager's
-                  OtaWorker installs Player from scratch. */}
-              {upToDate === false && !currentVersion && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-full px-2 py-0.5">
-                  <Download className="w-3 h-3" /> Install Player
-                </span>
-              )}
-              {upToDate === false && currentVersion && needsReinstall && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-full px-2 py-0.5">
-                  <WifiOff className="w-3 h-3" /> Hands-on reinstall required
-                </span>
-              )}
-              {upToDate === false && currentVersion && !needsReinstall && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
-                  <RefreshCw className="w-3 h-3" /> Update available
-                </span>
-              )}
-              {upToDate === null && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded-full px-2 py-0.5">
-                  Unknown — push to install latest
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* One row, two states:
-                IDLE → "Push update to v1.0.8" with the manual-only hint
-                       below it.
-                IN-FLIGHT → label morphs through the OTA stages
-                       (sending → downloading → installing → restarting
-                       → installed) with a stage-appropriate icon.
-                       Disabled so it can't be re-clicked mid-push, but
-                       still visible as a single source of truth. */}
-          {(() => {
+          )}
+          {/* One row for everything else:
+                IDLE → "Push update to v1.0.8" (or "Install Player")
+                IN-FLIGHT → label morphs through the device-truth OTA
+                       stages. Disabled so it can't be re-clicked
+                       mid-push, but still visible as a single source
+                       of truth. */}
+          {isAndroidPlayer && !(upToDate === true && !pushed) && (() => {
             // 2026-04-28 (UX audit P0-C + I) — surface the device-truth
             // signals the kiosk has been writing to lastOtaState all
             // along. The dashboard previously ignored them entirely
@@ -1381,7 +1474,10 @@ function ScreenSettingsMenu({
                   ? (deviceTruth
                       ? `Kiosk last reported ${deviceTruth} ${otaAt ? new Date(otaAt).toLocaleTimeString() : ''}`
                       : `If WS push didn’t reach kiosk, periodic check installs within 30 min`)
-                  : 'Manual only — auto-update is OFF unless you toggle it in Settings';
+                  // Idle — the compact row replaced the old
+                  // current→latest strip, so carry the installed
+                  // version here where the decision is being made.
+                  : `${currentVersion ? `v${currentVersion} installed` : 'No Player version reported yet'} — updates are manual-only`;
             return (
               <button
                 type="button"
@@ -1403,78 +1499,45 @@ function ScreenSettingsMenu({
             );
           })()}
 
-          {/* Refresh page — Sprint 11 Phase B. Reloads the kiosk's
-              WebView without a sideload or operator-at-kiosk button
-              tap. Use after a web/player bundle hotfix lands on
-              Vercel so the kiosk picks it up. NOT an APK update —
-              that's the row above; this just re-fetches the JS
-              bundle. Fleet-wide refresh is on the group footer.) */}
+          {/* ── Settings that apply to THIS screen ─────────────────
+              Each section below gates itself off the detected
+              hardware and renders null when it doesn't apply, so a
+              standard LCD never sees LED-canvas or serial-console
+              controls (2026-08-24: "there are LED poster settings in
+              standard LCD screens"). */}
+          <OrientationSection screen={s} />
+          <LedCanvasSection screen={s} />
+          <ConsoleSection screen={s} />
+          {groupSyncLocked && <SyncTrimSection screen={s} />}
+
+          {/* 2026-08-13 — volume / brightness / blank / reboot, each
+              rendered only when this screen's own probe verdict says
+              the hardware can do it. Browser players collapse to one
+              honest line (no bridge → no report, no command lands).
+              Opening the schedule editor closes the popover first —
+              the popover dismisses on a document-level pointerdown
+              and would otherwise fight the modal. */}
+          <ScreenDisplayControls
+            screen={s}
+            readOnly={displayReadOnly}
+            browserPlayer={isBrowserPlayer}
+            onOpenSchedule={() => { setOpen(false); onOpenDisplaySchedule(); }}
+          />
+
+          {/* Device details — every read-only diagnostic (OS, APK
+              versions, cache, OTA history, location, fingerprint,
+              hardware identity + correction), collapsed by default so
+              the menu's face stays short. */}
           <button
             type="button"
-            onClick={() => { setOpen(false); onRefreshWeb(); }}
-            disabled={refreshWebPending}
-            className="w-full flex items-center gap-3 px-3.5 py-3 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed"
-            title="Reloads the kiosk's player page (picks up any deployed JS fix). No APK install."
+            onClick={(e) => { e.stopPropagation(); setDetailsOpen((v) => !v); }}
+            aria-expanded={detailsOpen}
+            className="w-full flex items-center justify-between px-3.5 py-2.5 text-left hover:bg-slate-50 border-t border-slate-100 transition-colors"
           >
-            <RefreshCw className={`w-4 h-4 shrink-0 ${refreshWebPending ? 'animate-spin text-indigo-500' : 'text-slate-400'}`} />
-            <span className="flex-1 min-w-0">
-              <span className="block">{refreshWebPending ? 'Refreshing…' : 'Refresh kiosk page'}</span>
-              <span className="block text-[10px] font-normal text-slate-400 mt-0.5">
-                Reload JS bundle (not an APK update)
-              </span>
-            </span>
+            <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Device details</span>
+            <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${detailsOpen ? 'rotate-180' : ''}`} />
           </button>
-
-          {/* Preview in browser — moved out of the row, into the menu. */}
-          <a
-            href={previewHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={() => setOpen(false)}
-            className="flex items-center gap-3 px-3.5 py-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            <ExternalLink className="w-4 h-4 text-slate-400 shrink-0" />
-            Open preview in browser
-          </a>
-
-          {/* Device fingerprint — diagnostic field. Surfaced 2026-04-28
-              after a live OTA incident where the operator had no
-              operator-friendly way to retrieve the fingerprint to
-              probe /api/v1/screens/status/<fp>. The fingerprint is the
-              only DB key tying support tickets to the kiosk. Copy
-              button instead of select-text because the string is 30+
-              chars in a 256px-wide popover. */}
-          <DeviceFingerprintRow fingerprint={(screen as any).deviceFingerprint || ''} />
-
-          {/* Phase B closeout — diagnostic detail block. Pulls everything
-              the dashboard knows about this screen into one place inside
-              the existing settings popover so admins don't have to chase
-              info across the row chrome and dev tools. No new endpoint —
-              all fields are already on the screen payload. */}
-          <ScreenDiagnostics screen={screen} groupSyncLocked={groupSyncLocked} />
-
-      {/* 2026-08-13 — the "More coming soon — restart, orientation, cache
-          clear." stub that lived here is GONE, replaced by the real thing.
-          Volume / brightness / blank / reboot, each rendered only when this
-          screen's own probe verdict says the hardware can do it; a
-          `software-dim` box gets a slider that says so in plain language
-          rather than one that implies backlight control it doesn't have.
-          Opening the schedule editor closes the popover first — the
-          popover dismisses on a document-level pointerdown and would
-          otherwise fight the modal. */}
-      <ScreenDisplayControls
-        screen={
-          capabilitySource
-            ? {
-                ...screen,
-                displayCapabilities: capabilitySource.displayCapabilities,
-                displayCapabilitiesAt: capabilitySource.displayCapabilitiesAt,
-              }
-            : screen
-        }
-        readOnly={displayReadOnly}
-        onOpenSchedule={() => { setOpen(false); onOpenDisplaySchedule(); }}
-      />
+          {detailsOpen && <DeviceDetails screen={s} />}
     </div>
   );
 
