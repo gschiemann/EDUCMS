@@ -4160,6 +4160,36 @@ export class ScreensController {
         emergencyStatus: 'INACTIVE',
         emptyReason: 'NO_SCHEDULE',
         message: 'This screen is paired but no playlist is scheduled. Assign a playlist from the dashboard.',
+        // ⚠️ 2026-08-24 — SCREEN IDENTITY MUST RIDE THE EMPTY BODY TOO.
+        //
+        // THE BUG THIS FIXES. This branch omitted `orientation`, so a paired
+        // screen with no schedule received a manifest with NO orientation
+        // field. The player gates on
+        //   `orient === 'LANDSCAPE' || 'PORTRAIT' || 'AUTO'`
+        // and `undefined` fails all three, so it never called setOrientation
+        // AND never set `manifestOrientation` — which also disarms the CSS
+        // rotate fallback, since that is keyed on the value being 'PORTRAIT'.
+        // Net effect: a brand-new screen sat at whatever the ROM defaulted to,
+        // and NOTHING the server did could move it. Two 2160×3840 portrait
+        // panels rendered landscape for hours while three separate server-side
+        // orientation fixes were deployed — every one of them wrote a value
+        // that never reached the wire. Confirmed by fetching the live
+        // manifest: `orientation=undefined` on both, `"LANDSCAPE"` on the one
+        // screen that HAD content and therefore took the full-body path.
+        //
+        // This is the same reasoning already written above for `display`
+        // ("no content scheduled is NOT no display schedule") — a screen
+        // waiting for an assignment still has to be the right way up, on the
+        // right canvas, and know its own hardware. The splash is a real
+        // rendering surface, not a placeholder.
+        //
+        // All four are stable Screen columns — no clock, no per-request value
+        // — so the verbatim-replayed cache stays hash-stable.
+        orientation: resolveManifestOrientation((screen as any).orientation, (screen as any).resolution),
+        canvasW: (screen as any).canvasW ?? null,
+        canvasH: (screen as any).canvasH ?? null,
+        repeats: (screen as any).repeats ?? 1,
+        hardwareModel: (screen as any).hardwareModel ?? null,
         // 2026-08-13 — "no content scheduled" is NOT "no display schedule".
         // A screen waiting for an assignment must still power its panel
         // down overnight, so the display block rides this body too. It is
