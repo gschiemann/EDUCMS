@@ -21,10 +21,12 @@ import { reportDisplayCapabilities } from '../displayCapabilityReport';
 const callMock = jest.fn();
 const callOrMock = jest.fn();
 const hasMock = jest.fn();
+const transportMock = jest.fn<string, []>(() => 'channel');
 jest.mock('../nativeBridge', () => ({
   nativeCall: (...args: unknown[]) => callMock(...args),
   nativeCallOr: (...args: unknown[]) => callOrMock(...args),
   nativeHas: (...args: unknown[]) => hasMock(...args),
+  bridgeTransport: () => transportMock(),
 }));
 
 /** A probe verdict whose OS build id never changes, as on a real box. */
@@ -53,6 +55,7 @@ beforeEach(() => {
   callOrMock.mockReset();
   hasMock.mockReset();
   hasMock.mockReturnValue(true);
+  transportMock.mockReturnValue('channel');
   callMock.mockResolvedValue(PROBE);
   mockAppVersion('1.1.1');
   window.localStorage.clear();
@@ -60,12 +63,32 @@ beforeEach(() => {
 });
 
 describe('reportDisplayCapabilities', () => {
-  it('POSTs the probe verdict verbatim to the capabilities endpoint', async () => {
+  it('POSTs the probe payload plus the transport it reached the APK over', async () => {
     await expect(reportDisplayCapabilities(OPTS)).resolves.toBe('reported');
     expect(global.fetch).toHaveBeenCalledTimes(1);
     const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
     expect(url).toBe('https://api.test/api/v1/screens/screen-1/display-capabilities');
-    expect((init as RequestInit).body).toBe(PROBE);
+    const sent = JSON.parse((init as RequestInit).body as string);
+    // Every probe field survives unchanged...
+    expect(sent).toMatchObject(JSON.parse(PROBE));
+    // ...plus the transport, the one field that separates "refused at the
+    // bridge" from "never arrived" when a control silently does nothing.
+    expect(sent.bridgeTransport).toBe('channel');
+  });
+
+  it('RE-REPORTS when the transport changes, even with an identical verdict', async () => {
+    // The same box on the legacy every-frame bridge can only perform
+    // recovery-direction actions (SET_VOLUME is refused outright there), so
+    // channel->legacy is a real capability change even though the verdict is
+    // byte-identical.
+    await expect(reportDisplayCapabilities(OPTS)).resolves.toBe('reported');
+    (global.fetch as jest.Mock).mockClear();
+    transportMock.mockReturnValue('legacy');
+    await expect(reportDisplayCapabilities(OPTS)).resolves.toBe('reported');
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(
+      JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body as string).bridgeTransport,
+    ).toBe('legacy');
   });
 
   it('does not re-report on the next page load — same screen, same APK', async () => {
@@ -138,7 +161,7 @@ describe('reportDisplayCapabilities', () => {
     mockAppVersion(null);
     await expect(reportDisplayCapabilities(OPTS)).resolves.toBe('reported');
     const marker = window.localStorage.getItem('edu_display_caps_reported');
-    expect(marker).toMatch(/^screen-1\|unknown@\d{4}-\d{2}-\d{2}\|[0-9a-z]+$/);
+    expect(marker).toMatch(/^screen-1\|unknown@\d{4}-\d{2}-\d{2}\|[0-9a-z]+\|channel$/);
 
     (global.fetch as jest.Mock).mockClear();
     await expect(reportDisplayCapabilities(OPTS)).resolves.toBe(

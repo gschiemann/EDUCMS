@@ -141,6 +141,26 @@ export interface DisplayCapabilityReport {
   reportedAt: number;
   build: DisplayBuildIdentity;
   verdict: DisplayCapabilityVerdict;
+  /**
+   * Which JS↔native transport the player reached the APK over.
+   *
+   * ⚠️ WHY THIS IS PERSISTED (2026-08-24). The APK marks EVERY caller on the
+   * legacy every-frame `addJavascriptInterface` surface as untrusted, and
+   * untrusted callers get only the recovery-direction subset — so SET_VOLUME
+   * is refused outright there and SET_BRIGHTNESS only survives when RAISING.
+   * The refusal comes back as a JSON string rather than an exception, so the
+   * API still audits `delivered:true` and the dashboard still paints success.
+   *
+   * An operator dragged volume and brightness on a real screen for an hour
+   * with every command "delivered" and nothing happening, and NOTHING
+   * server-side recorded which transport that screen was on — the one fact
+   * that separates "refused at the bridge" from "never arrived". Diagnosing it
+   * required physically walking to the screen to read its log, which does not
+   * scale past one box and is exactly what this product exists to avoid.
+   *
+   * 'none' is normal and expected for a browser player with no APK.
+   */
+  bridgeTransport: 'channel' | 'legacy' | 'none' | null;
 }
 
 export const DISPLAY_VOLUME_MECHANISMS = ['audiomanager', 'none'] as const;

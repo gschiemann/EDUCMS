@@ -161,6 +161,15 @@ export function normalizeCapabilityReport(
       release: s(b.release),
     },
     verdict: normalizeVerdict(body.verdict),
+    // Bounded to the three known values — an unknown or absent string becomes
+    // null rather than being stored verbatim, same posture as every other
+    // field here (permissive at the door, bounded in storage).
+    bridgeTransport:
+      body.bridgeTransport === 'channel' ||
+      body.bridgeTransport === 'legacy' ||
+      body.bridgeTransport === 'none'
+        ? body.bridgeTransport
+        : null,
   };
 }
 

@@ -47,14 +47,28 @@
  * playback or with the emergency path.
  */
 
-import { nativeCall, nativeCallOr, nativeHas } from './nativeBridge';
+import { bridgeTransport, nativeCall, nativeCallOr, nativeHas } from './nativeBridge';
 import type { DeviceIdentity } from './displayControl';
 
-/** localStorage key holding the last (screenId|appVersion|verdictSig) we reported. */
+/** localStorage key: last (screenId|appVersion|verdictSig|transport) reported. */
 const MARKER_KEY = 'edu_display_caps_reported';
 
-function markerFor(screenId: string, appVersion: string, verdictSig: string): string {
-  return `${screenId}|${appVersion}|${verdictSig}`;
+/**
+ * `transport` is part of the key because it is part of the capability picture:
+ * the SAME box on the legacy every-frame bridge can only perform
+ * recovery-direction actions, so a screen that flips channel↔legacy has
+ * genuinely changed what it can do even though its verdict is byte-identical.
+ * Including it also means a fleet that has already reported re-reports exactly
+ * once when this field is introduced, instead of staying silent behind a stale
+ * marker.
+ */
+function markerFor(
+  screenId: string,
+  appVersion: string,
+  verdictSig: string,
+  transport: string,
+): string {
+  return `${screenId}|${appVersion}|${verdictSig}|${transport}`;
 }
 
 /**
@@ -193,15 +207,37 @@ export async function reportDisplayCapabilities(opts: {
     return 'skipped: probe has no verdict';
   }
 
-  const marker = markerFor(screenId, await appVersionKey(), verdictSignature(parsed.verdict));
+  const transport = bridgeTransport();
+  const marker = markerFor(
+    screenId,
+    await appVersionKey(),
+    verdictSignature(parsed.verdict),
+    transport,
+  );
   if (alreadyReported(marker)) return 'skipped: already reported this version';
 
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
+    // ⚠️ Stamp the transport we actually reached the APK over. The APK marks
+    // every caller on the legacy every-frame surface as UNTRUSTED, and
+    // untrusted callers get only recovery-direction actions — SET_VOLUME is
+    // refused outright, SET_BRIGHTNESS only survives when raising. That
+    // refusal returns as a JSON string rather than throwing, so the API
+    // audits `delivered:true` and the dashboard paints success while the
+    // panel does nothing. Without this field the only way to tell "refused at
+    // the bridge" from "never arrived" was to walk to the screen and read its
+    // log. Sent as a sibling of the probe payload; the endpoint's schema is
+    // passthrough, so an older API simply ignores it.
+    let body = raw;
+    try {
+      body = JSON.stringify({ ...parsed, bridgeTransport: transport });
+    } catch {
+      /* keep the verbatim probe string — reporting beats not reporting */
+    }
     const res = await fetch(
       `${apiRoot}/api/v1/screens/${encodeURIComponent(screenId)}/display-capabilities`,
-      { method: 'POST', headers, body: raw },
+      { method: 'POST', headers, body },
     );
     if (!res.ok) return `failed: HTTP ${res.status}`;
     // Only remember on a confirmed 2xx, so a transient 5xx re-reports on the
