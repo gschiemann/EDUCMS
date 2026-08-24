@@ -601,6 +601,23 @@ export function useHardwareCatalog() {
 }
 
 /**
+ * 2026-08-24 — one screen's full (bounded) device inventory: vendor control
+ * packages, vendor Settings keys, serial nodes, admin/device-owner state.
+ * Fetched LAZILY (`enabled` = the Device details drawer is open) — this is
+ * exactly the data the manifest path refuses to carry, so the dashboard
+ * only pulls it when an operator actually looks.
+ */
+export function useScreenDeviceInventory(screenId: string, enabled: boolean) {
+  return useQuery<{ screenId: string; reportedAt: string | null; report: any | null }>({
+    queryKey: ['screen-device-inventory', screenId],
+    queryFn: () => apiFetch(`/screens/${screenId}/device-inventory`),
+    enabled: enabled && !!screenId,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/**
  * 2026-05-27 — update a single screen's hardwareModel column. Reuses
  * the existing PUT /screens/:id endpoint (it accepts the field). Same
  * optimistic-update pattern as the orientation / canvas hooks so the

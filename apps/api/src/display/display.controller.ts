@@ -62,6 +62,7 @@ import { resolveEmergencyHold } from './display-emergency-hold';
 import {
   DisplayActionUnsupportedError,
   DisplayService,
+  boundInventoryReport,
   isDarkeningAction,
   normalizeCapabilityReport,
   verdictFromStored,
@@ -140,7 +141,71 @@ export class DisplayController {
       report,
     });
 
+    // 2026-08-24 — persist the FULL (bounded) probe inventory alongside the
+    // verdict: vendor packages, vendor settings keys, serial nodes, admin
+    // state incl. the device-owner package. Separate table on purpose — see
+    // boundInventoryReport's header for why it must never ride the Screen
+    // row. Best-effort: an inventory failure must not cost the verdict the
+    // fleet's controls are gated on.
+    try {
+      const inventory = boundInventoryReport(body);
+      if (inventory) {
+        // ten-ok: identity-derived self-write — same principal proof as the
+        // screen lookup above (device token `sub` === screenId).
+        await (this.prisma.client as any).screenDeviceInventory.upsert({
+          where: { screenId: screen.id },
+          create: {
+            screenId: screen.id,
+            tenantId: (screen.tenantId as string) ?? null,
+            report: inventory,
+            reportedAt: new Date(),
+          },
+          update: {
+            tenantId: (screen.tenantId as string) ?? null,
+            report: inventory,
+            reportedAt: new Date(),
+          },
+        });
+      }
+    } catch (e) {
+      this.logger.warn(
+        `device-inventory persist failed for screen ${screen.id}: ${(e as Error)?.message ?? e}`,
+      );
+    }
+
     return { success: true, changed, verdict: report.verdict };
+  }
+
+  /**
+   * GET /api/v1/screens/:id/device-inventory
+   *
+   * The full (bounded) probe inventory for one screen — what vendor control
+   * apps live on the box, which vendor Settings keys exist, the serial
+   * nodes, and which package holds device owner. Read on demand only (the
+   * Device details drawer + vendor-recipe authoring); this is exactly the
+   * data the manifest path must never carry.
+   */
+  @Get(':id/device-inventory')
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @RequireRoles(
+    AppRole.SUPER_ADMIN,
+    AppRole.DISTRICT_ADMIN,
+    AppRole.SCHOOL_ADMIN,
+    AppRole.CONTRIBUTOR,
+  )
+  async getDeviceInventory(@Param('id') screenId: string, @Req() req: any) {
+    // Tenant-scoped through the same loader every other per-screen read here
+    // uses — the inventory row is then fetched by the PROVEN screen id, so
+    // no cross-tenant id can reach the table.
+    const screen = await this.loadOperatorScreen(screenId, req);
+    const row = await (this.prisma.client as any).screenDeviceInventory.findUnique({
+      where: { screenId: screen.id },
+    });
+    return {
+      screenId: screen.id,
+      reportedAt: row?.reportedAt ?? null,
+      report: row?.report ?? null,
+    };
   }
 
   /**

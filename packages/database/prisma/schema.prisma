@@ -1087,10 +1087,44 @@ model Screen {
   //   - GET /screens           → where: { tenantId } order by lastPingAt
   //   - GET /screens/map       → where: { tenantId, status }
   //   - Manifest + status      → derive ONLINE from lastPingAt recency
+  // Back-relation for ScreenDeviceInventory (separate table on purpose —
+  // see that model's header). Optional: browser players and pre-probe APKs
+  // never report one.
+  deviceInventory                     ScreenDeviceInventory?
+
   @@index([tenantId, status])
   @@index([tenantId, lastPingAt])
   @@index([screenGroupId])
   @@map("screens")
+}
+
+// 2026-08-24 — full device-inventory report from the player's
+// DisplayCapabilityProbe: vendor control packages (com.gv.* / goodview /
+// droidlogic), vendor settings keys (power_on/power_off/backlight/...),
+// serial device nodes, admin state incl. WHICH package holds device owner,
+// HDMI-CEC presence. This is the evidence vendor recipes are authored from
+// ("a new vendor is a DB row").
+//
+// DELIBERATELY A SEPARATE TABLE, not more JSON on Screen: the manifest path
+// re-reads the full Screen row on every 5s device poll, so anything parked
+// there is re-read fleet-wide forever — the exact mechanism behind the
+// 2026-08-14 ~70GB/day egress incident that forced displayCapabilities down
+// to a bounded verdict. This table is read on demand only (recipe authoring,
+// the Device details drawer) and is NOT in MANIFEST_FED_MODELS, so writes
+// never bust the manifest hot cache.
+model ScreenDeviceInventory {
+  // One row per screen, replaced wholesale on each report.
+  screenId   String   @id @map("screen_id")
+  screen     Screen   @relation(fields: [screenId], references: [id], onDelete: Cascade)
+  // Denormalized for tenant-scoped reads without a join.
+  tenantId   String?  @map("tenant_id")
+  // Bounded by construction in display.service.ts (boundInventoryReport)
+  // BEFORE it gets here — never store a device-supplied blob verbatim.
+  report     Json
+  reportedAt DateTime @map("reported_at")
+
+  @@index([tenantId])
+  @@map("screen_device_inventory")
 }
 
 model AssetFolder {

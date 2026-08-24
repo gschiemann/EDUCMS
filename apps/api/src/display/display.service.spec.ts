@@ -48,6 +48,7 @@ import {
   DISPLAY_AUDIT_ACTIONS,
   DisplayActionUnsupportedError,
   DisplayService,
+  boundInventoryReport,
   normalizeCapabilityReport,
   verdictChanged,
   verdictFromStored,
@@ -589,5 +590,70 @@ describe('DisplayService', () => {
       ),
     ).toBe(true);
     expect(verdictChanged(null, BARE_VERDICT as any)).toBe(true);
+  });
+});
+
+describe('boundInventoryReport — bounded by construction, never by trust', () => {
+  it('keeps the recipe-authoring sections and drops everything else', () => {
+    const out = boundInventoryReport({
+      schema: 1,
+      verdict: { volume: 'audiomanager' },
+      build: { model: 'M43GUQ' },
+      admin: { deviceOwnerPackage: 'com.gv.mdm', deviceOwnerDetected: true },
+      vendorPackages: { enumerable: true, visibleCount: 41, candidates: ['com.gv.powerctl'] },
+      settingsKeys: { power_on_time: '07:00', power_off_time: '22:00' },
+      serial: { devNodes: [{ path: '/dev/ttyS4', readable: true, writable: true }] },
+      totallyUnknownSection: { huge: 'thing' },
+    });
+    expect(out).not.toBeNull();
+    expect((out as any).admin.deviceOwnerPackage).toBe('com.gv.mdm');
+    expect((out as any).vendorPackages.candidates).toEqual(['com.gv.powerctl']);
+    expect((out as any).settingsKeys.power_on_time).toBe('07:00');
+    expect((out as any).serial.devNodes[0].path).toBe('/dev/ttyS4');
+    // The verdict/build already live on the Screen row; unknown sections are
+    // never stored at all.
+    expect(out).not.toHaveProperty('verdict');
+    expect(out).not.toHaveProperty('build');
+    expect(out).not.toHaveProperty('totallyUnknownSection');
+  });
+
+  it('returns null when no known section is present (browser player, bare verdict)', () => {
+    expect(boundInventoryReport({ schema: 1, verdict: {} })).toBeNull();
+    expect(boundInventoryReport(null)).toBeNull();
+    expect(boundInventoryReport('not an object')).toBeNull();
+    expect(boundInventoryReport([1, 2, 3])).toBeNull();
+  });
+
+  it('caps a hostile body: long strings, wide arrays, deep nesting, key floods', () => {
+    const hostile = {
+      settingsKeys: Object.fromEntries(
+        Array.from({ length: 500 }, (_, i) => [`key_${i}`, 'x'.repeat(10_000)]),
+      ),
+      vendorPackages: {
+        candidates: Array.from({ length: 5_000 }, (_, i) => `com.evil.pkg${i}`),
+      },
+      power: { a: { b: { c: { d: { e: { f: { g: 'too deep' } } } } } } },
+    };
+    const out = boundInventoryReport(hostile) as any;
+    expect(out).not.toBeNull();
+    expect(Object.keys(out.settingsKeys).length).toBeLessThanOrEqual(64);
+    expect(out.settingsKeys.key_0.length).toBeLessThanOrEqual(200);
+    expect(out.vendorPackages.candidates.length).toBeLessThanOrEqual(64);
+    // Depth cap: the too-deep leaf is gone, the structure above survives.
+    expect(JSON.stringify(out.power)).not.toContain('too deep');
+    // The whole document respects the byte ceiling with margin.
+    expect(JSON.stringify(out).length).toBeLessThanOrEqual(32 * 1024);
+  });
+
+  it('a 4MB junk payload can never store more than the ceiling', () => {
+    const junk: Record<string, unknown> = {};
+    for (const section of ['admin', 'settingsKeys', 'features', 'displays', 'serial']) {
+      junk[section] = Object.fromEntries(
+        Array.from({ length: 64 }, (_, i) => [`k${i}`, 'y'.repeat(200)]),
+      );
+    }
+    const out = boundInventoryReport(junk);
+    expect(out).not.toBeNull();
+    expect(JSON.stringify(out).length).toBeLessThanOrEqual(32 * 1024);
   });
 });

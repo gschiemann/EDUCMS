@@ -173,6 +173,110 @@ export function normalizeCapabilityReport(
   };
 }
 
+/**
+ * ── Device inventory (2026-08-24) ────────────────────────────────────
+ *
+ * The probe has always collected far more than the verdict: which vendor
+ * control packages are installed (com.gv.* / goodview / droidlogic — the
+ * hooks vendor power recipes are authored against), the vendor-invented
+ * Settings keys (power_on / power_off / backlight / standby…), the serial
+ * device nodes behind the `hardPowerOff: "serial-candidate"` verdict, and
+ * WHICH package holds device owner on a `blocked-other-owner` box. Until
+ * now the API dropped all of it at the door.
+ *
+ * It is persisted to the SEPARATE `screen_device_inventory` table — never
+ * onto `Screen.displayCapabilities`, whose fleet-wide re-read on every 5 s
+ * manifest poll is exactly why that document is bounded to a verdict (the
+ * ~70 GB/day lesson in the function above).
+ *
+ * Same posture as everything else here: permissive at the door, bounded in
+ * storage — BY CONSTRUCTION, not by trusting the device. The bound walks
+ * the known sections with hard caps on depth, fan-out, string length and a
+ * final serialized-size ceiling, so a hostile 4 MB probe body stores at
+ * most ~INVENTORY_MAX_BYTES.
+ */
+
+/** Sections of the probe document worth keeping. Everything else is dropped. */
+const INVENTORY_SECTIONS = [
+  'admin',
+  'brightness',
+  'backlightNodes',
+  'settingsKeys',
+  'audio',
+  'power',
+  'displays',
+  'features',
+  'vendorPackages',
+  'serial',
+  'control',
+] as const;
+
+const INVENTORY_MAX_BYTES = 32 * 1024;
+const INVENTORY_MAX_DEPTH = 5;
+const INVENTORY_MAX_ARRAY = 64;
+const INVENTORY_MAX_KEYS = 64;
+const INVENTORY_MAX_STRING = 200;
+
+/** Deep-bound one value: cap depth, array length, key count, string length. */
+function boundValue(value: unknown, depth: number): unknown {
+  if (value === null) return null;
+  const t = typeof value;
+  if (t === 'string') return (value as string).slice(0, INVENTORY_MAX_STRING);
+  if (t === 'number') return Number.isFinite(value as number) ? value : null;
+  if (t === 'boolean') return value;
+  if (depth >= INVENTORY_MAX_DEPTH) return undefined;
+  if (Array.isArray(value)) {
+    return value
+      .slice(0, INVENTORY_MAX_ARRAY)
+      .map((v) => boundValue(v, depth + 1))
+      .filter((v) => v !== undefined);
+  }
+  if (t === 'object') {
+    const out: Record<string, unknown> = {};
+    let kept = 0;
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (kept >= INVENTORY_MAX_KEYS) break;
+      const bounded = boundValue(v, depth + 1);
+      if (bounded === undefined) continue;
+      out[k.slice(0, INVENTORY_MAX_STRING)] = bounded;
+      kept++;
+    }
+    return out;
+  }
+  // functions / symbols / undefined — nothing a JSON body can carry, but a
+  // hand-crafted object in a spec might.
+  return undefined;
+}
+
+/**
+ * Bound an inbound probe body to the persistable inventory document, or null
+ * when there is nothing worth a row (no known section present).
+ *
+ * If the bounded document STILL exceeds the byte ceiling (thousands of tiny
+ * strings can do it), sections are dropped from the back of
+ * INVENTORY_SECTIONS — the front of the list is ordered by how much recipe
+ * authoring needs it (admin + brightness surface first, resolved control
+ * last) — until it fits. Deterministic, so the spec can pin it.
+ */
+export function boundInventoryReport(body: unknown): Record<string, unknown> | null {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const raw = body as Record<string, unknown>;
+  const kept: Record<string, unknown> = {};
+  for (const section of INVENTORY_SECTIONS) {
+    const v = raw[section];
+    if (v === undefined || v === null) continue;
+    const bounded = boundValue(v, 0);
+    if (bounded !== undefined) kept[section] = bounded;
+  }
+  if (Object.keys(kept).length === 0) return null;
+  for (let i = INVENTORY_SECTIONS.length - 1; i >= 0; i--) {
+    if (JSON.stringify(kept).length <= INVENTORY_MAX_BYTES) break;
+    delete kept[INVENTORY_SECTIONS[i]];
+  }
+  if (Object.keys(kept).length === 0) return null;
+  return kept;
+}
+
 /** Did the capability picture actually change? Ignores timestamps. */
 export function verdictChanged(
   before: DisplayCapabilityVerdict | null,

@@ -161,7 +161,10 @@ describe('reportDisplayCapabilities', () => {
     mockAppVersion(null);
     await expect(reportDisplayCapabilities(OPTS)).resolves.toBe('reported');
     const marker = window.localStorage.getItem('edu_display_caps_reported');
-    expect(marker).toMatch(/^screen-1\|unknown@\d{4}-\d{2}-\d{2}\|[0-9a-z]+\|channel$/);
+    // `|r<N>` = server-side report schema revision (rev 2: the API persists
+    // the full bounded inventory) — part of the marker so a rev bump makes
+    // the fleet re-report exactly once.
+    expect(marker).toMatch(/^screen-1\|unknown@\d{4}-\d{2}-\d{2}\|[0-9a-z]+\|channel\|r\d+$/);
 
     (global.fetch as jest.Mock).mockClear();
     await expect(reportDisplayCapabilities(OPTS)).resolves.toBe(

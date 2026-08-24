@@ -62,13 +62,27 @@ const MARKER_KEY = 'edu_display_caps_reported';
  * once when this field is introduced, instead of staying silent behind a stale
  * marker.
  */
+/**
+ * Server-side report schema revision, part of the marker for the same
+ * fleet-re-reports-exactly-once reason as `transport` above. Bump when the
+ * API starts persisting MORE of the probe document than before, so already-
+ * reported screens send the newly-wanted data once instead of staying
+ * silent behind a stale marker.
+ *
+ *   rev 2 (2026-08-24): the API now persists the full bounded inventory
+ *   (vendor packages, settings keys, serial nodes, admin/device-owner
+ *   state) to screen_device_inventory — the evidence vendor power recipes
+ *   are authored from.
+ */
+const REPORT_SCHEMA_REV = '2';
+
 function markerFor(
   screenId: string,
   appVersion: string,
   verdictSig: string,
   transport: string,
 ): string {
-  return `${screenId}|${appVersion}|${verdictSig}|${transport}`;
+  return `${screenId}|${appVersion}|${verdictSig}|${transport}|r${REPORT_SCHEMA_REV}`;
 }
 
 /**

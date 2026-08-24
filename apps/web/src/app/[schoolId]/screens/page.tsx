@@ -2,7 +2,7 @@
 
 import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check, AlertCircle, Radio, Camera, CalendarClock, ChevronDown } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useUpdateScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout, useSetScreenOrientation, useSetScreenCanvas, useHardwareCatalog, useSetScreenHardwareModel, useSetScreenConsoleProfile, useSetScreenSyncOffset, useSyncTrimSuggestions } from '@/hooks/use-api';
+import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useUpdateScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout, useSetScreenOrientation, useSetScreenCanvas, useHardwareCatalog, useSetScreenHardwareModel, useSetScreenConsoleProfile, useSetScreenSyncOffset, useSyncTrimSuggestions, useScreenDeviceInventory } from '@/hooks/use-api';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import { ScreenMapClient } from '@/components/screens/ScreenMapClient';
@@ -819,6 +819,19 @@ function HardwareIdentityBlock({ screen }: { screen: any }) {
  * the device fingerprint. Operators only come here when support asks.
  */
 function DeviceDetails({ screen }: { screen: any }) {
+  // Lazy by construction: DeviceDetails only mounts while the drawer is
+  // open, so this fetch fires exactly when an operator actually looks.
+  const inventoryQ = useScreenDeviceInventory(screen?.id ?? '', true);
+  const inv: any = inventoryQ.data?.report ?? null;
+  const ownerPkg: string | null =
+    typeof inv?.admin?.deviceOwnerPackage === 'string' && inv.admin.deviceOwnerPackage
+      ? inv.admin.deviceOwnerPackage
+      : null;
+  // Probe shape: { enumerable, visibleCount, candidates: string[] } —
+  // candidates are plain package names matching the vendor prefixes.
+  const vendorPkgs: string[] = Array.isArray(inv?.vendorPackages?.candidates)
+    ? inv.vendorPackages.candidates.filter((p: unknown) => typeof p === 'string')
+    : [];
   const cache: any = screen?.lastCacheReport || null;
   const cacheLine = cache
     ? `${cache.totalAssets ?? '?'} assets · ${cache.totalBytes != null ? Math.round(cache.totalBytes / 1024 / 1024) + ' MB' : '? size'}`
@@ -858,6 +871,22 @@ function DeviceDetails({ screen }: { screen: any }) {
             : (screen as any)?.pushChannel === 'stale'
               ? 'Down — polling only'
               : 'Unknown')}
+          {/* 2026-08-24 — from the persisted device inventory. Which app
+              holds device OWNER decides what a provisioning ceremony would
+              have to displace; the vendor-app list is the recipe-authoring
+              evidence. Rows render only once a probe has reported. */}
+          {inv && row(
+            'Device owner',
+            ownerPkg
+              ? <span className="font-mono" title={ownerPkg}>{ownerPkg}</span>
+              : 'None',
+          )}
+          {inv && vendorPkgs.length > 0 && row(
+            'Vendor apps',
+            <span title={vendorPkgs.join('\n')}>
+              {vendorPkgs.length} detected
+            </span>,
+          )}
           {row(
             'Player APK',
             playerV ? (
