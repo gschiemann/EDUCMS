@@ -9293,7 +9293,39 @@ function PlayerPage() {
                   <button onClick={(e) => { e.stopPropagation(); handleExitApp(); }} className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative">
                     <LogOut className="w-4 h-4 text-slate-400" /> Exit
                   </button>
-                  <button onClick={async (e) => {
+                  <button
+                    // 2026-08-24 — autoFocus on the IDLE-state primary action,
+                    // mirroring what the paused branch above has had since
+                    // 2026-05-04.
+                    //
+                    // THE BUG THIS FIXES. Only `Resume` (the PAUSED branch)
+                    // ever got autoFocus. In the idle / just-paired state —
+                    // which is where a screen sits for its entire first
+                    // install, before any schedule exists — nothing claimed
+                    // focus at all. So a remote's first D-pad press landed
+                    // wherever the DOM happened to start, which is the
+                    // `overflow-y-auto` info column ABOVE this footer, and the
+                    // operator had to scroll the whole info block before
+                    // reaching any action. Operator, on two freshly-installed
+                    // screens: "i get stuck in the info block and cant
+                    // navigate to the actual buttons anymore to trigger a
+                    // refresh or go back... both seem like they should start
+                    // on the button".
+                    //
+                    // On a panel where the info column overflows far enough,
+                    // it is not merely tedious, it is a DEAD END — the footer
+                    // is flex-shrink-0 OUTSIDE the scroller, so D-pad
+                    // navigation inside a tall scroll region can fail to ever
+                    // hand focus onward. That is why the same build behaved
+                    // differently on two screens: the one whose layout was
+                    // squeezed (a portrait panel being forced landscape) could
+                    // not get out, while the taller one merely had to scroll.
+                    //
+                    // Safe against the sibling autoFocus above: the two live
+                    // in opposite arms of the `playbackStopped ?` ternary, so
+                    // exactly one is ever mounted.
+                    autoFocus
+                    onClick={async (e) => {
                     e.stopPropagation();
                     await appAlert({
                       title: 'Nothing to play yet',
