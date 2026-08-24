@@ -112,6 +112,76 @@ export function oneLineLog(value: string | null | undefined): string {
   return String(value ?? '').replace(/[\r\n\u2028\u2029]+/g, ' ');
 }
 
+/**
+ * Parse a device-reported resolution string into pixel dimensions.
+ *
+ * Players report "2160×3840" using U+00D7 MULTIPLICATION SIGN, not an ASCII
+ * 'x' — an ASCII-only parser silently matches nothing and every caller
+ * quietly falls back to its default. Accept both, plus '*'.
+ */
+export function parseReportedResolution(
+  resolution: string | null | undefined,
+): { w: number; h: number } | null {
+  const m = /^\s*(\d{2,6})\s*[x×X*]\s*(\d{2,6})\s*$/.exec(
+    typeof resolution === 'string' ? resolution : '',
+  );
+  if (!m) return null;
+  const w = Number(m[1]);
+  const h = Number(m[2]);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+  return { w, h };
+}
+
+/**
+ * Resolve the orientation value the MANIFEST should carry for a screen.
+ *
+ * ⚠️ WHY 'AUTO' CANNOT SIMPLY BE PASSED THROUGH (2026-08-24).
+ *
+ * 'AUTO' maps, on the device, to SCREEN_ORIENTATION_UNSPECIFIED — "release the
+ * lock and let the sensor decide". **Signage panels have no accelerometer.**
+ * So on this hardware AUTO is not auto-detection at all; it is a no-op that
+ * defers to whatever the firmware defaults to, which is frequently landscape
+ * even on a physically portrait panel. The player's CSS rotate fallback — the
+ * safety net for ROMs that ignore the Android orientation API outright — is
+ * ALSO gated on the literal value 'PORTRAIT', so an AUTO screen gets no
+ * fallback either. Operator, on two 2160×3840 panels: "2160x3840 is
+ * portrait....make them auto and have it work properly."
+ *
+ * He is right that AUTO should mean "figure it out", so we figure it out here,
+ * where we know the panel: the device reports `resolution` from the APK's
+ * WindowManager.maximumWindowMetrics — the REAL physical pixel count, not the
+ * DPI-scaled CSS value and not the currently-rendered viewport. Both portrait
+ * boxes reported 2160×3840 while actively being forced to render landscape,
+ * which is what makes it a trustworthy signal rather than a circular one.
+ *
+ * The stored column is NOT changed — the operator's intent ("auto") is
+ * preserved and still shown as Auto in the dashboard. Only the value handed to
+ * the device is resolved, so the existing, proven PORTRAIT path (native
+ * request + CSS fallback) does the work.
+ *
+ * An explicit LANDSCAPE/PORTRAIT is always passed through untouched: an
+ * operator overriding their panel (a deliberately sideways-mounted screen) must
+ * win over anything we infer.
+ *
+ * If the resolution is missing or unparseable we return 'AUTO' unchanged rather
+ * than guessing — deferring is honest; asserting an orientation we cannot
+ * justify is the bug this whole area keeps producing.
+ *
+ * Manifest-cache safe: derived purely from two stable Screen columns, with no
+ * per-request or clock-derived input (CLAUDE.md manifest content cache rule 7).
+ */
+export function resolveManifestOrientation(
+  orientation: string | null | undefined,
+  resolution: string | null | undefined,
+): 'LANDSCAPE' | 'PORTRAIT' | 'AUTO' {
+  const raw = typeof orientation === 'string' ? orientation.toUpperCase() : '';
+  if (raw === 'LANDSCAPE' || raw === 'PORTRAIT') return raw;
+  if (raw !== 'AUTO') return 'LANDSCAPE'; // null/empty/unknown → historical default
+  const dims = parseReportedResolution(resolution);
+  if (!dims) return 'AUTO';
+  return dims.h > dims.w ? 'PORTRAIT' : 'LANDSCAPE';
+}
+
 function generatePairingCode(length: number = 6): string {
   // sec-fix(wave1) #3: use crypto.randomInt (CSPRNG) instead of
   // Math.random() (predictable xorshift). Same alphabet; default
@@ -3874,7 +3944,7 @@ export class ScreensController {
           tenantName: (screen as any).tenant?.name || null,
           generatedAt: new Date().toISOString(),
           // 2026-05-24 — orientation lock for sports-mode screens too.
-          orientation: (screen as any).orientation || 'LANDSCAPE',
+          orientation: resolveManifestOrientation((screen as any).orientation, (screen as any).resolution),
           // 2026-06-24 — carry the LED canvas dims + tile-repeat on the
           // SCOREBOARD manifest too (the normal playlist branch already does).
           // Without these the player's TemplateScaler keeps a stale/empty
@@ -4232,7 +4302,7 @@ export class ScreensController {
       // applies on boot and on every manifest poll (cheap setter — only
       // calls setRequestedOrientation if the value changed). Older APKs
       // (no orientation field expected) ignore unknown fields.
-      orientation: (screen as any).orientation || 'LANDSCAPE',
+      orientation: resolveManifestOrientation((screen as any).orientation, (screen as any).resolution),
       // 2026-05-26 — LED canvas dimensions for narrow-chain panels.
       // Null = use controller's native viewport. Player reads these
       // on every manifest poll and applies via document.documentElement

@@ -24,7 +24,7 @@
  * asserted below so a future refactor cannot quietly widen it.
  */
 
-import { ScreensController } from './screens.controller';
+import { ScreensController, resolveManifestOrientation } from './screens.controller';
 
 jest.mock('../security/required-secret', () => ({
   requireSecret: (_name: string, opts?: { devFallback?: string }) =>
@@ -118,6 +118,11 @@ describe('POST /screens/register — orientation derived from reported panel', (
     expect(createdData().orientation).toBe('LANDSCAPE');
   });
 
+  it('a LANDSCAPE-reporting device still lands LANDSCAPE — no accidental flip', async () => {
+    await registerWith('3840×2160');
+    expect(createdData().orientation).toBe('LANDSCAPE');
+  });
+
   it('leaves the column default ALONE when resolution is absent or unparseable', async () => {
     // Writing a guess here would be worse than the default: it asserts an
     // answer the device never gave us. Omitting the key lets Prisma apply
@@ -132,5 +137,67 @@ describe('POST /screens/register — orientation derived from reported panel', (
     mockPrisma.client.screen.create.mockClear();
     await registerWith('0×0');
     expect(createdData().orientation).toBeUndefined();
+  });
+});
+
+/**
+ * ⚠️ 'AUTO' IS NOT AUTO-DETECTION ON THIS HARDWARE — the point of the resolver.
+ *
+ * On the device 'AUTO' maps to SCREEN_ORIENTATION_UNSPECIFIED: "release the
+ * lock, let the sensor decide". Signage panels have no accelerometer, so that
+ * is a no-op that defers to a firmware default which is frequently landscape
+ * even on a physically portrait panel. Worse, the player's CSS rotate fallback
+ * — the safety net for ROMs that ignore the Android orientation API entirely —
+ * is gated on the literal string 'PORTRAIT', so an AUTO screen gets no
+ * fallback either.
+ *
+ * Operator, on two 2160×3840 panels: "2160x3840 is portrait....make them auto
+ * and have it work properly." So AUTO is resolved server-side, where the panel
+ * is known, and the device receives a concrete value that the existing proven
+ * PORTRAIT path can act on.
+ */
+describe('resolveManifestOrientation — makes AUTO mean auto-detect', () => {
+  it('resolves AUTO to PORTRAIT for a portrait panel', () => {
+    expect(resolveManifestOrientation('AUTO', '2160×3840')).toBe('PORTRAIT');
+  });
+
+  it('resolves AUTO to LANDSCAPE for a landscape panel', () => {
+    expect(resolveManifestOrientation('AUTO', '1920×1080')).toBe('LANDSCAPE');
+  });
+
+  it('NEVER overrides an explicit operator choice — a deliberately sideways-mounted panel wins', () => {
+    // A portrait panel an operator has deliberately set to LANDSCAPE must stay
+    // landscape. Inferring over the top of an explicit choice is the exact
+    // failure this area has already produced once.
+    expect(resolveManifestOrientation('LANDSCAPE', '2160×3840')).toBe('LANDSCAPE');
+    expect(resolveManifestOrientation('PORTRAIT', '1920×1080')).toBe('PORTRAIT');
+  });
+
+  it('stays AUTO when the panel size is unknown — defer rather than guess', () => {
+    expect(resolveManifestOrientation('AUTO', null)).toBe('AUTO');
+    expect(resolveManifestOrientation('AUTO', '')).toBe('AUTO');
+    expect(resolveManifestOrientation('AUTO', 'garbage')).toBe('AUTO');
+    expect(resolveManifestOrientation('AUTO', '0×0')).toBe('AUTO');
+  });
+
+  it('square is LANDSCAPE, matching the register-time rule (h > w, strictly)', () => {
+    expect(resolveManifestOrientation('AUTO', '1080×1080')).toBe('LANDSCAPE');
+  });
+
+  it('falls back to LANDSCAPE for a null/unknown column, preserving historical behaviour', () => {
+    expect(resolveManifestOrientation(null, '2160×3840')).toBe('LANDSCAPE');
+    expect(resolveManifestOrientation(undefined, '2160×3840')).toBe('LANDSCAPE');
+  });
+
+  it('accepts the U+00D7 separator players actually send, not just ASCII x', () => {
+    // An ASCII-only parser matches nothing here and silently returns AUTO,
+    // which reinstates the whole bug.
+    expect(resolveManifestOrientation('AUTO', '2160×3840')).toBe('PORTRAIT');
+    expect(resolveManifestOrientation('AUTO', '2160x3840')).toBe('PORTRAIT');
+  });
+
+  it('is case-insensitive on the stored column', () => {
+    expect(resolveManifestOrientation('auto', '2160×3840')).toBe('PORTRAIT');
+    expect(resolveManifestOrientation('portrait', '1920×1080')).toBe('PORTRAIT');
   });
 });
