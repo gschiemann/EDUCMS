@@ -188,21 +188,88 @@
     root.setAttribute('data-music-playing', playing ? 'true' : 'false');
   }
 
-  /* Program / music values the host resolved from the signed manifest.
-   * Absent keys leave the operator's authored copy in place. */
+  /* ── Source-owned values ────────────────────────────────────────────
+   * `[data-mediafield]` elements are NOT editable copy. Each one asserts
+   * a fact about a live external system — what track is playing, which
+   * provider, which audio zone, how much of the program is left, whether
+   * the audio is muted, whether the content is licensed. The editor shim
+   * cannot write them; this file is the only thing that fills them.
+   *
+   * With nothing bound they show a placeholder, not the composed demo
+   * copy. That copy exists so the design could be judged; on a real
+   * screen it is an invented readout, which is worse than an empty one
+   * because it looks like data.
+   *
+   * The preview surface is the exception: there the badge is locked to
+   * DEMO PREVIEW, so leaving the authored content is honest and lets an
+   * operator see what the board looks like populated. */
+  var UNBOUND = '—';
+
+  function fillSourceOwned() {
+    /* On the preview surface the authored demo copy stays put. */
+    if (isPreviewSurface) return;
+
+    var p = live.program || {};
+    var m = live.music || {};
+    var bound = {
+      'music.trackTitle': m.trackTitle,
+      'music.artist': m.artist,
+      'music.provider': m.providerLabel,
+      'music.zoneName': m.zoneLabel,
+      'music.playbackMode': m.playbackModeLabel,
+      'music.rights': m.rightsLabel,
+      'source.providerName': p.providerLabel,
+      'program.provider': p.providerLabel,
+      'program.source': p.sourceLabel,
+      'program.elapsed': p.elapsedLabel,
+      'program.remaining': p.remainingLabel,
+      'program.duration': p.durationLabel,
+      'program.progressPercent': p.progressLabel,
+      'program.chapter': p.chapterLabel,
+      'program.startedAtLabel': p.startedAtLabel,
+      'program.audioState': p.audioPolicyLabel,
+      'program.audioPolicy': p.audioPolicyLabel,
+      'program.captionState': p.captionLabel
+    };
+
+    each('[data-mediafield]', function (n) {
+      var key = n.getAttribute('data-mediafield');
+
+      /* The progress bar carries its value as GEOMETRY, not text — it is
+       * an empty div whose width is the readout. Writing a placeholder
+       * string into it puts characters inside the bar. (It shipped as a
+       * `data-field`, so an operator could type into the progress bar.) */
+      if (key === 'program.progressPercent') {
+        var pct = (live.program || {}).progressPercent;
+        n.style.width = (typeof pct === 'number' && isFinite(pct))
+          ? Math.max(0, Math.min(100, pct)) + '%'
+          : '0%';
+        return;
+      }
+
+      var value = bound[key];
+      /* Placeholders keep the SHAPE of the value they stand in for.
+       * A bare em-dash where "10:22 remaining" was collapses the row and
+       * shoves its neighbours into the next block — these are fixed
+       * compositions, not flow layouts. */
+      var fallback = UNBOUND;
+      if (/\.(elapsed|remaining|duration|startedAtLabel)$/.test(key)) fallback = '--:--';
+      n.textContent = (value == null || value === '') ? fallback : String(value);
+    });
+  }
+
+  /* Values the operator authored that a provider can know better —
+   * the class title, its category, the coach. Live wins where the
+   * provider knows it; the operator's copy shows through otherwise.
+   * (The same rule the menu boards use for POS prices.) */
   function applyLiveContent() {
     var p = live.program || {};
     setField('program.title', p.title);
-    setField('program.eyebrow', p.category);
     setField('program.category', p.category);
+    setField('program.eyebrow', p.category);
     setField('program.summary', p.summary);
-    setField('program.remaining', p.remainingLabel);
-    setField('program.startedAtLabel', p.startedAtLabel);
-    setField('program.ratingLabel', p.ratingLabel);
-    setField('program.audioPolicy', p.audioPolicyLabel);
-    setField('program.audioState', p.audioPolicyLabel);
-    setField('program.source', p.sourceLabel);
-    setField('source.providerName', p.providerLabel);
+    setField('program.coach', p.coach);
+    setField('program.level', p.level);
 
     var next = p.next || [];
     for (var i = 0; i < 6; i += 1) {
@@ -213,13 +280,7 @@
       setField('schedule.' + i + '.source', entry.sourceLabel);
     }
 
-    var m = live.music || {};
-    setField('music.trackTitle', m.trackTitle);
-    setField('music.artist', m.artist);
-    setField('music.provider', m.providerLabel);
-    setField('music.zoneName', m.zoneLabel);
-    setField('music.playbackMode', m.playbackModeLabel);
-    setField('music.rights', m.rightsLabel);
+    fillSourceOwned();
   }
 
   /* ── Clock ──────────────────────────────────────────────────────────
@@ -286,6 +347,7 @@
      * composition to render. On a live screen this is ignored entirely. */
     var requested = isPreviewSurface ? (params.get('state') || 'demo') : null;
     applyClock();
+    fillSourceOwned();
     applyState(requested || (isPreviewSurface ? 'demo' : 'unconfigured'));
     window.setInterval(renderClock, 15000);
     window.addEventListener('message', onMessage, false);

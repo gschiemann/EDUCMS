@@ -7382,7 +7382,14 @@ function ExternalHtmlTextEditor({
       }
       if (d.type === 'educms-field-click' && typeof d.key === 'string') {
         const safeKey = d.key.replace(/"/g, '');
-        const sel = d.kind === 'action'
+        // kind:'media' is a value that can only come from a connected
+        // source — a now-playing track, a provider, an audio zone. There
+        // is no text row to jump to, and inventing one is the bug. Send
+        // the operator to the integration picker instead: the fix has to
+        // be reachable from the thing that is wrong.
+        const sel = d.kind === 'media'
+          ? '[data-edit-media]'
+          : d.kind === 'action'
           ? `[data-edit-action="${safeKey}"]`
           : d.kind === 'video'
           ? `[data-edit-video="${safeKey}"]`

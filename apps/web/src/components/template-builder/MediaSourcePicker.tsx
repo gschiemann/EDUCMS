@@ -370,14 +370,16 @@ export function MediaSourcePicker({
 
   if (connsQ.isLoading || providersQ.isLoading) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-500">
+      <div data-edit-media className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-500">
         <Loader2 className="inline w-3 h-3 animate-spin mr-1" /> Loading your media sources…
       </div>
     );
   }
 
   return (
-    <div className="space-y-2">
+    // data-edit-media is the jump target for a `kind:'media'` click on the
+    // board — tapping the now-playing track lands here.
+    <div className="space-y-2" data-edit-media>
       <Slot
         title="Program video"
         Icon={Tv}

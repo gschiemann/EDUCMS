@@ -363,7 +363,7 @@
     .state-external .broadcast img { filter: saturate(.62) brightness(.62); }
     .state-demo .broadcast img { filter: saturate(.45) brightness(.68); }
   </style>
-<script>/*EDUCMS-SHIM-V8*/(function(){try{
+<script>/*EDUCMS-SHIM-V9*/(function(){try{
 var editMode=false;
 function applyPosters(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var el=document.querySelector('[data-posterslot="'+esc+'"]');if(!el)return;if(safe)el.setAttribute('poster',safe);else el.removeAttribute('poster');el.setAttribute('data-has-image',safe?'true':'false');});}
 function applyVideos(video){if(!video)return;Object.keys(video).forEach(function(k){var v=video[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var el=document.querySelector('[data-videoslot="'+esc+'"]');if(!el)return;var owner=el.tagName==='VIDEO'?el:(el.closest?el.closest('video'):null);if(el.tagName==='VIDEO'||el.tagName==='SOURCE'){if(safe)el.setAttribute('src',safe);else el.removeAttribute('src');}else{el.setAttribute('data-video',safe);}el.setAttribute('data-has-video',safe?'true':'false');if(owner){try{owner.load();if(owner.autoplay&&safe){var play=owner.play();if(play&&play.catch)play.catch(function(){});}}catch(e){}}});}
@@ -395,7 +395,7 @@ function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MA
 var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
 function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);if(Object.prototype.hasOwnProperty.call(s,'hidden')){el.style.display=s.hidden?'none':'';}}}});}
 function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(slot.tagName==='IMG'){if(slot.__eduSrc0===undefined)slot.__eduSrc0=slot.getAttribute('src')||'';if(safe){slot.setAttribute('src',safe);slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{if(slot.__eduSrc0)slot.setAttribute('src',slot.__eduSrc0);else slot.removeAttribute('src');slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
-function armEdit(){document.querySelectorAll('[data-field],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':'#06b6d4');el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(el.hasAttribute('data-field')?'text':'img');try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
+function armEdit(){document.querySelectorAll('[data-field],[data-mediafield],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');var isSrc=el.hasAttribute('data-mediafield');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':(isSrc?'#8b5cf6':'#06b6d4'));el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-mediafield')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(isSrc?'media':(el.hasAttribute('data-field')?'text':'img'));try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
 function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);applyPosters(p.img);applyVideos(p.video);if(editMode){armEdit();armMediaEdit();}}
 applyBrand(readParams().brand);
 if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
@@ -420,11 +420,11 @@ addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='objec
       <div class="frame-no" data-field="program.category">MOBILITY / 042</div>
       <div class="source-badge" id="sourceBadge" data-source-status>LIVE · CONNECTED</div>
       <div class="program-copy">
-        <div class="program-kicker" id="programProvider" data-field="program.provider">Fitness On Demand · Contract API</div>
+        <div class="program-kicker" id="programProvider" data-mediafield="program.provider">Fitness On Demand · Contract API</div>
         <h1 data-field="program.title">Restore + Move</h1>
         <div class="program-meta">
           <span data-field="program.coach">Coach Dani</span>
-          <span data-field="program.duration">28 min</span>
+          <span data-mediafield="program.duration">28 min</span>
           <span data-field="program.level">All levels</span>
         </div>
       </div>
@@ -451,9 +451,9 @@ addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='objec
       </div>
 
       <section class="music" aria-label="Business music metadata">
-        <div class="music-label"><span data-field="music.provider">Business music</span><span id="musicState" data-music-status>CONNECTED</span></div>
-        <div class="track" data-field="music.trackTitle">Find Your Pace</div>
-        <div class="artist" data-field="music.artist">The Night Shift</div>
+        <div class="music-label"><span data-mediafield="music.provider">Business music</span><span id="musicState" data-music-status>CONNECTED</span></div>
+        <div class="track" data-mediafield="music.trackTitle">Find Your Pace</div>
+        <div class="artist" data-mediafield="music.artist">The Night Shift</div>
       </section>
 
       <section class="message">
@@ -462,12 +462,12 @@ addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='objec
     </aside>
 
     <section class="transport" aria-label="Program progress and media status">
-      <div class="transport-mark">Now screening<strong data-field="program.chapter">Mobility 04</strong></div>
+      <div class="transport-mark">Now screening<strong data-mediafield="program.chapter">Mobility 04</strong></div>
       <div class="timeline">
-        <div class="timeline-line"><div class="timeline-fill" data-field="program.progressPercent"></div><div class="timeline-head"></div></div>
-        <div class="timeline-times"><span data-field="program.elapsed">17:38</span><span data-field="program.remaining">10:22 remaining</span></div>
+        <div class="timeline-line"><div class="timeline-fill" data-mediafield="program.progressPercent"></div><div class="timeline-head"></div></div>
+        <div class="timeline-times"><span data-mediafield="program.elapsed">17:38</span><span data-mediafield="program.remaining">10:22 remaining</span></div>
       </div>
-      <div class="av-state"><span data-field="program.audioState">MUTED</span><span data-field="program.captionState">CAPTIONS ON</span></div>
+      <div class="av-state"><span data-mediafield="program.audioState">MUTED</span><span data-mediafield="program.captionState">CAPTIONS ON</span></div>
     </section>
     <div class="grain"></div>
   </main>

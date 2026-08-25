@@ -198,6 +198,51 @@ function measure({ width, height }) {
         if (rule.must && !rule.must.test(joined)) failures.push(`${at}: labels do not say what this state means — "${joined}"`);
         if (rule.mustNot && rule.mustNot.test(joined)) failures.push(`${at}: claims a live feed while ${state} — "${joined}"`);
       }
+      // ── A source-owned value is not copy, and must not be typeable ──
+      // The now-playing track, the provider, the audio zone, "Business
+      // licensed", the elapsed clock. These shipped as editable text
+      // fields; an operator could type a readout onto a screen connected
+      // to nothing. They are `data-mediafield` now — the shim must not
+      // write them, and with nothing bound they must not show the
+      // composed demo copy either.
+      {
+        const keys = await page.evaluate(() =>
+          [...document.querySelectorAll('[data-mediafield]')].map((n) => n.getAttribute('data-mediafield')));
+        if (!keys.length) failures.push(`${engineName}/${board}: no [data-mediafield] at all — nothing is source-owned`);
+
+        // 1. An operator text override aimed at these keys changes nothing.
+        const before = await page.evaluate(() =>
+          [...document.querySelectorAll('[data-mediafield]')].map((n) => n.textContent.trim()));
+        await page.evaluate((ks) => {
+          const text = {};
+          for (const k of ks) text[k] = 'TYPED BY OPERATOR';
+          window.postMessage({ type: 'educms-overrides', text }, '*');
+        }, keys);
+        await page.waitForTimeout(200);
+        const after = await page.evaluate(() =>
+          [...document.querySelectorAll('[data-mediafield]')].map((n) => n.textContent.trim()));
+        const typed = after.filter((t) => t === 'TYPED BY OPERATOR');
+        if (typed.length) {
+          failures.push(`${engineName}/${board}: ${typed.length} source-owned value(s) accepted operator text`);
+        }
+        if (JSON.stringify(before) !== JSON.stringify(after)) {
+          failures.push(`${engineName}/${board}: an operator text override changed a source-owned value`);
+        }
+
+        // 2. Unbound, they show a placeholder — never the demo readout.
+        await page.evaluate(() => window.postMessage({ type: 'educms-overrides', media: { state: 'unconfigured' } }, '*'));
+        await page.waitForTimeout(200);
+        const unbound = await page.evaluate(() =>
+          [...document.querySelectorAll('[data-mediafield]')].map((n) => n.textContent.trim()));
+        // The progress BAR is geometry, so it has no text at all; time
+        // values keep their shape so a fixed composition does not collapse.
+        const PLACEHOLDER = new Set(['—', '--:--', '']);
+        const fabricated = unbound.filter((t) => !PLACEHOLDER.has(t));
+        if (fabricated.length) {
+          failures.push(`${engineName}/${board}: unbound board still shows a readout — ${JSON.stringify(fabricated.slice(0, 3))}`);
+        }
+      }
+
       if (errors.length) failures.push(`${engineName}/${board}: ${errors.slice(0, 3).join(' | ')}`);
       await page.close();
     }

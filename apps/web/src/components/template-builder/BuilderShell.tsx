@@ -996,6 +996,31 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
     }
   };
 
+
+  // Clicking an editable element on a packaged board posts
+  // `educms-field-click` from inside the (sandboxed) iframe. The handler
+  // that acts on it lives in PropertiesPanel — which is only mounted
+  // while the PROPERTIES tab is open. So an operator sitting on Widgets,
+  // Apps or Brand could click straight at the thing they wanted to change
+  // and nothing whatsoever would happen; the affordance existed one tab
+  // away from where they were looking. Switch to Properties and replay the
+  // message once that panel has mounted.
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      const d = e.data as { type?: string; __replayed?: boolean } | null;
+      if (!d || typeof d !== 'object') return;
+      if (d.type !== 'educms-field-click' || d.__replayed) return;
+      if (panel === 'properties') return; // already mounted; it handles its own
+      setPanel('properties');
+      window.setTimeout(() => {
+        try { window.postMessage({ ...d, __replayed: true }, '*'); } catch { /* ignore */ }
+      }, 60);
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, [panel]);
+
+
   return (
     <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="fixed inset-0 bg-slate-50 z-[999] flex flex-col font-sans text-slate-800 selection:bg-indigo-500/30">
