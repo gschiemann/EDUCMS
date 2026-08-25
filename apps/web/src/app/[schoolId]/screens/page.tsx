@@ -22,6 +22,16 @@ import { DisplayScheduleModal, type DisplayScheduleTargetRef } from '@/component
 // of a painted frame, and a frozen kiosk still passes the ping.
 import { RenderTrustChip } from '@/components/screens/RenderTrustChip';
 import { deriveRenderTrust } from '@/components/screens/renderTrust';
+// 2026-08-25 — device-first "Connect a screen" card. Replaces the old
+// "How to Connect a Screen" banner, which taught only the browser flow
+// ("open the Player URL") on a fleet that is overwhelmingly Android boxes
+// running the Player APK. Operator: "the how to connect a screen section is
+// worthless, because really they need to install an APK on their screen, or
+// attach a media player 9 times out of 10". The card asks what the operator
+// is holding, shows only that path's steps, and funnels every path back into
+// the SAME two pairing entry points that already exist (the Pair Screen modal
+// below, and /pair on a phone) — it does not reimplement pairing.
+import { ConnectScreenCard } from '@/components/screens/ConnectScreenCard';
 // 2026-05-27 — PairScreenHardwareStep removed from the pair modal. The
 // player APK already reports its hardware (Build.MANUFACTURER + MODEL)
 // — operator should never have to type it. The step + its EP6N upsell
@@ -1667,76 +1677,12 @@ function ScreenSettingsMenu({
   );
 }
 
-/**
- * Copy-to-clipboard button for the player URL.
- *
- * Three things the old inline `onClick={() => navigator.clipboard?...}`
- * got wrong, all of which made operators report "the button doesn't
- * work":
- *  1. No `cursor-pointer` — Tailwind v4's Preflight no longer sets it
- *     on <button>, so the pointer stayed an arrow and the control read
- *     as dead/un-clickable.
- *  2. No feedback — `navigator.clipboard.writeText` is silent, so a
- *     successful copy looked like nothing happened.
- *  3. No fallback — `navigator.clipboard` is `undefined` outside a
- *     secure context (plain-HTTP previews, some kiosk webviews), so
- *     the optional-chain silently no-op'd.
- * This component fixes all three: pointer cursor, a "Copied!" state,
- * and a legacy `execCommand('copy')` fallback.
- */
-function CopyUrlButton({ url }: { url: string }) {
-  const t = useTranslations();
-  const [copied, setCopied] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const copy = async () => {
-    let ok = false;
-    // Modern path — only present in a secure context (HTTPS/localhost).
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(url);
-        ok = true;
-      }
-    } catch {
-      /* fall through to the legacy path */
-    }
-    // Legacy fallback — works on plain HTTP and older webviews.
-    if (!ok) {
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = url;
-        ta.style.position = 'fixed';
-        ta.style.top = '0';
-        ta.style.left = '0';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-        ok = document.execCommand('copy');
-        document.body.removeChild(ta);
-      } catch {
-        ok = false;
-      }
-    }
-    setCopied(ok);
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setCopied(false), 2000);
-  };
-
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
-
-  return (
-    <button
-      type="button"
-      onClick={copy}
-      className="flex items-center gap-1.5 px-4 py-2.5 text-white text-sm font-bold rounded-xl shrink-0 shadow-sm transition-all active:scale-95 cursor-pointer"
-      style={{ background: copied ? '#16a34a' : 'var(--brand-primary, #4f46e5)' }}
-    >
-      {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-      {copied ? t('screens.copiedBang') : t('screens.copyUrl')}
-    </button>
-  );
-}
+// 2026-08-25 — `CopyUrlButton` MOVED to
+// components/screens/ConnectScreenCard.tsx. It existed solely to serve the
+// old "How to Connect a Screen" banner that this page no longer renders, and
+// it carried three real fixes worth keeping (pointer cursor, a visible
+// "Copied!" state, and an `execCommand` fallback for non-secure contexts) —
+// all three moved with it, so nothing was lost.
 
 /**
  * Fleet search + status filter (2026-08-24) — client-side predicates over
@@ -2286,39 +2232,24 @@ export default function ScreensPage() {
           want the list nearby for a status cross-check). */}
       {viewMode !== 'floor' && (
       <>
-      {/* How it works banner */}
-      <div className="bg-gradient-to-br from-emerald-50 to-teal-50/50 rounded-3xl border-transparent p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-        <h3 className="text-sm font-bold text-slate-800 mb-4">{t('screens.howToConnect')}</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-          <div className="flex gap-3.5 items-center">
-            <div className="w-10 h-10 rounded-2xl text-white flex items-center justify-center text-sm font-black shrink-0" style={{ background: 'var(--brand-primary, #4f46e5)', boxShadow: '0 1px 2px color-mix(in srgb, var(--brand-primary, #4f46e5) 30%, transparent)' }}>1</div>
-            <div>
-              <p className="text-sm font-bold text-slate-700">{t('screens.step1')}</p>
-              <p className="text-xs text-slate-500">{t('screens.step1Sub')}</p>
-            </div>
-          </div>
-          <div className="flex gap-3.5 items-center">
-            <div className="w-10 h-10 rounded-2xl text-white flex items-center justify-center text-sm font-black shrink-0" style={{ background: 'var(--brand-primary, #4f46e5)', boxShadow: '0 1px 2px color-mix(in srgb, var(--brand-primary, #4f46e5) 30%, transparent)' }}>2</div>
-            <div>
-              <p className="text-sm font-bold text-slate-700">{t('screens.step2')}</p>
-              <p className="text-xs text-slate-500">{t('screens.step2Sub')}</p>
-            </div>
-          </div>
-          <div className="flex gap-3.5 items-center">
-            <div className="w-10 h-10 rounded-2xl text-white flex items-center justify-center text-sm font-black shrink-0" style={{ background: 'var(--brand-primary, #4f46e5)', boxShadow: '0 1px 2px color-mix(in srgb, var(--brand-primary, #4f46e5) 30%, transparent)' }}>3</div>
-            <div>
-              <p className="text-sm font-bold text-slate-700">{t('screens.step3')}</p>
-              <p className="text-xs text-slate-500">{t('screens.step3Sub')}</p>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 mt-6 pt-4 border-t border-emerald-100/50">
-          <code className="flex-1 px-4 py-2.5 bg-white rounded-xl text-sm font-mono text-slate-700 select-all shadow-sm">
-            {playerUrl}
-          </code>
-          <CopyUrlButton url={playerUrl} />
-        </div>
-      </div>
+      {/* Connect a screen — device-first. See the import comment at the top
+          of this file for the why. Collapses itself to a one-line "Connect
+          another screen" row once ANY screen is paired, so a fleet that is
+          past onboarding doesn't keep paying page height for setup chrome.
+          Both actions land on things that already exist: `setShowPairModal`
+          (the modal further down, untouched) and /pair on a phone. */}
+      <ConnectScreenCard
+        pairedCount={flatScreens.length}
+        playerUrl={playerUrl}
+        pairDisabled={isViewer}
+        onPairScreen={() => {
+          setShowPairModal(true);
+          setPairGroupId('');
+          setPairCode('');
+          setPairName('');
+          setPairError('');
+        }}
+      />
 
       {/* Create Group Form */}
       {showCreateGroup && (
