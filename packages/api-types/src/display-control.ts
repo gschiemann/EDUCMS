@@ -453,6 +453,16 @@ export const DISPLAY_REFUSAL_CODES = {
   REBOOT_UNAVAILABLE: 'DISPLAY_REBOOT_UNAVAILABLE',
   /** allowBlack without a dead-man revert window. */
   ALLOW_BLACK_REQUIRES_REVERT: 'DISPLAY_ALLOW_BLACK_REQUIRES_REVERT',
+  /**
+   * BLANK whose only mechanism is device-admin lock on a panel where ANOTHER
+   * app is device/profile owner. Field incident 2026-08-25 (G43): the
+   * admin-lock latched the vendor firmware into panel standby (status LED
+   * blinking, glass dark, physical power button dead) while the Android
+   * board stayed online — and WAKE delivered but could not reverse it; only
+   * a mains power-cycle recovered the glass. Until a safe soft-blank ships
+   * for this hardware class, the darkening direction is refused outright.
+   */
+  BLANK_ADMIN_LOCK_FOREIGN_OWNER: 'DISPLAY_BLANK_ADMIN_LOCK_FOREIGN_OWNER',
 } as const;
 
 /**

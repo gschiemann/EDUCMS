@@ -657,3 +657,81 @@ describe('boundInventoryReport — bounded by construction, never by trust', () 
     expect(JSON.stringify(out).length).toBeLessThanOrEqual(32 * 1024);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// Field incident, 2026-08-25 (G43) — BLANK via device-admin on a panel whose
+// device OWNER is another app latched the vendor firmware into panel standby
+// (glass dark, LED blinking, power button dead) while Android stayed online;
+// WAKE delivered and could not reverse it. An action whose undo provably
+// fails on a hardware class is refused outright on that class.
+// ─────────────────────────────────────────────────────────────────────────
+describe('foreign-owner admin-lock guard (G43 incident)', () => {
+  const G43_VERDICT = {
+    volume: 'audiomanager',
+    brightness: 'settings',
+    screenBlank: 'device-admin',
+    reboot: 'none',
+    hardPowerOff: 'serial-candidate',
+    deviceOwnerPath: 'blocked-other-owner',
+  };
+  let service: DisplayService;
+  let prisma: any;
+  let redis: any;
+  let signer: any;
+  beforeEach(async () => {
+    redis = { publish: jest.fn().mockResolvedValue(true), isConnected: jest.fn().mockReturnValue(true) };
+    signer = { signMessage: jest.fn().mockImplementation((type: string, payload: any) => ({ type, payload, eventId: 'evt-1', timestamp: Date.now(), signature: 'sig' })) };
+    prisma = { client: { screen: { update: jest.fn().mockResolvedValue({}) }, auditLog: { create: jest.fn().mockResolvedValue({}) } } };
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        DisplayService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: RedisService, useValue: redis },
+        { provide: WebsocketSignerService, useValue: signer },
+      ],
+    }).compile();
+    service = moduleRef.get(DisplayService);
+  });
+  const apply = (over: Record<string, unknown> = {}) =>
+    service.applyAction({
+      screenId: SCREEN_ID,
+      tenantId: TENANT_ID,
+      userId: USER_ID,
+      action: 'BLANK',
+      capabilities: stored(G43_VERDICT),
+      ...over,
+    } as any);
+
+  it('REFUSES BLANK: device-admin mechanism + foreign owner → 409 code, no publish, forensic audit row', async () => {
+    await expect(apply()).rejects.toMatchObject({
+      code: 'DISPLAY_BLANK_ADMIN_LOCK_FOREIGN_OWNER',
+    });
+    expect(redis.publish).not.toHaveBeenCalled();
+    expect(signer.signMessage).not.toHaveBeenCalled();
+    expect(
+      JSON.parse(prisma.client.auditLog.create.mock.calls[0][0].data.details),
+    ).toMatchObject({
+      outcome: 'refused',
+      code: 'DISPLAY_BLANK_ADMIN_LOCK_FOREIGN_OWNER',
+      mechanism: 'device-admin',
+      deviceOwnerPath: 'blocked-other-owner',
+    });
+  });
+
+  it('WAKE on the same panel stays available — recovery is never gated', async () => {
+    await expect(apply({ action: 'WAKE' })).resolves.toBeDefined();
+    expect(redis.publish).toHaveBeenCalled();
+  });
+
+  it('device-admin blank with OUR OWN owner path held is NOT refused (the lock is reversible there)', async () => {
+    await expect(
+      apply({ capabilities: stored({ ...G43_VERDICT, deviceOwnerPath: 'held' }) }),
+    ).resolves.toBeDefined();
+  });
+
+  it('vendor-recipe blank on a foreign-owner panel is NOT refused (mechanism, not ownership, is the hazard)', async () => {
+    await expect(
+      apply({ capabilities: stored({ ...G43_VERDICT, screenBlank: 'vendor-recipe' }) }),
+    ).resolves.toBeDefined();
+  });
+});

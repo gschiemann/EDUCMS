@@ -502,6 +502,48 @@ export class DisplayService {
       );
     }
 
+    // ── FOREIGN-OWNER ADMIN-LOCK GUARD (field incident, 2026-08-25) ─────
+    // G43: BLANK via device-admin on a panel whose device owner is ANOTHER
+    // app (the OEM CMS) latched the vendor firmware into panel standby —
+    // glass dark, status LED blinking, physical power button unresponsive —
+    // while the Android board stayed fully online. WAKE was dispatched and
+    // DELIVERED nine seconds later and could not reverse it; the operator
+    // recovered the panel with a mains power-cycle. An action whose undo
+    // provably does not work on this hardware class is not a control, it is
+    // a trap — refuse the darkening direction outright until a soft
+    // (web-overlay) blank ships for these panels. WAKE and every recovery
+    // direction stay available, same principle as the emergency interlock.
+    if (
+      action === 'BLANK' &&
+      verdict?.screenBlank === 'device-admin' &&
+      verdict?.deviceOwnerPath === 'blocked-other-owner'
+    ) {
+      await this.writeAudit({
+        action: DISPLAY_AUDIT_ACTIONS.CONTROL,
+        screenId,
+        tenantId,
+        userId,
+        details: {
+          requested: action,
+          outcome: 'refused',
+          code: DISPLAY_REFUSAL_CODES.BLANK_ADMIN_LOCK_FOREIGN_OWNER,
+          mechanism: 'device-admin',
+          deviceOwnerPath: verdict.deviceOwnerPath,
+          reason: opts.reason ?? null,
+        },
+      });
+      this.logger.warn(
+        `[DisplayService] REFUSED BLANK on screen=${screenId} — device-admin ` +
+          `lock with a foreign device owner is unrecoverable on this hardware ` +
+          `class (2026-08-25 G43 incident).`,
+      );
+      throw new DisplayActionUnsupportedError(
+        DISPLAY_REFUSAL_CODES.BLANK_ADMIN_LOCK_FOREIGN_OWNER,
+        'Blanking is disabled on this panel: its only blank mechanism is a device-admin lock, another app owns this device, and on this hardware that combination turns the panel off in a way Wake cannot reverse (mains power-cycle required). A safe blank for this panel class is coming.',
+        { action },
+      );
+    }
+
     const support = displayActionSupport(action, verdict, {
       percent: opts.percent,
       allowBlack: opts.allowBlack === true,
