@@ -59,6 +59,38 @@
  * only the one-line explainer. The button path stays for a future
  * manufacturer-preinstalled (platform-signed) build, and the render tests
  * cover BOTH shapes so the reboot-absent layout can't rot unnoticed.
+ *
+ * ── THE BLANK/POWER SPLIT (live field incident, 2026-08-25) ──────────
+ *
+ * Operator contract, verbatim: *"wake and blank should just do that and turn
+ * on and off should do that, keep them separate and make them work perfectly
+ * on all our models."*
+ *
+ * A remote BLANK reached the APK, which took an Android device-admin lock,
+ * which latched a Goodview G43 and a Mobile A-Frame into a VENDOR standby:
+ * glass dark, IR remote and physical power button both dead, WAKE delivered
+ * and useless, mains power-cycle required — and the A-Frame then woke ITSELF
+ * back up minutes later, unprompted. An L55VEC with a byte-identical verdict
+ * recovered normally. Vendor firmware owned that state, in both directions,
+ * and nothing the probe reports predicted which panel would do which.
+ *
+ * So this panel now shows TWO rows where it used to show one:
+ *
+ *   Blank / Wake  — SOFT and universal. The player covers its own viewport
+ *                   with black; no bridge call, no hardware, no verdict
+ *                   consulted. Renders on EVERY screen including one that
+ *                   has never reported and a browser player. No dead-man
+ *                   revert any more: a soft blank cannot strand anything,
+ *                   and "blank should just do that" means it holds until
+ *                   Wake (or a reload, or an emergency).
+ *   Panel power   — HARD. "Turn panel off" renders only on a mechanism
+ *                   proven to round-trip (vendor-recipe today); the API
+ *                   refuses the admin-lock family with
+ *                   DISPLAY_BLANK_MECHANISM_UNPROVEN. "Turn panel on"
+ *                   renders whenever the screen has reported anything at
+ *                   all, even where OFF is refused — a dark panel must
+ *                   always have a path back, and on the incident hardware
+ *                   this is the only hardware control left.
  */
 
 import { useRef, useState } from 'react';
@@ -70,6 +102,7 @@ import {
   MonitorOff,
   Monitor,
   Power,
+  PowerOff,
   CalendarClock,
   Info,
   Loader2,
@@ -86,11 +119,44 @@ import {
   resolveDisplayControls,
   clampBrightness,
   clampVolume,
-  BLANK_AUTO_WAKE_MS,
+  type ControlAxis,
 } from './display-capabilities';
 
 /** The literal the operator must type to confirm a remote reboot. */
 const REBOOT_TOKEN = 'REBOOT';
+
+/**
+ * ── COPY FOR THE 2026-08-25 BLANK/POWER SPLIT ─────────────────────────
+ *
+ * ⚠️ LITERAL ENGLISH, AND IT IS A DEBT — NOT A NEW PATTERN. This wave landed
+ * during a live field incident and was explicitly barred from touching the
+ * locale catalogs (another workstream owns them). `check-i18n-parity.cjs` is
+ * a HARD gate: an en-only key turns CI red, and a key missing from es/zh
+ * renders its raw dot-path to that operator. Literal English is the honest
+ * interim — readable by everyone, wrong for nobody the way `screens.display.
+ * note.powerOffUnproven` on screen would be. OWED, one commit: move all of
+ * these into `screens.display.*` across en/es/zh and delete the constants.
+ */
+const BLANK_SENT_COPY =
+  'Blank sent — the screen goes black but stays powered. Press Wake to bring it back.';
+const POWER_ROW_LABEL = 'Panel power';
+const POWER_OFF_LABEL = 'Turn panel off';
+const POWER_ON_LABEL = 'Turn panel on';
+const POWER_OFF_SENT_COPY = 'Power-off sent to the panel. Turn panel on brings it back.';
+const POWER_ON_SENT_COPY = 'Power-on sent to the panel.';
+const POWER_OFF_CONFIRM_TITLE = 'Turn this panel off?';
+const POWER_OFF_CONFIRM_BODY =
+  'This cuts power to the panel itself, not just the picture. It comes back with “Turn panel on” — but if that fails, someone has to walk to the screen. To simply darken it, use Blank instead.';
+const POWER_OFF_CONFIRM_CTA = 'Turn it off';
+
+/**
+ * Prefer literal copy when an axis carries it; fall back to its i18n key.
+ * Not a hook — it takes the already-resolved translator.
+ */
+function makeAxisNote(t: ReturnType<typeof useTranslations>) {
+  return (axis: ControlAxis): string =>
+    axis.noteText ? axis.noteText : axis.noteKey ? t(axis.noteKey) : '';
+}
 
 function ago(ts: string | null | undefined): string | null {
   if (!ts) return null;
@@ -238,6 +304,7 @@ export function ScreenDisplayControls({
   browserPlayer?: boolean;
 }) {
   const t = useTranslations();
+  const axisNote = makeAxisNote(t);
   const control = useDisplayControl();
   const caps = resolveDisplayControls(screen?.displayCapabilities);
   const reportedAt = ago(screen?.displayCapabilitiesAt);
@@ -252,9 +319,16 @@ export function ScreenDisplayControls({
   // the action it recovers from. (The 12 s abort in useDisplayControl is the
   // other half of that fix.)
   const [busy, setBusy] = useState<DisplayActionType | null>(null);
-  /** Wake stays live no matter what else is running. */
+  /**
+   * The RECOVERY verbs stay live no matter what else is running — a control
+   * must never be gated by the action it recovers from. WAKE undoes BLANK;
+   * POWER_ON undoes POWER_OFF (added with the 2026-08-25 split, for exactly
+   * the same reason: an in-flight POWER_OFF must not grey out the only
+   * control that brings the panel back).
+   */
+  const RECOVERY_ACTIONS: readonly DisplayActionType[] = ['WAKE', 'POWER_ON'];
   const lockedBy = (action: DisplayActionType) =>
-    busy !== null && action !== 'WAKE' ? true : busy === action;
+    busy !== null && !RECOVERY_ACTIONS.includes(action) ? true : busy === action;
 
   // Device-echoed levels when the API provides them; otherwise unknown.
   const ds = screen?.displayState ?? null;
@@ -337,6 +411,28 @@ export function ScreenDisplayControls({
     await send('REBOOT', { okMsg: t('screens.display.rebootSent') });
   };
 
+  /**
+   * POWER_OFF confirmation.
+   *
+   * One dialog, not the typed-token ceremony REBOOT gets: this is only
+   * offered on a mechanism proven to round-trip on this hardware class
+   * (vendor-recipe — a backlight-node write reversed by the same node), and
+   * "Turn panel on" is right next to it. But it IS the only control in this
+   * panel that can leave a wall-mounted screen genuinely dark, so it does not
+   * fire on a single click — and the copy names Blank as the thing the
+   * operator probably wanted.
+   */
+  const confirmPowerOff = async () => {
+    const ok = await appConfirm({
+      title: POWER_OFF_CONFIRM_TITLE,
+      message: POWER_OFF_CONFIRM_BODY,
+      tone: 'danger',
+      confirmLabel: POWER_OFF_CONFIRM_CTA,
+    });
+    if (!ok) return;
+    await send('POWER_OFF', { okMsg: POWER_OFF_SENT_COPY });
+  };
+
   const header = (
     <div className="px-3.5 pt-3 pb-1 flex items-baseline justify-between gap-2 border-t border-slate-100">
       <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
@@ -404,8 +500,20 @@ export function ScreenDisplayControls({
     </button>
   );
 
-  // Blank + Wake, for a screen that HAS reported. Both actions resolve here,
-  // so both are buttons.
+  // ── ROW 1: Blank / Wake — SOFT, and available on EVERY screen ────────
+  //
+  // 2026-08-25 blank/power split. Blank no longer touches the panel on any
+  // model: the player covers its own viewport with black. So this row is
+  // identical everywhere — probed panel, unprobed panel, browser player —
+  // and there is no "reported" branch left to write. Wake always reverses
+  // it, an emergency alert always overrides it, and a page reload clears it.
+  //
+  // NO DEAD-MAN REVERT ANY MORE, deliberately. The old Blank carried a
+  // 10-minute auto-wake because it could reach hardware and a forgotten
+  // click was a truck roll. A soft blank cannot strand anything, and the
+  // operator's contract is "blank should just do that" — a blank that
+  // un-blanks itself after ten minutes is not that. The copy below says what
+  // actually ends it.
   const blankWakeRow = (
     <div className="px-3.5 py-2.5 border-t border-slate-100">
       <div className="flex items-center gap-2">
@@ -414,12 +522,7 @@ export function ScreenDisplayControls({
           disabled={disabled || lockedBy('BLANK')}
           onClick={(e) => {
             e.stopPropagation();
-            send('BLANK', {
-              revertAfterMs: BLANK_AUTO_WAKE_MS,
-              okMsg: t('screens.display.blankSent', {
-                minutes: Math.round(BLANK_AUTO_WAKE_MS / 60_000),
-              }),
-            });
+            send('BLANK', { okMsg: BLANK_SENT_COPY });
           }}
           className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
@@ -432,34 +535,81 @@ export function ScreenDisplayControls({
         </button>
         {wakeButton}
       </div>
-      <p className="text-[10px] text-slate-400 leading-snug mt-1">
-        {caps.blank.noteKey ? t(caps.blank.noteKey) : ''}{' '}
-        {t('screens.display.blankAutoWake', {
-          minutes: Math.round(BLANK_AUTO_WAKE_MS / 60_000),
-        })}
-      </p>
+      <p className="text-[10px] text-slate-400 leading-snug mt-1">{axisNote(caps.blank)}</p>
     </div>
   );
 
-  // Wake alone, for a screen that has NEVER reported. Blank is not a
-  // disabled button here — a greyed control still reads as "this exists,
-  // something is wrong with my permissions". It is a sentence saying the
-  // screen has not reported yet, matching how volume:none and reboot:none
-  // already render, and matching the API's own refusal message.
-  const wakeOnlyRow = (
+  // ── ROW 2: Turn panel off / on — HARD, allowlisted ───────────────────
+  //
+  // The other half of the operator's contract: "turn on and off should do
+  // that". This is the only control here that reaches panel power.
+  //
+  // The two halves are gated INDEPENDENTLY, which is the same asymmetry
+  // Blank/Wake used to have and for the same reason:
+  //   • "Turn panel off" renders ONLY on a mechanism proven to round-trip
+  //     (today: vendor-recipe). On the admin-lock family the API refuses it
+  //     with DISPLAY_BLANK_MECHANISM_UNPROVEN, so a button would be a trap.
+  //   • "Turn panel on" renders on every screen that has reported ANYTHING,
+  //     even where OFF is refused. A panel left dark by a vendor standby, a
+  //     nightly schedule or someone's remote must always have a path back —
+  //     and on the incident panels that is the ONLY hardware control left.
+  const powerRow = caps.power.off.available || caps.power.on.available ? (
     <div className="px-3.5 py-2.5 border-t border-slate-100">
-      <div className="flex items-center gap-2">{wakeButton}</div>
+      <div className="text-[11px] font-bold text-slate-700 flex items-center gap-2">
+        <PowerOff className="w-3.5 h-3.5 text-slate-400" />
+        {POWER_ROW_LABEL}
+      </div>
+      <div className="flex items-center gap-2 mt-1.5">
+        {caps.power.off.available && (
+          <button
+            type="button"
+            disabled={disabled || lockedBy('POWER_OFF')}
+            onClick={(e) => {
+              e.stopPropagation();
+              void confirmPowerOff();
+            }}
+            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {busy === 'POWER_OFF' ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <PowerOff className="w-3.5 h-3.5" />
+            )}
+            {POWER_OFF_LABEL}
+          </button>
+        )}
+        {caps.power.on.available && (
+          <button
+            type="button"
+            disabled={disabled || lockedBy('POWER_ON')}
+            onClick={(e) => {
+              e.stopPropagation();
+              send('POWER_ON', { okMsg: POWER_ON_SENT_COPY });
+            }}
+            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {busy === 'POWER_ON' ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Power className="w-3.5 h-3.5" />
+            )}
+            {POWER_ON_LABEL}
+          </button>
+        )}
+      </div>
       <p className="text-[10px] text-slate-400 leading-snug mt-1">
-        {caps.wake.noteKey ? t(caps.wake.noteKey) : ''}
+        {axisNote(caps.power.off)}
       </p>
-      <div className="flex items-start gap-2 mt-2">
-        <MonitorOff className="w-3.5 h-3.5 text-slate-300 shrink-0 mt-0.5" />
-        <div className="min-w-0">
-          <div className="text-[11px] font-bold text-slate-400">{t('screens.display.blank')}</div>
-          <p className="text-[10px] text-slate-400 leading-snug">
-            {caps.blank.noteKey ? t(caps.blank.noteKey) : ''}
-          </p>
-        </div>
+    </div>
+  ) : (
+    // Neither half is offerable: no button at all, just the reason. Same
+    // discipline as volume:none / reboot:none — a greyed control reads as
+    // "this exists and something is wrong with my permissions".
+    <div className="px-3.5 py-2.5 border-t border-slate-100 flex items-start gap-2">
+      <PowerOff className="w-3.5 h-3.5 text-slate-300 shrink-0 mt-0.5" />
+      <div className="min-w-0">
+        <div className="text-[11px] font-bold text-slate-400">{POWER_ROW_LABEL}</div>
+        <p className="text-[10px] text-slate-400 leading-snug">{axisNote(caps.power.off)}</p>
       </div>
     </div>
   );
@@ -501,9 +651,14 @@ export function ScreenDisplayControls({
   );
 
   // ── Browser player, nothing reported ────────────────────────────────
-  // One honest sentence instead of recovery controls that structurally
-  // cannot work (no native bridge → no report, no command ever lands).
-  // See the `browserPlayer` prop doc above.
+  // The explainer stays: remote power, brightness and on/off schedules all
+  // need the native bridge, and this screen will never have one.
+  //
+  // But Blank / Wake now DO work here (2026-08-25). The soft blank is drawn
+  // by the player page itself, so a browser player blanks and wakes exactly
+  // like a Goodview panel — this is the first control in this panel that is
+  // genuinely bridge-free, and withholding it would be the mirror image of
+  // the "dead button" mistake this branch was created to fix.
   if (browserPlayer && !caps.reported) {
     return (
       <div className="bg-slate-50/60">
@@ -514,15 +669,22 @@ export function ScreenDisplayControls({
             {t('screens.display.browserPlayer')}
           </p>
         </div>
+        {blankWakeRow}
+        {statusRow}
       </div>
     );
   }
 
   // ── Nothing reported yet ────────────────────────────────────────────
   // Explainer + EXACTLY the actions the server gate accepts on a null
-  // verdict: Wake, a brightness raise, and the schedule. Volume, Blank and
-  // Reboot are withheld — the API refuses all three here, so a button for
-  // any of them would fail 100% of the time.
+  // verdict: Blank, Wake, a brightness raise, and the schedule. Volume,
+  // Reboot and panel POWER are withheld — the API refuses all three here, so
+  // a button for any of them would fail 100% of the time.
+  //
+  // Blank JOINED this list on 2026-08-25 and that is the point of the split:
+  // it is soft now, so it works on an unprobed screen exactly as well as on
+  // a probed one. `powerRow` renders as its explainer sentence, which is
+  // where the old "blanking stays disabled until it reports" line went.
   if (!caps.reported) {
     return (
       <div className="bg-slate-50/60">
@@ -534,7 +696,8 @@ export function ScreenDisplayControls({
           </p>
         </div>
         {brightnessRow}
-        {wakeOnlyRow}
+        {blankWakeRow}
+        {powerRow}
         {scheduleRow}
         {statusRow}
       </div>
@@ -581,8 +744,11 @@ export function ScreenDisplayControls({
       {/* ── Brightness ─────────────────────────────────────────── */}
       {brightnessRow}
 
-      {/* ── Blank / Wake — both resolve once a verdict exists ───── */}
+      {/* ── Blank / Wake — SOFT, always available (2026-08-25) ──── */}
       {blankWakeRow}
+
+      {/* ── Panel power — HARD, allowlisted (2026-08-25) ────────── */}
+      {powerRow}
 
       {/* ── Reboot ─────────────────────────────────────────────── */}
       {/* NOTE: on today's fleet this ALWAYS takes the `else` branch — we do

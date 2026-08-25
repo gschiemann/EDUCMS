@@ -62,10 +62,18 @@ import {
  *      that can only ever make a dark screen visible, so it is never gated
  *      on a verdict — and neither is a brightness RAISE (accepted by the API
  *      at or above DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT on a screen that
- *      has never reported). BLANK, volume and REBOOT stay gated: the API
- *      refuses all three on a null verdict, so rendering them enabled is a
- *      control with a 100% failure rate. REBOOT additionally resolves to
- *      unavailable on the entire real fleet (no device owner).
+ *      has never reported). volume and REBOOT stay gated: the API refuses
+ *      both on a null verdict, so rendering them enabled is a control with a
+ *      100% failure rate. REBOOT additionally resolves to unavailable on the
+ *      entire real fleet (no device owner).
+ *
+ *      ── AMENDED 2026-08-25 (the blank/power split). BLANK left this list.
+ *      It is soft now — a black overlay drawn by the player's own page — so
+ *      the API accepts it on every verdict INCLUDING none, and gating it here
+ *      would re-create the dead-control problem C4 exists to prevent. What
+ *      took its place is POWER_OFF, which is where the hardware went and is
+ *      allowlisted to mechanisms proven to round-trip. POWER_ON stays
+ *      recovery-direction, exactly like WAKE.
  *
  *  C5. THE DEVICE'S PROVIDER-ID VOCABULARY IS AUTHORITATIVE. The verdict is
  *      written by DisplayCapabilityProbe.verdict(), which prefers
@@ -217,6 +225,20 @@ export interface ControlAxis {
   softwareOnly: boolean;
   /** i18n key for the plain-language truth about this axis. */
   noteKey: string | null;
+  /**
+   * Literal copy, used INSTEAD of `noteKey` when one is present.
+   *
+   * ⚠️ AN I18N DEBT, NOT A PATTERN (2026-08-25). The blank/power split landed
+   * during a live field incident, in a wave explicitly barred from touching
+   * the locale catalogs (another workstream owns them tonight), and
+   * `check-i18n-parity.cjs` is a HARD gate — an en-only key would turn CI red
+   * and a missing key renders its raw dot-path to a Spanish or Chinese
+   * operator. Literal English is the honest interim: it is readable by
+   * everyone, it is wrong for nobody in the way a raw key path is, and it is
+   * a one-commit fix. OWED: move every `noteText` here into
+   * `screens.display.note.*` across en/es/zh and delete this field.
+   */
+  noteText?: string | null;
 }
 
 export interface ResolvedDisplayControls {
@@ -231,98 +253,176 @@ export interface ResolvedDisplayControls {
     /** True on an unreported screen: raises only, no darkening. */
     recoveryOnly: boolean;
   };
-  /** The BLANK action. Gated on a verdict (C4 — risk direction). */
+  /** The BLANK action. SOFT and universal since 2026-08-25 — never gated. */
   blank: ControlAxis;
   /** The WAKE action. Never gated (C4 — recovery direction). */
   wake: ControlAxis;
   reboot: ControlAxis;
+  /**
+   * The HARD power pair (2026-08-25 blank/power split). Separate from
+   * blank/wake because it is the only thing here that touches panel power.
+   */
+  power: {
+    /** POWER_OFF — only on a mechanism proven to round-trip. */
+    off: ControlAxis;
+    /** POWER_ON — recovery direction, so available whenever we know anything. */
+    on: ControlAxis;
+    /** The resolved hard mechanism, for the copy. Null when unreported. */
+    mechanism: ScreenBlankVerdict | null;
+  };
 }
 
 const NOT_REPORTED: ControlAxis = { available: false, softwareOnly: false, noteKey: null };
 
 /**
- * Does this verdict's blank mechanism reach the actual panel, or only cover
- * it with black? `softwareOnly` drives the copy, never the availability.
+ * ── THE BLANK/POWER SPLIT (live field incident, 2026-08-25) ────────────
  *
- * Honesty subtleties baked in:
- *  - `device-admin` does NOT claim "truly turns the screen off". The probe
- *    sets that verdict when ANY app on the box is an active device admin
- *    (`dpm.activeAdmins`), which on a district image is routinely a
- *    third-party MDM and not us — `lockNow()` then throws SecurityException
- *    and the player silently falls through to the software floor. So the
- *    device-admin copy says "should", and only `device-owner` (legacy) keeps
- *    the absolute wording.
- *  - `screen-timeout` is the same shape of hedge: it drops the system screen
- *    timeout to force the panel off, which most signage SoCs honour and some
- *    ignore entirely.
- *  - `vendor-recipe` is a DB-authored vendor command. It is the most likely
- *    to be a real hardware off AND the most likely to be silently wrong (a
- *    broadcast with no receiver is a no-op on Android), so it is hedged too.
+ * Operator contract, verbatim: *"wake and blank should just do that and turn
+ * on and off should do that, keep them separate and make them work perfectly
+ * on all our models."*
+ *
+ * A remote BLANK used to be forwarded to the APK, which takes an Android
+ * device-admin lock. That lock latched a Goodview G43 and a Mobile A-Frame
+ * into a VENDOR standby — glass dark, IR remote and the physical power button
+ * both dead, WAKE delivered and useless, mains power-cycle required — and the
+ * A-Frame then woke ITSELF back up minutes later with nothing sent to it. An
+ * L55VEC with a byte-identical verdict recovered normally. So the standby is
+ * a vendor firmware timer, unreliable in BOTH directions, and no probe
+ * verdict predicts which panel does which.
+ *
+ * BLANK is therefore no longer a hardware action on ANY model: the player
+ * covers its own viewport with black. The verdict copy below stops describing
+ * blank and starts describing the thing it actually gates now — POWER.
  */
-function blankNoteKey(mech: ScreenBlankVerdict | undefined): {
-  softwareOnly: boolean;
-  noteKey: string;
+const BLANK_NOTE =
+  'Covers the screen with black from inside the player. The panel stays ' +
+  'powered, so a blank can never get stuck — Wake brings it straight back, ' +
+  'an emergency alert overrides it, and it clears by itself if the screen ' +
+  'reloads. Same behaviour on every model.';
+
+const POWER_ON_NOTE =
+  'Turns the panel back on if something left it dark — a nightly schedule, ' +
+  'the remote, or its own vendor standby.';
+
+/**
+ * Is this the panel's HARD power mechanism, and can it be trusted to come
+ * back? Drives the power row's copy AND whether "Turn panel off" is a
+ * button at all.
+ *
+ *  - `vendor-recipe` is the only PROVEN class: a direct write to a named
+ *    backlight/power node, reversed by the same node (TC22's writable
+ *    `bl_power` is the reference case). No vendor standby state is entered,
+ *    so nothing else's firmware gets to decide when the panel comes back.
+ *  - `device-admin` / `device-owner` are the admin-lock family — the one
+ *    that produced the incident. Refused server-side with
+ *    DISPLAY_BLANK_MECHANISM_UNPROVEN, so this must not render a button.
+ *  - `screen-timeout` / `software-dim` / `none` cannot reach panel power at
+ *    all; the server answers DISPLAY_ACTION_UNSUPPORTED.
+ */
+function powerOffNote(mech: ScreenBlankVerdict | undefined): {
+  available: boolean;
+  noteText: string;
 } {
   switch (mech) {
-    case 'device-owner':
-      return { softwareOnly: false, noteKey: 'screens.display.note.blankHardware' };
-    case 'device-admin':
-      return { softwareOnly: false, noteKey: 'screens.display.note.blankDeviceAdmin' };
     case 'vendor-recipe':
-      return { softwareOnly: false, noteKey: 'screens.display.note.blankVendorRecipe' };
-    case 'screen-timeout':
-      return { softwareOnly: false, noteKey: 'screens.display.note.blankScreenTimeout' };
+      return {
+        available: true,
+        noteText:
+          'Uses this manufacturer’s own power command — a real panel-off, ' +
+          'reversed by the same command. Proven on this hardware class.',
+      };
+    case 'device-admin':
+    case 'device-owner':
+      return {
+        available: false,
+        noteText:
+          'Not available on this model. Its only power path is an Android ' +
+          'device-admin lock, and on 2026-08-25 that lock left two panels in ' +
+          'a vendor standby that ignored Wake and needed the power pulled — ' +
+          'then one of them woke itself back up minutes later. It is ' +
+          'unreliable in both directions, so it comes back only after a ' +
+          'supervised on-site off/on test. Use Blank to darken the screen.',
+      };
     default:
-      // 'software-dim', legacy 'none', and anything unrecognised: the
-      // player's unconditional floor. Black overlay, backlight still lit.
-      return { softwareOnly: true, noteKey: 'screens.display.note.blankSoftware' };
+      return {
+        available: false,
+        noteText:
+          'This panel exposes no remote power control — Blank is the way to ' +
+          'darken it.',
+      };
   }
 }
 
 /**
- * CONTRACT C3 + C4 — the pair splits.
+ * CONTRACT C3 + C4, after the split.
  *
- * WAKE rides the player's unconditional software floor and can only ever make
- * a dark screen visible, so it renders on every verdict AND on no verdict at
- * all. `displayActionSupport('WAKE', null)` agrees: always supported.
- *
- * BLANK is the risk direction. `displayActionSupport('BLANK', null)` REFUSES
- * with DISPLAY_CAPABILITIES_UNKNOWN ("Blanking stays disabled until it does —
- * Wake still works"), so on an unreported screen the button is not a button:
- * it is an explainer row. Every screen in the pilot is in that state today
- * (the self-report ships with this wave and no field APK has it yet), which
- * is why rendering it enabled was a control with a 100% failure rate rather
- * than an edge case.
+ * BLANK and WAKE are the SOFT pair and are now BOTH ungated, on every verdict
+ * and on no verdict at all — `displayActionSupport` agrees for both, because
+ * the outcome is a black div in the player's own page and there is no
+ * hardware left to fail-closed against. (This is a reversal: from 2026-08-13
+ * to 2026-08-25 BLANK was risk-direction and hidden on an unreported screen,
+ * because back then it really could reach a device-admin lock.)
  */
-export function resolveBlankAxis(
-  mech: ScreenBlankVerdict | undefined,
-  reported: boolean,
-): ControlAxis {
-  if (!reported) {
-    return {
-      available: false,
-      softwareOnly: true,
-      noteKey: 'screens.display.note.blankNotReported',
-    };
-  }
-  const { softwareOnly, noteKey } = blankNoteKey(mech);
-  return { available: true, softwareOnly, noteKey };
+export function resolveBlankAxis(): ControlAxis {
+  return {
+    available: true,
+    softwareOnly: true,
+    noteKey: null,
+    noteText: BLANK_NOTE,
+  };
 }
 
-/** WAKE — recovery direction, never gated (C3/C4). */
-export function resolveWakeAxis(
+/** WAKE — recovery direction, never gated (C3/C4). Soft, like BLANK. */
+export function resolveWakeAxis(): ControlAxis {
+  return { available: true, softwareOnly: true, noteKey: null, noteText: null };
+}
+
+/**
+ * The HARD pair. OFF is allowlisted; ON is the recovery direction.
+ *
+ * The asymmetry is the same one BLANK/WAKE have always had, for the same
+ * reason: a panel that is genuinely dark must always have a dashboard path
+ * back, and `displayActionSupport('POWER_ON', …)` never refuses on the
+ * unproven code. So on a reported screen the ON button renders even when OFF
+ * is refused — which is exactly the state the incident panels are in.
+ */
+export function resolvePowerAxes(
   mech: ScreenBlankVerdict | undefined,
   reported: boolean,
-): ControlAxis {
+): ResolvedDisplayControls['power'] {
   if (!reported) {
+    // The API refuses POWER_OFF with DISPLAY_CAPABILITIES_UNKNOWN here, and
+    // POWER_ON on an unreported screen is indistinguishable from WAKE (which
+    // is already on screen), so the whole row stays text.
     return {
-      available: true,
-      softwareOnly: true,
-      noteKey: 'screens.display.note.wakeNotReported',
+      off: {
+        available: false,
+        softwareOnly: false,
+        noteKey: null,
+        noteText:
+          'Not available until this screen reports what its panel can do. ' +
+          'Blank and Wake work in the meantime.',
+      },
+      on: { available: false, softwareOnly: false, noteKey: null, noteText: null },
+      mechanism: null,
     };
   }
-  const { softwareOnly } = blankNoteKey(mech);
-  return { available: true, softwareOnly, noteKey: null };
+  const off = powerOffNote(mech);
+  return {
+    off: {
+      available: off.available,
+      softwareOnly: false,
+      noteKey: null,
+      noteText: off.noteText,
+    },
+    on: {
+      available: true,
+      softwareOnly: false,
+      noteKey: null,
+      noteText: POWER_ON_NOTE,
+    },
+    mechanism: mech ?? null,
+  };
 }
 
 /**
@@ -356,12 +456,17 @@ export function resolveDisplayControls(raw: unknown): ResolvedDisplayControls {
         recoveryOnly: true,
         noteKey: 'screens.display.note.brightnessRecoveryOnly',
       },
-      // Blank is withheld (risk); Wake is not (recovery). Splitting these
-      // is the whole point — an unrecoverable dark screen is the worst
-      // outcome in this feature, and a dead Blank button is the second.
-      blank: resolveBlankAxis(undefined, false),
-      wake: resolveWakeAxis(undefined, false),
+      // Blank AND Wake both render, even here (2026-08-25): the soft blank
+      // is a black div in the player's own page, so an unprobed screen
+      // blanks exactly as safely as a probed one and the server accepts it.
+      // Withholding it produced a dead control on a fleet where every screen
+      // was unreported.
+      blank: resolveBlankAxis(),
+      wake: resolveWakeAxis(),
       reboot: NOT_REPORTED,
+      // Panel POWER still needs an observed verdict — that is where the
+      // hardware went, so that is where fail-closed moved.
+      power: resolvePowerAxes(undefined, false),
     };
   }
 
@@ -398,8 +503,9 @@ export function resolveDisplayControls(raw: unknown): ResolvedDisplayControls {
         recoveryOnly: false,
       };
 
-  const blank: ControlAxis = resolveBlankAxis(verdict.screenBlank, true);
-  const wake: ControlAxis = resolveWakeAxis(verdict.screenBlank, true);
+  const blank: ControlAxis = resolveBlankAxis();
+  const wake: ControlAxis = resolveWakeAxis();
+  const power = resolvePowerAxes(verdict.screenBlank, true);
 
   const reboot: ControlAxis =
     verdict.reboot === 'device-owner'
@@ -417,7 +523,7 @@ export function resolveDisplayControls(raw: unknown): ResolvedDisplayControls {
           }
         : NOT_REPORTED;
 
-  return { reported: true, verdict, volume, brightness, blank, wake, reboot };
+  return { reported: true, verdict, volume, brightness, blank, wake, reboot, power };
 }
 
 /**

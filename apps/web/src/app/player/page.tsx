@@ -89,6 +89,7 @@ import {
   dispatchDisplayControl,
   installDisplayConfig,
   type DeviceIdentity,
+  type SoftBlankSink,
 } from './displayControl';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3318,6 +3319,61 @@ function PlayerPage() {
     pushedEmergencyMessageRef.current = pushedEmergencyMessage;
   }, [pushedEmergencyMessage]);
 
+  // ── SOFT BLANK — the universal, unbrickable blank (2026-08-25) ─────────
+  //
+  // Operator contract: "wake and blank should just do that and turn on and
+  // off should do that, keep them separate and make them work perfectly on
+  // all our models."
+  //
+  // A remote BLANK used to be forwarded to the APK, which takes an Android
+  // device-admin lock. On the incident night that lock latched a Goodview G43
+  // and a Mobile A-Frame into a VENDOR standby — glass dark, IR remote and
+  // the physical power button both dead, WAKE delivered and useless, mains
+  // power-cycle required — and the A-Frame then woke itself back up minutes
+  // later with nothing sent to it. So the vendor's own timer owned that
+  // state, in both directions, and no probe verdict predicted which panel
+  // would do which (an L55VEC with a byte-identical verdict recovered fine).
+  //
+  // Blank is now THIS: one black div in our own page. It cannot reach panel
+  // power, so it can never latch; WAKE always removes it; and it behaves
+  // identically on every model, including a browser player with no APK at
+  // all. Hardware power moved to the separate POWER_OFF / POWER_ON pair,
+  // which is gated server-side on a proven-mechanism allowlist.
+  //
+  // Session-only, and deliberately: a reload (REFRESH_WEB, a service-worker
+  // update, a WebView OOM-kill) un-blanks the screen. That is the safe
+  // direction to fail — a screen that comes back on by itself is a nuisance,
+  // a screen that cannot come back is a truck roll — and it is exactly the
+  // direction the vendor standby failed in. Persisting a blank across
+  // reloads needs a server-held flag and is a recorded follow-up.
+  const [softBlank, setSoftBlank] = useState(false);
+  const softBlankRef = useRef(false);
+  const applySoftBlank = useCallback((on: boolean) => {
+    if (softBlankRef.current === on) return;
+    softBlankRef.current = on;
+    setSoftBlank(on);
+  }, []);
+  /**
+   * The seam `dispatchDisplayControl` drives. The RULES live in
+   * displayControl.ts (unit-tested without mounting this page); this object
+   * is only the two capabilities that module cannot have on its own — write
+   * the overlay, and read live emergency state.
+   */
+  const softBlankSinkRef = useRef<SoftBlankSink>({
+    set: (on: boolean) => applySoftBlank(on),
+    emergencyDisplayed: () =>
+      !!activeEmergencyRef.current || !!pushedEmergencyMessageRef.current,
+  });
+
+  // EMERGENCY ALWAYS PUNCHES THROUGH. Second of the two guarantees (the
+  // first is the drop inside dispatchDisplayControl, the third is the render
+  // condition on the overlay itself). Belt and braces on purpose: an alert
+  // painted behind a black div is the one failure mode of this feature that
+  // could get someone hurt, and the three checks fail independently.
+  useEffect(() => {
+    if (activeEmergency || pushedEmergencyMessage) applySoftBlank(false);
+  }, [activeEmergency, pushedEmergencyMessage, applySoftBlank]);
+
   // ── DISPLAY-CONTROL EMERGENCY INTERLOCK (2026-08-13) ──────────────────
   // The display-control layer in the APK can add a full-screen blackout
   // overlay ABOVE this WebView, dim the window to near-zero and blank the
@@ -5267,8 +5323,14 @@ function PlayerPage() {
      *
      * The body lives in displayControl.ts (scope check, per-eventId dedup on
      * the LRU shared with the life-safety gate, C4 recovery exemption, the
-     * bridge call) so the path an operator's click actually takes is unit
-     * tested without mounting this page.
+     * soft/hard split, the bridge call) so the path an operator's click
+     * actually takes is unit tested without mounting this page.
+     *
+     * The 5th argument is the seam for the 2026-08-25 blank/power split: a
+     * SOFT frame (BLANK/WAKE) is answered by the black overlay in THIS page
+     * and never reaches the native bridge — forwarding it is what fires the
+     * device-admin lock that latched two panels. HARD frames (a translated
+     * POWER_OFF/POWER_ON) still go straight through.
      */
     const applyDisplayControl = (envelope: any, via: 'WS' | 'SSE') =>
       dispatchDisplayControl(
@@ -5279,6 +5341,7 @@ function PlayerPage() {
           serverClockOffsetMs: serverClockOffsetRef.current,
         },
         via,
+        softBlankSinkRef.current,
       );
 
     // Sprint 11 Phase B — SSE realtime fallback (middle tier).
@@ -9556,6 +9619,48 @@ function PlayerPage() {
           onBack={() => setTouchNavigatedTemplate(null)}
         />
       )}
+      {/* ── SOFT BLANK (2026-08-25) — the universal, unbrickable blank ──
+          The operator's Blank button is THIS: one black div, drawn by the
+          player itself. It never reaches the APK, so it can never take the
+          device-admin lock that latched a Goodview G43 and a Mobile A-Frame
+          into an unrecoverable vendor standby on the incident night. WAKE
+          removes it; a reload removes it; an emergency removes it. Hardware
+          power is a separate pair of verbs (POWER_OFF / POWER_ON) behind a
+          proven-mechanism allowlist.
+
+          EMERGENCY ALWAYS PUNCHES THROUGH — three independent guarantees:
+            1. dispatchDisplayControl DROPS a BLANK while an emergency is
+               displayed (and clears any overlay already up);
+            2. the effect above force-clears on the emergency state edge;
+            3. this render condition, which cannot paint black over an alert
+               even if 1 and 2 both somehow failed.
+          Plus zIndex 9990, BELOW EmergencyOverlay's 9999, so the overlay
+          would lose the stacking contest anyway.
+
+          ⚠️ TAURUS (CLAUDE.md #10): longhand top/right/bottom/left, never
+          `inset` / `inset-0`. All four are the SAME value, which is the
+          uniform case the Chromium-83 polyfill is built to force-zero — the
+          non-uniform serialization landmine (variant 3) does not apply. */}
+      {softBlank && !activeEmergency && !pushedEmergencyMessage && (
+        <div
+          data-edu-soft-blank="1"
+          aria-hidden="true"
+          style={{
+            position: 'fixed',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            zIndex: 9990,
+            background: '#000000',
+            // Swallow touches rather than letting a visitor interact with
+            // content they cannot see. A kiosk that looks off must behave
+            // off; Wake — or any page reload — brings it back.
+            pointerEvents: 'auto',
+          }}
+        />
+      )}
+
       {/* 2026-05-26 P0-3 — Sprint 5 emergency-message renderer.
           WS-pushed messages (via SOS / TEXT_BROADCAST / MEDIA_ALERT
           types) land in `pushedEmergencyMessage`. When that's null,

@@ -151,19 +151,25 @@ describe('DisplayController', () => {
     });
 
     it('409s a RISK action on a screen that has never reported its capabilities', async () => {
+      // POWER_OFF, not BLANK (2026-08-25 blank/power split): BLANK is soft —
+      // a black overlay in the player's own page — so there is no unobserved
+      // hardware to fail-close against and gating it only produced a dead
+      // button. POWER_OFF is the verb that reaches the panel now, so it is
+      // the one that has to prove the truth-gate still bites.
       prisma.client.screen.findFirst.mockResolvedValue(screenRow(null));
       (controller as any).display = new DisplayService(prisma, redis, {
         signMessage: jest.fn(),
       } as any);
 
       await expect(
-        controller.control(SCREEN_A, adminReq(), { action: 'BLANK' } as any),
+        controller.control(SCREEN_A, adminReq(), { action: 'POWER_OFF' } as any),
       ).rejects.toMatchObject({
         status: HttpStatus.CONFLICT,
         response: expect.objectContaining({
           code: 'DISPLAY_CAPABILITIES_UNKNOWN',
         }),
       });
+      expect(redis.publish).not.toHaveBeenCalled();
     });
 
     it('lets WAKE through on a screen that has never reported — recovery is never refused', async () => {
@@ -180,7 +186,9 @@ describe('DisplayController', () => {
         action: 'WAKE',
       } as any);
       expect(res.success).toBe(true);
-      expect(res.mechanism).toBe('software-dim');
+      // 'web-overlay' since the 2026-08-25 split — WAKE is the soft half of
+      // the soft pair and no longer resolves a device mechanism at all.
+      expect(res.mechanism).toBe('web-overlay');
       expect(redis.publish).toHaveBeenCalledWith(
         `device:${SCREEN_A}`,
         expect.any(Object),

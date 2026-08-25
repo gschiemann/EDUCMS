@@ -340,14 +340,89 @@ export type DisplayCapabilityReportInput = z.infer<typeof DisplayCapabilityRepor
 // Actions
 // ─────────────────────────────────────────────────────────────────────
 
+/**
+ * ── THE BLANK/POWER SPLIT (field incident night, 2026-08-25) ───────────
+ *
+ * Operator contract, verbatim: *"wake and blank should just do that and turn
+ * on and off should do that, keep them separate and make them work perfectly
+ * on all our models."*
+ *
+ * BLANK / WAKE are now the SOFT pair: a black composition-layer overlay
+ * drawn by the player's own web page. No hardware mechanism is consulted, no
+ * device-admin lock is taken, no vendor power node is written — so BLANK is
+ * unbrickable BY CONSTRUCTION on every model, including a browser player, and
+ * WAKE always reverses it.
+ *
+ * POWER_OFF / POWER_ON are the HARD pair: they genuinely drive the panel, and
+ * they are gated on an ALLOWLIST of mechanisms proven to round-trip on real
+ * hardware (see DISPLAY_POWER_PROVEN_MECHANISMS).
+ *
+ * ⚠️ POWER_OFF/POWER_ON DO NOT REACH THE DEVICE UNDER THESE NAMES. Every APK
+ * in the field understands exactly five action verbs, so the server
+ * TRANSLATES a power action onto the legacy frame — POWER_OFF → 'BLANK' with
+ * `hard: true`, POWER_ON → 'WAKE' with `hard: true`. `org.json` opt* parsing
+ * ignores the extra field, so an old APK behaves exactly as it does today.
+ * The AUDIT ROW always records the real requested action.
+ */
 export const DISPLAY_ACTIONS = [
   'SET_VOLUME',
   'SET_BRIGHTNESS',
   'BLANK',
   'WAKE',
   'REBOOT',
+  'POWER_OFF',
+  'POWER_ON',
 ] as const;
 export type DisplayActionType = (typeof DISPLAY_ACTIONS)[number];
+
+/**
+ * The mechanism recorded for a SOFT blank/wake.
+ *
+ * Not a probe verdict value on purpose: the whole point is that BLANK/WAKE no
+ * longer resolve against the hardware at all. Audit rows, the API response
+ * and the WS payload all carry this string so "was this blank soft?" is a
+ * one-field answer in the forensic log.
+ */
+export const DISPLAY_SOFT_BLANK_MECHANISM = 'web-overlay' as const;
+
+/**
+ * Hard power mechanisms PROVEN to round-trip on real hardware.
+ *
+ * `vendor-recipe` only: a vendor recipe is a direct write to a named
+ * backlight/power node (e.g. TC22's writable `bl_power`), and the WAKE step
+ * writes the SAME node back. The panel never enters a vendor standby state
+ * whose exit is controlled by the vendor's own firmware, which is the exact
+ * failure mode the admin-lock family exhibits (below).
+ *
+ * A hardware model rejoins this list only after a supervised on-site
+ * round-trip test, never from anything the probe can infer.
+ */
+export const DISPLAY_POWER_PROVEN_MECHANISMS = ['vendor-recipe'] as const;
+
+/**
+ * The admin-lock family — hard, and NOT proven reversible on command.
+ *
+ * FIELD EVIDENCE (2026-08-25). Four panels, three different outcomes from the
+ * same `device-admin` verdict:
+ *   • L55VEC (device-admin, provisionable) — panel shut down on blank, WAKE
+ *     recovered it.
+ *   • G43 (device-admin, blocked-other-owner) — latched into vendor standby:
+ *     glass dark, IR remote AND the physical power button dead, WAKE
+ *     delivered and useless. Recovered only by pulling mains.
+ *   • Mobile A-Frame (device-admin, provisionable — verdict IDENTICAL to the
+ *     recovering L55VEC) — latched the same way as the G43… and then, minutes
+ *     later, WOKE ITSELF back up with no command sent.
+ *
+ * That last observation is why this family is refused in the darkening
+ * direction rather than merely warned about: on this hardware the standby
+ * state is driven by the VENDOR'S OWN TIMER, so it is unreliable in BOTH
+ * directions — it will not wake when told to, and it will not stay dark when
+ * told to. A control that does neither thing on command is not a control.
+ */
+export const DISPLAY_POWER_UNPROVEN_MECHANISMS = [
+  'device-admin',
+  'device-owner',
+] as const;
 
 /**
  * Brightness floor. A remote SetBrightness below this is CLAMPED, not
@@ -384,6 +459,12 @@ export interface DisplayControlWsPayload {
   screenId: string;
   /** Idempotency key — the player MUST de-duplicate on this (replayed WS). */
   actionId: string;
+  /**
+   * The verb ON THE WIRE, which is not always the verb the operator asked
+   * for: a POWER_OFF ships as `'BLANK'` + `hard:true` so the five-verb APKs
+   * already in the field understand it. The audit row carries the REAL
+   * requested action; this field carries what the device will parse.
+   */
   action: DisplayActionType;
   /** Already clamped by the server. 0..100, or null for BLANK/WAKE/REBOOT. */
   percent: number | null;
@@ -394,6 +475,19 @@ export interface DisplayControlWsPayload {
   mechanism: string;
   /** ISO-8601, server clock. Advisory/forensic only. */
   issuedAt: string;
+  /**
+   * SOFT frame (BLANK / WAKE). The player's WEB PAGE handles it by showing or
+   * removing a black full-viewport overlay, and MUST NOT forward it to the
+   * APK bridge — forwarding is what re-fires the device-admin lock, i.e. the
+   * whole 2026-08-25 incident.
+   */
+  soft?: true;
+  /**
+   * HARD frame (POWER_OFF / POWER_ON, translated onto the legacy verb). The
+   * player forwards it to the APK bridge untouched. Old APKs ignore the extra
+   * key (org.json opt* parsing), so this is additive on-device.
+   */
+  hard?: true;
 }
 
 export const DisplayControlActionSchema = z
@@ -431,7 +525,16 @@ export const DisplayControlActionSchema = z
   });
 export type DisplayControlActionInput = z.infer<typeof DisplayControlActionSchema>;
 
-/** Which verdict field gates each action. */
+/**
+ * Which verdict field gates each action.
+ *
+ * ⚠️ `screenBlank` IS A HISTORICAL KEY NAME. Since the 2026-08-25 split it no
+ * longer gates BLANK at all (BLANK is soft and ungated); it is the slot where
+ * the probe reports the panel's resolved HARD blank/power mechanism, which is
+ * what POWER_OFF / POWER_ON are gated on. Renaming it would mean re-cutting
+ * the probe, the drift spec and every stored `Screen.displayCapabilities` row
+ * in the fleet, so the name stays and this comment carries the meaning.
+ */
 export const DISPLAY_ACTION_CAPABILITY: Record<
   DisplayActionType,
   keyof DisplayCapabilityVerdict
@@ -441,6 +544,8 @@ export const DISPLAY_ACTION_CAPABILITY: Record<
   BLANK: 'screenBlank',
   WAKE: 'screenBlank',
   REBOOT: 'reboot',
+  POWER_OFF: 'screenBlank',
+  POWER_ON: 'screenBlank',
 };
 
 /** Refusal codes. Stable strings — the dashboard keys its copy off these. */
@@ -454,36 +559,49 @@ export const DISPLAY_REFUSAL_CODES = {
   /** allowBlack without a dead-man revert window. */
   ALLOW_BLACK_REQUIRES_REVERT: 'DISPLAY_ALLOW_BLACK_REQUIRES_REVERT',
   /**
-   * BLANK whose only mechanism is device-admin lock on a panel where ANOTHER
-   * app is device/profile owner. Field incident 2026-08-25 (G43): the
-   * admin-lock latched the vendor firmware into panel standby (status LED
-   * blinking, glass dark, physical power button dead) while the Android
-   * board stayed online — and WAKE delivered but could not reverse it; only
-   * a mains power-cycle recovered the glass. Until a safe soft-blank ships
-   * for this hardware class, the darkening direction is refused outright.
+   * @deprecated SUPERSEDED 2026-08-25 by the blank/power split — nothing
+   * raises it any more, because BLANK no longer touches hardware at all on
+   * ANY panel, foreign-owner or not. The string stays EXPORTED because
+   * AuditLog rows written during the incident window reference it verbatim
+   * and AuditLog is append-only; deleting the constant would leave those rows
+   * pointing at a code with no definition anywhere in the tree.
+   *
+   * History: BLANK whose only mechanism was a device-admin lock on a panel
+   * where ANOTHER app is device/profile owner (G43). The lock latched the
+   * vendor firmware into panel standby while the Android board stayed online;
+   * WAKE delivered but could not reverse it.
    */
   BLANK_ADMIN_LOCK_FOREIGN_OWNER: 'DISPLAY_BLANK_ADMIN_LOCK_FOREIGN_OWNER',
   /**
-   * BLANK via a mechanism not yet PROVEN to round-trip on real hardware.
-   * Field night 2026-08-25: two panels with IDENTICAL verdicts
-   * (device-admin, provisionable owner path) behaved oppositely — the L55
-   * woke back up, the Mobile A-Frame latched into standby (glass dark, IR
-   * remote dead, mains-pull required), same as the G43 an hour earlier.
-   * Recoverability of the hard mechanisms is per-vendor-firmware and NOT
-   * predictable from anything we probe, so BLANK now runs on an ALLOWLIST:
-   * composition-level mechanisms only (software-dim / screen-timeout),
-   * which cannot touch panel power by construction. Hard mechanisms
-   * (device-admin, vendor-recipe) rejoin per hardware model only after a
-   * supervised on-site round-trip test.
+   * POWER_OFF via a mechanism not PROVEN to round-trip on real hardware.
+   *
+   * Field night 2026-08-25: two panels with IDENTICAL verdicts (device-admin,
+   * provisionable owner path) behaved oppositely — the L55VEC woke back up,
+   * the Mobile A-Frame latched into standby (glass dark, IR remote dead,
+   * mains-pull required), same as the G43 an hour earlier. Then the A-Frame
+   * woke ITSELF several minutes later with nothing sent to it. So the standby
+   * this mechanism produces is driven by the vendor's own firmware timer and
+   * is unreliable in BOTH directions: it will not come back when commanded,
+   * and it will not stay dark when commanded.
+   *
+   * Recoverability is therefore per-vendor-firmware and NOT predictable from
+   * anything we probe, so the hardware POWER-OFF direction runs on an
+   * ALLOWLIST (DISPLAY_POWER_PROVEN_MECHANISMS) rather than a denylist. Note
+   * this refusal costs the operator nothing they need: BLANK still darkens
+   * the glass on this panel, softly and reversibly.
    */
   BLANK_MECHANISM_UNPROVEN: 'DISPLAY_BLANK_MECHANISM_UNPROVEN',
 } as const;
 
 /**
- * The BLANK mechanisms proven safe to execute remotely: they darken at the
- * Android composition layer and cannot touch panel/backlight power, so WAKE
- * always works. Everything else is refused with BLANK_MECHANISM_UNPROVEN —
- * see that code's comment for the 2026-08-25 field evidence.
+ * Composition-level (SOFT) mechanisms: they darken at the Android/web
+ * composition layer and cannot touch panel or backlight power.
+ *
+ * ⚠️ NO LONGER A GATE (2026-08-25). BLANK does not consult any mechanism now
+ * — it is universally soft via the player's own web overlay, which is safer
+ * still than either of these (it never even reaches the APK). Kept exported
+ * as the shared vocabulary of "cannot possibly power a panel", which is what
+ * the POWER_OFF unsupported branch uses to explain itself.
  */
 export const DISPLAY_BLANK_SAFE_MECHANISMS = [
   'software-dim',
@@ -507,13 +625,21 @@ export type DisplayActionSupport =
   | { supported: true; mechanism: string; note?: string }
   | { supported: false; code: string; message: string };
 
-/** BLANK/WAKE always resolve; the verdict names the MECHANISM, not the availability. */
+/**
+ * The HARD blank/power mechanism the probe resolved for this panel.
+ *
+ * Used by POWER_OFF / POWER_ON only. BLANK and WAKE no longer call it — they
+ * are soft (see DISPLAY_SOFT_BLANK_MECHANISM).
+ */
 function blankMechanism(
   verdict: DisplayCapabilityVerdict | null | undefined,
 ): string {
   const m = verdict?.screenBlank;
   return m && m !== 'none' ? m : 'software-dim';
 }
+
+const POWER_PROVEN: readonly string[] = DISPLAY_POWER_PROVEN_MECHANISMS;
+const POWER_UNPROVEN: readonly string[] = DISPLAY_POWER_UNPROVEN_MECHANISMS;
 
 /**
  * THE capability gate. Pure, so the API, the dashboard and the tests all
@@ -530,17 +656,30 @@ function blankMechanism(
  *     the dashboard. The verdict names the MECHANISM, never the
  *     availability.
  *
+ *     ── C3 EXTENDED (2026-08-25 split): BLANK is now ALWAYS AVAILABLE on an
+ *     UNKNOWN verdict too. Under the old rule BLANK was risk-direction and
+ *     needed an observed verdict, because it could reach real hardware. It
+ *     cannot any more — a soft blank is a black `<div>` in the player's own
+ *     page, identical on a probed panel, an unprobed panel and a browser
+ *     tab, and WAKE removes it. There is no hardware left to fail-close
+ *     against, so gating it only produced a dead button. The RISK actions
+ *     that still need an observed verdict are SET_VOLUME, REBOOT, any
+ *     allowBlack request — and POWER_OFF, which is where the hardware went.
+ *
  * C4. FAIL-OPEN FOR RECOVERY, FAIL-CLOSED FOR RISK. A screen that has never
  *     reported still receives and executes schedule blanks (the manifest
  *     does not consult the verdict), so "unknown ⇒ nothing works" produced a
  *     dark screen with no way to light it — a truck roll on a wall mount,
  *     the worst outcome in this feature. So on a null verdict:
- *       • WAKE is ACCEPTED (it can only ever make a dark screen visible);
+ *       • WAKE and POWER_ON are ACCEPTED (they can only ever make a dark
+ *         screen visible);
+ *       • BLANK is ACCEPTED — it is soft, so there is no hardware to be
+ *         careful about (see the C3-extended note above);
  *       • SET_BRIGHTNESS is ACCEPTED at or above
  *         DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT, for the same reason;
- *       • BLANK, SET_VOLUME, REBOOT and any allowBlack request are REFUSED
- *         until the screen reports — we do not fire risk at hardware whose
- *         surface we have not observed.
+ *       • POWER_OFF, SET_VOLUME, REBOOT and any allowBlack request are
+ *         REFUSED until the screen reports — we do not fire risk at hardware
+ *         whose surface we have not observed.
  *
  * NO DEVICE OWNER (product decision, 2026-08-13). We do not provision this
  * app as Android device owner, so on today's fleet `reboot` is 'none' and
@@ -568,27 +707,67 @@ export function displayActionSupport(
   }
 
   switch (action) {
-    // ── recovery: always available (C3) ────────────────────────────────
+    // ── the SOFT pair: unbrickable by construction, so ungated ─────────
+    // Neither of these consults `verdict.screenBlank` any more. The player's
+    // web page draws (BLANK) or removes (WAKE) a black full-viewport overlay
+    // and never calls the native bridge, so the outcome is identical on every
+    // model — including a screen that has never reported and a browser player
+    // with no APK at all.
+    case 'BLANK':
     case 'WAKE':
+      return {
+        supported: true,
+        mechanism: DISPLAY_SOFT_BLANK_MECHANISM,
+        note:
+          action === 'BLANK'
+            ? 'Covers the screen with black in the player itself. The panel stays powered, an emergency alert still punches through, and Wake always reverses it.'
+            : undefined,
+      };
+
+    // ── the HARD pair: real panel power, allowlisted ───────────────────
+    // POWER_ON is the RECOVERY direction and is never refused on the
+    // unproven code — exactly the C3/C4 asymmetry WAKE has always had. A
+    // panel that is genuinely dark (vendor timer, someone's remote, an
+    // earlier hard blank) must always have a dashboard path back.
+    case 'POWER_ON':
       return {
         supported: true,
         mechanism: blankMechanism(verdict),
         note: known
           ? undefined
-          : 'This screen has not reported its capabilities yet — waking uses the software floor.',
+          : 'This screen has not reported its capabilities yet — turning it on uses whatever wake path the player finds.',
       };
 
-    // ── risk: needs an observed verdict (C4), then always resolves (C3) ─
-    case 'BLANK':
+    case 'POWER_OFF': {
       if (!known) {
         return {
           supported: false,
           code: DISPLAY_REFUSAL_CODES.UNKNOWN,
           message:
-            'This screen has not reported its display capabilities yet. Blanking stays disabled until it does — Wake still works.',
+            'This screen has not reported its display capabilities yet, so its panel cannot be powered off. Blank covers the screen with black in the meantime, and Wake always brings it back.',
         };
       }
-      return { supported: true, mechanism: blankMechanism(verdict) };
+      const mech = verdict!.screenBlank;
+      if (POWER_PROVEN.includes(mech)) {
+        return { supported: true, mechanism: mech };
+      }
+      if (POWER_UNPROVEN.includes(mech)) {
+        return {
+          supported: false,
+          code: DISPLAY_REFUSAL_CODES.BLANK_MECHANISM_UNPROVEN,
+          message:
+            'Turning this panel off is disabled: the only power path this model exposes is an Android device-admin lock, and on this hardware that lock is unreliable in both directions — on 2026-08-25 two panels (a Goodview G43 and a Mobile A-Frame) latched into a vendor standby that ignored Wake and needed a mains power-cycle, and the A-Frame then woke itself back up minutes later with nothing sent to it. It comes back for this model after a supervised on-site off/on test. Blank still darkens the screen safely, and Wake always reverses it.',
+        };
+      }
+      return {
+        supported: false,
+        code: DISPLAY_REFUSAL_CODES.UNSUPPORTED,
+        message:
+          verdict!.hardPowerOff === 'serial-candidate'
+            ? 'This panel exposes no remote power control the player can drive. It has a serial port that might accept a vendor power command, but nothing has been proven on this model yet. Use Blank to darken the screen.'
+            : 'This panel exposes no remote power control — the only thing the player can do here is cover the screen with black. Use Blank instead.',
+      };
+    }
 
     case 'SET_BRIGHTNESS': {
       // The brightness type has no 'none' member: the software floor always

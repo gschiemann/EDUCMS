@@ -17,7 +17,49 @@
  *
  * Pure by design (no React, no DOM, no network), like `pushGate.ts` and
  * `emergencyReconcile.ts`, so the translation and the diff can be unit
- * tested without mounting the 9.9k-line player page.
+ * tested without mounting the 9.9k-line player page. (`dispatchDisplayControl`
+ * reaches the outside world through two injected seams only: the native
+ * bridge, and — since 2026-08-25 — a `SoftBlankSink` the page provides.)
+ *
+ * ============================================================
+ * THE BLANK/POWER SPLIT (live field incident, 2026-08-25)
+ * ============================================================
+ *
+ * Operator contract, verbatim: *"wake and blank should just do that and turn
+ * on and off should do that, keep them separate and make them work perfectly
+ * on all our models."*
+ *
+ * A remote BLANK forwarded to `displayApply` takes an Android device-admin
+ * lock. On two panels that night (a Goodview G43 and a Mobile A-Frame) the
+ * lock latched the VENDOR firmware into panel standby: glass dark, IR remote
+ * and the physical power button both dead, WAKE delivered and useless, mains
+ * power-cycle required — and the A-Frame then woke ITSELF back up minutes
+ * later with nothing sent to it. An L55VEC with a byte-identical verdict
+ * recovered normally. So that standby is a vendor timer: unreliable in BOTH
+ * directions and unpredictable from anything the probe reports.
+ *
+ * The split, and what this file owns of it:
+ *
+ *   BLANK / WAKE  → SOFT. `soft: true` on the wire. This module draws or
+ *                   removes a black full-viewport overlay through the page's
+ *                   `SoftBlankSink` and NEVER calls the bridge. Identical on
+ *                   every model, including a browser player with no APK.
+ *                   Unbrickable by construction: nothing but the compositor
+ *                   is involved, so WAKE always reverses it.
+ *   POWER_OFF/ON  → HARD. Already translated by the server onto the legacy
+ *                   'BLANK'/'WAKE' verbs plus `hard: true`, because shipped
+ *                   APKs parse only five verbs. Forwarded to the bridge
+ *                   untouched; old APKs ignore the extra key (org.json opt*).
+ *
+ * The soft overlay is SESSION-ONLY and deliberately so: it holds until WAKE,
+ * an emergency, or a page reload — and a REFRESH_WEB, a service-worker
+ * update or a WebView OOM-kill therefore un-blanks the screen. That is the
+ * safe direction to fail (a screen that comes back on by itself is a
+ * nuisance; a screen that cannot come back is a truck roll), and it is the
+ * whole reason this beats the vendor standby, which fails the other way.
+ * Persisting it across reloads is a deliberate follow-up — it needs a
+ * server-held flag, and the manifest's no-volatile-fields rule constrains
+ * where that flag can live.
  *
  * ============================================================
  * THE WIRE SHAPE IS THE DEVICE'S, NOT OURS
@@ -68,10 +110,21 @@ import {
 export const DISPLAY_CONTROL_TYPE = 'DISPLAY_CONTROL';
 
 /**
- * Actions the API can send, in the SCREAMING_CASE spelling that is
+ * Actions that can arrive ON THE WIRE, in the SCREAMING_CASE spelling that is
  * authoritative (contract C1). `DisplayControlApi.normalizeActionName`
  * upper-cases and strips non-alphanumerics, so this spelling reaches
  * `SETBRIGHTNESS` / `SETVOLUME` / `BLANK` / `WAKE` / `REBOOT` on the device.
+ *
+ * ⚠️ THIS IS THE **DEVICE** VOCABULARY AND IT IS DELIBERATELY SHORTER THAN
+ * `DISPLAY_ACTIONS` IN `@cms/api-types` (2026-08-25 blank/power split). The
+ * operator now has seven verbs; every APK in the field parses exactly these
+ * five. So the server TRANSLATES on the way out — POWER_OFF ships as 'BLANK'
+ * + `hard:true`, POWER_ON as 'WAKE' + `hard:true` — and this list stays at
+ * five on purpose. Adding POWER_OFF here would let a literal 'POWER_OFF'
+ * frame through to `displayApply`, where every shipped APK silently ignores
+ * it: a control with a 100% failure rate and no error anywhere. If a frame
+ * ever does arrive with a verb this list does not know, dropping it as
+ * `bad-action` is the correct, loud outcome.
  */
 export const DISPLAY_ACTIONS = [
   'SET_VOLUME',
@@ -95,6 +148,16 @@ export interface DisplayControlCommand {
   allowBlack?: boolean;
   /** Server-minted id — echoed into logs so one action greps end-to-end. */
   actionId?: string;
+  /**
+   * SOFT frame — the operator pressed Blank or Wake. Handled ENTIRELY in this
+   * page by showing/removing a black overlay. MUST NOT reach the bridge.
+   */
+  soft?: true;
+  /**
+   * HARD frame — the operator pressed "Turn panel off/on"; the server has
+   * already translated it onto the legacy verb. Forwarded to the bridge.
+   */
+  hard?: true;
 }
 
 /**
@@ -127,6 +190,13 @@ export function parseDisplayControlCommand(payload: unknown): DisplayControlComm
   }
   if (p.allowBlack === true) out.allowBlack = true;
   if (typeof p.actionId === 'string' && p.actionId) out.actionId = p.actionId.slice(0, 64);
+  // Strict `=== true` on both. A frame from an API build older than the
+  // 2026-08-25 split carries NEITHER flag, and that flag-less case must keep
+  // behaving exactly as it does today (forwarded to the bridge) rather than
+  // being reinterpreted — the web bundle and the API do not deploy in the
+  // same instant, and a deploy window is not the place to invent semantics.
+  if (p.soft === true) out.soft = true;
+  if (p.hard === true) out.hard = true;
 
   return out;
 }
@@ -448,19 +518,68 @@ export type DisplayDropReason =
   | 'stale'
   | 'replay'
   | 'bad-action'
-  | 'threw';
+  | 'threw'
+  /** A darkening frame arrived while emergency content is on the glass. */
+  | 'emergency';
 
 export type DisplayDispatchResult =
   | { status: 'sent'; action: DisplayAction }
   | { status: 'no-bridge'; action: DisplayAction }
+  /** Handled by the black overlay in this page; the bridge was NOT called. */
+  | { status: 'soft'; action: DisplayAction; overlay: boolean }
+  /** A soft frame arrived but this caller wired no overlay. Never forwarded. */
+  | { status: 'no-overlay'; action: DisplayAction }
   | { status: 'dropped'; reason: DisplayDropReason };
 
 /**
- * Gate one signed `DISPLAY_CONTROL` frame and hand it to the APK.
+ * The page's black overlay, as this module needs to see it.
  *
- * A no-op without a native bridge, on purpose: `/player` also runs in a
- * desktop browser (previews, the ops console, Playwright), where there is
- * no panel to blank and nothing to call.
+ * Kept to two tiny methods so the whole soft-blank decision stays inside this
+ * unit-tested module rather than leaking into the 10k-line page: the page
+ * owns the React state and the emergency state, this owns the RULES.
+ */
+export interface SoftBlankSink {
+  /** true → cover the viewport in black; false → uncover. */
+  set(on: boolean): void;
+  /**
+   * Is emergency content (a tenant-wide override or a pushed SOS / broadcast
+   * / media alert) DISPLAYED on this screen right now?
+   *
+   * Read live at dispatch time, never captured: a lockdown that landed one
+   * frame ago must already be visible to this check.
+   */
+  emergencyDisplayed(): boolean;
+}
+
+/**
+ * Gate one signed `DISPLAY_CONTROL` frame, then either draw the soft blank
+ * here or hand the frame to the APK.
+ *
+ * ── THE SPLIT THIS FUNCTION ENFORCES (2026-08-25 field incident) ───────
+ *
+ * A remote BLANK latched two panels into a vendor standby that ignored WAKE
+ * and needed a mains power-cycle (and, on the Mobile A-Frame, then un-latched
+ * itself minutes later — so the vendor's timer owns that state, not us). The
+ * command that did it was a plain BLANK forwarded to `displayApply`, which
+ * takes an Android device-admin lock.
+ *
+ * So the rule here is absolute and it is the reason this module exists:
+ *
+ *   • `soft: true` → the overlay, and the bridge is NEVER called. Forwarding
+ *     a soft frame re-fires device-admin, i.e. re-creates the exact bug.
+ *   • `hard: true` (a translated POWER_OFF/POWER_ON) → forwarded untouched.
+ *   • NEITHER flag (an API older than the split) → forwarded, exactly as
+ *     before. Behaviour during a deploy window must not be invented here.
+ *
+ * Plus one life-safety rule that outranks all three: while emergency content
+ * is displayed, a darkening frame is DROPPED and the overlay is force-cleared
+ * — an alert must always punch through. (The server refuses these too, and
+ * the APK holds its own native hold; this is the third independent layer.)
+ *
+ * A no-op without a native bridge for HARD frames, on purpose: `/player` also
+ * runs in a desktop browser (previews, the ops console, Playwright). The SOFT
+ * path needs no bridge at all, which is why blank/wake now work identically
+ * on a browser player and on every Android model.
  *
  * Never throws — the same socket carries the lockdown OVERRIDE, and a
  * malformed display push must not take down the realtime consumer.
@@ -470,6 +589,7 @@ export function dispatchDisplayControl(
   screenId: string | null | undefined,
   ctx: PushGateContext,
   via: 'WS' | 'SSE' = 'WS',
+  softBlank?: SoftBlankSink,
 ): DisplayDispatchResult {
   const pl =
     envelope && typeof envelope === 'object' && (envelope as any).payload &&
@@ -496,6 +616,49 @@ export function dispatchDisplayControl(
     // normalised command rather than trusting the raw payload's shape.
     const cmd = parseDisplayControlCommand(pl);
     if (!cmd) return { status: 'dropped', reason: 'bad-action' };
+
+    // ── LIFE SAFETY, FIRST AND UNCONDITIONALLY ────────────────────────
+    // An emergency alert must always be on the glass. Any darkening frame
+    // that arrives while one is displayed is dropped — and if a soft blank
+    // is already up, it comes down here rather than waiting for the page's
+    // own effect, so the alert is never painted behind black even for a
+    // frame. Applies to hard frames too: the server refuses those and the
+    // APK holds a native interlock, but a life-safety invariant is worth
+    // asserting at every layer that can assert it.
+    if (cmd.action === 'BLANK' && softBlank?.emergencyDisplayed()) {
+      softBlank.set(false);
+      console.warn(
+        `[display ${corrId}] ${via} BLANK dropped — emergency content is on ` +
+          'this screen; alerts always punch through',
+      );
+      return { status: 'dropped', reason: 'emergency' };
+    }
+
+    // ── THE SOFT PAIR — handled here, never handed to the APK ──────────
+    if (cmd.soft) {
+      const on = cmd.action === 'BLANK';
+      if (!softBlank) {
+        // No overlay wired by this caller. Do NOT fall through to the
+        // bridge: forwarding is the bug. Say so instead of failing silently.
+        console.warn(
+          `[display ${corrId}] ${via} soft ${cmd.action} had nowhere to go — ` +
+            'no overlay wired on this player (not forwarded to the bridge)',
+        );
+        return { status: 'no-overlay', action: cmd.action };
+      }
+      softBlank.set(on);
+      console.log(
+        `[display ${corrId}] ${via} soft ${cmd.action} → overlay ${on ? 'ON' : 'OFF'} ` +
+          '(web-overlay; panel power untouched)',
+      );
+      return { status: 'soft', action: cmd.action, overlay: on };
+    }
+
+    // ── HARD (or pre-split legacy) — the APK owns it from here ─────────
+    // A WAKE in this lane also clears any soft overlay: whatever put the
+    // screen dark, "wake" means "be visible", and leaving a black div on top
+    // of a freshly-powered panel would be its own stuck-dark bug.
+    if (cmd.action === 'WAKE') softBlank?.set(false);
 
     if (!nativeHas('displayApply')) {
       console.log(

@@ -135,17 +135,23 @@ describe('resolveDisplayControls — tri-state', () => {
     expect(r.reboot.noteKey).toBeNull();
   });
 
-  // CONTRACT C4, per-ACTION. The previous cut of this file asserted that the
-  // whole blank/wake PAIR survives "never reported" — but the API refuses
-  // BLANK on a null verdict (DISPLAY_CAPABILITIES_UNKNOWN) while accepting
-  // WAKE, so the pair had to split. A screen with no verdict is every screen
-  // in the pilot today, which made that Blank button a 100%-failure control.
-  it('withholds BLANK before a verdict, and says why — while WAKE stays live', () => {
+  // ⚠️ REVERSED 2026-08-25 (the blank/power split). From 2026-08-13 this
+  // asserted the opposite — that BLANK is WITHHELD before a verdict — and
+  // that was right while BLANK could reach a device-admin lock. It cannot
+  // any more: it is a black overlay drawn by the player's own page, so it is
+  // exactly as safe on an unprobed screen as on a probed one, the API
+  // accepts it on a null verdict, and withholding it re-creates the
+  // dead-control problem on a fleet where every screen is unreported.
+  // POWER_OFF inherited the fail-closed seat.
+  it('offers BLANK and WAKE before a verdict — both are soft now', () => {
     const r = resolveDisplayControls(null);
-    expect(r.blank.available).toBe(false);
-    expect(r.blank.noteKey).toBe('screens.display.note.blankNotReported');
+    expect(r.blank.available).toBe(true);
+    expect(r.blank.softwareOnly).toBe(true);
     expect(r.wake.available).toBe(true);
-    expect(r.wake.noteKey).toBe('screens.display.note.wakeNotReported');
+    // Panel POWER is what stays closed until the hardware is observed.
+    expect(r.power.off.available).toBe(false);
+    expect(r.power.on.available).toBe(false);
+    expect(r.power.mechanism).toBeNull();
   });
 
   // The other half of C4's recovery direction: a RAISE is accepted on an
@@ -168,11 +174,14 @@ describe('resolveDisplayControls — tri-state', () => {
    * A core axis missing now means the recovery-only layout, which is what
    * the API enforces anyway.
    */
-  it('an INCOMPLETE verdict is not reported — recovery layout, not a dead Blank', () => {
+  it('an INCOMPLETE verdict is not reported — recovery layout, not a dead Power', () => {
     const r = resolveDisplayControls(stored({ volume: 'audiomanager' }));
     expect(r.reported).toBe(false);
     expect(r.volume.available).toBe(false);
-    expect(r.blank.available).toBe(false);
+    // Panel power is the axis that must not light up on a half-document —
+    // it is what the API refuses here (was BLANK before the 08-25 split).
+    expect(r.power.off.available).toBe(false);
+    expect(r.blank.available).toBe(true);
     expect(r.wake.available).toBe(true);
     expect(r.brightness.available).toBe(true);
     expect(r.brightness.recoveryOnly).toBe(true);
@@ -207,17 +216,23 @@ describe('resolveDisplayControls — registry provider ids (contract C5)', () =>
     expect(r.brightness.kind).toBe('sysfs-backlight');
     expect(r.brightness.noteKey).toBe('screens.display.note.brightnessSysfs');
     expect(r.blank.available).toBe(true);
-    expect(r.blank.noteKey).toBe('screens.display.note.blankScreenTimeout');
+    // `screenBlank` no longer describes BLANK — it is the HARD power
+    // mechanism now, and screen-timeout cannot reach panel power.
+    expect(r.power.mechanism).toBe('screen-timeout');
+    expect(r.power.off.available).toBe(false);
   });
 
-  it('maps the vendor-recipe ids to their own hedged copy', () => {
+  it('maps the vendor-recipe ids to their own copy', () => {
     const b = resolveDisplayControls(stored({ ...REGISTRY_VERDICT, brightness: 'vendor-recipe' }));
     expect(b.brightness.kind).toBe('vendor-recipe');
     expect(b.brightness.softwareOnly).toBe(false);
     expect(b.brightness.noteKey).toBe('screens.display.note.brightnessVendorRecipe');
 
+    // vendor-recipe is the ONE proven power mechanism — the TC22 class,
+    // whose backlight node is written and un-written by the same recipe.
     const k = resolveDisplayControls(stored({ ...REGISTRY_VERDICT, screenBlank: 'vendor-recipe' }));
-    expect(k.blank.noteKey).toBe('screens.display.note.blankVendorRecipe');
+    expect(k.power.off.available).toBe(true);
+    expect(k.power.off.noteText).toMatch(/manufacturer/i);
   });
 
   it('treats software-dim as the floor on BOTH axes, honestly labelled', () => {
@@ -230,7 +245,8 @@ describe('resolveDisplayControls — registry provider ids (contract C5)', () =>
     );
     expect(r.brightness.softwareOnly).toBe(true);
     expect(r.blank.softwareOnly).toBe(true);
-    expect(r.blank.noteKey).toBe('screens.display.note.blankSoftware');
+    expect(r.power.off.available).toBe(false);
+    expect(r.power.off.noteText).toMatch(/no remote power control/i);
   });
 
   it('still rejects a value that is not a real provider id', () => {
@@ -308,6 +324,12 @@ describe('UI gate ⊆ server gate (displayActionSupport)', () => {
       if (ui.blank.available) expect(serverSays('BLANK', raw)).toBe(true);
       if (ui.wake.available) expect(serverSays('WAKE', raw)).toBe(true);
       if (ui.reboot.available) expect(serverSays('REBOOT', raw)).toBe(true);
+      // The 2026-08-25 pair. POWER_OFF is where fail-closed lives now, so it
+      // is the one that most needs this invariant: a "Turn panel off" button
+      // the API answers with DISPLAY_BLANK_MECHANISM_UNPROVEN is not a
+      // cosmetic bug on the hardware that latched.
+      if (ui.power.off.available) expect(serverSays('POWER_OFF', raw)).toBe(true);
+      if (ui.power.on.available) expect(serverSays('POWER_ON', raw)).toBe(true);
       if (ui.brightness.available) {
         // Every position the slider can express, at both ends of its travel.
         expect(serverSays('SET_BRIGHTNESS', raw, ui.brightness.floor)).toBe(true);
@@ -385,30 +407,90 @@ describe('resolveDisplayControls — software-floor axes stay actionable but hon
     expect(r.brightness.noteKey).toBe('screens.display.note.brightnessSysfs');
   });
 
-  it('screenBlank:none still blanks (black overlay) but says the backlight stays lit', () => {
+  it('screenBlank:none still blanks (soft overlay) and still wakes', () => {
     const r = resolveDisplayControls(stored({ ...FULL_VERDICT, screenBlank: 'none' }));
     expect(r.blank.available).toBe(true);
     expect(r.blank.softwareOnly).toBe(true);
-    expect(r.blank.noteKey).toBe('screens.display.note.blankSoftware');
-    // C3: the mechanism is named, the availability is not withheld — and
-    // WAKE in particular is live on the verdict that used to refuse it.
     expect(r.wake.available).toBe(true);
+    // …and there is no panel power to offer on a box with no mechanism.
+    expect(r.power.off.available).toBe(false);
   });
 
-  // The probe sets screenBlank:'device-admin' from `dpm.activeAdmins`, which
-  // counts EVERY admin on the box — routinely a district MDM (Hexnode,
-  // Meraki SM, Knox) rather than us. lockNow() from a non-admin app throws
-  // SecurityException and the player falls back to the software floor, so
-  // the dashboard must not promise a hardware screen-off it can't support.
-  // Only device-OWNER keeps the absolute wording.
-  it('device-admin blanking is hedged, device-owner is absolute', () => {
-    const admin = resolveDisplayControls(stored({ ...FULL_VERDICT, screenBlank: 'device-admin' }));
-    expect(admin.blank.available).toBe(true);
-    expect(admin.blank.noteKey).toBe('screens.display.note.blankDeviceAdmin');
+  // ═══════════════════════════════════════════════════════════════════
+  // THE BLANK/POWER SPLIT (live field incident, 2026-08-25)
+  //
+  // ⚠️ THIS REPLACES 'device-admin blanking is hedged, device-owner is
+  // absolute'. That test described BLANK's copy per hard mechanism, which
+  // is no longer a thing BLANK has — blank is soft and identical on every
+  // model. The hard mechanisms now describe POWER, and the copy stopped
+  // hedging and started REFUSING, because hedged copy is what shipped the
+  // night two panels latched.
+  //
+  // Evidence: a device-admin BLANK latched a Goodview G43 and a Mobile
+  // A-Frame into a vendor standby (glass dark, IR remote and power button
+  // dead, WAKE useless, mains-pull required) — and the A-Frame then woke
+  // itself back up minutes later, unprompted. An L55VEC with a
+  // byte-identical verdict recovered normally. Vendor firmware owns that
+  // state, in both directions, unpredictably.
+  // ═══════════════════════════════════════════════════════════════════
+  it('BLANK is soft and identical on every hard mechanism', () => {
+    for (const screenBlank of [
+      'device-admin',
+      'device-owner',
+      'vendor-recipe',
+      'screen-timeout',
+      'software-dim',
+      'none',
+    ]) {
+      const r = resolveDisplayControls(stored({ ...FULL_VERDICT, screenBlank }));
+      expect(r.blank.available).toBe(true);
+      expect(r.blank.softwareOnly).toBe(true);
+      expect(r.wake.available).toBe(true);
+    }
+  });
 
-    const owner = resolveDisplayControls(stored({ ...FULL_VERDICT, screenBlank: 'device-owner' }));
-    expect(owner.blank.softwareOnly).toBe(false);
-    expect(owner.blank.noteKey).toBe('screens.display.note.blankHardware');
+  it('POWER_OFF renders ONLY on the proven mechanism', () => {
+    expect(
+      resolveDisplayControls(stored({ ...FULL_VERDICT, screenBlank: 'vendor-recipe' })).power.off
+        .available,
+    ).toBe(true);
+    for (const screenBlank of [
+      'device-admin',
+      'device-owner',
+      'screen-timeout',
+      'software-dim',
+      'none',
+    ]) {
+      expect(
+        resolveDisplayControls(stored({ ...FULL_VERDICT, screenBlank })).power.off.available,
+      ).toBe(false);
+    }
+  });
+
+  it('the admin-lock refusal copy carries the BOTH-DIRECTIONS evidence', () => {
+    // If the copy only says "it will not come back", the next operator sees
+    // a self-recovered panel and reads the guard as wrong.
+    const admin = resolveDisplayControls(stored({ ...FULL_VERDICT, screenBlank: 'device-admin' }));
+    expect(admin.power.off.available).toBe(false);
+    expect(admin.power.off.noteText).toMatch(/both directions/i);
+    expect(admin.power.off.noteText).toMatch(/woke itself back up/i);
+    expect(admin.power.off.noteText).toMatch(/supervised on-site/i);
+  });
+
+  it('POWER_ON is offered on EVERY reported verdict — even where OFF is refused', () => {
+    // The recovery asymmetry. On the incident panels this is the only
+    // hardware control left, and a dark panel must always have a path back.
+    for (const screenBlank of [
+      'device-admin',
+      'device-owner',
+      'vendor-recipe',
+      'screen-timeout',
+      'software-dim',
+      'none',
+    ]) {
+      const r = resolveDisplayControls(stored({ ...FULL_VERDICT, screenBlank }));
+      expect(r.power.on.available).toBe(true);
+    }
   });
 });
 

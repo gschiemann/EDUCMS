@@ -1,5 +1,35 @@
 /**
- * DisplayService — screen volume / brightness / blank / wake / reboot.
+ * DisplayService — screen volume / brightness / blank / wake / power / reboot.
+ *
+ * ── THE BLANK/POWER SPLIT (live field incident, 2026-08-25) ────────────
+ *
+ * Operator contract, verbatim: *"wake and blank should just do that and turn
+ * on and off should do that, keep them separate and make them work perfectly
+ * on all our models."*
+ *
+ * Two panels latched into an unrecoverable vendor standby from a remote
+ * BLANK that night (a Goodview G43 and a Mobile A-Frame): glass dark, IR
+ * remote and the physical power button both dead, WAKE delivered and
+ * useless, mains power-cycle required — while the Android board stayed
+ * online the whole time. The A-Frame then woke ITSELF several minutes later
+ * with nothing sent to it. Meanwhile an L55VEC with a byte-identical verdict
+ * to the A-Frame recovered normally. So the vendor's own firmware owns that
+ * standby state, it is unreliable in BOTH directions, and NOTHING we probe
+ * predicts which panel does which.
+ *
+ * The resolution is not a better predicate — it is to stop asking:
+ *
+ *   • BLANK / WAKE are SOFT and universal. They resolve to mechanism
+ *     `web-overlay` on every model, carry `soft: true` on the wire, and are
+ *     consumed by the player's own WEB PAGE (a black full-viewport div).
+ *     They never reach the APK bridge, so no hardware can latch. WAKE always
+ *     reverses BLANK, and an emergency alert punches through regardless.
+ *   • POWER_OFF / POWER_ON are the HARD pair and are gated on an ALLOWLIST
+ *     of mechanisms proven to round-trip on real hardware — today just
+ *     `vendor-recipe`, a direct backlight-node write reversed by the same
+ *     node. The admin-lock family is refused in the OFF direction with
+ *     BLANK_MECHANISM_UNPROVEN; the ON direction is never refused, because a
+ *     dark panel must always have a dashboard path back.
  *
  * WHY IT EXISTS: the operator needs to control every screen's display from
  * the dashboard across Goodview (today), NovaStar Taurus, TCL and whatever
@@ -299,18 +329,24 @@ export const DISPLAY_EMERGENCY_HOLD_CODE = 'DISPLAY_EMERGENCY_HOLD';
 /**
  * Would this action make the panel DARKER (or keep it dark)?
  *
- * BLANK and any allowBlack always qualify. A brightness request qualifies
- * unless it provably leaves the panel clearly legible — we cannot read the
- * screen's current level from here, so the same "provably visible" floor the
- * unknown-verdict gate uses is the honest test. WAKE, SET_VOLUME and REBOOT
- * are never darkening.
+ * BLANK, POWER_OFF and any allowBlack always qualify. A brightness request
+ * qualifies unless it provably leaves the panel clearly legible — we cannot
+ * read the screen's current level from here, so the same "provably visible"
+ * floor the unknown-verdict gate uses is the honest test. WAKE, POWER_ON,
+ * SET_VOLUME and REBOOT are never darkening.
+ *
+ * ⚠️ POWER_OFF WAS ADDED HERE IN THE SAME COMMIT THAT ADDED THE ACTION
+ * (2026-08-25). This predicate is what makes the controller resolve emergency
+ * state at all, so a darkening verb missing from this list does not merely
+ * skip a check — it never even reads whether a lockdown is on the glass.
+ * Any future darkening action must be added here in its own commit.
  */
 export function isDarkeningAction(
   action: DisplayActionType,
   opts: { percent?: number; allowBlack?: boolean },
 ): boolean {
   if (opts.allowBlack === true) return true;
-  if (action === 'BLANK') return true;
+  if (action === 'BLANK' || action === 'POWER_OFF') return true;
   if (action === 'SET_BRIGHTNESS') {
     const p = typeof opts.percent === 'number' ? opts.percent : 0;
     return p < DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT;
@@ -502,47 +538,15 @@ export class DisplayService {
       );
     }
 
-    // ── FOREIGN-OWNER ADMIN-LOCK GUARD (field incident, 2026-08-25) ─────
-    // G43: BLANK via device-admin on a panel whose device owner is ANOTHER
-    // app (the OEM CMS) latched the vendor firmware into panel standby —
-    // glass dark, status LED blinking, physical power button unresponsive —
-    // while the Android board stayed fully online. WAKE was dispatched and
-    // DELIVERED nine seconds later and could not reverse it; the operator
-    // recovered the panel with a mains power-cycle. An action whose undo
-    // provably does not work on this hardware class is not a control, it is
-    // a trap — refuse the darkening direction outright until a soft
-    // (web-overlay) blank ships for these panels. WAKE and every recovery
-    // direction stay available, same principle as the emergency interlock.
-    if (
-      action === 'BLANK' &&
-      verdict?.screenBlank === 'device-admin' &&
-      verdict?.deviceOwnerPath === 'blocked-other-owner'
-    ) {
-      await this.writeAudit({
-        action: DISPLAY_AUDIT_ACTIONS.CONTROL,
-        screenId,
-        tenantId,
-        userId,
-        details: {
-          requested: action,
-          outcome: 'refused',
-          code: DISPLAY_REFUSAL_CODES.BLANK_ADMIN_LOCK_FOREIGN_OWNER,
-          mechanism: 'device-admin',
-          deviceOwnerPath: verdict.deviceOwnerPath,
-          reason: opts.reason ?? null,
-        },
-      });
-      this.logger.warn(
-        `[DisplayService] REFUSED BLANK on screen=${screenId} — device-admin ` +
-          `lock with a foreign device owner is unrecoverable on this hardware ` +
-          `class (2026-08-25 G43 incident).`,
-      );
-      throw new DisplayActionUnsupportedError(
-        DISPLAY_REFUSAL_CODES.BLANK_ADMIN_LOCK_FOREIGN_OWNER,
-        'Blanking is disabled on this panel: its only blank mechanism is a device-admin lock, another app owns this device, and on this hardware that combination turns the panel off in a way Wake cannot reverse (mains power-cycle required). A safe blank for this panel class is coming.',
-        { action },
-      );
-    }
+    // ── (2026-08-25) THE NARROW FOREIGN-OWNER ADMIN-LOCK GUARD IS GONE ──
+    // It lived here for a few hours during the incident night and refused
+    // BLANK on exactly one shape (device-admin + blocked-other-owner), which
+    // protected the G43 and nothing else — the Mobile A-Frame latched with
+    // an IDENTICAL verdict to the L55VEC that recovered, so the shape was
+    // never the discriminator. Superseded by the blank/power split: BLANK no
+    // longer reaches any hardware mechanism on ANY panel, so there is
+    // nothing left for a per-shape guard to protect. Do NOT reinstate it —
+    // reinstating it would refuse a SOFT blank, i.e. refuse a black <div>.
 
     const support = displayActionSupport(action, verdict, {
       percent: opts.percent,
@@ -647,15 +651,41 @@ export class DisplayService {
     // only as an object literal here. This annotation makes the next
     // mismatch a compile error instead of a screen that quietly ignores its
     // operator.
+    // ── WIRE TRANSLATION (2026-08-25 blank/power split) ─────────────────
+    //
+    // The operator's verb and the device's verb are no longer the same word.
+    //
+    //  • BLANK / WAKE ride as themselves plus `soft: true`. The player's WEB
+    //    PAGE consumes them (black overlay on / off) and MUST NOT hand them
+    //    to the APK bridge — forwarding a BLANK is what fires the
+    //    device-admin lock, which is the entire incident this split closes.
+    //  • POWER_OFF / POWER_ON are TRANSLATED onto the legacy verbs plus
+    //    `hard: true`. Every APK in the field parses exactly five verbs
+    //    ('SETVOLUME'/'SETBRIGHTNESS'/'BLANK'/'WAKE'/'REBOOT' after
+    //    `normalizeActionName`), so sending 'POWER_OFF' verbatim would be
+    //    silently unrecognised on every screen we have. `org.json` opt*
+    //    parsing ignores the extra `hard` key, so old APKs behave exactly as
+    //    they do today and only the WEB layer needs to know the difference.
+    //
+    // The AUDIT ROW above already recorded `requested: action` — the REAL
+    // verb the operator pressed — so the forensic log never inherits this
+    // translation.
+    const soft = action === 'BLANK' || action === 'WAKE';
+    const hard = action === 'POWER_OFF' || action === 'POWER_ON';
+    const wireAction: DisplayActionType =
+      action === 'POWER_OFF' ? 'BLANK' : action === 'POWER_ON' ? 'WAKE' : action;
+
     const payload: DisplayControlWsPayload = {
       screenId,
       actionId,
-      action,
+      action: wireAction,
       percent,
       revertAfterMs,
       allowBlack: opts.allowBlack === true,
       mechanism: support.mechanism,
       issuedAt: new Date().toISOString(),
+      ...(soft ? { soft: true as const } : {}),
+      ...(hard ? { hard: true as const } : {}),
     };
     const signed = this.signer.signMessage(DISPLAY_CONTROL_WS_TYPE, payload);
 

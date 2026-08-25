@@ -98,24 +98,26 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
     expect(rtl.getByText(/hasn’t reported what it can control/i)).toBeTruthy();
   });
 
-  // Contract C4, per-ACTION. This REPLACES "still offers Blank/Wake", which
-  // shipped an ENABLED Blank button on a screen the API refuses BLANK for
-  // (DISPLAY_CAPABILITIES_UNKNOWN) — i.e. on every screen in the pilot,
-  // since no field APK carries the self-report yet. Wake stays, because an
-  // unrecoverable dark screen is the worst outcome in this feature; Blank
-  // becomes a sentence, not a dead button.
-  it('offers ONLY the recovery actions the API accepts on a screen that never reported', () => {
+  // ⚠️ REVERSED AGAIN 2026-08-25 (the blank/power split). On 2026-08-13 this
+  // replaced "still offers Blank/Wake" and asserted Blank is WITHHELD before
+  // a verdict, because Blank could reach a device-admin lock and the API
+  // refused it. It cannot and does not any more: Blank is a black overlay in
+  // the player's own page, the API accepts it on a null verdict, and it is
+  // exactly as safe here as anywhere. What moved into the withheld seat is
+  // panel POWER — which is genuinely hardware.
+  it('offers ONLY the actions the API accepts on a screen that never reported', () => {
     renderPanel(null);
-    // Recovery direction: present and live.
+    // Recovery + soft: present and live.
     expect(rtl.getByRole('button', { name: /^Wake$/ })).not.toBeDisabled();
+    expect(rtl.getByRole('button', { name: /^Blank$/ })).not.toBeDisabled();
     expect(rtl.getByLabelText(/Brightness/)).toBeTruthy();
     expect(rtl.getByRole('button', { name: /On\/off schedule/ })).toBeTruthy();
-    // Risk direction: no control at all — not an enabled one, not a
-    // greyed-out one. A disabled button still reads as "this exists and
-    // something is wrong with me"; the truth is "this screen hasn't said".
-    expect(rtl.queryByRole('button', { name: /^Blank$/ })).toBeNull();
-    expect(rtl.getByText(/blanking stays off until it does/i)).toBeTruthy();
-    expect(rtl.getByText(/Wake always works, even before a screen reports/i)).toBeTruthy();
+    // Hardware: no control at all — not an enabled one, not a greyed-out
+    // one. A disabled button still reads as "this exists and something is
+    // wrong with me"; the truth is "this screen hasn't said".
+    expect(rtl.queryByRole('button', { name: /Turn panel off/ })).toBeNull();
+    expect(rtl.queryByRole('button', { name: /Turn panel on/ })).toBeNull();
+    expect(rtl.getByText(/Not available until this screen reports/i)).toBeTruthy();
   });
 
   // The brightness slider on an unreported screen must not be able to
@@ -186,9 +188,10 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
     expect(rtl.getByRole('button', { name: /^Wake$/ })).toBeTruthy();
     expect(rtl.queryByRole('button', { name: /Restart device/ })).toBeNull();
     expect(rtl.getByText(/needs device-owner setup/i)).toBeTruthy();
-    // The screen-timeout blank mechanism gets its own hedged copy, not the
-    // absolute "truly turns the screen off".
-    expect(rtl.getByText(/Android screen timeout/i)).toBeTruthy();
+    // screen-timeout cannot reach panel power, so the power row is a
+    // sentence rather than a button — and Blank still works, softly.
+    expect(rtl.queryByRole('button', { name: /Turn panel off/ })).toBeNull();
+    expect(rtl.getByText(/no remote power control/i)).toBeTruthy();
     expect(rtl.queryByText(/^Truly turns the screen off\./)).toBeNull();
     // Real backlight control, so no "image only" label.
     expect(rtl.getByLabelText('Brightness')).toBeTruthy();
@@ -215,16 +218,52 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
     ).toBeTruthy();
   });
 
-  it('says the backlight stays lit when the device cannot truly power the panel off', () => {
-    renderPanel({ ...CAPABLE, screenBlank: 'none' });
-    expect(rtl.getByRole('button', { name: /^Blank$/ })).toBeTruthy();
-    expect(rtl.getByText(/backlight stays lit/i)).toBeTruthy();
+  // ═══════════════════════════════════════════════════════════════════
+  // THE BLANK/POWER SPLIT, AT THE DOM (live field incident, 2026-08-25)
+  //
+  // Operator contract: "wake and blank should just do that and turn on and
+  // off should do that, keep them separate and make them work perfectly on
+  // all our models."
+  //
+  // ⚠️ These REPLACE 'says the backlight stays lit…' and 'hedges the
+  // device-admin blank claim…'. Both described BLANK's per-mechanism copy,
+  // which no longer exists: blank is soft and identical on every model. And
+  // hedged copy is exactly what shipped the night a device-admin blank
+  // latched a Goodview G43 and a Mobile A-Frame into an unrecoverable vendor
+  // standby — so the hard direction now REFUSES rather than hedges.
+  // ═══════════════════════════════════════════════════════════════════
+  it('says what the soft blank actually does, on every mechanism', () => {
+    for (const screenBlank of ['none', 'device-admin', 'vendor-recipe', 'software-dim']) {
+      const { unmount } = renderPanel({ ...CAPABLE, screenBlank });
+      expect(rtl.getByRole('button', { name: /^Blank$/ })).toBeTruthy();
+      expect(rtl.getByText(/The panel stays powered/i)).toBeTruthy();
+      // No hardware claim survives anywhere on the blank row.
+      expect(rtl.queryByText(/^Truly turns the screen off\./)).toBeNull();
+      unmount();
+    }
   });
 
-  it('hedges the device-admin blank claim instead of promising a hardware off', () => {
+  it('renders NO "Turn panel off" on the admin-lock family, and says why', () => {
     renderPanel({ ...CAPABLE, screenBlank: 'device-admin' });
-    expect(rtl.getByText(/if that admin isn’t our player/i)).toBeTruthy();
-    expect(rtl.queryByText(/^Truly turns the screen off\./)).toBeNull();
+    expect(rtl.queryByRole('button', { name: /Turn panel off/ })).toBeNull();
+    // The BOTH-DIRECTIONS evidence has to be on screen: the A-Frame woke
+    // itself back up, so copy that only says "it will not come back" reads
+    // as disproven the next time an operator sees a panel self-recover.
+    expect(rtl.getByText(/both directions/i)).toBeTruthy();
+    expect(rtl.getByText(/woke itself back up/i)).toBeTruthy();
+  });
+
+  it('still offers "Turn panel on" where OFF is refused — recovery is never gated', () => {
+    // On the incident hardware this is the only remaining hardware control,
+    // and a panel already in vendor standby needs it.
+    renderPanel({ ...CAPABLE, screenBlank: 'device-admin' });
+    expect(rtl.getByRole('button', { name: /Turn panel on/ })).not.toBeDisabled();
+  });
+
+  it('renders BOTH power buttons on the proven vendor-recipe mechanism', () => {
+    renderPanel({ ...CAPABLE, screenBlank: 'vendor-recipe' });
+    expect(rtl.getByRole('button', { name: /Turn panel off/ })).toBeTruthy();
+    expect(rtl.getByRole('button', { name: /Turn panel on/ })).toBeTruthy();
   });
 
   it('never offers a brightness below the safe floor', () => {
@@ -233,9 +272,17 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
     expect(Number(brightness.min)).toBeGreaterThanOrEqual(5);
   });
 
-  it('promises the blank auto-wakes rather than claiming an observed screen state', () => {
+  // ⚠️ REPLACES 'promises the blank auto-wakes…'. The 10-minute dead-man
+  // revert existed because Blank reached hardware and a forgotten click was
+  // a truck roll. A soft blank cannot strand anything — Wake, a reload or an
+  // alert all end it — and the operator's contract is "blank should just do
+  // that", which a blank that un-blanks itself after ten minutes is not.
+  // What must never regress is that the copy describes what WE SENT, never a
+  // device state we cannot observe.
+  it('says what ends the blank, and never claims an observed screen state', () => {
     renderPanel(CAPABLE);
-    expect(rtl.getByText(/Wakes itself after 10 min/i)).toBeTruthy();
+    expect(rtl.getByText(/Wake brings it straight back/i)).toBeTruthy();
+    expect(rtl.queryByText(/Wakes itself after 10 min/i)).toBeNull();
   });
 
   // With no device-echoed level the thumb used to park at 50% on a screen
@@ -272,8 +319,25 @@ describe('ScreenDisplayControls — the wire shape (contract C1)', () => {
     const body = JSON.parse(init.body);
     expect(body.action).toBe('BLANK');
     expect(DISPLAY_ACTIONS).toContain(body.action);
-    // Operator-initiated blank always carries a dead-man revert.
-    expect(body.revertAfterMs).toBe(10 * 60_000);
+    // NO dead-man revert since the 2026-08-25 split. A soft blank cannot
+    // strand a panel, so "blank" means blank until Wake — sending a revert
+    // the overlay does not honour would put a promise on the wire that
+    // nothing keeps.
+    expect(body.revertAfterMs).toBeUndefined();
+  });
+
+  it('posts POWER_OFF / POWER_ON as their OWN verbs — the split is on the wire', async () => {
+    // The dashboard never sends the legacy verb for a power action; the
+    // SERVER translates on the way out to the device. If this panel posted
+    // 'BLANK' for "Turn panel off" the whole split would collapse back into
+    // the bug it was written to fix.
+    renderPanel({ ...CAPABLE, screenBlank: 'vendor-recipe' });
+    await act(async () => {
+      fireEvent.click(rtl.getByRole('button', { name: /Turn panel on/ }));
+    });
+    const on = JSON.parse(apiFetchMock.mock.calls[0][1].body);
+    expect(on.action).toBe('POWER_ON');
+    expect(DISPLAY_ACTIONS).toContain(on.action);
   });
 
   it('posts WAKE, not "wake"', async () => {

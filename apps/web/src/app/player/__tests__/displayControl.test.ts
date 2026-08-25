@@ -70,6 +70,33 @@ function ctx(seen = new Map<string, number>()) {
   return { seenEventIds: seen, serverClockOffsetMs: 0, now: () => NOW };
 }
 
+/**
+ * A stand-in for the page's black overlay + live emergency state. Records
+ * every `set()` so a test can assert not just the end state but that the
+ * overlay was never even momentarily wrong.
+ */
+function sink(opts: { emergency?: boolean } = {}) {
+  const calls: boolean[] = [];
+  let on = false;
+  let emergency = opts.emergency === true;
+  return {
+    calls,
+    get on() {
+      return on;
+    },
+    setEmergency(v: boolean) {
+      emergency = v;
+    },
+    set(next: boolean) {
+      calls.push(next);
+      on = next;
+    },
+    emergencyDisplayed() {
+      return emergency;
+    },
+  };
+}
+
 beforeEach(() => {
   callMock.mockReset();
   callMock.mockResolvedValue('{"ok":true}');
@@ -139,6 +166,284 @@ describe('END-TO-END: a DISPLAY_CONTROL push reaches the native bridge', () => {
     // here would surface as a page-level error event.
     await Promise.resolve();
     await Promise.resolve();
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════
+// PROOF #1b — THE BLANK/POWER SPLIT (live field incident, 2026-08-25)
+//
+// Operator contract, verbatim: "wake and blank should just do that and turn
+// on and off should do that, keep them separate and make them work perfectly
+// on all our models."
+//
+// The bug these tests exist to make unrepeatable: a plain BLANK was forwarded
+// to `displayApply`, which takes an Android device-admin lock, which latched a
+// Goodview G43 and a Mobile A-Frame into a vendor standby — glass dark, IR
+// remote and physical power button dead, WAKE delivered and useless, mains
+// power-cycle required. The A-Frame then woke ITSELF back up minutes later,
+// unprompted, proving the standby is a vendor timer: unreliable in BOTH
+// directions and unpredictable from any verdict (an L55VEC with a
+// byte-identical verdict recovered normally).
+//
+// So the single load-bearing assertion in this block is:
+//   A SOFT FRAME NEVER REACHES `nativeCall`.
+// ═════════════════════════════════════════════════════════════════
+describe('THE SPLIT: soft frames draw the overlay, hard frames drive hardware', () => {
+  it('a soft BLANK shows the overlay and NEVER calls the bridge', () => {
+    const s = sink();
+    const res = dispatchDisplayControl(
+      envelope({ action: 'BLANK', mechanism: 'web-overlay', soft: true }),
+      'screen-1',
+      ctx(),
+      'WS',
+      s,
+    );
+    expect(res).toEqual({ status: 'soft', action: 'BLANK', overlay: true });
+    expect(s.on).toBe(true);
+    // ⚠️ THE ASSERTION THIS WHOLE FILE EXISTS FOR. One forwarded soft BLANK
+    // is one latched panel and a drive to the site.
+    expect(callMock).not.toHaveBeenCalled();
+  });
+
+  it('a soft WAKE removes the overlay and NEVER calls the bridge', () => {
+    const s = sink();
+    dispatchDisplayControl(
+      envelope({ action: 'BLANK', soft: true }),
+      'screen-1',
+      ctx(),
+      'WS',
+      s,
+    );
+    const res = dispatchDisplayControl(
+      envelope({ action: 'WAKE', soft: true }),
+      'screen-1',
+      ctx(),
+      'WS',
+      s,
+    );
+    expect(res).toEqual({ status: 'soft', action: 'WAKE', overlay: false });
+    expect(s.on).toBe(false);
+    expect(callMock).not.toHaveBeenCalled();
+  });
+
+  it('the soft overlay HOLDS — nothing but WAKE takes it down', () => {
+    // The vendor standby failed in both directions: it would not come back on
+    // command AND would not stay dark on command (the A-Frame's spontaneous
+    // wake). The soft blank must do neither. Nothing here — repeated polls,
+    // unrelated display traffic, brightness, even a REBOOT — clears it.
+    const s = sink();
+    const seen = new Map<string, number>();
+    dispatchDisplayControl(envelope({ action: 'BLANK', soft: true }), 'screen-1', ctx(seen), 'WS', s);
+    expect(s.on).toBe(true);
+
+    dispatchDisplayControl(
+      envelope({ action: 'SET_BRIGHTNESS', percent: 80 }),
+      'screen-1',
+      ctx(seen),
+      'WS',
+      s,
+    );
+    dispatchDisplayControl(envelope({ action: 'REBOOT' }), 'screen-1', ctx(seen), 'WS', s);
+    dispatchDisplayControl(
+      envelope({ action: 'SET_VOLUME', percent: 10 }),
+      'screen-1',
+      ctx(seen),
+      'WS',
+      s,
+    );
+    expect(s.on).toBe(true);
+    expect(s.calls).toEqual([true]); // never toggled off by anything above
+
+    dispatchDisplayControl(envelope({ action: 'WAKE', soft: true }), 'screen-1', ctx(seen), 'WS', s);
+    expect(s.on).toBe(false);
+  });
+
+  it('a soft blank works with NO native bridge at all — browser players blank too', () => {
+    // This is what "perfectly on all our models" buys: the soft path has no
+    // device dependency, so a browser player behaves exactly like a Goodview
+    // panel. Under the old hardware blank this screen class could do nothing.
+    hasMock.mockReturnValue(false);
+    const s = sink();
+    expect(
+      dispatchDisplayControl(envelope({ action: 'BLANK', soft: true }), 'screen-1', ctx(), 'WS', s),
+    ).toEqual({ status: 'soft', action: 'BLANK', overlay: true });
+    expect(s.on).toBe(true);
+  });
+
+  it('a HARD frame (a translated POWER_OFF) IS forwarded to the bridge', () => {
+    // The server ships POWER_OFF as the legacy verb 'BLANK' + hard:true,
+    // because every shipped APK parses only five verbs. `hard` is the one
+    // field that separates it from a soft blank on this side.
+    const s = sink();
+    const res = dispatchDisplayControl(
+      envelope({ action: 'BLANK', mechanism: 'vendor-recipe', hard: true }),
+      'screen-1',
+      ctx(),
+      'WS',
+      s,
+    );
+    expect(res).toEqual({ status: 'sent', action: 'BLANK' });
+    expect(callMock).toHaveBeenCalledTimes(1);
+    expect(callMock.mock.calls[0][0]).toBe('displayApply');
+    // The device JSON stays exactly the four keys `applyJson` reads — the
+    // wire flags are ours, not the APK's.
+    expect(JSON.parse(callMock.mock.calls[0][1] as string)).toEqual({ action: 'BLANK' });
+    // A hard blank must not touch the overlay either way.
+    expect(s.calls).toEqual([]);
+  });
+
+  it('a HARD POWER_ON is forwarded AND clears any soft overlay', () => {
+    // "Wake" means "be visible", whatever put the screen dark. Leaving a
+    // black div on top of a freshly-powered panel would be its own
+    // stuck-dark bug, so the un-darkening direction always clears.
+    const s = sink();
+    const seen = new Map<string, number>();
+    dispatchDisplayControl(envelope({ action: 'BLANK', soft: true }), 'screen-1', ctx(seen), 'WS', s);
+    expect(s.on).toBe(true);
+
+    const res = dispatchDisplayControl(
+      envelope({ action: 'WAKE', hard: true }),
+      'screen-1',
+      ctx(seen),
+      'WS',
+      s,
+    );
+    expect(res).toEqual({ status: 'sent', action: 'WAKE' });
+    expect(s.on).toBe(false);
+    expect(callMock).toHaveBeenCalledWith('displayApply', '{"action":"WAKE"}');
+  });
+
+  it('a FLAG-LESS frame keeps its pre-split behaviour — forwarded', () => {
+    // The web bundle (Vercel) and the API (Railway) do not deploy in the
+    // same instant. A frame from an API build older than the split carries
+    // neither flag, and a deploy window is not the place to invent new
+    // semantics: it behaves exactly as it did yesterday.
+    const s = sink();
+    dispatchDisplayControl(envelope({ action: 'BLANK' }), 'screen-1', ctx(), 'WS', s);
+    expect(callMock).toHaveBeenCalledTimes(1);
+    expect(s.calls).toEqual([]);
+  });
+
+  it('a soft frame with NO overlay wired is still never forwarded', () => {
+    // Fail toward "nothing happened", never toward "the bridge got it".
+    const res = dispatchDisplayControl(
+      envelope({ action: 'BLANK', soft: true }),
+      'screen-1',
+      ctx(),
+    );
+    expect(res).toEqual({ status: 'no-overlay', action: 'BLANK' });
+    expect(callMock).not.toHaveBeenCalled();
+  });
+
+  describe('EMERGENCY ALWAYS PUNCHES THROUGH', () => {
+    it('drops a soft BLANK while emergency content is displayed', () => {
+      const s = sink({ emergency: true });
+      const res = dispatchDisplayControl(
+        envelope({ action: 'BLANK', soft: true }),
+        'screen-1',
+        ctx(),
+        'WS',
+        s,
+      );
+      expect(res).toEqual({ status: 'dropped', reason: 'emergency' });
+      expect(s.on).toBe(false);
+      expect(callMock).not.toHaveBeenCalled();
+    });
+
+    it('force-clears an overlay that is ALREADY up when a blank arrives mid-alert', () => {
+      const s = sink();
+      const seen = new Map<string, number>();
+      dispatchDisplayControl(envelope({ action: 'BLANK', soft: true }), 'screen-1', ctx(seen), 'WS', s);
+      expect(s.on).toBe(true);
+
+      // Lockdown lands, then a duplicate/late blank arrives behind it.
+      s.setEmergency(true);
+      dispatchDisplayControl(envelope({ action: 'BLANK', soft: true }), 'screen-1', ctx(seen), 'WS', s);
+      expect(s.on).toBe(false);
+    });
+
+    it('drops a HARD blank during an alert too — every layer asserts it', () => {
+      const s = sink({ emergency: true });
+      expect(
+        dispatchDisplayControl(
+          envelope({ action: 'BLANK', hard: true }),
+          'screen-1',
+          ctx(),
+          'WS',
+          s,
+        ),
+      ).toEqual({ status: 'dropped', reason: 'emergency' });
+      expect(callMock).not.toHaveBeenCalled();
+    });
+
+    it('never blocks the RECOVERY direction during an alert', () => {
+      // A guard that could stop an operator lighting a screen mid-incident
+      // is worse than the thing it protects against.
+      const s = sink({ emergency: true });
+      const seen = new Map<string, number>();
+      expect(
+        dispatchDisplayControl(
+          envelope({ action: 'WAKE', soft: true }),
+          'screen-1',
+          ctx(seen),
+          'WS',
+          s,
+        ).status,
+      ).toBe('soft');
+      expect(
+        dispatchDisplayControl(
+          envelope({ action: 'WAKE', hard: true }),
+          'screen-1',
+          ctx(seen),
+          'WS',
+          s,
+        ).status,
+      ).toBe('sent');
+    });
+  });
+
+  it('still refuses a literal POWER_OFF verb — the APK parses five verbs', () => {
+    // The server translates on the way out precisely so this never happens.
+    // If one ever does arrive, dropping it loudly beats handing the bridge a
+    // verb every shipped APK silently ignores.
+    const s = sink();
+    expect(
+      dispatchDisplayControl(envelope({ action: 'POWER_OFF' }), 'screen-1', ctx(), 'WS', s),
+    ).toEqual({ status: 'dropped', reason: 'bad-action' });
+    expect(callMock).not.toHaveBeenCalled();
+  });
+
+  it('applies the SAME transport gate to soft frames — scope, replay, staleness', () => {
+    const s = sink();
+    const seen = new Map<string, number>();
+    // Wrong screen.
+    expect(
+      dispatchDisplayControl(
+        envelope({ action: 'BLANK', soft: true, screenId: 'someone-else' }),
+        'screen-1',
+        ctx(seen),
+        'WS',
+        s,
+      ),
+    ).toEqual({ status: 'dropped', reason: 'not-ours' });
+    // Stale — a captured soft BLANK must not replay hours later either.
+    expect(
+      dispatchDisplayControl(
+        envelope({ action: 'BLANK', soft: true }, { timestamp: NOW - 10 * 60_000 }),
+        'screen-1',
+        ctx(seen),
+        'WS',
+        s,
+      ),
+    ).toEqual({ status: 'dropped', reason: 'stale' });
+    // Replay across transports.
+    const frame = envelope({ action: 'BLANK', soft: true });
+    expect(dispatchDisplayControl(frame, 'screen-1', ctx(seen), 'WS', s).status).toBe('soft');
+    expect(dispatchDisplayControl(frame, 'screen-1', ctx(seen), 'SSE', s)).toEqual({
+      status: 'dropped',
+      reason: 'replay',
+    });
+    expect(s.calls).toEqual([true]);
   });
 });
 
@@ -546,5 +851,66 @@ describe('page.tsx is actually wired to this module', () => {
     // drop a live hold every time the network blipped during a lockdown.
     expect(src).toMatch(/if \(holdNow \|\| !fromCache\) signalDisplayEmergencyHold/);
     expect(src).toMatch(/applyManifest\(cached\.m, true\)/);
+  });
+
+  // ── The 2026-08-25 split: the overlay half is IN THE PAGE ────────────
+  // Every soft-frame test above can pass while Blank does nothing on the
+  // glass, because the overlay itself lives here. Same guard, same reason.
+
+  it('hands dispatchDisplayControl the soft-blank sink', () => {
+    // Without this 5th argument every soft frame returns 'no-overlay' and
+    // the operator's Blank button is a no-op on every screen in the fleet.
+    expect(src).toMatch(/softBlankSinkRef\.current/);
+  });
+
+  it('renders a black overlay gated on the soft-blank state', () => {
+    expect(src).toMatch(/data-edu-soft-blank/);
+    expect(src).toMatch(/\{softBlank && /);
+  });
+
+  it('never lets the overlay paint over an emergency', () => {
+    // The render condition is the LAST of three independent guarantees (the
+    // dispatch-time drop and the state-edge effect are the other two).
+    expect(src).toMatch(/softBlank && !activeEmergency && !pushedEmergencyMessage/);
+    expect(src).toMatch(/if \(activeEmergency \|\| pushedEmergencyMessage\) applySoftBlank\(false\)/);
+  });
+
+  it('positions the overlay with LONGHAND sides — Taurus is Chromium 83', () => {
+    // CLAUDE.md #10: the CSS four-side shorthand (and its Tailwind utility)
+    // is Chrome 87+. On a NovaStar Taurus it is silently dropped and the
+    // absolutely-positioned box collapses to 0×0 — and a blank overlay that
+    // renders 0×0 is a Blank button that does nothing on exactly the
+    // hardware this feature exists for.
+    //
+    // ⚠️ THE BANNED SPELLINGS ARE NEVER WRITTEN OUT IN THIS FILE. Both the
+    // pre-commit hook (a literal grep) and `check-taurus-safety.cjs` scan
+    // the whole player directory INCLUDING tests, so quoting the forbidden
+    // text — even inside a comment explaining it — trips the very guard this
+    // test backs up. It cost one blocked commit to learn; hence the regex is
+    // assembled from a fragment rather than spelled.
+    const overlay = src.slice(
+      src.indexOf('data-edu-soft-blank'),
+      src.indexOf('data-edu-soft-blank') + 700,
+    );
+    expect(overlay).toMatch(/top: 0/);
+    expect(overlay).toMatch(/right: 0/);
+    expect(overlay).toMatch(/bottom: 0/);
+    expect(overlay).toMatch(/left: 0/);
+    // `\bins` + `et\b` — the word boundary catches BOTH forbidden forms,
+    // the CSS shorthand and the hyphenated Tailwind utility.
+    const FORBIDDEN = new RegExp('\\bins' + 'et\\b');
+    expect(overlay).not.toMatch(FORBIDDEN);
+  });
+
+  it('stacks the overlay BELOW the emergency overlay', () => {
+    // EmergencyOverlay renders at z-[9999]. Life safety always wins the
+    // stacking contest, even if every other guarantee failed at once.
+    const overlay = src.slice(
+      src.indexOf('data-edu-soft-blank'),
+      src.indexOf('data-edu-soft-blank') + 700,
+    );
+    const z = /zIndex:\s*(\d+)/.exec(overlay);
+    expect(z).not.toBeNull();
+    expect(Number(z![1])).toBeLessThan(9999);
   });
 });

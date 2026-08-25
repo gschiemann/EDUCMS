@@ -17,6 +17,22 @@
  *       produced a dark screen with no dashboard path back, because the
  *       manifest ships schedules to a never-probed screen regardless.
  *
+ * ⚠️ AMENDED AGAIN 2026-08-25 — THE BLANK/POWER SPLIT. Several BLANK
+ * expectations here are deliberate reversals of what this file asserted
+ * TWELVE DAYS ago, and of what it asserted earlier the SAME NIGHT:
+ *
+ *   • BLANK/WAKE no longer resolve a hardware mechanism. Both answer
+ *     `mechanism: 'web-overlay'` on every verdict AND on none, because the
+ *     player's own page draws the black — there is no device call left.
+ *   • BLANK is therefore no longer a fail-closed risk action on an unknown
+ *     verdict. POWER_OFF took that seat.
+ *   • The four "foreign-owner admin-lock guard (G43)" specs are GONE, with
+ *     the reasoning recorded at the block that replaced them.
+ *
+ * What did NOT change, and must not: the emergency interlock (both
+ * directions), the allowBlack dead-man requirement, and every audit-row
+ * expectation.
+ *
  * Coverage:
  *   - capability truth-gate: an action the verdict does not support throws
  *     DisplayActionUnsupportedError (→ 409) and NEVER publishes
@@ -49,6 +65,7 @@ import {
   DisplayActionUnsupportedError,
   DisplayService,
   boundInventoryReport,
+  isDarkeningAction,
   normalizeCapabilityReport,
   verdictChanged,
   verdictFromStored,
@@ -76,6 +93,22 @@ const BARE_VERDICT = {
   reboot: 'none',
   hardPowerOff: 'none',
   deviceOwnerPath: 'provisionable-after-factory-reset',
+};
+
+/**
+ * The panel at the centre of the 2026-08-25 incident: an Android device-admin
+ * lock as the ONLY hard blank path, another app holding device owner, and a
+ * serial port nobody has proven. The Mobile A-Frame that latched the same way
+ * differs from this only in `deviceOwnerPath` — which is precisely why the
+ * first, shape-based guard did not protect it.
+ */
+const G43_VERDICT = {
+  volume: 'audiomanager',
+  brightness: 'settings',
+  screenBlank: 'device-admin',
+  reboot: 'none',
+  hardPowerOff: 'serial-candidate',
+  deviceOwnerPath: 'blocked-other-owner',
 };
 
 const stored = (verdict: Record<string, string>) => ({
@@ -156,31 +189,39 @@ describe('DisplayService', () => {
     expect(signer.signMessage).not.toHaveBeenCalled();
   });
 
-  it('BLANK and WAKE always resolve — screenBlank:none names the mechanism, not the availability (C3)', async () => {
-    // THE REVERSAL. A bare box (no device admin, no owner) still blanks and
-    // wakes through the software floor. The old contract 409'd WAKE here,
-    // which meant a schedule-blanked panel could never be lit from the
-    // dashboard — a truck roll on a wall mount.
+  it('BLANK and WAKE always resolve — and are SOFT on every verdict (C3, 2026-08-25)', async () => {
+    // THE REVERSAL, twice over. First (2026-08-13): a bare box still blanks
+    // and wakes; the old contract 409'd WAKE here, so a schedule-blanked
+    // panel could never be lit from the dashboard. Second (2026-08-25): the
+    // mechanism is no longer read from the verdict AT ALL — both verbs
+    // resolve to the web overlay, on every model.
     const blank = await apply({
       action: 'BLANK',
       capabilities: stored(BARE_VERDICT),
     });
-    expect(blank.mechanism).toBe('software-dim');
+    expect(blank.mechanism).toBe('web-overlay');
 
     const wake = await apply({
       action: 'WAKE',
       capabilities: stored(BARE_VERDICT),
     });
-    expect(wake.mechanism).toBe('software-dim');
+    expect(wake.mechanism).toBe('web-overlay');
     expect(redis.publish).toHaveBeenCalledTimes(2);
   });
 
-  it('names the privileged mechanism when the box has one', async () => {
-    expect((await apply({ action: 'BLANK' })).mechanism).toBe('device-owner');
+  it('names the privileged mechanism for the POWER pair — that is where hardware went', async () => {
     expect(
       (
         await apply({
-          action: 'WAKE',
+          action: 'POWER_OFF',
+          capabilities: stored({ ...FULL_VERDICT, screenBlank: 'vendor-recipe' }),
+        })
+      ).mechanism,
+    ).toBe('vendor-recipe');
+    expect(
+      (
+        await apply({
+          action: 'POWER_ON',
           capabilities: stored({
             ...FULL_VERDICT,
             screenBlank: 'device-admin',
@@ -208,7 +249,8 @@ describe('DisplayService', () => {
   it('accepts WAKE on a screen that has never reported — recovery is never refused', async () => {
     const res = await apply({ action: 'WAKE', capabilities: null });
     expect(res.success).toBe(true);
-    expect(res.mechanism).toBe('software-dim');
+    // 'web-overlay' since the 2026-08-25 split (was 'software-dim').
+    expect(res.mechanism).toBe('web-overlay');
     expect(redis.publish).toHaveBeenCalledWith(
       `device:${SCREEN_ID}`,
       expect.any(Object),
@@ -233,9 +275,12 @@ describe('DisplayService', () => {
   });
 
   it('still refuses the RISK actions on a screen that has never reported', async () => {
-    // BLANK / SET_VOLUME / REBOOT can never light a dark panel, so they stay
-    // closed until the hardware has been observed.
-    for (const action of ['BLANK', 'SET_VOLUME', 'REBOOT']) {
+    // POWER_OFF / SET_VOLUME / REBOOT all reach real hardware and can never
+    // light a dark panel, so they stay closed until it has been observed.
+    // BLANK is deliberately NOT in this list any more (2026-08-25): it is a
+    // black div in our own page, so there is no unobserved hardware to
+    // fail-close against — see the soft-blank matrix below.
+    for (const action of ['POWER_OFF', 'SET_VOLUME', 'REBOOT']) {
       await expect(
         apply({ action, percent: 50, capabilities: null }),
       ).rejects.toMatchObject({ code: 'DISPLAY_CAPABILITIES_UNKNOWN' });
@@ -265,21 +310,26 @@ describe('DisplayService', () => {
       { verdict: { volume: 1 } },
     ]) {
       expect(verdictFromStored(bad)).toBeNull();
-      // Unknown ⇒ risk is refused…
+      // Unknown ⇒ HARDWARE risk is refused…
       await expect(
-        apply({ action: 'BLANK', capabilities: bad }),
+        apply({ action: 'POWER_OFF', capabilities: bad }),
       ).rejects.toMatchObject({ code: 'DISPLAY_CAPABILITIES_UNKNOWN' });
       // …but the recovery direction still works, which is the whole point.
       await expect(
         apply({ action: 'WAKE', capabilities: bad }),
       ).resolves.toMatchObject({ success: true });
+      // …and the SOFT blank works too — a malformed document cannot make a
+      // black overlay in our own page any riskier than it already is.
+      await expect(
+        apply({ action: 'BLANK', capabilities: bad }),
+      ).resolves.toMatchObject({ success: true, mechanism: 'web-overlay' });
     }
   });
 
   it('dispatches a supported action on device:<screenId> with the resolved mechanism', async () => {
     const res = await apply({ action: 'BLANK' });
     expect(res.success).toBe(true);
-    expect(res.mechanism).toBe('device-owner');
+    expect(res.mechanism).toBe('web-overlay');
     expect(res.delivered).toBe(true);
     expect(signer.signMessage).toHaveBeenCalledWith(
       'DISPLAY_CONTROL',
@@ -658,22 +708,26 @@ describe('boundInventoryReport — bounded by construction, never by trust', () 
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────
-// Field incident, 2026-08-25 (G43) — BLANK via device-admin on a panel whose
-// device OWNER is another app latched the vendor firmware into panel standby
-// (glass dark, LED blinking, power button dead) while Android stayed online;
-// WAKE delivered and could not reverse it. An action whose undo provably
-// fails on a hardware class is refused outright on that class.
-// ─────────────────────────────────────────────────────────────────────────
-describe('foreign-owner admin-lock guard (G43 incident)', () => {
-  const G43_VERDICT = {
-    volume: 'audiomanager',
-    brightness: 'settings',
-    screenBlank: 'device-admin',
-    reboot: 'none',
-    hardPowerOff: 'serial-candidate',
-    deviceOwnerPath: 'blocked-other-owner',
-  };
+// ═════════════════════════════════════════════════════════════════════════
+// THE BLANK / POWER SPLIT — field incident night, 2026-08-25
+//
+// Operator contract, verbatim: "wake and blank should just do that and turn
+// on and off should do that, keep them separate and make them work perfectly
+// on all our models."
+//
+// ⚠️ THIS BLOCK REPLACES the four "foreign-owner admin-lock guard (G43)"
+// specs written earlier the same night. Do NOT restore them. That guard
+// refused BLANK on exactly one verdict shape (device-admin +
+// blocked-other-owner) — and the Mobile A-Frame latched with an IDENTICAL
+// verdict to an L55VEC that recovered, so the shape was never the
+// discriminator. The A-Frame then woke itself back up minutes later with
+// nothing sent to it, proving the standby is a VENDOR TIMER: unreliable in
+// both directions, un-predictable from anything we probe.
+//
+// What replaces it: BLANK stops touching hardware on every model, and the
+// hardware lives behind POWER_OFF / POWER_ON on a proven-only allowlist.
+// ═════════════════════════════════════════════════════════════════════════
+describe('BLANK / WAKE — soft, universal, unbrickable by construction', () => {
   let service: DisplayService;
   let prisma: any;
   let redis: any;
@@ -701,37 +755,237 @@ describe('foreign-owner admin-lock guard (G43 incident)', () => {
       capabilities: stored(G43_VERDICT),
       ...over,
     } as any);
+  /** The signed payload published for the Nth publish (default: the first). */
+  const published = (n = 0) => signer.signMessage.mock.calls[n][1];
 
-  it('REFUSES BLANK: device-admin mechanism + foreign owner → 409 code, no publish, forensic audit row', async () => {
-    await expect(apply()).rejects.toMatchObject({
-      code: 'DISPLAY_BLANK_ADMIN_LOCK_FOREIGN_OWNER',
+  it.each([
+    ['device-admin (the G43 / A-frame class)', 'device-admin'],
+    ['vendor-recipe (the TC22 class)', 'vendor-recipe'],
+    ['screen-timeout', 'screen-timeout'],
+    ['software-dim (the M43 class)', 'software-dim'],
+    ['device-owner (legacy)', 'device-owner'],
+    ['none', 'none'],
+  ])('BLANK dispatches SOFT on verdict %s', async (_label, screenBlank) => {
+    const res = await apply({ capabilities: stored({ ...G43_VERDICT, screenBlank }) });
+    expect(res.mechanism).toBe('web-overlay');
+    expect(res.action).toBe('BLANK');
+    expect(redis.publish).toHaveBeenCalledWith(`device:${SCREEN_ID}`, expect.any(Object));
+    // THE FRAME SHAPE. `soft:true` is the single field that keeps this out of
+    // the APK bridge; without it the player forwards it and device-admin
+    // fires — the whole incident.
+    expect(published()).toMatchObject({
+      action: 'BLANK',
+      mechanism: 'web-overlay',
+      soft: true,
     });
+    expect(published()).not.toHaveProperty('hard');
+  });
+
+  it('BLANK dispatches SOFT on a screen that has never reported, and on junk', async () => {
+    for (const capabilities of [null, undefined, 'nonsense', { verdict: 'yes' }]) {
+      redis.publish.mockClear();
+      signer.signMessage.mockClear();
+      const res = await apply({ capabilities });
+      expect(res.mechanism).toBe('web-overlay');
+      expect(published()).toMatchObject({ soft: true });
+    }
+  });
+
+  it('WAKE dispatches SOFT on every verdict, always', async () => {
+    for (const screenBlank of ['device-admin', 'vendor-recipe', 'software-dim', 'none']) {
+      signer.signMessage.mockClear();
+      const res = await apply({
+        action: 'WAKE',
+        capabilities: stored({ ...G43_VERDICT, screenBlank }),
+      });
+      expect(res.mechanism).toBe('web-overlay');
+      expect(published()).toMatchObject({ action: 'WAKE', soft: true });
+    }
+  });
+
+  it('audits the soft blank with the real action AND the web-overlay mechanism', async () => {
+    await apply();
+    const row = JSON.parse(prisma.client.auditLog.create.mock.calls[0][0].data.details);
+    expect(row).toMatchObject({
+      requested: 'BLANK',
+      outcome: 'dispatched',
+      mechanism: 'web-overlay',
+    });
+  });
+
+  it('STILL refuses BLANK during an emergency hold — the interlock is untouched', async () => {
+    await expect(
+      apply({ emergencyHold: { active: true, source: 'tenant' } }),
+    ).rejects.toMatchObject({ code: 'DISPLAY_EMERGENCY_HOLD' });
+    expect(redis.publish).not.toHaveBeenCalled();
+    expect(
+      JSON.parse(prisma.client.auditLog.create.mock.calls[0][0].data.details),
+    ).toMatchObject({ outcome: 'refused', code: 'DISPLAY_EMERGENCY_HOLD' });
+  });
+
+  it('but WAKE during an emergency hold still dispatches — recovery is never gated', async () => {
+    await expect(
+      apply({ action: 'WAKE', emergencyHold: { active: true, source: 'tenant' } }),
+    ).resolves.toMatchObject({ success: true });
+    expect(redis.publish).toHaveBeenCalled();
+  });
+
+  it('the superseded foreign-owner guard is GONE — the G43 shape blanks softly now', async () => {
+    // The exact verdict that was refused with
+    // DISPLAY_BLANK_ADMIN_LOCK_FOREIGN_OWNER hours earlier. It dispatches,
+    // because what it dispatches can no longer reach the panel.
+    const res = await apply({
+      capabilities: stored({
+        ...G43_VERDICT,
+        screenBlank: 'device-admin',
+        deviceOwnerPath: 'blocked-other-owner',
+      }),
+    });
+    expect(res.mechanism).toBe('web-overlay');
+    expect(published()).toMatchObject({ soft: true });
+  });
+});
+
+describe('POWER_OFF / POWER_ON — hardware, proven-only, legacy-frame translated', () => {
+  let service: DisplayService;
+  let prisma: any;
+  let redis: any;
+  let signer: any;
+  beforeEach(async () => {
+    redis = { publish: jest.fn().mockResolvedValue(true), isConnected: jest.fn().mockReturnValue(true) };
+    signer = { signMessage: jest.fn().mockImplementation((type: string, payload: any) => ({ type, payload, eventId: 'evt-1', timestamp: Date.now(), signature: 'sig' })) };
+    prisma = { client: { screen: { update: jest.fn().mockResolvedValue({}) }, auditLog: { create: jest.fn().mockResolvedValue({}) } } };
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        DisplayService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: RedisService, useValue: redis },
+        { provide: WebsocketSignerService, useValue: signer },
+      ],
+    }).compile();
+    service = moduleRef.get(DisplayService);
+  });
+  const apply = (over: Record<string, unknown> = {}) =>
+    service.applyAction({
+      screenId: SCREEN_ID,
+      tenantId: TENANT_ID,
+      userId: USER_ID,
+      action: 'POWER_OFF',
+      capabilities: stored({ ...G43_VERDICT, screenBlank: 'vendor-recipe' }),
+      ...over,
+    } as any);
+  const published = (n = 0) => signer.signMessage.mock.calls[n][1];
+
+  it('vendor-recipe POWER_OFF dispatches as a LEGACY "BLANK" frame with hard:true', async () => {
+    const res = await apply();
+    // The API answer names the REAL action…
+    expect(res).toMatchObject({ action: 'POWER_OFF', mechanism: 'vendor-recipe' });
+    // …while the WIRE carries the only verb a shipped APK understands.
+    // Sending 'POWER_OFF' verbatim would be silently unrecognised on every
+    // screen in the fleet; `hard:true` is the extra key old APKs ignore
+    // (org.json opt*) and the new web layer keys off.
+    expect(published()).toMatchObject({
+      screenId: SCREEN_ID,
+      action: 'BLANK',
+      mechanism: 'vendor-recipe',
+      hard: true,
+    });
+    expect(published()).not.toHaveProperty('soft');
+  });
+
+  it('POWER_ON dispatches as a LEGACY "WAKE" frame with hard:true', async () => {
+    const res = await apply({ action: 'POWER_ON' });
+    expect(res).toMatchObject({ action: 'POWER_ON' });
+    expect(published()).toMatchObject({ action: 'WAKE', hard: true });
+    expect(published()).not.toHaveProperty('soft');
+  });
+
+  it('audits POWER_OFF under the REAL requested action, not the wire verb', async () => {
+    await apply();
+    const row = JSON.parse(prisma.client.auditLog.create.mock.calls[0][0].data.details);
+    expect(row).toMatchObject({
+      requested: 'POWER_OFF',
+      outcome: 'dispatched',
+      mechanism: 'vendor-recipe',
+    });
+  });
+
+  it.each([
+    ['device-admin — the A-frame / G43 / L55VEC class', 'device-admin'],
+    ['device-owner — the same admin-lock family', 'device-owner'],
+  ])('REFUSES POWER_OFF on %s with BLANK_MECHANISM_UNPROVEN', async (_l, screenBlank) => {
+    await expect(
+      apply({ capabilities: stored({ ...G43_VERDICT, screenBlank }) }),
+    ).rejects.toMatchObject({ code: 'DISPLAY_BLANK_MECHANISM_UNPROVEN' });
     expect(redis.publish).not.toHaveBeenCalled();
     expect(signer.signMessage).not.toHaveBeenCalled();
     expect(
       JSON.parse(prisma.client.auditLog.create.mock.calls[0][0].data.details),
     ).toMatchObject({
+      requested: 'POWER_OFF',
       outcome: 'refused',
-      code: 'DISPLAY_BLANK_ADMIN_LOCK_FOREIGN_OWNER',
-      mechanism: 'device-admin',
-      deviceOwnerPath: 'blocked-other-owner',
+      code: 'DISPLAY_BLANK_MECHANISM_UNPROVEN',
     });
   });
 
-  it('WAKE on the same panel stays available — recovery is never gated', async () => {
-    await expect(apply({ action: 'WAKE' })).resolves.toBeDefined();
-    expect(redis.publish).toHaveBeenCalled();
+  it('the unproven refusal names the BOTH-DIRECTIONS evidence, not just the latch', async () => {
+    // The A-frame woke ITSELF minutes after latching. If the copy only says
+    // "it will not come back", the next operator reads a self-recovered panel
+    // as proof the guard is wrong and asks for it to be removed.
+    await expect(
+      apply({ capabilities: stored({ ...G43_VERDICT, screenBlank: 'device-admin' }) }),
+    ).rejects.toThrow(/both directions/i);
+    await expect(
+      apply({ capabilities: stored({ ...G43_VERDICT, screenBlank: 'device-admin' }) }),
+    ).rejects.toThrow(/woke itself back up/i);
   });
 
-  it('device-admin blank with OUR OWN owner path held is NOT refused (the lock is reversible there)', async () => {
-    await expect(
-      apply({ capabilities: stored({ ...G43_VERDICT, deviceOwnerPath: 'held' }) }),
-    ).resolves.toBeDefined();
+  it.each([['software-dim'], ['screen-timeout'], ['none']])(
+    'POWER_OFF on %s is UNSUPPORTED — there is no panel power path at all',
+    async (screenBlank) => {
+      await expect(
+        apply({ capabilities: stored({ ...G43_VERDICT, screenBlank }) }),
+      ).rejects.toMatchObject({ code: 'DISPLAY_ACTION_UNSUPPORTED' });
+      expect(redis.publish).not.toHaveBeenCalled();
+    },
+  );
+
+  it('POWER_OFF on a screen that has never reported is refused as UNKNOWN', async () => {
+    await expect(apply({ capabilities: null })).rejects.toMatchObject({
+      code: 'DISPLAY_CAPABILITIES_UNKNOWN',
+    });
+    expect(redis.publish).not.toHaveBeenCalled();
   });
 
-  it('vendor-recipe blank on a foreign-owner panel is NOT refused (mechanism, not ownership, is the hazard)', async () => {
+  it('POWER_ON is NEVER refused on the unproven code — it is the recovery direction', async () => {
+    // A panel already dark (an earlier hard blank, a vendor timer, someone's
+    // remote) must always have a dashboard path back, on every verdict and
+    // on none at all. Exactly the asymmetry WAKE has always had.
+    for (const capabilities of [
+      stored({ ...G43_VERDICT, screenBlank: 'device-admin' }),
+      stored({ ...G43_VERDICT, screenBlank: 'device-owner' }),
+      stored({ ...G43_VERDICT, screenBlank: 'software-dim' }),
+      stored({ ...G43_VERDICT, screenBlank: 'none' }),
+      null,
+    ]) {
+      signer.signMessage.mockClear();
+      await expect(apply({ action: 'POWER_ON', capabilities })).resolves.toMatchObject({
+        success: true,
+        action: 'POWER_ON',
+      });
+      expect(published()).toMatchObject({ action: 'WAKE', hard: true });
+    }
+  });
+
+  it('POWER_OFF is a DARKENING action, so the emergency interlock covers it', async () => {
+    // isDarkeningAction is what makes the CONTROLLER resolve emergency state
+    // at all. A darkening verb missing from it does not skip a check — it
+    // never reads whether a lockdown is on the glass.
+    expect(isDarkeningAction('POWER_OFF', {})).toBe(true);
+    expect(isDarkeningAction('POWER_ON', {})).toBe(false);
     await expect(
-      apply({ capabilities: stored({ ...G43_VERDICT, screenBlank: 'vendor-recipe' }) }),
-    ).resolves.toBeDefined();
+      apply({ emergencyHold: { active: true, source: 'screen' } }),
+    ).rejects.toMatchObject({ code: 'DISPLAY_EMERGENCY_HOLD' });
+    expect(redis.publish).not.toHaveBeenCalled();
   });
 });
