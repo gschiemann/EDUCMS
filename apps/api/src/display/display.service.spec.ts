@@ -1167,6 +1167,14 @@ describe('SET_BRIGHTNESS — proven mechanisms drive hardware, the rest dim soft
       action: 'SET_BRIGHTNESS',
       percent: 40,
       capabilities: stored(G43_VERDICT),
+      // A LIVE push socket by default. This block tests brightness ROUTING
+      // (which mechanism drove the glass), not delivery grading — and since
+      // 2026-08-25 an absent `lastPushConnectedAt` correctly grades as
+      // `undelivered` (a screen with no live channel cannot receive an
+      // instant command). Without this the routing assertions would be
+      // measuring the delivery dimension by accident. Delivery grading has
+      // its own dedicated matrix above.
+      lastPushConnectedAt: new Date(),
       ...over,
     } as any);
 
