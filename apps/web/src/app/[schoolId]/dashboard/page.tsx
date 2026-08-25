@@ -24,7 +24,7 @@ import {
   MonitorCheck, CloudOff, ListVideo, Upload, Plus, ArrowRight,
   Image as ImageIcon, MonitorPlay, Siren, CheckCircle2, Clock,
   AlertTriangle, Calendar, Zap, Users as UsersIcon, Building2,
-  TrendingUp, TrendingDown, Activity, X, RefreshCw,
+  TrendingUp, TrendingDown, Activity, X, RefreshCw, Sparkles,
 } from 'lucide-react';
 import { useRecentActivity } from '@/hooks/use-dashboard-data';
 import {
@@ -37,6 +37,8 @@ import { useUIStore } from '@/store/ui-store';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { firstName as userFirstName } from '@/lib/user-display';
 import { MobileDashboard } from '@/components/dashboard/MobileDashboard';
+import { StarterBoardCard } from '@/components/dashboard/StarterBoardCard';
+import { useStarterBoard } from '@/hooks/use-starter-board';
 import { FleetRollup } from '@/components/screens/FleetRollup';
 import Link from 'next/link';
 import { usePathname, useParams } from 'next/navigation';
@@ -276,6 +278,10 @@ export default function DashboardPage() {
     try { localStorage.removeItem('edu_dashboard_hint_dismissed'); } catch {}
   };
   const showOnboarding = !hintDismissed;
+  // VERT-001 — the board we seeded for this tenant at signup, if any. Read from
+  // the already-mounted playlists query (no extra request); null for tenants
+  // that predate the seed, which keeps the original 3-step guide intact.
+  const { template: starterBoard } = useStarterBoard();
   const tenantName = (tenant as any)?.name || (user as any)?.tenantName || 'Your Organization';
   // 2026-05-11 — operator: "say Hi Greg not gschiemann." Helper
   // prefers User.firstName when set; falls back to email-prefix for
@@ -528,6 +534,12 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* ─── Simulated screen — "this is what your screens will show"
+          Renders only while the tenant has ZERO paired screens AND we
+          seeded them a starter board. Retires itself the moment real
+          hardware shows up. See StarterBoardCard.tsx. */}
+      <StarterBoardCard schoolId={schoolId} />
+
       {/* ─── Getting started — 3-step guide ──────────────────────
           2026-05-26: when dismissed, render a tiny "Show getting
           started" pill in its place so the operator can always pull
@@ -556,14 +568,39 @@ export default function DashboardPage() {
           </button>
           <h2 className="text-lg font-bold text-slate-800 mb-2">{t('dashboard.gettingStarted')}</h2>
           <p className="text-sm text-slate-600 mb-6">{t('dashboard.gettingStartedDesc')}</p>
-          {/* Step order reflects the real setup flow: you can't pick a
-              target for a playlist if no screens are paired yet, so
-              "Connect a Screen" is step 1. Assets comes next (what
-              will play), then Playlist (what to play + where). */}
+          {/* Step order reflects the real setup flow.
+              WITHOUT a starter board (tenants that predate the signup
+              seed): you can't pick a target for a playlist if no
+              screens are paired yet, so "Connect a Screen" is step 1,
+              Assets next (what will play), then Playlist (what to play
+              + where). UNCHANGED for those tenants.
+              WITH a starter board (every tenant created after
+              2026-08-24): step 1 becomes the board they ALREADY have —
+              the shortest path to "I changed something and it was
+              mine" — and pair/publish keep their dependency order
+              behind it. */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <OnboardStep href={`${tenantBase}/screens`} step={1} color="emerald" Icon={MonitorPlay} title={t('dashboard.step1Title')} desc={t('dashboard.step1Desc')} cta={t('dashboard.step1Cta')} />
-            <OnboardStep href={`${tenantBase}/assets`} step={2} color="sky" Icon={Upload} title={t('dashboard.step2Title')} desc={t('dashboard.step2Desc')} cta={t('dashboard.step2Cta')} />
-            <OnboardStep href={`${tenantBase}/playlists`} step={3} color="violet" Icon={ListVideo} title={t('dashboard.step3Title')} desc={t('dashboard.step3Desc')} cta={t('dashboard.step3Cta')} />
+            {starterBoard ? (
+              <>
+                <OnboardStep
+                  href={`${tenantBase}/templates/builder/${starterBoard.id}`}
+                  step={1}
+                  color="violet"
+                  Icon={Sparkles}
+                  title="Your first board is ready — make it yours"
+                  desc="We built it for you. Change the words, colors, and photos."
+                  cta="Customize it"
+                />
+                <OnboardStep href={`${tenantBase}/screens`} step={2} color="emerald" Icon={MonitorPlay} title={t('dashboard.step1Title')} desc={t('dashboard.step1Desc')} cta={t('dashboard.step1Cta')} />
+                <OnboardStep href={`${tenantBase}/playlists`} step={3} color="sky" Icon={ListVideo} title={t('dashboard.step3Title')} desc={t('dashboard.step3Desc')} cta={t('dashboard.step3Cta')} />
+              </>
+            ) : (
+              <>
+                <OnboardStep href={`${tenantBase}/screens`} step={1} color="emerald" Icon={MonitorPlay} title={t('dashboard.step1Title')} desc={t('dashboard.step1Desc')} cta={t('dashboard.step1Cta')} />
+                <OnboardStep href={`${tenantBase}/assets`} step={2} color="sky" Icon={Upload} title={t('dashboard.step2Title')} desc={t('dashboard.step2Desc')} cta={t('dashboard.step2Cta')} />
+                <OnboardStep href={`${tenantBase}/playlists`} step={3} color="violet" Icon={ListVideo} title={t('dashboard.step3Title')} desc={t('dashboard.step3Desc')} cta={t('dashboard.step3Cta')} />
+              </>
+            )}
           </div>
         </div>
       )}

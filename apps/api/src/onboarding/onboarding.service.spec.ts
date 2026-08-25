@@ -4,6 +4,7 @@ import { AuthService } from '../auth/auth.service';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SampleDataService } from '../sample-data/sample-data.service';
+import { StarterBoardService } from './starter-board.service';
 import { RedisService } from '../realtime/redis.service';
 import { JwtService } from '@nestjs/jwt';
 import { BadRequestException, ConflictException } from '@nestjs/common';
@@ -122,11 +123,13 @@ describe('OnboardingService', () => {
   let prisma: PrismaService;
   let state: ReturnType<typeof createInMemoryPrisma>['state'];
   let redisMock: { markUserTokensInvalid: jest.Mock };
+  let starterBoardMock: jest.Mock;
 
   beforeEach(async () => {
     const mem = createInMemoryPrisma();
     state = mem.state;
     redisMock = { markUserTokensInvalid: jest.fn().mockResolvedValue(undefined) };
+    starterBoardMock = jest.fn().mockResolvedValue(undefined);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -140,6 +143,11 @@ describe('OnboardingService', () => {
         // any signup assertions. (Was missing → "can't resolve SampleDataService
         // at index [3]" failed the whole suite — added 2026-05-30.)
         { provide: SampleDataService, useValue: { seedForNewTenant: jest.fn().mockResolvedValue(undefined) } },
+        // VERT-001 (2026-08-24): signup also fire-and-forgets the starter-board
+        // seed (one branded template + "My first playlist"). Same deal — a
+        // jest.fn() satisfies DI; the seeder's own behavior is covered
+        // end-to-end in starter-board.service.spec.ts.
+        { provide: StarterBoardService, useValue: { seedForNewTenant: starterBoardMock } },
         // ACC-02 (2026-08-01): completePasswordReset now revokes every live
         // session for the account (markUserTokensInvalid stamps the per-user
         // invalid-before epoch JwtAuthGuard already enforces).
@@ -169,6 +177,15 @@ describe('OnboardingService', () => {
       expect(state.users[0].role).toBe('DISTRICT_ADMIN');
       expect(state.auditLogs.some((a) => a.action === 'TENANT_SIGNUP')).toBe(true);
       expect(state.emailLogs.some((e) => e.kind === 'WELCOME')).toBe(true);
+      // VERT-001 — the new tenant's first board is seeded from the signup path,
+      // with the tenant id / admin id / vertical / display name it needs to
+      // name the board. Fire-and-forget, so this asserts the CALL, not an await.
+      expect(starterBoardMock).toHaveBeenCalledWith(
+        state.tenants[0].id,
+        state.users[0].id,
+        'K12',
+        'Springfield Unified',
+      );
     });
 
     it('rejects duplicate slug with 409', async () => {

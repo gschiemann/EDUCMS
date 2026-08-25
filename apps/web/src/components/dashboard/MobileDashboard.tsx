@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { useScreens, usePlaylists, useSchedules, useAssets, useSubmissions, useTenantStatus, useFleet } from '@/hooks/use-api';
 import { FleetRollup } from '@/components/screens/FleetRollup';
+import { StarterBoardCard } from '@/components/dashboard/StarterBoardCard';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { useAppStore } from '@/lib/store';
 import { firstName as userFirstName } from '@/lib/user-display';
@@ -152,6 +153,13 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
           </div>
         </Link>
       )}
+
+      {/* Simulated screen — a brand-new tenant's first look at their own
+          board. Self-retiring: renders only while the fleet is empty AND a
+          starter board exists (see StarterBoardCard.tsx), so an established
+          venue never sees it. Sits BELOW the emergency hero on purpose —
+          nothing outranks life-safety on this page. */}
+      <StarterBoardCard schoolId={schoolId} />
 
       {/* Quick-action chip grid (2x2) */}
       <div className="grid grid-cols-2 gap-3">

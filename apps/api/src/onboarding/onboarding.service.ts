@@ -7,6 +7,7 @@ import { RedisService } from '../realtime/redis.service';
 import { assertCallerCanAssignRole } from '../auth/role-assignment';
 import { EmailService } from '../email/email.service';
 import { SampleDataService } from '../sample-data/sample-data.service';
+import { StarterBoardService } from './starter-board.service';
 import { AppRole } from '@cms/database';
 import { isVertical } from '@cms/api-types';
 
@@ -110,6 +111,8 @@ export class OnboardingService {
     private readonly authService: AuthService,
     private readonly emailService: EmailService,
     private readonly sampleData: SampleDataService,
+    // VERT-001 — the new tenant's FIRST BOARD. See starter-board.service.ts.
+    private readonly starterBoard: StarterBoardService,
     // ACC-02 — password reset must END every live session for that account.
     // RealtimeModule is @Global, so this resolves without an extra import.
     private readonly redis: RedisService,
@@ -292,6 +295,17 @@ export class OnboardingService {
     // completes. Idempotent: SampleDataService checks for existing
     // connections before inserting, so a retry is always safe.
     void this.sampleData.seedForNewTenant(tenant.id, user.id, requestedVertical);
+
+    // VERT-001 (audit §20) — and auto-seed the tenant's FIRST REAL BOARD: one
+    // vertical-appropriate template cloned from the flagship preset for their
+    // industry, plus "My first playlist" holding it. UNSCHEDULED, so nothing
+    // plays on a real screen until they publish it. Same fire-and-forget,
+    // error-swallowing contract as the sample-data seed above (the service
+    // catches everything internally) and idempotent on re-run, so signup can
+    // never fail because of it. Deliberately a SEPARATE call from the
+    // sample-data seed: a POS/streaming seeding failure must not cost the
+    // operator their first board, and vice versa.
+    void this.starterBoard.seedForNewTenant(tenant.id, user.id, requestedVertical, tenant.name);
 
     return this.authService.login(user);
   }
