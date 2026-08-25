@@ -761,7 +761,7 @@
         "volumeOk": "Ajusta el volumen multimedia del dispositivo.",
         "volumeNone": "Este dispositivo no expone ninguna interfaz de volumen — nada de aquí cambiará su audio.",
         "brightnessSysfs": "Control real de retroiluminación — bajarlo ahorra energía de verdad.",
-        "brightnessSettings": "Ajusta el brillo del sistema Android.",
+        "brightnessSettings": "Atenúa la imagen por software — la retroiluminación de este panel no se puede ajustar en remoto.",
         "brightnessSoftware": "Solo atenúa la imagen — este equipo no expone control de retroiluminación, así que el panel sigue consumiendo lo mismo.",
         "blankHardware": "Apaga la pantalla de verdad.",
         "blankSoftware": "Cubre la pantalla de negro — este equipo no permite apagarla de verdad, la retroiluminación sigue encendida.",

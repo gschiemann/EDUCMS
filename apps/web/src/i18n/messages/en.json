@@ -761,7 +761,7 @@
         "volumeOk": "Sets the device’s media volume.",
         "volumeNone": "This device exposes no volume interface — nothing here can change its audio level.",
         "brightnessSysfs": "Real backlight control — lower settings actually save power.",
-        "brightnessSettings": "Sets the Android system brightness.",
+        "brightnessSettings": "Dims the picture in software — this panel’s backlight can’t be set remotely.",
         "brightnessSoftware": "Dims the image only — this box exposes no backlight control, so the panel keeps drawing full power.",
         "blankHardware": "Truly turns the screen off.",
         "blankSoftware": "Covers the screen with black — this box exposes no true screen-off, so the backlight stays lit.",

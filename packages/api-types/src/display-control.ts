@@ -400,6 +400,82 @@ export const DISPLAY_SOFT_BLANK_MECHANISM = 'web-overlay' as const;
 export const DISPLAY_POWER_PROVEN_MECHANISMS = ['vendor-recipe'] as const;
 
 /**
+ * ── THE BRIGHTNESS SPLIT (field evidence, 2026-08-25) ─────────────────
+ *
+ * Brightness mechanisms PROVEN to move the actual backlight, from each
+ * panel's OWN hardware probe (`ScreenDeviceInventory.report.backlightNodes`)
+ * cross-checked against what the operator saw on the glass:
+ *
+ *   M43      /sys/class/backlight/aml-bl   writable:true   → sysfs-backlight  WORKS
+ *   L55VEC   /sys/class/backlight/aml-bl   writable:true   → sysfs-backlight  WORKS
+ *   G43      /sys/class/backlight/aml-bl   writable:false  → settings         DEAD
+ *   A-Frame  /sys/class/backlight/backlight writable:false → settings         DEAD
+ *
+ * All four report `canWriteSettings: true` and `windowBrightnessAvailable:
+ * true`, and the `settings` write genuinely SUCCEEDS at the API level — G43's
+ * stored `screen_brightness` reads 102, not 255. The vendor firmware simply
+ * ignores that value for the real backlight. So `settings` is a mechanism
+ * that reports success and does nothing to the glass: the same failure shape
+ * as the blank incident, and the reason brightness now gets the same soft
+ * fallback that BLANK got.
+ *
+ * The list is an ALLOWLIST, not a denylist, for the reason
+ * DISPLAY_POWER_PROVEN_MECHANISMS is: "we have not observed it working" and
+ * "it works" are different claims, and only the first one is safe to assume.
+ *
+ *  • `vendor-recipe` — a direct write to a named backlight node, authored
+ *    per hardware class and validated by `displayRecipeBrightnessIssue`
+ *    (percent-derived, minimum scale span). Same class of evidence as the
+ *    proven power path.
+ *  • `sysfs-backlight` / `sysfs` — a writable `/sys/class/backlight/*`
+ *    node. Two spellings of ONE thing: the provider id and the probe's
+ *    heuristic-fallback literal (see the C5 note at the top of this file).
+ *    Omitting the second would silently drop every box whose registry
+ *    resolution threw back onto the soft path.
+ *
+ * NOT proven, and therefore soft: `settings` (writes succeed, backlight
+ * ignores them on this hardware class) and `software-dim` (which is the soft
+ * path by definition).
+ *
+ * A mechanism joins this list only from observed behaviour on real glass,
+ * never from anything the probe infers about itself.
+ */
+export const DISPLAY_BRIGHTNESS_PROVEN_MECHANISMS = [
+  'vendor-recipe',
+  'sysfs-backlight',
+  'sysfs',
+] as const;
+
+/**
+ * The mechanism recorded for a SOFT brightness change.
+ *
+ * Unlike the soft BLANK — which got its own `web-overlay` word because no
+ * probe verdict describes it — a soft dim IS software dimming, and
+ * `software-dim` is already the contract's name for that. Reusing it keeps
+ * the audit vocabulary closed over `DISPLAY_BRIGHTNESS_MECHANISMS`; the audit
+ * row carries `softDim: true` plus `reportedMechanism` alongside it so the
+ * forensic trail still distinguishes "this panel's own SoftwareDimProvider"
+ * from "we routed around a mechanism that lies".
+ */
+export const DISPLAY_SOFT_DIM_MECHANISM = 'software-dim' as const;
+
+const BRIGHTNESS_PROVEN: readonly string[] = DISPLAY_BRIGHTNESS_PROVEN_MECHANISMS;
+
+/**
+ * Will this brightness mechanism actually move the backlight?
+ *
+ * `false` routes SET_BRIGHTNESS onto the soft path (a dim overlay drawn by
+ * the player's own page), which works identically on every model including a
+ * browser player. Unknown / absent is `false` — fail toward the path that
+ * provably does something.
+ */
+export function isBrightnessMechanismProven(
+  mechanism: string | null | undefined,
+): boolean {
+  return typeof mechanism === 'string' && BRIGHTNESS_PROVEN.includes(mechanism);
+}
+
+/**
  * The admin-lock family — hard, and NOT proven reversible on command.
  *
  * FIELD EVIDENCE (2026-08-25). Four panels, three different outcomes from the
@@ -476,10 +552,20 @@ export interface DisplayControlWsPayload {
   /** ISO-8601, server clock. Advisory/forensic only. */
   issuedAt: string;
   /**
-   * SOFT frame (BLANK / WAKE). The player's WEB PAGE handles it by showing or
-   * removing a black full-viewport overlay, and MUST NOT forward it to the
-   * APK bridge — forwarding is what re-fires the device-admin lock, i.e. the
-   * whole 2026-08-25 incident.
+   * SOFT frame. The player's WEB PAGE handles it with its own full-viewport
+   * black overlay, and MUST NOT forward it to the APK bridge.
+   *
+   * Three verbs can arrive soft:
+   *   • BLANK / WAKE — always. Forwarding one re-fires the device-admin lock,
+   *     i.e. the whole 2026-08-25 incident.
+   *   • SET_BRIGHTNESS — only when the panel's resolved brightness mechanism
+   *     is NOT in DISPLAY_BRIGHTNESS_PROVEN_MECHANISMS. `percent` then names
+   *     the DIM LEVEL the overlay renders rather than a backlight value.
+   *     Forwarding one would hand it to a mechanism the field proved is a
+   *     silent no-op on that hardware class.
+   *
+   * A brightness frame WITHOUT this flag is a real hardware write and is
+   * forwarded to the bridge exactly as before.
    */
   soft?: true;
   /**

@@ -19,6 +19,8 @@ import {
 import {
   resolveDisplayControls,
   parseDisplayCapabilities,
+  derivePanelPowerState,
+  panelPowerOffer,
   clampBrightness,
   clampVolume,
   serializeDays,
@@ -232,7 +234,7 @@ describe('resolveDisplayControls — registry provider ids (contract C5)', () =>
     // whose backlight node is written and un-written by the same recipe.
     const k = resolveDisplayControls(stored({ ...REGISTRY_VERDICT, screenBlank: 'vendor-recipe' }));
     expect(k.power.off.available).toBe(true);
-    expect(k.power.off.noteText).toMatch(/manufacturer/i);
+    expect(k.power.off.noteText).toMatch(/switches the panel/i);
   });
 
   it('treats software-dim as the floor on BOTH axes, honestly labelled', () => {
@@ -467,14 +469,21 @@ describe('resolveDisplayControls — software-floor axes stay actionable but hon
     }
   });
 
-  it('the admin-lock refusal copy carries the BOTH-DIRECTIONS evidence', () => {
-    // If the copy only says "it will not come back", the next operator sees
-    // a self-recovered panel and reads the guard as wrong.
+  it('the admin-lock refusal tells the operator what to DO, not what went wrong', () => {
+    // ⚠️ REVERSED 2026-08-25 (second pass). This test used to REQUIRE the
+    // incident narrative in the visible copy — "both directions", "woke
+    // itself back up", "supervised on-site" — and that is exactly what the
+    // operator saw in his gear popover and called out: a date, an internal
+    // incident story, and jargon, where a single actionable sentence
+    // belonged. Design-doc prose is not product copy. The engineering detail
+    // now lives in a code comment on `powerOffNote`, where the next
+    // maintainer needs it and the operator does not.
     const admin = resolveDisplayControls(stored({ ...FULL_VERDICT, screenBlank: 'device-admin' }));
     expect(admin.power.off.available).toBe(false);
-    expect(admin.power.off.noteText).toMatch(/both directions/i);
-    expect(admin.power.off.noteText).toMatch(/woke itself back up/i);
-    expect(admin.power.off.noteText).toMatch(/supervised on-site/i);
+    // Says what to do instead…
+    expect(admin.power.off.noteText).toMatch(/blank/i);
+    // …and stays short enough to read at a glance in a popover.
+    expect(admin.power.off.noteText!.length).toBeLessThan(120);
   });
 
   it('POWER_ON is offered on EVERY reported verdict — even where OFF is refused', () => {
@@ -594,5 +603,154 @@ describe('crossesMidnight', () => {
   });
   it('is false for malformed input rather than throwing', () => {
     expect(crossesMidnight('', '22:00')).toBe(false);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+// PANEL POWER STATE — offer the verb that matches the glass
+//
+// Operator, looking at a screen that was ONLINE and actively painting and
+// being offered exactly one button, "Turn panel on": *"thats not correct
+// really, the screen is already on...it should know that and say power
+// off....or sleep, or whatever its doing."*
+//
+// Capability answers "what can this hardware do". State answers "what is it
+// doing right now". Rendering both power verbs at once meant one of them was
+// always contradicting the screen in front of the operator — which teaches
+// them to distrust the whole panel.
+// ═════════════════════════════════════════════════════════════════════════
+describe('derivePanelPowerState — render proof decides, never a guess', () => {
+  it('a painting screen is ON', () => {
+    expect(derivePanelPowerState('painting')).toBe('on');
+  });
+
+  it.each(['not-painting', 'checking', 'stale-chronic'] as const)(
+    'a reachable screen with no fresh paint (%s) is DARK',
+    (grade) => {
+      expect(derivePanelPowerState(grade)).toBe('dark');
+    },
+  );
+
+  it('offline or never-proved is UNKNOWN — we do not guess at panel state', () => {
+    expect(derivePanelPowerState('offline')).toBe('unknown');
+    expect(derivePanelPowerState('unknown')).toBe('unknown');
+  });
+});
+
+describe('panelPowerOffer — one verb, and only when it is true', () => {
+  const proven = resolveDisplayControls(
+    stored({ ...FULL_VERDICT, screenBlank: 'vendor-recipe' }),
+  ).power;
+  const unproven = resolveDisplayControls(
+    stored({ ...FULL_VERDICT, screenBlank: 'device-admin' }),
+  ).power;
+  const unreported = resolveDisplayControls(null).power;
+
+  it('PAINTING + proven power → offers OFF only', () => {
+    // THE OPERATOR'S COMPLAINT, pinned. A screen that is visibly painting
+    // must never be offered "Turn panel on".
+    const o = panelPowerOffer(proven, 'on');
+    expect(o.showOff).toBe(true);
+    expect(o.showOn).toBe(false);
+  });
+
+  it('PAINTING + unproven power → offers NOTHING, and says what to use', () => {
+    const o = panelPowerOffer(unproven, 'on');
+    expect(o.showOff).toBe(false);
+    expect(o.showOn).toBe(false);
+    expect(o.note).toMatch(/blank/i);
+  });
+
+  it('DARK → offers ON only, on proven AND unproven hardware alike', () => {
+    // Recovery is never gated (C4). On the admin-lock panels POWER_ON is the
+    // only hardware control left — the soft Wake button never reaches the
+    // bridge, so a panel darkened by its own nightly schedule would have no
+    // way back from this dashboard at all.
+    for (const power of [proven, unproven]) {
+      const o = panelPowerOffer(power, 'dark');
+      expect(o.showOff).toBe(false);
+      expect(o.showOn).toBe(true);
+    }
+  });
+
+  it('UNKNOWN state → no buttons, one honest line', () => {
+    const o = panelPowerOffer(proven, 'unknown');
+    expect(o.showOff).toBe(false);
+    expect(o.showOn).toBe(false);
+    expect(o.note).toMatch(/can’t tell|cannot tell/i);
+  });
+
+  it('an unreported screen has no power buttons in ANY state', () => {
+    for (const state of ['on', 'dark', 'unknown'] as const) {
+      const o = panelPowerOffer(unreported, state);
+      expect(o.showOff).toBe(false);
+      expect(o.showOn).toBe(false);
+      expect(o.note.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('always returns a note — a silent row is a row that explains nothing', () => {
+    for (const power of [proven, unproven, unreported]) {
+      for (const state of ['on', 'dark', 'unknown'] as const) {
+        expect(panelPowerOffer(power, state).note.length).toBeGreaterThan(0);
+      }
+    }
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+// COPY HYGIENE — engineering prose must never reach the glass
+//
+// The `powerOffNote` copy shipped with a date, a two-panel incident
+// narrative and the phrase "supervised on-site off/on test" in it, and the
+// operator read all of that in a popover. Design-doc prose is not product
+// copy. This pins the rule so it cannot leak back in.
+// ═════════════════════════════════════════════════════════════════════════
+describe('operator-facing copy stays operator-facing', () => {
+  /** Every literal string this resolver can put in front of an operator. */
+  const visibleCopy = (): string[] => {
+    const out: string[] = [];
+    const verdicts: unknown[] = [
+      null,
+      stored({ ...FULL_VERDICT, screenBlank: 'vendor-recipe' }),
+      stored({ ...FULL_VERDICT, screenBlank: 'device-admin' }),
+      stored({ ...FULL_VERDICT, screenBlank: 'device-owner' }),
+      stored({ ...FULL_VERDICT, screenBlank: 'screen-timeout' }),
+      stored({ ...FULL_VERDICT, screenBlank: 'software-dim' }),
+      stored({ ...FULL_VERDICT, screenBlank: 'none' }),
+    ];
+    for (const raw of verdicts) {
+      const r = resolveDisplayControls(raw);
+      for (const axis of [r.volume, r.brightness, r.blank, r.wake, r.reboot, r.power.off, r.power.on]) {
+        if (axis.noteText) out.push(axis.noteText);
+      }
+      for (const state of ['on', 'dark', 'unknown'] as const) {
+        out.push(panelPowerOffer(r.power, state).note);
+      }
+    }
+    return out.filter(Boolean);
+  };
+
+  it('contains no dates — an incident timestamp is not operator copy', () => {
+    // Catches 2026-08-25, 08/25/2026, "August 25", "Aug 25".
+    const DATE_LIKE =
+      /\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}\/\d{1,2}\/\d{2,4}\b|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b/i;
+    const offenders = visibleCopy().filter((s) => DATE_LIKE.test(s));
+    expect(offenders).toEqual([]);
+  });
+
+  it('tells no incident stories', () => {
+    // The specific prose the operator was shown, plus its neighbours. If a
+    // future note needs one of these words it almost certainly belongs in a
+    // code comment instead.
+    const STORY =
+      /woke itself|mains|power(?:-| )pull|pulled the power|supervised|vendor standby|IR remote|device-admin|latched/i;
+    const offenders = visibleCopy().filter((s) => STORY.test(s));
+    expect(offenders).toEqual([]);
+  });
+
+  it('stays short enough to read at a glance in a popover', () => {
+    const tooLong = visibleCopy().filter((s) => s.length > 200);
+    expect(tooLong).toEqual([]);
   });
 });

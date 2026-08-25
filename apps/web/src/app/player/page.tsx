@@ -3373,14 +3373,44 @@ function PlayerPage() {
     softBlankRef.current = on;
     setSoftBlank(on);
   }, []);
+
+  /**
+   * SOFT DIM — the brightness half of the split (2026-08-25).
+   *
+   * Alpha, 0 … SOFT_DIM_MAX_ALPHA. Arrives only for panels whose brightness
+   * mechanism the field proved is a silent no-op (a non-writable
+   * `/sys/class/backlight/*` node falling through to `settings`), so on M43
+   * and L55VEC this stays 0 forever and the APK keeps driving the real
+   * backlight exactly as it does today.
+   *
+   * Rendered through the SAME node as the blank rather than a second
+   * stacking layer: one node means one render-exit rule, one paint proof and
+   * one emergency clear, instead of three of each that can drift apart. The
+   * two states differ only in opacity and hit-testing — a blank is opaque
+   * and swallows touches, a dim is translucent and must not.
+   *
+   * Session-only, like the blank, and for the same reason: a reload fails
+   * BRIGHT. The worst case is a screen that comes back at full brightness
+   * on its own, which is a nuisance; the other direction is a truck roll.
+   */
+  const [softDim, setSoftDim] = useState(0);
+  const softDimRef = useRef(0);
+  const applySoftDim = useCallback((alpha: number) => {
+    const next = Number.isFinite(alpha) ? Math.min(1, Math.max(0, alpha)) : 0;
+    if (softDimRef.current === next) return;
+    softDimRef.current = next;
+    setSoftDim(next);
+  }, []);
+
   /**
    * The seam `dispatchDisplayControl` drives. The RULES live in
    * displayControl.ts (unit-tested without mounting this page); this object
-   * is only the two capabilities that module cannot have on its own — write
-   * the overlay, and read live emergency state.
+   * is only the capabilities that module cannot have on its own — write the
+   * overlay (opaque or dimmed), and read live emergency state.
    */
   const softBlankSinkRef = useRef<SoftBlankSink>({
     set: (on: boolean) => applySoftBlank(on),
+    setDim: (alpha: number) => applySoftDim(alpha),
     emergencyDisplayed: () =>
       !!activeEmergencyRef.current || !!pushedEmergencyMessageRef.current,
   });
@@ -3391,8 +3421,14 @@ function PlayerPage() {
   // painted behind a black div is the one failure mode of this feature that
   // could get someone hurt, and the three checks fail independently.
   useEffect(() => {
-    if (activeEmergency || pushedEmergencyMessage) applySoftBlank(false);
-  }, [activeEmergency, pushedEmergencyMessage, applySoftBlank]);
+    if (activeEmergency || pushedEmergencyMessage) {
+      applySoftBlank(false);
+      // The dim comes down too. A translucent black film over a lockdown
+      // notice is not a blank, but it is contrast taken away from the one
+      // thing on that screen that matters.
+      applySoftDim(0);
+    }
+  }, [activeEmergency, pushedEmergencyMessage, applySoftBlank, applySoftDim]);
 
   // ── DISPLAY-CONTROL EMERGENCY INTERLOCK (2026-08-13) ──────────────────
   // The display-control layer in the APK can add a full-screen blackout
@@ -5420,16 +5456,24 @@ function PlayerPage() {
         if (dbg.recent.length > 20) dbg.recent.shift();
       } catch { /* SSR-safe / hostile-global no-op — never break the socket */ }
 
+      //
+      // Covers the soft DIM as well as the soft BLANK (brightness split):
+      // a dim that reports success and paints nothing is the same lie, on
+      // the axis the operator was actually complaining about.
       if (result.status === 'soft' && result.overlay) {
+        const what = result.action === 'SET_BRIGHTNESS' ? 'DIM' : 'BLANK';
         setTimeout(() => {
           if (softBlankNodeRef.current) return; // painted — nothing to say
-          if (!softBlankRef.current) return; // a WAKE landed inside the window
+          // A WAKE (or a raise back to 100%) landed inside the window and
+          // legitimately took the overlay down.
+          if (!softBlankRef.current && softDimRef.current === 0) return;
           if (softBlankSinkRef.current.emergencyDisplayed()) return; // correctly withheld
           console.error(
-            '[display] SOFT BLANK ACCEPTED BUT NOT PAINTED — the overlay div is ' +
-              'not in the DOM. This render branch is missing {softBlankOverlay}; ' +
-              'the operator pressed Blank and the glass did not change. ' +
-              '(2026-08-25 regression class — see the const in page.tsx.)',
+            `[display] SOFT ${what} ACCEPTED BUT NOT PAINTED — the overlay div ` +
+              'is not in the DOM. This render branch is missing ' +
+              '{softBlankOverlay}; the operator moved a control and the glass ' +
+              'did not change. (2026-08-25 regression class — see the const in ' +
+              'page.tsx.)',
           );
           try {
             const dbg = (window as any).__eduDisplayControl;
@@ -7483,10 +7527,23 @@ function PlayerPage() {
   // `inset-0`. All four are the SAME value, which is the uniform case the
   // Chromium-83 polyfill is built to force-zero — the non-uniform
   // serialization landmine (variant 3) does not apply.
+  //
+  // ── ONE NODE, TWO STATES (brightness split, 2026-08-25 later) ─────────
+  //
+  // The soft DIM renders through this same div at partial opacity instead of
+  // stacking a second layer. One node means one render-exit rule, one paint
+  // proof and one emergency clear — three of each is how they drift apart.
+  // BLANK wins when both are set: opaque, and it swallows touches, which a
+  // dim must never do.
+  //
+  // A dim can never reach opacity 1 (SOFT_DIM_MAX_ALPHA caps it at 0.85), so
+  // "dimmed" always stays visibly distinguishable from "blanked" — and a
+  // brightness slider can never black out a wall-mounted panel.
   const softBlankOverlay =
-    softBlank && !activeEmergency && !pushedEmergencyMessage ? (
+    (softBlank || softDim > 0) && !activeEmergency && !pushedEmergencyMessage ? (
       <div
-        data-edu-soft-blank="1"
+        data-edu-soft-blank={softBlank ? '1' : undefined}
+        data-edu-soft-dim={!softBlank && softDim > 0 ? String(softDim) : undefined}
         ref={softBlankNodeRef}
         aria-hidden="true"
         style={{
@@ -7497,10 +7554,13 @@ function PlayerPage() {
           left: 0,
           zIndex: 9990,
           background: '#000000',
-          // Swallow touches rather than letting a visitor interact with
-          // content they cannot see. A kiosk that looks off must behave
-          // off; Wake — or any page reload — brings it back.
-          pointerEvents: 'auto',
+          opacity: softBlank ? 1 : softDim,
+          // A BLANK swallows touches rather than letting a visitor interact
+          // with content they cannot see — a kiosk that looks off must behave
+          // off; Wake, or any page reload, brings it back. A DIM must not:
+          // the content is still readable and still meant to be usable, so
+          // the film has to be transparent to hit-testing.
+          pointerEvents: softBlank ? 'auto' : 'none',
         }}
       />
     ) : null;

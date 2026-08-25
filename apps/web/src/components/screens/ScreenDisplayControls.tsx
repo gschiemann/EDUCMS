@@ -83,14 +83,25 @@
  *                   revert any more: a soft blank cannot strand anything,
  *                   and "blank should just do that" means it holds until
  *                   Wake (or a reload, or an emergency).
- *   Panel power   — HARD. "Turn panel off" renders only on a mechanism
- *                   proven to round-trip (vendor-recipe today); the API
- *                   refuses the admin-lock family with
- *                   DISPLAY_BLANK_MECHANISM_UNPROVEN. "Turn panel on"
- *                   renders whenever the screen has reported anything at
- *                   all, even where OFF is refused — a dark panel must
- *                   always have a path back, and on the incident hardware
- *                   this is the only hardware control left.
+ *   Panel power   — HARD, and STATE-AWARE (2026-08-25, second pass). It
+ *                   offers the ONE verb that matches the glass: "Turn panel
+ *                   off" while the screen is provably painting (and only on
+ *                   a mechanism proven to round-trip), "Turn panel on" while
+ *                   it is not, and neither when we cannot tell. Showing both
+ *                   at once was the defect the operator caught — an online,
+ *                   actively-painting screen offering him "Turn panel on".
+ *                   See `panelPowerOffer` in ./display-capabilities.ts.
+ *
+ * ── AND BRIGHTNESS SPLIT THE SAME WAY (2026-08-25, later) ─────────────
+ *
+ * The slider worked on two field panels and was dead on two. Each panel's
+ * probe says why: a WRITABLE `/sys/class/backlight/*` node resolves
+ * `sysfs-backlight` and works; a non-writable one falls through to
+ * `settings`, whose write succeeds while the vendor firmware ignores it. So
+ * the API now dispatches SET_BRIGHTNESS soft on any unproven mechanism and
+ * the player dims its own picture — which is why `settings` reads
+ * "image only" here now. The slider itself is unchanged and renders on every
+ * screen exactly as before; only the copy and the executor moved.
  */
 
 import { useRef, useState } from 'react';
@@ -119,8 +130,11 @@ import {
   resolveDisplayControls,
   clampBrightness,
   clampVolume,
+  derivePanelPowerState,
+  panelPowerOffer,
   type ControlAxis,
 } from './display-capabilities';
+import { deriveRenderTrustGrade } from './renderTrust';
 
 /** The literal the operator must type to confirm a remote reboot. */
 const REBOOT_TOKEN = 'REBOOT';
@@ -278,6 +292,19 @@ export interface DisplayControlScreen {
   displayCapabilitiesAt?: string | null;
   /** Device-echoed levels, when the API has them. Absent = unknown. */
   displayState?: { volumePercent?: number; brightnessPercent?: number } | null;
+  /**
+   * ── PANEL-STATE SIGNALS (2026-08-25) ───────────────────────────────
+   *
+   * All four already ride every `GET /screens` row and the parent already
+   * passes the whole screen object, so this is a widening of the type, not
+   * new data: no poll, no endpoint, no schema. They exist here so the power
+   * row can offer the verb that matches the glass instead of always
+   * offering "Turn panel on" to a screen that is visibly painting.
+   */
+  status?: string | null;
+  renderHealth?: 'OK' | 'STALE' | 'UNKNOWN' | null;
+  renderStale?: boolean | null;
+  lastRenderedAt?: string | null;
 }
 
 export function ScreenDisplayControls({
@@ -348,6 +375,21 @@ export function ScreenDisplayControls({
   const reportedVolume = typeof ds?.volumePercent === 'number' ? ds.volumePercent : null;
   const reportedBrightness =
     typeof ds?.brightnessPercent === 'number' ? ds.brightnessPercent : null;
+
+  // Is the glass actually lit? Derived from the render proof the fleet list
+  // already carries — the same classifier the Screens list chip uses, so the
+  // popover can never contradict the row it opened from.
+  const panelState = derivePanelPowerState(
+    deriveRenderTrustGrade({
+      status: screen?.status,
+      renderHealth: screen?.renderHealth,
+      renderStale: screen?.renderStale,
+      lastRenderedAtMs: screen?.lastRenderedAt
+        ? new Date(screen.lastRenderedAt).getTime()
+        : null,
+    }),
+  );
+  const powerOffer = panelPowerOffer(caps.power, panelState);
 
   const send = async (
     action: DisplayActionType,
@@ -582,23 +624,33 @@ export function ScreenDisplayControls({
   // The other half of the operator's contract: "turn on and off should do
   // that". This is the only control here that reaches panel power.
   //
-  // The two halves are gated INDEPENDENTLY, which is the same asymmetry
-  // Blank/Wake used to have and for the same reason:
-  //   • "Turn panel off" renders ONLY on a mechanism proven to round-trip
-  //     (today: vendor-recipe). On the admin-lock family the API refuses it
-  //     with DISPLAY_BLANK_MECHANISM_UNPROVEN, so a button would be a trap.
-  //   • "Turn panel on" renders on every screen that has reported ANYTHING,
-  //     even where OFF is refused. A panel left dark by a vendor standby, a
-  //     nightly schedule or someone's remote must always have a path back —
-  //     and on the incident panels that is the ONLY hardware control left.
-  const powerRow = caps.power.off.available || caps.power.on.available ? (
+  // TWO questions, answered separately and joined in `panelPowerOffer`:
+  //
+  //   CAPABILITY — what can this hardware do? "Turn panel off" is offerable
+  //     ONLY on a mechanism proven to round-trip (today: vendor-recipe); on
+  //     the admin-lock family the API refuses it with
+  //     DISPLAY_BLANK_MECHANISM_UNPROVEN, so a button would be a trap.
+  //   STATE — what is the glass doing right now? Derived from the render
+  //     proof the fleet row already carries.
+  //
+  // Offering both verbs at once was the defect the operator caught: a screen
+  // that was online and actively painting showed him a single "Turn panel
+  // on" button. *"thats not correct really, the screen is already on...it
+  // should know that and say power off....or sleep, or whatever its doing."*
+  // A control whose label contradicts the screen in front of you teaches the
+  // operator to distrust the whole panel.
+  //
+  // So: painting → only OFF (and only where OFF is real); dark → only ON;
+  // unknown → neither, plus one line saying why. See `panelPowerOffer` for
+  // why the DARK case is not restricted to proven hardware.
+  const powerRow = powerOffer.showOff || powerOffer.showOn ? (
     <div className="px-3.5 py-2.5 border-t border-slate-100">
       <div className="text-[11px] font-bold text-slate-700 flex items-center gap-2">
         <PowerOff className="w-3.5 h-3.5 text-slate-400" />
         {POWER_ROW_LABEL}
       </div>
       <div className="flex items-center gap-2 mt-1.5">
-        {caps.power.off.available && (
+        {powerOffer.showOff && (
           <button
             type="button"
             disabled={disabled || lockedBy('POWER_OFF')}
@@ -616,7 +668,7 @@ export function ScreenDisplayControls({
             {POWER_OFF_LABEL}
           </button>
         )}
-        {caps.power.on.available && (
+        {powerOffer.showOn && (
           <button
             type="button"
             disabled={disabled || lockedBy('POWER_ON')}
@@ -635,19 +687,17 @@ export function ScreenDisplayControls({
           </button>
         )}
       </div>
-      <p className="text-[10px] text-slate-400 leading-snug mt-1">
-        {axisNote(caps.power.off)}
-      </p>
+      <p className="text-[10px] text-slate-400 leading-snug mt-1">{powerOffer.note}</p>
     </div>
   ) : (
-    // Neither half is offerable: no button at all, just the reason. Same
+    // Neither verb is offerable: no button at all, just the reason. Same
     // discipline as volume:none / reboot:none — a greyed control reads as
     // "this exists and something is wrong with my permissions".
     <div className="px-3.5 py-2.5 border-t border-slate-100 flex items-start gap-2">
       <PowerOff className="w-3.5 h-3.5 text-slate-300 shrink-0 mt-0.5" />
       <div className="min-w-0">
         <div className="text-[11px] font-bold text-slate-400">{POWER_ROW_LABEL}</div>
-        <p className="text-[10px] text-slate-400 leading-snug">{axisNote(caps.power.off)}</p>
+        <p className="text-[10px] text-slate-400 leading-snug">{powerOffer.note}</p>
       </div>
     </div>
   );

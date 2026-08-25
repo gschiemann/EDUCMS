@@ -53,8 +53,10 @@
 import { Test } from '@nestjs/testing';
 
 import {
+  DISPLAY_BRIGHTNESS_MECHANISMS,
   DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT,
   MIN_SAFE_BRIGHTNESS_PERCENT,
+  isBrightnessMechanismProven,
 } from '@cms/api-types';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -1111,5 +1113,200 @@ describe('POWER_OFF / POWER_ON — hardware, proven-only, legacy-frame translate
       apply({ emergencyHold: { active: true, source: 'screen' } }),
     ).rejects.toMatchObject({ code: 'DISPLAY_EMERGENCY_HOLD' });
     expect(redis.publish).not.toHaveBeenCalled();
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+// THE BRIGHTNESS SPLIT — same field night, same failure shape
+//
+// The operator's brightness slider worked on two panels and was dead on two.
+// Each panel's OWN hardware probe (ScreenDeviceInventory.report) says why:
+//
+//   M43      /sys/class/backlight/aml-bl     writable:true  → sysfs-backlight
+//   L55VEC   /sys/class/backlight/aml-bl     writable:true  → sysfs-backlight
+//   G43      /sys/class/backlight/aml-bl     writable:false → settings
+//   A-Frame  /sys/class/backlight/backlight  writable:false → settings
+//
+// All four report canWriteSettings:true, and the `settings` write genuinely
+// SUCCEEDS — G43's stored screen_brightness reads 102, not 255. The vendor
+// firmware simply ignores it for the real backlight. A mechanism that reports
+// success and does nothing to the glass: the blank incident's signature.
+//
+// So brightness routes the way blank does — PROVEN mechanisms keep driving
+// hardware untouched, everything else goes SOFT and the player dims its own
+// picture. What must NOT move: the clamp, the MIN_SAFE floor, allowBlack's
+// dead-man requirement, and the emergency interlock. Those are asserted here
+// ON THE SOFT PATH specifically, because a routing change that quietly
+// bypassed one of them would be far worse than a dead slider.
+// ═════════════════════════════════════════════════════════════════════════
+describe('SET_BRIGHTNESS — proven mechanisms drive hardware, the rest dim softly', () => {
+  let service: DisplayService;
+  let prisma: any;
+  let redis: any;
+  let signer: any;
+  beforeEach(async () => {
+    redis = { publish: jest.fn().mockResolvedValue(true), isConnected: jest.fn().mockReturnValue(true) };
+    signer = { signMessage: jest.fn().mockImplementation((type: string, payload: any) => ({ type, payload, eventId: 'evt-1', timestamp: Date.now(), signature: 'sig' })) };
+    prisma = { client: { screen: { update: jest.fn().mockResolvedValue({}) }, auditLog: { create: jest.fn().mockResolvedValue({}) } } };
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        DisplayService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: RedisService, useValue: redis },
+        { provide: WebsocketSignerService, useValue: signer },
+      ],
+    }).compile();
+    service = moduleRef.get(DisplayService);
+  });
+
+  const apply = (over: Record<string, unknown> = {}) =>
+    service.applyAction({
+      screenId: SCREEN_ID,
+      tenantId: TENANT_ID,
+      userId: USER_ID,
+      action: 'SET_BRIGHTNESS',
+      percent: 40,
+      capabilities: stored(G43_VERDICT),
+      ...over,
+    } as any);
+
+  const published = (n = 0) => signer.signMessage.mock.calls[n][1];
+  const auditRow = (n = 0) =>
+    JSON.parse(prisma.client.auditLog.create.mock.calls[n][0].data.details);
+
+  const withBrightness = (brightness: string) => stored({ ...G43_VERDICT, brightness });
+
+  // ── THE ROUTING MATRIX ────────────────────────────────────────────────
+
+  it.each([
+    ['vendor-recipe — a named-node write, validated percent-derived', 'vendor-recipe'],
+    ['sysfs-backlight — M43 / L55VEC, writable aml-bl', 'sysfs-backlight'],
+    ['sysfs — the same thing in the probe heuristic spelling', 'sysfs'],
+  ])('dispatches HARD on %s — nothing changes for the panels that work', async (_l, brightness) => {
+    const res = await apply({ capabilities: withBrightness(brightness) });
+    expect(res.mechanism).toBe(brightness);
+    expect(published()).toMatchObject({
+      action: 'SET_BRIGHTNESS',
+      percent: 40,
+      mechanism: brightness,
+    });
+    // The absence of `soft` is what keeps this on the APK's backlight path.
+    expect(published()).not.toHaveProperty('soft');
+    expect(published()).not.toHaveProperty('hard');
+  });
+
+  it.each([
+    ['settings — G43 / A-Frame, write succeeds and the glass does not move', 'settings'],
+    ['software-dim — the soft path by definition', 'software-dim'],
+  ])('dispatches SOFT on %s', async (_l, brightness) => {
+    const res = await apply({ capabilities: withBrightness(brightness) });
+    expect(res.mechanism).toBe('software-dim');
+    expect(published()).toMatchObject({
+      action: 'SET_BRIGHTNESS',
+      percent: 40,
+      mechanism: 'software-dim',
+      soft: true,
+    });
+    expect(published()).not.toHaveProperty('hard');
+  });
+
+  it('covers every mechanism in the contract — a new one is a gap, not a default', () => {
+    // If a provider id is added to DISPLAY_BRIGHTNESS_MECHANISMS without a
+    // decision about whether it actually moves a backlight, this fails
+    // rather than silently assuming it does.
+    const routed = Object.fromEntries(
+      DISPLAY_BRIGHTNESS_MECHANISMS.map((m) => [m, isBrightnessMechanismProven(m)]),
+    );
+    expect(routed).toEqual({
+      'vendor-recipe': true,
+      'sysfs-backlight': true,
+      sysfs: true,
+      settings: false,
+      'software-dim': false,
+    });
+  });
+
+  it('dispatches SOFT on a screen that has never reported', async () => {
+    // The unknown-verdict branch resolves 'software-dim', which is unproven
+    // by construction — we have observed nothing about this hardware, so the
+    // path that provably paints something is the honest one.
+    const res = await apply({
+      capabilities: null,
+      percent: DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT,
+    });
+    expect(res.mechanism).toBe('software-dim');
+    expect(published()).toMatchObject({ soft: true });
+  });
+
+  // ── THE AUDIT TRAIL STAYS HONEST ──────────────────────────────────────
+
+  it('audits the mechanism that ACTUALLY drove the glass, plus what the panel claimed', async () => {
+    await apply();
+    expect(auditRow()).toMatchObject({
+      requested: 'SET_BRIGHTNESS',
+      outcome: 'dispatched',
+      // What we did…
+      mechanism: 'software-dim',
+      softDim: true,
+      // …and what this panel reported it had. Both, because the incident
+      // night needed exactly these two facts and could answer neither.
+      reportedMechanism: 'settings',
+      appliedPercent: 40,
+    });
+  });
+
+  it('leaves a HARD row exactly as it was — no new keys on the working panels', async () => {
+    await apply({ capabilities: withBrightness('sysfs-backlight') });
+    const row = auditRow();
+    expect(row).toMatchObject({ mechanism: 'sysfs-backlight' });
+    expect(row).not.toHaveProperty('softDim');
+    expect(row).not.toHaveProperty('reportedMechanism');
+  });
+
+  // ── THE SAFETY PROPERTIES THE ROUTING MUST NOT MOVE ───────────────────
+
+  it('still clamps to the MIN_SAFE floor on the soft path', async () => {
+    const res = await apply({ percent: 0 });
+    expect(res.percent).toBe(MIN_SAFE_BRIGHTNESS_PERCENT);
+    expect(res.clamped).toBe(true);
+    expect(published()).toMatchObject({
+      percent: MIN_SAFE_BRIGHTNESS_PERCENT,
+      soft: true,
+    });
+  });
+
+  it('still refuses allowBlack without a dead-man revert on the soft path', async () => {
+    await expect(apply({ percent: 0, allowBlack: true })).rejects.toMatchObject({
+      code: 'DISPLAY_ALLOW_BLACK_REQUIRES_REVERT',
+    });
+    expect(redis.publish).not.toHaveBeenCalled();
+  });
+
+  it('still refuses a darkening brightness under the emergency interlock', async () => {
+    // The interlock runs BEFORE the routing decision and is untouched by it.
+    // A soft dim is gentler than a backlight drop, but an alert with a black
+    // film over it is still an alert someone might not read.
+    await expect(
+      apply({ percent: 10, emergencyHold: { active: true, source: 'screen' } }),
+    ).rejects.toMatchObject({ code: 'DISPLAY_EMERGENCY_HOLD' });
+    expect(redis.publish).not.toHaveBeenCalled();
+    expect(auditRow()).toMatchObject({ outcome: 'refused', requested: 'SET_BRIGHTNESS' });
+  });
+
+  it('still refuses a DARKENING request on an unreported screen', async () => {
+    // C4 is unchanged: we do not darken hardware we have never observed,
+    // soft path or not.
+    await expect(
+      apply({ capabilities: null, percent: DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT - 1 }),
+    ).rejects.toMatchObject({ code: 'DISPLAY_CAPABILITIES_UNKNOWN' });
+    expect(redis.publish).not.toHaveBeenCalled();
+  });
+
+  it('keeps SET_BRIGHTNESS out of the BLANK/POWER translation', async () => {
+    // POWER_OFF/POWER_ON are rewritten onto the legacy verbs for the
+    // five-verb APKs. Brightness is already one of those five, so it must
+    // ride as itself — a translated brightness would be unparseable.
+    await apply();
+    expect(published()).toMatchObject({ action: 'SET_BRIGHTNESS' });
   });
 });

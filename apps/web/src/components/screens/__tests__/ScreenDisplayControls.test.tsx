@@ -36,7 +36,29 @@ jest.mock('@/lib/api-client', () => ({
  * own `readStoredDisplayVerdict`, so a bare verdict is (correctly) "nothing
  * reported" — the envelope is added here rather than in 20 call sites.
  */
-function renderPanel(verdict: unknown, props: { readOnly?: boolean } = {}) {
+/**
+ * ── PANEL STATE FIXTURES (2026-08-25, second pass) ──────────────────────
+ *
+ * The power row now offers the verb that matches the GLASS, derived from the
+ * render-proof fields every `GET /screens` row already carries. So a test
+ * that renders this panel has to say what the panel is doing, or it is
+ * testing the "we can't tell" branch by accident.
+ *
+ * PAINTING is the default because it is the overwhelmingly common real case
+ * — and it is the exact state the operator was in when he was offered "Turn
+ * panel on" for a screen that was plainly on.
+ */
+const PAINTING = { status: 'ONLINE', renderHealth: 'OK' as const };
+/** Reachable, but pixels are not advancing: dark, asleep, or wedged. */
+const DARK = { status: 'ONLINE', renderHealth: 'STALE' as const, renderStale: true };
+/** Offline, or a build that never posted render proof. We do not guess. */
+const UNPROVED = { status: 'OFFLINE' as const };
+
+function renderPanel(
+  verdict: unknown,
+  props: { readOnly?: boolean } = {},
+  screenOver: Record<string, unknown> = PAINTING,
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const displayCapabilities =
     verdict === null || verdict === undefined
@@ -45,7 +67,7 @@ function renderPanel(verdict: unknown, props: { readOnly?: boolean } = {}) {
   return render(
     <QueryClientProvider client={qc}>
       <ScreenDisplayControls
-        screen={{ id: 's1', name: 'Lobby', displayCapabilities }}
+        screen={{ id: 's1', name: 'Lobby', displayCapabilities, ...screenOver }}
         onOpenSchedule={() => {}}
         {...props}
       />
@@ -243,27 +265,112 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
     }
   });
 
-  it('renders NO "Turn panel off" on the admin-lock family, and says why', () => {
+  it('renders NO "Turn panel off" on the admin-lock family, and says what to use', () => {
     renderPanel({ ...CAPABLE, screenBlank: 'device-admin' });
     expect(rtl.queryByRole('button', { name: /Turn panel off/ })).toBeNull();
-    // The BOTH-DIRECTIONS evidence has to be on screen: the A-Frame woke
-    // itself back up, so copy that only says "it will not come back" reads
-    // as disproven the next time an operator sees a panel self-recover.
-    expect(rtl.getByText(/both directions/i)).toBeTruthy();
-    expect(rtl.getByText(/woke itself back up/i)).toBeTruthy();
+    // ⚠️ REVERSED 2026-08-25 (second pass). This used to REQUIRE the incident
+    // narrative on screen — "both directions", "woke itself back up" — and
+    // that is precisely what the operator read in his popover and called
+    // out. One calm sentence that names the alternative; the evidence lives
+    // in a code comment on `powerOffNote`.
+    expect(rtl.getByText(/can’t be switched off remotely/i)).toBeTruthy();
+    expect(rtl.queryByText(/woke itself back up/i)).toBeNull();
+    expect(rtl.queryByText(/2026-08-25/)).toBeNull();
   });
 
-  it('still offers "Turn panel on" where OFF is refused — recovery is never gated', () => {
-    // On the incident hardware this is the only remaining hardware control,
-    // and a panel already in vendor standby needs it.
-    renderPanel({ ...CAPABLE, screenBlank: 'device-admin' });
-    expect(rtl.getByRole('button', { name: /Turn panel on/ })).not.toBeDisabled();
-  });
+  // ── THE STATE-AWARE POWER ROW ───────────────────────────────────────
+  //
+  // Operator, on a screen that was ONLINE and actively painting and was
+  // offered exactly one button, "Turn panel on": *"thats not correct really,
+  // the screen is already on...it should know that and say power off....or
+  // sleep, or whatever its doing."* These four cases are that complaint,
+  // pinned at the DOM.
 
-  it('renders BOTH power buttons on the proven vendor-recipe mechanism', () => {
-    renderPanel({ ...CAPABLE, screenBlank: 'vendor-recipe' });
+  it('PAINTING + proven power → offers "Turn panel off", never "on"', () => {
+    renderPanel({ ...CAPABLE, screenBlank: 'vendor-recipe' }, {}, PAINTING);
     expect(rtl.getByRole('button', { name: /Turn panel off/ })).toBeTruthy();
-    expect(rtl.getByRole('button', { name: /Turn panel on/ })).toBeTruthy();
+    expect(rtl.queryByRole('button', { name: /Turn panel on/ })).toBeNull();
+  });
+
+  it('PAINTING + unproven power → offers NO power button at all', () => {
+    renderPanel({ ...CAPABLE, screenBlank: 'device-admin' }, {}, PAINTING);
+    expect(rtl.queryByRole('button', { name: /Turn panel off/ })).toBeNull();
+    expect(rtl.queryByRole('button', { name: /Turn panel on/ })).toBeNull();
+  });
+
+  it('NOT PAINTING → offers "Turn panel on" — recovery is never gated', () => {
+    // Both hardware classes: on the admin-lock panels POWER_ON is the only
+    // hardware control left, and a panel darkened by its own nightly
+    // schedule has no other way back from this dashboard.
+    for (const screenBlank of ['vendor-recipe', 'device-admin']) {
+      const { unmount } = renderPanel({ ...CAPABLE, screenBlank }, {}, DARK);
+      expect(rtl.getByRole('button', { name: /Turn panel on/ })).not.toBeDisabled();
+      expect(rtl.queryByRole('button', { name: /Turn panel off/ })).toBeNull();
+      unmount();
+    }
+  });
+
+  it('UNKNOWN panel state → no power buttons, one honest line', () => {
+    renderPanel({ ...CAPABLE, screenBlank: 'vendor-recipe' }, {}, UNPROVED);
+    expect(rtl.queryByRole('button', { name: /Turn panel off/ })).toBeNull();
+    expect(rtl.queryByRole('button', { name: /Turn panel on/ })).toBeNull();
+    expect(rtl.getByText(/can’t tell whether this panel is on/i)).toBeTruthy();
+  });
+
+  // ── THE BRIGHTNESS SPLIT, AT THE DOM ────────────────────────────────
+
+  it('labels a `settings` panel "image only" — its backlight does not move', () => {
+    // G43 / Mobile A-Frame: a non-writable /sys/class/backlight node falls
+    // through to `settings`, whose write SUCCEEDS while the vendor firmware
+    // ignores it. The API routes those soft and the player dims its own
+    // picture, so "Sets the Android system brightness" was true and useless.
+    renderPanel({ ...CAPABLE, brightness: 'settings' });
+    expect(rtl.getByLabelText(/Brightness \(image only\)/)).toBeTruthy();
+    // The slider itself is unchanged — it renders on every screen, and its
+    // floor is still the API's own gate value.
+    const slider = rtl.getByLabelText(/Brightness \(image only\)/) as HTMLInputElement;
+    expect(Number(slider.min)).toBeGreaterThanOrEqual(5);
+  });
+
+  it('leaves the proven backlight panels labelled as real brightness', () => {
+    // M43 / L55VEC — writable aml-bl. Nothing about their row moves.
+    for (const brightness of ['sysfs', 'sysfs-backlight', 'vendor-recipe']) {
+      const { unmount } = renderPanel({ ...CAPABLE, brightness });
+      expect(rtl.getByLabelText('Brightness')).toBeTruthy();
+      expect(rtl.queryByLabelText(/image only/)).toBeNull();
+      unmount();
+    }
+  });
+
+  // ── COPY HYGIENE, AT THE DOM ────────────────────────────────────────
+  //
+  // The power note shipped with a date and a two-panel incident narrative in
+  // it, and the operator read all of that in his gear popover. Design-doc
+  // prose is not product copy. The resolver test pins the strings; this pins
+  // what actually reaches the glass, across every branch of this panel.
+
+  it('never renders a date or an incident story anywhere in the panel', () => {
+    const DATE_LIKE =
+      /\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}\/\d{1,2}\/\d{2,4}\b|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b/i;
+    const STORY =
+      /woke itself|mains|pulled the power|supervised|vendor standby|IR remote|device-admin|latched/i;
+    const branches: Array<[unknown, Record<string, unknown>]> = [
+      [null, PAINTING],
+      [CAPABLE, PAINTING],
+      [{ ...CAPABLE, screenBlank: 'device-admin' }, PAINTING],
+      [{ ...CAPABLE, screenBlank: 'device-admin' }, DARK],
+      [{ ...CAPABLE, screenBlank: 'vendor-recipe' }, PAINTING],
+      [{ ...CAPABLE, screenBlank: 'vendor-recipe' }, UNPROVED],
+      [{ ...CAPABLE, screenBlank: 'none' }, PAINTING],
+      [{ ...CAPABLE, brightness: 'settings' }, PAINTING],
+    ];
+    for (const [verdict, state] of branches) {
+      const { container, unmount } = renderPanel(verdict, {}, state);
+      const text = (container.textContent ?? '').replace(/\s+/g, ' ');
+      expect([verdict, DATE_LIKE.test(text)]).toEqual([verdict, false]);
+      expect([verdict, STORY.test(text)]).toEqual([verdict, false]);
+      unmount();
+    }
   });
 
   it('never offers a brightness below the safe floor', () => {
@@ -281,7 +388,7 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
   // device state we cannot observe.
   it('says what ends the blank, and never claims an observed screen state', () => {
     renderPanel(CAPABLE);
-    expect(rtl.getByText(/Wake brings it straight back/i)).toBeTruthy();
+    expect(rtl.getByText(/Wake brings it back/i)).toBeTruthy();
     expect(rtl.queryByText(/Wakes itself after 10 min/i)).toBeNull();
   });
 
@@ -331,7 +438,8 @@ describe('ScreenDisplayControls — the wire shape (contract C1)', () => {
     // SERVER translates on the way out to the device. If this panel posted
     // 'BLANK' for "Turn panel off" the whole split would collapse back into
     // the bug it was written to fix.
-    renderPanel({ ...CAPABLE, screenBlank: 'vendor-recipe' });
+    // A DARK screen is the state where "Turn panel on" is the offered verb.
+    renderPanel({ ...CAPABLE, screenBlank: 'vendor-recipe' }, {}, DARK);
     await act(async () => {
       fireEvent.click(rtl.getByRole('button', { name: /Turn panel on/ }));
     });

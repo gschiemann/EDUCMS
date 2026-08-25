@@ -53,6 +53,16 @@
  *      slider just gets dragged again), unless the caller explicitly passes
  *      `allowBlack`, which is recorded in the audit row.
  *
+ *      ── BRIGHTNESS ALSO SPLITS (2026-08-25, same evidence). Two of the
+ *      four field panels resolve a brightness mechanism (`settings`) whose
+ *      write SUCCEEDS and moves nothing on the glass, because their
+ *      `/sys/class/backlight/*` node is not writable. So SET_BRIGHTNESS is
+ *      dispatched HARD only on a mechanism in
+ *      DISPLAY_BRIGHTNESS_PROVEN_MECHANISMS and SOFT otherwise — the player
+ *      dims with its own overlay, identically on every model. The floor,
+ *      the clamp, `allowBlack` and the interlock below are untouched by
+ *      that routing; it only decides who executes the request.
+ *
  *   3. AUDIT EVERY ACTION. REBOOT gets its own action string so it is
  *      greppable, and the row is written whether or not the WS publish
  *      succeeds — the forensic record is of the DECISION, not the delivery.
@@ -70,9 +80,11 @@ import {
   DISPLAY_CONTROL_WS_TYPE,
   DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT,
   DISPLAY_REFUSAL_CODES,
+  DISPLAY_SOFT_DIM_MECHANISM,
   MIN_SAFE_BRIGHTNESS_PERCENT,
   clampBrightnessPercent,
   displayActionSupport,
+  isBrightnessMechanismProven,
   normalizeVerdict,
   readStoredDisplayVerdict,
   type DisplayActionType,
@@ -673,6 +685,34 @@ export class DisplayService {
       }
     }
 
+    // ── THE BRIGHTNESS SPLIT (field evidence, 2026-08-25) ───────────────
+    //
+    // Same failure shape as the blank incident, one axis over: a mechanism
+    // that reports success and does nothing to the glass. Each panel's own
+    // probe told us which is which — M43 and L55VEC resolve
+    // `sysfs-backlight` over a WRITABLE `/sys/class/backlight/aml-bl` and
+    // their sliders work; G43 and the Mobile A-Frame have a NON-writable
+    // node, fall through to `settings`, and their sliders are dead. The
+    // `settings` write itself succeeds (G43's stored `screen_brightness` is
+    // 102, not 255) — the vendor firmware just ignores it for the real
+    // backlight.
+    //
+    // So brightness routes the way blank does:
+    //   PROVEN mechanism  → unchanged. Hardware frame, straight to the APK.
+    //   anything else     → SOFT. The player dims with its own overlay,
+    //                       which works identically on every model.
+    //
+    // Deliberately computed BEFORE the audit write so the row records what
+    // actually drove the glass. `mechanism` is the EFFECTIVE one and
+    // `reportedMechanism` preserves the panel's verdict, so the forensic
+    // trail answers both "what did we do" and "what did this panel claim"
+    // — the two questions the incident night needed and could not answer.
+    const softBrightness =
+      action === 'SET_BRIGHTNESS' && !isBrightnessMechanismProven(support.mechanism);
+    const effectiveMechanism = softBrightness
+      ? DISPLAY_SOFT_DIM_MECHANISM
+      : support.mechanism;
+
     const actionId = crypto.randomUUID();
     const revertAfterMs =
       typeof opts.revertAfterMs === 'number' ? opts.revertAfterMs : null;
@@ -734,7 +774,13 @@ export class DisplayService {
             ? null
             : new Date(opts.lastPushConnectedAt as any).toISOString(),
         actionId,
-        mechanism: support.mechanism,
+        // The mechanism that ACTUALLY drove the glass…
+        mechanism: effectiveMechanism,
+        // …and, when they differ, the one this panel reported it had. Only
+        // present on a soft-routed brightness, so a normal row is unchanged.
+        ...(softBrightness
+          ? { softDim: true, reportedMechanism: support.mechanism }
+          : {}),
         requestedPercent:
           typeof opts.percent === 'number' ? opts.percent : null,
         appliedPercent: percent,
@@ -774,7 +820,11 @@ export class DisplayService {
     // The AUDIT ROW above already recorded `requested: action` — the REAL
     // verb the operator pressed — so the forensic log never inherits this
     // translation.
-    const soft = action === 'BLANK' || action === 'WAKE';
+    //  • SET_BRIGHTNESS rides as itself, and is soft ONLY when this panel's
+    //    brightness mechanism is not proven (see the split above). A soft
+    //    brightness frame's `percent` is a DIM LEVEL for the player's
+    //    overlay, not a backlight value; the APK never sees it.
+    const soft = action === 'BLANK' || action === 'WAKE' || softBrightness;
     const hard = action === 'POWER_OFF' || action === 'POWER_ON';
     const wireAction: DisplayActionType =
       action === 'POWER_OFF' ? 'BLANK' : action === 'POWER_ON' ? 'WAKE' : action;
@@ -786,7 +836,7 @@ export class DisplayService {
       percent,
       revertAfterMs,
       allowBlack: opts.allowBlack === true,
-      mechanism: support.mechanism,
+      mechanism: effectiveMechanism,
       issuedAt: new Date().toISOString(),
       ...(soft ? { soft: true as const } : {}),
       ...(hard ? { hard: true as const } : {}),
@@ -836,7 +886,10 @@ export class DisplayService {
     return {
       success: true,
       action,
-      mechanism: support.mechanism,
+      // The EFFECTIVE mechanism, matching the audit row and the wire — the
+      // dashboard must never be told `settings` for something the player
+      // dimmed in software.
+      mechanism: effectiveMechanism,
       percent,
       clamped,
       revertAfterMs,

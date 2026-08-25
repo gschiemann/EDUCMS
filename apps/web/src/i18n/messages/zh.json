@@ -761,7 +761,7 @@
         "volumeOk": "调节设备的媒体音量。",
         "volumeNone": "此设备未提供音量接口 — 这里的任何操作都无法改变其音量。",
         "brightnessSysfs": "真正的背光控制 — 调低确实能省电。",
-        "brightnessSettings": "调节 Android 系统亮度。",
+        "brightnessSettings": "以软件方式调暗画面 — 此面板的背光无法远程调节。",
         "brightnessSoftware": "仅调暗画面 — 此设备未提供背光控制，面板仍以全功率工作。",
         "blankHardware": "真正关闭屏幕。",
         "blankSoftware": "用黑色遮盖画面 — 此设备无法真正关屏，背光仍然亮着。",

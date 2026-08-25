@@ -51,6 +51,25 @@
  *                   APKs parse only five verbs. Forwarded to the bridge
  *                   untouched; old APKs ignore the extra key (org.json opt*).
  *
+ * ── AND THEN BRIGHTNESS, THE SAME SHAPE AGAIN (2026-08-25, later) ──────
+ *
+ * The operator's brightness slider worked on two panels and was dead on the
+ * other two. Each panel's own probe explains it exactly: M43 and L55VEC
+ * resolve `sysfs-backlight` over a WRITABLE `/sys/class/backlight/aml-bl`;
+ * G43 and the Mobile A-Frame have a NON-writable node, fall through to
+ * `settings`, and their vendor firmware ignores the value that write stores
+ * (G43's `screen_brightness` reads 102, not 255). A mechanism that reports
+ * success and does nothing to the glass — the blank incident's signature.
+ *
+ *   SET_BRIGHTNESS → HARD when the panel's mechanism is in
+ *                    DISPLAY_BRIGHTNESS_PROVEN_MECHANISMS: unchanged, the
+ *                    APK writes the backlight exactly as it does today.
+ *                  → SOFT otherwise, and then `percent` is a DIM LEVEL for
+ *                    the overlay, never a backlight value. A soft dim can
+ *                    never reach black (SOFT_DIM_MAX_ALPHA) — a slider is
+ *                    not a blank, and a wall-mounted panel must not go dark
+ *                    because someone nudged one.
+ *
  * ── WHAT THE FIRST PASS GOT WRONG (same night, hours later) ───────────
  *
  * The split shipped and the operator's Blank button still did nothing on two
@@ -161,6 +180,72 @@ const ACTION_SET: ReadonlySet<string> = new Set<string>(DISPLAY_ACTIONS);
 /** Same clamp the API and the APK both apply: 1 s … 1 h. */
 export const REVERT_MIN_MS = 1_000;
 export const REVERT_MAX_MS = 60 * 60 * 1_000;
+
+// ─────────────────────────────────────────────────────────────────────
+// THE SOFT DIM (brightness half of the split, 2026-08-25)
+//
+// Two of the four field panels resolve a brightness mechanism whose write
+// succeeds and moves nothing — their `/sys/class/backlight/*` node is not
+// writable, so they fall through to `settings`, and the vendor firmware
+// ignores the value it stores. The server now routes those onto a SOFT
+// frame, and this is what a soft frame paints: the same black overlay the
+// soft blank uses, at partial opacity.
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Hardest a soft dim may ever get.
+ *
+ * A soft dim MUST NOT be able to reach black. A blank is a deliberate,
+ * clearly-labelled action with a Wake button next to it; a brightness slider
+ * dragged to its floor is not, and a wall-mounted panel that goes black
+ * because someone nudged a slider is the truck roll this whole feature
+ * exists to avoid. At 0.85 the content is dim but still legible, which is
+ * what a real backlight at its 5% floor looks like — and it stays visibly
+ * DIFFERENT from a blank, so the operator can always tell which state a
+ * screen is in.
+ *
+ * This clamp is unconditional. `allowBlack` deliberately does NOT lift it:
+ * that flag is an opt-out of the HARDWARE backlight floor, and on the soft
+ * path there is no backlight involved — a fully opaque overlay would just be
+ * a blank wearing a slider's clothes, with none of a blank's affordances.
+ */
+export const SOFT_DIM_MAX_ALPHA = 0.85;
+
+/**
+ * The brightness floor the alpha ramp is anchored to.
+ *
+ * ⚠️ MIRRORS `MIN_SAFE_BRIGHTNESS_PERCENT` in `@cms/api-types`, and is
+ * declared here rather than imported ON PURPOSE. This module is deliberately
+ * dependency-free (only `./nativeBridge` and `./pushGate`) because it ships
+ * inside the player bundle to Chromium-83 kiosks, and `@cms/api-types` pulls
+ * zod in with it. `__tests__/displayControl.test.ts` imports the real
+ * constant and asserts the two are equal, so the drift this would otherwise
+ * invite is a failing test rather than a silent divergence.
+ */
+export const SOFT_DIM_FLOOR_PERCENT = 5;
+
+/**
+ * Brightness percent → overlay alpha.
+ *
+ * Linear across the usable range: 100% → no overlay at all, the safety floor
+ * → SOFT_DIM_MAX_ALPHA. Anything below the floor (only reachable via
+ * `allowBlack`, which skips the server clamp) is treated AS the floor — see
+ * SOFT_DIM_MAX_ALPHA for why the soft path never honours a request to go
+ * fully dark.
+ *
+ * A missing / non-finite percent returns 0 (no dim). That is the recovery
+ * direction, and a malformed frame must never be able to darken a screen.
+ */
+export function softDimAlpha(percent: number | null | undefined): number {
+  if (typeof percent !== 'number' || !Number.isFinite(percent)) return 0;
+  if (percent >= 100) return 0;
+  const floored = Math.max(SOFT_DIM_FLOOR_PERCENT, percent);
+  const span = 100 - SOFT_DIM_FLOOR_PERCENT;
+  const alpha = ((100 - floored) / span) * SOFT_DIM_MAX_ALPHA;
+  // 3 dp keeps the style attribute stable across re-renders (and therefore
+  // out of the diff) without being visibly quantised.
+  return Math.round(Math.min(SOFT_DIM_MAX_ALPHA, Math.max(0, alpha)) * 1000) / 1000;
+}
 
 export interface DisplayControlCommand {
   action: DisplayAction;
@@ -284,6 +369,31 @@ export function displayFrameNeedsFreshness(cmd: DisplayControlCommand): boolean 
   if (isDisplayRecoveryAction(cmd.action)) return false;
   if (cmd.soft) return false;
   return true;
+}
+
+/**
+ * Would executing this frame put anything over the content?
+ *
+ * The life-safety question, and only that: while an emergency alert is on
+ * the glass, nothing this player draws may sit on top of it. Two cases
+ * qualify:
+ *
+ *   • BLANK — soft or hard. Opaque black, by definition.
+ *   • a SOFT SET_BRIGHTNESS that resolves to any dim at all. A 45% black
+ *     film over a lockdown notice is not a blank, but it is still contrast
+ *     taken away from the one thing on that screen that matters.
+ *
+ * ⚠️ SCOPED TO THE **SOFT** BRIGHTNESS LANE ON PURPOSE. A hard brightness
+ * frame is a backlight write executed by the APK, which holds its own native
+ * emergency interlock, and the server refuses the darkening direction before
+ * it ever publishes. Extending this client-side drop to cover hard frames
+ * would change behaviour on the panels that work today, for a case already
+ * closed twice — the wrong trade during a live field test.
+ */
+export function displayFrameDarkensContent(cmd: DisplayControlCommand): boolean {
+  if (cmd.action === 'BLANK') return true;
+  if (cmd.soft && cmd.action === 'SET_BRIGHTNESS') return softDimAlpha(cmd.percent) > 0;
+  return false;
 }
 
 /**
@@ -602,8 +712,15 @@ export type DisplayDropReason =
 export type DisplayDispatchResult =
   | { status: 'sent'; action: DisplayAction }
   | { status: 'no-bridge'; action: DisplayAction }
-  /** Handled by the black overlay in this page; the bridge was NOT called. */
-  | { status: 'soft'; action: DisplayAction; overlay: boolean }
+  /**
+   * Handled by the black overlay in this page; the bridge was NOT called.
+   *
+   * `overlay` is "is anything painted over the content" — true for a blank
+   * AND for any non-zero dim, because it is what the page's paint proof
+   * checks. `dim` carries the alpha for a soft SET_BRIGHTNESS (0 for
+   * BLANK/WAKE, which own the opaque state instead).
+   */
+  | { status: 'soft'; action: DisplayAction; overlay: boolean; dim: number }
   /** A soft frame arrived but this caller wired no overlay. Never forwarded. */
   | { status: 'no-overlay'; action: DisplayAction }
   | { status: 'dropped'; reason: DisplayDropReason };
@@ -618,6 +735,20 @@ export type DisplayDispatchResult =
 export interface SoftBlankSink {
   /** true → cover the viewport in black; false → uncover. */
   set(on: boolean): void;
+  /**
+   * Set the SOFT DIM level: overlay alpha, 0 (none) … SOFT_DIM_MAX_ALPHA.
+   *
+   * Separate from `set` because the two states are independent and compose:
+   * a blank is opaque and swallows touches, a dim is translucent and does
+   * not. The page renders them through one node (see `softBlankOverlay` in
+   * page.tsx), but the RULES for each live here.
+   *
+   * REQUIRED, not optional, deliberately: a soft dim frame handed to a sink
+   * that cannot paint one is precisely the "reported success, nothing on the
+   * glass" failure this module was written after. A compile error is a
+   * cheaper way to find that than a field visit.
+   */
+  setDim(alpha: number): void;
   /**
    * Is emergency content (a tenant-wide override or a pushed SOS / broadcast
    * / media alert) DISPLAYED on this screen right now?
@@ -717,18 +848,18 @@ export function dispatchDisplayControl(
     // frame. Applies to hard frames too: the server refuses those and the
     // APK holds a native interlock, but a life-safety invariant is worth
     // asserting at every layer that can assert it.
-    if (cmd.action === 'BLANK' && softBlank?.emergencyDisplayed()) {
+    if (displayFrameDarkensContent(cmd) && softBlank?.emergencyDisplayed()) {
       softBlank.set(false);
+      softBlank.setDim(0);
       console.warn(
-        `[display ${corrId}] ${via} BLANK dropped — emergency content is on ` +
-          'this screen; alerts always punch through',
+        `[display ${corrId}] ${via} ${cmd.action} dropped — emergency content is ` +
+          'on this screen; alerts always punch through',
       );
       return { status: 'dropped', reason: 'emergency' };
     }
 
-    // ── THE SOFT PAIR — handled here, never handed to the APK ──────────
+    // ── THE SOFT LANE — handled here, never handed to the APK ──────────
     if (cmd.soft) {
-      const on = cmd.action === 'BLANK';
       if (!softBlank) {
         // No overlay wired by this caller. Do NOT fall through to the
         // bridge: forwarding is the bug. Say so instead of failing silently.
@@ -738,19 +869,44 @@ export function dispatchDisplayControl(
         );
         return { status: 'no-overlay', action: cmd.action };
       }
+
+      // A soft SET_BRIGHTNESS is a DIM LEVEL, not a backlight value. It
+      // arrives only for panels whose brightness mechanism the field proved
+      // is a silent no-op, so forwarding it would be handing the operator's
+      // slider back to the thing that ignores it.
+      if (cmd.action === 'SET_BRIGHTNESS') {
+        const alpha = softDimAlpha(cmd.percent);
+        softBlank.setDim(alpha);
+        console.log(
+          `[display ${corrId}] ${via} soft SET_BRIGHTNESS ${cmd.percent}% → dim ` +
+            `alpha ${alpha} (web-overlay; backlight untouched)`,
+        );
+        return { status: 'soft', action: cmd.action, overlay: alpha > 0, dim: alpha };
+      }
+
+      const on = cmd.action === 'BLANK';
       softBlank.set(on);
+      // WAKE means "be visible" — it clears the DIM as well as the blank.
+      // Leaving a dim behind a Wake would be a screen that came back wrong,
+      // and the operator would have no way to tell a stuck dim from a
+      // panel fault.
+      if (!on) softBlank.setDim(0);
       console.log(
         `[display ${corrId}] ${via} soft ${cmd.action} → overlay ${on ? 'ON' : 'OFF'} ` +
           '(web-overlay; panel power untouched)',
       );
-      return { status: 'soft', action: cmd.action, overlay: on };
+      return { status: 'soft', action: cmd.action, overlay: on, dim: 0 };
     }
 
     // ── HARD (or pre-split legacy) — the APK owns it from here ─────────
-    // A WAKE in this lane also clears any soft overlay: whatever put the
-    // screen dark, "wake" means "be visible", and leaving a black div on top
-    // of a freshly-powered panel would be its own stuck-dark bug.
-    if (cmd.action === 'WAKE') softBlank?.set(false);
+    // A WAKE in this lane also clears any soft overlay — blank AND dim.
+    // Whatever put the screen dark, "wake" means "be visible", and leaving a
+    // black div (opaque or translucent) on top of a freshly-powered panel
+    // would be its own stuck-dark bug.
+    if (cmd.action === 'WAKE') {
+      softBlank?.set(false);
+      softBlank?.setDim(0);
+    }
 
     if (!nativeHas('displayApply')) {
       console.log(

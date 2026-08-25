@@ -26,15 +26,25 @@
  */
 
 import {
+  MIN_SAFE_BRIGHTNESS_PERCENT,
+  DISPLAY_BRIGHTNESS_MECHANISMS,
+  isBrightnessMechanismProven,
+} from '@cms/api-types';
+
+import {
   DISPLAY_CONTROL_TYPE,
+  SOFT_DIM_FLOOR_PERCENT,
+  SOFT_DIM_MAX_ALPHA,
   checkDisplayControlPush,
   dispatchDisplayControl,
   displayConfigFingerprint,
+  displayFrameDarkensContent,
   installDisplayConfig,
   isDisplayRecoveryAction,
   parseDisplayControlCommand,
   pickVendorRecipe,
   recipeMatchesDevice,
+  softDimAlpha,
   toDeviceActionJson,
   toDeviceDisplayConfig,
 } from '../displayControl';
@@ -77,12 +87,19 @@ function ctx(seen = new Map<string, number>()) {
  */
 function sink(opts: { emergency?: boolean } = {}) {
   const calls: boolean[] = [];
+  const dimCalls: number[] = [];
   let on = false;
+  let dim = 0;
   let emergency = opts.emergency === true;
   return {
     calls,
+    /** Every `setDim` alpha, in order — same discipline as `calls`. */
+    dimCalls,
     get on() {
       return on;
+    },
+    get dim() {
+      return dim;
     },
     setEmergency(v: boolean) {
       emergency = v;
@@ -90,6 +107,10 @@ function sink(opts: { emergency?: boolean } = {}) {
     set(next: boolean) {
       calls.push(next);
       on = next;
+    },
+    setDim(alpha: number) {
+      dimCalls.push(alpha);
+      dim = alpha;
     },
     emergencyDisplayed() {
       return emergency;
@@ -198,7 +219,7 @@ describe('THE SPLIT: soft frames draw the overlay, hard frames drive hardware', 
       'WS',
       s,
     );
-    expect(res).toEqual({ status: 'soft', action: 'BLANK', overlay: true });
+    expect(res).toEqual({ status: 'soft', action: 'BLANK', overlay: true, dim: 0 });
     expect(s.on).toBe(true);
     // ⚠️ THE ASSERTION THIS WHOLE FILE EXISTS FOR. One forwarded soft BLANK
     // is one latched panel and a drive to the site.
@@ -221,7 +242,7 @@ describe('THE SPLIT: soft frames draw the overlay, hard frames drive hardware', 
       'WS',
       s,
     );
-    expect(res).toEqual({ status: 'soft', action: 'WAKE', overlay: false });
+    expect(res).toEqual({ status: 'soft', action: 'WAKE', overlay: false, dim: 0 });
     expect(s.on).toBe(false);
     expect(callMock).not.toHaveBeenCalled();
   });
@@ -266,7 +287,7 @@ describe('THE SPLIT: soft frames draw the overlay, hard frames drive hardware', 
     const s = sink();
     expect(
       dispatchDisplayControl(envelope({ action: 'BLANK', soft: true }), 'screen-1', ctx(), 'WS', s),
-    ).toEqual({ status: 'soft', action: 'BLANK', overlay: true });
+    ).toEqual({ status: 'soft', action: 'BLANK', overlay: true, dim: 0 });
     expect(s.on).toBe(true);
   });
 
@@ -486,7 +507,7 @@ describe('P0: a clock-skewed panel keeps its Blank button', () => {
         'WS',
         s,
       ),
-    ).toEqual({ status: 'soft', action: 'BLANK', overlay: true });
+    ).toEqual({ status: 'soft', action: 'BLANK', overlay: true, dim: 0 });
     expect(s.on).toBe(true);
     // And it still never touched the hardware.
     expect(callMock).not.toHaveBeenCalled();
@@ -503,7 +524,7 @@ describe('P0: a clock-skewed panel keeps its Blank button', () => {
         'WS',
         s,
       ),
-    ).toEqual({ status: 'soft', action: 'WAKE', overlay: false });
+    ).toEqual({ status: 'soft', action: 'WAKE', overlay: false, dim: 0 });
     expect(s.on).toBe(false);
   });
 
@@ -605,6 +626,254 @@ describe('a soft frame degrades VISIBLY, never silently', () => {
     );
     expect(res).toEqual({ status: 'sent', action: 'BLANK' });
     expect(callMock).toHaveBeenCalledWith('displayApply', '{"action":"BLANK"}');
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════
+// PROOF #1c — THE BRIGHTNESS SPLIT (field evidence, 2026-08-25)
+//
+// The operator's brightness slider worked on two panels and was dead on
+// two. Each panel's own hardware probe says exactly why:
+//
+//   M43      /sys/class/backlight/aml-bl    writable:true  → sysfs-backlight
+//   L55VEC   /sys/class/backlight/aml-bl    writable:true  → sysfs-backlight
+//   G43      /sys/class/backlight/aml-bl    writable:false → settings
+//   A-Frame  /sys/class/backlight/backlight writable:false → settings
+//
+// The two `settings` panels are the dead ones — and the write SUCCEEDS
+// (G43's stored screen_brightness reads 102, not 255); the vendor firmware
+// just ignores it for the real backlight. A mechanism that reports success
+// and does nothing to the glass: the blank incident's signature, one axis
+// over. These tests pin the routing and the safety floor of the soft dim
+// that replaces it.
+// ═════════════════════════════════════════════════════════════════
+describe('THE BRIGHTNESS SPLIT: proven mechanisms drive hardware, the rest dim softly', () => {
+  it('a SOFT brightness frame dims the overlay and NEVER reaches the bridge', () => {
+    const s = sink();
+    const res = dispatchDisplayControl(
+      envelope({ action: 'SET_BRIGHTNESS', percent: 40, soft: true }),
+      'screen-1',
+      ctx(),
+      'WS',
+      s,
+    );
+    expect(res.status).toBe('soft');
+    expect(s.dimCalls).toEqual([softDimAlpha(40)]);
+    expect(s.dim).toBeGreaterThan(0);
+    // Forwarding is the whole bug: `settings` is the mechanism that lies.
+    expect(callMock).not.toHaveBeenCalled();
+  });
+
+  it('a HARD brightness frame is untouched — M43 / L55VEC keep working', () => {
+    const s = sink();
+    const res = dispatchDisplayControl(
+      envelope({ action: 'SET_BRIGHTNESS', percent: 40, mechanism: 'sysfs-backlight' }),
+      'screen-1',
+      ctx(),
+      'WS',
+      s,
+    );
+    expect(res).toEqual({ status: 'sent', action: 'SET_BRIGHTNESS' });
+    expect(callMock).toHaveBeenCalledWith(
+      'displayApply',
+      '{"action":"SET_BRIGHTNESS","percent":40}',
+    );
+    // And no overlay is drawn on a panel whose backlight really moves.
+    expect(s.dimCalls).toEqual([]);
+  });
+
+  it('100% clears the dim entirely — a raise is the recovery direction', () => {
+    const s = sink();
+    dispatchDisplayControl(
+      envelope({ action: 'SET_BRIGHTNESS', percent: 10, soft: true }),
+      'screen-1',
+      ctx(),
+      'WS',
+      s,
+    );
+    expect(s.dim).toBeGreaterThan(0);
+    dispatchDisplayControl(
+      envelope({ action: 'SET_BRIGHTNESS', percent: 100, soft: true }, { eventId: 'e2' }),
+      'screen-1',
+      ctx(),
+      'WS',
+      s,
+    );
+    expect(s.dim).toBe(0);
+  });
+
+  it('a soft dim can NEVER reach black — not even at 0% with allowBlack', () => {
+    // A slider is not a blank. A wall-mounted panel that goes black because
+    // someone nudged one is the truck roll this whole feature exists to
+    // avoid, and `allowBlack` opts out of the HARDWARE floor — there is no
+    // hardware on this path to opt out of.
+    for (const percent of [0, 1, 5, -20]) {
+      expect(softDimAlpha(percent)).toBeLessThanOrEqual(SOFT_DIM_MAX_ALPHA);
+      expect(softDimAlpha(percent)).toBeLessThan(1);
+    }
+    const s = sink();
+    dispatchDisplayControl(
+      envelope({ action: 'SET_BRIGHTNESS', percent: 0, allowBlack: true, soft: true }),
+      'screen-1',
+      ctx(),
+      'WS',
+      s,
+    );
+    expect(s.dim).toBe(SOFT_DIM_MAX_ALPHA);
+    expect(s.dim).toBeLessThan(1);
+    // …and it never flips the OPAQUE state, which is the only thing that
+    // fully covers content.
+    expect(s.on).toBe(false);
+  });
+
+  it('ramps monotonically between the floor and 100%', () => {
+    expect(softDimAlpha(100)).toBe(0);
+    expect(softDimAlpha(SOFT_DIM_FLOOR_PERCENT)).toBe(SOFT_DIM_MAX_ALPHA);
+    let prev = softDimAlpha(SOFT_DIM_FLOOR_PERCENT);
+    for (let p = SOFT_DIM_FLOOR_PERCENT + 5; p <= 100; p += 5) {
+      const a = softDimAlpha(p);
+      expect(a).toBeLessThanOrEqual(prev);
+      prev = a;
+    }
+  });
+
+  it('treats a missing / malformed percent as NO dim — malformed must fail bright', () => {
+    expect(softDimAlpha(undefined)).toBe(0);
+    expect(softDimAlpha(null)).toBe(0);
+    expect(softDimAlpha(Number.NaN)).toBe(0);
+    expect(softDimAlpha(Number.POSITIVE_INFINITY)).toBe(0);
+  });
+
+  it('pins the soft floor to the contract floor', () => {
+    // displayControl.ts declares this locally to keep zod out of the player
+    // bundle. This assertion is what stops the two drifting apart.
+    expect(SOFT_DIM_FLOOR_PERCENT).toBe(MIN_SAFE_BRIGHTNESS_PERCENT);
+  });
+
+  it('WAKE clears the DIM as well as the blank, in BOTH lanes', () => {
+    // Soft lane.
+    const s = sink();
+    dispatchDisplayControl(
+      envelope({ action: 'SET_BRIGHTNESS', percent: 20, soft: true }),
+      'screen-1',
+      ctx(),
+      'WS',
+      s,
+    );
+    expect(s.dim).toBeGreaterThan(0);
+    dispatchDisplayControl(
+      envelope({ action: 'WAKE', soft: true }, { eventId: 'e2' }),
+      'screen-1',
+      ctx(),
+      'WS',
+      s,
+    );
+    expect(s.dim).toBe(0);
+
+    // Hard lane (a translated POWER_ON). Same guarantee — "wake" means "be
+    // visible", and a dim left behind a freshly-powered panel is its own
+    // stuck-dark bug with no way for the operator to tell it from a fault.
+    const h = sink();
+    dispatchDisplayControl(
+      envelope({ action: 'SET_BRIGHTNESS', percent: 20, soft: true }, { eventId: 'e3' }),
+      'screen-1',
+      ctx(),
+      'WS',
+      h,
+    );
+    expect(h.dim).toBeGreaterThan(0);
+    dispatchDisplayControl(
+      envelope({ action: 'WAKE', hard: true }, { eventId: 'e4' }),
+      'screen-1',
+      ctx(),
+      'WS',
+      h,
+    );
+    expect(h.dim).toBe(0);
+  });
+
+  it('DROPS a darkening soft brightness while an emergency is displayed', () => {
+    const s = sink({ emergency: true });
+    const res = dispatchDisplayControl(
+      envelope({ action: 'SET_BRIGHTNESS', percent: 20, soft: true }),
+      'screen-1',
+      ctx(),
+      'WS',
+      s,
+    );
+    expect(res).toEqual({ status: 'dropped', reason: 'emergency' });
+    // And it force-clears whatever was already up, rather than waiting for
+    // the page's own effect — an alert must never be painted behind a film,
+    // even for a frame.
+    expect(s.dimCalls).toEqual([0]);
+    expect(s.calls).toEqual([false]);
+    expect(callMock).not.toHaveBeenCalled();
+  });
+
+  it('does NOT drop a soft brightness that draws no dim at all', () => {
+    // 100% is not a darkening frame — refusing it would mean an operator
+    // could not brighten a screen mid-incident, which is worse than the risk.
+    const s = sink({ emergency: true });
+    const res = dispatchDisplayControl(
+      envelope({ action: 'SET_BRIGHTNESS', percent: 100, soft: true }),
+      'screen-1',
+      ctx(),
+      'WS',
+      s,
+    );
+    expect(res.status).toBe('soft');
+    expect(s.dim).toBe(0);
+  });
+
+  it('leaves a HARD brightness frame to the server + APK interlocks', () => {
+    // Scoped on purpose: the APK holds a native emergency hold and the
+    // server refuses the darkening direction before publishing. Extending
+    // the client drop to hard frames would change behaviour on the panels
+    // that work today, for a case already closed twice.
+    const cmd = parseDisplayControlCommand({ action: 'SET_BRIGHTNESS', percent: 10 });
+    expect(displayFrameDarkensContent(cmd!)).toBe(false);
+    const soft = parseDisplayControlCommand({
+      action: 'SET_BRIGHTNESS',
+      percent: 10,
+      soft: true,
+    });
+    expect(displayFrameDarkensContent(soft!)).toBe(true);
+  });
+
+  it('reports no-overlay for a soft brightness with no sink — never forwards', () => {
+    const res = dispatchDisplayControl(
+      envelope({ action: 'SET_BRIGHTNESS', percent: 30, soft: true }),
+      'screen-1',
+      ctx(),
+      'WS',
+      undefined,
+    );
+    expect(res).toEqual({ status: 'no-overlay', action: 'SET_BRIGHTNESS' });
+    expect(callMock).not.toHaveBeenCalled();
+  });
+
+  it('routes exactly the field-proven mechanisms to hardware, nothing else', () => {
+    // THE ROUTING MATRIX, straight off the four field panels. If a future
+    // provider id is added to the contract without a decision about whether
+    // it actually moves a backlight, this fails rather than silently
+    // assuming it does.
+    const expected: Record<string, boolean> = {
+      'vendor-recipe': true, // named-node write, percent-derived + validated
+      'sysfs-backlight': true, // M43 / L55VEC — writable aml-bl
+      sysfs: true, // same thing, probe's heuristic spelling
+      settings: false, // G43 / A-Frame — write succeeds, glass does not move
+      'software-dim': false, // the soft path by definition
+    };
+    for (const m of DISPLAY_BRIGHTNESS_MECHANISMS) {
+      expect([m, isBrightnessMechanismProven(m)]).toEqual([m, expected[m]]);
+    }
+    // Every mechanism in the contract is accounted for above — a new one
+    // added without a row here is a gap, not a default.
+    expect(Object.keys(expected).sort()).toEqual([...DISPLAY_BRIGHTNESS_MECHANISMS].sort());
+    // Unknown / absent fails toward the path that provably does something.
+    expect(isBrightnessMechanismProven(undefined)).toBe(false);
+    expect(isBrightnessMechanismProven(null)).toBe(false);
+    expect(isBrightnessMechanismProven('something-new')).toBe(false);
   });
 });
 
@@ -1043,7 +1312,32 @@ describe('page.tsx is actually wired to this module', () => {
     // node is. The page attaches a ref to the div and, a beat after every
     // accepted soft BLANK, checks it and screams if it is missing.
     expect(src).toMatch(/ref=\{softBlankNodeRef\}/);
-    expect(src).toMatch(/SOFT BLANK ACCEPTED BUT NOT PAINTED/);
+    // The message interpolates BLANK / DIM (the brightness split reuses this
+    // same alarm), so the stable half is what we pin.
+    expect(src).toMatch(/ACCEPTED BUT NOT PAINTED/);
+  });
+
+  it('extends the paint proof to the soft DIM as well', () => {
+    // A dim that reports success and paints nothing is the same lie as a
+    // blank that does — on the axis the operator was actually complaining
+    // about. The alarm must not early-return just because the BLANK state is
+    // false while a dim is up.
+    expect(src).toMatch(/softDimRef\.current === 0/);
+  });
+
+  it('renders the dim through the SAME node as the blank', () => {
+    // One node = one render-exit rule, one paint proof, one emergency clear.
+    // A second stacking layer would need all three duplicated, and the
+    // duplicate is what rots.
+    expect(src).toMatch(/data-edu-soft-dim/);
+    expect(src).toMatch(/opacity: softBlank \? 1 : softDim/);
+  });
+
+  it('lets a DIM through to touches, and a BLANK swallow them', () => {
+    // A blanked kiosk must behave off. A dimmed one is still readable and
+    // still meant to be usable, so the film has to be transparent to
+    // hit-testing — an inert screen would read as a broken screen.
+    expect(src).toMatch(/pointerEvents: softBlank \? 'auto' : 'none'/);
   });
 
   it('records every display verdict where a human can read it', () => {
@@ -1056,8 +1350,15 @@ describe('page.tsx is actually wired to this module', () => {
   it('never lets the overlay paint over an emergency', () => {
     // The render condition is the LAST of three independent guarantees (the
     // dispatch-time drop and the state-edge effect are the other two).
-    expect(src).toMatch(/softBlank && !activeEmergency && !pushedEmergencyMessage/);
-    expect(src).toMatch(/if \(activeEmergency \|\| pushedEmergencyMessage\) applySoftBlank\(false\)/);
+    expect(src).toMatch(
+      /\(softBlank \|\| softDim > 0\) && !activeEmergency && !pushedEmergencyMessage/,
+    );
+    // The state-edge effect force-clears BOTH states — a translucent film
+    // over a lockdown notice is contrast taken away from the one thing on
+    // that screen that matters.
+    const edge = src.slice(src.indexOf('if (activeEmergency || pushedEmergencyMessage) {'));
+    expect(edge.slice(0, 400)).toMatch(/applySoftBlank\(false\)/);
+    expect(edge.slice(0, 400)).toMatch(/applySoftDim\(0\)/);
   });
 
   it('positions the overlay with LONGHAND sides — Taurus is Chromium 83', () => {

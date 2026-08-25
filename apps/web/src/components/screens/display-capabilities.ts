@@ -38,6 +38,8 @@ import {
   readStoredDisplayVerdict,
 } from '@cms/api-types';
 
+import type { RenderTrustGrade } from './renderTrust';
+
 /**
  * BINDING CROSS-DOMAIN CONTRACTS (lead, 2026-08-13 remediation wave) — the
  * three that this module is the web-side owner of:
@@ -295,14 +297,10 @@ const NOT_REPORTED: ControlAxis = { available: false, softwareOnly: false, noteK
  * blank and starts describing the thing it actually gates now — POWER.
  */
 const BLANK_NOTE =
-  'Covers the screen with black from inside the player. The panel stays ' +
-  'powered, so a blank can never get stuck — Wake brings it straight back, ' +
-  'an emergency alert overrides it, and it clears by itself if the screen ' +
-  'reloads. Same behaviour on every model.';
+  'Covers the screen with black from inside the player — the panel stays ' +
+  'powered. Wake brings it back, and an emergency alert always overrides it.';
 
-const POWER_ON_NOTE =
-  'Turns the panel back on if something left it dark — a nightly schedule, ' +
-  'the remote, or its own vendor standby.';
+const POWER_ON_NOTE = 'Turns the panel back on if something left it dark.';
 
 /**
  * Is this the panel's HARD power mechanism, and can it be trusted to come
@@ -328,29 +326,141 @@ function powerOffNote(mech: ScreenBlankVerdict | undefined): {
       return {
         available: true,
         noteText:
-          'Uses this manufacturer’s own power command — a real panel-off, ' +
-          'reversed by the same command. Proven on this hardware class.',
+          'Switches the panel itself off. “Turn panel on” brings it back.',
       };
     case 'device-admin':
     case 'device-owner':
+      // ENGINEERING DETAIL, DELIBERATELY NOT ON SCREEN: the only power path
+      // this family exposes is an Android device-admin lock. On 2026-08-25 it
+      // left a Goodview G43 and a Mobile A-Frame in a vendor standby that
+      // ignored Wake and needed mains pulled, and the A-Frame then woke
+      // itself minutes later — unreliable in BOTH directions, so the API
+      // refuses it with DISPLAY_BLANK_MECHANISM_UNPROVEN until a supervised
+      // on-site off/on test. The operator does not need that story; they need
+      // to know what to press instead. Keep incident narrative in comments.
       return {
         available: false,
         noteText:
-          'Not available on this model. Its only power path is an Android ' +
-          'device-admin lock, and on 2026-08-25 that lock left two panels in ' +
-          'a vendor standby that ignored Wake and needed the power pulled — ' +
-          'then one of them woke itself back up minutes later. It is ' +
-          'unreliable in both directions, so it comes back only after a ' +
-          'supervised on-site off/on test. Use Blank to darken the screen.',
+          'This model can’t be switched off remotely. Use Blank to darken the screen.',
       };
     default:
       return {
         available: false,
         noteText:
-          'This panel exposes no remote power control — Blank is the way to ' +
-          'darken it.',
+          'This panel has no remote power control. Use Blank to darken the screen.',
       };
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PANEL POWER STATE — offer the verb that matches the glass (2026-08-25)
+//
+// Operator, looking at a screen that was ONLINE and actively painting and
+// being offered exactly one button, "Turn panel on": *"thats not correct
+// really, the screen is already on...it should know that and say power
+// off....or sleep, or whatever its doing."*
+//
+// He is right, and we already know the answer: the render-proof verdict on
+// every fleet row says whether pixels are advancing. Capability decides WHICH
+// power verbs this hardware can perform; state decides which one is worth
+// offering right now. Two separate questions, resolved separately, joined
+// here — no polling, no endpoint, no schema.
+// ─────────────────────────────────────────────────────────────────────
+
+/** What we can honestly say about the glass right now. */
+export type PanelPowerState =
+  /** Online AND proving fresh paints — the panel is on and showing content. */
+  | 'on'
+  /** Online but not painting — dark, asleep, or wedged. Either way: not lit. */
+  | 'dark'
+  /** Offline, or no render proof at all. We do not guess. */
+  | 'unknown';
+
+/**
+ * Render-proof trust grade → panel power state.
+ *
+ * `checking` (a stale gap under 5 minutes — usually a reload or an OTA)
+ * counts as 'dark' on purpose. We genuinely cannot tell a reloading panel
+ * from one that just went dark, and of the two mistakes, offering "Turn panel
+ * on" to a panel that is already coming back is harmless, while withholding
+ * it from one that is actually dark is the truck roll this feature exists to
+ * prevent. Recovery direction wins ties — the same asymmetry as C4.
+ */
+export function derivePanelPowerState(trust: RenderTrustGrade): PanelPowerState {
+  switch (trust) {
+    case 'painting':
+      return 'on';
+    case 'not-painting':
+    case 'checking':
+    case 'stale-chronic':
+      return 'dark';
+    // 'offline' — unreachable, so no command would land anyway.
+    // 'unknown'  — this build never posted render proof. Never a guess.
+    default:
+      return 'unknown';
+  }
+}
+
+export interface PanelPowerOffer {
+  showOff: boolean;
+  showOn: boolean;
+  /** The one line under the row. Always populated. */
+  note: string;
+}
+
+const PANEL_STATE_UNKNOWN_NOTE =
+  'We can’t tell whether this panel is on right now, so power controls stay hidden. Blank and Wake still work.';
+
+const PANEL_UNREPORTED_NOTE =
+  'Available once this screen reports what its panel can do. Blank and Wake work in the meantime.';
+
+/**
+ * Join capability with state into the buttons this row should actually show.
+ *
+ *   panel ON   + proven power  → "Turn panel off" only. Never offer to turn
+ *                                on a screen that is visibly painting.
+ *   panel ON   + unproven      → no buttons; say what to use instead.
+ *   panel DARK                 → "Turn panel on" only, whenever the API would
+ *                                accept it (i.e. the screen has reported).
+ *   UNKNOWN                    → no buttons, one honest line.
+ *
+ * ⚠️ THE DARK CASE IS DELIBERATELY NOT RESTRICTED TO PROVEN HARDWARE. On the
+ * admin-lock panels POWER_ON is the only hardware control left — the soft
+ * Wake button never reaches the bridge, so a panel darkened by its own
+ * nightly schedule has no other way back from this dashboard. Contract C4 is
+ * explicit that recovery is never gated, and `displayActionSupport('POWER_ON')`
+ * agrees: it refuses only on an unreported verdict, never on the unproven
+ * code. Withholding it here would be the dead-recovery-control mistake, one
+ * layer up.
+ */
+export function panelPowerOffer(
+  power: ResolvedDisplayControls['power'],
+  state: PanelPowerState,
+): PanelPowerOffer {
+  // Nothing reported: capability is unknown before state is even relevant.
+  if (!power.off.available && !power.on.available) {
+    return {
+      showOff: false,
+      showOn: false,
+      note: power.off.noteText ?? PANEL_UNREPORTED_NOTE,
+    };
+  }
+  if (state === 'unknown') {
+    return { showOff: false, showOn: false, note: PANEL_STATE_UNKNOWN_NOTE };
+  }
+  if (state === 'dark') {
+    return {
+      showOff: false,
+      showOn: power.on.available,
+      note: power.on.noteText ?? POWER_ON_NOTE,
+    };
+  }
+  // state === 'on'
+  return {
+    showOff: power.off.available,
+    showOn: false,
+    note: power.off.noteText ?? '',
+  };
 }
 
 /**
@@ -480,11 +590,27 @@ export function resolveDisplayControls(raw: unknown): ResolvedDisplayControls {
   // C5: 'sysfs-backlight' is the real SysfsBacklightProvider id; 'sysfs' is
   // the probe's heuristic-fallback spelling of the same thing. Both mean
   // "real backlight control", so both get the same copy.
+  //
+  // ── `settings` MOVED TO THE SOFTWARE SIDE (field evidence, 2026-08-25) ──
+  //
+  // It used to read "Sets the Android system brightness", which was true and
+  // useless: the write succeeds and the backlight does not move. Two of the
+  // four field panels resolve `settings` precisely BECAUSE their
+  // `/sys/class/backlight/*` node is not writable, and their sliders were
+  // dead while M43's and L55VEC's (writable node → `sysfs-backlight`) worked.
+  // The API now routes `settings` onto the soft path — the player dims its
+  // own picture — so `softwareOnly: true` here is not a downgrade in
+  // capability, it is the label finally matching what happens. It also drives
+  // the "Brightness (image only)" label, which is the honest one.
+  //
+  // The proven mechanisms are unchanged and keep their real-backlight copy;
+  // this list must stay in step with DISPLAY_BRIGHTNESS_PROVEN_MECHANISMS in
+  // @cms/api-types (the test asserts they agree).
   const brightnessNote: Record<BrightnessVerdict, { softwareOnly: boolean; noteKey: string }> = {
     'vendor-recipe': { softwareOnly: false, noteKey: 'screens.display.note.brightnessVendorRecipe' },
     'sysfs-backlight': { softwareOnly: false, noteKey: 'screens.display.note.brightnessSysfs' },
     sysfs: { softwareOnly: false, noteKey: 'screens.display.note.brightnessSysfs' },
-    settings: { softwareOnly: false, noteKey: 'screens.display.note.brightnessSettings' },
+    settings: { softwareOnly: true, noteKey: 'screens.display.note.brightnessSettings' },
     'software-dim': { softwareOnly: true, noteKey: 'screens.display.note.brightnessSoftware' },
   };
 
