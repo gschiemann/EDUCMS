@@ -58,8 +58,18 @@ step "4/6 Battery-optimization exempt"; run dumpsys deviceidle whitelist "+$PLAY
 step "5/6 Device admin (screen off)";   run dpm set-active-admin "$ADMIN_COMPONENT"
 # HOME needs the alias enabled first (it ships disabled so non-kiosk installs
 # never hijack the launcher — see the manifest comment), then set as default.
-step "6/6 Home app — enable alias";     run pm enable "$HOME_COMPONENT"
-step "    Home app — set default";      run cmd package set-home-activity "$HOME_COMPONENT"
+# ⚠ FOREIGN-OWNER BOXES (Goodview/OEM-CMS class, 2026-08-25 G43 lesson): when
+# ANOTHER app is device/profile owner, claiming HOME starts the launcher war
+# the manifest comment warns about — and after a reboot the OEM launcher wins
+# anyway. On those boxes SKIP home entirely and configure the OEM launcher's
+# own auto-start/boot-app setting to launch VenueOS Player instead.
+if "${ADB[@]}" shell dpm list-owners 2>/dev/null | tr -d '\r' | grep -vq "com.educms" && \
+   "${ADB[@]}" shell dpm list-owners 2>/dev/null | tr -d '\r' | grep -q "admin\|owner"; then
+  step "6/6 Home app";                  echo "SKIPPED — another app owns this device; set VenueOS as the boot app in the OEM launcher's settings instead"
+else
+  step "6/6 Home app — enable alias";   run pm enable "$HOME_COMPONENT"
+  step "    Home app — set default";    run cmd package set-home-activity "$HOME_COMPONENT"
+fi
 # Manifest-declared niceties that some Android builds gate (harmless if absent):
 step "    Notifications (13+, best-effort)"; run pm grant "$PLAYER" android.permission.POST_NOTIFICATIONS
 
