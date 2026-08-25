@@ -9,6 +9,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslations } from 'next-intl';
 import { useParams } from 'next/navigation';
 import { useAppStore } from '@/lib/store';
 import { useUIStore } from '@/store/ui-store';
@@ -36,9 +37,25 @@ interface ActiveMsg {
 
 const HOLD_MS = 3000;
 
+// i18n (X7, 2026-08-25): the API's enum codes map to catalog keys through
+// these tables. A code we don't recognize falls back to the raw wire value,
+// so an unknown/new server enum can never throw a missing-message error on
+// a life-safety surface.
+const MSG_TYPE_KEY: Record<string, string> = {
+  SOS: 'msgTypeSos',
+  TEXT_BROADCAST: 'msgTypeText',
+  MEDIA_ALERT: 'msgTypeMedia',
+};
+const SEVERITY_KEY: Record<string, string> = {
+  INFO: 'sevInfo',
+  WARN: 'sevWarn',
+  CRITICAL: 'sevCritical',
+};
+
 export default function BroadcastPage() {
   const params = useParams<{ schoolId: string }>();
   const schoolId = params.schoolId;
+  const t = useTranslations();
   const { user, token } = useAppStore();
   const userRole = useUIStore((s) => s.user?.role);
   const isViewer = userRole === 'RESTRICTED_VIEWER';
@@ -66,6 +83,11 @@ export default function BroadcastPage() {
 
   const role = user?.role;
   const canClear = role === 'DISTRICT_ADMIN' || role === 'SUPER_ADMIN';
+
+  const severityLabel = (s: string) =>
+    SEVERITY_KEY[s] ? t(`emergency.broadcast.${SEVERITY_KEY[s]}`) : s;
+  const msgTypeLabel = (m: string) =>
+    MSG_TYPE_KEY[m] ? t(`emergency.broadcast.${MSG_TYPE_KEY[m]}`) : m;
 
   const fetchActive = useCallback(async () => {
     try {
@@ -99,10 +121,10 @@ export default function BroadcastPage() {
   // §18-1 — a keyboard-only operator could not previously trigger).
   const handleHoldStart = () => {
     if (phase !== 'idle' && phase !== 'error') return;
-    if (!text.trim()) { setErrorMsg('Message is required.'); setPhase('error'); announce('Cannot broadcast: a message is required.'); return; }
+    if (!text.trim()) { setErrorMsg(t('emergency.broadcast.errMessageRequired')); setPhase('error'); announce(t('emergency.broadcast.annNeedMessage')); return; }
     setPhase('holding');
     setProgress(0);
-    announce(`Holding to broadcast a ${severity.toLowerCase()} alert. Continue holding for 3 seconds to send.`);
+    announce(t('emergency.broadcast.annHolding', { severity: severityLabel(severity).toLowerCase() }));
     const start = Date.now();
     progressTimerRef.current = setInterval(() => {
       const elapsed = Date.now() - start;
@@ -137,7 +159,7 @@ export default function BroadcastPage() {
     if (phase === 'holding') {
       setPhase('idle');
       setProgress(0);
-      announce('Broadcast cancelled. Hold not completed.');
+      announce(t('emergency.broadcast.annCancelled'));
     }
     resetHold();
   };
@@ -146,7 +168,7 @@ export default function BroadcastPage() {
     resetHold();
     setPhase('sending');
     setErrorMsg('');
-    announce('Sending broadcast to all displays.');
+    announce(t('emergency.broadcast.annSending'));
     try {
       const endpoint = withMedia ? 'media-alert' : 'broadcast';
       const body: any = withMedia
@@ -179,19 +201,19 @@ export default function BroadcastPage() {
         },
         12000, // hung send must fail loudly ("alert was NOT sent"), not hang forever
       );
-      if (!res.ok) throw new Error(`Send failed: ${res.status}`);
+      if (!res.ok) throw new Error(t('emergency.broadcast.errSendFailed', { status: res.status }));
       setPhase('sent');
-      announce('Broadcast dispatched to all displays.');
+      announce(t('emergency.broadcast.annDispatched'));
       setText('');
       setMediaUrls([]);
       setAudioUrl('');
       fetchActive();
       setTimeout(() => setPhase('idle'), 2000);
     } catch (e: any) {
-      const message = e?.message || 'Broadcast failed';
+      const message = e?.message || t('emergency.broadcast.errBroadcastFailed');
       setErrorMsg(message);
       setPhase('error');
-      announce(`Broadcast failed. Your alert was NOT sent. ${message}`);
+      announce(t('emergency.broadcast.annFailed', { error: message }));
     }
   };
 
@@ -206,8 +228,8 @@ export default function BroadcastPage() {
         },
         12000, // hung clear must fail loudly ("may still be active"), not hang
       );
-      if (!res.ok) throw new Error(`Clear failed: ${res.status}`);
-      announce('Broadcast cleared.');
+      if (!res.ok) throw new Error(t('emergency.broadcast.errClearFailed', { status: res.status }));
+      announce(t('emergency.broadcast.annCleared'));
       fetchActive();
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
@@ -216,9 +238,9 @@ export default function BroadcastPage() {
         tags: { component: 'BroadcastPage', action: 'clearMessage' },
         extra: { messageId: id },
       });
-      setErrorMsg(`Clear FAILED — the broadcast may still be active on screens. ${message}`);
+      setErrorMsg(t('emergency.broadcast.errClearFailedBanner', { error: message }));
       setPhase('error');
-      announce(`Clear failed. The broadcast may still be active on screens. ${message}`);
+      announce(t('emergency.broadcast.annClearFailed', { error: message }));
     }
   };
 
@@ -241,8 +263,8 @@ export default function BroadcastPage() {
         <header className="flex items-center gap-3 mb-8">
           <Megaphone className="w-8 h-8 text-orange-500" />
           <div>
-            <h1 className="text-2xl font-black uppercase tracking-wide">Emergency Broadcast</h1>
-            <p className="text-sm text-slate-400">Push a text overlay or media-rich alert to every screen in this school.</p>
+            <h1 className="text-2xl font-black uppercase tracking-wide">{t('emergency.broadcast.title')}</h1>
+            <p className="text-sm text-slate-400">{t('emergency.broadcast.subtitle')}</p>
           </div>
         </header>
 
@@ -250,22 +272,22 @@ export default function BroadcastPage() {
           {/* Composer */}
           {!isViewer && (<section className="md:col-span-3 space-y-5 bg-slate-900 border border-slate-800 rounded-xl p-6">
             <div>
-              <label className="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Severity</label>
+              <label className="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">{t('emergency.broadcast.severity')}</label>
               <div className="flex gap-2">
-                {severityButton('INFO', 'Info', 'bg-yellow-500')}
-                {severityButton('WARN', 'Warn', 'bg-orange-500')}
-                {severityButton('CRITICAL', 'Critical', 'bg-red-600')}
+                {severityButton('INFO', t('emergency.broadcast.sevInfo'), 'bg-yellow-500')}
+                {severityButton('WARN', t('emergency.broadcast.sevWarn'), 'bg-orange-500')}
+                {severityButton('CRITICAL', t('emergency.broadcast.sevCritical'), 'bg-red-600')}
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Message</label>
+              <label className="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">{t('emergency.broadcast.message')}</label>
               <textarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 rows={4}
                 maxLength={2000}
-                placeholder="e.g., All staff report to the main office."
+                placeholder={t('emergency.broadcast.messagePlaceholder')}
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-white focus:border-orange-500 focus:outline-none"
               />
               <div className="text-xs text-slate-500 mt-1 text-right">{text.length}/2000</div>
@@ -274,7 +296,7 @@ export default function BroadcastPage() {
             <div>
               <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">
                 <input type="checkbox" checked={withMedia} onChange={(e) => setWithMedia(e.target.checked)} />
-                Include media (image/video/audio)
+                {t('emergency.broadcast.includeMedia')}
               </label>
               {withMedia ? (
                 <div className="space-y-3 border border-slate-800 rounded-lg p-3 bg-slate-950">
@@ -290,7 +312,7 @@ export default function BroadcastPage() {
                       type="button"
                       onClick={() => { if (mediaDraft) { setMediaUrls([...mediaUrls, mediaDraft]); setMediaDraft(''); } }}
                       className="px-4 bg-slate-800 rounded text-sm font-bold uppercase tracking-wide hover:bg-slate-700"
-                    >Add</button>
+                    >{t('emergency.broadcast.add')}</button>
                   </div>
                   {mediaUrls.length > 0 && (
                     <ul className="space-y-1 text-xs">
@@ -309,14 +331,14 @@ export default function BroadcastPage() {
                       type="url"
                       value={audioUrl}
                       onChange={(e) => setAudioUrl(e.target.value)}
-                      placeholder="Optional audio URL"
+                      placeholder={t('emergency.broadcast.audioPlaceholder')}
                       className="flex-1 bg-slate-900 border border-slate-800 rounded px-3 py-2 text-sm"
                     />
                   </div>
                 </div>
               ) : (
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Duration (min)</label>
+                  <label className="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">{t('emergency.broadcast.duration')}</label>
                   <input
                     type="number"
                     min={1}
@@ -331,7 +353,7 @@ export default function BroadcastPage() {
 
             {/* Preview */}
             <div>
-              <div className="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Preview</div>
+              <div className="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">{t('emergency.broadcast.preview')}</div>
               <div className={`rounded-lg p-4 border-2 ${
                 severity === 'INFO' ? 'bg-yellow-400/95 border-yellow-600 text-slate-900' :
                 severity === 'WARN' ? 'bg-orange-500/95 border-orange-700 text-white' :
@@ -341,13 +363,13 @@ export default function BroadcastPage() {
                   {severity === 'CRITICAL' ? <ShieldAlert className="w-6 h-6" /> :
                    severity === 'WARN' ? <AlertTriangle className="w-6 h-6" /> :
                    <Megaphone className="w-6 h-6" />}
-                  <span className="font-bold text-lg">{text || 'Your message will appear here.'}</span>
+                  <span className="font-bold text-lg">{text || t('emergency.broadcast.previewPlaceholder')}</span>
                 </div>
               </div>
             </div>
 
             {errorMsg && <div className="p-3 rounded bg-red-900/40 border border-red-800 text-red-200 text-sm">{errorMsg}</div>}
-            {phase === 'sent' && <div className="p-3 rounded bg-emerald-900/40 border border-emerald-800 text-emerald-200 text-sm">Broadcast dispatched.</div>}
+            {phase === 'sent' && <div className="p-3 rounded bg-emerald-900/40 border border-emerald-800 text-emerald-200 text-sm">{t('emergency.broadcast.dispatched')}</div>}
 
             <button
               type="button"
@@ -358,7 +380,7 @@ export default function BroadcastPage() {
               onKeyUp={handleKeyHoldEnd}
               onContextMenu={(e) => e.preventDefault()}
               disabled={phase === 'sending'}
-              aria-label="Broadcast emergency message. Press and hold (or hold Space/Enter) for 3 seconds to send."
+              aria-label={t('emergency.broadcast.sendAria')}
               className={`relative w-full py-5 rounded-xl font-black uppercase tracking-widest text-lg overflow-hidden transition
                 ${phase === 'holding' ? 'bg-orange-700' : 'bg-orange-600 hover:bg-orange-500'}
                 ${phase === 'sending' ? 'opacity-60 cursor-not-allowed' : ''}`}
@@ -368,14 +390,16 @@ export default function BroadcastPage() {
               )}
               <span className="relative flex items-center justify-center gap-3">
                 {phase === 'sending' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                {phase === 'holding' ? `Hold to send… ${Math.floor(progress)}%` : 'Hold 3s to Broadcast'}
+                {phase === 'holding'
+                  ? t('emergency.broadcast.holdingPct', { pct: Math.floor(progress) })
+                  : t('emergency.broadcast.holdToBroadcast')}
               </span>
             </button>
           </section>)}
           <section className={`${isViewer ? 'md:col-span-5' : 'md:col-span-2'} bg-slate-900 border border-slate-800 rounded-xl p-6`}>
-            <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-4">Active broadcasts</h2>
+            <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-4">{t('emergency.broadcast.activeTitle')}</h2>
             {active.length === 0 ? (
-              <p className="text-sm text-slate-500 italic">No active emergency messages.</p>
+              <p className="text-sm text-slate-500 italic">{t('emergency.broadcast.noneActive')}</p>
             ) : (
               <ul className="space-y-3">
                 {active.map((m) => (
@@ -385,20 +409,20 @@ export default function BroadcastPage() {
                     'border-yellow-700 bg-yellow-900/20'
                   }`}>
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-bold uppercase tracking-widest opacity-80">{m.type} · {m.severity}</span>
+                      <span className="text-xs font-bold uppercase tracking-widest opacity-80">{msgTypeLabel(m.type)} · {severityLabel(m.severity)}</span>
                       {canClear && (
                         <button
                           onClick={() => clearMessage(m.id)}
                           className="text-xs font-bold uppercase tracking-wide text-slate-300 hover:text-white border border-slate-600 rounded px-2 py-1"
-                        >Clear</button>
+                        >{t('emergency.broadcast.clear')}</button>
                       )}
                     </div>
-                    <p className="text-sm leading-snug">{m.textBlob || '(no text)'}</p>
+                    <p className="text-sm leading-snug">{m.textBlob || t('emergency.broadcast.noText')}</p>
                     {m.mediaUrls.length > 0 && (
-                      <p className="text-xs text-slate-400 mt-1">{m.mediaUrls.length} media attachment{m.mediaUrls.length === 1 ? '' : 's'}</p>
+                      <p className="text-xs text-slate-400 mt-1">{t('emergency.broadcast.mediaAttachments', { count: m.mediaUrls.length })}</p>
                     )}
                     <p className="text-[10px] text-slate-400 mt-1">
-                      {new Date(m.createdAt).toLocaleTimeString()} {m.expiresAt ? `· expires ${new Date(m.expiresAt * 1000).toLocaleTimeString()}` : ''}
+                      {new Date(m.createdAt).toLocaleTimeString()} {m.expiresAt ? t('emergency.broadcast.expires', { time: new Date(m.expiresAt * 1000).toLocaleTimeString() }) : ''}
                     </p>
                   </li>
                 ))}

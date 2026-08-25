@@ -3,6 +3,7 @@
 import { useAppStore } from '@/lib/store';
 import { ShieldAlert, Loader2, AlertTriangle, CheckCircle2, Megaphone, LogIn, Hand, Lock, HeartPulse, CloudLightning, ShieldOff } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { broadcastEmergency } from '@/actions/trigger-emergency';
 // LIFE-SAFETY (2026-05-23 launch audit P0 #1): use the centralized
@@ -45,13 +46,18 @@ const HOLD_DURATION_MS = 3000;
 // = the bottom of the hold-fill gradient, `rgb` = the same color as a raw
 // triplet for rgba() glow/tint composition in inline styles (Tailwind can't
 // build class names from runtime values, so the per-type look is inline).
+//
+// i18n (X7, 2026-08-25): the display NAME moved out of this module-level
+// table into the catalog (`emergency.types.<id>.name`) so it follows the
+// operator's language — `id` is the lookup key and stays a stable English
+// identifier (it is also the wire value sent to /emergency/trigger).
 const TYPES = [
-  { id: 'hold',     name: 'Hold',     icon: Hand,           accent: '#f5a623', dark: '#b9791a', rgb: '245,166,35'  },
-  { id: 'secure',   name: 'Secure',   icon: Lock,           accent: '#3b82f6', dark: '#1d4ed8', rgb: '59,130,246'  },
-  { id: 'lockdown', name: 'Lockdown', icon: ShieldAlert,    accent: '#ef4444', dark: '#b91c1c', rgb: '239,68,68'   },
-  { id: 'evacuate', name: 'Evacuate', icon: Megaphone,      accent: '#f97316', dark: '#c2410c', rgb: '249,115,22'  },
-  { id: 'weather',  name: 'Shelter',  icon: CloudLightning, accent: '#22d3ee', dark: '#0e7490', rgb: '34,211,238'  },
-  { id: 'medical',  name: 'Medical',  icon: HeartPulse,     accent: '#10b981', dark: '#047857', rgb: '16,185,129'  },
+  { id: 'hold',     icon: Hand,           accent: '#f5a623', dark: '#b9791a', rgb: '245,166,35'  },
+  { id: 'secure',   icon: Lock,           accent: '#3b82f6', dark: '#1d4ed8', rgb: '59,130,246'  },
+  { id: 'lockdown', icon: ShieldAlert,    accent: '#ef4444', dark: '#b91c1c', rgb: '239,68,68'   },
+  { id: 'evacuate', icon: Megaphone,      accent: '#f97316', dark: '#c2410c', rgb: '249,115,22'  },
+  { id: 'weather',  icon: CloudLightning, accent: '#22d3ee', dark: '#0e7490', rgb: '34,211,238'  },
+  { id: 'medical',  icon: HeartPulse,     accent: '#10b981', dark: '#047857', rgb: '16,185,129'  },
 ];
 
 // Shared premium-dark page surface — a deep VenueOS navy radial that matches
@@ -67,6 +73,11 @@ const PAGE_CLS =
 
 export default function MobilePanicPage() {
   const router = useRouter();
+  // i18n (X7, 2026-08-25): every operator-visible string here — including
+  // the aria-live announcements a screen reader speaks — resolves through
+  // the catalog. `type.id` stays English (wire value + lookup key).
+  const t = useTranslations();
+  const typeName = (id: string) => t(`emergency.types.${id}.name`);
   const storeUser = useAppStore((s) => s.user);
   const storeToken = useAppStore((s) => s.token);
   // LIFE-SAFETY (2026-05-23 launch audit P0 #1): on a forgotten-env
@@ -111,7 +122,11 @@ export default function MobilePanicPage() {
         const u = new w.SpeechSynthesisUtterance(text);
         u.rate = 1.0;
         u.volume = 1.0;
-        u.lang = 'en-US';
+        // i18n (X7, 2026-08-25): follow <html lang>, which I18nProvider keeps
+        // in sync with the operator's locale. Without this the TTS voice reads
+        // translated copy with an English engine. Falls back to the previous
+        // 'en-US' when the attribute is absent, so English is unchanged.
+        u.lang = (typeof document !== 'undefined' && document.documentElement.lang) || 'en-US';
         w.speechSynthesis.speak(u);
       }
     } catch {
@@ -156,7 +171,7 @@ export default function MobilePanicPage() {
           // Admin cleared it. Flash All Clear, then return to idle so
           // staff can re-fire if they need to.
           setJustCleared(true);
-          announce('All clear. An administrator cleared the alert. Returning to trigger panel.');
+          announce(t('emergency.panic.annAllClear'));
           setTimeout(() => {
             if (cancelled) return;
             setPhase('idle');
@@ -167,8 +182,16 @@ export default function MobilePanicPage() {
       } catch { /* network blip — next tick retries */ }
     };
     check();
-    const t = setInterval(check, 5000);
-    return () => { cancelled = true; clearInterval(t); };
+    // Renamed from `t` (2026-08-25): `t` is now the translator in the
+    // component scope and this local would shadow it inside the effect.
+    // Same interval, same cadence, same cleanup.
+    const poll = setInterval(check, 5000);
+    return () => { cancelled = true; clearInterval(poll); };
+    // `t` is deliberately NOT a dependency (i18n X7, 2026-08-25). It is only
+    // read inside `check()` at announce time, so it always sees the current
+    // translator; adding it would tear down and restart the 5s all-clear poll
+    // every time the operator switches language. Dep array unchanged.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, verifiedToken, verifiedUser?.tenantId]);
 
   // Verify session on mount
@@ -193,7 +216,7 @@ export default function MobilePanicPage() {
         setVerifiedToken(token);
         if (!hasPanicAuthority(user)) { setPhase('unauthorized'); return; }
         setPhase('idle');
-        announce('Emergency trigger panel ready. Press and hold any button for 3 seconds to broadcast.');
+        announce(t('emergency.panic.annReady'));
       };
       try {
         // Validate the session against an endpoint EVERY authenticated role
@@ -231,6 +254,11 @@ export default function MobilePanicPage() {
       router.push('/login?redirect=/panic');
     }
     verifySession();
+    // `t` is deliberately NOT a dependency (i18n X7, 2026-08-25). It is only
+    // read to build the "panel ready" announcement; adding it would re-run the
+    // whole session verification (a /users/me round trip) on every language
+    // switch. Dep array unchanged from before i18n.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeToken, storeUser, router]);
 
   const clearHold = () => {
@@ -249,8 +277,8 @@ export default function MobilePanicPage() {
     setHoldingId(typeId);
     setProgress(0);
     const startTime = Date.now();
-    const type = TYPES.find((t) => t.id === typeId);
-    if (type) announce(`Holding ${type.name} alert. Continue holding for 3 seconds to broadcast.`);
+    const type = TYPES.find((ty) => ty.id === typeId);
+    if (type) announce(t('emergency.panic.annHolding', { type: typeName(type.id) }));
     progressTimerRef.current = setInterval(() => {
       const pct = Math.min(((Date.now() - startTime) / HOLD_DURATION_MS) * 100, 100);
       setProgress(pct);
@@ -298,11 +326,11 @@ export default function MobilePanicPage() {
     clearHold();
     setPhase('triggering');
     setFiredType(typeId);
-    const type = TYPES.find((t) => t.id === typeId);
-    if (type) announce(`Triggering ${type.name} alert. Broadcasting to all displays.`);
+    const type = TYPES.find((ty) => ty.id === typeId);
+    if (type) announce(t('emergency.panic.annTriggering', { type: typeName(type.id) }));
     try {
-      if (!verifiedToken) throw new Error('No auth token. Please log in again.');
-      if (!verifiedUser?.tenantId) throw new Error('No school ID. Please log in again.');
+      if (!verifiedToken) throw new Error(t('emergency.panic.errNoToken'));
+      if (!verifiedUser?.tenantId) throw new Error(t('emergency.panic.errNoSchool'));
       const result = await broadcastEmergency({
         schoolId: verifiedUser.tenantId,
         type: typeId,
@@ -314,27 +342,21 @@ export default function MobilePanicPage() {
         // server errors. Previously every 4xx/5xx collapsed to "Session
         // expired" which misroutes the operator during a real incident.
         if (result.error.includes('401') || result.error.includes('403')) {
-          throw new Error(
-            'Your account no longer has emergency-trigger authority. ' +
-              'NOTIFY SECURITY MANUALLY now — your alert was NOT broadcast.',
-          );
+          throw new Error(t('emergency.panic.errNoAuthority'));
         }
         if (result.error.toLowerCase().includes('network') || result.error.toLowerCase().includes('fetch')) {
-          throw new Error(
-            'Could not reach the server. NOTIFY SECURITY MANUALLY now — ' +
-              'your alert was NOT broadcast. Retry once you have internet.',
-          );
+          throw new Error(t('emergency.panic.errNetwork'));
         }
         throw new Error(result.error);
       }
       setPhase('triggered');
-      if (type) announce(`${type.name} alert sent to all displays. Waiting for an administrator to clear.`);
+      if (type) announce(t('emergency.panic.annSent', { type: typeName(type.id) }));
     } catch (e: any) {
       console.error('[PANIC] Emergency trigger failed:', e);
-      const msg = e.message || 'Could not reach the server. NOTIFY SECURITY MANUALLY now — your alert was NOT broadcast.';
+      const msg = e.message || t('emergency.panic.errGeneric');
       setErrorMsg(msg);
       setPhase('error');
-      announce(`Alert failed. Your alert was NOT broadcast. Notify security manually now. ${msg}`);
+      announce(t('emergency.panic.annFailed', { error: msg }));
     }
   };
 
@@ -364,7 +386,7 @@ export default function MobilePanicPage() {
           <ShieldAlert className="relative w-7 h-7 text-white/80" />
         </div>
         <Loader2 className="w-6 h-6 text-white/60 animate-spin mb-3" />
-        <p className="text-white/60 text-xs uppercase tracking-[0.2em] font-semibold">Verifying authorization</p>
+        <p className="text-white/60 text-xs uppercase tracking-[0.2em] font-semibold">{t('emergency.panic.verifying')}</p>
       </div>
     );
   }
@@ -383,14 +405,12 @@ export default function MobilePanicPage() {
           />
           <AlertTriangle className="relative w-12 h-12" style={{ color: '#ef4444' }} />
         </div>
-        <h1 className="text-2xl font-black mb-2 uppercase tracking-tight text-center" style={{ color: '#f87171' }}>Not Configured</h1>
+        <h1 className="text-2xl font-black mb-2 uppercase tracking-tight text-center" style={{ color: '#f87171' }}>{t('emergency.panic.notConfiguredTitle')}</h1>
         <p className="text-white/80 mb-3 max-w-[300px] text-center text-sm font-bold">
-          Emergency trigger is unavailable on this deploy.
+          {t('emergency.panic.notConfiguredLead')}
         </p>
         <p className="text-white/65 mb-8 max-w-[300px] text-center text-xs leading-relaxed">
-          The server URL is missing from this build (NEXT_PUBLIC_API_URL not set).
-          NOTIFY SECURITY MANUALLY for any emergency — DO NOT rely on this app
-          until your admin fixes the deploy configuration.
+          {t('emergency.panic.notConfiguredBody')}
         </p>
       </div>
     );
@@ -410,19 +430,18 @@ export default function MobilePanicPage() {
           />
           <ShieldOff className="relative w-12 h-12" style={{ color: '#f5a623' }} />
         </div>
-        <h1 className="text-2xl font-black mb-2 uppercase tracking-tight text-center" style={{ color: '#fbbf24' }}>No Trigger Authority</h1>
+        <h1 className="text-2xl font-black mb-2 uppercase tracking-tight text-center" style={{ color: '#fbbf24' }}>{t('emergency.panic.noAuthorityTitle')}</h1>
         <p className="text-white/80 mb-3 max-w-[300px] text-center text-sm font-bold">
-          Your account doesn&rsquo;t have emergency-trigger authority.
+          {t('emergency.panic.noAuthorityLead')}
         </p>
         <p className="text-white/65 mb-8 max-w-[300px] text-center text-xs leading-relaxed">
-          NOTIFY SECURITY MANUALLY for any emergency. Ask a district or school admin
-          to grant trigger authority if you should have it.
+          {t('emergency.panic.noAuthorityBody')}
         </p>
         <button
           onClick={() => router.push('/login?redirect=/panic')}
           className="px-8 py-3 rounded-2xl font-bold uppercase tracking-wider text-sm flex items-center justify-center gap-2 min-h-[48px] bg-white/[0.04] border border-white/10 text-white/85 active:bg-white/[0.08] transition-colors"
         >
-          <LogIn className="w-4 h-4" /> Switch Account
+          <LogIn className="w-4 h-4" /> {t('emergency.panic.switchAccount')}
         </button>
       </div>
     );
@@ -439,15 +458,15 @@ export default function MobilePanicPage() {
           />
           <AlertTriangle className="relative w-12 h-12" style={{ color: '#ef4444' }} />
         </div>
-        <h1 className="text-3xl font-black mb-2 tracking-tight" style={{ color: '#f87171' }}>FAILED</h1>
+        <h1 className="text-3xl font-black mb-2 tracking-tight" style={{ color: '#f87171' }}>{t('emergency.panic.failedTitle')}</h1>
         {/* LIFE-SAFETY (audit P1 #7): error copy now spells out the
             "alert was NOT broadcast — notify security manually" guidance
             explicitly, then surfaces the technical reason. */}
         <p className="text-white/80 mb-3 max-w-[300px] text-center text-sm font-bold">
-          Your alert was NOT broadcast.
+          {t('emergency.panic.failedLead')}
         </p>
         <p className="text-white/65 mb-6 max-w-[300px] text-center text-xs leading-relaxed">
-          NOTIFY SECURITY MANUALLY for the actual incident, then try again here.
+          {t('emergency.panic.failedBody')}
         </p>
         <p className="text-white/55 mb-8 max-w-[280px] text-center text-xs italic">{errorMsg}</p>
         <div className="flex flex-col gap-3 w-full max-w-xs">
@@ -456,13 +475,13 @@ export default function MobilePanicPage() {
             className="px-8 py-3 rounded-2xl font-bold uppercase tracking-wider text-sm min-h-[48px] text-white transition-transform active:scale-[0.98]"
             style={{ background: 'linear-gradient(160deg, #ef4444, #b91c1c)', boxShadow: '0 0 32px rgba(239,68,68,0.35)' }}
           >
-            Try Again
+            {t('emergency.panic.tryAgain')}
           </button>
           <button
             onClick={() => router.push('/login?redirect=/panic')}
             className="px-8 py-3 rounded-2xl font-bold uppercase tracking-wider text-sm flex items-center justify-center gap-2 min-h-[48px] bg-white/[0.04] border border-white/10 text-white/85 active:bg-white/[0.08] transition-colors"
           >
-            <LogIn className="w-4 h-4" /> Re-Login
+            <LogIn className="w-4 h-4" /> {t('emergency.panic.reLogin')}
           </button>
         </div>
       </div>
@@ -470,7 +489,7 @@ export default function MobilePanicPage() {
   }
 
   if (phase === 'triggered') {
-    const fired = TYPES.find((t) => t.id === firedType) || TYPES[2];
+    const fired = TYPES.find((ty) => ty.id === firedType) || TYPES[2];
 
     // Admin just fired all-clear from the dashboard. Flash a green
     // "All Clear" confirmation before the polling effect transitions
@@ -487,9 +506,9 @@ export default function MobilePanicPage() {
             />
             <CheckCircle2 className="w-20 h-20 relative z-10" style={{ color: '#34d399' }} />
           </div>
-          <h1 className="text-3xl font-black mb-2 uppercase tracking-tight text-center" style={{ color: '#34d399' }}>All Clear</h1>
+          <h1 className="text-3xl font-black mb-2 uppercase tracking-tight text-center" style={{ color: '#34d399' }}>{t('emergency.panic.allClearTitle')}</h1>
           <p className="text-white/65 max-w-[260px] mx-auto text-center text-sm leading-relaxed">
-            An administrator cleared the {fired.name.toLowerCase()} alert. Returning to the trigger panel.
+            {t('emergency.panic.allClearBody', { type: typeName(fired.id).toLowerCase() })}
           </p>
         </div>
       );
@@ -509,13 +528,12 @@ export default function MobilePanicPage() {
           />
           <CheckCircle2 className="w-20 h-20 relative z-10" style={{ color: fired.accent }} />
         </div>
-        <h1 className="text-3xl font-black mb-2 uppercase tracking-tight text-center" style={{ color: fired.accent }}>{fired.name}<br/>Broadcasted</h1>
+        <h1 className="text-3xl font-black mb-2 uppercase tracking-tight text-center" style={{ color: fired.accent }}>{typeName(fired.id)}<br/>{t('emergency.panic.broadcasted')}</h1>
         <p className="text-white/55 mb-8 max-w-[260px] mx-auto text-center text-sm leading-relaxed">
-          All screens are now locked to the emergency profile.
+          {t('emergency.panic.screensLocked')}
         </p>
         <p className="absolute bottom-8 italic text-white/55 text-xs text-center w-full px-8 leading-relaxed">
-          Waiting for an administrator to clear from a secure terminal. This screen will
-          return to the trigger panel automatically once that happens.
+          {t('emergency.panic.waitingForAdmin')}
         </p>
       </div>
     );
@@ -536,17 +554,17 @@ export default function MobilePanicPage() {
           <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-white/55">VenueOS</span>
         </div>
         <span className="text-[10px] font-semibold uppercase tracking-widest truncate max-w-[55%] text-right text-white/60 rounded-full bg-white/[0.04] ring-1 ring-white/10 px-3 py-1.5">
-          {verifiedUser?.email || 'AUTHORIZED'}
+          {verifiedUser?.email || t('emergency.panic.authorized')}
         </span>
       </div>
 
       <div className="px-5 pb-2 text-center">
-        <h1 className="text-[1.35rem] font-black tracking-tight text-white">Emergency Trigger</h1>
+        <h1 className="text-[1.35rem] font-black tracking-tight text-white">{t('emergency.panic.title')}</h1>
         {/* 2026-05-03 BUG FIX (cycle 4 emergency-BUG-013) — copy used to
             say "1.5 seconds" but HOLD_DURATION_MS is 3000 (cycle-1 fix
             restoring the CLAUDE.md "Key Safeguards #5" 3-second hold).
             Updated to match actual timer so operators see truthful UX. */}
-        <p className="text-white/60 text-[11px] mt-1">Press and hold any button for 3 seconds to broadcast.</p>
+        <p className="text-white/60 text-[11px] mt-1">{t('emergency.panic.holdHint')}</p>
       </div>
 
       {/* 2x3 grid — generous spacing so adjacent buttons aren't easy to fat-finger */}
@@ -581,7 +599,7 @@ export default function MobilePanicPage() {
               onKeyUp={handleKeyUp}
               onBlur={clearHold}
               onContextMenu={(e) => e.preventDefault()}
-              aria-label={`Trigger ${type.id} emergency. Hold for 3 seconds to broadcast.`}
+              aria-label={t('emergency.panic.buttonAria', { type: typeName(type.id) })}
               disabled={phase === 'triggering'}
               className={`relative aspect-square w-full max-w-[156px] rounded-full flex flex-col items-center justify-center
                 transition-all duration-150 outline-none
@@ -624,7 +642,7 @@ export default function MobilePanicPage() {
                     className="font-bold uppercase tracking-wider text-xs drop-shadow-md transition-colors"
                     style={{ color: isHolding ? '#ffffff' : 'rgba(255,255,255,0.92)' }}
                   >
-                    {isHolding ? 'Hold…' : type.name}
+                    {isHolding ? t('emergency.panic.holding') : typeName(type.id)}
                   </span>
                 </>
               )}

@@ -52,7 +52,11 @@ function speak(text: string) {
       const u = new w.SpeechSynthesisUtterance(text);
       u.rate = 1.0;
       u.volume = 1.0;
-      u.lang = 'en-US';
+      // i18n (X7, 2026-08-25): callers now pass catalog-resolved text, so the
+      // utterance must follow <html lang> (kept in sync with the operator's
+      // locale by I18nProvider) or a Spanish/Chinese message is read out by
+      // an English voice. Falls back to the previous 'en-US' when unset.
+      u.lang = (typeof document !== 'undefined' && document.documentElement.lang) || 'en-US';
       w.speechSynthesis.speak(u);
     }
   } catch {

@@ -1,5 +1,6 @@
 import { useAppStore } from '@/lib/store';
 import { X, Megaphone, ShieldAlert, WifiOff, Hand, Lock, HeartPulse, CloudLightning, AlertTriangle, RotateCcw } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useState, useTransition } from 'react';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { broadcastEmergency } from '@/actions/trigger-emergency';
@@ -35,6 +36,12 @@ export function EmergencyTriggerModal({ onClose }: Props) {
   // Life-safety modal — hide the mobile tab bar so the confirm/fire footer
   // (bottom-anchored on mobile, items-end) is never occluded by the tab bar.
   useOverlayLock();
+  // i18n (X7, 2026-08-25): every operator-visible string on this life-safety
+  // surface resolves through the catalog. The SRP CONFIRM WORDS
+  // (HOLD/SECURE/LOCKDOWN/EVACUATE/SHELTER/MEDICAL) deliberately stay
+  // English everywhere — they are the drilled safety-protocol vocabulary,
+  // not UI copy. Only the instructions AROUND them are translated.
+  const t = useTranslations();
   const setEmergencyActive = useAppStore((state) => state.setEmergencyActive);
   const user = useAppStore((state) => state.user);
   const token = useAppStore((state) => state.token);
@@ -67,15 +74,15 @@ export function EmergencyTriggerModal({ onClose }: Props) {
   // life-safety color as a glow accent at rest that ignites on select.
   // accent = live color, rgb = same color as a raw triplet for rgba() glow.
   const types = [
-    { id: 'hold',     name: 'Hold',      description: 'Clear hallways, continue instruction. Used for medical or police activity in a hallway.',  icon: Hand,           confirm: 'HOLD',     accent: '#f5a623', rgb: '245,166,35'  },
-    { id: 'secure',   name: 'Secure',    description: 'External threat. Lock outer doors. Business as usual inside.',                                icon: Lock,           confirm: 'SECURE',   accent: '#3b82f6', rgb: '59,130,246'  },
-    { id: 'lockdown', name: 'Lockdown',  description: 'Internal threat. Lock classroom doors, lights off, out of sight.',                             icon: ShieldAlert,    confirm: 'LOCKDOWN', accent: '#ef4444', rgb: '239,68,68'   },
-    { id: 'evacuate', name: 'Evacuate',  description: 'Fire or evacuation order. Leave the building via posted routes.',                              icon: Megaphone,      confirm: 'EVACUATE', accent: '#f97316', rgb: '249,115,22'  },
-    { id: 'weather',  name: 'Shelter',   description: 'Severe weather / hazmat. Direct to interior safe zones.',                                      icon: CloudLightning, confirm: 'SHELTER',  accent: '#22d3ee', rgb: '34,211,238'  },
-    { id: 'medical',  name: 'Medical',   description: 'Medical emergency in the building. Directs staff to assist + clears onlookers.',              icon: HeartPulse,     confirm: 'MEDICAL',  accent: '#10b981', rgb: '16,185,129'  },
+    { id: 'hold',     name: t('emergency.types.hold.name'),     description: t('emergency.types.hold.desc'),     icon: Hand,           confirm: 'HOLD',     accent: '#f5a623', rgb: '245,166,35'  },
+    { id: 'secure',   name: t('emergency.types.secure.name'),   description: t('emergency.types.secure.desc'),   icon: Lock,           confirm: 'SECURE',   accent: '#3b82f6', rgb: '59,130,246'  },
+    { id: 'lockdown', name: t('emergency.types.lockdown.name'), description: t('emergency.types.lockdown.desc'), icon: ShieldAlert,    confirm: 'LOCKDOWN', accent: '#ef4444', rgb: '239,68,68'   },
+    { id: 'evacuate', name: t('emergency.types.evacuate.name'), description: t('emergency.types.evacuate.desc'), icon: Megaphone,      confirm: 'EVACUATE', accent: '#f97316', rgb: '249,115,22'  },
+    { id: 'weather',  name: t('emergency.types.weather.name'),  description: t('emergency.types.weather.desc'),  icon: CloudLightning, confirm: 'SHELTER',  accent: '#22d3ee', rgb: '34,211,238'  },
+    { id: 'medical',  name: t('emergency.types.medical.name'),  description: t('emergency.types.medical.desc'),  icon: HeartPulse,     confirm: 'MEDICAL',  accent: '#10b981', rgb: '16,185,129'  },
   ];
 
-  const currentType = types.find((t) => t.id === selectedType);
+  const currentType = types.find((tt) => tt.id === selectedType);
   const confirmWord = currentType?.confirm || '';
 
   const fireTrigger = (payload: {
@@ -86,8 +93,8 @@ export function EmergencyTriggerModal({ onClose }: Props) {
   }) => {
     setDispatchError(null);
     setLastPayload(payload);
-    const typeName = types.find((t) => t.id === payload.type)?.name || payload.type;
-    announce(`Triggering ${typeName} alert. Broadcasting to every online screen.`);
+    const typeName = types.find((tt) => tt.id === payload.type)?.name || payload.type;
+    announce(t('emergency.modal.annTriggering', { type: typeName }));
     startTransition(async () => {
       const started = performance.now();
       clog.warn('emergency', `TRIGGER: ${payload.type}`, {
@@ -101,16 +108,16 @@ export function EmergencyTriggerModal({ onClose }: Props) {
         // rejection (HTTP 200 body) rather than throwing. Treat that as a
         // failure — do NOT flip local emergency state until the server confirms.
         if (result && result.success === false) {
-          throw new Error(result.error || 'Server rejected the alert');
+          throw new Error(result.error || t('emergency.modal.errServerRejected'));
         }
         if (!result || typeof result.success === 'undefined') {
-          throw new Error('Unexpected server response format — alert state unknown');
+          throw new Error(t('emergency.modal.errUnexpectedResponse'));
         }
         clog.info('emergency', `TRIGGER success: ${payload.type}`, {
           elapsedMs: Math.round(performance.now() - started),
           overrideId: result.overrideId,
         });
-        announce(`${typeName} alert sent to every online screen.`);
+        announce(t('emergency.modal.annSent', { type: typeName }));
         // ONLY flip local emergency state after the server confirms the broadcast.
         // Carry the overrideId into the store so EmergencyOverlay can pass it
         // back on all-clear (audit P2 #3 — forensic chain-of-custody fix).
@@ -127,8 +134,8 @@ export function EmergencyTriggerModal({ onClose }: Props) {
           tags: { component: 'EmergencyTriggerModal', emergencyType: payload.type },
           extra: { schoolId: payload.schoolId, triggeredBy: payload.triggeredBy },
         });
-        setDispatchError(message || 'Unknown server error');
-        announce(`Emergency dispatch failed. The ${typeName} alert was NOT sent to screens. Notify security manually now. ${message}`);
+        setDispatchError(message || t('emergency.modal.errUnknown'));
+        announce(t('emergency.modal.annFailed', { type: typeName, error: message }));
         // Local emergency state intentionally NOT set — server did not confirm broadcast.
       }
     });
@@ -172,16 +179,18 @@ export function EmergencyTriggerModal({ onClose }: Props) {
           <div>
             <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: '#f87171' }}>
               <ShieldAlert className="w-5 h-5" />
-              Trigger Emergency
+              {t('emergency.modal.title')}
             </h2>
             <p className="text-xs text-white/65 mt-0.5">
-              Emergency content is configured in <strong className="text-white/85">Settings → Emergency Content</strong>.
+              {t.rich('emergency.modal.configuredIn', {
+                b: (chunks) => <strong className="text-white/85">{chunks}</strong>,
+              })}
             </p>
           </div>
           <button
             onClick={onClose}
             className="text-white/70 hover:text-white transition-colors"
-            aria-label="Close"
+            aria-label={t('emergency.modal.close')}
           >
             <X className="w-5 h-5" />
           </button>
@@ -191,7 +200,7 @@ export function EmergencyTriggerModal({ onClose }: Props) {
           {/* Step 1 — pick the SRP type */}
           <div>
             <h3 className="text-sm font-semibold tracking-tight text-white mb-3">
-              1. Select Emergency Type
+              {t('emergency.modal.step1')}
             </h3>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {types.map((type) => {
@@ -208,7 +217,7 @@ export function EmergencyTriggerModal({ onClose }: Props) {
                 return (
                   <button
                     key={type.id}
-                    onClick={() => { setSelectedType(type.id); setConfirmKey(''); setDispatchError(null); announce(`${type.name} selected. Type ${type.confirm} to confirm, then trigger.`); }}
+                    onClick={() => { setSelectedType(type.id); setConfirmKey(''); setDispatchError(null); announce(t('emergency.modal.annSelected', { type: type.name, word: type.confirm })); }}
                     className="p-3 rounded-xl text-left transition-all outline-none"
                     style={{
                       background: isSel ? selBg : restBg,
@@ -235,18 +244,24 @@ export function EmergencyTriggerModal({ onClose }: Props) {
           {selectedType && (
             <div className="animate-in fade-in slide-in-from-top-4 duration-200 pt-5 border-t border-white/10">
               <h3 className="text-sm font-semibold tracking-tight text-white mb-3">
-                2. Confirm
+                {t('emergency.modal.step2')}
               </h3>
               <div
                 className="rounded-xl p-4 border space-y-3"
                 style={{ background: 'rgba(239,68,68,0.06)', borderColor: 'rgba(239,68,68,0.25)' }}
               >
                 <p className="text-sm text-white/80">
-                  This will immediately broadcast <strong className="font-bold text-white">{currentType?.name}</strong> to every online screen in your school.
+                  {t.rich('emergency.modal.willBroadcast', {
+                    type: currentType?.name ?? '',
+                    b: (chunks) => <strong className="font-bold text-white">{chunks}</strong>,
+                  })}
                 </p>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-white/65 mb-1.5">
-                    Type <span className="font-mono font-bold" style={{ color: '#fca5a5' }}>{confirmWord}</span> to confirm
+                    {t.rich('emergency.modal.typeToConfirm', {
+                      word: confirmWord,
+                      w: (chunks) => <span className="font-mono font-bold" style={{ color: '#fca5a5' }}>{chunks}</span>,
+                    })}
                   </label>
                   <input
                     type="text"
@@ -265,7 +280,7 @@ export function EmergencyTriggerModal({ onClose }: Props) {
                     }}
                     placeholder={confirmWord}
                     autoFocus
-                    aria-label={`Type ${confirmWord} to confirm, then press Enter or the Trigger Emergency button`}
+                    aria-label={t('emergency.modal.confirmAria', { word: confirmWord })}
                     className="w-full px-4 py-2.5 border border-white/15 rounded-md bg-slate-950/60 text-white placeholder-white/60 font-mono text-sm outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all uppercase tracking-wider"
                   />
                 </div>
@@ -283,7 +298,7 @@ export function EmergencyTriggerModal({ onClose }: Props) {
             <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" style={{ color: '#f87171' }} />
             <div className="flex-1">
               <p className="text-sm font-bold" style={{ color: '#fecaca' }}>
-                Emergency dispatch FAILED — alert was NOT sent to screens.
+                {t('emergency.modal.dispatchFailed')}
               </p>
               <p className="text-xs text-red-200/90 mt-1 font-mono break-all">
                 {dispatchError}
@@ -293,10 +308,10 @@ export function EmergencyTriggerModal({ onClose }: Props) {
               onClick={handleRetry}
               disabled={isPending}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-bold rounded shrink-0 transition-colors"
-              aria-label="Retry emergency dispatch"
+              aria-label={t('emergency.modal.retryAria')}
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              Retry
+              {t('emergency.modal.retry')}
             </button>
           </div>
         )}
@@ -307,7 +322,7 @@ export function EmergencyTriggerModal({ onClose }: Props) {
             onClick={onClose}
             className="px-4 py-2 text-sm font-medium text-white/60 hover:text-white transition-colors"
           >
-            Cancel
+            {t('emergency.modal.cancel')}
           </button>
           <button
             onClick={handleTrigger}
@@ -316,10 +331,10 @@ export function EmergencyTriggerModal({ onClose }: Props) {
             style={{ background: 'linear-gradient(160deg, #ef4444 0%, #b91c1c 100%)', boxShadow: '0 0 24px rgba(239,68,68,0.30)' }}
           >
             {isPending ? (
-              <span className="animate-pulse">Sending alert to all screens…</span>
+              <span className="animate-pulse">{t('emergency.modal.sending')}</span>
             ) : (
               <span className="flex items-center gap-2">
-                <WifiOff className="w-4 h-4" /> Trigger Emergency
+                <WifiOff className="w-4 h-4" /> {t('emergency.modal.title')}
               </span>
             )}
           </button>

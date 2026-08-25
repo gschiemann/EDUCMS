@@ -2,6 +2,7 @@
 
 import { useAppStore } from '@/lib/store';
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { allClearEmergency } from '@/actions/trigger-emergency';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
@@ -17,6 +18,10 @@ export function EmergencyOverlay() {
   // on the overlay root below as defense-in-depth.) This touches ONLY
   // overlay layering — no trigger / broadcast / all-clear / audit logic.
   useOverlayLock();
+  // i18n (X7, 2026-08-25): the all-clear CONFIRM WORD stays the English
+  // literal 'CLEAR' — drilled protocol vocabulary, identical in every
+  // locale. Only the instructions around it are translated.
+  const t = useTranslations();
   const setEmergencyActive = useAppStore((state) => state.setEmergencyActive);
   const user = useAppStore((state) => state.user);
   const token = useAppStore((state) => state.token);
@@ -127,9 +132,7 @@ export function EmergencyOverlay() {
         aria-atomic="true"
         className="sr-only"
       >
-        Emergency active. All screens are currently locked and displaying the
-        emergency override broadcast. Normal scheduling is suspended. To restore
-        normal screen scheduling, type CLEAR and authorize the all-clear signal.
+        {t('emergency.overlay.srAlert')}
       </div>
       {/* Flashing global indicator — clamped by the
           @media (prefers-reduced-motion: reduce) rule in globals.css
@@ -146,19 +149,19 @@ export function EmergencyOverlay() {
         </div>
 
         <div className="space-y-4">
-          <h1 id="emergency-overlay-title" className="text-5xl font-black tracking-tighter text-white">EMERGENCY ACTIVE</h1>
+          <h1 id="emergency-overlay-title" className="text-5xl font-black tracking-tighter text-white">{t('emergency.overlay.title')}</h1>
           <p id="emergency-overlay-desc" className="text-xl text-red-200 mt-2 font-medium">
-            All screens are currently locked and displaying the emergency override broadcast. Normal scheduling is suspended.
+            {t('emergency.overlay.desc')}
           </p>
         </div>
 
         <div className="w-full max-w-md bg-black/40 backdrop-blur-md rounded-xl p-8 border border-red-500/30 mt-8 space-y-6">
           <div>
             <label htmlFor="all-clear-input" className="block text-sm font-bold uppercase tracking-wider text-red-400 mb-2">
-              All-Clear Authorization
+              {t('emergency.overlay.authLabel')}
             </label>
             <p className="text-sm text-red-200 mb-4 opacity-80">
-              To restore normal screen scheduling, type <strong>CLEAR</strong> and authorize the all-clear signal.
+              {t.rich('emergency.overlay.authHint', { b: (chunks) => <strong>{chunks}</strong> })}
             </p>
             <input
               ref={inputRef}
@@ -166,7 +169,7 @@ export function EmergencyOverlay() {
               type="text"
               value={confirmKey}
               onChange={(e) => setConfirmKey(e.target.value.toUpperCase())}
-              placeholder="Type CLEAR"
+              placeholder={t('emergency.overlay.placeholder')}
               className="w-full px-4 py-3 bg-black/50 border border-red-500/30 rounded-lg text-white font-mono text-center tracking-[0.5em] focus:ring-2 focus:ring-red-500 outline-none uppercase"
             />
           </div>
@@ -178,11 +181,11 @@ export function EmergencyOverlay() {
           >
             {isPending ? (
               <span className="flex items-center gap-2 animate-pulse">
-                <ShieldCheck className="w-5 h-5" /> Submitting...
+                <ShieldCheck className="w-5 h-5" /> {t('emergency.overlay.submitting')}
               </span>
             ) : (
               <span className="flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5" /> Terminate Emergency (All Clear)
+                <ShieldCheck className="w-5 h-5" /> {t('emergency.overlay.terminate')}
               </span>
             )}
           </button>
