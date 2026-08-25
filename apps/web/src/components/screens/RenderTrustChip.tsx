@@ -8,10 +8,10 @@
  * the industry's #1 signage complaint — "is my screen actually showing the
  * right thing?" — has a real, positive-proof answer instead of just a
  * ping-derived ONLINE badge (which a frozen kiosk still passes for free).
- * Classification is delegated to the pure `deriveRenderTrust` in
+ * Classification is delegated to the pure `deriveRenderTrustGrade` in
  * `./renderTrust` (unit-tested there); this file is presentation only.
  *
- * Four variants, three of them visible:
+ * Six variants (see renderTrust.ts grading — 2026-08-25 calm-down):
  *   painting     — green, quiet: "Rendering ✓ · verified {time} ago"
  *   not-painting — THE money state: reachable but no proof of a paint
  *                  within the render-proof window. Styled to break from
@@ -33,7 +33,7 @@
  */
 
 import { AlertTriangle } from 'lucide-react';
-import { deriveRenderTrust, type RenderHealth } from './renderTrust';
+import { deriveRenderTrustGrade, type RenderHealth } from './renderTrust';
 
 export function RenderTrustChip({
   status,
@@ -41,6 +41,7 @@ export function RenderTrustChip({
   renderStale,
   verifiedAgo,
   verifiedFull,
+  lastRenderedAtMs,
 }: {
   /** Live-computed Screen.status (ONLINE / OFFLINE / PENDING / REVOKED). */
   status?: string | null;
@@ -53,8 +54,11 @@ export function RenderTrustChip({
   /** Full datetime for the tooltip (page.tsx's `fullDateTime`), same
    *  chip-plus-tooltip pairing convention as the row's lastPingAt chip. */
   verifiedFull?: string | null;
+  /** Server clock (ms) of the last render-proof POST — grades a stale
+   *  signal into checking / alarm / chronic (2026-08-25 calm-down). */
+  lastRenderedAtMs?: number | null;
 }) {
-  const variant = deriveRenderTrust({ status, renderHealth, renderStale });
+  const variant = deriveRenderTrustGrade({ status, renderHealth, renderStale, lastRenderedAtMs });
 
   if (variant === 'offline') return null;
 
@@ -69,6 +73,35 @@ export function RenderTrustChip({
         }
       >
         Rendering ✓{verifiedAgo ? ` · verified ${verifiedAgo}` : ''}
+      </span>
+    );
+  }
+
+  // Stale under 5 minutes — the reload/OTA self-healing window. A soft
+  // "checking" instead of the siren: red chips that fire during every
+  // refresh push train the operator to ignore the one red that matters
+  // (operator, launch night: "why do i get these bright ass red alerts all
+  // the time now").
+  if (variant === 'checking') {
+    return (
+      <span
+        className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700"
+        title="Paint proof paused within the last few minutes — usually a page reload, refresh push, or update in progress. Becomes a red alert only if it stays quiet past 5 minutes."
+      >
+        Checking paint proof{verifiedAgo ? ` · last verified ${verifiedAgo}` : '…'}
+      </span>
+    );
+  }
+
+  // Stale beyond 48 hours — chronic condition, documented calmly. The red
+  // alarm is reserved for "WAS painting recently and stopped".
+  if (variant === 'stale-chronic') {
+    return (
+      <span
+        className="text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-500"
+        title="No painted-frame proof for over 48 hours. Long-idle screens and builds that stopped posting proof both land here — investigate when convenient; this is a condition, not an incident."
+      >
+        No render-proof{verifiedAgo ? ` since ${verifiedFull ?? verifiedAgo}` : ' in 48h+'}
       </span>
     );
   }

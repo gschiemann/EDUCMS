@@ -119,3 +119,45 @@ export function deriveRenderTrust(input: RenderTrustInput): RenderTrustVariant {
   const now = input.nowMs ?? Date.now();
   return now - input.lastRenderedAtMs >= RENDER_STALE_AFTER_MS ? 'not-painting' : 'painting';
 }
+
+// ── ALARM GRADING (2026-08-25, same field night the chip shipped) ────────
+// Operator, hours after launch: "why do i get these bright ass red alerts
+// all the time now." The 90s server window is the right FRESHNESS bound but
+// the wrong ALARM bound — three distinct realities were all wearing the one
+// red chip:
+//   • a page reload (refresh push, OTA, nav) pauses proof for ~1-3 min —
+//     transient, self-healing, not an incident;
+//   • the true frozen-kiosk signature — WAS painting recently, stopped, and
+//     stayed stopped — the only state that deserves red;
+//   • chronic absence (a build that stopped posting weeks ago, an idle
+//     screen) — a documented condition, not a siren.
+// A trust feature that cries wolf trains the operator to ignore the one red
+// that matters, so staleness now grades by AGE of the last proof.
+
+/** Stale-but-younger than this → 'checking' (soft, self-healing window). */
+export const RENDER_ALARM_AFTER_MS = 5 * 60_000;
+/** Stale-and-older than this → 'stale-chronic' (calm history, not alarm). */
+export const RENDER_CHRONIC_AFTER_MS = 48 * 3600_000;
+
+export type RenderTrustGrade =
+  | RenderTrustVariant
+  | 'checking' // stale < 5min — reload/OTA gap; soft amber, no siren
+  | 'stale-chronic'; // stale > 48h — "no proof since <date>", quiet neutral
+
+/**
+ * Grade the variant by how long the proof has been missing. Falls back to
+ * plain 'not-painting' when no timestamp is available to grade with — an
+ * ungradable stale keeps the loud treatment rather than hiding a possible
+ * real freeze.
+ */
+export function deriveRenderTrustGrade(
+  input: RenderTrustInput,
+): RenderTrustGrade {
+  const base = deriveRenderTrust(input);
+  if (base !== 'not-painting') return base;
+  if (input.lastRenderedAtMs == null) return 'not-painting';
+  const age = (input.nowMs ?? Date.now()) - input.lastRenderedAtMs;
+  if (age < RENDER_ALARM_AFTER_MS) return 'checking';
+  if (age > RENDER_CHRONIC_AFTER_MS) return 'stale-chronic';
+  return 'not-painting';
+}

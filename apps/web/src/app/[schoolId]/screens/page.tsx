@@ -21,7 +21,7 @@ import { DisplayScheduleModal, type DisplayScheduleTargetRef } from '@/component
 // version: ONLINE/OFFLINE is a ping-derived reachability signal, not proof
 // of a painted frame, and a frozen kiosk still passes the ping.
 import { RenderTrustChip } from '@/components/screens/RenderTrustChip';
-import { deriveRenderTrust } from '@/components/screens/renderTrust';
+import { deriveRenderTrustGrade } from '@/components/screens/renderTrust';
 // 2026-08-25 — device-first "Connect a screen" card. Replaces the old
 // "How to Connect a Screen" banner, which taught only the browser flow
 // ("open the Player URL") on a fleet that is overwhelmingly Android boxes
@@ -304,7 +304,7 @@ function FleetSummaryStrip({ screens }: { screens: any[] }) {
   // whose separate GET /screen-groups endpoint doesn't carry these
   // fields). Counts the money state: reachable but NOT proven painting.
   const notPainting = screens.filter(
-    (s) => deriveRenderTrust({ status: s.status, renderHealth: s.renderHealth, renderStale: s.renderStale }) === 'not-painting',
+    (s) => deriveRenderTrustGrade({ status: s.status, renderHealth: s.renderHealth, renderStale: s.renderStale, lastRenderedAtMs: s.lastRenderedAt ? new Date(s.lastRenderedAt).getTime() : null }) === 'not-painting',
   ).length;
   const canaryActive = (canary.data?.percent ?? 100) < 100;
 
@@ -670,6 +670,16 @@ function SyncTrimSection({ screen }: { screen: any }) {
       <MenuSectionLabel hint="Nudge when this display flips relative to its frame-locked group. Positive = flip earlier (compensates a slow display).">
         Sync trim
       </MenuSectionLabel>
+      {/* 2026-08-25 — operator: "it wasnt obvious thats what it was for,
+          just a random button with sync." The hint above is hover-only
+          (invisible on touch); the one-liner below is VISIBLE and says the
+          job in plain words. Shows only because this screen's group has
+          frame-locked sync on. */}
+      <p className="text-[10px] text-slate-400 mt-0.5 leading-snug">
+        Keeps this screen changing slides in perfect step with its group.
+        If it flips a beat ahead or behind the screens next to it, nudge
+        by a few ms until they match.
+      </p>
       <div className="flex items-center flex-wrap gap-1 mt-1.5">
         {[-25, -5, +5, +25].map((step) => (
           <button
@@ -2556,6 +2566,7 @@ export default function ScreensPage() {
                               renderStale={proof?.renderStale}
                               verifiedAgo={proof?.lastRenderedAt ? timeAgo(proof.lastRenderedAt) : null}
                               verifiedFull={proof?.lastRenderedAt ? fullDateTime(proof.lastRenderedAt) : null}
+                              lastRenderedAtMs={proof?.lastRenderedAt ? new Date(proof.lastRenderedAt).getTime() : null}
                             />
                           );
                         })()}
@@ -2869,6 +2880,8 @@ export default function ScreensPage() {
                           renderStale={proof?.renderStale}
                           verifiedAgo={proof?.lastRenderedAt ? timeAgo(proof.lastRenderedAt) : null}
                           verifiedFull={proof?.lastRenderedAt ? fullDateTime(proof.lastRenderedAt) : null}
+                        
+                          lastRenderedAtMs={(screen as any).lastRenderedAt ? new Date((screen as any).lastRenderedAt).getTime() : null}
                         />
                       );
                     })()}

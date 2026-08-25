@@ -123,3 +123,36 @@ describe('deriveRenderTrust — fallback path (renderHealth absent entirely)', (
     expect(deriveRenderTrust({ ...ONLINE, lastRenderedAtMs: null })).toBe('unknown');
   });
 });
+
+// 2026-08-25 calm-down — staleness grades by AGE so the red alarm is
+// reserved for the true frozen-kiosk window ("was painting, stopped").
+describe('deriveRenderTrustGrade — alarm grading', () => {
+  const { deriveRenderTrustGrade } = require('../renderTrust');
+  const NOW = 1_756_100_000_000;
+  const stale = (ageMs: number) => ({
+    status: 'ONLINE',
+    renderHealth: 'STALE' as const,
+    renderStale: true,
+    lastRenderedAtMs: NOW - ageMs,
+    nowMs: NOW,
+  });
+
+  it('stale < 5min → checking (reload/OTA gap, no siren)', () => {
+    expect(deriveRenderTrustGrade(stale(2 * 60_000))).toBe('checking');
+  });
+  it('stale in the 5min–48h window → not-painting (the real alarm)', () => {
+    expect(deriveRenderTrustGrade(stale(30 * 60_000))).toBe('not-painting');
+    expect(deriveRenderTrustGrade(stale(12 * 3600_000))).toBe('not-painting');
+  });
+  it('stale > 48h → stale-chronic (calm history, not an incident)', () => {
+    expect(deriveRenderTrustGrade(stale(27 * 24 * 3600_000))).toBe('stale-chronic');
+  });
+  it('stale with NO timestamp to grade → keeps the loud not-painting (never hides a possible freeze)', () => {
+    expect(deriveRenderTrustGrade({ status: 'ONLINE', renderHealth: 'STALE', renderStale: true })).toBe('not-painting');
+  });
+  it('non-stale variants pass through ungraded (painting / unknown / offline)', () => {
+    expect(deriveRenderTrustGrade({ status: 'ONLINE', renderHealth: 'OK' })).toBe('painting');
+    expect(deriveRenderTrustGrade({ status: 'ONLINE', renderHealth: 'UNKNOWN' })).toBe('unknown');
+    expect(deriveRenderTrustGrade({ status: 'OFFLINE', renderHealth: 'STALE', renderStale: true, lastRenderedAtMs: NOW - 60_000, nowMs: NOW })).toBe('offline');
+  });
+});
