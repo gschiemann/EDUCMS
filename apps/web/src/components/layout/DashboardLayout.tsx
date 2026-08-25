@@ -12,6 +12,7 @@ import { ServiceWorkerRegistrar } from './ServiceWorkerRegistrar';
 import { TopToolbar } from './TopToolbar';
 import { EmergencyOverlay } from './EmergencyOverlay';
 import { AuthExpirationGuard } from './AuthExpirationGuard';
+import { ApiStatusBanner } from './ApiStatusBanner';
 import { StaleBundleWatcher } from './StaleBundleWatcher';
 import { ProfileHydrator } from './ProfileHydrator';
 import { useTenantStatus } from '@/hooks/use-api';
@@ -80,6 +81,10 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           or the user is explicitly logged out. Mounted high in the tree
           so every dashboard page is protected. */}
       <AuthExpirationGuard />
+      {/* Reconnect banner — subscribes to apiFetch's retry/backoff bus and
+          says "Connection trouble — reconnecting…" instead of letting an API
+          outage read as "every click is broken." Renders null when idle. */}
+      <ApiStatusBanner />
       {/* 2026-05-12 — operator hit "still shows gschiemann" because
           their tab was on a pre-deploy bundle. StaleBundleWatcher
           polls /api/build-info every 5 min and shows a "new version
