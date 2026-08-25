@@ -769,6 +769,26 @@ export default function TemplatesPage() {
     resetAiModal();
   }, [resetAiModal]);
 
+  // 2026-08-24 — extracted from the hero "Generate with AI" button so the
+  // honest empty-state CTA (a search/filter combo with zero matches) can
+  // offer the exact same entry point instead of just describing it in
+  // prose. Same AI-configured check + friendly alert either caller gets.
+  const openAiGenerate = useCallback(async () => {
+    setAiError(null);
+    const src = await getAiStatusSource();
+    if (src === 'none') {
+      await appAlert({
+        title: 'AI isn’t enabled yet',
+        message:
+          'This account doesn’t have an AI provider set up. Ask your administrator to enable AI in Settings → AI, then try again.',
+        tone: 'info',
+      });
+      return;
+    }
+    resetAiModal();
+    setShowAiGenerate(true);
+  }, [resetAiModal]);
+
   // ── "Resume last generation" (2026-06-30) ──────────────────────────────
   // Cache the last fan-out in localStorage so closing the picker never forces a
   // paid re-generate. Keyed per school. Best-effort: any storage error (quota /
@@ -1239,6 +1259,13 @@ export default function TemplatesPage() {
     return cats.find((c) => c.key === key)?.label || key;
   };
 
+  // Human label for a school-level key — same lookup pattern as
+  // categoryLabel above, used by the honest empty-state message so a
+  // level-only ("High School") dead end reads as clearly as a
+  // category-only one.
+  const levelLabel = (key: string): string =>
+    SCHOOL_LEVEL_CHIPS.find((c) => c.key === key)?.label || key;
+
   const q = searchQuery.trim().toLowerCase();
   const filtered = (templates || []).filter((t: Template) => {
     // Hide letterboxed portrait presets — see LETTERBOXED_PORTRAIT_PRESETS
@@ -1521,25 +1548,13 @@ export default function TemplatesPage() {
                 CTA. The platform/BYOK key check happens server-side; if
                 AI isn't configured the API returns a friendly 503 that
                 this button surfaces via the modal's error pane. */}
+            {/* 2026-06-09 — operator: "if no AI enabled we need to tell the
+                user to contact their admin when they click on it." Check AI
+                status first; only open the generator when a key exists.
+                (2026-08-24 — the check itself now lives in openAiGenerate so
+                the empty-state CTA below can share it verbatim.) */}
             <button
-              onClick={async () => {
-                setAiError(null);
-                // 2026-06-09 — operator: "if no AI enabled we need to tell the
-                // user to contact their admin when they click on it." Check AI
-                // status first; only open the generator when a key exists.
-                const src = await getAiStatusSource();
-                if (src === 'none') {
-                  await appAlert({
-                    title: 'AI isn’t enabled yet',
-                    message:
-                      'This account doesn’t have an AI provider set up. Ask your administrator to enable AI in Settings → AI, then try again.',
-                    tone: 'info',
-                  });
-                  return;
-                }
-                resetAiModal();
-                setShowAiGenerate(true);
-              }}
+              onClick={openAiGenerate}
               disabled={isViewer}
               title={isViewer ? 'Read-only — viewer role' : 'Describe a template, pick from 3 AI drafts'}
               className="px-4 py-3 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white font-bold text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed max-md:flex-1 max-md:basis-[calc(50%-0.25rem)] max-md:hover:scale-100"
@@ -2293,11 +2308,43 @@ export default function TemplatesPage() {
 
         {/* Category sub-filter. Vertical-aware: K-12 gets Welcome /
             Hallway / Cafeteria / Athletics / Holidays; other verticals
-            get their own set from tenantCopy.templateCategories. */}
+            get their own set from tenantCopy.templateCategories.
+            DATA-DRIVEN (2026-08-24): VERTICAL_TEMPLATE_CATEGORIES is a
+            static per-vertical taxonomy that doesn't always match what's
+            actually seeded — e.g. HEALTHCARE declares "Waiting room" /
+            "Directory" / "Patient info" chips while every seeded
+            healthcare preset carries the single literal
+            category='HEALTHCARE', so those three could never return a
+            result; HOSPITALITY's "Lobby" / "Events" / "Wayfinding" /
+            "Amenities" chips have the same problem. A tenant clicking
+            their own category chip landed on a gallery that LOOKED
+            empty/broken. Only render a chip when ≥1 template in this
+            tenant's actual catalog matches it (mirrors the exact
+            filter predicate below: literal category equality, with the
+            same ATHLETICS special-case and portrait/letterboxed
+            exclusions) — this kills every dead chip today and
+            self-heals as the catalog changes, no hand-maintained
+            allowlist. Counts come from the tenant's FULL catalog (not
+            re-derived per active level/search) so the row stays stable
+            as other filters change; a combo that's legitimately empty
+            still gets the honest empty-state below instead of a
+            disappearing chip. */}
         {(() => {
-          const cats = (tenantCopy.templateCategories && tenantCopy.templateCategories.length > 0)
+          const catsRaw = (tenantCopy.templateCategories && tenantCopy.templateCategories.length > 0)
             ? tenantCopy.templateCategories
             : CATEGORY_TABS;
+          const countForCategoryKey = (key: string): number => {
+            let n = 0;
+            for (const t of (templates || [])) {
+              if (LETTERBOXED_PORTRAIT_PRESETS.has(t.id)) continue;
+              if (t.id.endsWith('-portrait')) continue; // portrait siblings never render as their own card
+              if (key === 'ATHLETICS' ? isAthleticsPreset(t) : t.category === key) n++;
+            }
+            return n;
+          };
+          const cats = catsRaw
+            .map((cat) => ({ ...cat, count: cat.key ? countForCategoryKey(cat.key) : 0 }))
+            .filter((cat) => !cat.key || cat.count > 0);
           return (
             <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by category">
               {cats.map((cat) => {
@@ -2319,6 +2366,7 @@ export default function TemplatesPage() {
                     }`}
                   >
                     {cat.label}
+                    {cat.key ? <span className="ml-1.5 opacity-60 tabular-nums">{cat.count}</span> : null}
                   </button>
                 );
               })}
@@ -2355,31 +2403,64 @@ export default function TemplatesPage() {
 
       {isLoading ? (
         <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>
-      ) : (systemTemplates.length === 0 && customTemplates.length === 0 && (activeCategory || searchQuery.trim())) ? (
-        // Category/search empty-state — never let a filter render a blank
-        // page (the Athletics tab used to do exactly that). Tells the
-        // operator nothing matched and offers the two escape hatches.
-        // (2026-06-26 fix.)
+      ) : (systemTemplates.length === 0 && customTemplates.length === 0 && (activeCategory || activeLevel || searchQuery.trim())) ? (
+        // Category/level/search empty-state — never let a filter (or filter
+        // combination) render a blank page (the Athletics tab used to do
+        // exactly that; 2026-06-26 fix). Tells the operator nothing matched
+        // and offers real escape hatches.
+        // 2026-08-24 — extended: the guard used to check only
+        // activeCategory/searchQuery, so a school-LEVEL-only dead end (no
+        // category, no search, but e.g. "High School" selected) fell through
+        // to the normal grid — the "Ready-Made Templates" section silently
+        // vanished (no header, no explanation) while "Your Templates" showed
+        // its generic "No custom templates yet", which is misleading when
+        // the real cause is the level filter. Also: the old "Show all
+        // templates" button only cleared category+search, leaving an active
+        // level filter stuck; it now clears every filter (search, category,
+        // level, holiday) in one tap, and offers the same "Generate with AI"
+        // entry point the hero button does instead of just describing it.
         <div className="bg-white rounded-2xl border-2 border-dashed border-slate-200 p-16 text-center">
           <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <LayoutTemplate className="w-8 h-8 text-slate-300" />
           </div>
-          <p className="text-sm font-semibold text-slate-500">
-            {searchQuery.trim()
-              ? `No templates match "${searchQuery.trim()}"`
-              : `No ${categoryLabel(activeCategory).toLowerCase()} templates yet`}
-          </p>
-          <p className="text-xs text-slate-400 mt-1">
-            Try another category, clear your search, or generate one with AI.
-          </p>
+          {(() => {
+            const searchTrim = searchQuery.trim();
+            const filterBits = [
+              activeLevel ? levelLabel(activeLevel) : null,
+              activeCategory ? categoryLabel(activeCategory) : null,
+            ].filter((s): s is string => !!s);
+            return (
+              <>
+                <p className="text-sm font-semibold text-slate-500">
+                  {searchTrim
+                    ? `No templates match "${searchTrim}"`
+                    : `No ${filterBits.join(' ').toLowerCase() || 'matching'} templates yet`}
+                </p>
+                <p className="text-xs text-slate-400 mt-1">
+                  {searchTrim && filterBits.length > 0
+                    ? `Filtered to ${filterBits.join(' · ')}. Clear your filters, try another search, or generate one with AI.`
+                    : 'Clear your filters, try another search, or generate one with AI.'}
+                </p>
+              </>
+            );
+          })()}
           <div className="flex items-center justify-center gap-2 mt-5">
             <button
               type="button"
-              onClick={() => { setActiveCategory(''); setSearchQuery(''); }}
+              onClick={() => { setActiveCategory(''); setActiveLevel(''); setActiveHoliday(''); setSearchQuery(''); }}
               className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white border border-slate-200 text-slate-600 hover:border-slate-300 transition"
             >
-              Show all templates
+              Clear search & filters
             </button>
+            {!isViewer && (
+              <button
+                type="button"
+                onClick={openAiGenerate}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white shadow-sm hover:shadow-md transition inline-flex items-center gap-1.5"
+              >
+                <Sparkles className="w-3.5 h-3.5" /> Generate with AI
+              </button>
+            )}
           </div>
         </div>
       ) : (
