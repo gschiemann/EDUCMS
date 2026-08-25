@@ -16,6 +16,15 @@ import { reactivateFallbackIfDark as reactivateFallbackIfDarkShared } from './go
 // 2026-07-03): flipping a staged draft to active must displace competing live
 // schedules for the same target exactly as a direct publish does.
 import { displaceCompetingActiveSchedules } from './schedule-displacement';
+// P5 — reject a "windowed" schedule (a time window with zero days
+// selected) at the API boundary; see schedule-window-validation.ts for
+// the full semantics. Mirrors the P7 client-side gate
+// (apps/web/src/lib/blast-radius.ts reachWarnings) so raw API callers
+// (HQ fleet, imports, direct clients) can't create what the UI refuses to.
+import {
+  assertScheduleWindowIsReachable,
+  resolveEffectiveScheduleWindow,
+} from './schedule-window-validation';
 import {
   ScheduleCreateSchema, type ScheduleCreateInput,
   ScheduleUpdateSchema, type ScheduleUpdateInput,
@@ -118,6 +127,15 @@ export class SchedulesController {
     if (!body.screenGroupId && !body.screenId) {
       throw new HttpException({ code: 'SCHEDULE_TARGET_REQUIRED', message: 'Either screenGroupId or screenId must be specified' }, HttpStatus.BAD_REQUEST);
     }
+
+    // P5 — a time-windowed schedule with zero days selected can never run
+    // (silent "why isn't my content playing"). Cheap, no-DB-query check —
+    // fail fast before the ownership lookups below.
+    assertScheduleWindowIsReachable({
+      daysOfWeek: body.daysOfWeek,
+      timeStart: body.timeStart,
+      timeEnd: body.timeEnd,
+    });
 
     // auth-BUG-003: validate every foreign id in the body actually
     // belongs to the caller's tenant before writing. Without these
@@ -459,6 +477,16 @@ export class SchedulesController {
       where: { id, tenantId: req.user.tenantId },
     });
     if (!schedule) throw new HttpException({ code: 'SCHEDULE_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
+
+    // P5 — same "can never run" guard as create(), evaluated against the
+    // EFFECTIVE post-update state: a PUT can touch just one of
+    // daysOfWeek/timeStart/timeEnd and leave the others at whatever is
+    // already on the row, so validate the merge — not just this request's
+    // fields — or a two-step edit slips a zero-day windowed schedule past
+    // both PUTs individually.
+    assertScheduleWindowIsReachable(
+      resolveEffectiveScheduleWindow(body, schedule),
+    );
 
     // auth-BUG-003: same cross-tenant validation as create — when a
     // PUT body re-targets the schedule at a different screen or group
