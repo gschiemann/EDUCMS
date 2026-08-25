@@ -35,8 +35,12 @@ import {
   CheckCircle2, AlertTriangle, Activity, ArrowRight, ChevronRight,
   Clock, FolderOpen, Sparkles, Hand, Trophy,
 } from 'lucide-react';
-import { useScreens, usePlaylists, useSchedules, useAssets, useSubmissions, useTenantStatus, useFleet } from '@/hooks/use-api';
+import {
+  useScreens, usePlaylists, useSchedules, useAssets, useSubmissions, useTenantStatus, useFleet,
+  useDistrictReadiness, useDistrictPendingApprovals,
+} from '@/hooks/use-api';
 import { FleetRollup } from '@/components/screens/FleetRollup';
+import { DistrictCommandCenter } from '@/components/dashboard/district/DistrictCommandCenter';
 import { StarterBoardCard } from '@/components/dashboard/StarterBoardCard';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { useAppStore } from '@/lib/store';
@@ -87,6 +91,12 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
   const canFleet = role === 'SUPER_ADMIN' || role === 'DISTRICT_ADMIN';
   const { data: fleet } = useFleet({ enabled: canFleet });
   const isHQ = (fleet?.locations?.length ?? 0) > 1;
+  // District command center — same two bounded reads as desktop. The operator
+  // runs the district from a phone, so "which school needs me" has to be on
+  // THIS surface too. Neither read polls (see use-api.ts), so this adds no
+  // background timer to a backgrounded tab — mobile-perf standard rule #1.
+  const { data: districtReadiness } = useDistrictReadiness({ enabled: canFleet && isHQ });
+  const { data: districtApprovals } = useDistrictPendingApprovals({ enabled: canFleet && isHQ });
 
   const totalScreens = (screens || []).length;
   const onlineScreens = (screens || []).filter((s: any) => s.status === 'ONLINE').length;
@@ -152,6 +162,18 @@ export function MobileDashboard({ schoolId }: { schoolId: string }) {
             <ChevronRight className="w-5 h-5 text-rose-200" />
           </div>
         </Link>
+      )}
+
+      {/* District command center — "which of my schools needs me today",
+          directly under the emergency hero. Renders only for a parent tenant
+          with child schools; a single school never sees it. */}
+      {isHQ && fleet && (
+        <DistrictCommandCenter
+          fleet={fleet}
+          readiness={districtReadiness}
+          approvals={districtApprovals}
+          districtName={tenant?.name || null}
+        />
       )}
 
       {/* Simulated screen — a brand-new tenant's first look at their own

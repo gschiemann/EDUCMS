@@ -2362,6 +2362,12 @@ export interface FleetScreen {
   screenGroup: { id: string; name: string } | null;
   lastPingAt: string | null;
   lastCacheReport: any;
+  // Render-proof (2026-08-24) — "reachable but NOT painting". Optional in the
+  // type so a stale/cached payload from before this shipped still parses;
+  // deriveRenderTrust() treats an absent verdict as UNKNOWN, never an alarm.
+  renderHealth?: 'OK' | 'STALE' | 'UNKNOWN' | null;
+  renderStale?: boolean | null;
+  renderStaleSeconds?: number | null;
   effectiveLatitude: number | null;
   effectiveLongitude: number | null;
   effectiveAddress: string | null;
@@ -2382,6 +2388,64 @@ export function useFleet(opts?: { enabled?: boolean }) {
     // Near-real-time, same cadence as the per-tenant screen list.
     refetchInterval: 30_000,
     staleTime: 10_000,
+  });
+}
+
+// ─── District command center (2026-08-24) ──────────────────────────────
+// Two bounded, READ-ONLY reads that turn the district admin's dashboard from
+// "the same page one school sees" into "which of my schools needs me today".
+// Both are batched server-side (fixed query count regardless of school
+// count) and both are DISTRICT_ADMIN / SUPER_ADMIN only, so gate `enabled`
+// the same way useFleet does or every poll 403s.
+//
+// NEITHER POLLS. Emergency wiring and review queues change on human
+// timescales, and the mobile-perf standard is explicit that a phone the
+// operator isn't looking at must not run timers. Freshness comes from the
+// mount/remount refetch that `staleTime` governs; the live fleet signal
+// (screens up/down/painting) already rides useFleet's existing 30s interval,
+// so this adds no new cadence to the page.
+
+/** One school's emergency readiness as the district rollup reports it. */
+export interface DistrictSchoolReadiness {
+  tenantId: string;
+  name: string;
+  slug: string;
+  isSelf: boolean;
+  verdict: 'READY' | 'NEEDS_ATTENTION' | 'NOT_CONFIGURED';
+  contentWired: number;
+  contentTotal: number;
+  lockdownWired: boolean;
+  missingTypes: string[];
+  screensTotal: number;
+  screensOnline: number;
+}
+export interface DistrictReadinessResponse {
+  /** Platform-global delivery chain — computed once for the whole district. */
+  delivery: { key: string; status: 'ok' | 'warn' | 'missing'; label: string; detail: string; fixHint: string };
+  schools: DistrictSchoolReadiness[];
+  notReadyCount: number;
+  computedAt: string;
+}
+export function useDistrictReadiness(opts?: { enabled?: boolean }) {
+  return useQuery<DistrictReadinessResponse>({
+    queryKey: ['emergency-readiness', 'district'],
+    queryFn: () => apiFetch('/emergency/readiness/district'),
+    enabled: opts?.enabled ?? true,
+    staleTime: 60_000,
+  });
+}
+
+/** Submissions waiting on a reviewer, per school across the district. */
+export interface DistrictPendingApprovals {
+  total: number;
+  byTenant: Array<{ tenantId: string; pending: number }>;
+}
+export function useDistrictPendingApprovals(opts?: { enabled?: boolean }) {
+  return useQuery<DistrictPendingApprovals>({
+    queryKey: ['submissions', 'pending-counts'],
+    queryFn: () => apiFetch('/submissions/pending-counts'),
+    enabled: opts?.enabled ?? true,
+    staleTime: 60_000,
   });
 }
 

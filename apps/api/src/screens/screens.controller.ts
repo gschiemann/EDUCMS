@@ -1672,6 +1672,20 @@ export class ScreensController {
         if (isAlive && s.tenantId) liveStatus = 'ONLINE';
         else if (s.status === 'ONLINE' || s.tenantId) liveStatus = 'OFFLINE';
       }
+      // Render-proof overlay — IDENTICAL derivation to list()'s (see the long
+      // note there). ADDITIVE: `liveStatus` above is untouched, so the fleet
+      // map's `status !== 'ONLINE' ⇒ OFFLINE` logic keeps working unchanged.
+      // Costs ZERO extra queries — `lastRenderedAt` is already a column on the
+      // rows we just fetched. Without this, the district rollup could see
+      // "reachable" but never "reachable and NOT painting", which is the
+      // failure a district admin most needs surfaced across 40 schools.
+      const renderProof = deriveRenderHealth({
+        isLiveOnline: liveStatus === 'ONLINE',
+        lastRenderedAtMs: (s as any).lastRenderedAt
+          ? new Date((s as any).lastRenderedAt).getTime()
+          : null,
+        nowMs: now,
+      });
       const tg = geoByTenant.get(s.tenantId as string) ?? null;
       const hasScreenCoords = s.latitude != null && s.longitude != null;
       const hasTenantCoords = tg?.latitude != null && tg?.longitude != null;
@@ -1686,6 +1700,13 @@ export class ScreensController {
         screenGroup: (s as any).screenGroup ?? null,
         lastPingAt: s.lastPingAt,
         lastCacheReport: (s as any).lastCacheReport ?? null,
+        // Same three fields GET /screens carries per row, so a fleet-wide
+        // consumer can derive render-trust with the SAME deriveRenderTrust()
+        // helper the Screens list uses (apps/web/src/components/screens/
+        // renderTrust.ts) instead of re-implementing the precedence.
+        renderHealth: renderProof.renderHealth,
+        renderStale: renderProof.renderStale,
+        renderStaleSeconds: renderProof.renderStaleSeconds,
         // Keep the 10-min rule in sync with list()'s pushChannel above.
         pushChannel: (s as any).lastPushConnectedAt
           ? (now - new Date((s as any).lastPushConnectedAt).getTime() < 10 * 60_000 ? 'live' : 'stale')

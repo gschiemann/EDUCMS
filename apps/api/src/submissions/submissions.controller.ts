@@ -202,6 +202,50 @@ export class SubmissionsController {
   }
 
   /**
+   * How many submissions are waiting on a reviewer, PER SCHOOL — the number
+   * a district admin's dashboard leads with (2026-08-24).
+   *
+   * ⚠️ MUST stay declared ABOVE `@Get(':id')`. Nest matches routes in
+   * declaration order, so moving this below the param route would make
+   * `:id` swallow `pending-counts` and 404 every call.
+   *
+   * SCOPE: the caller's own tenant plus its DIRECT, non-archived children —
+   * the same asymmetric, read-only parent→child window `GET /screens/fleet`
+   * opens. Children stay sealed from each other; a leaf school calling this
+   * gets exactly one row, its own. Counts only — never a submission's
+   * content, so the district office learns "Lincoln has 3 waiting", not
+   * what is in them.
+   *
+   * QUERY COST: exactly TWO queries regardless of district size — one
+   * findMany for the child ids, one groupBy for the counts (served by the
+   * existing `@@index([tenantId, status, createdAt])`). A per-school count()
+   * fan-out would be 40 queries on a connection_limit=10 pool.
+   */
+  @Get('pending-counts')
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN)
+  async pendingCounts(@Request() req: any) {
+    const rootId = req.user.tenantId as string;
+    const tenants = await this.prisma.client.tenant.findMany({
+      where: { OR: [{ id: rootId }, { parentId: rootId, archivedAt: null }] },
+      select: { id: true },
+    });
+    const tenantIds = tenants.map((t) => t.id);
+    const rows = await this.prisma.client.submission.groupBy({
+      by: ['tenantId'],
+      where: { tenantId: { in: tenantIds }, status: 'PENDING' },
+      _count: { _all: true },
+    });
+    const byTenant = rows.map((r: any) => ({
+      tenantId: r.tenantId as string,
+      pending: r._count._all as number,
+    }));
+    return {
+      total: byTenant.reduce((n, r) => n + r.pending, 0),
+      byTenant,
+    };
+  }
+
+  /**
    * Drill-in — full payload with every linked asset/playlist/schedule
    * embedded, so the reviewer doesn't have to chase 6 separate API
    * calls to render the review screen.

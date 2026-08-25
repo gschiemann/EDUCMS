@@ -41,6 +41,37 @@ export interface EmergencyReadinessReport {
   computedAt: string;
 }
 
+/** One child school's readiness as the DISTRICT rollup reports it. */
+export interface DistrictSchoolReadiness {
+  tenantId: string;
+  name: string;
+  slug: string;
+  /** True for the district's own tenant row (the office), false for a child. */
+  isSelf: boolean;
+  verdict: EmergencyReadinessReport['verdict'];
+  /** How many of the six alert types have content wired. */
+  contentWired: number;
+  contentTotal: number;
+  lockdownWired: boolean;
+  /** Alert types with no content, by label — the fix list, verbatim. */
+  missingTypes: string[];
+  screensTotal: number;
+  screensOnline: number;
+}
+
+export interface DistrictReadinessReport {
+  /**
+   * The delivery-chain verdict, computed ONCE. db / realtime / signer are
+   * PLATFORM-global — they are identical for every school in the district,
+   * so probing them per-school would be N× the cost for the same answer.
+   */
+  delivery: ReadinessItem;
+  schools: DistrictSchoolReadiness[];
+  /** Schools whose verdict is not READY — the number the dashboard leads with. */
+  notReadyCount: number;
+  computedAt: string;
+}
+
 // Mirrors the fleet's own liveness convention (screens.controller.ts
 // STALE_MS): a screen pinging within 35s is ONLINE.
 const ONLINE_WITHIN_MS = 35 * 1000;
@@ -102,26 +133,10 @@ export class EmergencyReadinessService {
     });
 
     // ── Delivery-chain probes — the same three GET /health/emergency-path
-    // runs (db reachability, realtime fan-out, message signer). Redis in
-    // fallback is WARN, not MISSING: the HTTP-polling backstop still
-    // delivers a lockdown, just slower — the copy says exactly that.
-    let dbOk = false;
-    try {
-      await withTimeout(this.prisma.client.$queryRaw`SELECT 1`, 1500);
-      dbOk = true;
-    } catch { /* stays false */ }
-    let redisState: 'ok' | 'fallback' | 'fail' = 'fallback';
-    const pub = this.redis.publisher;
-    if (pub && pub.status === 'ready') {
-      try {
-        const pong = await withTimeout(pub.ping(), 500);
-        redisState = pong === 'PONG' ? 'ok' : 'fail';
-      } catch { redisState = 'fail'; }
-    }
-    let signerOk = false;
-    try {
-      signerOk = !!this.wsSigner.signMessage('readiness.probe', { probe: true }).signature;
-    } catch { /* stays false */ }
+    // runs (db reachability, realtime fan-out, message signer). Extracted to
+    // probeDelivery() so the DISTRICT rollup can run them ONCE for the whole
+    // district instead of once per school; the behavior here is unchanged.
+    const deliveryItem = await this.probeDelivery();
 
     const items: ReadinessItem[] = [];
 
@@ -146,24 +161,8 @@ export class EmergencyReadinessService {
             : 'Start with Lockdown — assign its playlist or asset below.',
     });
 
-    // 2. DELIVERY — db + realtime + signer.
-    const deliveryStatus: ReadinessStatus =
-      !dbOk || !signerOk ? 'missing' : redisState === 'ok' ? 'ok' : 'warn';
-    items.push({
-      key: 'delivery',
-      status: deliveryStatus,
-      label: 'Delivery chain',
-      detail: !dbOk
-        ? 'Database unreachable — triggers cannot be recorded or fanned out.'
-        : !signerOk
-          ? 'Message signer failed — screens would reject the alert.'
-          : redisState === 'ok'
-            ? 'Realtime push, polling backstop, and message signing all healthy.'
-            : 'Realtime push is in fallback — alerts still deliver via polling, within ~20 seconds instead of instantly.',
-      fixHint: deliveryStatus === 'ok' ? '' : deliveryStatus === 'warn'
-        ? 'No action needed from you; platform is monitoring the realtime channel.'
-        : 'Contact support — this is a platform fault, not your configuration.',
-    });
+    // 2. DELIVERY — db + realtime + signer (probed above, once).
+    items.push(deliveryItem);
 
     // 3. SCREENS — reachable AND their content loop alive.
     const screensStatus: ReadinessStatus =
@@ -231,5 +230,189 @@ export class EmergencyReadinessService {
     );
 
     return { verdict, score, items, computedAt: new Date(now).toISOString() };
+  }
+
+  /**
+   * DISTRICT rollup — "which of my schools could NOT run a lockdown right
+   * now?", answered in a FIXED number of queries no matter how many schools
+   * the district has (2026-08-24, district command-center wave).
+   *
+   * ── WHAT THIS VERDICT INCLUDES ──────────────────────────────────────
+   *   • CONTENT  — per school, which of the six alert types have a playlist
+   *                wired. ONE findMany over the district's own row + its
+   *                direct children, selecting only the six panic id columns.
+   *   • SCREENS  — per school, total paired and currently-online. TWO
+   *                groupBy queries (total, online) over the same tenant-id
+   *                set — never one query per school.
+   *   • DELIVERY — db reachability + realtime fan-out + message signer.
+   *                PLATFORM-global, so probed exactly ONCE and returned at
+   *                the district level; it is the same answer for every
+   *                school and probing per-school would be N× the cost.
+   *
+   * ── WHAT IT DELIBERATELY DOES *NOT* INCLUDE ─────────────────────────
+   *   • STAFF ("who can trigger") and EXERCISE ("last drill") — both are
+   *     per-school reads over `users` / `audit_logs` that have no cheap
+   *     grouped form here, and neither answers "can this school display an
+   *     alert right now". They stay on the school's OWN readiness card
+   *     (GET /emergency/readiness after switching into that school), which
+   *     is one tap away from every scorecard row.
+   *   • The screens signal is ONLINE-only — the single-school card's extra
+   *     "confirmed fetching content" (cache-freshness) refinement is not
+   *     recomputed here. A school reading READY in the district rollup can
+   *     still read NEEDS_ATTENTION on its own card for that reason; the
+   *     district number is deliberately the coarser, cheaper one.
+   *
+   * ── QUERY COST ──────────────────────────────────────────────────────
+   *   3 DB queries + 1 `SELECT 1` probe + 1 Redis PING + 1 in-process
+   *   signature. FLAT in school count: a 40-school district costs exactly
+   *   what a 3-school district costs. This matters — the pool is
+   *   connection_limit=10, and a 5-queries-per-school fan-out would put a
+   *   40-school district at 200 queries per dashboard open.
+   *
+   * READ-ONLY, like every other line in this file. Archived children are
+   * excluded, matching `GET /screens/fleet` and the emergency fan-out walk.
+   */
+  async computeDistrict(rootTenantId: string): Promise<DistrictReadinessReport> {
+    const now = Date.now();
+    const onlineCutoff = new Date(now - ONLINE_WITHIN_MS);
+
+    // 1 query — the district's own row plus its direct, non-archived
+    // children, selecting ONLY what the verdict needs.
+    const tenants = await this.prisma.client.tenant.findMany({
+      where: {
+        OR: [{ id: rootTenantId }, { parentId: rootTenantId, archivedAt: null }],
+      },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        ...(Object.fromEntries(PANIC_TYPES.map((t) => [t.field, true])) as Record<string, true>),
+      } as any,
+      orderBy: { name: 'asc' },
+    });
+    const tenantIds = tenants.map((t: any) => t.id as string);
+
+    // 2 queries — screens per school. groupBy, never a per-school count().
+    const [totalRows, onlineRows] = await Promise.all([
+      this.prisma.client.screen.groupBy({
+        by: ['tenantId'],
+        where: { tenantId: { in: tenantIds } },
+        _count: { _all: true },
+      }),
+      this.prisma.client.screen.groupBy({
+        by: ['tenantId'],
+        where: { tenantId: { in: tenantIds }, lastPingAt: { gte: onlineCutoff } },
+        _count: { _all: true },
+      }),
+    ]);
+    const totalByTenant = new Map<string, number>(
+      totalRows.map((r: any) => [r.tenantId as string, r._count._all as number]),
+    );
+    const onlineByTenant = new Map<string, number>(
+      onlineRows.map((r: any) => [r.tenantId as string, r._count._all as number]),
+    );
+
+    // 1 probe set — shared by every school (see the header note).
+    const delivery = await this.probeDelivery();
+
+    const schools: DistrictSchoolReadiness[] = tenants.map((row: any) => {
+      const wired = PANIC_TYPES.filter((t) => !!row[t.field]);
+      const missingTypes = PANIC_TYPES.filter((t) => !row[t.field]).map((t) => t.label);
+      const lockdownWired = !!row['panicLockdownPlaylistId'];
+      const contentStatus: ReadinessStatus =
+        wired.length === PANIC_TYPES.length ? 'ok' : lockdownWired ? 'warn' : 'missing';
+
+      const screensTotal = totalByTenant.get(row.id as string) ?? 0;
+      const screensOnline = onlineByTenant.get(row.id as string) ?? 0;
+      // Mirrors compute()'s screens rule MINUS the cache-freshness leg.
+      const screensStatus: ReadinessStatus =
+        screensTotal === 0 ? 'missing'
+        : screensOnline === 0 ? 'missing'
+        : screensOnline < screensTotal ? 'warn'
+        : 'ok';
+
+      // Verdict precedence, mirroring compute():
+      //   - content missing (no lockdown content at all) is NOT_CONFIGURED;
+      //   - a BROKEN delivery chain (db/signer down) is a platform fault that
+      //     makes every school genuinely un-alertable, so it forces
+      //     NOT_CONFIGURED district-wide;
+      //   - a delivery WARN (Redis in polling fallback) does NOT downgrade
+      //     any school — the alert still lands, just via the ~20s HTTP
+      //     backstop. Letting it repaint 40 rows amber would drown the
+      //     per-school signal this rollup exists to surface, so it is
+      //     reported once at the district level instead.
+      const verdict: EmergencyReadinessReport['verdict'] =
+        contentStatus === 'missing' || delivery.status === 'missing'
+          ? 'NOT_CONFIGURED'
+          : contentStatus !== 'ok' || screensStatus !== 'ok'
+            ? 'NEEDS_ATTENTION'
+            : 'READY';
+
+      return {
+        tenantId: row.id as string,
+        name: row.name as string,
+        slug: row.slug as string,
+        isSelf: (row.id as string) === rootTenantId,
+        verdict,
+        contentWired: wired.length,
+        contentTotal: PANIC_TYPES.length,
+        lockdownWired,
+        missingTypes,
+        screensTotal,
+        screensOnline,
+      };
+    });
+
+    return {
+      delivery,
+      schools,
+      notReadyCount: schools.filter((s) => s.verdict !== 'READY').length,
+      computedAt: new Date(now).toISOString(),
+    };
+  }
+
+  /**
+   * The three delivery-chain probes GET /health/emergency-path runs, folded
+   * into the readiness item both compute() and computeDistrict() report.
+   *
+   * Redis in fallback is WARN, not MISSING: the HTTP-polling backstop still
+   * delivers a lockdown, just slower — the copy says exactly that.
+   */
+  private async probeDelivery(): Promise<ReadinessItem> {
+    let dbOk = false;
+    try {
+      await withTimeout(this.prisma.client.$queryRaw`SELECT 1`, 1500);
+      dbOk = true;
+    } catch { /* stays false */ }
+    let redisState: 'ok' | 'fallback' | 'fail' = 'fallback';
+    const pub = this.redis.publisher;
+    if (pub && pub.status === 'ready') {
+      try {
+        const pong = await withTimeout(pub.ping(), 500);
+        redisState = pong === 'PONG' ? 'ok' : 'fail';
+      } catch { redisState = 'fail'; }
+    }
+    let signerOk = false;
+    try {
+      signerOk = !!this.wsSigner.signMessage('readiness.probe', { probe: true }).signature;
+    } catch { /* stays false */ }
+
+    const deliveryStatus: ReadinessStatus =
+      !dbOk || !signerOk ? 'missing' : redisState === 'ok' ? 'ok' : 'warn';
+    return {
+      key: 'delivery',
+      status: deliveryStatus,
+      label: 'Delivery chain',
+      detail: !dbOk
+        ? 'Database unreachable — triggers cannot be recorded or fanned out.'
+        : !signerOk
+          ? 'Message signer failed — screens would reject the alert.'
+          : redisState === 'ok'
+            ? 'Realtime push, polling backstop, and message signing all healthy.'
+            : 'Realtime push is in fallback — alerts still deliver via polling, within ~20 seconds instead of instantly.',
+      fixHint: deliveryStatus === 'ok' ? '' : deliveryStatus === 'warn'
+        ? 'No action needed from you; platform is monitoring the realtime channel.'
+        : 'Contact support — this is a platform fault, not your configuration.',
+    };
   }
 }

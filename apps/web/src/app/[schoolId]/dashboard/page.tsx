@@ -30,6 +30,7 @@ import { useRecentActivity } from '@/hooks/use-dashboard-data';
 import {
   useScreens, useScreenGroups, usePlaylists, useAssets, useSchedules,
   useTenantStatus, useApproveAsset, useSubmissions, useTenantBranding, useFleet,
+  useDistrictReadiness, useDistrictPendingApprovals,
   type SubmissionRow,
 } from '@/hooks/use-api';
 import { useAppStore } from '@/lib/store';
@@ -40,6 +41,7 @@ import { MobileDashboard } from '@/components/dashboard/MobileDashboard';
 import { StarterBoardCard } from '@/components/dashboard/StarterBoardCard';
 import { useStarterBoard } from '@/hooks/use-starter-board';
 import { FleetRollup } from '@/components/screens/FleetRollup';
+import { DistrictCommandCenter } from '@/components/dashboard/district/DistrictCommandCenter';
 import Link from 'next/link';
 import { usePathname, useParams } from 'next/navigation';
 import { useEffect, useState, useMemo } from 'react';
@@ -58,6 +60,16 @@ export default function DashboardPage() {
   const fleetRollup = fleetRollupQuery.data;
   const isHQ = (fleetRollup?.locations?.length ?? 0) > 1;
   const schoolId = params?.schoolId || '';
+
+  // ── DISTRICT COMMAND CENTER (2026-08-24) ────────────────────────────
+  // `isHQ` IS the district-parent test: /screens/fleet returns self + direct
+  // non-archived children, so locations.length > 1 means this tenant runs at
+  // least one school. It costs no extra request to know that, and the fleet
+  // query is already role-gated to SUPER_ADMIN / DISTRICT_ADMIN — exactly the
+  // roles these two reads allow. A regular single-school tenant never enables
+  // either query and its dashboard is byte-for-byte what it was before.
+  const districtReadiness = useDistrictReadiness({ enabled: canFleet && isHQ });
+  const districtApprovals = useDistrictPendingApprovals({ enabled: canFleet && isHQ });
 
   // All hooks below run on EVERY render regardless of viewport (Rules
   // of Hooks). MobileDashboard re-uses the same hooks anyway, so the
@@ -464,17 +476,18 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* HQ fleet command center — every child location's screens on one map +
-          per-store list + search/filter (Corporate dashboard). Renders only for
-          a parent with child locations; clicking a store switches into it. */}
-      {isHQ && fleetRollup && <FleetRollup fleet={fleetRollup} />}
-
       {/* ─── Status strip — single line, no redundant CTA ──────────
           The TopToolbar already carries the Emergency button in the top-
           right of every page — don't duplicate the action here. If an
           emergency is ACTIVE, we escalate to a full red banner. Otherwise
-          a quiet one-line health summary is enough. */}
-      {emergencyActive ? (
+          a quiet one-line health summary is enough.
+
+          2026-08-24 — the ternary was SPLIT into its two arms so a district
+          parent can get NEEDS-ACTION between them: an ACTIVE emergency still
+          leads the page, then the district command center, then the fleet
+          map, then the quiet health line. For a single-school tenant nothing
+          renders between the two arms, so its dashboard order is unchanged. */}
+      {emergencyActive && (
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-red-600 to-red-500 text-white shadow-lg shadow-red-500/30 border border-red-400/50">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.2),transparent)]" />
           <div className="relative p-5 flex items-center gap-4">
@@ -494,7 +507,31 @@ export default function DashboardPage() {
             </Link>
           </div>
         </div>
-      ) : (
+      )}
+
+      {/* ─── DISTRICT COMMAND CENTER ──────────────────────────────
+          A district admin is responsible for every school in the district;
+          before this, the page told them roughly what a single school sees.
+          This leads with what NEEDS ACTION across all of them, then one
+          compact worst-first row per school that switches straight into it.
+          Renders ONLY for a parent tenant with child schools. */}
+      {isHQ && fleetRollup && (
+        <DistrictCommandCenter
+          fleet={fleetRollup}
+          readiness={districtReadiness.data}
+          approvals={districtApprovals.data}
+          districtName={branding?.displayName || (tenant as any)?.name || null}
+        />
+      )}
+
+      {/* HQ fleet command center — every child location's screens on one map +
+          per-store list + search/filter (Corporate dashboard). Renders only for
+          a parent with child locations; clicking a store switches into it.
+          DEMOTED below the command center (2026-08-24): the map is for
+          "where is it", the scorecards above are for "what needs me". */}
+      {isHQ && fleetRollup && <FleetRollup fleet={fleetRollup} />}
+
+      {!emergencyActive && (
         <div className="rounded-xl bg-white border border-slate-200 px-5 py-3 flex items-center gap-6 flex-wrap">
           <div className="flex items-center gap-2">
             <span className={`relative flex h-2.5 w-2.5 ${incidentCount > 0 ? '' : ''}`}>
