@@ -1,7 +1,6 @@
 package com.educms.player
 
 import android.annotation.SuppressLint
-import android.app.AlertDialog
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -196,6 +195,14 @@ class MainActivity : ComponentActivity() {
          * an `<intent-filter>`.
          */
         const val ACTION_ENROLL_DISPLAY_ADMIN = "com.educms.player.ENROLL_DISPLAY_ADMIN"
+
+        /**
+         * 2026-08-25 — explicit-component action that RE-OPENS the setup
+         * checklist on a screen that was only partly granted. See
+         * [handleOpenSetupIntent]; like the action above, deliberately
+         * NOT declared in an `<intent-filter>`.
+         */
+        const val ACTION_OPEN_SETUP = "com.educms.player.OPEN_SETUP"
 
         /**
          * How recently somebody must have touched this box for the
@@ -581,6 +588,9 @@ class MainActivity : ComponentActivity() {
         // solely when somebody deliberately sent that action, never
         // because the box booted. See handleDeviceAdminEnrollIntent.
         handleDeviceAdminEnrollIntent(intent)
+        // Cold-start form of the setup re-entry action. Only arms a flag
+        // — onResume raises the checklist, after setContentView.
+        handleOpenSetupIntent(intent)
 
         // 2026-05-24 — per-screen orientation lock.
         //
@@ -925,6 +935,46 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(newIntent)
         handleInstallPromptTrampoline(newIntent)
         handleDeviceAdminEnrollIntent(newIntent)
+        handleOpenSetupIntent(newIntent)
+    }
+
+    /**
+     * ── FIELD-OPS SETUP RE-ENTRY (2026-08-25) ───────────────────────
+     *
+     * A tech at the box, or the provisioning script, re-opens the setup
+     * checklist on a partly-granted screen with one line and no APK
+     * change:
+     *
+     * ```
+     * adb shell am start -n com.educms.player/com.educms.player.MainActivity \
+     *     -a com.educms.player.OPEN_SETUP
+     * # debug builds carry applicationIdSuffix ".debug":
+     * adb shell am start -n com.educms.player.debug/com.educms.player.MainActivity \
+     *     -a com.educms.player.OPEN_SETUP
+     * ```
+     *
+     * Same shape, and the same reasoning, as
+     * [handleDeviceAdminEnrollIntent] above: explicit component only, NO
+     * `<intent-filter>`, so this adds no implicit surface any app on the
+     * box could resolve. The worst an external caller achieves is a setup
+     * list the operator can dismiss with Back — and it still refuses to
+     * appear over an emergency hold or inside a locked task.
+     *
+     * It only sets a flag; the checklist itself is raised from onResume.
+     * onCreate runs this BEFORE `setContentView`, and `setContentView`
+     * clears the content frame the checklist attaches to — building it
+     * here would put a view on screen and then wipe it.
+     */
+    @Volatile
+    private var pendingOpenSetup = false
+
+    private fun handleOpenSetupIntent(launchIntent: Intent?) {
+        if (launchIntent?.action != ACTION_OPEN_SETUP) return
+        // Consume it, so a singleTask relaunch of a retained intent
+        // cannot re-open setup on every future resume.
+        launchIntent.action = Intent.ACTION_MAIN
+        pendingOpenSetup = true
+        PlayerLogger.i("SetupCeremony", "setup checklist requested by intent")
     }
 
     /**
@@ -1078,41 +1128,45 @@ class MainActivity : ComponentActivity() {
      * battery exemption, and device ADMIN (a true panel-off).
      *
      * They fired from onCreate side by side, so a first boot stacked
-     * three dialogs at once; the ceremony offers ONE at a time and is
-     * driven from onResume, so it resumes itself after every Settings
-     * round-trip. Their SharedPreferences keys are unchanged, so a screen
-     * already set up never re-nags after this ships.
+     * three dialogs at once; the ceremony drives them one at a time from
+     * onResume, so it resumes itself after every Settings round-trip.
+     * Their SharedPreferences keys are unchanged, so a screen already set
+     * up never re-nags after this ships.
      *
-     * `applyRemoteFocus` below STAYS — the ceremony is handed it as its
-     * dialog decorator, so there is still exactly one implementation of
-     * the kiosk remote-focus treatment.
+     * 2026-08-25 — the ceremony's SHELL changed again (same six grants,
+     * same intents, same order): instead of a dialog per grant it now
+     * renders ONE persistent checklist over the WebView, so a Settings
+     * round-trip always lands back in the same place with live status and
+     * a progress count. Raised here from onResume; re-openable later via
+     * [ACTION_OPEN_SETUP]; torn down in onDestroy.
+     *
+     * `applyRemoteFocus` below STAYS — the ceremony is handed it and
+     * applies it to every focusable row and button on that checklist, so
+     * there is still exactly one implementation of the kiosk remote-focus
+     * treatment.
      */
 
     /**
-     * Make a native AlertDialog reachable by the kiosk REMOTE. Taurus /
-     * OEM signage ROMs strip the default button focus-highlight
-     * drawable, so the operator can't see — or reach — what's selected;
-     * the dialog looks dead. This gives every button a theme-independent
-     * focus highlight (translucent fill) and parks initial focus on the
-     * positive button so the D-pad has a starting point. Wrap a
-     * built-and-shown AlertDialog: applyRemoteFocus(builder…show()).
+     * Make a control reachable by the kiosk REMOTE. Taurus / OEM signage
+     * ROMs strip the default focus-highlight drawable, so the operator
+     * can't see — or reach — what's selected; the screen looks dead. This
+     * gives a view a theme-independent focus highlight (translucent
+     * fill).
+     *
+     * 2026-08-25 — takes a View rather than an AlertDialog now that the
+     * setup ceremony renders a checklist instead of six dialogs. Still
+     * the SINGLE implementation of the treatment: SetupCeremony is handed
+     * a reference to it and applies it to every focusable row and button
+     * it builds. If a future dialog needs it, pass each of its buttons.
      */
-    private fun applyRemoteFocus(dialog: AlertDialog) {
-        for (which in intArrayOf(
-            AlertDialog.BUTTON_POSITIVE,
-            AlertDialog.BUTTON_NEGATIVE,
-            AlertDialog.BUTTON_NEUTRAL,
-        )) {
-            val b = dialog.getButton(which) ?: continue
-            b.isFocusable = true
-            b.isFocusableInTouchMode = false
-            b.setOnFocusChangeListener { v, hasFocus ->
-                // Theme-independent highlight — does not rely on the
-                // OEM ROM's (stripped) button focus drawable.
-                v.setBackgroundColor(if (hasFocus) 0x553B82F6.toInt() else 0)
-            }
+    private fun applyRemoteFocus(view: View) {
+        view.isFocusable = true
+        view.isFocusableInTouchMode = false
+        view.setOnFocusChangeListener { v, hasFocus ->
+            // Theme-independent highlight — does not rely on the
+            // OEM ROM's (stripped) focus drawable.
+            v.setBackgroundColor(if (hasFocus) 0x553B82F6.toInt() else 0)
         }
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.requestFocus()
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -1992,15 +2046,16 @@ class MainActivity : ComponentActivity() {
             com.educms.player.display.DisplayEmergency.enforceIfHeld(applicationContext)
         }.onFailure { PlayerLogger.w("DisplayControl", "onResume display refresh failed: ${it.message}") }
 
-        // ── Guided setup (2026-08-24) ───────────────────────────────
+        // ── Guided setup (2026-08-24, checklist shell 2026-08-25) ───
         //
         // THE reason this lives in onResume and not onCreate: every grant
         // in the ceremony ends with the operator leaving us for a system
         // Settings screen and coming back — which IS an onResume. Driving
-        // from here is what turns six separate permissions into one flow
-        // that keeps moving on its own, and it means a grant made outside
-        // the ceremony (or a step declined and later granted by hand) is
-        // noticed the moment we are foregrounded again.
+        // from here is what re-reads every grant live and re-renders the
+        // checklist the moment they return, so the list they left is the
+        // list they come back to, one row further along. It also means a
+        // grant made outside the ceremony (or a step skipped and later
+        // done by hand) is noticed as soon as we are foregrounded.
         //
         // Ordered AFTER the display refresh above on purpose: settlePending
         // + invalidate have already run, so a device-admin enrolment the
@@ -2010,9 +2065,20 @@ class MainActivity : ComponentActivity() {
         // Gated on Manager being installed because until it is, the
         // manager-install gate owns the screen and runs its own
         // permission flow (proceedWithBootstrapOrRequestPermission) —
-        // two dialog drivers at once is the exact stacking this replaced.
+        // two drivers on one screen is the exact stacking this replaced.
+        val forcedSetup = pendingOpenSetup
+        pendingOpenSetup = false
         if (readManagerVersion() != null) {
-            com.educms.player.setup.SetupCeremony.resume(this, ::applyRemoteFocus)
+            if (forcedSetup) {
+                com.educms.player.setup.SetupCeremony.open(this, ::applyRemoteFocus)
+            } else {
+                com.educms.player.setup.SetupCeremony.resume(this, ::applyRemoteFocus)
+            }
+        } else if (forcedSetup) {
+            PlayerLogger.i(
+                "SetupCeremony",
+                "OPEN_SETUP ignored — the manager-install gate owns the screen",
+            )
         }
     }
 
@@ -2042,6 +2108,11 @@ class MainActivity : ComponentActivity() {
         // stay blanked across an Activity restart, and onWindowAttached()
         // re-applies it when a window comes back.
         runCatching { DisplayWindowBridge.clear() }
+        // Drop the setup checklist (and its guard tick) so this destroyed
+        // Activity is never held by the SetupCeremony singleton. No-op
+        // when nothing is up, or when the live checklist belongs to a
+        // newer Activity instance.
+        runCatching { com.educms.player.setup.SetupCeremony.detach(this) }
         watchdogHandler.removeCallbacks(watchdogTicker)
         try {
             if (managerInstallReceiverRegistered) {

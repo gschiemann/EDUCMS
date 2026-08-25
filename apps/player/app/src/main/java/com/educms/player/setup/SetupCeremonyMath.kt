@@ -83,4 +83,163 @@ object SetupCeremonyMath {
 
     /** True when nothing applicable is still outstanding. */
     fun isComplete(states: List<StepState>): Boolean = nextKey(states) == null
+
+    // ─────────────────────────────────────────────────────────────────
+    // v2 (2026-08-25) — the CHECKLIST model
+    //
+    // Operator, after walking a real panel through v1: *"the buttons to
+    // allow permissions are all over the place, not even in a consistent
+    // menu, and one menu wasnt even visible i had to guess where all
+    // admin permissions was …. why cant we pop one menu where we quickly
+    // check everything we want and then it auto configures everything"*.
+    //
+    // ⚠️ THE HONEST ANSWER, and it is a hard Android limit: WE CANNOT.
+    // Without device-owner provisioning (a factory reset per screen —
+    // off the table, every deployed box already carries the vendor's
+    // owner) there is NO API that grants install-unknown-apps,
+    // WRITE_SETTINGS, battery exemption, device-admin or the HOME
+    // default from one dialog. Each one is a separate system Activity
+    // the user must visit. Nothing below changes that, and no future
+    // agent should be led to think it did.
+    //
+    // What v2 DOES fix is the part that was actually ours: the operator
+    // was thrown at six vendor Settings pages with no thread between
+    // them, so a hidden page (the invisible "all admin permissions"
+    // menu) left them guessing with nothing to come back to. v2 keeps
+    // ONE home-base screen up the whole time — every grant listed, live
+    // status, progress, and the next one armed — so every Settings
+    // round-trip lands back in the same consistent place.
+    //
+    // The functions below are the pure half of that screen: what each
+    // row says and which button the operator gets. No Context, no View.
+    // ─────────────────────────────────────────────────────────────────
+
+    /** Copy shown on the checklist when there is still work to do. */
+    const val HEADING_GRANTING = "Finish setting up this screen"
+
+    /**
+     * Copy shown when every step has been OFFERED but some were declined
+     * or skipped. Deliberately not "complete" — saying "done" over a
+     * half-granted panel is how a screen ships with no brightness
+     * control and nobody knows until a site visit.
+     */
+    const val HEADING_PAUSED = "Setup paused"
+
+    /** Copy shown when every applicable grant is actually held. */
+    const val HEADING_COMPLETE = "Setup complete ✓"
+
+    /** How one row reads. */
+    enum class RowStatus { GRANTED, CURRENT, NEEDED }
+
+    /**
+     * What the screen as a whole is doing.
+     *
+     *  - [GRANTING] — at least one step is still un-offered, so there is
+     *    a "next" to arm. This is the ONLY mode the checklist is ever
+     *    shown from cold; see `SetupCeremony.resume`.
+     *  - [PAUSED]   — everything has been offered, something is still
+     *    missing. Reachable only while the screen is already up, or from
+     *    the explicit re-open intent — never as a fresh nag.
+     *  - [COMPLETE] — every applicable grant is held. Auto-dismisses.
+     */
+    enum class ChecklistMode { GRANTING, PAUSED, COMPLETE }
+
+    /**
+     * One step's live situation plus the copy that describes it.
+     *
+     * @param note transient per-row message from the last launch attempt
+     *        — e.g. "this panel hides the direct page". Not persisted;
+     *        it describes what just happened, not what is true.
+     */
+    data class ChecklistInput(
+        val state: StepState,
+        val name: String,
+        val why: String,
+        val hint: String,
+        val note: String? = null,
+    )
+
+    data class ChecklistRow(
+        val key: String,
+        val name: String,
+        val why: String,
+        val status: RowStatus,
+        val note: String?,
+        /** The "can't find it?" path. Only carried on the armed row. */
+        val hint: String?,
+        /** May the operator tap this row to (re-)run its grant? */
+        val actionable: Boolean,
+    )
+
+    data class ChecklistModel(
+        val mode: ChecklistMode,
+        val heading: String,
+        val progress: String,
+        val rows: List<ChecklistRow>,
+        val primaryLabel: String?,
+        val primaryKey: String?,
+        val secondaryLabel: String?,
+    )
+
+    /**
+     * Build the whole screen from live state + copy.
+     *
+     * Which row is ARMED is [nextKey] — unchanged from v1, so the
+     * nag/stall invariant that file's tests pin still governs the
+     * primary button. Rows that were offered and declined stay VISIBLE
+     * and tappable; they just stop being what the big button points at.
+     * That is the difference between a checklist and a nag: the operator
+     * can retry any row whenever they like, and nothing re-asks on its
+     * own.
+     */
+    fun buildModel(inputs: List<ChecklistInput>): ChecklistModel {
+        val states = inputs.map { it.state }
+        val armed = nextKey(states)
+        val (done, total) = progress(states)
+
+        val rows = inputs.filter { it.state.applies }.map { input ->
+            val status = when {
+                input.state.satisfied -> RowStatus.GRANTED
+                input.state.key == armed -> RowStatus.CURRENT
+                else -> RowStatus.NEEDED
+            }
+            ChecklistRow(
+                key = input.state.key,
+                name = input.name,
+                why = input.why,
+                status = status,
+                note = input.note,
+                // The hint is a paragraph of Settings-menu directions. On
+                // the armed row it is help; on all six at once it is
+                // wallpaper nobody reads.
+                hint = if (status == RowStatus.CURRENT) input.hint else null,
+                actionable = !input.state.satisfied,
+            )
+        }
+
+        val mode = when {
+            armed != null -> ChecklistMode.GRANTING
+            done == total -> ChecklistMode.COMPLETE
+            else -> ChecklistMode.PAUSED
+        }
+
+        return ChecklistModel(
+            mode = mode,
+            heading = when (mode) {
+                ChecklistMode.GRANTING -> HEADING_GRANTING
+                ChecklistMode.PAUSED -> HEADING_PAUSED
+                ChecklistMode.COMPLETE -> HEADING_COMPLETE
+            },
+            progress = "$done of $total done",
+            rows = rows,
+            primaryLabel = when (mode) {
+                ChecklistMode.GRANTING ->
+                    "Grant next: " + (rows.firstOrNull { it.key == armed }?.name ?: "next step")
+                ChecklistMode.PAUSED -> "Done"
+                ChecklistMode.COMPLETE -> null
+            },
+            primaryKey = armed,
+            secondaryLabel = if (mode == ChecklistMode.GRANTING) "Not now" else null,
+        )
+    }
 }
