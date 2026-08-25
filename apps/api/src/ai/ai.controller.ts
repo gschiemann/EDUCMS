@@ -74,6 +74,14 @@ const AiChatEditSchema = z.object({
     height: z.number().optional(),
     zIndex: z.number().optional(),
     defaultConfig: z.record(z.string(), z.any()).optional(),
+    // Packaged EXTERNAL_HTML boards (B11 fix): the FE sends the board's
+    // parsed [data-field] inventory so chat can target its copy. The service
+    // re-normalizes (normalizeChatFields) — this only bounds the shape.
+    chatFields: z.array(z.object({
+      key: z.string().min(1).max(64),
+      label: z.string().max(80).optional(),
+      value: z.string().max(400).optional(),
+    })).max(48).optional(),
   }).passthrough()).min(1).max(12),
   vertical: z.string().min(1).max(40).optional(),
 }).passthrough();

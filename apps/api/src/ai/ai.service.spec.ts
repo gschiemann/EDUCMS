@@ -21,7 +21,7 @@
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { AiService, sanitizeRewriteText, validateChatEditDiff, resolveChatColor, chatEditableFieldKeys, brandVoiceClause, prependVoices, parseArtDirectorSpec, signageCandidatePlan } from './ai.service';
+import { AiService, sanitizeRewriteText, validateChatEditDiff, resolveChatColor, chatEditableFieldKeys, brandVoiceClause, prependVoices, parseArtDirectorSpec, signageCandidatePlan, buildChatEditUserPrompt, normalizeChatFields } from './ai.service';
 import { ARCHETYPE_IDS } from '@cms/signage-design';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
@@ -763,6 +763,114 @@ describe('AiService — Slice 2a-multi chat-to-edit multi-zone', () => {
 });
 
 // ── Whole-board TRANSLATE (2026-07-05) ──
+// B11 dead-end fix (2026-08-24) — packaged EXTERNAL_HTML boards send their
+// [data-field] inventory as `chatFields`; field edits must route into the
+// textOverrides transport (what the panel + in-board shim already use), and
+// everything zone-wide must be refused HONESTLY (an emitted no-op patch would
+// read as success on the review card).
+describe('AiService — Slice 2a chat-to-edit on DESIGNED BOARDS (chatFields)', () => {
+  const boardZone = {
+    id: 'ext1',
+    widgetType: 'EXTERNAL_HTML',
+    defaultConfig: {
+      url: '/templates/hs/welcome.html',
+      textOverrides: { 'hero.sub': 'Go Eagles' },
+    },
+    chatFields: [
+      { key: 'hero.title', label: 'Hero title', value: 'WELCOME BACK' },
+      { key: 'hero.sub', label: 'Hero subtitle', value: 'Go Eagles' },
+    ],
+  };
+
+  it('routes field edits into a MERGED textOverrides map with label-named summaries', () => {
+    const r = validateChatEditDiff(
+      { edits: [{ zoneId: 'ext1', fields: { 'hero.title': 'FRIDAY NIGHT LIGHTS' } }] },
+      [boardZone],
+    );
+    expect(r.diff).toHaveLength(1);
+    expect(r.diff[0].patch.defaultConfig.textOverrides).toEqual({
+      'hero.sub': 'Go Eagles', // pre-existing override preserved
+      'hero.title': 'FRIDAY NIGHT LIGHTS',
+    });
+    // Summary names the target by its friendly label — never a bare value.
+    expect(r.diff[0].summary.join(' ')).toContain('Hero title');
+    // No zone-level keys may leak onto a designed board's patch.
+    expect(Object.keys(r.diff[0].patch)).toEqual(['defaultConfig']);
+  });
+
+  it('compound instruction → multiple field entries land in ONE patch', () => {
+    const r = validateChatEditDiff(
+      { edits: [{ zoneId: 'ext1', fields: { 'hero.title': 'HOMECOMING', 'hero.sub': 'Friday 7pm' } }] },
+      [boardZone],
+    );
+    expect(r.diff[0].patch.defaultConfig.textOverrides['hero.title']).toBe('HOMECOMING');
+    expect(r.diff[0].patch.defaultConfig.textOverrides['hero.sub']).toBe('Friday 7pm');
+    expect(r.diff[0].summary).toHaveLength(2);
+  });
+
+  it('unknown field keys are dropped (cannot reach undiscovered hooks)', () => {
+    const r = validateChatEditDiff(
+      { edits: [{ zoneId: 'ext1', fields: { 'not.a.hook': 'x' } }] },
+      [boardZone],
+    );
+    expect(r.diff).toHaveLength(0);
+  });
+
+  it('zone-wide style keys (fontSize/color/text) are REFUSED with an honest note, never a no-op patch', () => {
+    const r = validateChatEditDiff(
+      { edits: [{ zoneId: 'ext1', fontSize: 72, color: '#ff0000', text: 'hi' }] },
+      [boardZone],
+    );
+    expect(r.diff).toHaveLength(0);
+    expect(r.unresolved.join(' ')).toContain('style controls');
+  });
+
+  it('geometry on a designed board is REFUSED with a layout note', () => {
+    const r = validateChatEditDiff(
+      { edits: [{ zoneId: 'ext1', y: 80, width: 50 }] },
+      [boardZone],
+    );
+    expect(r.diff).toHaveLength(0);
+    expect(r.unresolved.join(' ')).toContain('layout');
+  });
+
+  it('field values pass the plain-text sanitizer (tags stripped, dangerous schemes dropped)', () => {
+    const r = validateChatEditDiff(
+      { edits: [{ zoneId: 'ext1', fields: { 'hero.title': '<script>alert(1)</script>TACO <b>NIGHT</b>' } }] },
+      [boardZone],
+    );
+    expect(r.diff[0].patch.defaultConfig.textOverrides['hero.title']).toBe('TACO NIGHT');
+  });
+
+  it('buildChatEditUserPrompt marks the zone DESIGNED BOARD and lists key + label + current value', () => {
+    const p = buildChatEditUserPrompt('change the title', [boardZone]);
+    expect(p).toContain('DESIGNED BOARD');
+    expect(p).toContain('hero.title');
+    expect(p).toContain('Hero title');
+    expect(p).toContain('WELCOME BACK');
+    // Regular zones keep the classic line shape (regression guard).
+    const p2 = buildChatEditUserPrompt('x', [
+      { id: 'z1', widgetType: 'TEXT', defaultConfig: { content: 'Hi', fontSize: 48 } },
+    ]);
+    expect(p2).toContain('zoneId z1 (TEXT)');
+    expect(p2).not.toContain('DESIGNED BOARD');
+  });
+
+  it('normalizeChatFields dedupes, drops junk, and caps at 48', () => {
+    const raw = [
+      { key: 'a', label: 'A', value: '1' },
+      { key: 'a', label: 'dup', value: '2' },
+      { key: '', value: 'no key' },
+      'garbage',
+      ...Array.from({ length: 60 }, (_, i) => ({ key: `k${i}` })),
+    ];
+    const out = normalizeChatFields(raw);
+    expect(out).toHaveLength(48);
+    expect(out[0]).toEqual({ key: 'a', label: 'A', value: '1' });
+    expect(out.filter((f) => f.key === 'a')).toHaveLength(1);
+  });
+});
+
 describe('AiService — whole-board translate', () => {
   beforeEach(() => {
     delete process.env.AI_FREE_TIER_CAP;

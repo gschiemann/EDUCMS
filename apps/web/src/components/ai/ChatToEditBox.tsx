@@ -23,6 +23,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Sparkles, Loader2, Check, X, Wand2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { getAiStatusSource } from '@/components/ai/AiGenerateButton';
+import { fetchExternalChatFields } from '@/components/ai/external-chat-fields';
 
 export interface ChatEditZone {
   id: string;
@@ -136,14 +137,41 @@ export function ChatToEditBox({
         });
         return;
       }
-      const body: Record<string, any> = {
-        instruction: text,
-        zones: editable.map((z) => ({
+      // ── Packaged EXTERNAL_HTML boards (B11 dead-end fix, 2026-08-24) ───
+      // These render from a static /public/templates URL; their editable copy
+      // is the [data-field] inventory the panel's form editor already parses.
+      // Send that inventory as `chatFields` so the AI can target board copy —
+      // the server routes the edits into cfg.textOverrides (the same
+      // transport the form fields + in-board shim use). Without this, every
+      // packaged board 422'd with "I couldn't turn that into an edit."
+      const isPackagedBoard = (z: ChatEditZone) =>
+        z.widgetType === 'EXTERNAL_HTML' &&
+        typeof z.defaultConfig?.url === 'string' &&
+        z.defaultConfig.url.trim() !== '' &&
+        !(typeof z.defaultConfig?.html === 'string' && (z.defaultConfig.html as string).length > 200);
+      const zonesPayload: Record<string, any>[] = [];
+      for (const z of editable) {
+        const zp: Record<string, any> = {
           id: z.id,
           widgetType: z.widgetType,
           x: z.x, y: z.y, width: z.width, height: z.height, zIndex: z.zIndex,
           defaultConfig: z.defaultConfig || {},
-        })),
+        };
+        if (isPackagedBoard(z)) {
+          const cf = await fetchExternalChatFields(z.defaultConfig);
+          if (cf.length) {
+            zp.chatFields = cf;
+          } else if (editable.length === 1) {
+            // No AI call to burn — be honest and point at the path that works.
+            setError('This designed board doesn’t expose chat-editable text yet — tap the text on the board to edit it directly.');
+            return;
+          }
+        }
+        zonesPayload.push(zp);
+      }
+      const body: Record<string, any> = {
+        instruction: text,
+        zones: zonesPayload,
       };
       if (vertical) body.vertical = vertical;
       const res = await apiFetch<{ diff: ChatDiffEntry[]; unresolved: string[] }>('/ai/edit/resolve', {
