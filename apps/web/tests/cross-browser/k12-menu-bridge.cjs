@@ -11,6 +11,19 @@ const http = require('node:http');
 const { setTimeout: delay } = require('node:timers/promises');
 const { resolve } = require('node:path');
 
+/**
+ * The board carries an editor-bridge marker like `EDUCMS-SHIM-V9`. Assert a
+ * FLOOR, not an exact version: pinning the exact string means the day someone
+ * re-injects this pack at the next version, a green suite goes red for a
+ * reason that has nothing to do with these boards. (It has already happened
+ * twice — a V7 pin, then a V8 one.) The shim is a superset each version, so
+ * "at least N" is the real invariant.
+ */
+function shimVersionAtLeast(html, min) {
+  const m = String(html || '').match(/EDUCMS-SHIM-V(\d+)/);
+  return !!m && Number(m[1]) >= min;
+}
+
 const PUBLIC_DIR = resolve(__dirname, '../../public');
 const PORT = 8768;
 const BASE = `http://localhost:${PORT}`;
@@ -172,7 +185,7 @@ async function auditLayout(page) {
           ? { width: 540, height: 960 }
           : { width: 960, height: 540 };
         const problems = [];
-        if (!marker.includes('EDUCMS-SHIM-V8')) problems.push('missing V8 editor bridge');
+        if (!shimVersionAtLeast(marker, 8)) problems.push('missing the EDUCMS editor bridge (need V8 or newer)');
         if (!ready) problems.push('missing educms-ready');
         if (layout.error) problems.push(layout.error);
         if (layout.outside?.length) problems.push(`clipped/outside: ${layout.outside.join(', ')}`);
@@ -569,7 +582,7 @@ async function auditLayout(page) {
         const ready = await page.evaluate(() => window.__menuMessages.some((m) => m.type === 'educms-ready'));
         const layout = await auditLayout(page);
         const problems = [];
-        if (!marker.includes('EDUCMS-SHIM-V8')) problems.push('missing V8 editor bridge');
+        if (!shimVersionAtLeast(marker, 8)) problems.push('missing the EDUCMS editor bridge (need V8 or newer)');
         if (!ready) problems.push('missing educms-ready');
         if (layout.error) problems.push(layout.error);
         if (layout.outside?.length) problems.push(`clipped/outside: ${layout.outside.join(', ')}`);
@@ -748,7 +761,7 @@ async function auditLayout(page) {
         const ready = await page.evaluate(() => window.__menuMessages.some((m) => m.type === 'educms-ready'));
         const layout = await auditLayout(page);
         const problems = [];
-        if (!marker.includes('EDUCMS-SHIM-V8')) problems.push('missing V8 editor bridge');
+        if (!shimVersionAtLeast(marker, 8)) problems.push('missing the EDUCMS editor bridge (need V8 or newer)');
         if (!ready) problems.push('missing educms-ready');
         if (layout.error) problems.push(layout.error);
         if (layout.outside?.length) problems.push(`clipped/outside: ${layout.outside.join(', ')}`);

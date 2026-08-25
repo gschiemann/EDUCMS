@@ -89,6 +89,44 @@ export async function placeDroppedImageFiles(
 }
 
 /**
+ * Fallback room to leave for the floating bottom bar, used only until it
+ * has been measured (and if it is ever missing). The real value comes
+ * from the bar itself — see useBottomBarClearance — because a constant
+ * here silently goes stale the first time someone adds a control to the
+ * bar, and the failure mode is the toolbar disappearing under a tall
+ * canvas, which is exactly the bug this exists to fix.
+ */
+export const BOTTOM_BAR_CLEARANCE = 84;
+
+/**
+ * Measure the floating bottom bar and report how much vertical room the
+ * canvas must leave free: the bar's own height plus twice the gap it
+ * floats above the bottom edge (once for the gap itself, once so the
+ * canvas is not flush against it).
+ */
+function useBottomBarClearance(previewMode: boolean): number {
+  const [clearance, setClearance] = useState(BOTTOM_BAR_CLEARANCE);
+  useEffect(() => {
+    if (previewMode) return;
+    const el = document.querySelector('[data-builder-bottom-bar]') as HTMLElement | null;
+    if (!el) return;
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      if (!r.height) return;
+      const parent = el.offsetParent as HTMLElement | null;
+      const gap = parent ? parent.getBoundingClientRect().bottom - r.bottom : 12;
+      setClearance(Math.ceil(r.height + Math.max(0, gap) * 2));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener('resize', measure);
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
+  }, [previewMode]);
+  return previewMode ? 0 : clearance;
+}
+
+/**
  * A7 — human-readable label for a snap guide line. Canvas anchors get
  * names (Center / Edge / Thirds), element matches get semantics
  * (Center match / Equal spacing / Grid), and plain element-edge snaps
@@ -540,6 +578,8 @@ export function BuilderCanvas() {
   // some browsers crash the tab when CSS aspect-ratio churns
   // through Infinity / NaN. Guard here so the canvas always lays
   // out something sane while the operator is mid-edit.
+  const bottomBarClearance = useBottomBarClearance(previewMode);
+
   const aspectRatio = meta.screenHeight > 0 && Number.isFinite(meta.screenWidth) && Number.isFinite(meta.screenHeight)
     ? meta.screenWidth / meta.screenHeight
     : 16 / 9;
@@ -852,7 +892,17 @@ export function BuilderCanvas() {
     // fills more of the available area. Combined with the parent-
     // relative canvas-size fix below, builder ≈ preview at default
     // zoom for most viewports.
-    <div className="flex-1 overflow-auto bg-slate-200 p-4 flex items-center justify-center min-h-0">
+    // The bottom bar is a floating pill (`absolute bottom-3`) layered OVER
+    // this area, and the canvas box below is `maxHeight: 100%` of it. A
+    // 16:9 design is shorter than the area, so it never reaches the bar
+    // and the overlap was invisible for years. A TALL design — 960x1080,
+    // or any portrait — fills the height and runs underneath it, hiding
+    // the toolbar the operator needs. Reserve the bar's footprint here so
+    // the canvas is laid out in the space that is actually free.
+    // Preview mode hides the bar, so it gets the height back.
+    <div
+      className="flex-1 overflow-auto bg-slate-200 p-4 flex items-center justify-center min-h-0"
+      style={{ paddingBottom: bottomBarClearance || undefined }}>
       <div
         className="shadow-2xl rounded-lg relative"
         style={{
