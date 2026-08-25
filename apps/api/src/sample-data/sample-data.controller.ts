@@ -9,8 +9,8 @@
  *
  * Endpoints (all ADMIN+):
  *   POST /api/v1/sample-data/streaming/public-broadcasters
- *     → connects the public-broadcasters provider + auto-picks the
- *       9 curated NHK / France 24 / DW / etc. channels.
+ *     → retained for old clients, but returns an explicit disabled response.
+ *       Public embeds are not a commercial venue-programming license.
  *   POST /api/v1/sample-data/streaming/custom-hls
  *     → connects custom-hls + adds a sample Mux test stream channel.
  *   POST /api/v1/sample-data/pos/sample-restaurant
@@ -38,7 +38,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StreamingService } from '../streaming/streaming.service';
 import { PosService } from '../pos/pos.service';
 import { AdsService } from '../ads/ads.service';
-import { PUBLIC_BROADCASTER_CHANNELS, presetEmbedUrl } from '@cms/api-types';
 
 const SAMPLE_TAG = '[Sample]';
 
@@ -111,54 +110,12 @@ export class SampleDataController {
   // ─── Streaming sample data ────────────────────────────────────────
   @Post('streaming/public-broadcasters')
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
-  async loadPublicBroadcasters(@Request() req: any) {
-    const tenantId = req.user.tenantId;
-    const userId = req.user.id;
-    try {
-      // Connect (or reuse existing) public-broadcasters provider.
-      let conn = await (this.prisma.client as any).streamProviderConnection.findFirst({
-        where: { tenantId, providerId: 'public-broadcasters' },
-      });
-      if (!conn) {
-        conn = await this.streaming.createConnection({
-          tenantId,
-          userId,
-          providerId: 'public-broadcasters',
-          displayName: `${SAMPLE_TAG} Public Broadcasters`,
-          credentials: {},
-        });
-      }
-      // Pick all 9 preset channels.
-      let added = 0;
-      for (const ch of PUBLIC_BROADCASTER_CHANNELS) {
-        try {
-          await this.streaming.addChannel({
-            tenantId,
-            connectionId: conn.id,
-            externalId: ch.id,
-            title: ch.title,
-            description: ch.description,
-            category: ch.category,
-            playbackUrl: ch.hlsUrl || presetEmbedUrl(ch, { muted: true, autoplay: true }),
-            playbackType: ch.hlsUrl ? 'hls' : 'iframe',
-            kind: 'LIVE',
-            allowAdOverlay: ch.allowAdOverlay,
-          });
-          added += 1;
-        } catch (e) {
-          // Already added — skip.
-        }
-      }
-      return {
-        ok: true,
-        connectionId: conn.id,
-        channelsAdded: added,
-        message: `Connected Public Broadcasters with ${added} channels. Drop the Live Stream widget on a template to see them.`,
-      };
-    } catch (err: any) {
-      this.logger.warn(`loadPublicBroadcasters failed: ${err?.message}`);
-      return classifyIntegrationsError(err, 'Loading Public Broadcasters');
-    }
+  loadPublicBroadcasters() {
+    return {
+      ok: false,
+      channelsAdded: 0,
+      message: 'This sample catalog was removed because public embeds do not include gym or venue playback rights. Use owned/licensed media or a business-content provider.',
+    };
   }
 
   @Post('streaming/custom-hls')

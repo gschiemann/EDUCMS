@@ -20,7 +20,7 @@
  * Wiring note: someone else adds 'FITNESS_APP_LIBRARY' to WidgetRenderer.tsx.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { sceneCss } from '../scene-css';
@@ -45,7 +45,8 @@ import {
 //   1. Pull live connected channels from /streaming/channels (the same
 //      endpoint the editor's StreamingChannelPicker reads). Tiles whose
 //      catalog id matches a connected provider get a green ON-AIR chip
-//      + ring, overriding the static STICK/PARTNERSHIP badge.
+//      + ring, overriding the static source badge. A saved ACTIVE connection
+//      is CONFIGURED, not proof that media is currently playing.
 //   2. Replace the cryptic "Press SELECT to launch" footer with an
 //      honest summary: "X connected · Y available · Z need hardware
 //      bridge · Settings → Streaming to connect more". So the operator
@@ -86,8 +87,10 @@ export interface FitnessAppLibraryConfig {
  * ───────────────────────────────────────────────────────────────── */
 const STATUS_CHIP: Record<string, { label: string; className: string }> = {
   STICK:   { label: 'STICK',       className: 'falw-chip-stick' },
+  EXTERNAL:{ label: 'EXTERNAL',    className: 'falw-chip-stick' },
   PARTNER: { label: 'PARTNERSHIP', className: 'falw-chip-partner' },
   COMING:  { label: 'SOON',        className: 'falw-chip-coming' },
+  BLOCKED: { label: 'NOT LICENSED',className: 'falw-chip-coming' },
 };
 
 function useLiveClock() {
@@ -108,7 +111,6 @@ function formatTime(d: Date) {
  * ───────────────────────────────────────────────────────────────── */
 export function FitnessAppLibraryWidget({
   config,
-  live,
 }: {
   config?: FitnessAppLibraryConfig;
   live?: boolean;
@@ -180,18 +182,23 @@ export function FitnessAppLibraryWidget({
     return candidates.some((cand) => connectedSet.has(cand));
   };
 
-  // Honest counts for the footer. The 3 categories the operator cares
-  // about: what's wired up, what they could connect today, and what
-  // needs hardware bridge work (DIRECTV / Atmosphere / etc.).
+  // Honest inventory counts. "Configured" is deliberately distinct from
+  // playing/live; those require player telemetry that this widget does not have.
   const counts = useMemo(() => {
     const all = Object.values(sourcesByCategory()).flat();
     let connected = 0;
-    let bridge = 0;
+    let direct = 0;
+    let external = 0;
+    let partner = 0;
+    let blocked = 0;
     for (const s of all) {
       if (isSourceConnected(s.id)) connected++;
-      else if (s.status === 'STICK') bridge++;
+      else if (s.status === 'READY') direct++;
+      else if (s.status === 'STICK' || s.status === 'EXTERNAL') external++;
+      else if (s.status === 'PARTNER') partner++;
+      else if (s.status === 'BLOCKED') blocked++;
     }
-    return { connected, bridge, total: all.length };
+    return { connected, direct, external, partner, blocked };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectedSet]);
 
@@ -300,11 +307,11 @@ export function FitnessAppLibraryWidget({
                 {sources.map((src) => {
                   const tileIndex   = tileIndexMap.get(src.id) ?? 0;
                   const isConnected = isSourceConnected(src.id);
-                  // Connected tiles override the static STICK/PARTNER chip
-                  // with a green ON-AIR pill so the operator can tell at
-                  // a glance which tiles are wired vs decorative.
+                  // A persisted connection means configured. Playback health
+                  // must come from the paired player's media telemetry before
+                  // any surface is allowed to say LIVE or ON AIR.
                   const chip        = isConnected
-                    ? { label: 'ON AIR', className: 'falw-chip-connected' }
+                    ? { label: 'CONFIGURED', className: 'falw-chip-connected' }
                     : STATUS_CHIP[src.status];
                   const isHighlight = highlightIds.has(src.id);
                   return (
@@ -330,18 +337,20 @@ export function FitnessAppLibraryWidget({
           without leaving the screen. ── */}
       <footer className="falw-footer" aria-label="Streaming summary">
         <span className="falw-footer-stat falw-footer-on">
-          <span className="falw-footer-dot falw-footer-dot-on" /> {counts.connected} connected
+          <span className="falw-footer-dot falw-footer-dot-on" /> {counts.connected} configured
         </span>
         <span className="falw-footer-sep">·</span>
         <span className="falw-footer-stat">
-          {counts.total - counts.connected - counts.bridge} ready to connect
+          {counts.direct} direct today
         </span>
         <span className="falw-footer-sep">·</span>
         <span className="falw-footer-stat falw-footer-bridge">
-          {counts.bridge} need hardware bridge
+          {counts.external} external-device
         </span>
         <span className="falw-footer-sep">·</span>
-        <span className="falw-footer-cta">Settings → Streaming to connect more</span>
+        <span className="falw-footer-stat">{counts.partner} partner</span>
+        <span className="falw-footer-sep">·</span>
+        <span className="falw-footer-cta">{counts.blocked} consumer sources blocked</span>
       </footer>
     </div>
   );
@@ -368,14 +377,14 @@ function Tile({
   // no click handler — pure display.
   return (
     <article
-      className={`falw-tile${isHighlight ? ' falw-tile-highlight' : ''}${source.status === 'COMING' ? ' falw-tile-coming' : ''}${isConnected ? ' falw-tile-connected' : ''}`}
+      className={`falw-tile${isHighlight ? ' falw-tile-highlight' : ''}${source.status === 'COMING' || source.status === 'BLOCKED' ? ' falw-tile-coming' : ''}${isConnected ? ' falw-tile-connected' : ''}`}
       style={{
         '--falw-tile-accent': ac,
         animationDelay: `${tileIndex * 0.05}s`,
       } as React.CSSProperties}
       role="listitem"
       tabIndex={0}
-      aria-label={`${source.name}${isConnected ? ' — connected, on air' : source.status === 'COMING' ? ' — coming soon' : source.status === 'STICK' ? ' — requires hardware bridge' : ''}`}
+      aria-label={`${source.name}${isConnected ? ' — configured' : source.status === 'COMING' ? ' — coming soon' : source.status === 'BLOCKED' ? ' — not licensed for commercial playback' : source.status === 'EXTERNAL' ? ' — plays on an external licensed device' : source.status === 'STICK' ? ' — legacy hardware configuration' : ''}`}
     >
       {/* Status chip — top-right, only for non-READY */}
       {chip && (
@@ -383,9 +392,13 @@ function Tile({
           className={`falw-chip ${chip.className}`}
           title={
             source.status === 'STICK'
-              ? 'Launches on connected stick'
+              ? 'Legacy stick configuration — relay not production ready'
+              : source.status === 'EXTERNAL'
+              ? 'Playback stays on the licensed provider device'
               : source.status === 'PARTNER'
               ? 'Requires partnership contract'
+              : source.status === 'BLOCKED'
+              ? 'Consumer terms do not permit commercial gym playback'
               : 'Coming soon'
           }
           aria-label={chip.label}

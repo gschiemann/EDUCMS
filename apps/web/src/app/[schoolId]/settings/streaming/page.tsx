@@ -22,7 +22,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
-import { ArrowLeft, Loader2, Tv, ExternalLink, Trash2, Plus, X, AlertCircle, CheckCircle2, ShieldAlert, Wrench, Cable, ArrowRight, Globe, Music, Radio, Lock, Zap, Sparkles } from 'lucide-react';
+import { ArrowLeft, Loader2, Tv, ExternalLink, Trash2, Plus, X, AlertCircle, CheckCircle2, ShieldAlert, Music, Radio, Lock, Zap, Sparkles } from 'lucide-react';
 
 interface Provider {
   id: string;
@@ -42,7 +42,6 @@ interface Provider {
   bestFor?: string[];
   requiresVenueLicense?: boolean;
   tierReason?: string;
-  bridgeSteps?: Array<{ step: string; detail?: string; productExamples?: string[] }>;
 }
 
 interface Connection {
@@ -71,14 +70,61 @@ interface Channel {
   status: string;
 }
 
+interface PresetChannel {
+  externalId: string;
+  title: string;
+  description?: string;
+  category?: string;
+  thumbnailUrl?: string;
+  playbackUrl?: string;
+  embedUrl?: string;
+  playbackType?: string;
+  allowAdOverlay?: boolean;
+}
+
+interface CreateChannelInput {
+  connectionId: string;
+  externalId: string;
+  title: string;
+  description?: string;
+  category?: string;
+  thumbnailUrl?: string;
+  playbackUrl?: string;
+  playbackType?: string;
+  kind?: 'LIVE' | 'VOD';
+  allowAdOverlay?: boolean;
+}
+
+interface StreamValidationProbe {
+  ok: boolean;
+  type?: string;
+  embeddable?: boolean;
+  reason?: string;
+  suggestion?: string;
+}
+
 const CATEGORY_LABELS: Record<string, string> = {
-  'venue-fast': '🏢 Built for venues',
-  'free-fast': '🌍 Free & venue-friendly',
-  'live-platform': '📡 Live streaming platforms',
-  'music': '🎵 Music & radio',
-  'sports-news': '🏈 Sports & news',
-  'custom': '🔗 Bring your own',
+  'venue-fast': '🏢 Business services · external provider players',
+  'free-fast': '🌍 Direct distribution agreement required',
+  'live-platform': '📡 Consumer embeds blocked for public playback',
+  'music': '🎵 Licensed business music · adapters pending',
+  'sports-news': '🏈 Business TV · external provider devices',
+  'custom': '🔗 Customer-owned or licensed feeds',
 };
+
+const EXTERNAL_DEVICE_PROVIDER_IDS = new Set([
+  'atmosphere',
+  'directv-business',
+  'dish-business',
+  'mood-media',
+  'iheart-business',
+]);
+
+const BLOCKED_PROVIDER_IDS = new Set([
+  'public-broadcasters',
+  'youtube',
+  'twitch',
+]);
 
 export default function StreamingSettingsPage() {
   const t = useTranslations();
@@ -99,38 +145,9 @@ export default function StreamingSettingsPage() {
   });
 
   const [connectModalProvider, setConnectModalProvider] = useState<Provider | null>(null);
-  const [bridgeGuideProvider, setBridgeGuideProvider] = useState<Provider | null>(null);
   const [pickerConnection, setPickerConnection] = useState<Connection | null>(null);
   const [showWhyClosed, setShowWhyClosed] = useState(false);
-  // CYCLE-4 integrations-BUG-008 — Soundtrack uses provider.auth === 'oauth2'
-  // and the OAuth flow isn't implemented yet, so the Connect button in the
-  // ConnectModal is permanently disabled for it. The Quick Start "Background
-  // music" card was previously calling setConnectModalProvider(soundtrack)
-  // which dropped the operator into a dead-end modal. Replace with an
-  // explicit "coming soon — contact sales" info modal.
-  const [showSoundtrackComingSoon, setShowSoundtrackComingSoon] = useState(false);
-  const [quickStartStatus, setQuickStartStatus] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null);
-  const [quickStartRunning, setQuickStartRunning] = useState<string | null>(null);
-
-  // Quick Start one-click — calls sample-data endpoint to auto-connect
-  // Public Broadcasters with all 9 channels picked. Same path the
-  // /settings/test-integrations page uses; here it's the dummy-proof
-  // entry for "I just want free TV on my screen, do everything for me".
-  const runQuickStart = async (key: string, path: string) => {
-    setQuickStartRunning(key);
-    setQuickStartStatus(null);
-    try {
-      const res: any = await apiFetch(path, { method: 'POST' });
-      qc.invalidateQueries({ queryKey: ['streaming-connections'] });
-      qc.invalidateQueries({ queryKey: ['streaming-channels'] });
-      setQuickStartStatus({ kind: 'ok', msg: res?.message || t('streamingSso.connectedDropWidget') });
-    } catch (e) {
-      setQuickStartStatus({ kind: 'err', msg: e instanceof Error ? e.message : String(e) });
-    } finally {
-      setQuickStartRunning(null);
-    }
-  };
-
+  const [pendingProvider, setPendingProvider] = useState<Provider | null>(null);
   const grouped = (providers.data || []).reduce<Record<string, Provider[]>>((acc, p) => {
     (acc[p.category] = acc[p.category] || []).push(p);
     return acc;
@@ -159,56 +176,13 @@ export default function StreamingSettingsPage() {
         </div>
       </div>
 
-      {/* ─── Quick Start — dummy-proof "what do you want to play?" hero ───
-          Operator (2026-05-03): "did you make it easy so the customer just
-          enters their credentials and it loads up the supported streaming
-          app? make this dummy proof". Five big visual cards ranked by
-          how-fast-can-you-go: free 1-click → URL paste → premium bridge.
-          Honest about closed platforms (Hulu/Netflix/Disney+) — they're a
-          full card with the explainer link rather than buried in a tier
-          badge. */}
+      {/* ─── Quick Start — only routes VenueOS can describe honestly. ─── */}
       <section>
         <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
           <Sparkles className="w-3.5 h-3.5 text-amber-500" /> {t('streamingSso.quickStartTitle')}
         </h2>
-        {quickStartStatus && (
-          <div className={`mb-3 rounded-xl px-4 py-3 text-xs flex items-start gap-2 ${
-            quickStartStatus.kind === 'ok'
-              ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
-              : 'bg-rose-50 border border-rose-200 text-rose-800'
-          }`}>
-            {quickStartStatus.kind === 'ok'
-              ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" />
-              : <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />}
-            <div>{quickStartStatus.msg}</div>
-          </div>
-        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {/* 1. Free TV — one click, zero auth, plays today */}
-          <QuickStartCard
-            tone="emerald"
-            icon={<Globe className="w-5 h-5" />}
-            badge={t('streamingSso.badge1ClickFree')}
-            title={t('streamingSso.freeTvTitle')}
-            blurb={t('streamingSso.freeTvBlurb')}
-            cta={quickStartRunning === 'public-broadcasters' ? t('streamingSso.adding') : t('streamingSso.add9FreeChannels')}
-            disabled={quickStartRunning !== null}
-            onClick={() => runQuickStart('public-broadcasters', '/sample-data/streaming/public-broadcasters')}
-          />
-          {/* 2. YouTube — paste URL, no account needed */}
-          <QuickStartCard
-            tone="rose"
-            icon={<Tv className="w-5 h-5" />}
-            badge={t('streamingSso.badgePasteUrl')}
-            title={t('streamingSso.youtubeChannelTitle')}
-            blurb={t('streamingSso.youtubeBlurb')}
-            cta={t('streamingSso.connectYoutube')}
-            onClick={() => {
-              const yt = providers.data?.find((p) => p.id === 'youtube');
-              if (yt) setConnectModalProvider(yt);
-            }}
-          />
-          {/* 3. Custom HLS — for owned content / IPTV / capture bridges */}
+          {/* 1. Native HLS — only for customer-owned/licensed feeds. */}
           <QuickStartCard
             tone="indigo"
             icon={<Zap className="w-5 h-5" />}
@@ -221,11 +195,7 @@ export default function StreamingSettingsPage() {
               if (hls) setConnectModalProvider(hls);
             }}
           />
-          {/* 4. Music — Soundtrack Your Brand (real OAuth + commercial license)
-              CYCLE-4 integrations-BUG-008 — OAuth flow is not yet implemented;
-              opening the regular Connect modal lands on a permanently-disabled
-              Connect button. Replaced with a Coming Soon info modal that
-              points at sales for activation. */}
+          {/* 2. Business music — documented provider APIs, adapter pending. */}
           <QuickStartCard
             tone="violet"
             icon={<Music className="w-5 h-5" />}
@@ -233,29 +203,32 @@ export default function StreamingSettingsPage() {
             title={t('streamingSso.backgroundMusicTitle')}
             blurb={t('streamingSso.backgroundMusicBlurb')}
             cta={t('streamingSso.comingSoonContactSales')}
-            onClick={() => setShowSoundtrackComingSoon(true)}
+            onClick={() => {
+              const soundtrack = providers.data?.find((p) => p.id === 'soundtrack');
+              if (soundtrack) setPendingProvider(soundtrack);
+            }}
           />
-          {/* 5. Premium streaming — HONEST about why this is the hard one */}
+          {/* 3. Consumer entertainment services are explicitly blocked. */}
           <QuickStartCard
             tone="amber"
             icon={<Lock className="w-5 h-5" />}
-            badge={t('streamingSso.badgeHardwareBridge')}
+            badge={t('streamingSso.badgeBlocked')}
             title="Hulu / Netflix / Disney+ / Max"
             blurb={t('streamingSso.premiumStreamingBlurb')}
-            cta={t('streamingSso.whySetupGuide')}
+            cta={t('streamingSso.whyBlocked')}
             onClick={() => setShowWhyClosed(true)}
           />
-          {/* 6. Atmosphere — partner content via bridge */}
+          {/* 4. Business TV stays on the provider's licensed device today. */}
           <QuickStartCard
             tone="sky"
             icon={<Radio className="w-5 h-5" />}
-            badge={t('streamingSso.badgeHardwareBridge')}
+            badge="External licensed device"
             title="Atmosphere TV / DIRECTV"
-            blurb={t('streamingSso.atmosphereBlurb')}
-            cta={t('streamingSso.setupGuide')}
+            blurb="Commercial programming stays on the approved provider player. VenueOS control and heartbeat adapters are not complete yet."
+            cta={t('streamingSso.viewBusinessProvider')}
             onClick={() => {
               const atmo = providers.data?.find((p) => p.id === 'atmosphere');
-              if (atmo) setBridgeGuideProvider(atmo);
+              if (atmo?.websiteUrl) window.open(atmo.websiteUrl, '_blank', 'noopener,noreferrer');
             }}
           />
         </div>
@@ -321,14 +294,13 @@ export default function StreamingSettingsPage() {
                       provider={p}
                       connected={connections.data?.some((c) => c.providerId === p.id)}
                       onConnect={() => {
-                        if (p.integrationTier === 'BRIDGE') {
-                          // Bridge tier opens the setup wizard first;
-                          // the operator finishes wiring their capture
-                          // card, then we jump them to the regular
-                          // Custom HLS connect modal pre-filled.
-                          setBridgeGuideProvider(p);
-                        } else {
+                        if (p.integrationTier === 'DIRECT') {
                           setConnectModalProvider(p);
+                        } else if (p.integrationTier === 'PARTNER') {
+                          setPendingProvider(p);
+                        } else if (EXTERNAL_DEVICE_PROVIDER_IDS.has(p.id)) {
+                          const destination = p.websiteUrl || p.docsUrl;
+                          if (destination) window.open(destination, '_blank', 'noopener,noreferrer');
                         }
                       }}
                     />
@@ -363,48 +335,29 @@ export default function StreamingSettingsPage() {
         />
       )}
 
-      {/* Why-closed explainer — the dummy-proof "but why can't I just
-          paste my Hulu password?" answer in plain English with a CTA
-          to the bridge wizard. */}
+      {/* Consumer-service explainer with only sanctioned paths forward. */}
       {showWhyClosed && (
         <WhyClosedModal
           onClose={() => setShowWhyClosed(false)}
-          onPickAtmosphere={() => {
+          onOpenAtmosphere={() => {
             setShowWhyClosed(false);
             const atmo = providers.data?.find((p) => p.id === 'atmosphere');
-            if (atmo) setBridgeGuideProvider(atmo);
+            const destination = atmo?.websiteUrl || atmo?.docsUrl;
+            if (destination) window.open(destination, '_blank', 'noopener,noreferrer');
           }}
-          onPickDirectv={() => {
+          onOpenDirectv={() => {
             setShowWhyClosed(false);
             const dtv = providers.data?.find((p) => p.id === 'directv-business');
-            if (dtv) setBridgeGuideProvider(dtv);
+            const destination = dtv?.websiteUrl || dtv?.docsUrl;
+            if (destination) window.open(destination, '_blank', 'noopener,noreferrer');
           }}
         />
       )}
 
-      {/* CYCLE-4 integrations-BUG-008 — Soundtrack Coming Soon modal */}
-      {showSoundtrackComingSoon && (
-        <SoundtrackComingSoonModal onClose={() => setShowSoundtrackComingSoon(false)} />
-      )}
-
-      {/* Bridge setup wizard */}
-      {bridgeGuideProvider && (
-        <BridgeSetupModal
-          provider={bridgeGuideProvider}
-          onClose={() => setBridgeGuideProvider(null)}
-          onContinue={() => {
-            // Once the operator says they have the capture card running,
-            // jump them straight into the Custom HLS connect modal so
-            // they can paste their local HLS URL.
-            setBridgeGuideProvider(null);
-            const customHls = providers.data?.find((p) => p.id === 'custom-hls');
-            if (customHls) {
-              setConnectModalProvider({
-                ...customHls,
-                name: `${bridgeGuideProvider.name} ${t('streamingSso.viaCustomHlsBridge')}`,
-              });
-            }
-          }}
+      {pendingProvider && (
+        <PartnerAdapterPendingModal
+          provider={pendingProvider}
+          onClose={() => setPendingProvider(null)}
         />
       )}
     </div>
@@ -456,16 +409,25 @@ function ProviderTile({ provider, connected, onConnect }: { provider: Provider; 
   const t = useTranslations();
   const isClosed = provider.integrationTier === 'CLOSED';
   const isPartner = provider.integrationTier === 'PARTNER';
-  const isBridge = provider.integrationTier === 'BRIDGE';
+  const isExternalDevice = EXTERNAL_DEVICE_PROVIDER_IDS.has(provider.id) || provider.integrationTier === 'BRIDGE';
+  const isBlocked = BLOCKED_PROVIDER_IDS.has(provider.id) || (!provider.commercialUseLegal && isClosed);
+  const destination = provider.websiteUrl || provider.docsUrl;
   return (
     <button
-      onClick={isClosed ? () => provider.docsUrl && window.open(provider.docsUrl, '_blank') : onConnect}
-      disabled={connected}
+      onClick={
+        isBlocked
+          ? undefined
+          : (isClosed || isExternalDevice) && destination
+            ? () => window.open(destination, '_blank', 'noopener,noreferrer')
+            : onConnect
+      }
+      disabled={connected || isBlocked || ((isClosed || isExternalDevice) && !destination)}
       className={`text-left p-4 rounded-xl border-2 transition-all ${
         connected ? 'bg-emerald-50 border-emerald-200 cursor-default'
+                  : isBlocked ? 'bg-rose-50/40 border-rose-200 cursor-not-allowed'
+                  : isExternalDevice ? 'bg-sky-50/40 border-sky-200 hover:border-sky-400 hover:shadow-md'
                   : isClosed ? 'bg-slate-50 border-slate-200 opacity-75'
                   : isPartner ? 'bg-amber-50/30 border-amber-200 hover:border-amber-400 hover:shadow-md'
-                  : isBridge ? 'bg-sky-50/40 border-sky-200 hover:border-sky-400 hover:shadow-md'
                   : 'bg-white border-slate-200 hover:border-indigo-300 hover:shadow-md'
       }`}
     >
@@ -473,26 +435,24 @@ function ProviderTile({ provider, connected, onConnect }: { provider: Provider; 
         <div className="text-2xl">{provider.iconEmoji || '📺'}</div>
         <div className="flex items-center gap-1">
           {connected && <CheckCircle2 className="w-5 h-5 text-emerald-600" />}
-          {/* 2026-05-03 — integration-tier badge. Operator audit:
-              be honest about which providers actually have a public
-              API path vs. which are closed-app-only.
-              BRIDGE = customer brings their own subscription (DIRECTV,
-              Atmosphere, etc.) and we connect via an HDMI capture card →
-              local HLS → our Custom HLS connector. Real working path,
-              just needs hardware on the venue side. */}
-          {isClosed && (
+          {isBlocked && (
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 uppercase tracking-wider">
+              {t('streamingSso.blocked')}
+            </span>
+          )}
+          {isExternalDevice && !isBlocked && (
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 uppercase tracking-wider inline-flex items-center gap-0.5">
+              <ExternalLink className="w-2.5 h-2.5" /> {t('streamingSso.externalDevice')}
+            </span>
+          )}
+          {isClosed && !isExternalDevice && !isBlocked && (
             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 uppercase tracking-wider">
               {t('streamingSso.infoOnly')}
             </span>
           )}
           {isPartner && (
             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 uppercase tracking-wider">
-              {t('streamingSso.partnership')}
-            </span>
-          )}
-          {isBridge && !connected && (
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 uppercase tracking-wider inline-flex items-center gap-0.5">
-              <Cable className="w-2.5 h-2.5" /> {t('streamingSso.hardwareBridge')}
+              {t('streamingSso.adapterPending')}
             </span>
           )}
           {provider.integrationTier === 'DIRECT' && !connected && (
@@ -534,15 +494,8 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: Provider; 
   useOverlayLock(); // hide mobile tab bar so the modal footer clears it
   const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [displayName, setDisplayName] = useState('');
-  // 2026-05-03 BUG FIX (cycle 1 integrations BUG-001+002) — `agreed`
-  // was a venue-license confirmation but the default was `provider.auth
-  // === 'none'`, leaving the Connect button permanently disabled for
-  // every provider that didn't require a venue license AND wasn't auth=
-  // 'none'. That killed YouTube / Twitch / Custom HLS / IPTV / Atmosphere
-  // setup-bridge / etc. Now the checkbox defaults to true UNLESS the
-  // provider actually requires a venue license, in which case the
-  // operator must tick the box first (existing UX) and the Connect
-  // button remains disabled until they do.
+  // A direct source that requires a venue license stays blocked until the
+  // operator certifies the rights for that location.
   const [agreed, setAgreed] = useState(!provider.requiresVenueLicense);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -572,8 +525,9 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: Provider; 
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[85dvh] overflow-y-auto p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <button type="button" aria-label="Close provider connection" className="absolute inset-0 cursor-default" onClick={onClose} />
+      <div role="dialog" aria-modal="true" className="relative z-10 bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[85dvh] overflow-y-auto p-6 space-y-4">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
             <div className="text-4xl">{provider.iconEmoji || '📺'}</div>
@@ -582,7 +536,7 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: Provider; 
               <p className="text-xs text-slate-500">{provider.blurb}</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} aria-label="Close provider connection" className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
         </div>
 
         {provider.docsUrl && (
@@ -683,9 +637,9 @@ function ChannelPickerModal({ connection, onClose, onChanged }: {
 }) {
   const t = useTranslations();
   useOverlayLock(); // hide mobile tab bar so the modal footer clears it
-  const presets = useQuery<any[]>({
+  const presets = useQuery<PresetChannel[]>({
     queryKey: ['streaming-presets', connection.providerId],
-    queryFn: () => apiFetch<any[]>(`/streaming/providers/${connection.providerId}/channels`),
+    queryFn: () => apiFetch<PresetChannel[]>(`/streaming/providers/${connection.providerId}/channels`),
   });
   const myChannels = useQuery<Channel[]>({
     queryKey: ['streaming-channels'],
@@ -694,7 +648,11 @@ function ChannelPickerModal({ connection, onClose, onChanged }: {
   const myConnectionChannels = (myChannels.data || []).filter((c) => c.connectionId === connection.id);
   const pickedExternalIds = new Set(myConnectionChannels.map((c) => c.externalId));
 
-  // Manual entry for providers without a preset list (custom HLS, YouTube, Twitch)
+  const isBlockedConsumerConnection = BLOCKED_PROVIDER_IDS.has(connection.providerId);
+  const isCustomHlsConnection = connection.providerId === 'custom-hls';
+
+  // Manual entry is for customer-owned or explicitly licensed feeds. It is
+  // deliberately not a generic public-URL embed path.
   const [manualUrl, setManualUrl] = useState('');
   const [manualTitle, setManualTitle] = useState('');
   // 2026-05-25 streaming-overhaul — operator screenshot showed a
@@ -709,8 +667,8 @@ function ChannelPickerModal({ connection, onClose, onChanged }: {
     | { kind: 'block'; type: string; reason: string; suggestion?: string }
   >(null);
 
-  const pick = useMutation({
-    mutationFn: async (data: any) => apiFetch('/streaming/channels', { method: 'POST', body: JSON.stringify(data) }),
+  const pick = useMutation<unknown, Error, CreateChannelInput>({
+    mutationFn: async (data) => apiFetch('/streaming/channels', { method: 'POST', body: JSON.stringify(data) }),
     onSuccess: () => onChanged(),
   });
 
@@ -721,17 +679,33 @@ function ChannelPickerModal({ connection, onClose, onChanged }: {
 
   const handleManualAdd = async () => {
     if (!manualUrl) return;
+    if (isBlockedConsumerConnection || /(?:youtube\.com|youtu\.be|twitch\.tv)/i.test(manualUrl)) {
+      setValidationState({
+        kind: 'block',
+        type: 'consumer',
+        reason: t('streamingSso.consumerUrlBlocked'),
+      });
+      return;
+    }
+    if (isCustomHlsConnection && !/\.m3u8(?:[?#]|$)/i.test(manualUrl)) {
+      setValidationState({
+        kind: 'block',
+        type: 'hls',
+        reason: t('streamingSso.licensedHlsRequired'),
+      });
+      return;
+    }
     // Always run the server-side embeddability probe BEFORE saving.
     // If the URL is broken / embedding-disabled, we block the save so
     // the operator can't ship a known-bad channel to their screen.
     setValidationState({ kind: 'checking' });
-    let probe: any = null;
+    let probe: StreamValidationProbe;
     try {
-      probe = await apiFetch<any>('/streaming/validate', {
+      probe = await apiFetch<StreamValidationProbe>('/streaming/validate', {
         method: 'POST',
         body: JSON.stringify({ url: manualUrl }),
       });
-    } catch (e) {
+    } catch {
       // Validator down is not a save-blocker; let the operator
       // continue but show a soft warning.
       probe = {
@@ -765,21 +739,12 @@ function ChannelPickerModal({ connection, onClose, onChanged }: {
       setValidationState({ kind: 'ok', type: probe.type || 'unknown' });
     }
 
-    let playbackType = 'hls';
-    let externalId = manualUrl;
-    if (/youtube\.com|youtu\.be/i.test(manualUrl) || /twitch\.tv|vimeo\.com/i.test(manualUrl)) playbackType = 'iframe';
-    if (/\.mpd(\?|$)/i.test(manualUrl)) playbackType = 'dash';
+    const playbackType = 'hls';
+    const externalId = manualUrl;
     pick.mutate({
       connectionId: connection.id,
       externalId: externalId.slice(0, 250),
       title: manualTitle || manualUrl.slice(0, 80),
-      // S1 fix (2026-07-16): persist the pasted URL into playbackUrl for
-      // iframe channels too. Previously this was `undefined` for iframe,
-      // leaving the URL only in externalId — the picker then copied an
-      // undefined playbackUrl/embedUrl into the widget and it rendered
-      // "No channel selected". The StreamingWidget/IframeStream normalize
-      // a raw YouTube/Twitch/Vimeo watch URL into its embed form, so the
-      // full URL is exactly what the iframe path needs.
       playbackUrl: manualUrl,
       playbackType,
       kind: 'LIVE',
@@ -789,23 +754,31 @@ function ChannelPickerModal({ connection, onClose, onChanged }: {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[85dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <button type="button" aria-label="Close channel picker" className="absolute inset-0 cursor-default" onClick={onClose} />
+      <div role="dialog" aria-modal="true" className="relative z-10 bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[85dvh] overflow-y-auto">
         <div className="p-6 border-b border-slate-100 flex items-start justify-between">
           <div>
             <h2 className="text-lg font-bold text-slate-800">{t('streamingSso.channelsForProvider', { provider: connection.providerName })}</h2>
             <p className="text-xs text-slate-500 mt-1">{t('streamingSso.pickChannelsForWidget', { count: pickedExternalIds.size })}</p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} aria-label="Close channel picker" className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="p-6 space-y-6">
+          {isBlockedConsumerConnection && (
+            <div className="rounded-lg bg-rose-50 border border-rose-200 p-4 text-sm text-rose-800 flex items-start gap-2">
+              <ShieldAlert className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>{t('streamingSso.blockedLegacyConnection')}</span>
+            </div>
+          )}
+
           {/* Preset channels */}
-          {presets.data && presets.data.length > 0 && (
+          {!isBlockedConsumerConnection && presets.data && presets.data.length > 0 && (
             <div>
               <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">{t('streamingSso.suggestedChannels')}</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {presets.data.map((p: any) => {
+                {presets.data.map((p) => {
                   const picked = pickedExternalIds.has(p.externalId);
                   return (
                     <button
@@ -843,11 +816,13 @@ function ChannelPickerModal({ connection, onClose, onChanged }: {
           )}
 
           {/* Manual entry */}
+          {!isBlockedConsumerConnection && (
           <div>
             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">{t('streamingSso.addChannelByUrl')}</h3>
             <div className="space-y-2">
-              <Field label={t('streamingSso.title')} placeholder="ESPN" value={manualTitle} onChange={setManualTitle} />
-              <Field label={t('streamingSso.url')} placeholder="https://example.com/live.m3u8 or https://youtube.com/watch?v=..." value={manualUrl} onChange={(v) => { setManualUrl(v); setValidationState(null); }} />
+              <Field label={t('streamingSso.title')} placeholder={t('streamingSso.channelTitlePlaceholder')} value={manualTitle} onChange={setManualTitle} />
+              <Field label={t('streamingSso.url')} placeholder="https://media.example.com/live/playlist.m3u8" value={manualUrl} onChange={(v) => { setManualUrl(v); setValidationState(null); }} />
+              <p className="text-[11px] text-slate-500">{t('streamingSso.licensedHlsHelp')}</p>
               {/* 2026-05-25 streaming-overhaul — server-side
                   embeddability probe result. Blocks save when the
                   channel is provably not playable (YouTube Error 153,
@@ -897,6 +872,7 @@ function ChannelPickerModal({ connection, onClose, onChanged }: {
               </button>
             </div>
           </div>
+          )}
 
           {/* Already picked */}
           {myConnectionChannels.length > 0 && (
@@ -939,170 +915,17 @@ function Field({ label, value, onChange, placeholder }: { label: string; value: 
 }
 
 // ─── Bridge setup wizard ────────────────────────────────────────────────
-/**
- * BRIDGE-tier providers (DIRECTV, Atmosphere TV, DISH Business, Mood
- * Media, iHeart for Business) don't have a public API we can call. They
- * sell their content through their own player apps + venue accounts.
- *
- * The bridge workflow: customer keeps their existing subscription → runs
- * the provider's app on a cheap streaming stick → HDMI out into a USB
- * capture card → mini-PC running ffmpeg pushes a local HLS stream → our
- * "Custom HLS" connector picks it up. Total parts ~$300-700 one-time per
- * venue, cheaper than the $1,000+/yr signage retainers competitors charge.
- *
- * This modal walks the operator through the steps with concrete product
- * recommendations + price points pulled from the catalog's bridgeSteps.
- * When they confirm "I've got my capture working," we jump them straight
- * into the Custom HLS connect modal so they can paste their local URL.
- */
-function BridgeSetupModal({ provider, onClose, onContinue }: {
-  provider: Provider;
-  onClose: () => void;
-  onContinue: () => void;
-}) {
-  const t = useTranslations();
-  useOverlayLock(); // hide mobile tab bar so the modal footer clears it
-  const [confirmed, setConfirmed] = useState<Record<number, boolean>>({});
-  const steps = provider.bridgeSteps || [];
-  const allConfirmed = steps.length > 0 && steps.every((_, i) => confirmed[i]);
-
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        {/* Header */}
-        <div className="p-6 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center text-white">
-              <Cable className="w-6 h-6" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                {t('streamingSso.bridgeProvider', { provider: provider.name })} <span className="text-2xl">{provider.iconEmoji}</span>
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">{t('streamingSso.hardwareCaptureWorkflow')}</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
-        </div>
-
-        {/* Why this is needed */}
-        <div className="p-6 space-y-4 bg-sky-50/40 border-b border-sky-100">
-          <div className="flex items-start gap-2">
-            <Wrench className="w-4 h-4 text-sky-600 flex-shrink-0 mt-0.5" />
-            <div className="text-xs text-slate-700 leading-relaxed">
-              <strong className="text-slate-900">{provider.name}</strong> {t('streamingSso.bridgeNoApi')}
-              {' '}
-              {provider.tierReason}
-              <br /><br />
-              {t('streamingSso.theGoodNews')} <strong>{t('streamingSso.subscriptionFine')}</strong> {t('streamingSso.bridgeCaptureExplain', { provider: provider.name })}
-            </div>
-          </div>
-        </div>
-
-        {/* Steps */}
-        <div className="p-6 space-y-4">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">{t('streamingSso.setupChecklist')}</h3>
-
-          {steps.length === 0 ? (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
-              {t('streamingSso.bridgeStepsPending')}
-            </div>
-          ) : (
-            <ol className="space-y-3">
-              {steps.map((s, i) => {
-                const isChecked = confirmed[i] ?? false;
-                return (
-                  <li key={i}>
-                    <label className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                      isChecked ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200 hover:border-sky-300'
-                    }`}>
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={(e) => setConfirmed({ ...confirmed, [i]: e.target.checked })}
-                        className="mt-0.5 flex-shrink-0 w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-400"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start gap-2">
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider flex-shrink-0 ${
-                            isChecked ? 'bg-emerald-200 text-emerald-800' : 'bg-slate-200 text-slate-700'
-                          }`}>
-                            {t('streamingSso.stepN', { n: i + 1 })}
-                          </span>
-                          <span className={`text-sm font-semibold ${isChecked ? 'text-emerald-900' : 'text-slate-800'}`}>
-                            {s.step}
-                          </span>
-                        </div>
-                        {s.detail && (
-                          <p className="text-[11px] text-slate-500 mt-1 ml-2 leading-relaxed">{s.detail}</p>
-                        )}
-                        {s.productExamples && s.productExamples.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 mt-2 ml-1">
-                            {s.productExamples.map((ex, k) => (
-                              <span
-                                key={k}
-                                className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200"
-                              >
-                                {ex}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </label>
-                  </li>
-                );
-              })}
-            </ol>
-          )}
-        </div>
-
-        {/* Help box */}
-        <div className="px-6 pb-2">
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600 leading-relaxed">
-            <strong className="text-slate-800">{t('streamingSso.needHelpWiring')}</strong> See{' '}
-            <a href="https://github.com/gschiemann/EDUCMS/blob/master/docs/HARDWARE_BRIDGE.md" target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline inline-flex items-center gap-0.5">
-              docs/HARDWARE_BRIDGE.md <ExternalLink className="w-2.5 h-2.5" />
-            </a>{' '}
-            for the full guide, including the one-line ffmpeg command and our{' '}
-            <code className="text-[10px] bg-slate-200 px-1 py-0.5 rounded">venueos/hls-bridge</code> Docker image.
-            Email{' '}
-            <a href="mailto:support@venueos.com" className="text-indigo-600 hover:underline">support@venueos.com</a>{' '}
-            and we'll do the install over Zoom.
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="p-6 border-t border-slate-100 sticky bottom-0 bg-white rounded-b-2xl flex gap-2 justify-between items-center">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-bold rounded-lg text-slate-600 hover:bg-slate-50">
-            {t('streamingSso.illDoThisLater')}
-          </button>
-          <button
-            onClick={onContinue}
-            disabled={!allConfirmed && steps.length > 0}
-            className="px-4 py-2 text-sm font-bold rounded-lg bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
-            title={!allConfirmed && steps.length > 0 ? t('streamingSso.confirmEachStep') : ''}
-          >
-            {t('streamingSso.captureRunningConnect')} <ArrowRight className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Quick Start card ──────────────────────────────────────────────────
 //
-// One of 6 cards in the dummy-proof "what do you want to play?" hero at
+// One of the cards in the "what do you want to play?" hero at
 // the top of /settings/streaming. Each card is one CTA — no nested
 // drilldowns. The visual tone (emerald / rose / indigo / etc) is keyed
 // to the action's complexity so the easiest paths read as the most
 // inviting:
-//   • emerald — 1-click free
 //   • rose / indigo — paste-URL forms
-//   • violet — OAuth / paid
+//   • violet — licensed provider adapter pending
 //   • amber — closed platform / explainer
-//   • sky — partner content via bridge
+//   • sky — approved external provider device
 const TONE_STYLES: Record<string, { bg: string; ring: string; iconBg: string; iconText: string; badge: string; cta: string }> = {
   emerald: { bg: 'bg-emerald-50/60', ring: 'border-emerald-200 hover:border-emerald-400', iconBg: 'bg-emerald-100', iconText: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-800', cta: 'bg-emerald-600 hover:bg-emerald-700' },
   rose:    { bg: 'bg-rose-50/60',    ring: 'border-rose-200 hover:border-rose-400',       iconBg: 'bg-rose-100',    iconText: 'text-rose-700',    badge: 'bg-rose-100 text-rose-800',       cta: 'bg-rose-600 hover:bg-rose-700' },
@@ -1152,25 +975,23 @@ function QuickStartCard({
 //
 // Operator-friendly answer to the FAQ that comes up the moment they look
 // at the Streaming Hub and see Hulu / Netflix / Disney+ tiles. Honest,
-// short, and ends with a path forward (the BRIDGE workflow).
-//
-// Marketing differentiator: every signage CMS hits the same wall on
-// closed platforms. We're the only one who explains it upfront and
-// ships a working alternative (HDMI capture → local HLS → custom-hls).
+// short, and ends with sanctioned business-content paths. Consumer HDMI
+// capture/re-encoding is deliberately not presented as a VenueOS feature.
 function WhyClosedModal({
   onClose,
-  onPickAtmosphere,
-  onPickDirectv,
+  onOpenAtmosphere,
+  onOpenDirectv,
 }: {
   onClose: () => void;
-  onPickAtmosphere: () => void;
-  onPickDirectv: () => void;
+  onOpenAtmosphere: () => void;
+  onOpenDirectv: () => void;
 }) {
   const t = useTranslations();
   useOverlayLock(); // hide mobile tab bar so the modal footer clears it
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <button type="button" aria-label="Close streaming explanation" className="absolute inset-0 cursor-default" onClick={onClose} />
+      <div role="dialog" aria-modal="true" className="relative z-10 bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90dvh] overflow-y-auto">
         <div className="p-6 border-b border-slate-100 flex items-start justify-between sticky top-0 bg-white rounded-t-2xl">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700">
@@ -1181,7 +1002,7 @@ function WhyClosedModal({
               <p className="text-xs text-slate-500 mt-0.5">{t('streamingSso.shortHonestAnswerPath')}</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} aria-label="Close streaming explanation" className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="p-6 space-y-5 text-sm text-slate-700 leading-relaxed">
@@ -1203,46 +1024,39 @@ function WhyClosedModal({
             </li>
           </ol>
 
-          <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-4 space-y-3">
-            <h3 className="font-bold text-emerald-900 flex items-center gap-2">
-              <Cable className="w-4 h-4" /> {t('streamingSso.whatWorksBridge')}
+          <div className="rounded-lg bg-sky-50 border border-sky-200 p-4 space-y-3">
+            <h3 className="font-bold text-sky-950 flex items-center gap-2">
+              <ExternalLink className="w-4 h-4" /> Licensed business TV stays on the provider player
             </h3>
-            <p className="text-emerald-900/90">
-              {t('streamingSso.bridgeExplainDetail')} <strong>{t('streamingSso.bridge430')}</strong>
+            <p className="text-sky-950/90">
+              Atmosphere TV and DIRECTV for Business are valid commercial services, but VenueOS does not capture,
+              re-encode, or rebroadcast their protected output. Playback remains on the approved receiver or app;
+              a future VenueOS adapter can add input control and verified device health.
             </p>
-            <p className="text-emerald-900/90 text-xs">
-              {t('streamingSso.bridgeWorksAll')}
-            </p>
-            <div className="flex gap-2 pt-2">
+            <div className="flex flex-col sm:flex-row gap-2 pt-1">
               <button
-                onClick={onPickAtmosphere}
+                onClick={onOpenAtmosphere}
                 className="flex-1 px-3 py-2 text-xs font-bold rounded-lg bg-sky-600 text-white hover:bg-sky-700 inline-flex items-center justify-center gap-1.5"
               >
-                <Cable className="w-3.5 h-3.5" /> {t('streamingSso.atmosphereBridgeGuide')}
+                <ExternalLink className="w-3.5 h-3.5" /> Open Atmosphere TV
               </button>
               <button
-                onClick={onPickDirectv}
+                onClick={onOpenDirectv}
                 className="flex-1 px-3 py-2 text-xs font-bold rounded-lg bg-sky-600 text-white hover:bg-sky-700 inline-flex items-center justify-center gap-1.5"
               >
-                <Cable className="w-3.5 h-3.5" /> {t('streamingSso.directvBridgeGuide')}
+                <ExternalLink className="w-3.5 h-3.5" /> Open DIRECTV for Business
               </button>
             </div>
           </div>
 
           <div className="rounded-lg bg-slate-50 border border-slate-200 p-4 text-xs space-y-2">
-            <h4 className="font-bold text-slate-800">{t('streamingSso.whatWorksNoBridge')}</h4>
+            <h4 className="font-bold text-slate-800">What VenueOS can support honestly</h4>
             <ul className="list-disc pl-5 space-y-1 text-slate-700">
-              <li><strong>{t('streamingSso.publicBroadcasters')}</strong> {t('streamingSso.publicBroadcastersDetail')}</li>
-              <li><strong>YouTube + Twitch + Vimeo</strong> {t('streamingSso.youtubeTwitchVimeoDetail')}</li>
-              <li><strong>Custom HLS / DASH / IPTV M3U</strong> {t('streamingSso.customHlsDetail')}</li>
-              <li><strong>Soundtrack Your Brand</strong> {t('streamingSso.soundtrackDetail')}</li>
+              <li><strong>Owned/licensed MP4:</strong> native playback works today.</li>
+              <li><strong>Customer-authorized HLS:</strong> the player exists; signed grants, rights records, and unified recovery telemetry still need completion.</li>
+              <li><strong>Soundtrack, Rockbot, and SoundMachine:</strong> official business APIs are viable adapter targets; audio remains on the provider player.</li>
+              <li><strong>Fitness On Demand, Wexer, and LES MILLS:</strong> require provider agreements and certified VenueOS adapters.</li>
             </ul>
-            <p className="pt-2">
-              {t('streamingSso.fullSetupGuide')}{' '}
-              <a href="https://github.com/gschiemann/EDUCMS/blob/master/docs/HARDWARE_BRIDGE.md" target="_blank" rel="noreferrer" className="text-indigo-600 underline inline-flex items-center gap-0.5">
-                docs/HARDWARE_BRIDGE.md <ExternalLink className="w-3 h-3" />
-              </a>
-            </p>
           </div>
         </div>
 
@@ -1256,53 +1070,59 @@ function WhyClosedModal({
   );
 }
 
-// ─── Soundtrack Coming Soon modal ──────────────────────────────────────
-//
-// CYCLE-4 integrations-BUG-008 — Soundtrack Your Brand is gated behind
-// OAuth approval that hasn't completed yet. The Quick Start "Background
-// music" card used to drop operators into the regular ConnectModal, where
-// the Connect button stayed permanently disabled (provider.auth ===
-// 'oauth2'). Honest, friendly stand-in until the OAuth flow ships.
-function SoundtrackComingSoonModal({ onClose }: { onClose: () => void }) {
-  const t = useTranslations();
+// ─── Partner adapter pending ────────────────────────────────────────────
+// A provider can have a legitimate business API without VenueOS having a
+// completed adapter. This modal prevents the catalog from turning that API
+// possibility into a false "connect now" claim.
+function PartnerAdapterPendingModal({ provider, onClose }: { provider: Provider; onClose: () => void }) {
   useOverlayLock(); // hide mobile tab bar so the modal footer clears it
+  const destination = provider.websiteUrl || provider.docsUrl;
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[85dvh] overflow-y-auto p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <button type="button" aria-label="Close partner adapter details" className="absolute inset-0 cursor-default" onClick={onClose} />
+      <div role="dialog" aria-modal="true" className="relative z-10 bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[85dvh] overflow-y-auto p-6 space-y-4">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-xl bg-violet-100 flex items-center justify-center text-violet-700">
               <Music className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-800">{t('streamingSso.soundtrackComingSoon')}</h2>
-              <p className="text-xs text-slate-500 mt-0.5">{t('streamingSso.oauthPendingApproval')}</p>
+              <h2 className="text-lg font-bold text-slate-800">{provider.name} adapter pending</h2>
+              <p className="text-xs text-slate-500 mt-0.5">A real provider route, not a finished VenueOS connection.</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} aria-label="Close partner adapter details" className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="rounded-lg bg-violet-50 border border-violet-200 p-4 text-sm text-slate-700 leading-relaxed">
-          <p>
-            {t('streamingSso.soundtrackFinalizing')}
-          </p>
+          <p>{provider.tierReason || `${provider.name} requires approved partner access and a certified VenueOS adapter.`}</p>
         </div>
 
         <div className="rounded-lg bg-slate-50 border border-slate-200 p-4 text-xs text-slate-600 leading-relaxed">
-          <strong className="text-slate-800">{t('streamingSso.needMusicSooner')}</strong> {t('streamingSso.emailLeadIn')}{' '}
-          <a href="mailto:sales@venueos.com" className="text-indigo-600 hover:underline">sales@venueos.com</a>{' '}
-          {t('streamingSso.soundtrackProvisionByHand')}
+          <strong className="text-slate-800">Current behavior:</strong> no customer token is collected and no tile is marked connected.
+          VenueOS must first implement server-side credentials, tenant isolation, permitted controls, health telemetry,
+          disconnected states, and provider-specific acceptance tests.
         </div>
 
-        <div className="flex gap-2 justify-end pt-2">
+        <div className="flex flex-wrap gap-2 justify-end pt-2">
           <button onClick={onClose} className="px-4 py-2 text-sm font-bold rounded-lg text-slate-600 hover:bg-slate-50">
-            {t('streamingSso.close')}
+            Close
           </button>
+          {destination && (
+            <a
+              href={destination}
+              target="_blank"
+              rel="noreferrer"
+              className="px-4 py-2 text-sm font-bold rounded-lg border border-violet-200 text-violet-700 hover:bg-violet-50 inline-flex items-center gap-2"
+            >
+              Provider site <ExternalLink className="w-4 h-4" />
+            </a>
+          )}
           <a
-            href="mailto:sales@venueos.com?subject=Soundtrack%20activation%20request"
+            href={`mailto:sales@venueos.com?subject=${encodeURIComponent(`${provider.name} VenueOS adapter request`)}`}
             className="px-4 py-2 text-sm font-bold rounded-lg bg-violet-600 text-white hover:bg-violet-700 inline-flex items-center gap-2"
           >
-            {t('streamingSso.contactSales')}
+            Request adapter
           </a>
         </div>
       </div>

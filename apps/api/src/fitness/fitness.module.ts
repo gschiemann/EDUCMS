@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { StickControlController } from './stick-control.controller';
-import { YoutubeLiveController } from './youtube-live.controller';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 
 /**
@@ -10,9 +9,18 @@ import { WebsocketSignerService } from '../security/websocket-signer.service';
  *   • StickControlController — in-memory stick registry + signed
  *     STICK_COMMAND pub/sub relay for Roku ECP / Fire TV ADB /
  *     Apple TV remote control via the kiosk's LAN relay.
- *   • YoutubeLiveController — server-side YouTube Live stream resolver
- *     at GET /api/v1/fitness/youtube-live/resolve. No API key required;
- *     extracts the live video ID from ytInitialData using regex strategies.
+ *
+ * REMOVED 2026-08-24 — YoutubeLiveController. It served
+ * `GET /api/v1/fitness/youtube-live/resolve`, which fetched a YouTube
+ * channel page server-side and regex-extracted the current live video id
+ * out of the `ytInitialData` blob ("the same approach used by yt-dlp") so
+ * a gym screen could embed it. That is scraping a consumer service to
+ * obtain venue programming: YouTube's terms prohibit public screening,
+ * so no gym could lawfully show the result. The provider catalog now
+ * marks `youtube-live` BLOCKED, and the widget stopped calling the route
+ * — but leaving it mounted meant the API still brokered the exact thing
+ * the catalog refuses. Removed rather than deprecated, because a route
+ * that exists is a route someone re-wires.
  *
  * DI notes (important):
  *   PrismaModule + RealtimeModule are both `@Global()`, so PrismaService
@@ -30,7 +38,7 @@ import { WebsocketSignerService } from '../security/websocket-signer.service';
  *   • Add FitnessScheduleController for gym-zone schedule management.
  */
 @Module({
-  controllers: [StickControlController, YoutubeLiveController],
+  controllers: [StickControlController],
   providers: [WebsocketSignerService],
 })
 export class FitnessModule {}

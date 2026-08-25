@@ -1,26 +1,36 @@
 /**
- * Streaming presets — curated channel catalogs shipped with the
- * `public-broadcasters` provider. These are explicitly venue-friendly
- * live streams that operators can drop on a screen with zero auth and
- * zero licensing cost.
+ * Streaming presets — bundled channel catalogs.
  *
- * Sources verified (2026-05-03):
- *   • NHK World — explicitly invites free public + venue rebroadcast
- *     of their international English channel.
- *   • France 24 — same; live streams in EN/FR/AR/ES freely embeddable.
- *   • Deutsche Welle (DW) — same.
- *   • Al Jazeera English — same.
+ * EMPTY BY DESIGN (2026-08-24). This file used to ship a
+ * `public-broadcasters` catalog of NHK / France 24 / DW / Al Jazeera /
+ * Bloomberg / Sky / CBS entries, each resolved to a YouTube
+ * `embed/live_stream` URL, under a header asserting that those
+ * broadcasters "explicitly invite free public + venue rebroadcast."
  *
- * URLs below are the YouTube-live embed targets, which:
- *   • Avoid the parent CORS issues of the broadcasters' own m3u8 endpoints.
- *   • Auto-fail-over when a broadcaster rotates their YouTube live id
- *     (we serve the channel handle, YouTube resolves to current live).
- *   • Mute by default per venue policy; operator can unmute on the
- *     player.
+ * That claim was never verified against any broadcaster's terms, and it
+ * is contradicted by YouTube's own terms, which prohibit public
+ * screening. A stream being publicly reachable — and technically
+ * embeddable — is not a commercial public-performance license. Shipping
+ * the list made the editor offer venue programming VenueOS has no right
+ * to supply, in a product whose customers are the ones who would be
+ * liable.
  *
- * If a broadcaster's YouTube live changes, update the handle here.
- * Refreshing the in-memory list is a one-line change + redeploy; no
- * DB migration. Per-tenant overrides live in StreamChannel rows.
+ * The rest of the correction lives in `streaming.ts` (the
+ * `public-broadcasters` provider is now `CLOSED`) and in
+ * `StreamingService.listPresetChannels`, which returns `[]` for every
+ * provider. This file keeps the `PresetChannel` shape so that DTO and
+ * the `GET /streaming/providers/:id/channels` response stay stable for
+ * saved clients, and keeps the catalog itself empty.
+ *
+ * To add a catalog back, you need BOTH: a supported playback path the
+ * provider documents for commercial venues, AND written venue rights on
+ * file. Adding rows without both re-creates the exact defect this file
+ * exists to record. `apps/web/tools/check-integration-truth.cjs` fails
+ * the build if rows appear here.
+ *
+ * The `presetEmbedUrl()` helper was removed with the catalog: its only
+ * job was minting `youtube.com/embed/live_stream` URLs for venue
+ * playback, which is the specific thing that must not happen.
  */
 
 export interface PresetChannel {
@@ -30,105 +40,16 @@ export interface PresetChannel {
   description?: string;
   category: 'NEWS' | 'SPORTS' | 'MUSIC' | 'LIFESTYLE' | 'CULTURE';
   language: string;                     // 'en' / 'es' / 'fr' / etc.
-  /** YouTube channel handle for live_stream embed. */
-  youtubeHandle?: string;
-  /** Direct HLS URL (when broadcaster offers an embeddable .m3u8). */
+  /** Direct HLS URL, only ever from a rights-verified provider feed. */
   hlsUrl?: string;
   /** Square or 16:9 thumbnail. */
   thumbnailUrl?: string;
-  /** Whether the channel allows operator ad overlays per their TOS. */
+  /** Whether the channel allows operator ad overlays per their contract. */
   allowAdOverlay: boolean;
 }
 
-export const PUBLIC_BROADCASTER_CHANNELS: ReadonlyArray<PresetChannel> = [
-  {
-    id: 'nhk-world',
-    title: 'NHK World — English',
-    description: 'Japan public broadcaster. 24/7 English news + culture.',
-    category: 'NEWS',
-    language: 'en',
-    youtubeHandle: 'NHKWORLD',
-    allowAdOverlay: true,
-  },
-  {
-    id: 'france-24-en',
-    title: 'France 24 — English',
-    description: 'French international news in English. Live 24/7.',
-    category: 'NEWS',
-    language: 'en',
-    youtubeHandle: 'FRANCE24English',
-    allowAdOverlay: true,
-  },
-  {
-    id: 'france-24-fr',
-    title: 'France 24 — Français',
-    description: 'Actualité internationale en direct.',
-    category: 'NEWS',
-    language: 'fr',
-    youtubeHandle: 'FRANCE24',
-    allowAdOverlay: true,
-  },
-  {
-    id: 'france-24-es',
-    title: 'France 24 — Español',
-    description: 'Noticias internacionales en directo.',
-    category: 'NEWS',
-    language: 'es',
-    youtubeHandle: 'France24_es',
-    allowAdOverlay: true,
-  },
-  {
-    id: 'dw-english',
-    title: 'DW News — English',
-    description: 'Deutsche Welle. German public broadcaster, English live.',
-    category: 'NEWS',
-    language: 'en',
-    youtubeHandle: 'dwnews',
-    allowAdOverlay: true,
-  },
-  {
-    id: 'al-jazeera-en',
-    title: 'Al Jazeera English',
-    description: 'Doha-based international news in English. Live 24/7.',
-    category: 'NEWS',
-    language: 'en',
-    youtubeHandle: 'aljazeeraenglish',
-    allowAdOverlay: true,
-  },
-  {
-    id: 'bloomberg-tv',
-    title: 'Bloomberg Television',
-    description: 'Business + markets, live. Free public stream.',
-    category: 'NEWS',
-    language: 'en',
-    youtubeHandle: 'markets',
-    allowAdOverlay: true,
-  },
-  {
-    id: 'sky-news-en',
-    title: 'Sky News',
-    description: 'UK 24/7 news live.',
-    category: 'NEWS',
-    language: 'en',
-    youtubeHandle: 'skynews',
-    allowAdOverlay: true,
-  },
-  {
-    id: 'cbsn',
-    title: 'CBS News 24/7',
-    description: 'US national news, free public live stream.',
-    category: 'NEWS',
-    language: 'en',
-    youtubeHandle: 'cbsnews',
-    allowAdOverlay: true,
-  },
-];
-
-/** Build the YouTube live_stream iframe URL for a preset handle. */
-export function presetEmbedUrl(channel: PresetChannel, opts: { muted: boolean; autoplay: boolean }): string {
-  if (channel.hlsUrl) return channel.hlsUrl; // direct HLS wins
-  if (channel.youtubeHandle) {
-    return `https://www.youtube.com/embed/live_stream?channel=${channel.youtubeHandle}&autoplay=${opts.autoplay ? 1 : 0}&mute=${opts.muted ? 1 : 0}&controls=0`;
-  }
-  return '';
-}
+/**
+ * Intentionally empty — see the file header. No provider currently has
+ * both a supported commercial playback path and verified venue rights.
+ */
+export const PUBLIC_BROADCASTER_CHANNELS: ReadonlyArray<PresetChannel> = [];

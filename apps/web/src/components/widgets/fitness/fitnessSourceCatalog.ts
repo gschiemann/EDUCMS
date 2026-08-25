@@ -8,21 +8,21 @@
  *
  *   • `READY`   — we fully support this today. Admin picks it,
  *                 pastes a URL / picks a channel, done.
- *   • `STICK`   — runs on a physical streaming stick plugged into
- *                 the TV (Roku / Fire TV / Apple TV / Chromecast).
- *                 We can launch the app + control playback via
- *                 remote-control APIs, but playback happens on the
- *                 stick, not inside our WebView. Netflix + Disney+
- *                 + HBO Max + Peacock etc. fall here because their
- *                 apps only run on licensed hardware with DRM.
+ *   • `EXTERNAL`— commercial provider playback stays on its licensed
+ *                 receiver/player. VenueOS may show verified status or
+ *                 switch an input only after the device controller ships.
  *   • `PARTNER` — B2B integration requiring a signed commercial
  *                 contract with the provider (Spotify's Soundtrack
  *                 Your Brand, Les Mills On Demand Business,
  *                 Peloton Commercial, etc.). Listed so operators
  *                 can request them; config is inert until the
  *                 contract lands.
- *   • `COMING`  — on our roadmap, surface in the picker as
- *                 "coming soon" so gyms can vote with their clicks.
+ *   • `COMING`  — technically planned, but not connectable today.
+ *   • `BLOCKED` — consumer terms or missing commercial rights make the
+ *                 source unavailable for public gym playback.
+ *   • `STICK`   — legacy saved value. Do not use for new catalog rows;
+ *                 the current stick relay has no persistent registry,
+ *                 acknowledgement, or player-side command handler.
  *
  * Every source declares the config fields it needs so the App
  * Library form can render the right input controls without per-
@@ -31,7 +31,7 @@
 
 export type SourceCategory = 'live-tv' | 'streaming-apps' | 'free-fast' | 'music' | 'fitness-content' | 'news-sports' | 'social';
 
-export type SourceStatus = 'READY' | 'STICK' | 'PARTNER' | 'COMING';
+export type SourceStatus = 'READY' | 'STICK' | 'EXTERNAL' | 'PARTNER' | 'COMING' | 'BLOCKED';
 
 export interface SourceConfigField {
   /** Field key in the `config` object the widget receives. */
@@ -71,7 +71,8 @@ export interface FitnessSource {
     | 'FITNESS_LIVE_TV'
     | 'FITNESS_STICK_LAUNCHER'
     | 'FITNESS_MUSIC_PLAYER'
-    | 'FITNESS_VIDEO_LOOP';
+    | 'FITNESS_VIDEO_LOOP'
+    | 'FITNESS_TRAINING_VIDEO';
   /** Accent color thread — picks the neon accent the widget uses. */
   accentColor: string;
   /** Config fields the picker form renders. */
@@ -83,59 +84,57 @@ export interface FitnessSource {
 }
 
 /* ────────────────────────────────────────────────────────────────
- * 1. PREMIUM STREAMING APPS — stick-launch only
- *    None of these permit third-party embed/auth. We surface them as
- *    "point your stick at this app" launchers via Roku ECP / Fire TV
- *    ADB / Apple TV IP remote. Gym signs in on the stick itself.
+ * 1. CONSUMER STREAMING APPS — blocked for commercial gym playback
+ *    A streaming-stick deep link does not turn a residential subscription
+ *    into a public-performance license. These rows are informational only.
  * ──────────────────────────────────────────────────────────────── */
 const STICK_APPS: FitnessSource[] = [
-  { id: 'netflix',      name: 'Netflix',      tagline: 'Launch on your streaming stick',           category: 'streaming-apps', status: 'STICK', icon: 'N', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#e50914', notes: 'Netflix forbids embedded third-party streaming. We launch Netflix on the connected Roku / Fire TV / Apple TV and schedule when it\'s on — your gym member signs in directly on the stick. Consumer Netflix subscriptions are for personal use; commercial venues should use a licensed display service.' },
-  { id: 'disney-plus',  name: 'Disney+',      tagline: 'Stick-launch + scheduling',                 category: 'streaming-apps', status: 'STICK', icon: 'D+', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#0c1f72', notes: 'Disney+ has no commercial embed API. Runs on the stick; we control launch + schedule only.' },
-  { id: 'hulu',         name: 'Hulu',         tagline: 'Stick-launch + scheduling',                 category: 'streaming-apps', status: 'STICK', icon: 'H', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#1ce783' },
-  { id: 'max',          name: 'Max (HBO)',    tagline: 'Stick-launch + scheduling',                 category: 'streaming-apps', status: 'STICK', icon: 'M', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#002be7' },
-  { id: 'peacock',      name: 'Peacock',      tagline: 'Stick-launch + scheduling',                 category: 'streaming-apps', status: 'STICK', icon: 'P', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#000000' },
-  { id: 'paramount-plus', name: 'Paramount+', tagline: 'Stick-launch + scheduling',                 category: 'streaming-apps', status: 'STICK', icon: 'P+', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#0064ff' },
-  { id: 'prime-video',  name: 'Prime Video',  tagline: 'Stick-launch + scheduling',                 category: 'streaming-apps', status: 'STICK', icon: 'AV', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#00a8e1' },
-  { id: 'apple-tv-plus', name: 'Apple TV+',   tagline: 'Stick-launch + scheduling',                 category: 'streaming-apps', status: 'STICK', icon: 'tv', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#000000' },
-  { id: 'sling',        name: 'Sling TV',     tagline: 'Stick-launch + scheduling',                 category: 'live-tv',        status: 'STICK', icon: 'S', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#ffb800' },
-  { id: 'youtube-tv',   name: 'YouTube TV',   tagline: 'Stick-launch + scheduling',                 category: 'live-tv',        status: 'STICK', icon: 'YT', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#ff0000', notes: 'Consumer YouTube TV forbids commercial use. Youtube TV for Business is a separate contract; even it has no embed API. Stick-launch is the only path.' },
-  { id: 'directv-stream', name: 'DirecTV Stream', tagline: 'Stick-launch + scheduling',             category: 'live-tv',        status: 'STICK', icon: 'D', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#00447c' },
-  { id: 'fubo',         name: 'fuboTV',       tagline: 'Stick-launch + scheduling',                 category: 'live-tv',        status: 'STICK', icon: 'F', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#f64006' },
-  { id: 'espn-plus',    name: 'ESPN+',        tagline: 'Stick-launch + scheduling',                 category: 'news-sports',    status: 'STICK', icon: 'E+', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#fb0c00' },
-  { id: 'discovery-plus', name: 'discovery+', tagline: 'Stick-launch + scheduling',                 category: 'streaming-apps', status: 'STICK', icon: 'd+', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#0057ff' },
-  { id: 'nfl-sunday-ticket', name: 'NFL Sunday Ticket', tagline: 'Stick-launch + scheduling',       category: 'news-sports',    status: 'STICK', icon: 'NFL', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#013369' },
-  { id: 'nba-league-pass', name: 'NBA League Pass', tagline: 'Stick-launch + scheduling',           category: 'news-sports',    status: 'STICK', icon: 'NBA', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#c9082a' },
-  { id: 'mlb-tv',       name: 'MLB.TV',       tagline: 'Stick-launch + scheduling',                 category: 'news-sports',    status: 'STICK', icon: 'MLB', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#041e42' },
+  { id: 'netflix', name: 'Netflix', tagline: 'Consumer plan not licensed for gyms', category: 'streaming-apps', status: 'BLOCKED', icon: 'N', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#e50914', notes: 'Unavailable for public commercial playback. Use a venue-licensed programming provider.' },
+  { id: 'disney-plus', name: 'Disney+', tagline: 'Consumer plan not licensed for gyms', category: 'streaming-apps', status: 'BLOCKED', icon: 'D+', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#0c1f72' },
+  { id: 'hulu', name: 'Hulu', tagline: 'Consumer plan not licensed for gyms', category: 'streaming-apps', status: 'BLOCKED', icon: 'H', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#1ce783' },
+  { id: 'max', name: 'Max', tagline: 'Consumer plan not licensed for gyms', category: 'streaming-apps', status: 'BLOCKED', icon: 'M', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#002be7' },
+  { id: 'peacock', name: 'Peacock', tagline: 'Use EverPass/commercial service instead', category: 'streaming-apps', status: 'BLOCKED', icon: 'P', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#111111' },
+  { id: 'paramount-plus', name: 'Paramount+', tagline: 'Consumer plan not licensed for gyms', category: 'streaming-apps', status: 'BLOCKED', icon: 'P+', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#0064ff' },
+  { id: 'prime-video', name: 'Prime Video', tagline: 'Use an authorized commercial sports route', category: 'streaming-apps', status: 'BLOCKED', icon: 'AV', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#00a8e1' },
+  { id: 'apple-tv-plus', name: 'Apple TV+', tagline: 'Consumer plan not licensed for gyms', category: 'streaming-apps', status: 'BLOCKED', icon: 'tv', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#111111' },
+  { id: 'sling', name: 'Sling TV', tagline: 'Residential service is not a gym license', category: 'live-tv', status: 'BLOCKED', icon: 'S', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#ffb800' },
+  { id: 'youtube-tv', name: 'YouTube TV', tagline: 'Residential service is not a gym license', category: 'live-tv', status: 'BLOCKED', icon: 'YT', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#ff0000' },
+  { id: 'directv-stream', name: 'DIRECTV Stream (consumer)', tagline: 'Use DIRECTV for Business', category: 'live-tv', status: 'BLOCKED', icon: 'D', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#00447c' },
+  { id: 'fubo', name: 'Fubo (consumer)', tagline: 'Consumer plan not licensed for gyms', category: 'live-tv', status: 'BLOCKED', icon: 'F', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#f64006' },
+  { id: 'espn-plus', name: 'ESPN+ (consumer)', tagline: 'Use ESPN+ for Business via EverPass', category: 'news-sports', status: 'BLOCKED', icon: 'E+', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#fb0c00' },
+  { id: 'discovery-plus', name: 'discovery+', tagline: 'Consumer plan not licensed for gyms', category: 'streaming-apps', status: 'BLOCKED', icon: 'd+', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#0057ff' },
+  { id: 'nfl-sunday-ticket', name: 'NFL Sunday Ticket (consumer)', tagline: 'Use an authorized commercial distributor', category: 'news-sports', status: 'BLOCKED', icon: 'NFL', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#013369' },
+  { id: 'nba-league-pass', name: 'NBA League Pass (consumer)', tagline: 'Use an authorized commercial distributor', category: 'news-sports', status: 'BLOCKED', icon: 'NBA', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#c9082a' },
+  { id: 'mlb-tv', name: 'MLB.TV (consumer)', tagline: 'Use an authorized commercial distributor', category: 'news-sports', status: 'BLOCKED', icon: 'MLB', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#041e42' },
 ];
 
 /* ────────────────────────────────────────────────────────────────
- * 2. FREE AD-SUPPORTED STREAMING TV (FAST) — fully READY
- *    These services publish public HLS streams with no auth. Legal
- *    for commercial display. Just pick a channel from our curated
- *    catalog and it plays inside the WebView.
+ * 2. CONSUMER FAST SERVICES — not a free commercial-content catalog
+ *    Public or reverse-engineered stream URLs do not grant gym display
+ *    rights. Provider-backed business distribution requires a contract.
  * ──────────────────────────────────────────────────────────────── */
 const FAST_APPS: FitnessSource[] = [
   {
-    id: 'pluto-tv', name: 'Pluto TV', tagline: '300+ free live channels', category: 'free-fast', status: 'READY',
+    id: 'pluto-tv', name: 'Pluto TV', tagline: 'Consumer service · commercial playback blocked', category: 'free-fast', status: 'BLOCKED',
     icon: 'Pi', widgetType: 'FITNESS_LIVE_TV', accentColor: '#ffd000',
     configFields: [
-      { key: 'channelId', label: 'Channel', type: 'channel-picker', channelCatalogKey: 'pluto', required: true },
+      { key: 'plutoInfo', label: 'Not available for gym playback', type: 'info', infoBody: 'Pluto consumer streams are not a VenueOS commercial programming source. Use Atmosphere TV, Loop TV, DIRECTV for Business, or another provider licensed for public venues.' },
     ],
-    notes: 'Pluto TV streams are free and permitted for commercial display. 300+ channels covering news, sports, movies, reality, and music.',
+    notes: 'Blocked by default. A public URL does not grant commercial public-performance rights.',
   },
   {
     id: 'samsung-tv-plus', name: 'Samsung TV Plus', tagline: 'Commercial HLS access required', category: 'free-fast', status: 'PARTNER',
     icon: 'S', widgetType: 'FITNESS_LIVE_TV', accentColor: '#1428a0',
     configFields: [
       { key: 'samsungInfo', label: 'Partner HLS URL required', type: 'info',
-        infoBody: 'Samsung TV Plus streams require a tokenized CDN URL from Samsung\'s partner program — we don\'t ship a public catalog for it. If you have an authorized HLS URL, add a "Local News HLS" / direct-HLS source and paste it there instead.' },
+        infoBody: 'Samsung TV Plus requires a written distribution agreement and supported provider playback path. Do not paste scraped or session URLs.' },
     ],
   },
   {
-    id: 'xumo', name: 'Xumo Play', tagline: '160+ free channels', category: 'free-fast', status: 'READY',
+    id: 'xumo', name: 'Xumo Play', tagline: 'Consumer service · commercial playback blocked', category: 'free-fast', status: 'BLOCKED',
     icon: 'X', widgetType: 'FITNESS_LIVE_TV', accentColor: '#3cc8c8',
     configFields: [
-      { key: 'channelId', label: 'Channel', type: 'channel-picker', channelCatalogKey: 'xumo', required: true },
+      { key: 'xumoInfo', label: 'Not available for gym playback', type: 'info', infoBody: 'Xumo Play terms prohibit public or commercial performance. VenueOS does not ship or derive Xumo HLS URLs.' },
     ],
   },
   {
@@ -143,7 +142,7 @@ const FAST_APPS: FitnessSource[] = [
     icon: 'T', widgetType: 'FITNESS_LIVE_TV', accentColor: '#fa382f',
     configFields: [
       { key: 'tubiInfo', label: 'Partner HLS URL required', type: 'info',
-        infoBody: 'Tubi does not publish a public linear-HLS catalog. Use the Tubi embed via a direct iframe source, or contact Tubi for a commercial HLS arrangement.' },
+        infoBody: 'Tubi consumer playback is not a commercial gym source. A direct written distribution agreement is required before any integration can be enabled.' },
     ],
   },
   {
@@ -151,7 +150,7 @@ const FAST_APPS: FitnessSource[] = [
     icon: 'Rc', widgetType: 'FITNESS_LIVE_TV', accentColor: '#662d91',
     configFields: [
       { key: 'rokuInfo', label: 'Partner HLS URL required', type: 'info',
-        infoBody: 'The Roku Channel\'s live CDN uses per-session tokens — there\'s no public catalog to ship. Use the Roku Channel embed via a direct iframe source, or contact Roku for a commercial HLS arrangement.' },
+        infoBody: 'The Roku Channel is not a commercial gym source by default. A direct written distribution agreement is required before any integration can be enabled.' },
     ],
   },
   {
@@ -163,43 +162,45 @@ const FAST_APPS: FitnessSource[] = [
     ],
   },
   {
-    id: 'freevee', name: 'Amazon Freevee', tagline: 'Free Amazon Freevee channels', category: 'free-fast', status: 'STICK',
+    id: 'freevee', name: 'Amazon Freevee', tagline: 'Consumer service · commercial playback blocked', category: 'free-fast', status: 'BLOCKED',
     icon: 'Fv', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#00a8e1',
   },
 ];
 
 /* ────────────────────────────────────────────────────────────────
- * 3. LIVE NEWS / SPORTS — direct URL (operator provides)
+ * 3. LIVE NEWS / SPORTS — rights-verified sources only
  * ──────────────────────────────────────────────────────────────── */
 const NEWS_SPORTS: FitnessSource[] = [
   {
-    id: 'youtube-live', name: 'YouTube Live', tagline: 'Paste a channel URL, we find the live stream', category: 'news-sports', status: 'READY',
+    id: 'youtube-live', name: 'YouTube Live', tagline: 'Public screening is blocked by default', category: 'news-sports', status: 'BLOCKED',
     icon: 'YT', widgetType: 'FITNESS_LIVE_TV', accentColor: '#ff0000',
-    configFields: [
-      { key: 'youtubeChannelUrl', label: 'YouTube channel or video URL', type: 'url', required: true, placeholder: 'https://www.youtube.com/@CNN' },
-    ],
-    notes: 'Works with public YouTube Live streams. We resolve the currently-live video from the channel URL automatically. Does NOT work with YouTube TV (that\'s a separate service).',
+    // No configFields on purpose. This source used to ask the operator to
+    // paste a channel URL, which the API then scraped for the live video id.
+    // Collecting a URL for a source that can never lawfully play reads as
+    // "fill this in and it will work". A BLOCKED source explains itself and
+    // collects nothing.
+    notes: 'YouTube terms prohibit public screening and music streaming from the consumer service. Do not use this as general gym programming.',
   },
   {
-    id: 'cnn-live',    name: 'CNN Live',      tagline: 'CNN Pressroom feed',                category: 'news-sports', status: 'READY', icon: 'CNN', widgetType: 'FITNESS_LIVE_TV', accentColor: '#cc0000',  configFields: [{ key: 'hlsUrl', label: 'Your CNN Pressroom HLS URL', type: 'url', required: true, placeholder: 'https://cnn-cnninternational.../playlist.m3u8' }], notes: 'CNN Pressroom Live is a free commercial live-TV feed available to venues who register at cnnpressroom.com. Paste the HLS URL they provide after registration.' },
+    id: 'cnn-live', name: 'CNN Live', tagline: 'Commercial distribution agreement required', category: 'news-sports', status: 'PARTNER', icon: 'CNN', widgetType: 'FITNESS_LIVE_TV', accentColor: '#cc0000', configFields: [{ key: 'cnnInfo', label: 'Provider agreement required', type: 'info', infoBody: 'VenueOS enables this only after CNN or an authorized commercial distributor supplies a supported feed and written venue rights.' }], notes: 'No free VenueOS commercial HLS feed is assumed.' },
   {
-    id: 'espn-commercial', name: 'ESPN Commercial', tagline: 'Commercial ESPN feed (contract required)', category: 'news-sports', status: 'READY',
+    id: 'espn-commercial', name: 'ESPN+ for Business', tagline: 'Licensed external service via EverPass', category: 'news-sports', status: 'EXTERNAL',
     icon: 'E', widgetType: 'FITNESS_LIVE_TV', accentColor: '#fb0c00',
     configFields: [
-      { key: 'hlsUrl', label: 'ESPN-provided HLS URL', type: 'url', required: true },
+      { key: 'espnInfo', label: 'External licensed playback', type: 'info', infoBody: 'Playback remains inside the approved EverPass/provider app or device. VenueOS may control the input and show verified status after an external-device adapter is installed.' },
     ],
-    notes: 'Requires a ESPN Commercial or DIRECTV for Business contract that gives you an authorized HLS stream. Contact: espncommercial.com',
+    notes: 'Do not ingest or restream a consumer ESPN+ session.',
   },
   {
-    id: 'directv-business', name: 'DIRECTV for Business', tagline: 'Commercial DIRECTV stream',  category: 'live-tv',     status: 'READY', icon: 'DB', widgetType: 'FITNESS_LIVE_TV', accentColor: '#00447c', configFields: [{ key: 'hlsUrl', label: 'DIRECTV-provided HLS URL', type: 'url', required: true }], notes: 'Requires active DIRECTV for Business contract.' },
+    id: 'directv-business', name: 'DIRECTV for Business', tagline: 'Licensed provider device/input', category: 'live-tv', status: 'EXTERNAL', icon: 'DB', widgetType: 'FITNESS_LIVE_TV', accentColor: '#00447c', configFields: [{ key: 'directvInfo', label: 'External licensed playback', type: 'info', infoBody: 'Use the DIRECTV for Business receiver or supported streaming device. VenueOS does not request a raw HLS URL or re-encode the signal.' }], notes: 'Requires an active DIRECTV for Business account; residential DIRECTV is not permitted.' },
   {
-    id: 'local-news',  name: 'Local News HLS',tagline: 'Paste your local affiliate\'s live URL', category: 'news-sports', status: 'READY',
+    id: 'local-news', name: 'Authorized Live HLS', tagline: 'Customer-owned or explicitly licensed feed', category: 'news-sports', status: 'COMING',
     icon: '📺', widgetType: 'FITNESS_LIVE_TV', accentColor: '#3b82f6',
     configFields: [
       { key: 'hlsUrl', label: 'Live HLS URL', type: 'url', required: true, placeholder: 'https://...playlist.m3u8' },
       { key: 'channelName', label: 'Display name', type: 'text', placeholder: 'KTLA 5 News', required: false },
     ],
-    notes: 'Many local TV affiliates publish public HLS streams. Check your station\'s website or use Samsung TV Plus / Pluto TV which aggregate many.',
+    notes: 'This becomes READY only after the editor is wired to the server-owned streaming channel record and the rights attestation is stored. A public URL alone is insufficient.',
   },
 ];
 
@@ -208,30 +209,35 @@ const NEWS_SPORTS: FitnessSource[] = [
  * ──────────────────────────────────────────────────────────────── */
 const MUSIC_APPS: FitnessSource[] = [
   {
-    id: 'custom-now-playing', name: 'Custom Now-Playing URL', tagline: 'Poll your own music system', category: 'music', status: 'READY',
+    id: 'custom-now-playing', name: 'Custom Now-Playing URL', tagline: 'Metadata only · server proxy required', category: 'music', status: 'COMING',
     icon: '🎵', widgetType: 'FITNESS_MUSIC_PLAYER', accentColor: '#39ff14',
     configFields: [
       { key: 'nowPlayingEndpoint', label: 'Now-playing JSON endpoint', type: 'url', required: true, placeholder: 'https://your-gym.com/now-playing' },
       { key: 'zoneLabel', label: 'Zone label', type: 'text', placeholder: 'CARDIO FLOOR' },
     ],
-    notes: 'Endpoint must return JSON like { "title": "...", "artist": "...", "albumArtUrl": "..." }. Polled every 10 seconds. Works with any music system that exposes an HTTP now-playing API (SoundMachine, custom LAN scripts, Mixcloud Pro).',
+    notes: 'Metadata only; it does not carry audio. Production needs a tenant-scoped server adapter with authentication, SSRF protection, freshness and explicit disconnected state.',
   },
   {
-    id: 'soundmachine', name: 'SoundMachine', tagline: 'Commercial streaming licensed for gyms', category: 'music', status: 'READY',
+    id: 'soundmachine', name: 'SoundMachine', tagline: 'Approved commercial playback API partnership', category: 'music', status: 'PARTNER',
     icon: 'SM', widgetType: 'FITNESS_MUSIC_PLAYER', accentColor: '#39ff14',
     configFields: [
-      { key: 'nowPlayingEndpoint', label: 'SoundMachine box API URL', type: 'url', required: true, placeholder: 'http://soundmachine-box.local/nowplaying' },
-      { key: 'zoneLabel', label: 'Zone label', type: 'text' },
+      { key: 'soundmachineInfo', label: 'Developer approval required', type: 'info', infoBody: 'SoundMachine offers an official commercial Playback Services API. VenueOS needs approved app credentials and a server-side adapter before this can be connected.' },
     ],
-    notes: 'SoundMachine is licensed commercial background music. If your SoundMachine box exposes a now-playing endpoint on your LAN, paste the URL here.',
+    notes: 'Never ask for a guessed LAN endpoint. Audio and metadata must use SoundMachine\'s approved API/player contract.',
   },
   {
-    id: 'soundtrack-your-brand', name: 'Soundtrack Your Brand', tagline: 'Spotify\'s commercial tier', category: 'music', status: 'PARTNER',
+    id: 'soundtrack-your-brand', name: 'Soundtrack', tagline: 'Licensed business audio · control + metadata API', category: 'music', status: 'PARTNER',
     icon: 'SYB', widgetType: 'FITNESS_MUSIC_PLAYER', accentColor: '#1db954',
     configFields: [
       { key: 'sybInfo', label: 'Partnership required', type: 'info',
-        infoBody: 'Soundtrack Your Brand (the legal commercial Spotify) requires a direct partner integration we haven\'t shipped yet. Click "Request Integration" to queue it — we\'ll email when it\'s live.' },
+        infoBody: 'Soundtrack provides a documented GraphQL API for display, staff control and monitoring. VenueOS must keep the token server-side and bind a verified sound zone. The public API does not return a raw audio stream.' },
     ],
+  },
+  {
+    id: 'rockbot', name: 'Rockbot', tagline: 'Gym-focused control + now-playing API', category: 'music', status: 'PARTNER',
+    icon: 'RB', widgetType: 'FITNESS_MUSIC_PLAYER', accentColor: '#6c55ff',
+    configFields: [{ key: 'rockbotInfo', label: 'Provider approval required', type: 'info', infoBody: 'Rockbot offers an approval-gated OAuth client-credentials API for zones, playback control, now playing, queues and messaging. Audio remains on the Rockbot player.' }],
+    notes: 'Strong first gym adapter. Group/instructor-led classes require separate rights verification.',
   },
   {
     id: 'cloud-cover-music', name: 'Cloud Cover Music', tagline: 'Licensed gym music',         category: 'music', status: 'PARTNER',
@@ -249,13 +255,13 @@ const MUSIC_APPS: FitnessSource[] = [
     configFields: [{ key: 'moodInfo', label: 'Partnership required', type: 'info', infoBody: 'Mood Media partner integration is a roadmap item.' }],
   },
   {
-    id: 'apple-music',   name: 'Apple Music',          tagline: 'Not available commercially',  category: 'music', status: 'STICK',
-    icon: 'Am', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#fa233b', notes: 'Apple Music does not offer a commercial API. Stick-launch only.',
+    id: 'apple-music', name: 'Apple Music', tagline: 'Personal service · commercial use blocked', category: 'music', status: 'BLOCKED',
+    icon: 'Am', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#fa233b', notes: 'MusicKit does not grant public-performance rights. Do not launch or play it in a gym.',
   },
   {
-    id: 'spotify-consumer', name: 'Spotify (consumer)', tagline: 'Stick-launch — not legal for commercial use on its own', category: 'music', status: 'STICK',
+    id: 'spotify-consumer', name: 'Spotify (consumer)', tagline: 'Personal service · commercial use blocked', category: 'music', status: 'BLOCKED',
     icon: 'Sp', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#1db954',
-    notes: 'Consumer Spotify is not licensed for commercial use. For gyms, use Soundtrack Your Brand (the legal commercial variant above). Stick-launch is provided only because some gyms have pre-existing music licenses.',
+    notes: 'Spotify explicitly prohibits public business playback. A separate blanket license does not turn the consumer stream into an approved source. Use Soundtrack or another commercial provider.',
   },
 ];
 
@@ -263,15 +269,16 @@ const MUSIC_APPS: FitnessSource[] = [
  * 5. FITNESS CONTENT PROVIDERS — partner-dependent
  * ──────────────────────────────────────────────────────────────── */
 const FITNESS_CONTENT: FitnessSource[] = [
-  { id: 'les-mills',     name: 'Les Mills On Demand Business', tagline: 'Group fitness classes',       category: 'fitness-content', status: 'PARTNER', icon: 'LM', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#e20000', notes: 'Les Mills On Demand Business is available via their partner program. We will ship the integration once we have the partnership agreement.' },
+  { id: 'fitness-on-demand', name: 'Fitness On Demand', tagline: 'Commercial fitness library + documented API', category: 'fitness-content', status: 'PARTNER', icon: 'FOD', widgetType: 'FITNESS_TRAINING_VIDEO', accentColor: '#635bff', notes: 'Contract API supports licensed content, enrollment, usage, live streaming and geofencing. Enable only with provider-issued credentials and rights scope.' },
+  { id: 'les-mills', name: 'LES MILLS Virtual', tagline: 'Club-licensed virtual classes', category: 'fitness-content', status: 'PARTNER', icon: 'LM', widgetType: 'FITNESS_TRAINING_VIDEO', accentColor: '#e20000', notes: 'Requires a club partner agreement and provider-issued player/API credentials. A consumer LES MILLS+ account is not sufficient.' },
   { id: 'peloton-commercial', name: 'Peloton Commercial', tagline: 'On-demand + live Peloton',     category: 'fitness-content', status: 'PARTNER', icon: 'Pe', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#000000' },
   { id: 'ifit-business', name: 'iFit Business',        tagline: 'iFit commercial content',       category: 'fitness-content', status: 'PARTNER', icon: 'iF', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#ec2027' },
-  { id: 'wexer',         name: 'Wexer',                tagline: 'Virtual group fitness',          category: 'fitness-content', status: 'PARTNER', icon: 'Wx', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#0079ff' },
+  { id: 'wexer', name: 'Wexer', tagline: 'Contract API + virtual player', category: 'fitness-content', status: 'PARTNER', icon: 'Wx', widgetType: 'FITNESS_TRAINING_VIDEO', accentColor: '#0079ff' },
   { id: 'matrix-learning', name: 'Matrix Learning',    tagline: 'Equipment video tutorials',      category: 'fitness-content', status: 'PARTNER', icon: 'Mx', widgetType: 'FITNESS_STICK_LAUNCHER', accentColor: '#ff6600' },
-  { id: 'custom-video-loop', name: 'Custom Video Loop', tagline: 'Your own equipment tutorials', category: 'fitness-content', status: 'READY',
-    icon: '🎬', widgetType: 'FITNESS_VIDEO_LOOP', accentColor: '#ff2a4d',
+  { id: 'custom-video-loop', name: 'Owned Video Loop', tagline: 'Upload your licensed MP4 tutorial', category: 'fitness-content', status: 'READY',
+    icon: '🎬', widgetType: 'FITNESS_TRAINING_VIDEO', accentColor: '#ff2a4d',
     configFields: [
-      { key: 'videoUrl', label: 'Video URL (.mp4 or HLS)', type: 'url', required: true },
+      { key: 'videoUrl', label: 'Video URL (.mp4)', type: 'url', required: true },
       { key: 'equipmentName', label: 'Equipment name', type: 'text', placeholder: 'LEG PRESS' },
       { key: 'trainerName', label: 'Trainer credit', type: 'text' },
     ],
@@ -285,11 +292,17 @@ const SOCIAL: FitnessSource[] = [
   { id: 'instagram-feed',  name: 'Instagram Feed',  tagline: 'Embed your gym\'s public feed', category: 'social', status: 'COMING', icon: 'Ig', widgetType: 'FITNESS_LIVE_TV', accentColor: '#e1306c' },
   { id: 'tiktok-feed',     name: 'TikTok Feed',     tagline: 'Embed your TikTok videos',      category: 'social', status: 'COMING', icon: 'Tk', widgetType: 'FITNESS_LIVE_TV', accentColor: '#ff0050' },
   { id: 'facebook-live',   name: 'Facebook Live',   tagline: 'Embed public Facebook lives',    category: 'social', status: 'COMING', icon: 'FB', widgetType: 'FITNESS_LIVE_TV', accentColor: '#1877f2' },
-  { id: 'twitch',          name: 'Twitch',          tagline: 'Embed any Twitch channel',       category: 'social', status: 'READY',
+  { id: 'twitch', name: 'Twitch', tagline: 'Public embed is not a gym programming license', category: 'social', status: 'BLOCKED',
     icon: 'Tw', widgetType: 'FITNESS_LIVE_TV', accentColor: '#9147ff',
-    configFields: [{ key: 'twitchChannel', label: 'Twitch channel name', type: 'text', required: true, placeholder: 'twitch_username' }],
+    // Explains itself; collects nothing. Asking for a channel name on a
+    // BLOCKED source promises a working screen once the field is filled in.
+    configFields: [
+      { key: 'twitchInfo', label: 'Not available for gym playback', type: 'info',
+        infoBody: 'Twitch embeds are technically supported, but embeddability is not a public-performance license. VenueOS enables Twitch only with written commercial rights for the specific channel.' },
+    ],
+    notes: 'Blocked by default. A working embed is not a commercial gym programming license.',
   },
-  { id: 'vimeo',           name: 'Vimeo',           tagline: 'Embed Vimeo videos + live',      category: 'social', status: 'READY',
+  { id: 'vimeo', name: 'Vimeo', tagline: 'Host customer-owned or licensed video', category: 'social', status: 'PARTNER',
     icon: 'Vi', widgetType: 'FITNESS_LIVE_TV', accentColor: '#1ab7ea',
     configFields: [{ key: 'vimeoUrl', label: 'Vimeo URL or video ID', type: 'url', required: true }],
   },

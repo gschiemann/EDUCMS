@@ -11,8 +11,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   STREAM_PROVIDERS,
   getStreamProvider,
-  PUBLIC_BROADCASTER_CHANNELS,
-  presetEmbedUrl,
   type StreamConnectionDto,
   type StreamChannelDto,
 } from '@cms/api-types';
@@ -75,22 +73,17 @@ export class StreamingService {
     }));
   }
 
-  /** Curated channel list for the `public-broadcasters` provider —
-   *  shipped in code, no auth needed. */
-  listPresetChannels(providerId: string) {
-    if (providerId === 'public-broadcasters') {
-      return PUBLIC_BROADCASTER_CHANNELS.map((c) => ({
-        externalId: c.id,
-        title: c.title,
-        description: c.description,
-        category: c.category,
-        thumbnailUrl: c.thumbnailUrl,
-        playbackUrl: c.hlsUrl,
-        embedUrl: c.youtubeHandle ? presetEmbedUrl(c, { muted: true, autoplay: true }) : undefined,
-        playbackType: c.hlsUrl ? 'hls' : 'iframe',
-        allowAdOverlay: c.allowAdOverlay,
-      }));
-    }
+  /**
+   * No provider currently has a bundled, rights-cleared channel catalog.
+   *
+   * The former `public-broadcasters` response converted public YouTube
+   * handles into venue playback presets. Technical embeddability is not a
+   * commercial public-performance license, so returning those rows made the
+   * editor promise programming VenueOS could not lawfully supply. Keep the
+   * endpoint shape for existing clients, but return no presets until a
+   * provider supplies both supported playback and written venue rights.
+   */
+  listPresetChannels(_providerId: string) {
     return [];
   }
 

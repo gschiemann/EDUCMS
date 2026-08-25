@@ -9,17 +9,16 @@
  *   - Idempotent: checks whether any POS/streaming connections already
  *     exist for the tenant before inserting; skip silently if found.
  *   - Vertical-aware: seeds the data that makes sense for the tenant's
- *     industry (restaurant menus for QSR/RESTAURANT/BAR, retail SKUs for
- *     RETAIL/FASHION, public broadcaster streams for GYM/SPORTS/K12/etc.).
+ *     industry (restaurant menus for QSR/RESTAURANT/BAR and retail SKUs for
+ *     RETAIL/FASHION). Media is never auto-seeded: public availability does
+ *     not prove commercial venue playback rights.
  *   - Non-blocking: errors are swallowed + logged so a seeder failure
  *     never prevents a new signup from completing.
  */
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { StreamingService } from '../streaming/streaming.service';
 import { PosService } from '../pos/pos.service';
 import { AdsService } from '../ads/ads.service';
-import { PUBLIC_BROADCASTER_CHANNELS, presetEmbedUrl } from '@cms/api-types';
 
 const SAMPLE_TAG = '[Sample]';
 
@@ -29,23 +28,12 @@ const MENU_VERTICALS = new Set(['QSR', 'RESTAURANT', 'BAR']);
 /** Verticals that benefit from a pre-seeded retail SKU catalog. */
 const RETAIL_VERTICALS = new Set(['RETAIL', 'FASHION']);
 
-/**
- * Verticals that benefit from live public-broadcaster streams (news /
- * weather feeds for lobbies, waiting rooms, fellowship halls, etc.).
- * 2026-06-27 — added WORSHIP (was absent per the per-vertical beta
- * finding): a church lobby / welcome-center screen benefits from the
- * same passive news/weather feed as a corporate lobby or clinic waiting
- * room, so a fresh worship tenant now seeds these channels too.
- */
-const STREAM_VERTICALS = new Set(['GYM', 'K12', 'SPORTS', 'CORPORATE', 'HEALTHCARE', 'HOSPITALITY', 'WORSHIP']);
-
 @Injectable()
 export class SampleDataService {
   private readonly logger = new Logger(SampleDataService.name);
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly streaming: StreamingService,
     private readonly pos: PosService,
     private readonly ads: AdsService,
   ) {}
@@ -89,9 +77,6 @@ export class SampleDataService {
       }
       if (RETAIL_VERTICALS.has(v)) {
         tasks.push(this._seedRetailPos(tenantId, userId));
-      }
-      if (STREAM_VERTICALS.has(v)) {
-        tasks.push(this._seedPublicBroadcasters(tenantId, userId));
       }
       // House-only ads for every vertical — no OAuth required, zero-config.
       tasks.push(this._seedHouseAds(tenantId, userId, v));
@@ -233,44 +218,6 @@ export class SampleDataService {
       }).catch(() => {});
     }
     this.logger.log(`seedRetailPos(${tenantId}): ${added} items.`);
-  }
-
-  private async _seedPublicBroadcasters(tenantId: string, userId: string): Promise<void> {
-    let conn = await (this.prisma.client as any).streamProviderConnection.findFirst({
-      where: { tenantId, providerId: 'public-broadcasters' },
-    });
-    if (!conn) {
-      try {
-        conn = await this.streaming.createConnection({
-          tenantId,
-          userId,
-          providerId: 'public-broadcasters',
-          displayName: `${SAMPLE_TAG} Public Broadcasters`,
-          credentials: {},
-        });
-      } catch {
-        return;
-      }
-    }
-    let added = 0;
-    for (const ch of PUBLIC_BROADCASTER_CHANNELS) {
-      try {
-        await this.streaming.addChannel({
-          tenantId,
-          connectionId: conn.id,
-          externalId: ch.id,
-          title: ch.title,
-          description: ch.description,
-          category: ch.category,
-          playbackUrl: ch.hlsUrl || presetEmbedUrl(ch, { muted: true, autoplay: true }),
-          playbackType: ch.hlsUrl ? 'hls' : 'iframe',
-          kind: 'LIVE',
-          allowAdOverlay: ch.allowAdOverlay,
-        });
-        added += 1;
-      } catch { /* already added or table absent — skip */ }
-    }
-    this.logger.log(`seedPublicBroadcasters(${tenantId}): ${added} channels.`);
   }
 
   private async _seedHouseAds(tenantId: string, userId: string, vertical: string): Promise<void> {

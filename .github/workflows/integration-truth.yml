@@ -1,0 +1,41 @@
+# Integration truth guard.
+#
+# The recurring defect this exists to stop: shipping a media source because
+# it is technically reachable, as though reachability were a commercial
+# public-performance license. The 2026-08-24 sweep found four live
+# instances at once — a bundled catalog of broadcaster YouTube
+# `embed/live_stream` URLs, reverse-engineered Pluto/Xumo channel URLs, an
+# API route that scraped a YouTube channel page for its current live video
+# id, and BLOCKED sources that still asked the operator to paste a URL.
+#
+# Each looked reasonable in isolation. Together they pointed gyms at
+# programming VenueOS has no right to supply — and the gym, not VenueOS,
+# is the party performing publicly. That asymmetry is why this is a hard
+# gate and not a lint warning.
+#
+# The scanner is dependency-free, so no install step is needed.
+name: Integration Truth
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+concurrency:
+  # Keyed on the REF for pull_request (a superseded PR run is noise) and on
+  # the individual SHA for push, so every commit that lands on master keeps
+  # its own verdict — a cancelled master run reads as "never checked".
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  integration-truth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check media integrations claim only rights they can back
+        run: node apps/web/tools/check-integration-truth.cjs

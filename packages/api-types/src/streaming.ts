@@ -27,7 +27,7 @@
 
 /** Authentication strategy required to connect this provider. */
 export type StreamAuthKind =
-  | 'none'        // free public streams (Pluto, Tubi, public HLS URLs)
+  | 'none'        // no provider credentials; rights verification still applies
   | 'apiKey'      // simple API key + optional account/org id
   | 'oauth2'      // standard OAuth 2 with refresh tokens
   | 'license'     // venue license number + region (DIRECTV, DISH)
@@ -46,12 +46,9 @@ export type StreamAuthKind =
  *                     contract / application before activating
  *                     (Toast, Hivestack, etc.). Amber badge.
  *
- *   BRIDGE          — Provider has no third-party CMS API, BUT the
- *                     customer can subscribe directly + run the
- *                     provider's signal through HDMI capture → HLS
- *                     encoder → our Custom HLS connector. We supply
- *                     the templates + setup guide. Blue badge.
- *                     Examples: DIRECTV, DISH, Atmosphere TV.
+ *   BRIDGE          — Legacy tier retained for saved records. New provider
+ *                     rows must not claim HDMI capture/re-streaming unless a
+ *                     provider contract explicitly authorizes it.
  *
  *   CLOSED          — No public API and no clean bridge workflow.
  *                     Customer runs the service entirely outside our
@@ -128,107 +125,78 @@ export interface StreamProviderDef {
  * release notes can grep them.
  */
 export const STREAM_PROVIDERS: ReadonlyArray<StreamProviderDef> = [
-  // ─── TIER 1 — VENUE-NATIVE via HARDWARE BRIDGE ─────────────────────
-  // 2026-05-03 — operator follow-up: customer brings their own
-  // subscription, we provide the integration. None of these have a
-  // public CMS API, but they ALL have HDMI output (or run on a Fire
-  // TV / Apple TV that has HDMI). Pro-AV integrators bridge them
-  // into a CMS via a USB capture card → ffmpeg encoder → local HLS
-  // server, then our Custom HLS connector renders the captured
-  // stream as a normal channel inside our CMS.
+  // ─── VENUE-LICENSED EXTERNAL PLAYERS ────────────────────────────────
+  // These are valid business services, but VenueOS has no completed,
+  // sanctioned device/input adapter for them today. Do not treat HDMI
+  // capture and re-encoding as an assumed integration or distribution right.
   {
     id: 'atmosphere',
     name: 'Atmosphere TV',
     category: 'venue-fast',
-    integrationTier: 'BRIDGE',
-    blurb: 'Customer brings Atmosphere subscription; we render via HDMI capture bridge.',
+    integrationTier: 'CLOSED',
+    blurb: 'Licensed business TV on an Atmosphere device; VenueOS control not built yet.',
     iconEmoji: '📺',
-    auth: 'customHls',
-    playback: 'hls',
+    auth: 'none',
+    playback: 'iframe',
     commercialUseLegal: true,
-    pricingNote: 'Free Atmosphere subscription + ~$200 capture card',
+    pricingNote: '$49.99 activation; $0/mo when usage requirement is met',
     allowsAdOverlay: false,
-    docsUrl: 'https://atmosphere.tv/business/',
+    docsUrl: 'https://help.atmosphere.tv/how-much-does-atmosphere-cost',
     websiteUrl: 'https://atmosphere.tv',
     bestFor: ['BAR', 'RESTAURANT', 'GYM'],
-    tierReason: 'Atmosphere has no public CMS API but their app runs on Fire TV / Apple TV with HDMI output. Customer captures that HDMI, encodes to HLS, and we play it inside our CMS like any custom HLS channel.',
-    bridgeSteps: [
-      { step: 'Customer signs up for free Atmosphere venue account at atmosphere.tv/business', productExamples: ['Atmosphere TV (free)'] },
-      { step: 'Install Atmosphere app on a streaming device (Fire TV Stick 4K is cheapest, ~$50)', productExamples: ['Amazon Fire TV Stick 4K', 'Apple TV 4K'] },
-      { step: 'Connect that device\'s HDMI output to a USB HDMI capture card', productExamples: ['Magewell USB Capture HDMI 4K Plus (~$400)', 'AVerMedia Live Gamer ULTRA (~$200)', 'Elgato HD60 X (~$180)'] },
-      { step: 'Plug the capture card into a small Linux PC / mini-PC running OBS Studio or ffmpeg → HLS', productExamples: ['Beelink Mini S12 (~$170)', 'Intel NUC (~$300)', 'Raspberry Pi 5 + capture HAT'] },
-      { step: 'Configure ffmpeg to push HLS to a local web server (we provide a one-click Docker image)', productExamples: ['venueos/hls-bridge Docker image (free)'] },
-      { step: 'In our CMS, connect "Custom HLS" with the local HLS URL — done. Templates render Atmosphere as a channel.', productExamples: [] },
-    ],
+    tierReason: 'Atmosphere is licensed for businesses and uses its own managed player. VenueOS has no public Atmosphere playback API, device heartbeat, input switcher, or acknowledgement path yet.',
   },
   {
     id: 'directv-business',
     name: 'DIRECTV for Business',
     category: 'sports-news',
-    integrationTier: 'BRIDGE',
-    blurb: 'Customer brings DIRECTV subscription; HDMI capture bridges into our CMS.',
+    integrationTier: 'CLOSED',
+    blurb: 'Licensed business TV on a DIRECTV receiver; VenueOS control not built yet.',
     iconEmoji: '🏈',
-    auth: 'customHls',
-    playback: 'hls',
+    auth: 'license',
+    playback: 'iframe',
     commercialUseLegal: true,
-    pricingNote: 'DIRECTV venue subscription + ~$200 capture card',
+    pricingNote: 'Commercial subscription required',
     allowsAdOverlay: false,
-    docsUrl: 'https://www.business.directv.com/',
-    websiteUrl: 'https://www.business.directv.com',
+    docsUrl: 'https://www.directv.com/forbusiness/',
+    websiteUrl: 'https://www.directv.com/forbusiness/',
     requiresVenueLicense: true,
     bestFor: ['BAR', 'RESTAURANT', 'GYM'],
-    tierReason: 'DIRECTV for Business is a hardware receiver (satellite or IP). Same bridge pattern as Atmosphere — capture the receiver\'s HDMI output, encode to HLS, render through our Custom HLS connector. Common pro-AV setup for sports bars.',
-    bridgeSteps: [
-      { step: 'Customer subscribes to DIRECTV for Business with their existing venue license', productExamples: ['DIRECTV STREAM for Business', 'DIRECTV Satellite for Business'] },
-      { step: 'Connect DIRECTV receiver\'s HDMI output to a capture card', productExamples: ['Magewell USB Capture HDMI 4K Plus', 'Datavideo CAP-2 (rack-mount)'] },
-      { step: 'Run capture card → mini-PC → ffmpeg → local HLS server', productExamples: ['Our venueos/hls-bridge Docker image', 'OBS Studio with HLS output plugin'] },
-      { step: 'Connect "Custom HLS" in our CMS to the local HLS URL', productExamples: [] },
-      { step: 'Templates can now render DIRECTV inside our streaming widget alongside ad overlays + tap list + happy hour countdown', productExamples: [] },
-    ],
+    tierReason: 'DIRECTV offers a business-only service for health and fitness centers. Playback stays on the approved receiver/app. VenueOS needs a sanctioned external-input controller and health acknowledgement before this can be connected.',
   },
   {
     id: 'dish-business',
     name: 'DISH Business',
     category: 'sports-news',
-    integrationTier: 'BRIDGE',
-    blurb: 'Customer brings DISH subscription; HDMI capture bridges into our CMS.',
+    integrationTier: 'CLOSED',
+    blurb: 'Licensed DISH Business receiver; VenueOS control not built yet.',
     iconEmoji: '📡',
-    auth: 'customHls',
-    playback: 'hls',
+    auth: 'license',
+    playback: 'iframe',
     commercialUseLegal: true,
-    pricingNote: 'DISH venue subscription + ~$200 capture card',
+    pricingNote: 'Commercial subscription required',
     allowsAdOverlay: false,
     docsUrl: 'https://business.dish.com/',
     websiteUrl: 'https://business.dish.com',
     requiresVenueLicense: true,
     bestFor: ['BAR', 'RESTAURANT'],
-    tierReason: 'Same bridge pattern as DIRECTV. DISH Smartbox commercial receivers have HDMI output; capture + encode + render via Custom HLS.',
-    bridgeSteps: [
-      { step: 'Customer subscribes to DISH Business or DISH Outdoor', productExamples: ['DISH Smartbox Premium', 'DISH Outdoor'] },
-      { step: 'Connect Smartbox HDMI to a capture card → mini-PC → ffmpeg HLS encoder', productExamples: ['Magewell USB Capture HDMI', 'Elgato HD60 X'] },
-      { step: 'Connect "Custom HLS" in our CMS to the local HLS URL', productExamples: [] },
-    ],
+    tierReason: 'Playback stays on the commercial DISH receiver/SMARTBOX. The VenueOS external-input controller and device heartbeat are not implemented.',
   },
   {
     id: 'mood-media',
     name: 'Mood Media',
     category: 'venue-fast',
-    integrationTier: 'BRIDGE',
-    blurb: 'Customer brings Mood subscription; capture audio + visual via Mood Player HDMI.',
+    integrationTier: 'CLOSED',
+    blurb: 'Provider-managed commercial player; public VenueOS API not available.',
     iconEmoji: '🎬',
-    auth: 'customHls',
-    playback: 'hls',
+    auth: 'none',
+    playback: 'iframe',
     commercialUseLegal: true,
-    pricingNote: 'Mood subscription + capture card',
+    pricingNote: 'Commercial subscription required',
     allowsAdOverlay: false,
     websiteUrl: 'https://us.moodmedia.com',
     bestFor: ['BAR', 'RESTAURANT', 'RETAIL'],
-    tierReason: 'Mood Media supplies their own player hardware which has HDMI / line-out. Same bridge pattern works.',
-    bridgeSteps: [
-      { step: 'Customer keeps their existing Mood Media contract + player', productExamples: ['Mood ProFusion iO', 'Mood ProFusion iV'] },
-      { step: 'Capture player HDMI output → encode to HLS', productExamples: ['Magewell USB Capture HDMI'] },
-      { step: 'Connect "Custom HLS" in our CMS to the local HLS URL', productExamples: [] },
-    ],
+    tierReason: 'Mood Harmony provides its own player, portal and monitoring. No sanctioned public playback API is implemented in VenueOS; do not capture or scrape the service.',
   },
 
   // ─── TIER 2 — FREE FAST ─────────────────────────────────────────────
@@ -238,27 +206,26 @@ export const STREAM_PROVIDERS: ReadonlyArray<StreamProviderDef> = [
   // the catalog. DistroTV had a venue-program rumor but no public
   // self-serve API as of 2026-05; it's a partner-only conversation.
 
-  // ─── TIER 2.5 — PUBLIC BROADCASTERS (explicitly venue-friendly) ─────
-  // Major public-broadcasting orgs explicitly invite free public + venue
-  // rebroadcast of their international live streams. Bundled as a single
-  // catalog entry with a curated channel list shipped server-side so
-  // operators don't have to hunt down URLs. Ad-overlay-friendly because
-  // the broadcasters don't run pre-rolls.
+  // ─── PUBLIC BROADCASTERS ────────────────────────────────────────────
+  // The prior implementation embedded broadcaster YouTube channels and
+  // treated availability as permission. YouTube's terms prohibit public
+  // screening; every channel needs a direct supported feed plus written
+  // commercial rights before this catalog can return.
   {
     id: 'public-broadcasters',
     name: 'Public Broadcasters',
     category: 'free-fast',
-    integrationTier: 'DIRECT',
-    blurb: 'NHK World · France 24 · DW · Al Jazeera · Bloomberg · Sky · CBS. Free, no auth.',
+    integrationTier: 'CLOSED',
+    blurb: 'Direct broadcaster distribution rights and supported feeds required.',
     iconEmoji: '🌍',
     auth: 'none',
     playback: 'iframe',
-    commercialUseLegal: true,
-    pricingNote: 'Free',
-    allowsAdOverlay: true,
+    commercialUseLegal: false,
+    pricingNote: 'Not available as a bundled VenueOS catalog',
+    allowsAdOverlay: false,
     websiteUrl: 'https://www3.nhk.or.jp/nhkworld/en/live/',
     bestFor: ['BAR', 'RESTAURANT', 'GYM', 'RETAIL', 'CORPORATE'],
-    tierReason: 'These broadcasters explicitly invite free public + venue rebroadcast of their international live streams. We embed their public YouTube live channels — zero auth, works today, fully self-serve.',
+    tierReason: 'The old presets used YouTube embeds and unverified public-performance claims. VenueOS will not expose them until each broadcaster supplies a direct commercial distribution path.',
   },
 
   // ─── TIER 3 — LIVE PLATFORMS (Twitch / YouTube / etc.) ──────────────
@@ -266,35 +233,35 @@ export const STREAM_PROVIDERS: ReadonlyArray<StreamProviderDef> = [
     id: 'youtube',
     name: 'YouTube',
     category: 'live-platform',
-    integrationTier: 'DIRECT',
-    blurb: 'Embed any public video, channel, or live stream by URL.',
+    integrationTier: 'CLOSED',
+    blurb: 'Consumer YouTube public screening is not permitted in a gym.',
     iconEmoji: '▶️',
     auth: 'iframeOnly',
     playback: 'iframe',
-    commercialUseLegal: true,
-    pricingNote: 'Free',
+    commercialUseLegal: false,
+    pricingNote: 'Blocked for public commercial playback',
     allowsAdOverlay: false,
     docsUrl: 'https://developers.google.com/youtube/iframe_api_reference',
     websiteUrl: 'https://www.youtube.com',
     bestFor: ['GYM', 'BAR', 'RESTAURANT', 'RETAIL', 'CORPORATE'],
-    tierReason: 'Public YouTube IFrame Player API. No partner approval needed for public-video embeds; works today.',
+    tierReason: 'The IFrame API is technically embeddable, but YouTube terms prohibit public screening and streaming music from the service. Written provider/content rights are required for any exception.',
   },
   {
     id: 'twitch',
     name: 'Twitch',
     category: 'live-platform',
-    integrationTier: 'DIRECT',
-    blurb: 'Live streams + VODs. Embed any channel by login.',
+    integrationTier: 'CLOSED',
+    blurb: 'Public embed is not a commercial gym programming license.',
     iconEmoji: '🎮',
     auth: 'iframeOnly',
     playback: 'iframe',
-    commercialUseLegal: true,
-    pricingNote: 'Free',
+    commercialUseLegal: false,
+    pricingNote: 'Blocked without written commercial rights',
     allowsAdOverlay: false,
     docsUrl: 'https://dev.twitch.tv/docs/embed/',
     websiteUrl: 'https://www.twitch.tv',
     bestFor: ['BAR', 'GYM'],
-    tierReason: 'Public Twitch Embed JS SDK + iframe. Free dev account; embeds work on any host.',
+    tierReason: 'Technical embed support does not establish public-performance rights. VenueOS does not enable Twitch as general gym programming.',
   },
   {
     id: 'vimeo-live',
@@ -307,7 +274,7 @@ export const STREAM_PROVIDERS: ReadonlyArray<StreamProviderDef> = [
     // to paste a Vimeo URL via "Custom HLS / IPTV" (iframe-embedded), so
     // this tile is honestly Partnership/assisted until the OAuth ships.
     integrationTier: 'PARTNER',
-    blurb: 'Branded live stream embeds for venues + events. OAuth connect coming soon — for now, paste a Vimeo URL via "My own video stream".',
+    blurb: 'Host customer-owned/licensed video; direct VenueOS adapter not built yet.',
     iconEmoji: '🎥',
     auth: 'oauth2',
     playback: 'iframe',
@@ -316,58 +283,81 @@ export const STREAM_PROVIDERS: ReadonlyArray<StreamProviderDef> = [
     allowsAdOverlay: true,
     docsUrl: 'https://developer.vimeo.com/',
     websiteUrl: 'https://vimeo.com/live',
-    bestFor: ['CORPORATE', 'RESTAURANT', 'RETAIL'],
-    tierReason: 'Direct Vimeo OAuth connect is not built yet (contact sales). Working path today: paste any Vimeo video/live URL into the Custom HLS source — we embed it via Vimeo\'s iframe player.',
+    bestFor: ['CORPORATE', 'RESTAURANT', 'RETAIL', 'GYM'],
+    tierReason: 'Vimeo supports embeds, domain privacy and OAuth for customer-owned/licensed video. VenueOS must ship the provider adapter and preserve content-rights metadata before calling it connected.',
   },
 
   // ─── TIER 4 — MUSIC / RADIO ─────────────────────────────────────────
   {
     id: 'soundtrack',
-    name: 'Soundtrack Your Brand',
+    name: 'Soundtrack',
     category: 'music',
-    // PARTNER, not DIRECT: the OAuth connect flow is NOT built yet.
-    // `auth: 'oauth2'` means createConnection() in the streaming service
-    // rejects every connect attempt with HTTP 400 ("OAuth flow not yet
-    // implemented — contact sales"), so a DIRECT tier showed a green
-    // "Self-serve" badge + a Connect button that dead-ends at a 400.
-    // Same fix already applied to the sibling oauth2 provider `vimeo-live`
-    // above. Marked PARTNER (amber "Partnership" badge, "coming soon —
-    // contact sales" modal) until the Soundtrack OAuth flow ships, so the
-    // tile honestly reflects that it is NOT connectable yet.
+    // PARTNER, not DIRECT: Soundtrack documents a public GraphQL API, but
+    // VenueOS has not shipped the server adapter, account/zone binding,
+    // freshness logic, or provider acknowledgement tests. API access is for
+    // metadata/control around Soundtrack's licensed player, not raw audio.
     integrationTier: 'PARTNER',
-    blurb: 'Licensed background music for businesses (Spotify-backed). OAuth connect coming soon — contact sales to activate.',
+    blurb: 'Licensed business audio with documented control, metadata and monitoring API.',
     iconEmoji: '🎵',
-    auth: 'oauth2',
+    auth: 'apiKey',
     playback: 'iframe',
     commercialUseLegal: true,
     pricingNote: '~$35/mo per location',
     allowsAdOverlay: true,
-    docsUrl: 'https://developer.soundtrackyourbrand.com/',
-    websiteUrl: 'https://www.soundtrackyourbrand.com',
+    docsUrl: 'https://api.soundtrack.io/v2/docs',
+    websiteUrl: 'https://www.soundtrack.io',
     bestFor: ['BAR', 'RESTAURANT', 'RETAIL', 'GYM'],
-    tierReason: 'Soundtrack has a public GraphQL API + OAuth, but our direct OAuth connect is not built yet (contact sales to activate). The connect flow would otherwise dead-end at a 400.',
+    tierReason: 'The GraphQL API can provide now-playing, staff control and monitoring over a Soundtrack player. It does not expose a raw audio stream. VenueOS must keep tokens server-side and verify a licensed sound zone.',
+  },
+  {
+    id: 'rockbot',
+    name: 'Rockbot',
+    category: 'music',
+    integrationTier: 'PARTNER',
+    blurb: 'Gym-focused licensed music with approval-gated control and metadata API.',
+    iconEmoji: '🎚️',
+    auth: 'oauth2',
+    playback: 'iframe',
+    commercialUseLegal: true,
+    pricingNote: 'Commercial subscription + API approval',
+    allowsAdOverlay: false,
+    docsUrl: 'https://developer.rockbot.com/start.html',
+    websiteUrl: 'https://rockbot.com',
+    bestFor: ['GYM', 'RETAIL', 'RESTAURANT'],
+    tierReason: 'Rockbot documents OAuth client credentials for zones, now playing, queues, controls and messaging. Audio stays on the Rockbot player; instructor-led classes require separate rights.',
+  },
+  {
+    id: 'soundmachine',
+    name: 'SoundMachine',
+    category: 'music',
+    integrationTier: 'PARTNER',
+    blurb: 'Commercial background music with an approval-gated playback API.',
+    iconEmoji: '🎵',
+    auth: 'apiKey',
+    playback: 'iframe',
+    commercialUseLegal: true,
+    pricingNote: 'Commercial subscription + developer approval',
+    allowsAdOverlay: false,
+    docsUrl: 'https://developer.sound-machine.com/',
+    websiteUrl: 'https://sound-machine.com',
+    bestFor: ['GYM', 'RETAIL', 'RESTAURANT'],
+    tierReason: 'SoundMachine supplies approved third-party developers with app credentials. VenueOS has not yet shipped the server adapter or licensed player contract.',
   },
   {
     id: 'iheart-business',
     name: 'iHeart for Business',
     category: 'music',
-    integrationTier: 'BRIDGE',
-    blurb: 'Customer brings Stingray subscription; capture line-out audio.',
+    integrationTier: 'CLOSED',
+    blurb: 'Provider-managed commercial player; public VenueOS API not available.',
     iconEmoji: '📻',
-    auth: 'customHls',
-    playback: 'hls',
+    auth: 'none',
+    playback: 'iframe',
     commercialUseLegal: true,
-    pricingNote: 'Stingray subscription + audio capture',
+    pricingNote: 'Commercial subscription required',
     allowsAdOverlay: false,
     websiteUrl: 'https://business.iheart.com',
     bestFor: ['GYM', 'RESTAURANT'],
-    tierReason: 'iHeart for Business runs through Stingray hardware players. Capture the player\'s line-out / digital-out into a local HLS audio stream and we render it as a channel.',
-    bridgeSteps: [
-      { step: 'Customer keeps existing Stingray Business Music contract + player', productExamples: ['Stingray Business Music player'] },
-      { step: 'Capture line-out / digital audio output to a USB audio interface', productExamples: ['Behringer U-Phoria UM2 (~$30)', 'Focusrite Scarlett 2i2'] },
-      { step: 'Encode to audio-only HLS via ffmpeg', productExamples: ['Our venueos/hls-bridge Docker image with audio-only flag'] },
-      { step: 'Connect "Custom HLS" in our CMS to the local audio HLS URL', productExamples: [] },
-    ],
+    tierReason: 'Playback stays inside the Stingray/iHeart business player. VenueOS has no sanctioned control API and must not capture or restream its audio.',
   },
 
   // ─── TIER 5 — CUSTOM (operator brings their own URL) ────────────────

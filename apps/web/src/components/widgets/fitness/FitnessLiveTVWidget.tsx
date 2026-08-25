@@ -17,23 +17,16 @@
  *   • `demo`    — offline-friendly placeholder for the gallery
  *                 preview + Playwright screenshots.
  *
- *   New provider values (config.provider):
+ *   Provider values (config.provider):
  *   • `hls`             — same as legacy 'hls'; uses config.streamUrl
  *   • `iframe`          — same as legacy 'iframe'; uses config.streamUrl
  *   • `demo`            — same as legacy 'demo'
- *   • `pluto`           — look up HLS URL from Pluto TV catalog via config.channelId
- *   • `xumo`            — look up from Xumo catalog
- *   • `youtube-live`    — resolve current live video from config.youtubeChannelUrl
- *                         via /api/v1/fitness/youtube-live/resolve, render as iframe
+ *   • `pluto`, `xumo`, `youtube-live` — retained only so already-saved
+ *                         configs render an explicit rights-blocked state.
  *
- * FAST catalog providers (pluto, xumo) look up the hlsUrl from
- * fastChannelCatalogs.ts using config.channelId, then fall through to the
- * existing HLS playback path. Only catalogs with real, public, no-auth HLS
- * URLs ship (Pluto, Xumo); Samsung TV Plus / Tubi / Roku / LG were removed
- * because they require a partner/tokenized CDN URL we don't have — paste
- * such a URL via provider='hls' or provider='iframe' instead. If channelId
- * is not found in the catalog, an error overlay is shown with the channel ID
- * and catalog name.
+ * Consumer FAST and YouTube sources are not gym programming integrations.
+ * A technically reachable URL is not a commercial public-performance
+ * license, so this widget never derives or plays those sources.
  *
  * Channel logo: if the resolved channel has a `logo` field, it is shown in the
  * top-left channel bug area; otherwise falls back to config.channelLogoUrl,
@@ -48,14 +41,12 @@
  *   authorized integrator gave them; we don't broker rights.
  *
  * Visual language matches FitnessMusicPlayerWidget: charcoal frame,
- * neon accent ring, LIVE chip, channel bug top-left. Video is the
+ * neon accent ring, verified status chip, channel bug top-left. Video is the
  * primary surface — chrome is minimal so nothing steals attention
  * from what's on screen.
  */
 
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { findFastChannel } from './fastChannelCatalogs';
-import type { FastChannel } from './fastChannelCatalogs';
+import { useEffect, useRef, useState } from 'react';
 // INJ-006 twin (2026-08-03) — the same host allowlist StreamingWidget got on
 // 2026-08-02. See `../streaming-hosts` for why an allowlist is what makes
 // `allow-same-origin` on these frames defensible.
@@ -72,10 +63,9 @@ export type LiveTVProvider =
   | 'xumo'
   | 'youtube-live';
 
-/** FAST catalog providers that resolve channelId → hlsUrl.
- *  Only Pluto + Xumo ship real public HLS catalogs (see fastChannelCatalogs.ts). */
-const CATALOG_PROVIDERS: ReadonlySet<LiveTVProvider> = new Set([
-  'pluto', 'xumo',
+/** Legacy consumer providers that must never be treated as gym-ready. */
+const RIGHTS_BLOCKED_PROVIDERS: ReadonlySet<LiveTVProvider> = new Set([
+  'pluto', 'xumo', 'youtube-live',
 ]);
 
 // ─── Config interface ─────────────────────────────────────────────────────────
@@ -97,9 +87,7 @@ export interface FitnessLiveTVConfig {
   /** Raw stream URL — used by provider 'hls' and 'iframe'. */
   streamUrl?: string;
 
-  /**
-   * For FAST catalog providers (pluto, xumo): the channel ID from the catalog.
-   */
+  /** Legacy field retained for already-saved FAST configs. */
   channelId?: string;
 
   /**
@@ -117,7 +105,7 @@ export interface FitnessLiveTVConfig {
   /** Optional channel logo URL. Overrides `channelName` if both set. */
   channelLogoUrl?: string;
 
-  /** Hex color for the LIVE chip + accent ring. Defaults to red. */
+  /** Hex color for the verified status chip + accent ring. Defaults to red. */
   accentColor?: string;
 
   /** Start muted — most commercial kiosks run silent (gym has its own
@@ -127,14 +115,6 @@ export interface FitnessLiveTVConfig {
   /** Show closed captions track (HLS-only; iframe providers expose
    *  their own CC controls which we can't touch from outside). */
   captionsOn?: boolean;
-}
-
-// ─── YouTube Live resolution state ───────────────────────────────────────────
-
-interface YtResolveResult {
-  embedUrl: string;
-  title?: string;
-  channelName?: string;
 }
 
 // ─── Main widget ─────────────────────────────────────────────────────────────
@@ -159,64 +139,19 @@ export function FitnessLiveTVWidget({
     : 'demo'
   );
 
-  // ── Resolve catalog channel for FAST providers ────────────────────────────
-  const catalogChannel: FastChannel | undefined = CATALOG_PROVIDERS.has(effectiveProvider) && c.channelId
-    ? findFastChannel(effectiveProvider, c.channelId)
-    : undefined;
-
-  const catalogNotFound = CATALOG_PROVIDERS.has(effectiveProvider) && c.channelId && !catalogChannel;
-  const isPlaceholder = catalogChannel?.placeholder === true;
-
-  // For FAST providers the resolved HLS URL comes from the catalog; the
-  // final stream type sent to the video element is always 'hls'.
+  const rightsBlocked = RIGHTS_BLOCKED_PROVIDERS.has(effectiveProvider);
   const resolvedHlsUrl: string | undefined =
-    CATALOG_PROVIDERS.has(effectiveProvider)
-      ? (catalogChannel && !isPlaceholder ? catalogChannel.hlsUrl : undefined)
-      : (effectiveProvider === 'hls' ? c.streamUrl : undefined);
+    effectiveProvider === 'hls' ? c.streamUrl : undefined;
 
   // ── Channel logo resolution ───────────────────────────────────────────────
-  // Priority: catalog logo → config.channelLogoUrl → config.channelName text
-  const resolvedLogoUrl = catalogChannel?.logo || c.channelLogoUrl;
-  const resolvedChannelName = catalogChannel?.name || c.channelName;
+  const resolvedLogoUrl = c.channelLogoUrl;
+  const resolvedChannelName = c.channelName;
 
   // ── HLS playback state ────────────────────────────────────────────────────
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<unknown>(null);
   const [hasError, setHasError] = useState(false);
-
-  // ── YouTube Live state ────────────────────────────────────────────────────
-  const [ytResult, setYtResult] = useState<YtResolveResult | null>(null);
-  const [ytLoading, setYtLoading] = useState(false);
-  const [ytError, setYtError] = useState(false);
-
-  // ─── YouTube Live resolver ──────────────────────────────────────────────
-  const resolveYoutubeLive = useCallback(async () => {
-    const rawUrl = c.youtubeChannelUrl;
-    if (!rawUrl) { setYtError(true); return; }
-    setYtLoading(true);
-    setYtError(false);
-    setYtResult(null);
-    try {
-      const res = await fetch(
-        `/api/v1/fitness/youtube-live/resolve?url=${encodeURIComponent(rawUrl)}`,
-        { credentials: 'include' },
-      );
-      if (!res.ok) { setYtError(true); return; }
-      const data: YtResolveResult = await res.json();
-      setYtResult(data);
-    } catch {
-      setYtError(true);
-    } finally {
-      setYtLoading(false);
-    }
-  }, [c.youtubeChannelUrl]);
-
-  // Trigger YouTube resolution once when the widget goes live
-  useEffect(() => {
-    if (!isLive) return;
-    if (effectiveProvider !== 'youtube-live') return;
-    void resolveYoutubeLive();
-  }, [isLive, effectiveProvider, resolveYoutubeLive]);
+  const [playbackState, setPlaybackState] = useState<'idle' | 'connecting' | 'playing' | 'buffering' | 'offline'>('idle');
 
   // ─── HLS wiring (native first, hls.js fallback) ──────────────────────────
   // Only runs when provider resolves to 'hls' and we have a real URL.
@@ -224,15 +159,14 @@ export function FitnessLiveTVWidget({
   // trigger a stream fetch for every tile in the gallery.
   useEffect(() => {
     if (!isLive) return;
-    const isHlsMode =
-      effectiveProvider === 'hls' ||
-      (CATALOG_PROVIDERS.has(effectiveProvider) && !isPlaceholder && !catalogNotFound);
+    const isHlsMode = effectiveProvider === 'hls';
     if (!isHlsMode) return;
     const video = videoRef.current;
     const url = resolvedHlsUrl;
     if (!video || !url) return;
 
     setHasError(false);
+    setPlaybackState('connecting');
 
     // Native HLS (Safari + most iOS/Android WebViews).
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -271,17 +205,27 @@ export function FitnessLiveTVWidget({
             destroy(): void;
           };
         } | undefined;
-        if (!Hls || !Hls.isSupported()) { setHasError(true); return; }
+        if (!Hls || !Hls.isSupported()) {
+          setHasError(true);
+          setPlaybackState('offline');
+          return;
+        }
         const hls = new Hls({ maxBufferLength: 20, liveSyncDurationCount: 3 });
         hlsRef.current = hls;
         hls.loadSource(url);
         hls.attachMedia(video);
         hls.on(Hls.Events.ERROR, (_evt: string, data: { fatal?: boolean }) => {
-          if (data?.fatal) setHasError(true);
+          if (data?.fatal) {
+            setHasError(true);
+            setPlaybackState('offline');
+          }
         });
         video.play().catch(() => { /* autoplay policy — muted fallback covers this */ });
       } catch {
-        if (!cancelled) setHasError(true);
+        if (!cancelled) {
+          setHasError(true);
+          setPlaybackState('offline');
+        }
       }
     })();
 
@@ -290,14 +234,11 @@ export function FitnessLiveTVWidget({
       try { (hlsRef.current as { destroy?: () => void } | null)?.destroy?.(); } catch {}
       hlsRef.current = null;
     };
-  }, [isLive, effectiveProvider, resolvedHlsUrl, isPlaceholder, catalogNotFound]);
+  }, [isLive, effectiveProvider, resolvedHlsUrl]);
 
   // ── Derived render flags ──────────────────────────────────────────────────
   const showHls =
-    !hasError && !!resolvedHlsUrl && (
-      effectiveProvider === 'hls' ||
-      (CATALOG_PROVIDERS.has(effectiveProvider) && !isPlaceholder && !catalogNotFound)
-    );
+    !hasError && !!resolvedHlsUrl && effectiveProvider === 'hls';
 
   // INJ-006 twin (2026-08-03) — BOTH iframe sources are gated by the shared
   // streaming-host allowlist before they can become an iframe `src`.
@@ -311,40 +252,34 @@ export function FitnessLiveTVWidget({
   // all-clear on a life-safety display. The allowlist is what supplies that
   // guarantee, and it is exactly what was missing here.
   //
-  // `ytResult.embedUrl` comes from our own resolver endpoint, but it is still
-  // network-sourced JSON reaching an `src` on the same surface — gating it
-  // costs one function call and removes the endpoint from the trust boundary.
   const safeIframeUrl = safeEmbedSrc(c.streamUrl);
-  const safeYtEmbedUrl = safeEmbedSrc(ytResult?.embedUrl);
 
   const showIframe =
-    effectiveProvider === 'iframe' && !!safeIframeUrl;
+    effectiveProvider === 'iframe' && !!safeIframeUrl && !rightsBlocked;
 
   /** Operator supplied an iframe URL, but it is not an allowlisted https host. */
   const showBlockedHost =
-    (effectiveProvider === 'iframe' && !!c.streamUrl && !safeIframeUrl) ||
-    (effectiveProvider === 'youtube-live' && !!ytResult?.embedUrl && !safeYtEmbedUrl);
-
-  const showYtIframe =
-    effectiveProvider === 'youtube-live' && !!safeYtEmbedUrl && !ytLoading && !ytError;
-
-  const showYtLoading =
-    effectiveProvider === 'youtube-live' && ytLoading;
-
-  const showYtError =
-    effectiveProvider === 'youtube-live' && ytError && !ytLoading;
-
-  const showCatalogError =
-    !!catalogNotFound;
-
-  const showPlaceholderError =
-    !!isPlaceholder;
+    effectiveProvider === 'iframe' && !!c.streamUrl && !safeIframeUrl;
 
   const showDemo =
-    !showHls && !showIframe && !showYtIframe && !showYtLoading && !showYtError
-    && !showCatalogError && !showPlaceholderError && !showBlockedHost && (
-      effectiveProvider === 'demo' || hasError || !c.streamUrl
-    );
+    effectiveProvider === 'demo';
+
+  const showOffline = effectiveProvider === 'hls' && (hasError || !resolvedHlsUrl);
+  const statusLabel = showDemo
+    ? 'PREVIEW'
+    : rightsBlocked
+      ? 'BLOCKED'
+      : showOffline
+        ? 'OFFLINE'
+        : showIframe
+          ? 'CONFIGURED'
+          : playbackState === 'playing'
+            ? 'LIVE'
+            : playbackState === 'buffering'
+              ? 'BUFFERING'
+              : playbackState === 'connecting'
+                ? 'CONNECTING'
+                : 'CONFIGURED';
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -363,6 +298,13 @@ export function FitnessLiveTVWidget({
             muted={c.muted !== false}
             playsInline
             controls={false}
+            onPlaying={() => setPlaybackState('playing')}
+            onWaiting={() => setPlaybackState('buffering')}
+            onStalled={() => setPlaybackState('buffering')}
+            onError={() => {
+              setHasError(true);
+              setPlaybackState('offline');
+            }}
           />
         )}
 
@@ -391,64 +333,28 @@ export function FitnessLiveTVWidget({
           </div>
         )}
 
-        {/* YouTube Live — resolved embed (allowlisted host only) */}
-        {showYtIframe && (
-          <iframe
-            className="fltv-iframe"
-            src={safeYtEmbedUrl}
-            allow="autoplay; encrypted-media; picture-in-picture"
-            sandbox="allow-scripts allow-same-origin allow-presentation"
-            title={ytResult!.title || resolvedChannelName || 'YouTube Live'}
-            referrerPolicy="no-referrer"
-          />
-        )}
-
-        {/* YouTube Live — loading */}
-        {showYtLoading && (
-          <div className="fltv-overlay-state">
-            <div className="fltv-spinner" />
-            <div className="fltv-overlay-label">Resolving live stream…</div>
-          </div>
-        )}
-
-        {/* YouTube Live — no live stream found */}
-        {showYtError && (
-          <div className="fltv-overlay-state">
-            <div className="fltv-overlay-icon">📡</div>
-            <div className="fltv-overlay-label">Live stream not found</div>
-            <div className="fltv-overlay-sub">
-              {c.youtubeChannelUrl
-                ? 'No active live broadcast on this channel'
-                : 'No YouTube channel URL configured'}
-            </div>
-            <button className="fltv-overlay-btn" onClick={() => void resolveYoutubeLive()}>
-              Retry
-            </button>
-          </div>
-        )}
-
-        {/* Catalog channel not found */}
-        {showCatalogError && (
+        {/* Consumer sources are technically reachable but not gym-licensed. */}
+        {rightsBlocked && (
           <div className="fltv-overlay-state">
             <div className="fltv-overlay-icon">⚠️</div>
-            <div className="fltv-overlay-label">Channel not found</div>
+            <div className="fltv-overlay-label">Commercial playback blocked</div>
             <div className="fltv-overlay-sub">
-              ID <code className="fltv-code">{c.channelId}</code> not in{' '}
-              <code className="fltv-code">{effectiveProvider}</code> catalog
+              {effectiveProvider === 'youtube-live'
+                ? 'Consumer YouTube is not a public-performance license for a gym.'
+                : `${effectiveProvider} consumer streams are not a VenueOS gym programming source.`}
+              {' '}Use owned/licensed media or a business-content provider.
             </div>
           </div>
         )}
 
-        {/* Catalog channel is a placeholder (URL not yet configured) */}
-        {showPlaceholderError && (
+        {/* A failed real source must never turn into a fake live demo. */}
+        {showOffline && (
           <div className="fltv-overlay-state">
-            <div className="fltv-overlay-icon">🔗</div>
-            <div className="fltv-overlay-label">Stream URL required</div>
+            <div className="fltv-overlay-icon">📡</div>
+            <div className="fltv-overlay-label">Source offline</div>
             <div className="fltv-overlay-sub">
-              <strong>{catalogChannel?.name}</strong> requires a real HLS URL from the
-              provider. Contact your {effectiveProvider} account manager or switch to{' '}
-              <code className="fltv-code">provider=&apos;iframe&apos;</code> with the
-              channel embed URL.
+              The configured HLS feed is unavailable. VenueOS is not showing
+              preview imagery as live programming.
             </div>
           </div>
         )}
@@ -462,7 +368,7 @@ export function FitnessLiveTVWidget({
               ))}
             </div>
             <div className="fltv-demo-label">
-              {hasError ? 'Stream offline' : 'Preview mode'}
+              Preview mode · not live
             </div>
           </div>
         )}
@@ -476,15 +382,15 @@ export function FitnessLiveTVWidget({
             <img src={resolvedLogoUrl} alt="" className="fltv-channel-logo" />
           ) : (
             <span className="fltv-channel-text">
-              {resolvedChannelName || 'LIVE TV'}
+              {resolvedChannelName || (showDemo ? 'MEDIA PREVIEW' : 'MEDIA SOURCE')}
             </span>
           )}
         </div>
 
-        {/* Top-right: LIVE indicator with pulsing dot */}
-        <div className="fltv-live-chip">
+        {/* Only a playing HLS video earns the word LIVE. */}
+        <div className="fltv-live-chip" data-state={statusLabel.toLowerCase()}>
           <span className="fltv-live-dot" />
-          <span className="fltv-live-text">LIVE</span>
+          <span className="fltv-live-text">{statusLabel}</span>
         </div>
 
         {/* Subtle scanline + vignette for that "broadcast monitor" feel.
@@ -541,7 +447,7 @@ const CSS = `
   text-transform: uppercase;
 }
 
-/* ─── LIVE chip ─── */
+/* ─── Verified source-status chip ─── */
 .fltv-live-chip {
   position: absolute; top: 4%; right: 4%;
   z-index: 10;
@@ -557,7 +463,21 @@ const CSS = `
   width: 8px; height: 8px; border-radius: 50%;
   background: var(--fltv-accent, #ff2a4d);
   box-shadow: 0 0 10px var(--fltv-accent, #ff2a4d);
+}
+.fltv-live-chip[data-state="live"] .fltv-live-dot {
   animation: fltv-pulse 1.3s ease-in-out infinite;
+}
+.fltv-live-chip[data-state="offline"],
+.fltv-live-chip[data-state="blocked"] {
+  --fltv-accent: #ff5b72;
+}
+.fltv-live-chip[data-state="preview"],
+.fltv-live-chip[data-state="configured"] {
+  --fltv-accent: #f4c95d;
+}
+.fltv-live-chip[data-state="buffering"],
+.fltv-live-chip[data-state="connecting"] {
+  --fltv-accent: #57d9ff;
 }
 @keyframes fltv-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
