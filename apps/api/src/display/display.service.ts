@@ -105,7 +105,44 @@ export type DisplayDeliveryReason =
   /** Redis fan-out is down: only a screen socketed to THIS replica saw it. */
   | 'redis_unavailable'
   /** The publish itself threw. Nothing was delivered anywhere. */
-  | 'publish_failed';
+  | 'publish_failed'
+  /**
+   * The fan-out was up, but THIS screen has no live push channel (neither WS
+   * nor SSE stamped `Screen.lastPushConnectedAt` recently), so the frame was
+   * published into a channel nothing is listening on.
+   *
+   * 2026-08-25 — the second half of the "the dashboard lied to me" gap. Redis
+   * being UP was the whole of the old delivery test, which is a fact about
+   * the SERVER, not about the screen: a panel living on the HTTP-poll tier
+   * (venue proxy blocking WS/SSE, WebView config) receives no DISPLAY_CONTROL
+   * frame at all and the dashboard still reported `delivered:true`. And there
+   * is NO backstop for it — the manifest carries schedules, never immediate
+   * actions, and neither the WS gateway nor the SSE service replays a missed
+   * frame on reconnect. So this is a real non-delivery, just one with a
+   * different cause and a different sentence for the operator than "the
+   * server's fan-out is down".
+   */
+  | 'no_push_socket';
+
+/**
+ * How fresh `Screen.lastPushConnectedAt` must be for this screen to count as
+ * having a live push channel.
+ *
+ * TEN MINUTES, deliberately the SAME number the rest of the product already
+ * uses for this exact question — `ScreenWedgeDetectorCron.PUSH_STALE_MS` and
+ * the `pushChannel: 'live' | 'stale'` derivation in `screens.controller`'s
+ * fleet list. Keep all three in sync; a delivery verdict that disagreed with
+ * the "poll-only" chip on the very same row would be its own lie.
+ *
+ * Why 10 minutes is not arbitrary: `stampPushConnected` (realtime/push-health)
+ * refreshes the column at least every ~60s while a channel lives — forced on
+ * WS AUTH_OK and SSE connect, debounced at 60s on WS heartbeat and SSE
+ * keepalive. Ten minutes is therefore ~10 consecutive missed stamps: far past
+ * any network jitter, GC pause or replica failover, so a healthy screen can
+ * never be graded undelivered by accident, while a genuinely poll-only panel
+ * (the 2026-07-31 dongle ran that way for a full day) is caught.
+ */
+export const PUSH_SOCKET_FRESH_MS = 10 * 60_000;
 
 export interface ApplyActionResult {
   success: true;
@@ -120,19 +157,56 @@ export interface ApplyActionResult {
   /** Correlates the audit row, the WS message and the player's log line. */
   actionId: string;
   /**
-   * TRUE ONLY WHEN THE MESSAGE PROVABLY LEFT THIS PROCESS toward the screen.
+   * TRUE ONLY WHEN THE MESSAGE PROVABLY LEFT THIS PROCESS toward the screen,
+   * AND THIS SCREEN HAD SOMETHING LISTENING FOR IT.
    *
    * Do NOT infer this from "publish did not throw" — RedisService.publish
    * silently falls back to the local in-process gateway when Redis is down,
    * so a screen on another replica gets nothing while the call resolves
-   * normally. That was the bug: `delivered:true` + `outcome:'dispatched'` on
-   * an action that never arrived, with no manifest backstop to catch it
-   * (the manifest carries schedules only, never immediate actions). The
-   * dashboard MUST surface `false` as a failure, not a success toast.
+   * normally. That was the first bug: `delivered:true` + `outcome:'dispatched'`
+   * on an action that never arrived, with no manifest backstop to catch it
+   * (the manifest carries schedules only, never immediate actions).
+   *
+   * And do NOT infer it from the fan-out alone either — that was the SECOND
+   * bug (2026-08-25). "Redis is connected" is a fact about the server; it
+   * says nothing about whether THIS screen has a socket. A panel on the
+   * HTTP-poll tier receives no DISPLAY_CONTROL frame at all, and the
+   * dashboard reported `delivered:true` for it all the same. Both halves are
+   * now required: fan-out up AND `lastPushConnectedAt` fresh within
+   * PUSH_SOCKET_FRESH_MS.
+   *
+   * The dashboard MUST surface `false` honestly — as a failure for the two
+   * transport reasons, and as an EXPLANATION ("this screen has no live
+   * connection") for `no_push_socket`. Never as a success toast.
    */
   delivered: boolean;
   /** Machine-readable reason when `delivered` is false; null when it is true. */
   deliveryReason: DisplayDeliveryReason | null;
+}
+
+/**
+ * Does this screen have a live push channel right now?
+ *
+ * Pure + exported so the grading matrix (fresh / stale / never) is unit-
+ * testable without standing up the whole service. `null` — never stamped —
+ * counts as NO channel: stamping is server-side and universal (WS gateway +
+ * SSE service, both shipped 2026-07-31), so on this deployment "never
+ * stamped" means "never had a push channel", and the house rule for this
+ * module is that we never claim a delivery we cannot prove.
+ */
+export function hasFreshPushSocket(
+  lastPushConnectedAt: Date | string | number | null | undefined,
+  nowMs: number = Date.now(),
+): boolean {
+  if (lastPushConnectedAt == null) return false;
+  const at =
+    lastPushConnectedAt instanceof Date
+      ? lastPushConnectedAt.getTime()
+      : typeof lastPushConnectedAt === 'number'
+        ? lastPushConnectedAt
+        : new Date(lastPushConnectedAt).getTime();
+  if (!Number.isFinite(at)) return false;
+  return nowMs - at < PUSH_SOCKET_FRESH_MS;
 }
 
 /**
@@ -465,6 +539,14 @@ export class DisplayService {
     /** Stored verdict document straight off the Screen row. */
     capabilities: unknown;
     /**
+     * `Screen.lastPushConnectedAt` straight off the same row — the server's
+     * only evidence that a WS/SSE channel exists for THIS screen. Optional so
+     * internal callers that genuinely cannot resolve it keep compiling, but
+     * omitting it grades the action `no_push_socket` (fail-safe: we do not
+     * claim a delivery we cannot prove). The controller always passes it.
+     */
+    lastPushConnectedAt?: Date | string | number | null;
+    /**
      * Server half of the emergency interlock. When active, every DARKENING
      * action is refused (see display-emergency-hold.ts). Optional so the
      * default is "no hold" for callers that resolve it themselves; the
@@ -609,10 +691,24 @@ export class DisplayService {
       'function'
         ? (this.redis as { isConnected: () => boolean }).isConnected() === true
         : false;
-    let delivered = fanoutUp;
-    let deliveryReason: DisplayDeliveryReason | null = fanoutUp
-      ? null
-      : 'redis_unavailable';
+    // TWO INDEPENDENT CONDITIONS, BOTH REQUIRED (2026-08-25). `fanoutUp` is a
+    // fact about the SERVER — it says a message published here can reach
+    // another replica. It says nothing about whether THIS screen has a socket
+    // on any replica. A panel on the HTTP-poll tier gets no DISPLAY_CONTROL
+    // frame at all and, since nothing replays immediate actions, never will.
+    // Grading on the fan-out alone is what reported `delivered:true` for a
+    // command no screen ever saw.
+    const pushSocketFresh = hasFreshPushSocket(opts.lastPushConnectedAt);
+    let delivered = fanoutUp && pushSocketFresh;
+    // Precedence is deliberate: a dead fan-out is the larger, server-side
+    // failure and stays the headline when both are true. `no_push_socket` is
+    // the per-screen case, and it is an EXPLANATION for the operator (this
+    // panel is poll-only) rather than an outage.
+    let deliveryReason: DisplayDeliveryReason | null = !fanoutUp
+      ? 'redis_unavailable'
+      : !pushSocketFresh
+        ? 'no_push_socket'
+        : null;
 
     // The audit row goes in BEFORE the publish so a transport outage can
     // never lose the record of who asked for what. `outcome` is honest at
@@ -629,6 +725,14 @@ export class DisplayService {
         outcome: delivered ? 'dispatched' : 'undelivered',
         delivered,
         deliveryReason,
+        // The EVIDENCE behind the verdict, so the forensic log answers "why
+        // did this say undelivered" without a second query. Both are cheap
+        // scalars and neither is PII.
+        fanoutUp,
+        pushConnectedAt:
+          opts.lastPushConnectedAt == null
+            ? null
+            : new Date(opts.lastPushConnectedAt as any).toISOString(),
         actionId,
         mechanism: support.mechanism,
         requestedPercent:
@@ -723,8 +827,9 @@ export class DisplayService {
     if (!delivered) {
       this.logger.warn(
         `[DisplayService] ${action} for device:${screenId} is UNCONFIRMED ` +
-          `(reason=${deliveryReason}, actionId=${actionId}) — there is no manifest ` +
-          `backstop for immediate display actions.`,
+          `(reason=${deliveryReason}, fanoutUp=${fanoutUp}, ` +
+          `pushSocketFresh=${pushSocketFresh}, actionId=${actionId}) — there is ` +
+          `no manifest backstop for immediate display actions.`,
       );
     }
 

@@ -22,6 +22,10 @@ import { reconcileStrandedEmergency } from './emergencyReconcile';
 //     WS and SSE consumers, and the TENANT_CHANGED addressing check.
 import { resolveApiRoot, resolveDeviceToken, type ApiRootPolicy } from './trustGuards';
 import { checkSensitivePush, isTenantChangeForThisScreen } from './pushGate';
+// 2026-08-25 — ONE definition of "which page bundle am I running", shared by
+// the bundle-drift detector (which compares it) and the render-proof POST
+// (which reports it to the dashboard). Two answers would be a new lie.
+import { readOwnBundleSha, normalizeBundleSha } from './bundleSha';
 import { getServiceWorkerContainer, isServiceWorkerAvailable } from '../../lib/safe-service-worker';
 // 2026-07-28 — frame-locked multi-screen sync (docs/research/2026-07-28-multiscreen-sync/).
 // Pure modules (no React/DOM) so the math is unit-tested without mounting this page.
@@ -3849,6 +3853,10 @@ function PlayerPage() {
     if (!screenId) return;
     if (isPreviewMode()) return;
     let lastReportedFrames = -1;
+    // Compiled into the bundle — constant for the life of this document, so
+    // read once per effect rather than on every 30s tick. A reload onto a
+    // new bundle mounts a new document and re-reads it.
+    const bundleSha = readOwnBundleSha();
     const post = async () => {
       const state = renderStateRef.current;
       // Only assert proof-of-display while actually showing operator content.
@@ -3895,6 +3903,19 @@ function PlayerPage() {
             frames,
             hash: state.sig,
             contentKind: state.kind,
+            // 2026-08-25 — WHICH PAGE BUNDLE THIS PANEL IS RUNNING.
+            // The fix for a player bug ships in the web bundle and each
+            // panel reloads onto it on its own schedule (see the
+            // bundle-drift effect below), so for ~20 min after a deploy a
+            // fixed button and a dead button are indistinguishable from the
+            // dashboard. Reporting the SHA here — on the POST we already
+            // make, device-authed, additive — lets the Screens list say
+            // "this panel is still on an older page bundle" instead of
+            // leaving the operator to infer it from deploy timestamps.
+            // Omitted entirely (not null) when the build didn't stamp one,
+            // so the wire payload is unchanged for a local/self-hosted
+            // build and the server stores nothing rather than a fake probe.
+            ...(bundleSha ? { bundleSha } : {}),
             ...(syncReport ? { sync: syncReport } : {}),
           }),
         });
@@ -5186,12 +5207,11 @@ function PlayerPage() {
     if (isPreviewMode()) return;
 
     // Bake-time SHA — read once at load. Whatever was in the bundle
-    // when this WebView started serves as our reference.
-    const myShaRaw =
-      (process.env as any).NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ||
-      (process.env as any).NEXT_PUBLIC_BUILD_SHA ||
-      null;
-    const myShaShort = myShaRaw ? String(myShaRaw).slice(0, 12) : null;
+    // when this WebView started serves as our reference. Sourced from
+    // `./bundleSha` (2026-08-25) so the value the dashboard SEES on the
+    // render-proof POST is byte-identical to the value this detector
+    // reloads on; the chip's verdict then matches the panel's own.
+    const myShaShort = readOwnBundleSha();
     // If we don't know our own SHA there's nothing to compare against —
     // skip the whole check. (Local dev, custom hosting, etc.)
     if (!myShaShort) return;
@@ -5206,7 +5226,9 @@ function PlayerPage() {
         const res = await fetch(sameOriginBuildInfoUrl, { cache: 'no-store' });
         if (!res.ok) return;
         const data = await res.json();
-        const serverShaShort = typeof data?.sha === 'string' ? data.sha : null;
+        // Normalized through the SAME helper as our own SHA so a width or
+        // case difference between build paths can never read as drift.
+        const serverShaShort = normalizeBundleSha(data?.sha);
         if (!serverShaShort) return;
         if (serverShaShort === myShaShort) { bundleDriftSinceRef.current = null; return; }
         // Record when we FIRST noticed the drift so the staleness cap +

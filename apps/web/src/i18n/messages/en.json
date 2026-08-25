@@ -752,6 +752,7 @@
       "sendFailed": "Couldn’t send that command.",
       "sendTimedOut": "No answer from the server after {seconds} seconds, so we can’t tell whether the screen got that command. If the screen has gone dark, press Wake — it always works.",
       "notDelivered": "Not delivered — the server accepted the command but couldn’t reach this screen’s live connection. Nothing changed on the screen. Try again in a moment; if it keeps failing, check that the screen is online.",
+      "noPushSocket": "This screen has no live connection right now, so an instant command has no way down to it — nothing changed on the screen, and display commands aren’t queued for later. It usually reconnects on its own within a few minutes; try again then. If it stays this way, the venue network is most likely blocking realtime connections.",
       "scheduleRow": "On/off schedule",
       "scheduleRowSub": "Turn this screen off at night — runs on the device, works offline",
       "groupScheduleBtn": "On/off",

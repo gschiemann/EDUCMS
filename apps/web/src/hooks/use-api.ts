@@ -407,6 +407,15 @@ export interface DisplayControlArgs {
  * FAILURE for the operator: nothing changed on the glass, and there is no
  * manifest backstop for immediate actions the way there is for schedules.
  * Typed here so a caller cannot quietly ignore it.
+ *
+ * 2026-08-25 — `delivered` now grades PER SCREEN, not just per server. It was
+ * derived from the Redis fan-out alone, which is a fact about the API: a panel
+ * living on the HTTP-poll tier (venue proxy blocking WS/SSE) receives no
+ * DISPLAY_CONTROL frame at all and still got `delivered:true`. It now also
+ * requires a fresh `Screen.lastPushConnectedAt`, and the new
+ * `'no_push_socket'` reason distinguishes "this one screen has no live
+ * connection" from "the server's transport is down". A UI MUST render those
+ * two differently — the first is an explanation, the second is an outage.
  */
 export interface DisplayControlResult {
   success: true;
@@ -416,9 +425,19 @@ export interface DisplayControlResult {
   clamped: boolean;
   revertAfterMs: number | null;
   actionId: string;
-  /** True only when the command provably left the API toward the screen. */
+  /**
+   * True only when the command provably left the API toward the screen AND
+   * this screen had a live push channel to receive it.
+   */
   delivered: boolean;
-  /** 'redis_unavailable' | 'publish_failed' when delivered is false. */
+  /**
+   * Why `delivered` is false; null when it is true.
+   *   'redis_unavailable' — the fan-out is down (server-side outage)
+   *   'publish_failed'    — the publish threw (server-side outage)
+   *   'no_push_socket'    — this SCREEN has no live WS/SSE channel. Not an
+   *                         outage; an explanation. Nothing is queued —
+   *                         display actions are immediate-only.
+   */
   deliveryReason: string | null;
 }
 

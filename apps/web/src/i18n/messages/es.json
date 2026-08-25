@@ -752,6 +752,7 @@
       "sendFailed": "No se pudo enviar la orden.",
       "sendTimedOut": "El servidor no respondió en {seconds} segundos, así que no sabemos si la pantalla recibió la orden. Si la pantalla se apagó, pulsa Encender: siempre funciona.",
       "notDelivered": "No se entregó — el servidor aceptó la orden pero no pudo alcanzar la conexión en vivo de esta pantalla. En la pantalla no cambió nada. Inténtalo de nuevo en un momento; si sigue fallando, comprueba que la pantalla esté en línea.",
+      "noPushSocket": "Esta pantalla no tiene conexión en vivo ahora mismo, así que una orden instantánea no tiene por dónde llegar: en la pantalla no cambió nada y las órdenes de pantalla no quedan en cola. Normalmente se vuelve a conectar sola en unos minutos; inténtalo de nuevo entonces. Si sigue así, lo más probable es que la red del recinto esté bloqueando las conexiones en tiempo real.",
       "scheduleRow": "Horario de encendido/apagado",
       "scheduleRowSub": "Apaga esta pantalla por la noche — se ejecuta en el dispositivo, funciona sin red",
       "groupScheduleBtn": "Horario",

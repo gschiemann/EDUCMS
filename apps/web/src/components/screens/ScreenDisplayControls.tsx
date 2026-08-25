@@ -308,7 +308,20 @@ export function ScreenDisplayControls({
   const control = useDisplayControl();
   const caps = resolveDisplayControls(screen?.displayCapabilities);
   const reportedAt = ago(screen?.displayCapabilitiesAt);
-  const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
+  // `tone` (2026-08-25) splits the two very different ways an action can come
+  // back undelivered. 'fail' is a real outage (fan-out down, publish threw) —
+  // rose, alarm-shaped. 'note' is the per-screen `no_push_socket` case: the
+  // command was refused nothing, the screen simply has no live connection to
+  // push it down. That is an EXPLANATION, and dressing it in the same red as
+  // a server outage would be its own small lie — plus alarm fatigue is
+  // already a live problem on this page (the render-proof chip was graded
+  // down for crying wolf the same night). Defaults to the old two-state
+  // behaviour when omitted.
+  const [status, setStatus] = useState<{
+    ok: boolean;
+    msg: string;
+    tone?: 'fail' | 'note';
+  } | null>(null);
   // Which action is in flight — the shared mutation's isPending can't tell
   // Blank from Wake, and a spinner on the wrong button is its own small lie.
   //
@@ -362,7 +375,32 @@ export function ScreenDisplayControls({
       // as undefined, and "the server didn't tell us" must not be rendered
       // as "we know it failed". Only an explicit false is a failure.
       if (res?.delivered === false) {
-        setStatus({ ok: false, msg: t('screens.display.notDelivered') });
+        // TWO DIFFERENT SENTENCES (2026-08-25). Until tonight `delivered`
+        // was graded off the Redis fan-out alone — a fact about the SERVER —
+        // so a panel living on the HTTP-poll tier (venue proxy blocking
+        // WS/SSE) got a green "sent" row for a command it never received.
+        // The API now grades per-screen and says WHY, so this row can too:
+        //
+        //   no_push_socket → not an outage. Nothing is broken server-side;
+        //     this one screen has no live realtime connection right now, so
+        //     an INSTANT command has no path down to it. It is stated as an
+        //     explanation, and it is honest about the consequence: display
+        //     actions are immediate-only — the manifest carries schedules,
+        //     never immediate actions, and neither the WS gateway nor SSE
+        //     replays a missed frame — so nothing is queued and the operator
+        //     must retry once the screen reconnects. Promising an automatic
+        //     "it'll pick this up on its next poll" would be a fresh lie in
+        //     the middle of fixing one.
+        //
+        //   everything else → a genuine transport failure; keep the alarm.
+        const noSocket = res?.deliveryReason === 'no_push_socket';
+        setStatus({
+          ok: false,
+          tone: noSocket ? 'note' : 'fail',
+          msg: noSocket
+            ? t('screens.display.noPushSocket')
+            : t('screens.display.notDelivered'),
+        });
         return;
       }
       setStatus({ ok: true, msg: opts.okMsg });
@@ -637,12 +675,18 @@ export function ScreenDisplayControls({
       className={`px-3.5 py-2 flex items-start gap-1.5 text-[10px] leading-snug border-t ${
         status.ok
           ? 'text-emerald-700 bg-emerald-50/60 border-emerald-100'
-          : 'text-rose-700 bg-rose-50/60 border-rose-100'
+          : status.tone === 'note'
+            ? // "This screen has no live connection" — a condition to explain,
+              // not an outage to alarm about. Slate, not rose.
+              'text-slate-600 bg-slate-50 border-slate-200'
+            : 'text-rose-700 bg-rose-50/60 border-rose-100'
       }`}
       role="status"
     >
       {status.ok ? (
         <CheckCircle2 className="w-3 h-3 shrink-0 mt-0.5" />
+      ) : status.tone === 'note' ? (
+        <Info className="w-3 h-3 shrink-0 mt-0.5" />
       ) : (
         <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
       )}

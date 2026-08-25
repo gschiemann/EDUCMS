@@ -397,6 +397,57 @@ describe('ScreenDisplayControls — the wire shape (contract C1)', () => {
     expect(rtl.queryByText(/Wake sent\./)).toBeNull();
   });
 
+  // THE SECOND HALF OF THE LIE (2026-08-25). `delivered` used to be graded
+  // off the Redis fan-out alone — a fact about the SERVER — so a panel on the
+  // HTTP-poll tier (venue proxy blocking WS/SSE) got the green "sent" row for
+  // a command it never received. The API now grades per-screen and says why,
+  // so this row can too: 'no_push_socket' is an EXPLANATION, not an outage,
+  // and must not wear the same red as a dead transport.
+  it('explains a no-push-socket action instead of alarming about it', async () => {
+    apiFetchMock.mockResolvedValueOnce({
+      success: true,
+      delivered: false,
+      deliveryReason: 'no_push_socket',
+    });
+    renderPanel(CAPABLE);
+    await act(async () => {
+      fireEvent.click(rtl.getByRole('button', { name: /^Wake$/ }));
+    });
+    await waitFor(() => expect(rtl.getByRole('status')).toBeTruthy());
+    const row = rtl.getByRole('status');
+
+    // Names the CAUSE (this screen has no live connection)…
+    expect(row.textContent).toMatch(/no live connection/i);
+    // …and is honest about the consequence: nothing is queued. Display
+    // actions are immediate-only — the manifest carries schedules, never
+    // immediate actions, and nothing replays a missed frame. Promising an
+    // automatic retry would be a fresh lie inside the fix for one.
+    expect(row.textContent).toMatch(/aren’t queued|not queued/i);
+    // Never claims success.
+    expect(rtl.queryByText(/Wake sent\./)).toBeNull();
+    // Explanation styling, not alarm styling.
+    expect(row.className).not.toMatch(/rose/);
+    expect(row.className).toMatch(/slate/);
+  });
+
+  it('keeps the RED alarm for a genuine transport failure', async () => {
+    // The two failure reasons must stay visually distinguishable — grading
+    // them the same is how a real outage gets ignored.
+    apiFetchMock.mockResolvedValueOnce({
+      success: true,
+      delivered: false,
+      deliveryReason: 'publish_failed',
+    });
+    renderPanel(CAPABLE);
+    await act(async () => {
+      fireEvent.click(rtl.getByRole('button', { name: /^Wake$/ }));
+    });
+    await waitFor(() => expect(rtl.getByRole('status')).toBeTruthy());
+    const row = rtl.getByRole('status');
+    expect(row.textContent).toMatch(/Not delivered/i);
+    expect(row.className).toMatch(/rose/);
+  });
+
   it('still reports a DELIVERED action as sent', async () => {
     apiFetchMock.mockResolvedValueOnce({ success: true, delivered: true, deliveryReason: null });
     renderPanel(CAPABLE);

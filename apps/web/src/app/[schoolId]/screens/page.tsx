@@ -22,6 +22,7 @@ import { DisplayScheduleModal, type DisplayScheduleTargetRef } from '@/component
 // of a painted frame, and a frozen kiosk still passes the ping.
 import { RenderTrustChip } from '@/components/screens/RenderTrustChip';
 import { deriveRenderTrustGrade } from '@/components/screens/renderTrust';
+import { BundleSkewChip } from '@/components/screens/BundleSkewChip';
 // 2026-08-25 — device-first "Connect a screen" card. Replaces the old
 // "How to Connect a Screen" banner, which taught only the browser flow
 // ("open the Player URL") on a fleet that is overwhelmingly Android boxes
@@ -1800,6 +1801,37 @@ export default function ScreensPage() {
   // kiosk hasn't responded.
   const [apkPushState, setApkPushState] = useState<Record<string, { at: number; priorVersion: string | null }>>({});
 
+  // ── Deployed page-bundle SHA (2026-08-25) ─────────────────────────────
+  // The reference the BundleSkewChip grades every row against. Read from
+  // the SAME authority the panels themselves compare against — the
+  // same-origin `/api/build-info` route, which reports whatever bundle is
+  // deployed RIGHT NOW — so the chip's verdict can never disagree with the
+  // reload a panel actually performs. (Comparing against THIS tab's own
+  // baked-in SHA would be wrong in the one direction that matters: a stale
+  // operator tab would accuse up-to-date panels of being behind.)
+  //
+  // Fetched ONCE on mount, no interval: a deploy that lands mid-session is
+  // already handled by the app-wide StaleBundleWatcher, which prompts the
+  // operator to reload — and that reload re-runs this. Zero background
+  // timers, so nothing here can violate the mobile-perf standard.
+  const [deployedBundleSha, setDeployedBundleSha] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/build-info', { cache: 'no-store' });
+        if (!r.ok || cancelled) return;
+        const j = await r.json();
+        if (!cancelled && typeof j?.sha === 'string') setDeployedBundleSha(j.sha);
+      } catch {
+        // Tolerated — a null deployed SHA grades every row 'unknown', which
+        // renders NOTHING. Failing closed here means "no chip", never a
+        // false "out of date" accusation across the whole fleet.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const handlePushApkUpdate = async (screenId?: string, screenName?: string, priorVersion?: string | null) => {
     try {
       await forceApkUpdate.mutateAsync({ screenId });
@@ -2570,6 +2602,21 @@ export default function ScreensPage() {
                             />
                           );
                         })()}
+                        {/* 2026-08-25 — page-bundle skew. A player fix ships
+                            in the web bundle and each panel reloads onto it
+                            on its own schedule, so for ~20 min after a deploy
+                            a fixed button and a dead button look identical
+                            from here. Quiet + actionable, never red: a stale
+                            bundle is normal and self-healing. Same
+                            screenById sourcing as the render-proof chip
+                            above (GET /screen-groups omits the column). */}
+                        <BundleSkewChip
+                          status={screen.status}
+                          reportedSha={(screenById.get(screen.id) as any)?.lastBundleSha ?? null}
+                          deployedSha={deployedBundleSha}
+                          onRefresh={() => handleRefreshWeb(screen.id, screen.name)}
+                          refreshPending={refreshWeb.isPending}
+                        />
                         {/* 2026-07-31 — push-channel health chip. An ONLINE
                             screen with a stale WS/SSE stamp lives on the
                             HTTP polling backstop: it still plays and gets
@@ -2885,6 +2932,16 @@ export default function ScreensPage() {
                         />
                       );
                     })()}
+                    {/* 2026-08-25 — page-bundle skew (see the grouped row
+                        above). `screen` here is straight off GET /screens so
+                        it carries lastBundleSha natively. */}
+                    <BundleSkewChip
+                      status={screen.status}
+                      reportedSha={(screen as any).lastBundleSha ?? null}
+                      deployedSha={deployedBundleSha}
+                      onRefresh={() => handleRefreshWeb(screen.id, screen.name)}
+                      refreshPending={refreshWeb.isPending}
+                    />
                     {screen.lastPingAt && (
                       <span
                         className="text-[10px] font-medium text-slate-400 flex items-center gap-1 shrink-0 px-2"

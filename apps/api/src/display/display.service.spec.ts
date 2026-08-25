@@ -62,9 +62,11 @@ import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import {
   DISPLAY_AUDIT_ACTIONS,
+  PUSH_SOCKET_FRESH_MS,
   DisplayActionUnsupportedError,
   DisplayService,
   boundInventoryReport,
+  hasFreshPushSocket,
   isDarkeningAction,
   normalizeCapabilityReport,
   verdictChanged,
@@ -170,6 +172,13 @@ describe('DisplayService', () => {
       userId: USER_ID,
       action: 'BLANK',
       capabilities: stored(FULL_VERDICT),
+      // A HEALTHY screen by default (2026-08-25): `delivered` now requires
+      // BOTH a live fan-out AND a fresh push socket for this screen, so the
+      // baseline fixture has to represent a panel with a live WS/SSE
+      // channel — otherwise every case in this file would silently be
+      // testing the poll-only path. The grading matrix itself is pinned in
+      // its own describe block below.
+      lastPushConnectedAt: new Date(),
       ...over,
     } as any);
 
@@ -443,6 +452,117 @@ describe('DisplayService', () => {
     const res = await apply({ action: 'WAKE' });
     expect(res.delivered).toBe(false);
     expect(res.deliveryReason).toBe('redis_unavailable');
+  });
+
+  // ── per-screen push-socket grading (2026-08-25) ──────────────────────
+  //
+  // THE SECOND LIE. `fanoutUp` is a fact about the SERVER; it proves a
+  // published message can cross replicas and proves NOTHING about whether
+  // this screen has a socket on any of them. A panel on the HTTP-poll tier
+  // receives no DISPLAY_CONTROL frame at all — and nothing replays it, since
+  // the manifest carries schedules only — yet the dashboard reported
+  // `delivered:true` and painted the green "sent" row. These pin the full
+  // matrix: socket fresh / stale / never, crossed with the fan-out.
+
+  it('FRESH push socket + fan-out up → delivered:true (the healthy panel)', async () => {
+    const res = await apply({
+      action: 'WAKE',
+      lastPushConnectedAt: new Date(Date.now() - 9_000), // the live 8-17s shape
+    });
+    expect(res.delivered).toBe(true);
+    expect(res.deliveryReason).toBeNull();
+  });
+
+  it('STALE push socket (> 10 min) → delivered:false / no_push_socket', async () => {
+    // The poll-only dongle. Fan-out is up, publish resolves, and no screen
+    // is listening on device:<id>. Reporting this as a delivery is the exact
+    // "the dashboard lied to me" failure.
+    const res = await apply({
+      action: 'WAKE',
+      lastPushConnectedAt: new Date(Date.now() - PUSH_SOCKET_FRESH_MS - 1_000),
+    });
+    expect(res.delivered).toBe(false);
+    expect(res.deliveryReason).toBe('no_push_socket');
+    // STILL PUBLISHED — behaviour is unchanged, only the verdict is honest.
+    // If the screen reconnects mid-flight it may yet catch the frame; we
+    // simply do not claim it.
+    expect(redis.publish).toHaveBeenCalledTimes(1);
+  });
+
+  it('NEVER-stamped push socket → delivered:false / no_push_socket', async () => {
+    // null is not "unknown, assume fine" — stamping is server-side and
+    // universal (WS gateway + SSE service), so on this deployment a null
+    // means the screen has never held a push channel.
+    const res = await apply({ action: 'WAKE', lastPushConnectedAt: null });
+    expect(res.delivered).toBe(false);
+    expect(res.deliveryReason).toBe('no_push_socket');
+  });
+
+  it('an OMITTED lastPushConnectedAt is fail-safe, not optimistic', async () => {
+    const res = await service.applyAction({
+      screenId: SCREEN_ID,
+      tenantId: TENANT_ID,
+      userId: USER_ID,
+      action: 'WAKE',
+      capabilities: stored(FULL_VERDICT),
+    } as any);
+    expect(res.delivered).toBe(false);
+    expect(res.deliveryReason).toBe('no_push_socket');
+  });
+
+  it('a DEAD fan-out outranks a dead socket — the bigger failure is the headline', async () => {
+    redis.isConnected.mockReturnValue(false);
+    const res = await apply({ action: 'WAKE', lastPushConnectedAt: null });
+    expect(res.delivered).toBe(false);
+    expect(res.deliveryReason).toBe('redis_unavailable');
+  });
+
+  it('audits the EVIDENCE behind an undelivered verdict, not just the verdict', async () => {
+    const at = new Date(Date.now() - 30 * 60_000);
+    await apply({ action: 'WAKE', lastPushConnectedAt: at });
+    const details = JSON.parse(
+      prisma.client.auditLog.create.mock.calls[0][0].data.details,
+    );
+    expect(details).toMatchObject({
+      outcome: 'undelivered',
+      delivered: false,
+      deliveryReason: 'no_push_socket',
+      fanoutUp: true,
+      pushConnectedAt: at.toISOString(),
+    });
+  });
+
+  describe('hasFreshPushSocket', () => {
+    const NOW = 1_700_000_000_000;
+
+    it('grades fresh / stale exactly at the 10-minute boundary', () => {
+      expect(hasFreshPushSocket(new Date(NOW - 1_000), NOW)).toBe(true);
+      expect(
+        hasFreshPushSocket(new Date(NOW - PUSH_SOCKET_FRESH_MS + 1), NOW),
+      ).toBe(true);
+      // The boundary itself is stale — `<`, not `<=`.
+      expect(hasFreshPushSocket(new Date(NOW - PUSH_SOCKET_FRESH_MS), NOW)).toBe(
+        false,
+      );
+    });
+
+    it('accepts the shapes a Prisma row / JSON payload can actually carry', () => {
+      expect(hasFreshPushSocket(new Date(NOW - 1_000).toISOString(), NOW)).toBe(true);
+      expect(hasFreshPushSocket(NOW - 1_000, NOW)).toBe(true);
+    });
+
+    it('treats null / undefined / garbage as NO socket', () => {
+      expect(hasFreshPushSocket(null, NOW)).toBe(false);
+      expect(hasFreshPushSocket(undefined, NOW)).toBe(false);
+      expect(hasFreshPushSocket('not-a-date', NOW)).toBe(false);
+    });
+
+    it('stays pinned to the number the rest of the product uses', () => {
+      // ScreenWedgeDetectorCron.PUSH_STALE_MS and the fleet list's
+      // pushChannel derivation both use 10 min. A delivery verdict that
+      // disagreed with the "poll-only" chip on the same row is its own lie.
+      expect(PUSH_SOCKET_FRESH_MS).toBe(10 * 60_000);
+    });
   });
 
   // ── brightness floor ─────────────────────────────────────────────────
@@ -753,6 +873,8 @@ describe('BLANK / WAKE — soft, universal, unbrickable by construction', () => 
       userId: USER_ID,
       action: 'BLANK',
       capabilities: stored(G43_VERDICT),
+      // Healthy panel baseline — see the note on the delivery-suite helper.
+      lastPushConnectedAt: new Date(),
       ...over,
     } as any);
   /** The signed payload published for the Nth publish (default: the first). */
@@ -872,6 +994,8 @@ describe('POWER_OFF / POWER_ON — hardware, proven-only, legacy-frame translate
       userId: USER_ID,
       action: 'POWER_OFF',
       capabilities: stored({ ...G43_VERDICT, screenBlank: 'vendor-recipe' }),
+      // Healthy panel baseline — see the note on the delivery-suite helper.
+      lastPushConnectedAt: new Date(),
       ...over,
     } as any);
   const published = (n = 0) => signer.signMessage.mock.calls[n][1];

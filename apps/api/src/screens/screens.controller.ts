@@ -1496,7 +1496,9 @@ export class ScreensController {
       // that's 80 MB/s of pure egress on a field nobody reads from the
       // list. We deliberately KEEP lastCacheReport (used by the Map
       // view's per-pin emergency-cache badge in apps/web/src/components/
-      // screens/ScreenMap.tsx).
+      // screens/ScreenMap.tsx) and lastBundleSha/lastBundleShaAt — 12 bytes
+      // that the Screens list reads on EVERY row for the "Page bundle out
+      // of date" chip (2026-08-25). Do not strip them.
       const { lastCrashStack: _stack, lastSelfTestReport: _self, ...rest } = s as any;
       // ── DT-04 (2026-08-03): stop handing pairing secrets to low-privilege
       // roles. `deviceFingerprint` and `pairingCode` are the two values
@@ -4598,7 +4600,18 @@ export class ScreensController {
   // Body shape (all optional):
   //   { frames?: number,    // monotonic painted-frame counter (forensics/liveness delta)
   //     hash?: string,      // short signature of the content on screen (proof-of-display)
-  //     contentKind?: string } // 'template' | 'video' | 'image' | 'emergency' | 'url' (diagnostics)
+  //     contentKind?: string, // 'template' | 'video' | 'image' | 'emergency' | 'url' (diagnostics)
+  //     bundleSha?: string }  // commit SHA of the PAGE BUNDLE the player is running
+  //
+  // 2026-08-25 — `bundleSha` closes the "the dashboard lied to me" gap. A
+  // player fix ships in the WEB bundle and each panel picks it up on its own
+  // schedule (bundle-drift detector, deferred while content plays), so
+  // freshly-fixed code is indistinguishable from a dead button until the
+  // reload lands. Nothing in telemetry recorded WHICH bundle a panel was on,
+  // so the only way to reason about it was to infer panel state from deploy
+  // timestamps. It rides THIS post — already device-authed, already ~every
+  // 30s, already the "what is this panel actually doing" channel — rather
+  // than a new endpoint or (forbidden) a manifest field.
   @Post(':id/render-proof')
   // 2026-07-25 — was `limit: 10`, which SILENTLY KILLED proof-of-display at every
   // multi-screen site. The throttler's default tracker keys on the client's
@@ -4620,6 +4633,8 @@ export class ScreensController {
       frames?: number;
       hash?: string;
       contentKind?: string;
+      /** Commit SHA of the page bundle the player is running (2026-08-25). */
+      bundleSha?: string;
       // 2026-07-28 — frame-locked sync telemetry (optional; only sent
       // while the screen's group has syncMode='locked'). Stored on
       // Screen.lastSyncReport for the dashboard's "IN SYNC ±Xms" badge.
@@ -4638,11 +4653,34 @@ export class ScreensController {
     if (!authResult.ok) {
       throw new HttpException({ code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${authResult.reason})` }, HttpStatus.UNAUTHORIZED);
     }
+    // Page-bundle SHA (2026-08-25). Sanitized with the same hostile-device
+    // posture as everything else on this route, and normalized by exactly
+    // the rule both web-side copies use (apps/web/src/app/player/bundleSha.ts
+    // and components/screens/bundleSkew.ts): a single bounded token,
+    // lowercased, truncated to the 12-char short form /api/build-info and the
+    // drift detector compare on. Bounded rather than hex-only on purpose —
+    // the same rule gates the player's auto-reload, so narrowing it to "looks
+    // like a git SHA" would switch that off for self-hosted builds that stamp
+    // a tag or build number. What it DOES reject is what matters downstream:
+    // whitespace, markup, path separators, and anything long enough to bloat
+    // the row. A value that fails is dropped to null — "unknown", which the
+    // dashboard renders as NOTHING, never a false alarm.
+    const rawBundleSha =
+      typeof body?.bundleSha === 'string' ? body.bundleSha.trim() : '';
+    const bundleSha =
+      rawBundleSha && /^[A-Za-z0-9._-]{1,64}$/.test(rawBundleSha)
+        ? rawBundleSha.toLowerCase().slice(0, 12)
+        : null;
+
     // DB-efficiency (2026-06-15): coalesce the every-30s render-proof write to
     // ≤1 per 40s (was ~17% of total DB time). lastRenderedAt stays < ~60s old
     // so a healthy screen never false-REDs (STALE window is 90s); a real freeze
     // stops the POSTs entirely, so this never masks one.
-    if (shouldSkipRenderProofWrite(id)) return { ok: true };
+    //
+    // The SHA is passed so a CHANGED bundle writes through immediately — a
+    // panel that just reloaded onto the fix must stop reading "out of date"
+    // on the dashboard at once, not up to 40s later.
+    if (shouldSkipRenderProofWrite(id, bundleSha ?? '')) return { ok: true };
     const screen = await this.prisma.client.screen.findUnique({ where: { id }, select: { id: true } });
     if (!screen) throw new HttpException({ code: 'SCREEN_NOT_FOUND', message: 'Not found' }, HttpStatus.NOT_FOUND);
 
@@ -4681,13 +4719,16 @@ export class ScreensController {
         lastRenderedAt: new Date(),
         ...(frames != null ? { lastRenderedFrames: frames } : {}),
         ...(hash != null ? { lastRenderedHash: hash } : {}),
+        ...(bundleSha != null
+          ? { lastBundleSha: bundleSha, lastBundleShaAt: new Date() }
+          : {}),
         ...(syncReport ? { lastSyncReport: syncReport, lastSyncReportAt: new Date() } : {}),
       } as any,
       // Fire-and-forget telemetry — don't RETURNING the whole 88-column row.
       select: { id: true },
       }),
     );
-    markRenderProofWritten(id);
+    markRenderProofWritten(id, bundleSha ?? '');
     return { ok: true };
   }
 

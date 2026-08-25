@@ -125,15 +125,28 @@ export function markCacheReportWritten(screenId: string, sig: string): void {
 // screen's lastRenderedAt < ~60s old (never false-RED) while halving the
 // write (was ~17% of DB time). A real freeze STOPS the POSTs entirely, so
 // debouncing the healthy path can never mask a freeze.
+//
+// BUNDLE-SHA EXCEPTION (2026-08-25). The render-proof POST now also carries
+// the page-bundle SHA the player is running, and a CHANGE in that value is
+// the one piece of news on this payload: a panel that just self-reloaded onto
+// the fix must stop reading "out of date" on the dashboard immediately, not
+// up to 40s later. Same shape as `shouldSkipCacheReportWrite` above — a
+// changed signature writes through, an unchanged one debounces. Screens whose
+// build never reports a SHA pass '' and debounce exactly as before.
 const RENDER_PROOF_DEBOUNCE_MS = 40_000;
-const renderProofWrites = new Map<string, number>();
-export function shouldSkipRenderProofWrite(screenId: string): boolean {
+const renderProofWrites = new Map<string, { at: number; bundleSha: string }>();
+export function shouldSkipRenderProofWrite(
+    screenId: string,
+    /** Reported page-bundle SHA, or '' when this build doesn't report one. */
+    bundleSha = '',
+): boolean {
     const last = renderProofWrites.get(screenId);
     if (!last) return false;
-    return Date.now() - last < RENDER_PROOF_DEBOUNCE_MS;
+    if (last.bundleSha !== bundleSha) return false; // bundle changed → always write
+    return Date.now() - last.at < RENDER_PROOF_DEBOUNCE_MS;
 }
-export function markRenderProofWritten(screenId: string): void {
-    renderProofWrites.set(screenId, Date.now());
+export function markRenderProofWritten(screenId: string, bundleSha = ''): void {
+    renderProofWrites.set(screenId, { at: Date.now(), bundleSha });
     if (renderProofWrites.size > 50_000) {
         const oldest = renderProofWrites.keys().next().value;
         if (oldest) renderProofWrites.delete(oldest);
@@ -245,6 +258,20 @@ export const SCREEN_TELEMETRY_ONLY_FIELDS = new Set([
     'lastRenderedAt',
     'lastRenderedFrames',
     'lastRenderedHash',
+    // ── Page-bundle provenance (2026-08-25) ──────────────────────────────
+    // Written in the SAME statement as lastRenderedAt/Frames/Hash above by
+    // POST /screens/:id/render-proof — i.e. ~every 40s per screen, fleet
+    // wide. Leaving them off this list would un-protect the exact write the
+    // three lines above were listed to protect and re-create the 25 GB/mo
+    // Supabase egress (docs/research/2026-07-30-supabase-bill-diet/).
+    //
+    // Genuinely non-content: the SHA is a fact about the player's own JS
+    // bundle, is read ONLY by the fleet list (`GET /screens`) for the
+    // "Page bundle out of date" chip, and appears in no manifest branch —
+    // and it MUST NOT, since a manifest that varied per reporting device
+    // would kill 304s fleet-wide (CLAUDE.md manifest-cache rule).
+    'lastBundleSha',
+    'lastBundleShaAt',
     'lastSyncReport',
     'lastSyncReportAt',
     // Push-health stamp (2026-07-31) — written by the WS gateway on

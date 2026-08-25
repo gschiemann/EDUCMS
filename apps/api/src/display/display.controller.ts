@@ -331,6 +331,12 @@ export class DisplayController {
         allowBlack: body.allowBlack,
         reason: body.reason,
         capabilities: screen.displayCapabilities ?? null,
+        // DELIVERY HONESTY (2026-08-25). Off the row we already loaded — no
+        // extra query. This is the server's only evidence that a WS/SSE
+        // channel exists for THIS screen; without it `delivered` could only
+        // ever report whether the SERVER's fan-out was up, which is what
+        // reported success for commands a poll-only panel never received.
+        lastPushConnectedAt: screen.lastPushConnectedAt ?? null,
         emergencyHold,
       });
     } catch (e) {
