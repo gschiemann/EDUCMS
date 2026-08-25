@@ -61,6 +61,7 @@ import {
   useToggleLocationBasedEmergency,
 } from '@/hooks/use-api';
 import { PanicContentEditor } from '@/components/settings/PanicContentEditor';
+import { EmergencyReadinessCard } from '@/components/emergency/EmergencyReadinessCard';
 import { EmbeddedFloorPlanView } from '@/components/floor-plans/EmbeddedFloorPlanView';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { RoleGate } from '@/components/RoleGate';
@@ -104,6 +105,12 @@ export default function EmergencySettingsPage() {
             SRP types — Lockdown, Evacuate, Medical, Secure, Shelter, Hold.
           </p>
         </header>
+
+        {/* 2026-08-24 — the computed readiness score, first thing on the
+            page: config controls answer "how do I set it up", this answers
+            "would it actually work RIGHT NOW". Read-only; every fix it
+            names is done in the sections below or on Screens/Team. */}
+        <EmergencyReadinessCard />
 
         <EmergencyConfigurator />
       </div>

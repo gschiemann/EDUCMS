@@ -6,6 +6,8 @@ import { DevicesController } from './devices/devices.controller';
 import { PanicContentController } from './panic-content/panic-content.controller';
 import { EmergencyController } from './emergency/emergency.controller';
 import { ScreenEmergencyController } from './emergency/screen-emergency.controller';
+import { EmergencyReadinessController } from './emergency/emergency-readiness.controller';
+import { EmergencyReadinessService } from './emergency/emergency-readiness.service';
 import { StatsController } from './stats/stats.controller';
 import { AuditController } from './audit/audit.controller';
 import { UsersController } from './users/users.controller';
@@ -208,6 +210,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     PanicContentController,
     EmergencyController,
     ScreenEmergencyController,
+    EmergencyReadinessController,
     StatsController,
     AuditController,
     UsersController,
@@ -229,6 +232,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
   ],
   providers: [
     AppService,
+    EmergencyReadinessService,
     GeocodingService,
     PlaylistDistributionService,
     WebsocketSignerService,
