@@ -2,6 +2,7 @@
 
 import { useId, useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
+import { MediaSourcePicker } from './MediaSourcePicker';
 import { AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignEndVertical, AlignVerticalJustifyCenter, ChevronDown, ChevronRight, X as XIcon, Tv, ExternalLink, RefreshCw, GripVertical, Hand, Globe, Play, Layers, ShieldAlert, Volume2, Webhook, Bell, Sparkles, Link2, Unlink, Eye, EyeOff } from 'lucide-react';
 import type { TouchActionConfig } from './types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -2682,6 +2683,19 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
           </select>
         </div>
       );
+      // Media source — the gym media boards (fitness/gym-media-*). The
+      // operator connects the board's program video and business music
+      // right here rather than being sent to Settings → Streaming: the
+      // board they are looking at says SOURCE NOT CONFIGURED, and the
+      // fix has to be reachable from where they are standing.
+      {
+        const mediaUrl = typeof cfg.url === 'string' ? cfg.url : '';
+        if (/\/templates\/fitness\/gym-media-/.test(mediaUrl)) {
+          fields.push(SH('ext-media', 'Media source'));
+          fields.push(<MediaSourcePicker key="ext-media-picker" cfg={cfg} setField={setField} />);
+        }
+      }
+
       // Top-level POS picker — only for menu boards (qsr / menus-pos / bar URL,
       // or a board already POS-driven). Operator: "where is the top level POS
       // picker? I should be able to pick which POS system I am using." It was

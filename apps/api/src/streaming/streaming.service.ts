@@ -13,6 +13,7 @@ import {
   getStreamProvider,
   type StreamConnectionDto,
   type StreamChannelDto,
+  type StreamMediaRole,
 } from '@cms/api-types';
 import { sealCredentials, openCredentials } from './creds-cipher';
 import { safeFetch, validatePublicUrl, SsrfError } from '../branding/safe-fetch';
@@ -43,6 +44,28 @@ function effectivePlaybackUrl(ch: {
   if (ch.playbackUrl) return ch.playbackUrl;
   if (isHttpUrl(ch.externalId)) return ch.externalId;
   return undefined;
+}
+
+/**
+ * What a connected provider can actually do for a media board.
+ *
+ * This lives server-side on purpose. The editor used to decide "is this
+ * source usable?" from the provider id, and that inference is exactly how
+ * a board ends up claiming a live feed it does not have. One function,
+ * one answer, derived from the provider definition itself.
+ */
+function mediaRoleFor(providerId: string): StreamMediaRole {
+  const p = getStreamProvider(providerId);
+  if (!p) return 'PENDING_ADAPTER';
+  // Playback on the provider's own licensed receiver/app. We can show
+  // status once an external-device adapter exists; we never render it.
+  if (p.integrationTier === 'CLOSED' || p.integrationTier === 'BRIDGE') return 'EXTERNAL';
+  // A DIRECT source we play ourselves — the customer's own or explicitly
+  // licensed feed. VenueOS is the player, so there is no third party whose
+  // acknowledgement we would be waiting on.
+  if (p.integrationTier === 'DIRECT' && p.auth === 'customHls') return 'RENDERS';
+  // A real business service with a real API and no finished adapter.
+  return 'PENDING_ADAPTER';
 }
 
 @Injectable()
@@ -105,6 +128,9 @@ export class StreamingService {
       expiresAt: r.expiresAt?.toISOString(),
       channelCount: r._count?.channels ?? 0,
       createdAt: r.createdAt.toISOString(),
+      integrationTier: getStreamProvider(r.providerId)?.integrationTier,
+      mediaRole: mediaRoleFor(r.providerId),
+      isMusic: getStreamProvider(r.providerId)?.category === 'music',
     }));
   }
 
@@ -152,6 +178,32 @@ export class StreamingService {
       throw new BadRequestException('playbackUrl required.');
     }
 
+    // A customer-owned / explicitly licensed feed is the one route that
+    // works end to end today, and it was the one route that could never
+    // finish: `customHls` saved as PENDING and NOTHING in the codebase
+    // ever moved a streaming connection out of PENDING. So an operator
+    // pasted their own licensed HLS URL, got an amber "pending" pill, and
+    // waited forever on an approval that has no approver.
+    //
+    // PENDING means "waiting on a third party". There is no third party
+    // here — VenueOS is the player. What there IS to check is whether the
+    // URL actually resolves to something playable, so we check that and
+    // record the answer. A failed probe is an ERROR the operator can see
+    // and fix, not an indefinite wait.
+    //
+    // Rights are a separate question this does NOT answer: a reachable
+    // URL is not a license. Publishing still requires the operator to own
+    // or be licensed for the feed, which is what they attest to on
+    // connect for a venue-license provider.
+    let probe: { ok: boolean; reason?: string; type?: string } | null = null;
+    if (provider.auth === 'customHls') {
+      try {
+        probe = await this.validateStreamUrl(String((creds as any).playbackUrl || ''));
+      } catch {
+        probe = { ok: false, reason: 'Could not reach the stream URL.' };
+      }
+    }
+
     const sealed = sealCredentials(creds);
     // CYCLE-5 streaming-iframeOnly-stuck-pending fix: providers whose
     // auth is `iframeOnly` need no credential exchange — the embed URL
@@ -160,6 +212,9 @@ export class StreamingService {
     // playback. Same logic as `auth === 'none'`: nothing to verify
     // server-side, the connection is usable as soon as it's saved.
     const autoActiveAuth = provider.auth === 'none' || provider.auth === 'iframeOnly';
+    const status = autoActiveAuth ? 'ACTIVE'
+      : probe ? (probe.ok ? 'ACTIVE' : 'ERROR')
+      : 'PENDING';
     const row = await (this.prisma.client as any).streamProviderConnection.create({
       data: {
         tenantId: opts.tenantId,
@@ -167,11 +222,78 @@ export class StreamingService {
         displayName: opts.displayName,
         encryptedCreds: sealed.encryptedCreds,
         encryptedDataKey: sealed.encryptedDataKey,
-        status: autoActiveAuth ? 'ACTIVE' : 'PENDING',
+        status,
+        statusReason: probe && !probe.ok ? (probe.reason || 'Stream URL could not be verified.') : null,
+        lastVerifiedAt: status === 'ACTIVE' && probe ? new Date() : null,
         createdByUserId: opts.userId,
       },
     });
     return row;
+  }
+
+  /**
+   * Re-probe a connection's own feed and record the result.
+   *
+   * This exists for two reasons. Connections created before the check
+   * above are stuck in a PENDING that nothing will ever resolve, and a
+   * feed that worked in March can be dead in August — an operator needs a
+   * way to ask "is this still up?" without deleting and re-adding.
+   *
+   * It verifies REACHABILITY ONLY. It cannot and does not establish that
+   * the venue is licensed to show the feed; that is the operator's
+   * attestation and a separate record.
+   */
+  async testConnection(tenantId: string, id: string, actorUserId?: string | null) {
+    const row = await this.getConnection(tenantId, id);
+    const provider = getStreamProvider(row.providerId);
+    if (!provider || provider.auth !== 'customHls') {
+      // Nothing to probe: there is no feed of our own to reach. Say so
+      // rather than flipping a status we cannot justify.
+      return {
+        id: row.id,
+        status: row.status,
+        statusReason: row.statusReason || undefined,
+        tested: false,
+        detail: provider
+          ? `${provider.name} playback does not run through VenueOS, so there is no feed for us to test.`
+          : 'Unknown provider.',
+      };
+    }
+    const creds = await this.decryptCredentials(tenantId, id);
+    let probe: { ok: boolean; reason?: string };
+    try {
+      probe = await this.validateStreamUrl(String((creds as any).playbackUrl || ''));
+    } catch {
+      probe = { ok: false, reason: 'Could not reach the stream URL.' };
+    }
+    const status = probe.ok ? 'ACTIVE' : 'ERROR';
+    await this.prisma.client.$transaction(async (tx: any) => {
+      await tx.streamProviderConnection.update({
+        where: { id: row.id },
+        data: {
+          status,
+          statusReason: probe.ok ? null : (probe.reason || 'Stream URL could not be verified.'),
+          lastVerifiedAt: probe.ok ? new Date() : row.lastVerifiedAt,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId: actorUserId ?? null,
+          action: 'STREAM_CONNECTION_TESTED',
+          targetType: 'StreamProviderConnection',
+          targetId: row.id,
+          details: JSON.stringify({ providerId: row.providerId, result: status, reason: probe.reason }),
+        },
+      });
+    });
+    return {
+      id: row.id,
+      status,
+      statusReason: probe.ok ? undefined : (probe.reason || 'Stream URL could not be verified.'),
+      tested: true,
+      detail: probe.ok ? 'Stream reachable.' : (probe.reason || 'Stream URL could not be verified.'),
+    };
   }
 
   async getConnection(tenantId: string, id: string) {

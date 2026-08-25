@@ -22,6 +22,7 @@ import {
 import { formatTime12 } from '@/lib/format-time';
 import { useCustomData } from '@/lib/data/use-custom-data';
 import { usePosMenuItems } from '@/lib/menu/use-pos-menu-items';
+import { useGymMedia } from './fitness/use-gym-media';
 import { buildSafeDesignerSrcdoc } from '@/lib/designer-safe-srcdoc';
 import { registerKioskFrame, unregisterKioskFrame } from '@/lib/kiosk-frame-registry';
 // Launch Sprint FEEDS domain (2026-07-01) — real RSS/Atom + ICS backend for
@@ -3896,7 +3897,46 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
   // includeUnavailable: the fixed-slot HTML boards grey out 86'd items
   // (the shim's applyMenu styles them) rather than dropping them.
   const liveMenu = usePosMenuItems(menuDriven, config?.posCategory, { includeUnavailable: true });
+  // ── Gym media state ─────────────────────────────────────────────
+  // Same shape as the live menu feed below: the parent resolves the
+  // board's bound sources and postMessages ONE snapshot into the
+  // (sandboxed, null-origin) iframe, where _media-runtime.js paints the
+  // status labels. The board itself never talks to a provider and never
+  // decides what it may claim — it renders what this says.
+  //
+  // Auto-on for the gym media board URLs; every other board pays nothing.
+  const isGymMediaBoard = /\/templates\/fitness\/gym-media-/.test(url);
+  const gymMedia = useGymMedia(
+    isGymMediaBoard,
+    config?.mediaSource,
+    typeof config?.timeZone === 'string' ? config.timeZone : undefined,
+  );
+
   const frameRef = useRef<HTMLIFrameElement | null>(null);
+  const postGymMedia = useCallback(() => {
+    const win = frameRef.current?.contentWindow;
+    if (!win || !gymMedia) return;
+    try {
+      win.postMessage({ type: 'educms-overrides', media: gymMedia }, '*');
+    } catch { /* detached / cross-origin frame — ignore */ }
+  }, [gymMedia]);
+  useEffect(() => {
+    postGymMedia();
+    const el = frameRef.current;
+    if (!el) return;
+    // The board also announces `educms-media-ready`, because the snapshot
+    // can resolve before the frame finishes loading (and vice versa).
+    const onReady = (e: MessageEvent) => {
+      if (e?.data && (e.data as { type?: string }).type === 'educms-media-ready') postGymMedia();
+    };
+    el.addEventListener('load', postGymMedia);
+    window.addEventListener('message', onReady);
+    return () => {
+      el.removeEventListener('load', postGymMedia);
+      window.removeEventListener('message', onReady);
+    };
+  }, [postGymMedia]);
+
   const postMenu = useCallback(() => {
     const win = frameRef.current?.contentWindow;
     if (!win || !Array.isArray(liveMenu) || liveMenu.length === 0) return;

@@ -103,6 +103,18 @@
       look: 'offline',
       showsProtectedContent: false
     },
+    pending: {
+      /* A real business service, connected, with an unfinished adapter on
+       * our side. Neither "offline" (their service is fine) nor "external"
+       * (no licensed receiver is involved) nor "not configured" (the
+       * operator did configure it). Says what is actually true. */
+      label: 'SOURCE ADAPTER PENDING',
+      detail: 'VenueOS adapter not finished',
+      rights: 'NOT VERIFIED BY VENUEOS',
+      music: 'MUSIC ADAPTER PENDING',
+      look: 'offline',
+      showsProtectedContent: false
+    },
     demo: {
       label: 'DEMO PREVIEW',
       detail: 'Preview only · not a live source',
@@ -163,7 +175,13 @@
     setText('[data-source-status]', copy.label);
     setText('[data-source-detail]', copy.detail);
     setText('[data-rights-status]', copy.rights);
-    setText('[data-music-status]', copy.music);
+
+    /* Music is usually a DIFFERENT provider than the program video — a
+     * club can have a verified video feed and an unbuilt music adapter at
+     * the same moment. When the host reports a music state of its own,
+     * the music label follows that; otherwise it follows the program. */
+    var musicState = (live.music && STATES[live.music.state]) ? live.music.state : state;
+    setText('[data-music-status]', STATES[musicState].music);
 
     /* Motion is a claim. Bars move only while the provider says PLAYING. */
     var playing = state === 'fresh' && live.music && live.music.playbackState === 'PLAYING';

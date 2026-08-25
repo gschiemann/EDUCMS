@@ -48,6 +48,7 @@ const STATES = {
   offline:      { must: /OFFLINE/,         mustNot: /\bLIVE\b|\bCONNECTED\b/ },
   external:     { must: /EXTERNAL/,        mustNot: /\bLIVE\b|\bCONNECTED\b/ },
   denied:       { must: /NOT AUTHORIZED/,  mustNot: /\bLIVE\b|\bCONNECTED\b/ },
+  pending:      { must: /ADAPTER PENDING/, mustNot: /\bLIVE\b|\bCONNECTED\b/ },
   demo:         { must: /DEMO/,            mustNot: /\bLIVE\b|\bCONNECTED\b/ },
 };
 
@@ -210,5 +211,5 @@ function measure({ width, height }) {
     console.error('');
     process.exit(1);
   }
-  console.log(`GYM MEDIA BOARDS: ${checks} checks pass — 6 boards × 7 source states × 2 engines, no clipping/overlap/undersized text, no false live claim.`);
+  console.log(`GYM MEDIA BOARDS: ${checks} checks pass — 6 boards × 8 source states × 2 engines, no clipping/overlap/undersized text, no false live claim.`);
 })();

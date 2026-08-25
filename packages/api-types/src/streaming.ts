@@ -439,6 +439,23 @@ export interface StreamProviderListItem {
   }>;
 }
 
+/**
+ * What a connected source can actually DO for a media board. Derived
+ * server-side from the provider definition so the editor never has to
+ * infer capability from a provider id — the inference is exactly how a
+ * board ends up claiming a live feed it does not have.
+ *
+ *   RENDERS  — VenueOS itself plays the media (a customer-owned or
+ *              explicitly licensed MP4/HLS). We are the player, so the
+ *              screen can honestly say LIVE once it is playing.
+ *   EXTERNAL — playback happens on the provider's own licensed device or
+ *              app. We may show status; we never claim native playback.
+ *   PENDING_ADAPTER — a real business service with a real API that we
+ *              have not finished building an adapter for. It can be
+ *              recorded, but it cannot drive the screen yet.
+ */
+export type StreamMediaRole = 'RENDERS' | 'EXTERNAL' | 'PENDING_ADAPTER';
+
 export interface StreamConnectionDto {
   id: string;
   providerId: string;
@@ -450,6 +467,12 @@ export interface StreamConnectionDto {
   expiresAt?: string;
   channelCount: number;
   createdAt: string;
+  /** Provider tier, so the editor can label the source honestly. */
+  integrationTier?: StreamIntegrationTier;
+  /** What this connection can do for a media board. See StreamMediaRole. */
+  mediaRole?: StreamMediaRole;
+  /** True when this source carries audio for the venue rather than video. */
+  isMusic?: boolean;
 }
 
 export interface StreamChannelDto {
