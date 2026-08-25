@@ -41,3 +41,5 @@ jobs:
           node-version: '20'
       - name: Check mobile-perf standard (no bg polling / focus storm / mobile-chrome blur)
         run: node apps/web/tools/check-mobile-perf.cjs
+      - name: i18n catalog parity (en/es/zh keys + ICU shapes)
+        run: node apps/web/tools/check-i18n-parity.cjs
