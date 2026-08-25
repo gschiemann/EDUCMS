@@ -2396,6 +2396,9 @@ export interface PublishToFleetResult {
 }
 export function usePublishToFleet() {
   return useMutation<PublishToFleetResult, Error, { playlistId: string; screenIds: string[] }>({
+    // PublishToLocationsModal renders the failure inline at full size, and it
+    // runs inside a z-[10000] modal the toast layer sits under anyway.
+    meta: { suppressGlobalError: true },
     mutationFn: ({ playlistId, screenIds }) =>
       apiFetch(`/playlists/${playlistId}/publish-to-fleet`, {
         method: 'POST',
@@ -2422,6 +2425,11 @@ export function useNotifications() {
 export function useMarkNotificationRead() {
   const qc = useQueryClient();
   return useMutation({
+    // Fires as a SIDE EFFECT of clicking a notification (which also
+    // navigates away) — not an operator intent of its own. A failed
+    // mark-as-read costs the operator nothing, so don't toast about it.
+    // "Mark all read" below IS an explicit click and keeps the toast.
+    meta: { suppressGlobalError: true },
     mutationFn: (id: string) => apiFetch(`/notifications/${id}/read`, { method: 'POST' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
   });
@@ -2525,6 +2533,10 @@ export function useUpdateScreenLocation() {
 // ignore the event and update on their next 6h periodic poll.
 export function useForceApkUpdate() {
   return useMutation({
+    // Its only caller (screens/page.tsx handlePushApkUpdate) already renders
+    // "Push failed: …" in its own toast lane — opt out so the global
+    // mutation-error toast doesn't report the same failure twice.
+    meta: { suppressGlobalError: true },
     mutationFn: async (args: { screenId?: string | null } = {}) => {
       const path = args.screenId
         ? `/screens/${args.screenId}/force-update`
@@ -2545,6 +2557,9 @@ export function useForceApkUpdate() {
 // stampede the API or Vercel CDN.
 export function useRefreshWeb() {
   return useMutation({
+    // Same as useForceApkUpdate: handleRefreshWeb shows "Refresh failed: …"
+    // in the shared toast lane, so skip the global one.
+    meta: { suppressGlobalError: true },
     mutationFn: async (args: { screenId?: string | null } = {}) => {
       const path = args.screenId
         ? `/screens/${args.screenId}/refresh-web`
@@ -3713,6 +3728,10 @@ export function useGameControl(gameId: string) {
   // sessionStorage — the whole point of Domain C.
   const score = useMutation({
     networkMode: 'always',
+    // Operator-trust wave: the game-op queue + ConnectionBanner ALREADY
+    // tell the scorekeeper a tap is queued/rejected (settleFailure below).
+    // A toast per tap during a mid-game signal drop would be pure noise.
+    meta: { suppressGlobalError: true },
     mutationFn: (body: { team?: string; delta?: number; homeScore?: number; awayScore?: number }) =>
       apiFetch(`/sports/games/${gameId}/score`, { method: 'PATCH', body: JSON.stringify(body) }),
     onMutate: async (body) => {
@@ -3743,6 +3762,7 @@ export function useGameControl(gameId: string) {
   });
   const clock = useMutation({
     networkMode: 'always', // C1 — see the score mutation's note
+    meta: { suppressGlobalError: true }, // see the score mutation's note
     mutationFn: (body: { action: string; ms?: number }) =>
       apiFetch(`/sports/games/${gameId}/clock`, { method: 'PATCH', body: JSON.stringify(body) }),
     onMutate: async (body) => {
@@ -3811,6 +3831,7 @@ export function useGameControl(gameId: string) {
   });
   const segment = useMutation({
     networkMode: 'always', // C1 — see the score mutation's note
+    meta: { suppressGlobalError: true }, // see the score mutation's note
     mutationFn: (body: { segment?: number; delta?: number }) =>
       apiFetch(`/sports/games/${gameId}/segment`, { method: 'PATCH', body: JSON.stringify(body) }),
     onMutate: async (body) => {
@@ -3846,6 +3867,7 @@ export function useGameControl(gameId: string) {
   });
   const stats = useMutation({
     networkMode: 'always', // C1 — see the score mutation's note
+    meta: { suppressGlobalError: true }, // see the score mutation's note
     mutationFn: (body: { stats: Record<string, unknown> }) =>
       apiFetch(`/sports/games/${gameId}/stats`, { method: 'PATCH', body: JSON.stringify(body) }),
     onMutate: async (body) => {
@@ -4337,6 +4359,9 @@ export function useAutoPush(gameId: string | undefined) {
 export function useSetAutoPush(gameId: string) {
   const qc = useQueryClient();
   return useMutation({
+    // The auto-push panel already prints the server's message inline under
+    // the surface picker — don't tell the scorekeeper twice mid-game.
+    meta: { suppressGlobalError: true },
     mutationFn: (vars: { armed: boolean; screenIds?: string[]; surface?: string }) =>
       apiFetch(`/sports/games/${gameId}/auto-push`, {
         method: 'POST',
@@ -4537,6 +4562,9 @@ export function useMintApiKey() {
 export function useRevokeApiKey() {
   const qc = useQueryClient();
   return useMutation<{ ok: boolean }, Error, string>({
+    // handleRevoke (settings/developer) already raises a blocking
+    // "Could not revoke" appAlert with the server's reason.
+    meta: { suppressGlobalError: true },
     mutationFn: (id) => apiFetch(`/api-keys/${id}`, { method: 'DELETE' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['api-keys'] }),
   });
@@ -4754,6 +4782,9 @@ export interface ChangePasswordResponse {
  */
 export function useChangePassword() {
   return useMutation<ChangePasswordResponse, Error, { currentPassword: string; newPassword: string }>({
+    // ChangePasswordCard renders the failure inline next to the fields (it
+    // owns the whole "wrong current password" flow) — no second report.
+    meta: { suppressGlobalError: true },
     mutationFn: (body) =>
       apiFetch<ChangePasswordResponse>('/auth/change-password', {
         method: 'POST',

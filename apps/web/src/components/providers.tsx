@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react';
 import { BrandingProvider } from '@/lib/branding-context';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { installThumbTransformFallback } from '@/lib/asset-image';
+import { AppToaster } from '@/components/ui/AppToaster';
+import { buildMutationCache } from '@/lib/mutation-error-cache';
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   // Supabase image-transform fallback (2026-07-30): on the Free plan the
@@ -15,6 +17,12 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
+        // Cache-level mutation errors → one plain-English toast, so a failed
+        // save stops being invisible. ADDITIVE to every existing per-mutation
+        // onError, so the optimistic rollbacks in use-api.ts are untouched.
+        // Opt a surface out with `meta: { suppressGlobalError: true }`.
+        // See lib/mutation-error-cache.ts.
+        mutationCache: buildMutationCache(),
         defaultOptions: {
           queries: {
             // 5-minute staleTime covers 99% of screens — templates, widget
@@ -54,6 +62,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       <I18nProvider>
         <BrandingProvider>{children}</BrandingProvider>
       </I18nProvider>
+      {/* One toast host for the whole app (dashboard + login + marketing).
+          Pinned BELOW the emergency overlay — see AppToaster's z-index note. */}
+      <AppToaster />
     </QueryClientProvider>
   );
 }
