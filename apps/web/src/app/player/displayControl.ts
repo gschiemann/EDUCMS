@@ -51,6 +51,27 @@
  *                   APKs parse only five verbs. Forwarded to the bridge
  *                   untouched; old APKs ignore the extra key (org.json opt*).
  *
+ * ── WHAT THE FIRST PASS GOT WRONG (same night, hours later) ───────────
+ *
+ * The split shipped and the operator's Blank button still did nothing on two
+ * of his panels: *"no wake or blank working"*. Two defects, both of them the
+ * same shape — a layer that reported success while nothing happened:
+ *
+ *   1. THE OVERLAY WAS IN ONE RENDER BRANCH. `page.tsx` has five render
+ *      exits; the black div went into the non-template one. G43 and M43 were
+ *      both playing a single-zone EXTERNAL_HTML template playlist, so both
+ *      took the `isTemplate` early return, and the div was never mounted.
+ *      This module logged "soft BLANK → overlay ON", the server audited
+ *      `dispatched / delivered:true`, and the glass did not change. Fixed by
+ *      hoisting the overlay to a const rendered by EVERY exit, guarded by
+ *      `__tests__/softBlankRenderExits.test.ts`, and backstopped at runtime
+ *      by a paint check that screams if the node is not in the DOM.
+ *   2. THE FRESHNESS WINDOW STILL TREATED A BLACK DIV LIKE A DEVICE-ADMIN
+ *      LOCK. See {@link displayFrameNeedsFreshness}.
+ *
+ * The lesson worth carrying: on this surface, "the state flipped" and "the
+ * handler logged success" are not evidence. The DOM is.
+ *
  * The soft overlay is SESSION-ONLY and deliberately so: it holds until WAKE,
  * an emergency, or a page reload — and a REFRESH_WEB, a service-worker
  * update or a WebView OOM-kill therefore un-blanks the screen. That is the
@@ -224,6 +245,48 @@ export type DisplayPushVerdict =
   | { accepted: false; reason: 'not-ours' | 'unsigned' | 'stale' | 'replay' | 'bad-action' };
 
 /**
+ * Does this frame need to be FRESH, or only AUTHENTIC?
+ *
+ * ── WHY SOFT FRAMES LEFT THE FRESHNESS LANE (2026-08-25, second pass) ──
+ *
+ * The freshness window was written when BLANK meant "take an Android
+ * device-admin lock and turn a panel off". Replaying a captured one of those
+ * hours later is a real attack: it darkens hardware, and on the incident
+ * panels it darkened hardware in a way WAKE could not reverse. Thirty seconds
+ * was the right budget for that.
+ *
+ * A `soft: true` frame is not that action. It draws or removes a black `<div>`
+ * inside our own page. It cannot reach panel power, it cannot latch, and every
+ * one of WAKE, a page reload, a service-worker update and any emergency alert
+ * removes it. The worst a perfectly-replayed soft BLANK can do is make a
+ * screen go black until the operator presses Wake — which is also the worst a
+ * *legitimate* one does.
+ *
+ * Against that: the freshness check reads `Date.now() + serverClockOffsetMs`,
+ * and that offset is captured ONCE per socket at AUTH_OK. Android signage
+ * boxes boot without NTP and get stepped minutes later, so a box whose RTC
+ * moves after AUTH_OK silently drops every risk-direction frame until it
+ * reconnects. On that box the operator's Blank button does nothing, forever,
+ * with no signal anywhere. Trading a reversible black div for a dead button on
+ * the exact hardware this product ships to is the wrong side of the trade.
+ *
+ * So soft frames keep BOTH of the checks that carry real weight — the
+ * SIGNATURE (proof the frame came through the server's signer, which is what
+ * actually stops a forgery) and the per-eventId REPLAY dedup — and skip only
+ * the wall-clock window. Identical reasoning, and identical shape, to the
+ * recovery-lane exemption WAKE already had, and to `ALL_CLEAR` in
+ * `pushGate.ts`.
+ *
+ * HARD frames (a translated POWER_OFF/POWER_ON) stay fully gated: those DO
+ * reach hardware, so they keep the window they were designed for.
+ */
+export function displayFrameNeedsFreshness(cmd: DisplayControlCommand): boolean {
+  if (isDisplayRecoveryAction(cmd.action)) return false;
+  if (cmd.soft) return false;
+  return true;
+}
+
+/**
  * The transport gate a `DISPLAY_CONTROL` frame must clear, on WS and SSE
  * alike.
  *
@@ -234,14 +297,19 @@ export type DisplayPushVerdict =
  *     the same posture `isTenantChangeForThisScreen` takes: a frame that
  *     leaks onto the wrong channel must not blank someone else's screen.
  *  2. ACTION — parsed and allow-listed before anything else looks at it.
- *  3. SIGNATURE + FRESHNESS — for RISK-direction actions only (BLANK, dim,
- *     REBOOT). A captured BLANK replayed hours later is precisely the attack
- *     this closes. Contract C4 keeps WAKE out of this lane: dropping a real
+ *  3. SIGNATURE — for RISK-direction actions (everything but WAKE). The HMAC
+ *     is minted server-side; its absence proves the frame never passed the
+ *     signer. Contract C4 keeps WAKE out of this lane: dropping a real
  *     recovery command on a clock-skewed Android box that never got AUTH_OK
  *     would leave a dark screen with no way back, which is the worst outcome
  *     this feature has. (Same trade `pushGate.ts` already makes for
  *     `ALL_CLEAR`, and the APK still refuses anything risk-direction that
  *     arrives on an untrusted transport.)
+ *  3b. FRESHNESS — for HARD frames only, i.e. the ones that actually reach
+ *     hardware. A captured POWER_OFF replayed hours later is precisely the
+ *     attack this closes. SOFT frames (the black overlay) are exempt; see
+ *     {@link displayFrameNeedsFreshness} for why, and for the clock-skew
+ *     failure that exemption exists to kill.
  *  4. REPLAY — per-eventId, in the LRU shared with the life-safety gate, so
  *     a frame seen on one transport cannot be replayed on the other. Applied
  *     to recovery actions too: a duplicated WAKE is harmless, but deduping
@@ -273,11 +341,20 @@ export function checkDisplayControlPush(
 
   const nowFn = ctx.now ?? Date.now;
 
-  // 3. Signature + freshness — risk direction only.
+  // 3. Signature — every risk-direction frame, soft or hard. The HMAC is what
+  //    proves the frame came through the server's signer; nothing below
+  //    relaxes it.
   if (!recovery) {
     if (typeof envelope.signature !== 'string' || envelope.signature.length === 0) {
       return { accepted: false, reason: 'unsigned' };
     }
+  }
+
+  // 3b. Freshness — HARD frames only. See `displayFrameNeedsFreshness`: a
+  //     soft frame is a black div in our own page, and a clock-skewed Android
+  //     box must not lose its Blank button over a window that only ever made
+  //     sense for a device-admin lock.
+  if (displayFrameNeedsFreshness(cmd)) {
     const adjustedNow = nowFn() + ctx.serverClockOffsetMs;
     const ts = envelope.timestamp;
     if (
@@ -605,9 +682,24 @@ export function dispatchDisplayControl(
   try {
     const verdict = checkDisplayControlPush(envelope, screenId, ctx);
     if (!verdict.accepted) {
+      // A DROPPED FRAME MUST EXPLAIN ITSELF. The operator sees "sent" in the
+      // dashboard for every one of these — the server's `delivered:true` only
+      // means the fan-out was up, never that this screen acted — so the panel's
+      // own console is the only place the truth can appear. Carry the numbers
+      // that identify WHICH verdict fired without a second debugging session:
+      // `stale` is meaningless without the timestamp, the learned clock offset
+      // and the resulting skew.
+      const env = (envelope ?? {}) as Record<string, unknown>;
+      const ts = typeof env.timestamp === 'number' ? env.timestamp : null;
+      const skewMs =
+        ts === null ? null : Math.round((ctx.now ?? Date.now)() + ctx.serverClockOffsetMs - ts);
       console.warn(
         `[display ${corrId}] ${via} dropped ${verdict.reason} — action=${String(pl.action)} ` +
-          `target=${String(pl.screenId)} self=${screenId}`,
+          `soft=${pl.soft === true} hard=${pl.hard === true} ` +
+          `target=${String(pl.screenId)} self=${screenId} ` +
+          `signed=${typeof env.signature === 'string' && env.signature.length > 0} ` +
+          `ts=${ts} offset=${ctx.serverClockOffsetMs}ms skew=${skewMs}ms ` +
+          `(window ±${PUSH_FRESHNESS_WINDOW_MS}ms)`,
       );
       return { status: 'dropped', reason: verdict.reason };
     }

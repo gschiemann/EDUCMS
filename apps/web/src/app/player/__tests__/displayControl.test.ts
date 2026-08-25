@@ -413,7 +413,7 @@ describe('THE SPLIT: soft frames draw the overlay, hard frames drive hardware', 
     expect(callMock).not.toHaveBeenCalled();
   });
 
-  it('applies the SAME transport gate to soft frames — scope, replay, staleness', () => {
+  it('applies scope, signature and replay to soft frames', () => {
     const s = sink();
     const seen = new Map<string, number>();
     // Wrong screen.
@@ -426,16 +426,17 @@ describe('THE SPLIT: soft frames draw the overlay, hard frames drive hardware', 
         s,
       ),
     ).toEqual({ status: 'dropped', reason: 'not-ours' });
-    // Stale — a captured soft BLANK must not replay hours later either.
+    // Unsigned — the HMAC is what proves the frame came through the signer,
+    // and dropping the freshness window did NOT relax it.
     expect(
       dispatchDisplayControl(
-        envelope({ action: 'BLANK', soft: true }, { timestamp: NOW - 10 * 60_000 }),
+        envelope({ action: 'BLANK', soft: true }, { signature: '' }),
         'screen-1',
         ctx(seen),
         'WS',
         s,
       ),
-    ).toEqual({ status: 'dropped', reason: 'stale' });
+    ).toEqual({ status: 'dropped', reason: 'unsigned' });
     // Replay across transports.
     const frame = envelope({ action: 'BLANK', soft: true });
     expect(dispatchDisplayControl(frame, 'screen-1', ctx(seen), 'WS', s).status).toBe('soft');
@@ -444,6 +445,166 @@ describe('THE SPLIT: soft frames draw the overlay, hard frames drive hardware', 
       reason: 'replay',
     });
     expect(s.calls).toEqual([true]);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════
+// P0 REGRESSION — 2026-08-25, "no wake or blank working"
+// ═════════════════════════════════════════════════════════════════
+/**
+ * Two independent defects took the operator's Blank button off the air on a
+ * live fleet. The render-exit one is guarded in
+ * `softBlankRenderExits.test.ts` (it lives in page.tsx). This is the other:
+ * the freshness window, written for a device-admin BLANK, was still being
+ * applied to a black `<div>`.
+ */
+describe('P0: a clock-skewed panel keeps its Blank button', () => {
+  /**
+   * The failure mode: `serverClockOffsetMs` is learned ONCE per socket at
+   * AUTH_OK. An Android signage box that boots without NTP and gets stepped
+   * afterwards carries a wrong offset for the life of that socket — and every
+   * risk-direction frame then reads as `stale`. Before this change that
+   * silently killed BLANK (and every brightness change) with nothing but a
+   * console line to show for it, while WAKE kept working — which presents to
+   * the operator as "blank and wake both do nothing", because a WAKE with no
+   * overlay up is indistinguishable from a WAKE that did nothing.
+   */
+  const skewed = (seen = new Map<string, number>()) => ({
+    seenEventIds: seen,
+    // Ten minutes of RTC drift the AUTH_OK sample never saw.
+    serverClockOffsetMs: 0,
+    now: () => NOW + 10 * 60_000,
+  });
+
+  it('ACTS on a validly-signed soft BLANK ten minutes off the wall clock', () => {
+    const s = sink();
+    expect(
+      dispatchDisplayControl(
+        envelope({ action: 'BLANK', soft: true }),
+        'screen-1',
+        skewed(),
+        'WS',
+        s,
+      ),
+    ).toEqual({ status: 'soft', action: 'BLANK', overlay: true });
+    expect(s.on).toBe(true);
+    // And it still never touched the hardware.
+    expect(callMock).not.toHaveBeenCalled();
+  });
+
+  it('ACTS on the matching soft WAKE (recovery lane, unchanged)', () => {
+    const s = sink();
+    s.set(true);
+    expect(
+      dispatchDisplayControl(
+        envelope({ action: 'WAKE', soft: true }),
+        'screen-1',
+        skewed(),
+        'WS',
+        s,
+      ),
+    ).toEqual({ status: 'soft', action: 'WAKE', overlay: false });
+    expect(s.on).toBe(false);
+  });
+
+  it('STILL refuses a skewed HARD frame — those reach real hardware', () => {
+    // POWER_OFF is translated onto the legacy 'BLANK' verb + hard:true. It
+    // drives a vendor backlight recipe, so a captured one replayed later is a
+    // genuine attack and keeps the window it was designed for.
+    const s = sink();
+    expect(
+      dispatchDisplayControl(
+        envelope({ action: 'BLANK', hard: true }),
+        'screen-1',
+        skewed(),
+        'WS',
+        s,
+      ),
+    ).toEqual({ status: 'dropped', reason: 'stale' });
+    expect(callMock).not.toHaveBeenCalled();
+  });
+
+  it('STILL refuses a skewed brightness change', () => {
+    // Brightness reaches the panel through the APK; only the overlay left the
+    // freshness lane. (A dark screen still has WAKE as its guaranteed way back.)
+    expect(
+      dispatchDisplayControl(
+        envelope({ action: 'SET_BRIGHTNESS', percent: 10 }),
+        'screen-1',
+        skewed(),
+        'WS',
+        sink(),
+      ),
+    ).toEqual({ status: 'dropped', reason: 'stale' });
+  });
+
+  it('names the reason AND the numbers behind it on every drop', () => {
+    // "It did nothing and said nothing" is the whole complaint. A dropped
+    // frame must be self-diagnosing on the panel's own console, because the
+    // dashboard's `delivered:true` only ever meant "the fan-out was up".
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    dispatchDisplayControl(
+      envelope({ action: 'BLANK', hard: true }),
+      'screen-1',
+      skewed(),
+      'WS',
+      sink(),
+    );
+    const line = warn.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(line).toContain('dropped stale');
+    expect(line).toContain('hard=true');
+    expect(line).toContain('signed=true');
+    expect(line).toMatch(/skew=\d+ms/);
+    expect(line).toMatch(/offset=0ms/);
+  });
+});
+
+/**
+ * THE DEPLOY-WINDOW CASE. A page bundle older than the split does not know
+ * the `soft` flag; the server's frame is a plain BLANK to it and it forwards
+ * to the bridge — the pre-split behaviour, deliberately preserved. What must
+ * NEVER happen is the inverse: a post-split page treating a soft frame as
+ * forwardable, or swallowing it with a success-shaped answer.
+ */
+describe('a soft frame degrades VISIBLY, never silently', () => {
+  it('reports no-overlay and does NOT forward when no sink is wired', () => {
+    const res = dispatchDisplayControl(
+      envelope({ action: 'BLANK', soft: true }),
+      'screen-1',
+      ctx(),
+      'WS',
+      undefined, // a caller that forgot the 5th argument
+    );
+    expect(res).toEqual({ status: 'no-overlay', action: 'BLANK' });
+    // Forwarding is the original brick. It must not happen even here.
+    expect(callMock).not.toHaveBeenCalled();
+  });
+
+  it('says so out loud rather than answering "sent"', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    dispatchDisplayControl(
+      envelope({ action: 'BLANK', soft: true }),
+      'screen-1',
+      ctx(),
+      'WS',
+      undefined,
+    );
+    expect(warn.mock.calls.map((c) => String(c[0])).join('\n')).toContain('had nowhere to go');
+  });
+
+  it('a flag-less frame from a pre-split API still drives the bridge', () => {
+    // The other half of the deploy window. Behaviour during a Vercel/Railway
+    // skew must not be invented — a frame with neither flag is exactly what
+    // it was before the split.
+    const res = dispatchDisplayControl(
+      envelope({ action: 'BLANK' }),
+      'screen-1',
+      ctx(),
+      'WS',
+      sink(),
+    );
+    expect(res).toEqual({ status: 'sent', action: 'BLANK' });
+    expect(callMock).toHaveBeenCalledWith('displayApply', '{"action":"BLANK"}');
   });
 });
 
@@ -736,7 +897,12 @@ describe('the DISPLAY_CONTROL transport gate', () => {
       });
     });
 
-    it('drops a STALE blank — a captured BLANK must not replay hours later', () => {
+    it('drops a STALE flag-less BLANK — that one still reaches hardware', () => {
+      // No `soft` flag = a pre-split frame = forwarded to `displayApply` =
+      // a device-admin lock on real glass. Replaying a captured one hours
+      // later is the attack the window was built for, so it keeps the window.
+      // (The SOFT pair left this lane in the 2026-08-25 second pass — see the
+      // "clock-skewed panel keeps its Blank button" block above.)
       const e = envelope({ action: 'BLANK' }, { timestamp: NOW - 10 * 60_000 });
       expect(dispatchDisplayControl(e, 'screen-1', ctx())).toEqual({
         status: 'dropped',
@@ -865,7 +1031,26 @@ describe('page.tsx is actually wired to this module', () => {
 
   it('renders a black overlay gated on the soft-blank state', () => {
     expect(src).toMatch(/data-edu-soft-blank/);
-    expect(src).toMatch(/\{softBlank && /);
+    // Hoisted to a single `softBlankOverlay` const (2026-08-25 second pass) so
+    // that EVERY render exit can render the same node — see
+    // `softBlankRenderExits.test.ts`, which is the guard that matters.
+    expect(src).toMatch(/const softBlankOverlay\s*=/);
+  });
+
+  it('confirms the overlay actually PAINTED after a soft blank', () => {
+    // The bug was never "the state did not flip" — it was "the state flipped
+    // and no pixel changed". `softBlank === true` is not evidence; the DOM
+    // node is. The page attaches a ref to the div and, a beat after every
+    // accepted soft BLANK, checks it and screams if it is missing.
+    expect(src).toMatch(/ref=\{softBlankNodeRef\}/);
+    expect(src).toMatch(/SOFT BLANK ACCEPTED BUT NOT PAINTED/);
+  });
+
+  it('records every display verdict where a human can read it', () => {
+    // `delivered:true` from the API only means the fan-out was up. The panel
+    // is the only witness to what actually happened, so it keeps a rolling
+    // log on the same kind of diagnostic global the sync work established.
+    expect(src).toMatch(/__eduDisplayControl/);
   });
 
   it('never lets the overlay paint over an emergency', () => {

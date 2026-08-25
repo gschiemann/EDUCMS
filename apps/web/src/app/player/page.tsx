@@ -3348,6 +3348,22 @@ function PlayerPage() {
   // reloads needs a server-held flag and is a recorded follow-up.
   const [softBlank, setSoftBlank] = useState(false);
   const softBlankRef = useRef(false);
+  /**
+   * The overlay's real DOM node, or null when it is not on the glass.
+   *
+   * ⚠️ THIS IS THE PROOF, AND `softBlank === true` IS NOT.
+   *
+   * The 2026-08-25 field failure was exactly this gap: state flipped, the
+   * dispatcher logged "soft BLANK → overlay ON", the server audited
+   * `dispatched / delivered:true` — and no pixel changed, because the render
+   * exit that panel was taking never mounted the div. Every layer reported
+   * success and the only honest witness (the DOM) was never asked.
+   *
+   * So the callback ref below is the witness, and `applyDisplayControl`
+   * asks it a beat after every soft BLANK. A React ref callback fires on
+   * mount and unmount, which is precisely "is it there".
+   */
+  const softBlankNodeRef = useRef<HTMLDivElement | null>(null);
   const applySoftBlank = useCallback((on: boolean) => {
     if (softBlankRef.current === on) return;
     softBlankRef.current = on;
@@ -5332,8 +5348,8 @@ function PlayerPage() {
      * device-admin lock that latched two panels. HARD frames (a translated
      * POWER_OFF/POWER_ON) still go straight through.
      */
-    const applyDisplayControl = (envelope: any, via: 'WS' | 'SSE') =>
-      dispatchDisplayControl(
+    const applyDisplayControl = (envelope: any, via: 'WS' | 'SSE') => {
+      const result = dispatchDisplayControl(
         envelope,
         screenId,
         {
@@ -5343,6 +5359,65 @@ function PlayerPage() {
         via,
         softBlankSinkRef.current,
       );
+
+      // ── NOTHING THE OPERATOR PRESSES MAY VANISH WITHOUT A TRACE ────────
+      //
+      // The dashboard's `delivered:true` means "the Redis fan-out was up",
+      // never "this screen acted" (see ApplyActionResult.delivered in
+      // display.service.ts). So the panel is the ONLY place the truth exists,
+      // and until this block it existed for exactly as long as a console line
+      // scrolled past on a wall-mounted kiosk nobody can open devtools on.
+      //
+      // Two cheap, endpoint-free witnesses:
+      //
+      //  1. A rolling verdict log on `window.__eduDisplayControl`, mirroring
+      //     the `__eduSyncState` / `__eduSyncFlips` diagnostics the sync work
+      //     already established. Readable over ScreenConnect / the browser
+      //     console / a Playwright eval, with zero server surface.
+      //  2. PAINT CONFIRMATION. A soft BLANK that reports success but whose
+      //     div is not in the DOM a beat later is the 2026-08-25 bug, and it
+      //     now screams instead of smiling. 400 ms is far longer than a React
+      //     commit even on a Chromium-83 Taurus, and the check re-reads live
+      //     emergency state first so an alert legitimately punching through
+      //     is never mistaken for the defect.
+      try {
+        const dbg = ((window as any).__eduDisplayControl ||= { last: null, recent: [] });
+        const pl = envelope?.payload ?? envelope ?? {};
+        const entry = {
+          at: new Date().toISOString(),
+          via,
+          requested: pl?.action ?? null,
+          soft: pl?.soft === true,
+          hard: pl?.hard === true,
+          actionId: pl?.actionId ?? null,
+          result,
+          offsetMs: serverClockOffsetRef.current,
+        };
+        dbg.last = entry;
+        dbg.recent.push(entry);
+        if (dbg.recent.length > 20) dbg.recent.shift();
+      } catch { /* SSR-safe / hostile-global no-op — never break the socket */ }
+
+      if (result.status === 'soft' && result.overlay) {
+        setTimeout(() => {
+          if (softBlankNodeRef.current) return; // painted — nothing to say
+          if (!softBlankRef.current) return; // a WAKE landed inside the window
+          if (softBlankSinkRef.current.emergencyDisplayed()) return; // correctly withheld
+          console.error(
+            '[display] SOFT BLANK ACCEPTED BUT NOT PAINTED — the overlay div is ' +
+              'not in the DOM. This render branch is missing {softBlankOverlay}; ' +
+              'the operator pressed Blank and the glass did not change. ' +
+              '(2026-08-25 regression class — see the const in page.tsx.)',
+          );
+          try {
+            const dbg = (window as any).__eduDisplayControl;
+            if (dbg?.last) dbg.last.paintConfirmed = false;
+          } catch { /* no-op */ }
+        }, 400);
+      }
+
+      return result;
+    };
 
     // Sprint 11 Phase B — SSE realtime fallback (middle tier).
     // Engaged when WS has failed >=3 times. Listens for the same
@@ -7339,6 +7414,75 @@ function PlayerPage() {
     />
   ) : null;
 
+  // ── SOFT BLANK (2026-08-25) — the universal, unbrickable blank ─────────
+  //
+  // ⚠️ THIS IS A CROSS-BRANCH OVERLAY. It is hoisted here, beside
+  // {otaOverlay} / {connectivityToast} / {unsignedWsBanner} / {canvasEditor},
+  // because this component has FIVE render exits and an overlay that lives in
+  // only one of them is a feature that silently does nothing on every screen
+  // that takes a different exit.
+  //
+  // THAT IS NOT HYPOTHETICAL — it is the third time in this file:
+  //   2026-04-29  {otaOverlay} missing from the TEMPLATE branch → "pushed the
+  //               update and got no feedback on the player".
+  //   2026-05-14  <TouchOverlay>/<TouchNavOverlay> missing from the TEMPLATE
+  //               branch → "nothing happened on tap".
+  //   2026-08-25  THIS overlay, shipped inside the non-template branch only.
+  //               Field proof: G43 and M43 were both playing a single-zone
+  //               EXTERNAL_HTML template playlist, so both took the
+  //               `isTemplate && !playbackStopped` early return and never
+  //               mounted the div. Every press audited `dispatched /
+  //               delivered:true / mechanism web-overlay`; the panel logged
+  //               "soft BLANK → overlay ON"; nothing changed on the glass.
+  //               L55VEC, the one panel where Blank worked, had no active
+  //               template schedule and so fell through to the main return.
+  //
+  // The rule that ends the pattern: render `{softBlankOverlay}` from EVERY
+  // return in this component. `__tests__/softBlankRenderExits.test.ts` parses
+  // this file and fails the build if any render exit omits it.
+  //
+  // The operator's Blank button is THIS: one black div, drawn by the player
+  // itself. It never reaches the APK, so it can never take the device-admin
+  // lock that latched a Goodview G43 and a Mobile A-Frame into an
+  // unrecoverable vendor standby on the incident night. WAKE removes it; a
+  // reload removes it; an emergency removes it. Hardware power is a separate
+  // pair of verbs (POWER_OFF / POWER_ON) behind a proven-mechanism allowlist.
+  //
+  // EMERGENCY ALWAYS PUNCHES THROUGH — three independent guarantees:
+  //   1. dispatchDisplayControl DROPS a BLANK while an emergency is displayed
+  //      (and clears any overlay already up);
+  //   2. the state-edge effect above force-clears on the emergency edge;
+  //   3. this render condition, which cannot paint black over an alert even
+  //      if 1 and 2 both somehow failed.
+  // Plus zIndex 9990, BELOW EmergencyOverlay's 9999, so the overlay would
+  // lose the stacking contest anyway.
+  //
+  // ⚠️ TAURUS (CLAUDE.md #10): longhand top/right/bottom/left, never `inset` /
+  // `inset-0`. All four are the SAME value, which is the uniform case the
+  // Chromium-83 polyfill is built to force-zero — the non-uniform
+  // serialization landmine (variant 3) does not apply.
+  const softBlankOverlay =
+    softBlank && !activeEmergency && !pushedEmergencyMessage ? (
+      <div
+        data-edu-soft-blank="1"
+        ref={softBlankNodeRef}
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+          zIndex: 9990,
+          background: '#000000',
+          // Swallow touches rather than letting a visitor interact with
+          // content they cannot see. A kiosk that looks off must behave
+          // off; Wake — or any page reload — brings it back.
+          pointerEvents: 'auto',
+        }}
+      />
+    ) : null;
+
   // ─── Render: Registering ───
   if (phase === 'registering') {
     return (
@@ -7358,6 +7502,7 @@ function PlayerPage() {
         {connectivityToast}
         {unsignedWsBanner}
         {canvasEditor}
+        {softBlankOverlay}
       </>
     );
   }
@@ -7429,6 +7574,7 @@ function PlayerPage() {
         {connectivityToast}
         {unsignedWsBanner}
         {canvasEditor}
+        {softBlankOverlay}
       </>
     );
   }
@@ -7982,6 +8128,13 @@ function PlayerPage() {
         {connectivityToast}
         {unsignedWsBanner}
         {canvasEditor}
+        {/* 2026-08-25 — SAME AUDIT MISS, THIRD TIME. The blank/power split
+            put the soft-blank overlay in the non-template branch only, so
+            on G43 and M43 — both playing a single-zone EXTERNAL_HTML
+            template playlist — the operator's Blank and Wake buttons did
+            nothing at all while the server audited every press as
+            dispatched + delivered. This is the branch that was missing. */}
+        {softBlankOverlay}
 
         {/* 2026-05-14 — touch overlays. SAME AUDIT MISS AS
             otaOverlay above. The TouchOverlay + TouchNavOverlay
@@ -8075,34 +8228,41 @@ function PlayerPage() {
   if (effectiveTiles > 1 && typeof window !== 'undefined') {
     const baseUrl = `${window.location.pathname}?tile=child`;
     return (
-      <div
-        style={{
-          position: 'fixed',
-          top: 0, left: 0, right: 0, bottom: 0,
-          width: '100vw',
-          height: '100vh',
-          background: '#000',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'row',
-        }}
-      >
-        {Array.from({ length: effectiveTiles }).map((_, idx) => (
-          <iframe
-            key={`tile-${idx}`}
-            src={baseUrl}
-            title={`Ribbon tile ${idx + 1} of ${effectiveTiles}`}
-            style={{
-              flex: '1 1 0',
-              minWidth: 0,
-              height: '100%',
-              border: 0,
-              display: 'block',
-            }}
-            allow="autoplay"
-          />
-        ))}
-      </div>
+      <>
+        <div
+          style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            width: '100vw',
+            height: '100vh',
+            background: '#000',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'row',
+          }}
+        >
+          {Array.from({ length: effectiveTiles }).map((_, idx) => (
+            <iframe
+              key={`tile-${idx}`}
+              src={baseUrl}
+              title={`Ribbon tile ${idx + 1} of ${effectiveTiles}`}
+              style={{
+                flex: '1 1 0',
+                minWidth: 0,
+                height: '100%',
+                border: 0,
+                display: 'block',
+              }}
+              allow="autoplay"
+            />
+          ))}
+        </div>
+        {/* The tile CHILDREN are full player documents and each blanks
+            itself, but the parent owns the whole viewport — so it draws the
+            overlay too rather than relying on N children all succeeding.
+            Same uniform rule as every other exit; see the const's header. */}
+        {softBlankOverlay}
+      </>
     );
   }
 
@@ -9594,6 +9754,7 @@ function PlayerPage() {
       {connectivityToast}
       {unsignedWsBanner}
       {canvasEditor}
+      {softBlankOverlay}
       {/* Phase D1.5 — touch builder overlay layer. Renders ABOVE
           all playback chrome but BELOW the emergency override (which
           sits in its own z-index above everything for life-safety
@@ -9619,48 +9780,6 @@ function PlayerPage() {
           onBack={() => setTouchNavigatedTemplate(null)}
         />
       )}
-      {/* ── SOFT BLANK (2026-08-25) — the universal, unbrickable blank ──
-          The operator's Blank button is THIS: one black div, drawn by the
-          player itself. It never reaches the APK, so it can never take the
-          device-admin lock that latched a Goodview G43 and a Mobile A-Frame
-          into an unrecoverable vendor standby on the incident night. WAKE
-          removes it; a reload removes it; an emergency removes it. Hardware
-          power is a separate pair of verbs (POWER_OFF / POWER_ON) behind a
-          proven-mechanism allowlist.
-
-          EMERGENCY ALWAYS PUNCHES THROUGH — three independent guarantees:
-            1. dispatchDisplayControl DROPS a BLANK while an emergency is
-               displayed (and clears any overlay already up);
-            2. the effect above force-clears on the emergency state edge;
-            3. this render condition, which cannot paint black over an alert
-               even if 1 and 2 both somehow failed.
-          Plus zIndex 9990, BELOW EmergencyOverlay's 9999, so the overlay
-          would lose the stacking contest anyway.
-
-          ⚠️ TAURUS (CLAUDE.md #10): longhand top/right/bottom/left, never
-          `inset` / `inset-0`. All four are the SAME value, which is the
-          uniform case the Chromium-83 polyfill is built to force-zero — the
-          non-uniform serialization landmine (variant 3) does not apply. */}
-      {softBlank && !activeEmergency && !pushedEmergencyMessage && (
-        <div
-          data-edu-soft-blank="1"
-          aria-hidden="true"
-          style={{
-            position: 'fixed',
-            top: 0,
-            right: 0,
-            bottom: 0,
-            left: 0,
-            zIndex: 9990,
-            background: '#000000',
-            // Swallow touches rather than letting a visitor interact with
-            // content they cannot see. A kiosk that looks off must behave
-            // off; Wake — or any page reload — brings it back.
-            pointerEvents: 'auto',
-          }}
-        />
-      )}
-
       {/* 2026-05-26 P0-3 — Sprint 5 emergency-message renderer.
           WS-pushed messages (via SOS / TEXT_BROADCAST / MEDIA_ALERT
           types) land in `pushedEmergencyMessage`. When that's null,
