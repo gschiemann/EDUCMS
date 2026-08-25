@@ -51,9 +51,38 @@ const path = require('path');
 //   node apps/web/scripts/inject-shim-v2.cjs hs
 // so a flagship batch can re-shim just its own folder without churning all
 // 80 templates. No arg = every template under public/templates.
-const SUBDIR = process.argv[2] ? process.argv[2].replace(/^\/+|\/+$/g, '') : '';
+// --force re-injects even when the marker already matches. Without it, the
+// only way to iterate on the shim was to bump the version, so a bug fixed
+// before the version ever shipped still burned a version number (V10 → V11
+// happened exactly that way). Version bumps should mean "boards changed",
+// not "the author was iterating".
+const FORCE = process.argv.includes('--force');
+const ARGS = process.argv.slice(2).filter((a) => a !== '--force');
+const SUBDIR = ARGS[0] ? ARGS[0].replace(/^\/+|\/+$/g, '') : '';
 const ROOT = path.resolve(__dirname, '../public/templates', SUBDIR);
-const MARKER = 'EDUCMS-SHIM-V11';
+const MARKER = 'EDUCMS-SHIM-V12';
+// V12 also fixes CLICK TARGETING. Listeners are bound in CAPTURE phase, so
+// the OUTERMOST editable ancestor fired first and won every click. On boards
+// that wrap the whole scene in an image slot — `<main class="scene"
+// data-imgslot="hero.image">` in signage/worship/welcome-v2 — that meant
+// clicking ANY field (the clock, the headline, the church name) jumped the
+// panel to "Hero - Image" and focused a URL box. The inner element's own
+// stopPropagation could not help: by then the ancestor had already posted.
+// Each handler now resolves the nearest editable ancestor of the real click
+// target and stands down unless that is itself — innermost wins, regardless
+// of phase.
+//
+// V12 (2026-08-25) makes the WALL CLOCK live. 42 boards across worship, hs,
+// school, corporate, qsr and retail shipped the current time as authored TEXT
+// — every church board sat at "9:42 AM" forever. 35 other boards carry a
+// self-driven clock engine; this gives the rest the same behaviour without
+// editing 42 files. A board that ships the `clock.mode` config span drives its
+// own clock and is skipped, and an operator text override on a clock field
+// still wins — it is an editable field, so their words beat the wall clock.
+// The rendered shape is inferred from what the board authored ("SUNDAY · JUL
+// 26" keeps its long weekday and separator; "SUN · OCT 18" keeps its short
+// one), because reformatting them would be redesigning the board.
+//
 // V11 (2026-08-25) = V10 with its escaping fixed. V10's group-detection regex
 // was authored inside this template literal without doubled backslashes, so the
 // EMITTED board carried `/^([A-Za-z][w-]*).(d+)./` — a different, perfectly
@@ -134,7 +163,7 @@ const MARKER = 'EDUCMS-SHIM-V11';
 // HTML-entity-decodes text overrides (so "Mix & Match" no longer renders the
 // literal "&amp;"). V5/V4/V3/V2/V1 are removed + replaced (pure superset — zero
 // regression for the live player, which never enters edit mode).
-const OLD_MARKERS = ['EDUCMS-SHIM-V10', 'EDUCMS-SHIM-V9', 'EDUCMS-SHIM-V8', 'EDUCMS-SHIM-V7', 'EDUCMS-SHIM-V6', 'EDUCMS-SHIM-V5', 'EDUCMS-SHIM-V4', 'EDUCMS-SHIM-V3', 'EDUCMS-SHIM-V2', 'EDUCMS-BRAND-SHIM'];
+const OLD_MARKERS = [...(process.argv.includes('--force') ? ['EDUCMS-SHIM-V12'] : []), 'EDUCMS-SHIM-V11', 'EDUCMS-SHIM-V10', 'EDUCMS-SHIM-V9', 'EDUCMS-SHIM-V8', 'EDUCMS-SHIM-V7', 'EDUCMS-SHIM-V6', 'EDUCMS-SHIM-V5', 'EDUCMS-SHIM-V4', 'EDUCMS-SHIM-V3', 'EDUCMS-SHIM-V2', 'EDUCMS-BRAND-SHIM'];
 
 // Inline runtime — minified, runs at end of <head> before first paint.
 // Reads `brand`, `text`, `textStyles`, `img`, `video` from URL params; applies
@@ -157,7 +186,7 @@ const SHIM = `<script>/*${MARKER}*/(function(){try{
 var editMode=false;
 function applyPosters(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\\\"');var safe=v.replace(/["'()\\s]/g,'');var el=document.querySelector('[data-posterslot="'+esc+'"]');if(!el)return;if(safe)el.setAttribute('poster',safe);else el.removeAttribute('poster');el.setAttribute('data-has-image',safe?'true':'false');});}
 function applyVideos(video){if(!video)return;Object.keys(video).forEach(function(k){var v=video[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\\\"');var safe=v.replace(/["'()\\s]/g,'');var el=document.querySelector('[data-videoslot="'+esc+'"]');if(!el)return;var owner=el.tagName==='VIDEO'?el:(el.closest?el.closest('video'):null);if(el.tagName==='VIDEO'||el.tagName==='SOURCE'){if(safe)el.setAttribute('src',safe);else el.removeAttribute('src');}else{el.setAttribute('data-video',safe);}el.setAttribute('data-has-video',safe?'true':'false');if(owner){try{owner.load();if(owner.autoplay&&safe){var play=owner.play();if(play&&play.catch)play.catch(function(){});}}catch(e){}}});}
-function armMediaEdit(){document.querySelectorAll('[data-posterslot],[data-videoslot]').forEach(function(el){if(el.__veMediaArmed)return;el.__veMediaArmed=true;el.style.cursor='pointer';var isVideo=el.hasAttribute('data-videoslot');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed #06b6d4';el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-videoslot')||el.getAttribute('data-posterslot')||'';try{parent.postMessage({type:'educms-field-click',key:key,kind:isVideo?'video':'img'},'*');}catch(_){}},true);});}
+function armMediaEdit(){document.querySelectorAll('[data-posterslot],[data-videoslot]').forEach(function(el){if(el.__veMediaArmed)return;el.__veMediaArmed=true;el.style.cursor='pointer';var isVideo=el.hasAttribute('data-videoslot');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed #06b6d4';el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){var _t=ev.target;var _n=(_t&&_t.closest)?_t.closest('[data-field],[data-mediafield],[data-imgslot],[data-img],[data-slot],[data-action],[data-videoslot],[data-posterslot]'):null;if(_n&&_n!==el)return;ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-videoslot')||el.getAttribute('data-posterslot')||'';try{parent.postMessage({type:'educms-field-click',key:key,kind:isVideo?'video':'img'},'*');}catch(_){}},true);});}
 // ── Gallery FREEZE mode ──────────────────────────────────────────────
 // Installed FIRST (this script is at end of <head>, before the board's own
 // <body> scripts), so the timer-wrappers below capture every timer the board
@@ -185,7 +214,7 @@ function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MA
 var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
 function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);if(Object.prototype.hasOwnProperty.call(s,'hidden')){el.style.display=s.hidden?'none':'';}}}});}
 function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\\\"');var safe=v.replace(/["'()\\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(slot.tagName==='IMG'){if(slot.__eduSrc0===undefined)slot.__eduSrc0=slot.getAttribute('src')||'';if(safe){slot.setAttribute('src',safe);slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{if(slot.__eduSrc0)slot.setAttribute('src',slot.__eduSrc0);else slot.removeAttribute('src');slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
-function armEdit(){document.querySelectorAll('[data-field],[data-mediafield],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');var isSrc=el.hasAttribute('data-mediafield');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':(isSrc?'#8b5cf6':'#06b6d4'));el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-mediafield')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(isSrc?'media':(el.hasAttribute('data-field')?'text':'img'));try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
+function armEdit(){document.querySelectorAll('[data-field],[data-mediafield],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');var isSrc=el.hasAttribute('data-mediafield');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':(isSrc?'#8b5cf6':'#06b6d4'));el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){var _t=ev.target;var _n=(_t&&_t.closest)?_t.closest('[data-field],[data-mediafield],[data-imgslot],[data-img],[data-slot],[data-action],[data-videoslot],[data-posterslot]'):null;if(_n&&_n!==el)return;ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-mediafield')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(isSrc?'media':(el.hasAttribute('data-field')?'text':'img'));try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
 
 function _rpGroups(){var map={},all=document.querySelectorAll('[data-field],[data-mediafield],[data-style]');
 for(var i=0;i<all.length;i++){var el=all[i],k=el.getAttribute('data-field')||el.getAttribute('data-mediafield')||el.getAttribute('data-style')||'';
@@ -215,11 +244,72 @@ if(want<have){for(var d=have-1;d>=want;d--)if(g.items[d].parentNode)g.items[d].p
 else{var tpl=g.items[have-1];for(var a=have;a<want;a++){var cl=tpl.cloneNode(true);_rpRenumber(cl,g.group,g.base+have-1,g.base+a);g.parent.appendChild(cl);}}
 _rpStyle();g.parent.setAttribute('data-educms-repeat','');
 var kids=g.parent.children;for(var y=0;y<kids.length;y++)kids[y].setAttribute('data-educms-repeat-item','');}}
-function applyAll(){var p=readParams();applyBrand(p.brand);applyRepeat(p.repeat);applyTextAndStyles(p.text,p.styles);applyImages(p.img);applyPosters(p.img);applyVideos(p.video);if(editMode){armEdit();armMediaEdit();}}
+
+var TIME_KEYS={'clock.time':1,'meta.time':1,'header.time':1,'now.time':1,'time.now':1};
+var DATE_KEYS={'clock.date':1,'meta.day':1,'meta.date':1,'header.date':1,'header.day':1};
+function _ckCfg(k,fb){var el=document.querySelector('[data-field="'+k+'"]');var v=el?(el.textContent||'').trim():'';return v||fb;}
+/* Match the shape the board AUTHORED — "SUNDAY · JUL 26" and "SUN · OCT 18"
+ * are different designs, and a clock that reformats them has redesigned the
+ * board. Infer weekday length, separator and case from the sample. */
+function _ckDate(sample,d,tz,locale){
+  var longDay=/^[A-Za-z]{4,}/.test(sample.replace(/^\\s+/,''));
+  /* Capture the separator WITH its surrounding whitespace — trimming it
+   * turns the authored "SUNDAY · JUL 26" into "TUESDAY· AUG 25", which is
+   * a (small, ugly) redesign of the board. */
+  var sep=(sample.match(/[A-Za-z]([^A-Za-z0-9]+)[A-Za-z]/)||[,' '])[1]||' ';
+  var o={weekday:longDay?'long':'short',month:'short',day:'numeric'};
+  if(tz)o.timeZone=tz;
+  var parts;
+  try{parts=new Intl.DateTimeFormat(locale||'en-US',o).formatToParts(d);}catch(e){return sample;}
+  var g=function(t){var f=null;for(var i=0;i<parts.length;i++)if(parts[i].type===t)f=parts[i].value;return f||'';};
+  var out=g('weekday')+sep+g('month')+' '+g('day');
+  return sample===sample.toUpperCase()?out.toUpperCase():out;
+}
+function _ckTime(sample,d,tz,locale,hour12){
+  var o={hour:'numeric',minute:'2-digit',hour12:hour12};
+  if(tz)o.timeZone=tz;
+  var out;
+  try{out=new Intl.DateTimeFormat(locale||'en-US',o).format(d);}catch(e){return sample;}
+  return sample===sample.toUpperCase()?out.toUpperCase():out;
+}
+var _ckSamples=null,_ckTimer=null;
+/* A board that ships the K-12 clock config span already drives its own
+ * clock; two engines writing the same node would fight. */
+function _ckOwnEngine(){return !!document.querySelector('[data-field="clock.mode"]');}
+function startClock(text){
+  if(_ckOwnEngine())return;
+  var nodes=[];
+  var all=document.querySelectorAll('[data-field]');
+  for(var i=0;i<all.length;i++){
+    var k=all[i].getAttribute('data-field');
+    if(!TIME_KEYS[k]&&!DATE_KEYS[k])continue;
+    /* The operator typed something here — their words win over the wall
+     * clock, exactly as for any other editable field. */
+    if(text&&typeof text[k]==='string')continue;
+    nodes.push({el:all[i],key:k,isTime:!!TIME_KEYS[k]});
+  }
+  if(!nodes.length)return;
+  if(!_ckSamples){_ckSamples={};for(var j=0;j<nodes.length;j++)_ckSamples[nodes[j].key]=(nodes[j].el.textContent||'').trim();}
+  var tz=_ckCfg('clock.timeZone','');
+  var locale=_ckCfg('clock.locale','en-US');
+  var h12raw=_ckCfg('clock.hour12','yes');
+  var hour12=!/^(no|off|false|0|24)/i.test(h12raw);
+  function tick(){
+    var d=new Date();
+    for(var n=0;n<nodes.length;n++){
+      var s=_ckSamples[nodes[n].key]||'';
+      nodes[n].el.textContent=nodes[n].isTime?_ckTime(s,d,tz,locale,hour12):_ckDate(s,d,tz,locale);
+    }
+  }
+  tick();
+  if(_ckTimer)clearInterval(_ckTimer);
+  _ckTimer=setInterval(tick,15000);
+}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyRepeat(p.repeat);applyTextAndStyles(p.text,p.styles);applyImages(p.img);applyPosters(p.img);applyVideos(p.video);startClock(p.text);if(editMode){armEdit();armMediaEdit();}}
 applyBrand(readParams().brand);
 if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
 try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
-addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);if(d.repeat)applyRepeat(d.repeat);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});applyPosters(d.img||{});applyVideos(d.video||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();armMediaEdit();}}}catch(_){}});
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);if(d.repeat)applyRepeat(d.repeat);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});applyPosters(d.img||{});applyVideos(d.video||{});startClock(d.text||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();armMediaEdit();}}}catch(_){}});
 }catch(e){}})();</script>`;
 
 /**
@@ -277,7 +367,7 @@ let injected = 0, replaced = 0, skipped = 0;
 for (const file of files) {
   let html = fs.readFileSync(file, 'utf8');
 
-  if (html.includes(MARKER)) {
+  if (html.includes(MARKER) && !FORCE) {
     skipped++;
     continue;
   }
