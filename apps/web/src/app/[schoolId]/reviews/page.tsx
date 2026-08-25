@@ -11,6 +11,17 @@
  *
  * Visible only to SUPER_ADMIN, DISTRICT_ADMIN, SCHOOL_ADMIN — sidebar
  * link gating is in DashboardLayout.
+ *
+ * a11y wave (2026-08-24): every muted meta-text label in this file used
+ * `text-slate-400` on white/slate-50/slate-100 — axe-core flagged the two
+ * that were visible with an empty queue ("No pending submissions" /
+ * "Select a submission…") at 2.63:1, well under WCAG AA's 4.5:1 floor.
+ * The rest of this file's `text-slate-400` instances (row meta, note
+ * labels, asset/playlist/schedule detail text) are the identical class on
+ * the identical light backgrounds — they just weren't visible in that
+ * particular empty-queue scan state. Upgraded all of them to
+ * `text-slate-500` (~4.76:1 against white) rather than leaving a backlog
+ * of the same failure waiting for the first real submission to expose it.
  */
 
 import { useState } from 'react';
@@ -89,9 +100,9 @@ export default function ReviewsPage({ params }: { params: Promise<{ schoolId: st
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
-          {isLoading && <div className="p-6 text-center text-xs text-slate-400"><Loader2 className="w-4 h-4 animate-spin inline-block" /></div>}
+          {isLoading && <div className="p-6 text-center text-xs text-slate-500"><Loader2 className="w-4 h-4 animate-spin inline-block" /></div>}
           {!isLoading && (submissions || []).length === 0 && (
-            <div className="p-6 text-center text-xs text-slate-400">
+            <div className="p-6 text-center text-xs text-slate-500">
               {t('reviewsPage.emptyStateList', { status: statusFilter })}
             </div>
           )}
@@ -118,7 +129,7 @@ export default function ReviewsPage({ params }: { params: Promise<{ schoolId: st
         {selectedId ? (
           <ReviewDetail id={selectedId} onBack={() => setSelectedId(null)} statusFilter={statusFilter} />
         ) : (
-          <div className="h-full w-full flex items-center justify-center text-slate-400 text-sm">
+          <div className="h-full w-full flex items-center justify-center text-slate-500 text-sm">
             <p>{t('reviewsPage.selectSubmission')}</p>
           </div>
         )}
@@ -143,7 +154,7 @@ function SubmissionRowCard({ submission, selected, onClick }: { submission: Subm
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="text-xs font-bold text-slate-700 truncate">{submitterEmail}</div>
-          <div className="text-[10px] text-slate-400 mt-0.5">{t('reviewsPage.rowMeta', { date, count: itemCount })}</div>
+          <div className="text-[10px] text-slate-500 mt-0.5">{t('reviewsPage.rowMeta', { date, count: itemCount })}</div>
           {submission.note && (
             <div className="text-[11px] text-slate-500 mt-1 line-clamp-2">{submission.note}</div>
           )}
@@ -173,7 +184,7 @@ function ReviewDetail({ id, onBack, statusFilter }: { id: string; onBack: () => 
   const isViewer = userRole === 'RESTRICTED_VIEWER';
 
   if (isLoading || !submission) {
-    return <div className="p-12 text-center text-slate-400"><Loader2 className="w-6 h-6 animate-spin inline-block" /></div>;
+    return <div className="p-12 text-center text-slate-500"><Loader2 className="w-6 h-6 animate-spin inline-block" /></div>;
   }
 
   const itemCount = submission.assetIds.length + submission.playlistIds.length + submission.scheduleIds.length;
@@ -209,7 +220,7 @@ function ReviewDetail({ id, onBack, statusFilter }: { id: string; onBack: () => 
 
       {submission.note && (
         <div className="mb-4 p-3 bg-white rounded-lg border border-slate-200">
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{t('reviewsPage.submitterNote')}</div>
+          <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">{t('reviewsPage.submitterNote')}</div>
           <p className="text-sm text-slate-700">{submission.note}</p>
         </div>
       )}
@@ -236,7 +247,7 @@ function ReviewDetail({ id, onBack, statusFilter }: { id: string; onBack: () => 
                   </div>
                 )}
                 <div className="text-[10px] text-slate-600 truncate mt-1">{a.originalName || a.fileUrl}</div>
-                <div className="text-[9px] text-slate-400">{a.status}</div>
+                <div className="text-[9px] text-slate-500">{a.status}</div>
               </div>
             ))}
           </div>
@@ -248,12 +259,12 @@ function ReviewDetail({ id, onBack, statusFilter }: { id: string; onBack: () => 
           {submission.playlists.map((p: any) => (
             <div key={p.id} className="bg-white rounded-lg border border-slate-200 p-3 mb-2">
               <div className="text-sm font-bold text-slate-700">{p.name}</div>
-              <div className="text-[10px] text-slate-400">{t('reviewsPage.itemsCount', { count: p.items?.length || 0 })}</div>
+              <div className="text-[10px] text-slate-500">{t('reviewsPage.itemsCount', { count: p.items?.length || 0 })}</div>
               <ol className="mt-2 pl-4 text-xs text-slate-600 list-decimal space-y-0.5">
                 {(p.items || []).slice(0, 6).map((it: any) => (
                   <li key={it.id} className="truncate">{it.asset?.originalName || it.asset?.fileUrl || t('reviewsPage.assetFallback')}</li>
                 ))}
-                {(p.items || []).length > 6 && <li className="text-slate-400">{t('reviewsPage.andMore', { count: p.items.length - 6 })}</li>}
+                {(p.items || []).length > 6 && <li className="text-slate-500">{t('reviewsPage.andMore', { count: p.items.length - 6 })}</li>}
               </ol>
             </div>
           ))}
@@ -268,7 +279,7 @@ function ReviewDetail({ id, onBack, statusFilter }: { id: string; onBack: () => 
               <div className="text-slate-500 mt-1">
                 {t('reviewsPage.scheduleTarget')}: {s.screen?.name || s.screenGroup?.name || t('reviewsPage.unset')} · {t('reviewsPage.scheduleActive')}: {s.isActive ? t('reviewsPage.yes') : t('reviewsPage.no')}
               </div>
-              {s.daysOfWeek && <div className="text-slate-400 text-[10px] mt-0.5">{s.daysOfWeek} {s.timeStart && s.timeEnd ? `${s.timeStart}–${s.timeEnd}` : ''}</div>}
+              {s.daysOfWeek && <div className="text-slate-500 text-[10px] mt-0.5">{s.daysOfWeek} {s.timeStart && s.timeEnd ? `${s.timeStart}–${s.timeEnd}` : ''}</div>}
             </div>
           ))}
         </Section>

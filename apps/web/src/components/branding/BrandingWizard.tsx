@@ -596,7 +596,10 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
                   </button>
                 ))}
               </div>
-              <div className="text-[11px] text-slate-400">
+              {/* a11y wave (2026-08-24) — text-slate-400 on white measured
+                  2.63:1 via axe-core; text-slate-500 is ~4.76:1, clearing
+                  WCAG AA's 4.5:1 floor for this text size. */}
+              <div className="text-[11px] text-slate-500">
                 If a sample is blocked by the site&rsquo;s bot protection, try a different one — or paste your own URL.
               </div>
             </div>
@@ -641,7 +644,7 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
                 contrast. Universal fix that also handles dark logos +
                 colorful logos without per-logo logic. */}
             <Card className="p-4 space-y-3">
-              <div className="text-sm font-medium">Logos found <span className="text-slate-400">({preview.logos.length})</span></div>
+              <div className="text-sm font-medium">Logos found <span className="text-slate-500">({preview.logos.length})</span></div>
               {preview.logos.length > 0 && (
                 <div className="grid grid-cols-3 gap-2">
                   {preview.logos.map((l, i) => (
@@ -977,7 +980,7 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
       <div className={cn('lg:sticky lg:top-6 h-fit', preview ? 'order-1 lg:order-2' : 'order-2')}>
         <div className="flex items-center gap-2 mb-3 text-sm font-medium text-slate-700">
           <Eye className="h-4 w-4" /> Live preview
-          <span className="text-xs text-slate-400">— repaints as you tweak</span>
+          <span className="text-xs text-slate-500">— repaints as you tweak</span>
         </div>
         <Card className="p-0 overflow-hidden shadow-lg border-slate-300">
           <BrandingLivePreview branding={previewBranding} />
@@ -1057,7 +1060,7 @@ function PaletteRow({ label, value, onChange }: { label: string; value: string; 
 }
 
 function FontRow({ label, font }: { label: string; font: { family: string; googleFont: string | null } | null }) {
-  if (!font) return <div className="text-xs text-slate-400">{label}: none detected</div>;
+  if (!font) return <div className="text-xs text-slate-500">{label}: none detected</div>;
   return (
     <div className="flex items-center justify-between text-sm">
       <span className="text-slate-500 text-xs w-16">{label}</span>

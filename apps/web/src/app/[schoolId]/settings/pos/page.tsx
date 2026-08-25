@@ -375,7 +375,12 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
   };
 
   return (
+    // Backdrop — mouse-only convenience; the X icon button and Close/Cancel
+    // button below are the keyboard/AT-accessible dismissal paths.
+    // a11y wave (2026-08-24).
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[85dvh] overflow-y-auto p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">

@@ -40,9 +40,34 @@ jobs:
   axe:
     name: axe-core Automated Audit
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 2026-08-24 (a11y wave, §1 fix) — was 15. The job now also boots a real
+    # Postgres + the NestJS API so the scan covers AUTHENTICATED content
+    # instead of just the login shell (see a11y-audit.ts's header comment).
+    # That adds a db:push + db:seed + API build/boot/health-wait on top of
+    # the existing web build/start/health-wait; 25 min matches ci.yml's
+    # e2e job (which does strictly more: 2 browser installs + full Nest
+    # ts-watch boot) with headroom to spare.
+    timeout-minutes: 25
     permissions:
       contents: read
+    # Ephemeral Postgres, same pattern as `.github/workflows/ci.yml`'s `e2e`
+    # job — ephemeral, health-checked, never touches production data.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: educms_a11y
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/educms_a11y
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/educms_a11y
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -77,10 +102,63 @@ jobs:
           pnpm --filter @cms/scoreboard-cts build
           pnpm --filter @cms/signage-design build
 
+      # 2026-08-24 (a11y wave, §1 fix) — apply the schema to the ephemeral
+      # Postgres above, then seed it. Seeding creates admin@springfield.edu
+      # as SUPER_ADMIN (NODE_ENV is deliberately left unset for every step
+      # in this job — see packages/database/prisma/seed.ts CRED-01, which
+      # only demotes that account to CONTRIBUTOR when NODE_ENV=production),
+      # the Springfield Elementary tenant (a11y-audit.ts's SEED_TENANT), and
+      # every system template preset (including SEED_TEMPLATE_ID, used to
+      # audit the template builder route below).
+      - name: Apply Prisma schema to ephemeral Postgres
+        run: pnpm db:push
+      - name: Seed database (creates the SUPER_ADMIN + tenant a11y-audit.ts logs in as)
+        run: pnpm db:seed
+
+      - name: Build API
+        run: pnpm --filter api build
+
+      # 2026-08-24 (a11y wave, §1 fix) — apps/web/src/lib/api-url.ts's
+      # FALLBACK is `http://localhost:8080/api/v1`: NEXT_PUBLIC_API_URL is
+      # expected to include the `/api/v1` prefix (the client does NOT append
+      # it). This step previously set it to bare `http://localhost:8080`
+      # (harmless before this wave, because nothing was listening on 8080
+      # yet) — with the API now actually running, that bug would have sent
+      # every client fetch, including login, to the wrong path (confirmed
+      # locally: POST http://localhost:8080/auth/login 403's before even
+      # reaching the real /api/v1/auth/login route). NEXT_PUBLIC_* vars are
+      # baked in at BUILD time, so the fix belongs on this step, not Start.
       - name: Build Web
         run: pnpm --filter web build
         env:
-          NEXT_PUBLIC_API_URL: http://localhost:8080
+          NEXT_PUBLIC_API_URL: http://localhost:8080/api/v1
+
+      # Dev-mode boot (NODE_ENV unset): required-secret checks warn instead
+      # of throwing (apps/api/src/security/required-secret.ts) and CORS
+      # falls back to its permissive localhost allowlist, so no JWT/session/
+      # device secrets need to be minted for this job — see main.ts. Setting
+      # ALLOWED_ORIGINS anyway keeps the origin explicit rather than relying
+      # on that fallback.
+      #
+      # CSRF_ENFORCE=false (a11y wave, §1 fix): CSRF is enforced by default
+      # (CLAUDE.md, sec-fix wave1 #7), and a11y-audit.ts's login() goes
+      # through the real form/fetch rather than pre-priming a CSRF token —
+      # confirmed locally this 403s with "Invalid or missing CSRF token"
+      # otherwise. `tests/e2e/fixtures.ts` documents the same call for any
+      # job that boots a real API against a seeded test DB ("The API is
+      # running with CSRF_ENFORCE=false (warn mode)"); this mirrors that
+      # established, repo-supported pattern rather than inventing a new one.
+      # Irrelevant to production risk — this is a throwaway ephemeral DB
+      # with the public seed password, torn down at the end of the job.
+      - name: Start API in Background
+        run: node apps/api/dist/main.js &
+        env:
+          PORT: 8080
+          ALLOWED_ORIGINS: http://localhost:3000
+          CSRF_ENFORCE: 'false'
+
+      - name: Wait for API to be Ready
+        run: npx wait-on http://localhost:8080/api/v1/health --timeout 60000
 
       - name: Start Web in Background
         run: pnpm --filter web start &
@@ -94,3 +172,7 @@ jobs:
         run: pnpm a11y:ci
         env:
           A11Y_BASE_URL: http://localhost:3000
+          # Login MUST succeed — a silent fallback to unauthenticated
+          # scanning is exactly the regression this wave fixes. See
+          # a11y-audit.ts's login()/REQUIRE_LOGIN.
+          A11Y_REQUIRE_LOGIN: '1'

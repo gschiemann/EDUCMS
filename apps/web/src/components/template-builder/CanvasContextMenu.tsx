@@ -137,6 +137,13 @@ export function CanvasContextMenu({ clipboard, onCopy, onPaste }: Props) {
       data-canvas-context-menu="true"
       role="menu"
       aria-label={clicked ? 'Zone actions' : 'Canvas actions'}
+      // a11y wave (2026-08-24) — jsx-a11y/interactive-supports-focus: a
+      // role="menu" container must itself be focusable per the ARIA menu
+      // pattern. -1 keeps it out of sequential Tab order (it's summoned
+      // programmatically via right-click/context-menu, not tabbed to) while
+      // making it a valid script/focus target; each item underneath is
+      // already its own focusable <button role="menuitem">.
+      tabIndex={-1}
       className="py-1.5 rounded-xl bg-white border border-slate-200 shadow-xl"
       style={{ position: 'fixed', left: menu.x, top: menu.y, width: MENU_WIDTH, zIndex: 10001 }}
       // A right-click ON the menu itself shouldn't re-open a native menu

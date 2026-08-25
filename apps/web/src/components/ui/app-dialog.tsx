@@ -141,6 +141,19 @@ const TONE_STYLES: Record<DialogTone, { ring: string; icon: any; iconColor: stri
   info:    { ring: 'ring-sky-200',     icon: Info,          iconColor: 'text-sky-500',     confirmBtn: 'bg-sky-600 hover:bg-sky-700' },
 };
 
+// Focusable-element query used by the Tab trap below. Mirrors the standard
+// "inert modal" selector set (buttons, links, form controls, explicit
+// tabindex) minus anything explicitly removed from the tab order.
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), ' +
+  'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function getFocusable(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (el) => el.offsetParent !== null, // skip hidden elements
+  );
+}
+
 export function AppDialogHost() {
   const [current, setCurrent] = useState<DialogRequest | null>(null);
   const [promptValue, setPromptValue] = useState('');
@@ -157,6 +170,13 @@ export function AppDialogHost() {
   // so the browser's default Tab traversal never gets a chance.
   const cancelBtnRef = useRef<HTMLButtonElement>(null);
   const confirmBtnRef = useRef<HTMLButtonElement>(null);
+  // Container ref for the Tab focus trap (a11y wave, 2026-08-24) — scopes
+  // the "what's focusable right now" query to just this dialog's DOM.
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // The element that had focus immediately before this dialog (or the
+  // first dialog in a queued chain) opened. Restored on close so keyboard
+  // users land back where they were instead of at document.body.
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const l: Listener = (req) => {
@@ -168,7 +188,25 @@ export function AppDialogHost() {
   }, []);
 
   useEffect(() => {
-    if (!current) return;
+    if (!current) {
+      // Queue fully drained — return focus to whatever invoked the
+      // (first) dialog in the chain. Guard .isConnected in case the
+      // invoking element was removed from the DOM while the dialog was
+      // open (e.g. the row it lived in got deleted).
+      if (previousFocusRef.current?.isConnected) {
+        previousFocusRef.current.focus();
+      }
+      previousFocusRef.current = null;
+      return;
+    }
+    // Capture the pre-dialog focus target ONCE per queued sequence. If a
+    // second dialog is already queued behind this one, `current` jumps
+    // straight from request A to request B without ever passing through
+    // null (see `notify()`/`dismiss()` above) — don't clobber the
+    // ORIGINAL invoker with the just-closed dialog's own Confirm button.
+    if (!previousFocusRef.current) {
+      previousFocusRef.current = document.activeElement as HTMLElement | null;
+    }
     // Set initial focus on the confirm (or sole alert) button. Doing
     // this in an effect rather than autoFocus so we own the focus
     // lifecycle — the arrow-key handler below moves it between
@@ -200,13 +238,39 @@ export function AppDialogHost() {
         dismiss(current.id);
         return;
       }
+      // Focus trap (a11y wave, 2026-08-24) — 'alert' and 'prompt' dialogs
+      // have no dedicated arrow-key UX (that's confirm-only, below), so
+      // until now Tab/Shift+Tab on them fell through to the browser's
+      // native tab order and could walk focus straight out of the modal
+      // and into whatever page is stacked underneath it — a real trap
+      // failure for a `role="dialog" aria-modal="true"` surface. Wrap
+      // Tab within the dialog's own focusable elements (close-X, the
+      // prompt's text input, Confirm) instead.
+      if (current.kind !== 'confirm') {
+        if (e.key !== 'Tab' || !dialogRef.current) return;
+        const focusable = getFocusable(dialogRef.current);
+        if (focusable.length === 0) return;
+        e.preventDefault();
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement as HTMLElement | null;
+        const idx = active ? focusable.indexOf(active) : -1;
+        if (e.shiftKey) {
+          (idx <= 0 ? last : focusable[idx - 1]).focus();
+        } else {
+          (idx === -1 || idx === focusable.length - 1 ? first : focusable[idx + 1]).focus();
+        }
+        return;
+      }
       // D-pad / Tab / arrow navigation between the two confirm-row
       // buttons. Operator (2026-05-13): "unpair and the remote isnt
       // working on that section still". TV remotes / Android signage
       // boxes emit a variety of codes for "next/previous" — we cover
       // arrow keys, Tab/Shift+Tab, and the rare WebKit GamepadButton
-      // keycodes. Whichever fires, focus moves visibly.
-      if (current.kind !== 'confirm') return;
+      // keycodes. Whichever fires, focus moves visibly. This 2-way
+      // toggle is ALREADY a valid (if partial) focus trap — Tab can
+      // never escape a confirm dialog — so it's left untouched here;
+      // only the alert/prompt gap above is new.
       const isNext =
         e.key === 'ArrowRight' ||
         e.key === 'ArrowDown' ||
@@ -250,12 +314,19 @@ export function AppDialogHost() {
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-labelledby="app-dialog-title"
       className="fixed inset-0 z-[10000] flex items-center justify-center p-4 animate-in fade-in duration-150"
     >
-      {/* Backdrop */}
+      {/* Backdrop — mouse-only "click outside to close" convenience.
+          Escape (handled above, all 3 kinds) and the visible Close-X
+          (confirm/prompt kinds) are the real keyboard/AT-accessible
+          dismissal paths; making this div itself focusable would insert
+          an invisible full-viewport tab stop ahead of the dialog's own
+          controls. a11y wave (2026-08-24). */}
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div
         className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
         onClick={() => current.kind !== 'alert' && close(current.kind === 'prompt' ? null : false)}

@@ -17,7 +17,7 @@
  * /assets/upload chain.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Plus, Pencil, Trash2, Loader2, X, ImageIcon, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -270,6 +270,8 @@ function CueEditorModal({
   onDelete?: () => Promise<void>;
 }) {
   useOverlayLock(); // hide mobile tab bar so the modal footer clears it
+  // a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control.
+  const nameFieldId = useId();
   const [name, setName] = useState(cue?.name || '');
   const [mediaUrl, setMediaUrl] = useState(cue?.mediaUrl || '');
   const [durationMs, setDurationMs] = useState(cue?.durationMs || 6000);
@@ -296,10 +298,15 @@ function CueEditorModal({
   };
 
   return (
+    // Backdrop — mouse-only convenience; the aria-label="Close" button
+    // below is the keyboard/AT-accessible dismissal path. a11y wave
+    // (2026-08-24).
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
       onClick={onClose}
     >
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div
         className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5"
         onClick={(e) => e.stopPropagation()}
@@ -357,8 +364,10 @@ function CueEditorModal({
           />
         )}
 
-        <label className="mt-4 block text-xs font-semibold text-slate-500">Button name</label>
+        {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control */}
+        <label htmlFor={nameFieldId} className="mt-4 block text-xs font-semibold text-slate-500">Button name</label>
         <Input
+          id={nameFieldId}
           className="mt-1"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -367,8 +376,10 @@ function CueEditorModal({
         />
 
         {/* How the cue shows on the board — overlay (board stays visible)
-            vs full-screen takeover. */}
-        <label className="mt-3 block text-xs font-semibold text-slate-500">On the board</label>
+            vs full-screen takeover. a11y wave (2026-08-24) — heads a row
+            of choice buttons below, not one control
+            (jsx-a11y/label-has-associated-control). */}
+        <div className="mt-3 block text-xs font-semibold text-slate-500">On the board</div>
         <div className="mt-1 flex gap-1.5">
           {([
             ['overlay', 'Overlay', 'Drops into a lower band — score stays visible'],

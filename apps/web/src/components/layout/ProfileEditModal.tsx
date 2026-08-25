@@ -23,7 +23,7 @@
  *     greeting + sidebar + avatar update instantly
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { X as XIcon, Check, Loader2 } from 'lucide-react';
 import { useMe, useUpdateMe } from '@/hooks/use-api';
 import { firstName as displayFirst, initials as displayInitials } from '@/lib/user-display';
@@ -35,6 +35,9 @@ export function ProfileEditModal({ onClose }: { onClose: () => void }) {
   useOverlayLock();
   const { data: me, isLoading } = useMe();
   const update = useUpdateMe();
+  // a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control.
+  const firstNameId = useId();
+  const lastNameId = useId();
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -101,6 +104,11 @@ export function ProfileEditModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
+    // Backdrop — mouse-only convenience (onClick only fires when the click
+    // target IS the backdrop, not a bubbled child click); the
+    // aria-label="Close" button below is the keyboard/AT-accessible
+    // dismissal path. a11y wave (2026-08-24).
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
       // 2026-05-14 — mobile: bottom-sheet (items-end, full width).
       // Desktop: anchored near top with pt-24 (existing behavior).
@@ -141,8 +149,10 @@ export function ProfileEditModal({ onClose }: { onClose: () => void }) {
 
         <div className="p-6 space-y-4">
           <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">First name</label>
+            {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control */}
+            <label htmlFor={firstNameId} className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">First name</label>
             <input
+              id={firstNameId}
               autoFocus
               type="text"
               value={firstName}
@@ -154,8 +164,9 @@ export function ProfileEditModal({ onClose }: { onClose: () => void }) {
             />
           </div>
           <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Last name</label>
+            <label htmlFor={lastNameId} className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Last name</label>
             <input
+              id={lastNameId}
               type="text"
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}

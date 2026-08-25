@@ -345,7 +345,12 @@ function SponsorModal({ sponsor, onClose }: { sponsor: Sponsor | null; onClose: 
   };
 
   return (
+    // Backdrop — mouse-only convenience; the aria-label="Close" button
+    // below is the keyboard/AT-accessible dismissal path. a11y wave
+    // (2026-08-24).
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={onClose}>
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold text-slate-900">{isEdit ? 'Edit sponsor' : 'Add sponsor'}</h2>

@@ -264,10 +264,15 @@ function SponsorEditorModal({
   };
 
   return (
+    // Backdrop — mouse-only convenience; the aria-label="Close" button
+    // below is the keyboard/AT-accessible dismissal path. a11y wave
+    // (2026-08-24).
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
       onClick={onClose}
     >
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div
         className="bg-white rounded-2xl w-full max-w-md p-5 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
@@ -385,9 +390,11 @@ function SponsorEditorModal({
               "rotation weight 1–10" slider. `weight` stays the source of
               truth; the buttons just pick it. */}
           <div>
-            <label className="text-xs font-semibold text-slate-500">
+            {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control:
+                heads a row of frequency-tier buttons, not one control. */}
+            <div className="text-xs font-semibold text-slate-500">
               How often it appears
-            </label>
+            </div>
             <div className="mt-1 flex rounded-lg border border-slate-200 overflow-hidden">
               {FREQ_TIERS.map((t) => {
                 const on = weightToTier(weight) === t.value;

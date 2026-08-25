@@ -8,7 +8,7 @@
  * operator control surface and the public scoreboard board page.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   Trophy, Plus, Radio, ExternalLink, Trash2, X, BadgeDollarSign, Copy,
@@ -394,6 +394,13 @@ export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
   const router = useRouter();
   const schoolId = String(params?.schoolId || '');
   const createGame = useCreateGame();
+  // a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control.
+  const homeTeamFieldId = useId();
+  const awayTeamFieldId = useId();
+  const scheduledAtFieldId = useId();
+  const scoreboardLayoutFieldId = useId();
+  const ribbonLayoutFieldId = useId();
+  const scorebugLayoutFieldId = useId();
 
   const [sport, setSport] = useState(SPORTS[0]?.key || 'football');
   // Home team — lazy-initialized from the remembered last home team.
@@ -530,11 +537,16 @@ export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
     // Fix: scrollable overlay, items-start, pt-24 to clear the topbar,
     // and drop the max-h cap so the modal grows naturally while the
     // overlay handles overflow.
+    // Backdrop — mouse-only convenience; the aria-label="Close" button
+    // below is the keyboard/AT-accessible dismissal path. a11y wave
+    // (2026-08-24).
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
       className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50"
       onClick={onClose}
     >
       <div className="min-h-full flex items-start justify-center p-4 pt-24 pb-8">
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div
         className="w-full max-w-3xl rounded-2xl bg-white p-6 shadow-xl"
         onClick={(e) => e.stopPropagation()}
@@ -546,11 +558,12 @@ export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
           </Button>
         </div>
 
-        {/* sport picker */}
+        {/* sport picker. a11y wave (2026-08-24) — heads the button grid
+            below, not one control (jsx-a11y/label-has-associated-control). */}
         <div className="flex items-center justify-between gap-2">
-          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
             Sport
-          </label>
+          </div>
           {SPORTS.length > 8 && (
             <div className="relative w-40">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-300" />
@@ -595,7 +608,8 @@ export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
         <div className="mt-5 grid grid-cols-2 gap-4">
           <div>
             <div className="flex items-center justify-between gap-2">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control */}
+              <label htmlFor={homeTeamFieldId} className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                 Home team
               </label>
               {homeRemembered && (
@@ -610,6 +624,7 @@ export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
               )}
             </div>
             <Input
+              id={homeTeamFieldId}
               className="mt-1.5"
               value={homeTeam}
               onChange={(e) => {
@@ -627,10 +642,12 @@ export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
             />
           </div>
           <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+            {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control */}
+            <label htmlFor={awayTeamFieldId} className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
               Away team
             </label>
             <Input
+              id={awayTeamFieldId}
               className="mt-1.5"
               value={awayTeam}
               onChange={(e) => setAwayTeam(e.target.value)}
@@ -682,12 +699,14 @@ export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
         {/* Sports Wave S4-1 (P1-8) — optional kickoff date/time. Never
             required; leaving it blank is exactly today's behavior. */}
         <div className="mt-5">
-          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+          {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control */}
+          <label htmlFor={scheduledAtFieldId} className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
             When is it? <span className="text-slate-300 normal-case font-normal">(optional)</span>
           </label>
           <div className="mt-1.5 relative w-full sm:w-64">
             <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300 pointer-events-none" />
             <input
+              id={scheduledAtFieldId}
               type="datetime-local"
               value={scheduledAt}
               onChange={(e) => setScheduledAt(e.target.value)}
@@ -718,8 +737,10 @@ export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
             </p>
             <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="text-[11px] font-medium text-slate-600">Scoreboard</label>
+                {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control */}
+                <label htmlFor={scoreboardLayoutFieldId} className="text-[11px] font-medium text-slate-600">Scoreboard</label>
                 <select
+                  id={scoreboardLayoutFieldId}
                   className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm bg-white"
                   value={scoreboardTemplateId}
                   onChange={(e) => setScoreboardTemplateId(e.target.value)}
@@ -733,8 +754,9 @@ export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
                 </select>
               </div>
               <div>
-                <label className="text-[11px] font-medium text-slate-600">Ribbon</label>
+                <label htmlFor={ribbonLayoutFieldId} className="text-[11px] font-medium text-slate-600">Ribbon</label>
                 <select
+                  id={ribbonLayoutFieldId}
                   className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm bg-white"
                   value={ribbonTemplateId}
                   onChange={(e) => setRibbonTemplateId(e.target.value)}
@@ -748,8 +770,9 @@ export function CreateGameModal({ onClose, initialPresetTemplate = null }: {
                 </select>
               </div>
               <div>
-                <label className="text-[11px] font-medium text-slate-600">Scorebug</label>
+                <label htmlFor={scorebugLayoutFieldId} className="text-[11px] font-medium text-slate-600">Scorebug</label>
                 <select
+                  id={scorebugLayoutFieldId}
                   className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm bg-white"
                   value={scorebugTemplateId}
                   onChange={(e) => setScorebugTemplateId(e.target.value)}

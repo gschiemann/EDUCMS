@@ -850,7 +850,7 @@ export function PropertiesPanel() {
   return (
     <div className="p-5 space-y-6 text-xs" data-properties-panel="true">
       <section className="space-y-3">
-        <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Zone</h3>
+        <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Zone</h3>
 
         <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-100 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
@@ -864,7 +864,7 @@ export function PropertiesPanel() {
           <div>
             <label htmlFor={nameId} className="block text-[10px] font-semibold text-slate-500 mb-1.5">
               Name
-              <span className="ml-1.5 font-normal text-slate-400">— layer label (rename in the Layers tab)</span>
+              <span className="ml-1.5 font-normal text-slate-500">— layer label (rename in the Layers tab)</span>
             </label>
             {/* 2026-05-29 — operator: the layer Name should NOT be editable
                 here. It's not content (editing it got confused with the
@@ -977,7 +977,7 @@ export function PropertiesPanel() {
             </div>
           )}
 
-          <div className="text-[10px] text-slate-400/80 font-medium text-center bg-white py-1.5 rounded-md border border-slate-100/50">
+          <div className="text-[10px] text-slate-500 font-medium text-center bg-white py-1.5 rounded-md border border-slate-100/50">
             {posUnit === '%'
               ? <>Rendered: ~{pixelW}&times;{pixelH}px at {meta.screenWidth}&times;{meta.screenHeight}</>
               : <>{(zone.width).toFixed(1)}% &times; {(zone.height).toFixed(1)}% of {meta.screenWidth}&times;{meta.screenHeight} canvas</>}
@@ -1153,7 +1153,7 @@ function TemplateProperties() {
   return (
     <div className="p-5 space-y-6 text-xs">
       <section className="space-y-3">
-        <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Template Info</h3>
+        <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Template Info</h3>
         <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-100 shadow-sm space-y-3">
           <div>
             <label htmlFor={nameId} className="block text-[10px] font-semibold text-slate-500 mb-1.5">Name</label>
@@ -1183,7 +1183,7 @@ function TemplateProperties() {
       </section>
 
       <section className="space-y-3">
-        <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Canvas Resolution</h3>
+        <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Canvas Resolution</h3>
         <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-100 shadow-sm">
           <div className="grid grid-cols-2 gap-3">
             <NumField id={widthId} label="Width (px)" value={meta.screenWidth} onChange={(v) => setMeta({ screenWidth: Math.round(v) })} min={200} max={10000} step={10} />
@@ -1205,8 +1205,17 @@ function TemplateProperties() {
           mostly redundant. Kept as a small status row + manual
           override (rare: operator wants to disable for testing). */}
       <section className="space-y-2">
-        <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Interactive (touch) mode</h3>
-        <label className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${isTouchEnabled ? 'bg-violet-50/50 border-violet-200' : 'bg-slate-50/50 border-slate-100 hover:border-slate-200'}`}>
+        <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Interactive (touch) mode</h3>
+        {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control
+            ("A form label must have accessible text"): the checkbox IS
+            correctly wrapped, but the visible text sits 2 levels deep
+            (label > span.flex-1 > span.block) — past this rule's default
+            depth of 2 (see node_modules/eslint-plugin-jsx-a11y/lib/rules/
+            label-has-associated-control.js). aria-label on the label
+            itself is checked directly, independent of nesting depth. */}
+        <label
+          aria-label={isTouchEnabled ? 'Touch mode: ON' : 'Touch mode: OFF'}
+          className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${isTouchEnabled ? 'bg-violet-50/50 border-violet-200' : 'bg-slate-50/50 border-slate-100 hover:border-slate-200'}`}>
           <input
             type="checkbox"
             checked={isTouchEnabled}
@@ -1234,7 +1243,7 @@ function TemplateProperties() {
           part of the existing template payload via (as any) cast. */}
       {hasSportElements && (
       <section className="space-y-2">
-        <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Live data</h3>
+        <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Live data</h3>
         <div style={{
           borderRadius: 10,
           border: '1px solid',
@@ -1265,7 +1274,8 @@ function TemplateProperties() {
 
           {/* The picker: "Driven by: [  ]" */}
           <div style={{ marginBottom: dataSource === 'CTS' ? 10 : 0 }}>
-            <label style={{
+            {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control */}
+            <label htmlFor="pp-datasource-picker" style={{
               display: 'block',
               fontSize: 10,
               fontWeight: 600,
@@ -1275,6 +1285,7 @@ function TemplateProperties() {
               Driven by
             </label>
             <select
+              id="pp-datasource-picker"
               value={dataSource}
               onChange={(e) => setMeta({ dataSource: e.target.value as 'NONE' | 'CTS' | 'POS' | 'CUSTOM' })}
               style={{
@@ -1328,7 +1339,7 @@ function TemplateProperties() {
           think is correct"); the operator overrides per-board below. */}
       {hasMenuElements && !hasSportElements && (
       <section className="space-y-2">
-        <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Live data</h3>
+        <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Live data</h3>
         <div style={{
           borderRadius: 10,
           border: '1px solid',
@@ -1421,7 +1432,7 @@ function TemplateProperties() {
           widget hook posts it to our SSRF-gated /data-source/fetch proxy. */}
       {hasDataConsumers && !hasSportElements && !hasMenuElements && (
       <section className="space-y-2">
-        <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Live data</h3>
+        <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Live data</h3>
         <div style={{
           borderRadius: 10,
           border: '1px solid',
@@ -1606,7 +1617,7 @@ function CollapsibleSection({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-1.5 text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1 hover:text-slate-600 transition-colors"
+        className="w-full flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1 hover:text-slate-600 transition-colors"
         aria-expanded={open}
       >
         {open ? <ChevronDown className="w-3 h-3" aria-hidden /> : <ChevronRight className="w-3 h-3" aria-hidden />}
@@ -1990,7 +2001,7 @@ function TapActionEditor({
   if (!isTouchEnabled) {
     return (
       <section className="space-y-3">
-        <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1 flex items-center gap-1.5">
+        <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1 flex items-center gap-1.5">
           <Hand className="w-3 h-3" /> Tap action
         </h3>
         <button
@@ -2028,7 +2039,7 @@ function TapActionEditor({
 
   return (
     <section className="space-y-3">
-      <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1 flex items-center gap-1.5">
+      <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1 flex items-center gap-1.5">
         <Hand className="w-3 h-3" /> Tap action
         {action && (
           <span className="ml-1 inline-flex items-center gap-1 text-[9px] font-bold text-emerald-600 normal-case tracking-normal">
@@ -2115,8 +2126,12 @@ function TapActionEditor({
         )}
         {action?.type === 'goto-template' && (
           <div>
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Transition</label>
+            {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control.
+                action.type gates make these branches mutually exclusive, so a
+                static id can't collide with another instance in the DOM. */}
+            <label htmlFor="pp-action-transition" className="block text-[10px] font-semibold text-slate-500 mb-1.5">Transition</label>
             <select
+              id="pp-action-transition"
               value={(action as any).transition ?? 'cut'}
               onChange={(e) => setAction({ ...(action as any), transition: e.target.value })}
               className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400"
@@ -2128,8 +2143,9 @@ function TapActionEditor({
         )}
         {action?.type === 'webhook' && (
           <div>
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Method</label>
+            <label htmlFor="pp-action-webhook-method" className="block text-[10px] font-semibold text-slate-500 mb-1.5">Method</label>
             <select
+              id="pp-action-webhook-method"
               value={(action as any).method ?? 'POST'}
               onChange={(e) => setAction({ ...(action as any), method: e.target.value })}
               className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400"
@@ -2141,8 +2157,9 @@ function TapActionEditor({
         )}
         {action?.type === 'request-help' && (
           <div>
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Notification body</label>
+            <label htmlFor="pp-action-request-help-body" className="block text-[10px] font-semibold text-slate-500 mb-1.5">Notification body</label>
             <input
+              id="pp-action-request-help-body"
               type="text"
               value={(action as any).body ?? ''}
               onChange={(e) => setAction({ ...(action as any), body: e.target.value })}
@@ -2373,12 +2390,15 @@ function CtsFieldPicker({
   // legacy cfg.team / cfg.statKey, else the element's correct default.
   const bound =
     deriveCtsField(variantOrType, cfg) ?? (defaultCtsField(variantOrType) as string | undefined) ?? '';
+  // a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control.
+  const id = useId();
   return (
     <div style={{ marginTop: 4 }}>
-      <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#86efac', marginBottom: 4 }}>
+      <label htmlFor={id} style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#86efac', marginBottom: 4 }}>
         Reads from CTS field
       </label>
       <select
+        id={id}
         value={bound}
         onChange={(e) => setField({ ctsField: e.target.value })}
         style={{
@@ -2720,7 +2740,11 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       {
         const currentTpl = SIGNAGE_TEMPLATES.find((t) => t.url === cfg.url);
         const picker = (
+          // a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control.
+          // Both labels below ("Switch template" / "Pick a template") are
+          // mutually exclusive (if/else on cfg.url) and pair to this one id.
           <select
+            id="pp-ext-template-picker"
             value={cfg.url || ''}
             onChange={(e) => setField({ url: e.target.value })}
             className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
@@ -2750,7 +2774,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
                 <span className="shrink-0 text-[11px] font-semibold text-indigo-600">Change</span>
               </summary>
               <div className="px-3 pb-3 pt-1 space-y-1">
-                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Switch template</label>
+                <label htmlFor="pp-ext-template-picker" className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Switch template</label>
                 {picker}
               </div>
             </details>,
@@ -2759,7 +2783,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
           fields.push(SH('ext-template', 'Template'));
           fields.push(
             <div key="ext-url" className="space-y-1">
-              <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Pick a template</label>
+              <label htmlFor="pp-ext-template-picker" className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Pick a template</label>
               {picker}
             </div>,
           );
@@ -3026,31 +3050,40 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
         };
         fields.push(
           <div key="targetDate" className="space-y-1">
-            <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            {/* a11y wave (2026-08-24) — this heading describes TWO controls
+                (date + time) at once, which a single <label for> can't
+                validly target (jsx-a11y/label-has-associated-control) — a
+                <label> here was never semantically correct regardless of
+                the lint rule. It's a group caption; each input below
+                carries its own precise aria-label instead (axe-core:
+                "Form elements must have labels"). */}
+            <div className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
               Target date &amp; time
-            </label>
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <input
                   type="date"
+                  aria-label="Target date"
                   value={datePart}
                   onChange={(e) => setTarget(e.target.value, timePart)}
                   className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
                 />
-                <div className="text-[10px] text-slate-400 mt-1 leading-tight">Date</div>
+                <div className="text-[10px] text-slate-500 mt-1 leading-tight">Date</div>
               </div>
               <div>
                 <input
                   type="time"
+                  aria-label="Target time (optional, defaults to midnight)"
                   value={timePart}
                   onChange={(e) => setTarget(datePart, e.target.value)}
                   disabled={!datePart}
                   className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none disabled:bg-slate-50 disabled:text-slate-400"
                 />
-                <div className="text-[10px] text-slate-400 mt-1 leading-tight">Time (optional, defaults to midnight)</div>
+                <div className="text-[10px] text-slate-500 mt-1 leading-tight">Time (optional, defaults to midnight)</div>
               </div>
             </div>
-            <div className="text-[10px] text-slate-400 leading-relaxed pt-0.5">
+            <div className="text-[10px] text-slate-500 leading-relaxed pt-0.5">
               Times are stored as wall-clock (no timezone offset) so the countdown ends when the SCREEN&apos;s local clock hits this date/time. If you set &quot;May 12, 3pm&quot; the screen counts down to 3pm in its own timezone ({(() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'detected from browser'; } catch { return 'detected from browser'; } })()}). Single-number countdowns show calendar days (May 4 → May 12 = 8); multi-unit countdowns (DAYS HRS MIN SEC) show precise time remaining.
             </div>
           </div>,
@@ -4498,8 +4531,14 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       // Clock timezone — defaults to player's local timezone if blank.
       fields.push(
         <div key="clockTimeZone" className="space-y-1">
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Clock timezone (blank = use player's local time)</label>
+          {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control +
+              axe-core "Select element must have an accessible name". Static
+              id is safe: this exact block is duplicated per widget type in
+              this file's per-widget-type field builder, but each widget
+              type's fields render mutually exclusively. */}
+          <label htmlFor="pp-clock-timezone" className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Clock timezone (blank = use player's local time)</label>
           <select
+            id="pp-clock-timezone"
             value={cfg.clockTimeZone || ''}
             onChange={(e) => setField({ clockTimeZone: e.target.value })}
             className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
@@ -4529,8 +4568,12 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       fields.push(<TextField key="countdownLabel" label="Label (e.g. Spring Break in, Winter Break in, Graduation in)" value={cfg.countdownLabel || ''} placeholder="Field Trip in" onChange={(v) => setField({ countdownLabel: v })} />);
       fields.push(
         <div key="countdownDate" className="space-y-1">
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Target date</label>
+          {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control.
+              Static id safe: duplicated per widget type, mutually exclusive
+              rendering (see the clock-timezone block above). */}
+          <label htmlFor="pp-countdown-date" className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Target date</label>
           <input
+            id="pp-countdown-date"
             type="date"
             value={cfg.countdownDate || ''}
             onChange={(e) => setField({ countdownDate: e.target.value })}
@@ -4545,7 +4588,11 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       fields.push(<AssetPickerField key="teacherPhotoUrl" label="Upload photo (recommended)" value={cfg.teacherPhotoUrl || ''} kind="image" onChange={(v) => setField({ teacherPhotoUrl: v })} />);
       fields.push(
         <div key="teacherGender" className="space-y-1">
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Or pick an icon (used when no photo uploaded)</label>
+          {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control.
+              This heads a row of toggle <button>s, not a native form
+              control a <label> can associate with — a group caption, same
+              fix as the "Target date & time" heading above. */}
+          <div className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Or pick an icon (used when no photo uploaded)</div>
           <div className="flex gap-2">
             {([
               { value: 'female', label: '👩‍🏫', name: 'She / Her' },
@@ -4616,8 +4663,14 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       fields.push(<TextField key="subtitle" label="Subtitle" value={cfg.subtitle || ''} placeholder="~ freshly rolled every day ~" onChange={(v) => setField({ subtitle: v })} />);
       fields.push(
         <div key="clockTimeZone" className="space-y-1">
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Clock timezone (blank = use player's local time)</label>
+          {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control +
+              axe-core "Select element must have an accessible name". Static
+              id is safe: this exact block is duplicated per widget type in
+              this file's per-widget-type field builder, but each widget
+              type's fields render mutually exclusively. */}
+          <label htmlFor="pp-clock-timezone" className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Clock timezone (blank = use player's local time)</label>
           <select
+            id="pp-clock-timezone"
             value={cfg.clockTimeZone || ''}
             onChange={(e) => setField({ clockTimeZone: e.target.value })}
             className="w-full px-3 py-2 rounded-md border border-slate-300 bg-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
@@ -4648,8 +4701,12 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
       fields.push(<TextField key="countdownLabel" label="Label (e.g. Taco Tuesday in, Pizza Day in)" value={cfg.countdownLabel || ''} placeholder="Taco Tuesday in" onChange={(v) => setField({ countdownLabel: v })} />);
       fields.push(
         <div key="countdownDate" className="space-y-1">
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Target date</label>
+          {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control.
+              Static id safe: duplicated per widget type, mutually exclusive
+              rendering (see the clock-timezone block above). */}
+          <label htmlFor="pp-countdown-date" className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Target date</label>
           <input
+            id="pp-countdown-date"
             type="date"
             value={cfg.countdownDate || ''}
             onChange={(e) => setField({ countdownDate: e.target.value })}
@@ -6743,7 +6800,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
           updateZone(zone.id, merged, true);
         }}
       />
-      <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Content</h3>
+      <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Content</h3>
       <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-100 shadow-sm space-y-3">
         {fields.map((field, i) => {
           // Wrap each field with `data-field-section` so the canvas
@@ -7039,6 +7096,8 @@ const POS_FALLBACK: PosProviderLite[] = [
   { id: 'custom-webhook', name: 'Custom Webhook', integrationTier: 'DIRECT', iconEmoji: '🔗' },
 ];
 function PosDriverPicker({ cfg, setField }: { cfg: Record<string, unknown>; setField: (patch: Record<string, unknown>) => void }) {
+  // a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control.
+  const posPickerId = useId();
   const params = useParams<{ schoolId: string }>();
   const schoolId = params?.schoolId || '';
   const providersQ = useQuery<PosProviderLite[]>({ queryKey: ['pos-providers'], queryFn: () => apiFetch<PosProviderLite[]>('/pos/providers'), staleTime: 300_000, retry: false });
@@ -7064,10 +7123,12 @@ function PosDriverPicker({ cfg, setField }: { cfg: Record<string, unknown>; setF
           {posOn ? (chosenConnected ? 'LIVE FROM YOUR POS' : 'POS SELECTED — NOT CONNECTED YET') : 'STATIC MENU (NO POS)'}
         </span>
       </div>
-      <label className="block text-[10px] font-semibold uppercase tracking-wider" style={{ color: posOn ? '#fcd34d' : '#64748b', marginBottom: 4 }}>
+      {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control */}
+      <label htmlFor={posPickerId} className="block text-[10px] font-semibold uppercase tracking-wider" style={{ color: posOn ? '#fcd34d' : '#64748b', marginBottom: 4 }}>
         Driven by your POS
       </label>
       <select
+        id={posPickerId}
         value={selected}
         onChange={(e) => onPick(e.target.value)}
         style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid', borderColor: posOn ? '#b45309' : '#cbd5e1', background: posOn ? '#7c2d12' : '#ffffff', color: posOn ? '#fde68a' : '#334155', fontSize: 11, fontWeight: 600, cursor: 'pointer', appearance: 'auto' }}
@@ -8232,7 +8293,7 @@ function HolidayPanelExtras({
 
   return (
     <>
-      <div className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1 pt-2">
+      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1 pt-2">
         Editable text <span className="font-normal lowercase">({schema.length})</span>
       </div>
       {groups.map((group) => (
@@ -8298,10 +8359,17 @@ function HolidayPanelExtras({
 }
 
 function SelectField({ label, value, options, onChange }: { label: string; value: string; options: [string,string][]; onChange: (v: string) => void }) {
+  // a11y wave (2026-08-24) — axe-core: "Select element must have an
+  // accessible name" (critical). The label text was visible but never
+  // programmatically associated with the <select> (no htmlFor/id pairing,
+  // no aria-label) — every widget field that renders through this shared
+  // component was affected. useId() matches this file's existing
+  // convention (see `nameId` above).
+  const id = useId();
   return (
     <div>
-      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
-      <select value={value} onChange={(e) => onChange(e.target.value)}
+      <label htmlFor={id} className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
+      <select id={id} value={value} onChange={(e) => onChange(e.target.value)}
         className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm cursor-pointer">
         {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
       </select>
@@ -8482,7 +8550,7 @@ export function CanvasBackdropSection({
   return (
     <section className={variant === 'panel' ? 'space-y-3' : ''}>
       {variant === 'panel' && (
-        <h3 className="text-[10px] font-bold text-slate-400/80 uppercase tracking-widest pl-1">Backdrop</h3>
+        <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Backdrop</h3>
       )}
       <div className={`${variant === 'modal' ? '' : 'bg-slate-50/50 rounded-xl p-3 border border-slate-100 shadow-sm'} ${wrapClass}`}>
         {/* Solid color — themed picker (was OS-native before). Picking
@@ -8724,10 +8792,14 @@ export function measureZoneFontSize(zoneId: string, fieldKey?: string | null): n
 }
 
 export function FontFamilyField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  // a11y wave (2026-08-24) — same missing-accessible-name gap as
+  // SelectField above: the label was never associated with the <select>.
+  const id = useId();
   return (
     <div>
-      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
+      <label htmlFor={id} className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
       <select
+        id={id}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         style={{ fontFamily: value || 'inherit' }}
@@ -8856,7 +8928,7 @@ function AdvancedJson({ zone, configString, configId, updateZone }: { zone: any;
   const [open, setOpen] = useState(false);
   return (
     <section className="space-y-2">
-      <button type="button" onClick={() => setOpen(!open)} className="flex items-center gap-1 pl-1 text-[10px] font-bold text-slate-400/80 uppercase tracking-widest hover:text-slate-600">
+      <button type="button" onClick={() => setOpen(!open)} className="flex items-center gap-1 pl-1 text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-slate-600">
         {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
         Advanced (JSON)
       </button>
@@ -8915,7 +8987,9 @@ function PeriodsEditor({ value, onChange }: { value: Period[]; onChange: (next: 
 
   return (
     <div>
-      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Lunch periods</label>
+      {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control:
+          heads a dynamic list of period rows, not one control. */}
+      <div className="block text-[10px] font-semibold text-slate-500 mb-1.5">Lunch periods</div>
       <div className="space-y-2">
         {periods.length === 0 && (
           <p className="text-[11px] text-slate-400 italic px-1">No periods yet — add your first below.</p>
@@ -8996,6 +9070,9 @@ function BusinessHoursField({
   onChange: (v: BusinessHours | undefined) => void;
 }) {
   const bh = value || null;
+  // a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control.
+  const openId = useId();
+  const closeId = useId();
 
   const toggleDay = (dow: number) => {
     const cur = bh?.daysOfWeek || [];
@@ -9005,7 +9082,9 @@ function BusinessHoursField({
 
   return (
     <div>
-      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Business hours</label>
+      {/* Group heading — toggles between an "add" button and the open/close
+          fields below, so it isn't associated with one single control. */}
+      <div className="block text-[10px] font-semibold text-slate-500 mb-1.5">Business hours</div>
       {!bh ? (
         <div className="bg-white border border-slate-200 rounded-lg p-2.5 shadow-sm">
           <p className="text-[11px] text-slate-500 mb-2">
@@ -9023,8 +9102,9 @@ function BusinessHoursField({
         <div className="bg-white border border-slate-200 rounded-lg p-2.5 space-y-2 shadow-sm">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-[10px] text-slate-400 mb-0.5">Open</label>
+              <label htmlFor={openId} className="block text-[10px] text-slate-400 mb-0.5">Open</label>
               <input
+                id={openId}
                 type="time"
                 value={bh.start || '08:00'}
                 onChange={(e) => onChange({ ...bh, start: e.target.value })}
@@ -9032,8 +9112,9 @@ function BusinessHoursField({
               />
             </div>
             <div>
-              <label className="block text-[10px] text-slate-400 mb-0.5">Close</label>
+              <label htmlFor={closeId} className="block text-[10px] text-slate-400 mb-0.5">Close</label>
               <input
+                id={closeId}
                 type="time"
                 value={bh.end || '22:00'}
                 onChange={(e) => onChange({ ...bh, end: e.target.value })}
@@ -9142,7 +9223,10 @@ export function FormatToggles({
   );
   return (
     <div>
-      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Format</label>
+      {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control:
+          heads 4 toggle <button>s (each carries its own aria-label), not
+          one control. */}
+      <div className="block text-[10px] font-semibold text-slate-500 mb-1.5">Format</div>
       <div className="flex gap-1">
         {btn(bold,          'Bold (Ctrl/⌘ + B)',                'B', { fontWeight: 800 },                              () => onChange({ bold: !bold }))}
         {btn(italic,        'Italic (Ctrl/⌘ + I)',              'I', { fontStyle: 'italic', fontWeight: 600 },         () => onChange({ italic: !italic }))}
@@ -9156,13 +9240,16 @@ export function FormatToggles({
 /** Line-height slider. Canva range: 0.5x to 2.5x. Step 0.05 gives
  *  fine control without overwhelming the UI. */
 function LineHeightField({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  // a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control.
+  const id = useId();
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5">
-        <label className="text-[10px] font-semibold text-slate-500">Line height</label>
+        <label htmlFor={id} className="text-[10px] font-semibold text-slate-500">Line height</label>
         <span className="text-[10px] font-mono text-slate-500">{value.toFixed(2)}×</span>
       </div>
       <input
+        id={id}
         type="range"
         min={0.5}
         max={2.5}
@@ -9295,7 +9382,7 @@ function AssetPickerField({ label, value, onChange, kind }: { label: string; val
             >×</button>
           </div>
         ) : (
-          <div className="w-14 h-14 rounded border-2 border-dashed border-slate-200 bg-slate-50 flex items-center justify-center text-[10px] text-slate-400 shrink-0">
+          <div className="w-14 h-14 rounded border-2 border-dashed border-slate-200 bg-slate-50 flex items-center justify-center text-[10px] text-slate-600 shrink-0">
             None
           </div>
         )}
@@ -9504,7 +9591,9 @@ function PhotosArrayField({ value, onChange }: { value: Array<{ url?: string; ca
   };
   return (
     <div>
-      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Photos</label>
+      {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control:
+          heads a dynamic photo list, not one control. */}
+      <div className="block text-[10px] font-semibold text-slate-500 mb-1.5">Photos</div>
       <div className="space-y-2">
         {value.length === 0 && (
           <p className="text-[11px] text-slate-400 italic">No photos yet — click + below to add. Each photo can have an optional caption (e.g. &ldquo;Recess!&rdquo; / &ldquo;Reading Buddies&rdquo;).</p>
@@ -9762,6 +9851,17 @@ export function AssetLibraryModal({
       role="dialog"
       aria-modal="true"
     >
+      {/* a11y wave (2026-08-24) — jsx-a11y/click-events-have-key-events +
+          no-static-element-interactions. This is a modal backdrop: a
+          mouse-only "click outside to close" convenience layered on top of
+          the real, fully keyboard/AT-accessible dismissal path — the
+          labeled <button aria-label="Close"> a few lines below. Giving the
+          backdrop role="button"+tabIndex+onKeyDown would insert an
+          invisible full-viewport tab stop ahead of the actual dialog
+          content, which is worse for keyboard users than leaving it
+          non-interactive to assistive tech. Same pattern as
+          AppDialogHost's backdrop in app-dialog.tsx. */}
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div
         className="absolute top-0 right-0 bottom-0 left-0 bg-slate-900/40 backdrop-blur-sm"
         onClick={onClose}
@@ -10036,13 +10136,16 @@ function StreamingChannelPickerField({
     staleTime: 30_000,
   });
   const picked = (channels || []).find((c) => c.id === value);
+  // a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control.
+  const id = useId();
 
   return (
     <div>
-      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5 flex items-center gap-1">
+      <label htmlFor={id} className="block text-[10px] font-semibold text-slate-500 mb-1.5 flex items-center gap-1">
         <Tv className="w-3 h-3" /> Streaming channel
       </label>
       <select
+        id={id}
         value={value || ''}
         onChange={(e) => {
           const id = e.target.value;
@@ -10352,6 +10455,8 @@ function PosItemBindControls({
 // zipcode or it should know where i am automatically and set it
 // but its a bunch of free text fields".
 function SmartLocationField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  // a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control.
+  const locationFieldId = useId();
   const [draft, setDraft] = useState(value);
   const [geolocating, setGeolocating] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
@@ -10389,11 +10494,13 @@ function SmartLocationField({ value, onChange }: { value: string; onChange: (v: 
 
   return (
     <div className="space-y-1.5">
-      <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+      {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control */}
+      <label htmlFor={locationFieldId} className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
         Location
       </label>
       <div className="flex gap-2">
         <input
+          id={locationFieldId}
           type="text"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -10482,9 +10589,11 @@ function TickerSpeedField({ value, onChange }: { value: 'slow' | 'normal' | 'fas
   const active = (typeof value === 'string' && (value === 'slow' || value === 'fast')) ? value : 'normal';
   return (
     <div className="space-y-1">
-      <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+      {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control:
+          heads 3 toggle <button>s, not one control. */}
+      <div className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
         Scroll speed
-      </label>
+      </div>
       <div className="flex gap-1">
         {(['slow', 'normal', 'fast'] as const).map((opt) => (
           <button
@@ -10542,6 +10651,8 @@ const LUNCH_EMOJI_GROUPS: Array<{ label: string; items: string[] }> = [
 // a URL (starts with http or /), otherwise renders it as text — so both
 // paths just write to the same `emoji` string on the item.
 function LunchEmojiPicker({ value, onChange }: { value: string | undefined; onChange: (v: string) => void }) {
+  // a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control.
+  const emojiInputId = useId();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<'emoji' | 'upload'>('emoji');
   const pickerRef = useRef<HTMLDivElement | null>(null);
@@ -10626,8 +10737,9 @@ function LunchEmojiPicker({ value, onChange }: { value: string | undefined; onCh
                 </div>
               ))}
               <div className="border-t border-slate-100 pt-2 mt-1">
-                <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Or type any emoji / text</label>
+                <label htmlFor={emojiInputId} className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Or type any emoji / text</label>
                 <input
+                  id={emojiInputId}
                   type="text"
                   defaultValue={isUrl ? '' : current}
                   placeholder="🍱 or any emoji"
@@ -10842,7 +10954,9 @@ function BellScheduleEditor({ value, onChange }: { value: Array<{ label: string;
 
   return (
     <div>
-      <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Bell schedule</label>
+      {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control:
+          heads a dynamic period list, not one control. */}
+      <div className="block text-[10px] font-semibold text-slate-500 mb-1.5">Bell schedule</div>
       <p className="text-[10px] text-slate-400 mb-2 px-0.5">Click a time field to open the picker. Times always display as 12-hour on the canvas.</p>
       <div className="space-y-2">
         {periods.length === 0 && <p className="text-[11px] text-slate-400 italic px-1">No periods yet — add your first below.</p>}

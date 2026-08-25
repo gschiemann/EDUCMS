@@ -142,14 +142,24 @@ export function RunMoreMenu({
       </button>
 
       {open && (
+        // Backdrop — mouse-only convenience; the aria-label="Close" button
+        // below is the keyboard/AT-accessible dismissal path. a11y wave
+        // (2026-08-24).
+        // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
         <div
           className="fixed inset-0 z-50 flex items-end justify-end bg-slate-900/60 p-0 sm:items-start sm:p-4"
           onClick={close}
         >
+          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
           <div
             className="max-h-[88vh] w-full overflow-y-auto rounded-t-2xl bg-white p-2 shadow-2xl sm:mt-12 sm:mr-1 sm:max-w-sm sm:rounded-2xl"
             onClick={(e) => e.stopPropagation()}
             role="menu"
+            // jsx-a11y/interactive-supports-focus: a role="menu" container
+            // must itself be focusable; -1 keeps it out of sequential Tab
+            // order (summoned via the "More" button, not tabbed to) while
+            // each MenuRow below is its own focusable control.
+            tabIndex={-1}
           >
             <div className="flex items-center justify-between px-2 py-1.5">
               <span className="text-[13px] font-bold text-slate-900">More</span>
@@ -230,6 +240,11 @@ export function RunMoreMenu({
             <MenuRow
               icon={<Tv className="h-[18px] w-[18px]" />}
               label="Screens"
+              // The span only exists to stop this row's own click handling
+              // from swallowing clicks on screensNub's own interactive
+              // pills (SurfaceHealthPills) — it isn't itself an
+              // interaction. a11y wave (2026-08-24).
+              // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
               trailing={<span onClick={(e) => e.stopPropagation()}>{screensNub}</span>}
             />
 

@@ -165,7 +165,14 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, onCustomize, onDiscar
       </div>
 
       <div className="flex items-center gap-2">
-        <span className="text-[10px] font-mono text-slate-400 bg-slate-50 px-2 py-1 rounded">
+        {/* a11y wave (2026-08-24) — both badges measured 2.51:1
+            (text-slate-400 on bg-slate-50) via axe-core; text-slate-600
+            comfortably clears WCAG AA's 4.5:1 floor at this text size
+            (text-slate-500's own ~4.76:1-on-white margin narrows against
+            the slightly darker slate-50 backdrop these sit on, so this
+            pair goes one shade further than the plain-white fixes
+            elsewhere in this wave). */}
+        <span className="text-[10px] font-mono text-slate-600 bg-slate-50 px-2 py-1 rounded">
           {meta.screenWidth}&times;{meta.screenHeight}
         </span>
         <button
@@ -177,7 +184,7 @@ export function BuilderToolbar({ onBack, onSave, onSaveAs, onCustomize, onDiscar
         >
           <RotateCw className="w-3.5 h-3.5" aria-hidden />
         </button>
-        <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded">
+        <span className="text-[10px] font-bold text-slate-600 bg-slate-50 px-2 py-1 rounded">
           {isPortrait ? 'Portrait' : 'Landscape'}
         </span>
 

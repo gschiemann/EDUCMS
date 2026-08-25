@@ -75,10 +75,15 @@ export function LogViewer() {
   if (!open) return null;
 
   return (
+    // Backdrop — mouse-only convenience; the aria-label="Close" button
+    // below is the keyboard/AT-accessible dismissal path.
+    // a11y wave (2026-08-24).
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
       className="fixed inset-0 z-[9998] flex items-end sm:items-center justify-center bg-slate-900/50 backdrop-blur-sm p-2 sm:p-8"
       onClick={() => setOpen(false)}
     >
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div
         className="w-full max-w-4xl h-[80vh] bg-slate-950 text-slate-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-800"
         onClick={(e) => e.stopPropagation()}

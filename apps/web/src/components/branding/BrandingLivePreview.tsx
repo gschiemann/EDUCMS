@@ -332,7 +332,14 @@ function Kpi({ label, value, trend, positive }: { label: string; value: string; 
     <div className="preview-card border rounded-lg p-3">
       <div className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--bp-ink-muted)' }}>{label}</div>
       <div className="preview-heading text-2xl font-bold mt-0.5" style={{ color: 'var(--bp-primary)' }}>{value}</div>
-      <div className={cn('text-[10px] mt-0.5', positive ? 'text-emerald-600' : 'text-slate-400')}>{trend}</div>
+      {/* a11y wave (2026-08-24) — axe-core flagged the "+2"/"+1" trend text
+          at 3.65:1 against the (default-white) --bp-surface card, below
+          WCAG AA's 4.5:1 floor. The negative/neutral case now reuses
+          --bp-ink-muted like the `label` line above (theme-aware, same
+          token the rest of this card already uses); the positive case has
+          no matching semantic token in this file's --bp-* palette, so it's
+          darkened from emerald-600 to emerald-700 (~5.5:1 against white). */}
+      <div className={cn('text-[10px] mt-0.5', positive ? 'text-emerald-700' : undefined)} style={positive ? undefined : { color: 'var(--bp-ink-muted)' }}>{trend}</div>
     </div>
   );
 }

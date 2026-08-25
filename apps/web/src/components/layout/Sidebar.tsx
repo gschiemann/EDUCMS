@@ -515,7 +515,11 @@ export function Sidebar() {
         </div>
 
         <nav className="flex-1 py-6 px-4 space-y-1 overflow-y-auto">
-          <div className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-4 px-4">
+          {/* a11y wave (2026-08-24) — text-slate-400 on white is 2.63:1,
+              below WCAG AA's 4.5:1 floor for normal/bold text this size
+              (confirmed via axe-core, apps/web/scripts/a11y-audit.ts).
+              text-slate-500 measures ~4.76:1 against white. */}
+          <div className="text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-4 px-4">
             {t('nav.mainMenu')}
           </div>
           {/*
@@ -681,8 +685,10 @@ export function Sidebar() {
               <p className="text-[11px] font-semibold text-slate-700 truncate">
                 {mounted ? (userFullName(user) || t('toolbar.user')) : '\u00A0'}
               </p>
+              {/* a11y wave (2026-08-24) — same slate-400-on-white contrast
+                  fix as the "Main Menu" label above. */}
               {mounted && (user?.firstName || user?.lastName) && user?.email && (
-                <p className="text-[9px] text-slate-400 truncate">{user.email}</p>
+                <p className="text-[9px] text-slate-500 truncate">{user.email}</p>
               )}
               {mounted && user?.role === 'SUPER_ADMIN' ? (
                 // 2026-06-26 — the only super-admin indicator now (the full-width
@@ -697,7 +703,7 @@ export function Sidebar() {
                   {t('toolbar.superAdmin')}
                 </Link>
               ) : (
-                <p className="text-[9px] text-slate-400">{mounted ? (tenantCopyForBrand.roleLabel(user?.role || '') || t('toolbar.role')) : '\u00A0'}</p>
+                <p className="text-[9px] text-slate-500">{mounted ? (tenantCopyForBrand.roleLabel(user?.role || '') || t('toolbar.role')) : '\u00A0'}</p>
               )}
             </div>
             <button

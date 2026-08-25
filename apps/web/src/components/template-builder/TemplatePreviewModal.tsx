@@ -161,12 +161,19 @@ export function TemplatePreviewModal({
       </div>
 
       {/* Stage — fills the remaining viewport, centered. Click on the
-          backdrop closes; click on the stage itself does not. */}
+          backdrop closes; click on the stage itself does not.
+          a11y wave (2026-08-24) — mouse-only convenience; the labeled
+          "Close preview" button above is the keyboard/AT-accessible path
+          (same pattern as app-dialog.tsx's backdrop). */}
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div
         ref={stageRef}
         className="flex-1 flex items-center justify-center overflow-hidden p-4"
         onClick={onClose}
       >
+        {/* Swallows the click so it doesn't bubble to the backdrop above
+            and close the preview — not itself a user-facing interaction. */}
+        {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
         <div
           className="relative shadow-2xl ring-1 ring-white/10 overflow-hidden"
           style={{

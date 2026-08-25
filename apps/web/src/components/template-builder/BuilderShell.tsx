@@ -1226,8 +1226,12 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
                     role="tab"
                     aria-selected={active}
                     onClick={() => setPanel(tab.key)}
+                    // a11y wave (2026-08-24) — the inactive-tab
+                    // text-slate-400 measured 2.58:1 against this bar's
+                    // near-white backdrop via axe-core; text-slate-500
+                    // clears WCAG AA's 4.5:1 floor.
                     className={`flex-1 py-2.5 rounded-lg text-[10px] font-bold uppercase tracking-wider flex flex-col items-center gap-1.5 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 ${
-                      active ? 'text-indigo-600 bg-white shadow-sm ring-1 ring-slate-200/50' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50/50'
+                      active ? 'text-indigo-600 bg-white shadow-sm ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-600 hover:bg-slate-50/50'
                     }`}
                   >
                     <Icon className="w-4 h-4" aria-hidden />
@@ -1869,7 +1873,7 @@ function BuilderBottomBar() {
 
           {/* Selected widget but no field activated yet — hint */}
           {supportsPerFieldStyles && !activeFieldName && (
-            <span className="px-3 text-[11px] italic text-slate-400 select-none whitespace-nowrap">
+            <span className="px-3 text-[11px] italic text-slate-500 select-none whitespace-nowrap">
               Click any text on the canvas to edit its style
             </span>
           )}
@@ -2047,8 +2051,10 @@ function BuilderBottomBar() {
                 </button>
                 {dateOpen && (
                   <div className="absolute z-40 bottom-full mb-2 left-1/2 -translate-x-1/2 bg-white border border-slate-200 rounded-lg shadow-xl p-2 w-44">
-                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Target date</label>
+                    {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control */}
+                    <label htmlFor="bs-target-date-popover" className="block text-[10px] font-semibold text-slate-500 mb-1">Target date</label>
                     <input
+                      id="bs-target-date-popover"
                       type="date"
                       defaultValue={cfg.targetDate || ''}
                       onChange={(e) => setCfg({ targetDate: e.target.value })}
@@ -2076,8 +2082,10 @@ function BuilderBottomBar() {
                 </button>
                 {urlOpen && (
                   <div className="absolute z-40 bottom-full mb-2 left-1/2 -translate-x-1/2 bg-white border border-slate-200 rounded-lg shadow-xl p-2 w-56">
-                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Page URL</label>
+                    {/* a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control */}
+                    <label htmlFor="bs-page-url-popover" className="block text-[10px] font-semibold text-slate-500 mb-1">Page URL</label>
                     <input
+                      id="bs-page-url-popover"
                       type="url"
                       defaultValue={cfg.url || ''}
                       placeholder="https://…"
@@ -2164,6 +2172,10 @@ function BuilderBottomBar() {
           aria-label="Canvas backdrop picker"
           className="fixed inset-0 z-[10000] flex items-center justify-center p-4"
         >
+          {/* Backdrop — mouse-only convenience; the labeled Close button
+              below is the keyboard/AT-accessible path. a11y wave
+              (2026-08-24), same pattern as app-dialog.tsx's backdrop. */}
+          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
           <div
             className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-150"
             onClick={() => setBackdropOpen(false)}
