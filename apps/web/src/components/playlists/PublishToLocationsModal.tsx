@@ -15,6 +15,8 @@ import { useMemo, useState } from 'react';
 import { X, Loader2, Send, CheckCircle2, Wifi, WifiOff, Building2, MonitorCheck } from 'lucide-react';
 import { useFleet, usePlaylists, usePublishToFleet, type PublishToFleetResult } from '@/hooks/use-api';
 import { useQueryClient } from '@tanstack/react-query';
+import { computeBlastRadius, reachWarnings } from '@/lib/blast-radius';
+import { BlastRadiusSummary } from '@/components/playlists/BlastRadiusSummary';
 
 export function PublishToLocationsModal({
   open,
@@ -48,6 +50,25 @@ export function PublishToLocationsModal({
       .filter((e) => e.screens.length > 0)
       .sort((a, b) => (a.id === rootId ? -1 : b.id === rootId ? 1 : a.name.localeCompare(b.name)));
   }, [fleet.data, rootId]);
+
+  // Blast radius — a fleet publish is the highest-consequence one in the
+  // product (it copies the playlist down into every chosen location and
+  // schedules it live there), and the only number it used to show was the
+  // raw checkbox count. Derived from the fleet payload already loaded:
+  // "containing" mode counts the LOCATIONS holding a picked screen, since
+  // this modal only ever picks individual screens.
+  const blast = useMemo(
+    () => computeBlastRadius({
+      screens: (fleet.data?.screens ?? []).map((s) => ({ id: s.id, name: s.name })),
+      groups: byStore.map((s) => ({ id: s.id, name: s.name, screens: s.screens })),
+      selectedScreenIds: selected,
+      groupMode: 'containing',
+    }),
+    [fleet.data, byStore, selected],
+  );
+  // Fleet publish is always-on (the endpoint schedules it live), so there is
+  // no day window here — only the "you picked nothing" case can warn.
+  const reach = useMemo(() => reachWarnings(blast), [blast]);
 
   if (!open) return null;
 
@@ -176,6 +197,14 @@ export function PublishToLocationsModal({
                   </div>
                 )}
               </div>
+
+              {/* Blast radius — "N screens across L locations", with the
+                  location breakdown + the actual screen names one tap away.
+                  Collapsed by default above 8 screens; this is information,
+                  not a confirmation gate. */}
+              {!fleet.isLoading && byStore.length > 0 && (
+                <BlastRadiusSummary radius={blast} warnings={reach} groupNoun="location" />
+              )}
 
               {publish.isError && (
                 <p className="text-sm text-rose-600">{(publish.error as any)?.message || 'Publish failed.'}</p>

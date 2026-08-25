@@ -131,6 +131,14 @@ import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
 import { isTouchTemplate } from '@/lib/template-relevance';
+import {
+  computeBlastRadius,
+  reachWarnings,
+  isReachBlocked,
+  type BlastRadius,
+  type ReachWarning,
+} from '@/lib/blast-radius';
+import { BlastRadiusSummary } from '@/components/playlists/BlastRadiusSummary';
 
 // ─── Shared constants ──────────────────────────────────────────────────
 
@@ -605,6 +613,35 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
 
   const selectedTemplate = (templates || []).find((t: any) => t.id === selectedTemplateId);
 
+  // ─── Blast radius ──────────────────────────────────────────────────
+  //
+  // "Exactly which screens will this hit?" answered from data already
+  // loaded (screens + screenGroups + the operator's Step-3 selection) —
+  // no extra fetch. Resolved with the SAME fan-out rules handleCreate
+  // uses below (a picked group reaches every member and those members
+  // are never also counted as loose screens), so the number the
+  // operator reads on Review is the number that actually publishes.
+  //
+  // Plain calls, not useMemo: everything here lives BELOW the
+  // `if (!open) return null` guard above, so a hook would flip the hook
+  // count between closed and open renders → React error #310 (see the
+  // note on probeVideoDuration).
+  const blastRadius = computeBlastRadius({
+    screens: screens || [],
+    groups: screenGroups || [],
+    selectedScreenIds,
+    selectedGroupIds,
+  });
+  const reach = reachWarnings(blastRadius, {
+    windowed: !activateImmediately,
+    days: schedDays,
+    alwaysLabel: '“Activate immediately”',
+  });
+  // P7 (live-test finding): a windowed schedule with no days picked runs
+  // zero days. Review used to render "No days picked" beside a confident
+  // "Create Playlist". Now it blocks.
+  const reachBlocked = isReachBlocked(reach);
+
   // ─── Step navigation gates ─────────────────────────────────────────
 
   const canAdvanceFromStep1 = name.trim().length > 0 && kind !== null;
@@ -793,6 +830,10 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
 
   const handleCreate = async () => {
     if (creating) return;
+    // Belt-and-braces for the P7 gate — the Create button is already
+    // disabled while a blocking reach warning stands (windowed schedule,
+    // zero days picked), but never let a keyboard/Enter path around it.
+    if (reachBlocked) return;
     setCreating(true);
     try {
       // 1. Create the playlist row.
@@ -1160,7 +1201,9 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
               setTimeEnd={setSchedTimeEnd}
               days={schedDays}
               toggleDay={toggleDay}
-              screensPicked={selectedScreenIds.size}
+              // Resolved reach, not raw checkbox count — a picked group of 3
+              // must not read as "1 screen" here either.
+              screensPicked={blastRadius.screenCount}
             />
           )}
           {step === 5 && (
@@ -1169,9 +1212,8 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
               kind={kind!}
               itemCount={kind === 'media' ? selectedAssetItems.length : 0}
               template={selectedTemplate}
-              screenNames={(screens || [])
-                .filter((s: any) => selectedScreenIds.has(s.id))
-                .map((s: any) => s.name || s.id)}
+              blastRadius={blastRadius}
+              reach={reach}
               activate={activateImmediately}
               schedDays={schedDays}
               schedTimeStart={schedTimeStart}
@@ -1250,7 +1292,8 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
               <button
                 type="button"
                 onClick={handleCreate}
-                disabled={creating}
+                disabled={creating || reachBlocked}
+                title={reachBlocked ? 'Pick at least one day, or switch to Activate immediately.' : undefined}
                 className="inline-flex items-center px-5 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed rounded-lg shadow-sm transition-colors"
               >
                 {creating ? (
@@ -1261,7 +1304,15 @@ export function PlaylistCreateWizard({ open, onClose, onCreated, initialAssetIds
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4 mr-2" />
-                    {willSubmitForReview ? 'Create & Send for Review' : 'Create Playlist'}
+                    {/* Honest label. A playlist created with no screens is a
+                        real, useful outcome — but the button must not imply
+                        it went live. (willSubmitForReview already implies
+                        ≥1 screen, so those two never collide.) */}
+                    {willSubmitForReview
+                      ? 'Create & Send for Review'
+                      : blastRadius.screenCount === 0
+                        ? "Create (won't display yet)"
+                        : 'Create Playlist'}
                   </>
                 )}
               </button>
@@ -2335,6 +2386,7 @@ export function ScheduleWindowFields({
   accent = 'indigo',
   showQuickPicks = false,
   showDateHelp = false,
+  alwaysLabel = 'always-on',
   className = '',
 }: {
   days: string[];
@@ -2353,6 +2405,8 @@ export function ScheduleWindowFields({
   showQuickPicks?: boolean;
   /** Plain-English "Active Mon→Fri" summary under the date range. */
   showDateHelp?: boolean;
+  /** How the host surface labels its always-on option, for the P7 hint. */
+  alwaysLabel?: string;
   className?: string;
 }) {
   const a = SCHED_ACCENT[accent];
@@ -2393,7 +2447,21 @@ export function ScheduleWindowFields({
           <button type="button" onClick={() => onSetDays([...DAYS])} className={`mb-1 text-[11px] font-semibold ${a.quick} hover:underline`}>Every day</button>
         </div>
       )}
-      {!showQuickPicks && <div className="mb-2" />}
+      {/* P7 (live-test finding) — a window with no days picked is a schedule
+          that runs ZERO days. Both hosts of this component (the wizard's
+          Step-4 and the detail Publish sheet) also block their commit button
+          while this stands; this is the inline guidance that says why, right
+          where the operator can fix it. */}
+      {days.length === 0 && (
+        <div className="flex items-start rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 mb-3 mt-0.5">
+          <span className="text-amber-600 font-bold mr-1.5 leading-none text-sm" aria-hidden>!</span>
+          <p className="text-[11px] text-amber-800 leading-snug">
+            No days picked — this window would run on zero days and never
+            appear on a screen. Pick at least one day above{onSetDays ? ' (or use a shortcut)' : ''}, or switch to {alwaysLabel}.
+          </p>
+        </div>
+      )}
+      {!showQuickPicks && days.length > 0 && <div className="mb-2" />}
 
       {/* Time of day — stacks on phone, row on sm:. flex-1 inputs never
           clip. */}
@@ -2598,6 +2666,7 @@ function Step4Publish({
           <ScheduleWindowFields
             accent="sky"
             className="px-4 pb-4 -mt-1"
+            alwaysLabel="“Activate immediately”"
             days={days}
             onToggleDay={toggleDay}
             timeStart={timeStart}
@@ -2622,7 +2691,8 @@ function Step5Review({
   kind,
   itemCount,
   template,
-  screenNames,
+  blastRadius,
+  reach,
   activate,
   schedDays,
   schedTimeStart,
@@ -2635,7 +2705,8 @@ function Step5Review({
   kind: PlaylistKind;
   itemCount: number;
   template: any;
-  screenNames: string[];
+  blastRadius: BlastRadius;
+  reach: ReachWarning[];
   activate: boolean;
   schedDays: string[];
   schedTimeStart: string;
@@ -2646,7 +2717,7 @@ function Step5Review({
 }) {
   const scheduleLabel = (() => {
     if (activate) {
-      if (screenNames.length === 0) return 'Activate immediately when screens are assigned';
+      if (blastRadius.screenCount === 0) return 'Activate immediately when screens are assigned';
       return 'Starts now · ends never';
     }
     const parts: string[] = [];
@@ -2714,25 +2785,6 @@ function Step5Review({
           />
         )}
         <ReviewRow
-          label="Screens"
-          value={
-            screenNames.length === 0 ? (
-              <span className="text-slate-500">
-                None yet — assign from the playlist page after creating.
-              </span>
-            ) : screenNames.length <= 3 ? (
-              <span>{screenNames.join(', ')}</span>
-            ) : (
-              <span>
-                <span className="font-semibold">{screenNames.length} screens</span>{' '}
-                <span className="text-slate-400">
-                  ({screenNames.slice(0, 2).join(', ')}, …)
-                </span>
-              </span>
-            )
-          }
-        />
-        <ReviewRow
           label="Schedule"
           value={
             <span
@@ -2749,6 +2801,23 @@ function Step5Review({
           last
         />
       </div>
+
+      {/* Blast radius — replaces the old one-line "Screens" review row.
+          Before commit the operator sees the REAL reach (a group of 3
+          used to read as "1 selected"), can expand the actual names, and
+          gets an amber warning the moment the selection resolves to
+          nothing. Information, not a nag: no typed-confirm, no hold. */}
+      <BlastRadiusSummary
+        className="mt-3"
+        radius={blastRadius}
+        warnings={reach}
+        verb={willSubmitForReview ? 'Requests publish to' : 'Publishes to'}
+      />
+      {blastRadius.screenCount === 0 && (
+        <p className="text-xs text-slate-500 mt-2 text-center">
+          You can still create it now and assign screens from the playlist page later.
+        </p>
+      )}
 
       <p className="text-xs text-slate-400 mt-3 text-center">
         You can edit any of this later from the playlist detail page.

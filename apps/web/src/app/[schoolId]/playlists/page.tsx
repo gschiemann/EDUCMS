@@ -27,6 +27,8 @@ import {
 import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { transformedImageUrl } from '@/lib/asset-image';
+import { computeBlastRadius, reachWarnings, isReachBlocked } from '@/lib/blast-radius';
+import { BlastRadiusSummary } from '@/components/playlists/BlastRadiusSummary';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
@@ -1487,9 +1489,41 @@ export default function PlaylistsPage() {
     })();
   };
 
+  // ─── Publish blast radius ────────────────────────────────────────────
+  //
+  // The sheet's target list mixes `group-<id>` and `screen-<id>` entries, so
+  // "3 selected" could mean 3 screens or 300. Resolve it from the screens +
+  // screenGroups this page ALREADY has loaded (no new fetch) and show the
+  // operator the real number, with the real names, before they commit.
+  // Same helper the wizard's Review step and the HQ modal use.
+  const publishBlast = useMemo(() => computeBlastRadius({
+    screens: screens || [],
+    groups: screenGroups || [],
+    selectedScreenIds: schedTargets
+      .filter((tgt) => tgt.startsWith('screen-'))
+      .map((tgt) => tgt.slice('screen-'.length)),
+    selectedGroupIds: schedTargets
+      .filter((tgt) => tgt.startsWith('group-'))
+      .map((tgt) => tgt.slice('group-'.length)),
+  }), [screens, screenGroups, schedTargets]);
+  const publishReach = useMemo(
+    () => reachWarnings(publishBlast, {
+      windowed: schedMode === 'scheduled',
+      days: schedDays,
+      alwaysLabel: '“Always (24/7)”',
+    }),
+    [publishBlast, schedMode, schedDays],
+  );
+  // P7: a windowed schedule with zero days runs zero days — block both
+  // Publish AND Save (a zero-day draft is just as broken as a zero-day
+  // live schedule).
+  const publishBlocked = isReachBlocked(publishReach);
+
   // Back-compat alias so older call-sites keep working while we migrate.
-  const handlePublish = () => submitSchedule(true);
-  const handleSaveDraft = () => submitSchedule(false);
+  // Both re-check the blocking reach warning so no keyboard/Enter path can
+  // slip a zero-day schedule past the disabled buttons.
+  const handlePublish = () => { if (publishBlocked) return; submitSchedule(true); };
+  const handleSaveDraft = () => { if (publishBlocked) return; submitSchedule(false); };
 
   const totalMs = localItems.reduce((a: number, i: any) => a + (i.durationMs || 0), 0);
   const totalDur = `${Math.floor(totalMs / 60000)}m ${Math.round((totalMs % 60000) / 1000)}s`;
@@ -2435,6 +2469,16 @@ export default function PlaylistsPage() {
                     <p className="text-[10px] text-amber-600 p-1">{t('playlistsPage.noScreensPairFirst')}</p>
                   )}
                 </div>
+                {/* Blast radius — ticking "Lobby (Entire Group)" reads as ONE
+                    row in the list above but can be twelve screens. This says
+                    so, in one line, with the names one tap away. The zero-day
+                    warning is deliberately NOT repeated here — it lives inline
+                    beside the day picker below, where it can be fixed. */}
+                <BlastRadiusSummary
+                  className="mt-2"
+                  radius={publishBlast}
+                  warnings={publishReach.filter((w) => w.kind !== 'no-days')}
+                />
               </div>
 
               <div className="mb-4">
@@ -2528,6 +2572,7 @@ export default function PlaylistsPage() {
                     accent="indigo"
                     showQuickPicks
                     showDateHelp
+                    alwaysLabel="“Always (24/7)”"
                     days={schedDays}
                     onToggleDay={(day) => setSchedDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])}
                     onSetDays={setSchedDays}
@@ -2549,7 +2594,16 @@ export default function PlaylistsPage() {
                   scroll position. Buttons stretch flex-1 on mobile so
                   thumb tap targets stay generous; revert to natural
                   width on desktop. */}
-              <div className="border-t border-slate-100 bg-slate-50/40 px-5 md:px-6 py-3 flex items-center gap-2 md:gap-3">
+              <div className="border-t border-slate-100 bg-slate-50/40 px-5 md:px-6 py-3">
+                {/* Why the buttons are dead — one short line, right where the
+                    operator is looking. The full guidance is beside the day
+                    picker above (P7). */}
+                {publishBlocked && (
+                  <p className="text-[11px] font-semibold text-amber-700 mb-2 leading-snug" role="alert">
+                    Pick at least one day above — or switch to Always (24/7) — before publishing.
+                  </p>
+                )}
+                <div className="flex items-center gap-2 md:gap-3">
                 <button
                   onClick={() => setShowPublishModal(false)}
                   className="flex-1 md:flex-initial px-4 py-2.5 text-slate-500 hover:text-slate-800 text-sm font-semibold rounded-lg hover:bg-slate-100 active:bg-slate-200"
@@ -2563,10 +2617,10 @@ export default function PlaylistsPage() {
                     running playlist on its target(s) until it's
                     activated. */}
                 <button
-                  disabled={schedTargets.length === 0 || publishSubmitting || isViewer}
+                  disabled={schedTargets.length === 0 || publishSubmitting || isViewer || publishBlocked}
                   onClick={handleSaveDraft}
                   className="flex-1 md:flex-initial px-4 md:px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-slate-700 text-sm font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
-                  title={isViewer ? t('playlistsPage.readOnlyViewer') : t('playlistsPage.saveScheduleHint')}
+                  title={isViewer ? t('playlistsPage.readOnlyViewer') : publishBlocked ? 'Pick at least one day, or switch to Always (24/7).' : t('playlistsPage.saveScheduleHint')}
                 >
                   {publishSubmitting ? (
                     <><Loader2 className="w-4 h-4 animate-spin" /> {t('playlistsPage.saving')}</>
@@ -2575,9 +2629,9 @@ export default function PlaylistsPage() {
                   )}
                 </button>
                 <button
-                  disabled={schedTargets.length === 0 || publishSubmitting || isViewer}
+                  disabled={schedTargets.length === 0 || publishSubmitting || isViewer || publishBlocked}
                   onClick={handlePublish}
-                  title={isViewer ? 'Read-only — viewer role' : undefined}
+                  title={isViewer ? 'Read-only — viewer role' : publishBlocked ? 'Pick at least one day, or switch to Always (24/7).' : undefined}
                   className="flex-1 md:flex-initial px-4 md:px-5 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
                 >
                   {publishSubmitting ? (
@@ -2586,7 +2640,8 @@ export default function PlaylistsPage() {
                     <><CalendarDays className="w-4 h-4" /> {t('playlistsPage.publish')}</>
                   )}
                 </button>
-              </div>
+                </div>
+              </div>{/* /sticky footer */}
             </div>
           </div>
         )}
