@@ -1,6 +1,6 @@
 "use client";
 
-import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check, AlertCircle, Radio, Camera, CalendarClock, ChevronDown } from 'lucide-react';
+import { MonitorPlay, Plus, Loader2, Trash2, MapPin, MonitorCheck, Wifi, WifiOff, X, Smartphone, Monitor, Laptop, Tv, Globe, Clock, ExternalLink, QrCode, Map as MapIcon, List as ListIcon, Download, CheckCircle2, Settings, RefreshCw, Tag, Copy, Check, AlertCircle, Radio, Camera, CalendarClock, ChevronDown, Search } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useScreenGroups, useCreateScreenGroup, useDeleteScreenGroup, useUpdateScreenGroup, useDeleteScreen, useUpdateScreen, useScreens, useUpdateScreenLocation, useForceApkUpdate, useLatestPlayerVersion, useRefreshWeb, useCanaryRollout, useSetScreenOrientation, useSetScreenCanvas, useHardwareCatalog, useSetScreenHardwareModel, useSetScreenConsoleProfile, useSetScreenSyncOffset, useSyncTrimSuggestions, useScreenDeviceInventory } from '@/hooks/use-api';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
@@ -1718,6 +1718,28 @@ function CopyUrlButton({ url }: { url: string }) {
   );
 }
 
+/**
+ * Fleet search + status filter (2026-08-24) — client-side predicates over
+ * the already-loaded screens list. Mirrors the exact matching logic
+ * `FleetRollup.tsx` uses for the HQ cross-location rollup (search box +
+ * All/Online/Offline chips) so an operator gets the identical behavior on
+ * a single tenant's own Screens page. Kept as free functions (not inline
+ * closures) so the same predicate runs unchanged across the three places
+ * that need it below: the group list, the ungrouped list, and the map.
+ */
+function fleetStatusMatches(status: string | undefined, filter: 'all' | 'online' | 'offline'): boolean {
+  if (filter === 'all') return true;
+  const isOnline = status === 'ONLINE';
+  return filter === 'online' ? isOnline : !isOnline;
+}
+function fleetQueryMatches(s: { name?: string; hardwareModel?: string | null }, groupName: string | undefined | null, norm: string): boolean {
+  if (!norm) return true;
+  if (s.name?.toLowerCase().includes(norm)) return true;
+  if (groupName?.toLowerCase().includes(norm)) return true;
+  if (s.hardwareModel?.toLowerCase().includes(norm)) return true;
+  return false;
+}
+
 export default function ScreensPage() {
   const t = useTranslations();
   const { data: groups, isLoading, isError, refetch } = useScreenGroups();
@@ -1830,6 +1852,48 @@ export default function ScreensPage() {
 
   // Screens not assigned to any group
   const ungroupedScreens = (allScreens || []).filter((s: any) => !s.screenGroupId);
+
+  // Fleet search + status filter (2026-08-24) — "finding one offline
+  // screen means scrolling every group by eye" per the operator brief.
+  // Ephemeral React state only: nothing persists across a reload, no URL
+  // param, no setting. Client-side over data already in memory — no new
+  // API calls or pollers.
+  const [fleetQuery, setFleetQuery] = useState('');
+  const [fleetStatusFilter, setFleetStatusFilter] = useState<'all' | 'online' | 'offline'>('all');
+  const fleetNorm = fleetQuery.trim().toLowerCase();
+  const fleetFiltering = fleetStatusFilter !== 'all' || fleetNorm.length > 0;
+  const clearFleetFilter = () => { setFleetQuery(''); setFleetStatusFilter('all'); };
+  // Reuse the same total/online/offline the FleetSummaryStrip tiles above
+  // already compute (off `flatScreens`, zero extra cost) as the chip counts.
+  const fleetOnlineCount = useMemo(() => flatScreens.filter((s: any) => s.status === 'ONLINE').length, [flatScreens]);
+  const fleetOfflineCount = flatScreens.length - fleetOnlineCount;
+  // Feeds the Map view's pins directly (task allows it when it "cleanly"
+  // reuses the filtered collection — this is a one-line swap at the map's
+  // own `screens` prop below). `screenGroup` is included on every /screens
+  // row (screens.controller.ts `include: { screenGroup: { select: { id,
+  // name, syncMode } } }`) so group-name search works here too.
+  const fleetFilteredFlat = useMemo(
+    () => (fleetFiltering ? flatScreens.filter((s: any) => fleetStatusMatches(s.status, fleetStatusFilter) && fleetQueryMatches(s, s.screenGroup?.name, fleetNorm)) : flatScreens),
+    [flatScreens, fleetFiltering, fleetStatusFilter, fleetNorm],
+  );
+  const visibleUngrouped = useMemo(
+    () => (fleetFiltering ? ungroupedScreens.filter((s: any) => fleetStatusMatches(s.status, fleetStatusFilter) && fleetQueryMatches(s, undefined, fleetNorm)) : ungroupedScreens),
+    [ungroupedScreens, fleetFiltering, fleetStatusFilter, fleetNorm],
+  );
+  // Whether ANY screen anywhere (grouped or ungrouped) matches — drives the
+  // single "no screens match" empty state below. Computed independently of
+  // the per-group filtering inside the render so one match buried in
+  // group #40 still correctly suppresses the empty state for the page.
+  const fleetHasAnyMatch = useMemo(() => {
+    if (!fleetFiltering) return true;
+    if (visibleUngrouped.length > 0) return true;
+    for (const g of groups || []) {
+      for (const s of g.screens || []) {
+        if (fleetStatusMatches(s.status, fleetStatusFilter) && fleetQueryMatches(s, g.name, fleetNorm)) return true;
+      }
+    }
+    return false;
+  }, [fleetFiltering, groups, visibleUngrouped, fleetStatusFilter, fleetNorm]);
 
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
@@ -2069,6 +2133,75 @@ export default function ScreensPage() {
 
       <FleetSummaryStrip screens={flatScreens} />
 
+      {/* Fleet search + status filter (2026-08-24) — the HQ FleetRollup
+          command center already has exactly this UX (search box + All /
+          Online / Offline chips) for the cross-location rollup; this
+          brings the same experience to a single tenant's own fleet, which
+          previously had no way to find one screen except scrolling every
+          group by eye. Search matches screen name, group name, and
+          hardware/model (case-insensitive substring). Visible on List and
+          Map (drives the map's pins too — see fleetFilteredFlat below);
+          hidden on Floor plans, which has no screens prop to feed. */}
+      {viewMode !== 'floor' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-3 flex flex-col sm:flex-row gap-2.5 sm:items-center">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
+            <input
+              value={fleetQuery}
+              onChange={(e) => setFleetQuery(e.target.value)}
+              onKeyDown={(e) => {
+                // Escape clears the search while the box is focused —
+                // doesn't touch the status chip so "Offline only, cleared
+                // my typo" doesn't also lose the status filter.
+                if (e.key === 'Escape' && fleetQuery) {
+                  e.stopPropagation();
+                  setFleetQuery('');
+                }
+              }}
+              placeholder="Search by name, group, or model…"
+              aria-label="Search screens by name, group, or hardware model"
+              className="w-full pl-8 pr-11 sm:pr-8 py-3 sm:py-1.5 bg-white border border-slate-200 rounded-lg text-sm sm:text-[11px] outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            {fleetQuery && (
+              <button
+                type="button"
+                onClick={() => setFleetQuery('')}
+                aria-label="Clear search"
+                className="absolute right-0 top-1/2 -translate-y-1/2 w-11 h-11 sm:w-7 sm:h-7 flex items-center justify-center text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+          <div className="flex gap-1.5">
+            {(
+              [
+                { k: 'all' as const, label: 'All', count: flatScreens.length },
+                { k: 'online' as const, label: 'Online', count: fleetOnlineCount },
+                { k: 'offline' as const, label: 'Offline', count: fleetOfflineCount },
+              ]
+            ).map(({ k, label, count }) => {
+              const active = fleetStatusFilter === k;
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setFleetStatusFilter(k)}
+                  aria-pressed={active}
+                  className={`min-h-11 sm:min-h-0 px-3.5 sm:px-3 py-2 sm:py-1.5 text-xs font-bold rounded-lg border inline-flex items-center gap-1.5 transition-colors ${
+                    active ? 'text-white border-transparent' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                  }`}
+                  style={active ? { background: 'var(--brand-primary, #4f46e5)' } : undefined}
+                >
+                  {label}
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${active ? 'bg-white/25' : 'bg-slate-100 text-slate-500'}`}>{count}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Sprint 8 — fleet map view (only when toggled on) */}
       {viewMode === 'map' && (
         <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-5 space-y-3">
@@ -2081,7 +2214,7 @@ export default function ScreensPage() {
             </p>
           </div>
           <ScreenMapClient
-            screens={flatScreens.map(s => ({
+            screens={fleetFilteredFlat.map(s => ({
               id: s.id, name: s.name, status: s.status,
               // The API hydrates effectiveLatitude/Longitude from the
               // screen's own lat/lng first, then falls back to the
@@ -2195,8 +2328,41 @@ export default function ScreensPage() {
       {/* Groups */}
       {groups && (
         <div className="space-y-6">
+          {fleetFiltering && !fleetHasAnyMatch ? (
+            // Zero-result state (task #4) — friendly message + one-tap
+            // clear, no dead end. Replaces the groups/ungrouped list
+            // entirely rather than showing N empty group cards.
+            <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-dashed border-slate-200 py-14 px-6 text-center">
+              <Search className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+              <p className="text-sm font-semibold text-slate-600">
+                {fleetNorm && fleetStatusFilter !== 'all'
+                  ? `No ${fleetStatusFilter} screens match “${fleetQuery.trim()}”.`
+                  : fleetNorm
+                  ? `No screens match “${fleetQuery.trim()}”.`
+                  : `No ${fleetStatusFilter} screens right now.`}
+              </p>
+              <p className="text-xs text-slate-400 mt-1">Try a different name, group, or model — or clear the search.</p>
+              <button
+                type="button"
+                onClick={clearFleetFilter}
+                className="mt-4 px-4 py-2.5 rounded-lg text-white text-sm font-semibold inline-flex items-center gap-1.5"
+                style={{ background: 'var(--brand-primary, #4f46e5)' }}
+              >
+                <X className="w-4 h-4" /> Clear search
+              </button>
+            </div>
+          ) : (
+          <>
           {groups.map((group: any) => {
-            const screens = group.screens || [];
+            const rawGroupScreens = group.screens || [];
+            // While filtering: only the matching screens, and the whole
+            // card disappears when a group has zero matches (task #3) —
+            // otherwise a match 40 groups down the page is functionally
+            // invisible. Untouched (byte-identical) when not filtering.
+            const screens = fleetFiltering
+              ? rawGroupScreens.filter((s: any) => fleetStatusMatches(s.status, fleetStatusFilter) && fleetQueryMatches(s, group.name, fleetNorm))
+              : rawGroupScreens;
+            if (fleetFiltering && screens.length === 0) return null;
             const online = screens.filter((s: any) => s.status === 'ONLINE').length;
 
             return (
@@ -2609,7 +2775,7 @@ export default function ScreensPage() {
             </div>
           )}
 
-          {ungroupedScreens.length > 0 && (
+          {visibleUngrouped.length > 0 && (
             <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden mt-8">
               <div className="px-6 py-5 flex justify-between items-center bg-slate-50/30">
                 <div className="flex items-center gap-4">
@@ -2623,7 +2789,7 @@ export default function ScreensPage() {
                 </div>
               </div>
               <div className="p-2 space-y-1">
-                {ungroupedScreens.map((screen: any) => (
+                {visibleUngrouped.map((screen: any) => (
                   // Mobile (<sm): same stacked-card reflow as the grouped
                   // rows — identity line, status line, action row — via
                   // sm:contents wrappers that dissolve on desktop.
@@ -2737,6 +2903,8 @@ export default function ScreensPage() {
                 ))}
               </div>
             </div>
+          )}
+          </>
           )}
         </div>
       )}
