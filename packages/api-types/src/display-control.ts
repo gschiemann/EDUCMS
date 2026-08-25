@@ -463,7 +463,32 @@ export const DISPLAY_REFUSAL_CODES = {
    * for this hardware class, the darkening direction is refused outright.
    */
   BLANK_ADMIN_LOCK_FOREIGN_OWNER: 'DISPLAY_BLANK_ADMIN_LOCK_FOREIGN_OWNER',
+  /**
+   * BLANK via a mechanism not yet PROVEN to round-trip on real hardware.
+   * Field night 2026-08-25: two panels with IDENTICAL verdicts
+   * (device-admin, provisionable owner path) behaved oppositely — the L55
+   * woke back up, the Mobile A-Frame latched into standby (glass dark, IR
+   * remote dead, mains-pull required), same as the G43 an hour earlier.
+   * Recoverability of the hard mechanisms is per-vendor-firmware and NOT
+   * predictable from anything we probe, so BLANK now runs on an ALLOWLIST:
+   * composition-level mechanisms only (software-dim / screen-timeout),
+   * which cannot touch panel power by construction. Hard mechanisms
+   * (device-admin, vendor-recipe) rejoin per hardware model only after a
+   * supervised on-site round-trip test.
+   */
+  BLANK_MECHANISM_UNPROVEN: 'DISPLAY_BLANK_MECHANISM_UNPROVEN',
 } as const;
+
+/**
+ * The BLANK mechanisms proven safe to execute remotely: they darken at the
+ * Android composition layer and cannot touch panel/backlight power, so WAKE
+ * always works. Everything else is refused with BLANK_MECHANISM_UNPROVEN —
+ * see that code's comment for the 2026-08-25 field evidence.
+ */
+export const DISPLAY_BLANK_SAFE_MECHANISMS = [
+  'software-dim',
+  'screen-timeout',
+] as const;
 
 /**
  * The floor a brightness request must clear to count as RECOVERY on a screen
