@@ -236,6 +236,22 @@ function GameControl() {
   // own locks within their own components.
   useOverlayLock(showCues || showHighlights || showPenalties);
 
+  // Escape closes whichever Run-mode popup is open (Cues / Highlights /
+  // Penalties). Each popup's visible Close-X is already a real <button>
+  // (keyboard-reachable via Tab), so this just adds the conventional
+  // Escape shortcut on top — a11y wave 2026-08-25.
+  useEffect(() => {
+    if (!showCues && !showHighlights && !showPenalties) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setShowCues(false);
+      setShowHighlights(false);
+      setShowPenalties(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [showCues, showHighlights, showPenalties]);
+
   // ── Keyboard shortcuts (Run mode only) ────────────────────────
   // Gates on mode === 'run' so Setup-mode typing is never intercepted.
   // Also no-ops when focus is on any editable element (input /
@@ -581,14 +597,23 @@ function GameControl() {
           Run console stays mounted underneath; picking a cue fires it
           and the popup auto-closes straight back to the game. */}
       {mode === 'run' && showCues && (
+        // Escape is handled by the shared Run-popup keydown effect above
+        // (`onClose()`-equivalent for all three popups); not duplicated as
+        // an onKeyDown here since this div is never itself focused.
+        // eslint-disable-next-line jsx-a11y/click-events-have-key-events
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Fire a cue"
           className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 p-3 sm:items-center sm:p-4"
-          onClick={() => setShowCues(false)}
+          // Backdrop click-to-dismiss — only when the click LANDS on the
+          // backdrop itself (e.target === e.currentTarget), not when it
+          // bubbles up from the card below. Escape (shared handler above)
+          // and the visible Close-X button are the keyboard-accessible
+          // dismiss paths. a11y wave 2026-08-25.
+          onClick={(e) => { if (e.target === e.currentTarget) setShowCues(false); }}
         >
-          <div
-            className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-bold text-slate-900">Fire a cue</h2>
               <button
@@ -942,14 +967,21 @@ function GameControl() {
           them on the scoreboard AND the ribbon (2026-05-27 — ribbon now
           consumes Game.spotlight too) and the popup auto-closes. */}
       {mode === 'run' && showHighlights && (
+        // Escape is handled by the shared Run-popup keydown effect above;
+        // not duplicated as an onKeyDown here since this div is never
+        // itself focused.
+        // eslint-disable-next-line jsx-a11y/click-events-have-key-events
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Player spotlight"
           className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 p-3 sm:items-center sm:p-4"
-          onClick={() => setShowHighlights(false)}
+          // Backdrop click-to-dismiss only when the click lands ON the
+          // backdrop (not bubbled from the card). Escape (shared handler
+          // above) + the visible Close-X are the keyboard paths.
+          onClick={(e) => { if (e.target === e.currentTarget) setShowHighlights(false); }}
         >
-          <div
-            className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl">
             <div className="mb-3 flex items-center justify-between">
               <div>
                 <h2 className="text-sm font-bold text-slate-900">Player spotlight</h2>
@@ -978,14 +1010,21 @@ function GameControl() {
           without leaving the Run screen. Adding a penalty auto-closes
           back to the game; the live box list stays one tap away. */}
       {mode === 'run' && showPenalties && def.penaltyBox && (
+        // Escape is handled by the shared Run-popup keydown effect above;
+        // not duplicated as an onKeyDown here since this div is never
+        // itself focused.
+        // eslint-disable-next-line jsx-a11y/click-events-have-key-events
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={def.penaltyBox.label}
           className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 p-3 sm:items-center sm:p-4"
-          onClick={() => setShowPenalties(false)}
+          // Backdrop click-to-dismiss only when the click lands ON the
+          // backdrop (not bubbled from the card). Escape (shared handler
+          // above) + the visible Close-X are the keyboard paths.
+          onClick={(e) => { if (e.target === e.currentTarget) setShowPenalties(false); }}
         >
-          <div
-            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-bold text-slate-900">{def.penaltyBox.label}</h2>
               <button
@@ -1120,6 +1159,14 @@ function RunMode({
   const [shareOpen, setShareOpen] = useState(false);
   const [shareCopied, setShareCopied] = useState<ConsoleView | null>(null);
 
+  // Escape closes the "send to device" sheet — a11y wave 2026-08-25.
+  useEffect(() => {
+    if (!shareOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShareOpen(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [shareOpen]);
+
   // NOTE (2026-06-15 console-UX): the old single-shot in-memory undo
   // state (lastAction/lastScore/scoreHome/scoreAway/undoScore) was
   // removed here. It was self-referential dead code — never consumed by
@@ -1239,14 +1286,20 @@ function RunMode({
           via the bundled qrcode lib — see RoleViewQr) for each view.
           Backdrop click / ✕ closes. */}
       {shareOpen && (
+        // Escape is handled by the keydown effect above; not duplicated as
+        // an onKeyDown here since this div is never itself focused.
+        // eslint-disable-next-line jsx-a11y/click-events-have-key-events
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Send a view to another device"
           className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 p-3 sm:items-center sm:p-4"
-          onClick={() => setShareOpen(false)}
+          // Backdrop click-to-dismiss only when the click lands ON the
+          // backdrop (not bubbled from the card). Escape (handler above)
+          // + the visible Close-X are the keyboard paths.
+          onClick={(e) => { if (e.target === e.currentTarget) setShareOpen(false); }}
         >
-          <div
-            className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl">
             <div className="mb-1 flex items-center justify-between">
               <h2 className="text-sm font-bold text-slate-900">Send a view to another device</h2>
               <button
@@ -3676,12 +3729,14 @@ function PlayerActionMenu({
       role="dialog"
       aria-modal="true"
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/60 p-3 sm:p-4"
-      onClick={onClose}
+      // Backdrop click-to-dismiss only when the click lands ON the backdrop
+      // (not bubbled from the card). Escape is a real keyboard-equivalent
+      // dismiss here (this dialog has no separate Escape listener elsewhere
+      // in the component) — a11y wave 2026-08-25.
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
     >
-      <div
-        className="w-full max-w-sm rounded-2xl bg-white p-4 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="w-full max-w-sm rounded-2xl bg-white p-4 shadow-2xl">
         {/* Header — player identity with team color stripe */}
         <div className="flex items-center gap-3 mb-3 pb-3 border-b border-slate-100">
           <div
@@ -4101,12 +4156,14 @@ function CueScorerPicker({
       role="dialog"
       aria-modal="true"
       className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 p-3 sm:items-center sm:p-4"
-      onClick={onClose}
+      // Backdrop click-to-dismiss only when the click lands ON the backdrop
+      // (not bubbled from the card). Escape is a real keyboard-equivalent
+      // dismiss here (this dialog has no separate Escape listener elsewhere
+      // in the component) — a11y wave 2026-08-25.
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
     >
-      <div
-        className="max-h-[82vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="max-h-[82vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl">
         <div className="mb-3 flex items-center justify-between gap-2">
           <div className="min-w-0">
             <div className="text-base font-black text-slate-900 truncate">{cueLabel}</div>
@@ -4261,10 +4318,11 @@ function PenaltyBoxControl({
 
       {/* player number */}
       <div>
-        <label className="mb-1.5 block text-xs font-semibold text-slate-500">
+        <label htmlFor="penalty-player-number" className="mb-1.5 block text-xs font-semibold text-slate-500">
           Player number <span className="font-normal text-slate-400">(optional)</span>
         </label>
         <Input
+          id="penalty-player-number"
           value={player}
           onChange={(e) => setPlayer(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
           inputMode="numeric"
@@ -4899,6 +4957,14 @@ function HomeRunMacro({
   const firedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (firedTimer.current) clearTimeout(firedTimer.current); }, []);
 
+  // Escape closes the runs-picker popover — a11y wave 2026-08-25.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
   // Top half → away team bats; Bottom half → home team bats.
   const half = String(stats.half || 'Top').toUpperCase();
   const battingTeam: 'home' | 'away' =
@@ -4950,7 +5016,12 @@ function HomeRunMacro({
 
       {open && (
         <>
-          {/* click-away backdrop */}
+          {/* click-away backdrop — invisible, mouse-only convenience layer
+              (no visible content, never focused). The real keyboard-
+              equivalent dismiss is the Escape handler above; adding an
+              onKeyDown here would never fire since this div can't receive
+              focus. */}
+          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
           <div className="fixed top-0 right-0 bottom-0 left-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-2xl">
             <p className="px-1 pb-1.5 text-[11px] font-bold text-slate-500">
@@ -5199,6 +5270,13 @@ function PlayerCounterPopover({
   const [addTeam, setAddTeam] = useState<'home' | 'away'>('home');
   const [manualJersey, setManualJersey] = useState('');
 
+  // Escape closes the popover — a11y wave 2026-08-25.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   // Roster players for the add-picker, by team. Roster `team` is a
   // free string; anything not 'away' counts as home (mirrors PaRosterPicker).
   const rosterFor = (team: 'home' | 'away') =>
@@ -5221,6 +5299,11 @@ function PlayerCounterPopover({
 
   return (
     <>
+      {/* click-away backdrop — invisible, mouse-only convenience layer (no
+          visible content, never focused). The real keyboard-equivalent
+          dismiss is the Escape handler above; adding an onKeyDown here
+          would never fire since this div can't receive focus. */}
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div className="fixed top-0 right-0 bottom-0 left-0 z-40" onClick={onClose} />
       <div className="absolute bottom-full right-0 z-50 mb-2 w-80 max-w-[90vw] rounded-xl border border-slate-200 bg-white p-3 shadow-2xl">
         <div className="mb-2 flex items-center justify-between">
@@ -6820,11 +6903,12 @@ function PresentationSettingsSection({
             upload chain already accepts audio/mpeg + audio/wav; this just
             surfaces it + a ▶ preview so the operator hears it before the game. */}
         <div>
-          <label className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
+          <label htmlFor="celebration-sound-url" className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
             <Volume2 className="h-3.5 w-3.5" />
             Celebration sound
           </label>
           <Input
+            id="celebration-sound-url"
             className="mt-1"
             value={audioUrl}
             onChange={(e) => setAudioUrl(e.target.value)}
@@ -6873,8 +6957,9 @@ function PresentationSettingsSection({
           )}
         </div>
         <div>
-          <label className="text-xs font-semibold text-slate-500">Co-brand celebrations with</label>
+          <label htmlFor="cobrand-sponsor" className="text-xs font-semibold text-slate-500">Co-brand celebrations with</label>
           <select
+            id="cobrand-sponsor"
             value={sponsorId}
             onChange={(e) => setSponsorId(e.target.value)}
             className="mt-1 w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
@@ -7021,8 +7106,16 @@ function SponsorScheduleRow({
             weight 5/2/10". The numeric `weight` stays the single source of
             truth; the buttons just pick it. */}
         <div>
-          <label className="font-semibold text-slate-500">How often it appears</label>
-          <div className="mt-1 flex rounded-lg border border-slate-200 overflow-hidden">
+          {/* Caption for a button group, not a single form control — a
+              <label> here would falsely imply an associated control (there
+              isn't one to htmlFor); role="group" + aria-label gives the
+              same "these buttons are one control" semantics to AT users. */}
+          <span className="font-semibold text-slate-500">How often it appears</span>
+          <div
+            role="group"
+            aria-label="How often it appears"
+            className="mt-1 flex rounded-lg border border-slate-200 overflow-hidden"
+          >
             {FREQ_TIERS.map((t) => {
               const on = weightToTier(weight) === t.value;
               return (
@@ -7047,8 +7140,9 @@ function SponsorScheduleRow({
         {/* item G — "don't show more than" dropdown, not a raw number box
             labelled "Uncapped". Stored as frequencyCapPerHour. */}
         <div>
-          <label className="font-semibold text-slate-500">Don&rsquo;t show more than</label>
+          <label htmlFor={`sponsor-freq-cap-${sponsor.id}`} className="font-semibold text-slate-500">Don&rsquo;t show more than</label>
           <select
+            id={`sponsor-freq-cap-${sponsor.id}`}
             value={freqCap === '' ? '' : freqCap}
             onChange={(e) => {
               setFreqCap(e.target.value);
@@ -7069,8 +7163,9 @@ function SponsorScheduleRow({
         </div>
         {/* item G — "Flight start/end" ad-jargon → plain "Show from / until". */}
         <div>
-          <label className="font-semibold text-slate-500">Show from</label>
+          <label htmlFor={`sponsor-flight-start-${sponsor.id}`} className="font-semibold text-slate-500">Show from</label>
           <input
+            id={`sponsor-flight-start-${sponsor.id}`}
             type="date"
             value={flightStart}
             onChange={(e) => {
@@ -7081,8 +7176,9 @@ function SponsorScheduleRow({
           />
         </div>
         <div>
-          <label className="font-semibold text-slate-500">Show until</label>
+          <label htmlFor={`sponsor-flight-end-${sponsor.id}`} className="font-semibold text-slate-500">Show until</label>
           <input
+            id={`sponsor-flight-end-${sponsor.id}`}
             type="date"
             value={flightEnd}
             onChange={(e) => {
@@ -7297,11 +7393,12 @@ function ScheduledAtField({
 
   return (
     <div className="mt-3 pt-3 border-t border-slate-100">
-      <label className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
+      <label htmlFor="scheduled-at-field" className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
         When is it? <span className="normal-case font-normal text-slate-300">(optional)</span>
       </label>
       <div className="mt-1.5 flex items-center gap-2">
         <input
+          id="scheduled-at-field"
           type="datetime-local"
           value={draft}
           onChange={(e) => {
@@ -8156,10 +8253,13 @@ function SpotlightControl({
       </p>
       {players.length > 0 && (
         <div className="mb-4">
-          <label className="text-xs font-semibold text-slate-500">
+          {/* Caption for a group of player-picker buttons, not a single
+              form control — role="group" + aria-label gives AT users the
+              equivalent grouping without a false <label htmlFor>. */}
+          <span className="text-xs font-semibold text-slate-500">
             Tap a player to put them on the board — tap again to clear, or tap another to switch.
-          </label>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
+          </span>
+          <div role="group" aria-label="Choose a player to spotlight" className="mt-1.5 flex flex-wrap gap-1.5">
             {players.map((p) => {
               const onAir = isPlayerOnAir(p);
               return (
@@ -8198,8 +8298,9 @@ function SpotlightControl({
       )}
       <div className="grid sm:grid-cols-2 gap-3">
         <div>
-          <label className="text-xs font-semibold text-slate-500">Title</label>
+          <label htmlFor="spotlight-title" className="text-xs font-semibold text-slate-500">Title</label>
           <Input
+            id="spotlight-title"
             className="mt-1"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -8208,8 +8309,9 @@ function SpotlightControl({
           />
         </div>
         <div>
-          <label className="text-xs font-semibold text-slate-500">Subtitle</label>
+          <label htmlFor="spotlight-subtitle" className="text-xs font-semibold text-slate-500">Subtitle</label>
           <Input
+            id="spotlight-subtitle"
             className="mt-1"
             value={subtitle}
             onChange={(e) => setSubtitle(e.target.value)}
@@ -8219,7 +8321,7 @@ function SpotlightControl({
         </div>
       </div>
       <div className="mt-3">
-        <label className="text-xs font-semibold text-slate-500">Photo</label>
+        <label htmlFor="spotlight-photo-url" className="text-xs font-semibold text-slate-500">Photo</label>
         <div className="mt-1 flex items-center gap-2">
           {photoUrl.trim() ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -8243,6 +8345,7 @@ function SpotlightControl({
             Choose
           </Button>
           <Input
+            id="spotlight-photo-url"
             value={photoUrl}
             onChange={(e) => setPhotoUrl(e.target.value)}
             placeholder="…or paste a URL"
@@ -8262,8 +8365,11 @@ function SpotlightControl({
         />
       )}
       <div className="mt-3">
-        <label className="text-xs font-semibold text-slate-500">Stat lines</label>
-        <div className="mt-1 grid sm:grid-cols-2 gap-2">
+        {/* Caption for a repeating list of Input pairs, not a single form
+            control — role="group" + aria-label gives AT users the
+            equivalent grouping without a false <label htmlFor>. */}
+        <span className="text-xs font-semibold text-slate-500">Stat lines</span>
+        <div role="group" aria-label="Stat lines" className="mt-1 grid sm:grid-cols-2 gap-2">
           {lines.map((l, i) => (
             <div key={i} className="flex items-center gap-1.5">
               <Input
@@ -8422,17 +8528,21 @@ function ShortcutCheatSheet({
   const allRows = [...STATIC_ROWS, ...cueRows];
 
   return (
+    // Backdrop click-to-dismiss only when the click lands ON the backdrop
+    // (not bubbled from the card). Escape is already handled by the
+    // document-level listener above (`onClose()` on Escape) — that
+    // listener is the real keyboard-equivalent dismiss path, so it's not
+    // duplicated as an onKeyDown here (this div is never itself focused,
+    // so a local handler would never fire).
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Keyboard shortcuts"
       className="fixed top-0 left-0 right-0 bottom-0 z-[9000] flex items-center justify-center p-4 bg-slate-900/70"
-      onClick={onClose}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div
-        className="w-full max-w-sm rounded-2xl bg-white shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <div className="flex items-center gap-2">

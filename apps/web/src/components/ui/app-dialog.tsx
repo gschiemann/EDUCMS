@@ -238,16 +238,26 @@ export function AppDialogHost() {
         dismiss(current.id);
         return;
       }
-      // Focus trap (a11y wave, 2026-08-24) — 'alert' and 'prompt' dialogs
-      // have no dedicated arrow-key UX (that's confirm-only, below), so
-      // until now Tab/Shift+Tab on them fell through to the browser's
-      // native tab order and could walk focus straight out of the modal
-      // and into whatever page is stacked underneath it — a real trap
-      // failure for a `role="dialog" aria-modal="true"` surface. Wrap
-      // Tab within the dialog's own focusable elements (close-X, the
-      // prompt's text input, Confirm) instead.
-      if (current.kind !== 'confirm') {
-        if (e.key !== 'Tab' || !dialogRef.current) return;
+      // Universal Tab focus trap (a11y wave, 2026-08-24/25) — wraps Tab/
+      // Shift+Tab within the dialog's own real focusable elements
+      // (close-X, [prompt's text input], Cancel, Confirm) for EVERY
+      // dialog kind, confirm included. Runs before the D-pad handler below
+      // so Tab always gets proper first<->last wraparound.
+      //
+      // 2026-08-25 — this used to be alert/prompt-only ('confirm' handled
+      // Tab itself, below, as part of its 2-way arrow-key toggle). That
+      // meant a confirm dialog's close-X — a real, visible, focusable
+      // <button> — was never reachable by Tab: the old confirm-branch
+      // toggled ONLY between Cancel and Confirm, so a keyboard user could
+      // never Tab to close-X (mouse click was the only way in). Browser-
+      // tested via app-dialog.focustrap.test.tsx, which caught it: Tab
+      // from Confirm (last) landed back on Cancel instead of wrapping to
+      // close-X (first). Hoisting the trap to run for every kind fixes
+      // that; the D-pad arrow-key toggle below is UNCHANGED (still
+      // confirm-only, still Cancel<->Confirm) so the TV-remote UX this
+      // file's other comments describe keeps working exactly as before.
+      if (e.key === 'Tab') {
+        if (!dialogRef.current) return;
         const focusable = getFocusable(dialogRef.current);
         if (focusable.length === 0) return;
         e.preventDefault();
@@ -262,23 +272,15 @@ export function AppDialogHost() {
         }
         return;
       }
-      // D-pad / Tab / arrow navigation between the two confirm-row
-      // buttons. Operator (2026-05-13): "unpair and the remote isnt
-      // working on that section still". TV remotes / Android signage
-      // boxes emit a variety of codes for "next/previous" — we cover
-      // arrow keys, Tab/Shift+Tab, and the rare WebKit GamepadButton
-      // keycodes. Whichever fires, focus moves visibly. This 2-way
-      // toggle is ALREADY a valid (if partial) focus trap — Tab can
-      // never escape a confirm dialog — so it's left untouched here;
-      // only the alert/prompt gap above is new.
-      const isNext =
-        e.key === 'ArrowRight' ||
-        e.key === 'ArrowDown' ||
-        (e.key === 'Tab' && !e.shiftKey);
-      const isPrev =
-        e.key === 'ArrowLeft' ||
-        e.key === 'ArrowUp' ||
-        (e.key === 'Tab' && e.shiftKey);
+      if (current.kind !== 'confirm') return; // arrow-key D-pad is confirm-only
+      // D-pad arrow navigation between the two confirm-row buttons.
+      // Operator (2026-05-13): "unpair and the remote isnt working on
+      // that section still". TV remotes / Android signage boxes emit
+      // arrow-key codes for "next/previous" D-pad presses. Tab is handled
+      // by the universal trap above (2026-08-25) — this stays arrow-
+      // keys-only so it never fights that trap.
+      const isNext = e.key === 'ArrowRight' || e.key === 'ArrowDown';
+      const isPrev = e.key === 'ArrowLeft' || e.key === 'ArrowUp';
       if (!isNext && !isPrev) return;
       e.preventDefault();
       e.stopPropagation();

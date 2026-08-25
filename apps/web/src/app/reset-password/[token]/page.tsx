@@ -72,8 +72,9 @@ export default function ResetPasswordCompletePage({
           ) : (
             <form onSubmit={handleSubmit} className="space-y-5">
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">New password</label>
+                <label htmlFor="reset-new-password" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">New password</label>
                 <input
+                  id="reset-new-password"
                   type="password"
                   required
                   minLength={8}
@@ -84,8 +85,9 @@ export default function ResetPasswordCompletePage({
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Confirm password</label>
+                <label htmlFor="reset-confirm-password" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Confirm password</label>
                 <input
+                  id="reset-confirm-password"
                   type="password"
                   required
                   autoComplete="new-password"

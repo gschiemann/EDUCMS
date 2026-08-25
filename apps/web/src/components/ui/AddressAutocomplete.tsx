@@ -292,12 +292,18 @@ export function AddressAutocomplete({
         )}
       </div>
       {open && results.length > 0 && (
-        <ul
+        // A plain <div> (not <ul>) — <ul> carries an implicit non-interactive
+        // "list" role that jsx-a11y won't let you override with the
+        // interactive "listbox" role (no-noninteractive-element-to-interactive-role).
+        // A div has no implicit role, so the listbox/option composition below
+        // is unambiguous. Zero visual change (no list-style/marker classes
+        // were in play).
+        <div
           role="listbox"
           className="absolute z-30 left-0 right-0 mt-1 max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg"
         >
           {results.map((r) => (
-            <li key={r.id}>
+            <div key={r.id}>
               <button
                 type="button"
                 role="option"
@@ -314,9 +320,9 @@ export function AddressAutocomplete({
                 <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
                 <span className="truncate">{r.displayName}</span>
               </button>
-            </li>
+            </div>
           ))}
-          <li className="px-3 py-1.5 text-[10px] text-slate-400 border-t border-slate-100">
+          <div className="px-3 py-1.5 text-[10px] text-slate-400 border-t border-slate-100">
             Results from{' '}
             <a
               href="https://www.openstreetmap.org/copyright"
@@ -327,8 +333,8 @@ export function AddressAutocomplete({
             >
               OpenStreetMap
             </a>
-          </li>
-        </ul>
+          </div>
+        </div>
       )}
       {/* MOBILE BUG #216 (2026-07-01) — honest note instead of silently
           returning nothing when no result matched and this deploy has no

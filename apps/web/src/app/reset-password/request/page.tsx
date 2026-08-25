@@ -75,8 +75,9 @@ export default function RequestPasswordResetPage() {
           ) : (
             <form onSubmit={handleSubmit} className="space-y-5">
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Email</label>
+                <label htmlFor="reset-request-email" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Email</label>
                 <input
+                  id="reset-request-email"
                   type="email"
                   required
                   autoComplete="email"

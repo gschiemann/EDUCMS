@@ -100,8 +100,9 @@ export default function AcceptInvitePage({
                 <p><span className="text-slate-500">Role:</span> {preview.role}</p>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Password</label>
+                <label htmlFor="invite-password" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Password</label>
                 <input
+                  id="invite-password"
                   type="password"
                   required
                   minLength={8}
@@ -112,8 +113,9 @@ export default function AcceptInvitePage({
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Confirm password</label>
+                <label htmlFor="invite-confirm-password" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Confirm password</label>
                 <input
+                  id="invite-confirm-password"
                   type="password"
                   required
                   autoComplete="new-password"

@@ -19,7 +19,7 @@
  * exactly as before.
  */
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { X, Upload, Loader2, ImageIcon, FolderOpen, Music } from 'lucide-react';
 import { useAssets, useAssetFolders } from '@/hooks/use-api';
@@ -63,6 +63,13 @@ export function AssetPicker({
 }) {
   // Hide the mobile tab bar while this picker is up (footer Upload/select).
   useOverlayLock();
+  // Escape closes the picker — the visible Close button (below) is the
+  // other keyboard-accessible dismiss path. a11y wave 2026-08-25.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
   const { data: assets, isLoading } = useAssets();
   const { data: folders } = useAssetFolders();
   const qc = useQueryClient();
@@ -204,6 +211,12 @@ export function AssetPicker({
       role="dialog"
       aria-modal="true"
     >
+      {/* Backdrop — mouse-only "click outside to close" convenience.
+          Escape (handled above) and the visible Close button below are the
+          real keyboard/AT-accessible dismissal paths; making this div
+          itself focusable would insert an invisible full-viewport tab
+          stop ahead of the picker's own controls. */}
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div className="absolute top-0 right-0 bottom-0 left-0 bg-slate-900/50" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-2xl ring-1 ring-slate-200 w-full max-w-2xl max-h-[82vh] flex flex-col overflow-hidden">
         {/* header */}
