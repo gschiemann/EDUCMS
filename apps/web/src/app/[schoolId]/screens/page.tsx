@@ -15,6 +15,13 @@ import { FloorPlansView } from '@/components/screens/FloorPlansView';
 // components/screens/display-capabilities.ts.
 import { ScreenDisplayControls } from '@/components/screens/ScreenDisplayControls';
 import { DisplayScheduleModal, type DisplayScheduleTargetRef } from '@/components/screens/DisplayScheduleModal';
+// 2026-08-24 — render-proof trust line. Classification lives in
+// components/screens/renderTrust.ts (pure, unit-tested); this component is
+// presentation only. See that file's header for the full "why" — short
+// version: ONLINE/OFFLINE is a ping-derived reachability signal, not proof
+// of a painted frame, and a frozen kiosk still passes the ping.
+import { RenderTrustChip } from '@/components/screens/RenderTrustChip';
+import { deriveRenderTrust } from '@/components/screens/renderTrust';
 // 2026-05-27 — PairScreenHardwareStep removed from the pair modal. The
 // player APK already reports its hardware (Build.MANUFACTURER + MODEL)
 // — operator should never have to type it. The step + its EP6N upsell
@@ -280,6 +287,15 @@ function FleetSummaryStrip({ screens }: { screens: any[] }) {
   const emergencyActive = screens.filter(
     (s) => s.emergencyStatus === 'ACTIVE' || s.tenant?.emergencyStatus === 'ACTIVE',
   ).length;
+  // 2026-08-24 — render-proof rollup. `screens` here is always the full
+  // GET /screens payload (flatScreens), so renderHealth/renderStale are
+  // already present on every row — no screenById lookup needed (that
+  // workaround is only for the grouped-list rows rendered further down,
+  // whose separate GET /screen-groups endpoint doesn't carry these
+  // fields). Counts the money state: reachable but NOT proven painting.
+  const notPainting = screens.filter(
+    (s) => deriveRenderTrust({ status: s.status, renderHealth: s.renderHealth, renderStale: s.renderStale }) === 'not-painting',
+  ).length;
   const canaryActive = (canary.data?.percent ?? 100) < 100;
 
   // No content yet? Render nothing — avoids the empty-state-on-empty-state
@@ -307,6 +323,10 @@ function FleetSummaryStrip({ screens }: { screens: any[] }) {
       {tile(t('screens.online'), online, online === total && total > 0 ? 'ok' : 'neutral')}
       {tile(t('screens.offline'), offline, offline > 0 ? 'warn' : 'neutral')}
       {tile(t('screens.emergency'), emergencyActive, emergencyActive > 0 ? 'alert' : 'neutral')}
+      {/* 2026-08-24 — render-proof rollup tile. Not run through t() —
+          matches the CanaryRolloutTile precedent just below, which is also
+          a hardcoded English label (no i18n key added for it either). */}
+      {tile('Not painting', notPainting, notPainting > 0 ? 'alert' : 'neutral')}
       {canaryActive && (
         <CanaryRolloutTile canary={canary.data!} />
       )}
@@ -1771,10 +1791,24 @@ export default function ScreensPage() {
   // comments warn three times about exactly this class of omission). Rather
   // than have the display panel behave differently for a grouped screen
   // than for the identical ungrouped one, look the full row up here.
+  //
+  // 2026-08-24 — same story for render-proof: lastRenderedAt / renderHealth
+  // / renderStale / renderStaleSeconds are computed by screens.controller.ts
+  // list() and are NOT in screen-groups.controller.ts's select whitelist
+  // either, so a grouped row's render-trust chip sources from this map too
+  // (widened below) instead of adding yet another field to that endpoint's
+  // whitelist — this map already exists for exactly this class of gap.
   const screenById = useMemo(() => {
     const m = new Map<
       string,
-      { displayCapabilities?: unknown; displayCapabilitiesAt?: string | null }
+      {
+        displayCapabilities?: unknown;
+        displayCapabilitiesAt?: string | null;
+        status?: string;
+        renderHealth?: 'OK' | 'STALE' | 'UNKNOWN' | null;
+        renderStale?: boolean | null;
+        lastRenderedAt?: string | null;
+      }
     >();
     for (const s of flatScreens) if (s?.id) m.set(s.id, s);
     return m;
@@ -2572,6 +2606,28 @@ export default function ScreensPage() {
                         }`}>
                           {screen.status === 'ONLINE' ? t('screens.statusOnline') : screen.status === 'PENDING' ? t('screens.statusPending') : t('screens.statusOffline')}
                         </span>
+                        {/* 2026-08-24 — render-proof trust chip. This IS the
+                            fleet's #1 trust question answered: ONLINE only
+                            proves the heartbeat; this proves pixels actually
+                            painted. Grouped rows come from GET /screen-groups,
+                            whose select whitelist doesn't carry renderHealth
+                            (same gap displayCapabilities has below) — source
+                            it from screenById, the map already built for
+                            exactly that class of gap. Renders nothing when
+                            the screen isn't live-online (offline treatment
+                            above already owns that message). */}
+                        {(() => {
+                          const proof = screenById.get(screen.id);
+                          return (
+                            <RenderTrustChip
+                              status={screen.status}
+                              renderHealth={proof?.renderHealth}
+                              renderStale={proof?.renderStale}
+                              verifiedAgo={proof?.lastRenderedAt ? timeAgo(proof.lastRenderedAt) : null}
+                              verifiedFull={proof?.lastRenderedAt ? fullDateTime(proof.lastRenderedAt) : null}
+                            />
+                          );
+                        })()}
                         {/* 2026-07-31 — push-channel health chip. An ONLINE
                             screen with a stale WS/SSE stamp lives on the
                             HTTP polling backstop: it still plays and gets
@@ -2867,6 +2923,24 @@ export default function ScreensPage() {
                     }`}>
                       {screen.status === 'ONLINE' ? t('screens.statusOnline') : screen.status === 'PENDING' ? t('screens.statusPending') : t('screens.statusOffline')}
                     </span>
+                    {/* 2026-08-24 — render-proof trust chip. `screen` here
+                        already comes straight off GET /screens (flatScreens),
+                        so it carries renderHealth/renderStale natively — no
+                        screenById lookup needed, but we still route through
+                        it for one code path shared with the grouped block
+                        above (harmless: same object either way). */}
+                    {(() => {
+                      const proof = screenById.get(screen.id);
+                      return (
+                        <RenderTrustChip
+                          status={screen.status}
+                          renderHealth={proof?.renderHealth}
+                          renderStale={proof?.renderStale}
+                          verifiedAgo={proof?.lastRenderedAt ? timeAgo(proof.lastRenderedAt) : null}
+                          verifiedFull={proof?.lastRenderedAt ? fullDateTime(proof.lastRenderedAt) : null}
+                        />
+                      );
+                    })()}
                     {screen.lastPingAt && (
                       <span
                         className="text-[10px] font-medium text-slate-400 flex items-center gap-1 shrink-0 px-2"
