@@ -12,6 +12,8 @@ const BOARD_HTML = `
   <p data-field="hero.sub">duplicate key — must be ignored</p>
   <span data-field="clock.mode">live</span>
   <span data-field="carousel.interval">8</span>
+  <span data-field="theme.bg">#0b1220</span>
+  <span data-field="theme.brand">#4f46e5</span>
   <div data-field="menu.item1">Cheeseburger</div>
   <div data-field=""></div>
 </body></html>`;
@@ -27,10 +29,13 @@ describe('parseExternalChatFields', () => {
     expect(title.label).toBe('Hero title');
   });
 
-  it('filters config spans (clock./carousel./…) — settings are not chat copy', () => {
+  it('filters config spans (clock./carousel./theme./…) — settings and palette tokens are not chat copy', () => {
     const out = parseExternalChatFields(BOARD_HTML, {});
     expect(out.some((f) => f.key.startsWith('clock.'))).toBe(false);
     expect(out.some((f) => f.key.startsWith('carousel.'))).toBe(false);
+    // theme.* are hex palette tokens (live-verified on hs/yearbook.html) —
+    // style config the validator refuses anyway; never offer them as copy.
+    expect(out.some((f) => f.key.startsWith('theme.'))).toBe(false);
   });
 
   it('operator overrides win as the EFFECTIVE value', () => {

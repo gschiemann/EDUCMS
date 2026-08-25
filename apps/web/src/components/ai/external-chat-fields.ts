@@ -26,7 +26,13 @@ export interface ExternalChatField {
   value: string;
 }
 
-const CONFIG_SPAN_RE = /^(clock|carousel|video|media|motion|config)\./;
+// `theme.` carries the board's palette tokens (bg/ink/brand/accent hex
+// values) — style config, not copy. Live-verified on /templates/hs/
+// yearbook.html (2026-08-24): 8 of its first data-fields are theme.* hexes,
+// which would crowd the model's field list and contradict the validator's
+// "chat changes the wording" contract. Restyling goes through the style
+// controls, same as the server's refusal note says.
+const CONFIG_SPAN_RE = /^(clock|carousel|video|media|motion|config|theme)\./;
 const MAX_FIELDS = 48;
 
 /** "menu.burger.title" / "recordHolderYear" → "Menu burger title" / "Record holder year". */
