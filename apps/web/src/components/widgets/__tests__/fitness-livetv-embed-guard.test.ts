@@ -90,12 +90,32 @@ describe('FitnessLiveTVWidget wires both iframes through the gate', () => {
     expect(s).not.toMatch(/src=\{ytResult!\.embedUrl\}/);
   });
 
-  it('both iframes read the gated values', () => {
+  it('EVERY iframe reads a gated value', () => {
+    // Was: assert the two iframes that existed in 2026-08-02 by variable
+    // name (safeIframeUrl / safeYtEmbedUrl). That broke the moment the
+    // consumer-YouTube path was removed — a guard failing because the
+    // thing it guarded was DELETED is noise, and worse, it never covered
+    // an iframe added later under a third name.
+    //
+    // The invariant was never "these two variables exist". It is "no
+    // iframe in this file renders an operator-supplied URL that has not
+    // been through the host allowlist". Checked structurally, so it
+    // survives a path being removed AND catches a new ungated one.
     const s = src();
-    expect(s).toMatch(/src=\{safeIframeUrl\}/);
-    expect(s).toMatch(/src=\{safeYtEmbedUrl\}/);
-    expect(s).toMatch(/safeEmbedSrc\(c\.streamUrl\)/);
-    expect(s).toMatch(/safeEmbedSrc\(ytResult\?\.embedUrl\)/);
+    const frames = s.match(/<iframe[\s\S]*?\/>/g) || [];
+    expect(frames.length).toBeGreaterThanOrEqual(1); // never vacuous
+    for (const frame of frames) {
+      const srcAttr = frame.match(/\ssrc=\{([^}]*)\}/);
+      expect(srcAttr).not.toBeNull();
+      // The bound expression must be a gated value — a `safe*` binding or
+      // a direct safeEmbedSrc(...) call — never a raw config field.
+      expect(srcAttr![1]).toMatch(/\bsafe[A-Za-z]*\b/);
+      expect(srcAttr![1]).not.toMatch(/\bc\.|\bconfig\./);
+    }
+    // And the gate itself is still the shared allowlist, not a local
+    // re-implementation that could drift from it.
+    expect(s).toMatch(/from '\.\.\/streaming-hosts'/);
+    expect(s).toMatch(/safeEmbedSrc\(/);
   });
 
   it('a refused host renders an honest placeholder instead of the page', () => {
@@ -109,10 +129,12 @@ describe('FitnessLiveTVWidget wires both iframes through the gate', () => {
     // the StreamingWidget side); the allowlist is the correct fix, not
     // loosening or tightening the sandbox blindly.
     const s = src();
-    const sandboxes = s.match(/sandbox="[^"]*"/g) || [];
-    expect(sandboxes.length).toBeGreaterThanOrEqual(2);
-    for (const sb of sandboxes) {
-      expect(sb).toBe('sandbox="allow-scripts allow-same-origin allow-presentation"');
+    const frames = s.match(/<iframe[\s\S]*?\/>/g) || [];
+    expect(frames.length).toBeGreaterThanOrEqual(1); // never vacuous
+    // Every frame carries the sandbox — counting sandbox attributes alone
+    // would pass a file where one iframe had none.
+    for (const frame of frames) {
+      expect(frame).toMatch(/sandbox="allow-scripts allow-same-origin allow-presentation"/);
     }
   });
 });

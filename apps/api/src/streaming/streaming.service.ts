@@ -268,8 +268,11 @@ export class StreamingService {
     }
     const status = probe.ok ? 'ACTIVE' : 'ERROR';
     await this.prisma.client.$transaction(async (tx: any) => {
-      await tx.streamProviderConnection.update({
-        where: { id: row.id },
+      // updateMany with the tenant in the WHERE, not update-by-id: the
+      // ownership check above already ran, but a constraint the query
+      // enforces cannot be separated from the write by a later edit.
+      await tx.streamProviderConnection.updateMany({
+        where: { id: row.id, tenantId },
         data: {
           status,
           statusReason: probe.ok ? null : (probe.reason || 'Stream URL could not be verified.'),
