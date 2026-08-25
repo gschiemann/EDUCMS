@@ -7519,10 +7519,62 @@ function ExternalHtmlTextEditor({
     );
   }
 
+  // ── Repeating groups (2026-08-25) ────────────────────────────────
+  // Operator: "if i want to add a 4th event i should be able to and the
+  // cards resize… they need to just work no matter what the user is
+  // trying to do."
+  //
+  // A board that ships `event.0.name` … `event.2.name` already declares
+  // a list; nothing extra has to be marked up. Count the contiguous
+  // indices per prefix and that is the authored length. The shim grows
+  // or shrinks the real DOM (see EDUCMS-SHIM-V11) and distributes the
+  // height across however many rows there are.
+  const repeatGroups: Array<{ group: string; authored: number; leaves: string[] }> = [];
+  {
+    const byGroup: Record<string, { idx: Set<number>; leaves: Set<string> }> = {};
+    for (const f of discoveredFields) {
+      const m = /^([A-Za-z][\w-]*)\.(\d+)\.(.+)$/.exec(f.key);
+      if (!m) continue;
+      const g = (byGroup[m[1]] ||= { idx: new Set(), leaves: new Set() });
+      g.idx.add(Number(m[2]));
+      g.leaves.add(m[3]);
+    }
+    for (const [group, g] of Object.entries(byGroup)) {
+      const idx = [...g.idx].sort((a, b) => a - b);
+      if (idx.length < 2) continue;
+      // Contiguous only — a gap means these are not one list.
+      if (idx.some((n, i) => i > 0 && n !== idx[i - 1] + 1)) continue;
+      repeatGroups.push({ group, authored: idx.length, leaves: [...g.leaves] });
+    }
+  }
+  const repeatCounts: Record<string, number> =
+    (cfg?.repeatCounts && typeof cfg.repeatCounts === 'object') ? cfg.repeatCounts as Record<string, number> : {};
+
+  // A row the operator just added has no fields in the board HTML — it is
+  // cloned at render time — so synthesize its keys here. Without this you
+  // can add a 4th event and have nothing to type into it.
+  const fieldsWithAddedRows = (() => {
+    const extra: typeof discoveredFields = [];
+    for (const rg of repeatGroups) {
+      const want = repeatCounts[rg.group];
+      if (typeof want !== 'number' || want <= rg.authored) continue;
+      const base = discoveredFields.find((f) => f.key.startsWith(`${rg.group}.`));
+      const firstIdx = base ? Number(/^[^.]+\.(\d+)\./.exec(base.key)?.[1] ?? 0) : 0;
+      for (let n = rg.authored; n < want; n += 1) {
+        for (const leaf of rg.leaves) {
+          const key = `${rg.group}.${firstIdx + n}.${leaf}`;
+          if (discoveredFields.some((f) => f.key === key)) continue;
+          extra.push({ key, defaultText: '', sectionKey: rg.group, isShortish: true });
+        }
+      }
+    }
+    return extra.length ? [...discoveredFields, ...extra] : discoveredFields;
+  })();
+
   // Group by sectionKey so a 70-field template (QSR drive-thru) shows
   // sections instead of a 70-row flat list.
   const sections: Record<string, typeof discoveredFields> = {};
-  for (const f of discoveredFields) {
+  for (const f of fieldsWithAddedRows) {
     if (!sections[f.sectionKey]) sections[f.sectionKey] = [];
     sections[f.sectionKey].push(f);
   }
@@ -7846,6 +7898,21 @@ function ExternalHtmlTextEditor({
           <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200 pb-1">
             {prettySectionLabel(sec)}
           </div>
+          {/* A repeating list gets a count control right above its rows. */}
+          {repeatGroups.filter((rg) => rg.group === sec).map((rg) => (
+            <RepeatCountField
+              key={`repeat-${rg.group}`}
+              group={rg.group}
+              authored={rg.authored}
+              value={repeatCounts[rg.group] ?? rg.authored}
+              onChange={(n) => {
+                const next = { ...repeatCounts };
+                if (n === rg.authored) delete next[rg.group];
+                else next[rg.group] = n;
+                setField({ repeatCounts: Object.keys(next).length ? next : undefined });
+              }}
+            />
+          ))}
           {sections[sec].map((f) => {
             const label = prettyFieldLabel(f.key);
             const binding = posBindings[f.key];
@@ -7966,6 +8033,57 @@ function ExternalHtmlTextEditor({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+
+/**
+ * RepeatCountField — how many rows a repeating list shows.
+ *
+ * The board ships an authored count (three events, four menu rows). The
+ * operator can go up or down from there and the board redistributes its
+ * space; at the authored count nothing about the render changes at all,
+ * which is what makes this safe to expose on every board that has an
+ * indexed group.
+ *
+ * MAX is a real cap, not a suggestion: past some point the rows are too
+ * small to read at viewing distance, and a board that silently accepts
+ * "20" and renders unreadable slivers is worse than one that says no.
+ */
+const REPEAT_MAX = 12;
+
+function RepeatCountField({ group, authored, value, onChange }: {
+  group: string;
+  authored: number;
+  value: number;
+  onChange: (n: number) => void;
+}) {
+  const noun = prettySectionLabel(group).toLowerCase();
+  const set = (n: number) => onChange(Math.max(1, Math.min(REPEAT_MAX, n)));
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
+      <div className="min-w-0">
+        <div className="text-[11px] font-semibold text-slate-700">How many {noun}s</div>
+        <div className="text-[10px] text-slate-500">
+          {value === authored ? `${authored} — as designed` : `${value} · they resize to fit (max ${REPEAT_MAX})`}
+        </div>
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        <button
+          type="button" aria-label={`Remove one ${noun}`}
+          disabled={value <= 1}
+          onClick={() => set(value - 1)}
+          className="w-7 h-7 rounded-md border border-slate-300 bg-white text-slate-600 font-bold disabled:opacity-40 hover:border-indigo-400"
+        >−</button>
+        <span className="w-6 text-center text-xs font-bold text-slate-800 tabular-nums">{value}</span>
+        <button
+          type="button" aria-label={`Add one ${noun}`}
+          disabled={value >= REPEAT_MAX}
+          onClick={() => set(value + 1)}
+          className="w-7 h-7 rounded-md border border-slate-300 bg-white text-slate-600 font-bold disabled:opacity-40 hover:border-indigo-400"
+        >+</button>
+      </div>
     </div>
   );
 }

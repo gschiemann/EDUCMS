@@ -3845,6 +3845,9 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
       // visitor tap, posts educms-action to the parent; the PLAYER runs it
       // through dispatchTouchAction (the builder preview just ignores it).
       ['actions', config?.actionOverrides],
+      // ?repeat={"event":4} — how many rows a repeating list shows. The
+      // shim grows/shrinks the real DOM and redistributes the space.
+      ['repeat', config?.repeatCounts],
     ];
     const segments: string[] = [];
     for (const [name, raw] of params) {
@@ -3880,7 +3883,7 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
       result += `${result.includes('?') ? '&' : '?'}freeze=1`;
     }
     return result;
-  }, [url, config?.brand, config?.textOverrides, config?.textStyles, config?._styles, config?.imageOverrides, config?.videoOverrides, config?.actionOverrides, freeze]);
+  }, [url, config?.brand, config?.textOverrides, config?.textStyles, config?._styles, config?.imageOverrides, config?.videoOverrides, config?.actionOverrides, config?.repeatCounts, freeze]);
 
   // ── Live menu feed (CTS-style) ──────────────────────────────────
   // QSR / restaurant / bar menu boards feed live the same way the sports
@@ -3973,8 +3976,9 @@ function ExternalHtmlWidget({ config, freeze }: { config: any; freeze?: boolean 
     if (config?.imageOverrides) payload.img = config.imageOverrides;
     if (config?.videoOverrides) payload.video = config.videoOverrides;
     if (config?.actionOverrides) payload.actions = config.actionOverrides;
+    if (config?.repeatCounts) payload.repeat = config.repeatCounts;
     try { win.postMessage(payload, '*'); } catch { /* detached / cross-origin — ignore */ }
-  }, [inlineHtml, config?.brand, config?.textOverrides, config?.textStyles, config?._styles, config?.imageOverrides, config?.videoOverrides, config?.actionOverrides]);
+  }, [inlineHtml, config?.brand, config?.textOverrides, config?.textStyles, config?._styles, config?.imageOverrides, config?.videoOverrides, config?.actionOverrides, config?.repeatCounts]);
   useEffect(() => {
     postDesignerOverrides();
     const el = frameRef.current;

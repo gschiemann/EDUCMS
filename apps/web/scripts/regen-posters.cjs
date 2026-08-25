@@ -9,7 +9,49 @@
 // baseUrl must serve apps/web/public (the web-prod dev server on :3000 does).
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { chromium } = require('@playwright/test');
+
+/**
+ * Capture-time query per board.
+ *
+ * The gym media boards render SOURCE NOT CONFIGURED until a source is
+ * bound — correct on a real screen, and exactly wrong on a gallery card,
+ * where every one of them would advertise itself with an error panel.
+ * `freeze=1` is the preview surface: the runtime shows the composition
+ * under a locked DEMO PREVIEW badge, which is what the operator is
+ * actually choosing between. Encoded here so it is not something the
+ * next person has to remember.
+ */
+function captureQuery(rel) {
+  if (/^fitness\/gym-media-/.test(rel)) return '?freeze=1';
+  return '';
+}
+
+/**
+ * Provenance. `_thumbs/poster-manifest.json` records the hash of the board
+ * each poster was captured from, so the freshness gate can answer "was
+ * this poster generated from THIS version of the board?" instead of
+ * guessing from byte churn. Writing a PNG without updating this leaves the
+ * gate correctly reporting the poster as stale — which is what happened
+ * when these were regenerated with an ad-hoc script.
+ */
+const MANIFEST = path.join(__dirname, '..', 'public', 'templates', '_thumbs', 'poster-manifest.json');
+function recordProvenance(entries) {
+  let manifest = {};
+  try { manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8')); } catch (_) { /* first write */ }
+  for (const rel of entries) {
+    const board = path.join(__dirname, '..', 'public', 'templates', rel);
+    try {
+      manifest[rel.replace(/\.html$/, '')] =
+        crypto.createHash('sha256').update(fs.readFileSync(board)).digest('hex').slice(0, 16);
+    } catch (_) { /* board vanished mid-run */ }
+  }
+  const sorted = {};
+  for (const k of Object.keys(manifest).sort()) sorted[k] = manifest[k];
+  fs.writeFileSync(MANIFEST, JSON.stringify(sorted, null, 2) + '\n');
+  return Object.keys(sorted).length;
+}
 
 const SUBPATH = (process.argv[2] || '').replace(/^\/+|\/+$/g, '');
 const BASE = process.argv[3] || 'http://localhost:3000';
@@ -37,17 +79,19 @@ function listBoards(dir, rel) {
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: W, height: H } });
   let ok = 0, fail = 0;
+  const captured = [];
   for (const rel of boards) {
     const page = await ctx.newPage();
     try {
-      await page.goto(BASE + '/templates/' + rel, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      await page.goto(BASE + '/templates/' + rel + captureQuery(rel), { waitUntil: 'domcontentloaded', timeout: 20000 });
       await page.waitForTimeout(3000); // fonts + autofit + image load + settle
       await page.addStyleTag({ content: '*{animation:none!important;transition:none!important;}' });
       await page.waitForTimeout(150);
       const dest = path.join(OUT, rel.replace(/\.html$/, '.png'));
       fs.mkdirSync(path.dirname(dest), { recursive: true });
       await page.screenshot({ path: dest });
-      console.log('  ok ' + rel);
+      console.log('  ok ' + rel + (captureQuery(rel) ? '  ' + captureQuery(rel) : ''));
+      captured.push(rel);
       ok++;
     } catch (e) {
       fail++; console.log('  FAIL ' + rel + ': ' + String(e.message).slice(0, 80));
@@ -55,5 +99,7 @@ function listBoards(dir, rel) {
   }
   await ctx.close();
   await browser.close();
-  console.log('DONE — ' + ok + ' posters written, ' + fail + ' failed');
+  const total = recordProvenance(captured);
+  console.log('DONE — ' + ok + ' posters written, ' + fail + ' failed; provenance recorded for '
+    + captured.length + ' board(s) (' + total + ' in the manifest).');
 })();

@@ -83,7 +83,7 @@
   }
   function readParams() {
     var q = new URLSearchParams(location.search);
-    return { brand: b64json(q.get('brand')), text: b64json(q.get('text')), styles: b64json(q.get('textStyles')), img: b64json(q.get('img')), actions: b64json(q.get('actions')) };
+    return { brand: b64json(q.get('brand')), text: b64json(q.get('text')), styles: b64json(q.get('textStyles')), img: b64json(q.get('img')), actions: b64json(q.get('actions')), repeat: b64json(q.get('repeat')) };
   }
   function applyBrand(b) {
     if (!b) return; var r = document.documentElement.style;
@@ -140,7 +140,92 @@
       }
     });
   }
-  function applyAll() { applyBrand(state.brand); applyText(state.text, state.styles); applyImages(state.img); if (editMode) armEdit(); }
+
+  // ── repeating groups ────────────────────────────────────────────────
+  // A screen that ships `tile.0.label` … `tile.2.label` already declares a
+  // list; the operator should be able to make it four and have the rows
+  // share the space. Same contract as the packaged-board shim
+  // (EDUCMS-SHIM-V11): the group is INFERRED from the indexed keys, so no
+  // kiosk screen needs new markup, and at the authored count nothing about
+  // the render changes at all.
+  function rpGroups() {
+    var map = {}, all = document.querySelectorAll('[data-field],[data-style]');
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i], k = el.getAttribute('data-field') || el.getAttribute('data-style') || '';
+      var m = /^([A-Za-z][\w-]*)\.(\d+)\./.exec(k);
+      if (!m) continue;
+      var g = m[1], n = +m[2];
+      map[g] = map[g] || {}; (map[g][n] = map[g][n] || []).push(el);
+    }
+    var out = [];
+    Object.keys(map).forEach(function (g) {
+      var idxs = Object.keys(map[g]).map(Number).sort(function (a, b) { return a - b; });
+      if (idxs.length < 2) return;
+      for (var c = 1; c < idxs.length; c++) if (idxs[c] !== idxs[c - 1] + 1) return;
+      var items = [];
+      for (var j = 0; j < idxs.length; j++) {
+        var els = map[g][idxs[j]], best = els[0], par = els[0].parentElement;
+        while (par && par !== document.body) {
+          var all2 = true; for (var q = 0; q < els.length; q++) if (!par.contains(els[q])) { all2 = false; break; }
+          if (!all2) break;
+          var clean = true;
+          for (var r = 0; r < idxs.length && clean; r++) {
+            if (idxs[r] === idxs[j]) continue;
+            var o = map[g][idxs[r]];
+            for (var t = 0; t < o.length; t++) if (par.contains(o[t])) { clean = false; break; }
+          }
+          if (!clean) break;
+          best = par; par = par.parentElement;
+        }
+        items.push(best);
+      }
+      var parent = items[0].parentElement; if (!parent) return;
+      for (var j2 = 1; j2 < items.length; j2++) if (items[j2].parentElement !== parent) return;
+      out.push({ group: g, items: items, parent: parent, base: idxs[0] });
+    });
+    return out;
+  }
+  function rpRenumber(root, group, from, to) {
+    var A = ['data-field', 'data-style', 'data-img', 'data-slot', 'data-action'],
+        N = [root].concat([].slice.call(root.querySelectorAll('*')));
+    for (var i = 0; i < N.length; i++) for (var j = 0; j < A.length; j++) {
+      var v = N[i].getAttribute && N[i].getAttribute(A[j]); if (!v) continue;
+      var pre = group + '.' + from + '.';
+      if (v.indexOf(pre) === 0) N[i].setAttribute(A[j], group + '.' + to + '.' + v.slice(pre.length));
+    }
+  }
+  var rpStyled = false;
+  function rpStyle() {
+    if (rpStyled) return; rpStyled = true;
+    var st = document.createElement('style');
+    st.textContent = '[data-educms-repeat]{display:flex;flex-direction:column;gap:var(--educms-repeat-gap,18px);height:100%;align-content:stretch}'
+      + '[data-educms-repeat]>[data-educms-repeat-item]{flex:1 1 0;min-height:0;margin-bottom:0;overflow:hidden}';
+    document.head.appendChild(st);
+  }
+  function applyRepeat(counts) {
+    if (!counts || typeof counts !== 'object') return;
+    var G = rpGroups();
+    for (var i = 0; i < G.length; i++) {
+      var g = G[i], want = counts[g.group];
+      if (typeof want !== 'number' || !isFinite(want)) continue;
+      var mx = parseInt(g.parent.getAttribute('data-repeat-max') || '', 10); if (!isFinite(mx)) mx = 12;
+      want = Math.max(1, Math.min(mx, Math.round(want)));
+      var have = g.items.length;
+      if (want === have) {
+        g.parent.removeAttribute('data-educms-repeat');
+        for (var z = 0; z < g.items.length; z++) g.items[z].removeAttribute('data-educms-repeat-item');
+        continue;
+      }
+      if (want < have) { for (var d = have - 1; d >= want; d--) if (g.items[d].parentNode) g.items[d].parentNode.removeChild(g.items[d]); }
+      else { var tpl = g.items[have - 1]; for (var a = have; a < want; a++) { var cl = tpl.cloneNode(true); rpRenumber(cl, g.group, g.base + have - 1, g.base + a); g.parent.appendChild(cl); } }
+      rpStyle();
+      g.parent.setAttribute('data-educms-repeat', '');
+      var kids = g.parent.children;
+      for (var y = 0; y < kids.length; y++) kids[y].setAttribute('data-educms-repeat-item', '');
+    }
+  }
+
+  function applyAll() { applyBrand(state.brand); applyRepeat(state.repeat); applyText(state.text, state.styles); applyImages(state.img); if (editMode) armEdit(); }
 
   // ── edit mode (builder) ──────────────────────────────────────────────
   function armEdit() {
@@ -180,7 +265,7 @@
   }
 
   function init() {
-    var p = readParams(); state.brand = p.brand; state.text = p.text; state.styles = p.styles; state.img = p.img; state.actions = p.actions || {};
+    var p = readParams(); state.brand = p.brand; state.text = p.text; state.styles = p.styles; state.img = p.img; state.actions = p.actions || {}; state.repeat = p.repeat || {};
     document.addEventListener('click', onActionTap, true);
     // Wrap the engine render so overrides survive every screen swap.
     function hook() {
@@ -197,7 +282,7 @@
     try { parent.postMessage({ type: 'educms-ready' }, '*'); } catch (_) {}
     addEventListener('message', function (e) {
       var d = e.data; if (!d || typeof d !== 'object') return;
-      if (d.type === 'educms-overrides') { if (d.brand) state.brand = d.brand; if (d.text) state.text = d.text; if (d.textStyles) state.styles = d.textStyles; if (d.img) state.img = d.img; if (d.actions) state.actions = d.actions; applyAll(); }
+      if (d.type === 'educms-overrides') { if (d.brand) state.brand = d.brand; if (d.text) state.text = d.text; if (d.textStyles) state.styles = d.textStyles; if (d.img) state.img = d.img; if (d.actions) state.actions = d.actions; if (d.repeat) state.repeat = d.repeat; applyAll(); }
       else if (d.type === 'educms-edit-mode') { editMode = !!d.on; if (editMode) { unfreeze(); armEdit(); } }
     });
   }
