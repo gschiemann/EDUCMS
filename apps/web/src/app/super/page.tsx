@@ -7,6 +7,7 @@ import { useAppStore } from '@/lib/store';
 import { useSuperTenants, useCompSeats, useUpsertLicense, type SuperTenantRow } from '@/hooks/use-api';
 import { appConfirm, appPrompt } from '@/components/ui/app-dialog';
 import { apiFetch } from '@/lib/api-client';
+import ActivationFunnelPanel from './ActivationFunnelPanel';
 
 /**
  * Owner-only control panel. Lists every tenant across the platform,
@@ -202,6 +203,11 @@ export default function SuperPage() {
             <Stat label="Approx MRR" value={`$${(monthlyMrrCents / 100).toFixed(0)}`} accent />
           </div>
         </header>
+
+        {/* 2026-08-24 — activation-funnel observability. Self-contained
+            (own fetch, own loading/error state) so it can't interfere with
+            the tenant-table data flow below. */}
+        <ActivationFunnelPanel />
 
         {/* Phase B closeout — multi-tenant filter bar. Search +
             selected-only toggle + selection pills. The whole bar

@@ -99,6 +99,10 @@ import { BugsController } from './bugs/bugs.controller';
 // 2026-05-30 — Real-time efficiency observability: per-route bytes/latency,
 // slow-query logging, egress budget alerting, /super/efficiency endpoint.
 import { EfficiencyModule } from './efficiency/efficiency.module';
+// 2026-08-24 — Activation-funnel observability: derives signup -> board ->
+// screen -> publish -> render-proof per tenant from existing rows, zero new
+// instrumentation. /super/activation-funnel endpoint (SUPER_ADMIN only).
+import { ActivationFunnelModule } from './activation-funnel/activation-funnel.module';
 import { EfficiencyInterceptor } from './efficiency/efficiency.interceptor';
 import { ScreenWedgeDetectorCron } from './screens/screen-wedge-detector.cron';
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -161,6 +165,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     DisplayModule,
     BugsModule,
     EfficiencyModule,
+    ActivationFunnelModule,
     // 2026-05-06 — operator: kiosk wedged on "429 trying to
     // reconnect" right after fresh APK install. Cause: a fresh kiosk
     // boot fires a flurry of API hits in the first 60 s — manifest
