@@ -3106,6 +3106,16 @@ function PlayerPage() {
           // eslint-disable-next-line no-console
           console.warn(`[OTA] suppressed false INSTALLED banner: claimed=${claimedVn} running=${runningVn}`);
         }
+        // 2026-08-25 — operator pushed an update and the panel's banner
+        // TITLE sat on "Update in progress" indefinitely while the
+        // sublabel said "no newer release offered". UP_TO_DATE is a
+        // TERMINAL answer, not progress: show the outcome, then stand
+        // down on its own (same pattern as the INSTALLED dismissal
+        // above; longer dwell so someone standing at the panel can
+        // actually read it).
+        if (data.ota.state === 'UP_TO_DATE') {
+          setTimeout(() => setOtaProgress(null), 12_000);
+        }
       }
     } else {
       setServerOtaState(null);
@@ -9064,14 +9074,17 @@ function PlayerPage() {
                 }
                 const isError = realState === 'ERROR';
                 const isDone = realState === 'INSTALLED';
+                // UP_TO_DATE is terminal too — "in progress" over a
+                // "nothing to install" sublabel read as a hang (2026-08-25).
+                const isCurrent = realState === 'UP_TO_DATE';
                 const bg = isError ? 'bg-amber-50 border-amber-200' :
-                           isDone  ? 'bg-emerald-50 border-emerald-200' :
+                           (isDone || isCurrent) ? 'bg-emerald-50 border-emerald-200' :
                                      'bg-indigo-50 border-indigo-200';
                 const titleColor = isError ? 'text-amber-900' :
-                                   isDone  ? 'text-emerald-900' :
+                                   (isDone || isCurrent) ? 'text-emerald-900' :
                                              'text-indigo-900';
                 const subColor   = isError ? 'text-amber-700' :
-                                   isDone  ? 'text-emerald-700' :
+                                   (isDone || isCurrent) ? 'text-emerald-700' :
                                              'text-indigo-700';
                 // 2026-05-06 — operator: "i set the manager to that
                 // permission manually and it still doesnt work".
@@ -9109,7 +9122,7 @@ function PlayerPage() {
                       <span className="text-4xl shrink-0">{stage.emoji}</span>
                       <div className="flex-1 min-w-0">
                         <div className={`text-base font-bold ${titleColor}`}>
-                          {isDone ? 'Update complete' : isError ? 'Update issue' : 'Update in progress'}
+                          {isDone ? 'Update complete' : isCurrent ? 'Already up to date' : isError ? 'Update issue' : 'Update in progress'}
                         </div>
                         <div className={`text-sm mt-0.5 ${subColor}`}>{stage.label}</div>
                       </div>
