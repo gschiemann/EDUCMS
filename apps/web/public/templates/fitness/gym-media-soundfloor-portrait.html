@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Soundfloor — Portrait</title>
+  <style>
+    :root {
+      --ink: #06030d;
+      --violet: #964cff;
+      --pink: #ff3f99;
+      --cyan: #32e6ff;
+      --acid: #d8ff50;
+      --paper: #faf6ff;
+      --muted: #bbb1ca;
+    }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #020106; }
+    body { font-family: Arial, Helvetica, sans-serif; }
+    #viewport { position: fixed; top:0;right:0;bottom:0;left:0; overflow: hidden; }
+    #stage {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      color: var(--paper);
+      transform-origin: center;
+      background:
+        radial-gradient(circle at 50% 46%, rgba(150,76,255,.26), transparent 32%),
+        linear-gradient(165deg, #090513 0 62%, #120727 100%);
+    }
+    .hero {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      height: 740px;
+      background: url("/templates/fitness/assets/soundfloor-dj-v1.png") 59% center / cover no-repeat;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      top:0;right:0;bottom:0;left:0;
+      background: linear-gradient(180deg, rgba(6,3,13,.18), rgba(6,3,13,.08) 48%, var(--ink) 100%);
+    }
+    .header {
+      position: absolute;
+      z-index: 5;
+      left: 44px;
+      right: 44px;
+      top: 42px;
+      height: 98px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 4px solid rgba(250,246,255,.42);
+      font-size: 40px;
+      line-height: 1;
+      font-weight: 900;
+    }
+    .brand { display: flex; align-items: center; gap: 18px; }
+    .brand-mark {
+      width: 54px;
+      height: 54px;
+      border-radius: 50%;
+      border: 8px solid var(--acid);
+      box-shadow: inset 0 0 0 6px var(--ink), inset 0 0 0 12px var(--pink);
+    }
+    .time { font-variant-numeric: tabular-nums; }
+    .program {
+      position: absolute;
+      z-index: 5;
+      left: 44px;
+      right: 44px;
+      top: 184px;
+    }
+    .program-source {
+      display: inline-block;
+      padding: 14px 18px 12px;
+      color: var(--cyan);
+      background: rgba(6,3,13,.84);
+      border: 3px solid currentColor;
+      clip-path: polygon(10px 0,100% 0,calc(100% - 10px) 100%,0 100%);
+      font-size: 38px;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+    .program h1 {
+      width: 760px;
+      margin: 280px 0 18px;
+      font-size: 76px;
+      line-height: .94;
+      letter-spacing: -3px;
+      text-transform: uppercase;
+      text-shadow: 0 8px 40px #000;
+    }
+    .program-meta {
+      display: flex;
+      gap: 26px;
+      font-size: 38px;
+      line-height: 1;
+      font-weight: 900;
+      text-transform: uppercase;
+      text-shadow: 0 5px 22px #000;
+    }
+    .program-meta span:first-child { color: var(--acid); }
+    .vinyl {
+      position: absolute;
+      z-index: 2;
+      left: -140px;
+      top: 582px;
+      width: 780px;
+      height: 780px;
+      border-radius: 50%;
+      opacity: .94;
+      background:
+        radial-gradient(circle, var(--pink) 0 56px, var(--ink) 57px 84px, var(--acid) 85px 106px, transparent 107px),
+        repeating-radial-gradient(circle, #10091d 0 21px, rgba(50,230,255,.36) 22px 25px, #10091d 26px 43px);
+      box-shadow: 0 0 100px rgba(150,76,255,.38);
+    }
+    .vinyl::after {
+      content: "";
+      position: absolute;
+      top:54px;right:54px;bottom:54px;left:54px;
+      border: 5px solid rgba(250,246,255,.16);
+      border-radius: 50%;
+      box-shadow: inset 0 0 0 34px rgba(0,0,0,.1), inset 0 0 0 39px rgba(50,230,255,.12);
+    }
+    .split-wave {
+      position: absolute;
+      z-index: 3;
+      top: 670px;
+      right: -110px;
+      width: 760px;
+      height: 490px;
+      transform: rotate(-11deg);
+      pointer-events: none;
+    }
+    .music {
+      position: absolute;
+      z-index: 6;
+      top: 730px;
+      right: 42px;
+      width: 690px;
+      min-height: 560px;
+      padding: 0 0 0 72px;
+    }
+    .music::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: -30px;
+      bottom: -20px;
+      width: 14px;
+      background: linear-gradient(var(--cyan), var(--violet), var(--pink));
+      box-shadow: 0 0 30px rgba(50,230,255,.58);
+      transform: skewY(-15deg);
+      z-index: 2;
+    }
+    .music::after {
+      content: "";
+      position: absolute;
+      z-index: -1;
+      left: -34px;
+      right: -26px;
+      top: 0;
+      bottom: -12px;
+      background: linear-gradient(145deg, rgba(6,3,13,.97), rgba(17,7,38,.91));
+      clip-path: polygon(8% 0, 100% 5%, 94% 100%, 0 94%);
+      box-shadow: 0 0 60px rgba(150,76,255,.28);
+    }
+    .now {
+      color: var(--cyan);
+      font-size: 38px;
+      line-height: 1;
+      font-weight: 900;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    .status {
+      display: inline-block;
+      max-width: 620px;
+      margin-top: 22px;
+      padding: 13px 17px 11px;
+      border: 3px solid currentColor;
+      color: var(--acid);
+      font-size: 38px;
+      line-height: 1.05;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+    .track {
+      margin: 30px 0 16px;
+      color: var(--paper);
+      font-size: 72px;
+      line-height: .92;
+      letter-spacing: -3px;
+      text-transform: uppercase;
+    }
+    .artist {
+      margin: 0 0 34px;
+      color: var(--pink);
+      font-size: 44px;
+      line-height: 1;
+      font-weight: 900;
+    }
+    .provider {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 20px;
+      padding-top: 28px;
+      border-top: 4px solid rgba(250,246,255,.24);
+      font-size: 38px;
+      line-height: 1.15;
+      font-weight: 800;
+    }
+    .provider-row { display: grid; grid-template-columns: 220px 1fr; gap: 14px; }
+    .provider-row span { color: var(--muted); }
+    .provider-row strong { color: var(--paper); }
+    .rights { color: var(--acid) !important; }
+    .lower-wave {
+      position: absolute;
+      z-index: 3;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      width: 1080px;
+      height: 610px;
+      pointer-events: none;
+    }
+    .schedule {
+      position: absolute;
+      z-index: 7;
+      left: 44px;
+      right: 44px;
+      bottom: 48px;
+      height: 410px;
+      color: var(--ink);
+    }
+    .schedule-heading {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 18px;
+      font-size: 38px;
+      line-height: 1;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+    .schedule-heading strong { font-size: 52px; }
+    .next {
+      display: grid;
+      grid-template-columns: 190px 1fr;
+      gap: 24px;
+      align-items: center;
+      min-height: 102px;
+      padding: 10px 0;
+      border-top: 4px solid rgba(6,3,13,.28);
+    }
+    .next-time { font-size: 48px; font-weight: 900; font-variant-numeric: tabular-nums; }
+    .next-title { font-size: 42px; line-height: 1.05; font-weight: 900; text-transform: uppercase; }
+    .message {
+      margin-top: 10px;
+      padding-top: 14px;
+      border-top: 4px solid rgba(6,3,13,.28);
+      font-size: 38px;
+      line-height: 1.1;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+    .message strong { margin-right: 14px; color: #5e1e93; }
+    .state-stale .status { color: #ffd35d; }
+    .state-offline .status { color: #ff7186; }
+    .state-external .status { color: var(--cyan); }
+    .state-demo .status { color: #e5bfff; }
+    .state-stale .vinyl, .state-offline .vinyl { opacity: .54; }
+  </style>
+<script>/*EDUCMS-SHIM-V8*/(function(){try{
+var editMode=false;
+function applyPosters(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var el=document.querySelector('[data-posterslot="'+esc+'"]');if(!el)return;if(safe)el.setAttribute('poster',safe);else el.removeAttribute('poster');el.setAttribute('data-has-image',safe?'true':'false');});}
+function applyVideos(video){if(!video)return;Object.keys(video).forEach(function(k){var v=video[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var el=document.querySelector('[data-videoslot="'+esc+'"]');if(!el)return;var owner=el.tagName==='VIDEO'?el:(el.closest?el.closest('video'):null);if(el.tagName==='VIDEO'||el.tagName==='SOURCE'){if(safe)el.setAttribute('src',safe);else el.removeAttribute('src');}else{el.setAttribute('data-video',safe);}el.setAttribute('data-has-video',safe?'true':'false');if(owner){try{owner.load();if(owner.autoplay&&safe){var play=owner.play();if(play&&play.catch)play.catch(function(){});}}catch(e){}}});}
+function armMediaEdit(){document.querySelectorAll('[data-posterslot],[data-videoslot]').forEach(function(el){if(el.__veMediaArmed)return;el.__veMediaArmed=true;el.style.cursor='pointer';var isVideo=el.hasAttribute('data-videoslot');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed #06b6d4';el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-videoslot')||el.getAttribute('data-posterslot')||'';try{parent.postMessage({type:'educms-field-click',key:key,kind:isVideo?'video':'img'},'*');}catch(_){}},true);});}
+// ── Gallery FREEZE mode ──────────────────────────────────────────────
+// Installed FIRST (this script is at end of <head>, before the board's own
+// <body> scripts), so the timer-wrappers below capture every timer the board
+// starts. Strict NO-OP unless the URL carries freeze=1.
+var FROZEN=(function(){try{return new URLSearchParams(location.search).get('freeze')==='1';}catch(e){return false;}})();
+var _frzStyle=null;
+function _unfreeze(){if(_frzStyle){try{if(_frzStyle.parentNode)_frzStyle.parentNode.removeChild(_frzStyle);}catch(e){}_frzStyle=null;}}
+(function(){if(!FROZEN)return;var ivs=[],tos=[],rafs=[];var _si=window.setInterval,_st=window.setTimeout,_raf=window.requestAnimationFrame;
+window.setInterval=function(){var id=_si.apply(window,arguments);try{ivs.push(id);}catch(e){}return id;};
+window.setTimeout=function(){var id=_st.apply(window,arguments);try{tos.push(id);}catch(e){}return id;};
+if(_raf)window.requestAnimationFrame=function(cb){var id=_raf.call(window,cb);try{rafs.push(id);}catch(e){}return id;};
+function freezeNow(){window.setInterval=_si;window.setTimeout=_st;if(_raf)window.requestAnimationFrame=_raf;try{for(var i=0;i<ivs.length;i++)clearInterval(ivs[i]);}catch(e){}try{for(var j=0;j<tos.length;j++)clearTimeout(tos[j]);}catch(e){}try{if(_raf)for(var k=0;k<rafs.length;k++)cancelAnimationFrame(rafs[k]);}catch(e){}try{var hi=_st(function(){},0);if(typeof hi==='number'&&hi>0){var lo=hi>100000?hi-100000:0;for(var z=hi;z>lo;z--){clearTimeout(z);clearInterval(z);}}}catch(e){}if(!_frzStyle){try{_frzStyle=document.createElement('style');_frzStyle.setAttribute('data-educms-freeze','1');_frzStyle.appendChild(document.createTextNode('*{animation:none!important;transition:none!important;}'));(document.head||document.documentElement).appendChild(_frzStyle);}catch(e){}}}
+// Settle window: let the board's auto-fit (setTimeout(autofit,500)+fonts.ready)
+// finish before killing its timers; then a brute-force id sweep catches any the
+// wrappers missed. Scheduled via the REAL setTimeout so this scheduler isn't
+// itself recorded/cleared.
+_st(freezeNow,1400);window.__educmsFreezeNow=freezeNow;}());
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{},video:dec(q.get('video'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],secondary:['--secondary','--brand-secondary','--brand2','--c-secondary'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold'],accent2:['--accent2','--brand-accent2','--c-accent2'],positive:['--positive','--pos','--brand-positive','--c-positive'],negative:['--negative','--neg','--brand-negative','--c-negative'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);if(Object.prototype.hasOwnProperty.call(s,'hidden')){el.style.display=s.hidden?'none':'';}}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(slot.tagName==='IMG'){if(slot.__eduSrc0===undefined)slot.__eduSrc0=slot.getAttribute('src')||'';if(safe){slot.setAttribute('src',safe);slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{if(slot.__eduSrc0)slot.setAttribute('src',slot.__eduSrc0);else slot.removeAttribute('src');slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function armEdit(){document.querySelectorAll('[data-field],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':'#06b6d4');el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(el.hasAttribute('data-field')?'text':'img');try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);applyPosters(p.img);applyVideos(p.video);if(editMode){armEdit();armMediaEdit();}}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});applyPosters(d.img||{});applyVideos(d.video||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();armMediaEdit();}}}catch(_){}});
+}catch(e){}})();</script>
+</head>
+<body>
+  <div id="viewport"><main id="stage">
+    <div class="hero" data-field="program.image"></div>
+    <div class="vinyl" aria-hidden="true"></div>
+    <svg class="split-wave" viewBox="0 0 760 490" aria-hidden="true">
+      <path d="M0 282 C130 110 235 114 338 270 C456 448 564 437 760 132" fill="none" stroke="#32e6ff" stroke-width="64" opacity=".92"/>
+      <path d="M0 325 C128 156 238 155 342 308 C460 480 574 464 760 176" fill="none" stroke="#ff3f99" stroke-width="18"/>
+    </svg>
+    <svg class="lower-wave" viewBox="0 0 1080 610" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M0 58 C198 20 355 22 525 52 C711 84 859 76 1080 34 L1080 610 L0 610Z" fill="#d8ff50"/>
+      <path d="M0 102 C197 64 356 66 526 95 C716 127 869 119 1080 77" fill="none" stroke="#ff3f99" stroke-width="20"/>
+    </svg>
+
+    <header class="header">
+      <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span data-field="club.name">ELEVATE FITNESS</span></div>
+      <time class="time" data-field="clock.localTime">6:42 PM</time>
+    </header>
+
+    <section class="program">
+      <span class="program-source" data-field="program.source">OWNED CLUB VIDEO</span>
+      <h1 data-field="program.title">MOVE AFTER DARK</h1>
+      <div class="program-meta"><span data-field="program.category">CARDIO FLOOR FEATURE</span><span data-field="program.audioState">MUTED · CAPTIONS ON</span></div>
+    </section>
+
+    <section class="music" aria-label="Licensed business music">
+      <div class="now">NOW PLAYING</div>
+      <div class="status" data-source-status>CONNECTED · FRESH</div>
+      <h2 class="track" data-field="music.trackTitle">MIDNIGHT MOTION</h2>
+      <p class="artist" data-field="music.artist">The Night Shift</p>
+      <div class="provider">
+        <div class="provider-row"><span>PROVIDER</span><strong data-field="music.provider">Rockbot</strong></div>
+        <div class="provider-row"><span>ZONE</span><strong data-field="music.zoneName">Cardio Floor</strong></div>
+        <div class="provider-row"><span>PLAYBACK</span><strong data-field="music.playbackMode">Provider device</strong></div>
+        <div class="provider-row"><span>RIGHTS</span><strong class="rights" data-field="music.rights">Business licensed</strong></div>
+      </div>
+    </section>
+
+    <section class="schedule" aria-label="Upcoming programming">
+      <div class="schedule-heading"><span>UP NEXT</span><strong data-field="schedule.source">VenueOS Schedule</strong></div>
+      <div class="next"><span class="next-time" data-field="schedule.nextTime">7:00 PM</span><span class="next-title" data-field="schedule.nextTitle">20-Minute Tread Power</span></div>
+      <div class="next"><span class="next-time" data-field="schedule.followingTime">7:25 PM</span><span class="next-title" data-field="schedule.followingTitle">Mobility Reset</span></div>
+      <div class="message"><strong data-field="club.messageLabel">CLUB NOTE</strong><span data-field="club.message">Stretch lab open until 9 tonight</span></div>
+    </section>
+  </main></div>
+  <script src="_media-runtime.js?v=20260824-1"></script>
+  <script>
+    (function () {
+      'use strict';
+      var stage = document.getElementById('stage');
+      function resize() {
+        var scale = Math.min(window.innerWidth / 1080, window.innerHeight / 1920);
+        stage.style.transform = 'translate(-50%, -50%) scale(' + scale + ')';
+      }
+      window.addEventListener('resize', resize, { passive: true });
+      resize();
+    }());
+  </script>
+</body>
+</html>

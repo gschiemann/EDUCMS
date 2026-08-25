@@ -764,4 +764,115 @@ export const FITNESS_TEMPLATE_PRESETS: SystemPreset[] = [
       defaultConfig: { },
     }],
   },
+
+  // ════════════════════════════════════════════════════════════════
+  // Gym Media Command Center — three directions × two orientations
+  // (2026-08-24 design round).
+  //
+  // Landscape and portrait are SEPARATELY COMPOSED documents, not one
+  // scene reflowed: each is a fixed stage at its own design size that
+  // scales as a whole, so a 4K panel is an exact 2x of the same
+  // composition. Do not merge them into a single reflowing board.
+  //
+  // Every board renders SOURCE NOT CONFIGURED until a media source is
+  // connected and the host resolves real state — the badge is owned by
+  // _media-runtime.js, never by operator text. See that file's header
+  // for why the status labels are not editable fields.
+  // ════════════════════════════════════════════════════════════════
+  {
+    id: 'fitness-media-pulsecast',
+    name: '📺 Media — PulseCast Broadcast Control',
+    description:
+      'Broadcast-control media board — full-bleed program video with a right-hand programming rail: what is on now, the next three sessions, live club clock, and a source/rights strip along the bottom. Connect a media source directly from the editor; the board states exactly what is connected and never claims a live feed it does not have.',
+    category: 'FITNESS',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor: '#0b0911',
+    zones: [{
+      name: 'Media scene', widgetType: 'EXTERNAL_HTML',
+      x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 1,
+      defaultConfig: { url: '/templates/fitness/gym-media-pulsecast.html' },
+    }],
+  },
+  {
+    id: 'fitness-media-pulsecast-portrait',
+    name: '📺 Media — PulseCast Broadcast Control (Portrait)',
+    description:
+      'Portrait broadcast-control media board — separately composed 1080x1920 stage with stacked program hero, programming queue, club clock and source/rights strip. Same editable fields and same source connection as the landscape board.',
+    category: 'FITNESS',
+    orientation: 'PORTRAIT',
+    screenWidth: 1080,
+    screenHeight: 1920,
+    bgColor: '#0b0911',
+    zones: [{
+      name: 'Media scene', widgetType: 'EXTERNAL_HTML',
+      x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 1,
+      defaultConfig: { url: '/templates/fitness/gym-media-pulsecast-portrait.html' },
+    }],
+  },
+  {
+    id: 'fitness-media-soundfloor',
+    name: '🎧 Media — Soundfloor Music + Video',
+    description:
+      'Music-forward media board — program video above a licensed business-music panel showing the current track, provider, audio zone and playback route. The equalizer moves only while the music provider reports playing. Connect both the video and music sources from the editor.',
+    category: 'FITNESS',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor: '#f4f1ea',
+    zones: [{
+      name: 'Media scene', widgetType: 'EXTERNAL_HTML',
+      x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 1,
+      defaultConfig: { url: '/templates/fitness/gym-media-soundfloor.html' },
+    }],
+  },
+  {
+    id: 'fitness-media-soundfloor-portrait',
+    name: '🎧 Media — Soundfloor Music + Video (Portrait)',
+    description:
+      'Portrait music-forward media board — separately composed 1080x1920 stage with the program hero over the now-playing panel, provider/zone/rights lines, upcoming programming and a club note. Same sources and fields as the landscape board.',
+    category: 'FITNESS',
+    orientation: 'PORTRAIT',
+    screenWidth: 1080,
+    screenHeight: 1920,
+    bgColor: '#f4f1ea',
+    zones: [{
+      name: 'Media scene', widgetType: 'EXTERNAL_HTML',
+      x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 1,
+      defaultConfig: { url: '/templates/fitness/gym-media-soundfloor-portrait.html' },
+    }],
+  },
+  {
+    id: 'fitness-media-motion-studio',
+    name: '🧘 Media — Motion Studio Class Timeline',
+    description:
+      'Studio-class media board — instructor-led program poster with a class timeline (now, next, and the rest of the evening), coach and level detail, plus separate program and music status. Built for boutique studios running licensed class content on a schedule.',
+    category: 'FITNESS',
+    orientation: 'LANDSCAPE',
+    screenWidth: 1920,
+    screenHeight: 1080,
+    bgColor: '#0f0d14',
+    zones: [{
+      name: 'Media scene', widgetType: 'EXTERNAL_HTML',
+      x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 1,
+      defaultConfig: { url: '/templates/fitness/gym-media-motion-studio.html' },
+    }],
+  },
+  {
+    id: 'fitness-media-motion-studio-portrait',
+    name: '🧘 Media — Motion Studio Class Timeline (Portrait)',
+    description:
+      'Portrait studio-class media board — separately composed 1080x1920 stage stacking the class poster, program detail and full evening timeline. Same editable fields and same source connection as the landscape board.',
+    category: 'FITNESS',
+    orientation: 'PORTRAIT',
+    screenWidth: 1080,
+    screenHeight: 1920,
+    bgColor: '#0f0d14',
+    zones: [{
+      name: 'Media scene', widgetType: 'EXTERNAL_HTML',
+      x: 0, y: 0, width: 100, height: 100, zIndex: 1, sortOrder: 1,
+      defaultConfig: { url: '/templates/fitness/gym-media-motion-studio-portrait.html' },
+    }],
+  },
 ];

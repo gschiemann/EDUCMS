@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PulseCast Broadcast Control · Landscape</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Barlow+Condensed:wght@600;700;800;900&family=Inter:wght@600;700;800&display=swap');
+    *{box-sizing:border-box}
+    html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#08070c}
+    .viewport{position:fixed;top:0;right:0;bottom:0;left:0;overflow:hidden;background:#08070c}
+    .scale-canvas{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0}
+    .stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:#0b0911;color:#fff;font-family:Inter,sans-serif}
+    .media{position:absolute;top:0;right:520px;bottom:0;left:0}
+    .media img{width:100%;height:100%;object-fit:cover;object-position:49% 52%;filter:saturate(.9) contrast(1.05)}
+    .media:after{content:"";position:absolute;top:0;right:0;bottom:0;left:0;background:linear-gradient(90deg,rgba(8,6,13,.12) 45%,#0b0911 99%),linear-gradient(0deg,rgba(9,7,14,.95),transparent 36%)}
+    .slash{position:absolute;top:0;right:438px;width:170px;height:1080px;transform:skewX(-8deg);background:#7a2cff;box-shadow:-24px 0 0 #d9ff33,24px 0 80px rgba(0,0,0,.55);z-index:5}
+    .rail{position:absolute;z-index:9;right:0;top:0;width:520px;height:1080px;padding:48px 46px 40px 62px;background:linear-gradient(160deg,#171020,#09080e 78%)}
+    .brand{display:flex;align-items:center;gap:18px;height:94px;border-bottom:3px solid #453352}
+    .mark{display:grid;place-items:center;width:72px;height:72px;border:4px solid #d9ff33;transform:rotate(45deg);font:900 34px/1 'Archivo Black';color:#d9ff33}
+    .mark span{transform:rotate(-45deg)}
+    .club{min-width:0}
+    .club b{display:block;padding-bottom:2px;font:900 36px/1.14 'Barlow Condensed';letter-spacing:.03em;white-space:nowrap;overflow:visible}
+    .club small{display:block;margin-top:5px;color:#cabed3;font:800 34px/1.08 'Barlow Condensed';letter-spacing:.04em}
+    .guide-title{margin-top:38px;color:#d9ff33;font:800 34px/1.08 'Barlow Condensed';letter-spacing:.1em}
+    .now{margin-top:15px;padding:0 0 22px;border-bottom:2px solid #3b2c45}
+    .now .time{font:800 34px/1.08 'Barlow Condensed';color:#c7b9d1}
+    .now h2{margin:9px 0 8px;font:900 48px/1 'Barlow Condensed';text-transform:uppercase}
+    .now p{margin:0;color:#d5cada;font:700 34px/1.15 'Barlow Condensed'}
+    .queue{display:grid;margin-top:8px}
+    .q{display:grid;grid-template-columns:82px 1fr;gap:10px;padding:15px 0;border-bottom:1px solid #372b40}
+    .q time{font:900 35px/1.08 'Barlow Condensed';color:#c8bad4}
+    .q b{font:800 35px/1.08 'Barlow Condensed';text-transform:uppercase}
+    .q span{display:block;margin-top:6px;color:#b9acc2;font:700 34px/1.08 'Barlow Condensed';letter-spacing:0}
+    .clock{position:absolute;left:62px;right:46px;bottom:86px;display:flex;align-items:flex-end;justify-content:space-between;gap:8px}
+    .clock strong{font:900 50px/1 'Barlow Condensed';white-space:nowrap}
+    .clock span{font:800 34px/1.25 'Barlow Condensed';color:#c2b5cc;text-align:right;text-transform:uppercase;letter-spacing:0;white-space:nowrap}
+    .livebar{position:absolute;z-index:10;left:52px;top:46px;display:flex;align-items:center;gap:16px}
+    .livebar b{display:flex;align-items:center;padding:14px 19px;background:#d9ff33;color:#111018;font:900 35px/1 'Barlow Condensed';letter-spacing:.03em;white-space:nowrap}
+    .livebar b [data-source-status]{padding:0;background:none;border:0;font:inherit;letter-spacing:inherit}
+    .livebar > span{max-width:620px;padding:14px 19px;background:rgba(8,7,12,.78);border:2px solid rgba(255,255,255,.24);font:800 34px/1 'Barlow Condensed';letter-spacing:.02em;white-space:nowrap}
+    .hero-copy{position:absolute;z-index:8;left:54px;bottom:104px;width:780px}
+    .kicker{font:800 34px/1 'Barlow Condensed';letter-spacing:.1em;color:#d9ff33}
+    .hero-copy h1{margin:12px 0 13px;font:900 82px/1.25 'Archivo Black';text-transform:uppercase;letter-spacing:-.04em;text-shadow:0 8px 28px #000}
+    .hero-copy p{margin:0;width:730px;font:800 34px/1.22 'Barlow Condensed';text-shadow:0 4px 16px #000}
+    .meter{position:absolute;z-index:8;left:848px;bottom:100px;width:454px;padding:25px 27px;background:#f6f1ff;color:#17101d;clip-path:polygon(0 0,94% 0,100% 22%,100% 100%,6% 100%,0 78%)}
+    .meter-head{display:flex;justify-content:space-between;align-items:center;gap:14px;font:900 34px/1.05 'Barlow Condensed';letter-spacing:.01em;white-space:nowrap}
+    .meter-head span:last-child{color:#6224b9}
+    .track{height:13px;margin:16px 0 13px;background:#d6cfdd}
+    .fill{width:64%;height:100%;background:#6f28d5}
+    .meter p{margin:0;font:800 34px/1.12 'Barlow Condensed'}
+    .source-strip{position:absolute;z-index:12;left:0;bottom:0;width:100%;height:70px;display:grid;grid-template-columns:auto auto 1fr;align-items:center;background:#d9ff33;color:#15121a;font:900 34px/1.2 'Barlow Condensed';letter-spacing:.01em;white-space:nowrap;overflow:hidden}
+    .source-strip span{min-width:0;padding:0 22px;border-right:2px solid rgba(0,0,0,.25)}
+    .source-strip span:last-child{overflow:visible}
+    .alert{display:none;position:absolute;z-index:18;top:270px;right:610px;bottom:300px;left:80px;align-items:center;justify-content:center;text-align:center;background:rgba(10,7,14,.92);border:6px solid #ff4f70;padding:50px;font:900 54px/1.08 'Archivo Black';text-transform:uppercase}
+    .alert small{display:block;margin-top:24px;font:800 30px/1.25 'Barlow Condensed';color:#d7cadf;text-transform:none}
+    .status-dot{display:inline-block;flex:0 0 auto;width:14px;height:14px;border-radius:50%;margin-right:10px;background:#6fffb2;box-shadow:0 0 16px #6fffb2}
+    html[data-source-state="stale"] .livebar b{background:#ffbf42}
+    html[data-source-state="stale"] .status-dot{background:#ffbf42;box-shadow:none}
+    html[data-source-state="offline"] .alert{display:flex;flex-direction:column}
+    html[data-source-state="offline"] .livebar b{background:#ff4f70;color:#fff}
+    html[data-source-state="external"] .livebar b{background:#54d8ff}
+    html[data-source-state="demo"] .livebar b{background:#ffe84a}
+  </style>
+<script>/*EDUCMS-SHIM-V8*/(function(){try{
+var editMode=false;
+function applyPosters(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var el=document.querySelector('[data-posterslot="'+esc+'"]');if(!el)return;if(safe)el.setAttribute('poster',safe);else el.removeAttribute('poster');el.setAttribute('data-has-image',safe?'true':'false');});}
+function applyVideos(video){if(!video)return;Object.keys(video).forEach(function(k){var v=video[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var el=document.querySelector('[data-videoslot="'+esc+'"]');if(!el)return;var owner=el.tagName==='VIDEO'?el:(el.closest?el.closest('video'):null);if(el.tagName==='VIDEO'||el.tagName==='SOURCE'){if(safe)el.setAttribute('src',safe);else el.removeAttribute('src');}else{el.setAttribute('data-video',safe);}el.setAttribute('data-has-video',safe?'true':'false');if(owner){try{owner.load();if(owner.autoplay&&safe){var play=owner.play();if(play&&play.catch)play.catch(function(){});}}catch(e){}}});}
+function armMediaEdit(){document.querySelectorAll('[data-posterslot],[data-videoslot]').forEach(function(el){if(el.__veMediaArmed)return;el.__veMediaArmed=true;el.style.cursor='pointer';var isVideo=el.hasAttribute('data-videoslot');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed #06b6d4';el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-videoslot')||el.getAttribute('data-posterslot')||'';try{parent.postMessage({type:'educms-field-click',key:key,kind:isVideo?'video':'img'},'*');}catch(_){}},true);});}
+// ── Gallery FREEZE mode ──────────────────────────────────────────────
+// Installed FIRST (this script is at end of <head>, before the board's own
+// <body> scripts), so the timer-wrappers below capture every timer the board
+// starts. Strict NO-OP unless the URL carries freeze=1.
+var FROZEN=(function(){try{return new URLSearchParams(location.search).get('freeze')==='1';}catch(e){return false;}})();
+var _frzStyle=null;
+function _unfreeze(){if(_frzStyle){try{if(_frzStyle.parentNode)_frzStyle.parentNode.removeChild(_frzStyle);}catch(e){}_frzStyle=null;}}
+(function(){if(!FROZEN)return;var ivs=[],tos=[],rafs=[];var _si=window.setInterval,_st=window.setTimeout,_raf=window.requestAnimationFrame;
+window.setInterval=function(){var id=_si.apply(window,arguments);try{ivs.push(id);}catch(e){}return id;};
+window.setTimeout=function(){var id=_st.apply(window,arguments);try{tos.push(id);}catch(e){}return id;};
+if(_raf)window.requestAnimationFrame=function(cb){var id=_raf.call(window,cb);try{rafs.push(id);}catch(e){}return id;};
+function freezeNow(){window.setInterval=_si;window.setTimeout=_st;if(_raf)window.requestAnimationFrame=_raf;try{for(var i=0;i<ivs.length;i++)clearInterval(ivs[i]);}catch(e){}try{for(var j=0;j<tos.length;j++)clearTimeout(tos[j]);}catch(e){}try{if(_raf)for(var k=0;k<rafs.length;k++)cancelAnimationFrame(rafs[k]);}catch(e){}try{var hi=_st(function(){},0);if(typeof hi==='number'&&hi>0){var lo=hi>100000?hi-100000:0;for(var z=hi;z>lo;z--){clearTimeout(z);clearInterval(z);}}}catch(e){}if(!_frzStyle){try{_frzStyle=document.createElement('style');_frzStyle.setAttribute('data-educms-freeze','1');_frzStyle.appendChild(document.createTextNode('*{animation:none!important;transition:none!important;}'));(document.head||document.documentElement).appendChild(_frzStyle);}catch(e){}}}
+// Settle window: let the board's auto-fit (setTimeout(autofit,500)+fonts.ready)
+// finish before killing its timers; then a brute-force id sweep catches any the
+// wrappers missed. Scheduled via the REAL setTimeout so this scheduler isn't
+// itself recorded/cleared.
+_st(freezeNow,1400);window.__educmsFreezeNow=freezeNow;}());
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{},video:dec(q.get('video'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],secondary:['--secondary','--brand-secondary','--brand2','--c-secondary'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold'],accent2:['--accent2','--brand-accent2','--c-accent2'],positive:['--positive','--pos','--brand-positive','--c-positive'],negative:['--negative','--neg','--brand-negative','--c-negative'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);if(Object.prototype.hasOwnProperty.call(s,'hidden')){el.style.display=s.hidden?'none':'';}}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(slot.tagName==='IMG'){if(slot.__eduSrc0===undefined)slot.__eduSrc0=slot.getAttribute('src')||'';if(safe){slot.setAttribute('src',safe);slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{if(slot.__eduSrc0)slot.setAttribute('src',slot.__eduSrc0);else slot.removeAttribute('src');slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function armEdit(){document.querySelectorAll('[data-field],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':'#06b6d4');el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(el.hasAttribute('data-field')?'text':'img');try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);applyPosters(p.img);applyVideos(p.video);if(editMode){armEdit();armMediaEdit();}}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});applyPosters(d.img||{});applyVideos(d.video||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();armMediaEdit();}}}catch(_){}});
+}catch(e){}})();</script>
+</head>
+<body>
+  <div class="viewport">
+  <div class="scale-canvas" data-scale-canvas>
+  <main class="stage" aria-label="PulseCast gym media template">
+    <section class="media" data-zone="programming.media"><img src="/templates/fitness/assets/pulsecast-sled-race-v1.png" alt="Functional fitness sled race demo programming"></section>
+    <div class="slash" aria-hidden="true"></div>
+    <div class="livebar"><b><span class="status-dot"></span><span data-source-status>DEMO · NOT LIVE</span></b><span data-field="source.providerName">FITNESS ON DEMAND API</span></div>
+    <section class="hero-copy" data-zone="programming.details"><div class="kicker" data-field="program.eyebrow">VENUEOS FEATURED PROGRAM</div><h1 data-field="program.title">TURF<br>TAKEOVER</h1><p data-field="program.summary">Power, pace and a finish-line push. Captions are on and the club audio stays muted.</p></section>
+    <div class="meter" data-zone="programming.progress"><div class="meter-head"><span>PROGRESS</span><span data-field="program.remaining">18 MIN LEFT</span></div><div class="track"><div class="fill"></div></div><p data-field="program.audioPolicy">MUTED · CAPTIONS ON</p></div>
+    <aside class="rail">
+      <div class="brand"><div class="mark"><span data-field="brand.mark">PF</span></div><div class="club"><b data-field="brand.clubName">MIDTOWN FITNESS</b><small data-field="brand.locationName">CARDIO FLOOR</small></div></div>
+      <div class="guide-title">WHAT’S ON NEXT</div>
+      <div class="now"><div class="time" data-field="program.startedAtLabel">NOW · 7:30 PM</div><h2 data-field="program.title">Turf Takeover</h2><p data-field="program.ratingLabel">ALL LEVELS · 28 MIN</p></div>
+      <div class="queue" data-zone="programming.schedule">
+        <div class="q"><time data-field="schedule.0.time">8:00</time><div><b data-field="schedule.0.title">Recovery Reset</b><span data-field="schedule.0.source">OWNED · 20 MIN</span></div></div>
+        <div class="q"><time data-field="schedule.1.time">8:30</time><div><b data-field="schedule.1.title">World Sports Brief</b><span data-field="schedule.1.source">LICENSED INPUT</span></div></div>
+        <div class="q"><time data-field="schedule.2.time">9:00</time><div><b data-field="schedule.2.title">Club Closeout Mix</b><span data-field="schedule.2.source">ROCKBOT · ZONE AUDIO</span></div></div>
+      </div>
+      <div class="clock"><strong data-live-time>7:42 PM</strong><span><i data-live-date>MON · AUG 24</i><br><i data-live-timezone>AMERICA/NEW YORK</i></span></div>
+    </aside>
+    <div class="alert"><div data-source-status>SOURCE OFFLINE</div><small data-source-detail>VenueOS fallback playlist is active</small></div>
+    <footer class="source-strip"><span data-rights-status>DEMO · NOT FOR AIR</span><span data-music-status>MUSIC DEMO · OFF</span><span data-field="club.message">STRETCH LAB · 8:00 PM</span></footer>
+  </main>
+  </div>
+  </div>
+  <script src="_media-runtime.js?v=20260824-1"></script>
+  <script>
+    (function () {
+      'use strict';
+      var canvas = document.querySelector('[data-scale-canvas]');
+      var stage = canvas.querySelector('.stage');
+      function fitStage() {
+        var width = stage.offsetWidth;
+        var height = stage.offsetHeight;
+        var scale = Math.min(window.innerWidth / width, window.innerHeight / height);
+        canvas.style.left = Math.max(0, (window.innerWidth - (width * scale)) / 2) + 'px';
+        canvas.style.top = Math.max(0, (window.innerHeight - (height * scale)) / 2) + 'px';
+        canvas.style.transform = 'scale(' + scale + ')';
+      }
+      fitStage();
+      window.addEventListener('resize', fitStage, { passive: true });
+    }());
+  </script>
+</body>
+</html>

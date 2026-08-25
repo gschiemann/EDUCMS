@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Motion Studio — Portrait</title>
+  <style>
+    :root {
+      --cream: #f4eee1;
+      --near: #090b09;
+      --charcoal: #171a16;
+      --acid: #d7ff45;
+      --orange: #ff5a2b;
+      --soft: #b8baad;
+      --signal: var(--acid);
+    }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #050605; }
+    body { font-family: Arial, Helvetica, sans-serif; color: var(--cream); }
+    .viewport { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+    .stage {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      transform-origin: top left;
+      background:
+        linear-gradient(90deg, rgba(255,255,255,.026) 1px, transparent 1px) 0 0 / 90px 100%,
+        linear-gradient(#1a1d18, #080a08);
+      isolation: isolate;
+    }
+    .masthead {
+      height: 192px;
+      padding: 36px 44px 30px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      border-bottom: 5px solid var(--cream);
+      background: var(--near);
+      position: relative;
+      z-index: 8;
+    }
+    .brand-row { display: grid; grid-template-columns: 68px 1fr; gap: 22px; align-items: center; min-width: 0; }
+    .mark { width: 66px; height: 66px; border: 8px solid var(--acid); border-radius: 50%; position: relative; }
+    .mark::after { content: ""; position: absolute; width: 38px; height: 9px; background: var(--orange); left: 29px; top: 21px; transform: rotate(-12deg); }
+    .brand { font-size: 48px; line-height: .95; font-weight: 900; letter-spacing: -.045em; }
+    .screen-name { color: var(--soft); margin-top: 10px; font-size: 38px; line-height: 1; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+    .clock { font-size: 44px; line-height: 1; font-weight: 900; border-left: 5px solid var(--orange); padding-left: 22px; white-space: nowrap; }
+    .feature {
+      position: relative;
+      height: 782px;
+      overflow: hidden;
+      border-bottom: 5px solid var(--cream);
+      background: #1f1b16;
+    }
+    .feature img {
+      position: absolute;
+      top:0;right:0;bottom:0;left:0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: 48% center;
+      filter: saturate(.76) contrast(1.08) brightness(.72);
+    }
+    .feature::after {
+      content: "";
+      position: absolute;
+      top:0;right:0;bottom:0;left:0;
+      background: linear-gradient(0deg, rgba(3,5,3,.96), rgba(3,5,3,.02) 67%), linear-gradient(90deg, rgba(3,5,3,.45), transparent 50%);
+    }
+    .frame-no {
+      position: absolute;
+      top: 30px;
+      left: 42px;
+      z-index: 3;
+      color: var(--acid);
+      font-size: 38px;
+      font-weight: 900;
+      letter-spacing: .12em;
+    }
+    .source-badge {
+      position: absolute;
+      top: 92px;
+      left: 42px;
+      z-index: 4;
+      max-width: 930px;
+      padding: 18px 24px;
+      display: inline-flex;
+      align-items: center;
+      gap: 18px;
+      background: var(--signal);
+      color: var(--near);
+      border: 5px solid var(--near);
+      box-shadow: 11px 11px 0 rgba(0,0,0,.7);
+      font-size: 38px;
+      line-height: 1.05;
+      font-weight: 900;
+      letter-spacing: .025em;
+      text-transform: uppercase;
+    }
+    .source-badge::before { content: ""; width: 20px; height: 20px; flex: none; border-radius: 50%; background: currentColor; }
+    .program-copy { position: absolute; left: 44px; right: 44px; bottom: 42px; z-index: 3; }
+    .kicker { display: flex; align-items: center; gap: 18px; color: var(--acid); font-size: 38px; line-height: 1.1; font-weight: 900; letter-spacing: .075em; text-transform: uppercase; }
+    .kicker::before { content: ""; width: 68px; height: 9px; flex: none; background: var(--orange); }
+    h1 { margin: 18px 0 0; font-family: Georgia, 'Times New Roman', serif; font-size: 102px; line-height: .88; letter-spacing: -.058em; font-weight: 700; }
+    .program-meta { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 14px; font-size: 38px; line-height: 1; font-weight: 800; }
+    .program-meta span { padding: 10px 14px; border: 3px solid rgba(244,238,225,.72); background: rgba(5,7,5,.7); }
+    .transport {
+      height: 158px;
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      border-bottom: 5px solid var(--cream);
+      background: var(--near);
+    }
+    .transport-label { padding: 24px 30px; background: var(--cream); color: var(--near); font-size: 34px; line-height: 1; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+    .transport-label strong { display: block; margin-top: 11px; color: var(--orange); font-family: Georgia, serif; font-size: 42px; line-height: .9; letter-spacing: -.035em; text-transform: none; white-space: nowrap; }
+    .progress { padding: 26px 32px 18px; }
+    .line { height: 7px; background: #4b5045; margin-top: 15px; position: relative; }
+    .fill { width: 63%; height: 100%; background: var(--orange); }
+    .head { position: absolute; left: 63%; top: -14px; width: 34px; height: 34px; background: var(--acid); border: 6px solid var(--near); border-radius: 50%; }
+    .time-row { margin-top: 18px; display: flex; justify-content: space-between; color: var(--soft); font-size: 38px; font-weight: 800; }
+    .av { height: 98px; display: flex; justify-content: center; align-items: center; gap: 22px; border-bottom: 5px solid var(--cream); background: #20231d; }
+    .av span { padding: 12px 18px; border: 3px solid var(--cream); font-size: 38px; line-height: 1; font-weight: 900; letter-spacing: .04em; }
+    .lower {
+      height: 690px;
+      display: grid;
+      grid-template-columns: 624px 456px;
+      background: var(--charcoal);
+    }
+    .schedule { padding: 36px 34px 30px 84px; border-right: 5px solid var(--cream); position: relative; }
+    .section-title { color: var(--orange); font-size: 38px; line-height: 1; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+    .schedule::before { content: ""; position: absolute; left: 52px; top: 104px; bottom: 42px; width: 6px; background: rgba(244,238,225,.74); }
+    .slot { position: relative; padding: 20px 0 18px; border-bottom: 3px solid rgba(244,238,225,.22); }
+    .slot:last-child { border-bottom: 0; }
+    .slot::before { content: ""; position: absolute; left: -43px; top: 29px; width: 20px; height: 20px; background: var(--charcoal); border: 5px solid var(--soft); transform: rotate(45deg); }
+    .slot.active::before { background: var(--acid); border-color: var(--acid); }
+    .slot-time { color: var(--acid); font-size: 38px; line-height: 1; font-weight: 900; }
+    .slot-name { margin-top: 10px; font-size: 43px; line-height: 1; font-weight: 900; letter-spacing: -.025em; }
+    .slot-detail { margin-top: 8px; color: var(--soft); font-size: 38px; line-height: 1.05; font-weight: 700; }
+    .side { display: grid; grid-template-rows: 342px 348px; }
+    .music { padding: 34px 32px; border-bottom: 5px solid var(--cream); background: #20231d; position: relative; overflow: hidden; }
+    .music::after { content: ""; position: absolute; width: 180px; height: 180px; border: 30px solid rgba(215,255,69,.09); border-radius: 50%; right: 12px; bottom: 12px; }
+    .music-label { color: var(--orange); font-size: 34px; line-height: 1.04; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+    .track { margin-top: 22px; font-family: Georgia, serif; font-size: 50px; line-height: .96; font-weight: 700; letter-spacing: -.035em; }
+    .artist { margin-top: 17px; color: var(--soft); font-size: 38px; line-height: 1.15; font-weight: 700; }
+    .music-source { display: block; margin-top: 9px; color: var(--acid); }
+    .message { padding: 34px 32px; background: var(--acid); color: var(--near); position: relative; overflow: hidden; }
+    .message-label { font-size: 34px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+    .message-label, .message-copy { position: relative; z-index: 1; }
+    .message-copy { margin-top: 24px; font-size: 45px; line-height: 1.03; font-weight: 900; letter-spacing: -.025em; }
+    .state-stale { --signal: #ffd25a; }
+    .state-offline { --signal: #ff6b59; }
+    .state-external { --signal: #65d8ff; }
+    .state-demo { --signal: #d9c2ff; }
+    .state-stale .feature img { filter: saturate(.4) brightness(.58); }
+    .state-offline .feature img { filter: grayscale(1) brightness(.32); }
+    .state-external .feature img { filter: saturate(.58) brightness(.58); }
+    .state-demo .feature img { filter: saturate(.42) brightness(.64); }
+  </style>
+<script>/*EDUCMS-SHIM-V8*/(function(){try{
+var editMode=false;
+function applyPosters(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var el=document.querySelector('[data-posterslot="'+esc+'"]');if(!el)return;if(safe)el.setAttribute('poster',safe);else el.removeAttribute('poster');el.setAttribute('data-has-image',safe?'true':'false');});}
+function applyVideos(video){if(!video)return;Object.keys(video).forEach(function(k){var v=video[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var el=document.querySelector('[data-videoslot="'+esc+'"]');if(!el)return;var owner=el.tagName==='VIDEO'?el:(el.closest?el.closest('video'):null);if(el.tagName==='VIDEO'||el.tagName==='SOURCE'){if(safe)el.setAttribute('src',safe);else el.removeAttribute('src');}else{el.setAttribute('data-video',safe);}el.setAttribute('data-has-video',safe?'true':'false');if(owner){try{owner.load();if(owner.autoplay&&safe){var play=owner.play();if(play&&play.catch)play.catch(function(){});}}catch(e){}}});}
+function armMediaEdit(){document.querySelectorAll('[data-posterslot],[data-videoslot]').forEach(function(el){if(el.__veMediaArmed)return;el.__veMediaArmed=true;el.style.cursor='pointer';var isVideo=el.hasAttribute('data-videoslot');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed #06b6d4';el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-videoslot')||el.getAttribute('data-posterslot')||'';try{parent.postMessage({type:'educms-field-click',key:key,kind:isVideo?'video':'img'},'*');}catch(_){}},true);});}
+// ── Gallery FREEZE mode ──────────────────────────────────────────────
+// Installed FIRST (this script is at end of <head>, before the board's own
+// <body> scripts), so the timer-wrappers below capture every timer the board
+// starts. Strict NO-OP unless the URL carries freeze=1.
+var FROZEN=(function(){try{return new URLSearchParams(location.search).get('freeze')==='1';}catch(e){return false;}})();
+var _frzStyle=null;
+function _unfreeze(){if(_frzStyle){try{if(_frzStyle.parentNode)_frzStyle.parentNode.removeChild(_frzStyle);}catch(e){}_frzStyle=null;}}
+(function(){if(!FROZEN)return;var ivs=[],tos=[],rafs=[];var _si=window.setInterval,_st=window.setTimeout,_raf=window.requestAnimationFrame;
+window.setInterval=function(){var id=_si.apply(window,arguments);try{ivs.push(id);}catch(e){}return id;};
+window.setTimeout=function(){var id=_st.apply(window,arguments);try{tos.push(id);}catch(e){}return id;};
+if(_raf)window.requestAnimationFrame=function(cb){var id=_raf.call(window,cb);try{rafs.push(id);}catch(e){}return id;};
+function freezeNow(){window.setInterval=_si;window.setTimeout=_st;if(_raf)window.requestAnimationFrame=_raf;try{for(var i=0;i<ivs.length;i++)clearInterval(ivs[i]);}catch(e){}try{for(var j=0;j<tos.length;j++)clearTimeout(tos[j]);}catch(e){}try{if(_raf)for(var k=0;k<rafs.length;k++)cancelAnimationFrame(rafs[k]);}catch(e){}try{var hi=_st(function(){},0);if(typeof hi==='number'&&hi>0){var lo=hi>100000?hi-100000:0;for(var z=hi;z>lo;z--){clearTimeout(z);clearInterval(z);}}}catch(e){}if(!_frzStyle){try{_frzStyle=document.createElement('style');_frzStyle.setAttribute('data-educms-freeze','1');_frzStyle.appendChild(document.createTextNode('*{animation:none!important;transition:none!important;}'));(document.head||document.documentElement).appendChild(_frzStyle);}catch(e){}}}
+// Settle window: let the board's auto-fit (setTimeout(autofit,500)+fonts.ready)
+// finish before killing its timers; then a brute-force id sweep catches any the
+// wrappers missed. Scheduled via the REAL setTimeout so this scheduler isn't
+// itself recorded/cleared.
+_st(freezeNow,1400);window.__educmsFreezeNow=freezeNow;}());
+function dec(p){if(!p)return null;try{var j=decodeURIComponent(Array.prototype.map.call(atob(p.replace(/-/g,'+').replace(/_/g,'/')),function(c){return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);}).join(''));return JSON.parse(j);}catch(e){return null;}}
+function readParams(){var q=new URLSearchParams(location.search);return{brand:dec(q.get('brand'))||{},text:dec(q.get('text'))||{},styles:dec(q.get('textStyles'))||{},img:dec(q.get('img'))||{},video:dec(q.get('video'))||{}};}
+var BRAND_MAP={background:['--bg','--brand-canvas','--brand-bg','--surface-canvas','--c-bg'],surface:['--paper','--brand-paper','--surface','--c-surface','--c-panel'],
+text:['--ink','--fg','--brand-ink','--brand-fg','--text','--c-ink'],muted:['--mute','--brand-mute','--text-muted','--c-ink2','--c-ink3'],
+primary:['--primary','--brand-primary','--color-primary','--c-us','--c-primary','--c-accent'],secondary:['--secondary','--brand-secondary','--brand2','--c-secondary'],accent:['--accent','--brand-accent','--brand-gold','--gold','--color-accent','--c-gold'],accent2:['--accent2','--brand-accent2','--c-accent2'],positive:['--positive','--pos','--brand-positive','--c-positive'],negative:['--negative','--neg','--brand-negative','--c-negative'],
+fontDisplay:['--font-display','--font-headline','--f-display','--f-head'],fontBody:['--font-grotesk','--font-body','--font-sans','--f-body'],fontCondensed:['--font-condensed','--font-numeric','--f-mono']};
+function applyBrand(b){var r=document.documentElement.style;Object.keys(BRAND_MAP).forEach(function(k){if(b[k]){var val=/^font/i.test(k)?("'"+String(b[k]).replace(/^['"]|['"]$/g,'')+"'"):b[k];BRAND_MAP[k].forEach(function(v){r.setProperty(v,val);});}});}
+var _dEl=null;function dE(s){if(typeof s!=='string'||s.indexOf('&')===-1)return s;try{if(!_dEl)_dEl=document.createElement('textarea');_dEl.innerHTML=s;return _dEl.value;}catch(e){return s;}}
+function applyTextAndStyles(text,styles){var keys={};Object.keys(text||{}).forEach(function(k){keys[k]=1;});Object.keys(styles||{}).forEach(function(k){keys[k]=1;});Object.keys(keys).forEach(function(k){var nodes=document.querySelectorAll('[data-field="'+k.replace(/"/g,'\\"')+'"]');for(var i=0;i<nodes.length;i++){var el=nodes[i];if(text&&typeof text[k]==='string'){var val=dE(text[k]);if(el.children.length===0){el.textContent=val;}else{var tn=null;for(var j=0;j<el.childNodes.length;j++){if(el.childNodes[j].nodeType===3){tn=el.childNodes[j];break;}}if(tn){tn.textContent=val;}else{el.insertBefore(document.createTextNode(val),el.firstChild);}}}var s=styles&&styles[k];if(s){if(s.color)el.style.color=s.color;if(s.fontSize!=null)el.style.fontSize=(typeof s.fontSize==='number'?s.fontSize+'px':s.fontSize);if(s.fontWeight!=null)el.style.fontWeight=String(s.fontWeight);if(s.fontStyle)el.style.fontStyle=s.fontStyle;if(s.fontFamily)el.style.fontFamily=s.fontFamily;if(s.textDecoration)el.style.textDecoration=s.textDecoration;if(s.textAlign)el.style.textAlign=s.textAlign;if(s.backgroundColor)el.style.backgroundColor=s.backgroundColor;if(s.lineHeight!=null)el.style.lineHeight=String(s.lineHeight);if(Object.prototype.hasOwnProperty.call(s,'hidden')){el.style.display=s.hidden?'none':'';}}}});}
+function applyImages(img){if(!img)return;Object.keys(img).forEach(function(k){var v=img[k];if(typeof v!=='string')return;var esc=k.replace(/"/g,'\\"');var safe=v.replace(/["'()\s]/g,'');var slot=document.querySelector('[data-imgslot="'+esc+'"]');if(slot){slot.setAttribute('data-img',safe);if(slot.tagName==='IMG'){if(slot.__eduSrc0===undefined)slot.__eduSrc0=slot.getAttribute('src')||'';if(safe){slot.setAttribute('src',safe);slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{if(slot.__eduSrc0)slot.setAttribute('src',slot.__eduSrc0);else slot.removeAttribute('src');slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(safe){slot.style.backgroundImage="url('"+safe+"')";slot.style.backgroundSize='cover';slot.style.backgroundPosition='center';slot.classList.add('has-img');slot.setAttribute('data-has-image','true');}else{slot.style.backgroundImage='';slot.classList.remove('has-img');slot.removeAttribute('data-has-image');}return;}if(!safe)return;var el=document.querySelector('[data-img="'+esc+'"]')||document.querySelector('[data-slot="'+esc+'"]');if(!el)return;if(el.tagName==='IMG'){el.setAttribute('src',safe);}else{el.style.backgroundImage="url('"+safe+"')";el.style.backgroundSize='cover';el.style.backgroundPosition='center';}el.setAttribute('data-has-image','true');});}
+function armEdit(){document.querySelectorAll('[data-field],[data-imgslot],[data-img],[data-slot],[data-action]').forEach(function(el){if(el.__veArmed)return;el.__veArmed=true;el.style.cursor='pointer';var isAct=el.hasAttribute('data-action');el.addEventListener('mouseenter',function(){el.style.outline='2px dashed '+(isAct?'#f59e0b':'#06b6d4');el.style.outlineOffset='2px';});el.addEventListener('mouseleave',function(){el.style.outline='';});el.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var key=el.getAttribute('data-action')||el.getAttribute('data-field')||el.getAttribute('data-imgslot')||el.getAttribute('data-slot')||el.getAttribute('data-img')||'';var kind=el.hasAttribute('data-action')?'action':(el.hasAttribute('data-field')?'text':'img');try{parent.postMessage({type:'educms-field-click',key:key,kind:kind},'*');}catch(_){}},true);});}
+function applyAll(){var p=readParams();applyBrand(p.brand);applyTextAndStyles(p.text,p.styles);applyImages(p.img);applyPosters(p.img);applyVideos(p.video);if(editMode){armEdit();armMediaEdit();}}
+applyBrand(readParams().brand);
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',applyAll);}else{applyAll();}
+try{parent.postMessage({type:'educms-ready'},'*');}catch(_){}
+addEventListener('message',function(e){try{var d=e.data;if(!d||typeof d!=='object')return;if(d.type==='educms-overrides'){if(d.brand)applyBrand(d.brand);applyTextAndStyles(d.text||{},d.textStyles||{});applyImages(d.img||{});applyPosters(d.img||{});applyVideos(d.video||{});}else if(d.type==='educms-edit-mode'){editMode=!!d.on;if(editMode){_unfreeze();armEdit();armMediaEdit();}}}catch(_){}});
+}catch(e){}})();</script>
+</head>
+<body>
+  <div class="viewport" id="viewport">
+  <main class="stage" id="stage" data-template="motion-studio" data-orientation="portrait">
+    <header class="masthead">
+      <div class="brand-row">
+        <span class="mark" aria-hidden="true"></span>
+        <div><div class="brand" data-field="club.name">Northline Fitness</div><div class="screen-name" data-field="screen.label">Motion Studio</div></div>
+      </div>
+      <time class="clock" data-field="club.localTime" datetime="18:42">6:42 PM</time>
+    </header>
+
+    <section class="feature" aria-label="Licensed fitness program">
+      <img src="/templates/fitness/assets/motion-studio-v1.png" alt="Instructor-led mobility class in a modern fitness studio" data-field="program.posterUrl">
+      <div class="frame-no" data-field="program.category">MOBILITY / 042</div>
+      <div class="source-badge" id="sourceBadge" data-source-status>LIVE · CONNECTED</div>
+      <div class="program-copy">
+        <div class="kicker" id="programProvider" data-field="program.provider">Fitness On Demand · Contract API</div>
+        <h1 data-field="program.title">Restore + Move</h1>
+        <div class="program-meta"><span data-field="program.coach">Coach Dani</span><span data-field="program.duration">28 min</span><span data-field="program.level">All levels</span></div>
+      </div>
+    </section>
+
+    <section class="transport" aria-label="Program progress">
+      <div class="transport-label">Screening<strong data-field="program.chapter">Mobility 04</strong></div>
+      <div class="progress">
+        <div class="line"><div class="fill" data-field="program.progressPercent"></div><div class="head"></div></div>
+        <div class="time-row"><span data-field="program.elapsed">17:38</span><span data-field="program.remaining">10:22 remaining</span></div>
+      </div>
+    </section>
+    <div class="av"><span data-field="program.audioState">MUTED</span><span data-field="program.captionState">CAPTIONS ON</span></div>
+
+    <section class="lower">
+      <div class="schedule">
+        <div class="section-title" data-field="schedule.dateLabel">Tonight / next programs</div>
+        <div class="slot active"><div class="slot-time" data-field="schedule.current.time">6:30 PM</div><div class="slot-name" data-field="schedule.current.title">Restore + Move</div><div class="slot-detail" data-field="schedule.current.detail">Playing now · Studio A</div></div>
+        <div class="slot"><div class="slot-time" data-field="schedule.next.time">7:00 PM</div><div class="slot-name" data-field="schedule.next.title">Power Intervals</div><div class="slot-detail" data-field="schedule.next.detail">Next program · 30 min</div></div>
+        <div class="slot"><div class="slot-time" data-field="schedule.later.time">7:35 PM</div><div class="slot-name" data-field="schedule.later.title">Core Reset</div><div class="slot-detail" data-field="schedule.later.detail">Following · 20 min</div></div>
+      </div>
+      <div class="side">
+        <section class="music" aria-label="Business music metadata">
+          <div class="music-label"><span data-field="music.provider">Business music</span> / <span id="musicState" data-music-status>CONNECTED</span></div>
+          <div class="track" data-field="music.trackTitle">Find Your Pace</div>
+          <div class="artist" data-field="music.artist">The Night Shift</div>
+        </section>
+        <section class="message">
+          <div class="message-label">Club note</div>
+          <div class="message-copy" data-field="club.message">Hydration station open beside Studio A.</div>
+        </section>
+      </div>
+    </section>
+  </main>
+  </div>
+
+  <script src="_media-runtime.js?v=20260824-1"></script>
+  <script>
+    (function () {
+      'use strict';
+      var stage = document.getElementById('stage');
+      var designWidth = 1080;
+      var designHeight = 1920;
+      function fitStage() {
+        var scale = Math.min(window.innerWidth / designWidth, window.innerHeight / designHeight);
+        stage.style.transform = 'scale(' + scale + ')';
+        stage.style.left = Math.max(0, (window.innerWidth - designWidth * scale) / 2) + 'px';
+        stage.style.top = Math.max(0, (window.innerHeight - designHeight * scale) / 2) + 'px';
+      }
+      window.addEventListener('resize', fitStage, { passive: true });
+      fitStage();
+    }());
+  </script>
+</body>
+</html>
