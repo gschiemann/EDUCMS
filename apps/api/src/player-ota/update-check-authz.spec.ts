@@ -188,3 +188,96 @@ describe('OTA-01 — clearing a pending push is privileged', () => {
     await expect(controller.updateCheck(bumpBody, anonReq())).resolves.toBeDefined();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// 2026-08-25 — the panel's own Update button must WORK (operator, L55VEC:
+// "it needs to work from a button push"). A device-authenticated check
+// carrying source='user' is honored as explicit operator authorization —
+// equal to a dashboard push — bypassing tenant auto-off AND the canary
+// hold. Spoof-proof: without the device token it stays gated (OTA-01
+// posture), so an attacker with a bare fingerprint cannot pull a
+// rollout-held build or write audit rows.
+// ─────────────────────────────────────────────────────────────────────────
+describe('panel-user-tap — an authenticated human tap is authorization', () => {
+  const gatedScreen = (canaryPct: number | null = null) => ({
+    id: SCREEN_ID,
+    tenantId: 'tenant-1',
+    name: 'L55VEC',
+    status: 'ONLINE',
+    credentialEpoch: 0,
+    credentialEpochRotatedAt: null,
+    playerVersionCode: 10102,
+    forceApkUpdatePendingAt: null, // no dashboard push
+    lastOtaState: 'UP_TO_DATE',
+    lastOtaAt: new Date(),
+    tenant: {
+      autoUpdatePlayerEnabled: false, // rollout held back
+      otaWindowStart: null,
+      otaWindowEnd: null,
+      otaWindowTimezone: null,
+      canaryFleetPercent: canaryPct,
+    },
+  });
+  const tapBody = { fingerprint: FP, versionName: '1.1.2', versionCode: 10102, source: 'user' } as any;
+  const clearDedup = () => ((PlayerOtaController as any).userTapAuditAt as Map<string, number>).clear();
+
+  beforeEach(clearDedup);
+
+  it('DEVICE-AUTHENTICATED tap → offer granted (reason=panel-user-tap) + PANEL_USER_UPDATE audit row', async () => {
+    const { controller, prisma } = harness(gatedScreen());
+    const lines: string[] = [];
+    jest.spyOn((controller as any).logger, 'log').mockImplementation((m: any) => { lines.push(String(m)); });
+    await controller.updateCheck(tapBody, deviceReq());
+    expect(lines.join('\n')).toContain('reason=panel-user-tap');
+    expect(lines.join('\n')).toContain('decision=offer-latest');
+    const audit = prisma.client.auditLog.create.mock.calls
+      .map((c: any) => c[0].data)
+      .find((d: any) => d.action === 'PANEL_USER_UPDATE');
+    expect(audit).toBeDefined();
+    expect(audit.targetId).toBe(SCREEN_ID);
+    expect(audit.tenantId).toBe('tenant-1');
+    expect(JSON.parse(audit.details).screenName).toBe('L55VEC');
+  });
+
+  it('UNAUTHENTICATED source=user stays gated — no offer, no audit row (no spoofed pacing bypass)', async () => {
+    const { controller, prisma } = harness(gatedScreen());
+    const lines: string[] = [];
+    jest.spyOn((controller as any).logger, 'log').mockImplementation((m: any) => { lines.push(String(m)); });
+    await controller.updateCheck(tapBody, anonReq());
+    expect(lines.join('\n')).toContain('decision=uptoDate');
+    expect(lines.join('\n')).not.toContain('panel-user-tap');
+    const audit = prisma.client.auditLog.create.mock.calls
+      .map((c: any) => c[0].data)
+      .find((d: any) => d.action === 'PANEL_USER_UPDATE');
+    expect(audit).toBeUndefined();
+  });
+
+  it('canary hold (0%) does NOT block an authenticated tap — a human asked', async () => {
+    const { controller } = harness(gatedScreen(0));
+    const lines: string[] = [];
+    jest.spyOn((controller as any).logger, 'log').mockImplementation((m: any) => { lines.push(String(m)); });
+    await controller.updateCheck(tapBody, deviceReq());
+    expect(lines.join('\n')).toContain('decision=offer-latest');
+    expect(lines.join('\n')).toContain('reason=panel-user-tap');
+    expect(lines.join('\n')).not.toContain('canary-gate-blocked');
+  });
+
+  it('audit rows dedupe per screen within 10 minutes (retry noise stays bounded)', async () => {
+    const { controller, prisma } = harness(gatedScreen());
+    jest.spyOn((controller as any).logger, 'log').mockImplementation(() => {});
+    await controller.updateCheck(tapBody, deviceReq());
+    await controller.updateCheck(tapBody, deviceReq());
+    const audits = prisma.client.auditLog.create.mock.calls
+      .map((c: any) => c[0].data)
+      .filter((d: any) => d.action === 'PANEL_USER_UPDATE');
+    expect(audits).toHaveLength(1);
+  });
+
+  it('a periodic (sourceless) authenticated check is UNCHANGED — still gated when rollout is held', async () => {
+    const { controller } = harness(gatedScreen());
+    const lines: string[] = [];
+    jest.spyOn((controller as any).logger, 'log').mockImplementation((m: any) => { lines.push(String(m)); });
+    await controller.updateCheck({ fingerprint: FP, versionName: '1.1.2', versionCode: 10102 } as any, deviceReq());
+    expect(lines.join('\n')).toContain('decision=uptoDate');
+  });
+});

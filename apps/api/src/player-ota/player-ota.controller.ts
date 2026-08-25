@@ -76,6 +76,11 @@ interface UpdateCheckBody {
 @Controller('api/v1/player')
 export class PlayerOtaController {
   private readonly logger = new Logger('PlayerOTA');
+  // panel-user-tap audit dedup — screenId → last audit ms. In-memory and
+  // per-replica by design: worst case on multi-replica is one duplicate
+  // audit row per replica per 10 min, which is bounded noise, not a
+  // correctness input (nothing reads this map but the audit write below).
+  private static readonly userTapAuditAt = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -333,6 +338,7 @@ export class PlayerOtaController {
     let forcedPendingScreenId: string | null = null;
     let lookupScreenId: string | null = null;
     let lookupTenantId: string | null = null;
+    let lookupScreenName: string | null = null;
     // Phase B canary — captured at screen-lookup time, defaults to
     // full-rollout (100) when no screen row exists.
     let tenantCanaryPct = 100;
@@ -343,6 +349,7 @@ export class PlayerOtaController {
           select: {
             id: true,
             tenantId: true,
+            name: true,
             forceApkUpdatePendingAt: true,
             forceApkUpdateOverrideWindow: true,
             lastOtaState: true,
@@ -369,7 +376,24 @@ export class PlayerOtaController {
             tenantCanaryPct = Math.max(0, Math.min(100, pct));
           }
         }
-        if (screen?.tenant?.autoUpdatePlayerEnabled) {
+        // ── 2026-08-25 — the panel's own Update button must WORK ──────
+        // Operator (L55VEC): "it needs to work from a button push."
+        // A human standing at the glass tapping Update is the SAME
+        // authorization as a dashboard push — rollout pacing (auto-off,
+        // canary) exists to bound UNATTENDED fan-out of a bad release,
+        // and an explicit operator ask is the opposite of unattended.
+        // Spoof-proof per the OTA-01 lesson (this endpoint is otherwise
+        // unauthenticated): honored ONLY when the request carries a
+        // VALID device token for this exact screen (deviceAuthenticated
+        // — the same gate that protects persistReportedVersion). Shipped
+        // players never send source='user' (no tap wiring until v1.1.5),
+        // so this branch is inert for the current fleet and arms the
+        // moment the tap-wired player ships.
+        if (screen && deviceAuthenticated && callerSource === 'user') {
+          lookupScreenName = screen.name ?? null;
+          allowUpdate = true;
+          allowReason = 'panel-user-tap';
+        } else if (screen?.tenant?.autoUpdatePlayerEnabled) {
           allowUpdate = true;
           allowReason = 'tenant-auto-on';
         } else if (screen?.forceApkUpdatePendingAt) {
@@ -492,7 +516,10 @@ export class PlayerOtaController {
     // Bootstrap bypass screens skip the gate (Manager's fresh-install
     // path needs to ALWAYS get a Player APK — it's an empty kiosk
     // by definition and there's nothing to break).
-    if (allowUpdate && !isBootstrapCall && lookupScreenId && tenantCanaryPct < 100) {
+    // panel-user-tap bypasses the canary hold by design — see the branch
+    // above: a human explicitly asked, which is what the pacing protects
+    // against NOT happening silently.
+    if (allowUpdate && !isBootstrapCall && allowReason !== 'panel-user-tap' && lookupScreenId && tenantCanaryPct < 100) {
       const inCohort = isInCanaryCohort(lookupScreenId, tenantCanaryPct);
       if (!inCohort) {
         allowUpdate = false;
@@ -517,6 +544,33 @@ export class PlayerOtaController {
       `[ota] decision=offer-latest caller=${callerVn} screen=${lookupScreenId || '-'} ` +
       `tenant=${lookupTenantId || '-'} fp=${fpShort} reason=${allowReason}`,
     );
+    // Forensic parity with dashboard pushes: a panel-tap-authorized offer
+    // writes its own audit row, so "who updated this screen" is always
+    // answerable. Device-authenticated (see the branch above) → not the
+    // unauthenticated audit-spam vector OTA-01 warned about; per-screen
+    // 10-min dedup bounds retry noise on a flaky install.
+    if (allowReason === 'panel-user-tap' && lookupScreenId && lookupTenantId) {
+      const lastAudit = PlayerOtaController.userTapAuditAt.get(lookupScreenId) || 0;
+      if (Date.now() - lastAudit > 10 * 60_000) {
+        PlayerOtaController.userTapAuditAt.set(lookupScreenId, Date.now());
+        this.prisma.client.auditLog
+          .create({
+            data: {
+              action: 'PANEL_USER_UPDATE',
+              targetType: 'screen',
+              targetId: lookupScreenId,
+              tenantId: lookupTenantId,
+              userId: null,
+              details: JSON.stringify({
+                screenName: lookupScreenName,
+                source: 'panel-user-tap',
+                fromVersion: callerVn,
+              }),
+            },
+          })
+          .catch(() => { /* best-effort — never block an offer on audit */ });
+      }
+    }
     // 2026-04-28 — DO NOT clear the flag here.
     // Operator: 'i rebooted the player and nothing fucking happened
     // ... we are 16 versions of the player in and i asked for OTA
